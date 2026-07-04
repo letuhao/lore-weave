@@ -54,6 +54,25 @@ class TestSuccess:
         assert "" not in toks
 
     @pytest.mark.asyncio
+    async def test_short_ascii_junk_tokens_dropped(self):
+        # a 1-2 char ASCII entity/alias ("I","a","of") — junk min_freq=1 surfaces —
+        # would \b-match a common word and fire the gate spuriously → dropped. CJK
+        # short names are kept.
+        rows = [
+            {"entity_id": "1", "name": "I", "kind_code": "c", "aliases": ["a", "of"], "frequency": 1},
+            {"entity_id": "2", "name": "Dracula", "kind_code": "c", "aliases": [], "frequency": 5},
+            {"entity_id": "3", "name": "万", "kind_code": "c", "aliases": [], "frequency": 1},
+        ]
+        client = _make_client(lambda _: httpx.Response(200, json=rows))
+        try:
+            toks = await client.get_known_entity_tokens(BOOK_ID)
+        finally:
+            await client.aclose()
+        assert "dracula" in toks
+        assert "万" in toks               # non-ASCII 1-char name kept
+        assert not ({"i", "a", "of"} & toks)  # short ASCII junk dropped
+
+    @pytest.mark.asyncio
     async def test_second_call_is_cached_no_network(self):
         calls = {"n": 0}
 

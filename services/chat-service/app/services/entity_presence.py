@@ -89,11 +89,12 @@ def _has_lore_intent(message: str) -> bool:
 
 
 def _has_non_ascii(message: str) -> bool:
-    """A non-ASCII script (CJK / Vietnamese diacritics / Korean / …). The English-only
-    anaphora+lore-intent lexicons can't classify such a turn, so — this being a
-    MULTILINGUAL novel product — we bias-to-include rather than confidently gate out a
-    non-English lore turn (audit MED-2)."""
-    return any(ord(ch) > 0x7F for ch in message)
+    """A non-ASCII *letter* — a CJK / Vietnamese / Korean / … SCRIPT, the signal that
+    the English-only lexicons can't classify this turn (bias-to-include, audit MED-2).
+    Must be `.isalpha()`: an em-dash `—`, curly quote, or `…` in an otherwise English
+    sentence is non-ASCII PUNCTUATION and must NOT trip the multilingual rule (live
+    bug: 'make it darker — keep the same character' wrongly read as non-English)."""
+    return any(ord(ch) > 0x7F and ch.isalpha() for ch in message)
 
 
 def _is_question(message: str) -> bool:

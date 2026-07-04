@@ -36,6 +36,20 @@ __all__ = [
 ]
 
 
+def _meaningful(token: str) -> bool:
+    """Drop tokens too short to be a real entity for gate matching. A 1-2 char ASCII
+    token ("i", "a", "an", "of") — a junk/mis-extracted glossary entry that
+    `min_frequency=1` can surface — would `\\b`-match a common English word and FIRE
+    the gate spuriously (live bug: entity 'i' matched "I'm about to write"). Non-ASCII
+    (CJK/Hangul) tokens can be a real 1-char name, so keep those at len ≥ 1."""
+    t = token.strip()
+    if not t:
+        return False
+    if t.isascii():
+        return len(t) >= 3
+    return True
+
+
 def _tokens_from_rows(rows: list) -> frozenset[str]:
     """Build the lowercased name+alias token set from the route's rows.
     Shape: [{entity_id, name, kind_code, aliases:[...], frequency}]."""
@@ -44,12 +58,12 @@ def _tokens_from_rows(rows: list) -> frozenset[str]:
         if not isinstance(r, dict):
             continue
         name = r.get("name")
-        if isinstance(name, str) and name.strip():
+        if isinstance(name, str) and _meaningful(name):
             toks.add(name.strip().lower())
         aliases = r.get("aliases")
         if isinstance(aliases, list):
             for a in aliases:
-                if isinstance(a, str) and a.strip():
+                if isinstance(a, str) and _meaningful(a):
                     toks.add(a.strip().lower())
     return frozenset(toks)
 

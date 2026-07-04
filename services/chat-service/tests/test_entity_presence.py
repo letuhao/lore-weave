@@ -119,6 +119,13 @@ class TestMultilingualAndQuestionBias:
             r = detect_entity_presence(q, TOKENS)
             assert r.grounding_needed is False, q
 
+    def test_english_em_dash_is_not_non_ascii(self):
+        # an em-dash is non-ASCII PUNCTUATION, not a non-English script — must not
+        # trip the multilingual rule (live bug). Opens via anaphora ("it") instead.
+        r = detect_entity_presence("now make it darker — keep the same character", TOKENS)
+        assert r.reason != "non_ascii_bias_include"
+        assert r.grounding_needed is True
+
     def test_ascii_imperative_op_still_gates_out(self):
         # not a question, ASCII, no entity/anaphora/lore-intent → still the token win.
         r = detect_entity_presence("give me a 3-step plan to draft a chapter", TOKENS)
