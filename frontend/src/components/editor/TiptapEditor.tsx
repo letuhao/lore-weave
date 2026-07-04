@@ -163,6 +163,12 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       editable,
       onUpdate: ({ editor }) => {
         if (isExternalUpdate.current) return;
+        // 15_wiki_panels.md E2E /review-impl — Tiptap/ProseMirror can dispatch one final
+        // transaction as part of its OWN destroy() teardown (observed live: closing a dock tab
+        // mid-edit fired onUpdate with a cleared/empty doc AFTER the real content, right before
+        // unmount). A naive onUpdate consumer that persists every call (e.g. a draft-survives-
+        // unmount cache) would silently overwrite the real draft with this teardown artifact.
+        if (editor.isDestroyed) return;
         onUpdate(addTextSnapshots(editor.getJSON()), editor.getText());
       },
       editorProps: {

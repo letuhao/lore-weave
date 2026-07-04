@@ -50,4 +50,15 @@ export class StudioPage {
     await entry.click();
     await expect(this.commandPaletteModal).toHaveCount(0);
   }
+
+  /** Close a dock tab by its CURRENT title text — dockview's default tab renders a
+   *  `.dv-default-tab-action` close button (no data-testid; this is dockview's own DOM, not
+   *  ours) inside the `.dv-default-tab` carrying that title. 15_wiki_panels.md's DOCK-10
+   *  /review-impl fix needs this: closing (not just switching away from) a dock tab is a real
+   *  unmount dockview performs, and no existing spec had exercised that path before. */
+  async closePanel(title: string): Promise<void> {
+    const tab = this.page.locator('.dv-default-tab', { hasText: title });
+    await tab.waitFor({ state: 'visible' });
+    await tab.locator('.dv-default-tab-action').click();
+  }
 }

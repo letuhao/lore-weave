@@ -13,7 +13,10 @@
 import { useEffect, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import { ConfirmDialog } from '@/components/shared';
+import { useAuth } from '@/auth';
+import { wikiApi } from '@/features/wiki/api';
 import { WikiEditorWorkspace, type WikiEditorRightPanel } from '@/features/wiki/components/WikiEditorWorkspace';
 import { clearWikiEditorDraft } from '@/features/wiki/lib/wikiEditorDraftCache';
 import { useStudioHost } from '../host/StudioHostProvider';
@@ -41,11 +44,27 @@ function readTarget(params: Record<string, unknown> | undefined): Target {
 export function WikiEditorPanel(props: IDockviewPanelProps) {
   useStudioPanel('wiki-editor', props.api);
   const { t } = useTranslation('wiki');
+  const { accessToken } = useAuth();
   const host = useStudioHost();
 
   const [target, setTarget] = useState<Target>(() => readTarget(props.params));
   const [pending, setPending] = useState<Target | null>(null);
   const [dirty, setDirty] = useState(false);
+
+  // Self-title beyond the generic "Wiki Editor" label once the article resolves — SAME
+  // component as useStudioPanel (BookReaderPanel precedent), not a callback bubbled up from
+  // WikiEditorWorkspace: /review-impl found that splitting title-refinement across a parent/
+  // child boundary races against useStudioPanel's own generic-title effect (dockview re-renders
+  // the panel wrapper in response to a mid-render setTitle() call, which can re-fire the
+  // PARENT's effect AFTER the refined title already landed, silently reverting it).
+  const { data: titleArticle } = useQuery({
+    queryKey: ['wiki-article', host.bookId, target.articleId],
+    queryFn: () => wikiApi.getArticle(host.bookId, target.articleId!, accessToken!),
+    enabled: !!accessToken && !!target.articleId,
+  });
+  useEffect(() => {
+    if (titleArticle) props.api.setTitle(titleArticle.display_name);
+  }, [props.api, titleArticle]);
 
   useEffect(() => {
     const disp = props.api.onDidParametersChange?.((next: Record<string, unknown> | undefined) => {
@@ -78,7 +97,6 @@ export function WikiEditorPanel(props: IDockviewPanelProps) {
         initialRightPanel={target.rightPanel}
         onBack={() => host.openPanel('wiki')}
         onDirtyChange={setDirty}
-        onTitleChange={(title) => props.api.setTitle(title)}
       />
       {pending && (
         <ConfirmDialog

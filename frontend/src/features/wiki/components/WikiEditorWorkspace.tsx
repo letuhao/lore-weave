@@ -247,12 +247,16 @@ export interface WikiEditorWorkspaceProps {
   /** Bubbles local dirty state up so a retargeting panel wrapper can gate its OWN param-driven
    * article switch (B2b) — this component has no idea it might be inside such a wrapper. */
   onDirtyChange?: (dirty: boolean) => void;
-  /** Bubbles the loaded article's display name up for panel self-titling (BookReaderPanel
-   * precedent) — omitted by the classic page, which titles itself via the browser tab/route. */
-  onTitleChange?: (title: string) => void;
 }
 
-export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBack, onDirtyChange, onTitleChange }: WikiEditorWorkspaceProps) {
+// Panel self-titling (BookReaderPanel precedent) is deliberately NOT done via a callback prop
+// here — /review-impl found that splitting useStudioPanel's generic-title effect (in the PARENT
+// panel) from a refinement effect fired via a CHILD's callback creates an effect-ordering race:
+// dockview re-renders the panel wrapper in response to a mid-render setTitle() call, which can
+// re-fire the PARENT's generic-title effect AFTER the refinement already landed, silently
+// reverting the tab to "Wiki Editor". WikiEditorPanel now fetches the article itself and titles
+// in the SAME component as useStudioPanel, exactly like BookReaderPanel does.
+export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBack, onDirtyChange }: WikiEditorWorkspaceProps) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
   const queryClient = useQueryClient();
@@ -290,26 +294,33 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
 
   // Sync editor body when article data changes (e.g., after a save's own refetch, a revision
   // restore) — EXCEPT the very first time, when a draft survived a dock-tab close (DOCK-10
-  // /review-impl fix — see wikiEditorDraftCache.ts). `consumedCacheRef` gates this to run once
-  // per mount so a LATER, genuine server refresh always wins over the one-time restore.
-  const consumedCacheRef = useRef(false);
+  // /review-impl fix — see wikiEditorDraftCache.ts) — that one restores from the cache instead.
+  //
+  // `syncedVersionRef` keys on `article.updated_at`, not a plain boolean: React (StrictMode,
+  // dev only, but a genuinely fragile design either way) fires this effect TWICE for the SAME
+  // `article` reference on a single mount — a boolean "already consumed" gate can't tell that
+  // apart from a REAL subsequent refetch (a save's own invalidation, a revision restore) and
+  // clobbers the just-restored draft with the stale server body on the 2nd firing. Keying on
+  // `updated_at` makes the guard idempotent: re-firing with the SAME version is a true no-op;
+  // a version that actually changed always re-syncs from the server (correct for both save and
+  // restore, since a genuine refetch should never re-consult the cache).
+  const syncedVersionRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!article) return;
-    if (!consumedCacheRef.current) {
-      consumedCacheRef.current = true;
+    if (!article || syncedVersionRef.current === article.updated_at) return;
+    const isFirstSync = syncedVersionRef.current === null;
+    syncedVersionRef.current = article.updated_at;
+    if (isFirstSync) {
       const cached = getWikiEditorDraft(articleId);
       if (cached !== null) {
         setBody(cached);
         setEditorContent(cached);
         setDirty(true);
-        onTitleChange?.(article.display_name);
         return;
       }
     }
     setBody(article.body_json);
     setEditorContent(article.body_json);
     setDirty(false);
-    onTitleChange?.(article.display_name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [article]);
 
@@ -321,12 +332,14 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  const handleEditorUpdate = useCallback((json: unknown) => {
+  const handleEditorUpdate = useCallback((json: unknown, text?: string) => {
     setBody(json);
     setDirty(true);
-    // Keep the survives-a-tab-close cache current on every keystroke, not just at some earlier
-    // checkpoint — closing the panel mid-typing must lose at most nothing.
-    setWikiEditorDraft(articleId, json);
+    // wikiEditorDraftCache itself rejects an empty `text` (Tiptap/ProseMirror can dispatch one
+    // spurious final onUpdate with a CLEARED doc as part of its own unmount teardown — observed
+    // live via the E2E close/reopen spec; TiptapEditor.tsx's isDestroyed guard doesn't catch
+    // every occurrence).
+    setWikiEditorDraft(articleId, json, text ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [articleId]);
 

@@ -13,10 +13,10 @@ vi.mock('react-i18next', () => ({
 }));
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 vi.mock('@/components/editor/TiptapEditor', () => ({
-  TiptapEditor: ({ content, onUpdate }: { content: unknown; onUpdate: (json: unknown) => void }) => (
+  TiptapEditor: ({ content, onUpdate }: { content: unknown; onUpdate: (json: unknown, text: string) => void }) => (
     <div>
       <div data-testid="stub-editor-content">{JSON.stringify(content)}</div>
-      <button onClick={() => onUpdate({ content: [{ type: 'paragraph', text: 'typed' }] })}>stub-editor-type</button>
+      <button onClick={() => onUpdate({ content: [{ type: 'paragraph', text: 'typed' }] }, 'typed')}>stub-editor-type</button>
     </div>
   ),
 }));

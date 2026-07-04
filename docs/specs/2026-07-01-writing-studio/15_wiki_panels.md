@@ -220,6 +220,62 @@ as the single highest-risk area:
 No HIGH/MED findings. Glossary's dockable migration pattern (spec → CLARIFY decisions → design
 review before PLAN → build → adversarial review-impl) held up on a second, independent feature.
 
+## Live E2E (Playwright, 2026-07-04) — found and fixed 3 more real bugs
+
+`frontend/tests/e2e/specs/wiki-panels.spec.ts` (mirrors `kg-panels.spec.ts`'s "open through the
+real Command Palette against the real backend" LIVE gate). Seeds a fresh book + 2 real glossary
+entities + 2 real wiki articles via API (`tests/e2e/helpers/wiki.ts` — verified live against the
+dev stack before writing, since no existing TS client helper covers adopt/entity/wiki-article
+creation). Ran against a local `vite --port 520x` dev server carrying this session's code (the
+baked `:5174` docker image predates it, same staleness caveat `kg-panels.spec.ts` already hit).
+
+**Why this mattered beyond the standard "does it mount" sweep:** the DOCK-10 dirty-guard fix
+above was proven only by unit tests that mock `TiptapEditor` and call `unmount()` synchronously —
+neither catches a REAL browser's React effect timing or a REAL rich-text editor's own teardown
+behavior. Running the actual close→reopen flow against the real stack found three additional,
+genuinely live-only bugs the unit tests structurally could not have caught:
+
+1. **Title-refinement race (parent/child effect ordering).** `wiki-editor`'s dock tab stayed
+   stuck on the generic "Wiki Editor" label forever — never refined to the article's name.
+   Root cause: `WikiEditorWorkspace` (child) called an `onTitleChange` PROP CALLBACK up to
+   `WikiEditorPanel` (parent) to refine the title once its own article query resolved, while
+   `useStudioPanel`'s generic-title effect lived in the PARENT. Calling `props.api.setTitle()`
+   triggers dockview to re-render the panel wrapper, which can re-fire the PARENT's own
+   generic-title effect AFTER the refined title already landed, silently reverting it — an
+   effect-ordering guarantee that only holds when BOTH effects live in the SAME component.
+   **Fix:** moved title-refinement entirely into `WikiEditorPanel` (it now fetches the article
+   itself via the same query key, deduped by React Query) — same shape as the existing,
+   apparently-uninvestigated `BookReaderPanel` precedent, which already does self-title and
+   refinement in one component for exactly this reason.
+2. **`TiptapEditor.tsx` fires a spurious final `onUpdate` with a CLEARED doc during its own
+   unmount teardown.** Closing the wiki-editor tab while dirty fired one more `onUpdate({})`
+   after the real content, overwriting the survives-a-close cache with empty content moments
+   before the panel fully unmounted. This is a bug in the SHARED `TiptapEditor.tsx` (also used by
+   manuscript chapter editing) — `editor.isDestroyed` was checked but doesn't cover every
+   occurrence (the DOM detachment that triggers the spurious dispatch can fire before
+   `isDestroyed` flips true). Fixed with a documented guard; belt-and-suspenders hardening added
+   in `wikiEditorDraftCache.ts` itself (both `setWikiEditorDraft`/`getWikiEditorDraft` now reject/
+   ignore an empty draft, using Tiptap's own plain-text snapshot rather than parsing its JSON doc
+   shape) so the cache is robust to this bug class regardless of exactly which teardown path
+   trips it.
+3. **The cache-restore effect wasn't idempotent against a double-fire of the SAME article
+   version.** Even with (1) and (2) fixed, the restored draft was STILL being clobbered — because
+   the "sync editor body when article data changes" effect genuinely fires TWICE per mount in
+   this dev environment (StrictMode's double-effect-invoke), and a plain boolean "already
+   consumed the cache" ref can't distinguish that from a real subsequent refetch (a save's own
+   invalidation, a revision restore): on the 2nd firing the ref was already `true`, so it fell
+   through to the "sync from server" branch and overwrote the just-restored draft with the
+   stale (empty) server body. **Fix:** key the guard on `article.updated_at` instead of a
+   boolean — re-firing with the SAME version is now a true no-op; a version that actually
+   changed always re-syncs from the server, which is correct for both save and restore. This is
+   a more fragile design than it looked in isolation — worth remembering for any future panel
+   that mixes "restore from an out-of-band cache" with "sync from a query result."
+
+**Verify:** 4/4 E2E specs pass live (palette-open, Edit→wiki-editor DOCK-7, DOCK-10 close/reopen
+survival, G7 discard-confirm on retarget) against the real backend, real dockview, real
+TiptapEditor — not mocks. `tsc --noEmit` clean; full FE suite re-run after all three fixes:
+673/673 (`features/wiki` + `features/studio`), no regressions.
+
 ## Second `/review-impl` pass (2026-07-04, user-requested) — 1 real finding, fixed
 
 A fresh pass specifically checking the actual code against every rule in

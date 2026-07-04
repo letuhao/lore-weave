@@ -5,6 +5,7 @@
 // would lose prose the instant a user opened a different article mid-edit.
 import { act, render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { StudioHostProvider } from '../../host/StudioHostProvider';
@@ -12,6 +13,11 @@ import { StudioHostProvider } from '../../host/StudioHostProvider';
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
 }));
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+// The panel self-titles from the article's display_name (BookReaderPanel precedent — see the
+// title-refinement race /review-impl found when this lived in a WikiEditorWorkspace callback
+// instead). Not under test here; return nothing so the title effect simply no-ops.
+vi.mock('@/features/wiki/api', () => ({ wikiApi: { getArticle: () => new Promise(() => {}) } }));
 
 // /review-impl DOCK-10 fix — a confirmed discard-and-switch must also clear the survives-a-
 // tab-close draft cache, else reopening the OLD article later would resurrect the very draft
@@ -58,7 +64,12 @@ function dockProps(params?: Record<string, unknown>) {
 }
 
 function withHost(ui: ReactNode) {
-  return render(<StudioHostProvider bookId="b1">{ui}</StudioHostProvider>);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <StudioHostProvider bookId="b1">{ui}</StudioHostProvider>
+    </QueryClientProvider>,
+  );
 }
 
 describe('WikiEditorPanel — G7 dirty-guard on retarget', () => {

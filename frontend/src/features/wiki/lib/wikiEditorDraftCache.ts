@@ -18,26 +18,42 @@ interface WikiEditorDraft {
 }
 
 let draft: WikiEditorDraft | null = null;
+// The plain-text form of `draft.body`, tracked alongside it purely so both the write guard AND
+// the read guard can cheaply reject an EMPTY draft without knowing anything about Tiptap's JSON
+// doc shape — /review-impl found Tiptap/ProseMirror can dispatch a spurious final onUpdate with
+// a CLEARED doc as part of its own unmount teardown (TiptapEditor.tsx's isDestroyed guard
+// doesn't catch every occurrence — observed live via the close/reopen E2E spec, timing-
+// dependent). Belt-and-suspenders: reject on write AND treat an empty cached entry as "nothing
+// to restore" on read, so neither side of the race can resurrect blank content over the real
+// article body.
+let draftText = '';
 
-/** Returns the cached draft ONLY if it matches this exact article — a stale draft for a
- *  DIFFERENT article is never silently applied to the wrong resource. */
+/** Returns the cached draft ONLY if it matches this exact article AND actually has content —
+ *  a stale draft for a DIFFERENT article, or a degenerate empty one, is never applied. */
 export function getWikiEditorDraft(articleId: string): unknown | null {
-  return draft && draft.articleId === articleId ? draft.body : null;
+  if (!draft || draft.articleId !== articleId) return null;
+  return draftText.trim() !== '' ? draft.body : null;
 }
 
-/** Called on every editor keystroke so the cache always holds the LATEST content, not just
- *  the content as of some earlier checkpoint. */
-export function setWikiEditorDraft(articleId: string, body: unknown): void {
+/** Called on every editor keystroke so the cache always holds the LATEST content, not just the
+ *  content as of some earlier checkpoint. `text` is TiptapEditor's own plain-text snapshot
+ *  (cheap, already computed by the caller) — an empty one is never persisted, since it's either
+ *  a genuine "nothing typed yet" or a destroy-teardown artifact, and neither is worth caching. */
+export function setWikiEditorDraft(articleId: string, body: unknown, text: string): void {
+  if (text.trim() === '') return;
   draft = { articleId, body };
+  draftText = text;
 }
 
 /** Called on successful save, or when the user explicitly discards (Back-while-dirty confirm,
  *  the G7 discard-and-switch confirm) — a clean article has nothing left to restore. */
 export function clearWikiEditorDraft(): void {
   draft = null;
+  draftText = '';
 }
 
 /** Test-only: reset module state between test files. */
 export function _resetWikiEditorDraftCache(): void {
   draft = null;
+  draftText = '';
 }

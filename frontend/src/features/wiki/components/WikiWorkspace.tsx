@@ -389,6 +389,7 @@ export function WikiArticleView({ bookId, articleId, onRegenerate }: {
               </button>
               <button
                 onClick={() => openEditor()}
+                data-testid="wiki-edit"
                 className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110"
               >
                 <Pencil className="h-3 w-3" />
