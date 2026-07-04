@@ -4,8 +4,11 @@
 // (DOCK-2), resolving book_id from the studio host instead of a route param (DOCK-7). The
 // matrix-cell "manage versions" action opens the new `translation-versions` sibling panel
 // instead of navigating to the classic per-chapter route (DOCK-7 — the studio never unmounts
-// itself to satisfy one panel's link). No MCP tool prefix — translation-service has no MCP
-// tools federated through ai-gateway today (same "no MCP tools" shape as `sharing`).
+// itself to satisfy one panel's link). No `mcpToolPrefixes` registered here — translation-service
+// DOES federate MCP tools through ai-gateway (`translation_*`, confirmed 2026-07-05's LIVE-SYNC
+// audit; the prior "no MCP tools federated" claim here was stale) but this panel never wired the
+// agent-rack attribution; tracked as a separate, smaller gap, not blocking (the reconciler's
+// `translation_job_control` effect handler covers the actual live-sync need independently).
 import type { IDockviewPanelProps } from 'dockview-react';
 import { TranslationTab } from '@/pages/book-tabs/TranslationTab';
 import { useStudioHost } from '../host/StudioHostProvider';
