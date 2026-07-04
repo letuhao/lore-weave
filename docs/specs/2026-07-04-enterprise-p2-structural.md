@@ -124,7 +124,10 @@ Because these are refactors touching many services, **each workstream is its own
 
 ---
 
-## Workstream D — Latency SLO source-of-truth  *(size: M)*
+## Workstream D — Latency SLO source-of-truth  *(buildable core ✅ SHIPPED; perf-nightly infra-gated)*
+
+> ✅ **SHIPPED** — `contracts/slo/latency.yaml` (8 top-level user HTTP endpoints across the latency-heavy AI + domain services, each with a p95 target/window/owner; sync-only scope, async-enqueue + SSE excluded with rationale) + `scripts/slo-latency-lint.py` (presence/shape gate: required fields, positive p95, known verb, unique id+route, real `services/<name>/` — proven to red on all 6 bad-row classes) wired **blocking** into `lint-foundation.yml` p1-lints. Registered in the standards index (§B SoT + §D gate + Performance row).
+> **Infra-gated tail (`D-D-PERF-NIGHTLY`):** the p95-vs-target assertion + k6 smoke — there is **no perf-nightly harness in the repo** (verified: no `perf`/`nightly`/`k6` workflow), so, exactly like A1's Tempo dependency, the SoT+lint are the buildable prerequisite (done) and the measurement side is gated on building perf-nightly. Not "blocked" — it's unbuilt infra; scoped as its own slice.
 
 **Problem.** No platform latency SLO — DP-T tier latency contracts stop at the MMO boundary; the latency-heavy services (chat, knowledge, translation, composition) have no p95 gate on any user HTTP surface.
 

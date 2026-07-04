@@ -1,0 +1,104 @@
+# contracts/slo/latency.yaml — P2·D (platform user-HTTP latency SLO SoT)
+#
+# The MMO burn-rate SLOs (sli_definitions.yaml + slo_targets.yaml) stop at the
+# game boundary (session availability, turn completion, WS event delivery). This
+# file is the parallel SoT for the NOVEL-PLATFORM user HTTP surface: one p95 target
+# per top-level user-facing endpoint on the latency-heavy services.
+#
+# Consumed by:
+#   * scripts/slo-latency-lint.py — presence/shape gate (parses this file, checks
+#     every row's required fields + a positive p95, rejects duplicate ids/routes,
+#     and warns if a latency-heavy service has no row).
+#   * (planned) perf-nightly p95 assertion + k6 smoke — asserts the measured p95
+#     against target per row. NO perf-nightly harness exists yet → D-D-PERF-NIGHTLY;
+#     this SoT is that work's prerequisite and is the buildable half.
+#
+# Scope rule — SYNCHRONOUS user HTTP only. Async AI operations (translate, compose,
+# extract, image/video gen) return a fast job-accepted ack and do the heavy work in
+# a worker; the SLO row for those is the ENQUEUE latency, not the job. Streaming
+# (SSE chat) is excluded — a stream's p95 is a time-to-first-token concern tracked
+# separately, not a request-duration target.
+#
+# Target discipline: p95_ms is the 95th-percentile request duration budget measured
+# at the api-gateway-bff edge (all external traffic goes through it — I1). Targets
+# are deliberately generous first cuts; tighten from perf-nightly evidence, never by
+# guess. A row is a CONTRACT — removing/loosening one is a reviewable change.
+
+version: 1
+
+# window: the rolling evaluation window for the p95 (matches the MMO SLOs' 30d for
+# budget stability). owner: the team accountable for the endpoint's latency.
+endpoints:
+  # ── AI services (Python) — synchronous read/query surfaces ──────────────────
+  - id: knowledge_search
+    service: knowledge-service
+    method: POST
+    path: /v1/knowledge/search
+    p95_ms: 1500
+    window: '30d'
+    owner: platform
+    notes: 'Semantic/fuzzy retrieval — embed + rerank + graph read; the heaviest sync read.'
+
+  - id: chat_send_message
+    service: chat-service
+    method: POST
+    path: /v1/chat/sessions/{id}/messages
+    p95_ms: 2000
+    window: '30d'
+    owner: platform
+    notes: 'Non-streaming send ack (session append + enqueue). Streaming SSE excluded.'
+
+  - id: composition_enqueue
+    service: composition-service
+    method: POST
+    path: /v1/composition/compose
+    p95_ms: 800
+    window: '30d'
+    owner: platform
+    notes: 'Async factory — this budget is the enqueue ack, not the compose job.'
+
+  - id: translation_enqueue
+    service: translation-service
+    method: POST
+    path: /v1/translation/jobs
+    p95_ms: 800
+    window: '30d'
+    owner: platform
+    notes: 'Async — enqueue ack latency; the translate job runs in a worker.'
+
+  # ── Domain services (Go) — user reads ───────────────────────────────────────
+  - id: book_list_chapters
+    service: book-service
+    method: GET
+    path: /v1/books/{id}/chapters
+    p95_ms: 500
+    window: '30d'
+    owner: platform
+    notes: 'Paginated chapter list — a hot reading-app read path.'
+
+  - id: glossary_list_entities
+    service: glossary-service
+    method: GET
+    path: /v1/glossary/entities
+    p95_ms: 500
+    window: '30d'
+    owner: platform
+    notes: 'Authored-lore list (EAV projection read).'
+
+  - id: catalog_list_books
+    service: catalog-service
+    method: GET
+    path: /v1/catalog/books
+    p95_ms: 400
+    window: '30d'
+    owner: platform
+    notes: 'Public catalog browse.'
+
+  - id: notifications_list
+    service: notification-service
+    method: GET
+    path: /v1/notifications
+    p95_ms: 400
+    window: '30d'
+    owner: platform
+    notes: 'Notification feed pull (indexed by user_id, created_at).'
