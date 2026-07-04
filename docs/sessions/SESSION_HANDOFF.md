@@ -2,6 +2,25 @@
 
 **KNOWLEDGE/KG DOCKABLE MIGRATION — FULLY DONE 2026-07-04** (commits `4c50f7ae2` Phase A, `5c43a36c9` Phase B, `d9d21a262`/`b88e07ba7` docs, `9098f9ce0` studioLinks wiring, `21bae112a` E2E). All 13 panels (`knowledge` hub + 12 `kg-*` capability panels) built, wired into the studio link resolver, and **live-proven**: `frontend/tests/e2e/specs/kg-panels.spec.ts` opens every one through the real Command Palette against the real backend — 17/17 passing (ran via `docker` stack + `vite --port 5199`; the baked `:5174` image is stale for this work). Decision recorded: `KnowledgePage`/`ProjectDetailShell`/`KnowledgeOntologyTab` are **NOT** retired into redirects — matches wave-1's own documented precedent (`11_dockable_migration.md`) of keeping classic routes as multi-device/non-studio entry points; Knowledge's case is harder than wave-1's (no reliable book to redirect a global hub or standalone project into, Studio is desktop-first). See [[kg-dockable-migration-phase-a]] memory for full detail. Remaining, still deferred: cross-panel E2E beyond what's already covered (hub → other capability panels).
 
+> **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE Phase 1 BUILD STARTED 2026-07-04.** User approved
+> the spec+plan below (`approve, go`) and asked to proceed into BUILD. **P1 (Lane-C hoist action)
+> ✅ SHIPPED `f548859db`** — `ManuscriptUnitProvider.applyProposedEdit({operation, text,
+> provenance})` added as a real Tier-4 hoist action (thin wrapper over the same `editorRef` —
+> the underlying write and its `onUpdate→setBody` wiring are byte-identical, only the CALL SITE
+> moved off the global `editorBridge` singleton). `editorBridge.ts`'s `RegisteredTarget`/
+> `EditorTarget` gained an optional `applyProposedEdit` field; `ProposeEditCard.tsx`'s `apply()`
+> prefers it when present, falls back to `target.handle.*` otherwise — legacy `ChapterEditorPage`
+> (no Tier-4 hoist, omits the field) is untouched, byte-identical to before. `/review-impl` added
+> one regression test (cross-chapter guard still blocks Apply even with a hoist action configured
+> — code inspection showed it was already correct, but nothing proved the combination). VERIFY:
+> `features/chat`+`features/studio` 999/999 green, `tsc --noEmit` clean, **live browser smoke**
+> (vite :5201 → gateway :3123, real local gemma-4-26b, book `019ef35c`): `propose_edit` insert →
+> hoist-routed Apply → editor updated live (74→90 words) → saved. **NEXT:** Phase 1 tasks 1.2
+> Checkpoints / 1.3 Revision History / 1.4 Publish Gate (per the plan's fan-out shape — 3 disjoint
+> new files, serial integration into `EditorPanel.tsx`), then 1.5 the `ChaptersTab.tsx` route
+> switch. See [`2026-07-04-chapter-editor-studio-merge.md`](../plans/2026-07-04-chapter-editor-studio-merge.md)'s
+> Phase-agent contract before fanning these out.
+
 > **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE SPEC+PLAN DONE 2026-07-04 (docs only, no build
 > yet — user-scoped this pass as CLARIFY+DESIGN+PLAN only).** After #2 APPLY-DIFF shipped
 > (`fb98f161f`, below), user asked to continue straight to #1 COHERENCE. Dispatched an Explore
