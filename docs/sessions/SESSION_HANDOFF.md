@@ -1,5 +1,31 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**`D-PLANFORGE-STORY-GRID-POC` DONE 2026-07-06** (user: "POC Story Grid", per
+`docs/specs/2026-07-05-narrative-forge/00_METHODOLOGY.md` decision #3 — Story Grid is NOT a
+swap-in for PlanForge's 7-rule validator, needs its OWN POC scored side-by-side against the same
+fixtures first). New `services/composition-service/app/engine/plan_forge/validate_story_grid.py`
+(deliberately NOT wired into `validate.run_rules`/`validate_golden`) operationalizes 2 mechanically
+-checkable Story Grid principles against the CURRENT spec schema, no new fields: `sg_value_shift_
+per_scene` (every event must carry ≥1 var_delta — Story Grid's "a scene must turn a value") and
+`sg_negative_turn_exists` (the arc's deltas must include a cost, not just gains). Run against the
+SAME `story-plan-v1.md` fixture the 7 core rules already pass: **all 7 core rules still PASS;
+`sg_value_shift_per_scene` FAILS, finding a real gap none of the 7 rules check** — `arc_2_event_3`
+and `arc_2_event_7` parse with zero var_deltas. Five Commandments beat-sequencing and genre
+obligatory-scenes were explicitly NOT operationalized (need a `beat_type` field the spec doesn't
+have — out of scope, named not silently dropped). **Found + fixed a real pre-existing bug while
+building this** (not a Story Grid defect): `propose.py::_parse_events_in_block` let the LAST event
+in an arc block bleed into the arc's trailing closing-summary text (no next `### ` to stop at),
+spuriously matching `arc_2_event_7`'s var_delta regex against the summary's "THR: rò rỉ đầu tiên"
+line. Fixed via truncating each event body at the first `\n---` marker. 8 new unit tests
+(`test_plan_forge_story_grid.py`) + full `plan_forge` suite re-run clean (40/40); full composition
+suite **1636 passed/150 skipped** (was 1628, +8, 0 regressions). Full report:
+[`docs/eval/plan-forge-story-grid-poc-2026-07-06.md`](../eval/plan-forge-story-grid-poc-2026-07-06.md).
+**Not adopted into the real gate** — adoption is a follow-up decision for whoever next revisits
+PlanForge's validator, per the locked decision; recommendation in the report leans toward adopting
+`sg_value_shift_per_scene` as an 8th core rule.
+
+---
+
 **`D-KG-EXTRACTION-CANON-WIRE` + `D-CANON-CHECK-SDK-UNIFY` SHIPPED 2026-07-06 (both follow-ups
 from the 2026-07-05 POC + 2026-07-06 judge-eval, user: "làm D-KG-EXTRACTION-CANON-WIRE vaf
 D-CANON-CHECK-SDK-UNIFY"; plan [`docs/plans/2026-07-06-canon-check-wire-and-unify.md`](../plans/2026-07-06-canon-check-wire-and-unify.md)).**
