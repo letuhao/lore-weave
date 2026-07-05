@@ -60,15 +60,14 @@ class Settings(BaseSettings):
     glossary_service_url: str = "http://glossary-service:8088"
     known_entities_timeout_s: float = 2.0
     known_entities_cache_ttl_s: float = 300.0
-    # T5 intent gate. Default OFF as of the 2026-07-04 audit: the honest full-mode
-    # A/B (Dracula KG) showed it saves ~0 tokens — build_context grounding is ~1.1K in
-    # both static and full mode, negligible next to the ~41K MCP tool-schema catalog
-    # that dominates every turn. So as a TOKEN optimization it's a kill. The code is
-    # kept (correct + safe + tested): its residual value is retrieval COMPUTE/latency
-    # avoidance on gated turns, the `entity_presence` telemetry, and being the D1
-    # strong-model pull-mode substrate — flip this True to re-enable when pull mode
-    # (where grounding IS expensive per turn) lands. See T5-2026-07-04-CORRECTED.md.
-    t5_intent_gate_enabled: bool = False
+    # T5 intent gate. As of 2026-07-06 (D-LONG-WORK-CONTEXT-MODE) this is a deploy
+    # KILL-SWITCH / CEILING, not the enablement knob — per the Settings & Config
+    # Boundary (env = ceiling, not a per-user behavior toggle). Default TRUE (deploy
+    # allows); the actual per-turn enablement is the `context.mode` auto-detect
+    # (`context_autodetect.resolve_context_pressure`): effective = AND(this, auto).
+    # So on a small/thin book `mode=auto` keeps it OFF (the 2026-07-04 audit case,
+    # unchanged) and on a big-lore book it turns ON. Set False to force-kill globally.
+    t5_intent_gate_enabled: bool = True
 
     # ── T6/D13a (Context Budget Law) — reversible dup-read collapse ──────────────
     # When a compaction pass fires AND this is ON, collapse EXACT-duplicate tool results
@@ -95,13 +94,12 @@ class Settings(BaseSettings):
     # grounding prefix (kctx.stable_context), refreshed on cadence/hash (D5), and projects
     # it as a tail block ONLY when the live grounding prefix is EMPTY — the degraded /
     # gated-empty safety net (D4: a turn that lost its live bible still carries the last
-    # good one). DEFAULT OFF: while T5 gating is off, build_context returns a live stable
-    # prefix every turn, so the block would only ever duplicate it — projecting it then is a
-    # pure token regression against T2's behavior-unchanged default. Flip True together with
-    # T5 (`t5_intent_gate_enabled`) so the net is actually exercised. The T5-era behavior —
-    # unconditional projection that SUPERSEDES the live prefix (killing the per-turn
-    # build_context pull) — is deferred with T5.
-    story_state_block_enabled: bool = False
+    # good one). As of 2026-07-06 this is a deploy KILL-SWITCH / CEILING (default TRUE),
+    # AND-ed with the `context.mode` auto-detect: effective = AND(this, grounding_enabled,
+    # _ctx_tiers_allowed). So it projects the net only when auto-detect turns the tiers on
+    # (a big-lore book) AND grounding is on — inert on small books (the block would just
+    # duplicate the live prefix there). Set False to force-kill globally.
+    story_state_block_enabled: bool = True
 
     # ── T2/D3 (Context Budget Law) — task-elastic compaction trigger ────────────
     # Today compaction fires at 0.75×effective_limit (near the window). With this

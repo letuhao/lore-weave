@@ -68,6 +68,10 @@ async def _run_turn(*, enabled: bool, projected: str, monkeypatch) -> tuple[list
             creds=_make_creds(provider_kind="openai"),
             pool=pool,
             billing=AsyncMock(),
+            # D-LONG-WORK auto-detect — force tiers ALLOWED so this test exercises the
+            # story_state wiring itself (flag on/off), not the pressure decision (which
+            # has its own truth-table coverage in test_context_autodetect).
+            context_mode="on",
         ):
             pass
     return captured, orch

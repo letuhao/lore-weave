@@ -37,6 +37,7 @@ from loreweave_llm import (
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.client.known_entities_client import get_known_entities_client
+from app.services.context_autodetect import resolve_context_pressure
 from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.services.injection_defense import neutralize_injection
 from app.config import settings
@@ -1794,20 +1795,17 @@ async def stream_response(
     # the raw project_id was the bug that made the gate a silent no-op (it hit a
     # book_id route → [] → always open). A no-book / unresolved project → book_id None
     # → gate stays open (safe).
-    # M4: long-work context mode 'off' force-disables the context-budget tiers
-    # (AND with the deploy env ceiling, §5). 'auto'/'on' defer to the env default.
-    _ctx_tiers_allowed = context_mode != "off"
-    _t5_gate_on = settings.t5_intent_gate_enabled and _ctx_tiers_allowed
+    # D-LONG-WORK-CONTEXT-MODE — `context.mode` auto-detect (spec
+    # 2026-07-06-long-work-auto-detect.md). Resolve the book's known-entity
+    # (glossary) size UP FRONT — it's the cheap, already-cached proxy for a
+    # big-lore book, and it's the signal `mode=auto` uses to ENABLE the tiers
+    # for large books (a 4000-chapter book has a big glossary on turn 1, even
+    # with no history). Reused by the T5 gate below, so no extra fetch. The gate
+    # runs BEFORE history assembly, so long-conversation pressure is NOT decided
+    # here — it stays handled by the adaptive compaction downstream.
     _gate_pid = _build_project_id or (_build_project_ids[0] if _build_project_ids else None)
     _entity_tokens: frozenset[str] = frozenset()
-    if not grounding_enabled:
-        # Chat & AI settings (spec §3/M3): the user explicitly turned grounding OFF
-        # for this turn. This SHORT-CIRCUITS the gate-disabled force-on branch that
-        # otherwise makes grounding unconditionally ON (the "always-on, no toggle"
-        # silent default). No retrieval is fetched; the T4 story-state net is also
-        # gated off below so a cached bible isn't injected behind the user's back.
-        _grounding_presence = EntityPresence(False, reason="user_disabled")
-    elif _t5_gate_on and _gate_pid:
+    if grounding_enabled and _gate_pid and context_mode != "off":
         try:
             _gate_book_id = await knowledge_client.resolve_book_id(
                 user_id=user_id, project_id=str(_gate_pid)
@@ -1818,7 +1816,31 @@ async def stream_response(
                 )
         except Exception:  # noqa: BLE001 — degrade to gate-open, never break the turn
             _entity_tokens = frozenset()
-        _grounding_presence = detect_entity_presence(user_message_content, _entity_tokens)
+    _auto = resolve_context_pressure(
+        context_mode,
+        window=getattr(creds, "context_length", None),
+        history_tokens=0,  # gate is pre-history-assembly; long-chat pressure → compaction
+        glossary_size=len(_entity_tokens),
+    )
+    # Effective = AND(deploy ceiling, per-session enablement). The env flags are
+    # deploy KILL-SWITCHES (default allow) per the Settings & Config Boundary —
+    # `mode=off` force-disables, `auto` enables on the pressure signal, `on`
+    # forces on. `_auto.reason` is surfaced to the Inspector (no silent default).
+    _ctx_tiers_allowed = _auto.tiers_allowed
+    _t5_gate_on = settings.t5_intent_gate_enabled and _ctx_tiers_allowed
+    logger.info(
+        "context auto-detect: mode=%s tiers_allowed=%s reason=%s pressure=%.2f glossary=%d "
+        "(t5_ceiling=%s → t5_gate_on=%s)",
+        context_mode, _ctx_tiers_allowed, _auto.reason, _auto.pressure,
+        len(_entity_tokens), settings.t5_intent_gate_enabled, _t5_gate_on,
+    )
+    if not grounding_enabled:
+        # Chat & AI settings (spec §3/M3): the user explicitly turned grounding OFF
+        # for this turn. This SHORT-CIRCUITS the gate-disabled force-on branch that
+        # otherwise makes grounding unconditionally ON (the "always-on, no toggle"
+        # silent default). No retrieval is fetched; the T4 story-state net is also
+        # gated off below so a cached bible isn't injected behind the user's back.
+        _grounding_presence = EntityPresence(False, reason="user_disabled")
     elif _t5_gate_on:
         _grounding_presence = detect_entity_presence(user_message_content, _entity_tokens)
     else:

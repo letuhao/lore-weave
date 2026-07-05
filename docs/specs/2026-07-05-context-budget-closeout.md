@@ -29,7 +29,7 @@ rule: debt lists overstate real debt). `file:line` evidence inline.
 | 4 | **Inspector D7-trace surfacing** | D7 overflow-cap trips silently (no log, no `TraceAccumulator` span) | **PARTIAL FIX** (M2: log de-silence) + **defer GUI trace** |
 | 5 | **D13b resume-monotonicity** | Correctness invariant that only matters when the gated tiers (T5/T4/D13a) are ON; they're eval-inert + default-OFF | **DEFER w/ trigger** (tiers flip on) |
 | 6 | **D7 reasoning-budget half** | Budgeting the model's *reasoning* tokens; reasoning is disabled repo-wide + needs profiling evidence | **DEFER w/ trigger** (reasoning re-enabled + bloat observed) |
-| 7 | **D-LONG-WORK-CONTEXT-MODE** | Per-session `context.mode` (off/auto/on) shipped (Chat&AI M4); "smart auto-detect" unbuilt — but would be dead code (tiers inert + gated behind a default-OFF deploy ceiling) | **PARTIAL-RESOLVED + park** (record) |
+| 7 | **D-LONG-WORK-CONTEXT-MODE** | Per-session `context.mode` (off/auto/on) shipped (Chat&AI M4); "smart auto-detect" unbuilt | ~~park~~ → **UNPARKED 2026-07-06 (essential).** See [`2026-07-06-long-work-auto-detect.md`](2026-07-06-long-work-auto-detect.md). My earlier "dead code" reasoning was circular — "tiers inert" came from THIN-book evals, which is exactly the case auto-detect doesn't target; large books were never measured. Building it now (full auto-enable, user's call). |
 
 ---
 

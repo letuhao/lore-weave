@@ -2220,16 +2220,22 @@ class TestGroundingToggle:
 
 
 class TestContextMode:
-    """M4 — long-work context mode. mode='off' force-disables the context-budget
-    tiers (AND with the deploy env ceiling, §5): even with the T5 gate env-enabled,
-    a user on mode='off' bypasses it. mode='auto'/'on' defer to the env default."""
+    """D-LONG-WORK-CONTEXT-MODE — `context.mode` auto-detect. The env
+    `t5_intent_gate_enabled` is now a deploy CEILING (default on); the per-turn
+    enablement is the pressure decision. `off` force-disables; `on` forces the
+    tiers allowed; `auto` enables only on a big-lore book (large glossary) — so a
+    small/no-glossary book keeps the tiers OFF even under `auto`. Whether the T5
+    gate ran is observed by whether `detect_entity_presence` was called."""
 
-    async def _run_capture_detect(self, *, context_mode: str) -> bool:
+    async def _run_capture_detect(self, *, context_mode: str, glossary_large: bool = False) -> bool:
         from app.config import settings
         pool, conn = _make_pool_with_conn()
         pool.fetch.return_value = []
         conn.fetchval.return_value = 1
         kclient = _patched_knowledge(stable="", volatile="")
+        # A big-lore book: resolve a book_id + a large known-entity (glossary) set so
+        # auto-detect trips the glossary signal. Small/absent → glossary_size 0.
+        kclient.resolve_book_id = AsyncMock(return_value="book-1" if glossary_large else None)
         seen = {"called": False}
 
         def _fake_detect(msg, tokens):
@@ -2241,8 +2247,17 @@ class TestContextMode:
             yield _make_chunk("ok")
             yield _make_chunk(None)
 
+        big = frozenset(f"entity{i}" for i in range(400))  # ≥ GLOSSARY_LARGE (300)
+        known = AsyncMock()
+        known.get_known_entity_tokens = AsyncMock(return_value=big if glossary_large else frozenset())
+
         with patch(
             "app.services.stream_service.get_knowledge_client", return_value=kclient,
+        ), patch(
+            "app.services.stream_service.get_known_entities_client", return_value=known,
+        ), patch(
+            "app.services.stream_service.resolve_grounding_target",
+            return_value=("proj-1", ["proj-1"]),
         ), patch(
             "app.services.stream_service._stream_via_gateway",
             side_effect=lambda **k: fake_acompletion(**k),
@@ -2265,8 +2280,16 @@ class TestContextMode:
 
     @pytest.mark.asyncio
     async def test_mode_off_bypasses_t5_gate(self):
-        assert await self._run_capture_detect(context_mode="off") is False
+        assert await self._run_capture_detect(context_mode="off", glossary_large=True) is False
 
     @pytest.mark.asyncio
-    async def test_mode_auto_honors_env_t5_gate(self):
-        assert await self._run_capture_detect(context_mode="auto") is True
+    async def test_mode_on_forces_t5_gate_even_small_book(self):
+        assert await self._run_capture_detect(context_mode="on", glossary_large=False) is True
+
+    @pytest.mark.asyncio
+    async def test_mode_auto_small_book_keeps_tiers_off(self):
+        assert await self._run_capture_detect(context_mode="auto", glossary_large=False) is False
+
+    @pytest.mark.asyncio
+    async def test_mode_auto_large_book_enables_tiers(self):
+        assert await self._run_capture_detect(context_mode="auto", glossary_large=True) is True
