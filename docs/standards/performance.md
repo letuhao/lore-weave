@@ -25,7 +25,7 @@
 | PERF-3 pagination cap | **to build (P1)** | `pagination-cap-lint` — FastAPI list routes whose `limit` lacks an `le=` bound; Go list SQL without a clamped limit |
 | PERF-4 blocking-in-async | **to build (P1)** | `blocking-in-async-lint` — known-blocking calls inside `async def` (mirrors the existing logging/tracing lint shape) |
 | PERF-2 resilience | **contract exists, WARN-only, MMO-scoped** | register platform deps in `matrix.yaml` + flip `dependency-registry-lint` → error |
-| PERF-5 latency SLO | **to build (P2)** | `contracts/slo/latency.yaml` SoT + presence/shape check + p95 assertion in perf-nightly; k6 smoke on real platform HTTP endpoints (advisory→blocking on the top-level latency check) |
+| PERF-5 latency SLO | **ENFORCED (harness) · live measurement deploy-gated** | `contracts/slo/latency.yaml` SoT + `scripts/slo-latency-lint.py` (blocking presence/shape gate) + **`scripts/perf/slo_assert.py`** (consume-side p95 assertion, reds on a breach — 6 unit tests + a self-test) + **`tests/perf/k6/http_platform_slo.js`** driver + `scripts/perf/platform-slo.sh` (self-test always; live via `PERF_PLATFORM_TARGET`), wired into the conformance-ci `perf-nightly` job (`D-D-PERF-NIGHTLY` harness `7a8d0972a`). Live p95-vs-target against a real deploy stays deployment-gated (needs a booted platform stack). |
 | PERF-8 capacity | **presence-only** | `capacity-budget-lint.sh` checks a row exists; extend to validate numbers vs SLO |
 
 ## Checklist — a new endpoint / outbound call

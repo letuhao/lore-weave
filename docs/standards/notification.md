@@ -20,7 +20,7 @@
 |---|---|---|
 | NOTIF-1 envelope | **to build (P1)** | `contracts/notifications/envelope.{go,yaml}` + generated mirrors + a snapshot test (model: `contracts/alerts/`) |
 | NOTIF-2 category enum on all ingress | **to build (P1)** | one SoT enum imported by both ingress paths + a contract test asserting HTTP and AMQP validate identically; **P0 fix-now:** add `mcp_approval`/`llm_job`/… and reconcile the consumer's raw-SQL bypass |
-| NOTIF-4 dedup + outbox | **to build (P1)** | `UNIQUE(user_id, dedup_key)` migration + producer-outbox wiring; a consumer redelivery test asserting no duplicate row |
+| NOTIF-4 dedup + outbox | **ENFORCED** | `UNIQUE(user_id, dedup_key)` partial-unique shipped (P2·C); **producer-outbox wiring shipped** (D-C-PRODUCER-OUTBOX `99b800bf9`) — translation/composition/auth write the notification into a transactional outbox; worker-infra's relay delivers `aggregate_type='notification'` rows to `/internal/notifications` with retry, idempotent via a deterministic `dedup_key`. Live end-to-end redelivery proof → `D-C-PRODUCER-OUTBOX-LIVE-SMOKE` (scratch stack) |
 | NOTIF-2 no-silent-drop | **to build (P1)** | a producer→consumer wiring test: every category a producer emits is accepted by the consumer (the Agent-Extensibility no-silent-no-op rule) |
 
 ## Checklist — a new notification producer
