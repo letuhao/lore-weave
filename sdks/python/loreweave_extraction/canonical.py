@@ -38,9 +38,24 @@ __all__ = [
 # Order is longest-first as a defensive measure: if two honorifics
 # ever overlap (e.g., a future "captain general " vs "captain "),
 # the longer one strips first and the result is stable.
+# ML-2 (multilingual standard): the list carries **native-script** honorifics,
+# not only English + romanized — the honorific strip feeds `entity_canonical_id`,
+# so without native forms "田中様" and "田中" (or "王大人"/"王", "김선생님"/"김",
+# "ông Nam"/"Nam") dedup to DIFFERENT nodes. Every entry is written in its
+# **normalized** form (post `name_normalize`: NFKC + Unicode casefold + CJK
+# traditional→simplified). That matters two ways:
+#   • Latin entries are lowercase (the strip runs on the casefolded name).
+#   • CJK entries use the SIMPLIFIED form (张/师 not 張/師) because normalization
+#     T2S-folds first; a traditional-form entry here would never match.
+# CJK honorifics have NO surrounding space (CJK prose is unspaced) and attach as
+# SUFFIXES; Vietnamese titles are space-delimited PREFIXES like the English ones.
+# Prefix particles that are commonly also given names (vi anh/chị/em, zh 老/小)
+# are deliberately EXCLUDED — over-stripping a real name is worse than missing a
+# title. See docs/standards/multilingual.md ML-2 + the A5 backfill note.
 HONORIFICS: tuple[str, ...] = tuple(
     sorted(
         (
+            # English + romanized (space- or hyphen-delimited)
             "master ",
             "lord ",
             "lady ",
@@ -56,12 +71,51 @@ HONORIFICS: tuple[str, ...] = tuple(
             "general ",
             "shifu ",
             "sensei ",
-            # Suffix forms (Japanese/Chinese honorifics)
             "-shifu",
             "-sensei",
             "-sama",
             "-san",
             "-kun",
+            # Japanese native suffixes (kana + kanji)
+            "様",
+            "さま",
+            "さん",
+            "ちゃん",
+            "くん",
+            "君",
+            "殿",
+            "先生",
+            "先輩",
+            # Chinese native suffixes / titles (simplified — normalization T2S-folds)
+            "大人",
+            "公子",
+            "小姐",
+            "夫人",
+            "姑娘",
+            "陛下",
+            "殿下",
+            "阁下",
+            "大师",
+            "师父",
+            "师傅",
+            "老师",
+            "前辈",
+            # Korean native suffixes (hangul)
+            "님",
+            "씨",
+            "군",
+            "양",
+            "선생님",
+            "선생",
+            "선배",
+            # Vietnamese native title prefixes (space-delimited, lowercased)
+            "ông ",
+            "bà ",
+            "cô ",
+            "chú ",
+            "bác ",
+            "thầy ",
+            "cậu ",
         ),
         key=lambda h: (-len(h), h),
     )
