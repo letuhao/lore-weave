@@ -23,7 +23,8 @@ class TestCreateSession:
         data = resp.json()
         assert data["title"] == "Test Session"
         assert data["session_id"] == TEST_SESSION_ID
-        mock_pool.fetchrow.assert_awaited_once()
+        # two DB reads now: the account-behavior seed (get_prefs) + the INSERT.
+        assert mock_pool.fetchrow.await_count == 2
 
     @pytest.mark.asyncio
     async def test_create_session_with_system_prompt(self, client, mock_pool):

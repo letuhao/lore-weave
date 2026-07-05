@@ -6,9 +6,13 @@ the deep-merge/version guard is pinned separately in test_ai_settings_db.py
 (real Postgres)."""
 from __future__ import annotations
 
+import json
+from uuid import uuid4
+
 import pytest
 
 from app.routers import ai_settings
+from tests.conftest import make_session_record
 
 
 class _FakeProvider:
@@ -95,3 +99,56 @@ async def test_effective_settings_account_model_resolves(client, mock_pool, fake
     chat = body["models"]["chat"]
     assert chat["effective_value"] == {"model_source": "user_model", "model_ref": "acct-model"}
     assert chat["source_tier"] == "account"
+
+
+# ── /review-impl fixes: enum discipline + behavior consumption ────────────────
+async def test_patch_rejects_bad_context_mode(client, mock_pool):
+    resp = await client.patch("/v1/chat/ai-prefs", json={"context": {"mode": "banana"}})
+    assert resp.status_code == 422
+
+
+async def test_patch_rejects_bad_permission_mode(client, mock_pool):
+    resp = await client.patch("/v1/chat/ai-prefs", json={"behavior": {"permission_mode": "yolo"}})
+    assert resp.status_code == 422
+
+
+async def test_patch_rejects_bad_reasoning_effort(client, mock_pool):
+    resp = await client.patch("/v1/chat/ai-prefs", json={"behavior": {"reasoning_effort": "ultra"}})
+    assert resp.status_code == 422
+
+
+async def test_patch_accepts_valid_enum(client, mock_pool):
+    mock_pool._conn.fetchrow.return_value = None
+    resp = await client.patch("/v1/chat/ai-prefs", json={"context": {"mode": "off"}})
+    assert resp.status_code == 200
+
+
+async def test_create_session_seeds_behavior_from_account(client, mock_pool):
+    # HIGH fix: a new session inherits the account behavior defaults so the panel
+    # isn't a write-only store. get_prefs (1st fetchrow) then INSERT (2nd).
+    prefs_row = {"behavior": {"reasoning_effort": "high", "temperature": 0.9},
+                 "grounding": {}, "voice": {}, "context": {"mode": "auto"}, "version": 1}
+    session_row = make_session_record(generation_params={"reasoning_effort": "high", "temperature": 0.9})
+    mock_pool.fetchrow.side_effect = [prefs_row, session_row]
+    resp = await client.post(
+        "/v1/chat/sessions",
+        json={"model_source": "user_model", "model_ref": str(uuid4())},
+    )
+    assert resp.status_code == 201
+    gp = json.loads(mock_pool.fetchrow.call_args_list[1].args[6])
+    assert gp["reasoning_effort"] == "high"
+    assert gp["temperature"] == 0.9
+
+
+async def test_create_session_body_wins_over_account(client, mock_pool):
+    prefs_row = {"behavior": {"temperature": 0.9}, "grounding": {}, "voice": {},
+                 "context": {}, "version": 1}
+    mock_pool.fetchrow.side_effect = [prefs_row, make_session_record()]
+    resp = await client.post(
+        "/v1/chat/sessions",
+        json={"model_source": "user_model", "model_ref": str(uuid4()),
+              "generation_params": {"temperature": 0.2}},
+    )
+    assert resp.status_code == 201
+    gp = json.loads(mock_pool.fetchrow.call_args_list[1].args[6])
+    assert gp["temperature"] == 0.2  # explicit per-session choice wins

@@ -374,13 +374,19 @@ async def send_message(
         import json as _json
         _ctx_override = _json.loads(_ctx_override) or {}
     _ctx_mode = _ctx_override.get("mode")
-    if _grounding_pref is None or _ctx_mode is None:
+    # permission_mode is per-turn (default None ⇒ omitted); fall back to the
+    # account default before "write" so the panel's "tool authority" is honored.
+    _permission = body.permission_mode
+    if _grounding_pref is None or _ctx_mode is None or _permission is None:
         from app.db.user_chat_ai_prefs import get_prefs
         _acct_prefs = await get_prefs(pool, owner_user_id=user_id)
         if _grounding_pref is None:
             _grounding_pref = _acct_prefs.grounding.get("grounding_enabled")
         if _ctx_mode is None:
             _ctx_mode = _acct_prefs.context.get("mode")
+        if _permission is None:
+            _permission = _acct_prefs.behavior.get("permission_mode")
+    turn_permission_mode = _permission or "write"
     turn_grounding_enabled = True if _grounding_pref is None else bool(_grounding_pref)
     # Chat & AI settings (M4) — long-work context mode. 'off' force-disables the
     # context-budget tiers (T5 gate / T4 story-state) for this session regardless
@@ -530,8 +536,9 @@ async def send_message(
             enabled_skills=body.enabled_skills,
             # #09 Lane A — presence enables the studio dock-nav frontend tools.
             studio_context=body.studio_context.model_dump() if body.studio_context else None,
-            # RAID Wave C2 (DR-C2) — HITL permission mode (ask|write, default write).
-            permission_mode=body.permission_mode,
+            # RAID Wave C2 (DR-C2) — HITL permission mode, resolved body ▸ account
+            # default ▸ "write" (Chat & AI settings).
+            permission_mode=turn_permission_mode,
             grounding_enabled=turn_grounding_enabled,
             context_mode=turn_context_mode,
         ),

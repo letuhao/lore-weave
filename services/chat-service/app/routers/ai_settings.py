@@ -20,7 +20,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.client.provider_client import get_provider_client
 from app.db.user_chat_ai_prefs import VersionConflict, get_prefs, patch_prefs
@@ -42,6 +42,18 @@ _SYSTEM_VOICE: dict = {}
 # Account-tier model capabilities provider-registry's default-models route supports.
 _ACCOUNT_CAPS = ("chat", "planner", "embedding", "rerank")
 
+# Closed-set values for the fields that flow to the turn (Frontend-Tool Contract
+# enum discipline, spec §8.1). A patch is a field-merge, so we validate only the
+# keys we know are enums — an out-of-set value is a 422, never silently stored
+# (a bad context.mode would else be treated as 'auto', a silent no-op).
+_ENUMS: dict[str, dict[str, set[str]]] = {
+    "behavior": {
+        "permission_mode": {"ask", "write", "plan"},
+        "reasoning_effort": {"off", "low", "medium", "high"},
+    },
+    "context": {"mode": {"auto", "on", "off"}},
+}
+
 
 # ── ai-prefs CRUD ────────────────────────────────────────────────────────────
 class AiPrefsResponse(BaseModel):
@@ -59,6 +71,18 @@ class AiPrefsPatch(BaseModel):
     grounding: dict | None = None
     voice: dict | None = None
     context: dict | None = None
+
+    @model_validator(mode="after")
+    def _check_enums(self) -> "AiPrefsPatch":
+        for cat, fields in _ENUMS.items():
+            blob = getattr(self, cat) or {}
+            for field, allowed in fields.items():
+                val = blob.get(field)
+                if val is not None and val not in allowed:
+                    raise ValueError(
+                        f"{cat}.{field} must be one of {sorted(allowed)}, got {val!r}"
+                    )
+        return self
 
 
 @prefs_router.get("", response_model=AiPrefsResponse)

@@ -454,7 +454,11 @@ class SendMessageRequest(BaseModel):
     # RAID Wave B2 (07S §5b) — 'plan' = the ask surface PLUS the PlanForge
     # `plan_*` server tools (they write plan artifacts, never prose); plan_forge
     # skill auto-injects and a plan-mode system nudge is appended.
-    permission_mode: Literal["ask", "write", "plan"] = "write"
+    # Default None (not "write") so the turn can tell "omitted" from an explicit
+    # "write" and fall back to the user's account default (user_chat_ai_prefs.
+    # behavior.permission_mode) when omitted, then to "write". The FE input bar
+    # always sends an explicit value, so this only affects callers that omit it.
+    permission_mode: Literal["ask", "write", "plan"] | None = None
 
 
 class ToolResultRequest(BaseModel):

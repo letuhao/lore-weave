@@ -81,14 +81,29 @@ async def create_session(
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> ChatSession:
-    gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"
+    # Chat & AI settings — seed a new session's behavior from the user's ACCOUNT
+    # defaults (user_chat_ai_prefs.behavior) so a setting made in the Chat & AI
+    # panel actually takes effect for new sessions (the intended account→session
+    # inheritance). The request body always WINS (an explicit per-session choice);
+    # the account fills only the gaps. Without this the account Behavior settings
+    # would be write-only. (/review-impl HIGH fix.)
+    from app.db.user_chat_ai_prefs import get_prefs
+    _acct_behavior = (await get_prefs(pool, owner_user_id=user_id)).behavior or {}
+    _seed_gp: dict = {}
+    for _k in ("temperature", "top_p", "max_tokens", "reasoning_effort"):
+        if _acct_behavior.get(_k) is not None:
+            _seed_gp[_k] = _acct_behavior[_k]
+    if body.generation_params:
+        _seed_gp.update(body.generation_params.model_dump(exclude_unset=True))  # body wins
+    gp = json.dumps(_seed_gp)
+    _system_prompt = body.system_prompt if body.system_prompt is not None else _acct_behavior.get("system_prompt")
     row = await pool.fetchrow(
         """
         INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref, project_ids, book_id)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::uuid[], $13)
         RETURNING *
         """,
-        user_id, body.title, body.model_source, str(body.model_ref), body.system_prompt, gp,
+        user_id, body.title, body.model_source, str(body.model_ref), _system_prompt, gp,
         str(body.project_id) if body.project_id else None,
         body.composer_model_source,
         str(body.composer_model_ref) if body.composer_model_ref else None,
