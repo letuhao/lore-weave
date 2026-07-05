@@ -126,7 +126,8 @@ async def test_judge_clears_flashback_as_non_contradiction():
 
 @pytest.mark.asyncio
 async def test_judge_degrades_to_symbolic_on_error_never_blocks():
-    llm = _FakeLLM(raise_exc=RuntimeError("provider down"))
+    from loreweave_llm.errors import LLMError
+    llm = _FakeLLM(raise_exc=LLMError("provider down"))
     out = await judge_extraction_contradiction(
         llm, user_id="u", model_source="user_model", model_ref="m",
         chapter_text="Alice acts.", candidates=[_cand()],

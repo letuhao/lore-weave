@@ -12,16 +12,31 @@ judge is the precise (and costly) confirmer.
 
 Pure functions — no LLM, no I/O. The caller (A2-S3b engine wiring) fetches the
 snapshot via `knowledge_client.fact_for_check` and feeds it here.
+
+D-CANON-CHECK-SDK-UNIFY (2026-07-06): the mechanical pieces (span-matching,
+verdict parsing/application, the judge request shape, the base candidate
+fields) are shared with knowledge-service's mirror via `loreweave_canon_check`.
+What stays HERE (domain-specific, confirmed genuinely divergent in the
+unification diff): the prompt wording, the `glossary_entity_id` field, and the
+whole check→revise reflect loop (`reflect_revise`/`ReflectResult`) — knowledge's
+mirror has no revise-loop equivalent at all.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field
+
+from loreweave_canon_check import (
+    CanonCandidateBase,
+    apply_verdicts,
+    build_judge_request,
+    extract_judge_text,
+    gone_entities_referenced,
+    parse_judge_verdicts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +57,6 @@ __all__ = [
 # "stride = composition cutoff contract".
 EVENT_ORDER_CHAPTER_STRIDE = 1_000_000
 
-_SPAN_PAD = 40  # chars of context either side of a match
-
 
 def scene_at_order(scene_sort_order: int | None) -> int | None:
     """The reading-axis position to check a scene against: the start of its
@@ -57,40 +70,9 @@ def scene_at_order(scene_sort_order: int | None) -> int | None:
     return scene_sort_order * EVENT_ORDER_CHAPTER_STRIDE
 
 
-class CanonViolation(BaseModel):
+class CanonViolation(CanonCandidateBase):
     kind: str = "gone_entity_present"
-    source: str = "score_symbolic"   # vs "llm_judge" (A2-S3b)
-    entity_id: str
     glossary_entity_id: str | None = None
-    name: str | None = None
-    status: str = "gone"
-    span: str = ""                   # excerpt of the draft around the match
-    matched: str = ""                # the name form that matched
-    confirmed: bool | None = None    # set by the A2-S3b judge; None = symbolic-only
-    why: str = ""                    # the judge's reasoning (when confirmed)
-
-
-def _find_span(draft: str, name: str) -> tuple[str, str] | None:
-    """Return (matched_name, span_excerpt) if `name` occurs in `draft`. Uses
-    word boundaries for ASCII names (avoid 'Al' in 'Always'); plain containment
-    for CJK/non-ASCII names (no \\b word boundary in CJK script)."""
-    if not name or not name.strip():
-        return None
-    name = name.strip()
-    idx = -1
-    if name.isascii():
-        m = re.search(r"\b" + re.escape(name) + r"\b", draft, re.IGNORECASE)
-        if m:
-            idx = m.start()
-    else:
-        low = draft.lower()
-        idx = low.find(name.lower())
-    if idx < 0:
-        return None
-    start = max(0, idx - _SPAN_PAD)
-    end = min(len(draft), idx + len(name) + _SPAN_PAD)
-    excerpt = ("…" if start > 0 else "") + draft[start:end] + ("…" if end < len(draft) else "")
-    return name, excerpt
 
 
 def gone_cast_in_draft(
@@ -100,32 +82,14 @@ def gone_cast_in_draft(
     canonical_name) appears in `draft`. Empty when the snapshot is absent (the
     guard degrades to advisory — a knowledge outage never blocks). De-duped per
     entity (the first matching name form wins)."""
-    if not draft or not snapshot:
-        return []
-    out: list[CanonViolation] = []
-    seen: set[str] = set()
-    for ent in snapshot.get("entities") or []:
-        if not isinstance(ent, dict) or ent.get("status") != "gone":
-            continue
-        eid = ent.get("entity_id")
-        if not eid or eid in seen:
-            continue
-        for name in (ent.get("name"), ent.get("canonical_name")):
-            hit = _find_span(draft, name) if isinstance(name, str) else None
-            if hit is None:
-                continue
-            matched, span = hit
-            out.append(CanonViolation(
-                entity_id=eid,
-                glossary_entity_id=ent.get("glossary_entity_id"),
-                name=ent.get("name"),
-                status="gone",
-                span=span,
-                matched=matched,
-            ))
-            seen.add(eid)
-            break
-    return out
+    rows = gone_entities_referenced(draft, snapshot, extra_field="glossary_entity_id")
+    return [
+        CanonViolation(
+            entity_id=r["entity_id"], glossary_entity_id=r.get("glossary_entity_id"),
+            name=r["name"], span=r["span"], matched=r["matched"],
+        )
+        for r in rows
+    ]
 
 
 # ── LLM-judge: confirm acting-vs-mentioned (A2-S3b, spec §9 D2) ─────────
@@ -156,31 +120,6 @@ def _build_judge_messages(
     return system, user
 
 
-def _parse_verdicts(content: str) -> dict[str, dict[str, Any]]:
-    """{entity_id: {violated, why}} from the judge JSON; tolerant (fence strip +
-    first balanced object). Empty on hard failure."""
-    if not content:
-        return {}
-    text = content.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-z]*\n?", "", text).rstrip("`").strip()
-    s, e = text.find("{"), text.rfind("}")
-    if s < 0 or e <= s:
-        return {}
-    try:
-        obj = json.loads(text[s:e + 1])
-    except (ValueError, TypeError):
-        return {}
-    out: dict[str, dict[str, Any]] = {}
-    for v in (obj.get("verdicts") or []) if isinstance(obj, dict) else []:
-        if isinstance(v, dict) and v.get("entity_id") is not None:
-            out[str(v["entity_id"])] = {
-                "violated": bool(v.get("violated", False)),
-                "why": v.get("why") if isinstance(v.get("why"), str) else "",
-            }
-    return out
-
-
 async def judge_canon(
     judge, *, user_id: str, model_source: str, model_ref: str,
     draft: str, candidates: list[CanonViolation], source_language: str = "auto",
@@ -198,22 +137,16 @@ async def judge_canon(
     if not candidates:
         return []
     from loreweave_llm.errors import LLMError
-    from app.clients.eval_client import extract_judge_content
 
     system, user = _build_judge_messages(draft, candidates, source_language)
+    req = build_judge_request(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        usage_purpose="canon_check", extractor="judge_canon", max_tokens=max_tokens,
+    )
     try:
         job = await judge.submit_and_wait(
             user_id=user_id, operation="chat", model_source=model_source,
-            model_ref=model_ref,
-            input={
-                "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": user}],
-                "response_format": {"type": "text"}, "temperature": 0.0,
-                "max_tokens": max_tokens, "reasoning_effort": "none",
-                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-            },
-            job_meta={"usage_purpose": "canon_check", "extractor": "judge_canon"}, trace_id=trace_id,
-            cancel_check=cancel_check,
+            model_ref=model_ref, trace_id=trace_id, cancel_check=cancel_check, **req,
         )
     except LLMError as exc:
         logger.warning("judge_canon degraded (LLM error): %s — symbolic-only", exc)
@@ -221,13 +154,8 @@ async def judge_canon(
     if getattr(job, "status", None) != "completed":
         logger.info("judge_canon status=%s → symbolic-only", getattr(job, "status", None))
         return candidates
-    verdicts = _parse_verdicts(extract_judge_content(job.result))
-    for c in candidates:
-        v = verdicts.get(c.entity_id)
-        if v is not None:
-            c.confirmed = v["violated"]
-            c.source = "llm_judge"
-            c.why = v["why"]   # /review-impl #3 — surface the judge's reasoning
+    verdicts = parse_judge_verdicts(extract_judge_text(job.result))
+    apply_verdicts(candidates, verdicts)   # /review-impl #3 — surfaces the judge's why
     return candidates
 
 

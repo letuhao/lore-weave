@@ -109,6 +109,11 @@ include = [
   # from 5 byte-identical copies). Pure httpx. Wave 1 consumers: translation/knowledge/
   # composition/campaign/video model_name shims; more client migrations to follow.
   "loreweave_internal_client*",
+  # D-CANON-CHECK-SDK-UNIFY (2026-07-06) — `loreweave_canon_check` added (shared
+  # symbolic-prefilter + LLM-judge plumbing, hoisted from composition-service's
+  # canon_check.py + knowledge-service's near-duplicate mirror). Pure pydantic +
+  # stdlib, no LLM/HTTP hard dep (the caller injects its own submit_and_wait).
+  "loreweave_canon_check*",
 ]
 exclude = ["tests*"]
 

@@ -72,14 +72,70 @@ gate (not a hard block), not Qwen3 35B.** Rationale:
   worth it without an explicit ask. If wiring later reveals the 1-in-16 FP rate is too disruptive
   in practice, this is the next lever to pull.
 
-## Follow-ups (tracked, not started this session)
+## Addendum (2026-07-06, same day) — a parsing bug found + fixed, and a sobering
+## re-measurement of judge reliability
 
-- **D-KG-EXTRACTION-CANON-WIRE** — wire `check_extraction_canon` into `pass2_orchestrator.py`
-  before `write_pass2_extraction` (Step 5), as `quarantine+promote` (flagged extraction is written
-  but marked for review), not a hard block. Needs its own PLAN (touches the extraction write path).
-- **D-CANON-CHECK-SDK-UNIFY** (carried over from the POC) — `canon_check.py` is still a deliberate
-  near-duplicate of composition-service's file; unification into `sdks/python/` is appropriate once
-  wiring lands, not before.
+While wiring the gate into `pass2_orchestrator.py` and unifying both services' canon-check
+modules into `sdks/python/loreweave_canon_check` (see `docs/plans/2026-07-06-canon-check-
+wire-and-unify.md`), re-running this eval against the refactored (behaviorally-identical, per
+16/16 + 19/19 passing unit tests on both services) code surfaced two real findings:
+
+**1. A genuine, pre-existing parsing bug, found and fixed (affects BOTH services' original
+implementations identically — not introduced by the refactor).** The verdict parser used a
+naive `text.find("{") .. text.rfind("}")` span to extract the judge's JSON. Captured live: this
+$0 local model sometimes "thinks out loud" and emits a first (wrong) JSON verdict, followed by
+prose like `*(Self-correction: re-evaluating...)*`, followed by a corrected second JSON block.
+The naive span swallowed the prose between the two blocks, produced unparseable text, and
+silently discarded the model's own self-corrected (usually right) answer as a parse failure —
+counted as `inconclusive`, not `wrong`, so it never surfaced as a scoring anomaly until traced
+directly. Fixed in `loreweave_canon_check.base.parse_judge_verdicts` via a string-aware
+brace-balanced scanner (`_balanced_json_objects`) that isolates each top-level JSON object and
+takes the LAST one that parses as `{"verdicts": [...]}`, honoring a model's self-correction as
+its final answer. 4 new regression tests (double-JSON-block, brace-in-quoted-string,
+unterminated-JSON, prose-only) in `sdks/python/tests/test_canon_check.py`. This fix reduced
+`inconclusive` from up to 9/16 (when the bug was triggered) to a clean 0/16.
+
+**2. Even with the parser fixed, re-running the SAME 16-fixture eval against Gemma-4 26B QAT
+three times in this later session gave a STABLE but LOWER score than the original single run:
+68.75% accuracy / 33% recall / 66.7% precision (confusion 2/1/9/4)** — a clear regression from
+the original 93.75%/100%/85.7% reading earlier the same day. Root-caused this is NOT a code
+regression (verified via `debug_eval_repro.py`/`debug_eval_repro2.py`: the exact request dict
+sent to the model is unchanged, confirmed identical field-for-field; the mocked-LLM unit tests
+pass identically before and after the refactor). Reading the `why` text on the newly-wrong
+verdicts is revealing: the model's own REASONING correctly identifies the contradiction
+("Alice is portrayed as an active presence... contradicting her status as gone") but the
+`violated` BOOLEAN it emits is `false` anyway — a genuine reasoning/output inconsistency in the
+model itself, not a parsing or wiring defect. **Conclusion: this $0 quantized local model's
+judge reliability is noisier session-to-session than a single eval run can show** — the
+original 93.75% was a real but optimistic draw from a distribution that can score as low as
+~69% (and recall as low as 33%) at other times, even at `temperature=0.0`. This reinforces
+rather than undercuts the existing decision: wiring landed as `quarantine` (log-and-flag via
+`job_logs`, never a hard block, see `D-KG-EXTRACTION-CANON-WIRE` below) specifically because
+precision/recall could not be trusted at ~100%. Live-smoke through the REAL pipeline (not just
+this eval harness) also observed the SAME single-fixture flip (`confirmed=False` then `=True`
+across consecutive full-pipeline runs) — corroborating the eval, not an eval-harness artifact.
+**Not pursued further this session** (diminishing returns per the POC's own established
+discipline about not over-tuning hyperparameters) — flagged as a real open question for
+whoever next revisits judge-model choice: a single eval run is not sufficient evidence of this
+model's true reliability; report a RANGE from repeated runs, not a point estimate.
+
+## Follow-ups
+
+- **`D-KG-EXTRACTION-CANON-WIRE` — DONE (2026-07-06, see `docs/plans/2026-07-06-canon-check-
+  wire-and-unify.md`).** `check_extraction_canon` is wired into `pass2_orchestrator.py` via
+  `_maybe_run_canon_check_gate`, called right before `write_pass2_extraction`. Quarantine, not
+  hard-block: a confirmed candidate is logged to `job_logs` (`event: pass2_canon_flag`, already
+  wired to the Studio's JobLogsPanel); the write proceeds unconditionally regardless. Live-smoked
+  end-to-end through the REAL pipeline (real Neo4j, real LLM, real `extract_pass2_chapter` call) —
+  confirmed the log fires correctly on `confirmed=True`. New `list_gone_entities()` in
+  `entity_status.py` builds the snapshot (no pre-existing "all gone entities" query existed).
+- **`D-CANON-CHECK-SDK-UNIFY` — DONE (2026-07-06).** Hoisted the mechanical pieces (span-matching,
+  verdict parsing, judge request shape, verdict application, base candidate fields) into
+  `sdks/python/loreweave_canon_check`; both composition's and knowledge's `canon_check.py` are now
+  thin per-service wrappers (prompt wording + candidate subclass + orchestration stay local). Also
+  fixed knowledge's error-handling gap (adopted composition's `LLMError` + precise content
+  extraction over the old bare-`except Exception` + manual indexing) and the double-JSON parsing
+  bug described in the addendum above.
 - The `name_collision_new_person` false positive (both models) suggests the symbolic pre-filter
   itself could be tightened later (e.g. don't flag when the matched span is immediately followed
   by a distinguishing surname/qualifier not in the entity's known aliases) — noted as a possible

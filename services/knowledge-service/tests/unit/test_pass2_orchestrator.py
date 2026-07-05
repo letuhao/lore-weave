@@ -1835,3 +1835,184 @@ async def test_orchestrator_recovery_filter_disabled_when_entities_not_requested
 
     assert recovery_calls == []
     assert filter_calls == []
+
+
+# ── D-KG-EXTRACTION-CANON-WIRE — quarantine gate ────────────────────
+
+
+def _canon_candidate(*, confirmed: bool | None, name: str = "Alice") -> Any:
+    from app.extraction.canon_check import ExtractionCanonCandidate
+    return ExtractionCanonCandidate(
+        kind="gone_entity_asserted_active_in_extraction", source="symbolic",
+        entity_id="e-alice", name=name, status="gone", gone_from_order=1_000_010,
+        span="Alice smiled", matched=name, confirmed=confirmed,
+        why="acting in present tense" if confirmed else "",
+    )
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.check_extraction_canon", new_callable=AsyncMock)
+@patch(f"{_ORCH}.list_gone_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_canon_check_gate_noop_when_no_gone_entities(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_list_gone, mock_check,
+):
+    """No gone entities for the project -> the judge is never called (cheap
+    early exit), no canon-flag log, write proceeds normally."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+    mock_list_gone.return_value = []
+
+    job_logs_repo = MagicMock()
+    job_logs_repo.append = AsyncMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        job_logs_repo=job_logs_repo,
+    )
+
+    mock_check.assert_not_called()
+    mock_write.assert_called_once()
+    events = [c.args[4]["event"] for c in job_logs_repo.append.call_args_list]
+    assert "pass2_canon_flag" not in events
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.check_extraction_canon", new_callable=AsyncMock)
+@patch(f"{_ORCH}.list_gone_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_canon_check_gate_logs_confirmed_and_write_still_proceeds(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_list_gone, mock_check,
+):
+    """A CONFIRMED contradiction is logged (quarantine signal) but the write
+    proceeds unconditionally -- this is advisory, never a hard block."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+    mock_list_gone.return_value = [
+        {"entity_id": "e-alice", "name": "Alice", "canonical_name": "alice", "from_order": 1_000_010}
+    ]
+    mock_check.return_value = [_canon_candidate(confirmed=True)]
+
+    job_logs_repo = MagicMock()
+    job_logs_repo.append = AsyncMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Alice smiled and picked up her sword.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        job_logs_repo=job_logs_repo,
+    )
+
+    mock_check.assert_called_once()
+    mock_write.assert_called_once()  # write is UNCONDITIONAL
+    flag_calls = [c for c in job_logs_repo.append.call_args_list if c.args[4]["event"] == "pass2_canon_flag"]
+    assert len(flag_calls) == 1
+    assert flag_calls[0].args[4]["entity_id"] == "e-alice"
+    assert flag_calls[0].args[4]["name"] == "Alice"
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.check_extraction_canon", new_callable=AsyncMock)
+@patch(f"{_ORCH}.list_gone_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_canon_check_gate_skips_log_when_not_confirmed(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_list_gone, mock_check,
+):
+    """confirmed=False (judge cleared it, e.g. a flashback) or confirmed=None
+    (degraded, symbolic-only) -> no canon-flag log, write proceeds."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+    mock_list_gone.return_value = [
+        {"entity_id": "e-alice", "name": "Alice", "canonical_name": "alice", "from_order": 1_000_010}
+    ]
+    mock_check.return_value = [_canon_candidate(confirmed=False), _canon_candidate(confirmed=None)]
+
+    job_logs_repo = MagicMock()
+    job_logs_repo.append = AsyncMock()
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="He remembered how Alice used to smile.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+        job_logs_repo=job_logs_repo,
+    )
+
+    mock_write.assert_called_once()
+    events = [c.args[4]["event"] for c in job_logs_repo.append.call_args_list]
+    assert "pass2_canon_flag" not in events
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.list_gone_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_canon_check_gate_degrades_safely_on_exception(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+    mock_list_gone,
+):
+    """CC4 -- a canon-check gate failure (e.g. a Neo4j hiccup on
+    list_gone_entities) must NEVER break real extraction. Write still
+    proceeds; the failure is swallowed + logged via `logger.warning`."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+    mock_list_gone.side_effect = RuntimeError("neo4j hiccup")
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Kai walks.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+    )
+
+    mock_write.assert_called_once()

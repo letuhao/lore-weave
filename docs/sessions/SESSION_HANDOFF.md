@@ -1,5 +1,61 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**`D-KG-EXTRACTION-CANON-WIRE` + `D-CANON-CHECK-SDK-UNIFY` SHIPPED 2026-07-06 (both follow-ups
+from the 2026-07-05 POC + 2026-07-06 judge-eval, user: "làm D-KG-EXTRACTION-CANON-WIRE vaf
+D-CANON-CHECK-SDK-UNIFY"; plan [`docs/plans/2026-07-06-canon-check-wire-and-unify.md`](../plans/2026-07-06-canon-check-wire-and-unify.md)).**
+**Part A — WIRE.** Researched the write path (`pass2_orchestrator.py::_run_pipeline`, right
+before `write_pass2_extraction`) and REJECTED reusing `kg_triage_items` (structurally similar
+"park for review" but semantically wrong — its own docstring says items are parked
+**NOT written to Neo4j**, a withhold-until-resolved lifecycle for SCHEMA-mismatch failures;
+reusing it for a narrative-continuity flag whose judge is only 85.7%-precise would silently drop
+~1-in-7 legitimate revivals/dialogue turns pending a review nobody may perform). **Chosen
+mechanism: `job_logs`** (already wired to the Studio's JobLogsPanel) — the write proceeds
+UNCONDITIONALLY; a confirmed contradiction is just logged (`event: pass2_canon_flag`) for human
+review. New `list_gone_entities()` in `entity_status.py` (no prior "all currently-gone entities
+for a project" query existed — `status_at_order`/`statuses_detail_at_order` both need a
+caller-supplied id list). New `_maybe_run_canon_check_gate` in `pass2_orchestrator.py`, called
+before Step 5, reusing the SAME model already resolved for the extraction job (no new setting).
+6 new Neo4j-integration tests (`list_gone_entities`) + 4 new mocked-gate tests (noop-when-no-gone,
+logs-on-confirmed-write-still-proceeds, skips-log-when-not-confirmed, degrades-safely-on-exception)
+— all green. **Live-smoked end-to-end through the REAL pipeline** (real Neo4j, real LLM via
+`extract_pass2_chapter`, not a mocked call) — confirmed the `pass2_canon_flag` job_logs row fires
+correctly when the judge confirms a contradiction.
+**Part B — SDK-UNIFY.** Diffed both services' `canon_check.py` files function-by-function:
+`_find_span`/`_parse_verdicts`/the judge request shape/the verdict-apply loop/the symbolic-filter
+body/the compose control-flow were byte-identical or near-identical; prompt wording, the
+per-service extra candidate field (`glossary_entity_id` vs `gone_from_order`), and composition's
+entire `reflect_revise` check→revise loop are genuinely divergent and stayed per-service. New
+package **`sdks/python/loreweave_canon_check`** (flat submodule, added to the shared root
+`pyproject.toml` include list per convention) hoists `find_span`, `parse_judge_verdicts`,
+`extract_judge_text`, `build_judge_request`, `apply_verdicts`, `gone_entities_referenced`,
+`CanonCandidateBase`. Both services' `canon_check.py` are now thin wrappers. **Fixed a real gap
+in the same pass:** knowledge's judge caught bare `Exception` + manually indexed
+`job.result["messages"][0]["content"]`; now uses the same `LLMError` + `extract_judge_text`
+precision composition's already had. 33 new SDK unit tests; composition full suite re-run
+**1628 passed/150 skipped, 0 regressions**; knowledge full suite **3590 passed** (same 4
+pre-existing unrelated failures as before, confirmed via earlier `git stash`).
+**A genuine parsing bug found DURING regression verification (pre-existing in BOTH services'
+ORIGINAL code, not introduced by the refactor) — fixed as part of the unification:** the verdict
+parser used a naive `text.find("{")..text.rfind("}")` span; captured live, this $0 local model
+sometimes emits a first (wrong) JSON verdict, a `*(Self-correction: ...)*` prose aside, then a
+corrected second JSON block — the naive span swallowed the prose between them and silently failed
+to parse, discarding the model's own corrected answer as a false "inconclusive". Fixed via a
+string-aware brace-balanced scanner that takes the LAST parseable `{"verdicts":...}` block
+(honoring self-correction as final intent); 4 new regression tests.
+**Sobering re-measurement, honestly documented (addendum in [`docs/eval/canon-check-judge-2026-07-06.md`](../eval/canon-check-judge-2026-07-06.md)):**
+even with the parser fixed, 3 repeated eval runs later the same session gave a STABLE 68.75%
+accuracy / 33% recall (down from the original day's 93.75%/100%) — root-caused as genuine
+model-reasoning/output inconsistency (the judge's OWN "why" text correctly identifies the
+contradiction, but its `violated` boolean is sometimes wrong anyway), NOT a code regression
+(verified: the exact request dict is byte-identical pre/post-refactor; mocked-LLM unit tests
+pass identically). **Conclusion: this $0 quantized local model's judge reliability is noisier
+session-to-session than any single eval run shows — report a RANGE from repeated runs, not a
+point estimate, next time judge-model choice is revisited.** This reinforces (doesn't undercut)
+the `quarantine`-not-hard-block wiring decision. Files: `services/knowledge-service/app/db/
+neo4j_repos/entity_status.py`, `app/extraction/{canon_check.py,pass2_orchestrator.py}`,
+`sdks/python/loreweave_canon_check/` (new), `sdks/python/pyproject.toml`, `services/
+composition-service/app/engine/canon_check.py`, plus test files across all three.
+
 **CONTEXT BUDGET LAW — ALL REMAINING PARKED ITEMS CLEARED 2026-07-06 (user: "i don't want a lot of debts, clear them").** Went through every remaining parked item and either BUILT it or made a FIRM recorded decision (a decision is not a debt). Updated disposition table in [`2026-07-05-context-budget-closeout.md`](../specs/2026-07-05-context-budget-closeout.md). **BUILT:** ① **Inspector D7 GUI-trace** — new `tool_result_content_capped_ex` returns the over-cap token count; `_stream_with_tools` gained a `trace` param and records a `T6/results/d7_overflow:<tool>` span so the Inspector shows WHY a tool result was withheld (was log-only). *(Caught a `_trace` vs `trace` scoping slip via the story04 suite — fixed; the call site is in `_emit_chat_turn` which takes `trace` as a param, not the `stream_response`-local `_trace`.)* ② **D-T1-SMALLRETURN-ENFORCE** — cleared via the **D7 runtime cap** as the real backstop (a heavy field on any small-return tool is now withheld+logged at runtime, no longer silent) + a closed-set pin `test_small_return_claims.py` (6 claims; a new `@small_return` claim turns it red → review). **FIRM DECISIONS (closed, not deferred):** ③ **T3 `Compiler` class** = won't-fix (a wrapper no caller needs is make-work; the render+compact mechanism + `Planner` seam are open+consumed by chat+voice). ④ **D7 reasoning-budget half** = won't-fix (reasoning disabled platform-wide; untestable against real behavior; trigger recorded: reasoning re-enabled + bloat). ⑤ **D13b resume-monotonicity** = satisfied-by-construction (auto-detect decides once; resume reuses frozen assembly). ⑥ **history-pressure at gate** + **auto-detect trace-span** = won't-add (compaction already handles long-chat pressure; the decision log covers observability; accumulator is created after the gate). **VERIFY:** full chat suite **1029 green**; new wire tests 65 (+capped_ex); knowledge pin 1; provider-gate clean. Files: `services/chat-service/app/services/{tool_result_wire.py,stream_service.py}`, `tests/test_tool_result_wire.py`, `services/knowledge-service/tests/unit/test_small_return_claims.py` (new), `docs/specs/{2026-07-05-context-budget-closeout.md,2026-07-06-long-work-auto-detect.md}`. **⇒ The Context Budget Law defer tail is now EMPTY — every item is shipped, built, or a firm recorded decision.**
 
 **LONG-WORK CONTEXT AUTO-DETECT — CORE SHIPPED 2026-07-06 (`D-LONG-WORK-CONTEXT-MODE` UNPARKED; spec [`docs/specs/2026-07-06-long-work-auto-detect.md`](../specs/2026-07-06-long-work-auto-detect.md)).** User challenged the earlier "park" ("auto-detect is essential") — and was right: my "dead code" reasoning was circular (the "tiers inert" verdict came from THIN-book evals, the exact case auto-detect doesn't target; large books were never measured). **`context.mode="auto"` was a no-op passthrough** (`_ctx_tiers_allowed = context_mode != "off"`, then AND-ed with default-OFF env flags). Now it actually detects: new pure `app/services/context_autodetect.py::resolve_context_pressure` — biased-to-include, enables the T5/T4 tiers when EITHER (a) history ≥ 0.6×window OR (b) **glossary/known-entity size ≥ 300** (the cheap already-cached big-lore-book proxy; the gate runs pre-history-assembly so the glossary signal is the primary one, long-chat pressure stays with adaptive compaction). **Also fixed a SET-standard smell:** `t5_intent_gate_enabled`/`story_state_block_enabled` flipped from default-OFF *enablement* → **default-TRUE deploy KILL-SWITCH ceilings** (`effective = AND(deploy_ceiling, auto/user enablement)`) — env is a ceiling, not a per-user knob. **Full auto-enable per user's explicit call** (accepts turning eval-unproven tiers on in prod; threshold/ceiling are the tuning knobs). **VERIFY:** `test_context_autodetect` 9 (truth table) + `TestContextMode` 4 e2e wiring (off-bypasses / on-forces / auto-small-stays-off / **auto-large-ENABLES** through real `stream_response`); **full chat suite 1028 green** (flip broke nothing — auto keeps tiers off on the small/mock books every other test uses); provider-gate clean. **Live-calibrated on REAL data (= the R6 long-book re-measure, unblocked by the summaries fix): 万古神帝 (4233 ch) = 308 known-entities → trips → tiers ON; Dracula (6 ch) = 100 → stays off; unextracted = 0 → off** — the threshold discriminates the large-lore book exactly. **D13b resume-monotonicity = satisfied by construction** (decision computed ONCE in the main path; resume reuses the frozen assembly, never re-gates). **Follow-on (non-blocking):** surface the `_auto` decision as an Inspector trace field (a decision LOG ships now); optional history-pressure signal at the gate. Files: `services/chat-service/app/services/{context_autodetect.py (new),stream_service.py}`, `app/config.py`, `tests/{test_context_autodetect.py (new),test_stream_service.py,test_stream_service_story_state.py}`, `docs/specs/2026-07-06-long-work-auto-detect.md` (new) + closeout-spec row 7 unparked.
