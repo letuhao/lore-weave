@@ -35,7 +35,6 @@ function saveMediaPrefs(prefs: MediaPrefs, token?: string | null) {
   syncPrefsToServer('media_prefs', prefs, token);
 }
 
-const VOICE_OPTIONS = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
 const IMAGE_SIZE_OPTIONS = ['256x256', '512x512', '1024x1024', '1024x1792', '1792x1024'];
 
 const READER_FONTS = [
@@ -356,42 +355,11 @@ export function ReadingTab() {
           {t('reading.ai_models_desc')}
         </p>
         <div className="space-y-4 max-w-lg">
-          {/* TTS model */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium">{t('reading.tts_model')}</label>
-            <select
-              value={mediaPrefs.ttsModelId}
-              onChange={e => updateMediaPref('ttsModelId', e.target.value)}
-              className="w-full rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none"
-            >
-              <option value="">{t('reading.auto_first')}</option>
-              {ttsModels.map(m => (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {m.alias || m.provider_model_name} ({m.provider_kind})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Default voice */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium">{t('reading.default_voice')}</label>
-            <div className="flex flex-wrap gap-1.5">
-              {VOICE_OPTIONS.map(v => (
-                <button
-                  key={v}
-                  onClick={() => updateMediaPref('defaultVoice', v)}
-                  className={cn(
-                    'rounded-md border px-3 py-1 text-[11px] font-medium capitalize transition-colors',
-                    mediaPrefs.defaultVoice === v
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-secondary',
-                  )}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+          {/* Voice/TTS settings moved to the unified Chat & AI panel (M5 — these
+              controls here were dead: nothing consumed media_prefs.ttsModelId /
+              defaultVoice for playback). One home for voice now. */}
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+            {t('reading.voice_moved', { defaultValue: 'Voice & speech settings now live in Settings → Chat & AI → Voice.' })}
           </div>
 
           {/* Image model */}

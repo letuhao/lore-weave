@@ -637,7 +637,7 @@ async def generate_tts_for_message(
             audio_chunks: list[bytes] = []
             try:
                 async for event, raw in _generate_tts_chunks(
-                    speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
+                    speakable, user_id, tts_model_source, tts_model_ref, tts_voice, sentence_index,
                 ):
                     yield _sse("audio-chunk", event)
                     if raw:

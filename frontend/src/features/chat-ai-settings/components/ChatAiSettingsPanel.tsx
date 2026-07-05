@@ -3,6 +3,7 @@
 // settings into one surface built on the resolution cascade (spec §8): every row
 // shows its effective value AND which tier supplied it, so nothing is silent.
 import { DefaultModelsCard } from '@/features/settings/DefaultModelsCard';
+import { ModelPicker } from '@/components/model-picker';
 import { useAiPrefsEditor } from '../hooks/useAiPrefsEditor';
 import type { EffectiveSettings, FieldResolution } from '../types';
 
@@ -59,6 +60,12 @@ export function ChatAiSettingsPanel() {
   const groundingTier = eff?.grounding?.grounding_enabled?.source_tier;
   const contextMode = String(eff?.context?.mode?.effective_value ?? 'auto');
   const contextTier = eff?.context?.mode?.source_tier;
+  const voiceBlob = (ed.prefs?.voice ?? {}) as {
+    chat?: { tts_model_ref?: string; tts_voice_id?: string; tts_source?: string };
+    stt?: { model_ref?: string; source?: string };
+  };
+  const voiceChat = voiceBlob.chat ?? {};
+  const voiceStt = voiceBlob.stt ?? {};
 
   return (
     <div className="flex flex-col gap-8" data-testid="chat-ai-settings">
@@ -223,6 +230,52 @@ export function ChatAiSettingsPanel() {
             Auto engages the long-work tiers only when a project is big enough to need them. Off keeps
             the simple path (recommended unless you work on a thousand-chapter novel).
           </span>
+        </div>
+      </section>
+
+      {/* ── Voice (unified home; was split across two disconnected stores) ── */}
+      <section className="flex flex-col gap-3">
+        <h3 className="font-serif text-base font-semibold">Voice</h3>
+        <p className="-mt-1 max-w-[64ch] text-[12px] text-muted-foreground">
+          Speech-in and speech-out for chat. Saved here (server-side) and applied to every voice
+          message — no longer resets between calls.
+        </p>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium">Speech-out model (TTS)</span>
+          <ModelPicker
+            capability="tts"
+            value={voiceChat.tts_model_ref ?? null}
+            onChange={(id) => void ed.patch({ voice: { chat: { tts_model_ref: id, tts_source: 'user_model' } } })}
+            allowNone
+            ariaLabel="Speech-out model"
+          />
+        </div>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium">Voice</span>
+          <input
+            type="text" disabled={ed.saving}
+            className="w-56 rounded border border-border bg-background px-2 py-1 text-sm"
+            placeholder="e.g. af_heart"
+            defaultValue={voiceChat.tts_voice_id ?? ''}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              void ed.patch({ voice: { chat: { tts_voice_id: v === '' ? null : v } } });
+            }}
+          />
+          <span className="text-[11px] text-muted-foreground">A voice is specific to its model — pick a voice your TTS model supports.</span>
+        </label>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium">Speech-in model (STT)</span>
+          <ModelPicker
+            capability="stt"
+            value={voiceStt.model_ref ?? null}
+            onChange={(id) => void ed.patch({ voice: { stt: { model_ref: id, source: 'user_model' } } })}
+            allowNone
+            ariaLabel="Speech-in model"
+          />
         </div>
       </section>
     </div>

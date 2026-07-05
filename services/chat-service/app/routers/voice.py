@@ -39,6 +39,14 @@ async def send_voice_message(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="invalid config JSON")
 
+    # Chat & AI settings (M5) — overlay the user's SAVED voice
+    # (user_chat_ai_prefs.voice, the unified home) so a voice set in the Chat & AI
+    # panel wins over the FE's echoed default. Kills the "af_heart resets every
+    # request" behavior; the request/System default remain the fallbacks.
+    from app.db.user_chat_ai_prefs import get_prefs
+    from app.services.voice_settings import merge_voice_config
+    voice_config = merge_voice_config(voice_config, (await get_prefs(pool, owner_user_id=user_id)).voice)
+
     # Verify session ownership (same as send_message)
     session = await pool.fetchrow(
         "SELECT * FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
@@ -90,9 +98,12 @@ async def send_voice_message(
 
 
 class GenerateTTSRequest(BaseModel):
-    tts_model_source: str = "user_model"
-    tts_model_ref: str
-    tts_voice: str = "af_heart"
+    # All optional — omitted fields fall back to the user's saved voice
+    # (user_chat_ai_prefs.voice, the unified home), then the System default. The
+    # FE need not know the voice; the account settings supply it (M5).
+    tts_model_source: str | None = None
+    tts_model_ref: str | None = None
+    tts_voice: str | None = None
 
 
 @router.post("/{session_id}/messages/{message_id}/generate-tts")
@@ -116,14 +127,27 @@ async def generate_tts(
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
 
+    # Resolve the effective voice/model: request field ▸ saved account voice ▸
+    # System default (M5 — the account voice is authoritative where set).
+    from app.db.user_chat_ai_prefs import get_prefs
+    from app.services.voice_settings import merge_voice_config
+    _req = {k: v for k, v in {
+        "tts_voice": body.tts_voice, "tts_model_ref": body.tts_model_ref,
+        "tts_model_source": body.tts_model_source,
+    }.items() if v is not None}
+    _merged = merge_voice_config(_req, (await get_prefs(pool, owner_user_id=user_id)).voice)
+    _tts_model_ref = _merged.get("tts_model_ref")
+    if not _tts_model_ref:
+        raise HTTPException(status_code=400, detail="TTS model not configured. Set it in Chat & AI settings.")
+
     return StreamingResponse(
         generate_tts_for_message(
             session_id=str(session_id),
             message_id=str(message_id),
             user_id=user_id,
-            tts_model_source=body.tts_model_source,
-            tts_model_ref=body.tts_model_ref,
-            tts_voice=body.tts_voice,
+            tts_model_source=_merged.get("tts_model_source") or "user_model",
+            tts_model_ref=_tts_model_ref,
+            tts_voice=_merged.get("tts_voice") or "af_heart",
             pool=pool,
         ),
         media_type="text/event-stream",

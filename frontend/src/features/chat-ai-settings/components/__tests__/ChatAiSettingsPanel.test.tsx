@@ -8,6 +8,10 @@ const h = vi.hoisted(() => ({ ed: { current: null as AiPrefsEditor | null } }));
 vi.mock('../../hooks/useAiPrefsEditor', () => ({ useAiPrefsEditor: () => h.ed.current }));
 // DefaultModelsCard pulls auth + network; stub it (not under test here).
 vi.mock('@/features/settings/DefaultModelsCard', () => ({ DefaultModelsCard: () => <div data-testid="default-models" /> }));
+// ModelPicker fetches user models (auth+network); stub to a marker.
+vi.mock('@/components/model-picker', () => ({
+  ModelPicker: (p: { capability?: string }) => <div data-testid={`picker-${p.capability}`} />,
+}));
 
 function eff(): EffectiveSettings {
   return {
@@ -91,6 +95,21 @@ describe('ChatAiSettingsPanel', () => {
     render(<ChatAiSettingsPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'Off' }));
     expect(patch).toHaveBeenCalledWith({ context: { mode: 'off' } });
+  });
+
+  it('editing the TTS voice patches the per-surface voice blob', () => {
+    const patch = vi.fn().mockResolvedValue(undefined);
+    h.ed.current = makeEditor({ patch });
+    render(<ChatAiSettingsPanel />);
+    const input = screen.getByPlaceholderText('e.g. af_heart');
+    fireEvent.blur(input, { target: { value: 'nova' } });
+    expect(patch).toHaveBeenCalledWith({ voice: { chat: { tts_voice_id: 'nova' } } });
+  });
+
+  it('renders the TTS + STT model pickers in the Voice section', () => {
+    render(<ChatAiSettingsPanel />);
+    expect(screen.getByTestId('picker-tts')).toBeInTheDocument();
+    expect(screen.getByTestId('picker-stt')).toBeInTheDocument();
   });
 
   it('surfaces a save error (e.g. a 412 reload)', () => {
