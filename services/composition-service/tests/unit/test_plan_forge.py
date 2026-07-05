@@ -20,7 +20,12 @@ from app.engine.plan_forge.self_check import run_self_check
 from app.engine.plan_forge.spec_index import build_spec_index, search_index, spec_slice_for_paths
 from app.engine.plan_forge.links import build_links_from_events, normalize_planner_notes
 from app.engine.plan_forge.propose import propose_spec
-from app.engine.plan_forge.propose_llm import analyze_document, materialize_from_analyze, propose_spec_llm
+from app.engine.plan_forge.propose_llm import (
+    analyze_document,
+    materialize_from_analyze,
+    normalize_spec,
+    propose_spec_llm,
+)
 from app.engine.plan_forge.refine import accept_refine, frozen_paths_intact, refine_spec
 from app.engine.plan_forge.normalize import post_normalize_spec
 from app.engine.plan_forge.validate import run_rules, validate_golden
@@ -110,6 +115,44 @@ def test_golden_validation_passes(pipeline_artifacts):
     assert all(validation["criteria"].values())
 
 
+def test_pa_not_realm_tolerates_realm_breakthrough_as_pa_trigger(pipeline_artifacts):
+    # D-PLANFORGE-PA-REALM-FALSE-POSITIVE: live-audited against 5 real LLM
+    # propose runs, ALL 5 described the Tiểu Thành realm-entry event's PA
+    # trigger by naming the breakthrough itself -- a legitimate one-time
+    # EXPERIENCE trigger the story's own design sanctions, not the forbidden
+    # "PA scales WITH realm" coupling. Exact phrasings observed live.
+    _, spec, _, _ = pipeline_artifacts
+    for reason in ("Đột phá cảnh giới đầu tiên", "Khoảnh khắc đột phá cảnh giới đầu tiên"):
+        bad = json.loads(json.dumps(spec))
+        for ev in bad["events"]:
+            if ev["id"] == "arc_2_event_5":
+                ev["var_deltas"] = [
+                    {"variable": "PA", "delta": "+large", "reason": reason, "coupled_to_realm": False}
+                ]
+        rule = next(r for r in run_rules(bad) if r["rule"] == "pa_not_realm")
+        assert rule["pass"] is True, f"false positive on real phrasing: {reason!r}"
+
+
+def test_pa_not_realm_still_catches_proportional_coupling_language(pipeline_artifacts):
+    # Defense-in-depth check: even without an explicit coupled_to_realm=True,
+    # PROPORTIONAL coupling language must still fail -- this is the actually
+    # forbidden case, distinct from a one-time breakthrough trigger above.
+    _, spec, _, _ = pipeline_artifacts
+    bad = json.loads(json.dumps(spec))
+    for ev in bad["events"]:
+        if ev["id"] == "arc_2_event_5":
+            ev["var_deltas"] = [
+                {
+                    "variable": "PA",
+                    "delta": "+large",
+                    "reason": "PA tăng theo cảnh giới hiện tại",
+                    "coupled_to_realm": False,
+                }
+            ]
+    rule = next(r for r in run_rules(bad) if r["rule"] == "pa_not_realm")
+    assert rule["pass"] is False
+
+
 def test_negative_thr_early_explain(pipeline_artifacts):
     _, spec, _, compiled = pipeline_artifacts
     bad = json.loads(json.dumps(spec))
@@ -136,6 +179,23 @@ def test_propose_llm_mock_normalizes_string_notes():
     assert arc2_kind["arc_kind"] == "discovery"
     notes_rule = next(r for r in run_rules(spec) if r["rule"] == "notes_linked")
     assert notes_rule["pass"] is True
+
+
+def test_normalize_spec_coerces_list_synopsis_to_string():
+    # D-PLANFORGE-PA-REALM-FALSE-POSITIVE audit: observed live, the materialize
+    # prompt doesn't forbid a bullet array for synopsis and the model
+    # sometimes emits one, which crashed validate.run_rules's `.lower()` call.
+    spec = {
+        "events": [
+            {"id": "arc_2_event_1", "arc_id": "arc_2", "synopsis": ["Bullet one", "Bullet two"]},
+            {"id": "arc_2_event_2", "arc_id": "arc_2", "synopsis": None},
+        ],
+    }
+    out = normalize_spec(spec, "checksum123")
+    assert out["events"][0]["synopsis"] == "Bullet one Bullet two"
+    assert out["events"][1]["synopsis"] == ""
+    # Must not crash the rule that reads synopsis as a string.
+    run_rules(out)
 
 
 def test_compare_title_overlap_beats_id_overlap(pipeline_artifacts):

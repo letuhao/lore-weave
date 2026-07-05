@@ -194,3 +194,75 @@ check) needs its own considered pass, not a same-session regex tweak. Tracked as
   test (even just golden-comparison, not full CI) for the EXISTING 7 rules before adding an 8th —
   the validator's blind spot toward its own production path is a bigger risk than which
   literary framework supplies rule #8.**
+
+## Second addendum (2026-07-06, same day) — `D-PLANFORGE-PA-REALM-FALSE-POSITIVE` FIXED + live-verified
+
+User: "ok, vậy giờ chúng ta đi test thật rồi đánh giá để fix bug hoặc improve" (go test for real,
+evaluate, then fix or improve). Built a repeatable harness —
+`services/composition-service/scripts/live_validate_planforge_llm.py` — that runs the REAL async
+LLM propose path N times against the real fixture and scores all 8 core rules each time, printing
+a per-rule stability count (X/N PASS) and every observed PA-delta `reason` phrasing. Chose N=5
+runs per round for the same reason the canon-check judge-eval settled on repeated runs: one live
+call is a single draw, not evidence of a rate.
+
+**Round 1 (5 runs, pre-fix) — a SECOND real bug found immediately, unrelated to `pa_not_realm`:**
+run 1 crashed the harness outright (`AttributeError: 'list' object has no attribute 'lower'` in
+`validate.py`'s `thr_no_early_explain`). Root cause: the materialize prompt asks for a `synopsis`
+string but doesn't forbid a bullet array, and the model sometimes emits one. **Fixed** at the
+actual normalization boundary (`propose_llm.py::normalize_spec`, the single shared boundary both
+the sync and async LLM propose paths already call) via a new `_normalize_synopsis` helper — same
+pattern as the existing `normalize_planner_notes`/`_normalize_var_deltas` shape-coercion helpers,
+not a defensive patch scattered into `validate.py`. Regression test:
+`test_normalize_spec_coerces_list_synopsis_to_string`.
+
+**Round 2 (5 runs, post-synopsis-fix, pre-`pa_not_realm`-fix): `pa_not_realm` failed 5/5 — a
+100% reproduction rate, not a fluke.** Every single run's Event 5 (Tiểu Thành, the story's own
+"first realm entry" scene) produced a PA-delta `reason` naming the realm breakthrough itself
+("Đột phá cảnh giới đầu tiên" x4, "Khoảnh khắc đột phá cảnh giới đầu tiên" x1) — because that
+literally IS the scene's content, not because the model was doing anything wrong. Meanwhile NOT
+ONE of the 5 runs' observed reasons across either PA delta ever used proportional/scaling language
+("theo cảnh giới", "tỷ lệ với cảnh giới", etc.) — the actually-forbidden case the rule was
+originally meant to catch.
+
+**Fix:** replaced the bare `"cảnh giới" in reason` substring check with a pattern that only
+matches PROPORTIONAL-coupling phrasing (`theo|tỷ lệ (với|thuận với)|dựa (trên|vào)|gắn (với|liền
+với)|mỗi` + optional `cấp (độ|bậc)` + `cảnh giới`) — deliberately reusing the EXACT phrase the
+source document itself uses for the forbidden case ("PA... không tăng/giảm **theo cảnh giới**").
+The existing `coupled_to_realm: true` boolean check is untouched (still the primary signal); the
+keyword match is now a narrower defense-in-depth layer instead of a blanket one. Two new tests:
+`test_pa_not_realm_tolerates_realm_breakthrough_as_pa_trigger` (both real observed phrasings now
+PASS) and `test_pa_not_realm_still_catches_proportional_coupling_language` (a constructed
+"PA tăng theo cảnh giới hiện tại" with `coupled_to_realm: false` still correctly FAILS — proves
+the defense-in-depth layer wasn't just deleted). The pre-existing golden negative test
+(`pa_realm_coupling`, which sets `coupled_to_realm: true` explicitly) is untouched and still
+passes, since the boolean check alone already covers it.
+
+**Round 3 (5 fresh runs, post-both-fixes) — full live re-verification, not just unit tests:**
+
+```
+=== Rule stability across runs ===
+  anchors_min: 5/5 PASS
+  arc2_discovery: 5/5 PASS
+  notes_linked: 5/5 PASS
+  open_questions_preserved: 5/5 PASS
+  pa_not_realm: 5/5 PASS
+  premise_max: 5/5 PASS
+  thr_no_early_explain: 5/5 PASS
+  vars_four: 5/5 PASS
+```
+
+All 8 core rules now hit 5/5 across a FRESH set of 5 live runs, including 3 newly-observed PA
+reason phrasings not seen in round 2 (e.g. "Đột phá cảnh giới đầu tiên mang lại cảm giác hoàn
+mỹ") — the fix generalizes past the exact anecdote that triggered it, not just pattern-matching
+one string. `D-PLANFORGE-PA-REALM-FALSE-POSITIVE` is **CLOSED**.
+
+VERIFY: full composition suite **1643 passed/150 skipped** (was 1640, +3 new tests, 0
+regressions) + 3 rounds of live-LLM verification (15 real propose calls total across this
+addendum, $0 local model, zero mocking). Commit: see `docs/sessions/SESSION_HANDOFF.md`.
+
+**What this closes out from the first addendum's recommendation:** the "validator has no
+real-LLM-path check" blind spot is now partially closed for THIS fixture (`live_validate_
+planforge_llm.py` is a committed, reusable harness, not a throwaway script) — still not wired
+into CI/pytest (it needs a live stack + a loaded local model, same constraint as other live-smoke
+scripts in this repo), but it exists and is documented for the next person who touches this
+validator, closing the exact gap this addendum's first version flagged as the bigger risk.

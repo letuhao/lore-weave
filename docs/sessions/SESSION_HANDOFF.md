@@ -43,12 +43,31 @@ considered fix not a same-session regex tweak. 1 new regression test
 untracked-variable value shifts" caveat. Full addendum:
 [`docs/eval/plan-forge-story-grid-poc-2026-07-06.md`](../eval/plan-forge-story-grid-poc-2026-07-06.md)
 (same file, "Addendum" section).
-**Deferred:** `D-PLANFORGE-PA-REALM-FALSE-POSITIVE` — `validate.py::run_rules`'s `pa_not_realm`
-rule false-positives on real LLM-produced specs (keyword-matches "cảnh giới" in a PA delta's
-`reason` text regardless of `coupled_to_realm`, conflating a legitimate realm-breakthrough
-*trigger* with actual realm *coupling*). Gate: out-of-scope (different rule than this task) +
-needs a considered redesign (gate #2), not a same-session regex tweak. Target: next PlanForge
-validator touch.
+**`D-PLANFORGE-PA-REALM-FALSE-POSITIVE` FIXED same day** (user: "đi test thật rồi đánh giá để
+fix bug hoặc improve" — go test for real, evaluate, then fix or improve). Built a committed,
+reusable harness (`services/composition-service/scripts/live_validate_planforge_llm.py`) that
+runs the REAL async LLM propose path N times against the real fixture and scores all 8 core
+rules each run. **Round 1 (5 runs) found a SECOND real bug immediately**: the harness crashed on
+run 1 (`AttributeError: 'list' object has no attribute 'lower'`) because the model sometimes
+emits `synopsis` as a bullet array, not a string — fixed at the actual normalization boundary
+(`propose_llm.py::normalize_spec`, new `_normalize_synopsis` helper, same pattern as the existing
+`normalize_planner_notes`). **Round 2 (5 runs) confirmed `pa_not_realm` fails 5/5 — a 100%
+reproduction rate**: Event 5 (the story's own "first realm entry" scene) always produces a
+PA-delta reason naming the realm breakthrough itself, and NONE of the 5 runs ever produced
+proportional/scaling language (the actually-forbidden case). **Fixed** by replacing the bare
+`"cảnh giới" in reason` substring check with a pattern matching only proportional-coupling
+phrasing (`theo|tỷ lệ|dựa trên/vào|gắn với|mỗi` + `cảnh giới`) — reusing the exact phrase the
+source doc itself uses for the forbidden case. The pre-existing `coupled_to_realm: true` golden
+negative test is untouched (that boolean check is the primary signal; the keyword match is now a
+narrower defense-in-depth layer). **Round 3 (5 fresh runs, post-fix): all 8 core rules 5/5 PASS**,
+including 3 newly-observed PA phrasings not seen in round 2 — the fix generalizes, not just
+pattern-matches one anecdote. 3 new regression tests
+(`test_normalize_spec_coerces_list_synopsis_to_string`,
+`test_pa_not_realm_tolerates_realm_breakthrough_as_pa_trigger`,
+`test_pa_not_realm_still_catches_proportional_coupling_language`). Full composition suite
+**1643 passed/150 skipped** (was 1640, 0 regressions). 3 rounds / 15 real LLM propose calls
+total, $0 local model, zero mocking. `D-PLANFORGE-PA-REALM-FALSE-POSITIVE` **CLOSED**. Full
+detail: `docs/eval/plan-forge-story-grid-poc-2026-07-06.md` ("Second addendum" section).
 
 ---
 
