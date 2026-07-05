@@ -1424,6 +1424,10 @@ class AuthoringRunService:
                     "status": run.status,
                     "units_drafted": units_drafted,
                     "spent_usd": str(run.spent_usd),
+                    # D4 follow-up (D-AGENT-MODE-NOTIFY): deep-link so clicking the
+                    # notification lands on Mission Control for THIS run, not just
+                    # a title in the inbox. Resolved by frontend/studioLinks.ts.
+                    "link": f"/books/{run.book_id}/agent-mode/runs/{run.run_id}",
                 },
             )
         except Exception:  # noqa: BLE001 — best-effort by contract

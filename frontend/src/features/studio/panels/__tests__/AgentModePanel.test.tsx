@@ -42,16 +42,19 @@ vi.mock('@/features/books/api', () => ({
 
 import { AgentModePanel } from '../AgentModePanel';
 
-function dockProps(): IDockviewPanelProps {
-  return { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps;
+function dockProps(params?: Record<string, unknown>, onDidParametersChange?: (cb: (next: Record<string, unknown> | undefined) => void) => { dispose: () => void }): IDockviewPanelProps {
+  return {
+    api: { setTitle: vi.fn(), onDidParametersChange },
+    params,
+  } as unknown as IDockviewPanelProps;
 }
 
-function renderPanel() {
+function renderPanel(props: IDockviewPanelProps = dockProps()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <StudioHostProvider bookId="b1">
-        <AgentModePanel {...dockProps()} />
+        <AgentModePanel {...props} />
       </StudioHostProvider>
     </QueryClientProvider>,
   );
@@ -117,6 +120,24 @@ describe('AgentModePanel — Runs list', () => {
     fireEvent.click(screen.getByTestId('agent-mode-run-row'));
     expect(screen.getByTestId('agent-mode-tab-mission').getAttribute('aria-selected')).toBe('true');
     await waitFor(() => expect(screen.getByTestId('agent-mode-mission-control')).toBeTruthy());
+  });
+});
+
+describe('AgentModePanel — D-AGENT-MODE-NOTIFY deep link', () => {
+  it('opens directly on Mission control when mounted with a {runId} param (terminal-notification click)', async () => {
+    getRun.mockResolvedValue(runFixture({ run_id: 'run-7', status: 'closed' }));
+    renderPanel(dockProps({ runId: 'run-7' }));
+    expect(screen.getByTestId('agent-mode-tab-mission').getAttribute('aria-selected')).toBe('true');
+    await waitFor(() => expect(screen.getByTestId('agent-mode-mission-control')).toBeTruthy());
+  });
+
+  it('retargets to Mission control on a later params change (already-open singleton, DOCK-6)', async () => {
+    getRun.mockResolvedValue(runFixture({ run_id: 'run-8', status: 'closed' }));
+    let onChange: ((next: Record<string, unknown> | undefined) => void) | undefined;
+    renderPanel(dockProps(undefined, (cb) => { onChange = cb; return { dispose: vi.fn() }; }));
+    expect(screen.getByTestId('agent-mode-tab-list').getAttribute('aria-selected')).toBe('true');
+    onChange?.({ runId: 'run-8' });
+    await waitFor(() => expect(screen.getByTestId('agent-mode-tab-mission').getAttribute('aria-selected')).toBe('true'));
   });
 });
 

@@ -9,7 +9,12 @@
 // contracts/frontend-tools.contract.json (regenerated), so panelCatalogContract.test.ts's
 // palette-openable-set === backend-enum check stays green (DOCK-6). Also still
 // reachable via PlannerPanel's "Autonomous Agent Runs" link.
-import { useState } from 'react';
+//
+// D-AGENT-MODE-NOTIFY follow-up: also opened via a deep link with `{ runId }`
+// params (the terminal-notification click path, studioLinks.ts AGENT_MODE_RUN_RE)
+// — JobDetailPanel's params-retargeting pattern (props.params at mount +
+// onDidParametersChange for an already-open singleton, DOCK-6).
+import { useEffect, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
 import { useStudioHost } from '../host/StudioHostProvider';
@@ -20,14 +25,27 @@ import { MissionControlView } from './agentMode/MissionControlView';
 
 type AgentModeView = 'list' | 'new' | 'mission';
 
+interface AgentModeParams { runId?: unknown }
+
+const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+
 export function AgentModePanel(props: IDockviewPanelProps) {
   useStudioPanel('agent-mode', props.api);
   const { t } = useTranslation('composition');
   const host = useStudioHost();
-  const [view, setView] = useState<AgentModeView>('list');
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const initialRunId = str((props.params as AgentModeParams | undefined)?.runId);
+  const [view, setView] = useState<AgentModeView>(initialRunId ? 'mission' : 'list');
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(initialRunId);
 
   const openMission = (runId: string) => { setSelectedRunId(runId); setView('mission'); };
+
+  useEffect(() => {
+    const d = props.api.onDidParametersChange?.((next: Record<string, unknown> | undefined) => {
+      const runId = str((next as AgentModeParams | undefined)?.runId);
+      if (runId) openMission(runId);
+    });
+    return () => d?.dispose?.();
+  }, [props.api]);
 
   const tabs: { id: AgentModeView; labelKey: string; label: string }[] = [
     { id: 'list', labelKey: 'authoringRun.navRuns', label: 'Runs' },

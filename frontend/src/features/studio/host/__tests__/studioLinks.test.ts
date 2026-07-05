@@ -114,6 +114,18 @@ describe('resolveStudioLink', () => {
     expect(resolveStudioLink('/books/b1/enrichment', ctx)).toEqual({ kind: 'external', url: '/books/b1/enrichment' });
   });
 
+  it('D-AGENT-MODE-NOTIFY: same-book agent-mode run link → openPanel(agent-mode, {runId})', () => {
+    const host = fakeHost();
+    runStudio('/books/b1/agent-mode/runs/run-9', host);
+    expect(host.openPanel).toHaveBeenCalledWith('agent-mode', { title: 'T:agent-mode', params: { runId: 'run-9' } });
+  });
+
+  it('D-AGENT-MODE-NOTIFY: other-book agent-mode run link → external to that book\'s Studio (no standalone run page)', () => {
+    expect(resolveStudioLink('/books/OTHER/agent-mode/runs/run-9', ctx)).toEqual({
+      kind: 'external', url: '/books/OTHER/studio',
+    });
+  });
+
   it('works without titleFor (panels self-title on mount)', () => {
     const host = fakeHost();
     const r = resolveStudioLink('/usage', { bookId: 'b1' });

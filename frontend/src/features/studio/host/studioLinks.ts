@@ -35,6 +35,12 @@ const BOOK_SCOPED_PAGE_RE = /^\/books\/([^/]+)\/(glossary|wiki|enrichment)(?:\/|
 const BOOK_SCOPED_PAGE_PANELS: Record<string, string> = {
   glossary: 'glossary',
 };
+// 20_agent_mode.md D-AGENT-MODE-NOTIFY — the autonomous-run terminal notification's
+// `metadata.link` (authoring_run_service.py `_notify_terminal`). Same-book rule as
+// BOOK_SCOPED_PAGE_RE, but there is no standalone page for a single run (Agent Mode
+// is Studio-only) — a cross-book click can't land on the run itself, so it degrades
+// to that OTHER book's Studio shell (a real route) rather than a 404.
+const AGENT_MODE_RUN_RE = /^\/books\/([^/]+)\/agent-mode\/runs\/([^/]+)(?:\/|$)/;
 
 /** Panel ids reachable by a bare app path (wave-1 user-scoped panels). */
 const PATH_PANELS: Record<string, string> = {
@@ -89,6 +95,13 @@ export function resolveStudioLink(link: string, ctx: StudioLinkContext): StudioL
     const mappedPanel = BOOK_SCOPED_PAGE_PANELS[page!];
     if (bookId === ctx.bookId && mappedPanel) return openPanel(mappedPanel);
     return { kind: 'external', url: link }; // another book, or a page with no panel yet (wiki/enrichment)
+  }
+
+  const agentRun = AGENT_MODE_RUN_RE.exec(path);
+  if (agentRun) {
+    const [, bookId, runId] = agentRun;
+    if (bookId === ctx.bookId) return openPanel('agent-mode', { runId });
+    return { kind: 'external', url: `/books/${bookId}/studio` };
   }
 
   const panelId = PATH_PANELS[path];

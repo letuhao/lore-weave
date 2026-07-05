@@ -1362,6 +1362,7 @@ async def test_notification_fired_on_report_ready():
     assert meta["status"] == "report_ready"
     assert meta["units_drafted"] == 2
     assert meta["spent_usd"] == str(run.spent_usd)
+    assert meta["link"] == f"/books/{BOOK}/agent-mode/runs/{run.run_id}"
 
 
 async def test_notification_fired_on_failed():
@@ -1377,6 +1378,7 @@ async def test_notification_fired_on_failed():
     meta = notify.calls[0]["metadata"]
     assert meta["status"] == "failed"
     assert meta["units_drafted"] == 1  # unit 0 drafted before the stop
+    assert meta["link"] == f"/books/{BOOK}/agent-mode/runs/{run.run_id}"
 
 
 async def test_notification_failure_swallowed_run_unaffected():
