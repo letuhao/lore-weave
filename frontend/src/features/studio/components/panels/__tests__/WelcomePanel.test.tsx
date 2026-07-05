@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 // react-i18next is globally mocked in vitest.setup.ts to return the KEY itself (repo
 // convention — assert on keys, not English fallback text; no need to re-mock here).
-const hostMocks = vi.hoisted(() => ({ openPanel: vi.fn() }));
+const hostMocks = vi.hoisted(() => ({ openPanel: vi.fn(), publish: vi.fn() }));
 vi.mock('../../../host/StudioHostProvider', () => ({
-  useStudioHost: () => ({ openPanel: hostMocks.openPanel }),
+  useStudioHost: () => ({ openPanel: hostMocks.openPanel, publish: hostMocks.publish }),
 }));
 
 const onboardingMocks = vi.hoisted(() => ({ role: null as string | null, isLoading: false }));
@@ -68,5 +68,13 @@ describe('WelcomePanel', () => {
     render(<WelcomePanel {...fakeProps()} />);
     fireEvent.click(screen.getByTestId('welcome-open-user-guide'));
     expect(hostMocks.openPanel).toHaveBeenCalledWith('user-guide', expect.objectContaining({ title: expect.any(String) }));
+  });
+
+  it('the Start Guided Tour button publishes a startGuidedTour bus event (crosses the DOCK-4 boundary via the bus, not a prop callback)', () => {
+    onboardingMocks.isLoading = false;
+    onboardingMocks.role = null;
+    render(<WelcomePanel {...fakeProps()} />);
+    fireEvent.click(screen.getByTestId('welcome-start-guided-tour'));
+    expect(hostMocks.publish).toHaveBeenCalledWith({ type: 'startGuidedTour' });
   });
 });

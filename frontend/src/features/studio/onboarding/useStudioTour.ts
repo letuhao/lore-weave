@@ -6,12 +6,28 @@ const ANCHOR_POLL_MS = 150;
 
 /** Polls for a live DOM node rather than assuming react-joyride's own internal target-search
  *  timing — needed because a step's anchor may not exist yet until its panel is opened (an
- *  async dockview mount), which joyride itself has no way to trigger. */
+ *  async dockview mount), which joyride itself has no way to trigger.
+ *
+ *  Also scrolls the anchor into view once found: react-joyride's own `needsScrolling()` (v3.1.0)
+ *  only checks VERTICAL overflow (`scrollHeight > clientHeight`) on the target's scroll parent —
+ *  a step whose anchor sits inside a HORIZONTALLY-overflowing ancestor (e.g. EditorPanel's
+ *  toolbar row, `overflow-x-auto`) never gets auto-scrolled by joyride, so the spotlight/tooltip
+ *  gets positioned against a target that's clipped outside its container's visible area — the
+ *  step renders "off-screen" even though the coordinates are technically valid DOM geometry.
+ *  `scrollIntoView` handles horizontal scroll on ANY ancestor natively, unlike joyride's check. */
 function waitForAnchor(selector: string, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     const start = Date.now();
     const tick = () => {
-      if (document.querySelector(selector)) { resolve(true); return; }
+      const el = document.querySelector(selector);
+      if (el) {
+        // jsdom (the test env) doesn't implement scrollIntoView at all — optional-chain it.
+        el.scrollIntoView?.({ block: 'center', inline: 'center' });
+        // One more poll tick so the scroll (and any layout it triggers) settles before the
+        // caller flips `anchorReady` and joyride measures the target's position.
+        setTimeout(() => resolve(true), ANCHOR_POLL_MS);
+        return;
+      }
       if (Date.now() - start >= timeoutMs) { resolve(false); return; }
       setTimeout(tick, ANCHOR_POLL_MS);
     };

@@ -18,17 +18,22 @@ function ToolbarButton({
   disabled,
   onClick,
   title,
+  testId,
   children,
 }: {
   active?: boolean;
   disabled?: boolean;
   onClick: () => void;
   title: string;
+  /** Optional stable selector for tour/E2E anchoring — most of this toolbar's icon buttons are
+   *  self-explanatory and don't need one; only add where a guided tour targets it. */
+  testId?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
+      data-testid={testId}
       onClick={onClick}
       disabled={disabled}
       title={title}
@@ -188,18 +193,21 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       {mode === 'ai' && (
         <>
           <ToolbarButton
+            testId="format-toolbar-insert-image"
             onClick={() => editor.chain().focus().insertContent({ type: 'imageBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
             title={t('toolbar.insert_image')}
           >
             <ImageIcon className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
+            testId="format-toolbar-insert-video"
             onClick={() => editor.chain().focus().insertContent({ type: 'videoBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
             title={t('toolbar.insert_video')}
           >
             <Video className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
+            testId="format-toolbar-insert-audio"
             onClick={() => editor.chain().focus().insertContent({ type: 'audioBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
             title={t('toolbar.insert_audio')}
           >

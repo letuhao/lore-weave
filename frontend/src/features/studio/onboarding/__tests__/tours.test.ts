@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STUDIO_TOURS } from '../tours';
+import { STUDIO_TOURS, EDITOR_TOUR_CATALOG } from '../tours';
 import { getStudioPanelDef } from '../../panels/catalog';
 
 // #19 Wave 2 — the 5 role tours build their `target` from each panel's catalog `tourAnchor`
@@ -8,13 +8,13 @@ import { getStudioPanelDef } from '../../panels/catalog';
 // role tour's steps stay in sync with the catalog — a future rename of a panel's tourAnchor (or
 // removing it) breaks here loudly instead of silently producing a dead tour-step selector.
 describe('STUDIO_TOURS (role tours)', () => {
-  it('core is unchanged: 4 hardcoded steps, 2 chrome-only + compose + editor', () => {
-    expect(STUDIO_TOURS.core).toHaveLength(4);
-    expect(STUDIO_TOURS.core.filter((s) => s.panelId)).toHaveLength(2);
+  it('core is unchanged: 6 hardcoded steps, 2 chrome-only + compose + editor + grammar + heatmap toggles', () => {
+    expect(STUDIO_TOURS.core).toHaveLength(6);
+    expect(STUDIO_TOURS.core.filter((s) => s.panelId)).toHaveLength(4);
   });
 
   const ROLE_STEPS: Record<string, string[]> = {
-    writer: ['compose', 'editor', 'planner'],
+    writer: ['compose', 'editor', 'editor', 'editor', 'planner'],
     worldbuilder: ['glossary', 'wiki', 'knowledge'],
     translator: ['translation', 'enrichment-compose'],
     enricher: ['enrichment-gaps', 'enrichment-sources'],
@@ -43,6 +43,34 @@ describe('STUDIO_TOURS (role tours)', () => {
         expect(step.titleKey).toMatch(/^intro\.tour\./);
         expect(step.bodyKey).toMatch(/^intro\.tour\./);
       }
+    }
+  });
+});
+
+// #19 Wave 3 — editor deep-dive tours (docs/specs/2026-07-06-editor-feature-inventory.md), split
+// by feature group so the tour-picker (UserGuidePanel) offers focused topics instead of one long
+// walkthrough.
+describe('STUDIO_TOURS (editor deep-dive tours, #19 Wave 3)', () => {
+  it('every EDITOR_TOUR_CATALOG entry has a corresponding non-empty STUDIO_TOURS entry', () => {
+    for (const tour of EDITOR_TOUR_CATALOG) {
+      expect(STUDIO_TOURS[tour.id], `no STUDIO_TOURS entry for catalog tour "${tour.id}"`).toBeTruthy();
+      expect(STUDIO_TOURS[tour.id].length).toBeGreaterThan(0);
+    }
+  });
+
+  it('every editor deep-dive step targets a data-testid selector and opens the editor panel', () => {
+    for (const tour of EDITOR_TOUR_CATALOG) {
+      for (const step of STUDIO_TOURS[tour.id]) {
+        expect(step.target).toMatch(/^\[data-testid="[a-z0-9-]+"\]$/);
+        expect(step.panelId).toBe('editor');
+      }
+    }
+  });
+
+  it('every EDITOR_TOUR_CATALOG entry has non-empty label/desc i18n keys under tourPicker.*', () => {
+    for (const tour of EDITOR_TOUR_CATALOG) {
+      expect(tour.labelKey).toBe(`tourPicker.${tour.id}.label`);
+      expect(tour.descKey).toBe(`tourPicker.${tour.id}.desc`);
     }
   });
 });

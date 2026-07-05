@@ -1,12 +1,14 @@
 // The default dockview panel — seeded once per book with no saved layout (useStudioLayout).
 // #19 Wave 1 extends it in place (mechanic unchanged): reads the account's onboarding role pref
-// to render tailored quick-open links + an Open User Guide action. The role picker overlay and
-// guided tour are NOT started from here (both are one-shot cross-panel actions and this is a
-// true dockview panel, isolated from StudioFrameInner's tree per DOCK-4) — reachable instead via
-// the Command Palette's "Studio: Choose Your Focus" / "Studio: Start Guided Tour", which live in
-// the same component tree as the tour/onboarding hooks and need no bus plumbing.
+// to render tailored quick-open links + an Open User Guide action. The role picker overlay is
+// still reachable only via the Command Palette's "Studio: Choose Your Focus" (a true dockview
+// panel like this one, isolated from StudioFrameInner's tree per DOCK-4, can't call its prop
+// callback directly). The guided tour's "Start Guided Tour" button below instead asks via the
+// bus (`startGuidedTour` event, consumed in StudioFrame.tsx) — the same seam Quick Open/the
+// agent's ui_focus_manuscript_unit already use to cross that boundary — since the animated tour
+// was otherwise only discoverable via the Command Palette shortcut, with no visible entry point.
 import { useTranslation } from 'react-i18next';
-import { LayoutDashboard, BookOpen } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Sparkles } from 'lucide-react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useStudioHost } from '../../host/StudioHostProvider';
 import { useStudioOnboarding } from '../../onboarding/useStudioOnboarding';
@@ -62,17 +64,28 @@ export function WelcomePanel(_props: IDockviewPanelProps) {
         </div>
       )}
 
-      <button
-        type="button"
-        data-testid="welcome-open-user-guide"
-        onClick={() => host.openPanel('user-guide', { title: t('panels.user-guide.title', { defaultValue: 'User Guide' }) })}
-        className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <BookOpen className="h-3.5 w-3.5" />
-        {t('welcome.openUserGuide', { defaultValue: 'Open the User Guide' })}
-      </button>
+      <div className="mt-1 flex items-center gap-3">
+        <button
+          type="button"
+          data-testid="welcome-open-user-guide"
+          onClick={() => host.openPanel('user-guide', { title: t('panels.user-guide.title', { defaultValue: 'User Guide' }) })}
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          {t('welcome.openUserGuide', { defaultValue: 'Open the User Guide' })}
+        </button>
+        <button
+          type="button"
+          data-testid="welcome-start-guided-tour"
+          onClick={() => host.publish({ type: 'startGuidedTour' })}
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {t('welcome.startGuidedTour', { defaultValue: 'Start Guided Tour' })}
+        </button>
+      </div>
       <p className="text-[11px] text-muted-foreground/60">
-        {t('welcome.paletteHint', { defaultValue: '⌘⇧P → "Choose Your Focus" or "Start Guided Tour" anytime' })}
+        {t('welcome.paletteHint', { defaultValue: '⌘⇧P also opens the Command Palette anytime' })}
       </p>
     </div>
   );

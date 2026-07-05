@@ -27,6 +27,18 @@ describe('applyBusEvent (pure reducer)', () => {
     const s2 = applyBusEvent(s1, { type: 'scene', sceneId: 's1', chapterId: 'c2' });
     expect(s2).toMatchObject({ activeSceneId: 's1', activeChapterId: 'c2' });
   });
+  it('startGuidedTour increments guidedTourRequestSeq from unset, then from a prior value', () => {
+    const s1 = applyBusEvent(s0, { type: 'startGuidedTour' });
+    expect(s1.guidedTourRequestSeq).toBe(1);
+    const s2 = applyBusEvent(s1, { type: 'startGuidedTour' });
+    expect(s2.guidedTourRequestSeq).toBe(2);
+  });
+  it('startGuidedTour stores the requested tourId, or undefined when omitted (role-tour fallback)', () => {
+    const s1 = applyBusEvent(s0, { type: 'startGuidedTour', tourId: 'editorBasics' });
+    expect(s1.guidedTourRequestedId).toBe('editorBasics');
+    const s2 = applyBusEvent(s1, { type: 'startGuidedTour' });
+    expect(s2.guidedTourRequestedId).toBeUndefined();
+  });
 });
 
 describe('StudioHost registry (#08 contract names)', () => {

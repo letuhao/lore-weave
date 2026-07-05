@@ -4,12 +4,12 @@
 // re-initialises, StudioDock re-seeds, and the StudioHost registry/bus re-create under the
 // correct keys. Without the remount, book B would render book A's chrome/layout/registry (the
 // review-impl HIGH #1/#2 root cause).
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { useStudioChrome } from '../hooks/useStudioChrome';
-import { StudioHostProvider, useStudioHost } from '../host/StudioHostProvider';
+import { StudioHostProvider, useStudioBusSelector, useStudioHost } from '../host/StudioHostProvider';
 import { QuickOpen } from '../palette/QuickOpen';
 import { CommandPalette } from '../palette/CommandPalette';
 import { usePaletteHotkeys, type PaletteKind } from '../palette/usePaletteHotkeys';
@@ -19,6 +19,7 @@ import { ManuscriptUnitProvider } from '../manuscript/unit/ManuscriptUnitProvide
 import type { JumpResult, ManuscriptNode } from '../manuscript/types';
 import { useStudioOnboarding } from '../onboarding/useStudioOnboarding';
 import { useStudioTour } from '../onboarding/useStudioTour';
+import { STUDIO_TOURS, type StudioTourId } from '../onboarding/tours';
 import { StudioOnboardingOverlay } from '../onboarding/StudioOnboardingOverlay';
 import { StudioGuidedTour } from '../onboarding/StudioGuidedTour';
 import { StudioTopBar } from './StudioTopBar';
@@ -54,6 +55,23 @@ function StudioFrameInner({ bookId, initialChapterId }: { bookId: string; initia
   // panels can't otherwise cross (DOCK-4).
   const onboarding = useStudioOnboarding();
   const tour = useStudioTour((panelId) => host.openPanel(panelId));
+
+  // #19 — WelcomePanel/UserGuidePanel (true dockview panels, isolated from this tree per DOCK-4)
+  // ask to start a tour via the bus instead of a prop callback. `seenTourRequestSeq` starts at the
+  // CURRENT value (not 0) so this never fires on mount — only on a genuinely NEW request published
+  // after. A `tourId` (the tour-picker's per-topic buttons) starts that exact tour; an omitted
+  // `tourId` (the WelcomePanel's quick-start button) falls back to the account's role tour.
+  const guidedTourRequestSeq = useStudioBusSelector((s) => s.guidedTourRequestSeq ?? 0);
+  const guidedTourRequestedId = useStudioBusSelector((s) => s.guidedTourRequestedId);
+  const seenTourRequestSeq = useRef(guidedTourRequestSeq);
+  useEffect(() => {
+    if (guidedTourRequestSeq !== seenTourRequestSeq.current) {
+      seenTourRequestSeq.current = guidedTourRequestSeq;
+      const requested = guidedTourRequestedId as StudioTourId | undefined;
+      const tourId = requested && requested in STUDIO_TOURS ? requested : (onboarding.role ?? 'core');
+      tour.start(tourId);
+    }
+  }, [guidedTourRequestSeq, guidedTourRequestedId, tour, onboarding.role]);
 
   // #19 G10c — suppress the palette hotkey while a tour is active (an active tour is a
   // modal-like focused state and should win); the palette's own onSelect already closes it

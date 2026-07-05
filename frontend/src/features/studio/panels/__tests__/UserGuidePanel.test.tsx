@@ -3,14 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 // react-i18next is globally mocked in vitest.setup.ts to return the KEY itself (repo
 // convention — assert on keys, not English fallback text; no need to re-mock here).
-const hostMocks = vi.hoisted(() => ({ openPanel: vi.fn(), useRegisterStudioTool: vi.fn() }));
+const hostMocks = vi.hoisted(() => ({ openPanel: vi.fn(), publish: vi.fn(), useRegisterStudioTool: vi.fn() }));
 vi.mock('../../host/StudioHostProvider', () => ({
-  useStudioHost: () => ({ openPanel: hostMocks.openPanel }),
+  useStudioHost: () => ({ openPanel: hostMocks.openPanel, publish: hostMocks.publish }),
   useRegisterStudioTool: hostMocks.useRegisterStudioTool,
 }));
 
 import { UserGuidePanel } from '../UserGuidePanel';
 import { OPENABLE_STUDIO_PANELS } from '../catalog';
+import { EDITOR_TOUR_CATALOG } from '../../onboarding/tours';
 
 const fakeProps = () => ({ api: { setTitle: vi.fn() } }) as never;
 
@@ -45,5 +46,22 @@ describe('UserGuidePanel', () => {
     const composeDef = OPENABLE_STUDIO_PANELS.find((p) => p.id === 'compose')!;
     expect(composeDef.guideBodyKey).toBe('panels.compose.guideBody');
     expect(screen.getByTestId('studio-user-guide-open-compose')).toHaveTextContent(composeDef.guideBodyKey!);
+  });
+
+  // #19 Wave 3 — the editor deep-dive tours' only discoverable entry point (previously the
+  // animated tour was reachable only via the Command Palette shortcut, no visible list).
+  describe('tour picker (#19 Wave 3)', () => {
+    it('renders a Start row for every tour in the catalog', () => {
+      render(<UserGuidePanel {...fakeProps()} />);
+      for (const tour of EDITOR_TOUR_CATALOG) {
+        expect(screen.getByTestId(`studio-user-guide-tour-${tour.id}`)).toBeInTheDocument();
+      }
+    });
+
+    it('clicking a tour row publishes startGuidedTour with that tourId', () => {
+      render(<UserGuidePanel {...fakeProps()} />);
+      fireEvent.click(screen.getByTestId('studio-user-guide-tour-editorMediaImage'));
+      expect(hostMocks.publish).toHaveBeenCalledWith({ type: 'startGuidedTour', tourId: 'editorMediaImage' });
+    });
   });
 });

@@ -298,7 +298,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     const title = (node.attrs.title as string) || t('image.default_title');
     return (
       <NodeViewWrapper className="group my-2">
-        <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
+        <div data-testid="image-block-classic-placeholder" className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
           {/* Thumbnail preview on hover */}
           {src && (
             <img src={src} alt="" className="h-6 w-6 rounded object-cover opacity-50" draggable={false} />
@@ -404,6 +404,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         ) : (
           /* Upload zone */
           <div
+            data-testid="image-block-upload-zone"
             className={cn(
               'flex flex-col items-center justify-center gap-2 rounded-t-lg border-2 border-dashed py-8 transition-colors',
               uploading
@@ -450,6 +451,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {/* Resize handle — bottom-right corner (only when image loaded) */}
         {src && (
           <div
+            data-testid="image-block-resize-handle"
             className={cn(
               'absolute bottom-1 right-1 flex h-4 w-4 cursor-nwse-resize items-center justify-center rounded-sm bg-primary/70 transition-opacity',
               selected ? 'opacity-80' : 'opacity-0 group-hover:opacity-100',
@@ -474,6 +476,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       >
         <ImageIcon className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
         <input
+          data-testid="image-block-caption"
           type="text"
           value={caption}
           onChange={handleCaptionChange}
@@ -490,6 +493,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {src && (
           <button
             type="button"
+            data-testid="image-block-replace"
             onClick={() => fileInputRef.current?.click()}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('image.replace_title')}
@@ -500,6 +504,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {src && uploadCtx?.onOpenHistory && (
           <button
             type="button"
+            data-testid="image-block-version-history"
             onClick={() => uploadCtx.onOpenHistory?.((node.attrs.blockId as string) || 'unknown', (node.attrs.title as string) || t('image.default_title'), src)}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('image.version_history')}
@@ -510,6 +515,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {/* Delete image block */}
         <button
           type="button"
+          data-testid="image-block-delete"
           onClick={() => deleteNode()}
           className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           title={t('image.delete_image_block')}
@@ -522,6 +528,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       <div className="border-t" contentEditable={false}>
         <button
           type="button"
+          data-testid="image-block-alt-toggle"
           onClick={() => setShowAlt(!showAlt)}
           className="flex w-full items-center gap-1.5 px-3 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
           aria-expanded={showAlt}
@@ -534,6 +541,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {showAlt && (
           <div className="border-t px-3 py-1.5">
             <input
+              data-testid="image-block-alt-input"
               type="text"
               value={alt}
               onChange={handleAltChange}

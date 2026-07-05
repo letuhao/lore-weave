@@ -7,7 +7,8 @@
     "title": "Writing Studio",
     "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window.",
     "openUserGuide": "Open the User Guide",
-    "paletteHint": "⌘⇧P → \"Choose Your Focus\" or \"Start Guided Tour\" anytime"
+    "startGuidedTour": "Start Guided Tour",
+    "paletteHint": "⌘⇧P also opens the Command Palette anytime"
   },
   "panels": {
     "compose": {
@@ -398,6 +399,7 @@
     "save": "Save",
     "grammar": "Grammar",
     "heatmap": "Heatmap",
+    "glossary": "Glossary",
     "focus": "Focus",
     "translate": "Translate"
   },
@@ -606,6 +608,14 @@
         "editor": {
           "title": "Editor",
           "body": "The manuscript editor — grammar, glossary hints, focus mode, and auto-save live here."
+        },
+        "grammar": {
+          "title": "Grammar & spell check",
+          "body": "Toggle live grammar and spelling checks on the current scene — powered by LanguageTool."
+        },
+        "heatmap": {
+          "title": "Continuity heatmap",
+          "body": "Highlights lines that may drift from established canon, so you can spot-check them before publishing."
         }
       },
       "actions": {
@@ -622,6 +632,14 @@
         "editor": {
           "title": "Polish the prose",
           "body": "Once a scene has words, refine it here — grammar checks, glossary hints, and focus mode all live in this editor."
+        },
+        "grammar": {
+          "title": "Catch typos as you write",
+          "body": "Toggle live grammar and spelling checks without leaving the page."
+        },
+        "heatmap": {
+          "title": "Spot continuity drift",
+          "body": "Highlights lines that may contradict established canon — worth a glance before you move on."
         },
         "planner": {
           "title": "Plan the shape of the story",
@@ -671,10 +689,149 @@
           "title": "Update the book's details",
           "body": "Title, cover, genre tags, and world link all live in Book Settings — update them any time."
         }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Grammar & spell check",
+          "body": "Toggle live grammar and spelling checks for the current scene."
+        },
+        "heatmap": {
+          "title": "Continuity heatmap",
+          "body": "Highlights lines that may drift from established canon — worth a glance before you move on."
+        },
+        "glossary": {
+          "title": "Glossary decoration",
+          "body": "Toggles inline glossary hints on hover and the `[[` autocomplete while you write."
+        },
+        "focus": {
+          "title": "Focus mode",
+          "body": "Dims everything but the current paragraph and hides the side panels — good for drafting without distraction."
+        },
+        "scenes": {
+          "title": "Scene Rail",
+          "body": "Shows this chapter's scenes — jump between them, reorder, or track status."
+        },
+        "openJson": {
+          "title": "Open as JSON",
+          "body": "Opens this same chapter as raw structured data — the same document, edits mirror live either way."
+        },
+        "originalSource": {
+          "title": "Original Source",
+          "body": "A read-only view of the pre-translation source text, if this chapter was imported."
+        },
+        "reader": {
+          "title": "Reader",
+          "body": "Opens this chapter in the reader view — how it looks to an actual reader."
+        },
+        "translate": {
+          "title": "Translate",
+          "body": "Jumps straight to this chapter's translation versions — no need to go through the full Translation matrix."
+        },
+        "save": {
+          "title": "Save",
+          "body": "Saves your changes. ⌘S / Ctrl+S works from anywhere in the editor."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Classic ⇄ AI mode",
+          "body": "Switch between a plain writing surface and one with AI tools available (selection Rewrite/Expand/Describe, continue-from-cursor)."
+        },
+        "continueStep": {
+          "title": "Continue writing with AI",
+          "body": "Streams an AI-generated continuation starting at your cursor. Select any text first to Rewrite, Expand, or Describe it instead."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "AI-edit checkpoints",
+          "body": "Every AI edit creates a restore point here — undo an AI change even after you've kept writing since."
+        },
+        "revisionHistory": {
+          "title": "Revision history",
+          "body": "Every save is a version you can preview and restore, independent of AI checkpoints."
+        },
+        "publish": {
+          "title": "Publish gate",
+          "body": "Publishing checks for unresolved canon contradictions and incomplete scenes first, so what readers see stays consistent."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Scene Rail",
+          "body": "Lists this chapter's scenes — status, synopsis, and reordering all live here."
+        },
+        "anchor": {
+          "title": "Anchor scenes",
+          "body": "Matches scene titles to headings in the prose so the rail can jump straight to them."
+        },
+        "add": {
+          "title": "Add a scene",
+          "body": "Creates a new scene entry for this chapter."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Glossary",
+          "body": "Highlights known entity names in your prose on hover, and typing `[[` opens an autocomplete to insert or link one. Turn it off here if it gets in the way while proofreading."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Images",
+          "body": "Upload, drag-and-drop, or paste an image — or generate one with AI (you pick the model explicitly, never a silent default). Once added you can replace, resize, caption, add alt text, and browse its version history."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Upload a video file, or generate a short clip with AI (explicit model picker). Replace, resize, caption, and version history all work the same as images."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Audio",
+          "body": "Insert a standalone audio block — upload a file, or generate narration with AI. Tip: hovering ANY paragraph also shows a quick upload/record/AI-generate bar to attach narration directly to that text, no block needed."
+        }
       }
     }
   },
   "userGuide": {
-    "intro": "Every tool Writing Studio can open, grouped the same way as the Command Palette."
+    "intro": "Every tool Writing Studio can open, grouped the same way as the Command Palette.",
+    "toursGroup": "Guided tours"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Editor Basics",
+      "desc": "The toolbar strip — grammar, heatmap, glossary, focus, scenes, and quick-access buttons."
+    },
+    "editorAiTools": {
+      "label": "AI Writing Tools",
+      "desc": "Continue-from-cursor, selection Rewrite/Expand/Describe, and the Classic/AI mode toggle."
+    },
+    "editorDataSafety": {
+      "label": "Data Safety",
+      "desc": "AI-edit checkpoints, revision history, and the publish gate."
+    },
+    "editorSceneRail": {
+      "label": "Scene Rail",
+      "desc": "Track scenes, reorder them, and keep the rail in sync with your prose."
+    },
+    "editorGlossary": {
+      "label": "Glossary",
+      "desc": "Inline entity hints and the `[[` autocomplete while you write."
+    },
+    "editorMediaImage": {
+      "label": "Media — Images",
+      "desc": "Upload or AI-generate images, with replace/resize/caption/version-history."
+    },
+    "editorMediaVideo": {
+      "label": "Media — Video",
+      "desc": "Upload or AI-generate short video clips."
+    },
+    "editorMediaAudio": {
+      "label": "Media — Audio & Narration",
+      "desc": "Standalone audio blocks, plus per-paragraph narration you can upload, record, or AI-generate."
+    }
   }
 }

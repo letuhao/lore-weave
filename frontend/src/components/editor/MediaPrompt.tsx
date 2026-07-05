@@ -66,6 +66,7 @@ export function MediaPrompt({
       {/* Toggle header */}
       <button
         type="button"
+        data-testid="media-prompt-toggle"
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-1.5 px-3 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
         aria-expanded={open}
@@ -84,6 +85,7 @@ export function MediaPrompt({
       {open && (
         <div className="border-t px-3 py-2">
           <textarea
+            data-testid="media-prompt-textarea"
             ref={textareaRef}
             value={prompt}
             onChange={(e) => onChange(e.target.value)}
@@ -95,7 +97,7 @@ export function MediaPrompt({
             {t('media.stored_note')}
           </p>
           {modelCapability && (
-            <div className="mt-2 flex items-center gap-2">
+            <div data-testid="media-prompt-model-picker" className="mt-2 flex items-center gap-2">
               <span className="shrink-0 text-[10px] text-muted-foreground">
                 {t('media.model_label')}
               </span>
@@ -113,6 +115,7 @@ export function MediaPrompt({
             {onRegenerate !== undefined && (
               <button
                 type="button"
+                data-testid="media-prompt-regenerate"
                 onClick={onRegenerate}
                 disabled={regenerateDisabled}
                 className={cn(
@@ -132,6 +135,7 @@ export function MediaPrompt({
             )}
             <button
               type="button"
+              data-testid="media-prompt-copy"
               onClick={handleCopy}
               disabled={!hasPrompt}
               className={cn(

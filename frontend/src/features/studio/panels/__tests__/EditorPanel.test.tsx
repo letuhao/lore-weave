@@ -132,6 +132,13 @@ describe('EditorPanel — #16 2.1/2.2 editor-craft toggles', () => {
     const btn = getByTestId('studio-editor-toggle-heatmap');
     expect(() => fireEvent.click(btn)).not.toThrow();
   });
+
+  // #16 2.4 gap fix — glossaryEnabled existed but had no visible toolbar control before this.
+  it('clicking the glossary toggle flips local state (no crash, no hook dependency)', () => {
+    const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    const btn = getByTestId('studio-editor-toggle-glossary');
+    expect(() => fireEvent.click(btn)).not.toThrow();
+  });
 });
 
 // #16 Phase 4 (M6) — the Scene Rail's fixed w-56 leaves too little room for prose on a narrow

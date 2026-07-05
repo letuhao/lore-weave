@@ -258,6 +258,16 @@ export function EditorPanel(props: IDockviewPanelProps) {
         >
           {t('editor.heatmap', { defaultValue: 'Heatmap' })}
         </button>
+        {/* #16 2.4 gap fix — glossaryEnabled existed but had no visible control; defaulted on
+            with no way for the user to turn it off (e.g. while proofreading raw prose). */}
+        <button
+          type="button"
+          data-testid="studio-editor-toggle-glossary"
+          onClick={() => setGlossaryEnabled((v) => !v)}
+          className={cn('rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground', glossaryEnabled && 'text-primary')}
+        >
+          {t('editor.glossary', { defaultValue: 'Glossary' })}
+        </button>
         <button
           type="button"
           data-testid="studio-editor-toggle-focus"

@@ -9,8 +9,12 @@
 // "are expected to pull target from a catalog tourAnchor once there are enough of them to
 // justify it" — `core`'s 4 hardcoded steps are unchanged (2 of them are chrome-only, no panel).
 import { getStudioPanelDef } from '../panels/catalog';
-
-export type StudioTourId = 'core' | 'writer' | 'worldbuilder' | 'translator' | 'enricher' | 'manager';
+// StudioTourId/EDITOR_TOUR_CATALOG live in tourCatalog.ts (no catalog.ts dependency) to avoid a
+// circular import — see that file's header comment. Re-exported here so existing consumers of
+// `tours.ts` are unaffected.
+import type { StudioTourId } from './tourCatalog';
+export type { StudioTourId, StudioTourCatalogEntry } from './tourCatalog';
+export { EDITOR_TOUR_CATALOG } from './tourCatalog';
 
 export interface StudioTourStepDef {
   /** Panel to open before this step (host.openPanel is idempotent — open-or-focus). Omit for
@@ -63,10 +67,37 @@ export const STUDIO_TOURS: Record<StudioTourId, StudioTourStepDef[]> = {
       titleKey: 'intro.tour.core.editor.title',
       bodyKey: 'intro.tour.core.editor.body',
     },
+    {
+      panelId: 'editor',
+      target: '[data-testid="studio-editor-toggle-grammar"]',
+      titleKey: 'intro.tour.core.grammar.title',
+      bodyKey: 'intro.tour.core.grammar.body',
+    },
+    {
+      panelId: 'editor',
+      target: '[data-testid="studio-editor-toggle-heatmap"]',
+      titleKey: 'intro.tour.core.heatmap.title',
+      bodyKey: 'intro.tour.core.heatmap.body',
+    },
   ],
   writer: [
     roleStep('compose', 'writer.compose'),
     roleStep('editor', 'writer.editor'),
+    // Manual (not roleStep) — these target sub-anchors INSIDE the editor panel (its grammar/
+    // heatmap toggle buttons), not the panel's own single catalog tourAnchor, so roleStep's
+    // one-anchor-per-panel shape doesn't fit. Mirrors core's grammar/heatmap steps.
+    {
+      panelId: 'editor',
+      target: '[data-testid="studio-editor-toggle-grammar"]',
+      titleKey: 'intro.tour.writer.grammar.title',
+      bodyKey: 'intro.tour.writer.grammar.body',
+    },
+    {
+      panelId: 'editor',
+      target: '[data-testid="studio-editor-toggle-heatmap"]',
+      titleKey: 'intro.tour.writer.heatmap.title',
+      bodyKey: 'intro.tour.writer.heatmap.body',
+    },
     roleStep('planner', 'writer.planner'),
   ],
   worldbuilder: [
@@ -85,5 +116,48 @@ export const STUDIO_TOURS: Record<StudioTourId, StudioTourStepDef[]> = {
   manager: [
     roleStep('sharing', 'manager.sharing'),
     roleStep('book-settings', 'manager.bookSettings'),
+  ],
+
+  // #19 Wave 3 — editor deep-dive tours. All steps open the 'editor' panel first (their anchors
+  // live inside EditorPanel/its children); a step whose anchor is conditionally rendered (e.g.
+  // Checkpoints only appears once an AI edit exists) safely SKIPS via useStudioTour's existing
+  // anchor-timeout — never blocks the rest of the tour.
+  editorBasics: [
+    { panelId: 'editor', target: '[data-testid="studio-editor-toggle-grammar"]', titleKey: 'intro.tour.editorBasics.grammar.title', bodyKey: 'intro.tour.editorBasics.grammar.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-toggle-heatmap"]', titleKey: 'intro.tour.editorBasics.heatmap.title', bodyKey: 'intro.tour.editorBasics.heatmap.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-toggle-glossary"]', titleKey: 'intro.tour.editorBasics.glossary.title', bodyKey: 'intro.tour.editorBasics.glossary.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-toggle-focus"]', titleKey: 'intro.tour.editorBasics.focus.title', bodyKey: 'intro.tour.editorBasics.focus.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-toggle-scenes"]', titleKey: 'intro.tour.editorBasics.scenes.title', bodyKey: 'intro.tour.editorBasics.scenes.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-open-json"]', titleKey: 'intro.tour.editorBasics.openJson.title', bodyKey: 'intro.tour.editorBasics.openJson.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-open-original-source"]', titleKey: 'intro.tour.editorBasics.originalSource.title', bodyKey: 'intro.tour.editorBasics.originalSource.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-open-reader"]', titleKey: 'intro.tour.editorBasics.reader.title', bodyKey: 'intro.tour.editorBasics.reader.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-open-translate"]', titleKey: 'intro.tour.editorBasics.translate.title', bodyKey: 'intro.tour.editorBasics.translate.body' },
+    { panelId: 'editor', target: '[data-testid="studio-editor-save"]', titleKey: 'intro.tour.editorBasics.save.title', bodyKey: 'intro.tour.editorBasics.save.body' },
+  ],
+  editorAiTools: [
+    { panelId: 'editor', target: '[data-testid="inline-mode-ai"]', titleKey: 'intro.tour.editorAiTools.mode.title', bodyKey: 'intro.tour.editorAiTools.mode.body' },
+    { panelId: 'editor', target: '[data-testid="inline-continue"]', titleKey: 'intro.tour.editorAiTools.continueStep.title', bodyKey: 'intro.tour.editorAiTools.continueStep.body' },
+  ],
+  editorDataSafety: [
+    { panelId: 'editor', target: '[data-testid="studio-manuscript-checkpoints"]', titleKey: 'intro.tour.editorDataSafety.checkpoints.title', bodyKey: 'intro.tour.editorDataSafety.checkpoints.body' },
+    { panelId: 'editor', target: '[data-testid="studio-revision-history"]', titleKey: 'intro.tour.editorDataSafety.revisionHistory.title', bodyKey: 'intro.tour.editorDataSafety.revisionHistory.body' },
+    { panelId: 'editor', target: '[data-testid="editorial-badge"]', titleKey: 'intro.tour.editorDataSafety.publish.title', bodyKey: 'intro.tour.editorDataSafety.publish.body' },
+  ],
+  editorSceneRail: [
+    { panelId: 'editor', target: '[data-testid="studio-scene-rail"]', titleKey: 'intro.tour.editorSceneRail.rail.title', bodyKey: 'intro.tour.editorSceneRail.rail.body' },
+    { panelId: 'editor', target: '[data-testid="scene-rail-anchor"]', titleKey: 'intro.tour.editorSceneRail.anchor.title', bodyKey: 'intro.tour.editorSceneRail.anchor.body' },
+    { panelId: 'editor', target: '[data-testid="scene-rail-add"]', titleKey: 'intro.tour.editorSceneRail.add.title', bodyKey: 'intro.tour.editorSceneRail.add.body' },
+  ],
+  editorGlossary: [
+    { panelId: 'editor', target: '[data-testid="studio-editor-toggle-glossary"]', titleKey: 'intro.tour.editorGlossary.toggle.title', bodyKey: 'intro.tour.editorGlossary.toggle.body' },
+  ],
+  editorMediaImage: [
+    { panelId: 'editor', target: '[data-testid="format-toolbar-insert-image"]', titleKey: 'intro.tour.editorMediaImage.insert.title', bodyKey: 'intro.tour.editorMediaImage.insert.body' },
+  ],
+  editorMediaVideo: [
+    { panelId: 'editor', target: '[data-testid="format-toolbar-insert-video"]', titleKey: 'intro.tour.editorMediaVideo.insert.title', bodyKey: 'intro.tour.editorMediaVideo.insert.body' },
+  ],
+  editorMediaAudio: [
+    { panelId: 'editor', target: '[data-testid="format-toolbar-insert-audio"]', titleKey: 'intro.tour.editorMediaAudio.insert.title', bodyKey: 'intro.tour.editorMediaAudio.insert.body' },
   ],
 };

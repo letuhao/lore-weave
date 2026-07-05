@@ -277,7 +277,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   if (isClassic) {
     return (
       <NodeViewWrapper className="group my-2">
-        <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
+        <div data-testid="video-block-classic-placeholder" className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
           <Video className="h-4 w-4 flex-shrink-0 opacity-40" />
           <span className="flex-1 truncate text-xs">{title}</span>
           {sizeBytes && <span className="text-[9px] opacity-50">{formatSize(sizeBytes)}</span>}
@@ -339,6 +339,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           /* Real video player with hover overlay */
           <div className="relative bg-[#0a0a0a]">
             <video
+              data-testid="video-block-player"
               src={src}
               controls
               className="block w-full rounded-t-lg"
@@ -375,6 +376,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         ) : (
           /* Upload zone */
           <div
+            data-testid="video-block-upload-zone"
             className={cn(
               'flex flex-col items-center justify-center gap-2 border-2 border-dashed py-8 transition-colors',
               uploading
@@ -419,6 +421,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {/* Resize handle — bottom-right corner (only when video loaded) */}
         {src && (
           <div
+            data-testid="video-block-resize-handle"
             className={cn(
               'absolute bottom-1 right-1 flex h-4 w-4 cursor-nwse-resize items-center justify-center rounded-sm bg-primary/70 transition-opacity',
               selected ? 'opacity-80' : 'opacity-0 group-hover:opacity-100',
@@ -443,6 +446,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       >
         <Video className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
         <input
+          data-testid="video-block-caption"
           type="text"
           value={caption}
           onChange={(e) => updateAttributes({ caption: e.target.value })}
@@ -459,6 +463,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {src && (
           <button
             type="button"
+            data-testid="video-block-replace"
             onClick={() => fileInputRef.current?.click()}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('video.replace_title')}
@@ -470,6 +475,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {src && uploadCtx?.onOpenVideoHistory && (
           <button
             type="button"
+            data-testid="video-block-version-history"
             onClick={() => uploadCtx.onOpenVideoHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('video.version_history')}
@@ -480,6 +486,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {/* Delete video block */}
         <button
           type="button"
+          data-testid="video-block-delete"
           onClick={() => deleteNode()}
           className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           title={t('video.delete_video_block')}
@@ -492,6 +499,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       <div className="border-t" contentEditable={false}>
         <button
           type="button"
+          data-testid="video-block-alt-toggle"
           onClick={() => setShowAlt(!showAlt)}
           className="flex w-full items-center gap-1.5 px-3 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
           aria-expanded={showAlt}
@@ -504,6 +512,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {showAlt && (
           <div className="border-t px-3 py-1.5">
             <input
+              data-testid="video-block-alt-input"
               type="text"
               value={alt}
               onChange={(e) => updateAttributes({ alt: e.target.value })}

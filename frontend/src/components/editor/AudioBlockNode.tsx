@@ -240,7 +240,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   if (isClassic) {
     return (
       <NodeViewWrapper className="group my-2">
-        <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
+        <div data-testid="audio-block-classic-placeholder" className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
           <Music className="h-4 w-4 flex-shrink-0 opacity-40" />
           <span className="flex-1 truncate text-xs">{title}</span>
           {sizeBytes && <span className="text-[9px] opacity-50">{formatSize(sizeBytes)}</span>}
@@ -281,6 +281,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           {/* Play/Pause button */}
           <button
             type="button"
+            data-testid="audio-block-play-pause"
             onClick={togglePlay}
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-purple-600 text-white transition hover:bg-purple-500"
             title={playing ? t('audio.pause') : t('audio.play')}
@@ -310,6 +311,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           <div className="flex gap-1" contentEditable={false}>
             <button
               type="button"
+              data-testid="audio-block-replace"
               onClick={() => fileInputRef.current?.click()}
               className="rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               title={t('audio.replace_title')}
@@ -318,6 +320,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             </button>
             <button
               type="button"
+              data-testid="audio-block-delete"
               onClick={() => deleteNode()}
               className="rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               title={t('audio.delete_audio_block')}
@@ -329,6 +332,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       ) : (
         /* Upload zone */
         <div
+          data-testid="audio-block-upload-zone"
           className={cn(
             'flex flex-col items-center justify-center gap-2 border-2 border-dashed py-8 transition-colors',
             uploading
@@ -377,6 +381,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       >
         <Music className="h-3.5 w-3.5 flex-shrink-0 text-purple-500/60" />
         <input
+          data-testid="audio-block-subtitle"
           type="text"
           value={subtitle}
           onChange={(e) => updateAttributes({ subtitle: e.target.value })}

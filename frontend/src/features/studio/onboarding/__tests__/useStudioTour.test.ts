@@ -29,11 +29,23 @@ describe('useStudioTour', () => {
     const { result } = renderHook(() => useStudioTour(onOpenPanel));
 
     act(() => { result.current.start('core'); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
 
     expect(result.current.active).toBe(true);
     expect(result.current.stepIndex).toBe(0);
     expect(onOpenPanel).not.toHaveBeenCalled(); // step 0 has no panelId
+  });
+
+  it('scrolls the anchor into view once found — joyride\'s own needsScrolling() only checks vertical overflow, so a step anchored inside a horizontally-overflowing row (e.g. the editor toolbar) would otherwise render off-screen', async () => {
+    const anchor = addAnchor('studio-activity-manuscript');
+    const scrollIntoView = vi.fn();
+    anchor.scrollIntoView = scrollIntoView;
+    const { result } = renderHook(() => useStudioTour(vi.fn()));
+
+    act(() => { result.current.start('core'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', inline: 'center' });
   });
 
   it('opens the step\'s panel before waiting for its anchor', async () => {
@@ -44,11 +56,11 @@ describe('useStudioTour', () => {
     const { result } = renderHook(() => useStudioTour(onOpenPanel));
 
     act(() => { result.current.start('core'); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
     act(() => { result.current.next(); }); // → step 1 (palette, chrome-only)
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
     act(() => { result.current.next(); }); // → step 2 (compose panel)
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
 
     expect(onOpenPanel).toHaveBeenCalledWith('compose');
   });
@@ -62,13 +74,13 @@ describe('useStudioTour', () => {
     const { result } = renderHook(() => useStudioTour(onOpenPanel));
 
     act(() => { result.current.start('core'); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
     act(() => { result.current.next(); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
     act(() => { result.current.next(); }); // compose
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
     act(() => { result.current.next(); }); // editor
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
 
     expect(onOpenPanel.mock.calls.filter((c) => c[0] === 'compose').length).toBe(1);
     expect(onOpenPanel.mock.calls.filter((c) => c[0] === 'editor').length).toBe(1);
@@ -83,7 +95,7 @@ describe('useStudioTour', () => {
     const { result } = renderHook(() => useStudioTour(onOpenPanel));
 
     act(() => { result.current.start('core'); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
     expect(result.current.stepIndex).toBe(0);
 
     act(() => { result.current.next(); }); // → step 1, whose anchor never appears
@@ -113,10 +125,10 @@ describe('useStudioTour', () => {
     }
     const { result } = renderHook(() => useStudioTour(vi.fn()));
     act(() => { result.current.start('core'); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
     for (let i = 0; i < 3; i++) {
       act(() => { result.current.next(); });
-      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(150); });
     }
     expect(result.current.stepIndex).toBe(3); // last (editor)
     act(() => { result.current.next(); }); // past the end
