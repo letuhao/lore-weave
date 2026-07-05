@@ -364,6 +364,17 @@ async def send_message(
     model_source = session["model_source"]
     model_ref = str(session["model_ref"])
 
+    # ── Chat & AI settings (M3) — resolve grounding on/off for this turn:
+    # session override ▸ account default ▸ system default (ON). OFF short-circuits
+    # retrieval + the T4 story-state net (the "grounding always on, no toggle"
+    # silent default is now a real, per-user/per-session control).
+    _grounding_pref = session.get("grounding_enabled")
+    if _grounding_pref is None:
+        from app.db.user_chat_ai_prefs import get_prefs
+        _acct_prefs = await get_prefs(pool, owner_user_id=user_id)
+        _grounding_pref = _acct_prefs.grounding.get("grounding_enabled")
+    turn_grounding_enabled = True if _grounding_pref is None else bool(_grounding_pref)
+
     # ── P4 REG-P4-01: expand a user-authored slash command (/name args) in place —
     # BEFORE the user message is persisted + streamed, so both the transcript and the
     # model see the template. Gated on a leading non-builtin /name so a normal turn
@@ -507,6 +518,7 @@ async def send_message(
             studio_context=body.studio_context.model_dump() if body.studio_context else None,
             # RAID Wave C2 (DR-C2) — HITL permission mode (ask|write, default write).
             permission_mode=body.permission_mode,
+            grounding_enabled=turn_grounding_enabled,
         ),
         media_type="text/event-stream",
         headers=headers,

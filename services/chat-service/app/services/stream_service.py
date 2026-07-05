@@ -1694,6 +1694,7 @@ async def stream_response(
     enabled_skills: list[str] | None = None,
     studio_context: dict | None = None,
     permission_mode: str = "write",
+    grounding_enabled: bool = True,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -1794,7 +1795,14 @@ async def stream_response(
     # → gate stays open (safe).
     _gate_pid = _build_project_id or (_build_project_ids[0] if _build_project_ids else None)
     _entity_tokens: frozenset[str] = frozenset()
-    if settings.t5_intent_gate_enabled and _gate_pid:
+    if not grounding_enabled:
+        # Chat & AI settings (spec §3/M3): the user explicitly turned grounding OFF
+        # for this turn. This SHORT-CIRCUITS the gate-disabled force-on branch that
+        # otherwise makes grounding unconditionally ON (the "always-on, no toggle"
+        # silent default). No retrieval is fetched; the T4 story-state net is also
+        # gated off below so a cached bible isn't injected behind the user's back.
+        _grounding_presence = EntityPresence(False, reason="user_disabled")
+    elif settings.t5_intent_gate_enabled and _gate_pid:
         try:
             _gate_book_id = await knowledge_client.resolve_book_id(
                 user_id=user_id, project_id=str(_gate_pid)
@@ -1805,7 +1813,8 @@ async def stream_response(
                 )
         except Exception:  # noqa: BLE001 — degrade to gate-open, never break the turn
             _entity_tokens = frozenset()
-    if settings.t5_intent_gate_enabled:
+        _grounding_presence = detect_entity_presence(user_message_content, _entity_tokens)
+    elif settings.t5_intent_gate_enabled:
         _grounding_presence = detect_entity_presence(user_message_content, _entity_tokens)
     else:
         # kill-switch / baseline arm: always pull grounding (pre-T5 behavior).
@@ -1850,7 +1859,7 @@ async def stream_response(
     # whole path (incl. the turn-counter query) is skipped in prod. Best-effort: a block
     # failure degrades to "no block", never breaks the turn.
     story_state_block: str | None = None
-    if settings.story_state_block_enabled:
+    if settings.story_state_block_enabled and grounding_enabled:
         try:
             # The cadence clock: the session's max message sequence — a monotonic
             # per-session counter that advances every turn (granularity is messages,

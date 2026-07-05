@@ -2169,3 +2169,51 @@ class TestResolveAndStashReasoning:
         gp = {"reasoning_effort": "medium"}
         _resolve_and_stash_reasoning(gp, self._creds(kind="lm_studio", name="qwen3-35b"))
         assert gp.get("reasoning_effort") == "medium"
+
+
+class TestGroundingToggle:
+    """M3 (spec docs/specs/2026-07-05-chat-ai-settings.md) — the explicit grounding
+    switch. When the resolved grounding_enabled is False the turn must fetch NO
+    retrieval (build_context called with grounding=False), short-circuiting the
+    'always on, no toggle' gate-disabled force-on branch. Default True preserves
+    the pre-existing always-grounded behavior."""
+
+    async def _run(self, grounding_enabled: bool):
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kclient = _patched_knowledge(stable="", volatile="")
+
+        async def fake_acompletion(**kwargs):
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client", return_value=kclient,
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_acompletion(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="where is Harker?",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                grounding_enabled=grounding_enabled,
+            ):
+                pass
+        return kclient
+
+    @pytest.mark.asyncio
+    async def test_grounding_disabled_fetches_no_retrieval(self):
+        kclient = await self._run(grounding_enabled=False)
+        assert kclient.build_context.call_args.kwargs["grounding"] is False
+
+    @pytest.mark.asyncio
+    async def test_grounding_enabled_default_pulls_grounding(self):
+        kclient = await self._run(grounding_enabled=True)
+        assert kclient.build_context.call_args.kwargs["grounding"] is True

@@ -102,6 +102,13 @@ def make_session_record(
         "enabled_tools": [],
         "enabled_skills": [],
         "activated_tools": [],
+        # Chat & AI settings override columns (M1a). grounding_enabled defaults to
+        # True here so the send path resolves grounding without the account-prefs
+        # fallback fetch (real rows are NULL = inherit; tests exercising the
+        # inherit path set it None explicitly).
+        "grounding_enabled": True,
+        "voice_overrides": None,
+        "context_overrides": None,
     }
     base.update(overrides)
     return FakeRecord(base)

@@ -22,7 +22,10 @@ function eff(): EffectiveSettings {
       temperature: { effective_value: null, source_tier: null, tier_stack: {} },
       system_prompt: { effective_value: null, source_tier: null, tier_stack: {} },
     },
-    grounding: {}, voice: {}, context: {},
+    grounding: {
+      grounding_enabled: { effective_value: true, source_tier: 'system', tier_stack: {} },
+    },
+    voice: {}, context: {},
   };
 }
 
@@ -63,6 +66,22 @@ describe('ChatAiSettingsPanel', () => {
     render(<ChatAiSettingsPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'ask' }));
     expect(patch).toHaveBeenCalledWith({ behavior: { permission_mode: 'ask' } });
+  });
+
+  it('toggling grounding off patches grounding_enabled and shows the warning', () => {
+    const patch = vi.fn().mockResolvedValue(undefined);
+    h.ed.current = makeEditor({ patch });
+    render(<ChatAiSettingsPanel />);
+    fireEvent.click(screen.getByRole('switch', { name: /ground answers/i }));
+    expect(patch).toHaveBeenCalledWith({ grounding: { grounding_enabled: false } });
+  });
+
+  it('shows the memory-off warning when grounding is disabled', () => {
+    const e = eff();
+    e.grounding.grounding_enabled = { effective_value: false, source_tier: 'account', tier_stack: {} };
+    h.ed.current = makeEditor({ effective: e });
+    render(<ChatAiSettingsPanel />);
+    expect(screen.getByText(/may invent lore as fact/i)).toBeInTheDocument();
   });
 
   it('surfaces a save error (e.g. a 412 reload)', () => {

@@ -55,6 +55,8 @@ export function ChatAiSettingsPanel() {
 
   const reasoning = String(effField(eff, 'behavior', 'reasoning_effort')?.effective_value ?? 'off');
   const permission = String(effField(eff, 'behavior', 'permission_mode')?.effective_value ?? 'write');
+  const groundingOn = eff?.grounding?.grounding_enabled?.effective_value !== false;
+  const groundingTier = eff?.grounding?.grounding_enabled?.source_tier;
 
   return (
     <div className="flex flex-col gap-8" data-testid="chat-ai-settings">
@@ -163,6 +165,36 @@ export function ChatAiSettingsPanel() {
             }}
           />
         </label>
+      </section>
+
+      {/* ── Grounding & Memory (the biggest hidden default) ── */}
+      <section className="flex flex-col gap-3">
+        <h3 className="font-serif text-base font-semibold">Grounding &amp; Memory</h3>
+        <div className="flex items-start justify-between gap-4">
+          <div className="max-w-[52ch]">
+            <span className="flex items-center text-[13px] font-medium">
+              Ground answers in my story <SourceChip tier={groundingTier} />
+            </span>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              Pull canonical entities, facts, and manuscript passages into each answer. This was
+              always on with no way to turn it off — now it's a real switch (recommended on).
+            </p>
+          </div>
+          <button
+            type="button" role="switch" aria-checked={groundingOn} aria-label="Ground answers in my story"
+            disabled={ed.saving}
+            onClick={() => void ed.patch({ grounding: { grounding_enabled: !groundingOn } })}
+            className={`mt-1 h-6 w-11 flex-none rounded-full border transition-colors ${groundingOn ? 'bg-primary border-primary' : 'bg-muted border-border'}`}
+          >
+            <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${groundingOn ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+        {!groundingOn && (
+          <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+            Grounding is off — the assistant has no access to your story bible and may invent lore as
+            fact. Turn it back on for accurate, grounded answers.
+          </p>
+        )}
       </section>
     </div>
   );
