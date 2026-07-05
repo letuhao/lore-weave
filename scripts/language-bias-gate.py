@@ -73,7 +73,11 @@ ML5_BODY_ARG = re.compile(
 ML5_WIRE_ENCODE = re.compile(r"json\.dumps\(.*\)\.encode\b")
 
 # ML-3 · ASCII-shaped regexes / whitespace tokenizing on prose.
-ML3_PROPER_NOUN = re.compile(r"\[A-Z\]\[a-z\]")           # `[A-Z][a-z]` literal
+# Catches both `[A-Z][a-z]` and `[A-Z][\w` proper-noun heuristics — the latter
+# (`[A-Z][\w'-]`, entity_detector) misses vi/ja/ko just like the former; a NEW
+# occurrence must pair with a script-aware pass (app/extraction/scripts.py) or
+# earn a baseline row.
+ML3_PROPER_NOUN = re.compile(r"\[A-Z\]\[(?:a-z|\\w)")
 ML3_WORD_TOKEN = re.compile(
     r"\\b\\w\+\\b"                                         # `\b\w+\b` literal
     r"|re\.findall\(\s*r?['\"]\\w"                         # re.findall(r"\w...")
@@ -298,7 +302,23 @@ BASELINE = {
     'ml2-naive-normalize|services/knowledge-service/app/routers/public/graph_views.py|for ch in name.strip().lower():',
     'ml2-naive-normalize|services/translation-service/app/workers/extraction_worker.py|key = (str(ent.get("kind_code", "")), name.lower())',
     'ml2-naive-normalize|services/worker-ai/app/runner.py|n = name.lower()',
-    'ml3-ascii-regex|services/knowledge-service/app/context/selectors/glossary.py|r"\\b[A-Z][a-z]+(?:[\\s\\-][A-Z][a-z]+){0,2}\\b"',
+    # entity_detector's ENGLISH capitalized-phrase pass — intentionally kept and
+    # now PAIRED with a Vietnamese-aware Latin regex + a CJK-family run pass
+    # (Pass A4, app/extraction/scripts.py). It is not English-ONLY bias, so it is
+    # baselined rather than "fixed". (glossary.py's old `[A-Z][a-z]+` was replaced
+    # by LATIN_NAME_RE, so its former baseline row is gone.)
+    'ml3-ascii-regex|services/knowledge-service/app/extraction/entity_detector.py|_CAPITALIZED_PHRASE_RE = re.compile(r"\\b[A-Z][\\w\'-]*(?:\\s+[A-Z][\\w\'-]*)*\\b")',
+    'ml3-ascii-regex|services/knowledge-service/app/extraction/entity_detector.py|r"\\b([A-Z][\\w\'-]*(?:\\s+[A-Z][\\w\'-]*)*)\\s+"',
+    # triple_extractor SVO subject regex is English-only. Making SVO extraction
+    # correct for SOV languages (ja/ko) is structural (word-order reorder, not a
+    # char-class widen) → degrade-open for now (CJK yields no triples, never a
+    # WRONG one). Tracked D-ML-TRIPLE-SVO-SCRIPT.
+    'ml3-ascii-regex|services/knowledge-service/app/extraction/triple_extractor.py|_SUBJ = r"(?P<subj>[A-Z][\\w\'-]*(?:\\s+[A-Z][\\w\'-]*)*)"',
+    # canon_check.py (D-KG-EXTRACTION-CANON-GATE POC track) — SYMMETRIC search-key
+    # lower() (both haystack + needle lowered for a substring find; the unchanged
+    # text is what's used), the same low-risk shape as the compaction.py entry
+    # below. Owned by that track for a name_normalize cleanup. See D-LANGBIAS-CANONCHECK-LOWER.
+    'ml2-naive-normalize|services/knowledge-service/app/extraction/canon_check.py|idx = text.lower().find(name.lower())',
     "ml3-word-token|frontend/src/pages/book-tabs/TranslateModal.tsx|<span className={cn('h-1.5 w-1.5 rounded-full', STATUS_BADGE[s.status].split(' ')[0])} />",
     'ml5-ensure-ascii|services/chat-service/app/events/voice_events.py|"payload": json.dumps(payload),',
     'ml5-ensure-ascii|services/chat-service/app/routers/feedback.py|message_id, json.dumps(payload),',

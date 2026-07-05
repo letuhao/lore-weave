@@ -63,6 +63,7 @@ from app.extraction.patterns import (
     get_patterns,
     split_by_language,
 )
+from app.extraction.scripts import CJK_FAMILY_RUN_RE, is_cjk_family, split_cjk_run
 
 __all__ = [
     "NegationFact",
@@ -266,10 +267,23 @@ def _fallback_trailing_np(sentence: str, start: int) -> str | None:
     """Grab a short NP immediately after the negation marker when
     no entity candidate follows. Returns None if the tail is empty
     or contains no letter-like tokens.
+
+    ML-3 degrade-open: the English `_TRAILING_NP_RE` (article + stop-word
+    lookahead) is Latin-only. When the tail begins with a CJK-family char
+    (Han/kana/hangul), fall back to the first particle-split run segment
+    instead — otherwise the English NP regex grabs the whole unspaced run
+    (no spaces ⇒ one token) including trailing particles.
     """
     tail = sentence[start:].lstrip()
     if not tail:
         return None
+    if is_cjk_family(tail[0]):
+        run_match = CJK_FAMILY_RUN_RE.match(tail)
+        if run_match is None:
+            return None
+        segments = split_cjk_run(run_match.group())
+        np = (segments[0] if segments else run_match.group()).strip()
+        return np or None
     match = _TRAILING_NP_RE.match(tail)
     if match is None:
         return None

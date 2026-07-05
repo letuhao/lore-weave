@@ -22,12 +22,17 @@ candidate names with confidence scores that K15.7 will write as
     Glossary matches land around 0.95, bare singleton capitalized
     words around 0.40.
 
-**English-first scope.** The capitalized-token heuristic is a Latin-
-script concept: CJK has no case, Vietnamese mixes diacritics, and
-Arabic has neither. K15.2 handles non-Latin text via the glossary-
-match path only. K15.3 per-language pattern sets are the home for
-script-specific candidate detectors — do NOT grow this module to
-cover them; keep it as the English + glossary baseline.
+**Script coverage (ML-3, degrade-open).** The capitalized-token
+heuristic is a Latin-script concept, but it is Vietnamese-diacritic
+aware (via `app.extraction.scripts.LATIN_NAME_RE`, so "Nguyễn" isn't
+shredded to "Nguy"). Unspaced scripts — Han, Japanese kana, Korean
+hangul — are surfaced by a bounded **CJK-family run pass** (Pass A4)
+that soft-splits runs on particles; this is degrade-open detection,
+NOT a segmenter (a real jieba/MeCab pass is tracked D-ML-SEGMENTER).
+Arabic/Thai (no case, no cheap word boundary) still rely on the
+glossary-match path. Per-language *marker* pattern sets live in
+K15.3 (`extraction/patterns/`); keep this module to the cross-script
+name-candidate baseline.
 
 **What this module deliberately does NOT do:**
   - Canonicalize names — caller does that at write time via
@@ -50,6 +55,8 @@ from collections.abc import Iterable
 
 from pydantic import BaseModel, Field
 
+from app.extraction.scripts import CJK_FAMILY_RUN_RE, split_cjk_run
+
 __all__ = [
     "EntityCandidate",
     "COMMON_NOUN_STOPWORDS",
@@ -64,6 +71,7 @@ _WEIGHT_GLOSSARY = 0.45
 _WEIGHT_QUOTED = 0.25
 _WEIGHT_VERB_ADJACENT = 0.15
 _WEIGHT_CAPITALIZED = 0.10
+_WEIGHT_SCRIPT_RUN = 0.10   # a CJK-family (Han/kana/hangul) name-run candidate
 _FREQUENCY_BONUS_PER_REPEAT = 0.05
 _FREQUENCY_BONUS_CAP = 0.20
 
@@ -97,12 +105,13 @@ COMMON_NOUN_STOPWORDS: frozenset[str] = frozenset(
 )
 
 
-# Capitalized word or phrase: one or more Capitalized tokens in a row.
-# `[A-Z][\w'-]*` matches a capitalized token with optional apostrophes
-# and hyphens ("O'Neill", "Jean-Luc"). `(?:\s+[A-Z][\w'-]*)*` chains
-# multi-word proper nouns ("Commander Zhao", "Water Kingdom").
-# We re-scan for shorter prefixes in a second pass so "Commander Zhao"
-# and "Zhao" both get counted.
+# Capitalized word or phrase: one or more Capitalized tokens in a row. Matches a
+# capitalized ASCII token with optional apostrophes and hyphens ("O'Neill",
+# "Jean-Luc") and chains multi-word proper nouns ("Commander Zhao", "Water
+# Kingdom"). We re-scan for shorter prefixes in a second pass so "Commander Zhao"
+# and "Zhao" both get counted. This is the ENGLISH pass — vi/ja/ko are handled by
+# the Vietnamese-aware Latin regex (glossary path) + Pass A4 (CJK-family runs);
+# baselined in language-bias-gate.py as an intentional, script-paired heuristic.
 _CAPITALIZED_PHRASE_RE = re.compile(r"\b[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)*\b")
 
 # Quoted names — four quote families. The CJK corner brackets 「」
@@ -363,6 +372,28 @@ def extract_entity_candidates(
             entry.add_signal("capitalized", _WEIGHT_CAPITALIZED)
             if _fold(sub_phrase) in verb_adjacent:
                 entry.add_signal("verb_adjacent", _WEIGHT_VERB_ADJACENT)
+
+    # Pass A4 — CJK-family (Han / kana / hangul) run candidates (ML-3, degrade-
+    # open). The capitalized pass can't see unspaced scripts, so a run of 2+
+    # CJK-family chars is soft-split on particles and each segment becomes a
+    # candidate. Span dedup means a run already surfaced by a CJK glossary or
+    # quoted match isn't double-counted. Korean josa aren't split (name-syllable
+    # collision), so a hangul run stays whole — degrade-open, not a segmenter.
+    for match in CJK_FAMILY_RUN_RE.finditer(text):
+        run, run_start = match.group(), match.start()
+        for segment in split_cjk_run(run):
+            entry = _get(segment)
+            if entry is None:
+                continue
+            # Locate the segment inside the run for a stable dedup span; fall
+            # back to the whole-run span if the segment isn't found verbatim.
+            off = run.find(segment)
+            seg_span = (
+                (run_start + off, run_start + off + len(segment))
+                if off >= 0 else match.span()
+            )
+            entry.bump_count_for_span(seg_span)
+            entry.add_signal("script_run", _WEIGHT_SCRIPT_RUN)
 
     # Pass B — score + materialize. Drop candidates that collected
     # zero signals (defensive — _get filters stopwords so this is
