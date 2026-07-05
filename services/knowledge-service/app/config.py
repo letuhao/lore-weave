@@ -90,6 +90,13 @@ class Settings(BaseSettings):
     # on the empty path only; default ON (a miss-path fallback, not a re-ranker).
     context_l2_retry_widened: bool = True
 
+    # M1a (2026-07-06) — passage→graph anchor bridge. After L2 facts + L3 passages
+    # are retrieved, 1-hop-expand entities the PASSAGES surfaced that the message
+    # didn't anchor, injecting the new relations into the L2 facts block. Deploy
+    # CEILING / kill-switch (default ON) — a per-turn Mode-3 assembly step, not a
+    # per-user setting. See docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md.
+    context_passage_graph_expansion_enabled: bool = True
+
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0

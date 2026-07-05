@@ -31,6 +31,7 @@ import logging
 from dataclasses import dataclass, field
 
 from app.context.intent.classifier import Intent, IntentResult
+from app.context.selectors.glossary import extract_candidates
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.entities import find_entities_by_name
 from app.db.neo4j_repos.facts import list_facts_by_type
@@ -43,7 +44,14 @@ from app.db.neo4j_repos.relations import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["L2FactResult", "select_l2_facts", "format_relation", "format_relation_hop"]
+__all__ = [
+    "L2FactResult",
+    "select_l2_facts",
+    "format_relation",
+    "format_relation_hop",
+    "select_bridge_anchor_names",
+    "expand_facts_from_passages",
+]
 
 
 # Per-selector caps. The formatter will compress beyond this, but the
@@ -264,3 +272,121 @@ async def select_l2_facts(
         len(result.negative),
     )
     return result
+
+
+# ── M1a: passage→graph anchor bridge (2026-07-06) ────────────────────
+#
+# `select_l2_facts` anchors graph expansion ONLY on `intent.entities` — the
+# proper nouns the classifier pulled from the MESSAGE. The M4 measurement
+# (docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md) showed that on
+# natural questions naming no entity ("what happened at the castle?") the
+# classifier extracts nothing, so the whole L2 graph-fact layer is dark — even
+# though the semantically-retrieved PASSAGES clearly name relation-bearing
+# entities (6/6 such queries). This bridge expands 1-hop from the entities the
+# passages surfaced that the message did NOT anchor, injecting the new relations
+# into the L2 facts block. Caps mirror the A/B config (0 regressions there).
+_MAX_BRIDGE_ANCHORS = 6
+_MAX_BRIDGE_RELS_PER_ANCHOR = 5
+_MAX_BRIDGE_NEW_FACTS = 20
+
+
+def select_bridge_anchor_names(
+    passage_texts: list[str],
+    already_anchored_names: set[str],
+    *,
+    max_anchors: int = _MAX_BRIDGE_ANCHORS,
+) -> list[str]:
+    """Proper-noun candidates the PASSAGES surfaced that the message did not
+    already anchor.
+
+    Passages are processed in RANK order and first-seen wins under the cap, so
+    the selection is DETERMINISTIC — the most query-relevant passage entities
+    survive (this fixes the non-deterministic set-ordering cap the M4 harness
+    had). Case-insensitive dedup; any name already anchored by the message-driven
+    L2 selector is skipped so we never double-expand it. Pure — no I/O — so the
+    cap/dedup logic is unit-testable without a Neo4j session.
+    """
+    already = {n.lower() for n in already_anchored_names}
+    seen: set[str] = set()
+    out: list[str] = []
+    for text in passage_texts:
+        for cand in extract_candidates(text):
+            low = cand.lower()
+            if low in already or low in seen:
+                continue
+            seen.add(low)
+            out.append(cand)
+            if len(out) >= max_anchors:
+                return out
+    return out
+
+
+async def expand_facts_from_passages(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    passage_texts: list[str],
+    already_anchored_names: set[str],
+    existing_facts: set[str],
+    min_confidence: float = 0.8,
+    max_anchors: int = _MAX_BRIDGE_ANCHORS,
+    max_rels_per_anchor: int = _MAX_BRIDGE_RELS_PER_ANCHOR,
+    max_new_facts: int = _MAX_BRIDGE_NEW_FACTS,
+) -> list[str]:
+    """M1a — 1-hop expand entities the passages surfaced but the message missed.
+
+    Returns NEW fact strings (deduped against `existing_facts` and each other),
+    ready to append to `L2FactResult.background`. Reuses the exact resolver
+    (`find_entities_by_name`) and 1-hop primitive (`find_relations_for_entity`)
+    the message-anchored path uses, with the same confidence + archived-peer
+    filters. Bounded by `max_anchors × max_rels_per_anchor` and `max_new_facts`.
+
+    Best-effort at the candidate grain: a name that fails to resolve or expand is
+    skipped, never raised — the caller wraps the whole call in a degrade-to-empty
+    guard, but per-candidate resilience means one bad anchor can't starve the rest.
+    """
+    anchor_names = select_bridge_anchor_names(
+        passage_texts, already_anchored_names, max_anchors=max_anchors
+    )
+    if not anchor_names:
+        return []
+
+    new_facts: list[str] = []
+    seen_ids: set[str] = set()
+    for name in anchor_names:
+        if len(new_facts) >= max_new_facts:
+            break
+        matches = await find_entities_by_name(
+            session, user_id=user_id, project_id=project_id, name=name
+        )
+        if not matches:
+            continue
+        # Repo orders anchored > discovered; take the best match. Dedup by id so
+        # two surface names for one entity don't double-expand.
+        eid = matches[0].id
+        if eid in seen_ids:
+            continue
+        seen_ids.add(eid)
+        rels = await find_relations_for_entity(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            entity_id=eid,
+            min_confidence=min_confidence,
+            limit=max_rels_per_anchor,
+        )
+        for r in rels:
+            f = format_relation(r)
+            if f in existing_facts or f in new_facts:
+                continue
+            new_facts.append(f)
+            if len(new_facts) >= max_new_facts:
+                break
+
+    if new_facts:
+        logger.debug(
+            "M1a: passage→graph bridge expanded %d anchors → %d new facts",
+            len(anchor_names), len(new_facts),
+        )
+    return new_facts

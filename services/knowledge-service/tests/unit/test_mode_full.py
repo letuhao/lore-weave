@@ -1288,3 +1288,63 @@ async def test_mode3_sections_empty_everything_still_has_project_and_instruction
     )
     assert set(result.sections) >= {"project", "instructions"}
     assert "facts" not in result.sections
+
+
+# ── M1a: passage→graph anchor bridge wiring ──────────────────────────
+
+@pytest.mark.asyncio
+async def test_m1a_bridge_facts_appear_in_context(monkeypatch):
+    """When passages are present, bridge-expanded facts land in the facts block."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text="He arrived at the inn late at night.",
+            source_type="chapter", source_id="chap-1", chunk_index=0,
+            score=0.9, is_hub=False, chapter_index=1,
+        ),
+    ]
+    # Message-anchored L2 finds nothing (natural query) → bridge is the only source.
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages, l2_result=L2FactResult())
+    monkeypatch.setattr(
+        "app.context.modes.full._safe_expand_from_passages",
+        AsyncMock(return_value=["Count Dracula — hosts — Jonathan Harker"]),
+    )
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="Who did he meet at the inn?",
+    )
+    assert "Count Dracula — hosts — Jonathan Harker" in result.context
+    assert "<facts>" in result.context
+
+
+@pytest.mark.asyncio
+async def test_m1a_bridge_kill_switch_disables_expansion(monkeypatch):
+    """context_passage_graph_expansion_enabled=False → bridge is never called."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text="He arrived at the inn.", source_type="chapter",
+            source_id="chap-1", chunk_index=0, score=0.9, is_hub=False,
+            chapter_index=1,
+        ),
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages, l2_result=L2FactResult())
+    bridge = AsyncMock(return_value=["SHOULD — not — APPEAR"])
+    monkeypatch.setattr("app.context.modes.full._safe_expand_from_passages", bridge)
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.context_passage_graph_expansion_enabled", False
+    )
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="Who did he meet at the inn?",
+    )
+    bridge.assert_not_called()
+    assert "SHOULD — not — APPEAR" not in result.context

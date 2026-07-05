@@ -1,6 +1,15 @@
 # Context Retrieval Improvements — plan
 
-**Date:** 2026-07-06 · **Branch:** `feat/context-budget-law` · **Status:** PLAN (not yet built).
+**Date:** 2026-07-06 · **Branch:** `feat/context-budget-law` · **Status:** M4 measured + answer-quality
+A/B run (through a `/review-impl` correction) → **M1a = GO, but a measured one.** Evidence
+([`docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md`](../eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md)):
+STRONG mechanism legs — (1) 100%-consistent coverage gap; (2) **6/6 natural queries** produce EMPTY
+facts-anchors today (L2 graph layer dark when the message names no entity). WEAK-but-positive answer
+quality — on a *passage-inclusive* baseline with truncation excluded, **+14% overall / +50%
+bridge-class, 0 regressions across every fair run**, but ~1 stable win and a magnitude too
+small/noisy (N=15, one small book) to call large. The first "+28%/2× Pareto-safe" headline was
+**deflated** by the review (baseline had wrongly omitted passages). GO is justified by the
+empty-anchor rescue + zero-regression safety, not a dramatic lift. See "Resolved edge cases" #6.
 
 **Source:** the comparative research in [`docs/research/context-management/`](../research/context-management/)
 (loreweave audit `01` + Continue/Zed/Aider/Cline architecture studies `02`–`05` + the synthesized
@@ -40,6 +49,48 @@ KG extraction pipeline is a more trustworthy source of truth than self-reported 
 So the six-item set reduces to **four genuinely-new efforts (R1, R4, R5) + one now-unblocked measurement (R6)**, plus the two small residuals above.
 
 ---
+
+## Resolved edge cases (verified against code 2026-07-06 — supersedes the M1 table below where they conflict)
+
+The original M1 assumed primitives are wired where they aren't. Five corrections, each grounded:
+
+1. **M1b working-scope boost is NOT free assembly — split it out.** `editor_context` lives **only in
+   chat-service** (`stream_service.py`/`messages.py`/`frontend_tools.py`); it is **absent from
+   knowledge-service** and from the grounding-request contract, and `current_chapter_index` is **not
+   populated** by `_safe_l3_passages` today (`full.py:115`). So M1b needs a real cross-service field
+   addition (grounding-request DTO + chat-service populating book_id/chapter_id + threading to the
+   selector). **M1 splits: M1a (graph expansion) ships alone; M1b becomes its own small cross-service
+   slice, sized honestly — not folded into "one pass."**
+2. **Use the right primitive.** `find_relations_for_entity` ([`relations.py:611`](../../services/knowledge-service/app/db/neo4j_repos/relations.py))
+   is a genuine **1-hop, both-directions, project-scoped, confidence + archived-peer filtered**
+   traversal — the correct anchor for M1a. Do **not** "trim `find_relations_2hop`" (that one is
+   2-hop, outgoing-only, and *mandates* `hop1_types`).
+3. **Anchors + injection site.** `passages.py` returns *passages*, not entities — you cannot graph-
+   expand from it. Anchors already exist: `select_l2_facts` resolves entity IDs and `full.py` builds
+   `surfaced_entity_ids` (`full.py:798`). **M1a's home is the L2 FACTS path in `full.py`** (expand
+   from surfaced entities, inject related facts into the facts block) — NOT "after MMR in
+   `passages.py`."
+4. **M1a design invariants:** degree-cap per anchor + a few-hundred-token total budget (unit-tested on
+   the capped helper); **dedup expanded relations against those `select_l2_facts` already surfaced**;
+   degrade to empty on neo4j timeout/failure like `_safe_l3_passages`; run before the final budget
+   trim but capped so it can't starve passages; inherit the project-scope + confidence + archived-peer
+   filters (`find_relations_for_entity` already applies them).
+5. **M4 corpus caveat.** Dracula (6ch/~100 entities) proves the pipeline end-to-end but is thin for a
+   multi-hop relational eval; use **万古神帝 (4233ch/308 entities)** as M1's eval corpus and Dracula as
+   the smoke.
+6. **[DECISIVE — 2026-07-06] The graph traversal M1a proposed already exists in the FACTS selector.**
+   `select_l2_facts` ([`facts.py:189`](../../services/knowledge-service/app/context/selectors/facts.py))
+   runs **1-hop `find_relations_for_entity` every turn**, plus **2-hop `find_relations_2hop` on
+   relational intent** (facts.py:211), plus a **widened 2-hop retry on an empty 1-hop miss**
+   (`full.py:733`, P4/R-T4-06). So "retrieval never traverses the graph" is true only for the
+   *passage* selector; the *facts* path traverses today. Building "1-hop graph expansion" as originally
+   framed would **duplicate facts.py**. The genuine residual is narrower: graph expansion is anchored
+   **only on `intent_obj.entities`** (entities the classifier pulled from the message text), NOT on
+   entities surfaced by semantic passage retrieval (`l3_passages`) or the salience-ranked glossary
+   `entities` set. The real M1a, if justified, is a **"vector-hits-feed-the-graph" anchor bridge** —
+   value **unproven**. **Decision: run M4 measurement FIRST** (multi-hop recall AFTER the existing
+   facts.py traversal); build the bridge only if the numbers show a real miss. Perf/recall items fix
+   when measurement shows pain (CLAUDE.md defer-gate #4 / No-Defer-Drift).
 
 ## The plan — ordered by leverage-per-risk
 

@@ -1,5 +1,34 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**M1a passage→graph anchor bridge SHIPPED 2026-07-06** (context-retrieval track,
+`docs/plans/2026-07-06-context-retrieval-improvements.md`). **Root finding that reframed the work:**
+the plan's "retrieval never traverses the graph" was FALSE — `select_l2_facts` already does 1-hop +
+2-hop + widened-retry; the *real* gap is that graph expansion anchors ONLY on `intent.entities` (what
+the classifier pulls from the message), so natural queries naming no entity get ZERO graph facts (M4:
+6/6 such queries). M1a expands 1-hop from entities the retrieved PASSAGES surfaced that the message
+didn't anchor, injecting the relations into the L2 facts block. New `facts.py`
+`select_bridge_anchor_names` (pure, deterministic rank-order cap — reuses `extract_candidates`) +
+`expand_facts_from_passages` (reuses `find_entities_by_name`/`find_relations_for_entity`); `full.py`
+`_safe_expand_from_passages` wrapper (degrade-safe, mirrors `_safe_l2_facts`) wired after the widened
+retry, before L1-dedup; kill-switch `context_passage_graph_expansion_enabled` (default ON, deploy
+ceiling per SET). **Evidence (`docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md`):** 100%
+coverage gap + 6/6 empty-anchor rescue (STRONG); answer-quality A/B **weak-but-positive, 0 regressions
+across every fair run** (+14% overall on the most-rigorous config). **A `/review-impl` caught a HIGH
+methodology flaw** — the first A/B starved the baseline of the passages production actually serves;
+fixing it (passages in both arms + truncation-exclusion + single-model, since lm_studio thrashes on
+2-model configs) DEFLATED the inflated "+28%/2×" headline but the bridge still never regressed. GO
+justified by empty-anchor rescue + zero-regression safety, not a large lift. **VERIFY:** 20 M1a unit
+tests green; full knowledge unit suite **3599 passed** (0 new failures — 4 pre-existing reds confirmed
+via stash-baseline: `test_mode_full` 3× budget/summary + `test_internal_dispatch` 1×, all unrelated);
+**live-smoke** on real Dracula (embed→passages→bridge): natural "who did he meet at the inn?" → 0→**7
+real graph facts** (Count Dracula hosts/imprisoned_by Harker). **NEXT on this track:** M2 R3-residual
+(point checklist-gate at `context-budget-law.md §11a`); a larger multilingual eval corpus (real
+`D-EVAL-BOOK` — only Dracula is a wired test-account project today) for a robustness A/B; M3 pull-mode
+pilot. **Container note:** infra-knowledge-service-1 has the new `facts.py` copied in for the smoke but
+OLD `full.py`/`config.py` — rebuild the image for M1a to run in live grounding.
+
+---
+
 **`sg_value_shift_per_scene` ADOPTED as PlanForge's 8th rule, ADVISORY tier, 2026-07-06** (user
 picked "Adopt Story Grid rule vào validator thật" — closing out
 `docs/specs/2026-07-05-narrative-forge/00_METHODOLOGY.md` §5 decision 3). `run_rules()` now

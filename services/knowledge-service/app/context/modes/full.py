@@ -48,7 +48,11 @@ from app.context.formatters.xml_escape import sanitize_for_xml
 from app.context.intent.classifier import Intent, IntentResult, classify
 from app.context.modes.no_project import BuiltContext, split_at_boundary
 from app.context.selectors.absence import detect_absences
-from app.context.selectors.facts import L2FactResult, select_l2_facts
+from app.context.selectors.facts import (
+    L2FactResult,
+    expand_facts_from_passages,
+    select_l2_facts,
+)
 from app.context.query_embedding import embed_query_cached
 from app.context.selectors.glossary import select_glossary_for_context
 from app.context.selectors.salience import apply_salience
@@ -110,6 +114,49 @@ async def _safe_l2_facts(
             user_id, project.project_id, exc_info=True,
         )
         return L2FactResult()
+
+
+async def _safe_expand_from_passages(
+    *,
+    user_id: UUID,
+    project: Project,
+    passage_texts: list[str],
+    already_anchored_names: set[str],
+    existing_facts: set[str],
+) -> list[str]:
+    """M1a bridge wrapper — 1-hop expand entities the passages surfaced but the
+    message didn't anchor. Degrades to ``[]`` on any failure/timeout (mirrors
+    ``_safe_l2_facts``): the bridge is strictly-additive recall, so a failure
+    must never break the L2 facts the message-anchored path already produced.
+    """
+    if not passage_texts:
+        return []
+    try:
+        async with neo4j_session() as session:
+            return await asyncio.wait_for(
+                expand_facts_from_passages(
+                    session,
+                    user_id=str(user_id),
+                    project_id=str(project.project_id),
+                    passage_texts=passage_texts,
+                    already_anchored_names=already_anchored_names,
+                    existing_facts=existing_facts,
+                ),
+                timeout=settings.context_l2_timeout_s,
+            )
+    except asyncio.TimeoutError:
+        layer_timeout_total.labels(layer="l2_bridge").inc()
+        logger.warning(
+            "Mode 3 M1a passage→graph bridge timeout user_id=%s project_id=%s",
+            user_id, project.project_id,
+        )
+        return []
+    except Exception:
+        logger.warning(
+            "Mode 3 M1a passage→graph bridge failed user_id=%s project_id=%s — degrading",
+            user_id, project.project_id, exc_info=True,
+        )
+        return []
 
 
 async def _safe_l3_passages(
@@ -752,6 +799,31 @@ async def build_full_mode(
                 l2_retry.total(), project.project_id,
             )
             l2_facts = l2_retry
+
+    # M1a — passage→graph anchor bridge. The message-anchored L2 selector above
+    # only expands `intent.entities`; on natural queries that name no entity it
+    # yields nothing (M4: 6/6 such queries). Expand 1-hop from the entities the
+    # retrieved PASSAGES surfaced that the message didn't anchor, and append the
+    # new relations to the fact block. Strictly-additive recall, degrade-safe,
+    # capped; deploy kill-switch `context_passage_graph_expansion_enabled`.
+    if settings.context_passage_graph_expansion_enabled and l3_passages:
+        _existing_facts = set(
+            l2_facts.current + l2_facts.recent
+            + l2_facts.background + l2_facts.negative
+        )
+        _bridge_facts = await _safe_expand_from_passages(
+            user_id=user_id,
+            project=project,
+            passage_texts=[p.text for p in l3_passages],
+            already_anchored_names={e.lower() for e in intent_obj.entities},
+            existing_facts=_existing_facts,
+        )
+        if _bridge_facts:
+            l2_facts.background.extend(_bridge_facts)
+            logger.info(
+                "M1a: passage→graph bridge added %d facts (project=%s)",
+                len(_bridge_facts), project.project_id,
+            )
 
     # K18.4: drop L2 rows already expressed by the L1 summary so the
     # graph doesn't duplicate authored prose.
