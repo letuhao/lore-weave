@@ -109,7 +109,6 @@ async def test_coordinator_no_emit_when_no_row(monkeypatch):
 async def test_check_job_completion_emits_completed(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(worker_mod, "emit_job_event", spy)
-    monkeypatch.setattr(worker_mod, "_send_translation_notification", AsyncMock())
     # P4 — cost is DERIVED out-of-tx via the estimate oracle; mock the resolver so the
     # test doesn't make a real HTTP call and the asserted cost is deterministic.
     cost_spy = AsyncMock(return_value=0.42)
@@ -143,7 +142,6 @@ async def test_check_job_completion_emits_completed(monkeypatch):
 async def test_check_job_completion_maps_partial_to_completed(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(worker_mod, "emit_job_event", spy)
-    monkeypatch.setattr(worker_mod, "_send_translation_notification", AsyncMock())
     monkeypatch.setattr(worker_mod, "resolve_job_cost_usd", AsyncMock(return_value=None))
     pool = FakeConn({
         "status": "partial", "completed_chapters": 2, "failed_chapters": 1,

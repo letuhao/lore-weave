@@ -323,6 +323,25 @@ EXCEPTION
     WHEN undefined_object THEN
         RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
 END $$;
+
+-- D-C-PRODUCER-OUTBOX — transactional outbox (standard worker-infra shape: the shared
+-- relay drains published_at IS NULL). auth had none; the mcp_approval owner notification
+-- was a fire-and-forget POST lost if notification-service was down. Now it's written here
+-- in the same tx as the approval INSERT and the relay delivers it (aggregate_type=
+-- 'notification' ⇒ POST to notification-service, idempotent via the payload's dedup_key).
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  event_type     TEXT NOT NULL,
+  aggregate_type TEXT NOT NULL DEFAULT 'notification',
+  aggregate_id   UUID,
+  payload        JSONB NOT NULL,
+  published_at   TIMESTAMPTZ,
+  retry_count    INT NOT NULL DEFAULT 0,
+  last_error     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_auth_outbox_pending
+  ON outbox_events (created_at) WHERE published_at IS NULL;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

@@ -161,10 +161,12 @@ func main() {
 	// Register tasks
 	reg := registry.New()
 	reg.Register(&tasks.OutboxRelay{
-		Sources:     cfg.OutboxSources,
-		SourcePools: sourcePools,
-		EventsPool:  eventsPool,
-		Redis:       rdb,
+		Sources:       cfg.OutboxSources,
+		SourcePools:   sourcePools,
+		EventsPool:    eventsPool,
+		Redis:         rdb,
+		NotifyURL:     cfg.NotificationServiceURL,
+		InternalToken: cfg.InternalToken,
 	})
 	reg.Register(&tasks.OutboxCleanup{
 		Sources:     cfg.OutboxSources,

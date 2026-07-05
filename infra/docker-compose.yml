@@ -1305,7 +1305,14 @@ services:
       # aggregate_type='translation_eval') to loreweave:events:translation_eval for
       # the campaign projection. Replaces the prior best-effort XADD (lost emit =
       # dropped eval_fidelity_score).
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition,campaign:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_campaign,lore_enrichment:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment,video_gen:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen,learning:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_learning"
+      # D-C-PRODUCER-OUTBOX: auth added so the relay drains its NEW outbox — the
+      # mcp_approval owner notification (aggregate_type='notification') is now written
+      # in the approval tx and DELIVERED to notification-service (NOTIFICATION_SERVICE_URL
+      # below), replacing the fire-and-forget POST. translation + composition already
+      # emit 'notification' rows on their existing outboxes (same delivery path).
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition,campaign:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_campaign,lore_enrichment:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment,video_gen:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen,learning:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_learning,auth:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_auth"
+      # D-C-PRODUCER-OUTBOX — where the relay delivers notification-typed outbox rows.
+      NOTIFICATION_SERVICE_URL: http://notification-service:8091
       # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
       # learning-service's append-only correction log; a longer retention on the
       # source outbox rows + event_log is the replay backstop so a learning-

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // Public MCP human-approval queue (P4 / OD-2, docs/specs/2026-06-26-public-mcp/03 §6.3).
@@ -98,8 +98,20 @@ func (s *Server) internalCreateApproval(w http.ResponseWriter, r *http.Request) 
 		preview = req.Preview
 	}
 
+	// D-C-PRODUCER-OUTBOX — the approval INSERT + the owner notification are written in
+	// ONE tx (atomic), so the notification can't be lost after the approval commits. The
+	// former `go s.notifyApprovalPending(...)` POST was fire-and-forget-swallowed if
+	// notification-service was down; now worker-infra's relay drains the outbox row and
+	// delivers it, idempotent via the payload's dedup_key.
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "approval tx failed")
+		return
+	}
+	defer tx.Rollback(r.Context()) // no-op after a successful Commit
+
 	var approvalID uuid.UUID
-	err = s.pool.QueryRow(r.Context(), `
+	err = tx.QueryRow(r.Context(), `
 		INSERT INTO mcp_pending_approvals
 			(key_id, owner_user_id, tool_name, domain, confirm_token, preview, cost_estimate_usd, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -111,8 +123,15 @@ func (s *Server) internalCreateApproval(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Fire-and-forget owner notification (best-effort — never block/fail the divert).
-	go s.notifyApprovalPending(ownerID, approvalID, req.ToolName)
+	if err := insertApprovalNotificationOutbox(r.Context(), tx, ownerID, approvalID, req.ToolName); err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "approval notification enqueue failed")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "approval commit failed")
+		return
+	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{"approval_id": approvalID.String()})
 }
@@ -398,33 +417,39 @@ func (s *Server) replayConfirm(ctx context.Context, baseURL, domain, token strin
 	return resp.StatusCode, body, nil
 }
 
-// notifyApprovalPending fires a best-effort owner notification (HTTP ingest, no broker).
-func (s *Server) notifyApprovalPending(owner, approvalID uuid.UUID, toolName string) {
-	if s.cfg.NotificationServiceInternalURL == "" || s.cfg.InternalServiceToken == "" {
-		return
-	}
-	meta, _ := json.Marshal(map[string]any{"approval_id": approvalID.String(), "tool_name": toolName})
-	payload, _ := json.Marshal(map[string]any{
+// approvalNotificationBody builds the notification-service ingest body for an
+// "agent action awaiting approval" owner notification. Pure so the body/dedup_key
+// are unit-testable without a DB. The deterministic dedup_key makes the relay's
+// at-least-once delivery idempotent (one notification per approval).
+func approvalNotificationBody(owner, approvalID uuid.UUID, toolName string) map[string]any {
+	return map[string]any{
 		"user_id":  owner.String(),
 		"category": "mcp_approval",
 		"title":    "Agent action awaiting your approval",
 		"body":     "An MCP agent requested: " + toolName + ". Review and approve or deny it.",
-		"metadata": json.RawMessage(meta),
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		s.cfg.NotificationServiceInternalURL+"/internal/notifications/", bytes.NewReader(payload))
-	if err != nil {
-		return
+		"metadata": map[string]any{
+			"approval_id": approvalID.String(),
+			"tool_name":   toolName,
+		},
+		"dedup_key": "mcp_approval:" + approvalID.String(),
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
-	resp, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
+}
+
+// insertApprovalNotificationOutbox writes the owner notification into the transactional
+// outbox within tx (D-C-PRODUCER-OUTBOX) — atomic with the approval INSERT, so the
+// notification can't be lost once the approval commits. aggregate_type='notification'
+// ⇒ worker-infra's relay POSTs the payload to notification-service's ingest.
+func insertApprovalNotificationOutbox(ctx context.Context, tx pgx.Tx, owner, approvalID uuid.UUID, toolName string) error {
+	payload, err := json.Marshal(approvalNotificationBody(owner, approvalID, toolName))
 	if err != nil {
-		return
+		return err
 	}
-	_ = resp.Body.Close()
+	_, err = tx.Exec(ctx, `
+		INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
+		VALUES ($1, 'notification', $2, $3)`,
+		"notification.requested", approvalID, payload,
+	)
+	return err
 }
 
 // scanApprovalView reads one row into a view, projecting a pending-but-expired row to "expired".

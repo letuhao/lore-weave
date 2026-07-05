@@ -1410,10 +1410,13 @@ class AuthoringRunService:
                     f"{units_drafted} chapter(s) drafted before the stop"
                 )
             notify = self._notify_impl
-            if notify is None:  # lazy real client (keeps unit tests httpx-free)
-                from app.clients.notification_client import NotificationClient
+            if notify is None:  # lazy real producer (keeps unit tests db/httpx-free)
+                # D-C-PRODUCER-OUTBOX — durable outbox enqueue (relay-delivered),
+                # not the former fire-and-forget POST that was lost if the ingest
+                # was down. See app/clients/outbox_notifier.py for the tx rationale.
+                from app.clients.outbox_notifier import OutboxNotifier
 
-                notify = NotificationClient()
+                notify = OutboxNotifier()
             await notify.notify(
                 run.owner_user_id,
                 title=title,
