@@ -421,3 +421,38 @@ architecture (grounding not re-sent every turn) or genuinely small-context model
 would dominate and compaction would actually engage. Retention itself is a non-issue in these
 sessions: with no compaction, planted facts stay verbatim in the ~8K context (the 15-turn plant→recall
 probe recalled all three synthetic canon facts perfectly).
+
+### 8.5 CLEAN blind-judge A/B (pure gemma-4, both runs) — baseline vs full-tiers candidate
+Re-ran the blind judge on two **uncontaminated** pure-gemma-4 runs (lore-scout=gemma-4):
+RUN_A = `baseline_gemma4_puresubagent` (all tiers OFF) vs RUN_B = `candidate_gemma4_puresubagent`
+(T5+T4+D13a ON). Judge blind to which is which. **Means are IDENTICAL on every dimension:**
+
+| dim | baseline (A) | candidate T5+T4+D13a (B) |
+|---|--:|--:|
+| correctness | 4.5 | 4.5 |
+| groundedness | 4.67 | 4.67 |
+| continuity | 4.67 | 4.67 |
+| helpfulness | 4.83 | 4.83 |
+| craft_quality | 3.17 | 3.17 |
+
+Three clean conclusions:
+1. **Protagonist confab GONE** — `lore_recall_primary` scores **5/5 correctness both runs** ("Correctly
+   IDs Jonathan Harker as prisoner in Castle Dracula"). Confirms §8.2: the Round-1 "Dracula" confab
+   was a qwen artifact, fully resolved on gemma-4.
+2. **The tiers add ZERO measurable quality** — baseline ≡ candidate across every dimension. Flipping
+   T5+T4+D13a on buys nothing on this workload (consistent with §8.4: they're inert). **Reinforces
+   keep-default-OFF** — cost without benefit.
+3. **NEW real defect (both configs, model-tier):** on the firm-name needle it doesn't have indexed,
+   gemma-4 **confabulates a wrong name** (RUN_A "Holmgood, Voss & Co."; RUN_B "Seward & Co.") presented
+   as the "original-novel" fact — instead of using `story_search mode=exact "Hawkins"` (which finds the
+   real "Peter Hawkins of Exeter") or honestly declining. This caps `continue_writing` correctness at 2
+   for both. **`D-AGENT-NEEDLE-CONFAB`** (model-behavior, not a repo bug): the agent hallucinates a
+   plausible answer from training rather than reaching for the lexical tool on a specific-detail recall.
+   Worth a prompt/tool-routing nudge (or a stronger model) — but note it's *less* severe than the qwen
+   protagonist error, and the agent is otherwise correct + grounded (correctness 4.5, groundedness 4.67).
+
+**Bottom line (clean):** the shipped-default agent (all tiers off, gemma-4) is a genuinely capable
+grounded continue-writer — correct protagonist/arc, strong Gothic craft, honest on most gaps; the
+Context-Budget tiers (T5/T4/D13a) add no measurable quality on this workload and should stay OFF; the
+one real residual is a needle-recall confabulation that wants tool-routing help or a stronger model.
+Clean transcripts: `runs/continue-writing-2026-07-05/{baseline,candidate}_gemma4_puresubagent.transcript.jsonl`.
