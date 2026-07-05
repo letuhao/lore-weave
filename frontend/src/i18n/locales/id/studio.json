@@ -7,7 +7,8 @@
     "title": "Writing Studio",
     "body": "Ruang kerja yang dapat ditempelkan untuk buku ini. Panel (compose, planner, cast, quality…) akan ditambahkan di sini satu per satu. Seret tab untuk membagi, menumpuk, mengambang, atau memisahkan ke jendela tersendiri.",
     "openUserGuide": "Buka Panduan Pengguna",
-    "paletteHint": "⌘⇧P → \"Choose Your Focus\" atau \"Start Guided Tour\" kapan saja"
+    "paletteHint": "⌘⇧P → \"Choose Your Focus\" atau \"Start Guided Tour\" kapan saja",
+    "startGuidedTour": "Mulai Panduan Tur"
   },
   "panels": {
     "compose": {
@@ -399,7 +400,8 @@
     "grammar": "Tata Bahasa",
     "heatmap": "Heatmap",
     "focus": "Fokus",
-    "translate": "Terjemahkan"
+    "translate": "Terjemahkan",
+    "glossary": "Glosarium"
   },
   "popout": {
     "invalid": "Tautan pop-out ini tidak valid.",
@@ -606,6 +608,14 @@
         "editor": {
           "title": "Editor",
           "body": "Editor manuskrip — pemeriksaan tata bahasa, petunjuk glosarium, mode fokus, dan simpan otomatis langsung di sini."
+        },
+        "grammar": {
+          "title": "Pemeriksaan tata bahasa & ejaan",
+          "body": "Aktifkan pemeriksaan tata bahasa dan ejaan secara langsung pada adegan saat ini — didukung oleh LanguageTool."
+        },
+        "heatmap": {
+          "title": "Heatmap kontinuitas",
+          "body": "Menyoroti baris yang mungkin menyimpang dari kanon yang telah ditetapkan, sehingga Anda dapat memeriksanya kembali sebelum diterbitkan."
         }
       },
       "actions": {
@@ -626,6 +636,14 @@
         "planner": {
           "title": "Rencanakan alur cerita",
           "body": "Susun alur, bab, dan poin penting sebelum atau di antara sesi menulis, sehingga Compose dan Editor memiliki struktur untuk ditulis."
+        },
+        "grammar": {
+          "title": "Temukan salah ketik saat menulis",
+          "body": "Aktifkan pemeriksaan tata bahasa dan ejaan secara langsung tanpa meninggalkan halaman."
+        },
+        "heatmap": {
+          "title": "Deteksi penyimpangan kontinuitas",
+          "body": "Menyoroti baris yang mungkin bertentangan dengan kanon yang telah ditetapkan — perlu diperiksa sekilas sebelum Anda melanjutkan."
         }
       },
       "worldbuilder": {
@@ -671,10 +689,257 @@
           "title": "Perbarui detail buku",
           "body": "Judul, sampul, tag genre, dan tautan dunia semuanya ada di Pengaturan Buku — perbarui kapan saja."
         }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Pemeriksaan tata bahasa & ejaan",
+          "body": "Aktifkan pemeriksaan tata bahasa dan ejaan secara langsung untuk adegan saat ini."
+        },
+        "heatmap": {
+          "title": "Heatmap kontinuitas",
+          "body": "Menyoroti baris yang mungkin menyimpang dari kanon yang telah ditetapkan — perlu diperiksa sebelum Anda melanjutkan."
+        },
+        "glossary": {
+          "title": "Dekorasi glosarium",
+          "body": "Mengaktifkan petunjuk glosarium inline saat kursor diarahkan ke teks dan fitur auto-complete `[[` saat Anda menulis."
+        },
+        "focus": {
+          "title": "Mode fokus",
+          "body": "Meredupkan segalanya kecuali paragraf saat ini dan menyembunyikan panel samping — cocok untuk menulis draf tanpa gangguan."
+        },
+        "scenes": {
+          "title": "Rail Adegan",
+          "body": "Menampilkan adegan-adegan dalam bab ini — lompat di antaranya, atur ulang, atau pantau statusnya."
+        },
+        "openJson": {
+          "title": "Buka sebagai JSON",
+          "body": "Membuka bab yang sama sebagai data terstruktur mentah — dokumen yang sama, perubahan akan tersinkronisasi secara langsung."
+        },
+        "originalSource": {
+          "title": "Sumber Asli",
+          "body": "Tampilan baca-saja dari teks sumber sebelum diterjemahkan, jika bab ini diimpor."
+        },
+        "reader": {
+          "title": "Reader",
+          "body": "Membuka bab ini dalam tampilan pembaca — melihat bagaimana tampilannya bagi pembaca asli."
+        },
+        "translate": {
+          "title": "Terjemahkan",
+          "body": "Langsung menuju versi terjemahan bab ini — tidak perlu melalui matriks Terjemahan secara lengkap."
+        },
+        "save": {
+          "title": "Simpan",
+          "body": "Menyimpan perubahan Anda. ⌘S / Ctrl+S dapat digunakan dari mana saja di editor."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Mode Klasik ⇄ AI",
+          "body": "Beralih antara permukaan menulis polos dan permukaan dengan alat AI yang tersedia (pilihan Tulis Ulang/Perluas/Deskripsikan, lanjutkan-dari-kursor)."
+        },
+        "continueStep": {
+          "title": "Lanjutkan menulis dengan AI",
+          "body": "Menghasilkan kelanjutan teks berbasis AI mulai dari kursor Anda. Pilih teks apa pun terlebih dahulu untuk Tulis Ulang, Perluas, atau Deskripsikan teks tersebut."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "Checkpoint edit AI",
+          "body": "Setiap pengeditan AI membuat titik pemulihan di sini — batalkan perubahan AI meskipun Anda sudah melanjutkan menulis setelahnya."
+        },
+        "revisionHistory": {
+          "title": "Riwayat revisi",
+          "body": "Setiap penyimpanan adalah versi yang dapat Anda pratinjau dan pulihkan, terlepas dari poin pemeriksaan AI."
+        },
+        "publish": {
+          "title": "Gerbang publikasi",
+          "body": "Publikasi akan memeriksa kontradiksi kanon yang belum terselesaikan dan adegan yang belum lengkap terlebih dahulu, sehingga apa yang dilihat pembaca tetap konsisten."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Rel Adegan",
+          "body": "Daftar adegan dalam bab ini — status, sinopsis, dan pengaturan ulang semuanya ada di sini."
+        },
+        "anchor": {
+          "title": "Adegan jangkar",
+          "body": "Mencocokkan judul adegan dengan tajuk dalam prosa agar rel dapat langsung melompat ke sana."
+        },
+        "add": {
+          "title": "Tambah adegan",
+          "body": "Membuat entri adegan baru untuk bab ini."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Glosarium",
+          "body": "Menyoroti nama entitas yang dikenal dalam prosa Anda saat kursor diarahkan ke sana, dan mengetik `[[` akan membuka pelengkapan otomatis untuk menyisipkan atau menautkan entitas tersebut. Matikan di sini jika fitur ini mengganggu saat Anda melakukan pemeriksaan ejaan."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Gambar",
+          "body": "Unggah, seret-dan-lepas, atau tempel gambar — atau buat dengan AI (Anda memilih model secara eksplisit, tidak pernah menggunakan default tersembunyi). Setelah ditambahkan, Anda dapat mengganti, mengubah ukuran, memberi keterangan, menambahkan teks alt, dan menelusuri riwayat versinya."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Unggah file video, atau buat klip pendek dengan AI (pemilih model eksplisit). Fitur ganti, ubah ukuran, keterangan, dan riwayat versi bekerja sama seperti gambar."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Audio",
+          "body": "Sisipkan blok audio mandiri — unggah file, atau buat narasi dengan AI. Tip: mengarahkan kursor ke PARAGRAF MANA PUN juga akan menampilkan bilah cepat unggah/rekam/buat-dengan-AI untuk melampirkan narasi langsung ke teks tersebut, tanpa perlu blok tambahan."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Menulis ke rekan penulis Anda",
+          "body": "Enter untuk mengirim, Shift+Enter untuk baris baru. Ctrl+Enter untuk memicu balasan cepat, Ctrl+Shift+Enter untuk memicu pemikiran mendalam. Ketik / untuk templat dan perintah, @ untuk melampirkan konteks secara inline."
+        },
+        "permissionMode": {
+          "title": "Tanya, Rencanakan, atau Tulis",
+          "body": "Mengontrol seberapa banyak yang dapat dilakukan agen secara mandiri — Tanya mengonfirmasi segalanya, Rencanakan menyusun langkah-langkah terlebih dahulu, Tulis bertindak lebih bebas dalam daftar izinnya. Ctrl+. untuk berpindah di antara mode tersebut."
+        },
+        "effort": {
+          "title": "Upaya penalaran",
+          "body": "Seberapa keras model berpikir sebelum membalas — Mati/Rendah/Sedang/Tinggi/Otomatis. Tersembunyi untuk model yang tidak dapat melakukan penalaran."
+        },
+        "attachContext": {
+          "title": "Lampirkan konteks",
+          "body": "Masukkan entri buku, bab, atau glosarium tertentu agar agen memiliki konteks yang tepat untuk pesan ini."
+        },
+        "send": {
+          "title": "Kirim",
+          "body": "Mengirim pesan Anda. Selama agen sedang membalas, tombol ini akan berubah menjadi tombol Berhenti."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Ganti percakapan",
+          "body": "Berpindah antar sesi obrolan buku ini, arsipkan yang lama, atau mulai yang baru — pilih model dan persona awal (Novelis/Penerjemah/Pembangun Dunia/Editor)."
+        },
+        "rename": {
+          "title": "Ubah nama obrolan ini",
+          "body": "Berikan nama pada sesi agar mudah dikenali nanti."
+        },
+        "settings": {
+          "title": "Pengaturan sesi",
+          "body": "Model, override model komposer/perencana, dasar memori, prompt sistem, temperature, top-P, dan upaya penalaran — semuanya khusus untuk sesi ini."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Rak alat & keahlian",
+          "body": "Menampilkan setiap alat dan keahlian yang dapat digunakan agen saat ini dalam obrolan ini — tambahkan lebih banyak, atau hapus yang tidak ingin Anda gunakan."
+        },
+        "add": {
+          "title": "Tambahkan alat atau keahlian",
+          "body": "Jelajahi semua yang tersedia berdasarkan kategori dan aktifkan apa yang benar-benar dibutuhkan dalam percakapan ini."
+        },
+        "inspector": {
+          "title": "Inspektur runtime Agent",
+          "body": "Lihat apa yang sedang dilakukan Agent saat ini — menemukan alat, menjalankan satu alat, atau sedang menganggur — dan perluas untuk melihat jejak detail lengkapnya."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Anggaran konteks",
+          "body": "Menunjukkan seberapa banyak jendela konteks model yang digunakan dalam percakapan ini. Klik untuk melihat rincian lengkap per kategori, dan untuk meringkas percakapan sesuai kebutuhan."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "Edit AI, ditinjau sebelum diterapkan",
+          "body": "Saat Agent mengusulkan pengeditan prosa, kartu peninjauan akan muncul di sini agar Anda dapat menerima atau menolak setiap perubahan. Tindakan yang lebih berisiko (edit massal, operasi destruktif) akan memiliki kartu konfirmasi tersendiri dengan pratinjau biaya/dampak terlebih dahulu. Segala sesuatu yang diterapkan otomatis oleh Agent akan muncul di bilah Aktivitas dengan fitur Undo satu klik."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Mode suara",
+          "body": "Bicara alih-alih mengetik — percakapan bebas tangan sepenuhnya dengan transkripsi langsung."
+        },
+        "settings": {
+          "title": "Pengaturan suara",
+          "body": "Pilih model speech-to-text dan text-to-speech, suara, kecepatan, dan perilaku pengiriman otomatis Anda."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Buka di jendela terpisah",
+          "body": "Membuka Composer di jendela OS terpisah — sangat berguna untuk monitor kedua. Perubahan yang Anda setujui di sana akan tetap tersimpan di editor buku ini."
+        }
       }
     }
   },
   "userGuide": {
-    "intro": "Setiap alat yang dapat dibuka oleh Writing Studio, dikelompokkan dengan cara yang sama seperti Command Palette."
+    "intro": "Setiap alat yang dapat dibuka oleh Writing Studio, dikelompokkan dengan cara yang sama seperti Command Palette.",
+    "toursGroup": "Panduan tur",
+    "toursEditor": "Editor",
+    "toursComposer": "Composer"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Dasar-dasar Editor",
+      "desc": "Bilah toolbar — tata bahasa, heatmap, glosarium, fokus, adegan, dan tombol akses cepat."
+    },
+    "editorAiTools": {
+      "label": "Alat Penulisan AI",
+      "desc": "Lanjutkan-dari-kursor, Tulis Ulang/Perluas/Deskripsikan pilihan, dan sakelar mode Klasik/AI."
+    },
+    "editorDataSafety": {
+      "label": "Keamanan Data",
+      "desc": "Titik simpan edit AI, riwayat revisi, dan gerbang publikasi."
+    },
+    "editorSceneRail": {
+      "label": "Panel Adegan",
+      "desc": "Lacak adegan, atur ulang urutannya, dan sinkronkan rail dengan prosa Anda."
+    },
+    "editorGlossary": {
+      "label": "Glosarium",
+      "desc": "Petunjuk entitas inline dan fitur autocomplete `[[` saat Anda menulis."
+    },
+    "editorMediaImage": {
+      "label": "Media — Gambar",
+      "desc": "Unggah atau buat gambar dengan AI, lengkap dengan fitur ganti/ubah ukuran/keterangan/riwayat versi."
+    },
+    "editorMediaVideo": {
+      "label": "Media — Video",
+      "desc": "Unggah atau buat klip video pendek dengan AI."
+    },
+    "editorMediaAudio": {
+      "label": "Media — Audio & Narasi",
+      "desc": "Blok audio mandiri, ditambah narasi per paragraf yang dapat diunggah, direkam, atau dibuat dengan AI."
+    },
+    "composerBasics": {
+      "label": "Dasar-Dasar Composer",
+      "desc": "Kotak pesan, mode izin, upaya penalaran, lampirkan konteks, dan kirim."
+    },
+    "composerSessions": {
+      "label": "Manajemen Sesi",
+      "desc": "Ganti, ubah nama, atau mulai percakapan, dan buka pengaturan per sesi."
+    },
+    "composerAgentTools": {
+      "label": "Alat & Keahlian Agen",
+      "desc": "Lihat dan kelola alat serta keahlian apa saja yang dapat diakses oleh agen saat ini."
+    },
+    "composerContextBudget": {
+      "label": "Anggaran Konteks",
+      "desc": "Seberapa banyak jendela konteks model yang digunakan dalam percakapan ini, dan cara meringkasnya."
+    },
+    "composerAiEditReview": {
+      "label": "Tinjauan Edit AI & Keamanan",
+      "desc": "Bagaimana usulan edit, tindakan berisiko, dan perubahan otomatis ditinjau serta cara membatalkannya."
+    },
+    "composerVoice": {
+      "label": "Asisten Suara",
+      "desc": "Bicara alih-alih mengetik, dengan fitur speech-to-text dan text-to-speech yang dapat dikonfigurasi."
+    },
+    "composerPopout": {
+      "label": "Jendela Popout",
+      "desc": "Pisahkan Compose ke jendela OS tersendiri untuk penggunaan monitor kedua."
+    }
   }
 }

@@ -7,7 +7,8 @@
     "title": "Xưởng Sáng Tác",
     "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng.",
     "openUserGuide": "Mở Hướng dẫn sử dụng",
-    "paletteHint": "⌘⇧P → \"Chọn trọng tâm\" hoặc \"Bắt đầu tour hướng dẫn\" bất cứ lúc nào"
+    "paletteHint": "⌘⇧P → \"Chọn trọng tâm\" hoặc \"Bắt đầu tour hướng dẫn\" bất cứ lúc nào",
+    "startGuidedTour": "Bắt đầu Hướng dẫn"
   },
   "panels": {
     "compose": {
@@ -256,6 +257,11 @@
       "desc": "Quản lý phiên bản dịch theo từng chương (so sánh, đặt bản chính, dịch lại)",
       "empty": "Mở phiên bản dịch của một chương từ ma trận Dịch thuật."
     },
+    "translation-review": {
+      "title": "Kiểm tra bản dịch",
+      "desc": "Xem song song theo từng khối với chế độ chỉnh sửa từng khối",
+      "empty": "Mở phần Kiểm tra từ bảng Phiên bản dịch."
+    },
     "enrichment-compose": {
       "title": "Tạo làm giàu",
       "desc": "Soạn một bản nháp tri thức làm giàu mới (mở rộng bản nháp, dán ngữ cảnh, tải tệp, hoặc nêu ý định)",
@@ -301,14 +307,18 @@
       "empty": "Mở một chương từ Trình soạn thảo để xem nguồn gốc của nó."
     },
     "extensions": {
-      "guideBody": "Cài đặt và quản lý mọi thứ giúp mở rộng khả năng cho agent của bạn — plugin, skill, kết nối máy chủ MCP, lệnh tùy chỉnh, và hook. Mở nó khi bạn muốn thêm một công cụ mới cho agent sử dụng, xem lại những gì đang được bật, hoặc tắt thứ gì đó đang hoạt động sai.",
       "title": "Tiện ích mở rộng",
-      "desc": "Quản lý plugin, kỹ năng, máy chủ MCP, lệnh & hook"
+      "desc": "Quản lý plugin, kỹ năng, máy chủ MCP, lệnh & hook",
+      "guideBody": "Cài đặt và quản lý mọi thứ giúp mở rộng khả năng cho agent của bạn — plugin, skill, kết nối máy chủ MCP, lệnh tùy chỉnh, và hook. Mở nó khi bạn muốn thêm một công cụ mới cho agent sử dụng, xem lại những gì đang được bật, hoặc tắt thứ gì đó đang hoạt động sai."
     },
     "proposals": {
-      "guideBody": "Liệt kê các skill mà agent tự đề xuất tạo ra, dựa trên những khuôn mẫu nó nhận thấy trong công việc của bạn, để bạn có thể xem xét và phê duyệt trước khi chúng trở thành một phần trong bộ công cụ của bạn. Mở nó sau một phiên làm việc mà agent có đề cập rằng nó có thể tự động hóa điều gì đó, để quyết định chấp nhận, chỉnh sửa, hay từ chối đề xuất.",
       "title": "Đề xuất",
-      "desc": "Xem các kỹ năng mà tác nhân đã đề xuất"
+      "desc": "Xem các kỹ năng mà tác nhân đã đề xuất",
+      "guideBody": "Liệt kê các skill mà agent tự đề xuất tạo ra, dựa trên những khuôn mẫu nó nhận thấy trong công việc của bạn, để bạn có thể xem xét và phê duyệt trước khi chúng trở thành một phần trong bộ công cụ của bạn. Mở nó sau một phiên làm việc mà agent có đề cập rằng nó có thể tự động hóa điều gì đó, để quyết định chấp nhận, chỉnh sửa, hay từ chối đề xuất."
+    },
+    "skill-editor": {
+      "title": "Kỹ năng",
+      "desc": "Chỉnh sửa tệp SKILL.md"
     },
     "user-guide": {
       "title": "Hướng dẫn sử dụng",
@@ -323,15 +333,6 @@
       "title": "So sánh phiên bản chương",
       "desc": "Diff đầy đủ trong trình soạn thảo cho một cặp phiên bản chương",
       "empty": "Mở diff phiên bản của một chương từ panel xem xét của Chế độ Agent."
-    },
-    "translation-review": {
-      "title": "Kiểm tra bản dịch",
-      "desc": "Xem song song theo từng khối với chế độ chỉnh sửa từng khối",
-      "empty": "Mở phần Kiểm tra từ bảng Phiên bản dịch."
-    },
-    "skill-editor": {
-      "title": "Kỹ năng",
-      "desc": "Chỉnh sửa tệp SKILL.md"
     }
   },
   "sceneRail": {
@@ -399,7 +400,8 @@
     "grammar": "Ngữ pháp",
     "heatmap": "Bản đồ nhiệt",
     "focus": "Tập trung",
-    "translate": "Dịch"
+    "translate": "Dịch",
+    "glossary": "Thuật ngữ"
   },
   "popout": {
     "invalid": "Liên kết cửa sổ bật ra này không hợp lệ.",
@@ -606,6 +608,14 @@
         "editor": {
           "title": "Editor",
           "body": "Trình soạn bản thảo — ngữ pháp, gợi ý từ điển, chế độ tập trung, và tự động lưu đều ở đây."
+        },
+        "grammar": {
+          "title": "Kiểm tra ngữ pháp & chính tả",
+          "body": "Bật tính năng kiểm tra ngữ pháp và chính tả trực tiếp cho cảnh hiện tại — được hỗ trợ bởi LanguageTool."
+        },
+        "heatmap": {
+          "title": "Bản đồ nhiệt tính nhất quán",
+          "body": "Làm nổi bật các dòng văn bản có thể sai lệch so với cốt truyện đã thiết lập, giúp bạn kiểm tra nhanh trước khi xuất bản."
         }
       },
       "actions": {
@@ -626,6 +636,14 @@
         "planner": {
           "title": "Lên kế hoạch cho hình dạng câu chuyện",
           "body": "Sắp xếp các arc, chương, và beat truyện trước hoặc giữa các buổi viết, để Compose và Editor có một cấu trúc để viết vào."
+        },
+        "grammar": {
+          "title": "Phát hiện lỗi đánh máy khi đang viết",
+          "body": "Bật tính năng kiểm tra ngữ pháp và chính tả trực tiếp mà không cần rời khỏi trang."
+        },
+        "heatmap": {
+          "title": "Phát hiện sự sai lệch cốt truyện",
+          "body": "Làm nổi bật các dòng văn bản có thể mâu thuẫn với cốt truyện đã thiết lập — nên xem qua trước khi bạn viết tiếp."
         }
       },
       "worldbuilder": {
@@ -671,10 +689,257 @@
           "title": "Cập nhật thông tin cuốn sách",
           "body": "Tiêu đề, ảnh bìa, thẻ thể loại, và liên kết thế giới đều nằm trong Book Settings — cập nhật bất cứ lúc nào."
         }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Kiểm tra ngữ pháp & chính tả",
+          "body": "Bật tính năng kiểm tra ngữ pháp và chính tả trực tiếp cho cảnh hiện tại."
+        },
+        "heatmap": {
+          "title": "Bản đồ nhiệt tính nhất quán",
+          "body": "Làm nổi bật các dòng có thể bị lệch khỏi cốt truyện đã thiết lập — hãy xem qua trước khi bạn tiếp tục."
+        },
+        "glossary": {
+          "title": "Trang trí thuật ngữ",
+          "body": "Bật/tắt gợi ý thuật ngữ khi di chuột và tính năng tự động hoàn thành `[[` khi bạn đang viết."
+        },
+        "focus": {
+          "title": "Chế độ tập trung",
+          "body": "Làm mờ mọi thứ ngoại trừ đoạn văn hiện tại và ẩn các bảng điều khiển bên cạnh — lý tưởng để soạn thảo mà không bị xao nhãng."
+        },
+        "scenes": {
+          "title": "Thanh phân cảnh",
+          "body": "Hiển thị các phân cảnh của chương này — chuyển đổi giữa chúng, sắp xếp lại hoặc theo dõi trạng thái."
+        },
+        "openJson": {
+          "title": "Mở dưới dạng JSON",
+          "body": "Mở chương này dưới dạng dữ liệu cấu trúc thô — cùng một tài liệu, mọi chỉnh sửa đều được đồng bộ hóa."
+        },
+        "originalSource": {
+          "title": "Nguồn gốc",
+          "body": "Chế độ xem chỉ đọc của văn bản nguồn trước khi dịch, nếu chương này được nhập vào."
+        },
+        "reader": {
+          "title": "Chế độ đọc",
+          "body": "Mở chương này ở chế độ xem dành cho độc giả — xem trước giao diện thực tế mà độc giả sẽ thấy."
+        },
+        "translate": {
+          "title": "Dịch",
+          "body": "Chuyển thẳng đến các bản dịch của chương này — không cần phải đi qua bảng ma trận Dịch thuật đầy đủ."
+        },
+        "save": {
+          "title": "Lưu",
+          "body": "Lưu các thay đổi của bạn. ⌘S / Ctrl+S có thể sử dụng ở bất kỳ đâu trong trình chỉnh sửa."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Chế độ Cổ điển ⇄ AI",
+          "body": "Chuyển đổi giữa giao diện viết thuần túy và giao diện có sẵn các công cụ AI (chọn văn bản để Viết lại/Mở rộng/Mô tả, hoặc tiếp tục viết từ con trỏ)."
+        },
+        "continueStep": {
+          "title": "Tiếp tục viết bằng AI",
+          "body": "Tạo nội dung tiếp nối do AI tạo ra bắt đầu từ vị trí con trỏ của bạn. Hãy chọn bất kỳ văn bản nào trước nếu bạn muốn Viết lại, Mở rộng hoặc Mô tả văn bản đó."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "Điểm khôi phục chỉnh sửa AI",
+          "body": "Mỗi lần chỉnh sửa bằng AI sẽ tạo một điểm khôi phục tại đây — cho phép bạn hoàn tác thay đổi của AI ngay cả khi bạn đã viết tiếp các nội dung khác."
+        },
+        "revisionHistory": {
+          "title": "Lịch sử chỉnh sửa",
+          "body": "Mỗi lần lưu là một phiên bản mà bạn có thể xem trước và khôi phục, độc lập với các điểm kiểm soát của AI."
+        },
+        "publish": {
+          "title": "Cổng kiểm duyệt xuất bản",
+          "body": "Trước khi xuất bản, hệ thống sẽ kiểm tra các mâu thuẫn về cốt truyện chưa được giải quyết và các cảnh chưa hoàn thiện, để đảm bảo những gì độc giả thấy luôn nhất quán."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Thanh điều hướng cảnh",
+          "body": "Liệt kê các cảnh trong chương này — trạng thái, tóm tắt và việc sắp xếp lại thứ tự đều thực hiện tại đây."
+        },
+        "anchor": {
+          "title": "Cảnh mốc",
+          "body": "Khớp tiêu đề cảnh với các tiêu đề trong văn bản để thanh điều hướng có thể nhảy thẳng đến đó."
+        },
+        "add": {
+          "title": "Thêm một cảnh",
+          "body": "Tạo một mục cảnh mới cho chương này."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Thuật ngữ",
+          "body": "Làm nổi bật tên các thực thể đã biết trong văn bản khi di chuột qua, và gõ `[[` để mở tính năng tự động hoàn thành nhằm chèn hoặc liên kết một thực thể. Bạn có thể tắt tính năng này tại đây nếu nó gây cản trở khi đang soát lỗi."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Hình ảnh",
+          "body": "Tải lên, kéo-thả hoặc dán một hình ảnh — hoặc tạo một hình ảnh bằng AI (bạn sẽ chọn mô hình cụ thể, không bao giờ là mặc định ngầm định). Sau khi thêm, bạn có thể thay thế, thay đổi kích thước, thêm chú thích, thêm văn bản thay thế (alt text) và xem lịch sử phiên bản."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Tải lên một tệp video, hoặc tạo một đoạn clip ngắn bằng AI (có trình chọn mô hình cụ thể). Các tính năng thay thế, thay đổi kích thước, chú thích và lịch sử phiên bản đều hoạt động tương tự như hình ảnh."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Âm thanh",
+          "body": "Chèn một khối âm thanh độc lập — tải lên một tệp, hoặc tạo lời thuyết minh bằng AI. Mẹo: di chuột vào BẤT KỲ đoạn văn nào cũng sẽ hiển thị thanh tải lên/ghi âm/tạo bằng AI nhanh để đính kèm lời thuyết minh trực tiếp vào văn bản đó mà không cần dùng khối."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Viết cho cộng sự của bạn",
+          "body": "Nhấn Enter để gửi, Shift+Enter để xuống dòng. Ctrl+Enter để gửi phản hồi nhanh, Ctrl+Shift+Enter để kích hoạt chế độ suy nghĩ sâu hơn. Gõ / để dùng các mẫu và lệnh, gõ @ để đính kèm ngữ cảnh trực tiếp."
+        },
+        "permissionMode": {
+          "title": "Hỏi, Lập kế hoạch, hoặc Viết",
+          "body": "Kiểm soát mức độ tự chủ của tác nhân — Hỏi để xác nhận mọi thứ, Lập kế hoạch để phác thảo các bước trước, Viết để tác nhân hoạt động tự do hơn trong phạm vi cho phép. Nhấn Ctrl+. để chuyển đổi giữa các chế độ."
+        },
+        "effort": {
+          "title": "Mức độ tư duy",
+          "body": "Mức độ suy nghĩ của mô hình trước khi phản hồi — Tắt/Thấp/Trung bình/Cao/Tự động. Sẽ bị ẩn đối với các mô hình không có khả năng tư duy."
+        },
+        "attachContext": {
+          "title": "Đính kèm ngữ cảnh",
+          "body": "Kéo các nội dung cụ thể từ sách, chương hoặc thuật ngữ vào để AI có chính xác ngữ cảnh cần thiết cho tin nhắn này."
+        },
+        "send": {
+          "title": "Gửi",
+          "body": "Gửi tin nhắn của bạn. Trong khi AI đang phản hồi, nút này sẽ trở thành nút Dừng."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Chuyển đổi hội thoại",
+          "body": "Chuyển đổi giữa các phiên chat của cuốn sách này, lưu trữ các phiên cũ, hoặc bắt đầu một phiên mới — hãy chọn một mô hình và vai trò bắt đầu (Tiểu thuyết gia/Biên dịch viên/Người xây dựng thế giới/Biên tập viên)."
+        },
+        "rename": {
+          "title": "Đổi tên cuộc trò chuyện này",
+          "body": "Đặt một cái tên để bạn có thể nhận diện phiên này sau này."
+        },
+        "settings": {
+          "title": "Cài đặt phiên",
+          "body": "Mô hình, ghi đè mô hình soạn thảo/lập kế hoạch, căn cứ bộ nhớ, câu lệnh hệ thống, temperature, top-P và mức độ suy luận — tất cả đều được áp dụng riêng cho phiên này."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Khay công cụ & kỹ năng",
+          "body": "Hiển thị mọi công cụ và kỹ năng mà AI có thể sử dụng trong cuộc trò chuyện này — hãy thêm mới hoặc loại bỏ những thứ bạn không muốn AI sử dụng."
+        },
+        "add": {
+          "title": "Thêm công cụ hoặc kỹ năng",
+          "body": "Duyệt qua tất cả các tính năng có sẵn theo danh mục và kích hoạt chính xác những gì cuộc hội thoại này cần."
+        },
+        "inspector": {
+          "title": "Trình kiểm tra thực thi của Agent",
+          "body": "Xem Agent đang làm gì ngay lúc này — đang tìm kiếm công cụ, đang chạy một công cụ, hoặc đang ở trạng thái chờ — và mở rộng để xem chi tiết đầy đủ."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Ngân sách ngữ cảnh",
+          "body": "Hiển thị mức độ sử dụng cửa sổ ngữ cảnh của mô hình trong cuộc hội thoại này. Nhấp vào đây để xem bảng phân tích chi tiết theo danh mục và nén cuộc hội thoại khi cần thiết."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "Chỉnh sửa AI, được xem xét trước khi áp dụng",
+          "body": "Khi Agent đề xuất chỉnh sửa văn bản, một thẻ xem xét sẽ xuất hiện tại đây để bạn chấp nhận hoặc từ chối từng thay đổi. Các hành động rủi ro hơn (chỉnh sửa hàng loạt, thao tác xóa dữ liệu) sẽ có thẻ xác nhận riêng kèm theo bản xem trước về chi phí/tác động. Bất kỳ thay đổi nào được Agent tự động áp dụng sẽ hiển thị trong thanh Hoạt động với tùy chọn Hoàn tác chỉ bằng một cú nhấp chuột."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Chế độ giọng nói",
+          "body": "Nói thay vì gõ — một cuộc hội thoại rảnh tay hoàn toàn với tính năng chuyển lời nói thành văn bản trực tiếp."
+        },
+        "settings": {
+          "title": "Cài đặt giọng nói",
+          "body": "Chọn mô hình chuyển lời nói thành văn bản và văn bản thành lời nói, giọng nói, tốc độ và hành vi tự động gửi."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Mở trong cửa sổ riêng",
+          "body": "Mở trình Soạn thảo trong một cửa sổ hệ điều hành riêng biệt — rất hữu ích khi dùng màn hình thứ hai. Những chỉnh sửa bạn phê duyệt tại đó vẫn sẽ được lưu vào trình chỉnh sửa của cuốn sách này."
+        }
       }
     }
   },
   "userGuide": {
-    "intro": "Mọi công cụ Xưởng Sáng Tác có thể mở, được nhóm theo cùng cách với Command Palette."
+    "intro": "Mọi công cụ Xưởng Sáng Tác có thể mở, được nhóm theo cùng cách với Command Palette.",
+    "toursGroup": "Hướng dẫn tham quan",
+    "toursEditor": "Trình chỉnh sửa",
+    "toursComposer": "Trình soạn thảo"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Cơ bản về Trình chỉnh sửa",
+      "desc": "Thanh công cụ — ngữ pháp, bản đồ nhiệt, thuật ngữ, chế độ tập trung, các cảnh và các nút truy cập nhanh."
+    },
+    "editorAiTools": {
+      "label": "Công cụ viết AI",
+      "desc": "Viết tiếp từ con trỏ, Viết lại/Mở rộng/Mô tả phần văn bản được chọn, và nút chuyển đổi chế độ Cổ điển/AI."
+    },
+    "editorDataSafety": {
+      "label": "An toàn dữ liệu",
+      "desc": "Điểm kiểm soát chỉnh sửa AI, lịch sử chỉnh sửa và cổng xuất bản."
+    },
+    "editorSceneRail": {
+      "label": "Thanh cảnh",
+      "desc": "Theo dõi các cảnh, sắp xếp lại thứ tự và giữ cho thanh tiến trình luôn đồng bộ với bản thảo của bạn."
+    },
+    "editorGlossary": {
+      "label": "Thuật ngữ",
+      "desc": "Gợi ý thực thể ngay trong văn bản và tính năng tự động hoàn thành `[[` khi bạn đang viết."
+    },
+    "editorMediaImage": {
+      "label": "Phương tiện — Hình ảnh",
+      "desc": "Tải lên hoặc tạo ảnh bằng AI, kèm theo các tính năng thay thế/thay đổi kích thước/chú thích/lịch sử phiên bản."
+    },
+    "editorMediaVideo": {
+      "label": "Phương tiện — Video",
+      "desc": "Tải lên hoặc tạo các đoạn video ngắn bằng AI."
+    },
+    "editorMediaAudio": {
+      "label": "Phương tiện — Âm thanh & Thuyết minh",
+      "desc": "Các khối âm thanh độc lập, cùng với tính năng thuyết minh theo từng đoạn văn mà bạn có thể tải lên, ghi âm hoặc tạo bằng AI."
+    },
+    "composerBasics": {
+      "label": "Các tính năng soạn thảo cơ bản",
+      "desc": "Khung soạn thảo, chế độ phân quyền, mức độ tư duy, đính kèm ngữ cảnh và gửi."
+    },
+    "composerSessions": {
+      "label": "Quản lý phiên làm việc",
+      "desc": "Chuyển đổi, đổi tên hoặc bắt đầu các cuộc hội thoại, và mở cài đặt cho từng phiên."
+    },
+    "composerAgentTools": {
+      "label": "Công cụ & Kỹ năng của Agent",
+      "desc": "Xem và quản lý các công cụ cũng như kỹ năng mà agent có thể truy cập hiện tại."
+    },
+    "composerContextBudget": {
+      "label": "Ngân sách ngữ cảnh",
+      "desc": "Mức độ sử dụng cửa sổ ngữ cảnh của mô hình trong cuộc hội thoại này và cách để nén nó."
+    },
+    "composerAiEditReview": {
+      "label": "Xem lại chỉnh sửa AI & An toàn",
+      "desc": "Cách các đề xuất chỉnh sửa, hành động rủi ro và các thay đổi tự động được xem xét và có thể hoàn tác."
+    },
+    "composerVoice": {
+      "label": "Trợ lý giọng nói",
+      "desc": "Nói thay vì gõ phím, với tính năng chuyển lời nói thành văn bản và văn bản thành lời nói có thể tùy chỉnh."
+    },
+    "composerPopout": {
+      "label": "Cửa sổ rời",
+      "desc": "Tách cửa sổ Compose thành một cửa sổ hệ điều hành riêng biệt để dùng cho màn hình thứ hai."
+    }
   }
 }

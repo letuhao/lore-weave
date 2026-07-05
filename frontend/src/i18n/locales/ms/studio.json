@@ -7,7 +7,8 @@
     "title": "Studio Penulisan",
     "body": "Ruang kerja yang boleh dipasang (dockable) untuk buku ini. Panel (compose, perancang, pelakon, kualiti...) akan ditambah di sini satu demi satu. Seret tab untuk membahagi, menyusun, terapung, atau keluarkan ke dalam tetingkap sendiri.",
     "openUserGuide": "Buka Panduan Pengguna",
-    "paletteHint": "⌘⇧P → \"Pilih Fokus Anda\" atau \"Mulakan Lawatan Berpandu\" pada bila-bila masa"
+    "paletteHint": "⌘⇧P → \"Pilih Fokus Anda\" atau \"Mulakan Lawatan Berpandu\" pada bila-bila masa",
+    "startGuidedTour": "Mulakan Lawatan Panduan"
   },
   "panels": {
     "compose": {
@@ -399,7 +400,8 @@
     "grammar": "Tatabahasa",
     "heatmap": "Peta haba",
     "focus": "Fokus",
-    "translate": "Terjemah"
+    "translate": "Terjemah",
+    "glossary": "Glosari"
   },
   "popout": {
     "invalid": "Pautan pop-out ini tidak sah.",
@@ -606,6 +608,14 @@
         "editor": {
           "title": "Editor",
           "body": "Editor manuskrip — semakan tatabahasa, petunjuk glosari, mod fokus, dan simpanan automatik secara langsung di sini."
+        },
+        "grammar": {
+          "title": "Semakan tatabahasa & ejaan",
+          "body": "Aktifkan semakan tatabahasa dan ejaan secara langsung pada babak semasa — dikuasakan oleh LanguageTool."
+        },
+        "heatmap": {
+          "title": "Peta haba kesinambungan",
+          "body": "Menyerlahkan baris yang mungkin lari daripada kanon yang telah ditetapkan, supaya anda boleh menyemaknya sebelum diterbitkan."
         }
       },
       "actions": {
@@ -626,6 +636,14 @@
         "planner": {
           "title": "Rancang bentuk cerita",
           "body": "Susun arka, bab, dan rentak sebelum atau di antara sesi penulisan, supaya Gubah dan Editor mempunyai struktur untuk ditulis."
+        },
+        "grammar": {
+          "title": "Kesan kesalahan ejaan semasa menulis",
+          "body": "Aktifkan semakan tatabahasa dan ejaan secara langsung tanpa meninggalkan halaman."
+        },
+        "heatmap": {
+          "title": "Kesan larian kesinambungan",
+          "body": "Menyerlahkan baris yang mungkin bercanggah dengan kanon yang telah ditetapkan — perlu dilihat sekilas sebelum anda beralih ke babak seterusnya."
         }
       },
       "worldbuilder": {
@@ -671,10 +689,257 @@
           "title": "Kemas kini butiran buku",
           "body": "Tajuk, kulit buku, tag genre, dan pautan dunia semuanya berada di Tetapan Buku — kemas kini pada bila-bila masa."
         }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Semakan tatabahasa & ejaan",
+          "body": "Aktifkan semakan tatabahasa dan ejaan secara langsung untuk babak semasa."
+        },
+        "heatmap": {
+          "title": "Peta haba kesinambungan",
+          "body": "Menyerlahkan baris yang mungkin menyimpang daripada kanon yang telah ditetapkan — berbaloi untuk disemak sebelum anda meneruskan."
+        },
+        "glossary": {
+          "title": "Hiasan glosari",
+          "body": "Menukar suis petunjuk glosari dalam talian semasa kursor dihalakan dan fungsi melengkapkan automatik `[[` semasa anda menulis."
+        },
+        "focus": {
+          "title": "Mod fokus",
+          "body": "Melamapkan semua perkara kecuali perenggan semasa dan menyembunyikan panel sisi — sesuai untuk draf tanpa gangguan."
+        },
+        "scenes": {
+          "title": "Rel Babak",
+          "body": "Menunjukkan babak dalam bab ini — lompat antara babak, susun semula, atau pantau status."
+        },
+        "openJson": {
+          "title": "Buka sebagai JSON",
+          "body": "Membuka bab yang sama sebagai data berstruktur mentah — dokumen yang sama, suntingan akan dicerminkan secara langsung dalam kedua-dua mod."
+        },
+        "originalSource": {
+          "title": "Sumber Asal",
+          "body": "Paparan baca sahaja bagi teks sumber pra-terjemahan, jika bab ini diimport."
+        },
+        "reader": {
+          "title": "Pembaca",
+          "body": "Membuka bab ini dalam mod pembaca — cara ia kelihatan kepada pembaca sebenar."
+        },
+        "translate": {
+          "title": "Terjemah",
+          "body": "Terus melompat ke versi terjemahan bab ini — tidak perlu melalui matriks Terjemahan yang lengkap."
+        },
+        "save": {
+          "title": "Simpan",
+          "body": "Menyimpan perubahan anda. ⌘S / Ctrl+S berfungsi dari mana-mana sahaja dalam editor."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Mod Klasik ⇄ AI",
+          "body": "Tukar antara permukaan penulisan biasa dan permukaan dengan alatan AI yang tersedia (pilihan Tulis Semula/Kembangkan/Huraikan, sambung-dari-kursor)."
+        },
+        "continueStep": {
+          "title": "Sambung penulisan dengan AI",
+          "body": "Menghasilkan kesinambungan janaan AI bermula dari kursor anda. Pilih mana-mana teks terlebih dahulu untuk Tulis Semula, Kembangkan, atau Huraikannya sebagai ganti."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "Titik semak suntingan AI",
+          "body": "Setiap suntingan AI mencipta titik pemulihan di sini — batalkan perubahan AI walaupun anda telah menyambung penulisan selepas itu."
+        },
+        "revisionHistory": {
+          "title": "Sejarah semakan",
+          "body": "Setiap simpanan adalah versi yang boleh anda pratonton dan pulihkan, tidak kira sama ada terdapat titik semak AI atau tidak."
+        },
+        "publish": {
+          "title": "Pintu gerbang penerbitan",
+          "body": "Penerbitan akan menyemak percanggahan kanon yang belum selesai dan babak yang tidak lengkap terlebih dahulu, supaya apa yang dilihat pembaca kekal konsisten."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Rel Babak",
+          "body": "Menyenaraikan babak dalam bab ini — status, sinopsis, dan penyusunan semula semuanya boleh dilakukan di sini."
+        },
+        "anchor": {
+          "title": "Babak sauh",
+          "body": "Memadankan tajuk babak dengan tajuk dalam prosa supaya rel boleh terus melompat ke bahagian tersebut."
+        },
+        "add": {
+          "title": "Tambah babak",
+          "body": "Mencipta entri babak baharu untuk bab ini."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Glosari",
+          "body": "Menyerlahkan nama entiti yang dikenali dalam prosa anda apabila tetikus dihalakan, dan menaip `[[` akan membuka fungsi melengkapkan automatik untuk memasukkan atau menghubungkan entiti tersebut. Matikan fungsi ini di sini jika ia mengganggu semasa proses penyuntingan pruf."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Imej",
+          "body": "Muat naik, seret-dan-lepas, atau tampal imej — atau jana satu dengan AI (anda pilih model secara eksplisit, bukan tetapan lalai yang tersembunyi). Setelah ditambah, anda boleh menukar, mengubah saiz, menambah kapsyen, teks alt, dan melayari sejarah versinya."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Muat naik fail video, atau jana klip pendek dengan AI (pemilih model eksplisit). Fungsi tukar, ubah saiz, kapsyen, dan sejarah versi berfungsi sama seperti imej."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Audio",
+          "body": "Masukkan blok audio tunggal — muat naik fail, atau jana narasi dengan AI. Tip: melalukan kursor pada MANA-MANA perenggan juga akan memaparkan bar muat naik/rakam/jana AI pantas untuk melampirkan narasi terus ke teks tersebut, tanpa memerlukan blok."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Menulis kepada rakan penulis anda",
+          "body": "Tekan Enter untuk menghantar, Shift+Enter untuk baris baharu. Ctrl+Enter untuk membalas dengan pantas, Ctrl+Shift+Enter untuk pemikiran yang lebih mendalam. Taip / untuk templat dan arahan, @ untuk melampirkan konteks secara dalam talian."
+        },
+        "permissionMode": {
+          "title": "Tanya, Rancang, atau Tulis",
+          "body": "Mengawal sejauh mana ejen boleh bertindak sendiri — Tanya mengesahkan segalanya, Rancang menyusun langkah terlebih dahulu, Tulis bertindak lebih bebas dalam senarai benarnya. Ctrl+. untuk menukar mod tersebut."
+        },
+        "effort": {
+          "title": "Tahap pemikiran",
+          "body": "Sejauh mana model berfikir sebelum membalas — Mati/Rendah/Sederhana/Tinggi/Automatik. Disembunyikan untuk model yang tidak mempunyai keupayaan penaakulan."
+        },
+        "attachContext": {
+          "title": "Lampirkan konteks",
+          "body": "Masukkan entri buku, bab, atau glosari tertentu supaya ejen mempunyai konteks tepat yang diperlukan untuk mesej ini."
+        },
+        "send": {
+          "title": "Hantar",
+          "body": "Menghantar mesej anda. Semasa ejen sedang membalas, butang ini akan bertukar menjadi butang Berhenti."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Tukar perbualan",
+          "body": "Lompat antara sesi sembang buku ini, arkibkan sesi lama, atau mulakan yang baharu — pilih model dan persona permulaan (Novelis/Penterjemah/Pembina Dunia/Editor)."
+        },
+        "rename": {
+          "title": "Namakan semula sembang ini",
+          "body": "Berikan nama pada sesi ini supaya anda mudah mengenalinya kemudian."
+        },
+        "settings": {
+          "title": "Tetapan sesi",
+          "body": "Model, pengganti model komposer/perancang, asas memori, arahan sistem, suhu, top-P, dan usaha penaakulan — semuanya khusus untuk sesi ini sahaja."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Rak alatan & kemahiran",
+          "body": "Menunjukkan setiap alatan dan kemahiran yang boleh digunakan oleh ejen dalam sembang ini — tambah lebih banyak, atau buang yang anda tidak mahu ia gunakan."
+        },
+        "add": {
+          "title": "Tambah alatan atau kemahiran",
+          "body": "Teroka semua yang tersedia mengikut kategori dan aktifkan apa yang diperlukan oleh perbualan ini secara tepat."
+        },
+        "inspector": {
+          "title": "Pemeriksa masa nyata ejen",
+          "body": "Lihat apa yang sedang dilakukan oleh ejen sekarang — mencari alatan, menjalankan alatan, atau sedang menganggur — dan kembangkan untuk melihat jejak butiran penuh."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Bajet konteks",
+          "body": "Menunjukkan berapa banyak tetingkap konteks model yang digunakan oleh perbualan ini. Klik untuk melihat pecahan penuh mengikut kategori, dan untuk memadatkan perbualan mengikut keperluan."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "Suntingan AI, disemak sebelum dilaksanakan",
+          "body": "Apabila ejen mencadangkan suntingan prosa, kad semakan akan muncul di sini untuk anda terima atau tolak bagi setiap perubahan. Tindakan yang lebih berisiko (suntingan pukal, operasi pemusnahan) akan mempunyai kad pengesahan sendiri dengan pratonton kos/impak terlebih dahulu. Apa-apa yang diaplikasikan secara automatik oleh ejen akan muncul dalam jalur Aktiviti dengan fungsi 'Undo' satu klik."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Mod suara",
+          "body": "Bercakap dan bukannya menaip — perbualan bebas tangan sepenuhnya dengan transkripsi langsung."
+        },
+        "settings": {
+          "title": "Tetapan suara",
+          "body": "Pilih model pertukaran ucapan-ke-teks dan teks-ke-ucapan, suara, kelajuan, serta tingkah laku penghantaran automatik anda."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Buka dalam tetingkap sendiri",
+          "body": "Membuka Komposer dalam tetingkap OS yang berasingan — sangat berguna untuk monitor kedua. Suntingan yang anda luluskan di sana akan tetap disimpan ke dalam editor buku ini."
+        }
       }
     }
   },
   "userGuide": {
-    "intro": "Setiap alatan yang boleh dibuka oleh Writing Studio, dikumpulkan dengan cara yang sama seperti Palet Perintah."
+    "intro": "Setiap alatan yang boleh dibuka oleh Writing Studio, dikumpulkan dengan cara yang sama seperti Palet Perintah.",
+    "toursGroup": "Panduan berpandu",
+    "toursEditor": "Editor",
+    "toursComposer": "Komposer"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Asas Editor",
+      "desc": "Bar alatan — tatabahasa, peta haba, glosari, fokus, babak, dan butang akses pantas."
+    },
+    "editorAiTools": {
+      "label": "Alatan Penulisan AI",
+      "desc": "Sambung-dari-kursor, Tulis Semula/Kembangkan/Gambarkan pilihan, dan suis mod Klasik/AI."
+    },
+    "editorDataSafety": {
+      "label": "Keselamatan Data",
+      "desc": "Titik semak suntingan AI, sejarah semakan, dan gerbang penerbitan."
+    },
+    "editorSceneRail": {
+      "label": "Rel Babak",
+      "desc": "Susun atur babak, susun semula, dan pastikan garis masa sentiasa selari dengan prosa anda."
+    },
+    "editorGlossary": {
+      "label": "Glosari",
+      "desc": "Petunjuk entiti dalam talian dan fungsi melengkapkan automatik `[[` semasa anda menulis."
+    },
+    "editorMediaImage": {
+      "label": "Media — Imej",
+      "desc": "Muat naik atau jana imej menggunakan AI, lengkap dengan fungsi ganti/ubah saiz/kapsyen/sejarah versi."
+    },
+    "editorMediaVideo": {
+      "label": "Media — Video",
+      "desc": "Muat naik atau jana klip video pendek menggunakan AI."
+    },
+    "editorMediaAudio": {
+      "label": "Media — Audio & Narasi",
+      "desc": "Blok audio tunggal, serta narasi setiap perenggan yang boleh dimuat naik, dirakam, atau dijana menggunakan AI."
+    },
+    "composerBasics": {
+      "label": "Asas Komposer",
+      "desc": "Kotak mesej, mod kebenaran, usaha penaakulan, lampirkan konteks, dan hantar."
+    },
+    "composerSessions": {
+      "label": "Pengurusan Sesi",
+      "desc": "Tukar, namakan semula, atau mulakan perbualan, serta buka tetapan setiap sesi."
+    },
+    "composerAgentTools": {
+      "label": "Alatan & Kemahiran Ejen",
+      "desc": "Lihat dan urus alatan serta kemahiran yang boleh dicapai oleh ejen buat masa ini."
+    },
+    "composerContextBudget": {
+      "label": "Bajet Konteks",
+      "desc": "Berapa banyak tetingkap konteks model yang digunakan oleh perbualan ini, dan cara untuk memadatkannya."
+    },
+    "composerAiEditReview": {
+      "label": "Semakan Suntingan AI & Keselamatan",
+      "desc": "Bagaimana cadangan suntingan, tindakan berisiko, dan perubahan yang dikenakan secara automatik disemak serta boleh dibatalkan."
+    },
+    "composerVoice": {
+      "label": "Pembantu Suara",
+      "desc": "Bercakap dan bukannya menaip, dengan fungsi pertukaran ucapan-ke-teks dan teks-ke-ucapan yang boleh dilaras."
+    },
+    "composerPopout": {
+      "label": "Tetingkap Popout",
+      "desc": "Keluarkan Compose ke dalam tetingkap OS sendiri untuk kegunaan monitor kedua."
+    }
   }
 }

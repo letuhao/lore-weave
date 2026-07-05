@@ -7,7 +7,8 @@
     "title": "Yazım Stüdyosu",
     "body": "Bu kitap için sabitlenebilir bir çalışma alanı. Paneller (compose, planner, cast, quality…) buraya tek tek eklenecektir. Sekmeleri bölmek, üst üste dizmek, serbest bırakmak veya kendi penceresinde açmak için sürükleyin.",
     "openUserGuide": "Kullanım Kılavuzunu Aç",
-    "paletteHint": "⌘⇧P → Her an \"Odak Noktanızı Seçin\" veya \"Rehberli Tura Başlayın\""
+    "paletteHint": "⌘⇧P → Her an \"Odak Noktanızı Seçin\" veya \"Rehberli Tura Başlayın\"",
+    "startGuidedTour": "Rehberli Tura Başla"
   },
   "panels": {
     "compose": {
@@ -399,7 +400,8 @@
     "grammar": "Dil Bilgisi",
     "heatmap": "Isı Haritası",
     "focus": "Odak",
-    "translate": "Çevir"
+    "translate": "Çevir",
+    "glossary": "Sözlük"
   },
   "popout": {
     "invalid": "Bu açılır pencere bağlantısı geçersiz.",
@@ -606,6 +608,14 @@
         "editor": {
           "title": "Editör",
           "body": "Taslak editörü — dil bilgisi, sözlük ipuçları, odak modu ve otomatik kaydetme burada bulunur."
+        },
+        "grammar": {
+          "title": "Dilbilgisi ve yazım denetimi",
+          "body": "LanguageTool destekli, mevcut sahne üzerinde canlı dilbilgisi ve yazım denetimini açın veya kapatın."
+        },
+        "heatmap": {
+          "title": "Süreklilik ısı haritası",
+          "body": "Yayımlamadan önce kontrol edebilmeniz için yerleşik kurgudan sapabilecek satırları vurgular."
         }
       },
       "actions": {
@@ -626,6 +636,14 @@
         "planner": {
           "title": "Hikayenin yapısını planlayın",
           "body": "Yazma oturumlarından önce veya aralarında akışları, bölümleri ve vuruş noktalarını belirleyin; böylece Oluştur ve Editör yazılacak bir yapıya sahip olur."
+        },
+        "grammar": {
+          "title": "Yazarken yazım hatalarını yakalayın",
+          "body": "Sayfadan ayrılmadan canlı dilbilgisi ve yazım denetimini açın veya kapatın."
+        },
+        "heatmap": {
+          "title": "Süreklilik sapmalarını fark edin",
+          "body": "Yerleşik kurguyla çelişebilecek satırları vurgular — devam etmeden önce bir göz atmaya değer."
         }
       },
       "worldbuilder": {
@@ -671,10 +689,257 @@
           "title": "Kitap bilgilerini güncelleyin",
           "body": "Başlık, kapak, tür etiketleri ve dünya bağlantısı Kitap Ayarları'nda bulunur — bunları dilediğiniz zaman güncelleyin."
         }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Dilbilgisi ve yazım denetimi",
+          "body": "Mevcut sahne için canlı dilbilgisi ve yazım denetimini açın veya kapatın."
+        },
+        "heatmap": {
+          "title": "Süreklilik ısı haritası",
+          "body": "Yerleşik kurgudan sapabilecek satırları vurgular — devam etmeden önce bir göz atmaya değer."
+        },
+        "glossary": {
+          "title": "Sözlük süslemesi",
+          "body": "Üzerine gelindiğinde satır içi sözlük ipuçlarını ve yazarken `[[` otomatik tamamlama özelliğini açıp kapatır."
+        },
+        "focus": {
+          "title": "Odak modu",
+          "body": "Mevcut paragraf dışındaki her şeyi karartır ve yan panelleri gizler — dikkatiniz dağılmadan taslak oluşturmak için idealdir."
+        },
+        "scenes": {
+          "title": "Sahne Çubuğu",
+          "body": "Bu bölümün sahnelerini gösterir — sahneler arasında geçiş yapın, sıralamayı değiştirin veya durumlarını takip edin."
+        },
+        "openJson": {
+          "title": "JSON olarak aç",
+          "body": "Bu bölümü ham yapılandırılmış veri olarak açar — aynı belge, her iki durumda da düzenlemeler anlık olarak yansıtılır."
+        },
+        "originalSource": {
+          "title": "Orijinal Kaynak",
+          "body": "Eğer bu bölüm içe aktarıldıysa, çeviri öncesi kaynak metnin salt okunur görünümü."
+        },
+        "reader": {
+          "title": "Okuyucu",
+          "body": "Bu bölümü okuyucu görünümünde açar — gerçek bir okuyucunun metni nasıl göreceğini gösterir."
+        },
+        "translate": {
+          "title": "Çeviri",
+          "body": "Doğrudan bu bölümün çeviri sürümlerine gider — tam Çeviri matrisinden geçmenize gerek kalmaz."
+        },
+        "save": {
+          "title": "Kaydet",
+          "body": "Değişikliklerinizi kaydeder. Düzenleyicinin her yerinde ⌘S / Ctrl+S kısayolu çalışır."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Klasik ⇄ Yapay Zeka modu",
+          "body": "Düz bir yazım alanı ile yapay zeka araçlarının (Yeniden Yaz/Genişlet/Betimle seçimi, imleçten devam et) mevcut olduğu alan arasında geçiş yapın."
+        },
+        "continueStep": {
+          "title": "Yapay zeka ile yazmaya devam et",
+          "body": "İmlecinizden başlayarak yapay zeka tarafından oluşturulan bir devam metni akışı sağlar. Bunun yerine Yeniden Yaz, Genişlet veya Betimle yapmak için önce herhangi bir metni seçin."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "Yapay zeka düzenleme kontrol noktaları",
+          "body": "Her yapay zeka düzenlemesi burada bir geri yükleme noktası oluşturur — yazmaya devam etmiş olsanız bile bir yapay zeka değişikliğini geri alabilirsiniz."
+        },
+        "revisionHistory": {
+          "title": "Revizyon geçmişi",
+          "body": "Her kayıt, yapay zeka kontrol noktalarından bağımsız olarak önizleyebileceğiniz ve geri yükleyebileceğiniz bir versiyondur."
+        },
+        "publish": {
+          "title": "Yayınlama kontrolü",
+          "body": "Okuyarların gördüğü kısımların tutarlı kalması için önce çözülmemiş kurgu çelişkilerini ve tamamlanmamış sahneleri kontrol eder."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Sahne Çizelgesi",
+          "body": "Bu bölümün sahnelerini listeler; durum, özet ve yeniden sıralama işlemlerinin tamamı buradan yapılır."
+        },
+        "anchor": {
+          "title": "Çapa sahneler",
+          "body": "Sahne başlıklarını metindeki başlıklara eşleştirerek çizelgenin doğrudan o kısımlara atlamasını sağlar."
+        },
+        "add": {
+          "title": "Sahne ekle",
+          "body": "Bu bölüm için yeni bir sahne girişi oluşturur."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Sözlük",
+          "body": "Metin içinde bilinen varlık isimlerinin üzerine gelindiğinde onları vurgular; `[[` yazmak ise bir varlığı eklemek veya bağlamak için otomatik tamamlama açar. Düzelti yaparken dikkat dağıtıyorsa buradan kapatabilirsiniz."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Görseller",
+          "body": "Bir görsel yükleyin, sürükleyip bırakın veya yapıştırın — ya da yapay zekayla bir tane oluşturun (modeli açıkça siz seçersiniz, asla varsayılan bir seçim yapılmaz). Eklendikten sonra görseli değiştirebilir, yeniden boyutlandırabilir, altyazı ekleyebilir, alternatif metin yazabilir ve sürüm geçmişine göz atabilirsiniz."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Bir video dosyası yükleyin veya yapay zekayla kısa bir klip oluşturun (açık model seçici ile). Değiştirme, yeniden boyutlandırma, altyazı ekleme ve sürüm geçmişi özellikleri görsellerle aynı şekilde çalışır."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Ses",
+          "body": "Bağımsız bir ses bloğu ekleyin — bir dosya yükleyin veya yapay zekayla anlatım oluşturun. İpucu: HERHANGİ bir paragrafın üzerine gelmek, anlatımı doğrudan o metne eklemek için hızlı bir yükleme/kaydetme/yapay zeka ile oluşturma çubuğu gösterir; blok eklemenize gerek kalmaz."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Ortak yazarınıza yazın",
+          "body": "Enter ile mesaj gönderilir, yeni satır için Shift+Enter kullanılır. Ctrl+Enter hızlı yanıt gönderir, Ctrl+Shift+Enter ise daha derinlemesine düşünme modunu tetikler. Şablonlar ve komutlar için / , bağlam eklemek için @ kullanın."
+        },
+        "permissionMode": {
+          "title": "Sor, Planla veya Yaz",
+          "body": "Ajanın kendi başına ne kadar yapabileceğini kontrol eder — «Sor» her şeyi onaylar, «Planla» önce adımları belirler, «Yaz» ise izin verilenler listesi dahilinde daha özgür hareket eder. Ctrl+. ile modlar arasında geçiş yapabilirsiniz."
+        },
+        "effort": {
+          "title": "Akıl yürütme çabası",
+          "body": "Modelin yanıt vermeden önce ne kadar derin düşüneceği — Kapalı/Düşük/Orta/Yüksek/Otomatik. Akıl yürütemeyen modeller için gizlenmiştir."
+        },
+        "attachContext": {
+          "title": "Bağlam ekle",
+          "body": "Yapay zekanın bu mesaj için tam olarak ihtiyaç duyduğu bağlama sahip olması için belirli kitap, bölüm veya sözlük girişlerini dahil edin."
+        },
+        "send": {
+          "title": "Gönder",
+          "body": "Mesajınızı gönderir. Yapay zeka yanıt verirken bu düğme bir Durdur düğmesine dönüşür."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Sohbetleri değiştir",
+          "body": "Bu kitabın sohbet oturumları arasında geçiş yapın, eski olanları arşivleyin veya yeni bir tane başlatın — bir model ve başlangıç kişiliği (Romancı/Çevirmen/Dünya Kurucu/Editör) seçin."
+        },
+        "rename": {
+          "title": "Bu sohbeti yeniden adlandır",
+          "body": "Oturuma daha sonra tanıyabileceğiniz bir isim verin."
+        },
+        "settings": {
+          "title": "Oturum ayarları",
+          "body": "Model, kompozitör/planlayıcı model geçersiz kılmaları, bellek temellendirme, sistem istemi, sıcaklık (temperature), top-P ve akıl yürütme çabası — hepsi bu oturuma özeldir."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Araçlar ve yetenekler paneli",
+          "body": "Yapay zekanın bu sohbette şu anda kullanabileceği tüm araçları ve yetenekleri gösterir — daha fazlasını ekleyin veya kullanmasını istemediklerinizi kaldırın."
+        },
+        "add": {
+          "title": "Araç veya yetenek ekle",
+          "body": "Kategorilere göre mevcut olan her şeye göz atın ve bu sohbetin tam olarak neye ihtiyacı olduğunu belirleyerek etkinleştirin."
+        },
+        "inspector": {
+          "title": "Ajan çalışma zamanı denetleyicisi",
+          "body": "Ajanın şu anda ne yaptığını —araç keşfetme, bir araç çalıştırma veya boşta bekleme— görün ve tüm ayrıntılı izi görmek için genişletin."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Bağlam bütçesi",
+          "body": "Bu sohbetin modelin bağlam penceresinin ne kadarını kullandığını gösterir. Kategorilere göre tam dökümü görmek ve isteğe bağlı olarak sohbeti sıkıştırmak için üzerine tıklayın."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "Yayımlanmadan önce incelenen yapay zeka düzenlemeleri",
+          "body": "Ajan bir anlatım düzenlemesi önerdiğinde, her değişikliği kabul etmeniz veya reddetmeniz için burada bir inceleme kartı görünür. Daha riskli işlemler (toplu düzenlemeler, yıkıcı işlemler), önce maliyet/etki önizlemesi içeren kendi onay kartına sahiptir. Ajanın otomatik olarak uyguladığı her şey, tek tıkla Geri Al seçeneğiyle bir Etkinlik şeridinde görünür."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Sesli mod",
+          "body": "Yazmak yerine konuşun — canlı transkripsiyon ile tamamen eller serbest bir sohbet."
+        },
+        "settings": {
+          "title": "Ses ayarları",
+          "body": "Konuşmadan metne ve metinden konuşmaya modellerinizi, sesinizi, hızınızı ve otomatik gönderim davranışınızı seçin."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Ayrı bir pencerede aç",
+          "body": "Yazım aracını ayrı bir işletim sistemi penceresinde açar — ikinci bir monitör için kullanışlıdır. Orada onayladığınız düzenlemeler hâlâ bu kitabın editörüne kaydedilir."
+        }
       }
     }
   },
   "userGuide": {
-    "intro": "Writing Studio'nun açabileceği her araç, Komut Paleti ile aynı şekilde gruplandırılmıştır."
+    "intro": "Writing Studio'nun açabileceği her araç, Komut Paleti ile aynı şekilde gruplandırılmıştır.",
+    "toursGroup": "Rehberli turlar",
+    "toursEditor": "Editör",
+    "toursComposer": "Yazım Aracı"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Editör Temelleri",
+      "desc": "Araç çubuğu — dil bilgisi, ısı haritası, sözlük, odaklanma, sahneler ve hızlı erişim düğmeleri."
+    },
+    "editorAiTools": {
+      "label": "Yapay Zeka Yazım Araçları",
+      "desc": "İmleçten devam et, seçili metni Yeniden Yaz/Genişlet/Betimle ve Klasik/Yapay Zeka modu geçişi."
+    },
+    "editorDataSafety": {
+      "label": "Veri Güvenliği",
+      "desc": "Yapay zeka düzenleme kontrol noktaları, revizyon geçmişi ve yayınlama kontrolü."
+    },
+    "editorSceneRail": {
+      "label": "Sahne Çubuğu",
+      "desc": "Sahneleri takip edin, yeniden sıralayın ve akışın metninizle senkronize kalmasını sağlayın."
+    },
+    "editorGlossary": {
+      "label": "Sözlük",
+      "desc": "Yazarken metin içi varlık ipuçları ve `[[` ile otomatik tamamlama."
+    },
+    "editorMediaImage": {
+      "label": "Medya — Görseller",
+      "desc": "Değiştirme, yeniden boyutlandırma, altyazı ve sürüm geçmişi seçenekleriyle görsel yükleyin veya yapay zekayla oluşturun."
+    },
+    "editorMediaVideo": {
+      "label": "Medya — Video",
+      "desc": "Kısa video klipler yükleyin veya yapay zekayla oluşturun."
+    },
+    "editorMediaAudio": {
+      "label": "Medya — Ses ve Seslendirme",
+      "desc": "Bağımsız ses bloklarının yanı sıra yükleyebileceğiniz, kaydedebileceğiniz veya yapay zekayla oluşturabileceğiniz paragraf bazlı seslendirmeler."
+    },
+    "composerBasics": {
+      "label": "Temel Bileşenler",
+      "desc": "Mesaj kutusu, izin modu, akıl yürütme çabası, bağlam ekleme ve gönderme."
+    },
+    "composerSessions": {
+      "label": "Oturum Yönetimi",
+      "desc": "Sohbetleri değiştirin, yeniden adlandırın veya başlatın ve oturuma özel ayarları açın."
+    },
+    "composerAgentTools": {
+      "label": "Ajan Araçları ve Yetenekleri",
+      "desc": "Ajanın şu anda hangi araçlara ve yeteneklere erişebileceğini görün ve yönetin."
+    },
+    "composerContextBudget": {
+      "label": "Bağlam Bütçesi",
+      "desc": "Bu sohbetin modelin bağlam penceresinin ne kadarını kullandığını ve bunun nasıl sıkıştırılacağını görün."
+    },
+    "composerAiEditReview": {
+      "label": "Yapay Zeka Düzenleme İncelemesi ve Güvenlik",
+      "desc": "Önerilen düzenlemelerin, riskli işlemlerin ve otomatik olarak uygulanan değişikliklerin nasıl incelendiğini ve nasıl geri alınabileceğini öğrenin."
+    },
+    "composerVoice": {
+      "label": "Sesli Asistan",
+      "desc": "Yapılandırılabilir konuşmadan metne ve metinden konuşmaya özellikleriyle yazmak yerine konuşun."
+    },
+    "composerPopout": {
+      "label": "Ayrı Pencere",
+      "desc": "İkinci bir monitör için Oluşturma ekranını kendi işletim sistemi penceresi olarak açın."
+    }
   }
 }

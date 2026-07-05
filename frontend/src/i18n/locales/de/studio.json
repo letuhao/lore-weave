@@ -7,7 +7,8 @@
     "title": "Writing Studio",
     "body": "Ein anheftbarer Arbeitsbereich für dieses Buch. Panels (Compose, Planner, Cast, Qualität…) werden hier nacheinander hinzugefügt. Ziehe Tabs, um sie zu teilen, zu stapeln, schweben zu lassen oder in einem eigenen Fenster zu öffnen.",
     "openUserGuide": "Benutzerhandbuch öffnen",
-    "paletteHint": "⌘⇧P → jederzeit \"Fokus wählen\" oder \"Geführte Tour starten\""
+    "paletteHint": "⌘⇧P → jederzeit \"Fokus wählen\" oder \"Geführte Tour starten\"",
+    "startGuidedTour": "Geführte Tour starten"
   },
   "panels": {
     "compose": {
@@ -399,7 +400,8 @@
     "grammar": "Grammatik",
     "heatmap": "Heatmap",
     "focus": "Fokus",
-    "translate": "Übersetzen"
+    "translate": "Übersetzen",
+    "glossary": "Glossar"
   },
   "popout": {
     "invalid": "Dieser Pop-out-Link ist ungültig.",
@@ -606,6 +608,14 @@
         "editor": {
           "title": "Editor",
           "body": "Der Manuskript-Editor — Grammatikprüfung, Glossar-Hinweise, Fokus-Modus und Auto-Speichern finden sich hier."
+        },
+        "grammar": {
+          "title": "Grammatik- & Rechtschreibprüfung",
+          "body": "Aktivieren Sie die Live-Grammatik- und Rechtschreibprüfung für die aktuelle Szene – unterstützt durch LanguageTool."
+        },
+        "heatmap": {
+          "title": "Kontinuitäts-Heatmap",
+          "body": "Markiert Zeilen, die von der etablierten Storyline abweichen könnten, damit Sie diese vor dem Veröffentlichen überprüfen können."
         }
       },
       "actions": {
@@ -626,6 +636,14 @@
         "planner": {
           "title": "Die Struktur der Geschichte planen",
           "body": "Lege Handlungsbögen, Kapitel und Beats vor oder zwischen den Schreibsessions fest, damit Compose und der Editor eine Struktur zum Schreiben haben."
+        },
+        "grammar": {
+          "title": "Tippfehler beim Schreiben erkennen",
+          "body": "Aktivieren Sie die Live-Grammatik- und Rechtschreibprüfung, ohne die Seite zu verlassen."
+        },
+        "heatmap": {
+          "title": "Abweichungen in der Kontinuität finden",
+          "body": "Markiert Zeilen, die dem etablierten Kanon widersprechen könnten – ein kurzer Blick lohnt sich, bevor Sie weiterschreiben."
         }
       },
       "worldbuilder": {
@@ -671,10 +689,257 @@
           "title": "Buchdetails aktualisieren",
           "body": "Titel, Cover, Genre-Tags und Welt-Verknüpfungen findest du in den Bugeinstellungen – aktualisiere sie jederzeit."
         }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Grammatik- & Rechtschreibprüfung",
+          "body": "Aktivieren Sie die Live-Grammatik- und Rechtschreibprüfung für die aktuelle Szene."
+        },
+        "heatmap": {
+          "title": "Kontinuitäts-Heatmap",
+          "body": "Markiert Textstellen, die vom etablierten Kanon abweichen könnten – ein kurzer Blick lohnt sich, bevor Sie weiterschreiben."
+        },
+        "glossary": {
+          "title": "Glossar-Hervorhebung",
+          "body": "Blendet Glossar-Hinweise beim Darüberfahren mit der Maus ein und aktiviert die `[[`-Autovervollständigung während des Schreibens."
+        },
+        "focus": {
+          "title": "Fokus-Modus",
+          "body": "Dunkelt alles außer dem aktuellen Absatz ab und blendet die Seitenleisten aus – ideal für das Schreiben ohne Ablenkung."
+        },
+        "scenes": {
+          "title": "Szenen-Leiste",
+          "body": "Zeigt die Szenen dieses Kapitels an – springen Sie zwischen ihnen hin und her, ordnen Sie sie neu oder verfolgen Sie den Status."
+        },
+        "openJson": {
+          "title": "Als JSON öffnen",
+          "body": "Öffnet dieses Kapitel als strukturierte Rohdaten – es ist dasselbe Dokument, Änderungen werden in beiden Ansichten synchronisiert."
+        },
+        "originalSource": {
+          "title": "Originalquelle",
+          "body": "Eine schreibgeschützte Ansicht des Quelltextes vor der Übersetzung, falls dieses Kapitel importiert wurde."
+        },
+        "reader": {
+          "title": "Reader",
+          "body": "Öffnet dieses Kapitel in der Reader-Ansicht – so sieht es für die tatsächlichen Leser aus."
+        },
+        "translate": {
+          "title": "Übersetzen",
+          "body": "Springt direkt zu den Übersetzungsversionen dieses Kapitels – Sie müssen nicht die gesamte Übersetzungsmatrix durchlaufen."
+        },
+        "save": {
+          "title": "Speichern",
+          "body": "Speichert Ihre Änderungen. ⌘S / Strg+S funktioniert von überall im Editor aus."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Klassik- ⇄ KI-Modus",
+          "body": "Wechseln Sie zwischen einer einfachen Schreiboberfläche und einer mit verfügbaren KI-Tools (Auswahl: Umschreiben/Erweitern/Beschreiben, Weiterschreiben ab Cursor)."
+        },
+        "continueStep": {
+          "title": "Mit KI weiterschreiben",
+          "body": "Erzeugt eine KI-generierte Fortsetzung ab Ihrem Cursor. Wählen Sie stattdessen zuerst einen Text aus, um ihn umzuschreiben, zu erweitern oder zu beschreiben."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "KI-Bearbeitungs-Checkpoints",
+          "body": "Jede KI-Bearbeitung erstellt hier einen Wiederherstellungspunkt – machen Sie eine KI-Änderung rückgängig, selbst wenn Sie danach bereits weitergeschrieben haben."
+        },
+        "revisionHistory": {
+          "title": "Versionsverlauf",
+          "body": "Jedes Speichern erstellt eine Version, die Sie separat von KI-Checkpoints vorschauen und wiederherstellen können."
+        },
+        "publish": {
+          "title": "Publish-Check",
+          "body": "Vor dem Veröffentlichen wird auf ungelöste Kanon-Widersprüche und unvollständige Szenen geprüft, damit die Leser ein konsistentes Erlebnis haben."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Szenen-Leiste",
+          "body": "Listet die Szenen dieses Kapitels auf — Status, Synopsis und Umordnung erfolgen direkt hier."
+        },
+        "anchor": {
+          "title": "Anker-Szenen",
+          "body": "Verknüpft Szenentitel mit Überschriften im Text, damit die Leiste direkt dorthin springen kann."
+        },
+        "add": {
+          "title": "Szene hinzufügen",
+          "body": "Erstellt einen neuen Szeneneintrag für dieses Kapitel."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Glossar",
+          "body": "Hebt bekannte Eigennamen beim Darüberfahren mit der Maus hervor. Durch Tippen von `[[` öffnet sich eine Autovervollständigung zum Einfügen oder Verlinken. Hier können Sie es deaktivieren, falls es beim Korrekturlesen stört."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Bilder",
+          "body": "Lade ein Bild hoch, ziehe es per Drag-and-Drop hinein oder füge es ein – oder generiere eines mit KI (du wählst das Modell explizit aus, niemals ein stiller Standard). Sobald es hinzugefügt wurde, kannst du es ersetzen, die Größe ändern, eine Bildunterschrift hinzufügen, Alt-Text vergeben und die Versionshistorie einsehen."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Lade eine Videodatei hoch oder generiere einen kurzen Clip mit KI (expliziter Modell-Picker). Ersetzen, Skalieren, Bildunterschrift und Versionshistorie funktionieren genauso wie bei Bildern."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Audio",
+          "body": "Füge einen eigenständigen Audio-Block ein – lade eine Datei hoch oder generiere eine Erzählstimme mit KI. Tipp: Wenn du über EINEN Absatz fährst, erscheint zudem eine Schnellleiste zum Hochladen, Aufnehmen oder KI-Generieren, um die Erzählung direkt mit diesem Text zu verknüpfen – ohne dass ein eigener Block nötig ist."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Schreibe deinem Co-Autor",
+          "body": "Enter für Senden, Shift+Enter für eine neue Zeile. Ctrl+Enter erzwingt eine schnelle Antwort, Ctrl+Shift+Enter erzwingt tieferes Nachdenken. Tippe / für Vorlagen und Befehle, @ um Kontext inline zu verknüpfen."
+        },
+        "permissionMode": {
+          "title": "Fragen, Planen oder Schreiben",
+          "body": "Steuert, wie viel der Agent eigenständig tun kann – „Fragen“ bestätigt alles, „Planen“ legt zuerst die Schritte fest, „Schreiben“ agiert freier innerhalb seiner Whitelist. Mit Ctrl+. kannst du durch die Modi schalten."
+        },
+        "effort": {
+          "title": "Denkaufwand",
+          "body": "Wie intensiv das Modell vor der Antwort nachdenkt – Aus/Niedrig/Mittel/Hoch/Auto. Ausgeblendet bei Modellen, die nicht über Reasoning-Fähigkeiten verfügen."
+        },
+        "attachContext": {
+          "title": "Kontext hinzufügen",
+          "body": "Füge spezifische Buch-, Kapitel- oder Glossar-Einträge hinzu, damit der Agent genau den Kontext erhält, den er für diese Nachricht benötigt."
+        },
+        "send": {
+          "title": "Senden",
+          "body": "Sendet deine Nachricht. Während der Agent antwortet, wird diese Schaltfläche zum Stopp-Button."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Konversationen wechseln",
+          "body": "Wechsle zwischen den Chat-Sitzungen dieses Buches, archiviere alte oder starte eine neue — wähle ein Modell und eine Start-Persona (Romanautor/Übersetzer/Weltenbauer/Editor)."
+        },
+        "rename": {
+          "title": "Diesen Chat umbenennen",
+          "body": "Gib der Sitzung einen Namen, an den du dich später erinnern kannst."
+        },
+        "settings": {
+          "title": "Sitzungseinstellungen",
+          "body": "Modell, Composer/Planner-Modell-Überschreibungen, Memory-Grounding, System-Prompt, Temperature, Top-P und Reasoning-Effort — alles nur für diese eine Sitzung relevant."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Werkzeuge & Fähigkeiten",
+          "body": "Zeigt alle Werkzeuge und Fähigkeiten an, die der Agent in diesem Chat aktuell nutzen kann — füge weitere hinzu oder entferne solche, auf die er nicht zugreifen soll."
+        },
+        "add": {
+          "title": "Werkzeuge oder Fähigkeiten hinzufügen",
+          "body": "Durchsuche alle verfügbaren Optionen nach Kategorien und aktiviere genau das, was für diese Konversation benötigt wird."
+        },
+        "inspector": {
+          "title": "Agenten-Laufzeit-Inspektor",
+          "body": "Sieh dir an, was der Agent gerade tut – Werkzeuge entdecken, eines ausführen oder im Leerlauf – und erweitere die Ansicht für die vollständige Detailhistorie."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Kontext-Budget",
+          "body": "Zeigt an, wie viel des Kontextfensters des Modells diese Konversation nutzt. Klicke darauf, um eine vollständige Aufschlüsselung nach Kategorien zu sehen und die Konversation bei Bedarf zu komprimieren."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "KI-Bearbeitungen, vor der Anwendung überprüft",
+          "body": "Wenn der Agent eine Textänderung vorschlägt, erscheint hier eine Prüfkarte, mit der du jede Änderung einzeln annehmen oder ablehnen kannst. Riskante Aktionen (Stapelbearbeitungen, destruktive Operationen) erhalten eine eigene Bestätigungskarte mit einer Kosten-/Auswirkungs-Vorschau. Alles, was der Agent automatisch anwendet, erscheint in einer Aktivitätsleiste mit einer Ein-Klick-Rückgängig-Funktion."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Sprachmodus",
+          "body": "Sprich, anstatt zu tippen – eine vollkommen freihändige Konversation mit Live-Transkription."
+        },
+        "settings": {
+          "title": "Spracheinstellungen",
+          "body": "Wähle deine Speech-to-Text- und Text-to-Speech-Modelle, Stimme, Geschwindigkeit und das Verhalten beim automatischen Senden."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "In einem eigenen Fenster öffnen",
+          "body": "Öffnet den Editor in einem separaten OS-Fenster – ideal für einen zweiten Monitor. Änderungen, die Sie dort vornehmen, werden weiterhin in diesem Buch-Editor gespeichert."
+        }
       }
     }
   },
   "userGuide": {
-    "intro": "Jedes Tool, das Writing Studio öffnen kann, ist so gruppiert wie die Befehlspalette."
+    "intro": "Jedes Tool, das Writing Studio öffnen kann, ist so gruppiert wie die Befehlspalette.",
+    "toursGroup": "Geführte Touren",
+    "toursEditor": "Editor",
+    "toursComposer": "Composer"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Editor-Grundlagen",
+      "desc": "Die Symbolleiste – Grammatik, Heatmap, Glossar, Fokus, Szenen und Schnellzugriff-Buttons."
+    },
+    "editorAiTools": {
+      "label": "KI-Schreibwerkzeuge",
+      "desc": "Fortsetzen ab Cursor, Auswahl umschreiben/erweitern/beschreiben sowie der Wechsel zwischen Klassisch- und KI-Modus."
+    },
+    "editorDataSafety": {
+      "label": "Datensicherheit",
+      "desc": "KI-Bearbeitungs-Checkpoints, Versionsverlauf und die Veröffentlichungsschranke."
+    },
+    "editorSceneRail": {
+      "label": "Szenenleiste",
+      "desc": "Verfolge Szenen, ordne sie neu an und halte die Timeline mit deinem Text synchron."
+    },
+    "editorGlossary": {
+      "label": "Glossar",
+      "desc": "Inline-Entitätshinweise und die `[[`-Autovervollständigung während des Schreibens."
+    },
+    "editorMediaImage": {
+      "label": "Medien — Bilder",
+      "desc": "Bilder hochladen oder per KI generieren, inklusive Ersetzen, Skalieren, Bildunterschrift und Versionsverlauf."
+    },
+    "editorMediaVideo": {
+      "label": "Medien — Video",
+      "desc": "Kurze Videoclips hochladen oder per KI generieren."
+    },
+    "editorMediaAudio": {
+      "label": "Medien — Audio & Narration",
+      "desc": "Eigenständige Audioblöcke sowie absatzweise Narrationen, die du hochladen, aufnehmen oder per KI generieren kannst."
+    },
+    "composerBasics": {
+      "label": "Composer-Grundlagen",
+      "desc": "Das Nachrichtenfeld, der Berechtigungsmodus, der Denkaufwand (Reasoning Effort), Kontext anhängen und Senden."
+    },
+    "composerSessions": {
+      "label": "Sitzungsverwaltung",
+      "desc": "Konversationen wechseln, umbenennen oder starten und die Einstellungen für die jeweilige Sitzung öffnen."
+    },
+    "composerAgentTools": {
+      "label": "Agenten-Tools & Fähigkeiten",
+      "desc": "Sehen und verwalten Sie, auf welche Tools und Fähigkeiten der Agent aktuell zugreifen kann."
+    },
+    "composerContextBudget": {
+      "label": "Kontext-Budget",
+      "desc": "Wie viel des Kontextfensters des Modells diese Konversation nutzt und wie Sie es komprimieren können."
+    },
+    "composerAiEditReview": {
+      "label": "KI-Bearbeitungsprüfung & Sicherheit",
+      "desc": "Wie vorgeschlagene Bearbeitungen, riskante Aktionen und automatisch angewendete Änderungen überprüft und rückgängig gemacht werden können."
+    },
+    "composerVoice": {
+      "label": "Sprachassistent",
+      "desc": "Sprechen statt tippen, mit konfigurierbarer Spracherkennung und Sprachausgabe."
+    },
+    "composerPopout": {
+      "label": "Popout-Fenster",
+      "desc": "Öffnen Sie den Editor in einem eigenen OS-Fenster für einen zweiten Monitor."
+    }
   }
 }

@@ -7,7 +7,8 @@
     "title": "Writing Studio",
     "body": "Un espacio de trabajo acoplable para este libro. Los paneles (composición, planificador, reparto, calidad…) se añadirán aquí uno a uno. Arrastra las pestañas para dividir, apilar, flotar o extraer en su propia ventana.",
     "openUserGuide": "Abrir la guía del usuario",
-    "paletteHint": "⌘⇧P → «Elegir enfoque» o «Iniciar recorrido guiado» en cualquier momento"
+    "paletteHint": "⌘⇧P → «Elegir enfoque» o «Iniciar recorrido guiado» en cualquier momento",
+    "startGuidedTour": "Iniciar recorrido guiado"
   },
   "panels": {
     "compose": {
@@ -399,7 +400,8 @@
     "grammar": "Gramática",
     "heatmap": "Mapa de calor",
     "focus": "Enfoque",
-    "translate": "Traducir"
+    "translate": "Traducir",
+    "glossary": "Glosario"
   },
   "popout": {
     "invalid": "Este enlace emergente no es válido.",
@@ -606,6 +608,14 @@
         "editor": {
           "title": "Editor",
           "body": "El editor de manuscritos: la gramática, las ayudas del glosario, el modo de enfoque y el guardado automático funcionan aquí."
+        },
+        "grammar": {
+          "title": "Gramática y ortografía",
+          "body": "Activa la corrección gramatical y ortográfica en tiempo real para la escena actual, con tecnología de LanguageTool."
+        },
+        "heatmap": {
+          "title": "Mapa de calor de continuidad",
+          "body": "Resalta las líneas que podrían desviarse del canon establecido, para que puedas revisarlas antes de publicar."
         }
       },
       "actions": {
@@ -626,6 +636,14 @@
         "planner": {
           "title": "Planifica la estructura de la historia",
           "body": "Organiza arcos, capítulos y puntos de giro antes o entre tus sesiones de escritura, para que Compose y el Editor tengan una estructura sobre la cual escribir."
+        },
+        "grammar": {
+          "title": "Detecta erratas mientras escribes",
+          "body": "Activa la corrección gramatical y ortográfica en tiempo real sin salir de la página."
+        },
+        "heatmap": {
+          "title": "Detecta inconsistencias",
+          "body": "Resalta las líneas que podrían contradecir el canon establecido; vale la pena echarles un vistazo antes de continuar."
         }
       },
       "worldbuilder": {
@@ -671,10 +689,257 @@
           "title": "Actualiza los detalles del libro",
           "body": "El título, la portada, las etiquetas de género y el enlace al mundo se gestionan en Ajustes del libro; actualízalos cuando quieras."
         }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Gramática y ortografía",
+          "body": "Activa la corrección gramatical y ortográfica en tiempo real para la escena actual."
+        },
+        "heatmap": {
+          "title": "Mapa de calor de continuidad",
+          "body": "Resalta las líneas que podrían desviarse del canon establecido; vale la pena echarles un vistazo antes de continuar."
+        },
+        "glossary": {
+          "title": "Decoración del glosario",
+          "body": "Activa las ayudas del glosario al pasar el cursor y el autocompletado `[[` mientras escribes."
+        },
+        "focus": {
+          "title": "Modo enfoque",
+          "body": "Atenúa todo excepto el párrafo actual y oculta los paneles laterales; ideal para redactar sin distracciones."
+        },
+        "scenes": {
+          "title": "Barra de escenas",
+          "body": "Muestra las escenas de este capítulo: salta entre ellas, reordénalas o sigue su estado."
+        },
+        "openJson": {
+          "title": "Abrir como JSON",
+          "body": "Abre este mismo capítulo como datos estructurados sin procesar; es el mismo documento y los cambios se reflejan en ambos modos."
+        },
+        "originalSource": {
+          "title": "Fuente original",
+          "body": "Una vista de solo lectura del texto original previo a la traducción, en caso de que este capítulo haya sido importado."
+        },
+        "reader": {
+          "title": "Lector",
+          "body": "Abre este capítulo en la vista de lectura: así es como lo ve un lector real."
+        },
+        "translate": {
+          "title": "Traducir",
+          "body": "Te lleva directamente a las versiones traducidas de este capítulo; no hace falta pasar por la matriz de traducción completa."
+        },
+        "save": {
+          "title": "Guardar",
+          "body": "Guarda tus cambios. ⌘S / Ctrl+S funciona desde cualquier parte del editor."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Modo Clásico ⇄ IA",
+          "body": "Cambia entre una superficie de escritura simple y una con herramientas de IA disponibles (selección de Reescribir/Expandir/Describir, continuar desde el cursor)."
+        },
+        "continueStep": {
+          "title": "Continuar escribiendo con IA",
+          "body": "Genera una continuación mediante IA empezando desde tu cursor. Si seleccionas un texto primero, podrás usar las opciones de Reescribir, Expandir o Describir."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "Puntos de restauración de edición por IA",
+          "body": "Cada edición de la IA crea un punto de restauración aquí; así podrás deshacer un cambio de la IA incluso si has seguido escribiendo después."
+        },
+        "revisionHistory": {
+          "title": "Historial de revisiones",
+          "body": "Cada guardado es una versión que puedes previsualizar y restaurar, de forma independiente a los puntos de control de la IA."
+        },
+        "publish": {
+          "title": "Control de publicación",
+          "body": "Antes de publicar, se comprueban las contradicciones de canon no resueltas y las escenas incompletas para que lo que lean los lectores sea coherente."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Barra de escenas",
+          "body": "Lista las escenas de este capítulo: aquí puedes ver su estado, la sinopsis y reordenarlas."
+        },
+        "anchor": {
+          "title": "Escenas de anclaje",
+          "body": "Vincula los títulos de las escenas con los encabezados de la prosa para que la barra pueda saltar directamente a ellos."
+        },
+        "add": {
+          "title": "Añadir una escena",
+          "body": "Crea una nueva entrada de escena para este capítulo."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Glosario",
+          "body": "Resalta los nombres de entidades conocidas en tu prosa al pasar el cursor; además, escribir `[[` abre el autocompletado para insertar o enlazar una. Puedes desactivarlo aquí si te estorba al corregir el texto."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Imágenes",
+          "body": "Sube, arrastra y suelta o pega una imagen, o genérala con IA (tú eliges el modelo explícitamente, nunca un valor predeterminado silencioso). Una vez añadida, puedes reemplazarla, cambiar su tamaño, añadir un pie de foto, texto alt y consultar su historial de versiones."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Vídeo",
+          "body": "Sube un archivo de vídeo o genera un clip corto con IA (selector de modelo explícito). Reemplazar, cambiar el tamaño, añadir pie de foto e historial de versiones funcionan igual que con las imágenes."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Audio",
+          "body": "Inserta un bloque de audio independiente: sube un archivo o genera una narración con IA. Consejo: al pasar el ratón sobre CUALQUIER párrafo, también aparecerá una barra rápida de subir/grabar/generar con IA para adjuntar la narración directamente a ese texto, sin necesidad de un bloque."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Escribe a tu coescritor",
+          "body": "Pulsa Enter para enviar, Shift+Enter para una nueva línea. Ctrl+Enter fuerza una respuesta rápida, Ctrl+Shift+Enter fuerza un pensamiento más profundo. Escribe / para plantillas y comandos, o @ para adjuntar contexto en línea."
+        },
+        "permissionMode": {
+          "title": "Preguntar, Planificar o Escribir",
+          "body": "Controla cuánto puede hacer el agente por su cuenta: «Preguntar» confirma todo, «Planificar» establece los pasos primero y «Escribir» actúa con más libertad dentro de su lista de permitidos. Ctrl+. permite alternar entre ellos."
+        },
+        "effort": {
+          "title": "Esfuerzo de razonamiento",
+          "body": "Qué tanto piensa el modelo antes de responder: Desactivado/Bajo/Medio/Alto/Auto. Oculto para modelos que no pueden razonar."
+        },
+        "attachContext": {
+          "title": "Adjuntar contexto",
+          "body": "Incluye libros, capítulos o entradas del glosario específicos para que el agente tenga exactamente el contexto que necesita para este mensaje."
+        },
+        "send": {
+          "title": "Enviar",
+          "body": "Envía tu mensaje. Mientras el agente responde, este botón se convierte en un botón de «Parar»."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Cambiar conversaciones",
+          "body": "Salta entre las sesiones de chat de este libro, archiva las antiguas o inicia una nueva: elige un modelo y una persona inicial (Novelista/Traductor/Constructor de mundos/Editor)."
+        },
+        "rename": {
+          "title": "Renombrar este chat",
+          "body": "Dale a la sesión un nombre que puedas reconocer más tarde."
+        },
+        "settings": {
+          "title": "Ajustes de la sesión",
+          "body": "Modelo, ajustes de modelo del compositor/planificador, base de memoria, prompt del sistema, temperatura, top-P y esfuerzo de razonamiento; todo limitado a esta sesión."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Panel de herramientas y habilidades",
+          "body": "Muestra todas las herramientas y habilidades que el agente puede usar actualmente en este chat: añade más o elimina las que no quieras que utilice."
+        },
+        "add": {
+          "title": "Añadir herramientas o habilidades",
+          "body": "Explora todo lo disponible por categoría y activa exactamente lo que esta conversación necesite."
+        },
+        "inspector": {
+          "title": "Inspector de ejecución del agente",
+          "body": "Mira qué está haciendo el agente en este momento —descubriendo herramientas, ejecutando una o en espera— y amplía para ver el rastro de detalles completo."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Presupuesto de contexto",
+          "body": "Muestra cuánto está utilizando esta conversación la ventana de contexto del modelo. Haz clic para ver un desglose completo por categoría y para compactar la conversación a demanda."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "Ediciones de IA, revisadas antes de aplicarse",
+          "body": "Cuando el agente propone una edición de prosa, aparecerá aquí una tarjeta de revisión para que aceptes o rechaces cada cambio. Las acciones más arriesgadas (ediciones por lotes, operaciones destructivas) tienen su propia tarjeta de confirmación con una vista previa del coste/impacto. Cualquier cosa que el agente aplique automáticamente aparecerá en una barra de Actividad con la opción de deshacer con un solo clic."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Modo de voz",
+          "body": "Habla en lugar de escribir: una conversación totalmente manos libres con transcripción en vivo."
+        },
+        "settings": {
+          "title": "Ajustes de voz",
+          "body": "Elige tus modelos de voz a texto y texto a voz, la voz, la velocidad y el comportamiento de envío automático."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Abrir en una ventana independiente",
+          "body": "Abre el modo Escritura en una ventana separada del sistema operativo; ideal para usar un segundo monitor. Los cambios que apruebes allí se guardarán en el editor de este libro."
+        }
       }
     }
   },
   "userGuide": {
-    "intro": "Cada herramienta que Writing Studio puede abrir, agrupada de la misma forma que en la Paleta de comandos."
+    "intro": "Cada herramienta que Writing Studio puede abrir, agrupada de la misma forma que en la Paleta de comandos.",
+    "toursGroup": "Tours guiados",
+    "toursEditor": "Editor",
+    "toursComposer": "Escritura"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Conceptos básicos del editor",
+      "desc": "La barra de herramientas: gramática, mapa de calor, glosario, modo enfoque, escenas y botones de acceso rápido."
+    },
+    "editorAiTools": {
+      "label": "Herramientas de escritura con IA",
+      "desc": "Continuar desde el cursor, reescribir/expandir/describir selección y el conmutador de modo Clásico/IA."
+    },
+    "editorDataSafety": {
+      "label": "Seguridad de datos",
+      "desc": "Puntos de control de edición con IA, historial de revisiones y el control de publicación."
+    },
+    "editorSceneRail": {
+      "label": "Panel de escenas",
+      "desc": "Rastrea escenas, reordénalas y mantén la línea de tiempo sincronizada con tu prosa."
+    },
+    "editorGlossary": {
+      "label": "Glosario",
+      "desc": "Sugerencias de entidades en línea y autocompletado con «[[» mientras escribes."
+    },
+    "editorMediaImage": {
+      "label": "Media — Imágenes",
+      "desc": "Sube o genera imágenes con IA, con opciones de reemplazar, redimensionar, añadir pie de foto e historial de versiones."
+    },
+    "editorMediaVideo": {
+      "label": "Media — Vídeo",
+      "desc": "Sube o genera clips de vídeo cortos con IA."
+    },
+    "editorMediaAudio": {
+      "label": "Media — Audio y Narración",
+      "desc": "Bloques de audio independientes, además de narración por párrafo que puedes subir, grabar o generar con IA."
+    },
+    "composerBasics": {
+      "label": "Conceptos básicos del editor",
+      "desc": "El cuadro de mensaje, modo de permisos, esfuerzo de razonamiento, adjuntar contexto y enviar."
+    },
+    "composerSessions": {
+      "label": "Gestión de sesiones",
+      "desc": "Cambia, renombra o inicia conversaciones, y abre la configuración de cada sesión."
+    },
+    "composerAgentTools": {
+      "label": "Herramientas y habilidades del agente",
+      "desc": "Consulta y gestiona a qué herramientas y habilidades puede acceder el agente actualmente."
+    },
+    "composerContextBudget": {
+      "label": "Presupuesto de contexto",
+      "desc": "Cuánto espacio de la ventana de contexto del modelo está utilizando esta conversación y cómo compactarlo."
+    },
+    "composerAiEditReview": {
+      "label": "Revisión de edición por IA y seguridad",
+      "desc": "Cómo se revisan las ediciones propuestas, las acciones de riesgo y los cambios aplicados automáticamente, y cómo deshacerlos."
+    },
+    "composerVoice": {
+      "label": "Asistente de voz",
+      "desc": "Habla en lugar de escribir, con funciones configurables de voz a texto y texto a voz."
+    },
+    "composerPopout": {
+      "label": "Ventana emergente",
+      "desc": "Saca el editor a su propia ventana del sistema operativo para usarlo en un segundo monitor."
+    }
   }
 }
