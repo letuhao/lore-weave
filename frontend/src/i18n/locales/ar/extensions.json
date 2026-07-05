@@ -1,0 +1,203 @@
+{
+  "title": "الإضافات",
+  "tabs": {
+    "skills": "المهارات",
+    "mcp": "خوادم MCP",
+    "commands": "الأوامر والخطافات",
+    "subagents": "الوكلاء الفرعيون",
+    "plugins": "المكونات الإضافية",
+    "proposals": "المقترحات",
+    "activity": "سجل النشاط",
+    "ingest": "مصادر السجل"
+  },
+  "quota": {
+    "skills": "المهارات",
+    "mcp": "خوادم MCP",
+    "proposals": "المقترحات"
+  },
+  "scope": {
+    "label": "النطاق:",
+    "mine": "إضافاتي",
+    "orBook": "أو كتاب:",
+    "bookPlaceholder": "خاص بالكتاب...",
+    "bookHint": "خاص بالكتاب — ستُطبق العناصر الجديدة على هذا الكتاب فقط"
+  },
+  "common": {
+    "loading": "جاري التحميل...",
+    "delete": "حذف",
+    "add": "إضافة",
+    "cancel": "إلغاء",
+    "back": "رجوع",
+    "next": "التالي",
+    "of": "من",
+    "system": "النظام",
+    "book": "الكتاب"
+  },
+  "skills": {
+    "search": "البحث عن المهارات…",
+    "tier": {
+      "all": "المستوى: الكل",
+      "system": "النظام",
+      "user": "المستخدم",
+      "book": "الكتاب"
+    },
+    "sort": {
+      "updated": "الترتيب: الأحدث",
+      "name": "الاسم (أ-ي)",
+      "lastTriggered": "آخر تفعيل"
+    },
+    "empty": "لا توجد مهارات بعد. يمكن للوكيل اقتراح مهارة، أو يمكنك إنشاؤها في المحرر.",
+    "draft": "مسودة"
+  },
+  "mcp": {
+    "status": {
+      "active": "نشط",
+      "pending": "جاري الفحص…",
+      "suspended": "قيد الحجر",
+      "error": "غير متصل"
+    },
+    "search": "البحث عن خوادم…",
+    "filter": {
+      "all": "الحالة: الكل",
+      "active": "نشط",
+      "pending": "جاري الفحص",
+      "suspended": "قيد الحجر",
+      "error": "غير متصل"
+    },
+    "add": "+ إضافة خادم",
+    "empty": "لا توجد خوادم MCP بعد. أضف خادماً لمنح الوكيل أدوات إضافية.",
+    "review": "⚠ مراجعة",
+    "detail": {
+      "back": "‹ رجوع",
+      "connection": "الاتصال",
+      "auth": "المصادقة",
+      "prefix": "البادئة",
+      "egress": "القائمة البيضاء للخروج",
+      "health": "الحالة",
+      "lastScanned": "آخر فحص",
+      "credentialStored": "تم تخزين بيانات الاعتماد",
+      "healthOk": "جيد · {{count}} أدوات · {{latency}} مللي ثانية",
+      "healthError": "خطأ: {{error}}",
+      "unreachable": "غير متصل",
+      "scanning": "جاري الفحص…",
+      "rescan": "إعادة الفحص",
+      "reconnect": "إعادة الاتصال بـ OAuth",
+      "acceptRisk": "قبول المخاطر والتفعيل"
+    },
+    "scan": {
+      "label": "فحص سلسلة التوريد:",
+      "clean": "نظيف",
+      "findings": "{{count}} نتيجة(s)",
+      "tools": "الأدوات ({{count}})",
+      "flagged": "مُعلم"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "الاتصال",
+        "auth": "المصادقة",
+        "scan": "الصحة والفحص",
+        "review": "المراجعة"
+      },
+      "displayName": "اسم العرض",
+      "displayNamePlaceholder": "خادم الأدوات الخاص بي",
+      "url": "رابط الخادم (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "المصادقة",
+      "authNone": "لا يوجد",
+      "authBearer": "رمز Bearer",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "لا توجد مصادقة — هذا الخادم مفتوح. استمر للتسجيل وفحصه.",
+      "bearerLabel": "رمز Bearer (محفوظ في الخزنة؛ لن يظهر مرة أخرى)",
+      "bearerPlaceholder": "لصق الرمز",
+      "authzEndpoint": "نقطة نهاية التفويض",
+      "tokenEndpoint": "نقطة نهاية الرمز",
+      "clientId": "معرف العميل",
+      "scopes": "النطاقات (مفصولة بمسافات)",
+      "registering": "جاري التسجيل…",
+      "registerScan": "تسجيل وفحص",
+      "statusLabel": "الحالة:",
+      "connectOauth": "الاتصال عبر OAuth →",
+      "runScan": "فحص الحالة والمسح",
+      "refresh": "تحديث",
+      "continue": "استمرار",
+      "authKind": "auth: {{kind}}",
+      "enable": "تفعيل لجلساتي",
+      "done": "تم"
+    }
+  },
+  "commands": {
+    "title": "أوامر الـ Slash",
+    "description": "اكتب <code>/name</code> في الدردشة لتوسيع قالب ما. استخدم <code>{{args}}</code> أو <code>{{key}}</code> للوسائط.",
+    "namePlaceholder": "الاسم (مثال: plan-scene)",
+    "templatePlaceholder": "قالب: التخطيط لمشهد حول {{topic}}…",
+    "empty": "لا توجد أوامر بعد."
+  },
+  "hooks": {
+    "title": "الخطافات (Hooks)",
+    "description": "قواعد إعلانية يتم تفعيلها عند نقاط التقاطع في حلقة الوكيل. لا حاجة للكود — فقط حدث، ومطابقة اختيارية للأداة، وإجراء.",
+    "matchPlaceholder": "مطابقة الأداة (مثال: glossary_delete_*)",
+    "textPlaceholder": "النص المراد حقنه / تدوينه",
+    "empty": "لا توجد خطافات بعد."
+  },
+  "subagents": {
+    "title": "الوكلاء الفرعيون",
+    "description": "شخصية محددة يمكن للوكيل تفويض مهمة فرعية محددة النطاق إليها عبر <code>run_subagent</code>. تعمل الشخصية في دورة معزولة مع أدواتها المحددة فقط. اترك النطاق فارغاً للحصول على شخصية مخصصة للتفكير أو التلخيص فقط.",
+    "namePlaceholder": "الاسم (مثال: lore-scout)",
+    "scopePlaceholder": "نطاق الأدوات: glossary_*, kg_*",
+    "modelPlaceholder": "النموذج (اختياري، معرف user_model)",
+    "promptPlaceholder": "أمر النظام — من هي هذه الشخصية وكيف تعمل...",
+    "create": "إنشاء وكيل فرعي",
+    "empty": "لا يوجد وكلاء فرعيون بعد.",
+    "reasoningOnly": "للتفكير فقط (بدون أدوات)",
+    "modelPinned": "تم تثبيت النموذج"
+  },
+  "plugins": {
+    "description": "تجمع الإضافة بين المهارات والأوامر والخطافات — قم بالتصدير للمشاركة، وبالاستيراد للتثبيت.",
+    "importing": "جاري الاستيراد...",
+    "import": "استيراد حزمة",
+    "invalidJson": "هذا الملف ليس بتنسيق JSON صالح.",
+    "notBundle": "ليست حزمة LoreWeave (ملف manifest.name مفقود).",
+    "empty": "لا توجد إضافات بعد. استورد حزمة لتثبيت إحداها.",
+    "export": "تصدير"
+  },
+  "proposals": {
+    "status": {
+      "pending": "قيد الانتظار",
+      "approved": "تمت الموافقة",
+      "rejected": "مرفوض",
+      "expired": "منتهي الصلاحية",
+      "all": "الكل"
+    },
+    "total": "الإجمالي {{count}}",
+    "empty": "لا توجد مقترحات. ستظهر المهارات التي يقترحها الوكيل هنا لمراجعتها والموافقة عليها.",
+    "approve": "موافقة",
+    "reject": "رفض",
+    "reason": "السبب: {{reason}}"
+  },
+  "activity": {
+    "title": "سجل النشاط",
+    "allKinds": "جميع الأنواع",
+    "range": {
+      "all": "كل الوقت",
+      "7d": "آخر 7 أيام",
+      "30d": "آخر 30 يومًا"
+    },
+    "empty": "لا يوجد نشاط في هذه الفترة.",
+    "secondsAgo": "منذ {{count}} ثانية",
+    "minutesAgo": "منذ {{count}} دقيقة",
+    "hoursAgo": "منذ {{count}} ساعة",
+    "daysAgo": "منذ {{count}} يومًا"
+  },
+  "ingest": {
+    "title": "مصادر السجل (المسؤول)",
+    "description": "قم بتنظيم كتالوج النظام من سجل MCP الرسمي. التحقق ≠ الأمان — كل عملية موافقة تعيد تشغيل حارس SSRF وفحص سلسلة التوريد قبل عملية الربط.",
+    "all": "الكل",
+    "pulling": "جاري السحب…",
+    "pull": "سحب السجل",
+    "pullResult": "تم السحب: تم جلب {{fetched}} · جديد {{new}} · تم تحديث {{updated}} · لم يتم التخطي {{skipped}}",
+    "truncated": "· جزئي (مبتور)",
+    "empty": "لا توجد إدخالات في هذا العرض. اسحب السجل لملء قائمة الانتظار.",
+    "approve": "موافقة",
+    "reject": "رفض"
+  }
+}

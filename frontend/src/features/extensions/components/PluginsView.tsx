@@ -1,9 +1,11 @@
 // View (MVC) — plugins list + bundle import/export (REG-P5-04). Render-only.
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { usePlugins } from '../hooks/usePlugins';
 import type { Plugin, PluginBundle } from '../types';
 
 export function PluginsView() {
+  const { t } = useTranslation('extensions');
   const p = usePlugins();
   const fileRef = useRef<HTMLInputElement>(null);
   const [importErr, setImportErr] = useState<string | null>(null);
@@ -18,11 +20,11 @@ export function PluginsView() {
       try {
         bundle = JSON.parse(text) as PluginBundle;
       } catch {
-        setImportErr('That file is not valid JSON.');
+        setImportErr(t('plugins.invalidJson'));
         return;
       }
       if (!bundle.manifest?.name) {
-        setImportErr('Not a LoreWeave bundle (missing manifest.name).');
+        setImportErr(t('plugins.notBundle'));
         return;
       }
       const err = await p.importBundle(bundle);
@@ -36,7 +38,7 @@ export function PluginsView() {
   return (
     <div className="space-y-3" data-testid="plugins-view">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">A plugin bundles skills, commands & hooks — export to share, import to install.</p>
+        <p className="text-xs text-muted-foreground">{t('plugins.description')}</p>
         <div>
           <input
             ref={fileRef}
@@ -47,7 +49,7 @@ export function PluginsView() {
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFile(f); }}
           />
           <button onClick={() => fileRef.current?.click()} disabled={importing} data-testid="plugin-import-btn" className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40">
-            {importing ? 'Importing…' : 'Import bundle'}
+            {importing ? t('plugins.importing') : t('plugins.import')}
           </button>
         </div>
       </div>
@@ -56,7 +58,7 @@ export function PluginsView() {
       {p.error && <div className="text-xs text-red-400">{p.error}</div>}
       {!p.loading && p.plugins.length === 0 && !p.error && (
         <div data-testid="plugins-empty" className="rounded-md border border-dashed px-6 py-8 text-center text-xs text-muted-foreground">
-          No plugins yet. Import a bundle to install one.
+          {t('plugins.empty')}
         </div>
       )}
 
@@ -70,18 +72,19 @@ export function PluginsView() {
 }
 
 function PluginRow({ plugin, onExport, onRemove }: { plugin: Plugin; onExport: () => void; onRemove: () => void }) {
+  const { t } = useTranslation('extensions');
   return (
     <li className="flex items-center gap-3 px-3 py-2" data-testid="plugin-row">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs">{plugin.name}</span>
           <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">v{plugin.version}</span>
-          {plugin.tier === 'system' && <span className="text-[10px] uppercase text-indigo-400">system</span>}
+          {plugin.tier === 'system' && <span className="text-[10px] uppercase text-indigo-400">{t('common.system')}</span>}
         </div>
         {plugin.description && <div className="truncate text-xs text-muted-foreground">{plugin.description}</div>}
       </div>
-      <button onClick={onExport} data-testid="plugin-export" className="rounded border px-2 py-0.5 text-[11px]">Export</button>
-      {plugin.tier !== 'system' && <button onClick={onRemove} data-testid="plugin-delete" className="rounded border border-red-400/50 px-2 py-0.5 text-[11px] text-red-400">Delete</button>}
+      <button onClick={onExport} data-testid="plugin-export" className="rounded border px-2 py-0.5 text-[11px]">{t('plugins.export')}</button>
+      {plugin.tier !== 'system' && <button onClick={onRemove} data-testid="plugin-delete" className="rounded border border-red-400/50 px-2 py-0.5 text-[11px] text-red-400">{t('common.delete')}</button>}
     </li>
   );
 }

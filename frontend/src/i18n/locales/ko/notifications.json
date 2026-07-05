@@ -20,6 +20,12 @@
     },
     "social": {
       "followed": "{{name}}님이 팔로우하기 시작했습니다"
+    },
+    "llm_job": {
+      "completed": "{{operation}} 완료",
+      "failed": "{{operation}} 실패",
+      "cancelled": "{{operation}} 취소됨",
+      "unknown": "{{operation}}"
     }
   },
   "event": {

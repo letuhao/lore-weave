@@ -1,0 +1,203 @@
+{
+  "title": "Extensiones",
+  "tabs": {
+    "skills": "Habilidades",
+    "mcp": "Servidores MCP",
+    "commands": "Comandos y Hooks",
+    "subagents": "Subagentes",
+    "plugins": "Plugins",
+    "proposals": "Propuestas",
+    "activity": "Registro de actividad",
+    "ingest": "Fuentes del registro"
+  },
+  "quota": {
+    "skills": "Habilidades",
+    "mcp": "Servidores MCP",
+    "proposals": "Propuestas"
+  },
+  "scope": {
+    "label": "Alcance:",
+    "mine": "Mis extensiones",
+    "orBook": "o un libro:",
+    "bookPlaceholder": "específico del libro…",
+    "bookHint": "específico del libro — los nuevos elementos se aplicarán solo a este libro"
+  },
+  "common": {
+    "loading": "Cargando…",
+    "delete": "Eliminar",
+    "add": "Añadir",
+    "cancel": "Cancelar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "of": "de",
+    "system": "sistema",
+    "book": "libro"
+  },
+  "skills": {
+    "search": "Buscar habilidades…",
+    "tier": {
+      "all": "Nivel: Todos",
+      "system": "Sistema",
+      "user": "Usuario",
+      "book": "Libro"
+    },
+    "sort": {
+      "updated": "Ordenar: Actualizado",
+      "name": "Nombre A→Z",
+      "lastTriggered": "Última activación"
+    },
+    "empty": "Aún no hay habilidades. El agente puede proponer una o puedes crearla en el editor.",
+    "draft": "borrador"
+  },
+  "mcp": {
+    "status": {
+      "active": "activo",
+      "pending": "escaneando…",
+      "suspended": "en cuarentena",
+      "error": "inalcanzable"
+    },
+    "search": "Buscar servidores…",
+    "filter": {
+      "all": "Estado: Todos",
+      "active": "Activo",
+      "pending": "Escaneando",
+      "suspended": "En cuarentena",
+      "error": "Inalcanzable"
+    },
+    "add": "+ Añadir servidor",
+    "empty": "Aún no hay servidores MCP. Añade uno para darle herramientas extra al agente.",
+    "review": "⚠ revisión",
+    "detail": {
+      "back": "‹ Atrás",
+      "connection": "Conexión",
+      "auth": "Autenticación",
+      "prefix": "Prefijo",
+      "egress": "Lista de permitidos de salida",
+      "health": "Estado",
+      "lastScanned": "Último escaneo",
+      "credentialStored": "credencial almacenada",
+      "healthOk": "ok · {{count}} herramientas · {{latency}}ms",
+      "healthError": "error: {{error}}",
+      "unreachable": "inalcanzable",
+      "scanning": "Escaneando…",
+      "rescan": "Volver a escanear",
+      "reconnect": "Reconectar OAuth",
+      "acceptRisk": "Aceptar riesgo y activar"
+    },
+    "scan": {
+      "label": "Escaneo de la cadena de suministro:",
+      "clean": "limpio",
+      "findings": "{{count}} hallazgo(s)",
+      "tools": "Herramientas ({{count}})",
+      "flagged": "marcado"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "Conexión",
+        "auth": "Autenticación",
+        "scan": "Estado y escaneo",
+        "review": "Revisar"
+      },
+      "displayName": "Nombre para mostrar",
+      "displayNamePlaceholder": "Mi servidor de herramientas",
+      "url": "URL del servidor (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "Autenticación",
+      "authNone": "Ninguna",
+      "authBearer": "Token Bearer",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "Sin autenticación: este servidor es abierto. Continúa para registrarlo y escanearlo.",
+      "bearerLabel": "Token Bearer (almacenado de forma segura en la bóveda; no se volverá a mostrar)",
+      "bearerPlaceholder": "pegar token",
+      "authzEndpoint": "Endpoint de autorización",
+      "tokenEndpoint": "Endpoint de token",
+      "clientId": "ID de cliente",
+      "scopes": "Ámbitos (separados por espacios)",
+      "registering": "Registrando…",
+      "registerScan": "Registrar y escanear",
+      "statusLabel": "Estado:",
+      "connectOauth": "Conectar con OAuth →",
+      "runScan": "Ejecutar diagnóstico y escaneo",
+      "refresh": "Actualizar",
+      "continue": "Continuar",
+      "authKind": "auth: {{kind}}",
+      "enable": "Habilitar para mis sesiones",
+      "done": "Hecho"
+    }
+  },
+  "commands": {
+    "title": "Comandos de barra",
+    "description": "Escribe <code>/nombre</code> en el chat para expandir una plantilla. Usa <code>{{args}}</code> o <code>{{key}}</code> para los argumentos.",
+    "namePlaceholder": "nombre (p. ej. plan-escena)",
+    "templatePlaceholder": "Plantilla: Planificar una escena sobre {{topic}}…",
+    "empty": "Aún no hay comandos."
+  },
+  "hooks": {
+    "title": "Hooks",
+    "description": "Reglas declarativas que se activan en los puntos de transición del bucle del agente. Sin código: solo un evento, una coincidencia de herramienta opcional y una acción.",
+    "matchPlaceholder": "coincidencia de herramienta (p. ej. glossary_delete_*)",
+    "textPlaceholder": "texto para inyectar / anotar",
+    "empty": "Aún no hay hooks."
+  },
+  "subagents": {
+    "title": "Subagentes",
+    "description": "Una persona con nombre a la que el agente puede delegar una subtarea limitada mediante <code>run_subagent</code>. Se ejecuta en un turno aislado con ÚNICAMENTE sus herramientas asignadas. Deja el alcance vacío para una persona de razonamiento o resumen puro.",
+    "namePlaceholder": "nombre (p. ej. explorador-lore)",
+    "scopePlaceholder": "alcance de herramientas: glossary_*, kg_*",
+    "modelPlaceholder": "modelo (opcional, id de user_model)",
+    "promptPlaceholder": "Prompt del sistema — quién es esta persona y cómo funciona...",
+    "create": "Crear subagente",
+    "empty": "Aún no hay subagentes.",
+    "reasoningOnly": "solo razonamiento (sin herramientas)",
+    "modelPinned": "modelo fijado"
+  },
+  "plugins": {
+    "description": "Un plugin agrupa habilidades, comandos y hooks; expórtalo para compartirlo o impórtalo para instalarlo.",
+    "importing": "Importando...",
+    "import": "Importar paquete",
+    "invalidJson": "Ese archivo no es un JSON válido.",
+    "notBundle": "No es un paquete de LoreWeave (falta manifest.name).",
+    "empty": "Aún no hay complementos. Importa un paquete para instalar uno.",
+    "export": "Exportar"
+  },
+  "proposals": {
+    "status": {
+      "pending": "Pendiente",
+      "approved": "Aprobado",
+      "rejected": "Rechazado",
+      "expired": "Expirado",
+      "all": "Todos"
+    },
+    "total": "{{count}} en total",
+    "empty": "No hay propuestas. Las habilidades que el agente propone aparecerán aquí para tu aprobación.",
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "reason": "Motivo: {{reason}}"
+  },
+  "activity": {
+    "title": "Registro de actividad",
+    "allKinds": "Todos los tipos",
+    "range": {
+      "all": "Todo el historial",
+      "7d": "Últimos 7 días",
+      "30d": "Últimos 30 días"
+    },
+    "empty": "No hay actividad en este periodo.",
+    "secondsAgo": "Hace {{count}}s",
+    "minutesAgo": "Hace {{count}}m",
+    "hoursAgo": "Hace {{count}}h",
+    "daysAgo": "hace {{count}} d"
+  },
+  "ingest": {
+    "title": "Fuentes del registro (admin)",
+    "description": "Organiza el catálogo del sistema desde el registro oficial de MCP. La verificación ≠ seguridad: cada aprobación vuelve a ejecutar la protección SSRF y el escaneo de la cadena de suministro antes de la federación.",
+    "all": "Todo",
+    "pulling": "Sincronizando…",
+    "pull": "Sincronizar registro",
+    "pullResult": "Sincronizado: obtenidos {{fetched}} · nuevos {{new}} · actualizados {{updated}} · omitidos {{skipped}}",
+    "truncated": "· parcial (truncado)",
+    "empty": "No hay entradas en esta vista. Sincroniza el registro para completar la cola.",
+    "approve": "Aprobar",
+    "reject": "Rechazar"
+  }
+}

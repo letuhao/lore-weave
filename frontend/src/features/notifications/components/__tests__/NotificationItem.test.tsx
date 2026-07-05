@@ -14,6 +14,7 @@ vi.mock('react-i18next', () => ({
       };
       if (k === 'event.title') return `${opts?.op}${opts?.status}`;
       if (k === 'notif.translation.complete') return `翻訳完了 — ${opts?.count}章「${opts?.book}」`;
+      if (k === 'notif.llm_job.completed') return `${opts?.operation}完了`;
       if (k in dict) return dict[k];
       return (opts?.defaultValue as string) ?? k;
     },
@@ -36,6 +37,26 @@ describe('NotificationItem — client-side i18n', () => {
     render(<NotificationItem notification={mk({ metadata: { operation: 'mystery_op', status: 'completed' } })} />);
     // op key missing → humanize('mystery_op')='Mystery op'; status 'completed' → '完了'
     expect(screen.getByText('Mystery op完了')).toBeTruthy();
+  });
+
+  it('prefers server message_key + message_params, localizing the operation param', () => {
+    render(<NotificationItem notification={mk({
+      title: 'Entity extraction completed',
+      message_key: 'notif.llm_job.completed',
+      message_params: { operation: 'entity_extraction' },
+    })} />);
+    // message_key wins over the stored EN; operation enum localized via event.operation.*
+    expect(screen.getByText('エンティティ抽出完了')).toBeTruthy();
+    expect(screen.queryByText('Entity extraction completed')).toBeNull();
+  });
+
+  it('message_key takes precedence over legacy metadata.i18n_key', () => {
+    render(<NotificationItem notification={mk({
+      message_key: 'notif.llm_job.completed',
+      message_params: { operation: 'entity_extraction' },
+      metadata: { i18n_key: 'notif.translation.complete', i18n_params: { count: 5, book: 'Dracula' } },
+    })} />);
+    expect(screen.getByText('エンティティ抽出完了')).toBeTruthy();
   });
 
   it('Phase 2: prefers metadata.i18n_key with params', () => {

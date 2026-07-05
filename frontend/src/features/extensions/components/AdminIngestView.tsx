@@ -2,6 +2,7 @@
 // upstream registry → review the queue → approve (creates a System server + scan) /
 // reject. Admin-only (the API 403s a non-admin; the tab is hidden for them too).
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useIngest } from '../hooks/useIngest';
 import type { IngestEntry, IngestStatus } from '../types';
 
@@ -9,6 +10,7 @@ const selectCls = 'rounded-md border bg-background px-2 py-1 text-xs focus:outli
 const STATUSES: (IngestStatus | 'all')[] = ['pending', 'approved', 'rejected', 'revoked_upstream', 'all'];
 
 export function AdminIngestView() {
+  const { t } = useTranslation('extensions');
   const ing = useIngest();
   const [err, setErr] = useState<string | null>(null);
 
@@ -20,27 +22,27 @@ export function AdminIngestView() {
     <section className="space-y-2" data-testid="admin-ingest-view">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold">Registry sources (admin)</h3>
-          <p className="text-xs text-muted-foreground">Curate the System catalog from the official MCP Registry. verification ≠ safety — every approval re-runs the SSRF guard + supply-chain scan before it federates.</p>
+          <h3 className="text-sm font-semibold">{t('ingest.title')}</h3>
+          <p className="text-xs text-muted-foreground">{t('ingest.description')}</p>
         </div>
         <div className="flex items-center gap-2">
           <select value={ing.status} onChange={(e) => ing.setStatus(e.target.value as IngestStatus | 'all')} data-testid="ingest-status" className={selectCls}>
-            {STATUSES.map((s) => <option key={s} value={s}>{s === 'all' ? 'All' : s}</option>)}
+            {STATUSES.map((s) => <option key={s} value={s}>{s === 'all' ? t('ingest.all') : s}</option>)}
           </select>
           <button onClick={() => void doPull()} disabled={ing.pulling} data-testid="ingest-pull" className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40">
-            {ing.pulling ? 'Pulling…' : 'Pull registry'}
+            {ing.pulling ? t('ingest.pulling') : t('ingest.pull')}
           </button>
         </div>
       </div>
       {ing.lastPull && (
         <div className="rounded-md border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground" data-testid="ingest-pull-result">
-          Pulled: fetched {ing.lastPull.fetched} · new {ing.lastPull.new} · updated {ing.lastPull.updated} · no-remote {ing.lastPull.skipped_no_remote}
-          {ing.lastPull.truncated && <span className="ml-1 text-amber-500">· partial (truncated)</span>}
+          {t('ingest.pullResult', { fetched: ing.lastPull.fetched, new: ing.lastPull.new, updated: ing.lastPull.updated, skipped: ing.lastPull.skipped_no_remote })}
+          {ing.lastPull.truncated && <span className="ml-1 text-amber-500">{t('ingest.truncated')}</span>}
         </div>
       )}
       {(err || ing.error) && <div className="rounded-md border border-red-400 bg-red-500/10 px-3 py-1.5 text-xs text-red-400" data-testid="ingest-error">{err || ing.error}</div>}
       <ul className="divide-y rounded-md border">
-        {ing.entries.length === 0 && !ing.loading && <li className="px-3 py-4 text-center text-xs text-muted-foreground" data-testid="ingest-empty">No entries in this view. Pull the registry to populate the queue.</li>}
+        {ing.entries.length === 0 && !ing.loading && <li className="px-3 py-4 text-center text-xs text-muted-foreground" data-testid="ingest-empty">{t('ingest.empty')}</li>}
         {ing.entries.map((e) => <IngestRow key={e.ingest_id} entry={e} onApprove={() => void doApprove(e)} onReject={() => void doReject(e)} />)}
       </ul>
     </section>
@@ -48,6 +50,7 @@ export function AdminIngestView() {
 }
 
 function IngestRow({ entry, onApprove, onReject }: { entry: IngestEntry; onApprove: () => void; onReject: () => void }) {
+  const { t } = useTranslation('extensions');
   const statusColor: Record<string, string> = {
     pending: 'text-amber-500', approved: 'text-emerald-500', rejected: 'text-muted-foreground', revoked_upstream: 'text-red-400',
   };
@@ -64,8 +67,8 @@ function IngestRow({ entry, onApprove, onReject }: { entry: IngestEntry; onAppro
       </div>
       {entry.status === 'pending' && (
         <div className="flex shrink-0 gap-1">
-          <button onClick={onApprove} data-testid="ingest-approve" className="rounded border border-emerald-500/50 px-2 py-0.5 text-[11px] text-emerald-500">Approve</button>
-          <button onClick={onReject} data-testid="ingest-reject" className="rounded border border-red-400/50 px-2 py-0.5 text-[11px] text-red-400">Reject</button>
+          <button onClick={onApprove} data-testid="ingest-approve" className="rounded border border-emerald-500/50 px-2 py-0.5 text-[11px] text-emerald-500">{t('ingest.approve')}</button>
+          <button onClick={onReject} data-testid="ingest-reject" className="rounded border border-red-400/50 px-2 py-0.5 text-[11px] text-red-400">{t('ingest.reject')}</button>
         </div>
       )}
     </li>

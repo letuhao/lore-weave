@@ -20,6 +20,12 @@
     },
     "social": {
       "followed": "{{name}} เริ่มติดตามคุณแล้ว"
+    },
+    "llm_job": {
+      "completed": "{{operation}} เสร็จสมบูรณ์",
+      "failed": "{{operation}} ล้มเหลว",
+      "cancelled": "{{operation}} ถูกยกเลิกแล้ว",
+      "unknown": "{{operation}}"
     }
   },
   "event": {

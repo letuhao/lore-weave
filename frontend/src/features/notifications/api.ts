@@ -6,6 +6,13 @@ export type Notification = {
   title: string;
   body?: string;
   metadata: Record<string, unknown>;
+  // D-NOTIF-I18N (NOTIF-1) — the server's first-class i18n substrate: a stable
+  // `notif.<category>.<status>` key + interpolation params, alongside the
+  // server-rendered English `title` fallback. Both are `null` on legacy rows or
+  // when a producer supplied no key, so a locale-aware client keys off them and
+  // falls back to `title` otherwise.
+  message_key?: string | null;
+  message_params?: Record<string, unknown> | null;
   read: boolean;
   created_at: string;
 };

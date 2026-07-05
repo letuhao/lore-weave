@@ -1,6 +1,7 @@
 // View (MVC) — the Commands & Hooks builder (REG-P4-02/04). Two sections: slash
 // commands (name + template) and declarative hooks (event → match → action). Render-only.
 import { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { useCommands, useHooks } from '../hooks/useCommandsHooks';
 import type { SlashCommand, Hook, HookEvent, HookActionKind } from '../types';
 
@@ -16,6 +17,7 @@ export function CommandsHooksView() {
 const inputCls = 'w-full rounded-md border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring';
 
 function CommandsSection() {
+  const { t } = useTranslation('extensions');
   const c = useCommands();
   const [name, setName] = useState('');
   const [template, setTemplate] = useState('');
@@ -30,17 +32,19 @@ function CommandsSection() {
 
   return (
     <section className="space-y-2" data-testid="commands-section">
-      <h3 className="text-sm font-semibold">Slash commands</h3>
-      <p className="text-xs text-muted-foreground">Type <code>/name</code> in chat to expand a template. Use <code>{'{{args}}'}</code> or <code>{'{{key}}'}</code> for arguments.</p>
+      <h3 className="text-sm font-semibold">{t('commands.title')}</h3>
+      <p className="text-xs text-muted-foreground">
+        <Trans i18nKey="commands.description" ns="extensions" values={{ args: '{{args}}', key: '{{key}}' }} components={{ code: <code /> }} />
+      </p>
       <div className="flex flex-wrap items-start gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name (e.g. plan-scene)" data-testid="cmd-name" className={`${inputCls} max-w-[180px]`} />
-        <input value={template} onChange={(e) => setTemplate(e.target.value)} placeholder="Template: Plan a scene about {{topic}}…" data-testid="cmd-template" className={`${inputCls} min-w-[240px] flex-1`} />
-        <button onClick={() => void submit()} disabled={!name.trim() || !template.trim()} data-testid="cmd-create" className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40">Add</button>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('commands.namePlaceholder')} data-testid="cmd-name" className={`${inputCls} max-w-[180px]`} />
+        <input value={template} onChange={(e) => setTemplate(e.target.value)} placeholder={t('commands.templatePlaceholder', { topic: '{{topic}}' })} data-testid="cmd-template" className={`${inputCls} min-w-[240px] flex-1`} />
+        <button onClick={() => void submit()} disabled={!name.trim() || !template.trim()} data-testid="cmd-create" className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40">{t('common.add')}</button>
       </div>
       {err && <div className="rounded-md border border-red-400 bg-red-500/10 px-3 py-1.5 text-xs text-red-400" data-testid="cmd-error">{err}</div>}
       {c.error && <div className="text-xs text-red-400">{c.error}</div>}
       <ul className="divide-y rounded-md border">
-        {c.commands.length === 0 && !c.loading && <li className="px-3 py-4 text-center text-xs text-muted-foreground">No commands yet.</li>}
+        {c.commands.length === 0 && !c.loading && <li className="px-3 py-4 text-center text-xs text-muted-foreground">{t('commands.empty')}</li>}
         {c.commands.map((cmd) => <CommandRow key={cmd.command_id} cmd={cmd} onToggle={(en) => void c.toggle(cmd, en)} onRemove={() => void c.remove(cmd)} />)}
       </ul>
     </section>
@@ -48,14 +52,15 @@ function CommandsSection() {
 }
 
 function CommandRow({ cmd, onToggle, onRemove }: { cmd: SlashCommand; onToggle: (e: boolean) => void; onRemove: () => void }) {
+  const { t } = useTranslation('extensions');
   return (
     <li className="flex items-center gap-3 px-3 py-2" data-testid="cmd-row">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2"><span className="font-mono text-xs">/{cmd.name}</span>{cmd.tier === 'system' && <span className="text-[10px] uppercase text-indigo-400">system</span>}</div>
+        <div className="flex items-center gap-2"><span className="font-mono text-xs">/{cmd.name}</span>{cmd.tier === 'system' && <span className="text-[10px] uppercase text-indigo-400">{t('common.system')}</span>}</div>
         <div className="truncate text-xs text-muted-foreground">{cmd.template_md}</div>
       </div>
       <input type="checkbox" role="switch" defaultChecked={cmd.enabled} onChange={(e) => onToggle(e.target.checked)} data-testid="cmd-toggle" />
-      {cmd.tier !== 'system' && <button onClick={onRemove} data-testid="cmd-delete" className="rounded border border-red-400/50 px-2 py-0.5 text-[11px] text-red-400">Delete</button>}
+      {cmd.tier !== 'system' && <button onClick={onRemove} data-testid="cmd-delete" className="rounded border border-red-400/50 px-2 py-0.5 text-[11px] text-red-400">{t('common.delete')}</button>}
     </li>
   );
 }
@@ -69,6 +74,7 @@ const ACTIONS_FOR_EVENT: Record<string, HookActionKind[]> = {
 };
 
 function HooksSection() {
+  const { t } = useTranslation('extensions');
   const hk = useHooks();
   const [onEvent, setOnEvent] = useState<HookEvent>('pre_tool_call');
   const [kind, setKind] = useState<HookActionKind>('deny');
@@ -92,8 +98,8 @@ function HooksSection() {
 
   return (
     <section className="space-y-2" data-testid="hooks-section">
-      <h3 className="text-sm font-semibold">Hooks</h3>
-      <p className="text-xs text-muted-foreground">Declarative rules that fire at agent-loop seams. No code — just an event, an optional tool match, and an action.</p>
+      <h3 className="text-sm font-semibold">{t('hooks.title')}</h3>
+      <p className="text-xs text-muted-foreground">{t('hooks.description')}</p>
       <div className="flex flex-wrap items-center gap-2">
         <select value={onEvent} onChange={(e) => changeEvent(e.target.value as HookEvent)} data-testid="hook-event" className={`${inputCls} max-w-[160px]`}>
           {EVENTS.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
@@ -101,14 +107,14 @@ function HooksSection() {
         <select value={kind} onChange={(e) => setKind(e.target.value as HookActionKind)} data-testid="hook-action" className={`${inputCls} max-w-[150px]`}>
           {actionKinds.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
-        {showMatch && <input value={toolPattern} onChange={(e) => setToolPattern(e.target.value)} placeholder="tool match (e.g. glossary_delete_*)" data-testid="hook-match" className={`${inputCls} max-w-[220px]`} />}
-        {needsText && <input value={text} onChange={(e) => setText(e.target.value)} placeholder="text to inject / annotate" data-testid="hook-text" className={`${inputCls} min-w-[200px] flex-1`} />}
-        <button onClick={() => void submit()} disabled={needsText && !text.trim()} data-testid="hook-create" className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40">Add</button>
+        {showMatch && <input value={toolPattern} onChange={(e) => setToolPattern(e.target.value)} placeholder={t('hooks.matchPlaceholder')} data-testid="hook-match" className={`${inputCls} max-w-[220px]`} />}
+        {needsText && <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t('hooks.textPlaceholder')} data-testid="hook-text" className={`${inputCls} min-w-[200px] flex-1`} />}
+        <button onClick={() => void submit()} disabled={needsText && !text.trim()} data-testid="hook-create" className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40">{t('common.add')}</button>
       </div>
       {err && <div className="rounded-md border border-red-400 bg-red-500/10 px-3 py-1.5 text-xs text-red-400" data-testid="hook-error">{err}</div>}
       {hk.error && <div className="text-xs text-red-400">{hk.error}</div>}
       <ul className="divide-y rounded-md border">
-        {hk.hooks.length === 0 && !hk.loading && <li className="px-3 py-4 text-center text-xs text-muted-foreground">No hooks yet.</li>}
+        {hk.hooks.length === 0 && !hk.loading && <li className="px-3 py-4 text-center text-xs text-muted-foreground">{t('hooks.empty')}</li>}
         {hk.hooks.map((h) => <HookRow key={h.hook_id} hook={h} onToggle={(en) => void hk.toggle(h, en)} onRemove={() => void hk.remove(h)} />)}
       </ul>
     </section>
@@ -116,6 +122,7 @@ function HooksSection() {
 }
 
 function HookRow({ hook, onToggle, onRemove }: { hook: Hook; onToggle: (e: boolean) => void; onRemove: () => void }) {
+  const { t } = useTranslation('extensions');
   const m = (hook.match as { tool_pattern?: string })?.tool_pattern;
   return (
     <li className="flex items-center gap-3 px-3 py-2" data-testid="hook-row">
@@ -128,7 +135,7 @@ function HookRow({ hook, onToggle, onRemove }: { hook: Hook; onToggle: (e: boole
         {(hook.action.text || hook.action.message) && <div className="truncate text-xs text-muted-foreground">{hook.action.text || hook.action.message}</div>}
       </div>
       <input type="checkbox" role="switch" defaultChecked={hook.enabled} onChange={(e) => onToggle(e.target.checked)} data-testid="hook-toggle" />
-      {hook.tier !== 'system' && <button onClick={onRemove} data-testid="hook-delete" className="rounded border border-red-400/50 px-2 py-0.5 text-[11px] text-red-400">Delete</button>}
+      {hook.tier !== 'system' && <button onClick={onRemove} data-testid="hook-delete" className="rounded border border-red-400/50 px-2 py-0.5 text-[11px] text-red-400">{t('common.delete')}</button>}
     </li>
   );
 }

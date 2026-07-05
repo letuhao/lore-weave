@@ -121,6 +121,6 @@ describe('SubagentsView', () => {
     api.listSubagents.mockResolvedValue({ items: [row({ tool_scope: [] })], total: 1, limit: 50, offset: 0 });
     render(<SubagentsView />);
     await waitFor(() => expect(screen.getByTestId('sa-row')).toBeTruthy());
-    expect(screen.getByTestId('sa-row').textContent).toContain('reasoning-only');
+    expect(screen.getByTestId('sa-row').textContent).toContain('subagents.reasoningOnly');
   });
 });

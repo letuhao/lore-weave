@@ -20,6 +20,12 @@
     },
     "social": {
       "followed": "{{name}} đã theo dõi bạn"
+    },
+    "llm_job": {
+      "completed": "{{operation}} đã hoàn tất",
+      "failed": "{{operation}} thất bại",
+      "cancelled": "{{operation}} đã bị hủy",
+      "unknown": "{{operation}}"
     }
   },
   "event": {

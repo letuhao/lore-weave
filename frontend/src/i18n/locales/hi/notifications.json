@@ -20,6 +20,12 @@
     },
     "social": {
       "followed": "{{name}} ने आपको फॉलो करना शुरू किया"
+    },
+    "llm_job": {
+      "completed": "{{operation}} पूरा हुआ",
+      "failed": "{{operation}} विफल रहा",
+      "cancelled": "{{operation}} रद्द कर दिया गया",
+      "unknown": "{{operation}}"
     }
   },
   "event": {

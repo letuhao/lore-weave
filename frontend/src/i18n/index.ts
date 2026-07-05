@@ -1,4 +1,4 @@
-import i18n from 'i18next';
+import i18n, { type Resource } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
@@ -38,7 +38,9 @@ i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources,
+    // The glob builds a nested lang→ns→tree map; i18next's Resource type wants
+    // ResourceKey leaves (string | object), which `unknown` values don't satisfy.
+    resources: resources as Resource,
     supportedLngs: [...UI_LOCALES],
     // en-US → en, fr-FR → fr, etc. (region variants fall to their base UI locale).
     nonExplicitSupportedLngs: true,

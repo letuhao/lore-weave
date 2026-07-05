@@ -1,0 +1,203 @@
+{
+  "title": "Tiện ích mở rộng",
+  "tabs": {
+    "skills": "Kỹ năng",
+    "mcp": "Máy chủ MCP",
+    "commands": "Lệnh & Hook",
+    "subagents": "Đại lý phụ",
+    "plugins": "Plugin",
+    "proposals": "Đề xuất",
+    "activity": "Nhật ký hoạt động",
+    "ingest": "Nguồn đăng ký"
+  },
+  "quota": {
+    "skills": "Kỹ năng",
+    "mcp": "Máy chủ MCP",
+    "proposals": "Đề xuất"
+  },
+  "scope": {
+    "label": "Phạm vi:",
+    "mine": "Tiện ích mở rộng của tôi",
+    "orBook": "hoặc một cuốn sách:",
+    "bookPlaceholder": "phạm vi cuốn sách…",
+    "bookHint": "phạm vi cuốn sách — các mục mới chỉ áp dụng cho cuốn sách này"
+  },
+  "common": {
+    "loading": "Đang tải…",
+    "delete": "Xóa",
+    "add": "Thêm",
+    "cancel": "Hủy",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "of": "trong",
+    "system": "hệ thống",
+    "book": "sách"
+  },
+  "skills": {
+    "search": "Tìm kiếm kỹ năng…",
+    "tier": {
+      "all": "Phân cấp: Tất cả",
+      "system": "Hệ thống",
+      "user": "Người dùng",
+      "book": "Sách"
+    },
+    "sort": {
+      "updated": "Sắp xếp: Cập nhật",
+      "name": "Tên A→Z",
+      "lastTriggered": "Kích hoạt lần cuối"
+    },
+    "empty": "Chưa có kỹ năng nào. Agent có thể đề xuất một kỹ năng mới, hoặc bạn có thể tạo trong trình chỉnh sửa.",
+    "draft": "bản nháp"
+  },
+  "mcp": {
+    "status": {
+      "active": "đang hoạt động",
+      "pending": "đang quét…",
+      "suspended": "đang cách ly",
+      "error": "không thể kết nối"
+    },
+    "search": "Tìm kiếm máy chủ…",
+    "filter": {
+      "all": "Trạng thái: Tất cả",
+      "active": "Đang hoạt động",
+      "pending": "Đang quét",
+      "suspended": "Đang cách ly",
+      "error": "Không thể kết nối"
+    },
+    "add": "+ Thêm máy chủ",
+    "empty": "Chưa có máy chủ MCP nào. Hãy thêm một máy chủ để cung cấp thêm công cụ cho tác nhân.",
+    "review": "⚠ xem lại",
+    "detail": {
+      "back": "‹ Quay lại",
+      "connection": "Kết nối",
+      "auth": "Xác thực",
+      "prefix": "Tiền tố",
+      "egress": "Danh sách cho phép đầu ra",
+      "health": "Trạng thái",
+      "lastScanned": "Lần quét cuối",
+      "credentialStored": "đã lưu thông tin xác thực",
+      "healthOk": "ổn · {{count}} công cụ · {{latency}}ms",
+      "healthError": "lỗi: {{error}}",
+      "unreachable": "không thể kết nối",
+      "scanning": "Đang quét…",
+      "rescan": "Quét lại",
+      "reconnect": "Kết nối lại OAuth",
+      "acceptRisk": "Chấp nhận rủi ro & kích hoạt"
+    },
+    "scan": {
+      "label": "Quét chuỗi cung ứng:",
+      "clean": "sạch",
+      "findings": "{{count}} kết quả tìm thấy",
+      "tools": "Công cụ ({{count}})",
+      "flagged": "đã gắn cờ"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "Kết nối",
+        "auth": "Xác thực",
+        "scan": "Sức khỏe & Quét",
+        "review": "Xem lại"
+      },
+      "displayName": "Tên hiển thị",
+      "displayNamePlaceholder": "Máy chủ công cụ của tôi",
+      "url": "URL máy chủ (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "Xác thực",
+      "authNone": "Không",
+      "authBearer": "Mã thông báo Bearer",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "Không có xác thực — máy chủ này đang ở chế độ mở. Tiếp tục để đăng ký và quét máy chủ.",
+      "bearerLabel": "Mã thông báo Bearer (được bảo mật trong kho lưu trữ; sẽ không hiển thị lại)",
+      "bearerPlaceholder": "Dán mã thông báo",
+      "authzEndpoint": "Điểm cuối ủy quyền",
+      "tokenEndpoint": "Điểm cuối mã thông báo",
+      "clientId": "ID ứng dụng",
+      "scopes": "Phạm vi truy cập (cách nhau bằng dấu cách)",
+      "registering": "Đang đăng ký…",
+      "registerScan": "Đăng ký & quét",
+      "statusLabel": "Trạng thái:",
+      "connectOauth": "Kết nối với OAuth →",
+      "runScan": "Kiểm tra sức khỏe & quét",
+      "refresh": "Làm mới",
+      "continue": "Tiếp tục",
+      "authKind": "auth: {{kind}}",
+      "enable": "Kích hoạt cho các phiên làm việc của tôi",
+      "done": "Xong"
+    }
+  },
+  "commands": {
+    "title": "Lệnh gạch chéo",
+    "description": "Nhập <code>/tên</code> vào khung chat để mở rộng một mẫu. Sử dụng <code>{{args}}</code> hoặc <code>{{key}}</code> cho các tham số.",
+    "namePlaceholder": "tên (ví dụ: plan-scene)",
+    "templatePlaceholder": "Mẫu: Lập kế hoạch cho một cảnh về {{topic}}…",
+    "empty": "Chưa có lệnh nào."
+  },
+  "hooks": {
+    "title": "Hooks",
+    "description": "Các quy tắc khai báo được kích hoạt tại các điểm nối của vòng lặp tác nhân. Không cần mã nguồn — chỉ cần một sự kiện, một khớp công cụ tùy chọn và một hành động.",
+    "matchPlaceholder": "khớp công cụ (ví dụ: glossary_delete_*)",
+    "textPlaceholder": "văn bản để chèn / chú thích",
+    "empty": "Chưa có hooks nào."
+  },
+  "subagents": {
+    "title": "Phụ tác nhân",
+    "description": "Một nhân vật được đặt tên mà tác nhân có thể ủy quyền một tác vụ con có phạm vi giới hạn thông qua <code>run_subagent</code>. Nó chạy trong một lượt cô lập với CHỈ các công cụ trong phạm vi được chỉ định. Để trống phạm vi nếu muốn tạo một nhân vật chuyên về suy luận/tóm tắt.",
+    "namePlaceholder": "tên (ví dụ: lore-scout)",
+    "scopePlaceholder": "phạm vi công cụ: glossary_*, kg_*",
+    "modelPlaceholder": "mô hình (tùy chọn, id user_model)",
+    "promptPlaceholder": "System prompt — nhân vật này là ai và cách thức hoạt động...",
+    "create": "Tạo phụ tác nhân",
+    "empty": "Chưa có phụ tác nhân nào.",
+    "reasoningOnly": "chỉ suy luận (không có công cụ)",
+    "modelPinned": "đã ghim mô hình"
+  },
+  "plugins": {
+    "description": "Một plugin đóng gói các kỹ năng, lệnh & hooks — xuất để chia sẻ, nhập để cài đặt.",
+    "importing": "Đang nhập...",
+    "import": "Nhập gói dữ liệu",
+    "invalidJson": "Tệp này không phải là định dạng JSON hợp lệ.",
+    "notBundle": "Không phải gói LoreWeave (thiếu manifest.name).",
+    "empty": "Chưa có plugin nào. Hãy nhập một gói dữ liệu để cài đặt.",
+    "export": "Xuất"
+  },
+  "proposals": {
+    "status": {
+      "pending": "Đang chờ",
+      "approved": "Đã duyệt",
+      "rejected": "Đã từ chối",
+      "expired": "Đã hết hạn",
+      "all": "Tất cả"
+    },
+    "total": "Tổng cộng {{count}}",
+    "empty": "Không có đề xuất nào. Các kỹ năng mà tác nhân đề xuất sẽ hiển thị tại đây để bạn phê duyệt.",
+    "approve": "Phê duyệt",
+    "reject": "Từ chối",
+    "reason": "Lý do: {{reason}}"
+  },
+  "activity": {
+    "title": "Nhật ký hoạt động",
+    "allKinds": "Tất cả",
+    "range": {
+      "all": "Tất cả thời gian",
+      "7d": "7 ngày qua",
+      "30d": "30 ngày qua"
+    },
+    "empty": "Không có hoạt động nào trong khoảng thời gian này.",
+    "secondsAgo": " {{count}} giây trước",
+    "minutesAgo": " {{count}} phút trước",
+    "hoursAgo": " {{count}} giờ trước",
+    "daysAgo": "{{count}} ngày trước"
+  },
+  "ingest": {
+    "title": "Nguồn đăng ký (admin)",
+    "description": "Chỉnh sửa danh mục Hệ thống từ MCP Registry chính thức. việc xác minh ≠ sự an toàn — mọi phê duyệt đều chạy lại SSRF guard + quét chuỗi cung ứng trước khi liên kết.",
+    "all": "Tất cả",
+    "pulling": "Đang tải…",
+    "pull": "Tải registry",
+    "pullResult": "Đã tải: lấy được {{fetched}} · mới {{new}} · đã cập nhật {{updated}} · không có từ máy chủ {{skipped}}",
+    "truncated": "· một phần (bị cắt bớt)",
+    "empty": "Không có mục nào trong chế độ xem này. Hãy tải registry để làm đầy hàng đợi.",
+    "approve": "Phê duyệt",
+    "reject": "Từ chối"
+  }
+}

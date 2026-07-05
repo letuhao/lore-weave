@@ -1,0 +1,203 @@
+{
+  "title": "Ekstensi",
+  "tabs": {
+    "skills": "Keterampilan",
+    "mcp": "Server MCP",
+    "commands": "Perintah & Hook",
+    "subagents": "Subagen",
+    "plugins": "Plugin",
+    "proposals": "Proposal",
+    "activity": "Log aktivitas",
+    "ingest": "Sumber registri"
+  },
+  "quota": {
+    "skills": "Keterampilan",
+    "mcp": "Server MCP",
+    "proposals": "Proposal"
+  },
+  "scope": {
+    "label": "Cakupan:",
+    "mine": "Ekstensi saya",
+    "orBook": "atau buku:",
+    "bookPlaceholder": "terbatas pada buku…",
+    "bookHint": "terbatas pada buku — item baru hanya berlaku untuk buku ini"
+  },
+  "common": {
+    "loading": "Memuat…",
+    "delete": "Hapus",
+    "add": "Tambah",
+    "cancel": "Batal",
+    "back": "Kembali",
+    "next": "Berikutnya",
+    "of": "dari",
+    "system": "sistem",
+    "book": "buku"
+  },
+  "skills": {
+    "search": "Cari skill…",
+    "tier": {
+      "all": "Tier: Semua",
+      "system": "Sistem",
+      "user": "Pengguna",
+      "book": "Buku"
+    },
+    "sort": {
+      "updated": "Urutkan: Terbaru",
+      "name": "Nama A→Z",
+      "lastTriggered": "Terakhir dipicu"
+    },
+    "empty": "Belum ada skill. Agen dapat mengusulkan satu, atau membuatnya di editor.",
+    "draft": "draf"
+  },
+  "mcp": {
+    "status": {
+      "active": "aktif",
+      "pending": "memindai…",
+      "suspended": "dikarantina",
+      "error": "tidak dapat dijangkau"
+    },
+    "search": "Cari server…",
+    "filter": {
+      "all": "Status: Semua",
+      "active": "Aktif",
+      "pending": "Memindai",
+      "suspended": "Dikarantina",
+      "error": "Tidak dapat dijangkau"
+    },
+    "add": "+ Tambah server",
+    "empty": "Belum ada server MCP. Tambahkan satu untuk memberi agen alat tambahan.",
+    "review": "⚠ tinjauan",
+    "detail": {
+      "back": "‹ Kembali",
+      "connection": "Koneksi",
+      "auth": "Autentikasi",
+      "prefix": "Awalan",
+      "egress": "Daftar putih egress",
+      "health": "Status",
+      "lastScanned": "Terakhir dipindai",
+      "credentialStored": "kredensial tersimpan",
+      "healthOk": "oke · {{count}} alat · {{latency}}ms",
+      "healthError": "error: {{error}}",
+      "unreachable": "tidak dapat dijangkau",
+      "scanning": "Memindai...",
+      "rescan": "Pindai ulang",
+      "reconnect": "Hubungkan ulang OAuth",
+      "acceptRisk": "Terima risiko & aktifkan"
+    },
+    "scan": {
+      "label": "Pemindaian rantai pasokan:",
+      "clean": "bersih",
+      "findings": "{{count}} temuan",
+      "tools": "Alat ({{count}})",
+      "flagged": "ditandai"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "Koneksi",
+        "auth": "Autentikasi",
+        "scan": "Kesehatan & Pemindaian",
+        "review": "Tinjau"
+      },
+      "displayName": "Nama tampilan",
+      "displayNamePlaceholder": "Server alat saya",
+      "url": "URL Server (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "Autentikasi",
+      "authNone": "Tidak ada",
+      "authBearer": "Token Bearer",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "Tanpa autentikasi — server ini terbuka. Lanjutkan untuk mendaftarkan dan memindainya.",
+      "bearerLabel": "Token Bearer (disimpan aman di vault; tidak akan ditampilkan lagi)",
+      "bearerPlaceholder": "tempel token",
+      "authzEndpoint": "Endpoint otorisasi",
+      "tokenEndpoint": "Endpoint token",
+      "clientId": "ID Klien",
+      "scopes": "Scope (dipisahkan dengan spasi)",
+      "registering": "Mendaftarkan…",
+      "registerScan": "Daftar & pindai",
+      "statusLabel": "Status:",
+      "connectOauth": "Hubungkan dengan OAuth →",
+      "runScan": "Jalankan pemeriksaan & pindai",
+      "refresh": "Segarkan",
+      "continue": "Lanjutkan",
+      "authKind": "auth: {{kind}}",
+      "enable": "Aktifkan untuk sesi saya",
+      "done": "Selesai"
+    }
+  },
+  "commands": {
+    "title": "Perintah Slash",
+    "description": "Ketik <code>/nama</code> di chat untuk memperluas templat. Gunakan <code>{{args}}</code> atau <code>{{key}}</code> untuk argumen.",
+    "namePlaceholder": "nama (misal. plan-scene)",
+    "templatePlaceholder": "Templat: Rencanakan adegan tentang {{topic}}…",
+    "empty": "Belum ada perintah."
+  },
+  "hooks": {
+    "title": "Hooks",
+    "description": "Aturan deklaratif yang berjalan pada jeda loop agen. Tanpa kode — cukup sebuah peristiwa, kecocokan alat opsional, dan sebuah tindakan.",
+    "matchPlaceholder": "kecocokan alat (misal. glossary_delete_*)",
+    "textPlaceholder": "teks untuk disisipkan / dianotasi",
+    "empty": "Belum ada hooks."
+  },
+  "subagents": {
+    "title": "Subagen",
+    "description": "Persona bernama yang dapat didelegasikan oleh agen untuk sub-tugas terbatas melalui <code>run_subagent</code>. Berjalan dalam giliran terisolasi HANYA dengan alat yang cakupannya ditentukan. Kosongkan cakupan untuk persona penalaran/ringkasan murni.",
+    "namePlaceholder": "nama (misal. lore-scout)",
+    "scopePlaceholder": "cakupan alat: glossary_*, kg_*",
+    "modelPlaceholder": "model (opsional, id user_model)",
+    "promptPlaceholder": "Prompt Sistem — siapa persona ini dan bagaimana cara kerjanya...",
+    "create": "Buat subagen",
+    "empty": "Belum ada subagen.",
+    "reasoningOnly": "hanya penalaran (tanpa alat)",
+    "modelPinned": "model dipaku"
+  },
+  "plugins": {
+    "description": "Plugin membundel keterampilan, perintah & hook — ekspor untuk berbagi, impor untuk instalasi.",
+    "importing": "Mengimpor...",
+    "import": "Impor bundel",
+    "invalidJson": "File tersebut bukan JSON yang valid.",
+    "notBundle": "Bukan bundel LoreWeave (manifest.name hilang).",
+    "empty": "Belum ada plugin. Impor bundel untuk menginstal plugin.",
+    "export": "Ekspor"
+  },
+  "proposals": {
+    "status": {
+      "pending": "Tertunda",
+      "approved": "Disetujui",
+      "rejected": "Ditolak",
+      "expired": "Kedaluwarsa",
+      "all": "Semua"
+    },
+    "total": "{{count}} total",
+    "empty": "Tidak ada proposal. Keterampilan yang diusulkan agen akan muncul di sini untuk persetujuan Anda.",
+    "approve": "Setujui",
+    "reject": "Tolak",
+    "reason": "Alasan: {{reason}}"
+  },
+  "activity": {
+    "title": "Log aktivitas",
+    "allKinds": "Semua jenis",
+    "range": {
+      "all": "Semua waktu",
+      "7d": "7 hari terakhir",
+      "30d": "30 hari terakhir"
+    },
+    "empty": "Tidak ada aktivitas dalam rentang ini.",
+    "secondsAgo": "{{count}} detik yang lalu",
+    "minutesAgo": "{{count}} menit yang lalu",
+    "hoursAgo": "{{count}} jam yang lalu",
+    "daysAgo": "{{count}} hari yang lalu"
+  },
+  "ingest": {
+    "title": "Sumber registri (admin)",
+    "description": "Kurasi katalog Sistem dari MCP Registry resmi. verifikasi ≠ keamanan — setiap persetujuan menjalankan ulang SSRF guard + pemindaian rantai pasokan sebelum difederasikan.",
+    "all": "Semua",
+    "pulling": "Menarik data…",
+    "pull": "Tarik registri",
+    "pullResult": "Berhasil ditarik: diambil {{fetched}} · baru {{new}} · diperbarui {{updated}} · dilewati {{skipped}}",
+    "truncated": "· parsial (terpotong)",
+    "empty": "Tidak ada entri dalam tampilan ini. Tarik registri untuk mengisi antrean.",
+    "approve": "Setujui",
+    "reject": "Tolak"
+  }
+}

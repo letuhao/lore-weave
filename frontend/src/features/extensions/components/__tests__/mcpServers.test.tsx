@@ -41,7 +41,7 @@ describe('McpServersView', () => {
     api.listMcpServers.mockResolvedValue({ items: [baseServer({ status: 'suspended' })], total: 1, limit: 20, offset: 0 });
     render(<McpServersView />);
     await waitFor(() => expect(screen.getByTestId('mcp-row')).toBeTruthy());
-    expect(screen.getByTestId('mcp-status-chip').textContent).toContain('quarantined');
+    expect(screen.getByTestId('mcp-status-chip').textContent).toContain('mcp.status.suspended');
   });
 
   it('Add button opens the 4-step wizard; a none-auth server registers + scans', async () => {
