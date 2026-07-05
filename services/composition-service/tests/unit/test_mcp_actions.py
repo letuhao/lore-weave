@@ -453,6 +453,45 @@ def test_confirm_executes_authoring_run_create(client, authoring_svc):
     assert kwargs["budget_usd"] == Decimal("2.00")
 
 
+def test_confirm_authoring_run_create_does_not_itself_validate_tool_allowlist(client, authoring_svc):
+    """Characterization test (/review-impl, 2026-07-05): the confirm-effect's
+    `tool_allowlist` handling is `isinstance(..., list)` only — NOT a re-check
+    against `ALLOWLISTABLE_TOOLS`. This is intentional, not a gap: `create()`
+    itself has always been "deliberately permissive — ALL semantic validation
+    happens at gate()" (authoring_run_service.py), and gate() DOES enforce the
+    closed set (test_gate_rejects_non_allowlistable_tool_name in
+    test_authoring_runs_service.py). The schema-level Literal[] on both
+    `_AuthoringRunCreateArgs` and `AuthoringRunCreate` is the front-line guard
+    for the two REAL entry points; this test locks in that the confirm-effect's
+    permissiveness is a deliberate belt via a proven backstop, not a bypass —
+    if `create()` ever starts validating here too, this test should be updated,
+    not deleted (a second validation site is fine; a REMOVED one isn't)."""
+    from app.db.models import AuthoringRun
+    from decimal import Decimal
+
+    run = AuthoringRun(
+        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
+        tool_allowlist=["not_a_real_tool"], pause_after_each_unit=True,
+    )
+    authoring_svc.create = AsyncMock(return_value=run)
+    token = _authoring_token(
+        "composition.authoring_run_create",
+        {
+            "book_id": str(BOOK), "plan_run_id": str(PLAN_RUN), "scope": [str(CHAPTER)],
+            "level": 3, "budget_usd": "2.00", "tool_allowlist": ["not_a_real_tool"],
+            "pause_after_each_unit": True, "params": {},
+        },
+        BOOK,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 200, resp.text
+    authoring_svc.create.assert_awaited_once()
+    _, kwargs = authoring_svc.create.await_args
+    assert kwargs["tool_allowlist"] == ["not_a_real_tool"]
+
+
 def test_confirm_authoring_run_create_missing_budget_usd_400(client, authoring_svc):
     token = _authoring_token(
         "composition.authoring_run_create",
