@@ -1,0 +1,155 @@
+{
+  "title": "작업",
+  "status": {
+    "pending": "대기 중",
+    "running": "실행 중",
+    "paused": "일시 중지됨",
+    "cancelling": "취소 중",
+    "completed": "완료됨",
+    "failed": "실패함",
+    "cancelled": "취소됨"
+  },
+  "kind": {
+    "extraction": "지식 추출",
+    "glossary_extraction": "용어집 추출",
+    "wiki_gen": "위키 생성",
+    "translation": "번역",
+    "glossary_translation": "용어집 번역",
+    "video_gen": "비디오 생성",
+    "campaign": "캠페인",
+    "enrichment_job": "설정 보강",
+    "book_import": "도서 가져오기",
+    "composition": {
+      "generate": "구성 생성"
+    }
+  },
+  "summary": {
+    "active": "활성",
+    "completed": "완료됨",
+    "failed": "실패함",
+    "cancelled": "취소됨"
+  },
+  "filters": {
+    "status": "상태",
+    "kind": "종류",
+    "allStatuses": "모든 상태",
+    "allKinds": "모든 종류",
+    "search": "제목 검색…",
+    "searchWide": "제목, 종류, 서비스, 모델 또는 작업 ID 검색…",
+    "searchHint": "제목 · 종류 · 서비스 · 모델 · 작업 ID 검색 가능 (디바운스 적용)."
+  },
+  "col": {
+    "job": "작업",
+    "status": "상태",
+    "progress": "진행률",
+    "cost": "비용 · 토큰",
+    "started": "시작 시간",
+    "actions": "작업"
+  },
+  "section": {
+    "active": "활성 · 실시간",
+    "activeHint": "페이지 구분 없음 — SSE를 통해 실시간 업데이트",
+    "history": "기록",
+    "historyHint": "생성순 정렬 · 페이지 구분 있음"
+  },
+  "list": {
+    "loading": "로딩 중…",
+    "error": "작업을 불러오지 못했습니다.",
+    "empty": "작업이 없습니다.",
+    "noActive": "활성 작업이 없습니다.",
+    "more": "더 보기",
+    "toggleChildren": "하위 작업 펼치기/접기",
+    "noChildren": "하위 작업이 없습니다."
+  },
+  "row": {
+    "ran": "{{d}} 전 실행됨",
+    "running": "{{d}} 동안 실행 중",
+    "details": "상세 정보 ↗"
+  },
+  "pager": {
+    "range": "{{total}}개 중 {{from}}–{{to}}",
+    "pageSize": "페이지 크기",
+    "perPage": "페이지당 {{n}}개",
+    "page": "{{n}} 페이지",
+    "prev": "이전 페이지",
+    "next": "다음 페이지",
+    "outOfRange": "이 페이지에 데이터가 없습니다 (총 {{total}}개).",
+    "first": "첫 페이지로"
+  },
+  "live": {
+    "on": "● 실시간",
+    "onShort": "실시간",
+    "reconnecting": "재연결 중…",
+    "off": "오프라인"
+  },
+  "controls": {
+    "pause": "일시 중지",
+    "resume": "재개",
+    "cancel": "취소",
+    "cancelConfirm": "지금 중단하시겠습니까? 진행 중인 작업은 폐기되지만, 완료된 부분은 유지됩니다.",
+    "cancelYes": "예",
+    "cancelNo": "아니요",
+    "cancelled": "취소되었습니다.",
+    "paused": "일시 중지되었습니다.",
+    "resumed": "재개되었습니다.",
+    "retry": "재시도",
+    "retried": "새 작업으로 재제출되었습니다.",
+    "stale": "작업 상태가 변경되어 새로고침되었습니다.",
+    "actionFailed": "작업 실패: {{error}}"
+  },
+  "monitor": {
+    "back": "모든 작업",
+    "error": "작업을 불러오지 못했습니다.",
+    "pausedBanner": "일시 중지됨 — 새로운 단위 작업이 할당되지 않으며, 진행 중인 작업만 완료됩니다. 위에서 재개하세요.",
+    "children": "하위 작업"
+  },
+  "detail": {
+    "progress": "진행률",
+    "llmCalls": "LLM 호출",
+    "elapsed": "경과 시간",
+    "throughput": "처리량",
+    "throughputVal": "~{{n}}/h",
+    "eta": "예상 완료 시간",
+    "costSoFar": "현재까지의 비용",
+    "tokensIn": "입력 토큰",
+    "tokensOut": "출력 토큰",
+    "bestEffort": "최선 노력",
+    "models": "모델",
+    "parameters": "매개변수",
+    "parametersHint": "작업의 params 객체에서 가져온 동적 데이터",
+    "jobId": "작업 ID",
+    "kind": "종류",
+    "service": "서비스",
+    "parent": "상위 작업",
+    "viewParent": "상위 작업 보기 ↗",
+    "created": "생성일",
+    "lastUpdate": "최근 업데이트",
+    "copied": "작업 ID가 복사되었습니다.",
+    "copyFailed": "복사할 수 없습니다.",
+    "activity": "활동 (실시간)",
+    "errorTitle": "오류"
+  },
+  "activity": {
+    "created": "생성됨",
+    "pending": "대기 중",
+    "running": "실행 중",
+    "paused": "일시 중지됨",
+    "cancelling": "취소 중",
+    "completed": "완료됨",
+    "failed": "실패함",
+    "cancelled": "취소됨"
+  },
+  "mobile": {
+    "children": "하위 작업"
+  },
+  "fairness": {
+    "title": "공정 스케줄링",
+    "running": "{{running}}/{{cap}} 실행 중",
+    "queued": "· {{queued}} 대기 중",
+    "lane": {
+      "translation": "번역",
+      "knowledge": "지식",
+      "loreEnrichment": "설정 보강"
+    }
+  }
+}

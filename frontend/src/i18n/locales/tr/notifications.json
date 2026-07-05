@@ -1,0 +1,54 @@
+{
+  "title": "Bildirimler",
+  "markAllRead": "Tümünü okundu işaretle",
+  "markRead": "Okundu olarak işaretle",
+  "delete": "Sil",
+  "empty": "Henüz bildirim yok",
+  "loading": "Yükleniyor...",
+  "justNow": "Şimdi",
+  "minsAgo": "{{count}} dk önce",
+  "hrsAgo": "{{count}} sa önce",
+  "daysAgo": "{{count}} gün önce",
+  "viewAll": "Tüm bildirimleri görüntüle",
+  "loadMore": "Daha fazla yükle",
+  "pageTitle": "Bildirimler",
+  "notif": {
+    "translation": {
+      "completed": "Çeviri tamamlandı — \"{{book}}\" kitabından {{count}} bölüm",
+      "partial": "Çeviri kısmen tamamlandı — {{done}} tamamlandı, {{failed}} başarısız",
+      "failed": "Çeviri başarısız oldu — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} sizi takip etmeye başladı"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Sohbet",
+      "completion": "Tamamlama",
+      "embedding": "Gömme",
+      "entity_extraction": "Varlık çıkarma",
+      "fact_extraction": "Bilgi çıkarma",
+      "relation_extraction": "İlişki çıkarma",
+      "event_extraction": "Olay çıkarma",
+      "translation": "Çeviri",
+      "image_gen": "Görsel oluşturma",
+      "video_gen": "Video oluşturma"
+    },
+    "status": {
+      "completed": "tamamlandı",
+      "failed": "başarısız",
+      "cancelled": "iptal edildi",
+      "running": "devam ediyor",
+      "pending": "bekleniyor"
+    }
+  },
+  "category": {
+    "all": "Hepsi",
+    "translation": "Çeviri",
+    "social": "Sosyal",
+    "wiki": "Wiki",
+    "system": "Sistem"
+  }
+}

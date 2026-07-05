@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "Sans titre",
+    "status": {
+      "draft": "Brouillon",
+      "active": "Actif",
+      "inactive": "Inactif"
+    },
+    "discard": "Abandonner",
+    "save": "Enregistrer",
+    "save_entity": "Enregistrer l'entité",
+    "cancel": "Annuler",
+    "move_to_trash": "Placer dans la corbeille",
+    "meta": {
+      "chapters": "{{count}} chapitres",
+      "translations": "{{count}} traductions",
+      "evidences": "{{count}} preuves"
+    },
+    "tab": {
+      "attributes": "Attributs",
+      "evidences": "Preuves",
+      "history": "Historique"
+    },
+    "viewing_in_language": "Affichage en {{lang}}",
+    "viewing_original": "Original ({{lang}})",
+    "translation_lang_aria": "Langue de traduction",
+    "no_translation": "Aucune traduction",
+    "add_language": "+ Ajouter une langue...",
+    "lang_placeholder": "ex. fr",
+    "system_attrs": "Attributs système",
+    "user_attrs": "Attributs utilisateur",
+    "no_attributes": "Aucun attribut défini pour ce type d'entité.",
+    "toast": {
+      "saved": "Entité enregistrée",
+      "status_changed": "Statut modifié en {{status}}",
+      "invalid_lang": "Code de langue invalide (ex. fr, en, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*requis",
+    "modified": "modifié",
+    "has_translations": "Possède des traductions"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "Brouillon",
+      "verified": "Vérifié",
+      "machine": "Machine"
+    },
+    "confidence_aria": "Confiance de la traduction",
+    "by": "par {{name}}",
+    "discard_aria": "Abandonner les modifications",
+    "save": "Enregistrer",
+    "delete_aria": "Supprimer la traduction",
+    "placeholder": "Traduction {{lang}}...",
+    "tags_add": "+ Ajouter un alias",
+    "delete_title": "Supprimer la traduction ?",
+    "delete_desc": "La traduction {{lang}} de cet attribut sera définitivement supprimée.",
+    "delete_confirm": "Supprimer",
+    "toast": {
+      "updated": "Traduction mise à jour",
+      "created": "Traduction créée",
+      "deleted": "Traduction supprimée"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "Citation",
+      "summary": "Résumé",
+      "reference": "Référence"
+    },
+    "provenance": {
+      "ambiguous": "Correspondance non vérifiée",
+      "ambiguous_hint": "Cette citation correspond au texte source à plus d'un endroit — l'emplacement exact est incertain.",
+      "unmatched": "Non trouvé dans la source",
+      "unmatched_hint": "Cette citation n'a pas pu être localisée dans le texte du chapitre — elle peut être une paraphrase ou une hallucination. Vérifiez avant de lui faire confiance.",
+      "unverified": "Non vérifié",
+      "unverified_hint": "Cette citation n'a pas été validée par rapport au texte source."
+    },
+    "filter": {
+      "all": "Tout",
+      "attr_aria": "Filtrer par attribut",
+      "all_attributes": "Tous les attributs",
+      "chapter_aria": "Filtrer par chapitre",
+      "all_chapters": "Tous les chapitres",
+      "chapter_n": "Chapitre {{n}}",
+      "lang_aria": "Langue d'affichage",
+      "original": "Original",
+      "sort_aria": "Trier par",
+      "sort": {
+        "created": "Créé",
+        "chapter": "Chapitre",
+        "block_line": "Bloc/Ligne",
+        "attribute": "Attribut"
+      },
+      "ascending": "Croissant",
+      "descending": "Décroissant",
+      "add": "Ajouter"
+    },
+    "create": {
+      "title": "Nouvelle preuve",
+      "attribute": "Attribut *",
+      "attr_aria": "Attribut pour la nouvelle preuve",
+      "type": "Type",
+      "type_aria": "Type de preuve",
+      "original_text": "Texte original *",
+      "text_placeholder": "Coller le texte source...",
+      "block_line": "Bloc / Ligne",
+      "block_placeholder": "ex. p.42",
+      "note": "Note",
+      "note_placeholder": "Note optionnelle",
+      "cancel": "Annuler",
+      "create": "Créer"
+    },
+    "card": {
+      "edit_type_aria": "Modifier le type de preuve",
+      "cancel_title": "Annuler",
+      "block_line": "Bloc / Ligne",
+      "note": "Note",
+      "cancel": "Annuler",
+      "save": "Enregistrer",
+      "edit_title": "Modifier",
+      "open_source": "Ouvrir le chapitre source",
+      "delete_title": "Supprimer",
+      "translated": "Traduit ({{lang}})",
+      "note_label": "Note: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "Aucune preuve trouvée",
+      "clear_filters": "Effacer les filtres",
+      "prev_page": "Page précédente",
+      "next_page": "Page suivante",
+      "first_page": "Première page",
+      "last_page": "Dernière page",
+      "jump_to_page": "Aller à la page",
+      "page_size": "Lignes par page",
+      "per_page": "{{n}} / page",
+      "delete_title": "Supprimer la preuve ?",
+      "delete_desc": "Cette preuve de \"{{attr}}\" sera définitivement supprimée.",
+      "delete_confirm": "Supprimer"
+    },
+    "toast": {
+      "updated": "Preuve mise à jour",
+      "deleted": "Preuve supprimée",
+      "created": "Preuve créée",
+      "text_required": "Le texte original est requis"
+    }
+  },
+  "summarize": {
+    "canonical_label": "Résumé fusionné",
+    "pending_dirty": "Sera résumé après la prochaine extraction",
+    "pending_new": "Sera résumé après la prochaine extraction",
+    "sources": "Mentions brutes ({{count}})",
+    "empty": "Aucune mention pour le moment"
+  }
+}

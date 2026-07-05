@@ -1,0 +1,87 @@
+{
+  "title": "Traduction du glossaire",
+  "subtitle": "Traduisez par lots les attributs d'entités avec l'IA",
+  "steps": {
+    "config": "Paramètres",
+    "confirm": "Confirmer",
+    "progress": "Progression",
+    "results": "Résultats"
+  },
+  "config": {
+    "title": "Paramètres de traduction",
+    "description": "Choisissez la langue cible et le modèle. Tous les attributs contenant du texte source seront traduits.",
+    "sourceLanguage": "Langue source",
+    "sourceUnknown": "Du livre",
+    "targetLanguage": "Langue cible",
+    "overwriteMode": "Politique d'écrasement",
+    "model": "Modèle",
+    "noModels": "Aucun modèle configuré.",
+    "addInSettings": "Ajouter dans les paramètres",
+    "selectModel": "Sélectionner un modèle...",
+    "allAttrsNote": "Chaque attribut possédant une valeur originale est inclus. Les traductions vérifiées ne sont jamais écrasées.",
+    "sameLanguageError": "La langue cible doit être différente de la langue source du livre.",
+    "thinkingEnabled": "Activer le raisonnement (thinking)",
+    "thinkingHint": "Désactivé par défaut. Activez cette option pour Gemma et les modèles similaires si vous souhaitez que le modèle raisonne avant de répondre.",
+    "mode": {
+      "missing_only": {
+        "label": "Uniquement les manquants",
+        "hint": "Ignore les attributs qui possèdent déjà une traduction dans la langue cible."
+      },
+      "refresh_machine": {
+        "label": "Actualiser la machine",
+        "hint": "Retraduit les brouillons et les traductions automatiques. Les traductions vérifiées restent inchangées."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "Langues",
+    "mode": "Mode",
+    "model": "Modèle",
+    "estimateNote": "Le nombre d'entités et l'utilisation des tokens sont déterminés au lancement de la tâche. L'utilisation réelle dépend du nombre d'attributs par entité.",
+    "editConfig": "Modifier les paramètres",
+    "startTranslate": "Lancer la traduction",
+    "startFailed": "Échec du lancement de la tâche de traduction",
+    "thinkingOn": "Raisonnement : activé",
+    "thinkingOff": "Raisonnement : désactivé"
+  },
+  "progress": {
+    "title": "Traduction du glossaire",
+    "processing": "Traitement de l'entité {{current}} sur {{total}}...",
+    "entityProgress": "Progression de l'entité",
+    "entitiesCount": "{{completed}} / {{total}} entités",
+    "failedCount": "{{count}} échouées",
+    "attrsTranslated": "Attr. traduits",
+    "attrsSkipped": "Attr. ignorés",
+    "entitiesDone": "Entités terminées",
+    "entitiesFailed": "Entités échouées",
+    "cancel": "Annuler",
+    "cancelConfirm": "Annuler cette tâche de traduction ? Les entités déjà traitées conserveront leurs traductions.",
+    "cancelRequested": "Annulation demandée",
+    "noEntities": "Aucune entité ne nécessite de traduction pour cette langue."
+  },
+  "results": {
+    "title": "Traduction terminée",
+    "titleNoEntities": "Rien à traduire",
+    "titleWithErrors": "Traduction terminée (avec erreurs)",
+    "titleFailed": "Échec de la traduction",
+    "titleCancelled": "Traduction annulée",
+    "duration": "{{count}} entités en {{duration}}",
+    "attrsTranslated": "Traduits",
+    "attrsSkipped": "Ignorés",
+    "entitiesDone": "Entités terminées",
+    "entitiesFailed": "Échouées",
+    "partialFailure": "{{count}} entité(s) a(nt) échoué(es)",
+    "tokenUsage": "Utilisation des tokens",
+    "estimated": "Estimé : {{tokens}}",
+    "noEntities": "Tous les attributs d'entités ont déjà des traductions dans cette langue, ou aucun attribut ne contient de texte source.",
+    "machineNote": "Les traductions sont enregistrées avec un indice de confiance machine — vérifiez-les dans l'éditeur d'entités.",
+    "viewGlossary": "Voir dans le glossaire",
+    "runAgain": "Traduire à nouveau",
+    "close": "Fermer"
+  },
+  "button": {
+    "next": "Suivant",
+    "back": "Retour",
+    "cancel": "Annuler"
+  }
+}

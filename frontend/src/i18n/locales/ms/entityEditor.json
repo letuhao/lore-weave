@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "Tanpa Tajuk",
+    "status": {
+      "draft": "Draf",
+      "active": "Aktif",
+      "inactive": "Tidak Aktif"
+    },
+    "discard": "Buang",
+    "save": "Simpan",
+    "save_entity": "Simpan Entiti",
+    "cancel": "Batal",
+    "move_to_trash": "Pindahkan ke Tong Sampah",
+    "meta": {
+      "chapters": "{{count}} bab",
+      "translations": "{{count}} terjemahan",
+      "evidences": "{{count}} bukti"
+    },
+    "tab": {
+      "attributes": "Atribut",
+      "evidences": "Bukti",
+      "history": "Sejarah"
+    },
+    "viewing_in_language": "Sedang melihat dalam {{lang}}",
+    "viewing_original": "Asal ({{lang}})",
+    "translation_lang_aria": "Bahasa terjemahan",
+    "no_translation": "Tiada terjemahan",
+    "add_language": "+ Tambah bahasa...",
+    "lang_placeholder": "cth. en",
+    "system_attrs": "Atribut Sistem",
+    "user_attrs": "Atribut Pengguna",
+    "no_attributes": "Tiada atribut ditetapkan untuk jenis entiti ini.",
+    "toast": {
+      "saved": "Entiti disimpan",
+      "status_changed": "Status ditukar kepada {{status}}",
+      "invalid_lang": "Kod bahasa tidak sah (cth. en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*wajib",
+    "modified": "diubah suai",
+    "has_translations": "Mempunyai terjemahan"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "Draf",
+      "verified": "Disahkan",
+      "machine": "Mesin"
+    },
+    "confidence_aria": "Keyakinan terjemahan",
+    "by": "oleh {{name}}",
+    "discard_aria": "Buang perubahan",
+    "save": "Simpan",
+    "delete_aria": "Padam terjemahan",
+    "placeholder": "Terjemahan {{lang}}...",
+    "tags_add": "+ Tambah alias",
+    "delete_title": "Padam terjemahan?",
+    "delete_desc": "Terjemahan {{lang}} untuk atribut ini akan dipadamkan secara kekal.",
+    "delete_confirm": "Padam",
+    "toast": {
+      "updated": "Terjemahan dikemas kini",
+      "created": "Terjemahan dicipta",
+      "deleted": "Terjemahan dipadamkan"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "Petikan",
+      "summary": "Ringkasan",
+      "reference": "Rujukan"
+    },
+    "provenance": {
+      "ambiguous": "Padanan tidak disahkan",
+      "ambiguous_hint": "Petikan ini sepadan dengan teks sumber di lebih daripada satu tempat — lokasi tepat tidak pasti.",
+      "unmatched": "Tidak ditemui dalam sumber",
+      "unmatched_hint": "Petikan ini tidak dapat dikesan dalam teks bab — ia mungkin telah diubah suai atau halusinasi. Sahkan sebelum mempercayainya.",
+      "unverified": "Tidak disahkan",
+      "unverified_hint": "Petikan ini belum disahkan terhadap teks sumber."
+    },
+    "filter": {
+      "all": "Semua",
+      "attr_aria": "Tapis mengikut atribut",
+      "all_attributes": "Semua atribut",
+      "chapter_aria": "Tapis mengikut bab",
+      "all_chapters": "Semua bab",
+      "chapter_n": "Bab {{n}}",
+      "lang_aria": "Bahasa paparan",
+      "original": "Asal",
+      "sort_aria": "Susun mengikut",
+      "sort": {
+        "created": "Dicipta",
+        "chapter": "Bab",
+        "block_line": "Blok/Baris",
+        "attribute": "Atribut"
+      },
+      "ascending": "Menaik",
+      "descending": "Menurun",
+      "add": "Tambah"
+    },
+    "create": {
+      "title": "Bukti Baharu",
+      "attribute": "Atribut *",
+      "attr_aria": "Atribut untuk bukti baharu",
+      "type": "Jenis",
+      "type_aria": "Jenis bukti",
+      "original_text": "Teks Asal *",
+      "text_placeholder": "Tampal teks sumber...",
+      "block_line": "Blok / Baris",
+      "block_placeholder": "cth. p.42",
+      "note": "Nota",
+      "note_placeholder": "Nota pilihan",
+      "cancel": "Batal",
+      "create": "Cipta"
+    },
+    "card": {
+      "edit_type_aria": "Edit jenis bukti",
+      "cancel_title": "Batal",
+      "block_line": "Blok / Baris",
+      "note": "Nota",
+      "cancel": "Batal",
+      "save": "Simpan",
+      "edit_title": "Edit",
+      "open_source": "Buka bab sumber",
+      "delete_title": "Padam",
+      "translated": "Diterjemah ({{lang}})",
+      "note_label": "Nota: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "Tiada bukti ditemui",
+      "clear_filters": "Kosongkan penapis",
+      "prev_page": "Halaman sebelumnya",
+      "next_page": "Halaman seterusnya",
+      "first_page": "Halaman pertama",
+      "last_page": "Halaman terakhir",
+      "jump_to_page": "Lompat ke halaman",
+      "page_size": "Baris setiap halaman",
+      "per_page": "{{n}} / halaman",
+      "delete_title": "Padam bukti?",
+      "delete_desc": "Bukti daripada \"{{attr}}\" ini akan dipadamkan secara kekal.",
+      "delete_confirm": "Padam"
+    },
+    "toast": {
+      "updated": "Bukti dikemas kini",
+      "deleted": "Bukti dipadamkan",
+      "created": "Bukti dicipta",
+      "text_required": "Teks asal diperlukan"
+    }
+  },
+  "summarize": {
+    "canonical_label": "Ringkasan digabungkan",
+    "pending_dirty": "Akan diringkaskan semula selepas pengekstrakan seterusnya",
+    "pending_new": "Akan diringkaskan selepas pengekstrakan seterusnya",
+    "sources": "Sebutan mentah ({{count}})",
+    "empty": "Tiada sebutan lagi"
+  }
+}

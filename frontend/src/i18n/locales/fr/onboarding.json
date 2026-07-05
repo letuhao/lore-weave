@@ -1,0 +1,22 @@
+{
+  "heading": "Que voulez-vous faire ?",
+  "subheading": "Choisissez un point de départ — vous pouvez changer à tout moment.",
+  "intent": {
+    "write": {
+      "title": "Écrire",
+      "desc": "Commencez un nouveau livre ou continuez votre écriture — rédigez des chapitres avec un co-auteur IA."
+    },
+    "world": {
+      "title": "Créer un univers",
+      "desc": "Créez votre lore — personnages, lieux, factions — sans avoir besoin de manuscrit."
+    },
+    "translate": {
+      "title": "Traduire",
+      "desc": "Adaptez un livre existant dans une autre langue grâce au pipeline de traduction."
+    },
+    "explore": {
+      "title": "Explorer",
+      "desc": "Parcourez vos connaissances — entités, chronologies et graphe de relations."
+    }
+  }
+}

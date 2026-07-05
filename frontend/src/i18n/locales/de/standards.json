@@ -1,0 +1,119 @@
+{
+  "title": "Glossar-Standards",
+  "subtitle": "Deine wiederverwendbaren Genres, Arten und Attribute. Klone einen Systemstandard in deine Stufe, um ihn anzupassen, oder erstelle deine eigenen.",
+  "tabs_aria": "Standard-Abschnitte",
+  "tab": {
+    "genres": "Genres",
+    "kinds": "Arten",
+    "attributes": "Attribute"
+  },
+  "loading": "Standards werden geladen…",
+  "error": "Standards konnten nicht geladen werden. Versuche es erneut.",
+  "empty": {
+    "genres": "Noch keine Genres vorhanden.",
+    "kinds": "Noch keine Arten vorhanden."
+  },
+  "action": {
+    "clone": "In meine Stufe klonen",
+    "yours": "Deine",
+    "edit": "Bearbeiten",
+    "delete": "Löschen"
+  },
+  "genres": {
+    "new": "Neues Genre"
+  },
+  "kinds": {
+    "new": "Neue Art"
+  },
+  "toast": {
+    "cloned": "„{{name}}“ zu deinen Standards geklont",
+    "cloneError": "„{{name}}“ konnte nicht geklont werden",
+    "created": "„{{name}}“ erstellt",
+    "createError": "Erstellung fehlgeschlagen",
+    "saved": "Gespeichert",
+    "saveError": "Speichern fehlgeschlagen",
+    "deleted": "„{{name}}“ in den Papierkorb verschoben",
+    "deleteError": "„{{name}}“ konnte nicht gelöscht werden",
+    "attrCreated": "„{{name}}“ hinzugefügt",
+    "attrError": "„{{name}}“ konnte nicht hinzugefügt werden",
+    "linksSaved": "Genres aktualisiert",
+    "linksError": "Genres konnten nicht aktualisiert werden"
+  },
+  "attributes": {
+    "no_user_kinds": "Klone oder erstelle zuerst eine Art – Attribute werden an deine eigenen Arten gebunden.",
+    "no_user_genres": "Klone oder erstelle zuerst ein Genre – Attribute werden an deine eigenen Genres gebunden.",
+    "pick_kind": "Art auswählen…",
+    "pick_genre": "Genre auswählen…",
+    "pick_both": "Wähle eine Art und ein Genre aus, um Attribute zu sehen und hinzuz가.",
+    "new": "Neues Attribut",
+    "empty": "Noch keine Attribute für dieses Paar vorhanden.",
+    "system_ref": "Vom System (schreibgeschützt)",
+    "your_attrs": "Deine Attribute"
+  },
+  "attrform": {
+    "title_create": "Neues Attribut",
+    "title_edit": "Attribut bearbeiten",
+    "name": "Name",
+    "name_placeholder": "z. B. Rang",
+    "name_required": "Name ist erforderlich",
+    "code": "Code",
+    "code_hint": "Optional — wird bei Leerwert aus dem Namen abgeleitet.",
+    "field_type": "Feldtyp",
+    "required": "Erforderlich",
+    "options": "Optionen",
+    "options_hint": "Pro Zeile eine (für Auswahl / Tags).",
+    "cancel": "Abbrechen",
+    "create": "Attribut hinzufügen",
+    "save": "Speichern",
+    "saving": "Speichern…",
+    "ft": {
+      "text": "Text",
+      "textarea": "Langer Text",
+      "select": "Auswahl",
+      "number": "Zahl",
+      "date": "Datum",
+      "tags": "Tags",
+      "url": "URL",
+      "boolean": "Ja / Nein"
+    }
+  },
+  "stdform": {
+    "title_create_genre": "Neues Genre",
+    "title_edit_genre": "Genre bearbeiten",
+    "title_create_kind": "Neue Art",
+    "title_edit_kind": "Art bearbeiten",
+    "name": "Name",
+    "name_required": "Name ist erforderlich",
+    "icon": "Icon",
+    "color": "Farbe",
+    "code": "Code",
+    "code_hint": "Optional — wird bei Leerwert aus dem Namen abgeleitet.",
+    "description": "Beschreibung",
+    "cancel": "Abbrechen",
+    "create": "Erstellen",
+    "save": "Speichern",
+    "saving": "Speichern…"
+  },
+  "links": {
+    "edit": "Genres",
+    "title": "Genres für {{name}}",
+    "save": "Speichern",
+    "saving": "Speichern…",
+    "empty": "Keine benutzerdefinierten Genres zum Verknüpfen. Klone oder erstelle zuerst ein Genre.",
+    "cancel": "Abbrechen"
+  },
+  "trash": {
+    "open": "Papierkorb",
+    "title": "Papierkorb",
+    "close": "Schließen",
+    "genres": "Genres",
+    "kinds": "Arten",
+    "empty_section": "Nichts hier.",
+    "restore": "Wiederherstellen",
+    "purge": "Endgültig löschen",
+    "restored": "Wiederhergestellt",
+    "restoreError": "Wiederherstellung fehlgeschlagen",
+    "purged": "Endgültig gelöscht",
+    "purgeError": "Löschen fehlgeschlagen"
+  }
+}

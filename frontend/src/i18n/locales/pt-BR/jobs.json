@@ -1,0 +1,155 @@
+{
+  "title": "Jobs",
+  "status": {
+    "pending": "Pendente",
+    "running": "Executando",
+    "paused": "Pausado",
+    "cancelling": "Cancelando",
+    "completed": "Concluído",
+    "failed": "Falhou",
+    "cancelled": "Cancelado"
+  },
+  "kind": {
+    "extraction": "Extração de conhecimento",
+    "glossary_extraction": "Extração de glossário",
+    "wiki_gen": "Geração de wiki",
+    "translation": "Tradução",
+    "glossary_translation": "Tradução de glossário",
+    "video_gen": "Geração de vídeo",
+    "campaign": "Campanha",
+    "enrichment_job": "Enriquecimento de lore",
+    "book_import": "Importação de livro",
+    "composition": {
+      "generate": "Composição"
+    }
+  },
+  "summary": {
+    "active": "Ativo",
+    "completed": "Concluído",
+    "failed": "Falhou",
+    "cancelled": "Cancelado"
+  },
+  "filters": {
+    "status": "Status",
+    "kind": "Tipo",
+    "allStatuses": "Todos os status",
+    "allKinds": "Todos os tipos",
+    "search": "Buscar título...",
+    "searchWide": "Buscar título, tipo, serviço, modelo ou ID do job...",
+    "searchHint": "A busca abrange título · tipo · serviço · modelo · ID do job (com debounce)."
+  },
+  "col": {
+    "job": "Job",
+    "status": "Status",
+    "progress": "Progresso",
+    "cost": "Custo · tokens",
+    "started": "Iniciado",
+    "actions": "Ações"
+  },
+  "section": {
+    "active": "Ativo · ao vivo",
+    "activeHint": "não paginado — atualizações em tempo real via SSE",
+    "history": "Histórico",
+    "historyHint": "ordenado por criação · paginado"
+  },
+  "list": {
+    "loading": "Carregando...",
+    "error": "Falha ao carregar jobs.",
+    "empty": "Nenhum job ainda.",
+    "noActive": "Nenhum job ativo.",
+    "more": "Carregar mais",
+    "toggleChildren": "Alternar filhos",
+    "noChildren": "Sem jobs filhos."
+  },
+  "row": {
+    "ran": "executou {{d}}",
+    "running": "executando {{d}}",
+    "details": "Detalhes ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} de {{total}}",
+    "pageSize": "Tamanho da página",
+    "perPage": "{{n}} / página",
+    "page": "Página {{n}}",
+    "prev": "Página anterior",
+    "next": "Próxima página",
+    "outOfRange": "Não há linhas nesta página ({{total}} no total).",
+    "first": "Voltar para a primeira página"
+  },
+  "live": {
+    "on": "● ao vivo",
+    "onShort": "ao vivo",
+    "reconnecting": "reconectando...",
+    "off": "offline"
+  },
+  "controls": {
+    "pause": "Pausar",
+    "resume": "Retomar",
+    "cancel": "Cancelar",
+    "cancelConfirm": "Parar agora? O trabalho em andamento será descartado; as partes concluídas serão mantidas.",
+    "cancelYes": "Sim",
+    "cancelNo": "Não",
+    "cancelled": "Cancelado.",
+    "paused": "Pausado.",
+    "resumed": "Retomado.",
+    "retry": "Tentar novamente",
+    "retried": "Reenviado como um novo job.",
+    "stale": "O estado do job mudou — atualizado.",
+    "actionFailed": "Falha na ação: {{error}}"
+  },
+  "monitor": {
+    "back": "Todos os jobs",
+    "error": "Falha ao carregar o job.",
+    "pausedBanner": "Pausado — nenhum novo lote será enviado e os em execução serão finalizados. Retome acima.",
+    "children": "Jobs filhos"
+  },
+  "detail": {
+    "progress": "Progresso",
+    "llmCalls": "Chamadas de LLM",
+    "elapsed": "Tempo decorrido",
+    "throughput": "Vazão",
+    "throughputVal": "~{{n}}/h",
+    "eta": "Previsão (ETA)",
+    "costSoFar": "Custo acumulado",
+    "tokensIn": "Tokens de entrada",
+    "tokensOut": "Tokens de saída",
+    "bestEffort": "melhor esforço",
+    "models": "Modelos",
+    "parameters": "Parâmetros",
+    "parametersHint": "dinâmicos, do objeto de parâmetros do job",
+    "jobId": "ID do Job",
+    "kind": "Tipo",
+    "service": "Serviço",
+    "parent": "Pai",
+    "viewParent": "Ver pai ↗",
+    "created": "Criado em",
+    "lastUpdate": "Última atualização",
+    "copied": "ID do Job copiado.",
+    "copyFailed": "Não foi possível copiar.",
+    "activity": "Atividade (ao vivo)",
+    "errorTitle": "Erro"
+  },
+  "activity": {
+    "created": "Criado",
+    "pending": "Na fila",
+    "running": "Executando",
+    "paused": "Pausado",
+    "cancelling": "Cancelando",
+    "completed": "Concluído",
+    "failed": "Falhou",
+    "cancelled": "Cancelado"
+  },
+  "mobile": {
+    "children": "filhos"
+  },
+  "fairness": {
+    "title": "Escalonamento justo",
+    "running": "{{running}}/{{cap}} executando",
+    "queued": "· {{queued}} na fila",
+    "lane": {
+      "translation": "Tradução",
+      "knowledge": "Conhecimento",
+      "loreEnrichment": "Enriquecimento de lore"
+    }
+  }
+}

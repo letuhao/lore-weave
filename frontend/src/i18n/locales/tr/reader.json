@@ -1,0 +1,146 @@
+{
+  "loading": "Yükleniyor...",
+  "chapter_of": "{{total}} Bölümden {{current}}. Bölüm",
+  "stop_reading": "Okumayı durdur",
+  "read_aloud": "Sesli oku",
+  "reading_theme": "Okuma teması",
+  "edit_chapter": "Bu bölümü düzenle",
+  "back_to_book": "Kitaba dön",
+  "chapter_label": "Bölüm {{n}}",
+  "chars": "karakter",
+  "words": "kelime",
+  "min_read": "~{{minutes}} dk okuma süresi",
+  "loading_translation": "Çeviri yükleniyor...",
+  "empty_chapter": "Boş bölüm — henüz bir şey yazılmamış.",
+  "end_of_chapter": "Bölüm {{n}} Sonu",
+  "next_in": "Sonraki bölüm {{seconds}}s içinde...",
+  "cancel": "İptal",
+  "progress": "Bölüm {{current}} / {{total}} · {{percent}}% tamamlandı",
+  "ch_short": "Böl. {{n}}",
+  "history": {
+    "title": "Okuma Geçmişi",
+    "subtitle": "Son okuduğunuz kitaplar ve bölümler.",
+    "empty": "Henüz okuma geçmişi yok. Bir bölüm okumaya başlayın!",
+    "chapters_read": "{{count}} bölüm okundu",
+    "fully_read": "%{{percent}} tamamlandı",
+    "last_read": "Son okuma: {{date}}",
+    "continue": "Devam et"
+  },
+  "theme": {
+    "title": "Okuma Teması",
+    "presets": "Tema Önayarları",
+    "preset": {
+      "dark": {
+        "name": "Koyu",
+        "desc": "Sıcak koyu arka plan"
+      },
+      "light": {
+        "name": "Açık",
+        "desc": "Temiz beyaz arka plan"
+      },
+      "sepia": {
+        "name": "Sepya",
+        "desc": "Sıcak kağıt tonu"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "OLED ekranlar için gerçek siyah"
+      },
+      "parchment": {
+        "name": "Parşömen",
+        "desc": "Klasik parşömen hissi"
+      },
+      "forest": {
+        "name": "Orman",
+        "desc": "Geceleyin gözleri yormaz"
+      }
+    },
+    "font": "Yazı Tipi",
+    "typography": "Tipografi",
+    "font_size": "Yazı boyutu",
+    "line_height": "Satır yüksekliği",
+    "text_width": "Metin genişliği",
+    "spacing": "Boşluk",
+    "reading_mode": "Okuma Modu",
+    "show_indices": "Blok indekslerini göster (çevirmen modu)",
+    "auto_next": "Sonraki bölümü otomatik yükle",
+    "auto_scroll": "TTS ile otomatik kaydır"
+  },
+  "tts": {
+    "source": {
+      "attached": "Ekli",
+      "ai": "Yapay Zeka TTS",
+      "browser": "Tarayıcı",
+      "inline": "Ses"
+    },
+    "prev_block": "Önceki blok (Shift+Sol)",
+    "play": "Oynat (Boşluk)",
+    "pause": "Duraklat (Boşluk)",
+    "next_block": "Sonraki blok (Shift+Sağ)",
+    "cycle_speed": "Hız döngüsü",
+    "autoscroll_on": "Otomatik kaydırma: AÇIK",
+    "autoscroll_off": "Otomatik kaydırma: KAPALI",
+    "settings": "TTS Ayarları",
+    "stop": "Durdur (Escape)",
+    "speed": "Hız",
+    "browser_voice": "Tarayıcı Sesi",
+    "default": "Varsayılan",
+    "no_voices": "Uygun ses bulunamadı. Tarayıcınız Web Speech API'sini desteklemiyor olabilir.",
+    "ai_model": "Yapay Zeka TTS Modeli",
+    "none_browser": "Yok (sadece tarayıcı TTS)",
+    "no_models": "Yapılandırılmış model yok. Ayarlar > Sağlayıcılar kısmından bir sağlayıcı ekleyin.",
+    "ai_voice": "Yapay Zeka Sesi",
+    "openai_voices": "OpenAI sesleri: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "Davranış",
+    "autoscroll_active": "Aktif bloğa otomatik kaydır",
+    "highlight_active": "Aktif bloğu vurgula",
+    "now_playing": "Şu an çalıyor",
+    "block_label": "Blok: {{id}}",
+    "status": {
+      "playing": "oynatılıyor",
+      "paused": "duraklatıldı",
+      "loading": "yükleniyor"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "Ekli",
+      "ai": "Yapay Zeka TTS",
+      "browser": "Tarayıcı",
+      "inline": "Ses Bloğu",
+      "none": "Yok"
+    },
+    "coverage": "Ses Kapsamı",
+    "summary": "{{speakable}} seslendirilebilir blok · {{missing}} tarayıcı TTS kullanıyor",
+    "generate_missing": "Eksik Sesleri Oluştur",
+    "block_chars": "{{count}} blok · ~{{chars}} karakter",
+    "block_chars_other": "{{count}} blok · ~{{chars}} karakter",
+    "est_cost": "tahmini ${{cost}}",
+    "generating": "Oluşturuluyor... {{progress}}/{{total}}",
+    "select_model_alert": "Lütfen önce TTS Ayarlarından bir TTS modeli seçin.",
+    "generate_all": "Tümünü Oluştur ({{count}})",
+    "blocks": "Bloklar",
+    "audio_block_preview": "Ses bloğu"
+  },
+  "block": {
+    "audio_unavailable": "Ses mevcut değil",
+    "audio_fallback": "Tarayıcınız ses öğesini desteklemiyor.",
+    "image_unavailable": "Görsel mevcut değil",
+    "video_unavailable": "Video mevcut değil"
+  },
+  "indicator": {
+    "pause": "Duraklat",
+    "play": "Ekli sesi oynat",
+    "mismatch": "Ses altyazısı blok metniyle eşleşmiyor"
+  },
+  "citation": {
+    "aria": "Atıf {{n}}",
+    "jump": "Kaynağa git",
+    "relevance": "Alaka düzeyi",
+    "source": {
+      "glossary": "Sözlük",
+      "kg": "Bilgi Grafiği",
+      "passage": "Paragraf"
+    }
+  }
+}

@@ -1,0 +1,349 @@
+{
+  "header": "Enrichment-Review",
+  "subtitle": "Überprüfe KI-Vorschläge für Lore zu unterbeschriebenen Entitäten und überführe das, was du genehmigst, in den Kanon dieses Buches. Angereicherte Entwürfe sind private Varianten, bis du sie überführst.",
+  "untitled": "Unbenannt",
+  "panel": {
+    "compose": "Erstellen",
+    "proposals": "Vorschläge",
+    "gaps": "Lücken",
+    "sources": "Quellen",
+    "jobs": "Jobs",
+    "settings": "Profil"
+  },
+  "compose": {
+    "title": "Enrichment erstellen",
+    "subtitle": "Starte die Anreicherung nach deinen Wünschen — erweitere einen geschriebenen Entwurf oder fülle erkannte Lücken. Alles, was du erstellst, ist eine angereicherte Variante, bis du sie überführst.",
+    "soon": "bald",
+    "mode_soon": "Erhältlich in einem späteren Update.",
+    "mode": {
+      "draft": "Aus einem Entwurf",
+      "gap": "Lücken füllen",
+      "intent": "Aus einer Idee",
+      "context": "Kontext einfügen",
+      "files": "Dateien anhängen"
+    },
+    "draft": {
+      "label": "Dein Entwurf",
+      "placeholder": "Füge deinen Entwurf für diese Entität ein oder schreibe ihn. Er wird in die Dimensionen des Buches und in dessen Erzählstil erweitert...",
+      "expand_mode": "Art der Erweiterung",
+      "rewrite": "Umschreiben",
+      "rewrite_hint": "Umschreiben + Stimmen-Synchronisation mit dem Buch, wobei deine Bedeutung erhalten bleibt; alle Dimensionen werden ausgefüllt.",
+      "add_only": "Nur hinzufügen",
+      "add_only_hint": "Behalte deine Prosa unverändert bei; füge nur die fehlenden Dimensionen hinzu."
+    },
+    "context": {
+      "label": "Referenztext",
+      "placeholder": "Füge Referenztext über diese Entität ein. Er dient als Grundlage und die Anreicherung wird daraus generiert (in der Stimme des Buches).",
+      "license_label": "Quellenlizenz",
+      "license": {
+        "public_domain": "Gemeinfrei",
+        "licensed": "Für diese Nutzung lizenziert",
+        "owned": "Ich besitze / habe dies geschrieben",
+        "copyrighted": "Urheberrechtlich geschützt (nicht verwendbar)"
+      },
+      "copyrighted_warning": "Urheberrechtlich geschütztes Material kann nicht verarbeitet werden. Verwende gemeinfreie, lizenzierte oder eigene Texte.",
+      "responsibility": "Du bist für die Rechte an diesem Text verantwortlich. Keine Rechtsberatung."
+    },
+    "files": {
+      "license_label": "Dateilizenz",
+      "dropzone": "Dateien hier ablegen oder zum Durchsuchen klicken",
+      "accept": ".txt .md .pdf .docx .epub — gescannte PDFs werden per OCR verarbeitet",
+      "ready": "{{chars}} Zeichen{{ocr}}",
+      "ocr": "OCR",
+      "processing": "Extrahiere...",
+      "failed": "fehlgeschlagen",
+      "responsibility": "Ich besitze die Rechte an diesen Dateien (Eigentum / lizenziert / gemeinfrei). Keine Rechtsberatung."
+    },
+    "intent": {
+      "label": "Was möchtest du erstellen?",
+      "placeholder": "Beschreibe es in deinen eigenen Worten — z. B. „der weise Berater, der dem König hilft, die Dynastie zu gründen“.",
+      "resolve": "Auflösen",
+      "resolving": "Wird aufgelöst...",
+      "resolve_hint": "Schlägt ein Ziel unten vor — überprüfe und bearbeite es, dann auf „Ausführen“ klicken."
+    },
+    "target": {
+      "existing": "Bestehende Entität",
+      "new": "Neue Entität",
+      "name": "Name",
+      "name_placeholder": "z. B. 碧遊宮",
+      "kind": "Art",
+      "existing_hint": "Reichert die bestehende Glossar-Entität mit diesem Namen an.",
+      "new_hint": "Erstellt eine neue Entität — es wird nichts in dein Glossar geschrieben, bis du den Vorschlag überführst."
+    },
+    "kind": {
+      "character": "Charakter",
+      "location": "Ort",
+      "item": "Gegenstand",
+      "faction": "Fraktion",
+      "event": "Ereignis",
+      "generic": "Allgemein"
+    },
+    "config": {
+      "gen_model": "Generierungsmodell",
+      "embed_model": "Embedding-Modell",
+      "select_model": "Auswählen...",
+      "max_spend": "Max. Verbrauch (Tokens)",
+      "no_cap": "keine Begrenzung",
+      "top_k": "Top-K",
+      "technique": "Technik",
+      "technique_opt": {
+        "retrieval": "Retrieval (P1)",
+        "fabrication": "Fabrication (P2)",
+        "recook": "Re-Cook (P3)"
+      },
+      "eval_gate_warning": "P2/P3 benötigt ein bestandenes Eval-Gate — der Job wird abgelehnt, bis er besteht.",
+      "dimensions": {
+        "auto": "Auto — alle fehlenden Dimensionen anreichern"
+      }
+    },
+    "safety": "① Lizenz · ② Abstraktion · ③ Regurgitation-Schutz · ④ Du überführst — angereicherte Inhalte bleiben Varianten, bis du sie überführst.",
+    "run_hint": "Läuft als Hintergrundjob — der Vorschlag erscheint unter „Vorschläge“, sobald er bereit ist.",
+    "save_corpus": "In Quellen speichern (behalten — nicht automatisch löschen)",
+    "run": "Entwurf erstellen",
+    "composing": "Startet...",
+    "enqueued": "Anreicherung gestartet — der Vorschlag erscheint unter „Vorschläge“."
+  },
+  "h0": {
+    "marker": "Variante",
+    "tooltip": "Eine angereicherte Variante — wird erst zum offiziellen Kanon, wenn du sie überführst."
+  },
+  "technique": {
+    "template": "Template",
+    "retrieval": "Retrieval",
+    "fabrication": "Fabrication",
+    "recook": "Re-Cook"
+  },
+  "review": {
+    "proposed": "Vorgeschlagen",
+    "author_reviewing": "In Prüfung",
+    "approved": "Genehmigt",
+    "promoted": "Überführt",
+    "rejected": "Abgelehnt"
+  },
+  "verify": {
+    "none": "Keine Verifizierungsnotiz.",
+    "clean": "Verifiziert sauber — keine Widersprüche, Anachronismen, Injektionen oder Regurgitationen gefunden.",
+    "degraded": "Verifizierung eingeschränkt — der Kanon war nicht verfügbar, daher konnten Widersprüche nicht vollständig geprüft werden.",
+    "status": {
+      "verified_clean": "verifiziert",
+      "needs_review": "erfordert Prüfung",
+      "quarantined": "quarantäne",
+      "degraded": "eingeschränkt",
+      "auto_rejected": "automatisch abgelehnt"
+    },
+    "flag": {
+      "contradiction": "Widerspricht dem Kanon",
+      "anachronism": "Anachronismus",
+      "injection": "Prompt-Injektion",
+      "regurgitation": "Quellen-Regurgitation"
+    },
+    "severity": {
+      "low": "niedrig",
+      "medium": "mittel",
+      "high": "hoch"
+    }
+  },
+  "prov": {
+    "technique": "Technik",
+    "confidence": "Konfidenz",
+    "origin": "Herkunft",
+    "entity_kind": "Art",
+    "model": "Modell",
+    "recook_abstracted": "Neu erstellt aus abstrahierten Fakten – generiert aus neutralen Fakten-Bullets, nicht aus Quellprosa (②).",
+    "grounding": "Grounding-Quellen",
+    "skipped": "Übersprungene (unlizenzierte) Quellen"
+  },
+  "license": {
+    "public_domain": "Gemeinfrei",
+    "public-domain": "Gemeinfrei",
+    "licensed": "Lizenziert",
+    "unlicensed": "Unlizenziert",
+    "copyrighted": "Urheberrechtlich geschützt",
+    "restricted": "Eingeschränkt",
+    "unknown": "Unbekannt"
+  },
+  "detail": {
+    "h0_note": "Dies ist eine angereicherte Variante (origin=enrichment, confidence<1.0). Sie wird erst zum Kanon, wenn du sie beförderst.",
+    "h0_banner": "Dies ist eine angereicherte Variante – nicht der ursprüngliche Kanon. Sie wird erst zum Kanon, wenn du sie beförderst.",
+    "dimensions": "{{count}} Dimensionen",
+    "show_more": "+ {{count}} weitere anzeigen",
+    "show_less": "Weniger anzeigen",
+    "content": "Generierte Lore",
+    "verify": "Verifizierung",
+    "provenance": "Provenienz & Quellen"
+  },
+  "card": {
+    "confidence": "conf {{value}}",
+    "summary": "{{dims}} Dimensionen · basiert auf {{sources}} Quellen",
+    "advisory": "⚠ {{count}} Warnhinweis(e)",
+    "auto_rejected": "Automatisch abgelehnt"
+  },
+  "proposals": {
+    "search": "Vorschläge suchen…",
+    "status_all": "Alle",
+    "technique": "Technik",
+    "project": "Projekt",
+    "all_projects": "Alle",
+    "none": "Keine Vorschläge gefunden.",
+    "error": "Vorschläge konnten nicht geladen werden. Bitte versuche es erneut.",
+    "empty": {
+      "title": "Noch keine Vorschläge",
+      "description": "Lücken erkennen und automatisch anreichern, um Vorschläge für dieses Buch zu generieren."
+    }
+  },
+  "actions": {
+    "promote": "Zum Kanon befördern",
+    "approve": "Genehmigen",
+    "edit": "Bearbeiten",
+    "reject": "Ablehnen",
+    "reject_reason": "Grund für die Ablehnung (optional)",
+    "reject_confirm": "Ablehnung bestätigen",
+    "retract": "Aus dem Kanon zurückziehen",
+    "retract_confirm_title": "Aus dem Kanon zurückziehen?",
+    "retract_confirm_desc": "Dies entfernt die angereicherte Ergänzung aus dem Kanon dieses Buches. Das Original-Entity bleibt erhalten – du kannst es später erneut befördern.",
+    "author_only": "Nur der Autor des Buches kann die Anreicherung überprüfen und befördern.",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "already_promoted": "Zum Kanon befördert.",
+    "rejected_note": "Dieser Vorschlag wurde abgelehnt.",
+    "approved": "Vorschlag genehmigt",
+    "rejected": "Vorschlag abgelehnt",
+    "edited": "Vorschlag aktualisiert",
+    "promoted": "Zum Kanon befördert",
+    "retracted": "Zurückgezogen"
+  },
+  "promote": {
+    "title": "Zum Kanon befördern",
+    "h0": "Diese angereicherte Variante wird zum verfassten Kanon für dieses Buch. Der permanente Ursprungsmarker bleibt erhalten, sodass sie als ursprünglich angereichert nachvollziehbar bleibt.",
+    "responsibility": "Durch das Befördern übernimmst du diesen Inhalt als Autor und bestätigst, dass du die Rechte an den verwendeten Quellen besitzt. Keine Rechtsberatung.",
+    "confirm": "Befördern",
+    "promoting": "Wird befördert…"
+  },
+  "gaps": {
+    "title": "Lücken",
+    "subtitle": "Unterbeschriebene Entitäten im Glossar dieses Buches, sortiert nach Wichtigkeit. Lücken erkennen und dann ausgewählte Lücken als Hintergrundprozess automatisch anreichern.",
+    "detect": "Lücken erkennen",
+    "detect_hint": "Klicke auf „Lücken erkennen“, um die Abdeckung des Glossars dieses Buches zu scannen.",
+    "none": "Keine Lücken erkannt – jede Entität ist gut beschrieben.",
+    "extract_first": "Noch keine Entitäten – extrahiere zuerst dieses Buch (Tab „Wissen“). Die Anreicherung füllt Lücken in Entitäten, die die Plattform bereits kennt.",
+    "extract_cta": "Entitäten jetzt extrahieren",
+    "technique": "Technik",
+    "gen_model": "Generierungsmodell",
+    "embed_model": "Embedding-Modell",
+    "select_model": "Auswählen…",
+    "max_gaps": "Max. Lücken",
+    "max_spend": "Max. Aufwand (Token)",
+    "no_cap": "keine Begrenzung",
+    "top_k": "Top-K",
+    "gate_note": "P2-Fabrication / P3-Recook erfordern das Bestehen des Eval-Gates (diverse Judges).",
+    "auto_enrich": "Automatisch anreichern",
+    "enrich_one": "Anreichern",
+    "enrich_one_hint": "Wähle unten Generierungs- und Embedding-Modelle zur Anreicherung aus.",
+    "enriching": "Wird in Warteschlange gestellt…",
+    "enqueued": "{{count}} Lücke(n) zur Anreicherung in Warteschlange gestellt",
+    "col": {
+      "entity": "Entität",
+      "kind": "Art",
+      "missing": "Fehlende Dimensionen",
+      "rank": "Rang",
+      "action": "Aktion"
+    }
+  },
+  "sources": {
+    "title": "Quellen",
+    "subtitle": "Lizenz-markierter Korpus für Retrieval / Recook.",
+    "register": "Quelle registrieren",
+    "name": "Name",
+    "kind": "Art",
+    "license": "Lizenz",
+    "embed_model": "Embedding-Modell",
+    "ingest": "Text einlesen",
+    "ingesting": "Wird eingelesen…",
+    "ingested": "Eingelesen — {{count}} Chunk(s) eingebettet",
+    "ingest_placeholder": "Füge Text aus Gemeinfreiheit / lizenzierten Quellen zum Chunking + Einbetten ein…",
+    "chunks": "{{count}} Chunks",
+    "embedded": "eingebettet ✓",
+    "partial": "{{done}}/{{total}} eingebettet",
+    "none": "Noch keine Quellen registriert.",
+    "recook_ok": "recook-OK",
+    "recook_refused": "recook abgelehnt (Default-Deny)",
+    "default_deny": "Standardmäßig abgelehnt: Nur gemeinfreie / lizenzierte Quellen dürfen für Recook verwendet werden. Du bist für die Lizenz der von dir registrierten Quellen verantwortlich.",
+    "registered": "Quelle registriert",
+    "grounded": "Grounded — {{count}} Kapitel(e) eingebettet"
+  },
+  "ground": {
+    "title": "Grounding aus Kapiteln",
+    "subtitle": "Wähle spezifische Kapitel aus, um sie als Grounding-Korpus einzubetten – Rohprosa über das hinaus, was Knowledge RAG + Glossar-Kanon abdecken. Der Text ist dein eigener.",
+    "no_chapters": "Dieses Buch hat noch keine Kapitel.",
+    "showing": "Zeige die ersten {{shown}} von {{total}} Kapiteln — der primäre Grounding-Pfad (Knowledge RAG) deckt bereits alle Kapitel ab; dies ist für eine gezielte Zusatzauswahl.",
+    "ingest": "{{count}} Kapitel(e) grounden",
+    "ingesting": "Einbetten…"
+  },
+  "jobs": {
+    "none": "Noch keine Anreicherungs-Jobs.",
+    "resume": "Fortsetzen",
+    "resumed": "Job-Fortsetzung in Warteschlange gestellt",
+    "col": {
+      "technique": "Technik",
+      "status": "Status",
+      "proposals": "Vorschläge",
+      "cost": "Kosten",
+      "created": "Erstellt"
+    },
+    "status": {
+      "pending": "Ausstehend",
+      "estimating": "Wird geschätzt",
+      "running": "Läuft",
+      "paused": "Pausiert",
+      "completed": "Abgeschlossen",
+      "failed": "Fehlgeschlagen",
+      "cancelled": "Abgebrochen"
+    },
+    "error": {
+      "gateLocked": "Durch das Eval-Gate gesperrt – führen Sie zuerst die Enrichment-Evaluation aus.",
+      "internal": "Enrichment fehlgeschlagen (interner Fehler). Für Details mit der Maus darüberfahren.",
+      "insufficientGrounding": "Keine nutzbare Korpus-Grundlage für diese Entitäten – fügen Sie Referenzkontext ein oder nutzen Sie Fabrication."
+    }
+  },
+  "settings": {
+    "title": "Enrichment-Profil",
+    "subtitle": "Das buchenbezogene Weltbild, das die Generierung entbiastet – Sprache, Ära, Stimme und die Dimensionen, die das Enrichment ausfüllt. Änderungen gelten für neue Jobs.",
+    "error": "Profil konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+    "worldview": "Weltbild",
+    "language": "Ausgabesprache",
+    "voice": "Stimme",
+    "era_policy": "Ära-Richtlinie",
+    "era_hint": "Eine Ära-/Anachronismus-Beschränkung, z. B. „keine Technik nach der Shang-Zhou-Dynastie“. Leer lassen = Anachronismus-Check aus.",
+    "markers": "Anachronismus-Marker",
+    "markers_placeholder": "Begriff | Grund (einer pro Zeile)",
+    "markers_hint": "Einer pro Zeile im Format „Begriff | Grund“. Dies sind die Begriffe, die der Anachronismus-Check markiert. Durch Löschen wird der Check deaktiviert.",
+    "dimensions": "Dimensionen-Überschreibungen",
+    "kind": {
+      "character": "Charakter",
+      "location": "Ort",
+      "item": "Gegenstand",
+      "faction": "Fraktion",
+      "event": "Ereignis"
+    },
+    "add_dimension": "Dimension hinzufügen",
+    "no_extra_dims": "Verwendet die integrierten Dimensionen für diesen Typ.",
+    "dim_id": "ID",
+    "dim_label": "Label",
+    "dim_weight": "Gewichtung",
+    "dim_required": "Erforderlich",
+    "remove_dimension": "Dimension entfernen",
+    "hide": "Ausblenden",
+    "suggest": "Aus Buch vorschlagen",
+    "suggesting": "Analysiere…",
+    "suggest_model": "Vorschlags-Modell",
+    "select_model": "Wähle ein Modell…",
+    "suggest_hint": "Die KI liest die Buchmetadaten + Kapitel, um einen Entwurf vorzuschlagen, den Sie bearbeiten können. Es wird nichts gespeichert, bis Sie auf Speichern klicken.",
+    "suggested": "Entwurf vorgeschlagen – prüfen, dann Speichern",
+    "saving": "Speichern…",
+    "saved": "Profil gespeichert",
+    "source": "Quelle: {{source}}",
+    "source_seed": "Seed",
+    "source_ai_suggested": "KI-vorgeschlagen",
+    "source_manual": "Manuell"
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "Dunia",
+    "subtitle": "Bangun sebuah dunia dari lore-nya — karakter, tempat, faksi — tanpa perlu naskah.",
+    "loading": "Memuat dunia..."
+  },
+  "empty": {
+    "title": "Belum ada dunia",
+    "description": "Buat dunia pertama Anda untuk mulai menyusun lore — tidak perlu bab."
+  },
+  "card": {
+    "books": "{{count}} buku"
+  },
+  "create": {
+    "cta": "Dunia baru",
+    "title": "Dunia baru",
+    "description": "Beri nama dunia Anda. Anda dapat langsung menyusun lore-nya.",
+    "nameLabel": "Nama dunia",
+    "namePlaceholder": "misal. The Shattered Realms",
+    "descLabel": "Deskripsi (opsional)",
+    "cancel": "Batal",
+    "submit": "Buat dunia",
+    "creating": "Membuat...",
+    "error": "Gagal membuat dunia"
+  },
+  "workspace": {
+    "back": "Semua dunia",
+    "loading": "Memuat dunia...",
+    "error": "Dunia tidak ditemukan."
+  },
+  "lore": {
+    "title": "Alkitab dunia",
+    "extractionOptional": "Susun lore secara langsung — karakter, tempat, faksi. Tidak perlu naskah. Ekstraksi dari prosa bersifat opsional; alkitab dunia ini adalah jangkar utamanya.",
+    "anchorUnavailable": "Dunia ini belum memiliki jangkar alkitab — penyusunan lore tidak tersedia.",
+    "kindLabel": "Jenis",
+    "kindPlaceholder": "Pilih jenis...",
+    "add": "Tambah lore",
+    "adding": "Menambah...",
+    "added": "Lore telah ditambahkan ke alkitab dunia Anda.",
+    "error": "Gagal menambah lore"
+  },
+  "graph": {
+    "title": "Graf dunia",
+    "subtitle": "Tampilan baca-saja tentang bagaimana lore dunia Anda saling terhubung.",
+    "rollupSubtitle": "Ringkasan baca-saja dari graf kanon setiap buku anggota, ditampilkan bersama sebagai pulau-pulau per buku.",
+    "counts": "{{nodes}} simpul · {{edges}} relasi",
+    "sources": "diringkas dari {{count}} buku",
+    "truncated": "menampilkan {{n}} teratas — buku besar dapat menutupi buku yang lebih kecil",
+    "hint": "Gulir untuk zoom · seret ruang kosong untuk geser · klik simpul untuk detail",
+    "loading": "Memuat graf dunia...",
+    "loadFailed": "Gagal memuat graf dunia: {{error}}",
+    "empty": "Belum ada pengetahuan dunia — bangun alkitab atau ekstrak buku anggota untuk meringkas grafnya di sini."
+  },
+  "timeline": {
+    "title": "Lini masa dunia",
+    "subtitle": "Ringkasan baca-saja dari lini masa kanon setiap buku anggota, dalam urutan naratif.",
+    "counts": "{{count}} peristiwa",
+    "sources": "dari {{count}} buku",
+    "truncated": "menampilkan {{n}} pertama",
+    "chapterLabel": "Bab",
+    "loading": "Memuat lini masa dunia...",
+    "loadFailed": "Gagal memuat lini masa dunia: {{error}}",
+    "empty": "Belum ada peristiwa lini masa — ekstrak buku anggota untuk meringkas lini masanya di sini."
+  },
+  "populate": {
+    "addBook": "Tambah buku",
+    "createWhatIf": "Buat 'what-if'",
+    "whatIfHint": "Buat cabang 'what-if' dari karya kanon",
+    "whatIfNeedsCanon": "Tambahkan buku dengan karya kanon terlebih dahulu — 'what-if' bercabang dari kanon.",
+    "pickCanon": "Bercabang dari...",
+    "addBookTitle": "Tambah buku ke dunia ini",
+    "addBookDesc": "Lampirkan buku yang sudah ada atau buat yang baru — ini akan bergabung ke lini masa dan graf dunia.",
+    "tabAttach": "Lampirkan yang ada",
+    "tabCreate": "Buat baru",
+    "pickBook": "Buku",
+    "bookTitle": "Judul",
+    "bookTitlePlaceholder": "Judul buku baru...",
+    "bookDesc": "Deskripsi (opsional)",
+    "attach": "Lampirkan buku",
+    "createAttach": "Buat & tambah",
+    "adding": "Menambah...",
+    "cancel": "Batal",
+    "addFailed": "Tidak dapat menambah buku: {{error}}"
+  },
+  "living": {
+    "heading": "Dunia hidup",
+    "subtitle": "Kanon dunia Anda dan cabang 'what-if'-nya sebagai lini masa yang dapat dinavigasi. Klik sebuah karya untuk membukanya.",
+    "title": "Dunia hidup",
+    "counts": "{{canon}} kanon · {{branches}} cabang what-if",
+    "hint": "Gulir untuk zoom · seret ruang kosong untuk geser · klik sebuah karya untuk membukanya",
+    "loading": "Memuat dunia hidup...",
+    "loadFailed": "Gagal memuat dunia hidup: {{error}}",
+    "empty": "Belum ada karya di dunia ini — mulai sebuah buku atau 'what-if' untuk menumbuhkan lini masanya.",
+    "canonBadge": "Kanon",
+    "branchBadge": "What-if",
+    "canonAria": "Kanon: {{title}}",
+    "branchAria": "Cabang what-if pada bab {{ch}}: {{title}}",
+    "branchAt": "bercabang pada bab {{ch}}",
+    "orphan": "· sumber di luar dunia ini",
+    "edgeLabel": "bab {{ch}}"
+  }
+}

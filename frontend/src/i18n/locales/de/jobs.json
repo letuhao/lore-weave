@@ -1,0 +1,155 @@
+{
+  "title": "Jobs",
+  "status": {
+    "pending": "Ausstehend",
+    "running": "Läuft",
+    "paused": "Pausiert",
+    "cancelling": "Abbruch läuft",
+    "completed": "Abgeschlossen",
+    "failed": "Fehlgeschlagen",
+    "cancelled": "Abgebrochen"
+  },
+  "kind": {
+    "extraction": "Wissensextraktion",
+    "glossary_extraction": "Glossarextraktion",
+    "wiki_gen": "Wiki-Generierung",
+    "translation": "Übersetzung",
+    "glossary_translation": "Glossar-Übersetzung",
+    "video_gen": "Videogenerierung",
+    "campaign": "Kampagne",
+    "enrichment_job": "Lore-Anreicherung",
+    "book_import": "Buch-Import",
+    "composition": {
+      "generate": "Komposition"
+    }
+  },
+  "summary": {
+    "active": "Aktiv",
+    "completed": "Abgeschlossen",
+    "failed": "Fehlgeschlagen",
+    "cancelled": "Abgebrochen"
+  },
+  "filters": {
+    "status": "Status",
+    "kind": "Art",
+    "allStatuses": "Alle Status",
+    "allKinds": "Alle Arten",
+    "search": "Titel suchen…",
+    "searchWide": "Titel, Art, Service, Modell oder Job-ID suchen…",
+    "searchHint": "Suche umfasst Titel · Art · Service · Modell · Job-ID (debounced)."
+  },
+  "col": {
+    "job": "Job",
+    "status": "Status",
+    "progress": "Fortschritt",
+    "cost": "Kosten · Tokens",
+    "started": "Gestartet",
+    "actions": "Aktionen"
+  },
+  "section": {
+    "active": "Aktiv · live",
+    "activeHint": "nicht paginiert — Aktualisierung vor Ort via SSE",
+    "history": "Verlauf",
+    "historyHint": "sortiert nach Erstellung · paginiert"
+  },
+  "list": {
+    "loading": "Laden…",
+    "error": "Jobs konnten nicht geladen werden.",
+    "empty": "Noch keine Jobs vorhanden.",
+    "noActive": "Keine aktiven Jobs.",
+    "more": "Mehr laden",
+    "toggleChildren": "Untergeordnete Jobs ein-/ausblenden",
+    "noChildren": "Keine untergeordneten Jobs."
+  },
+  "row": {
+    "ran": "lief {{d}}",
+    "running": "läuft seit {{d}}",
+    "details": "Details ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} von {{total}}",
+    "pageSize": "Seitenanzahl",
+    "perPage": "{{n}} / Seite",
+    "page": "Seite {{n}}",
+    "prev": "Vorherige Seite",
+    "next": "Nächste Seite",
+    "outOfRange": "Keine Zeilen auf dieser Seite (insgesamt {{total}}).",
+    "first": "Zur ersten Seite"
+  },
+  "live": {
+    "on": "● live",
+    "onShort": "live",
+    "reconnecting": "wird neu verbunden…",
+    "off": "offline"
+  },
+  "controls": {
+    "pause": "Pause",
+    "resume": "Fortsetzen",
+    "cancel": "Abbrechen",
+    "cancelConfirm": "Jetzt stoppen? In Arbeit befindliche Daten gehen verloren; abgeschlossene Teile bleiben erhalten.",
+    "cancelYes": "Ja",
+    "cancelNo": "Nein",
+    "cancelled": "Abgebrochen.",
+    "paused": "Pausiert.",
+    "resumed": "Fortgesetzt.",
+    "retry": "Wiederholen",
+    "retried": "Als neuer Job erneut eingereicht.",
+    "stale": "Job-Status geändert — aktualisiert.",
+    "actionFailed": "Aktion fehlgeschlagen: {{error}}"
+  },
+  "monitor": {
+    "back": "Alle Jobs",
+    "error": "Job konnte nicht geladen werden.",
+    "pausedBanner": "Pausiert — keine neuen Einheiten werden zugewiesen; laufende Prozesse werden beendet. Oben fortsetzen.",
+    "children": "Untergeordnete Jobs"
+  },
+  "detail": {
+    "progress": "Fortschritt",
+    "llmCalls": "LLM-Aufrufe",
+    "elapsed": "Dauer",
+    "throughput": "Durchsatz",
+    "throughputVal": "~{{n}} /h",
+    "eta": "ETA",
+    "costSoFar": "Bisherige Kosten",
+    "tokensIn": "Tokens in",
+    "tokensOut": "Tokens out",
+    "bestEffort": "best-effort",
+    "models": "Modelle",
+    "parameters": "Parameter",
+    "parametersHint": "dynamisch, aus dem Params-Objekt des Jobs",
+    "jobId": "Job-ID",
+    "kind": "Art",
+    "service": "Service",
+    "parent": "Eltern-Job",
+    "viewParent": "Eltern-Job anzeigen ↗",
+    "created": "Erstellt",
+    "lastUpdate": "Letzte Aktualisierung",
+    "copied": "Job-ID kopiert.",
+    "copyFailed": "Kopieren fehlgeschlagen.",
+    "activity": "Aktivität (live)",
+    "errorTitle": "Fehler"
+  },
+  "activity": {
+    "created": "Erstellt",
+    "pending": "In Warteschlange",
+    "running": "Läuft",
+    "paused": "Pausiert",
+    "cancelling": "Abbruch läuft",
+    "completed": "Abgeschlossen",
+    "failed": "Fehlgeschlagen",
+    "cancelled": "Abgebrochen"
+  },
+  "mobile": {
+    "children": "untergeordnete"
+  },
+  "fairness": {
+    "title": "Fair Scheduling",
+    "running": "{{running}}/{{cap}} laufend",
+    "queued": "· {{queued}} in Warteschlange",
+    "lane": {
+      "translation": "Übersetzung",
+      "knowledge": "Wissen",
+      "loreEnrichment": "Lore-Anreicherung"
+    }
+  }
+}

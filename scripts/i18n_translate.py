@@ -47,12 +47,12 @@ LOCALES_DIR = REPO / "frontend" / "src" / "i18n" / "locales"
 SRC_LANG = "en"
 ENDPOINT = "http://localhost:1234/v1/chat/completions"
 MODEL = "google/gemma-4-26b-a4b-qat"
-# Source chars per model call. The model is loaded at ~224K ctx, so this is NOT
-# a capacity limit — it's an ATTENTION-quality limit: long inputs degrade
-# ("lost in the middle") and an over-stuffed batch makes the model drop/merge
-# keys. Moderate chunks keep per-key fidelity high + heal granular. Tunable
-# via --chunk-chars.
-CHUNK_CHARS = 6000
+# Chunk limits — NOT a context-capacity cap (model is at ~224K ctx) but a
+# RELIABILITY cap: given too many keys in one call the model truncates / drops
+# the tail (an 80-key chunk lost most; a 10-key chunk is flawless). We cap BY
+# KEY COUNT (the real failure driver) and by chars, whichever hits first.
+CHUNK_CHARS = 2500
+MAX_KEYS_PER_CHUNK = 12
 REQUEST_TIMEOUT = 420       # the 26B at high ctx is slow; be patient
 
 # code → (endonym, expected-script regex | None for Latin-script languages).
@@ -170,14 +170,28 @@ def call_model(system: str, user: str, *, temperature: float = 0.2) -> str:
 
 
 def extract_json(text: str) -> dict:
-    """Strip ```json fences / prose and parse the first {...} object."""
+    """Strip ```json fences / prose and parse the first {...} object.
+
+    Tolerates the single most common LLM-JSON slip: an UNESCAPED double-quote
+    inside a value (e.g. translating «the "bible"» to a value containing a raw
+    `"`). Our keys are quote-free dotted identifiers, so a flat regex extraction
+    (value = everything up to a `"` that is followed by `,` or `}`) recovers the
+    pairs when strict json.loads chokes.
+    """
     t = text.strip()
     if "```" in t:
         t = re.sub(r"^```[a-zA-Z]*\n?|```$", "", t.strip("`\n ")).strip()
     start, end = t.find("{"), t.rfind("}")
     if start == -1 or end == -1:
         raise ValueError("no JSON object in model output")
-    return json.loads(t[start:end + 1])
+    blob = t[start:end + 1]
+    try:
+        return json.loads(blob)
+    except json.JSONDecodeError:
+        pairs = re.findall(r'"([^"\n]+)"\s*:\s*"(.*?)"(?=\s*[,}])', blob, re.DOTALL)
+        if pairs:
+            return {k: v for k, v in pairs}
+        raise
 
 
 # ── verify ──────────────────────────────────────────────────────────────────
@@ -215,7 +229,9 @@ SYSTEM = (
     "Rules: keep every JSON key byte-identical; preserve every {{placeholder}}, $t(...) "
     "reference, and <html/tag> EXACTLY as-is; keep brand/proper names and short technical "
     "tokens (API, URL, ID, PDF) untranslated; produce idiomatic, natural phrasing. "
-    "Output ONLY a single JSON object, no commentary, no code fences."
+    "NEVER put a raw double-quote (\") inside a value — if the text needs quotation marks, "
+    "use the target language's native marks (« », „ “, 「 」, ‘ ’); the output MUST be "
+    "strictly valid JSON. Output ONLY a single JSON object, no commentary, no code fences."
 )
 
 
@@ -226,11 +242,15 @@ def translate_chunk(src: dict[str, str], endonym: str, code: str,
     out: dict = {}
     for attempt in range(max_heal + 1):
         try:
-            out = extract_json(call_model(SYSTEM, user))
+            # Flatten the model's output: gemma sometimes RE-NESTS a flat dotted key
+            # ({"graph.counts": x} → {"graph": {"counts": x}}); flattening normalizes
+            # both shapes back to dotted-flat so verify compares like-for-like.
+            out = flatten(extract_json(call_model(SYSTEM, user)))
         except (ValueError, json.JSONDecodeError) as e:
-            user = (f"Your previous output was not valid JSON ({e}). Re-emit ONLY a "
-                    f"JSON object translating these into {endonym}:\n\n"
-                    f"{json.dumps(src, ensure_ascii=False)}")
+            user = (f"Your previous output was not valid JSON ({e}) — most likely an "
+                    f"unescaped double-quote inside a value. Do NOT use \" inside values "
+                    f"(use « » or „ “ or ‘ ’). Re-emit ONLY a strictly-valid JSON object "
+                    f"translating these into {endonym}:\n\n{json.dumps(src, ensure_ascii=False)}")
             continue
         hard, soft = verify_chunk(src, out, script_re)
         if not hard:
@@ -250,11 +270,12 @@ def translate_chunk(src: dict[str, str], endonym: str, code: str,
     return out, {**soft, **{k: f"FAILED:{r}" for k, r in hard.items()}}
 
 
-def chunk_items(src_flat: dict[str, str], chunk_chars: int = CHUNK_CHARS) -> list[dict[str, str]]:
+def chunk_items(src_flat: dict[str, str], chunk_chars: int = CHUNK_CHARS,
+                max_keys: int = MAX_KEYS_PER_CHUNK) -> list[dict[str, str]]:
     chunks, cur, size = [], {}, 0
     for k, v in src_flat.items():
         vlen = len(k) + len(str(v)) + 8
-        if cur and size + vlen > chunk_chars:
+        if cur and (size + vlen > chunk_chars or len(cur) >= max_keys):
             chunks.append(cur)
             cur, size = {}, 0
         cur[k] = v
@@ -264,41 +285,45 @@ def chunk_items(src_flat: dict[str, str], chunk_chars: int = CHUNK_CHARS) -> lis
     return chunks
 
 
-# ── namespace / language orchestration ─────────────────────────────────────
-def translate_namespace(code: str, ns_path: Path, endonym: str, script_re: str | None,
-                        max_heal: int, force: bool, chunk_chars: int = CHUNK_CHARS) -> dict:
+# ── namespace planning / assembly (chunk-level parallelism) ────────────────
+# The unit of parallel work is a CHUNK, not a namespace — so a single big
+# namespace still saturates all workers (the "4 workers but 1 call" fix). A
+# plan is built per namespace (with resume-skip), all its chunks are submitted
+# to a shared pool, and the namespace file is written the moment its chunks
+# finish (incremental → resumable against a mid-run process death).
+def plan_namespace(code: str, ns_path: Path, script_re: str | None,
+                   force: bool, chunk_chars: int, max_keys: int) -> dict:
     out_path = LOCALES_DIR / code / ns_path.name
-    src_obj = json.loads(ns_path.read_text(encoding="utf-8"))
-    src_flat = flatten(src_obj)
+    src_flat = flatten(json.loads(ns_path.read_text(encoding="utf-8")))
     str_leaves = {k: v for k, v in src_flat.items() if isinstance(v, str)}
     passthrough = {k: v for k, v in src_flat.items() if not isinstance(v, str)}
 
     if out_path.exists() and not force:
         try:
             existing = flatten(json.loads(out_path.read_text(encoding="utf-8")))
-            if set(existing) == set(src_flat) and not any(
-                verify_chunk(str_leaves, {k: existing.get(k) for k in str_leaves}, script_re)[0]
-            ):
-                return {"ns": ns_path.name, "status": "skip", "keys": len(str_leaves)}
+            if set(existing) == set(src_flat) and not verify_chunk(
+                    str_leaves, {k: existing.get(k) for k in str_leaves}, script_re)[0]:
+                return {"status": "skip", "code": code, "ns": ns_path.name, "keys": len(str_leaves)}
         except Exception:
-            pass  # fall through to re-translate
+            pass  # unreadable/partial → re-translate
 
-    translated: dict[str, object] = dict(passthrough)
-    soft_all: dict[str, str] = {}
-    for chunk in chunk_items(str_leaves, chunk_chars):
-        out, soft = translate_chunk(chunk, endonym, code, script_re, max_heal)
+    return {"status": "work", "code": code, "ns": ns_path.name, "out_path": out_path,
+            "chunks": chunk_items(str_leaves, chunk_chars, max_keys),
+            "passthrough": passthrough, "keys": len(str_leaves),
+            "results": {}, "soft": {}}
+
+
+def assemble_and_write(plan: dict) -> dict:
+    translated: dict[str, object] = dict(plan["passthrough"])
+    for i, chunk in enumerate(plan["chunks"]):
+        out = plan["results"].get(i, {})
         translated.update({k: out.get(k, chunk[k]) for k in chunk})
-        soft_all.update(soft)
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(
-        json.dumps(unflatten(translated), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    failed = {k: v for k, v in soft_all.items() if str(v).startswith("FAILED")}
-    return {"ns": ns_path.name, "status": "ok", "keys": len(str_leaves),
-            "soft": len(soft_all) - len(failed), "failed": len(failed),
-            "failed_keys": list(failed)}
+    plan["out_path"].parent.mkdir(parents=True, exist_ok=True)
+    plan["out_path"].write_text(
+        json.dumps(unflatten(translated), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    failed = {k: v for k, v in plan["soft"].items() if str(v).startswith("FAILED")}
+    return {"ns": plan["ns"], "keys": plan["keys"], "failed": len(failed),
+            "soft": len(plan["soft"]) - len(failed), "failed_keys": list(failed)}
 
 
 def main() -> int:
@@ -307,11 +332,13 @@ def main() -> int:
     ap.add_argument("--ns", help="comma list of namespace stems (default: all)")
     ap.add_argument("--max-heal", type=int, default=3)
     ap.add_argument("--chunk-chars", type=int, default=CHUNK_CHARS,
-                    help=f"source chars per model call (default {CHUNK_CHARS}; "
-                         "attention-quality limit, not capacity)")
+                    help=f"max source chars per model call (default {CHUNK_CHARS})")
+    ap.add_argument("--max-keys", type=int, default=MAX_KEYS_PER_CHUNK,
+                    help=f"max keys per model call (default {MAX_KEYS_PER_CHUNK}; the real "
+                         "drop-avoidance knob — the model truncates big key-sets)")
     ap.add_argument("--workers", type=int, default=4,
-                    help="concurrent namespace translations (default 4; urllib releases "
-                         "the GIL on I/O + LM Studio continuous-batches)")
+                    help="concurrent chunk translations across ALL namespaces (default 4; "
+                         "blocking urllib releases the GIL + LM Studio continuous-batches)")
     ap.add_argument("--force", action="store_true", help="re-translate even if valid output exists")
     ap.add_argument("--check", help="verify one <lang>/<ns>.json against en and exit")
     args = ap.parse_args()
@@ -334,52 +361,76 @@ def main() -> int:
         wanted = set(args.ns.split(","))
         ns_files = [f for f in ns_files if f.stem in wanted]
 
-    grand_failed = 0
+    # PLAN every (lang, namespace): resume-skip up-to-date ones, chunk the rest.
+    # A namespace listed in the language's _FAILED.json is force-retried even on
+    # a plain resume (its keys currently sit as en fallback, which passes the
+    # structural skip-check — so without this a re-run would never fix them).
+    plans: list[dict] = []
     for code in langs:
         if code not in TARGETS:
             print(f"!! unknown lang {code}, skipping")
             continue
-        endonym, script_re = TARGETS[code]
-        print(f"\n=== {code} ({endonym}) — {len(ns_files)} namespaces ===")
-        report: dict[str, list[str]] = {}
-        errored: list[str] = []
-
-        def _work(ns: Path):
-            # Each namespace is independent (reads its own src, writes its own file),
-            # so N run concurrently with no shared mutable state.
-            t0 = time.time()
+        _, script_re = TARGETS[code]
+        failed_ns: set[str] = set()
+        fpath = LOCALES_DIR / code / "_FAILED.json"
+        if fpath.exists():
             try:
-                r = translate_namespace(code, ns, endonym, script_re, args.max_heal,
-                                        args.force, args.chunk_chars)
-                return ns, r, time.time() - t0, None
-            except Exception as e:  # noqa: BLE001 — one namespace's failure must not abort the batch
-                return ns, None, time.time() - t0, e
+                failed_ns = set(json.loads(fpath.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+        for ns in ns_files:
+            try:
+                force = args.force or ns.name in failed_ns
+                plans.append(plan_namespace(code, ns, script_re, force,
+                                            args.chunk_chars, args.max_keys))
+            except Exception as e:  # noqa: BLE001
+                print(f"  ✗ {code}/{ns.name} PLAN ERROR: {type(e).__name__}: {e}")
+    work = [p for p in plans if p["status"] == "work"]
+    skips = [p for p in plans if p["status"] == "skip"]
+    tasks = [(p, i, chunk) for p in work for i, chunk in enumerate(p["chunks"])]
+    print(f"planned: {len(work)} namespaces / {len(tasks)} chunks to translate; "
+          f"{len(skips)} already up-to-date; {args.workers} workers")
 
-        # Consume results in the MAIN thread as they complete → prints/aggregation
-        # need no lock (single consumer). Worker threads only do HTTP + file writes.
-        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as ex:
-            for ns, r, dt, err in (f.result() for f in as_completed(
-                    [ex.submit(_work, ns) for ns in ns_files])):
-                if err is not None:
-                    print(f"  ✗ {ns.name:<24} ERROR: {type(err).__name__}: {err}  ({dt:.0f}s, resumable)")
-                    errored.append(ns.name)
-                elif r["status"] == "skip":
-                    print(f"  = {r['ns']:<24} skip ({r['keys']} keys)")
-                else:
-                    flag = f" ⚠{r['soft']}" if r["soft"] else ""
-                    fail = f" ✗{r['failed']}" if r["failed"] else ""
-                    print(f"  ✓ {r['ns']:<24} {r['keys']} keys{flag}{fail}  {dt:.0f}s")
-                    if r["failed"]:
-                        report[r["ns"]] = r["failed_keys"]
-                        grand_failed += r["failed"]
-        if errored:
-            print(f"  !! {code}: {len(errored)} namespaces errored (resumable): {', '.join(errored)}")
+    # Drive EVERY chunk (across all langs+namespaces) through ONE pool so the
+    # model stays saturated. Write each namespace the instant its chunks finish.
+    remaining = {id(p): len(p["chunks"]) for p in work}
+    grand_failed = done = 0
+    by_lang: dict[str, list[dict]] = {}
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as ex:
+        futs = {ex.submit(translate_chunk, chunk, TARGETS[p["code"]][0], p["code"],
+                          TARGETS[p["code"]][1], args.max_heal): (p, i)
+                for (p, i, chunk) in tasks}
+        for fut in as_completed(futs):
+            p, i = futs[fut]
+            try:
+                out, soft = fut.result()
+            except Exception as e:  # noqa: BLE001 — a dead chunk falls back to en, never aborts
+                out, soft = {}, {k: f"FAILED:call {type(e).__name__}" for k in p["chunks"][i]}
+            p["results"][i] = out
+            p["soft"].update(soft)
+            done += 1
+            remaining[id(p)] -= 1
+            if remaining[id(p)] == 0:  # namespace complete → write it now (resumable)
+                r = assemble_and_write(p)
+                by_lang.setdefault(p["code"], []).append(r)
+                grand_failed += r["failed"]
+                flag = f" ⚠{r['soft']}" if r["soft"] else ""
+                fail = f" ✗{r['failed']}" if r["failed"] else ""
+                print(f"  ✓ {p['code']:<6} {r['ns']:<22} {r['keys']} keys{flag}{fail}  "
+                      f"[{done}/{len(tasks)} chunks, {time.time()-t0:.0f}s]")
+
+    # Per-language _FAILED.json report (keys left as en after heal exhausted).
+    # Clear a stale report when a re-run resolves everything.
+    for code, results in by_lang.items():
+        report = {r["ns"]: r["failed_keys"] for r in results if r["failed"]}
+        fpath = LOCALES_DIR / code / "_FAILED.json"
         if report:
-            (LOCALES_DIR / code / "_FAILED.json").write_text(
-                json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"  !! {code}: {sum(len(v) for v in report.values())} keys need manual review "
-                  f"→ {code}/_FAILED.json")
-    print(f"\nDONE. total FAILED keys needing review: {grand_failed}")
+            fpath.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        elif fpath.exists():
+            fpath.unlink()
+    print(f"\nDONE. {len(work)} namespaces written, {len(skips)} skipped. "
+          f"total FAILED keys needing review: {grand_failed}")
     return 0
 
 

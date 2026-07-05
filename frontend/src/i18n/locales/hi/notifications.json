@@ -1,0 +1,54 @@
+{
+  "title": "सूचनाएं",
+  "markAllRead": "सभी को पढ़ा हुआ मार्क करें",
+  "markRead": "पढ़ा हुआ मार्क करें",
+  "delete": "हटाएं",
+  "empty": "अभी तक कोई सूचना नहीं",
+  "loading": "लोड हो रहा है...",
+  "justNow": "अभी",
+  "minsAgo": "{{count}} मिनट पहले",
+  "hrsAgo": "{{count}} घंटे पहले",
+  "daysAgo": "{{count}} दिन पहले",
+  "viewAll": "सभी सूचनाएं देखें",
+  "loadMore": "और लोड करें",
+  "pageTitle": "सूचनाएं",
+  "notif": {
+    "translation": {
+      "completed": "अनुवाद पूरा हुआ — \"{{book}}\" के {{count}} अध्याय",
+      "partial": "अनुवाद आंशिक रूप से पूरा हुआ — {{done}} सफल, {{failed}} विफल",
+      "failed": "अनुवाद विफल रहा — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} ने आपको फॉलो करना शुरू किया"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "चैट",
+      "completion": "पूर्णता",
+      "embedding": "एम्बेडिंग",
+      "entity_extraction": "एंटिटी एक्सट्रैक्शन",
+      "fact_extraction": "तथ्य एक्सट्रैक्शन",
+      "relation_extraction": "संबंध एक्सट्रैक्शन",
+      "event_extraction": "इवेंट एक्सट्रैक्शन",
+      "translation": "अनुवाद",
+      "image_gen": "इमेज जनरेशन",
+      "video_gen": "वीडियो जनरेशन"
+    },
+    "status": {
+      "completed": "पूरा हुआ",
+      "failed": "विफल",
+      "cancelled": "रद्द",
+      "running": "चल रहा है",
+      "pending": "लंबित"
+    }
+  },
+  "category": {
+    "all": "सभी",
+    "translation": "अनुवाद",
+    "social": "सोशल",
+    "wiki": "विकी",
+    "system": "सिस्टम"
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "title": "Trabajos",
+  "status": {
+    "pending": "Pendiente",
+    "running": "En ejecución",
+    "paused": "Pausado",
+    "cancelling": "Cancelando",
+    "completed": "Completado",
+    "failed": "Error",
+    "cancelled": "Cancelado"
+  },
+  "kind": {
+    "extraction": "Extracción de conocimiento",
+    "glossary_extraction": "Extracción de glosario",
+    "wiki_gen": "Generación de wiki",
+    "translation": "Traducción",
+    "glossary_translation": "Traducción de glosario",
+    "video_gen": "Generación de vídeo",
+    "campaign": "Campaña",
+    "enrichment_job": "Enriquecimiento de lore",
+    "book_import": "Importación de libro",
+    "composition": {
+      "generate": "Composición"
+    }
+  },
+  "summary": {
+    "active": "Activo",
+    "completed": "Completado",
+    "failed": "Error",
+    "cancelled": "Cancelado"
+  },
+  "filters": {
+    "status": "Estado",
+    "kind": "Tipo",
+    "allStatuses": "Todos los estados",
+    "allKinds": "Todos los tipos",
+    "search": "Buscar título…",
+    "searchWide": "Buscar título, tipo, servicio, modelo o ID de trabajo…",
+    "searchHint": "La búsqueda abarca título · tipo · servicio · modelo · ID de trabajo (con retardo)."
+  },
+  "col": {
+    "job": "Trabajo",
+    "status": "Estado",
+    "progress": "Progreso",
+    "cost": "Coste · tokens",
+    "started": "Iniciado",
+    "actions": "Acciones"
+  },
+  "section": {
+    "active": "Activo · en vivo",
+    "activeHint": "sin paginación — se actualiza in situ vía SSE",
+    "history": "Historial",
+    "historyHint": "ordenado por creación · paginado"
+  },
+  "list": {
+    "loading": "Cargando…",
+    "error": "Error al cargar los trabajos.",
+    "empty": "Aún no hay trabajos.",
+    "noActive": "No hay trabajos activos.",
+    "more": "Cargar más",
+    "toggleChildren": "Alternar hijos",
+    "noChildren": "Sin trabajos hijos."
+  },
+  "row": {
+    "ran": "se ejecutó hace {{d}}",
+    "running": "en ejecución hace {{d}}",
+    "details": "Detalles ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} de {{total}}",
+    "pageSize": "Tamaño de página",
+    "perPage": "{{n}} / página",
+    "page": "Página {{n}}",
+    "prev": "Página anterior",
+    "next": "Página siguiente",
+    "outOfRange": "No hay filas en esta página ({{total}} en total).",
+    "first": "Volver a la primera página"
+  },
+  "live": {
+    "on": "● en vivo",
+    "onShort": "en vivo",
+    "reconnecting": "reconectando…",
+    "off": "desconectado"
+  },
+  "controls": {
+    "pause": "Pausar",
+    "resume": "Reanudar",
+    "cancel": "Cancelar",
+    "cancelConfirm": "¿Detener ahora? El trabajo en curso se descartará; las partes completadas se conservarán.",
+    "cancelYes": "Sí",
+    "cancelNo": "No",
+    "cancelled": "Cancelado.",
+    "paused": "Pausado.",
+    "resumed": "Reanudado.",
+    "retry": "Reintentar",
+    "retried": "Reenviado como un nuevo trabajo.",
+    "stale": "El estado del trabajo ha cambiado — actualizado.",
+    "actionFailed": "La acción falló: {{error}}"
+  },
+  "monitor": {
+    "back": "Todos los trabajos",
+    "error": "Error al cargar el trabajo.",
+    "pausedBanner": "Pausado — no se enviarán nuevas unidades y las que están en curso terminarán. Reanuda arriba.",
+    "children": "Trabajos hijos"
+  },
+  "detail": {
+    "progress": "Progreso",
+    "llmCalls": "Llamadas LLM",
+    "elapsed": "Transcurrido",
+    "throughput": "Rendimiento",
+    "throughputVal": "~{{n}} /h",
+    "eta": "ETA",
+    "costSoFar": "Coste acumulado",
+    "tokensIn": "Tokens de entrada",
+    "tokensOut": "Tokens de salida",
+    "bestEffort": "mejor esfuerzo",
+    "models": "Modelos",
+    "parameters": "Parámetros",
+    "parametersHint": "dinámicos, desde el objeto de parámetros del trabajo",
+    "jobId": "ID de trabajo",
+    "kind": "Tipo",
+    "service": "Servicio",
+    "parent": "Padre",
+    "viewParent": "Ver padre ↗",
+    "created": "Creado",
+    "lastUpdate": "Última actualización",
+    "copied": "ID de trabajo copiado.",
+    "copyFailed": "No se pudo copiar.",
+    "activity": "Actividad (en vivo)",
+    "errorTitle": "Error"
+  },
+  "activity": {
+    "created": "Creado",
+    "pending": "En cola",
+    "running": "En ejecución",
+    "paused": "Pausado",
+    "cancelling": "Cancelando",
+    "completed": "Completado",
+    "failed": "Error",
+    "cancelled": "Cancelado"
+  },
+  "mobile": {
+    "children": "hijos"
+  },
+  "fairness": {
+    "title": "Programación equitativa",
+    "running": "{{running}}/{{cap}} en ejecución",
+    "queued": "· {{queued}} en cola",
+    "lane": {
+      "translation": "Traducción",
+      "knowledge": "Conocimiento",
+      "loreEnrichment": "Enriquecimiento de lore"
+    }
+  }
+}

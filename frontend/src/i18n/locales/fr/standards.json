@@ -1,0 +1,119 @@
+{
+  "title": "Normes du glossaire",
+  "subtitle": "Vos genres, types et attributs réutilisables. Dupliquez un système par défaut dans votre forfait pour le personnaliser, ou créez le vôtre.",
+  "tabs_aria": "Sections des normes",
+  "tab": {
+    "genres": "Genres",
+    "kinds": "Types",
+    "attributes": "Attributs"
+  },
+  "loading": "Chargement des normes…",
+  "error": "Impossible de charger vos normes. Réessayez.",
+  "empty": {
+    "genres": "Aucun genre pour le moment.",
+    "kinds": "Aucun type pour le moment."
+  },
+  "action": {
+    "clone": "Dupliquer dans mon forfait",
+    "yours": "Les vôtres",
+    "edit": "Modifier",
+    "delete": "Supprimer"
+  },
+  "genres": {
+    "new": "Nouveau genre"
+  },
+  "kinds": {
+    "new": "Nouveau type"
+  },
+  "toast": {
+    "cloned": "« {{name}} » dupliqué dans vos normes",
+    "cloneError": "Impossible de dupliquer « {{name}} »",
+    "created": "« {{name}} » créé",
+    "createError": "Impossible de le créer",
+    "saved": "Enregistré",
+    "saveError": "Impossible d'enregistrer",
+    "deleted": "« {{name}} » déplacé vers la corbeille",
+    "deleteError": "Impossible de supprimer « {{name}} »",
+    "attrCreated": "« {{name}} » ajouté",
+    "attrError": "Impossible d'ajouter « {{name}} »",
+    "linksSaved": "Genres mis à jour",
+    "linksError": "Impossible de mettre à jour les genres"
+  },
+  "attributes": {
+    "no_user_kinds": "Dupliquez ou créez un type d'abord — les attributs sont liés à vos propres types.",
+    "no_user_genres": "Dupliquez ou créez un genre d'abord — les attributs sont liés à vos propres genres.",
+    "pick_kind": "Sélectionner un type…",
+    "pick_genre": "Sélectionner un genre…",
+    "pick_both": "Choisissez un type et un genre pour voir et ajouter des attributs.",
+    "new": "Nouvel attribut",
+    "empty": "Aucun attribut pour cette paire.",
+    "system_ref": "Système (lecture seule)",
+    "your_attrs": "Vos attributs"
+  },
+  "attrform": {
+    "title_create": "Nouvel attribut",
+    "title_edit": "Modifier l'attribut",
+    "name": "Nom",
+    "name_placeholder": "ex. Rang",
+    "name_required": "Le nom est requis",
+    "code": "Code",
+    "code_hint": "Optionnel — dérivé du nom s'il est vide.",
+    "field_type": "Type de champ",
+    "required": "Requis",
+    "options": "Options",
+    "options_hint": "Une par ligne (pour les listes / tags).",
+    "cancel": "Annuler",
+    "create": "Ajouter l'attribut",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "ft": {
+      "text": "Texte",
+      "textarea": "Texte long",
+      "select": "Sélection",
+      "number": "Nombre",
+      "date": "Date",
+      "tags": "Tags",
+      "url": "URL",
+      "boolean": "Oui / Non"
+    }
+  },
+  "stdform": {
+    "title_create_genre": "Nouveau genre",
+    "title_edit_genre": "Modifier le genre",
+    "title_create_kind": "Nouveau type",
+    "title_edit_kind": "Modifier le type",
+    "name": "Nom",
+    "name_required": "Le nom est requis",
+    "icon": "Icône",
+    "color": "Couleur",
+    "code": "Code",
+    "code_hint": "Optionnel — dérivé du nom s'il est vide.",
+    "description": "Description",
+    "cancel": "Annuler",
+    "create": "Créer",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…"
+  },
+  "links": {
+    "edit": "Genres",
+    "title": "Genres pour {{name}}",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "empty": "Aucun genre utilisateur à lier. Dupliquez ou créez un genre d'abord.",
+    "cancel": "Annuler"
+  },
+  "trash": {
+    "open": "Corbeille",
+    "title": "Corbeille",
+    "close": "Fermer",
+    "genres": "Genres",
+    "kinds": "Types",
+    "empty_section": "Rien ici.",
+    "restore": "Restaurer",
+    "purge": "Supprimer définitivement",
+    "restored": "Restauré",
+    "restoreError": "Impossible de restaurer",
+    "purged": "Supprimé définitivement",
+    "purgeError": "Impossible de supprimer"
+  }
+}

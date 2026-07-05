@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "Welten",
+    "subtitle": "Erschaffe eine Welt aus ihrer Lore – Charaktere, Orte, Fraktionen – ganz ohne Manuskript.",
+    "loading": "Welten werden geladen…"
+  },
+  "empty": {
+    "title": "Noch keine Welten",
+    "description": "Erstelle deine erste Welt, um mit dem Schreiben der Lore zu beginnen – Kapitel sind nicht erforderlich."
+  },
+  "card": {
+    "books": "{{count}} Bücher"
+  },
+  "create": {
+    "cta": "Neue Welt",
+    "title": "Neue Welt",
+    "description": "Benenne deine Welt. Du kannst sofort mit der Lore-Erstellung beginnen.",
+    "nameLabel": "Weltname",
+    "namePlaceholder": "z. B. Die Zerrissenen Reiche",
+    "descLabel": "Beschreibung (optional)",
+    "cancel": "Abbrechen",
+    "submit": "Welt erstellen",
+    "creating": "Wird erstellt…",
+    "error": "Welt konnte nicht erstellt werden"
+  },
+  "workspace": {
+    "back": "Alle Welten",
+    "loading": "Welt wird geladen…",
+    "error": "Welt nicht gefunden."
+  },
+  "lore": {
+    "title": "Welt-Enzyklopädie",
+    "extractionOptional": "Schreibe die Lore direkt – Charaktere, Orte, Fraktionen. Kein Manuskript nötig. Die Extraktion aus Prosa ist optional; diese Welt-Enzyklopädie dient als Anker.",
+    "anchorUnavailable": "Diese Welt hat noch keinen Enzyklopädie-Anker – die Lore-Erstellung ist derzeit nicht verfügbar.",
+    "kindLabel": "Art",
+    "kindPlaceholder": "Wähle eine Art…",
+    "add": "Lore hinzufügen",
+    "adding": "Wird hinzugefügt…",
+    "added": "Lore wurde deiner Welt-Enzyklopädie hinzugefügt.",
+    "error": "Lore konnte nicht hinzugefügt werden"
+  },
+  "graph": {
+    "title": "Welt-Graph",
+    "subtitle": "Eine schreibgeschützte Ansicht, wie die Lore deiner Welt miteinander verknüpft ist.",
+    "rollupSubtitle": "Eine schreibgeschützte Zusammenfassung der Kanon-Graphen aller enthaltenen Bücher, dargestellt als einzelne Buch-Inseln.",
+    "counts": "{{nodes}} Knoten · {{edges}} Beziehungen",
+    "sources": "zusammengefasst aus {{count}} Buch(en)",
+    "truncated": "zeigt die ersten {{n}} – ein großes Buch kann ein kleineres überlagern",
+    "hint": "Scrollen zum Zoomen · Leeren Bereich ziehen zum Verschieben · Knoten klicken für Details",
+    "loading": "Welt-Graph wird geladen…",
+    "loadFailed": "Welt-Graph konnte nicht geladen werden: {{error}}",
+    "empty": "Noch keine Welt-Kenntnisse vorhanden – erstelle die Enzyklopädie oder extrahiere ein Buch, um dessen Graphen hier anzuzeigen."
+  },
+  "timeline": {
+    "title": "Welt-Zeitstrahl",
+    "subtitle": "Eine schreibgeschützte Zusammenfassung der Kanon-Zeitstrahlen aller enthaltenen Bücher in narrativer Reihenfolge.",
+    "counts": "{{count}} Ereignisse",
+    "sources": "über {{count}} Buch(e)",
+    "truncated": "zeigt die ersten {{n}}",
+    "chapterLabel": "Kapitel",
+    "loading": "Welt-Zeitstrahl wird geladen…",
+    "loadFailed": "Welt-Zeitstrahl konnte nicht geladen werden: {{error}}",
+    "empty": "Noch keine Ereignisse im Zeitstrahl – extrahiere ein Buch, um dessen Zeitstrahl hier anzuzeigen."
+  },
+  "populate": {
+    "addBook": "Buch hinzufügen",
+    "createWhatIf": "„Was-wäre-wenn“ erstellen",
+    "whatIfHint": "Erstelle einen „Was-wäre-wenn“-Zweig aus einem Kanon-Werk",
+    "whatIfNeedsCanon": "Füge zuerst ein Buch mit einem Kanon-Werk hinzu – ein „Was-wäre-wenn“ zweigt von einem Kanon ab.",
+    "pickCanon": "Abzweigen von…",
+    "addBookTitle": "Buch zu dieser Welt hinzufügen",
+    "addBookDesc": "Verknüpfe ein bestehendes Buch oder erstelle ein neues – es wird in den Zeitstrahl und den Graphen der Welt integriert.",
+    "tabAttach": "Bestehend verknüpfen",
+    "tabCreate": "Neu erstellen",
+    "pickBook": "Buch",
+    "bookTitle": "Titel",
+    "bookTitlePlaceholder": "Neuer Buchtitel…",
+    "bookDesc": "Beschreibung (optional)",
+    "attach": "Buch verknüpfen",
+    "createAttach": "Erstellen & hinzufügen",
+    "adding": "Wird hinzugefügt…",
+    "cancel": "Abbrechen",
+    "addFailed": "Buch konnte nicht hinzugefügt werden: {{error}}"
+  },
+  "living": {
+    "heading": "Lebendige Welt",
+    "subtitle": "Der Kanon deiner Welt und seine „Was-wäre-wenn“-Zweige als navigierbarer Zeitstrahl. Klicke auf ein Werk, um es zu öffnen.",
+    "title": "Lebendige Welt",
+    "counts": "{{canon}} Kanon · {{branches}} „Was-wäre-wenn“-Zweige",
+    "hint": "Scrollen zum Zoomen · Leeren Bereich ziehen zum Verschieben · Klicke ein Werk an, um es zu öffnen",
+    "loading": "Die lebendige Welt wird geladen…",
+    "loadFailed": "Die lebendige Welt konnte nicht geladen werden: {{error}}",
+    "empty": "Noch keine Werke in dieser Welt – beginne ein Buch oder ein „Was-wäre-wenn“, um den Zeitstrahl zu erweitern.",
+    "canonBadge": "Kanon",
+    "branchBadge": "Was-wäre-wenn",
+    "canonAria": "Kanon: {{title}}",
+    "branchAria": "„Was-wäre-wenn“-Zweig bei Kapitel {{ch}}: {{title}}",
+    "branchAt": "zweigt ab bei Kap. {{ch}}",
+    "orphan": "· Quelle außerhalb dieser Welt",
+    "edgeLabel": "Kap. {{ch}}"
+  }
+}

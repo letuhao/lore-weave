@@ -1,0 +1,119 @@
+{
+  "title": "Estándares del Glosario",
+  "subtitle": "Tus géneros, tipos y atributos reutilizables. Clona un valor predeterminado del sistema en tu nivel para personalizarlo, o crea el tuyo propio.",
+  "tabs_aria": "Secciones de estándares",
+  "tab": {
+    "genres": "Géneros",
+    "kinds": "Tipos",
+    "attributes": "Atributos"
+  },
+  "loading": "Cargando estándares…",
+  "error": "No se pudieron cargar tus estándares. Inténtalo de nuevo.",
+  "empty": {
+    "genres": "Aún no hay géneros.",
+    "kinds": "Aún no hay tipos."
+  },
+  "action": {
+    "clone": "Clonar a mi nivel",
+    "yours": "Tus elementos",
+    "edit": "Editar",
+    "delete": "Eliminar"
+  },
+  "genres": {
+    "new": "Nuevo género"
+  },
+  "kinds": {
+    "new": "Nuevo tipo"
+  },
+  "toast": {
+    "cloned": "Clonaste “{{name}}” en tus estándares",
+    "cloneError": "No se pudo clonar “{{name}}”",
+    "created": "Creaste “{{name}}”",
+    "createError": "No se pudo crear",
+    "saved": "Guardado",
+    "saveError": "No se pudo guardar",
+    "deleted": "Moviste “{{name}}” a la papelera",
+    "deleteError": "No se pudo eliminar “{{name}}”",
+    "attrCreated": "Añadido “{{name}}”",
+    "attrError": "No se pudo añadir “{{name}}”",
+    "linksSaved": "Géneros actualizados",
+    "linksError": "No se pudieron actualizar los géneros"
+  },
+  "attributes": {
+    "no_user_kinds": "Clona o crea un tipo primero; los atributos se vinculan a tus propios tipos.",
+    "no_user_genres": "Clona o crea un género primero; los atributos se vinculan a tus propios géneros.",
+    "pick_kind": "Seleccionar un tipo…",
+    "pick_genre": "Seleccionar un género…",
+    "pick_both": "Selecciona un tipo y un género para ver y añadir atributos.",
+    "new": "Nuevo atributo",
+    "empty": "Aún no hay atributos para este par.",
+    "system_ref": "Del sistema (solo lectura)",
+    "your_attrs": "Tus atributos"
+  },
+  "attrform": {
+    "title_create": "Nuevo atributo",
+    "title_edit": "Editar atributo",
+    "name": "Nombre",
+    "name_placeholder": "ej. Rango",
+    "name_required": "El nombre es obligatorio",
+    "code": "Código",
+    "code_hint": "Opcional; se deriva del nombre si está vacío.",
+    "field_type": "Tipo de campo",
+    "required": "Obligatorio",
+    "options": "Opciones",
+    "options_hint": "Uno por línea (para selección / etiquetas).",
+    "cancel": "Cancelar",
+    "create": "Añadir atributo",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "ft": {
+      "text": "Texto",
+      "textarea": "Texto largo",
+      "select": "Selección",
+      "number": "Número",
+      "date": "Fecha",
+      "tags": "Etiquetas",
+      "url": "URL",
+      "boolean": "Sí / No"
+    }
+  },
+  "stdform": {
+    "title_create_genre": "Nuevo género",
+    "title_edit_genre": "Editar género",
+    "title_create_kind": "Nuevo tipo",
+    "title_edit_kind": "Editar tipo",
+    "name": "Nombre",
+    "name_required": "El nombre es obligatorio",
+    "icon": "Icono",
+    "color": "Color",
+    "code": "Código",
+    "code_hint": "Opcional; se deriva del nombre si está vacío.",
+    "description": "Descripción",
+    "cancel": "Cancelar",
+    "create": "Crear",
+    "save": "Guardar",
+    "saving": "Guardando…"
+  },
+  "links": {
+    "edit": "Géneros",
+    "title": "Géneros para {{name}}",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "empty": "No hay géneros de usuario para vincular. Clona o crea un género primero.",
+    "cancel": "Cancelar"
+  },
+  "trash": {
+    "open": "Papelera",
+    "title": "Papelera de reciclaje",
+    "close": "Cerrar",
+    "genres": "Géneros",
+    "kinds": "Tipos",
+    "empty_section": "No hay nada aquí.",
+    "restore": "Restaurar",
+    "purge": "Eliminar permanentemente",
+    "restored": "Restaurado",
+    "restoreError": "No se pudo restaurar",
+    "purged": "Eliminado permanentemente",
+    "purgeError": "No se pudo eliminar"
+  }
+}

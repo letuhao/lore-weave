@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Descubrir historias",
+    "subtitle": "Explora novelas públicas de la comunidad LoreWeave. Lee, traduce y explora historias en varios idiomas.",
+    "search_placeholder": "Buscar por título, autor o idioma...",
+    "search_aria": "Buscar en el catálogo",
+    "no_books": "No se encontraron libros. Prueba con otra búsqueda o filtro.",
+    "load_failed": "Error al cargar el catálogo"
+  },
+  "filter": {
+    "lang_all": "Todos",
+    "clear_genres": "Limpiar géneros",
+    "books_found": "{{count}} libros encontrados",
+    "sort_aria": "Ordenar libros por",
+    "sort": {
+      "recent": "Más recientes",
+      "popular": "Más populares",
+      "chapters": "Más capítulos",
+      "alpha": "Alfabético"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} cap"
+  },
+  "detail": {
+    "breadcrumb_browse": "Explorar",
+    "public_badge": "Público",
+    "unlisted_badge": "No listado",
+    "chapters_count": "{{count}} capítulos",
+    "available_languages": "Idiomas disponibles",
+    "original": "Original",
+    "start_reading": "Empezar a leer",
+    "no_chapters_yet": "Aún no hay capítulos",
+    "share": "Compartir",
+    "copy_link": "Copiar enlace",
+    "loading": "Cargando...",
+    "chapters_heading": "Capítulos",
+    "no_chapters_available": "No hay capítulos disponibles.",
+    "untitled": "Sin título",
+    "words": "{{count}} palabras",
+    "showing_chapters": "Mostrando {{from}}–{{to}} de {{total}} capítulos",
+    "stat_chapters": "Capítulos",
+    "stat_languages": "Idiomas",
+    "stat_original": "Original",
+    "stat_published": "Publicado",
+    "na": "N/A",
+    "book_not_found": "Libro no encontrado",
+    "back_to_browse": "Volver a explorar",
+    "link_copied": "Enlace copiado",
+    "copy_failed": "Error al copiar",
+    "load_chapters_failed": "Error al cargar los capítulos"
+  },
+  "shared": {
+    "indicator": "Estás viendo un enlace compartido. Este libro no está listado públicamente.",
+    "invalid": "Este enlace compartido no es válido o ha expirado.",
+    "not_found": "Enlace compartido no encontrado o expirado",
+    "browse_instead": "Explorar libros públicos en su lugar",
+    "back_to_chapters": "Volver a los capítulos",
+    "ch_short": "Cap. {{n}}",
+    "load_chapter_failed": "Error al cargar el capítulo: {{error}}"
+  }
+}

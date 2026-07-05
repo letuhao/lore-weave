@@ -1,0 +1,35 @@
+{
+  "title": "Carta Kedudukan",
+  "subtitle": "Temui buku, penulis, dan penterjemah terbaik dalam komuniti.",
+  "tabs": {
+    "books": "Buku Terbaik",
+    "authors": "Penulis",
+    "translators": "Penterjemah",
+    "trending": "Trending"
+  },
+  "period": {
+    "7d": "Minggu Ini",
+    "30d": "Bulan Ini",
+    "all": "Sepanjang Masa"
+  },
+  "filters": {
+    "allGenres": "Semua Genre",
+    "allLanguages": "Semua Bahasa"
+  },
+  "ranking": {
+    "fullRankings": "Kedudukan Penuh — Buku Terbaik",
+    "readers": "Pembaca",
+    "favorites": "Kegemaran",
+    "ratings": "penarafan",
+    "chapters": "bab",
+    "translations": "terjemahan",
+    "rating": "Penarafan",
+    "showMore": "Lihat lebih banyak kedudukan",
+    "noResults": "Belum ada kedudukan. Mula membaca dan menterjemah!"
+  },
+  "quickStats": {
+    "topAuthors": "Penulis Terbaik",
+    "topTranslators": "Penterjemah Terbaik",
+    "viewAll": "Lihat semua"
+  }
+}

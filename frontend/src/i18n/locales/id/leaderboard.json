@@ -1,0 +1,35 @@
+{
+  "title": "Papan Peringkat",
+  "subtitle": "Temukan buku, penulis, dan penerjemah terbaik di komunitas.",
+  "tabs": {
+    "books": "Buku Teratas",
+    "authors": "Penulis",
+    "translators": "Penerjemah",
+    "trending": "Sedang Tren"
+  },
+  "period": {
+    "7d": "Minggu Ini",
+    "30d": "Bulan Ini",
+    "all": "Sepanjang Masa"
+  },
+  "filters": {
+    "allGenres": "Semua Genre",
+    "allLanguages": "Semua Bahasa"
+  },
+  "ranking": {
+    "fullRankings": "Peringkat Lengkap — Buku Teratas",
+    "readers": "Pembaca",
+    "favorites": "Favorit",
+    "ratings": "rating",
+    "chapters": "bab",
+    "translations": "terjemahan",
+    "rating": "Rating",
+    "showMore": "Lihat peringkat lainnya",
+    "noResults": "Belum ada peringkat. Mulai membaca dan menerjemahkan!"
+  },
+  "quickStats": {
+    "topAuthors": "Penulis Teratas",
+    "topTranslators": "Penerjemah Teratas",
+    "viewAll": "Lihat semua"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "consent": {
+    "title": "Autorizar acceso",
+    "subtitle": "Una aplicación desea actuar en tu nombre en LoreWeave.",
+    "client_named": "{{client}} solicita acceso a tu cuenta.",
+    "client_unnamed": "Una aplicación solicita acceso a tu cuenta.",
+    "signed_in_as": "Sesión iniciada como {{email}}",
+    "redirect_to": "Redirige a",
+    "unverified": "Esta aplicación no ha sido verificada por LoreWeave. Continúa solo si la reconoces y confías en ella; comprueba la dirección de redirección arriba.",
+    "permissions_heading": "Permisos solicitados",
+    "permissions_hint": "Desactiva cualquier permiso que no desees conceder. Puedes conceder menos de lo solicitado, pero nunca más.",
+    "actions_heading": "Acciones",
+    "areas_heading": "Áreas",
+    "resource_label": "Recurso",
+    "allow": "Permitir acceso",
+    "allowing": "Autorizando…",
+    "deny": "Denegar",
+    "sign_in": "Inicia sesión para continuar",
+    "no_scopes": "Selecciona al menos un permiso para continuar.",
+    "invalid_request": "Esta solicitud de autorización falta o contiene información no válida. Vuelve a la aplicación e inténtalo de nuevo.",
+    "error": "No se pudo completar la autorización. Por favor, inténtalo de nuevo.",
+    "scope": {
+      "read": "Leer tu contenido",
+      "paid_read": "Ejecutar operaciones de lectura de pago",
+      "write_auto": "Realizar cambios automáticamente",
+      "write_confirm": "Realizar cambios (con confirmación)"
+    },
+    "domain": {
+      "book": "Libros",
+      "glossary": "Glosario",
+      "knowledge": "Conocimiento",
+      "translation": "Traducción",
+      "composition": "Composición",
+      "jobs": "Tareas",
+      "settings": "Ajustes",
+      "lore_enrichment": "Enriquecimiento de lore",
+      "catalog": "Catálogo"
+    }
+  }
+}

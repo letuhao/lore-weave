@@ -1,0 +1,54 @@
+{
+  "title": "নোটিফিকেশন",
+  "markAllRead": "সব পড়া হিসেবে চিহ্নিত করুন",
+  "markRead": "পড়া হিসেবে চিহ্নিত করুন",
+  "delete": "মুছে ফেলুন",
+  "empty": "এখনো কোনো নোটিফিকেশন নেই",
+  "loading": "লোড হচ্ছে...",
+  "justNow": "এইমাত্র",
+  "minsAgo": "{{count}}মিনিট আগে",
+  "hrsAgo": "{{count}}ঘণ্টা আগে",
+  "daysAgo": "{{count}}দিন আগে",
+  "viewAll": "সব নোটিফিকেশন দেখুন",
+  "loadMore": "আরও লোড করুন",
+  "pageTitle": "নোটিফিকেশন",
+  "notif": {
+    "translation": {
+      "completed": "\"{{book}}\"-এর {{count}}টি অধ্যায় অনুবাদ সম্পন্ন হয়েছে",
+      "partial": "অনুবাদ আংশিক সম্পন্ন — {{done}}টি হয়েছে, {{failed}}টি ব্যর্থ হয়েছে",
+      "failed": "অনুবাদ ব্যর্থ হয়েছে — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} আপনাকে অনুসরণ করা শুরু করেছে"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "চ্যাট",
+      "completion": "সম্পন্নকরণ",
+      "embedding": "এম্বেডিং",
+      "entity_extraction": "এনটিটি এক্সট্রাকশন",
+      "fact_extraction": "তথ্য আহরণ",
+      "relation_extraction": "সম্পর্ক আহরণ",
+      "event_extraction": "ঘটনা আহরণ",
+      "translation": "অনুবাদ",
+      "image_gen": "ছবি তৈরি",
+      "video_gen": "ভিডিও তৈরি"
+    },
+    "status": {
+      "completed": "সম্পন্ন",
+      "failed": "ব্যর্থ",
+      "cancelled": "বাতিল",
+      "running": "চলমান",
+      "pending": "অপেক্ষমান"
+    }
+  },
+  "category": {
+    "all": "সব",
+    "translation": "অনুবাদ",
+    "social": "সোশ্যাল",
+    "wiki": "উইকি",
+    "system": "সিস্টেম"
+  }
+}

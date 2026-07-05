@@ -1,0 +1,54 @@
+{
+  "title": "การแจ้งเตือน",
+  "markAllRead": "อ่านทั้งหมดแล้ว",
+  "markRead": "ทำเครื่องหมายว่าอ่านแล้ว",
+  "delete": "ลบ",
+  "empty": "ยังไม่มีการแจ้งเตือน",
+  "loading": "กำลังโหลด...",
+  "justNow": "เมื่อสักครู่",
+  "minsAgo": "{{count}} นาทีที่แล้ว",
+  "hrsAgo": "{{count}} ชม. ที่แล้ว",
+  "daysAgo": "{{count}} วันที่แล้ว",
+  "viewAll": "ดูการแจ้งเตือนทั้งหมด",
+  "loadMore": "โหลดเพิ่มเติม",
+  "pageTitle": "การแจ้งเตือน",
+  "notif": {
+    "translation": {
+      "completed": "แปลเสร็จสมบูรณ์ — {{count}} ตอนของ \"{{book}}\"",
+      "partial": "แปลเสร็จบางส่วน — สำเร็จ {{done}}, ล้มเหลว {{failed}}",
+      "failed": "การแปลล้มเหลว — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} เริ่มติดตามคุณแล้ว"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "แชท",
+      "completion": "การสรุปความ",
+      "embedding": "การฝังตัวอักษร (Embedding)",
+      "entity_extraction": "การสกัดเอนทิตี",
+      "fact_extraction": "การสกัดข้อเท็จจริง",
+      "relation_extraction": "การสกัดความสัมพันธ์",
+      "event_extraction": "การสกัดเหตุการณ์",
+      "translation": "การแปล",
+      "image_gen": "การสร้างรูปภาพ",
+      "video_gen": "การสร้างวิดีโอ"
+    },
+    "status": {
+      "completed": "เสร็จสมบูรณ์",
+      "failed": "ล้มเหลว",
+      "cancelled": "ยกเลิกแล้ว",
+      "running": "กำลังดำเนินการ",
+      "pending": "รอดำเนินการ"
+    }
+  },
+  "category": {
+    "all": "ทั้งหมด",
+    "translation": "การแปล",
+    "social": "โซเชียล",
+    "wiki": "Wiki",
+    "system": "ระบบ"
+  }
+}

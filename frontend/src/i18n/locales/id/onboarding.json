@@ -1,0 +1,22 @@
+{
+  "heading": "Apa yang ingin Anda lakukan?",
+  "subheading": "Pilih titik awal — Anda dapat mengubahnya kapan saja.",
+  "intent": {
+    "write": {
+      "title": "Menulis",
+      "desc": "Mulai buku baru atau lanjutkan menulis — buat draf bab dengan bantuan penulis AI."
+    },
+    "world": {
+      "title": "Bangun dunia",
+      "desc": "Susun lore — karakter, tempat, faksi — tanpa perlu naskah terlebih dahulu."
+    },
+    "translate": {
+      "title": "Terjemahkan",
+      "desc": "Terjemahkan buku yang sudah ada ke bahasa lain dengan alur kerja penerjemahan."
+    },
+    "explore": {
+      "title": "Jelajahi",
+      "desc": "Telusuri pengetahuan Anda — entitas, lini masa, dan grafik hubungan."
+    }
+  }
+}

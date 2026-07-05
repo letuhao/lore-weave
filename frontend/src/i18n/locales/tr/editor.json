@@ -1,0 +1,374 @@
+{
+  "focus": {
+    "toggle": "Odak modu",
+    "continuity": "Süreklilik ✓",
+    "hint": "✦ odaklanmak için bir satıra dokunun"
+  },
+  "saved": "Bölüm kaydedildi",
+  "no_content": "Çevrilecek içerik yok",
+  "translation_failed": "Çeviri başarısız oldu",
+  "translated_blocks": "{{count}} blok çevrildi",
+  "text_translation_received": "Metin çevirisi alındı — blok modu önerilir",
+  "breadcrumb": {
+    "workspace": "Çalışma Alanı",
+    "book": "Kitap",
+    "chapter": "Bölüm"
+  },
+  "prev_chapter": "Önceki bölüm",
+  "next_chapter": "Sonraki bölüm",
+  "mode": {
+    "classic": "Klasik",
+    "classic_title": "Klasik mod — odaklanmış yazım",
+    "ai": "AI",
+    "ai_title": "AI Asistan modu — tüm özellikler"
+  },
+  "workmode": {
+    "write": "Yaz",
+    "write_desc": "Taslağı düzenleyin",
+    "translate": "Çevir",
+    "translate_desc": "Versiyonlar, karşılaştır ve çevir",
+    "read": "Oku",
+    "read_desc": "Okuyucuyu aç (TTS, temalar)",
+    "compose": "Oluştur",
+    "compose_desc": "AI ortak yazar stüdyosu"
+  },
+  "grammar_title": "Dilbilgisi ve yazım denetimini aç/kapat (LanguageTool)",
+  "translate_title": "AI kullanarak içeriği çevir (blok modu)",
+  "translating": "Çevriliyor...",
+  "translate": "Çevir",
+  "view_translations": "Çeviriler",
+  "view_translations_title": "Kaydedilen çeviri versiyonlarını görüntüle (diller, geçmiş, yan yana karşılaştırma)",
+  "toggle_source": "Kaynak panelini aç/kapat",
+  "toggle_history": "Geçmiş / AI panelini aç/kapat",
+  "unsaved": "Kaydedilmemiş",
+  "saved_badge": "Kaydedildi",
+  "mobile": {
+    "editor": "Editör",
+    "studio": "Stüdyo",
+    "history": "Geçmiş",
+    "nav": "Editör bölümleri"
+  },
+  "discard_title": "Tüm kaydedilmemiş değişiklikleri at",
+  "discard": "At",
+  "save": "Kaydet",
+  "tabs": {
+    "chapters": "Bölümler",
+    "original": "Orijinal",
+    "glossary": "Sözlük",
+    "outline": "Taslak"
+  },
+  "chapter_count": "{{count}} bölüm",
+  "chapter_count_other": "{{count}} bölüm",
+  "original_readonly": "Yüklenen orijinal metin — sadece okunabilir",
+  "no_original": "Orijinal kaynak yok — bu bölüm doğrudan editörde oluşturuldu (dosya içe aktarılmadı).",
+  "title_placeholder": "Bölüm başlığı",
+  "chars": "{{n}} karakter",
+  "words": "{{n}} kelime",
+  "paragraphs": "{{count}} paragraf",
+  "paragraphs_other": "{{count}} paragraf",
+  "save_note_placeholder": "Not ekle (isteğe bağlı) — örn. \"flashback sahnesi eklendi\"",
+  "history": "Geçmiş",
+  "ai_chat": "AI Sohbet",
+  "coming_soon": "Yakında",
+  "connected": "Bağlandı",
+  "left_panel": "Sol panel",
+  "right_panel": "Sağ panel",
+  "discard_confirm": {
+    "title": "Değişiklikler atılsın mı?",
+    "desc": "Tüm kaydedilmemiş değişiklikler kalıcı olarak kaybolacaktır. Bu işlem geri alınamaz.",
+    "confirm": "Değişiklikleri at",
+    "cancel": "Düzenlemeye devam et"
+  },
+  "toolbar": {
+    "paragraph": "Paragraf",
+    "h1": "Başlık 1",
+    "h2": "Başlık 2",
+    "h3": "Başlık 3",
+    "bold": "Kalın (Ctrl+B)",
+    "italic": "İtalik (Ctrl+I)",
+    "strike": "Üstü çizili",
+    "underline": "Altı çizili (Ctrl+U)",
+    "inline_code": "Satır içi kod",
+    "link": "Bağlantı",
+    "url_prompt": "URL:",
+    "highlight": "Vurgula (Ctrl+Shift+H)",
+    "subscript": "Alt simge",
+    "superscript": "Üst simge",
+    "bullet_list": "Madde işareti listesi",
+    "ordered_list": "Numaralı liste",
+    "blockquote": "Alıntı",
+    "insert_image": "Görsel ekle",
+    "insert_video": "Video ekle",
+    "insert_audio": "Ses ekle",
+    "code_block": "Kod bloğu",
+    "horizontal_rule": "Yatay çizgi",
+    "undo": "Geri al (Ctrl+Z)",
+    "redo": "Yinele (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "Paragraf",
+      "desc": "Düz metin bloğu"
+    },
+    "heading1": {
+      "title": "Başlık 1",
+      "desc": "Büyük bölüm başlığı"
+    },
+    "heading2": {
+      "title": "Başlık 2",
+      "desc": "Orta büyüklükte bölüm başlığı"
+    },
+    "heading3": {
+      "title": "Başlık 3",
+      "desc": "Küçük bölüm başlığı"
+    },
+    "bullet": {
+      "title": "Madde İşaretli Liste",
+      "desc": "Sırasız liste"
+    },
+    "numbered": {
+      "title": "Numaralı Liste",
+      "desc": "Sıralı liste"
+    },
+    "quote": {
+      "title": "Alıntı",
+      "desc": "Blok alıntı"
+    },
+    "image": {
+      "title": "Görsel",
+      "desc": "Yükle, yapıştır veya AI ile oluştur"
+    },
+    "video": {
+      "title": "Video",
+      "desc": "Video dosyası yükle"
+    },
+    "audio": {
+      "title": "Ses",
+      "desc": "Ses dosyası yükle"
+    },
+    "code": {
+      "title": "Kod Bloğu",
+      "desc": "Sözdizimi vurgulamalı kod"
+    },
+    "callout": {
+      "title": "Not",
+      "desc": "Yazar notu veya ipucu"
+    },
+    "divider": {
+      "title": "Ayırıcı",
+      "desc": "Yatay çizgi"
+    }
+  },
+  "code": {
+    "language_label": "Kod dili",
+    "copy": "Kodu kopyala",
+    "delete": "Kod bloğunu sil"
+  },
+  "media": {
+    "ai_prompt": "AI Komutu",
+    "saved": "kaydedildi",
+    "empty": "boş",
+    "placeholder": "AI bağlamı ve üretimi için bu medyayı tanımlayın...",
+    "stored_note": "AI bağlamı ve yeniden üretim için medya ile birlikte saklanır.",
+    "copied": "Kopyalandı",
+    "copy_prompt": "Komutu kopyala",
+    "regenerate": "Yeniden oluştur",
+    "generating": "Oluşturuluyor..."
+  },
+  "image": {
+    "err_type": "Desteklenmeyen tür: {{type}}. PNG, JPG, GIF veya WebP kullanın.",
+    "err_size": "Dosya çok büyük: {{size}} MB. Maksimum 10 MB.",
+    "upload_unavailable": "Yükleme mevcut değil — önce bölümü kaydedin.",
+    "upload_failed": "Yükleme başarısız oldu",
+    "regen_save_first": "AI üretimini etkinleştirmek için önce bölümü kaydedin.",
+    "regen_no_model": "AI modeli yapılandırılmadı. Ayarlar'dan bir sağlayıcı ekleyin.",
+    "regen_no_provider": "Aktif bir AI sağlayıcısı yok. Ayarlar → Sağlayıcılar kısmından bir tane yapılandırın.",
+    "regen_failed": "Üretim başarısız oldu",
+    "default_title": "Görsel",
+    "version_history": "Versiyon geçmişi",
+    "copy_filename": "Dosya adını kopyala",
+    "copy": "Kopyala",
+    "ai_mode": "AI modu",
+    "replace": "Değiştir",
+    "replace_title": "Görseli değiştir",
+    "delete_block": "Bloğu sil",
+    "delete_image_block": "Görsel bloğunu sil",
+    "uploading": "Yükleniyor... %{{pct}}",
+    "drop_here": "Görseli buraya bırakın",
+    "drop_hint": "Görseli buraya bırakın, göz atmak için tıklayın veya Ctrl+V",
+    "formats": "PNG, JPG, GIF, WebP — Maks. 10 MB",
+    "width_title": "Genişlik: {{width}}%",
+    "caption_placeholder": "Açıklama ekleyin...",
+    "caption_aria": "Görsel açıklaması",
+    "alt_text": "Alt metin",
+    "alt_set": "ayarla",
+    "alt_placeholder": "Ekran okuyucular ve EPUB dışa aktarımı için bu görseli tanımlayın...",
+    "alt_aria": "Görsel alt metni",
+    "alt_note": "Ekran okuyucular, arama motorları ve EPUB dışa aktarımı için kullanılır. Açıklamadan farklıdır."
+  },
+  "video": {
+    "err_type": "Desteklenmeyen tür: {{type}}. MP4 veya WebM kullanın.",
+    "err_size": "Dosya çok büyük: {{size}} MB. Maks. 100 MB.",
+    "upload_unavailable": "Yükleme kullanılamıyor — önce bölümü kaydedin.",
+    "upload_failed": "Yükleme başarısız oldu",
+    "gen_save_first": "Önce bölümü kaydedin.",
+    "gen_no_model": "Yapılandırılmış bir video oluşturma modeli bulunamadı. Ayarlar > Sağlayıcılar kısmından bir tane ekleyin.",
+    "gen_failed": "Oluşturma başarısız oldu",
+    "default_title": "Video",
+    "version_history": "Versiyon geçmişi",
+    "copy_filename": "Dosya adını kopyala",
+    "copy": "Kopyala",
+    "ai_mode": "Yapay Zeka modu",
+    "replace": "Değiştir",
+    "replace_title": "Videoyu değiştir",
+    "delete_block": "Bloğu sil",
+    "delete_video_block": "Video bloğunu sil",
+    "uploading": "Yükleniyor... %{{pct}}",
+    "drop_here": "Videoyu buraya bırakın",
+    "drop_hint": "Bir video bırakın veya göz atmak için tıklayın",
+    "formats": "MP4, WebM — Maks. 100 MB",
+    "width_title": "Genişlik: {{width}}%",
+    "caption_placeholder": "Açıklama ekleyin...",
+    "caption_aria": "Video açıklaması",
+    "alt_text": "Alt metin",
+    "alt_set": "ayarla",
+    "alt_placeholder": "Ekran okuyucular ve EPUB dışa aktarımı için bu videoyu tanımlayın...",
+    "alt_aria": "Video alt metni",
+    "alt_note": "Ekran okuyucular, arama motorları ve EPUB dışa aktarımı için kullanılır. Açıklamadan farklıdır.",
+    "generate": "Oluştur"
+  },
+  "audio": {
+    "err_type": "Desteklenmeyen tür: {{type}}. MP3, WAV, OGG, WebM veya M4A kullanın.",
+    "err_size": "Dosya çok büyük: {{size}} MB. Maks. 20 MB.",
+    "upload_unavailable": "Yükleme kullanılamıyor — önce bölümü kaydedin.",
+    "upload_failed": "Yükleme başarısız oldu",
+    "default_title": "Ses",
+    "ai_mode": "Yapay Zeka modu",
+    "play": "Oynat",
+    "pause": "Duraklat",
+    "replace_title": "Sesi değiştir",
+    "delete_audio_block": "Ses bloğunu sil",
+    "uploading": "Yükleniyor... %{{pct}}",
+    "drop_here": "Sesi buraya bırakın",
+    "drop_hint": "Bir ses dosyası bırakın veya göz atmak için tıklayın",
+    "formats": "MP3, WAV, OGG, WebM, M4A — Maks. 20 MB",
+    "subtitle_placeholder": "Altyazı ekleyin...",
+    "subtitle_aria": "Ses altyazısı"
+  },
+  "callout": {
+    "type": {
+      "note": "not",
+      "warning": "uyarı",
+      "tip": "ipucu",
+      "danger": "tehlike"
+    },
+    "title": "{{type}} — türü değiştirmek için tıklayın"
+  },
+  "revision": {
+    "restored": "Revizyon geri yüklendi",
+    "header": "Revizyon Geçmişi · {{count}}",
+    "empty": "Henüz revizyon yok. Oluşturmak için kaydedin.",
+    "current": "Güncel",
+    "view": "Görüntüle",
+    "restore": "Geri Yükle",
+    "confirm_title": "Bu revizyon geri yüklensin mi?",
+    "confirm_desc": "Bu işlem, mevcut taslağınızın üzerine bu eski versiyonu yazacak ve yeni bir revizyon girişi oluşturacaktır. Bu işlem geri alınamaz.",
+    "close_preview": "Önizlemeyi kapat",
+    "preview": "Revizyon önizleme",
+    "restore_version": "Bu versiyonu geri yükle",
+    "empty_revision": "Boş revizyon."
+  },
+  "source": {
+    "header": "Blok JSON — bölüm yapısının salt okunur görünümü",
+    "copied": "Kopyalandı",
+    "copy": "JSON Kopyala"
+  },
+  "version": {
+    "loading": "Versiyon geçmişi yükleniyor...",
+    "close": "Kapat",
+    "title": "Versiyon Geçmişi",
+    "block_crumb": "Blok",
+    "comparing": "v{{old}} → v{{new}} karşılaştırılıyor",
+    "previous": "Önceki",
+    "old": "eski",
+    "no_media": "Medya yok",
+    "current": "Güncel",
+    "selected": "Seçilen",
+    "current_tag": "güncel",
+    "no_media_version": "Bu versiyonda medya yok",
+    "no_versions": "Henüz versiyon yok",
+    "version_count": "{{count}} versiyon",
+    "version_count_other": "{{count}} versiyon",
+    "total": "Toplam {{size}}",
+    "delete_confirm": "{{version}} versiyonu silinsin mi? Bu işlem geri alınamaz.",
+    "versions": "Versiyonlar",
+    "restore_version": "v{{version}} geri yükle",
+    "timeago": {
+      "just_now": "şimdi",
+      "mins": "{{n}}dk önce",
+      "hours": "{{n}}sa önce",
+      "yesterday": "Dün",
+      "days": "{{n}} gün önce"
+    },
+    "action": {
+      "upload": "Medya yüklendi",
+      "regenerate": "Geliştirilmiş istemle yeniden oluşturuldu",
+      "caption_edit": "Açıklama güncellendi",
+      "prompt_edit": "İstem güncellendi"
+    },
+    "diff_identical": "İstemler aynı",
+    "diff_title": "Yapay Zeka İstem Farkı ({{old}} → {{new}})",
+    "diff_previous": "Önceki",
+    "diff_current": "Güncel"
+  },
+  "media_guard": {
+    "protected": "Medya blokları Klasik modda korunmaktadır. Düzenlemek veya silmek için Yapay Zeka moduna geçin."
+  },
+  "publish": {
+    "publish": "Yayınla",
+    "republish": "Yeniden Yayınla",
+    "unpublish": "Yayından Kaldır",
+    "draft_badge": "Taslak",
+    "published_badge": "Yayınlandı",
+    "confirm_title": "Bölüm yayından kaldırılsın mı?",
+    "confirm_body": "Bu işlem bölümü kanondan çıkarır; yeniden yayınlayana kadar çıkarılan bilgiler ve pasajlar geri çekilecektir.",
+    "published_toast": "Bölüm yayınlandı",
+    "unpublished_toast": "Bölüm yayından kaldırıldı",
+    "conflict_toast": "Taslak açtığınızdan beri değiştirildi — yayınlamadan önce sayfayı yenileyin.",
+    "empty_toast": "Bu bölümün yayınlanacak içeriği yok — önce bir şeyler yazın.",
+    "save_first": "Yayınlamadan önce kaydedin",
+    "gate_pending": "{{total}} sahnenin {{pending}} tanesi henüz tamamlanmadı",
+    "gate_no_scenes": "Yayınlamak için en az bir sahne oluşturun ve tamamlayın",
+    "gate_canon_blocked": "{{count}} sahne içinde çözülmemiş bir kanon çelişkisi var",
+    "gate_unchecked": "{{count}} sahne(de) kanon doğrulanmadı",
+    "gate_unchecked_hint": "Bu sahnelerde kontrol edilecek karakterler var ancak çözülmüş bir okuma sırası konumu yok, bu nedenle kanon doğrulanmadı. Yayınlamaya izin verilir — vaktiniz varsa bunları gözden geçirin."
+  },
+  "compare": {
+    "open": "Karşılaştır",
+    "title": "Revizyonları karşılaştır",
+    "back": "Editöre dön",
+    "left": "Sol revizyon",
+    "right": "Sağ revizyon",
+    "side_by_side": "Yan yana",
+    "inline": "Satır içi",
+    "no_revisions": "Revizyon yok",
+    "need_two": "Karşılaştırma yapmak için bu bölümün en az iki kayıtlı revizyonu olmalıdır.",
+    "loading": "Yükleniyor…",
+    "diffing": "Farklar hesaplanıyor…",
+    "error": "Karşılaştırma yüklenemedi.",
+    "truncated": "Bu revizyonlar çok büyük — ayrıntılı fark yerine tam değişim gösteriliyor.",
+    "same": "Her iki taraf da aynı revizyon — fark yok.",
+    "load_more": "Daha fazla yükle ({{loaded}}/{{total}})",
+    "load_more_hint": "Seçiciye eski revizyonları yükle"
+  },
+  "checkpoint": {
+    "header": "Yapay zeka düzenleme kontrol noktaları",
+    "insert": "Eklendi",
+    "polish": "Parlatıldı",
+    "restore": "Geri Yükle",
+    "restored": "Yapay zeka düzenlemesi öncesine geri yüklendi",
+    "no_restore": "Geri yüklenecek daha eski bir sürüm yok",
+    "confirm_title": "Bu yapay zeka düzenlemesi öncesine geri yüklensin mi?",
+    "confirm_desc": "Mevcut taslak önce anlık görüntüsü alınarak kaydedilir, böylece revizyon geçmişinden bu işlem geri alınabilir."
+  }
+}

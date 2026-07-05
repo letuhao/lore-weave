@@ -1,0 +1,54 @@
+{
+  "title": "Уведомления",
+  "markAllRead": "Пометить все как прочитанные",
+  "markRead": "Пометить как прочитанное",
+  "delete": "Удалить",
+  "empty": "Уведомлений пока нет",
+  "loading": "Загрузка...",
+  "justNow": "Только что",
+  "minsAgo": "{{count}} мин. назад",
+  "hrsAgo": "{{count}} ч. назад",
+  "daysAgo": "{{count}} дн. назад",
+  "viewAll": "Показать все уведомления",
+  "loadMore": "Загрузить еще",
+  "pageTitle": "Уведомления",
+  "notif": {
+    "translation": {
+      "completed": "Перевод завершен — {{count}} глав книги «{{book}}»",
+      "partial": "Перевод завершен частично — {{done}} готово, {{failed}} ошибок",
+      "failed": "Ошибка перевода — «{{book}}»"
+    },
+    "social": {
+      "followed": "{{name}} подписался на вас"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Чат",
+      "completion": "Завершение",
+      "embedding": "Эмбеддинг",
+      "entity_extraction": "Извлечение сущностей",
+      "fact_extraction": "Извлечение фактов",
+      "relation_extraction": "Извлечение связей",
+      "event_extraction": "Извлечение событий",
+      "translation": "Перевод",
+      "image_gen": "Генерация изображений",
+      "video_gen": "Генерация видео"
+    },
+    "status": {
+      "completed": "завершено",
+      "failed": "ошибка",
+      "cancelled": "отменено",
+      "running": "выполняется",
+      "pending": "в ожидании"
+    }
+  },
+  "category": {
+    "all": "Все",
+    "translation": "Перевод",
+    "social": "Социальное",
+    "wiki": "Wiki",
+    "system": "Система"
+  }
+}

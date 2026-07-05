@@ -1,0 +1,54 @@
+{
+  "title": "Notifications",
+  "markAllRead": "Tout marquer comme lu",
+  "markRead": "Marquer comme lu",
+  "delete": "Supprimer",
+  "empty": "Aucune notification pour le moment",
+  "loading": "Chargement...",
+  "justNow": "À l'instant",
+  "minsAgo": "Il y a {{count}} min",
+  "hrsAgo": "Il y a {{count}} h",
+  "daysAgo": "Il y a {{count}} j",
+  "viewAll": "Voir toutes les notifications",
+  "loadMore": "Charger plus",
+  "pageTitle": "Notifications",
+  "notif": {
+    "translation": {
+      "completed": "Traduction terminée — {{count}} chapitres de « {{book}} »",
+      "partial": "Traduction partielle — {{done}} réussis, {{failed}} échoués",
+      "failed": "Échec de la traduction — « {{book}} »"
+    },
+    "social": {
+      "followed": "{{name}} a commencé à vous suivre"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Chat",
+      "completion": "Finalisation",
+      "embedding": "Embedding",
+      "entity_extraction": "Extraction d'entités",
+      "fact_extraction": "Extraction de faits",
+      "relation_extraction": "Extraction de relations",
+      "event_extraction": "Extraction d'événements",
+      "translation": "Traduction",
+      "image_gen": "Génération d'image",
+      "video_gen": "Génération de vidéo"
+    },
+    "status": {
+      "completed": "terminé",
+      "failed": "échoué",
+      "cancelled": "annulé",
+      "running": "en cours",
+      "pending": "en attente"
+    }
+  },
+  "category": {
+    "all": "Tout",
+    "translation": "Traduction",
+    "social": "Social",
+    "wiki": "Wiki",
+    "system": "Système"
+  }
+}

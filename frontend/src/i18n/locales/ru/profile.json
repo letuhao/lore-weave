@@ -1,0 +1,49 @@
+{
+  "anonymous": "Аноним",
+  "joined": "Присоединился {{date}}",
+  "followers": "подписчиков",
+  "following": "подписок",
+  "follow": "Подписаться",
+  "unfollow": "Вы подписаны",
+  "editProfile": "Редактировать профиль",
+  "loading": "Загрузка...",
+  "noBooks": "Книг пока нет.",
+  "noTranslations": "Переводов пока нет.",
+  "errorLoading": "Не удалось загрузить профиль.",
+  "followError": "Не удалось подписаться на пользователя.",
+  "unfollowError": "Не удалось отписаться от пользователя.",
+  "userNotFound": "Пользователь не найден.",
+  "achievements": "Достижения",
+  "chapters": "глав",
+  "readers": "читателей",
+  "recentActivity": "Последняя активность",
+  "last7d": "За последние 7 дней",
+  "last30d": "За последние 30 дней",
+  "translationLanguages": "Языки перевода",
+  "stats": {
+    "books": "Книги",
+    "chaptersTranslated": "Переведено глав",
+    "totalReaders": "Всего читателей",
+    "followers": "Подписчики",
+    "totalTranslations": "Всего переводов",
+    "languages": "Языки"
+  },
+  "achievement": {
+    "booksPublished": "Опубликована {{count}} книга",
+    "booksPublished_other": "Опубликовано {{count}} книг",
+    "kReaders": "{{count}}K+ читателей",
+    "hundredReaders": "100+ читателей",
+    "followers": "{{count}} подписчиков",
+    "multiLangTranslator": "{{count}}-язычный переводчик",
+    "fiftyChapters": "Переведено 50+ глав"
+  },
+  "loadError": "Не удалось загрузить книги.",
+  "noWiki": "Вклад в вики пока нет.",
+  "wikiError": "Не удалось загрузить вклад в вики.",
+  "untitled": "Без названия",
+  "tabs": {
+    "books": "Книги",
+    "translations": "Переводы",
+    "wiki": "Вклад в вики"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "title": "리더보드",
+  "subtitle": "커뮤니티의 인기 도서, 작가, 번역가를 확인해보세요.",
+  "tabs": {
+    "books": "인기 도서",
+    "authors": "작가",
+    "translators": "번역가",
+    "trending": "트렌딩"
+  },
+  "period": {
+    "7d": "이번 주",
+    "30d": "이번 달",
+    "all": "전체 기간"
+  },
+  "filters": {
+    "allGenres": "모든 장르",
+    "allLanguages": "모든 언어"
+  },
+  "ranking": {
+    "fullRankings": "전체 순위 — 인기 도서",
+    "readers": "독자",
+    "favorites": "즐겨찾기",
+    "ratings": "평점",
+    "chapters": "챕터",
+    "translations": "번역",
+    "rating": "평점",
+    "showMore": "순위 더 보기",
+    "noResults": "아직 순위 데이터가 없습니다. 독서와 번역을 시작해보세요!"
+  },
+  "quickStats": {
+    "topAuthors": "인기 작가",
+    "topTranslators": "인기 번역가",
+    "viewAll": "전체 보기"
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "title": "Padrões de Glossário",
+  "subtitle": "Seus gêneros, tipos e atributos reutilizáveis. Clone um padrão do sistema para o seu nível para personalizá-lo ou crie o seu próprio.",
+  "tabs_aria": "Seções de padrões",
+  "tab": {
+    "genres": "Gêneros",
+    "kinds": "Tipos",
+    "attributes": "Atributos"
+  },
+  "loading": "Carregando padrões...",
+  "error": "Não foi possível carregar seus padrões. Tente novamente.",
+  "empty": {
+    "genres": "Nenhum gênero ainda.",
+    "kinds": "Nenhum tipo ainda."
+  },
+  "action": {
+    "clone": "Clonar para o meu nível",
+    "yours": "Seus",
+    "edit": "Editar",
+    "delete": "Excluir"
+  },
+  "genres": {
+    "new": "Novo gênero"
+  },
+  "kinds": {
+    "new": "Novo tipo"
+  },
+  "toast": {
+    "cloned": "“{{name}}” clonado para seus padrões",
+    "cloneError": "Não foi possível clonar “{{name}}”",
+    "created": "“{{name}}” criado",
+    "createError": "Não foi possível criá-lo",
+    "saved": "Salvo",
+    "saveError": "Não foi possível salvar",
+    "deleted": "“{{name}}” movido para a lixeira",
+    "deleteError": "Não foi possível excluir “{{name}}”",
+    "attrCreated": "Adicionado “{{name}}”",
+    "attrError": "Não foi possível adicionar “{{name}}”",
+    "linksSaved": "Gêneros atualizados",
+    "linksError": "Não foi possível atualizar os gêneros"
+  },
+  "attributes": {
+    "no_user_kinds": "Clone ou crie um tipo primeiro — atributos são vinculados aos seus próprios tipos.",
+    "no_user_genres": "Clone ou crie um gênero primeiro — atributos são vinculados aos seus próprios gêneros.",
+    "pick_kind": "Selecionar um tipo...",
+    "pick_genre": "Selecionar um gênero...",
+    "pick_both": "Escolha um tipo e um gênero para ver e adicionar atributos.",
+    "new": "Novo atributo",
+    "empty": "Sem atributos para este par.",
+    "system_ref": "Do sistema (somente leitura)",
+    "your_attrs": "Seus atributos"
+  },
+  "attrform": {
+    "title_create": "Novo atributo",
+    "title_edit": "Editar atributo",
+    "name": "Nome",
+    "name_placeholder": "ex: Rank",
+    "name_required": "O nome é obrigatório",
+    "code": "Código",
+    "code_hint": "Opcional — derivado do nome se estiver em branco.",
+    "field_type": "Tipo de campo",
+    "required": "Obrigatório",
+    "options": "Opções",
+    "options_hint": "Uma por linha (para seleção / tags).",
+    "cancel": "Cancelar",
+    "create": "Adicionar atributo",
+    "save": "Salvar",
+    "saving": "Salvando...",
+    "ft": {
+      "text": "Texto",
+      "textarea": "Texto longo",
+      "select": "Seleção",
+      "number": "Número",
+      "date": "Data",
+      "tags": "Tags",
+      "url": "URL",
+      "boolean": "Sim / Não"
+    }
+  },
+  "stdform": {
+    "title_create_genre": "Novo gênero",
+    "title_edit_genre": "Editar gênero",
+    "title_create_kind": "Novo tipo",
+    "title_edit_kind": "Editar tipo",
+    "name": "Nome",
+    "name_required": "O nome é obrigatório",
+    "icon": "Ícone",
+    "color": "Cor",
+    "code": "Código",
+    "code_hint": "Opcional — derivado do nome se estiver em branco.",
+    "description": "Descrição",
+    "cancel": "Cancelar",
+    "create": "Criar",
+    "save": "Salvar",
+    "saving": "Salvando..."
+  },
+  "links": {
+    "edit": "Gêneros",
+    "title": "Gêneros para {{name}}",
+    "save": "Salvar",
+    "saving": "Salvando...",
+    "empty": "Nenhum gênero de usuário para vincular. Clone ou crie um gênero primeiro.",
+    "cancel": "Cancelar"
+  },
+  "trash": {
+    "open": "Lixeira",
+    "title": "Lixeira",
+    "close": "Fechar",
+    "genres": "Gêneros",
+    "kinds": "Tipos",
+    "empty_section": "Nada aqui.",
+    "restore": "Restaurar",
+    "purge": "Excluir permanentemente",
+    "restored": "Restaurado",
+    "restoreError": "Não foi possível restaurar",
+    "purged": "Excluído permanentemente",
+    "purgeError": "Não foi possível excluir"
+  }
+}

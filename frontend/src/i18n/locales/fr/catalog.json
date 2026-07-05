@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Découvrir des histoires",
+    "subtitle": "Parcourez les romans publics de la communauté LoreWeave. Lisez, traduisez et explorez des histoires dans toutes les langues.",
+    "search_placeholder": "Rechercher par titre, auteur ou langue...",
+    "search_aria": "Rechercher dans le catalogue",
+    "no_books": "Aucun livre trouvé. Essayez une autre recherche ou un autre filtre.",
+    "load_failed": "Échec du chargement du catalogue"
+  },
+  "filter": {
+    "lang_all": "Toutes",
+    "clear_genres": "Effacer les genres",
+    "books_found": "{{count}} livres trouvés",
+    "sort_aria": "Trier les livres par",
+    "sort": {
+      "recent": "Plus récent",
+      "popular": "Plus populaire",
+      "chapters": "Plus de chapitres",
+      "alpha": "Alphabétique"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} chap."
+  },
+  "detail": {
+    "breadcrumb_browse": "Parcourir",
+    "public_badge": "Public",
+    "unlisted_badge": "Non répertorié",
+    "chapters_count": "{{count}} chapitres",
+    "available_languages": "Langues disponibles",
+    "original": "Original",
+    "start_reading": "Commencer la lecture",
+    "no_chapters_yet": "Aucun chapitre pour le moment",
+    "share": "Partager",
+    "copy_link": "Copier le lien",
+    "loading": "Chargement...",
+    "chapters_heading": "Chapitres",
+    "no_chapters_available": "Aucun chapitre disponible.",
+    "untitled": "Sans titre",
+    "words": "{{count}} mots",
+    "showing_chapters": "Affichage de {{from}} à {{to}} sur {{total}} chapitres",
+    "stat_chapters": "Chapitres",
+    "stat_languages": "Langues",
+    "stat_original": "Original",
+    "stat_published": "Publié",
+    "na": "N/A",
+    "book_not_found": "Livre non trouvé",
+    "back_to_browse": "Retour à la navigation",
+    "link_copied": "Lien copié",
+    "copy_failed": "Échec de la copie",
+    "load_chapters_failed": "Échec du chargement des chapitres"
+  },
+  "shared": {
+    "indicator": "Vous consultez un lien partagé. Ce livre n'est pas répertorié publiquement.",
+    "invalid": "Ce lien partagé est invalide ou a expiré.",
+    "not_found": "Lien partagé introuvable ou expiré",
+    "browse_instead": "Parcourir les livres publics à la place",
+    "back_to_chapters": "Retour aux chapitres",
+    "ch_short": "Ch. {{n}}",
+    "load_chapter_failed": "Échec du chargement du chapitre : {{error}}"
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "Unbenannt",
+    "status": {
+      "draft": "Entwurf",
+      "active": "Aktiv",
+      "inactive": "Inaktiv"
+    },
+    "discard": "Verwerfen",
+    "save": "Speichern",
+    "save_entity": "Entität speichern",
+    "cancel": "Abbrechen",
+    "move_to_trash": "In den Papierkorb verschieben",
+    "meta": {
+      "chapters": "{{count}} Kapitel",
+      "translations": "{{count}} Übersetzungen",
+      "evidences": "{{count}} Belege"
+    },
+    "tab": {
+      "attributes": "Attribute",
+      "evidences": "Belege",
+      "history": "Verlauf"
+    },
+    "viewing_in_language": "Anzeige in {{lang}}",
+    "viewing_original": "Original ({{lang}})",
+    "translation_lang_aria": "Übersetzungssprache",
+    "no_translation": "Keine Übersetzung",
+    "add_language": "+ Sprache hinzufügen...",
+    "lang_placeholder": "z. B. de",
+    "system_attrs": "Systemattribute",
+    "user_attrs": "Benutzerattribute",
+    "no_attributes": "Für diesen Entitätstyp wurden keine Attribute definiert.",
+    "toast": {
+      "saved": "Entität gespeichert",
+      "status_changed": "Status geändert in {{status}}",
+      "invalid_lang": "Ungültiger Sprachcode (z. B. en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*erforderlich",
+    "modified": "geändert",
+    "has_translations": "Hat Übersetzungen"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "Entwurf",
+      "verified": "Verifiziert",
+      "machine": "Maschinell"
+    },
+    "confidence_aria": "Übersetzungssicherheit",
+    "by": "von {{name}}",
+    "discard_aria": "Änderungen verwerfen",
+    "save": "Speichern",
+    "delete_aria": "Übersetzung löschen",
+    "placeholder": "{{lang}} Übersetzung...",
+    "tags_add": "+ Alias hinzufügen",
+    "delete_title": "Übersetzung löschen?",
+    "delete_desc": "Die {{lang}}-Übersetzung für dieses Attribut wird dauerhaft gelöscht.",
+    "delete_confirm": "Löschen",
+    "toast": {
+      "updated": "Übersetzung aktualisiert",
+      "created": "Übersetzung erstellt",
+      "deleted": "Übersetzung gelöscht"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "Zitat",
+      "summary": "Zusammenfassung",
+      "reference": "Referenz"
+    },
+    "provenance": {
+      "ambiguous": "Nicht verifizter Treffer",
+      "ambiguous_hint": "Dieses Zitat stimmt an mehr als einer Stelle mit dem Quelltext überein – der genaue Ort ist unklar.",
+      "unmatched": "Im Quelltext nicht gefunden",
+      "unmatched_hint": "Dieses Zitat konnte im Kapiteltext nicht lokalisiert werden – es könnte umformuliert oder halluziniert sein. Vor der Verwendung verifizieren.",
+      "unverified": "Nicht verifiziert",
+      "unverified_hint": "Dieses Zitat wurde noch nicht gegen den Quelltext validiert."
+    },
+    "filter": {
+      "all": "Alle",
+      "attr_aria": "Nach Attribut filtern",
+      "all_attributes": "Alle Attribute",
+      "chapter_aria": "Nach Kapitel filtern",
+      "all_chapters": "Alle Kapitel",
+      "chapter_n": "Kapitel {{n}}",
+      "lang_aria": "Anzeigesprache",
+      "original": "Original",
+      "sort_aria": "Sortieren nach",
+      "sort": {
+        "created": "Erstellt",
+        "chapter": "Kapitel",
+        "block_line": "Block/Zeile",
+        "attribute": "Attribut"
+      },
+      "ascending": "Aufsteigend",
+      "descending": "Absteigend",
+      "add": "Hinzufügen"
+    },
+    "create": {
+      "title": "Neuer Beleg",
+      "attribute": "Attribut *",
+      "attr_aria": "Attribut für neuen Beleg",
+      "type": "Typ",
+      "type_aria": "Belegtyp",
+      "original_text": "Originaltext *",
+      "text_placeholder": "Quelltext einfügen...",
+      "block_line": "Block / Zeile",
+      "block_placeholder": "z. B. S.42",
+      "note": "Notiz",
+      "note_placeholder": "Optionale Notiz",
+      "cancel": "Abbrechen",
+      "create": "Erstellen"
+    },
+    "card": {
+      "edit_type_aria": "Belegtyp bearbeiten",
+      "cancel_title": "Abbrechen",
+      "block_line": "Block / Zeile",
+      "note": "Notiz",
+      "cancel": "Abbrechen",
+      "save": "Speichern",
+      "edit_title": "Bearbeiten",
+      "open_source": "Quellkapitel öffnen",
+      "delete_title": "Löschen",
+      "translated": "Übersetzt ({{lang}})",
+      "note_label": "Notiz: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "Keine Belege gefunden",
+      "clear_filters": "Filter löschen",
+      "prev_page": "Vorherige Seite",
+      "next_page": "Nächste Seite",
+      "first_page": "Erste Seite",
+      "last_page": "Letzte Seite",
+      "jump_to_page": "Gehe zu Seite",
+      "page_size": "Zeilen pro Seite",
+      "per_page": "{{n}} / Seite",
+      "delete_title": "Beleg löschen?",
+      "delete_desc": "Dieser Beleg aus „{{attr}}“ wird dauerhaft gelöscht.",
+      "delete_confirm": "Löschen"
+    },
+    "toast": {
+      "updated": "Beleg aktualisiert",
+      "deleted": "Beleg gelöscht",
+      "created": "Beleg erstellt",
+      "text_required": "Originaltext ist erforderlich"
+    }
+  },
+  "summarize": {
+    "canonical_label": "Zusammengeführte Zusammenfassung",
+    "pending_dirty": "Wird nach der nächsten Extraktion neu zusammengefasst",
+    "pending_new": "Wird nach der nächsten Extraktion zusammengefasst",
+    "sources": "Roh-Erwähnungen ({{count}})",
+    "empty": "Noch keine Erwähnungen"
+  }
+}

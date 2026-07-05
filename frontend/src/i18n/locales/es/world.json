@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "Mundos",
+    "subtitle": "Construye un mundo a partir de su lore — personajes, lugares, facciones — sin necesidad de un manuscrito.",
+    "loading": "Cargando mundos…"
+  },
+  "empty": {
+    "title": "Aún no hay mundos",
+    "description": "Crea tu primer mundo para empezar a escribir el lore; no hace falta tener capítulos."
+  },
+  "card": {
+    "books": "{{count}} libros"
+  },
+  "create": {
+    "cta": "Nuevo mundo",
+    "title": "Nuevo mundo",
+    "description": "Ponle nombre a tu mundo. Puedes empezar a escribir su lore de inmediato.",
+    "nameLabel": "Nombre del mundo",
+    "namePlaceholder": "p. ej. Los Reinos Fragmentados",
+    "descLabel": "Descripción (opcional)",
+    "cancel": "Cancelar",
+    "submit": "Crear mundo",
+    "creating": "Creando…",
+    "error": "Error al crear el mundo"
+  },
+  "workspace": {
+    "back": "Todos los mundos",
+    "loading": "Cargando mundo…",
+    "error": "Mundo no encontrado."
+  },
+  "lore": {
+    "title": "Biblia del mundo",
+    "extractionOptional": "Crea la historia directamente: personajes, lugares, facciones. No es necesario el manuscrito. La extracción de la prosa es opcional; esta biblia del mundo es el ancla.",
+    "anchorUnavailable": "Este mundo aún no tiene una biblia de anclaje; la creación de lore no está disponible.",
+    "kindLabel": "Tipo",
+    "kindPlaceholder": "Elegir un tipo…",
+    "add": "Añadir lore",
+    "adding": "Añadiendo…",
+    "added": "Lore añadida a tu biblia del mundo.",
+    "error": "Error al añadir lore"
+  },
+  "graph": {
+    "title": "Grafo del mundo",
+    "subtitle": "Una vista de solo lectura de cómo se conecta el lore de tu mundo.",
+    "rollupSubtitle": "Un resumen de solo lectura del grafo canónico de cada libro, renderizado como islas individuales por libro.",
+    "counts": "{{nodes}} nodos · {{edges}} relaciones",
+    "sources": "resumido de {{count}} libro(s)",
+    "truncated": "mostrando los {{n}} principales — un libro extenso puede saturar a uno más pequeño",
+    "hint": "Desliza para zoom · arrastra espacio vacío para moverte · haz clic en un nodo para ver detalles",
+    "loading": "Cargando grafo del mundo…",
+    "loadFailed": "Error al cargar el grafo del mundo: {{error}}",
+    "empty": "Aún no hay conocimiento del mundo; crea la biblia o extrae un libro de miembros para consolidar su grafo aquí."
+  },
+  "timeline": {
+    "title": "Línea temporal del mundo",
+    "subtitle": "Un resumen de solo lectura de la cronología canónica de cada libro de miembros, en orden narrativo.",
+    "counts": "{{count}} eventos",
+    "sources": "en {{count}} libro(s)",
+    "truncated": "mostrando los primeros {{n}}",
+    "chapterLabel": "Capítulo",
+    "loading": "Cargando línea temporal del mundo…",
+    "loadFailed": "Error al cargar la línea temporal del mundo: {{error}}",
+    "empty": "Aún no hay eventos en la línea temporal; extrae un libro de miembros para consolidar su cronología aquí."
+  },
+  "populate": {
+    "addBook": "Añadir un libro",
+    "createWhatIf": "Crear un «qué pasaría si»",
+    "whatIfHint": "Crea una ramificación desde una obra canónica",
+    "whatIfNeedsCanon": "Añade primero un libro con una obra canónica; un «qué pasaría si» se ramifica desde el canon.",
+    "pickCanon": "Ramificar desde…",
+    "addBookTitle": "Añadir un libro a este mundo",
+    "addBookDesc": "Adjunta un libro existente o crea uno nuevo; se integrará en la línea temporal y el gráfico del mundo.",
+    "tabAttach": "Adjuntar existente",
+    "tabCreate": "Crear nuevo",
+    "pickBook": "Libro",
+    "bookTitle": "Título",
+    "bookTitlePlaceholder": "Nuevo título del libro…",
+    "bookDesc": "Descripción (opcional)",
+    "attach": "Adjuntar libro",
+    "createAttach": "Crear y añadir",
+    "adding": "Añadiendo…",
+    "cancel": "Cancelar",
+    "addFailed": "No se pudo añadir el libro: {{error}}"
+  },
+  "living": {
+    "heading": "Mundo vivo",
+    "subtitle": "El canon de tu mundo y sus ramificaciones «qué pasaría si» como una línea de tiempo navegable. Haz clic en una obra para abrirla.",
+    "title": "Mundo vivo",
+    "counts": "{{canon}} canon · {{branches}} ramificaciones «qué pasaría si»",
+    "hint": "Desliza para hacer zoom · arrastra el espacio vacío para desplazarte · haz clic en una obra para abrirla",
+    "loading": "Cargando el mundo vivo…",
+    "loadFailed": "Error al cargar el mundo vivo: {{error}}",
+    "empty": "Aún no hay obras en este mundo; comienza un libro o un «what-if» para expandir su línea temporal.",
+    "canonBadge": "Canon",
+    "branchBadge": "What-if",
+    "canonAria": "Canon: {{title}}",
+    "branchAria": "Ramificación «what-if» en el capítulo {{ch}}: {{title}}",
+    "branchAt": "se ramifica en el cap. {{ch}}",
+    "orphan": "· fuente externa a este mundo",
+    "edgeLabel": "cap. {{ch}}"
+  }
+}

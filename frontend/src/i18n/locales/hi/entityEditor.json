@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "शीर्षकहीन",
+    "status": {
+      "draft": "ड्राफ्ट",
+      "active": "सक्रिय",
+      "inactive": "निष्क्रिय"
+    },
+    "discard": "हटाएं",
+    "save": "सहेजें",
+    "save_entity": "एंटिटी सहेजें",
+    "cancel": "रद्द करें",
+    "move_to_trash": "ट्रैश में ले जाएं",
+    "meta": {
+      "chapters": "{{count}} अध्याय",
+      "translations": "{{count}} अनुवाद",
+      "evidences": "{{count}} प्रमाण"
+    },
+    "tab": {
+      "attributes": "विशेषताएँ",
+      "evidences": "प्रमाण",
+      "history": "इतिहास"
+    },
+    "viewing_in_language": "{{lang}} में देख रहे हैं",
+    "viewing_original": "मूल ({{lang}})",
+    "translation_lang_aria": "अनुवाद भाषा",
+    "no_translation": "कोई अनुवाद नहीं",
+    "add_language": "+ भाषा जोड़ें...",
+    "lang_placeholder": "जैसे en",
+    "system_attrs": "सिस्टम विशेषताएँ",
+    "user_attrs": "उपयोगकर्ता विशेषताएँ",
+    "no_attributes": "इस एंटिटी प्रकार के लिए कोई विशेषताएँ परिभाषित नहीं हैं।",
+    "toast": {
+      "saved": "एंटिटी सहेजी गई",
+      "status_changed": "स्थिति बदलकर {{status}} कर दी गई",
+      "invalid_lang": "अमान्य भाषा कोड (जैसे en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*अनिवार्य",
+    "modified": "संशोधित",
+    "has_translations": "अनुवाद उपलब्ध हैं"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "ड्राफ्ट",
+      "verified": "सत्यापित",
+      "machine": "मशीन"
+    },
+    "confidence_aria": "अनुवाद का भरोसा",
+    "by": "{{name}} द्वारा",
+    "discard_aria": "परिवर्तन हटाएं",
+    "save": "सहेजें",
+    "delete_aria": "अनुवाद हटाएं",
+    "placeholder": "{{lang}} अनुवाद...",
+    "tags_add": "+ उपनाम जोड़ें",
+    "delete_title": "अनुवाद हटाएं?",
+    "delete_desc": "इस विशेषता के लिए {{lang}} अनुवाद स्थायी रूप से हटा दिया जाएगा।",
+    "delete_confirm": "हटाएं",
+    "toast": {
+      "updated": "अनुवाद अपडेट किया गया",
+      "created": "अनुवाद बनाया गया",
+      "deleted": "अनुवाद हटा दिया गया"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "उद्धरण",
+      "summary": "सारांश",
+      "reference": "संदर्भ"
+    },
+    "provenance": {
+      "ambiguous": "असत्यापित मिलान",
+      "ambiguous_hint": "यह उद्धरण एक से अधिक स्थानों पर मूल पाठ से मेल खाता है — सटीक स्थान अनिश्चित है।",
+      "unmatched": "मूल पाठ में नहीं मिला",
+      "unmatched_hint": "यह उद्धरण अध्याय के पाठ में नहीं मिल सका — यह संभवतः पैराफ्रेस (paraphrased) या गलत (hallucinated) हो सकता है। भरोसा करने से पहले इसकी पुष्टि करें।",
+      "unverified": "असत्यापित",
+      "unverified_hint": "इस उद्धरण को मूल पाठ के विरुद्ध सत्यापित नहीं किया गया है।"
+    },
+    "filter": {
+      "all": "सभी",
+      "attr_aria": "विशेषता के अनुसार फ़िल्टर करें",
+      "all_attributes": "सभी विशेषताएँ",
+      "chapter_aria": "अध्याय के अनुसार फ़िल्टर करें",
+      "all_chapters": "सभी अध्याय",
+      "chapter_n": "अध्याय {{n}}",
+      "lang_aria": "प्रदर्शन भाषा",
+      "original": "मूल",
+      "sort_aria": "क्रमबद्ध करें",
+      "sort": {
+        "created": "बनाया गया",
+        "chapter": "अध्याय",
+        "block_line": "ब्लॉक/लाइन",
+        "attribute": "विशेषता"
+      },
+      "ascending": "आरोही",
+      "descending": "अवरोही",
+      "add": "जोड़ें"
+    },
+    "create": {
+      "title": "नया प्रमाण",
+      "attribute": "विशेषता *",
+      "attr_aria": "नए प्रमाण के लिए विशेषता",
+      "type": "प्रकार",
+      "type_aria": "प्रमाण का प्रकार",
+      "original_text": "मूल पाठ *",
+      "text_placeholder": "स्रोत पाठ पेस्ट करें...",
+      "block_line": "ब्लॉक / लाइन",
+      "block_placeholder": "जैसे p.42",
+      "note": "नोट",
+      "note_placeholder": "वैकल्पिक नोट",
+      "cancel": "रद्द करें",
+      "create": "बनाएं"
+    },
+    "card": {
+      "edit_type_aria": "प्रमाण का प्रकार संपादित करें",
+      "cancel_title": "रद्द करें",
+      "block_line": "ब्लॉक / लाइन",
+      "note": "नोट",
+      "cancel": "रद्द करें",
+      "save": "सहेजें",
+      "edit_title": "संपादित करें",
+      "open_source": "स्रोत अध्याय खोलें",
+      "delete_title": "हटाएं",
+      "translated": "अनुवादित ({{lang}})",
+      "note_label": "नोट: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "कोई प्रमाण नहीं मिला",
+      "clear_filters": "फ़िल्टर साफ़ करें",
+      "prev_page": "पिछला पृष्ठ",
+      "next_page": "अगला पृष्ठ",
+      "first_page": "पहला पृष्ठ",
+      "last_page": "अंतिम पृष्ठ",
+      "jump_to_page": "पृष्ठ पर जाएं",
+      "page_size": "प्रति पृष्ठ पंक्तियाँ",
+      "per_page": "{{n}} / पृष्ठ",
+      "delete_title": "प्रमाण हटाएं?",
+      "delete_desc": "\"{{attr}}\" से इस प्रमाण को स्थायी रूप से हटा दिया जाएगा।",
+      "delete_confirm": "हटाएं"
+    },
+    "toast": {
+      "updated": "प्रमाण अपडेट किया गया",
+      "deleted": "प्रमाण हटा दिया गया",
+      "created": "प्रमाण बनाया गया",
+      "text_required": "मूल पाठ आवश्यक है"
+    }
+  },
+  "summarize": {
+    "canonical_label": "विलय किया गया सारांश",
+    "pending_dirty": "अगले निष्कर्षण के बाद पुन: सारांशित किया जाएगा",
+    "pending_new": "अगले निष्कर्षण के बाद सारांशित किया जाएगा",
+    "sources": "कच्चे उल्लेख ({{count}})",
+    "empty": "अभी तक कोई उल्लेख नहीं"
+  }
+}

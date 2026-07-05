@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "ไม่มีชื่อ",
+    "status": {
+      "draft": "ฉบับร่าง",
+      "active": "ใช้งานอยู่",
+      "inactive": "ไม่ได้ใช้งาน"
+    },
+    "discard": "ละทิ้ง",
+    "save": "บันทึก",
+    "save_entity": "บันทึกเอนทิตี",
+    "cancel": "ยกเลิก",
+    "move_to_trash": "ย้ายไปที่ถังขยะ",
+    "meta": {
+      "chapters": "{{count}} บท",
+      "translations": "{{count}} คำแปล",
+      "evidences": "{{count}} หลักฐาน"
+    },
+    "tab": {
+      "attributes": "คุณลักษณะ",
+      "evidences": "หลักฐาน",
+      "history": "ประวัติ"
+    },
+    "viewing_in_language": "กำลังดูในภาษา {{lang}}",
+    "viewing_original": "ต้นฉบับ ({{lang}})",
+    "translation_lang_aria": "ภาษาที่แปล",
+    "no_translation": "ไม่มีคำแปล",
+    "add_language": "+ เพิ่มภาษา...",
+    "lang_placeholder": "เช่น en",
+    "system_attrs": "คุณลักษณะของระบบ",
+    "user_attrs": "คุณลักษณะของผู้ใช้",
+    "no_attributes": "ไม่มีการกำหนดคุณลักษณะสำหรับประเภทเอนทิตีนี้",
+    "toast": {
+      "saved": "บันทึกเอนทิตีแล้ว",
+      "status_changed": "เปลี่ยนสถานะเป็น {{status}} แล้ว",
+      "invalid_lang": "รหัสภาษาไม่ถูกต้อง (เช่น en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*จำเป็นต้องระบุ",
+    "modified": "แก้ไขเมื่อ",
+    "has_translations": "มีคำแปลแล้ว"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "ฉบับร่าง",
+      "verified": "ตรวจสอบแล้ว",
+      "machine": "เครื่องแปล"
+    },
+    "confidence_aria": "ความแม่นยำในการแปล",
+    "by": "โดย {{name}}",
+    "discard_aria": "ละทิ้งการเปลี่ยนแปลง",
+    "save": "บันทึก",
+    "delete_aria": "ลบคำแปล",
+    "placeholder": "คำแปล {{lang}}...",
+    "tags_add": "+ เพิ่มชื่อเรียก",
+    "delete_title": "ลบคำแปล?",
+    "delete_desc": "คำแปลภาษา {{lang}} สำหรับคุณลักษณะนี้จะถูกลบออกอย่างถาวร",
+    "delete_confirm": "ลบ",
+    "toast": {
+      "updated": "อัปเดตคำแปลแล้ว",
+      "created": "สร้างคำแปลแล้ว",
+      "deleted": "ลบคำแปลแล้ว"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "ข้อความอ้างอิง",
+      "summary": "บทสรุป",
+      "reference": "การอ้างอิง"
+    },
+    "provenance": {
+      "ambiguous": "ข้อมูลที่ตรงกันแต่ยังไม่ได้รับการยืนยัน",
+      "ambiguous_hint": "ข้อความอ้างอิงนี้ตรงกับข้อความต้นฉบับมากกว่าหนึ่งแห่ง — ไม่สามารถระบุตำแหน่งที่แน่นอนได้",
+      "unmatched": "ไม่พบในต้นฉบับ",
+      "unmatched_hint": "ไม่พบข้อความอ้างอิงนี้ในเนื้อหาบท — อาจเป็นการถอดความหรือข้อมูลที่สร้างขึ้นเอง โปรดตรวจสอบก่อนนำไปใช้งาน",
+      "unverified": "ยังไม่ได้ตรวจสอบ",
+      "unverified_hint": "ข้อความอ้างอิงนี้ยังไม่ได้ถูกตรวจสอบความถูกต้องกับข้อความต้นฉบับ"
+    },
+    "filter": {
+      "all": "ทั้งหมด",
+      "attr_aria": "กรองตามคุณลักษณะ",
+      "all_attributes": "คุณลักษณะทั้งหมด",
+      "chapter_aria": "กรองตามบท",
+      "all_chapters": "ทุกบท",
+      "chapter_n": "บทที่ {{n}}",
+      "lang_aria": "ภาษาที่แสดง",
+      "original": "ต้นฉบับ",
+      "sort_aria": "เรียงลำดับโดย",
+      "sort": {
+        "created": "วันที่สร้าง",
+        "chapter": "บท",
+        "block_line": "ย่อหน้า/บรรทัด",
+        "attribute": "คุณลักษณะ"
+      },
+      "ascending": "น้อยไปมาก",
+      "descending": "มากไปน้อย",
+      "add": "เพิ่ม"
+    },
+    "create": {
+      "title": "หลักฐานใหม่",
+      "attribute": "คุณลักษณะ *",
+      "attr_aria": "คุณลักษณะสำหรับหลักฐานใหม่",
+      "type": "ประเภท",
+      "type_aria": "ประเภทหลักฐาน",
+      "original_text": "ข้อความต้นฉบับ *",
+      "text_placeholder": "วางข้อความต้นฉบับ...",
+      "block_line": "ย่อหน้า / บรรทัด",
+      "block_placeholder": "เช่น หน้า 42",
+      "note": "บันทึก",
+      "note_placeholder": "บันทึกเพิ่มเติม (ไม่บังคับ)",
+      "cancel": "ยกเลิก",
+      "create": "สร้าง"
+    },
+    "card": {
+      "edit_type_aria": "แก้ไขประเภทหลักฐาน",
+      "cancel_title": "ยกเลิก",
+      "block_line": "ย่อหน้า / บรรทัด",
+      "note": "บันทึก",
+      "cancel": "ยกเลิก",
+      "save": "บันทึก",
+      "edit_title": "แก้ไข",
+      "open_source": "เปิดบทต้นฉบับ",
+      "delete_title": "ลบ",
+      "translated": "แปลแล้ว ({{lang}})",
+      "note_label": "บันทึก: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "ไม่พบหลักฐาน",
+      "clear_filters": "ล้างตัวกรอง",
+      "prev_page": "หน้าก่อนหน้า",
+      "next_page": "หน้าถัดไป",
+      "first_page": "หน้าแรก",
+      "last_page": "หน้าสุดท้าย",
+      "jump_to_page": "ไปที่หน้า",
+      "page_size": "แถวต่อหน้า",
+      "per_page": "{{n}} / หน้า",
+      "delete_title": "ลบหลักฐาน?",
+      "delete_desc": "หลักฐานจาก \"{{attr}}\" นี้จะถูกลบออกอย่างถาวร",
+      "delete_confirm": "ลบ"
+    },
+    "toast": {
+      "updated": "อัปเดตหลักฐานแล้ว",
+      "deleted": "ลบหลักฐานแล้ว",
+      "created": "สร้างหลักฐานแล้ว",
+      "text_required": "จำเป็นต้องระบุข้อความต้นฉบับ"
+    }
+  },
+  "summarize": {
+    "canonical_label": "บทสรุปที่รวมแล้ว",
+    "pending_dirty": "จะสรุปใหม่หลังจากการดึงข้อมูลครั้งถัดไป",
+    "pending_new": "จะถูกสรุปหลังจากการดึงข้อมูลครั้งถัดไป",
+    "sources": "การกล่าวถึงดิบ ({{count}})",
+    "empty": "ยังไม่มีการกล่าวถึง"
+  }
+}

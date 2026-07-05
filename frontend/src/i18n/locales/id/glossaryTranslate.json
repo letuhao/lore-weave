@@ -1,0 +1,87 @@
+{
+  "title": "Terjemahan Glosarium",
+  "subtitle": "Terjemahkan atribut entitas secara massal dengan AI",
+  "steps": {
+    "config": "Pengaturan",
+    "confirm": "Konfirmasi",
+    "progress": "Progres",
+    "results": "Hasil"
+  },
+  "config": {
+    "title": "Pengaturan Terjemahan",
+    "description": "Pilih bahasa target dan model. Semua atribut dengan teks sumber akan diterjemahkan.",
+    "sourceLanguage": "Bahasa sumber",
+    "sourceUnknown": "Dari buku",
+    "targetLanguage": "Bahasa target",
+    "overwriteMode": "Kebijakan penimpaan",
+    "model": "Model",
+    "noModels": "Tidak ada model yang dikonfigurasi.",
+    "addInSettings": "Tambah di Pengaturan",
+    "selectModel": "Pilih model...",
+    "allAttrsNote": "Setiap atribut dengan nilai asli akan disertakan. Terjemahan yang telah diverifikasi tidak akan pernah ditimpa.",
+    "sameLanguageError": "Bahasa target harus berbeda dari bahasa sumber buku.",
+    "thinkingEnabled": "Aktifkan pemikiran / penalaran",
+    "thinkingHint": "Default adalah 'Off'. Aktifkan untuk Gemma dan model serupa jika Anda ingin model melakukan penalaran sebelum menjawab.",
+    "mode": {
+      "missing_only": {
+        "label": "Hanya yang kosong",
+        "hint": "Lewati atribut yang sudah memiliki terjemahan dalam bahasa target."
+      },
+      "refresh_machine": {
+        "label": "Perbarui mesin",
+        "hint": "Terjemahkan ulang draf dan terjemahan mesin. Terjemahan yang telah diverifikasi tetap tidak berubah."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "Bahasa",
+    "mode": "Mode",
+    "model": "Model",
+    "estimateNote": "Jumlah entitas dan penggunaan token ditentukan saat pekerjaan dimulai. Penggunaan aktual bergantung pada jumlah atribut per entitas.",
+    "editConfig": "Edit pengaturan",
+    "startTranslate": "Mulai Terjemahan",
+    "startFailed": "Gagal memulai pekerjaan terjemahan",
+    "thinkingOn": "Thinking: aktif",
+    "thinkingOff": "Thinking: nonaktif"
+  },
+  "progress": {
+    "title": "Menerjemahkan Glosarium",
+    "processing": "Memproses entitas {{current}} dari {{total}}...",
+    "entityProgress": "Progres entitas",
+    "entitiesCount": "{{completed}} / {{total}} entitas",
+    "failedCount": "{{count}} gagal",
+    "attrsTranslated": "Atribut diterjemahkan",
+    "attrsSkipped": "Atribut dilewati",
+    "entitiesDone": "Entitas selesai",
+    "entitiesFailed": "Entitas gagal",
+    "cancel": "Batal",
+    "cancelConfirm": "Batalkan pekerjaan terjemahan ini? Entitas yang sudah diproses akan tetap mempertahankan terjemahannya.",
+    "cancelRequested": "Pembatalan diminta",
+    "noEntities": "Tidak ada entitas yang perlu diterjemahkan untuk bahasa ini."
+  },
+  "results": {
+    "title": "Terjemahan Selesai",
+    "titleNoEntities": "Tidak Ada yang Diterjemahkan",
+    "titleWithErrors": "Terjemahan Selesai (dengan kesalahan)",
+    "titleFailed": "Terjemahan Gagal",
+    "titleCancelled": "Terjemahan Dibatalkan",
+    "duration": "{{count}} entitas dalam {{duration}}",
+    "attrsTranslated": "Diterjemahkan",
+    "attrsSkipped": "Dilewati",
+    "entitiesDone": "Entitas selesai",
+    "entitiesFailed": "Gagal",
+    "partialFailure": "{{count}} entitas gagal",
+    "tokenUsage": "Penggunaan token",
+    "estimated": "Estimasi: {{tokens}}",
+    "noEntities": "Semua atribut entitas sudah memiliki terjemahan dalam bahasa ini, atau tidak ada atribut yang memiliki teks sumber.",
+    "machineNote": "Terjemahan disimpan sebagai tingkat kepercayaan mesin — tinjau dan verifikasi di editor entitas.",
+    "viewGlossary": "Tinjau di Glosarium",
+    "runAgain": "Terjemahkan lagi",
+    "close": "Tutup"
+  },
+  "button": {
+    "next": "Berikutnya",
+    "back": "Kembali",
+    "cancel": "Batal"
+  }
+}

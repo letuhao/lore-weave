@@ -1,0 +1,54 @@
+{
+  "title": "Notifikasi",
+  "markAllRead": "Tandai semua telah dibaca",
+  "markRead": "Tandai sebagai telah dibaca",
+  "delete": "Hapus",
+  "empty": "Belum ada notifikasi",
+  "loading": "Memuat...",
+  "justNow": "Baru saja",
+  "minsAgo": "{{count}} m yang lalu",
+  "hrsAgo": "{{count}} j yang lalu",
+  "daysAgo": "{{count}} h yang lalu",
+  "viewAll": "Lihat semua notifikasi",
+  "loadMore": "Muat lebih banyak",
+  "pageTitle": "Notifikasi",
+  "notif": {
+    "translation": {
+      "completed": "Terjemahan selesai — {{count}} bab dari \"{{book}}\"",
+      "partial": "Terjemahan sebagian — {{done}} selesai, {{failed}} gagal",
+      "failed": "Terjemahan gagal — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} mulai mengikuti Anda"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Chat",
+      "completion": "Penyelesaian",
+      "embedding": "Embedding",
+      "entity_extraction": "Ekstraksi entitas",
+      "fact_extraction": "Ekstraksi fakta",
+      "relation_extraction": "Ekstraksi relasi",
+      "event_extraction": "Ekstraksi peristiwa",
+      "translation": "Terjemahan",
+      "image_gen": "Generasi gambar",
+      "video_gen": "Generasi video"
+    },
+    "status": {
+      "completed": "selesai",
+      "failed": "gagal",
+      "cancelled": "dibatalkan",
+      "running": "sedang berjalan",
+      "pending": "menunggu"
+    }
+  },
+  "category": {
+    "all": "Semua",
+    "translation": "Terjemahan",
+    "social": "Sosial",
+    "wiki": "Wiki",
+    "system": "Sistem"
+  }
+}

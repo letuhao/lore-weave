@@ -1,0 +1,87 @@
+{
+  "title": "Terjemahan Glosari",
+  "subtitle": "Terjemah atribut entiti secara pukal dengan AI",
+  "steps": {
+    "config": "Tetapan",
+    "confirm": "Sahkan",
+    "progress": "Kemajuan",
+    "results": "Keputusan"
+  },
+  "config": {
+    "title": "Tetapan Terjemahan",
+    "description": "Pilih bahasa sasaran dan model. Semua atribut dengan teks sumber akan diterjemahkan.",
+    "sourceLanguage": "Bahasa sumber",
+    "sourceUnknown": "Daripada buku",
+    "targetLanguage": "Bahasa sasaran",
+    "overwriteMode": "Polisi penggantian",
+    "model": "Model",
+    "noModels": "Tiada model dikonfigurasikan.",
+    "addInSettings": "Tambah dalam Tetapan",
+    "selectModel": "Pilih model...",
+    "allAttrsNote": "Setiap atribut dengan nilai asal disertakan. Terjemahan yang telah disahkan tidak akan diganti.",
+    "sameLanguageError": "Bahasa sasaran mestilah berbeza daripada bahasa sumber buku.",
+    "thinkingEnabled": "Aktifkan pemikiran / penaakulan",
+    "thinkingHint": "Nyahaktif adalah lalai. Aktifkan untuk Gemma dan model serupa jika anda mahu model menaakul sebelum menjawab.",
+    "mode": {
+      "missing_only": {
+        "label": "Hanya yang hilang",
+        "hint": "Langkau atribut yang sudah mempunyai terjemahan dalam bahasa sasaran."
+      },
+      "refresh_machine": {
+        "label": "Segarkan mesin",
+        "hint": "Terjemah semula draf dan terjemahan mesin. Terjemahan yang telah disahkan kekal tidak berubah."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "Bahasa",
+    "mode": "Mod",
+    "model": "Model",
+    "estimateNote": "Bilangan entiti dan penggunaan token ditentukan apabila tugasan bermula. Penggunaan sebenar bergantung pada bilangan atribut bagi setiap entiti.",
+    "editConfig": "Edit tetapan",
+    "startTranslate": "Mula Terjemah",
+    "startFailed": "Gagal memulakan tugasan terjemahan",
+    "thinkingOn": "Pemikiran: aktif",
+    "thinkingOff": "Pemikiran: tidak aktif"
+  },
+  "progress": {
+    "title": "Menterjemah Glosari",
+    "processing": "Memproses entiti {{current}} daripada {{total}}...",
+    "entityProgress": "Kemajuan entiti",
+    "entitiesCount": "{{completed}} / {{total}} entiti",
+    "failedCount": "{{count}} gagal",
+    "attrsTranslated": "Atribut diterjemah",
+    "attrsSkipped": "Atribut dilangkau",
+    "entitiesDone": "Entiti selesai",
+    "entitiesFailed": "Entiti gagal",
+    "cancel": "Batal",
+    "cancelConfirm": "Batal tugasan terjemahan ini? Entiti yang telah diproses akan mengekalkan terjemahannya.",
+    "cancelRequested": "Pembatalan diminta",
+    "noEntities": "Tiada entiti yang perlu diterjemahkan untuk bahasa ini."
+  },
+  "results": {
+    "title": "Terjemahan Selesai",
+    "titleNoEntities": "Tiada Sesuatu untuk Diterjemah",
+    "titleWithErrors": "Terjemahan Selesai (dengan ralat)",
+    "titleFailed": "Terjemahan Gagal",
+    "titleCancelled": "Terjemahan Dibatalkan",
+    "duration": "{{count}} entiti dalam {{duration}}",
+    "attrsTranslated": "Diterjemah",
+    "attrsSkipped": "Dilangkau",
+    "entitiesDone": "Entiti selesai",
+    "entitiesFailed": "Gagal",
+    "partialFailure": "{{count}} entiti gagal",
+    "tokenUsage": "Penggunaan token",
+    "estimated": "Anggaran: {{tokens}}",
+    "noEntities": "Semua atribut entiti sudah mempunyai terjemahan dalam bahasa ini, atau tiada atribut mempunyai teks sumber.",
+    "machineNote": "Terjemahan disimpan sebagai keyakinan mesin — semak dan sahkan dalam editor entiti.",
+    "viewGlossary": "Semak dalam Glosari",
+    "runAgain": "Terjemah semula",
+    "close": "Tutup"
+  },
+  "button": {
+    "next": "Seterusnya",
+    "back": "Kembali",
+    "cancel": "Batal"
+  }
+}

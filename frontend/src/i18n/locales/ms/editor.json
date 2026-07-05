@@ -1,0 +1,374 @@
+{
+  "focus": {
+    "toggle": "Mod fokus",
+    "continuity": "Kesinambungan ✓",
+    "hint": "✦ ketik baris untuk penumpuan"
+  },
+  "saved": "Bab disimpan",
+  "no_content": "Tiada kandungan untuk diterjemah",
+  "translation_failed": "Terjemahan gagal",
+  "translated_blocks": "{{count}} blok diterjemah",
+  "text_translation_received": "Terjemahan teks diterima — mod blok disyorkan",
+  "breadcrumb": {
+    "workspace": "Ruang Kerja",
+    "book": "Buku",
+    "chapter": "Bab"
+  },
+  "prev_chapter": "Bab sebelumnya",
+  "next_chapter": "Bab seterusnya",
+  "mode": {
+    "classic": "Klasik",
+    "classic_title": "Mod klasik — penulisan fokus",
+    "ai": "AI",
+    "ai_title": "Mod Pembantu AI — ciri penuh"
+  },
+  "workmode": {
+    "write": "Tulis",
+    "write_desc": "Edit manuskrip",
+    "translate": "Terjemah",
+    "translate_desc": "Versi, banding & terjemah",
+    "read": "Baca",
+    "read_desc": "Buka pembaca (TTS, tema)",
+    "compose": "Gubah",
+    "compose_desc": "Studio penulisan bersama AI"
+  },
+  "grammar_title": "Nyahaktifkan semakan tatabahasa & ejaan (LanguageTool)",
+  "translate_title": "Terjemah kandungan menggunakan AI (mod blok)",
+  "translating": "Menterjemah...",
+  "translate": "Terjemah",
+  "view_translations": "Terjemahan",
+  "view_translations_title": "Lihat versi terjemahan yang disimpan (bahasa, sejarah, banding sisi-ke-sisi)",
+  "toggle_source": "Nyahaktifkan panel sumber",
+  "toggle_history": "Nyahaktifkan sejarah / panel AI",
+  "unsaved": "Belum disimpan",
+  "saved_badge": "Disimpan",
+  "mobile": {
+    "editor": "Editor",
+    "studio": "Studio",
+    "history": "Sejarah",
+    "nav": "Bahagian editor"
+  },
+  "discard_title": "Buang semua perubahan yang belum disimpan",
+  "discard": "Buang",
+  "save": "Simpan",
+  "tabs": {
+    "chapters": "Bab",
+    "original": "Asal",
+    "glossary": "Glosari",
+    "outline": "Rangka"
+  },
+  "chapter_count": "{{count}} bab",
+  "chapter_count_other": "{{count}} bab",
+  "original_readonly": "Teks asal dimuat naik — baca sahaja",
+  "no_original": "Tiada sumber asal — bab ini dicipta terus dalam editor (tiada fail diimport).",
+  "title_placeholder": "Tajuk bab",
+  "chars": "{{n}} aksara",
+  "words": "{{n}} perkataan",
+  "paragraphs": "{{count}} perenggan",
+  "paragraphs_other": "{{count}} perenggan",
+  "save_note_placeholder": "Nota simpanan (pilihan) — cth. \"tambah bab imbas kembali\"",
+  "history": "Sejarah",
+  "ai_chat": "Sembang AI",
+  "coming_soon": "Akan datang",
+  "connected": "Bersambung",
+  "left_panel": "Panel kiri",
+  "right_panel": "Panel kanan",
+  "discard_confirm": {
+    "title": "Buang perubahan?",
+    "desc": "Semua perubahan yang belum disimpan akan hilang secara kekal. Tindakan ini tidak boleh dibatalkan.",
+    "confirm": "Buang perubahan",
+    "cancel": "Teruskan mengedit"
+  },
+  "toolbar": {
+    "paragraph": "Perenggan",
+    "h1": "Tajuk 1",
+    "h2": "Tajuk 2",
+    "h3": "Tajuk 3",
+    "bold": "Tebal (Ctrl+B)",
+    "italic": "Italik (Ctrl+I)",
+    "strike": "Coret",
+    "underline": "Garis bawah (Ctrl+U)",
+    "inline_code": "Kod baris",
+    "link": "Pautan",
+    "url_prompt": "URL:",
+    "highlight": "Sorot (Ctrl+Shift+H)",
+    "subscript": "Subskrip",
+    "superscript": "Superskrip",
+    "bullet_list": "Senarai bulet",
+    "ordered_list": "Senarai bernombor",
+    "blockquote": "Petikan blok",
+    "insert_image": "Masukkan imej",
+    "insert_video": "Masukkan video",
+    "insert_audio": "Masukkan audio",
+    "code_block": "Blok kod",
+    "horizontal_rule": "Garisan mendatar",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "Perenggan",
+      "desc": "Blok teks biasa"
+    },
+    "heading1": {
+      "title": "Tajuk 1",
+      "desc": "Tajuk bahagian besar"
+    },
+    "heading2": {
+      "title": "Tajuk 2",
+      "desc": "Tajuk bahagian sederhana"
+    },
+    "heading3": {
+      "title": "Tajuk 3",
+      "desc": "Tajuk bahagian kecil"
+    },
+    "bullet": {
+      "title": "Senarai Bulet",
+      "desc": "Senarai tidak bernombor"
+    },
+    "numbered": {
+      "title": "Senarai Bernombor",
+      "desc": "Senarai bernombor"
+    },
+    "quote": {
+      "title": "Petikan",
+      "desc": "Petikan blok"
+    },
+    "image": {
+      "title": "Imej",
+      "desc": "Muat naik, tampal, atau jana dengan AI"
+    },
+    "video": {
+      "title": "Video",
+      "desc": "Muat naik fail video"
+    },
+    "audio": {
+      "title": "Audio",
+      "desc": "Muat naik fail audio"
+    },
+    "code": {
+      "title": "Blok Kod",
+      "desc": "Kod dengan penonjolan sintaks"
+    },
+    "callout": {
+      "title": "Callout",
+      "desc": "Nota penulis atau tip"
+    },
+    "divider": {
+      "title": "Pembahagi",
+      "desc": "Garisan mendatar"
+    }
+  },
+  "code": {
+    "language_label": "Bahasa kod",
+    "copy": "Salin kod",
+    "delete": "Padam blok kod"
+  },
+  "media": {
+    "ai_prompt": "Prompt AI",
+    "saved": "disimpan",
+    "empty": "kosong",
+    "placeholder": "Huraikan media ini untuk konteks dan penjanaan AI...",
+    "stored_note": "Disimpan bersama media untuk konteks dan penjanaan semula AI.",
+    "copied": "Disalin",
+    "copy_prompt": "Salin prompt",
+    "regenerate": "Jana semula",
+    "generating": "Menjana..."
+  },
+  "image": {
+    "err_type": "Jenis tidak disokong: {{type}}. Gunakan PNG, JPG, GIF, atau WebP.",
+    "err_size": "Fail terlalu besar: {{size}} MB. Maksimum 10 MB.",
+    "upload_unavailable": "Muat naik tidak tersedia — simpan bab terlebih dahulu.",
+    "upload_failed": "Muat naik gagal",
+    "regen_save_first": "Simpan bab terlebih dahulu untuk membolehkan penjanaan AI.",
+    "regen_no_model": "Tiada model AI dikonfigurasi. Tambah penyedia dalam Tetapan.",
+    "regen_no_provider": "Tiada penyedia AI aktif. Konfigurasi satu dalam Tetapan → Penyedia.",
+    "regen_failed": "Penjanaan gagal",
+    "default_title": "Imej",
+    "version_history": "Sejarah versi",
+    "copy_filename": "Salin nama fail",
+    "copy": "Salin",
+    "ai_mode": "Mod AI",
+    "replace": "Ganti",
+    "replace_title": "Ganti imej",
+    "delete_block": "Padam blok",
+    "delete_image_block": "Padam blok imej",
+    "uploading": "Memuat naik... {{pct}}%",
+    "drop_here": "Lepaskan imej di sini",
+    "drop_hint": "Lepaskan imej, klik untuk cari, atau Ctrl+V",
+    "formats": "PNG, JPG, GIF, WebP — Maks 10 MB",
+    "width_title": "Lebar: {{width}}%",
+    "caption_placeholder": "Tambah kapsyen...",
+    "caption_aria": "Kapsyen imej",
+    "alt_text": "Teks alt",
+    "alt_set": "tetapkan",
+    "alt_placeholder": "Huraikan imej ini untuk pembaca skrin dan eksport EPUB...",
+    "alt_aria": "Teks alt imej",
+    "alt_note": "Digunakan oleh pembaca skrin, carian, dan eksport EPUB. Berbeza daripada kapsyen."
+  },
+  "video": {
+    "err_type": "Jenis tidak disokong: {{type}}. Gunakan MP4 atau WebM.",
+    "err_size": "Fail terlalu besar: {{size}} MB. Maks 100 MB.",
+    "upload_unavailable": "Muat naik tidak tersedia — simpan bab terlebih dahulu.",
+    "upload_failed": "Muat naik gagal",
+    "gen_save_first": "Simpan bab terlebih dahulu.",
+    "gen_no_model": "Tiada model penjanaan video dikonfigurasi. Tambah satu di Tetapan > Pembekal.",
+    "gen_failed": "Penjanaan gagal",
+    "default_title": "Video",
+    "version_history": "Sejarah versi",
+    "copy_filename": "Salin nama fail",
+    "copy": "Salin",
+    "ai_mode": "Mod AI",
+    "replace": "Ganti",
+    "replace_title": "Ganti video",
+    "delete_block": "Padam blok",
+    "delete_video_block": "Padam blok video",
+    "uploading": "Memuat naik... {{pct}}%",
+    "drop_here": "Lepaskan video di sini",
+    "drop_hint": "Lepaskan video atau klik untuk cari",
+    "formats": "MP4, WebM — Maks 100 MB",
+    "width_title": "Lebar: {{width}}%",
+    "caption_placeholder": "Tambah kapsyen...",
+    "caption_aria": "Kapsyen video",
+    "alt_text": "Teks alt",
+    "alt_set": "tetapkan",
+    "alt_placeholder": "Huraikan video ini untuk pembaca skrin dan eksport EPUB...",
+    "alt_aria": "Teks alt video",
+    "alt_note": "Digunakan oleh pembaca skrin, carian, dan eksport EPUB. Berbeza daripada kapsyen.",
+    "generate": "Jana"
+  },
+  "audio": {
+    "err_type": "Jenis tidak disokong: {{type}}. Gunakan MP3, WAV, OGG, WebM, atau M4A.",
+    "err_size": "Fail terlalu besar: {{size}} MB. Maks 20 MB.",
+    "upload_unavailable": "Muat naik tidak tersedia — simpan bab terlebih dahulu.",
+    "upload_failed": "Muat naik gagal",
+    "default_title": "Audio",
+    "ai_mode": "Mod AI",
+    "play": "Main",
+    "pause": "Jeda",
+    "replace_title": "Ganti audio",
+    "delete_audio_block": "Padam blok audio",
+    "uploading": "Memuat naik... {{pct}}%",
+    "drop_here": "Lepaskan audio di sini",
+    "drop_hint": "Lepaskan fail audio atau klik untuk cari",
+    "formats": "MP3, WAV, OGG, WebM, M4A — Maks 20 MB",
+    "subtitle_placeholder": "Tambah sari kata...",
+    "subtitle_aria": "Sari kata audio"
+  },
+  "callout": {
+    "type": {
+      "note": "nota",
+      "warning": "amaran",
+      "tip": "tip",
+      "danger": "bahaya"
+    },
+    "title": "{{type}} — klik untuk tukar jenis"
+  },
+  "revision": {
+    "restored": "Revisi dipulihkan",
+    "header": "Sejarah Revisi · {{count}}",
+    "empty": "Tiada revisi lagi. Simpan untuk mencipta satu.",
+    "current": "Semasa",
+    "view": "Lihat",
+    "restore": "Pulihkan",
+    "confirm_title": "Pulihkan revisi ini?",
+    "confirm_desc": "Ini akan menindih draf semasa anda dengan versi lama ini dan mencipta entri revisi baharu. Tindakan ini tidak boleh dibatalkan.",
+    "close_preview": "Tutup pratonton",
+    "preview": "Pratonton revisi",
+    "restore_version": "Pulihkan versi ini",
+    "empty_revision": "Revisi kosong."
+  },
+  "source": {
+    "header": "JSON Blok — paparan baca sahaja untuk struktur bab",
+    "copied": "Disalin",
+    "copy": "Salin JSON"
+  },
+  "version": {
+    "loading": "Memuatkan sejarah versi...",
+    "close": "Tutup",
+    "title": "Sejarah Versi",
+    "block_crumb": "Blok",
+    "comparing": "Membandingkan v{{old}} → v{{new}}",
+    "previous": "Sebelumnya",
+    "old": "lama",
+    "no_media": "Tiada media",
+    "current": "Semasa",
+    "selected": "Dipilih",
+    "current_tag": "semasa",
+    "no_media_version": "Tiada media dalam versi ini",
+    "no_versions": "Tiada versi lagi",
+    "version_count": "{{count}} versi",
+    "version_count_other": "{{count}} versi",
+    "total": "{{size}} jumlah",
+    "delete_confirm": "Padam versi {{version}}? Tindakan ini tidak boleh dibatalkan.",
+    "versions": "Versi",
+    "restore_version": "Pulihkan v{{version}}",
+    "timeago": {
+      "just_now": "sekarang",
+      "mins": "{{n}}m yang lalu",
+      "hours": "{{n}}j yang lalu",
+      "yesterday": "Semalam",
+      "days": "{{n}} hari yang lalu"
+    },
+    "action": {
+      "upload": "Media dimuat naik",
+      "regenerate": "Dijana semula dengan prom yang diperhalusi",
+      "caption_edit": "Kapsyen dikemas kini",
+      "prompt_edit": "Prom dikemas kini"
+    },
+    "diff_identical": "Prom adalah serupa",
+    "diff_title": "Perbezaan Prom AI ({{old}} → {{new}})",
+    "diff_previous": "Sebelumnya",
+    "diff_current": "Semasa"
+  },
+  "media_guard": {
+    "protected": "Blok media dilindungi dalam mod Klasik. Tukar ke mod AI untuk edit atau padam."
+  },
+  "publish": {
+    "publish": "Terbit",
+    "republish": "Terbit semula",
+    "unpublish": "Nyah-terbit",
+    "draft_badge": "Draf",
+    "published_badge": "Diterbitkan",
+    "confirm_title": "Nyah-terbit bab?",
+    "confirm_body": "Ini akan mengeluarkan bab daripada kanon — pengetahuan dan petikan yang diekstrak akan ditarik balik sehingga anda menerbitkannya semula.",
+    "published_toast": "Bab diterbitkan",
+    "unpublished_toast": "Bab dinyah-terbit",
+    "conflict_toast": "Draf telah berubah sejak anda membukanya — muat semula sebelum menerbit.",
+    "empty_toast": "Bab ini tidak mempunyai kandungan untuk diterbitkan — tulis sesuatu terlebih dahulu.",
+    "save_first": "Simpan sebelum menerbit",
+    "gate_pending": "{{pending}} daripada {{total}} bab belum selesai",
+    "gate_no_scenes": "Cipta dan lengkapkan sekurang-kurangnya satu bab untuk menerbit",
+    "gate_canon_blocked": "percanggahan kanon yang belum selesai dalam {{count}} bab",
+    "gate_unchecked": "Kanun tidak disahkan dalam {{count}} babak",
+    "gate_unchecked_hint": "Babak-babak ini mempunyai watak untuk disemak tetapi tiada kedudukan urutan pembacaan yang ditetapkan, jadi kanun tidak disahkan. Penerbitan dibenarkan — semak jika anda mahu."
+  },
+  "compare": {
+    "open": "Bandingkan",
+    "title": "Bandingkan semakan",
+    "back": "Kembali ke editor",
+    "left": "Semakan kiri",
+    "right": "Semakan kanan",
+    "side_by_side": "Sisi demi sisi",
+    "inline": "Dalam talian",
+    "no_revisions": "Tiada semakan",
+    "need_two": "Bab ini memerlukan sekurang-kurangnya dua semakan yang disimpan untuk dibandingkan.",
+    "loading": "Memuatkan...",
+    "diffing": "Mengira perbezaan...",
+    "error": "Tidak dapat memuatkan perbandingan.",
+    "truncated": "Semakan ini sangat besar — menunjukkan penggantian penuh dan bukannya perbezaan terperinci.",
+    "same": "Kedua-dua bahagian adalah semakan yang sama — tiada perbezaan.",
+    "load_more": "Muat lebih banyak ({{loaded}}/{{total}})",
+    "load_more_hint": "Muat semakan lama ke dalam pemilih"
+  },
+  "checkpoint": {
+    "header": "Titik semak suntingan AI",
+    "insert": "Dimasukkan",
+    "polish": "Digilap",
+    "restore": "Pulihkan",
+    "restored": "Dipulihkan ke keadaan sebelum suntingan AI",
+    "no_restore": "Tiada versi terdahulu untuk dipulihkan",
+    "confirm_title": "Pulihkan ke keadaan sebelum suntingan AI ini?",
+    "confirm_desc": "Draf semasa akan diambil gambar skrin (snapshot) terlebih dahulu, jadi tindakan ini boleh dibatalkan melalui sejarah semakan."
+  }
+}

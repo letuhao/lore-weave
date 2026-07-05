@@ -1,0 +1,1161 @@
+{
+  "page": {
+    "title": "Bilgi",
+    "subtitle": "Yapay zekanın neleri hatırlayacağına dair projeler, genel biyografi ve gizlilik kontrolleri.",
+    "tabs": {
+      "label": "Bilgi sekmeleri",
+      "projects": "Projeler",
+      "jobs": "İşler",
+      "global": "Genel",
+      "entities": "Varlıklar",
+      "timeline": "Zaman Çizelgesi",
+      "raw": "Ham Veri",
+      "privacy": "Gizlilik",
+      "insights": "İçgörüler"
+    }
+  },
+  "graph": {
+    "title": "Bilgi grafiği",
+    "counts": "{{nodes}} düğüm · {{edges}} ilişki",
+    "truncated": "en üstteki {{n}} gösteriliyor — daha fazlasını yüklemek için bir düğümü genişletin",
+    "expanding": "genişletiliyor…",
+    "hint": "Yakınlaştırmak için kaydırın · hareket ettirmek için boş alandan sürükleyin · ayrıntılar için bir düğüme tıklayın · genişletmek için ⊞",
+    "loading": "Grafik yükleniyor…",
+    "loadFailed": "Grafik yüklenemedi: {{error}}",
+    "empty": "Henüz bir bilgi grafiği yok — ağını keşfetmek için bu projeyi oluşturun."
+  },
+  "schemaSection": {
+    "title": "Şema",
+    "subtitle": "Bu projenin bilgi grafiği şemasını oluşturun — düğüm türleri, kenar tipleri, olgu tipleri ve sözlük. Düzenlemeler bu projenin grafiğine uygulanır.",
+    "editCta": "Şemayı düzenle",
+    "freeEdges": "Sözlük dışı ilişkilere izin verilir (serbest kenarlar).",
+    "closedEdges": "İlişkiler yalnızca tanımlanmış kenar türleri ile sınırlıdır; diğerleri incelemeye gönderilir.",
+    "error": "Bu projenin şeması yüklenemedi.",
+    "emptyHelp": "Bu projenin henüz bir şeması yok. Sıfırdan başlayın, bir şablonu klonlayın veya birini benimseyin.",
+    "newBlank": "Yeni boş şema",
+    "schemaNamePlaceholder": "Şema adı",
+    "createBlankButton": "Boş şema oluştur",
+    "created": "Şema oluşturuldu",
+    "cloneTemplate": "Bir şablonu klonla",
+    "pickTemplate": "Bir şablon seç…",
+    "cloneButton": "Şemalarım arasına klonla",
+    "cloned": "Şablon klonlandı",
+    "adoptTemplate": "Bir şablonu benimse",
+    "adoptHelp": "Bir şablonu bu projeye kopyalar (önce sözlüğü kontrol eder).",
+    "adoptCta": "Kitabın Ontoloji sekmesinde benimse",
+    "adoptBooklessHint": "Beniseme seçeneği kitaba bağlı projeler için mevcuttur.",
+    "forbidden": "Şemayı oluşturmak için bu projede Yönetme erişimine sahip olmanız gerekir.",
+    "createFailed": "Şema oluşturulamadı."
+  },
+  "shell": {
+    "backToProjects": "Tüm projeler",
+    "sections": {
+      "label": "Proje bölümleri",
+      "overview": "Genel Bakış",
+      "entities": "Varlıklar",
+      "timeline": "Zaman Çizelgesi",
+      "evidence": "Kanıtlar",
+      "proposals": "Öneriler",
+      "gap": "Boşluklar",
+      "insights": "İçgörüler",
+      "schema": "Şema",
+      "graph": "Grafik Oluştur / Keşfet"
+    },
+    "notFound": "Proje bulunamadı.",
+    "loading": "Proje yükleniyor…",
+    "overview": {
+      "configHeading": "Yapılandırma",
+      "embeddingModel": "Gömme modeli",
+      "rerankModel": "Yeniden sıralama modeli",
+      "extraction": "Veri Çıkarımı",
+      "extractionEnabled": "Etkin",
+      "extractionDisabled": "Devre Dışı",
+      "book": "Kitap",
+      "world": "Dünya",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "Bekleyen öneriler buraya düşer (C11).",
+      "gap": "Sözlük boşluk raporu buraya düşer (C10).",
+      "graph": "Grafik oluşturma ve keşfetme buraya düşer (C5 / C19)."
+    }
+  },
+  "gap": {
+    "heading": "Sözlük boşluk raporu",
+    "subtitle": "Kitabınızda bulduğumuz ancak henüz sözlükte yer almayan, çokça adı geçen karakterler, yerler ve kavramlar. Kalıcı olması gerekenleri sözlüğe ekleyin.",
+    "summary": {
+      "candidates": "Boşluk adayları",
+      "threshold": "Min. geçiş",
+      "top": "En büyük boşluk",
+      "topLabel": "En büyük boşluk",
+      "topMentions": "{{count}} geçiş",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "Min. geçiş",
+      "limit": "Şu sayıya kadar göster"
+    },
+    "selectAll": "Tümünü seç",
+    "selectRow": "{{name}} seç",
+    "loading": "Boşluklar yükleniyor…",
+    "empty": "Bu eşiğin üzerinde boşluk yok. Daha fazlasını görmek için min. geçiş sayısını düşürün veya sözlüğünüz zaten kapsamlı.",
+    "error": "Boşluk raporu yüklenemedi. Tekrar deneyin.",
+    "mentions": "{{count}} geçiş",
+    "mentionsTitle": "Kitap genelinde geçiş sayısı",
+    "itemFailed": "Başarısız",
+    "bulkPromote": {
+      "cta_one": "{{count}} tanesini sözlüğe ekle",
+      "cta_other": "{{count}} tanesini sözlüğe ekle",
+      "cta_zero": "Sözlüğe ekle",
+      "progress": "{{done}} / {{total}} eklendi",
+      "failedCount": "({{count}} başarısız)",
+      "allOk": "{{count}} tanesi sözlük taslaklarına eklendi.",
+      "allFailed": "Tüm {{count}} ekleme işlemi başarısız oldu. Tekrar deneyin.",
+      "partial": "{{ok}} eklendi; {{failed}} başarısız."
+    }
+  },
+  "proposals": {
+    "heading": "Bekleyen öneriler",
+    "subtitle": "İncelemenizi bekleyen her şey için tek bir gelen kutusu — sözlük yapay zeka önerileri, wiki düzenlemeleri ve evren zenginleştirme önerileri. İncelemek ve kabul etmek için bir satırı açın.",
+    "noBook": "Öneri kuyruklarını görmek için bu projeye bir kitap bağlayın.",
+    "loading": "Öneriler yükleniyor…",
+    "error": "Öneri gelen kutusu yüklenemedi. Tekrar deneyin.",
+    "empty": "Bekleyen öneri yok. Yeni yapay zeka önerileri oluşturuldukça burada görünecektir.",
+    "review": "İncele",
+    "openRow": "{{title}} incele",
+    "sourceError": "Bu kuyruk yüklenemedi. Diğerleri gösterilmeye devam ediyor.",
+    "origin": {
+      "glossary": "Sözlük taslağı",
+      "wiki": "Wiki düzenlemesi",
+      "enrichment": "Evren önerisi"
+    },
+    "originLabel": {
+      "glossary": "Sözlük yapay zeka taslakları",
+      "wiki": "Wiki önerileri",
+      "enrichment": "Evren zenginleştirme önerileri"
+    },
+    "count": "{{count}}"
+  },
+  "mobile": {
+    "sections": {
+      "global": "Genel biyografi",
+      "projects": "Projeler",
+      "jobs": "Veri çıkarma işleri"
+    },
+    "desktopOnly": {
+      "title": "Masaüstünde daha fazlası",
+      "body": "Varlık tarama, Anlatı Zaman Çizelgesi ve Ham çekmece araması için daha geniş bir ekran gerekir. Bunları kullanmak için Lore Weave'i bir dizüstü bilgisayarda veya tablette açın."
+    },
+    "privacyLink": "Gizlilik ve veri kontrolleri",
+    "backToKnowledge": "Bilgiye geri dön",
+    "global": {
+      "placeholder": "Her sohbetin sizin hakkınızda hatırlaması gereken şey nedir?",
+      "save": "Kaydet",
+      "saving": "Kaydediliyor…",
+      "saved": "Kaydedildi.",
+      "unsaved": "Kaydedilmemiş",
+      "saveFailed": "Kaydetme başarısız oldu. Tekrar deneyin.",
+      "conflict": "Bu biyografiyi başka bir cihaz güncelledi. Son halini inceleyin ve tekrar kaydedin.",
+      "loadFailed": "Global biyografi yüklenemedi: {{error}}"
+    },
+    "projects": {
+      "empty": "Henüz proje yok. Masaüstünden bir tane oluşturun.",
+      "loadFailed": "Projeler yüklenemedi: {{error}}",
+      "noDescription": "Açıklama yok.",
+      "build": "Grafiği oluştur",
+      "status": {
+        "disabled": "Devre dışı",
+        "building": "Oluşturuluyor",
+        "paused": "Duraklatıldı",
+        "ready": "Hazır",
+        "failed": "Hata oluştu"
+      },
+      "detail": {
+        "lastExtracted": "Son çıkarma",
+        "embeddingModel": "Embedding modeli",
+        "noEmbedding": "Yapılandırılmadı"
+      }
+    },
+    "jobs": {
+      "empty": "Henüz çıkarma işi yok.",
+      "loadFailed": "İşler yüklenemedi: {{error}}",
+      "unknownProject": "Proje {{id}}",
+      "actionFailed": "{{action}} başarısız oldu: {{error}}",
+      "status": {
+        "pending": "Bekleniyor",
+        "running": "Çalışıyor",
+        "paused": "Duraklatıldı",
+        "complete": "Tamamlandı",
+        "failed": "Hata oluştu",
+        "cancelled": "İptal edildi"
+      },
+      "actions": {
+        "pause": "Duraklat",
+        "pausing": "Duraklatılıyor…",
+        "resume": "Devam et",
+        "resuming": "Devam ettiriliyor…",
+        "cancel": "İptal et",
+        "cancelling": "İptal ediliyor…"
+      },
+      "detail": {
+        "items": "Ögeler",
+        "created": "Oluşturulma",
+        "completed": "Tamamlanma"
+      }
+    }
+  },
+  "drawers": {
+    "loading": "Çekmeceler aranıyor…",
+    "loadFailed": "Arama başarısız oldu: {{error}}",
+    "empty": "Bu sorgu için eşleşen çekmece bulunamadı.",
+    "noProject": "Çekmecelerini aramak için bir proje seçin.",
+    "noQuery": "Çekmeceleri bulmak için bir arama sorgusu girin.",
+    "minQueryHint": "Semantik arama yapmak için en az {{min}} karakter yazın.",
+    "notIndexed": "Bu proje henüz semantik arama için dizinlenmedi.",
+    "notIndexedHint": "Çekmece aramasını etkinleştirmek için bir embedding modeli ile çıkarma işlemini çalıştırın.",
+    "refreshing": "Yenileniyor…",
+    "embedCost": "Sorgu gömüldü: {{tokens}} token · ${{cost}}",
+    "retry": "Tekrar dene",
+    "fixConfig": "Ayarlar'dan projenizin embedding modeli yapılandırmasını kontrol edin.",
+    "unknownError": "Bilinmeyen hata. Lütfen tekrar deneyin.",
+    "filters": {
+      "project": "Proje",
+      "selectProject": "Bir proje seçin",
+      "sourceType": {
+        "label": "Kaynak",
+        "any": "Hepsi",
+        "chapter": "Bölüm",
+        "chat": "Sohbet",
+        "glossary": "Sözlük"
+      }
+    },
+    "searchInput": {
+      "label": "Ara",
+      "placeholder": "örn. köprüdeki düello"
+    },
+    "card": {
+      "sourcePrefix": "Kaynak",
+      "chapterLabel": "Bölüm {{index}}",
+      "chunkLabel": "Parça {{index}}",
+      "matchLabel": "Eşleşme puanı",
+      "openLabel": "{{score}} eşleşme ile {{sourceType}} çekmecesini aç",
+      "hubBadge": "Özet",
+      "hubHint": "Bu parça bir özet veya uzun bir biyografi alıntısıdır; sıralamada geride kalabilir ancak yine de görünebilir.",
+      "langHint": "Kaynak dil: {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{total}} sonucun {{count}} tanesi sizin dilinizde ({{lang}}); geri kalanı kaynak dilde gösteriliyor.",
+      "none": "Sizin dilinizde ({{lang}}) sonuç bulunamadı; kaynak dildeki sonuçlar gösteriliyor."
+    },
+    "detail": {
+      "title": "Çekmece",
+      "close": "Kapat",
+      "text": "Tam metin",
+      "sourceType": "Kaynak türü",
+      "sourceId": "Kaynak id",
+      "chunkIndex": "Parça indeksi",
+      "chapterIndex": "Bölüm indeksi",
+      "matchScore": "Eşleşme puanı",
+      "createdAt": "Oluşturulma tarihi",
+      "hubLabel": "Parça türü",
+      "hubValue": "Özet / hub parçası"
+    }
+  },
+  "timeline": {
+    "loading": "Zaman çizelgesi yükleniyor…",
+    "loadFailed": "Zaman çizelgesi yüklenemedi: {{error}}",
+    "empty": "Henüz çıkarılmış olay yok — çıkarma işlemi çalıştıkça burada görünecekler.",
+    "emptyForFilters": "Bu filtrelere uyan olay bulunamadı.",
+    "filters": {
+      "project": "Proje",
+      "anyProject": "Herhangi bir proje",
+      "entity": "Varlık",
+      "entityPlaceholder": "İsimle ara…",
+      "entitySearchMinHint": "En az 2 karakter yazın.",
+      "entityNoMatches": "Eşleşen varlık bulunamadı.",
+      "clearEntity": "Varlık filtresini temizle",
+      "chronologicalRange": "Kronolojik aralık",
+      "after": "Sonra",
+      "before": "Önce",
+      "chronoReversed": "Önce tarihi, Sonra tarihinden büyük olmalıdır.",
+      "dateRange": "Tarih aralığı",
+      "dateFrom": "Başlangıç",
+      "dateTo": "Bitiş",
+      "dateInvalid": "YYYY, YYYY-AA veya YYYY-AA-GG formatını kullanın.",
+      "dateReversed": "\"Bitiş\", \"Başlangıç\" tarihinden sonra veya o tarihte olmalıdır."
+    },
+    "sort": {
+      "label": "Sırala",
+      "narrative": "Anlatı sırası",
+      "chronological": "Kronolojik",
+      "direction": "Yön",
+      "asc": "En eski önce",
+      "desc": "En yeni önce"
+    },
+    "importance": {
+      "major": "Önemli",
+      "pivotal": "Kritik"
+    },
+    "row": {
+      "orderLabel": "Anlatı sırası",
+      "noOrder": "—",
+      "chapterLabel": "Bölüm",
+      "chapterUnresolved": "Bölüm id {{id}} — başlık çözümlenmedi",
+      "participantsMore": "+{{count}} kişi daha",
+      "confidenceLabel": "Güven Aralığı",
+      "timeLabel": "Hikaye içi zaman"
+    },
+    "detail": {
+      "summary": "Özet",
+      "noSummary": "Özet çıkarılmadı.",
+      "participants": "Katılımcılar",
+      "sources": "Kaynaklar"
+    },
+    "pagination": {
+      "range": "{{total}} içinden {{from}}–{{to}}",
+      "refreshing": "yenileniyor…",
+      "prev": "Önceki",
+      "next": "Sonraki",
+      "backToFirst": "İlk sayfaya dön",
+      "pageSize": "Sayfa başına"
+    },
+    "localization": {
+      "sourceMarker": "Kaynak dilde gösteriliyor — çeviri bekleniyor"
+    },
+    "search": {
+      "placeholder": "Olayları ara…",
+      "label": "Olayları ara",
+      "clear": "Aramayı temizle"
+    }
+  },
+  "entities": {
+    "loading": "Varlıklar yükleniyor…",
+    "loadFailed": "Varlıklar yüklenemedi: {{error}}",
+    "empty": "Henüz varlık çıkarılmadı — çıkarım hattı çalıştıkça burada görünecekler.",
+    "emptyForFilters": "Bu filtrelerle eşleşen varlık yok.",
+    "filters": {
+      "project": "Proje",
+      "kind": "Tür",
+      "status": "Durum",
+      "search": "Ara",
+      "searchPlaceholder": "İsim veya takma ad (en az 2 karakter)",
+      "semantic": "Semantik arama",
+      "semanticPlaceholder": "Ne aradığınızı tarif edin (vektör araması)",
+      "anyProject": "Herhangi bir proje",
+      "anyKind": "Herhangi bir tür",
+      "anyStatus": "Herhangi bir durum"
+    },
+    "status": {
+      "canonical": "Kanonik",
+      "discovered": "Bulundu, henüz tanıtılmadı",
+      "archived": "Arşivlendi"
+    },
+    "legend": {
+      "title": "Durum",
+      "canonical": "sözlüğünüzde",
+      "discovered": "bulundu, henüz tanıtılmadı",
+      "archived": "getirmeden gizlendi"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "Çapa puanı {{pct}}% — bu varlığın ne kadar güçlü temellendirildiği"
+    },
+    "table": {
+      "ariaLabel": "Varlıklar",
+      "global": "Global",
+      "col": {
+        "name": "İsim",
+        "kind": "Tür",
+        "project": "Proje",
+        "mentions": "Bahsetmeler",
+        "confidence": "Güven",
+        "updated": "Güncellendi"
+      }
+    },
+    "pagination": {
+      "range": "{{total}} içinden {{from}}–{{to}}",
+      "refreshing": "yenileniyor…",
+      "prev": "Önceki",
+      "next": "Sonraki"
+    },
+    "detail": {
+      "loading": "Varlık yükleniyor…",
+      "loadFailed": "Varlık yüklenemedi: {{error}}",
+      "close": "Kapat",
+      "edit": "Düzenle",
+      "merge": "Başka bir varlıkla birleştir",
+      "metadata": "Meta veri",
+      "description": "Açıklama",
+      "descriptionSource": "Bağlı sözlük girişinden",
+      "aliases": "Takma adlar",
+      "relations": "İlişkiler ({{count}})",
+      "truncated": "{{total}} içinden {{shown}} gösteriliyor — tablo içinde filtreleyin veya arayın",
+      "noRelations": "Henüz ilişki yok — çıkarımlar çalıştıkça yenileri görünecektir.",
+      "relationArrow": "→",
+      "pendingBadge": "Beklemede",
+      "pendingValidation": "1. aşama karantina — LLM doğrulaması bekleniyor",
+      "unlock": "Kilidi Aç (çıkarımları yeniden etkinleştir)",
+      "unlockHint": "Bu varlık kullanıcı tarafından düzenlenmiş. Kilidi açana kadar çıkarımlar kaldırılan takma adları tekrar eklemeyecektir.",
+      "unlockConfirm": "Bu varlığın kilidini açmak istiyor musunuz? Gelecekteki çıkarımlar tekrar takma ad ekleyebilecek.",
+      "unlockSuccess": "Kilit açıldı.",
+      "unlockFailed": "Kilit açılamadı: {{error}}",
+      "field": {
+        "project": "Proje",
+        "global": "Global",
+        "confidence": "Güven",
+        "mentions": "Bahsetmeler",
+        "anchor": "Çapa puanı"
+      },
+      "promote": "Sözlüğe tanıt",
+      "promoteHint": "Bulunan varlık. İnceleme için yapay zeka tarafından önerilen bir sözlük taslağı oluşturmak üzere tanıtın.",
+      "promotePending": "Tanıtılıyor…",
+      "promoteSuccess": "Tanıtıldı — inceleme için bir sözlük taslağı oluşturuldu.",
+      "promoteFailed": "Tanıtılamadı: {{error}}",
+      "unpin": "Bağlam iğnesinden kaldır",
+      "unpinHint": "Bu varlık çıkarım bağlamına iğnelenmiştir.",
+      "unpinSuccess": "Bağlamdan iğne kaldırıldı.",
+      "unpinFailed": "İğne kaldırılamadı: {{error}}",
+      "facts": "Bilinen gerçekler ({{count}})",
+      "factSource": "Bölüm {{chapter}}",
+      "factType": {
+        "decision": "Karar",
+        "preference": "Tercih",
+        "milestone": "Kilometre Taşı",
+        "negation": "İnkar"
+      }
+    },
+    "edit": {
+      "title": "Varlığı düzenle",
+      "description": "Bu varlığı yeniden adlandırın veya ayarlayın. Düzenlemeleriniz, gelecekteki çıkarımların kaldırılan takma adları tekrar eklemesini engeller.",
+      "conflict": "Başka bir cihaz bu varlığı güncelledi. En son halini inceleyin ve tekrar deneyin.",
+      "field": {
+        "name": "Görünen ad",
+        "kind": "Tür",
+        "aliases": "Takma adlar"
+      },
+      "aliasesPlaceholder": "Her satıra bir takma ad",
+      "aliasesHint": "Her satıra bir takma ad. Kaydettikten sonra çıkarımlar, kaldırılan varyantları sessizce tekrar eklemeyecektir.",
+      "userEditedHint": "Kaydetmek, bu varlığı kullanıcı tarafından düzenlenmiş olarak işaretler.",
+      "save": "Kaydet",
+      "saving": "Kaydediliyor…",
+      "cancel": "İptal",
+      "success": "Varlık güncellendi",
+      "failed": "Kaydedilemedi: {{error}}"
+    },
+    "merge": {
+      "title": "Varlığı birleştir",
+      "description": "{{name}} başka bir varlığa birleştirilir. {{name}} silinecek; ilişkileri ve takma adları hedef varlığa aktarılacaktır.",
+      "targetLabel": "Hedef varlık",
+      "searchPlaceholder": "İsim ile ara (en az 2 karakter)…",
+      "searchMinHint": "Aramak için en az 2 karakter yazın.",
+      "searching": "Aranıyor…",
+      "noMatches": "Eşleşen varlık bulunamadı.",
+      "warning": "Bu işlem geri alınamaz. Kaynak varlık silinir; ilişkileri ve takma adları hedef varlığa aktarılır.",
+      "mentions": "bahsetmeler",
+      "clear": "Temizle",
+      "confirm": "Birleştir",
+      "merging": "Birleştiriliyor…",
+      "cancel": "İptal",
+      "success": "{{source}} {{target}} içine birleştirildi",
+      "errSameEntity": "Bir varlık kendisiyle birleştirilemez.",
+      "errNotFound": "Varlıklardan biri bulunamadı.",
+      "errArchived": "Arşivlenmiş varlıklar birleştirilemez. Önce onları geri yükleyin.",
+      "errGlossaryConflict": "Her iki varlık da farklı sözlük girişlerine bağlı. Birleştirmeden önce sözlük bağlantılarını çözün.",
+      "errUnknown": "Birleştirme başarısız oldu: {{reason}}"
+    }
+  },
+  "jobs": {
+    "loading": "İşler yükleniyor…",
+    "loadMore": "Daha fazla yükle",
+    "loadingMore": "Daha fazlası yükleniyor…",
+    "error": {
+      "active": "Çalışan işler yüklenemedi.",
+      "history": "İş geçmişi yüklenemedi."
+    },
+    "sections": {
+      "running": {
+        "title": "Çalışan",
+        "empty": "Çalışan iş yok."
+      },
+      "paused": {
+        "title": "Duraklatıldı",
+        "empty": "Duraklatılmış iş yok."
+      },
+      "complete": {
+        "title": "Tamamlandı",
+        "empty": "Henüz tamamlanmış iş yok."
+      },
+      "failed": {
+        "title": "Hatalı",
+        "empty": "Hatalı iş yok."
+      }
+    },
+    "row": {
+      "started": "{{when}} tarihinde başladı",
+      "completed": "{{when}} tarihinde bitti",
+      "unknownProject": "Proje {{id}}…"
+    },
+    "detail": {
+      "title": "İş detayları",
+      "close": "Kapat",
+      "status": "Durum",
+      "currentChapter": "Mevcut bölüm",
+      "scope": "Kapsam",
+      "llmModel": "Sohbet modeli",
+      "embeddingModel": "Embedding modeli",
+      "maxSpend": "Bütçe sınırı",
+      "startedAt": "Başlangıç",
+      "completedAt": "Bitiş",
+      "errorTitle": "Hata",
+      "eta": "~{{duration}} kaldı",
+      "itemsProgress": "{{total}} öğeden {{processed}} öğesi işlendi",
+      "actionFailed": "{{label}} işlemi yapılamadı: {{error}}",
+      "actions": {
+        "pause": "Duraklat",
+        "resume": "Devam Et",
+        "cancel": "İptal"
+      },
+      "logs": {
+        "title": "Günlükler",
+        "loading": "Günlükler yükleniyor…",
+        "loadingNewer": "Yeni olanlar yükleniyor…",
+        "error": "Günlükler yüklenemedi.",
+        "empty": "Henüz günlük yok.",
+        "loadNewer": "Yenileri yükle",
+        "levels": {
+          "info": "BİLGİ",
+          "warning": "UYARI",
+          "error": "HATA"
+        }
+      }
+    },
+    "retry": {
+      "button": "Farklı ayarlarla tekrar dene"
+    },
+    "costSummary": {
+      "title": "AI harcaması",
+      "loading": "Harcama yükleniyor…",
+      "loadFailed": "Maliyet özeti yüklenemedi.",
+      "thisMonth": "Bu ay",
+      "allTime": "Tüm zamanlar",
+      "budget": "Aylık bütçe",
+      "editBudget": "Bütçeyi düzenle",
+      "remaining": "Bu ay kalan: {{remaining}}",
+      "invalid": "Negatif olmayan bir ondalık sayı girin veya boş bırakın.",
+      "saveFailed": "Bütçe kaydedilemedi: {{error}}",
+      "dialog": {
+        "title": "Aylık AI bütçesini düzenle",
+        "description": "Projalar arası sınır. Sınırı kaldırmak için boş bırakın.",
+        "label": "Aylık bütçe (USD)",
+        "hint": "En fazla 4 ondalık basamak. Sınırı kaldırmak için boş bırakın.",
+        "cancel": "İptal",
+        "save": "Kaydet",
+        "saving": "Kaydediliyor…"
+      }
+    }
+  },
+  "projects": {
+    "showArchived": "Arşivlenmişleri göster",
+    "refresh": "Yenile",
+    "newProject": "Yeni proje",
+    "createFirst": "İlk projenizi oluşturun",
+    "empty": {
+      "title": "Henüz proje yok",
+      "description": "Projeler, yapay zekanın belirli bir çalışma için neleri hatırlayacağını kapsar."
+    },
+    "loadFailed": "Projeler yüklenemedi: {{error}}",
+    "paginationNote": "İlk 100 proje gösteriliyor — tam sayfalama Track 2 ile gelir.",
+    "browser": {
+      "searchPlaceholder": "Projeleri ara…",
+      "searchLabel": "İsim ile proje ara",
+      "filterLabel": "Duruma göre filtrele",
+      "sortLabel": "Projeleri sırala",
+      "noMatches": "Mevcut arama ve filtrelere uygun proje bulunamadı.",
+      "loadMore": "Daha fazla yükle",
+      "loadingMore": "Yükleniyor…",
+      "stateFilter": {
+        "all": "Tüm durumlar",
+        "disabled": "Statik bellek",
+        "building": "Oluşturuluyor",
+        "paused": "Duraklatıldı",
+        "ready": "Hazır",
+        "failed": "Hatalı",
+        "archived": "Arşivlenmiş"
+      },
+      "sortOption": {
+        "recent": "En son güncellenenler",
+        "oldest": "En eski olanlar",
+        "name_asc": "İsim (A–Z)",
+        "name_desc": "İsim (Z–A)"
+      },
+      "thisBookOnly": "Sadece bu kitap",
+      "showAllBooks": "Tüm kitapları göster"
+    },
+    "card": {
+      "staticMemory": "Statik bellek",
+      "archivedBadge": "arşivlenmiş",
+      "open": "Aç",
+      "edit": "Düzenle",
+      "archive": "Arşivle",
+      "restore": "Geri Yükle",
+      "delete": "Sil",
+      "tuneExtraction": "Veri çıkarma ayarlarını düzenle",
+      "bookId": "kitap_id"
+    },
+    "form": {
+      "createTitle": "Yeni proje",
+      "editTitle": "Projeyi düzenle",
+      "createDescription": "Bir proje, yapay zekanın belirli bir çalışma için neleri hatırlayacağını belirler.",
+      "name": "İsim",
+      "namePlaceholder": "örn. Doğu Denizi'nin Rüzgarları",
+      "type": "Tür",
+      "typeImmutable": "Proje türü oluşturulduktan sonra değiştirilemez.",
+      "typeOptions": {
+        "book": "Kitap",
+        "translation": "Çeviri",
+        "code": "Kod",
+        "general": "Genel"
+      },
+      "bookId": "Kitap ID (isteğe bağlı)",
+      "bookIdPlaceholder": "uuid",
+      "description": "Açıklama (isteğe bağlı)",
+      "instructions": "Talimatlar (isteğe bağlı)",
+      "instructionsPlaceholder": "Stil notları, ses tonu, kısıtlamalar — bu proje için her sohbete dahil edilir.",
+      "nameError": "İsim 1–{{max}} karakter arasında olmalıdır.",
+      "bookIdError": "Geçerli bir UUID olmalıdır.",
+      "cancel": "İptal",
+      "create": "Oluştur",
+      "save": "Kaydet",
+      "benchmark": {
+        "run": "Benchmark'ı çalıştır",
+        "running": "Benchmark çalışıyor…",
+        "success": "{{model}} için benchmark tamamlandı (recall@3 {{recall}}).",
+        "errorNoModel": "Benchmark'ı çalıştırmadan önce bir embedding modeli seçin.",
+        "errorUnknownModel": "Bu embedding modeli benchmark sistemi tarafından desteklenmiyor.",
+        "errorNotBenchmarkProject": "Benchmark sandbox üzerinde başlatılamadı — lütfen biraz sonra tekrar deneyin.",
+        "errorAlreadyRunning": "Bu proje için zaten çalışan bir benchmark var. Bekleyin ve tekrar deneyin.",
+        "errorProviderFlake": "Embedding sağlayıcısı çalışma sırasında hata verdi. Lütfen tekrar deneyin.",
+        "errorGeneric": "Benchmark başarısız oldu: {{message}}"
+      }
+    },
+    "archiveDialog": {
+      "title": "Proje arşivlensin mi?",
+      "description": "\"{{name}}\" aktif listeden gizlenecektir. Daha sonra geri yükleyebilirsiniz.",
+      "confirm": "Arşivle"
+    },
+    "deleteDialog": {
+      "title": "Proje silinsin mi?",
+      "description": "\"{{name}}\" ve özeti kalıcı olarak silinecektir. Bu işlem geri alınamaz.",
+      "confirm": "Sil"
+    },
+    "toast": {
+      "archived": "Proje arşivlendi",
+      "archiveFailed": "Arşivleme başarısız oldu",
+      "restored": "Proje geri yüklendi",
+      "restoreFailed": "Geri yükleme başarısız oldu",
+      "deleted": "Proje silindi",
+      "deleteFailed": "Silme başarısız oldu",
+      "created": "Proje oluşturuldu",
+      "updated": "Proje güncellendi",
+      "conflict": "Bu projeyi başka bir cihaz değiştirdi. En güncel hali inceleyip tekrar kaydedin.",
+      "actionFailed": "{{label}}: {{error}}",
+      "noPriorJob": "Tekrar oynatılacak önceki bir iş yok — Oluştur (Build) diyaloğunu açın.",
+      "noPriorRebuild": "Yeniden oluşturulacak önceki bir iş yok.",
+      "rebuildNoPriorJob": "Yeniden oluştur: önceki iş yok"
+    },
+    "state": {
+      "labels": {
+        "disabled": "Statik bellek",
+        "estimating": "Maliyet hesaplanıyor...",
+        "ready_to_build": "Oluşturmaya hazır",
+        "building_running": "Oluşturuluyor...",
+        "building_paused_user": "Duraklatıldı",
+        "building_paused_budget": "Bütçeye ulaşıldı",
+        "building_paused_error": "Duraklatıldı (hata)",
+        "complete": "Hazır",
+        "stale": "Güncellemeler bekleniyor",
+        "failed": "Başarısız",
+        "model_change_pending": "Model değişikliği yeniden oluşturma gerektirir",
+        "cancelling": "İptal ediliyor...",
+        "deleting": "Grafik siliniyor..."
+      },
+      "actions": {
+        "buildGraph": "Bilgi grafiği oluştur",
+        "start": "Başlat",
+        "pause": "Duraklat",
+        "resume": "Devam et",
+        "cancel": "İptal",
+        "retry": "Tekrar dene",
+        "deleteGraph": "Grafiği sil",
+        "rebuild": "Sıfırdan yeniden oluştur",
+        "viewError": "Hata ayrıntılarını görüntüle",
+        "disable": "Devre dışı bırak",
+        "changeModel": "Embedding modelini değiştir",
+        "extractNew": "Yeni bölümleri çıkar",
+        "ignore": "Yoksay",
+        "confirm": "Onayla",
+        "confirmModelChange": "Model değişikliğini onayla",
+        "exploreGraph": "Grafiği keşfet",
+        "setConcurrency": "Eşzamanlılık ayarla"
+      },
+      "cards": {
+        "disabled": {
+          "body": "Kullanılan: biyografiniz + proje talimatları + sözlük + son mesajlar.",
+          "costZero": "Maliyet: $0"
+        },
+        "estimating": {
+          "body": "Bu kapsam için maliyet tahmini alınıyor..."
+        },
+        "ready_to_build": {
+          "hint": "Tahmini maliyet: ${{low}} – ${{high}} · {{chapters}} bölüm, {{turns}} sohbet turu, {{tokens}} token",
+          "durationSec": "~{{n}}s tahmini",
+          "durationMin": "~{{n}} dk tahmini"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} öğe (bölümler + sohbet + sözlük)",
+          "elapsed": "Geçen süre: {{elapsed}}",
+          "spent": "Harcanan: ${{spent}}",
+          "spentOfBudget": "Harcanan: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "Paralel çağrılar",
+          "concurrencyApply": "Uygula",
+          "stagesTitle": "Oluşturma aşamaları",
+          "stages": "Varlıklar → İlişkiler · Olaylar · Gerçekler → Özetler",
+          "stagesNote": "Geçişler bu sırayla çalışır. Gerçekler ve Özetler, Varlıklar ve İlişkiler tamamlandıktan sonra çalışır, bu nedenle tam bir yapıda daha sonra görünürler — işlemi erken durdurmak bunları atlar."
+        },
+        "building_paused_user": {
+          "body": "Bu işi duraklattınız. Hazır olduğunuzda devam edin veya kısmi grafiği korumak için iptal edin."
+        },
+        "building_paused_budget": {
+          "body": "${{budget}} tutarındaki harcama sınırına ulaşıldı. Sınırı artırıp devam edin veya kısmi grafiği korumak için iptal edin.",
+          "remaining": "Kalan: ${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "Tekrar denenebilir hata: {{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} varlık · {{facts}} gerçek · {{events}} olay · {{passages}} pasaj",
+          "lastExtracted": "Son çıkarma: {{date}}"
+        },
+        "stale": {
+          "body": "Son çıkarmadan bu yana {{count}} yeni bölüm var. Şimdi çıkarın veya görmezden gelin."
+        },
+        "failed": {
+          "body": "Çıkarma başarısız oldu: {{error}}"
+        },
+        "model_change_pending": {
+          "body": "{{oldModel}} modelinden {{newModel}} modeline geçiş, mevcut grafiğin silinmesini ve yeniden oluşturulmasını gerektirir."
+        },
+        "cancelling": {
+          "body": "Aktif iş durduruluyor..."
+        },
+        "deleting": {
+          "body": "Bilgi grafiği kaldırılıyor..."
+        }
+      }
+    },
+    "buildDialog": {
+      "title": "Bilgi grafiği oluştur",
+      "description": "Bu projenin içeriğinden varlıkları, gerçekleri ve pasajları çıkarın. Bir kapsam ve modeller seçin, ardından onaylamadan önce maliyeti önizleyin.",
+      "scope": {
+        "label": "Kapsam",
+        "chapters": "Kitap bölümleri",
+        "chat": "Sohbet geçmişi",
+        "glossary_sync": "Sözlük senkronizasyonu",
+        "all": "Her şey",
+        "noBookHint": "Bu proje bir kitaba bağlı değil — bölüm ve sözlük senkronizasyonu kapsamları gizlendi."
+      },
+      "chapterRange": {
+        "label": "Bölüm aralığı (isteğe bağlı)",
+        "from": "Başlangıç",
+        "to": "Bitiş",
+        "hint": "Sıralama aralığına göre filtreleyin. Tüm bölümler için her iki alanı da boş bırakın.",
+        "invalid": "Aralık, Başlangıç ≤ Bitiş olacak şekilde negatif olmayan tam sayılar olmalıdır."
+      },
+      "llmModel": {
+        "label": "LLM modeli",
+        "placeholder": "Bir sohbet modeli seçin…",
+        "loading": "Modeller yükleniyor…",
+        "empty": "Yapılandırılmış sohbet yeteneğine sahip model bulunamadı. AI Modelleri → Kimlik Bilgileri kısmından bir tane ekleyin."
+      },
+      "maxSpend": {
+        "label": "Maksimum harcama (USD, isteğe bağlı)",
+        "hint": "Kesin sınır — kümülatif maliyet bu tutara ulaştığında iş duraklatılır. Sınır olmaması için boş bırakın.",
+        "invalid": "En fazla 2 ondalık basamak içeren negatif olmayan bir tutar girin.",
+        "monthlyRemaining": "Bu ay tüm projeler genelinde {{amount}} kaldı."
+      },
+      "estimate": {
+        "heading": "Maliyet önizleme",
+        "pickLlmFirst": "Maliyet tahmini görmek için bir LLM modeli seçin.",
+        "loading": "Tahmin ediliyor…",
+        "failed": "Tahmin başarısız oldu: {{error}}",
+        "cost": "Tahmini maliyet: ${{low}} – ${{high}}",
+        "items": "{{chapters}} bölüm · {{turns}} sohbet turu · ~{{tokens}} token",
+        "duration": "~{{seconds}}s tahmini",
+        "pinned": "Sabitlenmiş bağlam: +{{tokens}} token (tüm pencerelerde {{count}} sabitlenmiş)"
+      },
+      "cancel": "İptal",
+      "confirm": "Grafik oluştur",
+      "starting": "Başlatılıyor…",
+      "startSuccess": "Oluşturma başlatıldı — bilgi grafiği şimdi çıkarılıyor.",
+      "startFailed": "Başlatma başarısız oldu: {{error}}",
+      "wizard": {
+        "step1": "Hedefler",
+        "step2": "Sabitleme",
+        "step3": "Bütçe",
+        "next": "Sonraki",
+        "back": "Geri",
+        "step2Placeholder": "Sözlük sabitleme bir sonraki adımda gelecek — şimdilik her çıkarma penceresi kendi bölüm bağlamını kullanır."
+      },
+      "targets": {
+        "label": "Neler çıkarılacak",
+        "hint": "Hangi aşamaların çalışacağını seçin. Hiçbiri seçili bırakılmazsa her şey çalıştırılır (varsayılan).",
+        "entities": "Varlıklar",
+        "relations": "İlişkiler",
+        "events": "Olaylar · zaman çizelgesi",
+        "facts": "Gerçekler",
+        "summaries": "Özetler",
+        "autoIncluded": "otomatik dahil edildi",
+        "autoIncludedHint": "İlişkiler, olaylar veya gerçekler bunlara bağlı olduğu için varlıklar otomatik olarak çıkarılır.",
+        "recoveryDisabledHint": "Varlıklar bir hedef olarak seçilmediği için varlık kurtarma ve hassas filtreleme atlanır."
+      },
+      "concurrency": {
+        "label": "Paralel LLM çağrıları (isteğe bağlı)",
+        "hint": "Aynı anda kaç çıkarma çağrısının çalışacağını sınırlayın. Varsayılan değer için boş bırakın."
+      },
+      "pinning": {
+        "intro": "Sözlük varlıklarını, her çıkarma penceresine zorunlu olarak dahil edilmeleri için sabitleyin — böylece az rastlanan ancak kritik varlıklar, kendilerinden hiç bahsedilmeyen bölümlerde bile sabit kalır.",
+        "autopin": "{{count}} az rastlanan ancak geniş kapsamlı varlık sabitlemeye değer görünüyor.",
+        "autopinApply": "{{count}} öneriyi sabitle",
+        "loading": "Varlık istatistikleri yükleniyor…",
+        "unavailable": "Varlık istatistikleri kullanılamıyor — aşağıdan manuel olarak hala sabitleyebilirsiniz.",
+        "searchPlaceholder": "İsimle ara…",
+        "kindAll": "Tüm türler",
+        "minMentions": "Min ×",
+        "available": "Mevcut ({{count}})",
+        "availableEmpty": "Filtrelere uygun öğe bulunamadı.",
+        "pinned": "Sabitlenen ({{count}})",
+        "pinnedEmpty": "Henüz sabitlenen bir öğe yok.",
+        "pin": "Sabitle",
+        "unpin": "Sabitlemeyi kaldır",
+        "budget": "Pencere başına +{{tokens}} token ({{count}} sabitlenmiş × ~50).",
+        "noBook": "Sabitleme işlemi için bir kitabın bağlı olması gerekir. Lütfen önce bu projeye bir kitap ekleyin."
+      }
+    },
+    "errorViewer": {
+      "title": "Çıkarım hatası",
+      "description": "Çıkarım işleminden alınan tam hata mesajı. Hata raporları veya kök neden analizi için kullanın.",
+      "jobIdLabel": "İşlem Kimliği",
+      "startedLabel": "Başlangıç",
+      "scopeLabel": "Kapsam",
+      "progressLabel": "İlerleme",
+      "progressValue": "{{processed}} / {{total}} öğe",
+      "costLabel": "Harcanan maliyet",
+      "errorLabel": "Hata",
+      "copy": "Kopyala",
+      "copied": "Kopyalandı",
+      "close": "Kapat"
+    },
+    "changeModelDialog": {
+      "title": "Embedding modelini değiştir",
+      "description": "Embedding modelini değiştirmek mevcut bilgi grafiğinin silinmesini gerektirir. Daha sonra yeni bir çıkarım başlatmanız gerekecektir.",
+      "warningTitle": "Yıkıcı değişiklik",
+      "warningBody": "Mevcut model: {{currentModel}}. Değiştirilmesi durumunda çıkarılan tüm varlıklar, gerçekler, olaylar ve pasajlar silinir. Yeni bir yapılandırma başlatana kadar çıkarım devre dışı bırakılacaktır.",
+      "sameModel": "Onayla butonunu etkinleştirmek için farklı bir model seçin.",
+      "cancel": "İptal",
+      "confirm": "Modeli değiştir ve grafiği sil",
+      "submitting": "Değiştiriliyor…",
+      "failed": "Değiştirme başarısız oldu: {{error}}",
+      "alreadyAtModel": "Model zaten {{model}} olarak ayarlanmış — başka bir cihaz değiştirmiş olabilir."
+    },
+    "extractionTuning": {
+      "title": "Çıkarımı ayarla",
+      "description": "Roman bazlı çıkarım ayarları. Değişiklikler bu proje için yapılacak bir sonraki çıkarım işleminde geçerli olur.",
+      "filterEnabled": "Hassasiyet filtresi (düşük destekli çıkarımları eler)",
+      "category": {
+        "entity": "Varlıklar",
+        "relation": "İlişkiler",
+        "event": "Olaylar"
+      },
+      "categoriesRequired": "En az bir kategori seçin veya filtreyi kapatın.",
+      "partialPolicy": "Kısmi eşleşmeler:",
+      "policyKeep": "Tut",
+      "policyDrop": "At",
+      "defaultModel": "Varsayılan çıkarım modeli",
+      "defaultModelNone": "Global varsayılanımı kullan",
+      "defaultModelHint": "Aşağıda geçersiz kılınmadığı sürece her çıkarım adımında kullanılan modeldir. Boş bırakılırsa, roller önce global varsayılan modelinize (Ayarlar), ardından bu yapılandırmanın çalıştığı modele döner.",
+      "recoveryEnabled": "Varlık kurtarma (kaçırılan varlıkları geri getir)",
+      "recoveryModel": "Kurtarma modeli (isteğe bağlı)",
+      "recoveryModelNone": "Varsayılan çıkarım modelini kullan",
+      "recoveryModelHint": "Ana geçişte kaçırılan varlıkları kurtaran LLM. Varsayılan olarak bırakılırsa, yukarıdaki varsayılan çıkarım modelini yeniden kullanır.",
+      "recoveryBatch": "Yığın boyutu",
+      "recoveryBatchHint": "Sınıflandırıcı çağrısı başına isim sayısı (1-20; varsayılan 5)",
+      "autocreateEnabled": "Yazar otomatik oluşturma (ilişkiler tarafından atıfta bulunulan varlıkları oluştur)",
+      "promptWarning": "Gelişmiş: Özel istemler (prompt), o adım için varsayılan çıkarım talimatlarının yerini alır ve kaliteyi düşürebilir. Varsayılanı kullanmak için boş bırakın. JSON çıktısı her zaman zorunludur.",
+      "promptPlaceholder": "Varsayılan istemi kullanmak için boş bırakın",
+      "prompt": {
+        "entity": "Varlık çıkarım istemi",
+        "relation": "İlişki çıkarım istemi",
+        "event": "Olay çıkarım istemi",
+        "fact": "Gerçek çıkarım istemi"
+      },
+      "save": "Kaydet",
+      "saving": "Kaydediliyor…",
+      "cancel": "İptal",
+      "saved": "Çıkarım ayarları kaydedildi.",
+      "failed": "Kaydetme başarısız oldu: {{error}}"
+    },
+    "confirmDestructive": {
+      "cancel": "İptal",
+      "deleteGraph": {
+        "title": "Bilgi grafiği silinsin mi?",
+        "description": "Bu işlem, bu proje için çıkarılan tüm varlıkları, gerçekleri, olayları ve pasajları kalıcı olarak siler. Proje kalır; daha sonra yeniden oluşturabilirsiniz."
+      },
+      "rebuildStep1": {
+        "title": "Sıfırdan yeniden oluşturulsun mu?",
+        "description": "Yeniden oluşturma, mevcut grafiği siler ve aynı modeller ve kapsamla yeni bir çıkarım başlatır. Bu işlem maliyetli olabilir ve zaman alabilir.",
+        "confirmLabel": "Devam et"
+      },
+      "rebuildStep2": {
+        "title": "Son şans — gerçekten yeniden oluşturulsun mu?",
+        "description": "Şu an Yeniden Oluştur'a tıklamak, yıkma ve yeniden oluşturma sürecini başlatır. Yeni işlem çalışmaya başladıktan sonra geri dönüş yoktur."
+      },
+      "disable": {
+        "title": "Çıkarım devre dışı bırakılsın mı?",
+        "description": "Yeni içeriklerin çıkarılmasını durdurur. Mevcut bilgi grafiği korunur ve okunabilir kalır. Yeniden etkinleştirmek için yeni bir çıkarma işlemi başlatılması gerekir."
+      }
+    }
+  },
+  "global": {
+    "title": "Global biyografi",
+    "description": "Yapay zekanın her projede görebileceği kısa bir açıklama. Stil tercihleri, çalışmalarınızla ilgili bağlam veya oturumlar boyunca taşımak istediğiniz her şey. En fazla {{max}} karakter.",
+    "placeholder": "Örn. Şehir fantezisi yazıyorum. İsimleri Japonca sırasıyla tut. Az ve öz bir dil kullan, gereksiz sıfatlardan kaçın.",
+    "loadFailed": "Özet yüklenemedi: {{error}}",
+    "unsavedChanges": "Kaydedilmemiş değişiklikler",
+    "saving": "Kaydediliyor…",
+    "save": "Kaydet",
+    "saved": "Global biyografi kaydedildi",
+    "saveFailed": "Kaydetme başarısız oldu",
+    "version": "v{{version}}",
+    "conflict": "Bu biyografiyi başka bir cihaz güncelledi. En son sürümü inceleyin ve tekrar kaydedin.",
+    "tokenEstimate": "~{{tokens}} token",
+    "reset": "Sıfırla",
+    "resetting": "Sıfırlanıyor…",
+    "resetConfirm": "Biyografiyi temizle",
+    "resetCancel": "İptal",
+    "resetConfirmTitle": "Global biyografinizi temizlemek istiyor musunuz?",
+    "resetConfirmBody": "Bu işlem sunucudaki biyografiyi temizler. İstediğiniz zaman geri dönebilmeniz için geçmişe yeni bir sürüm kaydedilir.",
+    "resetConfirmNote": "Bunun yerine Geçmiş panelinden önceki bir sürüme de dönebilirsiniz.",
+    "resetSuccess": "Global biyografi temizlendi",
+    "resetFailed": "Sıfırlama başarısız oldu",
+    "regenerate": {
+      "button": "Yeniden Oluştur",
+      "title": "Global biyografiyi yeniden oluştur",
+      "description": "Biyografinizi son sohbet akışlarından yeniden oluşturur. İstediğiniz zaman geri dönebilmeniz için mevcut biyografiniz geçmişe kaydedilir.",
+      "modelLabel": "Model",
+      "modelLoading": "Modeller yükleniyor…",
+      "modelPlaceholder": "Bir sohbet modeli seçin",
+      "noModels": "Kayıtlı sohbet modeliniz yok. Önce Yapay Zeka Modellerinden birini ekleyin.",
+      "costHint": "Tahmini maliyet: düşük (<$0.05). Çıktı 500 token ile sınırlandırılmıştır.",
+      "editLockHint": "Son 30 gün içinde yapılan manuel düzenlemeler korunur; yakın zamanda bu biyografiyi düzenlediyseniz yeniden oluşturma işlemi atlanacaktır.",
+      "disabledDirty": "Yeniden oluşturmadan önce kaydedilmemiş düzenlemelerinizi kaydedin veya sıfırlayın; bekleyen değişiklikleriniz varken yeniden oluşturma çıktısı editörde görünmeyecektir.",
+      "editLockDefault": "En son yaptığınız manuel düzenleme, 30 gün boyunca yeniden oluşturmaya karşı korunur.",
+      "confirm": "Yeniden Oluştur",
+      "regenerating": "Yeniden oluşturuluyor…",
+      "cancel": "İptal",
+      "success": "Global biyografi yeniden oluşturuldu",
+      "noOpSimilarity": "Yeni sürüm mevcut biyografinizle neredeyse aynıydı — hiçbir şey yazılmadı.",
+      "noOpEmptySource": "Oluşturulacak güncel sohbet içeriği yok — önce birkaç sohbet gerçekleştirin.",
+      "concurrentEdit": "Manuel bir düzenleme yeniden oluşturma işlemiyle çakıştı. Mevcut biyografinizi inceleyin ve tekrar deneyin.",
+      "guardrailFailed": "Yeniden oluşturma kalite kontrolünden geçemedi: {{reason}}",
+      "providerError": "Yapay zeka sağlayıcınız bir hata döndürdü: {{reason}}",
+      "unknownError": "Yeniden oluşturma başarısız oldu: {{reason}}"
+    },
+    "preferences": {
+      "title": "Öğrenilen tercihler",
+      "description": "Yapay zeka tarafından sohbetlerinizden çıkarılan projeler arası tercihler. Gelecekteki bağlamdan gizlemek için birini silin.",
+      "loading": "Tercihler yükleniyor…",
+      "loadFailed": "Tercihler yüklenemedi.",
+      "empty": "Henüz öğrenilmiş bir tercih yok — birkaç sohbet gerçekleştirdiğinizde burada görünecekler.",
+      "delete": "Sil",
+      "deleting": "Siliniyor…",
+      "cancel": "İptal",
+      "deleteAria": "{{name}} sil",
+      "confirmTitle": "Bu tercihi silmek istiyor musunuz?",
+      "confirmBody": "{{name}} öğesini gelecekteki bağlam oluşturma sürecinden gizler. Bunu geri yükleyemezsiniz — yapay zeka bunu daha sonraki sohbetlerden tekrar öğrenebilir.",
+      "confirmNote": "Bu bir yumuşak arşivlemedir. Verileriniz silinmez.",
+      "deleteSuccess": "{{name}} tercihlerden kaldırıldı",
+      "deleteFailed": "Tercih silinemedi: {{error}}"
+    },
+    "versions": {
+      "toggle": "Geçmiş",
+      "title": "Sürüm geçmişi",
+      "close": "Kapat",
+      "loading": "Geçmiş yükleniyor…",
+      "loadFailed": "Geçmiş yüklenemedi: {{error}}",
+      "empty": "Önceki sürüm yok — geçmiş, bir sonraki kaydınızdan itibaren oluşmaya başlar.",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(boş)",
+      "view": "Görüntüle",
+      "rollback": "Geri Yükle",
+      "rollbackFromPreview": "Bu sürüme geri dön",
+      "rollingBack": "Geri yükleniyor…",
+      "confirmTitle": "Bu sürüme geri dönülsün mü?",
+      "confirmBody": "Mevcut biyografiniz v{{version}} sürümündeki içerikle değiştirilecektir. Yeni bir sürüm oluşturulacak; mevcut durum geçmişe arşivlenecektir.",
+      "confirm": "Geri Yükle",
+      "rollbackSuccess": "Seçilen sürüme geri dönüldü",
+      "rollbackFailed": "Geri yükleme başarısız oldu",
+      "previewTitle": "Sürüm {{version}} önizleme",
+      "source": {
+        "manual": "Manuel",
+        "rollback": "Geri Yükleme"
+      },
+      "diffToggle": "Mevcutla farkları göster",
+      "diffEmpty": "Fark yok."
+    }
+  },
+  "indicator": {
+    "label": "Bilgi göstergesi",
+    "title": "Bilgi",
+    "modes": {
+      "global": "Global",
+      "project": "Proje",
+      "degraded": "Kısıtlı"
+    },
+    "popover": {
+      "projectHeading": "Proje belleği",
+      "globalHeading": "Sadece global bellek",
+      "loading": "yükleniyor…",
+      "fallbackProject": "bir proje",
+      "projectBody": "Bu oturum <strong>{{name}}</strong> ile bağlantılıdır. Yapay zeka, her adımda genel biyografinizi, projenin özetini ve sözlük girişlerini görür.",
+      "globalBody": "Bu oturuma bağlı bir proje yok. Yapay zeka yalnızca genel biyografinizi görür. Kitaba özel belleğe erişim sağlamak için oturum ayarlarından bir proje bağlayın.",
+      "degradedBody": "Son adımda bilgi servisine ulaşılamadı. Yapay zeka yalnızca son mesajlara geri döndü — proje belleğiniz geçici olarak istemciye dahil edilmedi. Servis geri geldiğinde bir sonraki adımda otomatik olarak düzelecektir.",
+      "manage": "Bilgiyi yönet"
+    }
+  },
+  "picker": {
+    "label": "Proje belleği",
+    "noProject": "Proje yok — yalnızca genel bellek",
+    "archivedPlaceholder": "(arşivlenmiş proje — başka bir tane seçin)",
+    "hint": "Bu sohbeti bir bilgi servisi projesine bağlayarak yapay zekanın her adımda özetini ve sözlüğünü görmesini sağlar."
+  },
+  "privacy": {
+    "export": {
+      "title": "Verilerinizi dışa aktarın",
+      "description": "Yapay zekanın sizin için sakladığı tüm proje ve özetleri tek bir JSON dosyası olarak indirin. GDPR Madde 20.",
+      "button": "Dışa aktarmayı indir",
+      "preparing": "Hazırlanıyor…",
+      "success": "Dışa aktarma indirildi",
+      "failed": "Dışa aktarma başarısız oldu"
+    },
+    "delete": {
+      "title": "Tüm bilgi verilerini sil",
+      "description": "Tüm proje ve özetleri kalıcı olarak silin. Bu işlem kitaplarınıza, bölümlerinize veya hesabınıza dokunmaz — yalnızca bellek sisteminin sakladıklarını siler. Bu işlem geri alınamaz.",
+      "button": "Her şeyi sil",
+      "deleting": "Siliniyor…",
+      "success": "{{projects}} proje ve {{summaries}} özet öğesi silindi",
+      "failed": "Silme işlemi başarısız oldu"
+    },
+    "dialog": {
+      "title": "Tüm bilgi verileri silinsin mi?",
+      "description": "Bu işlem tüm proje ve özetleri kalıcı olarak silecektir. Onaylamak için aşağıya {{token}} yazın.",
+      "cancel": "İptal"
+    }
+  },
+  "relations": {
+    "edit": {
+      "cta": "İlişkiyi düzelt",
+      "title": "İlişkiyi düzelt",
+      "description": "Bu ilişkinin yüklemini düzeltin veya kaldırılması için yanlış olarak işaretleyin.",
+      "field": {
+        "predicate": "Yüklem"
+      },
+      "save": "Düzelt",
+      "saving": "Düzeltiliyor…",
+      "cancel": "İptal",
+      "correctSuccess": "İlişki düzeltildi.",
+      "invalidateSuccess": "İlişki kaldırıldı.",
+      "invalidateHint": "Bu ilişkinin hiç çıkarılmaması gerekiyorsa, kaldırmak için yanlış olarak işaretleyin.",
+      "invalidateConfirm": "Bu ilişkiyi yanlış olarak işaretleyip kaldırmak istiyor musunuz?",
+      "markWrong": "Yanlış olarak işaretle",
+      "invalidating": "Kaldırılıyor…",
+      "failed": "Düzeltme kaydedilemedi: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "Düzenle",
+      "title": "Etkinliği düzenle",
+      "description": "Bu etkinliğin başlığını, özetini veya zamanlamasını ayarlayın.",
+      "field": {
+        "title": "Başlık",
+        "summary": "Özet",
+        "timeCue": "Zaman göstergesi",
+        "dateIso": "Tarih (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY veya YYYY-AA-GG",
+      "save": "Kaydet",
+      "saving": "Kaydediliyor…",
+      "cancel": "İptal",
+      "success": "Etkinlik güncellendi.",
+      "conflict": "Bu etkinliği başka bir cihaz güncelledi. En son halini inceleyip tekrar deneyin.",
+      "failed": "Etkinlik güncellenemedi: {{error}}",
+      "invalidDate": "Tarih YYYY, YYYY-AA veya YYYY-AA-GG formatında olmalıdır."
+    },
+    "archive": {
+      "cta": "Sil",
+      "confirm": "Bu etkinliği silmek (gizlemek) istiyor musunuz?",
+      "archiving": "Siliniyor…",
+      "success": "Etkinlik silindi.",
+      "failed": "Etkinlik silinemedi: {{error}}"
+    }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "Yapılandırma Kalitesi",
+        "description": "Tür ve yapılandırmaya göre başarı oranı. Aynı yapılandırma karmasını (hash) paylaşan 2+ çıkarma çalışmasından sonra doldurulur.",
+        "empty": "Henüz veri yok — tür başına aynı yapılandırma karmasına sahip 2+ çıkarma çalışması gerekir.",
+        "exploration": "Keşif örneği (rastgele kuyruk)"
+      },
+      "modelMatrix": {
+        "title": "Model Matrisi",
+        "description": "Model ve görev kapsamına göre ağırlıklı sonuç puanı. başarılı=1.0 · atlandı=0.3 · başarısız=0.0.",
+        "empty": "Henüz veri yok — aynı model ve kapsamla 2+ çıkarma çalışması gerekir."
+      },
+      "defaultDrift": {
+        "title": "Yapılandırma Sapması",
+        "description": "Hangi çıkarma parametrelerinin varsayılanlardan saptığı ve projelerin aynı değerde birleşip birleşmediği.",
+        "empty": "Henüz kaydedilmiş bir parametre ayarı yok."
+      },
+      "outcomeRecompute": {
+        "title": "Sonuç Yeniden Hesaplama",
+        "description": "Çalışma sonrası kullanıcı düzeltmeleri uygulandıktan sonra yeniden değerlendirilen çıkarma çalışmaları.",
+        "empty": "Henüz düzeltme verisi yok. Sonuç yeniden hesaplama, düzeltmeler bir çıkarma çalışmasına bağlandığında etkinleşir."
+      }
+    },
+    "columns": {
+      "genre": "Tür",
+      "configHash": "Yapılandırma",
+      "runs": "Çalışmalar",
+      "successRate": "Başarı oranı",
+      "avgEntities": "Ort. varlıklar",
+      "model": "Model",
+      "scope": "Kapsam",
+      "filter": "Filtre",
+      "weightedOutcome": "Puan",
+      "target": "Parametre",
+      "affectedProjects": "Projeler",
+      "driftPattern": "Patern",
+      "runsWithOutcome": "Sonuçlu çalışmalar",
+      "runId": "Çalışma",
+      "outcome": "Sonuç",
+      "recomputed": "Yeniden hesaplanan",
+      "corrections": "Düzeltmeler"
+    },
+    "driftPattern": {
+      "convergent": "Yakınsak",
+      "divergent": "Iraksak"
+    },
+    "totalRuns": "Toplam {{count}} çalışma"
+  }
+}

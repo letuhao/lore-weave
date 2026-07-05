@@ -1,0 +1,155 @@
+{
+  "title": "Jobs",
+  "status": {
+    "pending": "लंबित",
+    "running": "चल रहा है",
+    "paused": "रुका हुआ",
+    "cancelling": "रद्द किया जा रहा है",
+    "completed": "पूरा हुआ",
+    "failed": "विफल",
+    "cancelled": "रद्द"
+  },
+  "kind": {
+    "extraction": "ज्ञान निष्कर्षण (Knowledge extraction)",
+    "glossary_extraction": "शब्दावली निष्कर्षण",
+    "wiki_gen": "विकी जनरेशन",
+    "translation": "अनुवाद",
+    "glossary_translation": "शब्दावली अनुवाद",
+    "video_gen": "वीडियो जनरेशन",
+    "campaign": "अभियान",
+    "enrichment_job": "Lore enrichment",
+    "book_import": "किताब इम्पोर्ट",
+    "composition": {
+      "generate": "रचना (Composition)"
+    }
+  },
+  "summary": {
+    "active": "सक्रिय",
+    "completed": "पूरा हुआ",
+    "failed": "विफल",
+    "cancelled": "रद्द"
+  },
+  "filters": {
+    "status": "स्थिति",
+    "kind": "प्रकार",
+    "allStatuses": "सभी स्थितियाँ",
+    "allKinds": "सभी प्रकार",
+    "search": "शीर्षक खोजें…",
+    "searchWide": "शीर्षक, प्रकार, सेवा, मॉडल या जॉब ID खोजें…",
+    "searchHint": "खोज शीर्षक · प्रकार · सेवा · मॉडल · जॉब ID पर लागू होती है (debounced)।"
+  },
+  "col": {
+    "job": "जॉब",
+    "status": "स्थिति",
+    "progress": "प्रगति",
+    "cost": "लागत · टोकन",
+    "started": "शुरू हुआ",
+    "actions": "कार्रवाई"
+  },
+  "section": {
+    "active": "सक्रिय · लाइव",
+    "activeHint": "पेजिनेटेड नहीं — SSE के माध्यम से यथास्थान अपडेट होता है",
+    "history": "इतिहास",
+    "historyHint": "निर्माण तिथि के अनुसार क्रमबद्ध · पेजिनेटेड"
+  },
+  "list": {
+    "loading": "लोड हो रहा है…",
+    "error": "जॉब लोड करने में विफल।",
+    "empty": "अभी तक कोई जॉब नहीं है।",
+    "noActive": "कोई सक्रिय जॉब नहीं है।",
+    "more": "और लोड करें",
+    "toggleChildren": "चाइल्ड जॉब्स दिखाएं/छुपाएं",
+    "noChildren": "कोई चाइल्ड जॉब नहीं है।"
+  },
+  "row": {
+    "ran": "{{d}} पहले चला",
+    "running": "{{d}} से चल रहा है",
+    "details": "विवरण ↗"
+  },
+  "pager": {
+    "range": "{{total}} में से {{from}}–{{to}}",
+    "pageSize": "पेज का आकार",
+    "perPage": "{{n}} / पेज",
+    "page": "पेज {{n}}",
+    "prev": "पिछला पेज",
+    "next": "अगला पेज",
+    "outOfRange": "इस पेज पर कोई पंक्ति नहीं है (कुल {{total}})।",
+    "first": "पहले पेज पर वापस जाएँ"
+  },
+  "live": {
+    "on": "● लाइव",
+    "onShort": "लाइव",
+    "reconnecting": "पुनः जुड़ रहा है…",
+    "off": "ऑफलाइन"
+  },
+  "controls": {
+    "pause": "रोकें",
+    "resume": "जारी रखें",
+    "cancel": "रद्द करें",
+    "cancelConfirm": "अभी रोकें? प्रगति पर काम हटा दिया जाएगा; पूरा हुआ हिस्सा सुरक्षित रहेगा।",
+    "cancelYes": "हाँ",
+    "cancelNo": "नहीं",
+    "cancelled": "रद्द कर दिया गया।",
+    "paused": "रोक दिया गया।",
+    "resumed": "जारी रखा गया।",
+    "retry": "पुनः प्रयास करें",
+    "retried": "एक नई जॉब के रूप में पुनः सबमिट किया गया।",
+    "stale": "जॉब की स्थिति बदल गई — रिफ्रेश किया गया।",
+    "actionFailed": "कार्रवाई विफल रही: {{error}}"
+  },
+  "monitor": {
+    "back": "सभी जॉब्स",
+    "error": "जॉब लोड करने में विफल।",
+    "pausedBanner": "रुका हुआ — कोई नई यूनिट डिस्पैच नहीं होगी और चल रहे काम पूरे होने तक प्रतीक्षा होगी। ऊपर से 'जारी रखें' पर क्लिक करें।",
+    "children": "चाइल्ड जॉब्स"
+  },
+  "detail": {
+    "progress": "प्रगति",
+    "llmCalls": "LLM कॉल्स",
+    "elapsed": "बीता हुआ समय",
+    "throughput": "थ्रूपुट",
+    "throughputVal": "~{{n}} /घंटा",
+    "eta": "ETA",
+    "costSoFar": "अब तक की लागत",
+    "tokensIn": "इनपुट टोकन",
+    "tokensOut": "आउटपुट टोकन",
+    "bestEffort": "सर्वश्रेष्ठ प्रयास",
+    "models": "मॉडल्स",
+    "parameters": "पैरामीटर्स",
+    "parametersHint": "डायनामिक, जॉब के params ऑब्जेक्ट से",
+    "jobId": "जॉब ID",
+    "kind": "प्रकार",
+    "service": "सेवा",
+    "parent": "पैरेंट",
+    "viewParent": "पैरेंट देखें ↗",
+    "created": "निर्मित",
+    "lastUpdate": "अंतिम अपडेट",
+    "copied": "जॉब ID कॉपी की गई।",
+    "copyFailed": "कॉपी नहीं हो सका।",
+    "activity": "गतिविधि (लाइव)",
+    "errorTitle": "त्रुटि"
+  },
+  "activity": {
+    "created": "निर्मित",
+    "pending": "कतार में",
+    "running": "चल रहा है",
+    "paused": "रुका हुआ",
+    "cancelling": "रद्द किया जा रहा है",
+    "completed": "पूरा हुआ",
+    "failed": "विफल",
+    "cancelled": "रद्द"
+  },
+  "mobile": {
+    "children": "चाइल्ड"
+  },
+  "fairness": {
+    "title": "निष्पक्ष शेड्यूलिंग",
+    "running": "{{cap}} में से {{running}} चल रहे हैं",
+    "queued": "· {{queued}} कतार में",
+    "lane": {
+      "translation": "अनुवाद",
+      "knowledge": "ज्ञान",
+      "loreEnrichment": "Lore enrichment"
+    }
+  }
+}

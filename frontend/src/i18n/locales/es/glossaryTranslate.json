@@ -1,0 +1,87 @@
+{
+  "title": "Traducción de Glosario",
+  "subtitle": "Traduce atributos de entidades por lotes con IA",
+  "steps": {
+    "config": "Configuración",
+    "confirm": "Confirmar",
+    "progress": "Progreso",
+    "results": "Resultados"
+  },
+  "config": {
+    "title": "Configuración de traducción",
+    "description": "Elige el idioma de destino y el modelo. Se traducirán todos los atributos que tengan texto de origen.",
+    "sourceLanguage": "Idioma de origen",
+    "sourceUnknown": "Del libro",
+    "targetLanguage": "Idioma de destino",
+    "overwriteMode": "Política de sobrescritura",
+    "model": "Modelo",
+    "noModels": "No hay modelos configurados.",
+    "addInSettings": "Añadir en Ajustes",
+    "selectModel": "Seleccionar modelo...",
+    "allAttrsNote": "Se incluyen todos los atributos con un valor original. Las traducciones verificadas nunca se sobrescriben.",
+    "sameLanguageError": "El idioma de destino debe ser distinto al idioma de origen del libro.",
+    "thinkingEnabled": "Activar pensamiento / razonamiento",
+    "thinkingHint": "Desactivado por defecto. Actívalo para Gemma y modelos similares si quieres que el modelo razone antes de responder.",
+    "mode": {
+      "missing_only": {
+        "label": "Solo faltantes",
+        "hint": "Omite los atributos que ya tienen una traducción en el idioma de destino."
+      },
+      "refresh_machine": {
+        "label": "Refrescar máquina",
+        "hint": "Vuelve a traducir borradores y traducciones automáticas. Las traducciones verificadas permanecerán sin cambios."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "Idiomas",
+    "mode": "Modo",
+    "model": "Modelo",
+    "estimateNote": "El recuento de entidades y el uso de tokens se determinan al iniciar el proceso. El uso real depende del número de atributos por entidad.",
+    "editConfig": "Editar configuración",
+    "startTranslate": "Iniciar traducción",
+    "startFailed": "Error al iniciar el trabajo de traducción",
+    "thinkingOn": "Pensamiento: activado",
+    "thinkingOff": "Pensamiento: desactivado"
+  },
+  "progress": {
+    "title": "Traduciendo glosario",
+    "processing": "Procesando entidad {{current}} de {{total}}...",
+    "entityProgress": "Progreso de la entidad",
+    "entitiesCount": "{{completed}} / {{total}} entidades",
+    "failedCount": "{{count}} fallidas",
+    "attrsTranslated": "Atributos traducidos",
+    "attrsSkipped": "Atributos omitidos",
+    "entitiesDone": "Entidades completadas",
+    "entitiesFailed": "Entidades fallidas",
+    "cancel": "Cancelar",
+    "cancelConfirm": "¿Cancelar este trabajo de traducción? Las entidades ya procesadas conservarán sus traducciones.",
+    "cancelRequested": "Cancelación solicitada",
+    "noEntities": "No hay entidades que traducir para este idioma."
+  },
+  "results": {
+    "title": "Traducción completada",
+    "titleNoEntities": "Nada que traducir",
+    "titleWithErrors": "Traducción completada (con errores)",
+    "titleFailed": "Error en la traducción",
+    "titleCancelled": "Traducción cancelada",
+    "duration": "{{count}} entidades en {{duration}}",
+    "attrsTranslated": "Traducidos",
+    "attrsSkipped": "Omitidos",
+    "entitiesDone": "Entidades completadas",
+    "entitiesFailed": "Fallidas",
+    "partialFailure": "{{count}} entidad(es) falló(n)",
+    "tokenUsage": "Uso de tokens",
+    "estimated": "Estimado: {{tokens}}",
+    "noEntities": "Todos los atributos de las entidades ya tienen traducciones en este idioma, o no hay atributos con texto de origen.",
+    "machineNote": "Las traducciones se guardan con confianza de máquina; revísalas y verifícalas en el editor de entidades.",
+    "viewGlossary": "Revisar en el Glosario",
+    "runAgain": "Traducir de nuevo",
+    "close": "Cerrar"
+  },
+  "button": {
+    "next": "Siguiente",
+    "back": "Atrás",
+    "cancel": "Cancelar"
+  }
+}

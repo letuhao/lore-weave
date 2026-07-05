@@ -1,0 +1,40 @@
+{
+  "consent": {
+    "title": "Berikan izin akses",
+    "subtitle": "Sebuah aplikasi ingin bertindak atas nama Anda di LoreWeave.",
+    "client_named": "{{client}} meminta akses ke akun Anda.",
+    "client_unnamed": "Sebuah aplikasi meminta akses ke akun Anda.",
+    "signed_in_as": "Masuk sebagai {{email}}",
+    "redirect_to": "Dialihkan ke",
+    "unverified": "Aplikasi ini tidak diverifikasi oleh LoreWeave. Lanjutkan hanya jika Anda mengenali dan mempercayainya — periksa alamat pengalihan di atas.",
+    "permissions_heading": "Izin yang diminta",
+    "permissions_hint": "Matikan apa pun yang tidak ingin Anda berikan. Anda dapat memberikan izin lebih sedikit dari yang diminta, tetapi tidak pernah lebih.",
+    "actions_heading": "Tindakan",
+    "areas_heading": "Area",
+    "resource_label": "Sumber Daya",
+    "allow": "Izinkan akses",
+    "allowing": "Mengotorisasi...",
+    "deny": "Tolak",
+    "sign_in": "Masuk untuk melanjutkan",
+    "no_scopes": "Pilih setidaknya satu izin untuk melanjutkan.",
+    "invalid_request": "Permintaan otorisasi ini kehilangan atau memiliki informasi yang tidak valid. Kembali ke aplikasi dan coba lagi.",
+    "error": "Tidak dapat menyelesaikan otorisasi. Silakan coba lagi.",
+    "scope": {
+      "read": "Baca konten Anda",
+      "paid_read": "Jalankan operasi pembacaan berbayar",
+      "write_auto": "Lakukan perubahan secara otomatis",
+      "write_confirm": "Lakukan perubahan (dengan konfirmasi)"
+    },
+    "domain": {
+      "book": "Buku",
+      "glossary": "Glosarium",
+      "knowledge": "Pengetahuan",
+      "translation": "Terjemahan",
+      "composition": "Komposisi",
+      "jobs": "Pekerjaan",
+      "settings": "Pengaturan",
+      "lore_enrichment": "Pengayaan Lore",
+      "catalog": "Katalog"
+    }
+  }
+}

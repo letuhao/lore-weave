@@ -1,0 +1,40 @@
+{
+  "consent": {
+    "title": "Erişime izin ver",
+    "subtitle": "Bir uygulama, LoreWeave üzerinde sizin adınıza işlem yapmak istiyor.",
+    "client_named": "{{client}} hesabınıza erişim talep ediyor.",
+    "client_unnamed": "Bir uygulama hesabınıza erişim talep ediyor.",
+    "signed_in_as": "{{email}} olarak oturum açıldı",
+    "redirect_to": "Şuraya yönlendiriliyor:",
+    "unverified": "Bu uygulama LoreWeave tarafından doğrulanmamıştır. Yalnızca uygulamayı tanıyor ve ona güveniyorsanız devam edin — yukarıdaki yönlendirme adresini kontrol edin.",
+    "permissions_heading": "Talep edilen izinler",
+    "permissions_hint": "Vermek istemediğiniz izinleri kapatın. Talep edilenden daha azına izin verebilirsiniz, asla daha fazlasına.",
+    "actions_heading": "İşlemler",
+    "areas_heading": "Alanlar",
+    "resource_label": "Kaynak",
+    "allow": "Erişime izin ver",
+    "allowing": "Yetkilendiriliyor...",
+    "deny": "Reddet",
+    "sign_in": "Devam etmek için oturum açın",
+    "no_scopes": "Devam etmek için en az bir izin seçin.",
+    "invalid_request": "Bu yetkilendirme isteği eksik veya geçersiz bilgilere sahip. Uygulamaya geri dönün ve tekrar deneyin.",
+    "error": "Yetkilendirme tamamlanamadı. Lütfen tekrar deneyin.",
+    "scope": {
+      "read": "İçeriğinizi okuma",
+      "paid_read": "Ücretli okuma işlemlerini çalıştırma",
+      "write_auto": "Değişiklikleri otomatik olarak yapma",
+      "write_confirm": "Değişiklikleri yap (onay ile)"
+    },
+    "domain": {
+      "book": "Kitaplar",
+      "glossary": "Sözlük",
+      "knowledge": "Bilgi",
+      "translation": "Çeviri",
+      "composition": "Kompozisyon",
+      "jobs": "İşler",
+      "settings": "Ayarlar",
+      "lore_enrichment": "Lore zenginleştirme",
+      "catalog": "Katalog"
+    }
+  }
+}

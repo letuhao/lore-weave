@@ -1,0 +1,155 @@
+{
+  "title": "งาน",
+  "status": {
+    "pending": "รอดำเนินการ",
+    "running": "กำลังทำงาน",
+    "paused": "หยุดชั่วคราว",
+    "cancelling": "กำลังยกเลิก",
+    "completed": "เสร็จสมบูรณ์",
+    "failed": "ล้มเหลว",
+    "cancelled": "ยกเลิกแล้ว"
+  },
+  "kind": {
+    "extraction": "การสกัดความรู้",
+    "glossary_extraction": "การสกัดคำศัพท์",
+    "wiki_gen": "การสร้าง Wiki",
+    "translation": "การแปล",
+    "glossary_translation": "การแปลคำศัพท์",
+    "video_gen": "การสร้างวิดีโอ",
+    "campaign": "แคมเปญ",
+    "enrichment_job": "การเสริมข้อมูล Lore",
+    "book_import": "การนำเข้าหนังสือ",
+    "composition": {
+      "generate": "การประพันธ์"
+    }
+  },
+  "summary": {
+    "active": "กำลังทำงาน",
+    "completed": "เสร็จสมบูรณ์",
+    "failed": "ล้มเหลว",
+    "cancelled": "ยกเลิกแล้ว"
+  },
+  "filters": {
+    "status": "สถานะ",
+    "kind": "ประเภท",
+    "allStatuses": "ทุกสถานะ",
+    "allKinds": "ทุกประเภท",
+    "search": "ค้นหาชื่อเรื่อง…",
+    "searchWide": "ค้นหาชื่อเรื่อง, ประเภท, บริการ, โมเดล หรือ Job ID…",
+    "searchHint": "ค้นหาครอบคลุมถึง ชื่อเรื่อง · ประเภท · บริการ · โมเดล · Job ID (มีการหน่วงเวลาการค้นหา)."
+  },
+  "col": {
+    "job": "งาน",
+    "status": "สถานะ",
+    "progress": "ความคืบหน้า",
+    "cost": "ค่าใช้จ่าย · tokens",
+    "started": "เริ่มเมื่อ",
+    "actions": "การดำเนินการ"
+  },
+  "section": {
+    "active": "กำลังทำงาน · สด",
+    "activeHint": "ไม่มีการแบ่งหน้า — อัปเดตทันทีผ่าน SSE",
+    "history": "ประวัติ",
+    "historyHint": "เรียงตามเวลาที่สร้าง · มีการแบ่งหน้า"
+  },
+  "list": {
+    "loading": "กำลังโหลด…",
+    "error": "โหลดงานไม่สำเร็จ",
+    "empty": "ยังไม่มีงาน",
+    "noActive": "ไม่มีงานที่กำลังทำงานอยู่",
+    "more": "โหลดเพิ่มเติม",
+    "toggleChildren": "แสดง/ซ่อนงานย่อย",
+    "noChildren": "ไม่มีงานย่อย"
+  },
+  "row": {
+    "ran": "รันไปแล้ว {{d}}",
+    "running": "กำลังรัน {{d}}",
+    "details": "รายละเอียด ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} จาก {{total}}",
+    "pageSize": "ขนาดหน้า",
+    "perPage": "{{n}} / หน้า",
+    "page": "หน้า {{n}}",
+    "prev": "หน้าก่อนหน้า",
+    "next": "หน้าถัดไป",
+    "outOfRange": "ไม่มีรายการในหน้านี้ (ทั้งหมด {{total}} รายการ).",
+    "first": "กลับไปหน้าแรก"
+  },
+  "live": {
+    "on": "● สด",
+    "onShort": "สด",
+    "reconnecting": "กำลังเชื่อมต่อใหม่…",
+    "off": "ออฟไลน์"
+  },
+  "controls": {
+    "pause": "หยุดชั่วคราว",
+    "resume": "ดำเนินการต่อ",
+    "cancel": "ยกเลิก",
+    "cancelConfirm": "หยุดตอนนี้เลยหรือไม่? งานที่กำลังทำอยู่จะถูกลบทิ้ง แต่ส่วนที่เสร็จแล้วจะถูกเก็บไว้",
+    "cancelYes": "ใช่",
+    "cancelNo": "ไม่",
+    "cancelled": "ยกเลิกแล้ว",
+    "paused": "หยุดชั่วคราวแล้ว",
+    "resumed": "ดำเนินการต่อแล้ว",
+    "retry": "ลองใหม่",
+    "retried": "ส่งงานใหม่แล้ว",
+    "stale": "สถานะงานเปลี่ยนไป — รีเฟรชข้อมูลแล้ว",
+    "actionFailed": "การดำเนินการล้มเหลว: {{error}}"
+  },
+  "monitor": {
+    "back": "งานทั้งหมด",
+    "error": "โหลดงานไม่สำเร็จ",
+    "pausedBanner": "หยุดชั่วคราว — จะไม่มีการส่งงานใหม่ และงานที่ค้างอยู่จะทำงานจนเสร็จ กด 'ดำเนินการต่อ' ด้านบน",
+    "children": "งานย่อย"
+  },
+  "detail": {
+    "progress": "ความคืบหน้า",
+    "llmCalls": "การเรียกใช้ LLM",
+    "elapsed": "เวลาที่ใช้ไป",
+    "throughput": "อัตราการประมวลผล",
+    "throughputVal": "~{{n}} /ชม.",
+    "eta": "เวลาที่คาดว่าจะเสร็จ",
+    "costSoFar": "ค่าใช้จ่ายสะสม",
+    "tokensIn": "Tokens ขาเข้า",
+    "tokensOut": "Tokens ขาออก",
+    "bestEffort": "best-effort",
+    "models": "โมเดล",
+    "parameters": "พารามิเตอร์",
+    "parametersHint": "แบบไดนามิก จากออบเจกต์ params ของงาน",
+    "jobId": "Job ID",
+    "kind": "ประเภท",
+    "service": "บริการ",
+    "parent": "งานหลัก",
+    "viewParent": "ดูงานหลัก ↗",
+    "created": "สร้างเมื่อ",
+    "lastUpdate": "อัปเดตล่าสุด",
+    "copied": "คัดลอก Job ID แล้ว",
+    "copyFailed": "คัดลอกไม่สำเร็จ",
+    "activity": "กิจกรรม (สด)",
+    "errorTitle": "ข้อผิดพลาด"
+  },
+  "activity": {
+    "created": "สร้างแล้ว",
+    "pending": "รอคิว",
+    "running": "กำลังทำงาน",
+    "paused": "หยุดชั่วคราว",
+    "cancelling": "กำลังยกเลิก",
+    "completed": "เสร็จสมบูรณ์",
+    "failed": "ล้มเหลว",
+    "cancelled": "ยกเลิกแล้ว"
+  },
+  "mobile": {
+    "children": "งานย่อย"
+  },
+  "fairness": {
+    "title": "การจัดคิวแบบเป็นธรรม",
+    "running": "กำลังทำงาน {{running}}/{{cap}}",
+    "queued": "· รอคิว {{queued}}",
+    "lane": {
+      "translation": "การแปล",
+      "knowledge": "ความรู้",
+      "loreEnrichment": "การเสริมข้อมูล Lore"
+    }
+  }
+}

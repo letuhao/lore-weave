@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "제목 없음",
+    "status": {
+      "draft": "초안",
+      "active": "활성",
+      "inactive": "비활성"
+    },
+    "discard": "버리기",
+    "save": "저장",
+    "save_entity": "엔티티 저장",
+    "cancel": "취소",
+    "move_to_trash": "휴지통으로 이동",
+    "meta": {
+      "chapters": "{{count}}개 챕터",
+      "translations": "{{count}}개 번역",
+      "evidences": "{{count}}개 증거"
+    },
+    "tab": {
+      "attributes": "속성",
+      "evidences": "증거",
+      "history": "기록"
+    },
+    "viewing_in_language": "{{lang}}(으)로 보기",
+    "viewing_original": "원본 ({{lang}})",
+    "translation_lang_aria": "번역 언어",
+    "no_translation": "번역 없음",
+    "add_language": "+ 언어 추가...",
+    "lang_placeholder": "예: en",
+    "system_attrs": "시스템 속성",
+    "user_attrs": "사용자 속성",
+    "no_attributes": "이 엔티티 유형에 정의된 속성이 없습니다.",
+    "toast": {
+      "saved": "엔티티가 저장되었습니다",
+      "status_changed": "상태가 {{status}}(으)로 변경되었습니다",
+      "invalid_lang": "유효하지 않은 언어 코드입니다 (예: en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*필수",
+    "modified": "수정됨",
+    "has_translations": "번역 있음"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "초안",
+      "verified": "검증됨",
+      "machine": "기계 번역"
+    },
+    "confidence_aria": "번역 신뢰도",
+    "by": "{{name}} 작성",
+    "discard_aria": "변경 사항 버리기",
+    "save": "저장",
+    "delete_aria": "번역 삭제",
+    "placeholder": "{{lang}} 번역...",
+    "tags_add": "+ 별칭 추가",
+    "delete_title": "번역을 삭제하시겠습니까?",
+    "delete_desc": "이 속성에 대한 {{lang}} 번역이 영구적으로 삭제됩니다.",
+    "delete_confirm": "삭제",
+    "toast": {
+      "updated": "번역이 업데이트되었습니다",
+      "created": "번역이 생성되었습니다",
+      "deleted": "번역이 삭제되었습니다"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "인용",
+      "summary": "요약",
+      "reference": "참조"
+    },
+    "provenance": {
+      "ambiguous": "검증되지 않은 일치",
+      "ambiguous_hint": "이 인용구가 원문에서 두 곳 이상의 위치와 일치합니다. 정확한 위치를 확인할 수 없습니다.",
+      "unmatched": "원문에서 찾을 수 없음",
+      "unmatched_hint": "이 인용구를 챕터 텍스트에서 찾을 수 없습니다. 의역되었거나 환각(hallucination)일 수 있으니 확인이 필요합니다.",
+      "unverified": "미검증",
+      "unverified_hint": "이 인용구는 원문과 대조하여 검증되지 않았습니다."
+    },
+    "filter": {
+      "all": "전체",
+      "attr_aria": "속성별 필터",
+      "all_attributes": "모든 속성",
+      "chapter_aria": "챕터별 필터",
+      "all_chapters": "모든 챕터",
+      "chapter_n": "챕터 {{n}}",
+      "lang_aria": "표시 언어",
+      "original": "원본",
+      "sort_aria": "정렬 기준",
+      "sort": {
+        "created": "생성일",
+        "chapter": "챕터",
+        "block_line": "블록/행",
+        "attribute": "속성"
+      },
+      "ascending": "오름차순",
+      "descending": "내림차순",
+      "add": "추가"
+    },
+    "create": {
+      "title": "새 증거",
+      "attribute": "속성 *",
+      "attr_aria": "새 증거의 속성",
+      "type": "유형",
+      "type_aria": "증거 유형",
+      "original_text": "원문 텍스트 *",
+      "text_placeholder": "원문 텍스트를 붙여넣으세요...",
+      "block_line": "블록 / 행",
+      "block_placeholder": "예: p.42",
+      "note": "메모",
+      "note_placeholder": "선택 사항",
+      "cancel": "취소",
+      "create": "생성"
+    },
+    "card": {
+      "edit_type_aria": "증거 유형 수정",
+      "cancel_title": "취소",
+      "block_line": "블록 / 행",
+      "note": "메모",
+      "cancel": "취소",
+      "save": "저장",
+      "edit_title": "수정",
+      "open_source": "원문 챕터 열기",
+      "delete_title": "삭제",
+      "translated": "번역됨 ({{lang}})",
+      "note_label": "메모: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "증거를 찾을 수 없습니다",
+      "clear_filters": "필터 초기화",
+      "prev_page": "이전 페이지",
+      "next_page": "다음 페이지",
+      "first_page": "첫 페이지",
+      "last_page": "마지막 페이지",
+      "jump_to_page": "페이지 이동",
+      "page_size": "페이지당 행 수",
+      "per_page": "{{n}} / 페이지",
+      "delete_title": "증거를 삭제하시겠습니까?",
+      "delete_desc": "\"{{attr}}\"의 이 증거가 영구적으로 삭제됩니다.",
+      "delete_confirm": "삭제"
+    },
+    "toast": {
+      "updated": "증거가 업데이트되었습니다",
+      "deleted": "증거가 삭제되었습니다",
+      "created": "증거가 생성되었습니다",
+      "text_required": "원문 텍스트가 필요합니다"
+    }
+  },
+  "summarize": {
+    "canonical_label": "병합된 요약",
+    "pending_dirty": "다음 추출 후 다시 요약됩니다",
+    "pending_new": "다음 추출 후 요약됩니다",
+    "sources": "원문 언급 ({{count}}개)",
+    "empty": "언급된 내용이 없습니다"
+  }
+}
