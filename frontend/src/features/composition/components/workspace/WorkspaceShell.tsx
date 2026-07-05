@@ -14,11 +14,18 @@ import { LiveStateProvider } from '../../context/LiveStateContext';
 import { CriticStateProvider } from '../../context/CriticStateContext';
 import { AssembleStateProvider } from '../../context/AssembleStateContext';
 import { WorkspaceLayoutProvider } from '../../context/WorkspaceLayoutContext';
+import { ChatAiSettingsProvider } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
 
 export function WorkspaceShell({ token, bookId, chapterId, children }: {
   token: string | null; bookId: string; chapterId?: string; children: ReactNode;
 }) {
   return (
+    // ChatAiSettingsProvider is hoisted OUTSIDE LiveStateProvider (spec §8): the
+    // resolved model/settings cascade must not sit in the streaming re-render
+    // path, and settings are per-user (book-scoped read) — NOT reset by the
+    // LiveStateProvider's key={bookId} stream reset. Studio tools read
+    // useEffectiveModel(role) to inherit the model instead of list[0].
+    <ChatAiSettingsProvider token={token} bookId={bookId}>
     <WorkspaceLayoutProvider token={token}>
       {/* key={bookId} resets the hoisted co-writer stream on a book change — the
           stream USED to live inside CompositionPanel (which is key={bookId}), so the
@@ -43,5 +50,6 @@ export function WorkspaceShell({ token, bookId, chapterId, children }: {
         </CriticStateProvider>
       </LiveStateProvider>
     </WorkspaceLayoutProvider>
+    </ChatAiSettingsProvider>
   );
 }

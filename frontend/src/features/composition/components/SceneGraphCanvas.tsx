@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
+import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
 import { booksApi } from '../../books/api';
 import { useOutline, useOutlineMutations, useSceneLinks } from '../hooks/useOutline';
 import { useSetWorkSettings } from '../hooks/useWork';
@@ -74,7 +75,9 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
   const [whatIfModelRef, setWhatIfModelRef] = useState('');
   const whatIfModels = useUserModels({ capability: 'chat', enabled: whatIf.active });
   const whatIfModelList = whatIfModels.models ?? [];
-  const effectiveWhatIfModel = whatIfModelRef || whatIfModelList[0]?.user_model_id || '';
+  // Inherit the shared cascade model (spec §8) before list[0].
+  const inheritedWhatIfModel = useEffectiveModel('chat');
+  const effectiveWhatIfModel = whatIfModelRef || inheritedWhatIfModel || whatIfModelList[0]?.user_model_id || '';
   const selectedWhatIfModel = whatIfModelList.find((mm) => mm.user_model_id === effectiveWhatIfModel);
   const takes = useWhatIfTakes({ projectId, token, updateAlt: whatIf.updateAlt });
   const [previewAltId, setPreviewAltId] = useState<string | null>(null);

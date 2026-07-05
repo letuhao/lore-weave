@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { AddModelCta } from '@/components/shared/AddModelCta';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
+import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
 import { compositionApi } from '../api';
 import { useChapterScenes, useCreateScene, useCreateWork, usePendingWorkResolver, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import { useGuidedFirstRun } from '../hooks/useGuidedFirstRun';
@@ -178,6 +179,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   // filter + 15s dedupe cache shared with the ModelPicker below and sibling panels).
   const modelsQ = useUserModels({ capability: 'chat' });
   const modelList = modelsQ.models;
+  // Chat & AI settings — the inherited Account-tier chat model (spec §8). Called
+  // before the early returns (rules-of-hooks); null outside the studio provider.
+  const inheritedChatModel = useEffectiveModel('chat');
 
   const guidedSceneTitle = t('firstSceneTitle', { defaultValue: 'Opening scene' });
   // C17 (WG-4) — guided first-run controller. Called BEFORE the early returns
@@ -305,10 +309,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   // and no hidden stale model_ref reaches generation.
   const defaultModelRef = typeof work.settings?.default_model_ref === 'string' ? work.settings.default_model_ref : '';
   const defaultIsAvailable = !modelList || modelList.some((m) => m.user_model_id === defaultModelRef);
-  // Precedence: an explicit session pick > the persisted per-Work default (if still
-  // active) > the sole-registered model auto-pick. All DERIVED — no useEffect.
+  // Precedence (the settings cascade, spec §3): an explicit session pick > the
+  // persisted per-Work default (Book tier, if still active) > the inherited
+  // Account-tier chat model > the sole-registered model auto-pick. All DERIVED —
+  // no useEffect. Every studio tool inherits through this hub.
   const effectiveModelRef =
-    modelRef || (defaultIsAvailable && defaultModelRef ? defaultModelRef : '') || (guided.soleModelId ?? '');
+    modelRef
+    || (defaultIsAvailable && defaultModelRef ? defaultModelRef : '')
+    || (inheritedChatModel ?? '')
+    || (guided.soleModelId ?? '');
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
   const selectedModel = modelList?.find((m) => m.user_model_id === effectiveModelRef);

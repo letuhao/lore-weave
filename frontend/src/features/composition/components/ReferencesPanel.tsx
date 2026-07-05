@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { UserModel } from '../../ai-models/api';
 import { useReferences } from '../hooks/useReferences';
+import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
 import type { ReferenceHit } from '../types';
 
 function embeddingModels(models: UserModel[]): UserModel[] {
@@ -20,13 +21,15 @@ export function ReferencesPanel({ projectId, sceneId, token, models }: {
   const [draft, setDraft] = useState({ title: '', author: '', source_url: '', content: '', model_ref: '' });
   const refs = useReferences(projectId, sceneId, token, query);
   const embedModels = embeddingModels(models);
+  // Inherit the shared cascade embedding model (spec §8) before list[0].
+  const inheritedEmbed = useEffectiveModel('embedding');
 
   const needsModel = !refs.embedModelSet;
-  const canAdd = draft.content.trim().length > 0 && (!needsModel || !!draft.model_ref || embedModels.length > 0);
+  const canAdd = draft.content.trim().length > 0 && (!needsModel || !!draft.model_ref || !!inheritedEmbed || embedModels.length > 0);
 
   const submit = () => {
     if (!draft.content.trim()) return;
-    const model_ref = needsModel ? (draft.model_ref || embedModels[0]?.user_model_id) : undefined;
+    const model_ref = needsModel ? (draft.model_ref || inheritedEmbed || embedModels[0]?.user_model_id) : undefined;
     if (needsModel && !model_ref) return;  // no embedding model available
     refs.add.mutate(
       { content: draft.content.trim(), title: draft.title.trim(), author: draft.author.trim(),
