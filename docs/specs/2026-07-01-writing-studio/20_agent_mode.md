@@ -1,0 +1,171 @@
+# #20 — Agent Mode / Mission Control
+
+> **Status:** 📐 CLARIFY complete, ready for DESIGN/PLAN · not yet built
+> **Register:** "Cursor-for-novels" gap #4 (memory `writing-studio-fragmented-not-underbuilt`) — the last
+> remaining item; #1 COHERENCE, #2, #3 LIVE-SYNC are all closed.
+> **Mockup:** [`screen-studio-agent-mode.html`](../../../design-drafts/screens/studio/screen-studio-agent-mode.html) (v2, live-verified via chrome-devtools at desktop + 390px mobile)
+> **Backend:** fully built, 0 existing frontend/MCP consumers —
+> `services/composition-service/app/services/authoring_run_service.py` (1346 lines) +
+> `services/composition-service/app/routers/authoring_runs.py`
+
+## What this is
+
+A human starts a bounded, multi-chapter autonomous drafting run. A server-side driver drafts chapters
+one at a time against an approved plan, a critic scores each draft, and a human reviews + accepts/rejects
+before closing the run. This spec covers the **first frontend surface** for it (a new Studio dock panel)
+and a **new MCP tool surface** (per this session's CLARIFY decision — see D5).
+
+## Ground truth (do not re-derive — cite this table)
+
+| Fact | Source |
+|---|---|
+| Run FSM: `draft → gated → running → (paused ⇄ running) → report_ready → closed`; `running → failed` on unit failure | DB CHECK, `migrate.py:1000-1002`; `AuthoringRunStatus` Literal, `models.py:518-520` |
+| Unit FSM: `pending → drafted → (accepted \| rejected)`; `pending → failed` | `models.py:552-554` |
+| A unit = **one chapter**. No scene/beat sub-granularity server-side. | `authoring_run_service.py:1027-1052` |
+| Only one run may be `gated`/`running`/`paused` per book at a time | partial unique index, `migrate.py:1024-1025`; `ActiveRunOverlapError`, `authoring_run_service.py:157-158` |
+| **The driver does NOT wait for accept/reject.** It drafts every unit back-to-back, advancing unconditionally after each successful draft, until scope ends, budget is exhausted, or the critic returns `severe`. There is no `max_unreviewed_units` config. | `run_driver`, `authoring_run_service.py:1016-1175`, esp. 1120-1124 (advance), 1036-1051 (budget stop), 1172-1189 (critic stop) |
+| **Accept/reject/revert-all are server-gated to `report_ready`/`failed`/`paused` only** (`_REVIEWABLE_STATUSES`, line 148, enforced at 830/859/897 in the router). Reviewing "as you go" requires the human (or the FE, see D4) to actively pause — confirmed this is the documented intended usage (class docstring, lines 59-87). | `authoring_run_service.py:148,830,859,897` |
+| Pause takes effect **at the next unit boundary**, not mid-draft (re-claim check before each seam call, not during) | `authoring_run_service.py:1017-1026` |
+| Rejecting a unit does **not** auto-fix/re-draft later units already drafted using its (rejected) content as context — only returns `downstream_unit_indexes` as an advisory warning | `authoring_run_service.py:85-87, 818-821, 847-885` |
+| No retry endpoint. A `failed`/`report_ready` run can only `close` or `revert-all` (rejects every drafted/accepted unit in reverse order, auto-closes on full success) | router endpoint list, `authoring_runs.py` |
+| REST-only today — **zero MCP tools exist** for authoring_run (empty grep of `app/mcp/`) | confirmed 2026-07-05, also noted in `frontend/src/features/studio/agent/useStudioEffectReconciler.ts:10` |
+| Poll-only — no WebSocket/SSE for run progress | no `StreamingResponse` in `authoring_runs.py` |
+| `plan_run_id` comes from the existing Plan-Forge subsystem (`plan_forge_service.py`, `plan_runs.py` repo). `GET /books/{book_id}/plan/runs` **already exists** and is book-scoped — no new BE endpoint needed for the plan picker. | `services/composition-service/app/routers/plan_forge.py:92-102` |
+| A full revision diff viewer **already exists** (inline + side-by-side word-level diff) at the legacy `/books/:bookId/chapters/:chapterId/compare` route | `frontend/src/features/books/components/RevisionCompareView.tsx`, `RevisionDiff.tsx`, `wordDiff.ts` |
+| `AuthoringRun` model fields (full list) | `models.py:523-547` — includes `breaker_state`, `driver_id`, `driver_heartbeat_at` (surfaced in mockup v2, dropped by nobody before this) |
+| `AuthoringRunUnit` model fields (full list) | `models.py:557-571` — `critic_verdict` shape: `{severity: ok\|warn\|severe, summary, cost_usd[, detail]}` |
+
+## Locked decisions
+
+| # | Decision | Why |
+|---|---|---|
+| D1 | **One Studio dock panel**, id `agent-mode`, with 3 internal views (Runs list / New run / Mission control) exactly matching the mockup's nav-tabs | Same "one panel, tabbed views" shape as `ExtensionsPage`/`TranslationPanel` — avoids a 3-panel catalog footprint for one coherent flow. |
+| D2 | **Diff viewer is panel-wrapped, not reinvented.** New thin Studio panel `chapter-revision-compare` wraps the existing `RevisionCompareView`/`RevisionDiff` (same pattern as `TranslationPanel.tsx` wrapping `TranslationTab` AS-IS) | A complete diff renderer (inline + side-by-side, word-level) already exists; the only gap is it's not Studio-dockable yet. Reinventing it would violate DOCK-7 (route-coupling) risk this track has flagged repeatedly (#14's 3 DOCK-7 findings). |
+| D3 | **Plan picker reuses `GET /books/{book_id}/plan/runs` as-is** — no new BE endpoint. FE lists the book's plan runs, client-filters to ones with a usable/compiled artifact | Endpoint is already book-scoped; confirm the status vocabulary supports a clean client-side filter at BUILD — if not, a `status=` query param is a small, in-scope BE addition, not a new endpoint. |
+| D4 | **"Auto-pause after each unit," default ON, moved SERVER-SIDE** (revised 2026-07-05 — the original client-poll design was found to silently no-op for any run started/resumed via MCP with no Studio panel open). New `authoring_runs.pause_after_each_unit` boolean column, default `true`; `run_driver`'s existing unit-boundary re-claim check (`authoring_run_service.py:1017-1026`) additionally checks this flag and pauses there (same code path as the existing budget/critic stops, D11) instead of continuing to the next unit. FE (D4a) and MCP `_start`/`_resume` (D4b) both read/set this flag; a run-header toggle flips it mid-run via `/pause`+flag-update or a small dedicated PATCH. The FE no longer does its own poll-and-pause race — it just reflects the server-enforced `paused` state | User's explicit CLARIFY choice 2026-07-05, revised same day after a follow-up edge-case pass found the client-only version didn't protect chat/MCP-started runs (the exact scenario D5 exists for). A poll-driven client mechanism cannot gate a run nobody is watching; moving the gate server-side makes "default ON" true regardless of entry point (UI or MCP). |
+| D4a | FE: run-header toggle for `pause_after_each_unit`, set at New Run creation and flippable mid-run | Small UI addition once D4's server flag exists — no client polling logic needed anymore. |
+| D4b | MCP: `composition_authoring_run_create`/`_start`/`_resume` all take an explicit `pause_after_each_unit: bool` arg (no default — matches D6's "no silent defaults on spend-adjacent tools") | Keeps chat-driven runs honest about whether they'll draft unattended; an agent asked to "run and keep going without asking me each time" must pass `false` explicitly, not rely on an assumed default. |
+| D5 | **New MCP tool surface**, prefixed `composition_authoring_run_*` (matches this service's existing `composition_*` convention) | User's explicit CLARIFY choice 2026-07-05 — build MCP tools in v1, not deferred. Per the MCP-first invariant, agent-driven control of a multi-step process belongs behind MCP, not a bespoke path. |
+| D6 | **Spend-triggering MCP tools (`_create`, `_gate`, `_start`, `_resume`) follow the propose→confirm pattern** (mint a `confirm_token`, actual effect fires through `confirm_action`) — same shape as `composition_generate`. Non-spend or halting tools (`_list`, `_get`, `_pause`, `_close`, `_accept_unit`, `_reject_unit`) execute directly. `_revert_all` also confirm-gates (destructive + irreversible from the UI, even though it's not itself a new spend) | Mirrors this repo's existing cost-gated-tool pattern (memory `cost-gated-mcp-tool-confirm-runs-engine`); an LLM agent must never autonomously commit new spend or an irreversible action without a confirm step, matching CLAUDE.md's risky-action posture. |
+| D7 | **All MCP tool args take explicit `book_id`/`run_id`**, never inferred from ambient header context | Lesson from memory `gateway-drops-xprojectid-envelope` — ai-gateway MCP federation drops `X-Project-Id`; agent tools must take scoping ids as explicit args. |
+| D8 | **FE hard-disables Accept/Reject outside `report_ready`/`failed`/`paused`**, with an inline reason (not just a disabled button) | Backend already 403s outside `_REVIEWABLE_STATUSES` — the UI must not let a user discover this via a failed request. Mockup v2 already implements this (fixed a v2-draft-1 bug where it didn't). |
+| D9 | **Revert-all requires a confirmation modal** listing exactly which units will be reverted and to what. **The result renders a partial-failure state**, not just success — `revert_all` stops at the first restore failure, does not auto-close, and returns `reverted_unit_indexes`/`failed_unit_index`/`error` (`authoring_run_service.py:887-943`) | Destructive, irreversible from this UI — CLAUDE.md's risky-action posture. Mockup demonstrates the happy path only; a v3 pass or BUILD must add the partial-failure rendering — real, not hypothetical, since the service explicitly designs for this case. |
+| D10 | **Keyboard triage in v1**: with the diff panel focused, `a` = accept, `r` = reject, `→`/`n` = next unit, `←`/`p` = prev unit; disabled (no-op) when the current unit isn't in a reviewable state | User's explicit CLARIFY choice 2026-07-05 — cheap, real UX win when reviewing several chapters in one sitting. |
+| D11 | **Budget bar turns red at ≥85% spent**; `breaker_state`/`driver_heartbeat_at` surfaced as two health chips in the run header, colored by state (danger when breaker is `open` or heartbeat is stale) | This project has shipped the "worker died silently, status never updated" bug class before (see `sweeper-live-smoke-strand-recipe`, `worker-loop-under-one-amqp-message-cancel-clobber`) — mission control must not hide driver liveness. Exact staleness threshold (seconds since `driver_heartbeat_at`) is a BUILD-time detail — derive from the driver's actual heartbeat-write cadence in code, don't invent a number here. |
+
+## Open items intentionally deferred (gate-checked, not silently dropped)
+
+| ID | Item | Gate reason | Trigger to build |
+|---|---|---|---|
+| `D-AGENT-MODE-NOTIFY` | Cross-Studio notification when a backgrounded run finishes/pauses/fails while the panel isn't open | **Naturally-next-phase** — depends on whether a general Studio notification/badge system exists; if a general mechanism doesn't exist yet, building one just for this panel is out of proportion. Check at BUILD start whether Jobs panel (or elsewhere) already has a reusable badge/toast pattern — if yes, this may not even need deferring. | BUILD kickoff: audit for an existing notification primitive first; only defer if none exists. |
+
+## Frontend panel plan
+
+- **`agent-mode`** (new) — Runs list / New run / Mission control, per D1. Registers in `catalog.ts` like every other Phase 11-19 panel (palette + agent-openable, per D8/#00_OVERVIEW).
+- **`chapter-revision-compare`** (new, small) — thin wrapper panel per D2, resolves `chapterId`/`fromRevisionId`/`toRevisionId` from `openPanel` params (same params-retargeting pattern as `wiki-editor`, #15), body = existing `RevisionCompareView`.
+- Reuses existing: `planner` panel (D3, no new plan-creation UI), book chapters list endpoint (existing, book-service) for the New Run scope checklist.
+
+## New MCP tools (backend scope, composition-service)
+
+| Tool | Effect | Gating (D6) |
+|---|---|---|
+| `composition_authoring_run_list` | List runs for a book | direct |
+| `composition_authoring_run_get` | Full run + unit report | direct |
+| `composition_authoring_run_create` | Create a `draft` run (plan, scope, budget, level, allowlist, **`pause_after_each_unit`**) | confirm (explicit `budget_usd` AND `pause_after_each_unit` required, no defaults — D4b) |
+| `composition_authoring_run_gate` | `draft → gated` | confirm |
+| `composition_authoring_run_start` | `gated → running`; optional explicit `pause_after_each_unit` override | confirm |
+| `composition_authoring_run_pause` | `running → paused` | direct |
+| `composition_authoring_run_resume` | `paused → running`; optional explicit `pause_after_each_unit` override | confirm |
+| `composition_authoring_run_close` | terminal close | direct |
+| `composition_authoring_run_accept_unit` | `drafted → accepted` | direct |
+| `composition_authoring_run_reject_unit` | `drafted → rejected`, restores pre-revision | direct |
+| `composition_authoring_run_revert_all` | reject all drafted/accepted, reverse order | confirm |
+
+All args include explicit `book_id` (D7). Exact JSON Schemas, response shapes, and the
+`contracts/frontend-tools.contract.json`-equivalent for MCP (if this repo tracks one for
+composition MCP tools — verify at BUILD) are a PLAN-phase detail, not decided here.
+
+---
+
+## Element-level GUI checklist (anti-omission control)
+
+**Source of truth:** [`design-drafts/screens/studio/screen-studio-agent-mode.html`](../../../design-drafts/screens/studio/screen-studio-agent-mode.html) (v2). Every distinct behavior demonstrated there = one line below, grouped by **screen/interaction, not by React component** (per explicit instruction — a component boundary is an implementation detail chosen at BUILD, the mockup's behaviors are the contract).
+
+**Rule (per memory `checklist-is-self-report-enforce-by-tests`):** a line is `[x]` only when a passing unit test and/or a live browser smoke proves its **effect**. Self-report ("I built the button") does not tick a line. This file gets re-walked against the running app at VERIFY, not rubber-stamped.
+
+### 1. Runs list view
+- [ ] Table lists runs for the current book: run id, scope label, status badge, spent/budget, created-at
+- [ ] Clicking a row opens Mission control at that run's actual current state
+- [ ] "+ New run" button navigates to New Run config
+- [ ] "+ New run" is **blocked** with an explanatory banner when the book already has a `gated`/`running`/`paused` run (one-active-run-per-book, D backend constraint) — banner names the blocking run
+- [ ] Empty state (book has zero runs ever) renders something other than a blank table
+
+**BE implied:** `GET /v1/composition/authoring-runs?book_id=` must support listing (confirm query param name at BUILD); FE must independently detect an active run to pre-empt the blocked-create case (don't rely on the create call's error alone — the button should already be disabled).
+
+### 2. New run config
+- [ ] Plan picker lists the book's existing plan runs (via `GET /books/{book_id}/plan/runs`, D3) — not a free-text field
+- [ ] Plan picker has an empty state / CTA when the book has zero plan runs yet (link to the `planner` panel)
+- [ ] Chapter checklist lists the real book TOC (not a hardcoded 8)
+- [ ] Checking/unchecking a chapter updates the derived ordered "run order" list live
+- [ ] Run order is actually reorderable (mockup's drag handle was cosmetic-only — this must be real at BUILD)
+- [ ] Budget input accepts and validates a USD amount
+- [ ] Level select persists the chosen value into the created run
+- [ ] Tool allowlist is configurable (mockup hardcoded 3 chips) — at minimum shows the real available tool set
+- [ ] "Run gate check" calls the real gate endpoint and transitions to the real resulting state (`gated` on pass)
+- [ ] Gate-check failure (any of the 4 checks) is rendered per-check, not just a generic error, and blocks Start
+
+### 3. Run header (Mission control)
+- [ ] Run title, ids (run_id/book_id truncated + full on hover/copy), level are real
+- [ ] Status badge matches the 7 real states with correct color coding
+- [ ] Action buttons are exactly the FSM-legal set for the current state (no dead buttons, no missing ones) — cross-check against the router's actual allowed transitions at BUILD, not just this doc
+- [ ] `breaker_state` chip reflects the real field, colored by severity
+- [ ] `driver_heartbeat_at` chip reflects real staleness (threshold derived from actual driver cadence, D11)
+- [ ] Budget bar reflects real `spent_usd`/`budget_usd`, turns red at ≥85% (D11)
+- [ ] Error banner shows the real `error_message` when `failed`
+- [ ] Poll indicator is honest — shows actual last-refreshed time, actual poll interval used, suspends visibly when paused
+
+### 4. Gate check panel
+- [ ] Renders only in `gated` state
+- [ ] All 4 checks reflect the real gate validation result, not a hardcoded pass
+- [ ] A failing check disables Start with a tooltip/inline reason
+
+### 5. Unit queue
+- [ ] Lists real units in real scope order with real status/cost/severity
+- [ ] "Current" unit (matches `current_unit`) is visually distinguished
+- [ ] Clicking a row opens the diff/review panel for that unit
+- [ ] Units past a halted point show "not reached" styling (failed-run case)
+
+### 6. Diff / review panel
+- [ ] Shows the **actual chapter prose diff** (before/after), not a summary-only view — this was v1's biggest gap, do not regress it
+- [ ] "Open full editor diff" opens the real `chapter-revision-compare` panel (D2) with the correct `pre_revision_id`/`post_revision_id`, not a stub alert
+- [ ] Critic verdict card shows real severity/summary/cost, detail expand/collapse works
+- [ ] Cascade warning (`downstream_unit_indexes`) renders only when non-empty, states clearly it's advisory-only
+- [ ] Accept/Reject buttons call the real endpoints and reflect the real resulting state
+- [ ] Accept/Reject are **hard-disabled with an inline reason** when the run state isn't `report_ready`/`failed`/`paused` (D8) — do not regress the v2 fix
+- [ ] Prev/Next navigate across the real unit list, including into not-yet-drafted/failed units with the correct placeholder content
+- [ ] Keyboard shortcuts (D10): `a`/`r`/`→`/`←` work when the panel has focus, are no-ops (not errors) when the action isn't legal
+
+### 7. Revert-all
+- [ ] Opens a confirmation modal (D9) before calling the endpoint
+- [ ] Modal lists the real units that will be affected and their real before/after status
+- [ ] Confirm calls the real endpoint; Cancel does nothing
+- [ ] **Partial-failure path is handled, not just the happy path.** `revert_all` stops at the FIRST restore
+  failure and does NOT auto-close the run (`authoring_run_service.py:887-943`) — the response carries
+  `reverted_unit_indexes` (what succeeded), `failed_unit_index`, and `error`. The UI must show which units
+  reverted, which one failed and why, and that the run is still open (same state as before) for a retry —
+  not silently report success or leave the user staring at a state that looks unchanged with no explanation.
+
+### 8. Auto-pause (D4, server-side)
+- [ ] `authoring_runs.pause_after_each_unit` column exists, defaults `true`, is set at creation (D4a/D4b) and updatable mid-run
+- [ ] `run_driver`'s unit-boundary check honors the flag — pauses there instead of drafting the next unit, same code path as the existing budget/critic stops
+- [ ] This holds regardless of entry point: a run started via the Studio UI **and** a run started/resumed via MCP with zero Studio panels open both pause correctly (live smoke both paths — this is the exact gap the flag was added to close, don't just test the UI path)
+- [ ] FE run-header toggle reflects and can flip the flag mid-run (no client polling/race logic needed anymore — the old client-poll design is retired, not just superseded on paper)
+
+### 9. MCP tools (D5/D6/D7/D4b)
+- [ ] All 11 tools listed above exist, are federated through ai-gateway, and are reachable by the test account
+- [ ] Spend-triggering tools (`_create`/`_gate`/`_start`/`_resume`) and `_revert_all` mint a `confirm_token`; the actual effect only happens via `confirm_action`
+- [ ] `_create` has no default `budget_usd` — omitting it is a validation error, not a silent default
+- [ ] `_create`/`_start`/`_resume` require an explicit `pause_after_each_unit` boolean — no silent default (D4b)
+- [ ] All tool args take explicit `book_id`/`run_id` (D7) — no reliance on ambient header/project context
+- [ ] A chat-driven "pause my authoring run" (or similar) end-to-end request actually pauses the real run (live smoke, not just a green unit test)
+- [ ] A chat-driven "start this run and keep drafting without asking me each chapter" (`pause_after_each_unit: false`) actually drafts multiple units unattended in a live smoke, proving the flag's `false` path works, not just its default

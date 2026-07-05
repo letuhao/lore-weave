@@ -60,6 +60,16 @@ EXPECTED_TOOLS = {
     "composition_canon_rule_delete", "composition_write_prose",
     # Tier W
     "composition_publish", "composition_generate",
+    # ── D-AGENT-MODE §20 authoring-run tools (register on the SAME server) ──
+    # Tier R
+    "composition_authoring_run_list", "composition_authoring_run_get",
+    # Tier A
+    "composition_authoring_run_pause", "composition_authoring_run_close",
+    "composition_authoring_run_accept_unit", "composition_authoring_run_reject_unit",
+    # Tier W
+    "composition_authoring_run_create", "composition_authoring_run_gate",
+    "composition_authoring_run_start", "composition_authoring_run_resume",
+    "composition_authoring_run_revert_all",
     # ── W4 narrative-motif-library tools (register on the SAME server) ──
     # Tier R (motif)
     "composition_motif_search", "composition_motif_get",
@@ -87,10 +97,14 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_motif_search", "composition_motif_get",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
           "composition_get_mine_job", "composition_motif_link_list",
-          "plan_validate", "plan_self_check"}
+          "plan_validate", "plan_self_check",
+          "composition_authoring_run_list", "composition_authoring_run_get"}
 TIER_W = {"composition_publish", "composition_generate",
           "composition_motif_adopt", "composition_motif_mine",
-          "composition_arc_import_analyze", "composition_conformance_run"}
+          "composition_arc_import_analyze", "composition_conformance_run",
+          "composition_authoring_run_create", "composition_authoring_run_gate",
+          "composition_authoring_run_start", "composition_authoring_run_resume",
+          "composition_authoring_run_revert_all"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────

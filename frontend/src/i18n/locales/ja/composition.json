@@ -749,5 +749,115 @@
       "deceived": "Deceived",
       "gap": "Gap"
     }
+  },
+  "authoringRun": {
+    "navRuns": "実行",
+    "navNewRun": "新しい実行",
+    "navMission": "ミッションコントロール",
+    "list": {
+      "title": "この本の実行一覧",
+      "newRun": "+ 新しい実行",
+      "blockedBanner": "この本ではすでに実行が{{status}}です — 1冊につき有効な実行は1つのみです。下から開くか、先に一時停止／終了してください。",
+      "blockedTooltip": "先に有効な実行を一時停止または終了してください。",
+      "colRun": "実行",
+      "colScope": "対象範囲",
+      "colStatus": "状態",
+      "colSpent": "消費額",
+      "colCreated": "作成日時",
+      "scopeCount": "{{count}} 章",
+      "empty": "この本にはまだ自律執筆の実行がありません。",
+      "loading": "実行を読み込み中…",
+      "error": "実行を読み込めませんでした。"
+    },
+    "newRun": {
+      "title": "新しい実行 — 設定",
+      "planLabel": "プラン（必須 — 実行は承認済みプランのビートを執筆します）",
+      "planEmpty": "この本にはまだ承認済みのプラン実行がありません。",
+      "chaptersLabel": "対象に含める章（本の目次）",
+      "chaptersHint": "本には{{total}}章 · {{selected}}章を選択中",
+      "orderLabel": "実行順序",
+      "budgetLabel": "予算（USD）",
+      "levelLabel": "レベル",
+      "level3": "レベル3 — 修正",
+      "level4": "レベル4 — 執筆",
+      "allowlistLabel": "ツール許可リスト",
+      "allowlistAdd": "ツールを追加…",
+      "runGateCheck": "ゲートチェックを実行 →",
+      "gating": "確認中…",
+      "cancel": "キャンセル"
+    },
+    "gate": {
+      "title": "ゲートチェック",
+      "checkPlan": "プランが存在し、承認済みである",
+      "checkScope": "対象の章が存在し、並べ替え可能である",
+      "checkBudget": "予算が設定されている（$0超）",
+      "checkAllowlist": "ツール許可リストが設定されている",
+      "startBlocked": "先に以下の未達のゲートチェックを解消してください。"
+    },
+    "header": {
+      "gate": "ゲート →",
+      "start": "開始",
+      "pause": "一時停止",
+      "resume": "再開",
+      "close": "終了",
+      "revertAll": "すべて取り消す",
+      "closedNote": "実行は終了しました — 最終状態のため、これ以上の操作はできません。",
+      "breakerLabel": "ブレーカー",
+      "breakerHealthy": "正常",
+      "breakerReason": {
+        "pauseAfterEachUnit": "レビューのため一時停止中(各ユニット後)",
+        "budget": "予算を使い切りました",
+        "criticSevere": "批評家が重大な問題を検出しました",
+        "unitFailed": "ユニットが失敗しました",
+        "driverCrashed": "ドライバーがクラッシュしました"
+      },
+      "heartbeatLabel": "ハートビート",
+      "heartbeatFresh": "最新",
+      "heartbeatStale": "停止中 — ドライバーが停止した可能性があります",
+      "heartbeatNA": "該当なし",
+      "budgetLabel": "予算",
+      "budgetDanger": "上限に近づいています",
+      "pausePolicyLabel": "各ユニット後に自動一時停止",
+      "errorPrefix": "エラーメッセージ:"
+    },
+    "queue": {
+      "title": "ユニットキュー",
+      "hint": "章をクリックすると下にその下書きが表示されます。",
+      "unitLabel": "ユニット {{index}}"
+    },
+    "diff": {
+      "title": "下書きレビュー",
+      "prev": "← 前へ",
+      "next": "次へ →",
+      "openFullDiff": "エディタの完全差分を開く",
+      "notDrafted": "まだ下書きされていません — レビューする内容がありません。",
+      "notReached": "実行はこの章に到達する前に停止しました。",
+      "failedUnit": "このユニットは失敗しました：",
+      "verdictShow": "詳細を表示 ▾",
+      "verdictHide": "詳細を隠す ▴",
+      "sev": { "ok": "問題なし", "warn": "警告", "severe": "重大" },
+      "cascadeWarning": "後続の{{count}}件のユニットがすでに下書き／承認済みです（{{chapters}}）— これは参考情報のみで、このユニットを却下しても自動的には取り消されません。",
+      "accept": "承認",
+      "reject": "却下",
+      "alreadyReviewed": "レビュー済み — 現在の状態：{{status}}。",
+      "blockedReview": "実行が{{status}}の間は承認／却下できません — バックエンドは実行が停止した場合（report_ready／failed／paused）のみレビューを許可します。この章を今すぐレビューするには実行を一時停止してください。",
+      "keyboardHint": "キーボード操作：a=承認・r=却下・←/→ または p/n = 前/次のユニット"
+    },
+    "revert": {
+      "title": "下書き／承認済みのすべてのユニットを取り消しますか？",
+      "body": "下書き／承認済みのすべてのユニットを逆順で却下し、各章を実行前のリビジョンに復元します。このUIから元に戻すことはできません。対象：",
+      "none": "取り消し対象の下書き／承認済みユニットはありません。",
+      "confirm": "すべて取り消す",
+      "cancel": "キャンセル",
+      "reverting": "取り消し中…",
+      "partialTitle": "取り消しが途中で停止しました",
+      "partialBody": "ユニット{{index}}の復元に失敗しました（{{error}}）。停止前に{{count}}件のユニットが正常に取り消されました。実行は開いたままです（停止前と同じ状態）ので、再試行できます。",
+      "successBody": "{{count}}件すべてのユニットを取り消しました。実行は終了しました。"
+    },
+    "mission": {
+      "empty": "実行一覧から実行を開くと、そのミッションコントロールが表示されます。",
+      "loading": "実行を読み込み中…",
+      "back": "← 実行一覧に戻る"
+    }
   }
 }

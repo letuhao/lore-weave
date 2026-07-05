@@ -305,6 +305,15 @@
       "desc": "Mọi công cụ của Studio, nhóm theo khu vực — tạo tự động từ cùng danh mục với Command Palette",
       "guideBody": "Liệt kê mọi công cụ và panel trong Writing Studio, được nhóm theo khu vực, kèm giải thích bằng ngôn ngữ dễ hiểu về chức năng của từng cái. Nó được tạo trực tiếp từ cùng danh mục vận hành Command Palette và dock, nên khi có công cụ mới được thêm vào, hướng dẫn này tự động cập nhật theo — không bao giờ bị lệch khỏi thực tế của ứng dụng."
     },
+    "agent-mode": {
+      "title": "Chế độ Agent",
+      "desc": "Các lượt tự sáng tác nhiều chương — trung tâm điều khiển"
+    },
+    "chapter-revision-compare": {
+      "title": "So sánh phiên bản chương",
+      "desc": "Diff đầy đủ trong trình soạn thảo cho một cặp phiên bản chương",
+      "empty": "Mở diff phiên bản của một chương từ panel xem xét của Chế độ Agent."
+    },
     "extensions": {
       "guideBody": "Cài đặt và quản lý mọi thứ giúp mở rộng khả năng cho agent của bạn — plugin, skill, kết nối máy chủ MCP, lệnh tùy chỉnh, và hook. Mở nó khi bạn muốn thêm một công cụ mới cho agent sử dụng, xem lại những gì đang được bật, hoặc tắt thứ gì đó đang hoạt động sai."
     },
@@ -351,6 +360,7 @@
     "propose": "Đề xuất",
     "model": "Model",
     "empty": "Dán markdown hệ thống truyện và bấm Đề xuất để bắt đầu.",
+    "openAgentMode": "Các lượt chạy Agent tự động →",
     "mode": {
       "rules": "Quy tắc",
       "llm": "LLM"

@@ -543,6 +543,10 @@ class AuthoringRun(BaseModel):
     driver_id: str | None = None
     driver_heartbeat_at: datetime | None = None
     background: bool = False
+    # D-AGENT-MODE §20 D4: server-side auto-pause-after-each-unit policy (default
+    # ON — matches the DB column default). The driver's per-unit boundary check
+    # honors this flag regardless of entry point (Studio UI or headless MCP).
+    pause_after_each_unit: bool = True
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

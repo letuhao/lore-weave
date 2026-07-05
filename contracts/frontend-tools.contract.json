@@ -200,6 +200,7 @@
           "compose",
           "editor",
           "planner",
+          "agent-mode",
           "usage",
           "notifications",
           "settings",

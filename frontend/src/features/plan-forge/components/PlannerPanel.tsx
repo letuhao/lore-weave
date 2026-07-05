@@ -15,7 +15,7 @@ import { PlanRunView } from './PlanRunView';
 
 export function PlannerPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
-  const { bookId } = useStudioHost();
+  const { bookId, openPanel } = useStudioHost();
   const { accessToken } = useAuth();
   const plan = usePlanRun(bookId, accessToken ?? null);
 
@@ -64,6 +64,19 @@ export function PlannerPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-planner-panel" className="flex h-full min-h-0 flex-col overflow-auto p-3">
+      {/* 20_agent_mode.md — Agent Mode's `agent-mode` panel is hiddenFromPalette
+          (see catalog.ts comment: needs a chat-service enum change out of this
+          session's scope), so it needs a non-palette entry point. An approved
+          plan run is the prerequisite for a run's plan picker anyway, so the
+          Planner is the natural adjacent surface to link from. */}
+      <button
+        type="button"
+        data-testid="planner-open-agent-mode"
+        onClick={() => openPanel('agent-mode')}
+        className="mb-2 self-start text-[11px] text-accent-foreground underline"
+      >
+        {t('planner.openAgentMode', { defaultValue: 'Autonomous Agent Runs →' })}
+      </button>
       <textarea
         data-testid="plan-source-input"
         value={markdown}

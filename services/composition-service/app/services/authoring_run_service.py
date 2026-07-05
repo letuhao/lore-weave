@@ -630,13 +630,18 @@ class AuthoringRunService:
         tool_allowlist: list[str],
         params: dict[str, Any] | None = None,
         background: bool = False,
+        pause_after_each_unit: bool = True,
     ) -> AuthoringRun:
         """Create the run in `draft`. Deliberately permissive — ALL semantic
         validation happens at gate() (the start-gate is the enforcement point);
         only the referenced plan_run must exist+be owned (FK + tenancy).
         `background` (D4): a pure FE display/filter flag surfaced in GET/list —
         sweep-resume durability applies to BOTH fg and bg runs; the real fg/bg
-        UX is FE-side later."""
+        UX is FE-side later. `pause_after_each_unit` (D-AGENT-MODE §20 D4):
+        server-side auto-pause policy, default True (safe — matches the DB
+        column default); the REST router's Pydantic model also defaults it True
+        for the human path, and the MCP create tool requires it explicitly (no
+        silent default there — D4b)."""
         plan = await self._plan_runs.get_for_owner(owner_user_id, book_id, plan_run_id)
         if plan is None:
             raise LookupError("plan run not found")
@@ -645,7 +650,24 @@ class AuthoringRunService:
             plan_run_id=plan_run_id, level=level, scope=scope,
             budget_usd=budget_usd, tool_allowlist=tool_allowlist,
             params=params or {}, background=background,
+            pause_after_each_unit=pause_after_each_unit,
         )
+
+    async def set_pause_policy(
+        self, owner_user_id: UUID, run_id: UUID, pause_after_each_unit: bool,
+    ) -> AuthoringRun:
+        """D-AGENT-MODE §20 D4a: flip the auto-pause-after-each-unit policy —
+        allowed at any status except `closed` (a run-header toggle, not itself
+        an FSM transition)."""
+        run = await self._require(owner_user_id, run_id)
+        if run.status == "closed":
+            raise TransitionConflictError("cannot change pause policy on a closed run")
+        updated = await self._runs.set_pause_policy(
+            owner_user_id, run_id, pause_after_each_unit,
+        )
+        if updated is None:
+            raise TransitionConflictError("run closed while updating pause policy (raced)")
+        return updated
 
     async def gate(
         self,
@@ -1173,6 +1195,30 @@ class AuthoringRunService:
                 if not await self._critique_unit(owner_user_id, run_id, run,
                                                  chapter_id):
                     return
+            # D-AGENT-MODE §20 D4: server-side auto-pause-after-each-unit. THIS
+            # unit (run.current_unit, from the snapshot claimed at the top of
+            # this iteration) is now fully complete (drafted + critiqued) — if
+            # the run's policy asks to pause after every unit AND more scope
+            # remains, stop HERE at the unit boundary via the SAME guarded
+            # transition the budget/critic breakers use, rather than looping
+            # into the next unit unconditionally. Never pauses after the LAST
+            # unit — that case falls through to the top-of-loop scope-exhausted
+            # check (→ report_ready), preserving existing end-of-scope behavior.
+            # This holds regardless of entry point (Studio UI or headless MCP
+            # start/resume) because the flag lives on the run row, not a client
+            # poll.
+            if run.pause_after_each_unit and (run.current_unit + 1) < len(scope):
+                paused = await self._runs.transition(
+                    owner_user_id, run_id,
+                    from_statuses=("running",), to_status="paused",
+                    breaker_state={
+                        "reason": "pause_after_each_unit",
+                        "unit": run.current_unit,
+                    },
+                )
+                if paused is not None:
+                    await self._notify_terminal(paused)
+                return
 
     async def _critique_unit(
         self,

@@ -150,29 +150,26 @@ class TestFrontendToolDefs:
         assert UI_OPEN_STUDIO_PANEL_TOOL not in frontend_tool_defs(editor=True, book_scoped=True)
 
     def test_studio_ui_tool_schemas_are_wire_standard(self):
+        # NOTE: this used to also assert `panel_id`'s enum against a hand-copied literal
+        # list — that list drifted stale at least twice (missing context-inspector,
+        # sharing, book-settings, translation, enrichment-*, user-guide, agent-mode) because
+        # nothing forced it to stay in sync with the real enum. The actual anti-drift
+        # mechanism for that is test_frontend_tools_contract.py's committed
+        # contracts/frontend-tools.contract.json (regenerated via WRITE_FRONTEND_CONTRACT=1),
+        # which the FE guard also reads — duplicating the list here only added a second,
+        # unmaintained copy that could fail for reasons unrelated to whatever change
+        # actually broke the contract. Keep this test to what it can uniquely catch:
+        # wire shape + no duplicate/empty enum values.
         p = UI_OPEN_STUDIO_PANEL_TOOL["function"]
         assert p["name"] == "ui_open_studio_panel"
         assert set(p["parameters"]["required"]) == {"panel_id"}
         # panel_id is enum-constrained so a weak model can't drift the value (or the arg name) —
         # a live gemma-26b smoke otherwise sent the ui_show_panel `panel` arg + guessed a value.
-        assert p["parameters"]["properties"]["panel_id"]["enum"] == [
-            "compose", "editor", "planner", "usage", "notifications", "settings", "trash",
-            "steering",  # RAID C1 — steering editor panel
-            "extensions", "proposals",  # added by e292d1ee2 (extensions/studio track)
-            "glossary",  # 13_glossary_panels.md A3 — entity list dock panel
-            "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates",
-            # 13_glossary_panels.md Phase B — the 4 capabilities promoted off GlossaryPanel's
-            # temporary internal view-switch into real sibling dock panels.
-            "wiki",  # 15_wiki_panels.md B1 — wiki master-detail workspace dock panel
-            "knowledge",  # 14_kg_panels.md A2 — KG projects hub launcher panel
-            # 14_kg_panels.md Phase B — the 12 KG capability panels the hub opens.
-            "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals",
-            "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy",
-            # 14_utility_panels.md — jobs/books/leaderboard dockable tracks.
-            "jobs-list", "books", "leaderboard-books", "leaderboard-authors",
-            "leaderboard-translators", "leaderboard-trending",
-            "chapter-browser",  # sort/filter/search/bulk-act across a book's chapters
-        ]
+        panel_ids = p["parameters"]["properties"]["panel_id"]["enum"]
+        assert panel_ids, "panel_id must declare a non-empty enum"
+        assert all(isinstance(v, str) and v for v in panel_ids), "every panel_id value must be a non-empty string"
+        assert len(panel_ids) == len(set(panel_ids)), "panel_id enum has a duplicate value"
+        assert "agent-mode" in panel_ids  # 20_agent_mode.md D1 — mission control panel
         f = UI_FOCUS_MANUSCRIPT_UNIT_TOOL["function"]
         assert f["name"] == "ui_focus_manuscript_unit"
         assert set(f["parameters"]["required"]) == {"chapter_id"}

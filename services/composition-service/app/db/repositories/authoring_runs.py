@@ -29,7 +29,7 @@ _SELECT = """
   run_id, owner_user_id, book_id, plan_run_id, level, scope, budget_usd,
   spent_usd, tool_allowlist, params, breaker_state, status, current_unit,
   error_message, driver_id, driver_heartbeat_at, background,
-  created_at, updated_at
+  pause_after_each_unit, created_at, updated_at
 """
 
 _UNIT_SELECT = """
@@ -64,12 +64,13 @@ class AuthoringRunsRepo:
         tool_allowlist: list[str],
         params: dict[str, Any] | None = None,
         background: bool = False,
+        pause_after_each_unit: bool = True,
     ) -> AuthoringRun:
         query = f"""
         INSERT INTO authoring_runs
           (owner_user_id, book_id, plan_run_id, level, scope, budget_usd,
-           tool_allowlist, params, background)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9)
+           tool_allowlist, params, background, pause_after_each_unit)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9, $10)
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
@@ -84,6 +85,7 @@ class AuthoringRunsRepo:
                 json.dumps(tool_allowlist),
                 json.dumps(params or {}),
                 background,
+                pause_after_each_unit,
             )
         return _row(row)
 
@@ -193,6 +195,25 @@ class AuthoringRunsRepo:
                 query, run_id, owner_user_id, add_spent_usd, current_unit,
                 driver_id,
             )
+        return _row(row) if row else None
+
+    async def set_pause_policy(
+        self, owner_user_id: UUID, run_id: UUID, pause_after_each_unit: bool,
+    ) -> AuthoringRun | None:
+        """D-AGENT-MODE §20 D4a: flip the auto-pause-after-each-unit policy at
+        create time OR mid-run (a run-header toggle). Allowed at any status
+        EXCEPT 'closed' (nothing left to pause on a terminal run) — the guarded
+        UPDATE excludes it directly rather than requiring the caller to pass an
+        explicit from-status allowlist (unlike the FSM `transition()`, this is
+        not itself an FSM transition)."""
+        query = f"""
+        UPDATE authoring_runs
+        SET pause_after_each_unit = $3, updated_at = now()
+        WHERE run_id = $1 AND owner_user_id = $2 AND status != 'closed'
+        RETURNING {_SELECT}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, run_id, owner_user_id, pause_after_each_unit)
         return _row(row) if row else None
 
     # ── D4 durable driver — guarded claims + sweep ─────────────────────────

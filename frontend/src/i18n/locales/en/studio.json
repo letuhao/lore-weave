@@ -323,6 +323,15 @@
       "title": "User Guide",
       "desc": "Every Studio tool, grouped by area — generated from the same catalog as the Command Palette",
       "guideBody": "Lists every tool and panel in Writing Studio, grouped by area, with a plain-language explanation of what each one does. It's generated straight from the same catalog that powers the Command Palette and dock, so as new tools are added the guide updates automatically — it never falls out of sync with what's actually in the app."
+    },
+    "agent-mode": {
+      "title": "Agent Mode",
+      "desc": "Autonomous multi-chapter authoring runs — mission control"
+    },
+    "chapter-revision-compare": {
+      "title": "Chapter Revision Compare",
+      "desc": "Full editor diff for one chapter revision pair",
+      "empty": "Open a chapter's revision diff from Agent Mode's review panel."
     }
   },
   "sceneRail": {
@@ -364,6 +373,7 @@
     "propose": "Propose",
     "model": "Model",
     "empty": "Paste your novel-system markdown and Propose to start a plan run.",
+    "openAgentMode": "Autonomous Agent Runs →",
     "mode": {
       "rules": "Rules",
       "llm": "LLM"

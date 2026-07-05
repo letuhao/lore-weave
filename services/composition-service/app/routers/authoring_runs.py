@@ -60,6 +60,10 @@ class AuthoringRunCreate(BaseModel):
     # GET/list (the FE's fg/bg UX comes later). Durable sweep-resume applies to
     # BOTH foreground and background runs.
     background: bool = False
+    # D-AGENT-MODE §20 D4/D4a: server-side auto-pause-after-each-unit policy.
+    # Default true for this REST/human path ONLY — the MCP create tool (D4b)
+    # requires it explicitly, no silent default there.
+    pause_after_each_unit: bool = True
 
 
 def _serialize(run: Any) -> dict[str, Any]:
@@ -78,6 +82,7 @@ def _serialize(run: Any) -> dict[str, Any]:
         "current_unit": run.current_unit,
         "error_message": run.error_message,
         "background": run.background,  # D4 fg/bg flag (FE filter)
+        "pause_after_each_unit": run.pause_after_each_unit,  # D-AGENT-MODE §20 D4
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "updated_at": run.updated_at.isoformat() if run.updated_at else None,
     }
@@ -101,6 +106,7 @@ async def create_authoring_run(
             tool_allowlist=body.tool_allowlist,
             params=body.params,
             background=body.background,
+            pause_after_each_unit=body.pause_after_each_unit,
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="plan run not found")
@@ -129,6 +135,30 @@ async def get_authoring_run(
     run = await svc.get(user_id, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
+    return _serialize(run)
+
+
+class AuthoringRunPausePolicy(BaseModel):
+    pause_after_each_unit: bool
+
+
+@router.patch("/{run_id}/pause-policy")
+async def set_authoring_run_pause_policy(
+    run_id: UUID,
+    body: AuthoringRunPausePolicy,
+    user_id: UUID = Depends(get_current_user),
+    svc: AuthoringRunService = Depends(get_authoring_run_service),
+):
+    """D-AGENT-MODE §20 D4a: flip the server-side auto-pause-after-each-unit
+    policy — owner-only (same tenancy as GET/list; no book_owner_may_act
+    widening), allowed from any non-closed status (a run-header toggle, not an
+    FSM transition)."""
+    try:
+        run = await svc.set_pause_policy(user_id, run_id, body.pause_after_each_unit)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="run not found")
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return _serialize(run)
 
 

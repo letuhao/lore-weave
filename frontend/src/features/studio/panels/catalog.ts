@@ -64,6 +64,8 @@ import { EnrichmentSourcesPanel } from './EnrichmentSourcesPanel';
 import { EnrichmentJobsPanel } from './EnrichmentJobsPanel';
 import { EnrichmentSettingsPanel } from './EnrichmentSettingsPanel';
 import { UserGuidePanel } from './UserGuidePanel';
+import { AgentModePanel } from './AgentModePanel';
+import { ChapterRevisionComparePanel } from './ChapterRevisionComparePanel';
 
 /** #18 — domain-area grouping for the Command Palette. Required for every non-hidden panel
  *  (enforced at runtime by panelCatalogContract.test.ts — B6, not just a convention). */
@@ -223,6 +225,17 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // above, grouped by #18's category, using descKey as the guide body (Wave 2 adds dedicated
   // guideBodyKey copy per panel). Palette + agent openable like any other panel.
   { id: 'user-guide', component: UserGuidePanel, titleKey: 'panels.user-guide.title', descKey: 'panels.user-guide.desc', category: 'platform', guideBodyKey: 'panels.user-guide.guideBody' },
+  // 20_agent_mode.md D1/D2 — Agent Mode mission control + its diff-panel wrapper.
+  // `agent-mode` is palette+agent-openable (D1) — added 'agent-mode' to
+  // chat-service's `ui_open_studio_panel` panel_id enum + regenerated
+  // contracts/frontend-tools.contract.json so panelCatalogContract.test.ts's
+  // palette-openable-set === backend-enum check stays green. Still also
+  // reachable via the `planner` panel's "Autonomous Agent Runs" link.
+  // `chapter-revision-compare` is a params-retargeting singleton (json-editor/
+  // wiki-editor/translation-versions precedent) — meaningless without a
+  // chapterId, so it stays hidden regardless, same as those panels.
+  { id: 'agent-mode', component: AgentModePanel, titleKey: 'panels.agent-mode.title', descKey: 'panels.agent-mode.desc', category: 'editor' },
+  { id: 'chapter-revision-compare', component: ChapterRevisionComparePanel, titleKey: 'panels.chapter-revision-compare.title', descKey: 'panels.chapter-revision-compare.desc', hiddenFromPalette: true },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 

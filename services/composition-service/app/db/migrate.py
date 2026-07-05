@@ -1016,7 +1016,14 @@ CREATE TABLE IF NOT EXISTS authoring_runs (
   -- real fg/bg UX is FE-side later).
   driver_id           TEXT,
   driver_heartbeat_at TIMESTAMPTZ,
-  background          BOOLEAN NOT NULL DEFAULT false
+  background          BOOLEAN NOT NULL DEFAULT false,
+  -- D-AGENT-MODE §20 D4: server-side auto-pause policy — when true (the safe
+  -- default), the driver's per-unit guarded claim ALSO pauses the run at each
+  -- unit boundary (same code path as the budget/critic breaker stops) instead
+  -- of drafting the next unit unconditionally. Moved server-side (not a client
+  -- poll) because a run started/resumed headlessly via MCP with no Studio
+  -- panel open must still honor "stop and let a human look" by default.
+  pause_after_each_unit BOOLEAN NOT NULL DEFAULT true
 );
 -- Scope fence (edge #11): ONE active run per book — across users too (two runs
 -- over the same chapters conflict regardless of who started them). The gate's
@@ -1030,6 +1037,9 @@ CREATE INDEX IF NOT EXISTS idx_authoring_runs_owner_book
 ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_id TEXT;
 ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_heartbeat_at TIMESTAMPTZ;
 ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS background BOOLEAN NOT NULL DEFAULT false;
+-- D-AGENT-MODE additive column for DBs that created authoring_runs before it
+-- (same IF-NOT-EXISTS evolution pattern as the D4 columns above).
+ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS pause_after_each_unit BOOLEAN NOT NULL DEFAULT true;
 -- Sweep scan: 'running' runs ordered by heartbeat age (partial — the fleet of
 -- non-running runs never pollutes it).
 CREATE INDEX IF NOT EXISTS idx_authoring_runs_running_heartbeat

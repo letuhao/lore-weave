@@ -47,15 +47,24 @@ class FakeRunsRepo:
 
     async def create(self, owner_user_id, book_id, *, plan_run_id, level, scope,
                      budget_usd, tool_allowlist, params=None,
-                     background=False) -> AuthoringRun:
+                     background=False, pause_after_each_unit=True) -> AuthoringRun:
         run = AuthoringRun(
             run_id=uuid.uuid4(), owner_user_id=owner_user_id, book_id=book_id,
             plan_run_id=plan_run_id, level=level, scope=[str(c) for c in scope],
             budget_usd=Decimal(str(budget_usd)), tool_allowlist=tool_allowlist,
             params=params or {}, background=background,
+            pause_after_each_unit=pause_after_each_unit,
         )
         self.rows[run.run_id] = run
         return run
+
+    async def set_pause_policy(self, owner_user_id, run_id, pause_after_each_unit) -> AuthoringRun | None:
+        r = await self.get_for_owner(owner_user_id, run_id)
+        if r is None or r.status == "closed":
+            return None
+        updated = r.model_copy(update={"pause_after_each_unit": pause_after_each_unit})
+        self.rows[run_id] = updated
+        return updated
 
     async def get_for_owner(self, owner_user_id, run_id) -> AuthoringRun | None:
         r = self.rows.get(run_id)
@@ -374,13 +383,18 @@ def make_svc(seam=None, plan_status="validated", revisions=None, notify=None,
 
 
 async def make_run(svc, *, scope=None, budget="1.00", allowlist=None, level=3,
-                   params=None):
+                   params=None, pause_after_each_unit=False):
+    # NOTE: defaults to pause_after_each_unit=False (unlike the real service's
+    # own safe default of True) so the many pre-existing "drafts every unit
+    # back-to-back" driver tests in this file keep exercising that behavior
+    # unmodified. Tests of the D-AGENT-MODE pause_after_each_unit feature itself
+    # pass pause_after_each_unit=True explicitly.
     return await svc.create(
         OWNER, BOOK, plan_run_id=PLAN, level=level,
         scope=[str(c) for c in (scope if scope is not None else [CH1, CH2])],
         budget_usd=Decimal(budget),
         tool_allowlist=allowlist if allowlist is not None else ["book_write_draft"],
-        params=params,
+        params=params, pause_after_each_unit=pause_after_each_unit,
     )
 
 
@@ -666,6 +680,153 @@ async def test_start_spawns_driver_to_completion():
     await task
     final = await runs.get_for_owner(OWNER, run.run_id)
     assert final.status == "report_ready"
+
+
+# ── D-AGENT-MODE §20 D4: server-side auto-pause-after-each-unit ────────────
+
+
+async def test_create_pause_after_each_unit_defaults_true():
+    """The service's own Python default (mirrors the DB column default) — the
+    REST/MCP callers always pass it explicitly, but a bare svc.create() call
+    (e.g. a future internal caller) still gets the SAFE default."""
+    svc, _, _ = make_svc()
+    run = await svc.create(
+        OWNER, BOOK, plan_run_id=PLAN, level=3, scope=[str(CH1)],
+        budget_usd=Decimal("1"), tool_allowlist=["t"],
+    )
+    assert run.pause_after_each_unit is True
+
+
+async def test_driver_pauses_at_boundary_when_policy_on_and_more_scope_remains():
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs, pause_after_each_unit=True)
+    await svc.run_driver(OWNER, run.run_id)
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "paused"
+    assert final.breaker_state == {"reason": "pause_after_each_unit", "unit": 0}
+    assert final.current_unit == 1           # unit 0's progress stands (resume point)
+    assert len(seam.calls) == 1               # unit 1 never started
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["drafted"]
+
+
+async def test_driver_pause_after_each_unit_resume_drafts_next_then_completes():
+    """Resuming a pause_after_each_unit stop drafts exactly the next unit, then
+    (being the LAST unit) proceeds straight to report_ready without pausing
+    again."""
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs, pause_after_each_unit=True)
+    await svc.run_driver(OWNER, run.run_id)
+    assert (await runs.get_for_owner(OWNER, run.run_id)).status == "paused"
+    resumed = await svc.resume(OWNER, run.run_id)
+    assert resumed.status == "running"
+    await svc.run_driver(OWNER, run.run_id)
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "report_ready"     # no second pause — it was the last unit
+    assert len(seam.calls) == 2
+    assert [c["chapter_id"] for c in seam.calls] == [CH1, CH2]
+    from app.services import authoring_run_service as mod
+
+    task = mod._DRIVER_TASKS.get(run.run_id)
+    if task is not None:
+        await task
+
+
+async def test_driver_pause_after_each_unit_does_not_pause_on_last_unit():
+    """A single-unit scope never pauses on pause_after_each_unit — it proceeds
+    straight to the existing end-of-scope report_ready path."""
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs, scope=[CH1], pause_after_each_unit=True)
+    await svc.run_driver(OWNER, run.run_id)
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "report_ready"
+    assert len(seam.calls) == 1
+
+
+async def test_driver_pause_after_each_unit_false_drafts_back_to_back():
+    """Explicit-false regression: the whole scope drafts unattended (mirrors
+    the pre-D-AGENT-MODE ground truth), matching test_driver_success_path."""
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs, pause_after_each_unit=False)
+    await svc.run_driver(OWNER, run.run_id)
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "report_ready"
+    assert len(seam.calls) == 2
+
+
+async def test_driver_pause_after_each_unit_notifies():
+    notify = NotifyRecorder()
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam, notify=notify)
+    run = await _running_run(svc, runs, pause_after_each_unit=True)
+    await svc.run_driver(OWNER, run.run_id)
+    assert (await runs.get_for_owner(OWNER, run.run_id)).status == "paused"
+    assert len(notify.calls) == 1
+    call = notify.calls[0]
+    assert "paused (pause_after_each_unit)" in call["title"]
+    assert call["metadata"]["status"] == "paused"
+
+
+async def test_driver_pause_after_each_unit_does_not_override_budget_stop():
+    """The budget check runs FIRST at the TOP of the loop, before any unit is
+    drafted — if budget is already exhausted going into a unit (e.g. resuming
+    after a prior unit's spend), that stop wins (breaker reason 'budget') and
+    the seam never runs, regardless of pause_after_each_unit. (The reverse
+    order — pause_after_each_unit firing for a unit whose OWN cost pushes past
+    budget — is exercised by test_driver_pauses_at_boundary_when_policy_on…:
+    the pause_after_each_unit check runs immediately after that unit's own
+    critique, before the loop ever revisits the budget check.)"""
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs, budget="0.05", pause_after_each_unit=True)
+    # Simulate unit 0 already drafted+spent in a prior segment (resume point).
+    await runs.record_unit_progress(
+        OWNER, run.run_id, add_spent_usd=Decimal("0.05"), current_unit=1,
+    )
+    await svc.run_driver(OWNER, run.run_id)
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "paused"
+    assert final.breaker_state["reason"] == "budget"
+    assert seam.calls == []           # unit 1 never even started
+
+
+async def test_set_pause_policy_updates_flag():
+    svc, runs, _ = make_svc()
+    run = await make_run(svc, pause_after_each_unit=True)
+    updated = await svc.set_pause_policy(OWNER, run.run_id, False)
+    assert updated.pause_after_each_unit is False
+    again = await svc.set_pause_policy(OWNER, run.run_id, True)
+    assert again.pause_after_each_unit is True
+
+
+async def test_set_pause_policy_blocked_when_closed():
+    svc, runs, _ = make_svc()
+    run = await make_run(svc)
+    closed = await svc.close(OWNER, run.run_id)
+    assert closed.status == "closed"
+    with pytest.raises(TransitionConflictError):
+        await svc.set_pause_policy(OWNER, run.run_id, True)
+
+
+async def test_set_pause_policy_foreign_owner_404():
+    svc, runs, _ = make_svc()
+    run = await make_run(svc)
+    with pytest.raises(LookupError):
+        await svc.set_pause_policy(uuid.uuid4(), run.run_id, True)
+
+
+async def test_set_pause_policy_allowed_while_running():
+    """A run-header toggle mid-run (D4a) — allowed at any non-closed status,
+    not gated to the reviewable statuses."""
+    svc, runs, _ = make_svc()
+    run = await _running_run(svc, runs)
+    updated = await svc.set_pause_policy(OWNER, run.run_id, True)
+    assert updated.pause_after_each_unit is True
+    assert updated.status == "running"
 
 
 # ── D3: driver writes the per-unit ledger ───────────────────────────────────

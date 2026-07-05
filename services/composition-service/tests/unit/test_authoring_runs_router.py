@@ -131,6 +131,16 @@ class StubService:
         self.close_calls.append((owner_user_id, run_id))
         return _run(status="closed")
 
+    async def set_pause_policy(self, owner_user_id, run_id, pause_after_each_unit):
+        if self.review_error is not None:
+            raise self.review_error
+        run = self.runs.get(run_id)
+        if run is None or run.owner_user_id != owner_user_id:
+            raise LookupError("run not found")
+        updated = run.model_copy(update={"pause_after_each_unit": pause_after_each_unit})
+        self.runs[run_id] = updated
+        return updated
+
     # ── D3 — report + review ────────────────────────────────────────────
 
     async def get_any(self, run_id):
@@ -231,6 +241,20 @@ def test_list_surfaces_background_flag(client, stub):
     )
     assert r.status_code == 200
     assert r.json()["items"][0]["background"] is True
+
+
+def test_create_pause_after_each_unit_passthrough_and_default_true(client, stub):
+    """D-AGENT-MODE §20 D4a: pause_after_each_unit is accepted at create,
+    passed through to the service, defaults true for the REST/human path when
+    omitted, and is surfaced in the serialized run."""
+    client.post(
+        "/v1/composition/authoring-runs",
+        json=_create_body(pause_after_each_unit=False), headers=AUTH,
+    )
+    assert stub.create_kwargs["pause_after_each_unit"] is False
+    r = client.post("/v1/composition/authoring-runs", json=_create_body(), headers=AUTH)
+    assert stub.create_kwargs["pause_after_each_unit"] is True  # default omitted → True
+    assert r.json()["pause_after_each_unit"] is True  # stub run defaults to True
 
 
 def test_create_unknown_plan_404(client):
@@ -343,6 +367,43 @@ def test_start_stays_run_owner_only(client, stub):
     app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant("OWNER")
     r = client.post(f"/v1/composition/authoring-runs/{RUN}/start", headers=AUTH)
     assert r.status_code == 404  # foreign run invisible on the owner-only path
+
+
+# ── D-AGENT-MODE §20 D4a — PATCH pause-policy ───────────────────────────────
+
+
+def test_set_pause_policy_200(client, stub):
+    r = client.patch(
+        f"/v1/composition/authoring-runs/{RUN}/pause-policy",
+        json={"pause_after_each_unit": False}, headers=AUTH,
+    )
+    assert r.status_code == 200
+    assert r.json()["pause_after_each_unit"] is False
+
+
+def test_set_pause_policy_unknown_run_404(client, stub):
+    stub.review_error = LookupError("run not found")
+    r = client.patch(
+        f"/v1/composition/authoring-runs/{RUN}/pause-policy",
+        json={"pause_after_each_unit": True}, headers=AUTH,
+    )
+    assert r.status_code == 404
+
+
+def test_set_pause_policy_closed_run_409(client, stub):
+    stub.review_error = TransitionConflictError("cannot change pause policy on a closed run")
+    r = client.patch(
+        f"/v1/composition/authoring-runs/{RUN}/pause-policy",
+        json={"pause_after_each_unit": True}, headers=AUTH,
+    )
+    assert r.status_code == 409
+
+
+def test_set_pause_policy_requires_body_field(client):
+    r = client.patch(
+        f"/v1/composition/authoring-runs/{RUN}/pause-policy", json={}, headers=AUTH,
+    )
+    assert r.status_code == 422
 
 
 def test_get_200_and_foreign_404(client):

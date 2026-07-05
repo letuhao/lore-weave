@@ -399,11 +399,14 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "editor", "planner", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide"],
+                    "enum": ["compose", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
                         "'editor' = the manuscript editor; 'planner' = the PlanForge "
-                        "novel-system planner; 'usage' = spend/tokens/request log; "
+                        "novel-system planner; 'agent-mode' = mission control for an "
+                        "autonomous multi-chapter authoring run — start/pause/resume a run "
+                        "over an approved plan, review each drafted chapter's diff + critic "
+                        "verdict, accept/reject/revert; 'usage' = spend/tokens/request log; "
                         "'notifications' = job completions & alerts; 'settings' = "
                         "account/providers/translation settings; 'trash' = restore "
                         "deleted books/chapters; 'steering' = author the book's steering "

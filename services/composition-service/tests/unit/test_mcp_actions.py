@@ -386,3 +386,235 @@ def test_generate_token_for_other_user_refused(client):
         resp = _confirm(client, _generate_token(user=USER), user=OTHER)
     assert resp.status_code == 400
     gen.assert_not_awaited()
+
+
+# ── D-AGENT-MODE §20 authoring-run confirm effects (book-scoped, no Work) ──────
+# Unlike publish/generate (Work/project_id-scoped), these 5 descriptors are
+# BOOK-scoped — the dispatch resolves `book_id` directly from the payload and
+# re-checks EDIT there (the `client` fixture's `grant.resolve_grant` already
+# stubs EDIT unconditionally). `get_authoring_run_service` is a plain function
+# the effects import with a DEFERRED `from app.deps import ...` — not a
+# FastAPI Depends — so it's exercised via `patch("app.deps.get_authoring_run_service", ...)`
+# rather than `app.dependency_overrides`.
+
+RUN = uuid.uuid4()
+PLAN_RUN = uuid.uuid4()
+
+
+def _authoring_token(descriptor, payload, resource_id, user=USER, ttl=600, now=None) -> str:
+    return mint_confirm_token(
+        settings.confirm_token_signing_secret, user, resource_id, descriptor, payload,
+        ttl=ttl, now=now,
+    )
+
+
+def _authoring_svc(svc):
+    """Patch the deferred `from app.deps import get_authoring_run_service`
+    import inside each `_execute_authoring_run_*` effect (NOT a FastAPI
+    Depends — `app.dependency_overrides` cannot reach it)."""
+    return patch("app.deps.get_authoring_run_service", AsyncMock(return_value=svc))
+
+
+@pytest.fixture
+def authoring_svc():
+    svc = AsyncMock()
+    yield svc
+
+
+def test_confirm_executes_authoring_run_create(client, authoring_svc):
+    from app.db.models import AuthoringRun
+    from decimal import Decimal
+
+    run = AuthoringRun(
+        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
+        tool_allowlist=["book_write_draft"], pause_after_each_unit=True,
+    )
+    authoring_svc.create = AsyncMock(return_value=run)
+    token = _authoring_token(
+        "composition.authoring_run_create",
+        {
+            "book_id": str(BOOK), "plan_run_id": str(PLAN_RUN), "scope": [str(CHAPTER)],
+            "level": 3, "budget_usd": "2.00", "tool_allowlist": ["book_write_draft"],
+            "pause_after_each_unit": True, "params": {},
+        },
+        BOOK,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["outcome"] == "action_done"
+    assert body["run"]["run_id"] == str(RUN)
+    assert body["run"]["pause_after_each_unit"] is True
+    authoring_svc.create.assert_awaited_once()
+    _, kwargs = authoring_svc.create.await_args
+    assert kwargs["pause_after_each_unit"] is True
+    assert kwargs["budget_usd"] == Decimal("2.00")
+
+
+def test_confirm_authoring_run_create_missing_budget_usd_400(client, authoring_svc):
+    token = _authoring_token(
+        "composition.authoring_run_create",
+        {"book_id": str(BOOK), "plan_run_id": str(PLAN_RUN),
+         "pause_after_each_unit": True},  # no budget_usd
+        BOOK,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 400
+    authoring_svc.create.assert_not_awaited()
+
+
+def test_confirm_executes_authoring_run_gate(client, authoring_svc):
+    from app.db.models import AuthoringRun
+    from decimal import Decimal
+
+    gated = AuthoringRun(
+        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
+        tool_allowlist=["t"], status="gated",
+    )
+    authoring_svc.gate = AsyncMock(return_value=gated)
+    client._book.list_chapters = AsyncMock(
+        return_value=[{"chapter_id": str(CHAPTER), "title": "", "sort_order": 1}],
+    )
+    token = _authoring_token(
+        "composition.authoring_run_gate", {"book_id": str(BOOK), "run_id": str(RUN)}, RUN,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["run"]["status"] == "gated"
+    authoring_svc.gate.assert_awaited_once()
+    _, kwargs = authoring_svc.gate.await_args
+    assert kwargs["book_chapter_ids"] == {str(CHAPTER)}
+
+
+def test_confirm_authoring_run_gate_active_run_overlap_409(client, authoring_svc):
+    from app.services.authoring_run_service import ActiveRunOverlapError
+
+    authoring_svc.gate = AsyncMock(side_effect=ActiveRunOverlapError("active"))
+    client._book.list_chapters = AsyncMock(return_value=[])
+    token = _authoring_token(
+        "composition.authoring_run_gate", {"book_id": str(BOOK), "run_id": str(RUN)}, RUN,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["reason"] == "active_run_overlap"
+
+
+def test_confirm_executes_authoring_run_start_with_pause_override(client, authoring_svc):
+    from app.db.models import AuthoringRun
+    from decimal import Decimal
+
+    running = AuthoringRun(
+        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
+        tool_allowlist=["t"], status="running",
+    )
+    authoring_svc.set_pause_policy = AsyncMock(return_value=running)
+    authoring_svc.start = AsyncMock(return_value=running)
+    token = _authoring_token(
+        "composition.authoring_run_start",
+        {"book_id": str(BOOK), "run_id": str(RUN), "pause_after_each_unit": False},
+        RUN,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["run"]["status"] == "running"
+    authoring_svc.set_pause_policy.assert_awaited_once_with(USER, RUN, False)
+    authoring_svc.start.assert_awaited_once_with(USER, RUN)
+
+
+def test_confirm_executes_authoring_run_start_without_override_skips_policy_call(client, authoring_svc):
+    from app.db.models import AuthoringRun
+    from decimal import Decimal
+
+    running = AuthoringRun(
+        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["t"],
+        status="running",
+    )
+    authoring_svc.start = AsyncMock(return_value=running)
+    token = _authoring_token(
+        "composition.authoring_run_start", {"book_id": str(BOOK), "run_id": str(RUN)}, RUN,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 200, resp.text
+    authoring_svc.set_pause_policy.assert_not_awaited()
+    authoring_svc.start.assert_awaited_once_with(USER, RUN)
+
+
+def test_confirm_executes_authoring_run_resume(client, authoring_svc):
+    from app.db.models import AuthoringRun
+    from decimal import Decimal
+
+    running = AuthoringRun(
+        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["t"],
+        status="running",
+    )
+    authoring_svc.resume = AsyncMock(return_value=running)
+    token = _authoring_token(
+        "composition.authoring_run_resume", {"book_id": str(BOOK), "run_id": str(RUN)}, RUN,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 200, resp.text
+    authoring_svc.resume.assert_awaited_once_with(USER, RUN)
+
+
+def test_confirm_executes_authoring_run_revert_all_full_success(client, authoring_svc):
+    authoring_svc.revert_all = AsyncMock(return_value={
+        "reverted_unit_indexes": [1, 0], "failed_unit_index": None,
+        "error": None, "run_status": "closed", "closed": True,
+    })
+    token = _authoring_token(
+        "composition.authoring_run_revert_all", {"book_id": str(BOOK), "run_id": str(RUN)}, RUN,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["outcome"] == "action_done"
+    assert body["reverted_unit_indexes"] == [1, 0]
+    assert body["closed"] is True
+
+
+def test_confirm_authoring_run_revert_all_partial_failure_502(client, authoring_svc):
+    authoring_svc.revert_all = AsyncMock(return_value={
+        "reverted_unit_indexes": [1], "failed_unit_index": 0,
+        "error": "book-service 502", "run_status": "report_ready", "closed": False,
+    })
+    token = _authoring_token(
+        "composition.authoring_run_revert_all", {"book_id": str(BOOK), "run_id": str(RUN)}, RUN,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert detail["reason"] == "revert_all_partial"
+    assert detail["failed_unit_index"] == 0
+
+
+def test_confirm_authoring_run_denied_without_edit_grant(client, authoring_svc):
+    """A grant revoked between propose and confirm stops the write (re-checked
+    at confirm time, same as the Work-scoped descriptors)."""
+    from app.grant_client import GrantLevel as _GL
+    from app.main import app
+    from app import deps
+
+    client_grant = AsyncMock()
+    client_grant.resolve_grant = AsyncMock(return_value=_GL.VIEW)
+    app.dependency_overrides[deps.get_grant_client_dep] = lambda: client_grant
+    token = _authoring_token(
+        "composition.authoring_run_gate", {"book_id": str(BOOK), "run_id": str(RUN)}, RUN,
+    )
+    with _authoring_svc(authoring_svc):
+        resp = _confirm(client, token)
+    assert resp.status_code == 403
+    authoring_svc.gate.assert_not_awaited()
