@@ -20,25 +20,30 @@ Limitation: extraction of proper nouns defers to K4.3
 "tell me about kai" surface as GENERAL, not SPECIFIC_ENTITY. Fix belongs
 in K4.3, not here.
 
-Multilingual degrade-open (ML-5, audit Area 7 P0-7 — INTERIM):
-Every regex above is English-only, so a zh/ja/ko/vi query matches none and
-would fall to the narrow GENERAL default (1 hop, no intent routing) —
-silently starving non-English queries of any intent-based retrieval. Until a
-per-language classifier lands, we mirror chat-service's `_has_non_ascii()`
-escape-hatch: when a query carries a non-ASCII *letter* (a CJK/Vietnamese/
-Korean/… script) AND the English cascade produced no match, we degrade OPEN to
-a MORE-INCLUSIVE default (RELATIONAL / 2-hop) instead of GENERAL, so the query
-still gets multi-hop routing. English (pure-ASCII) behavior is byte-identical —
-the branch is only reachable after every English pattern has already failed.
-This is a deliberate interim; do NOT read it as multilingual support.
+Multilingual routing (A1 / ML-1):
+The five keyword regexes are compiled per-language in `app/context/intent/lang/`
+(en/zh/ja/ko/vi, unioned — disjoint scripts, so English stays byte-identical).
+A zh/ja/ko/vi query now matches its OWN relational/historical/recent vocabulary
+and routes through the same priority cascade — real intent, not a blanket
+default. A **degrade-net** remains (`_has_non_ascii`): an UNCOVERED non-ASCII
+script (ar/th/hi/…) — or a covered-language query with no keyword and no entity
+— degrades OPEN to RELATIONAL/2-hop instead of the narrow GENERAL. The net now
+sits in place of GENERAL (after SPECIFIC_ENTITY), so a real signal or a named
+entity always wins first. English (pure-ASCII) never enters the net.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import Enum
 
+from app.context.intent.lang import (
+    HISTORICAL_STRONG as _HISTORICAL_STRONG,
+    HISTORICAL_WEAK as _HISTORICAL_WEAK,
+    RECENT as _RECENT,
+    RELATIONAL_KEYWORDS as _RELATIONAL_KEYWORDS,
+    RELATIONAL_STRONG as _RELATIONAL_STRONG,
+)
 from app.context.selectors.glossary import extract_candidates
 
 __all__ = ["Intent", "IntentResult", "classify"]
@@ -61,47 +66,10 @@ class IntentResult:
     recency_weight: float
 
 
-# Strong past anchors — win even when an entity is present.
-# Note: bare "used to" is idiomatic ("what is this used to do?") so we
-# require a following be/have/live/exist to keep it unambiguous.
-_HISTORICAL_STRONG = re.compile(
-    r"\b(back when|long ago|years? ago|chapters? ago|originally|"
-    r"at first|in the beginning|used to (be|have|live|exist|rule|serve)|"
-    r"was once)\b",
-    re.IGNORECASE,
-)
-
-# Weak past anchors — only win when NO specific entity is present.
-# "before the battle" + "Kai" should stay SPECIFIC_ENTITY.
-_HISTORICAL_WEAK = re.compile(
-    r"\b(before|earlier in|previously)\b",
-    re.IGNORECASE,
-)
-
-# Present/near-past anchors. Bare "just" is banned — too idiomatic
-# ("I just want to", "just tell me") — require a temporal companion.
-_RECENT = re.compile(
-    r"\b(just (now|happened|arrived|said|did|finished)|"
-    r"right now|at the moment|currently|this chapter|"
-    r"a moment ago|happening now|right here|present moment)\b",
-    re.IGNORECASE,
-)
-
-# Relational keywords — only meaningful when ≥2 entities present.
-_RELATIONAL_KEYWORDS = re.compile(
-    r"\b(know|knew|meet|met|related|between|together|"
-    r"connection|relationship|friends?|enemies|enemy|"
-    r"married|allied|rival|how are)\b",
-    re.IGNORECASE,
-)
-
-# Very explicit relational phrasings — win even with 1 entity present
-# (the other half is implied, e.g. "Who knows Kai?").
-_RELATIONAL_STRONG = re.compile(
-    r"\b(relationship between|how does .* know|how are .* and|"
-    r"who knows|who met|connection between)\b",
-    re.IGNORECASE,
-)
+# The five intent-keyword regexes are compiled per-language in
+# app/context/intent/lang/ (en/zh/ja/ko/vi unioned; A1 / ML-1) and imported
+# above. English alternatives are byte-identical to the originals, so pure-ASCII
+# routing is unchanged; zh/ja/ko/vi queries now match their own vocabulary.
 
 # Sentence-start / interrogative words that extract_candidates (K4.3)
 # mis-tags as proper nouns because they happen to be capitalized at
@@ -242,33 +210,32 @@ def classify(message: str) -> IntentResult:
             recency_weight=-1.0,
         )
 
-    # 4b. Multilingual degrade-open (ML-5, P0-7 INTERIM). Every regex above is
-    # English-only, so no relational/historical/recent signal can fire for a
-    # non-English (zh/ja/ko/vi/…) query — it can only reach the narrow
-    # SPECIFIC_ENTITY (1-hop) or GENERAL default below, silently starved of
-    # intent-based routing. When the query carries a non-ASCII letter (and no
-    # English signal won above), degrade OPEN to the more-inclusive RELATIONAL /
-    # 2-hop routing, carrying any extracted entities as anchors. Placed BEFORE the
-    # entity split so the outcome is deterministic regardless of whether K4.3
-    # happened to extract CJK runs. English (pure-ASCII) queries never enter this
-    # branch → their behavior is byte-identical. Remove when a per-language
-    # classifier lands. See module docstring.
-    if _has_non_ascii(message):
-        return IntentResult(
-            intent=Intent.RELATIONAL,
-            entities=entities,
-            signals=tuple(signals) + ("multilingual_degrade_open",),
-            hop_count=2,
-            recency_weight=1.0,
-        )
-
-    # 5. SPECIFIC_ENTITY — ≥1 named entity, no temporal/relational signal.
+    # 5. SPECIFIC_ENTITY — ≥1 named entity, no temporal/relational signal. Runs
+    # BEFORE the multilingual net now that zh/ja/ko/vi keywords route via the
+    # cascade above: a non-English query with a clear entity ("告诉我关于凯" →
+    # tell me about Kai) is SPECIFIC_ENTITY, not hijacked to RELATIONAL.
     if entities:
         return IntentResult(
             intent=Intent.SPECIFIC_ENTITY,
             entities=entities,
             signals=tuple(signals),
             hop_count=1,
+            recency_weight=1.0,
+        )
+
+    # 5b. Multilingual degrade-net (ML-1 degrade-open). The per-language keyword
+    # sets cover en/zh/ja/ko/vi, but an UNCOVERED non-ASCII script (ar/th/hi/…)
+    # — or a covered-language query with no keyword + no entity — would otherwise
+    # fall to the narrow 1-hop GENERAL. Instead degrade OPEN to RELATIONAL/2-hop
+    # so it still gets multi-hop routing. Placed in place of GENERAL (not before
+    # SPECIFIC_ENTITY) so real signals win first. English (pure-ASCII) never
+    # enters this branch → byte-identical. Shrinks further as keyword coverage grows.
+    if _has_non_ascii(message):
+        return IntentResult(
+            intent=Intent.RELATIONAL,
+            entities=entities,
+            signals=tuple(signals) + ("multilingual_degrade_open",),
+            hop_count=2,
             recency_weight=1.0,
         )
 

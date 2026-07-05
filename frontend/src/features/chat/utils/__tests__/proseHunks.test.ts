@@ -14,6 +14,28 @@ describe('splitSentences', () => {
     expect(splitSentences('你好。世界！再见？')).toEqual(['你好。', '世界！', '再见？']);
   });
 
+  it('A7 (ML-3): does not split a Vietnamese lowercase-diacritic dialogue tag', () => {
+    // `ông` starts with `ô` (not [a-z]); the old ASCII guard split it wrongly.
+    // \p{Ll} guards any lowercase continuation, so the tag stays one unit.
+    expect(splitSentences('«Chạy!» ông nói. Hắn đứng im.')).toEqual([
+      '«Chạy!» ông nói.',
+      'Hắn đứng im.',
+    ]);
+  });
+
+  it('A7: still splits when a Vietnamese sentence genuinely ends (capitalized next)', () => {
+    expect(splitSentences('Nó chạy đi. Hắn cười.')).toEqual(['Nó chạy đi.', 'Hắn cười.']);
+  });
+
+  it('A7: \\p{Ll} is script-universal — guards a Cyrillic lowercase dialogue tag too', () => {
+    // "«Бежать!» она сказала." — `она` is Cyrillic lowercase (not [a-z]); the
+    // fix guards every cased script, not just Vietnamese.
+    expect(splitSentences('«Бежать!» она сказала. Он замер.')).toEqual([
+      '«Бежать!» она сказала.',
+      'Он замер.',
+    ]);
+  });
+
   it('splits on paragraph newlines', () => {
     expect(splitSentences('First para\n\nSecond para')).toEqual(['First para', 'Second para']);
   });

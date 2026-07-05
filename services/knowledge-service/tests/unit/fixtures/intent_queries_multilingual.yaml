@@ -1,0 +1,30 @@
+# A1 (ML-1) — multilingual intent golden. Proves zh/ja/ko/vi queries route to
+# their REAL intent via per-language keywords, not the old blanket-RELATIONAL
+# degrade. Kept separate from intent_queries.yaml so the English ≥0.80 acceptance
+# denominator is unaffected. All labels verified against the classifier.
+#
+# Note: CJK relational cases use explicit relational PHRASING (关系/関係/관계),
+# not the 2-entity keyword path — segmenter-less CJK entity extraction can't
+# reliably split "凯认识林" into two entities (degrade-open limit, D-ML-SEGMENTER).
+
+specific_entity:
+  - "告诉我关于林"          # zh: tell me about Lin
+  - "佐藤について教えて"      # ja: tell me about Sato
+
+recent_event:
+  - "现在凯在做什么"         # zh: what is Kai doing now
+  - "今何が起きたのか"        # ja: what just happened
+  - "방금 무슨 일이 있었어"    # ko: what just happened
+  - "chuyện gì vừa xảy ra"  # vi: what just happened
+
+historical:
+  - "很久以前谁统治这个王国"    # zh: long ago, who ruled this kingdom
+  - "昔、王は誰だった"        # ja: long ago, who was the king
+  - "오래전에 누가 왕이었나"    # ko: long ago, who was king
+  - "ngày xưa ai cai trị"   # vi: in the old days, who ruled
+
+relational:
+  - "凯和林是什么关系"        # zh: what is the relationship between Kai and Lin
+  - "田中と佐藤の関係は"       # ja: Tanaka and Sato's relationship
+  - "김철수와 이영희의 관계는"  # ko: Kim and Lee's relationship
+  - "Nguyễn quen Trần không"  # vi: does Nguyễn know Trần
