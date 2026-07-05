@@ -2217,3 +2217,56 @@ class TestGroundingToggle:
     async def test_grounding_enabled_default_pulls_grounding(self):
         kclient = await self._run(grounding_enabled=True)
         assert kclient.build_context.call_args.kwargs["grounding"] is True
+
+
+class TestContextMode:
+    """M4 — long-work context mode. mode='off' force-disables the context-budget
+    tiers (AND with the deploy env ceiling, §5): even with the T5 gate env-enabled,
+    a user on mode='off' bypasses it. mode='auto'/'on' defer to the env default."""
+
+    async def _run_capture_detect(self, *, context_mode: str) -> bool:
+        from app.config import settings
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kclient = _patched_knowledge(stable="", volatile="")
+        seen = {"called": False}
+
+        def _fake_detect(msg, tokens):
+            seen["called"] = True
+            from app.services.stream_service import EntityPresence
+            return EntityPresence(True, reason="test")
+
+        async def fake_acompletion(**kwargs):
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client", return_value=kclient,
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_acompletion(**k),
+        ), patch(
+            "app.services.stream_service.detect_entity_presence", side_effect=_fake_detect,
+        ), patch.object(settings, "t5_intent_gate_enabled", True):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="q",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                context_mode=context_mode,
+            ):
+                pass
+        return seen["called"]
+
+    @pytest.mark.asyncio
+    async def test_mode_off_bypasses_t5_gate(self):
+        assert await self._run_capture_detect(context_mode="off") is False
+
+    @pytest.mark.asyncio
+    async def test_mode_auto_honors_env_t5_gate(self):
+        assert await self._run_capture_detect(context_mode="auto") is True

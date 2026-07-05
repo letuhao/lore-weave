@@ -47,13 +47,17 @@ def _loads(v) -> dict:
     return dict(v)
 
 
-def _row_to_prefs(row: asyncpg.Record) -> AiPrefs:
+def _row_to_prefs(row) -> AiPrefs:
+    # Defensive .get(): a real user_chat_ai_prefs row always carries every column,
+    # but a mislabelled/partial row (e.g. a shared mock pool returning a session
+    # record) must degrade to empty defaults, never KeyError into a 500.
+    get = row.get if hasattr(row, "get") else (lambda k, d=None: row[k])
     return AiPrefs(
-        behavior=_loads(row["behavior"]),
-        grounding=_loads(row["grounding"]),
-        voice=_loads(row["voice"]),
-        context=_loads(row["context"]) or dict(_DEFAULT_CONTEXT),
-        version=int(row["version"]),
+        behavior=_loads(get("behavior")),
+        grounding=_loads(get("grounding")),
+        voice=_loads(get("voice")),
+        context=_loads(get("context")) or dict(_DEFAULT_CONTEXT),
+        version=int(get("version", 0) or 0),
         persisted=True,
     )
 

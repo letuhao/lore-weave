@@ -1695,6 +1695,7 @@ async def stream_response(
     studio_context: dict | None = None,
     permission_mode: str = "write",
     grounding_enabled: bool = True,
+    context_mode: str = "auto",
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -1793,6 +1794,10 @@ async def stream_response(
     # the raw project_id was the bug that made the gate a silent no-op (it hit a
     # book_id route → [] → always open). A no-book / unresolved project → book_id None
     # → gate stays open (safe).
+    # M4: long-work context mode 'off' force-disables the context-budget tiers
+    # (AND with the deploy env ceiling, §5). 'auto'/'on' defer to the env default.
+    _ctx_tiers_allowed = context_mode != "off"
+    _t5_gate_on = settings.t5_intent_gate_enabled and _ctx_tiers_allowed
     _gate_pid = _build_project_id or (_build_project_ids[0] if _build_project_ids else None)
     _entity_tokens: frozenset[str] = frozenset()
     if not grounding_enabled:
@@ -1802,7 +1807,7 @@ async def stream_response(
         # silent default). No retrieval is fetched; the T4 story-state net is also
         # gated off below so a cached bible isn't injected behind the user's back.
         _grounding_presence = EntityPresence(False, reason="user_disabled")
-    elif settings.t5_intent_gate_enabled and _gate_pid:
+    elif _t5_gate_on and _gate_pid:
         try:
             _gate_book_id = await knowledge_client.resolve_book_id(
                 user_id=user_id, project_id=str(_gate_pid)
@@ -1814,7 +1819,7 @@ async def stream_response(
         except Exception:  # noqa: BLE001 — degrade to gate-open, never break the turn
             _entity_tokens = frozenset()
         _grounding_presence = detect_entity_presence(user_message_content, _entity_tokens)
-    elif settings.t5_intent_gate_enabled:
+    elif _t5_gate_on:
         _grounding_presence = detect_entity_presence(user_message_content, _entity_tokens)
     else:
         # kill-switch / baseline arm: always pull grounding (pre-T5 behavior).
@@ -1859,7 +1864,7 @@ async def stream_response(
     # whole path (incl. the turn-counter query) is skipped in prod. Best-effort: a block
     # failure degrades to "no block", never breaks the turn.
     story_state_block: str | None = None
-    if settings.story_state_block_enabled and grounding_enabled:
+    if settings.story_state_block_enabled and grounding_enabled and _ctx_tiers_allowed:
         try:
             # The cadence clock: the session's max message sequence — a monotonic
             # per-session counter that advances every turn (granularity is messages,

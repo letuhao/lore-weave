@@ -25,7 +25,8 @@ function eff(): EffectiveSettings {
     grounding: {
       grounding_enabled: { effective_value: true, source_tier: 'system', tier_stack: {} },
     },
-    voice: {}, context: {},
+    voice: {},
+    context: { mode: { effective_value: 'auto', source_tier: 'system', tier_stack: {} } },
   };
 }
 
@@ -82,6 +83,14 @@ describe('ChatAiSettingsPanel', () => {
     h.ed.current = makeEditor({ effective: e });
     render(<ChatAiSettingsPanel />);
     expect(screen.getByText(/may invent lore as fact/i)).toBeInTheDocument();
+  });
+
+  it('switching long-work context mode to Off patches context.mode', () => {
+    const patch = vi.fn().mockResolvedValue(undefined);
+    h.ed.current = makeEditor({ patch });
+    render(<ChatAiSettingsPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Off' }));
+    expect(patch).toHaveBeenCalledWith({ context: { mode: 'off' } });
   });
 
   it('surfaces a save error (e.g. a 412 reload)', () => {

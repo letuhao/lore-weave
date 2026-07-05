@@ -57,6 +57,8 @@ export function ChatAiSettingsPanel() {
   const permission = String(effField(eff, 'behavior', 'permission_mode')?.effective_value ?? 'write');
   const groundingOn = eff?.grounding?.grounding_enabled?.effective_value !== false;
   const groundingTier = eff?.grounding?.grounding_enabled?.source_tier;
+  const contextMode = String(eff?.context?.mode?.effective_value ?? 'auto');
+  const contextTier = eff?.context?.mode?.source_tier;
 
   return (
     <div className="flex flex-col gap-8" data-testid="chat-ai-settings">
@@ -195,6 +197,33 @@ export function ChatAiSettingsPanel() {
             fact. Turn it back on for accurate, grounded answers.
           </p>
         )}
+      </section>
+
+      {/* ── Context management (advanced; for very large works) ── */}
+      <section className="flex flex-col gap-3">
+        <h3 className="font-serif text-base font-semibold">Context management</h3>
+        <p className="-mt-1 max-w-[64ch] text-[12px] text-muted-foreground">
+          How the assistant manages a very long conversation's memory budget. It matters only on very
+          large works (thousands of chapters); most people leave it on <b>Auto</b>.
+        </p>
+        <div className="flex flex-col gap-1.5" role="group" aria-label="Long-work context mode">
+          <span className="flex items-center text-[13px] font-medium">
+            Long-work context mode <SourceChip tier={contextTier} />
+          </span>
+          <span className="flex gap-1.5">
+            {(['auto', 'on', 'off'] as const).map((v) => (
+              <button key={v} type="button" disabled={ed.saving}
+                className={`${SEG} ${contextMode === v ? SEG_ON : SEG_OFF}`}
+                onClick={() => void ed.patch({ context: { mode: v } })}>
+                {v === 'auto' ? 'Auto' : v === 'on' ? 'Always on' : 'Off'}
+              </button>
+            ))}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            Auto engages the long-work tiers only when a project is big enough to need them. Off keeps
+            the simple path (recommended unless you work on a thousand-chapter novel).
+          </span>
+        </div>
       </section>
     </div>
   );

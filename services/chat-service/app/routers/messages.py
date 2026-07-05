@@ -369,11 +369,25 @@ async def send_message(
     # retrieval + the T4 story-state net (the "grounding always on, no toggle"
     # silent default is now a real, per-user/per-session control).
     _grounding_pref = session.get("grounding_enabled")
-    if _grounding_pref is None:
+    _ctx_override = session.get("context_overrides") or {}
+    if isinstance(_ctx_override, str):
+        import json as _json
+        _ctx_override = _json.loads(_ctx_override) or {}
+    _ctx_mode = _ctx_override.get("mode")
+    if _grounding_pref is None or _ctx_mode is None:
         from app.db.user_chat_ai_prefs import get_prefs
         _acct_prefs = await get_prefs(pool, owner_user_id=user_id)
-        _grounding_pref = _acct_prefs.grounding.get("grounding_enabled")
+        if _grounding_pref is None:
+            _grounding_pref = _acct_prefs.grounding.get("grounding_enabled")
+        if _ctx_mode is None:
+            _ctx_mode = _acct_prefs.context.get("mode")
     turn_grounding_enabled = True if _grounding_pref is None else bool(_grounding_pref)
+    # Chat & AI settings (M4) — long-work context mode. 'off' force-disables the
+    # context-budget tiers (T5 gate / T4 story-state) for this session regardless
+    # of the deploy env default; 'auto'/'on' defer to the env ceiling (§5). The
+    # fine-grained per-tier + compaction-path consumption is tracked separately
+    # (D-CHATAI-M4-TIER-CONSUMPTION) — these tiers are eval-proven inert + default-off.
+    turn_context_mode = _ctx_mode or "auto"
 
     # ── P4 REG-P4-01: expand a user-authored slash command (/name args) in place —
     # BEFORE the user message is persisted + streamed, so both the transcript and the
@@ -519,6 +533,7 @@ async def send_message(
             # RAID Wave C2 (DR-C2) — HITL permission mode (ask|write, default write).
             permission_mode=body.permission_mode,
             grounding_enabled=turn_grounding_enabled,
+            context_mode=turn_context_mode,
         ),
         media_type="text/event-stream",
         headers=headers,
