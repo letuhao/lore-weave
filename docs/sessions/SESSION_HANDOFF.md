@@ -1,5 +1,27 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**`sg_value_shift_per_scene` ADOPTED as PlanForge's 8th rule, ADVISORY tier, 2026-07-06** (user
+picked "Adopt Story Grid rule vào validator thật" — closing out
+`docs/specs/2026-07-05-narrative-forge/00_METHODOLOGY.md` §5 decision 3). `run_rules()` now
+returns this rule tagged `"tier": "advisory"`; every pre-existing rule defaults to `tier="hard"`
+(zero changes needed to them). **The real problem this surfaced**: `plan_forge_service.py`'s
+`validate()` and `compile()` both treated `run_rules()`'s WHOLE output as hard-blocking
+(`compile()` literally raises `ValueError` on any failure) — naively appending the new rule would
+have hard-blocked the golden fixture itself (it genuinely fails this rule), the opposite of the
+"advisory, never hard-block" conclusion already reached twice in the eval doc. Fixed via new
+`plan_forge_service._hard_rules_pass(rules_out)` (filters to `tier=="hard"`) replacing both raw
+`all(r["pass"]...)` call sites. `validate_golden`'s S1-S8 criteria and `refine.py`'s
+`linter_no_regress` (a fixed `CORE_RULES` allowlist) both needed ZERO changes — they already only
+reference specific rule names, so the new rule is simply never added to either. **Live-verified
+end-to-end against a real LLM-produced spec** (not just unit tests): rule correctly failed on 4
+events, tagged advisory, and `_hard_rules_pass` correctly returned `True` (no incorrect block).
+4 new tests, full suite **1647 passed/150 skipped** (was 1643, 0 regressions).
+`docs/specs/.../00_METHODOLOGY.md` §5 decision 3 is now **CLOSED**. Full detail:
+[`docs/eval/plan-forge-story-grid-poc-2026-07-06.md`](../eval/plan-forge-story-grid-poc-2026-07-06.md)
+("Third addendum" section).
+
+---
+
 **`D-PLANFORGE-STORY-GRID-POC` DONE 2026-07-06** (user: "POC Story Grid", per
 `docs/specs/2026-07-05-narrative-forge/00_METHODOLOGY.md` decision #3 — Story Grid is NOT a
 swap-in for PlanForge's 7-rule validator, needs its OWN POC scored side-by-side against the same

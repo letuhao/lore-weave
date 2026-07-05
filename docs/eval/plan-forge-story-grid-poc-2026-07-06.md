@@ -266,3 +266,61 @@ planforge_llm.py` is a committed, reusable harness, not a throwaway script) — 
 into CI/pytest (it needs a live stack + a loaded local model, same constraint as other live-smoke
 scripts in this repo), but it exists and is documented for the next person who touches this
 validator, closing the exact gap this addendum's first version flagged as the bigger risk.
+
+## Third addendum (2026-07-06, same day) — `sg_value_shift_per_scene` ADOPTED as the 8th rule (advisory tier)
+
+User picked "Adopt Story Grid rule vào validator thật" (adopt into the real validator) from the
+options this doc's own conclusions raised. Adopted `sg_value_shift_per_scene` ONLY —
+`sg_negative_turn_exists` stays POC-only (weaker candidate per the first addendum's conclusion,
+not asked for).
+
+**The mechanism problem this surfaced:** `plan_forge_service.py` treats `run_rules()`'s ENTIRE
+output as hard-blocking in two real production paths — `validate()` (`passed_rules = all(r["pass"]
+for r in rules_out)`, line ~330) and `compile()` (`if not all(r["pass"] for r in rules_out): raise
+ValueError(...)`, line ~638, an outright exception, not just a status flag). Naively appending
+`sg_value_shift_per_scene` to `run_rules()`'s list would have made `compile()` **hard-block the
+golden fixture itself** (it genuinely fails this rule) — the exact opposite of the
+"quarantine/advisory, never hard-block" conclusion this doc already reached twice.
+
+**Fix — a `"tier"` field, defaulting to `"hard"`:** every existing rule is unmarked (implicit
+`tier="hard"`, zero changes needed to the 7 rules already there); the new rule is tagged
+`"tier": "advisory"`. New `plan_forge_service._hard_rules_pass(rules_out)` filters to hard tier
+only and replaces the two raw `all(r["pass"] ...)` call sites. `validate_golden`'s `criteria`
+(S1-S8) already didn't reference `pa_not_realm`/`thr_no_early_explain`/`open_questions_preserved`
+by name, so it needed no change — the new rule is simply never added to a criterion, exactly like
+those three. `refine.py`'s `linter_no_regress` also needed no change: it already only checks a
+fixed named allowlist (`CORE_RULES`), so simply not adding the new rule's name there is a
+zero-diff way to keep it out of the refine-regression gate too. **Net result: the tiering concept
+needed exactly one new field + one new helper function — the existing architecture already had
+two independent allowlist/exclusion mechanisms doing most of the work, just never named as a
+"tier" concept before.**
+
+**Live-verified end-to-end against a real LLM-produced spec** (not just unit tests): ran
+`propose_spec_llm_async` → `run_rules()` → `_hard_rules_pass()` through the actual production
+functions.
+
+```
+sg_value_shift_per_scene: pass=False tier=advisory detail=events_without_value_shift=['e2_1', 'e2_3', 'e2_4', 'e2_7']
+_hard_rules_pass(rules_out) = True  (this is what gates validate()/compile())
+other hard-tier failures: []
+VERIFIED: advisory rule failed but did NOT block the production gate.
+```
+
+The rule genuinely failed (4 events flagged, consistent with the first addendum's finding that the
+LLM path flags MORE events than the regex path) while `_hard_rules_pass` correctly returned
+`True` — proof the mechanism works on real production data, not just a hand-built unit fixture.
+
+4 new tests: `test_sg_value_shift_per_scene_adopted_as_advisory_8th_rule`,
+`test_sg_value_shift_advisory_fail_does_not_block_golden_all_pass`,
+`test_hard_rules_pass_ignores_advisory_tier_failures`,
+`test_hard_rules_pass_still_blocks_on_hard_tier_failure`. Full suite **1647 passed/150 skipped**
+(was 1643, 0 regressions).
+
+`validate_story_grid.py` keeps its own copy of `sg_value_shift_per_scene` for POC-history
+continuity (this doc's earlier findings reference that exact module/tests) — the two copies may
+drift in detail; `validate.run_rules`'s copy is the one that actually runs in production.
+
+Track #3 (PlanForge validator vs. Story Grid, `docs/specs/2026-07-05-narrative-forge/00_METHODOLOGY.md`
+§5 decision 3) is now **CLOSED**: POC'd, cross-validated against 2 generation methods, 2 real bugs
+found+fixed in the pre-existing validator, and the recommended rule adopted at the correct
+(advisory) tier with live end-to-end proof.

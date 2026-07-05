@@ -5,10 +5,17 @@ already pass.
 Per docs/specs/2026-07-05-narrative-forge/00_METHODOLOGY.md decision #3: Story
 Grid is NOT a swap-in for the current 7 rules. It requires its OWN POC, scored
 side-by-side against the same fixtures the 7 rules already pass, before
-adoption is even considered. This module IS that POC — it is deliberately NOT
-imported by validate.run_rules / validate_golden. Wiring it into the real
-gate is a follow-up decision for whoever reads the POC's findings, not assumed
-here.
+adoption is even considered. This module IS that POC.
+
+**ADOPTED (2026-07-06): `sg_value_shift_per_scene` graduated into
+`validate.run_rules` as an 8th rule, ADVISORY tier** (never blocks
+validate()/compile() — see `plan_forge_service._hard_rules_pass` and
+docs/eval/plan-forge-story-grid-poc-2026-07-06.md "Third addendum"). This
+module keeps its OWN copy for POC-history continuity (the eval report's
+findings reference this exact module/tests) — the two copies may drift in
+detail over time; `validate.run_rules`'s copy is the one that actually runs
+in production. `sg_negative_turn_exists` was NOT adopted — stays POC-only
+here, a candidate for a future pass, not a commitment.
 
 Story Grid (Shawn Coyne, "The Story Grid") is operationalized as two
 mechanically-checkable rules against the CURRENT NovelSystemSpec schema (event

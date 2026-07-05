@@ -46,6 +46,14 @@ def _spec_checksum(spec: dict[str, Any] | None) -> str:
     ).hexdigest()
 
 
+def _hard_rules_pass(rules_out: list[dict[str, Any]]) -> bool:
+    """Advisory-tier rules (e.g. Story Grid's sg_value_shift_per_scene, see
+    docs/eval/plan-forge-story-grid-poc-2026-07-06.md) are reported but must
+    NEVER block validate()/compile() -- only hard tier (the default) gates.
+    """
+    return all(r["pass"] for r in rules_out if r.get("tier", "hard") == "hard")
+
+
 def _work_project_id(work: CompositionWork) -> UUID:
     """generation_job.project_id is NOT NULL — knowledge project or surrogate work.id."""
     if work.project_id is not None:
@@ -327,7 +335,7 @@ class PlanForgeService:
         package = pkg_art.content.get("planning_package") if pkg_art else None
         graph = build_graph(spec)
         rules_out = run_rules(spec, package)
-        passed_rules = all(r["pass"] for r in rules_out)
+        passed_rules = _hard_rules_pass(rules_out)
         fidelity_score = None
         golden_rules: list[dict[str, Any]] = [
             {"id": r["rule"], "passed": r["pass"], "message": r.get("detail", "")}
@@ -635,7 +643,7 @@ class PlanForgeService:
             raise ValueError("no spec to compile")
         spec = spec_art.content
         rules_out = run_rules(spec)
-        if not all(r["pass"] for r in rules_out):
+        if not _hard_rules_pass(rules_out):
             raise ValueError("validation failed — compile blocked")
 
         compiled = compile_artifacts(spec, arc_id=arc_id)

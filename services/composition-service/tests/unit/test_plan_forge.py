@@ -153,6 +153,49 @@ def test_pa_not_realm_still_catches_proportional_coupling_language(pipeline_arti
     assert rule["pass"] is False
 
 
+def test_sg_value_shift_per_scene_adopted_as_advisory_8th_rule(pipeline_artifacts):
+    # D-PLANFORGE-STORY-GRID-POC adoption (2026-07-06): the rule now runs
+    # inside run_rules(), but real on this fixture (arc_2_event_3/_7 lack
+    # var_deltas) -- it must be TAGGED advisory, not silently passing.
+    _, spec, _, _ = pipeline_artifacts
+    rule = next(r for r in run_rules(spec) if r["rule"] == "sg_value_shift_per_scene")
+    assert rule["tier"] == "advisory"
+    assert rule["pass"] is False
+    assert "arc_2_event_3" in rule["detail"]
+    assert "arc_2_event_7" in rule["detail"]
+
+
+def test_sg_value_shift_advisory_fail_does_not_block_golden_all_pass(pipeline_artifacts):
+    # The whole point of advisory tier: validate_golden's all_pass (and by
+    # extension plan_forge_service's hard gate) must stay green even though
+    # this rule genuinely fails on the golden fixture.
+    doc, spec, graph, compiled = pipeline_artifacts
+    validation = validate_golden(spec, compiled["planning_package"], graph, doc, GOLDEN)
+    assert validation["all_pass"] is True
+    sg_rule = next(r for r in validation["rules"] if r["rule"] == "sg_value_shift_per_scene")
+    assert sg_rule["pass"] is False
+
+
+def test_hard_rules_pass_ignores_advisory_tier_failures():
+    from app.services.plan_forge_service import _hard_rules_pass
+
+    rules = [
+        {"rule": "vars_four", "pass": True},
+        {"rule": "sg_value_shift_per_scene", "pass": False, "tier": "advisory"},
+    ]
+    assert _hard_rules_pass(rules) is True
+
+
+def test_hard_rules_pass_still_blocks_on_hard_tier_failure():
+    from app.services.plan_forge_service import _hard_rules_pass
+
+    rules = [
+        {"rule": "vars_four", "pass": False},
+        {"rule": "sg_value_shift_per_scene", "pass": True, "tier": "advisory"},
+    ]
+    assert _hard_rules_pass(rules) is False
+
+
 def test_negative_thr_early_explain(pipeline_artifacts):
     _, spec, _, compiled = pipeline_artifacts
     bad = json.loads(json.dumps(spec))

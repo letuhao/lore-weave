@@ -136,6 +136,31 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
         }
     )
 
+    # D-PLANFORGE-STORY-GRID-POC (2026-07-06): 8th rule, ADVISORY tier only.
+    # Adopted after cross-method live-LLM evaluation (see
+    # docs/eval/plan-forge-story-grid-poc-2026-07-06.md) found a real,
+    # cross-method-validated gap this signal alone catches. Tagged
+    # "tier": "advisory" -- callers that hard-gate on run_rules() (validate(),
+    # compile() in plan_forge_service.py) MUST filter to tier=="hard" (the
+    # default for every rule above) before treating a FAIL as blocking. This
+    # rule is intentionally noisy per-event (a single-fixture cross-method
+    # audit showed some events flip between generation methods) -- never
+    # promote it to hard tier without re-running that audit.
+    arc2_events = [e for e in spec.get("events", []) if e.get("arc_id") == "arc_2"]
+    no_value_shift = [e["id"] for e in arc2_events if not e.get("var_deltas") and e.get("id")]
+    results.append(
+        {
+            "rule": "sg_value_shift_per_scene",
+            "pass": not no_value_shift,
+            "detail": (
+                f"events_without_value_shift={no_value_shift}"
+                if no_value_shift
+                else f"checked={len(arc2_events)}"
+            ),
+            "tier": "advisory",
+        }
+    )
+
     return results
 
 
