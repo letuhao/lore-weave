@@ -773,6 +773,7 @@
       "title": "新しい実行 — 設定",
       "planLabel": "プラン（必須 — 実行は承認済みプランのビートを執筆します）",
       "planEmpty": "この本にはまだ承認済みのプラン実行がありません。",
+      "planEmptyCta": "プランナーを開いて作成 →",
       "chaptersLabel": "対象に含める章（本の目次）",
       "chaptersHint": "本には{{total}}章 · {{selected}}章を選択中",
       "orderLabel": "実行順序",
@@ -817,6 +818,10 @@
       "heartbeatNA": "該当なし",
       "budgetLabel": "予算",
       "budgetDanger": "上限に近づいています",
+      "pollActive": "{{secs}}秒ごとにポーリング中(REST — ライブストリームなし)",
+      "pollLastRefreshed": "{{secs}}秒前に更新",
+      "pollRefreshingNow": "更新中…",
+      "pollSuspended": "ポーリング停止中 — 実行はアクティブではありません",
       "pausePolicyLabel": "各ユニット後に自動一時停止",
       "errorPrefix": "エラーメッセージ:"
     },

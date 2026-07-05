@@ -46,6 +46,8 @@ export function MissionControlView({ bookId, runId, onBack }: Props) {
         onAction={mc.runAction}
         onTogglePausePolicy={(next) => mc.mutations.setPausePolicy.mutate(next)}
         pausePolicyBusy={mc.mutations.setPausePolicy.isPending}
+        dataUpdatedAt={mc.runQuery.dataUpdatedAt}
+        isFetching={mc.runQuery.isFetching}
       />
 
       {run.status === 'gated' && <GateCheckPanel items={mc.gateChecks} />}

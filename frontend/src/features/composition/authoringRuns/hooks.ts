@@ -9,9 +9,11 @@ import type { AuthoringRunStatus, CreateAuthoringRunBody } from './types';
 
 const POLL_MS = 5000; // matches the mockup's documented "polling every 5s" cadence
 
-function isPolling(status?: AuthoringRunStatus): boolean {
+export function isPolling(status?: AuthoringRunStatus): boolean {
   return !!status && (ACTIVE_RUN_STATUSES.includes(status) || status === 'draft');
 }
+
+export const AUTHORING_RUN_POLL_MS = POLL_MS;
 
 export function useAuthoringRunsList(bookId: string) {
   const { accessToken } = useAuth();

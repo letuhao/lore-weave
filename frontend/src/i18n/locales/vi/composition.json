@@ -773,6 +773,7 @@
       "title": "Lượt chạy mới — cấu hình",
       "planLabel": "Kế hoạch (bắt buộc — một lượt chạy soạn thảo theo các beat của một kế hoạch đã được duyệt)",
       "planEmpty": "Chưa có lượt lập kế hoạch nào được duyệt cho sách này.",
+      "planEmptyCta": "Mở Planner để tạo →",
       "chaptersLabel": "Các chương cần đưa vào (mục lục sách)",
       "chaptersHint": "{{total}} chương trong sách · đã chọn {{selected}}",
       "orderLabel": "Thứ tự chạy",
@@ -817,6 +818,10 @@
       "heartbeatNA": "không có",
       "budgetLabel": "Ngân sách",
       "budgetDanger": "gần đạt giới hạn",
+      "pollActive": "Đang poll mỗi {{secs}}s (REST — không có live stream)",
+      "pollLastRefreshed": "cập nhật lần cuối {{secs}}s trước",
+      "pollRefreshingNow": "đang làm mới…",
+      "pollSuspended": "Đã tạm dừng poll — run không còn active",
       "pausePolicyLabel": "Tự động tạm dừng sau mỗi đơn vị",
       "errorPrefix": "error_message:"
     },

@@ -4,14 +4,11 @@
 // rule) so switching tabs never resets in-flight New Run config or a
 // selected-unit review in Mission control.
 //
-// hiddenFromPalette (catalog.ts): making this palette/agent-openable requires
-// adding 'agent-mode' to chat-service's `ui_open_studio_panel` panel_id enum
-// (services/**, out of scope for this session per the task's own
-// "don't touch services/**" instruction) — panelCatalogContract.test.ts
-// enforces palette-openable-set === that backend enum, so registering this as
-// open here would either fail that test or require the out-of-scope backend
-// edit. Tracked as a follow-up (see the session report); PlannerPanel links
-// here in the meantime so the feature stays reachable without the palette.
+// Palette/agent-openable (catalog.ts has no hiddenFromPalette here): 'agent-mode'
+// is registered in chat-service's `ui_open_studio_panel` panel_id enum +
+// contracts/frontend-tools.contract.json (regenerated), so panelCatalogContract.test.ts's
+// palette-openable-set === backend-enum check stays green (DOCK-6). Also still
+// reachable via PlannerPanel's "Autonomous Agent Runs" link.
 import { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';

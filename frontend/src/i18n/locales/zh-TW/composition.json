@@ -773,6 +773,7 @@
       "title": "新運行 — 設定",
       "planLabel": "規劃（必填 — 運行會依照已核准規劃的節拍進行撰寫）",
       "planEmpty": "此書籍尚無已核准的規劃運行。",
+      "planEmptyCta": "開啟規劃工具以建立 →",
       "chaptersLabel": "要包含的章節（書籍目錄）",
       "chaptersHint": "書中共 {{total}} 章 · 已選 {{selected}} 章",
       "orderLabel": "運行順序",
@@ -817,6 +818,10 @@
       "heartbeatNA": "無",
       "budgetLabel": "預算",
       "budgetDanger": "接近上限",
+      "pollActive": "每 {{secs}} 秒輪詢一次(REST — 無即時串流)",
+      "pollLastRefreshed": "{{secs}} 秒前更新",
+      "pollRefreshingNow": "更新中…",
+      "pollSuspended": "輪詢已暫停 — 運行未啟用中",
       "pausePolicyLabel": "每個單元後自動暫停",
       "errorPrefix": "錯誤訊息："
     },

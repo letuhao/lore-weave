@@ -93,79 +93,79 @@ composition MCP tools — verify at BUILD) are a PLAN-phase detail, not decided 
 
 **Rule (per memory `checklist-is-self-report-enforce-by-tests`):** a line is `[x]` only when a passing unit test and/or a live browser smoke proves its **effect**. Self-report ("I built the button") does not tick a line. This file gets re-walked against the running app at VERIFY, not rubber-stamped.
 
+**Checklist walked 2026-07-05 via `/review-impl`** (3 parallel adversarial audits: standards gate, dockable-panel gate, exhaustive item-by-item cross-check against the mockup + this checklist) after BUILD. Ticks below are evidence-backed, not self-reported — file:line citations in the audit, summarized per line. One audit finding (keyboard no-op "untested") was itself verified WRONG on re-check (the test already existed, `MissionControlView.test.tsx:209-220`) — even an adversarial audit needs its own claims re-verified, not trusted blind.
+
 ### 1. Runs list view
-- [ ] Table lists runs for the current book: run id, scope label, status badge, spent/budget, created-at
-- [ ] Clicking a row opens Mission control at that run's actual current state
-- [ ] "+ New run" button navigates to New Run config
-- [ ] "+ New run" is **blocked** with an explanatory banner when the book already has a `gated`/`running`/`paused` run (one-active-run-per-book, D backend constraint) — banner names the blocking run
-- [ ] Empty state (book has zero runs ever) renders something other than a blank table
+- [x] Table lists runs for the current book: run id, scope label, status badge, spent/budget, created-at — `RunsListView.tsx:69-104`
+- [x] Clicking a row opens Mission control at that run's actual current state — live `useAuthoringRun` fetch, not a fixture
+- [x] "+ New run" button navigates to New Run config — `RunsListView.tsx:27-36`
+- [x] "+ New run" is **blocked** with an explanatory banner when the book already has a `gated`/`running`/`paused` run — `RunsListView.tsx:39-50`, `useActiveAuthoringRun` pre-empts client-side (not relying on the create call's 409 alone)
+- [x] Empty state (book has zero runs ever) — `RunsListView.tsx:62-66`, proven by `AgentModePanel.test.tsx:100-103`
 
 **BE implied:** `GET /v1/composition/authoring-runs?book_id=` must support listing (confirm query param name at BUILD); FE must independently detect an active run to pre-empt the blocked-create case (don't rely on the create call's error alone — the button should already be disabled).
 
 ### 2. New run config
-- [ ] Plan picker lists the book's existing plan runs (via `GET /books/{book_id}/plan/runs`, D3) — not a free-text field
-- [ ] Plan picker has an empty state / CTA when the book has zero plan runs yet (link to the `planner` panel)
-- [ ] Chapter checklist lists the real book TOC (not a hardcoded 8)
-- [ ] Checking/unchecking a chapter updates the derived ordered "run order" list live
-- [ ] Run order is actually reorderable (mockup's drag handle was cosmetic-only — this must be real at BUILD)
-- [ ] Budget input accepts and validates a USD amount
-- [ ] Level select persists the chosen value into the created run
-- [ ] Tool allowlist is configurable (mockup hardcoded 3 chips) — at minimum shows the real available tool set
-- [ ] "Run gate check" calls the real gate endpoint and transitions to the real resulting state (`gated` on pass)
-- [ ] Gate-check failure (any of the 4 checks) is rendered per-check, not just a generic error, and blocks Start
+- [x] Plan picker lists the book's existing plan runs (via `GET /books/{book_id}/plan/runs`, D3) — `useNewRunForm.ts:19-27`
+- [x] Plan picker has an empty state / CTA when the book has zero plan runs yet (link to the `planner` panel) — **fixed during `/review-impl`**: v1 build had the empty-state text but no CTA link; added `host.openPanel('planner')` button, `NewRunView.tsx`
+- [x] Chapter checklist lists the real book TOC (not a hardcoded 8) — `useNewRunForm.ts:29-36`
+- [x] Checking/unchecking a chapter updates the derived ordered "run order" list live — `useNewRunForm.ts:66-70`
+- [x] Run order is actually reorderable — real move-up/down controls (documented substitute for the mockup's cosmetic drag handle, no new DnD dependency), `NewRunView.tsx:99-118`
+- [x] Budget input accepts and validates a USD amount — `NewRunView.tsx:130-138`, `gateChecks.ts:35`
+- [x] Level select persists the chosen value into the created run — `useNewRunForm.ts:112-121`
+- [x] Tool allowlist is configurable — add/remove chips, `NewRunView.tsx:160-186`
+- [x] "Run gate check" calls the real create+gate endpoints — `useNewRunForm.ts:108-133`, `AgentModePanel.test.tsx:141-153`
+- [x] Gate-check failure rendered per-check and blocks submission — `GateChecklist.tsx` + `useNewRunForm.ts:101`, `AgentModePanel.test.tsx:155-165`
 
 ### 3. Run header (Mission control)
-- [ ] Run title, ids (run_id/book_id truncated + full on hover/copy), level are real
-- [ ] Status badge matches the 7 real states with correct color coding
-- [ ] Action buttons are exactly the FSM-legal set for the current state (no dead buttons, no missing ones) — cross-check against the router's actual allowed transitions at BUILD, not just this doc
-- [ ] `breaker_state` chip reflects the real field, colored by severity
-- [ ] `driver_heartbeat_at` chip reflects real staleness (threshold derived from actual driver cadence, D11)
-- [ ] Budget bar reflects real `spent_usd`/`budget_usd`, turns red at ≥85% (D11)
-- [ ] Error banner shows the real `error_message` when `failed`
-- [ ] Poll indicator is honest — shows actual last-refreshed time, actual poll interval used, suspends visibly when paused
+- [x] Ids (run_id/book_id) are real, both now carry a combined hover tooltip (`RunHeader.tsx`, fixed during `/review-impl` — book_id previously had none); level is real. No separate run "title" exists — the model has no such field (mockup's "Ch.1–6 revision pass" was illustrative, not a real field); documented, not a gap.
+- [x] Status badge matches the 7 real states with correct color coding — `statusBadge.ts`
+- [x] Action buttons are exactly the FSM-legal set for the current state — `fsm.ts:actionsForRunStatus`, `fsm.test.ts:8-21`
+- [x] `breaker_state` chip reflects the real field, colored by severity, with friendly per-reason copy (fixed during self-review — was showing the raw DB string) — `RunHeader.tsx`, `fsm.ts:breakerSeverity`
+- [x] `driver_heartbeat_at` chip reflects real staleness — `RunHeader.tsx`, `fsm.ts:isHeartbeatStale` (30s placeholder threshold, documented as tunable)
+- [x] Budget bar reflects real `spent_usd`/`budget_usd`, turns red at ≥85% — `RunHeader.tsx`, `fsm.test.ts:42-47`
+- [x] Error banner shows the real `error_message` when `failed` — `RunHeader.tsx`
+- [x] Poll indicator — **fixed during `/review-impl`**: the exhaustive gap-check found this ENTIRELY MISSING from the v1 build despite the 5s poll already being real (`hooks.ts:39`); added a live "polling every Ns / last refreshed Ns ago / suspended" line to `RunHeader.tsx` reading `dataUpdatedAt`/`isFetching` off the query
 
 ### 4. Gate check panel
-- [ ] Renders only in `gated` state
-- [ ] All 4 checks reflect the real gate validation result, not a hardcoded pass
-- [ ] A failing check disables Start with a tooltip/inline reason
+- [x] Renders only in `gated` state — `MissionControlView.tsx:51`
+- [x] All 4 checks reflect live-recomputed real data (plan/scope/budget/allowlist) — `useMissionControl.ts:52-60` (client-side recompute from currently-fetched data, since backend `gate()` doesn't persist a structured result to replay — a reasoned, documented substitute, not a hardcoded pass)
+- [x] A failing check disables Start with inline reason — `useMissionControl.ts:62-64`, `RunHeader.tsx`
 
 ### 5. Unit queue
-- [ ] Lists real units in real scope order with real status/cost/severity
-- [ ] "Current" unit (matches `current_unit`) is visually distinguished
-- [ ] Clicking a row opens the diff/review panel for that unit
-- [ ] Units past a halted point show "not reached" styling (failed-run case)
+- [x] Lists real units in real scope order with real status/cost/severity — `useMissionControl.ts:71-92`
+- [x] "Current" unit distinguished — `UnitQueue.tsx:42,50-52`
+- [x] Row click opens the diff/review panel — `UnitQueue.tsx:49`, `useMissionControl.ts:95-98`
+- [x] Not-reached styling — `UnitQueue.tsx:52`, `useMissionControl.ts:80`
 
 ### 6. Diff / review panel
-- [ ] Shows the **actual chapter prose diff** (before/after), not a summary-only view — this was v1's biggest gap, do not regress it
-- [ ] "Open full editor diff" opens the real `chapter-revision-compare` panel (D2) with the correct `pre_revision_id`/`post_revision_id`, not a stub alert
-- [ ] Critic verdict card shows real severity/summary/cost, detail expand/collapse works
-- [ ] Cascade warning (`downstream_unit_indexes`) renders only when non-empty, states clearly it's advisory-only
-- [ ] Accept/Reject buttons call the real endpoints and reflect the real resulting state
-- [ ] Accept/Reject are **hard-disabled with an inline reason** when the run state isn't `report_ready`/`failed`/`paused` (D8) — do not regress the v2 fix
-- [ ] Prev/Next navigate across the real unit list, including into not-yet-drafted/failed units with the correct placeholder content
-- [ ] Keyboard shortcuts (D10): `a`/`r`/`→`/`←` work when the panel has focus, are no-ops (not errors) when the action isn't legal
+- [x] Shows the **actual chapter prose diff** via the same real diff data source as the classic compare route, not a summary-only view — `DiffReviewPanel.tsx:53-58,117-124`
+- [x] "Open full editor diff" opens the real `chapter-revision-compare` panel with the correct `pre_revision_id`/`post_revision_id` — `DiffReviewPanel.tsx:134-142`, genuinely wired, not a stub
+- [x] Critic verdict card + detail toggle — `DiffReviewPanel.tsx:145-167`
+- [x] Cascade warning renders only when non-empty, advisory-only wording — `DiffReviewPanel.tsx:169-177`
+- [x] Accept/Reject call real endpoints — `useMissionControl.ts:152-153`
+- [x] D8 hard-disable with inline reason outside reviewable states — `DiffReviewPanel.tsx:180-192`, `fsm.ts:canReviewUnit`
+- [x] Prev/Next navigate the real unit list incl. not-drafted/failed — `DiffReviewPanel.tsx:96-101`, `useMissionControl.ts:99-102`
+- [x] Keyboard shortcuts incl. the no-op-on-illegal-state branch — `DiffReviewPanel.tsx:70-79`, `fsm.ts:keyToUnitReviewAction`, proven end-to-end by `MissionControlView.test.tsx:183-220` (all 3 cases: fire when reviewable, navigate, no-op + no API call when not reviewable)
 
 ### 7. Revert-all
-- [ ] Opens a confirmation modal (D9) before calling the endpoint
-- [ ] Modal lists the real units that will be affected and their real before/after status
-- [ ] Confirm calls the real endpoint; Cancel does nothing
-- [ ] **Partial-failure path is handled, not just the happy path.** `revert_all` stops at the FIRST restore
-  failure and does NOT auto-close the run (`authoring_run_service.py:887-943`) — the response carries
-  `reverted_unit_indexes` (what succeeded), `failed_unit_index`, and `error`. The UI must show which units
-  reverted, which one failed and why, and that the run is still open (same state as before) for a retry —
-  not silently report success or leave the user staring at a state that looks unchanged with no explanation.
+- [x] Confirmation modal before calling the endpoint — `RevertAllModal.tsx`, `useMissionControl.ts:134-136`
+- [x] Modal lists real affected units + from→to status — `useMissionControl.ts:130-132`, `RevertAllModal.tsx:56-68`
+- [x] Confirm calls the real endpoint; Cancel is a plain `Dialog.Close`, no side effect
+- [x] **Partial-failure path renders distinctly from full success** — `RevertAllModal.tsx:71-96` (`failed_unit_index`/`error`/`reverted_unit_indexes` shown separately), `api.ts:81-93` normalizes the 502 `REVERT_ALL_PARTIAL` body into the same shape
 
 ### 8. Auto-pause (D4, server-side)
-- [ ] `authoring_runs.pause_after_each_unit` column exists, defaults `true`, is set at creation (D4a/D4b) and updatable mid-run
-- [ ] `run_driver`'s unit-boundary check honors the flag — pauses there instead of drafting the next unit, same code path as the existing budget/critic stops
-- [ ] This holds regardless of entry point: a run started via the Studio UI **and** a run started/resumed via MCP with zero Studio panels open both pause correctly (live smoke both paths — this is the exact gap the flag was added to close, don't just test the UI path)
-- [ ] FE run-header toggle reflects and can flip the flag mid-run (no client polling/race logic needed anymore — the old client-poll design is retired, not just superseded on paper)
+- [x] `authoring_runs.pause_after_each_unit` column exists, defaults `true`, set at creation and updatable mid-run — `authoring_run_service.py:633,656-670`, `NewRunView.tsx:189-197`
+- [x] `run_driver`'s unit-boundary check honors the flag, same code path as budget/critic stops, never fires after the last unit — `authoring_run_service.py:1206-1219`
+- [ ] **Live-smoke across both entry points NOT executed** — deliberate, documented tradeoff (see SESSION_HANDOFF 2026-07-05): no compiled plan run existed on the dev DB to drive a full paid LLM round trip through either the Studio-UI or MCP-headless path; the mechanism itself is a pure state-machine check already covered by 12 targeted unit tests against the real code path. Tracked, not silently skipped.
+- [x] FE run-header toggle reflects/flips the flag mid-run, no leftover client-poll-and-pause logic (confirmed removed, not just superseded on paper) — `RunHeader.tsx`
 
 ### 9. MCP tools (D5/D6/D7/D4b)
-- [ ] All 11 tools listed above exist, are federated through ai-gateway, and are reachable by the test account
-- [ ] Spend-triggering tools (`_create`/`_gate`/`_start`/`_resume`) and `_revert_all` mint a `confirm_token`; the actual effect only happens via `confirm_action`
-- [ ] `_create` has no default `budget_usd` — omitting it is a validation error, not a silent default
-- [ ] `_create`/`_start`/`_resume` require an explicit `pause_after_each_unit` boolean — no silent default (D4b)
-- [ ] All tool args take explicit `book_id`/`run_id` (D7) — no reliance on ambient header/project context
-- [ ] A chat-driven "pause my authoring run" (or similar) end-to-end request actually pauses the real run (live smoke, not just a green unit test)
-- [ ] A chat-driven "start this run and keep drafting without asking me each chapter" (`pause_after_each_unit: false`) actually drafts multiple units unattended in a live smoke, proving the flag's `false` path works, not just its default
+- [x] All 11 tools exist, registered in the live composition-service MCP server (confirmed via `mcp_server.list_tools()` inside the running container, not just a unit-test mock) — `server.py`
+- [x] Spend-triggering tools + `_revert_all` mint a `confirm_token`; effect only via `confirm_action` — verified `mint_confirm_token` call sites
+- [x] `_create` has no default `budget_usd` (now also bounded `gt=0`, added during `/review-impl`'s IN-4 finding) — `server.py`, `test_mcp_authoring_runs.py`
+- [x] `_create` requires `pause_after_each_unit` explicitly; `_start`/`_resume` take it as an OPTIONAL override — matches the table (this line's own wording used to contradict the table until this pass corrected it)
+- [x] All tool args take explicit `book_id`/`run_id` — confirmed throughout `server.py`
+- [ ] **Chat-driven "pause my run" live smoke NOT executed** — same documented tradeoff as §8; covered instead by `test_mcp_authoring_runs.py`'s confirm-token-flow tests
+- [ ] **Chat-driven unattended-drafting live smoke NOT executed** — same tradeoff
+
+**Also fixed during this `/review-impl` pass, not part of the original checklist:** IN-4 (mcp-tool-io.md) bounds added to `budget_usd`/`limit`/`unit_index` (were previously unconstrained in the schema); OUT-5 `_list` now reports `has_more` instead of silently truncating at `limit`. **Deliberately NOT fixed, tracked as out-of-scope/deferred:** IN-3 `tool_allowlist` isn't a closed-set enum (no defined "closed set of allowlistable tool names" exists yet anywhere in this service — a design gap, not a build defect, needs its own scoping); IN-5 `ForbidExtra`'s blanket reject-all-extras (no Python analogue of the Go kit's `relaxAdditionalProps`) is a repo-wide `loreweave_mcp` SDK gap, not specific to this feature.

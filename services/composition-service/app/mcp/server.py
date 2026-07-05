@@ -1283,7 +1283,7 @@ async def _authoring_run_actor(
 
 class _AuthoringRunListArgs(ForbidExtra):
     book_id: str
-    limit: int = 20
+    limit: int = Field(default=20, ge=1, le=100)
 
 
 @mcp_server.tool(
@@ -1304,8 +1304,14 @@ async def composition_authoring_run_list(ctx: MCPContext, args: _AuthoringRunLis
     book_id = UUID(args.book_id)
     await _gate(tc, book_id, GrantLevel.VIEW)
     svc = await get_authoring_run_service()
-    runs = await svc.list(tc.user_id, book_id, limit=args.limit)
-    return {"items": [_serialize_authoring_run(r) for r in runs]}
+    # OUT-5 (mcp-tool-io.md): never silently truncate — over-fetch by one to detect
+    # a capped result and report it honestly instead of looking like "everything".
+    runs = await svc.list(tc.user_id, book_id, limit=args.limit + 1)
+    has_more = len(runs) > args.limit
+    return {
+        "items": [_serialize_authoring_run(r) for r in runs[: args.limit]],
+        "has_more": has_more,
+    }
 
 
 class _AuthoringRunGetArgs(ForbidExtra):
@@ -1357,7 +1363,7 @@ class _AuthoringRunCreateArgs(ForbidExtra):
     plan_run_id: str
     scope: list[str] = Field(default_factory=list)   # ordered chapter-id strings
     level: Literal[3, 4] = 3
-    budget_usd: Decimal
+    budget_usd: Decimal = Field(gt=0)
     tool_allowlist: list[str] = Field(default_factory=list)
     pause_after_each_unit: bool
     params: dict[str, Any] = Field(default_factory=dict)
@@ -1623,7 +1629,7 @@ async def composition_authoring_run_close(ctx: MCPContext, args: _AuthoringRunId
 class _AuthoringRunUnitArgs(ForbidExtra):
     book_id: str
     run_id: str
-    unit_index: int
+    unit_index: int = Field(ge=0)
 
 
 @mcp_server.tool(

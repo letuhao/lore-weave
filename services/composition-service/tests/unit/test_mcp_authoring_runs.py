@@ -104,7 +104,53 @@ async def test_list_returns_items():
     assert len(res["items"]) == 2
     assert res["items"][0]["book_id"] == str(BOOK)
     assert res["items"][0]["pause_after_each_unit"] is True
-    svc.list.assert_awaited_once_with(TEST_USER, BOOK, limit=20)
+    assert res["has_more"] is False
+    # OUT-5 (mcp-tool-io.md): over-fetches by one to detect a capped result honestly.
+    svc.list.assert_awaited_once_with(TEST_USER, BOOK, limit=21)
+
+
+async def test_list_reports_has_more_when_capped():
+    """OUT-5 — never silently truncate: a result at the requested limit must say so."""
+    import app.mcp.server as srv
+
+    svc = AsyncMock()
+    svc.list = AsyncMock(return_value=[_run(run_id=uuid.uuid4()) for _ in range(3)])
+    async with _patched(grant_level=1, svc=svc):
+        res = await srv.composition_authoring_run_list(
+            _Ctx(), srv._AuthoringRunListArgs(book_id=str(BOOK), limit=2),
+        )
+    assert len(res["items"]) == 2
+    assert res["has_more"] is True
+    svc.list.assert_awaited_once_with(TEST_USER, BOOK, limit=3)
+
+
+async def test_list_rejects_limit_out_of_bounds():
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        srv._AuthoringRunListArgs(book_id=str(BOOK), limit=0)
+    with pytest.raises(ValidationError):
+        srv._AuthoringRunListArgs(book_id=str(BOOK), limit=101)
+
+
+async def test_create_rejects_non_positive_budget():
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        srv._AuthoringRunCreateArgs(
+            book_id=str(BOOK), plan_run_id=str(uuid.uuid4()),
+            budget_usd="0", pause_after_each_unit=True,
+        )
+
+
+async def test_unit_args_rejects_negative_unit_index():
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        srv._AuthoringRunUnitArgs(book_id=str(BOOK), run_id=str(uuid.uuid4()), unit_index=-1)
 
 
 async def test_list_denied_without_view_grant():

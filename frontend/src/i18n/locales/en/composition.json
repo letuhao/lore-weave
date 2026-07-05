@@ -773,6 +773,7 @@
       "title": "New run — configure",
       "planLabel": "Plan (required — a run drafts an already-approved plan's beats)",
       "planEmpty": "No approved plan runs yet for this book.",
+      "planEmptyCta": "Open Planner to create one →",
       "chaptersLabel": "Chapters to include (book TOC)",
       "chaptersHint": "{{total}} chapters in book · {{selected}} selected",
       "orderLabel": "Run order",
@@ -817,6 +818,10 @@
       "heartbeatNA": "n/a",
       "budgetLabel": "Budget",
       "budgetDanger": "near limit",
+      "pollActive": "Polling every {{secs}}s (REST — no live stream)",
+      "pollLastRefreshed": "last refreshed {{secs}}s ago",
+      "pollRefreshingNow": "refreshing…",
+      "pollSuspended": "Polling suspended — run is not active",
       "pausePolicyLabel": "Auto-pause after each unit",
       "errorPrefix": "error_message:"
     },

@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUp, ArrowDown, X } from 'lucide-react';
+import { useStudioHost } from '../../host/StudioHostProvider';
 import { useNewRunForm } from './useNewRunForm';
 import { GateChecklist } from './GateChecklist';
 
@@ -16,6 +17,7 @@ interface Props {
 
 export function NewRunView({ bookId, onCreated, onCancel }: Props) {
   const { t } = useTranslation('composition');
+  const host = useStudioHost();
   const f = useNewRunForm(bookId);
   const [newTool, setNewTool] = useState('');
 
@@ -42,7 +44,15 @@ export function NewRunView({ bookId, onCreated, onCancel }: Props) {
         </label>
         {f.approvedPlans.length === 0 ? (
           <p data-testid="agent-mode-plan-empty" className="text-xs text-muted-foreground">
-            {t('authoringRun.newRun.planEmpty', { defaultValue: 'No approved plan runs yet for this book.' })}
+            {t('authoringRun.newRun.planEmpty', { defaultValue: 'No approved plan runs yet for this book.' })}{' '}
+            <button
+              type="button"
+              data-testid="agent-mode-plan-empty-cta"
+              onClick={() => host.openPanel('planner')}
+              className="text-primary underline hover:no-underline"
+            >
+              {t('authoringRun.newRun.planEmptyCta', { defaultValue: 'Open Planner to create one →' })}
+            </button>
           </p>
         ) : (
           <select

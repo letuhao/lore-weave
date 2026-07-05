@@ -1,11 +1,15 @@
 // #20_agent_mode.md §3 (Run header). FSM-legal action buttons only (cross-
 // checked against authoring_runs.py's real route wiring via fsm.ts), D11
-// health chips + budget bar, D4a mid-run pause-policy toggle.
+// health chips + budget bar, D4a mid-run pause-policy toggle, poll indicator
+// (checklist §3 — a /review-impl gap-check found this entirely missing from
+// the first build despite the query already implementing the real 5s poll).
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AuthoringRun } from '@/features/composition/authoringRuns/types';
 import {
   actionsForRunStatus, breakerSeverity, isBudgetDanger, isHeartbeatStale, type RunAction,
 } from '@/features/composition/authoringRuns/fsm';
+import { isPolling, AUTHORING_RUN_POLL_MS } from '@/features/composition/authoringRuns/hooks';
 import { runStatusBadgeClass } from './statusBadge';
 
 interface Props {
@@ -15,6 +19,9 @@ interface Props {
   onAction: (action: RunAction) => void;
   onTogglePausePolicy: (next: boolean) => void;
   pausePolicyBusy: boolean;
+  /** react-query's `dataUpdatedAt`/`isFetching` for the run query — honest poll status (D11). */
+  dataUpdatedAt: number;
+  isFetching: boolean;
 }
 
 const ACTION_LABEL_KEYS: Record<RunAction, string> = {
@@ -53,7 +60,9 @@ const BREAKER_REASON_LABEL_DEFAULTS: Record<string, string> = {
   driver_crashed: 'driver crashed',
 };
 
-export function RunHeader({ run, busy, startDisabledReason, onAction, onTogglePausePolicy, pausePolicyBusy }: Props) {
+export function RunHeader({
+  run, busy, startDisabledReason, onAction, onTogglePausePolicy, pausePolicyBusy, dataUpdatedAt, isFetching,
+}: Props) {
   const { t } = useTranslation('composition');
   const actions = actionsForRunStatus(run.status);
   const breaker = breakerSeverity(run.breaker_state);
@@ -63,11 +72,22 @@ export function RunHeader({ run, busy, startDisabledReason, onAction, onTogglePa
   const budget = Number.parseFloat(run.budget_usd) || 0;
   const danger = isBudgetDanger(spent, budget);
   const ratio = budget > 0 ? Math.min(100, (spent / budget) * 100) : 0;
+  const polling = isPolling(run.status);
+
+  // Poll indicator (checklist §3) — a real "last refreshed Ns ago" tick, not a
+  // fake "live" claim (this feature is REST poll-only, no SSE/WS, per the spec).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!polling) return undefined;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [polling]);
+  const agoSecs = dataUpdatedAt ? Math.max(0, Math.round((nowMs - dataUpdatedAt) / 1000)) : null;
 
   return (
     <div className="mb-3 rounded-md border p-3" data-testid="agent-mode-run-header">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="font-mono text-[11px] text-muted-foreground" title={run.run_id}>
+        <span className="font-mono text-[11px] text-muted-foreground" title={`run_id: ${run.run_id}\nbook_id: ${run.book_id}`}>
           run {run.run_id.slice(0, 8)}… · book {run.book_id.slice(0, 8)}… · level {run.level}
         </span>
         <span
@@ -142,6 +162,24 @@ export function RunHeader({ run, busy, startDisabledReason, onAction, onTogglePa
           ${run.spent_usd} / ${run.budget_usd}
           {danger ? ` — ${t('authoringRun.header.budgetDanger', { defaultValue: 'near limit' })}` : ''}
         </span>
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-muted-foreground" data-testid="agent-mode-poll-indicator">
+        <span className={`h-1.5 w-1.5 rounded-full ${polling ? 'bg-info' : 'bg-border'}`} />
+        {polling ? (
+          <span>
+            {t('authoringRun.header.pollActive', {
+              secs: Math.round(AUTHORING_RUN_POLL_MS / 1000),
+              defaultValue: 'Polling every {{secs}}s (REST — no live stream)',
+            })}
+            {agoSecs !== null && (
+              <> · {t('authoringRun.header.pollLastRefreshed', { secs: agoSecs, defaultValue: 'last refreshed {{secs}}s ago' })}</>
+            )}
+            {isFetching && ` (${t('authoringRun.header.pollRefreshingNow', { defaultValue: 'refreshing…' })})`}
+          </span>
+        ) : (
+          <span>{t('authoringRun.header.pollSuspended', { defaultValue: 'Polling suspended — run is not active' })}</span>
+        )}
       </div>
 
       {run.pause_after_each_unit !== undefined && (
