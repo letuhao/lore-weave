@@ -85,6 +85,32 @@ def test_run_story_grid_rules_no_events_is_vacuously_no_gap():
     assert rule["detail"] == "checked=0"
 
 
+def test_sg_value_shift_blind_to_untracked_narrative_value():
+    # CAVEAT, not a bug: the rule can only ever see shifts in the spec's OWN
+    # tracked variables (PA/HA/CD/THR for this story). A scene with obvious
+    # dramatic value shift on an axis the spec doesn't track (e.g. a trust
+    # betrayal) still reads as a "gap" — confirmed live against a real LLM
+    # propose run (docs/eval/plan-forge-story-grid-poc-2026-07-06.md
+    # addendum): 2 of 4 LLM-flagged events were generation-method-dependent
+    # noise, not genuine authoring gaps. A FAIL must be human-read before
+    # being treated as a defect, which is exactly why this stays advisory
+    # (never hard-block) if ever adopted.
+    spec = {
+        "events": [
+            {
+                "id": "arc_2_event_x",
+                "arc_id": "arc_2",
+                "title": "Trust broken",
+                "synopsis": "A close ally betrays her trust for the first time.",
+                "var_deltas": [],
+            }
+        ]
+    }
+    results = run_story_grid_rules(spec)
+    rule = next(r for r in results if r["rule"] == "sg_value_shift_per_scene")
+    assert rule["pass"] is False
+
+
 def test_run_story_grid_rules_scopes_to_requested_arc(pipeline_artifacts):
     _, spec, _, _ = pipeline_artifacts
     results = run_story_grid_rules(spec, arc_id="arc_1")

@@ -21,8 +21,34 @@ line. Fixed via truncating each event body at the first `\n---` marker. 8 new un
 suite **1636 passed/150 skipped** (was 1628, +8, 0 regressions). Full report:
 [`docs/eval/plan-forge-story-grid-poc-2026-07-06.md`](../eval/plan-forge-story-grid-poc-2026-07-06.md).
 **Not adopted into the real gate** — adoption is a follow-up decision for whoever next revisits
-PlanForge's validator, per the locked decision; recommendation in the report leans toward adopting
-`sg_value_shift_per_scene` as an 8th core rule.
+PlanForge's validator, per the locked decision.
+**Addendum same day (user: "do more evaluate before we consider to update current validator"):**
+ran the REAL production async LLM propose path (`propose_spec_llm_async`/`ProviderPlanForgeLLM`,
+NOT the regex-only fixture-quality `propose_spec`) against the real fixture — real
+provider-registry route, real BYOK local model (Gemma-4 26B-A4B QAT 200K, $0), zero mocking.
+**`sg_value_shift_per_scene`'s signal splits into robust vs noisy:** `arc_2_event_3`/`_7` have NO
+var_delta under BOTH the regex parser AND the LLM (a stable, cross-method-validated gap);
+`arc_2_event_1`/`_4` only fail under ONE method each (generation-method noise, not a real gap) —
+revised recommendation: trust only the cross-method intersection, and if ever adopted this MUST
+be `quarantine`/`advisory` tier, never `hard-block`, same lesson as the canon-check judge-eval
+(one run overstates signal). **Bigger discovery: a real false-positive in an EXISTING core rule**
+(`pa_not_realm`, not Story Grid) — it fires on the LLM spec because its `reason`-text keyword
+check ("cảnh giới") can't distinguish "PA rises because of a realm-breakthrough EXPERIENCE"
+(legitimate, this story's own design) from "PA is coupled to realm" (the actually-forbidden
+case); every prior test of `pa_not_realm` only ever used the regex spec or a synthetic patch —
+this is the first time it was checked against real LLM output. **Tracked, not fixed
+(`D-PLANFORGE-PA-REALM-FALSE-POSITIVE`, see Deferred Items)** — different rule, needs a
+considered fix not a same-session regex tweak. 1 new regression test
+(`test_sg_value_shift_blind_to_untracked_narrative_value`) encodes the "rule can't see
+untracked-variable value shifts" caveat. Full addendum:
+[`docs/eval/plan-forge-story-grid-poc-2026-07-06.md`](../eval/plan-forge-story-grid-poc-2026-07-06.md)
+(same file, "Addendum" section).
+**Deferred:** `D-PLANFORGE-PA-REALM-FALSE-POSITIVE` — `validate.py::run_rules`'s `pa_not_realm`
+rule false-positives on real LLM-produced specs (keyword-matches "cảnh giới" in a PA delta's
+`reason` text regardless of `coupled_to_realm`, conflating a legitimate realm-breakthrough
+*trigger* with actual realm *coupling*). Gate: out-of-scope (different rule than this task) +
+needs a considered redesign (gate #2), not a same-session regex tweak. Target: next PlanForge
+validator touch.
 
 ---
 

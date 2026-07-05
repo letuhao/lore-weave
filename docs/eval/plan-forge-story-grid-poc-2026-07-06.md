@@ -109,3 +109,88 @@ Commandments' beat-sequencing rules and genre-level obligatory scenes — both n
 `beat_type`/scene-role field the spec doesn't have. If Story Grid is adopted for
 `sg_value_shift_per_scene`, extending to beat-sequencing is the natural next POC, scoped
 separately (it would need real fixture/schema design, not just a new rule function).
+
+**Superseded by the addendum below** — the recommendation above was based on a single
+generation method (the regex-only parser). Read the addendum before acting on it; the refined
+recommendation is at its end.
+
+## Addendum (2026-07-06, same day) — cross-validated against a REAL LLM propose run + a real
+## false-positive found in an EXISTING core rule
+
+User: "approve, now do more evaluate before we consider to update current validator." Since both
+Story Grid rules are deterministic/mechanical (no LLM judge involved, unlike the canon-check
+gate), the "more evaluation" a mechanical rule needs isn't judge-accuracy scoring — it's
+**checking the rule against more than one spec-generation method**, since the whole POC above
+only ever exercised the regex-only `propose_spec` (its own docstring: "rules-first; fixture-quality
+for POC" — never claimed production-representative). The REAL production path is the async LLM
+propose (`propose_spec_llm_async` / `ProviderPlanForgeLLM`, used by the actual worker). This
+addendum runs that REAL path — real provider-registry route, real BYOK local model (Gemma-4
+26B-A4B QAT 200K, $0, the test account's already-provisioned model), real story-plan-v1.md
+fixture, zero mocking — and reruns both the 7 core rules and the 2 Story Grid rules against its
+output.
+
+**Per-event var_delta comparison, regex-parser spec vs real LLM-produced spec:**
+
+| Event | Regex-parser spec | LLM-produced spec |
+|---|---|---|
+| e2_1 Nhập Môn | `HA hold=100` | **none** |
+| e2_2 Biến Hóa Đầu Tiên | `PA +1` | `PA +1` |
+| e2_3 Thử Nghiệm | **none** | **none** |
+| e2_4 Dị Thường Đầu Tiên | `THR +leak` | **none** |
+| e2_5 Tiểu Thành | `PA +large` | `PA large_increase` |
+| e2_6 Tác Dụng Phụ Đầu Tiên | `CD +1` | `CD increase_first_time` |
+| e2_7 Quyết Định Tiếp Tục | **none** | **none** |
+
+**Key finding — the signal splits into a robust half and a noisy half.** `e2_3` and `e2_7` have
+**no var_delta under BOTH independent generation methods** — a crude regex parser AND a real LLM
+both materialize these two events without touching a tracked variable. That is a much stronger
+basis for "this is a real authoring gap" than the original single-method POC could support. `e2_1`
+and `e2_4`, by contrast, only fail under ONE method each (regex catches `e2_1`'s literal "HA = 100"
+and `e2_4`'s literal "THR" mention; the LLM materializes neither) — this is **generation-method
+noise, not a stable signal**, and would be a bad thing to hard-block on. Practical read: on this
+fixture, `sg_value_shift_per_scene` flags **4/7 events with the LLM path** vs 2/7 with the regex
+path — trust the intersection (`e2_3`, `e2_7`), treat the rest as "worth a human glance," exactly
+why this stays advisory/quarantine-tier and not hard-block if ever adopted (same taxonomy tier as
+the canon-check gate and Enrichment's H0 — see `docs/specs/2026-07-05-narrative-forge/00_METHODOLOGY.md`
+§4.2).
+
+**A caveat made concrete, not just asserted:** `sg_value_shift_per_scene` can only ever see shifts
+in the spec's OWN tracked variables (PA/HA/CD/THR for this story). A scene with obvious dramatic
+value shift on an untracked axis (e.g. a trust betrayal) still reads as a "gap" — this is a scope
+limit, not a bug. Encoded as an executable regression test,
+`test_sg_value_shift_blind_to_untracked_narrative_value`, so this caveat can't silently rot.
+
+**A real false-positive found in an EXISTING core rule (`pa_not_realm`), NOT a Story Grid
+finding — surfaced only because this addendum ran a real LLM for the first time:**
+`pa_not_realm` fails on the LLM-produced spec. Cause: event `e2_5`'s `PA` delta carries
+`coupled_to_realm: false` (correct — the LLM followed the prompt's explicit rule) but its
+`reason` field reads `"Đột phá cảnh giới đầu tiên"` ("first realm breakthrough") — and
+`pa_not_realm`'s second heuristic string-matches `"cảnh giới"` (realm) anywhere in a PA delta's
+`reason` text, regardless of the `coupled_to_realm` boolean. That heuristic conflates two
+different things: "PA rises *because of* a realm-breakthrough *experience*" (legitimate — this
+story's OWN design explicitly lists "một lần đột phá... cảnh giới" as a PA trigger event) vs "PA
+rises *proportionally with* realm" (the actual forbidden coupling). Every unit test exercising
+`pa_not_realm` before this addendum used either the regex-parser spec (which never generates this
+phrasing) or a synthetic negative-test patch — **this is the first time `pa_not_realm` was ever
+checked against real LLM output, and it produces a false positive.** Not fixed here — this is a
+different, existing core rule, not Story Grid, and the correct fix (distinguish
+trigger-experience wording from actual-coupling wording without simply deleting the keyword
+check) needs its own considered pass, not a same-session regex tweak. Tracked as
+**`D-PLANFORGE-PA-REALM-FALSE-POSITIVE`** in `docs/sessions/SESSION_HANDOFF.md` Deferred Items.
+
+## Revised conclusion (supersedes the single-method conclusion above)
+
+- **`sg_value_shift_per_scene`: still a good candidate, but scope the trusted signal to
+  cross-method agreement** (this fixture: `e2_3`/`e2_7`), not every method-specific FAIL — a
+  single-method run overstates the finding, mirroring the `canon-check` judge-eval lesson
+  (`docs/eval/canon-check-judge-2026-07-06.md`) that one run understates true noise. If adopted,
+  must be `quarantine`/`advisory`, never `hard-block`, precisely because of this noise floor.
+- **`sg_negative_turn_exists`: unchanged** — still passes on both specs, still only discriminates
+  via the contrived negative test. Low-cost regression guard, not a strong finding either way.
+- **The bigger discovery isn't about Story Grid at all**: the existing 7-rule validator had NEVER
+  been checked against a real LLM-produced spec before this addendum — only the regex-parser
+  spec and synthetic patches. That gap let a real false positive (`pa_not_realm`) go unnoticed.
+  **Recommendation for whoever next touches PlanForge's validator: add a real-LLM-path smoke
+  test (even just golden-comparison, not full CI) for the EXISTING 7 rules before adding an 8th —
+  the validator's blind spot toward its own production path is a bigger risk than which
+  literary framework supplies rule #8.**
