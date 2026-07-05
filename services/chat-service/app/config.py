@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     audio_cleanup_interval_hours: int = 4  # How often to run cleanup
     internal_service_token: str
     statistics_service_internal_url: str = "http://statistics-service:8089"
+    composition_service_internal_url: str = "http://composition-service:8092"
     redis_url: str = "redis://redis:6379"
     port: int = 8090
 

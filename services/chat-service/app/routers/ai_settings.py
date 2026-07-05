@@ -6,10 +6,10 @@ Two routers, both under /v1/chat:
   * effective_router   — GET /v1/chat/effective-settings (the resolved cascade
                          a chat session or any studio tool reads)
 
-M1 scope: Models resolve across Session ▸ Account with per-tier liveness; the
-Book tier is present in the response shape but contributes nothing until M1b
-wires the grant-gated composition read. behavior/grounding/voice/context resolve
-Session ▸ Account ▸ System generically.
+Models resolve across Session ▸ Book ▸ Account with per-tier liveness; the Book
+tier is the book-owner's per-role model settings read grant-gated from
+composition-service (D-CHATAI-M1B). behavior/grounding/voice/context resolve
+Session ▸ Account ▸ System generically (no book scope yet).
 """
 
 from __future__ import annotations
@@ -196,9 +196,17 @@ async def read_effective_settings(
     account = await get_prefs(pool, owner_user_id=user_id)
     account_model_refs = await _fetch_account_model_refs(user_id)
 
-    # M1: Book tier is a stub (contributes nothing) until M1b wires the
-    # grant-gated composition read. Its slot is still present in the shape.
+    # Book tier (D-CHATAI-M1B) — the OWNER's per-role model settings for this book,
+    # read grant-gated cross-tenant from composition-service (best-effort: {} on any
+    # failure / no-grant → no book override, never breaks the resolve). behavior/
+    # grounding/context book overrides are not book-scoped yet (empty).
     book_models: dict[str, tuple[str, str] | None] = {}
+    if book_id:
+        from app.client.composition_client import get_composition_client
+        _roles = await get_composition_client().get_book_model_roles(str(book_id), str(user_id))
+        for _role, _val in _roles.items():
+            if isinstance(_val, dict) and _val.get("model_ref"):
+                book_models[_role] = (_val.get("model_source") or "user_model", str(_val["model_ref"]))
     book_tiers = {"behavior": {}, "grounding": {}, "voice": {}, "context": {}}
 
     # ── models: batch liveness over the distinct candidate set, then resolve ──

@@ -194,12 +194,19 @@ func (s *Server) getBookAccess(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_USER_ID", "invalid user_id")
 		return
 	}
-	lvl, lifecycle, err := s.resolveAccess(r.Context(), bookID, userID)
+	lvl, owner, lifecycle, err := s.resolve(r.Context(), bookID, userID)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "grant resolution failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"grant_level": lvl.String(), "lifecycle_state": lifecycle})
+	resp := map[string]string{"grant_level": lvl.String(), "lifecycle_state": lifecycle}
+	// owner_user_id lets a grant-holder consumer resolve a cross-tenant read of the
+	// owner's per-(user,book) rows (e.g. the book-tier model settings). Returned ONLY
+	// to a grantee (lvl != none) so a non-grantee never gets an owner/existence oracle.
+	if lvl != GrantNone && owner != uuid.Nil {
+		resp["owner_user_id"] = owner.String()
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // requireBookOwner gates owner-only grant management (D-E0-D). Not-owner and

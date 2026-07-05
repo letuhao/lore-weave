@@ -152,3 +152,36 @@ async def test_create_session_body_wins_over_account(client, mock_pool):
     assert resp.status_code == 201
     gp = json.loads(mock_pool.fetchrow.call_args_list[1].args[6])
     assert gp["temperature"] == 0.2  # explicit per-session choice wins
+
+
+class _FakeComposition:
+    def __init__(self, roles):
+        self._roles = roles
+
+    async def get_book_model_roles(self, book_id, caller_user_id):
+        return self._roles
+
+
+async def test_effective_settings_book_model_wins_over_account(client, mock_pool, fake_provider, monkeypatch):
+    # D-CHATAI-M1B: with a book model set and no session, the Book tier wins over
+    # the Account default (Session ▸ Book ▸ Account).
+    import app.client.composition_client as cc
+    monkeypatch.setattr(cc, "get_composition_client",
+                        lambda: _FakeComposition({"chat": {"model_source": "user_model", "model_ref": "book-model"}}))
+    mock_pool.fetchrow.return_value = None            # get_prefs → defaults
+    fake_provider._default = ("user_model", "acct-model")  # account tier
+    fake_provider._live = True
+    resp = await client.get(f"/v1/chat/effective-settings?book_id={uuid4()}")
+    assert resp.status_code == 200
+    chat = resp.json()["models"]["chat"]
+    assert chat["effective_value"] == {"model_source": "user_model", "model_ref": "book-model"}
+    assert chat["source_tier"] == "book"
+
+
+async def test_effective_settings_no_book_id_skips_book_tier(client, mock_pool, fake_provider):
+    # No book_id → the composition read is skipped entirely; account resolves.
+    mock_pool.fetchrow.return_value = None
+    fake_provider._default = ("user_model", "acct-model")
+    fake_provider._live = True
+    resp = await client.get("/v1/chat/effective-settings")
+    assert resp.json()["models"]["chat"]["source_tier"] == "account"

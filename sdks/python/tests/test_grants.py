@@ -186,3 +186,48 @@ async def test_trace_id_provider_propagated():
     await c.resolve_grant(uuid.uuid4(), uuid.uuid4())
     assert seen["tid"] == "trace-xyz"
     await c.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_owner_returns_owner_for_grantee():
+    owner = str(uuid.uuid4())
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "grant_level": "edit", "lifecycle_state": "active", "owner_user_id": owner,
+        })
+
+    c = _client(handler)
+    got = await c.resolve_owner(uuid.uuid4(), uuid.uuid4())
+    assert str(got) == owner
+    await c.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_owner_none_when_no_grant():
+    # book-service omits owner_user_id for a non-grantee (grant none) → None.
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"grant_level": "none", "lifecycle_state": "active"})
+
+    c = _client(handler)
+    assert await c.resolve_owner(uuid.uuid4(), uuid.uuid4()) is None
+    await c.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_owner_served_from_access_cache():
+    calls = {"n": 0}
+    owner = str(uuid.uuid4())
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json={
+            "grant_level": "edit", "lifecycle_state": "active", "owner_user_id": owner,
+        })
+
+    c = _client(handler)
+    book, user = uuid.uuid4(), uuid.uuid4()
+    await c.resolve_access(book, user)          # primes the cache (fetch #1)
+    got = await c.resolve_owner(book, user)     # cache hit → no 2nd fetch
+    assert str(got) == owner and calls["n"] == 1
+    await c.aclose()
