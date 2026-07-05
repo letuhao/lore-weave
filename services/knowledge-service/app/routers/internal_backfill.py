@@ -146,53 +146,19 @@ async def backfill_passages(project_id: UUID) -> dict:
 
     # Heavy deps — inline import (mirrors the CM3c publish handler).
     from app.clients.embedding_client import get_embedding_client
-    from app.extraction.passage_ingester import ingest_chapter_passages
+    from app.extraction.passage_backfill import backfill_project_passages
 
-    book_client = get_book_client()
-    chapters = await book_client.list_chapters(
-        row["book_id"], editorial_status="published",
+    result = await backfill_project_passages(
+        project_id=project_id, user_id=row["user_id"], book_id=row["book_id"],
+        embedding_model=row["embedding_model"], embedding_dim=row["embedding_dimension"],
+        book_client=get_book_client(), embedding_client=get_embedding_client(),
     )
-    if chapters is None:
+    if result.get("error") == "book_service_unavailable":
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="book-service unavailable listing chapters",
         )
-
-    embedding_client = get_embedding_client()
-    ingested = passages = failed = 0
-    for ch in chapters:
-        rev = ch.get("published_revision_id")
-        cid = ch.get("chapter_id")
-        if not rev or not cid:
-            continue  # a published row missing its pinned revision — skip, count nothing
-        try:
-            async with neo4j_session() as session:
-                res = await ingest_chapter_passages(
-                    session, book_client, embedding_client,
-                    user_id=row["user_id"], project_id=project_id,
-                    book_id=row["book_id"], chapter_id=UUID(cid),
-                    chapter_index=ch.get("sort_order"),
-                    embedding_model=row["embedding_model"],
-                    embedding_dim=row["embedding_dimension"],
-                    revision_id=UUID(rev),
-                    # A transient revision-fetch miss must not wipe existing canon.
-                    delete_stale_on_missing=False,
-                )
-            ingested += 1
-            passages += res.chunks_created
-        except Exception:
-            failed += 1
-            logger.warning(
-                "backfill-passages: chapter=%s project=%s failed — continuing",
-                cid, project_id, exc_info=True,
-            )
-
-    return {
-        "project_id": str(project_id),
-        "chapters_ingested": ingested,
-        "passages_created": passages,
-        "chapters_failed": failed,
-    }
+    return {"project_id": str(project_id), **result}
 
 
 class BackfillStatusRequest(BaseModel):

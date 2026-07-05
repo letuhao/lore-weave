@@ -17,7 +17,16 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field, field_validator
 
@@ -522,6 +531,7 @@ async def _create_and_start_job(
 async def start_extraction_job(
     project_id: UUID,
     body: StartJobRequest,
+    background_tasks: BackgroundTasks,
     # D-E0-3-CALLER-PAYS-EXTRACTION Phase 2b: re-opened to EDIT collaborators
     # under BYOK caller-pays. Phase 1 made this OWNER-only to close the breach
     # where an edit-collaborator's extraction ran on the OWNER's key. Now a
@@ -550,7 +560,7 @@ async def start_extraction_job(
     campaign's spend and trip its budget pause). Only the internal dispatch
     endpoint (campaign-service, ownership pre-verified) supplies it via the core.
     """
-    return await _start_extraction_job_core(
+    job = await _start_extraction_job_core(
         project_id, body, principals.owner, projects_repo, jobs_repo, benchmark_repo,
         caller=principals.caller,
         book_client=book_client,
@@ -558,6 +568,53 @@ async def start_extraction_job(
         glossary_client=glossary_client,
         extraction_wake=extraction_wake,
     )
+    # D-KG-PASSAGES-NOT-INGESTED — the user is indexing the book, so the embedding
+    # config is present; (re)ingest the published chapters' :Passage nodes in the
+    # background so semantic memory/story search isn't left empty by "the chapters
+    # were published before this project had embedding config". Best-effort +
+    # idempotent — never blocks or fails the extraction start.
+    proj = await projects_repo.get(principals.owner, project_id)
+    if proj is not None and proj.book_id and proj.embedding_model and proj.embedding_dimension:
+        background_tasks.add_task(
+            _auto_backfill_passages,
+            project_id=project_id, user_id=principals.owner, book_id=proj.book_id,
+            embedding_model=proj.embedding_model, embedding_dim=proj.embedding_dimension,
+        )
+    return job
+
+
+async def _auto_backfill_passages(
+    *,
+    project_id: UUID,
+    user_id: UUID,
+    book_id: UUID,
+    embedding_model: str,
+    embedding_dim: int,
+) -> None:
+    """Best-effort background passage backfill fired on extraction start
+    (D-KG-PASSAGES-NOT-INGESTED). Swallows ALL errors — extraction must never be
+    affected by it. Skips cleanly in Track-1 (no Neo4j)."""
+    try:
+        from app.clients.book_client import get_book_client as _get_bc
+        from app.clients.embedding_client import get_embedding_client
+        from app.config import settings as _settings
+        from app.extraction.passage_backfill import backfill_project_passages
+
+        if not _settings.neo4j_uri:
+            return
+        res = await backfill_project_passages(
+            project_id=project_id, user_id=user_id, book_id=book_id,
+            embedding_model=embedding_model, embedding_dim=embedding_dim,
+            book_client=_get_bc(), embedding_client=get_embedding_client(),
+        )
+        logger.info(
+            "auto passage backfill on extraction start project=%s: %s", project_id, res,
+        )
+    except Exception:
+        logger.warning(
+            "auto passage backfill failed project=%s — non-fatal", project_id,
+            exc_info=True,
+        )
 
 
 async def _start_extraction_job_core(

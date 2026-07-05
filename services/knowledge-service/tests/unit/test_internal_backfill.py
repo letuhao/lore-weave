@@ -108,7 +108,8 @@ def test_backfill_passages_ingests_published_chapters(monkeypatch):
     async def fake_session():
         yield MagicMock()
 
-    monkeypatch.setattr("app.routers.internal_backfill.neo4j_session", fake_session)
+    # neo4j_session + ingest live in the shared helper module now.
+    monkeypatch.setattr("app.extraction.passage_backfill.neo4j_session", fake_session)
 
     bc = MagicMock()
     bc.list_chapters = AsyncMock(return_value=[
@@ -122,7 +123,7 @@ def test_backfill_passages_ingests_published_chapters(monkeypatch):
     )
     ing = AsyncMock(return_value=SimpleNamespace(chunks_created=10))
     monkeypatch.setattr(
-        "app.extraction.passage_ingester.ingest_chapter_passages", ing,
+        "app.extraction.passage_backfill.ingest_chapter_passages", ing,
     )
 
     client = TestClient(app, raise_server_exceptions=False)
