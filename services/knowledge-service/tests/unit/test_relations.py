@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.extraction.relations import _effective_lang
 from app.extraction.triple_extractor import extract_triples
 
 
@@ -51,6 +52,23 @@ def test_no_triple_without_two_entities():
 
 def test_no_marker_no_triple():
     assert _triples("凯站在门口。", ["凯"]) == []  # "Kai stood at the door" — no relation verb
+
+
+def test_vietnamese_yeu_cau_not_loves():
+    # "yêu cầu" = request, NOT love. The bare "yêu" marker must not fire here
+    # (review-impl MED-1). "yêu" alone (love) still works.
+    assert _triples("Nguyễn yêu cầu Trần điều đó.", ["Nguyễn", "Trần"]) == []
+    assert ("Nguyễn", "loves", "Trần") in _triples("Nguyễn yêu Trần.", ["Nguyễn", "Trần"])
+
+
+def test_svo_sov_decision_is_script_driven_not_langdetect():
+    # review-impl MED-2: langdetect confuses CJK (a Chinese sentence detected as
+    # "ko", kanji-only Japanese as "zh"), which would invert SOV roles. The
+    # lexicon+order is corrected by SCRIPT, not the detected lang.
+    assert _effective_lang("田中は佐藤を殺した", "zh") == "ja"   # kana ⇒ ja despite lang=zh
+    assert _effective_lang("김철수를 구했다", "zh") == "ko"      # hangul ⇒ ko despite lang=zh
+    assert _effective_lang("凯认识林", "ko") == "zh"            # Han-only ⇒ zh, rescues misdetect
+    assert _effective_lang("Nguyễn yêu Trần", "vi") == "vi"    # no CJK ⇒ passthrough
 
 
 def test_english_uses_svo_regex_only_byte_identical():

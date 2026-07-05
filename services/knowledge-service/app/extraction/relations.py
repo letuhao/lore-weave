@@ -9,8 +9,16 @@ marker, and assign roles by word order.
 
 It is NOT a parser. It emits a triple ONLY when two distinct entity candidates
 anchor the relation, so recall is deliberately low and precision high — a
-quarantine-grade PRE-SEED that lets the K17 LLM lean on cheap anchors (less LLM
-work per non-English chapter) and NEVER a wrong triple that would pollute the graph.
+quarantine-grade PRE-SEED (confidence 0.5, pending_validation=True) that lets the
+K17 LLM lean on cheap anchors (less LLM work per non-English chapter). Precision
+is HIGH, not perfect: a bare keyword can still hit a lexical-ambiguity compound
+(vi "yêu cầu"=request vs "yêu"=love — guarded; others exist). That's why triples
+stay quarantine-grade — the K17 LLM / K18 validator refine or drop them; the
+extractor's job is to avoid the *common* false positive, not every one.
+
+Recall note: role anchoring prefers glossary-backed entities, so coverage is
+strongest once the book's glossary is populated; a glossary-free CJK sentence
+whose whole run is one span yields no triple (degrade-open).
 
 Word order:
   • SVO (zh, vi) — subject before the marker, object after.
@@ -27,6 +35,7 @@ from __future__ import annotations
 import re
 
 from app.extraction.entity_detector import EntityCandidate
+from app.extraction.scripts import HAN, HANGUL, HIRAGANA, KATAKANA
 
 __all__ = ["extract_relation_triples", "RELATION_LANGS"]
 
@@ -34,6 +43,31 @@ __all__ = ["extract_relation_triples", "RELATION_LANGS"]
 # Languages with a relation lexicon (English uses the SVO regex instead).
 RELATION_LANGS: frozenset[str] = frozenset({"zh", "ja", "ko", "vi"})
 _SOV_LANGS: frozenset[str] = frozenset({"ja", "ko"})
+
+# The SVO-vs-SOV decision must NOT trust langdetect: it confuses CJK on short /
+# kanji-heavy input (verified: a Chinese sentence detects as "ko", a kanji-only
+# Japanese one as "zh"), which would apply SVO role order to an SOV sentence and
+# INVERT subject/object. Script presence is a far stronger signal — kana ⇒ ja,
+# hangul ⇒ ko — so we override the lexicon+order by script when it's unambiguous.
+_KANA_RE = re.compile(f"[{HIRAGANA}{KATAKANA}]")
+_HANGUL_RE = re.compile(f"[{HANGUL}]")
+_HAN_RE = re.compile(f"[{HAN}]")
+
+
+def _effective_lang(sentence: str, lang: str) -> str:
+    """Correct the lexicon/word-order language by script (langdetect is
+    unreliable for CJK). Any kana ⇒ ja; any hangul ⇒ ko; Han-only (no kana/
+    hangul) ⇒ zh — the safe majority, since Han-only text is far more likely
+    Chinese than the vanishingly rare kana-free Japanese, and this rescues a
+    Chinese sentence that langdetect mislabeled ko/en. No CJK script (e.g. vi
+    Latin) ⇒ trust the detected lang."""
+    if _KANA_RE.search(sentence):
+        return "ja"
+    if _HANGUL_RE.search(sentence):
+        return "ko"
+    if _HAN_RE.search(sentence):
+        return "zh"
+    return lang
 
 
 def _c(*pairs: tuple[str, str]) -> tuple[tuple[re.Pattern[str], str], ...]:
@@ -61,7 +95,10 @@ _RELATIONS: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
         (r"quen biết|biết", "knows"),
         (r"gặp gỡ|gặp", "met"),
         (r"giết chết|giết", "killed"),
-        (r"yêu", "loves"),
+        # "yêu" = love, but "yêu cầu" = request — exclude the common compound so
+        # "Nguyễn yêu cầu Trần" doesn't become (loves). A bare keyword lexicon
+        # can't catch every lexical ambiguity; the K17 LLM refines the rest.
+        (r"yêu(?!\s+cầu)", "loves"),
         (r"ghét|căm ghét", "hates"),
         (r"phản bội", "betrayed"),
         (r"cứu", "saved"),
@@ -134,6 +171,7 @@ def extract_relation_triples(
     Emits only when two DISTINCT entity candidates anchor a relation marker —
     high precision, degrade-open (no anchors ⇒ no triple, never a wrong one).
     """
+    lang = _effective_lang(sentence, lang)
     markers = _RELATIONS.get(lang)
     if not markers:
         return []
