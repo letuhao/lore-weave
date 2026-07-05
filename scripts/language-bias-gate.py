@@ -309,10 +309,10 @@ BASELINE = {
     # by LATIN_NAME_RE, so its former baseline row is gone.)
     'ml3-ascii-regex|services/knowledge-service/app/extraction/entity_detector.py|_CAPITALIZED_PHRASE_RE = re.compile(r"\\b[A-Z][\\w\'-]*(?:\\s+[A-Z][\\w\'-]*)*\\b")',
     'ml3-ascii-regex|services/knowledge-service/app/extraction/entity_detector.py|r"\\b([A-Z][\\w\'-]*(?:\\s+[A-Z][\\w\'-]*)*)\\s+"',
-    # triple_extractor SVO subject regex is English-only. Making SVO extraction
-    # correct for SOV languages (ja/ko) is structural (word-order reorder, not a
-    # char-class widen) → degrade-open for now (CJK yields no triples, never a
-    # WRONG one). Tracked D-ML-TRIPLE-SVO-SCRIPT.
+    # triple_extractor SVO subject regex is the ENGLISH pass, now PAIRED with a
+    # per-language relation-marker extractor (relations.py: zh/vi SVO + ja/ko SOV,
+    # D-ML-TRIPLE-SVO-SCRIPT DONE). English keeps this regex; non-English routes to
+    # the marker path — so it's not English-ONLY bias, baselined not "fixed".
     'ml3-ascii-regex|services/knowledge-service/app/extraction/triple_extractor.py|_SUBJ = r"(?P<subj>[A-Z][\\w\'-]*(?:\\s+[A-Z][\\w\'-]*)*)"',
     # canon_check.py (D-KG-EXTRACTION-CANON-GATE POC track) — SYMMETRIC search-key
     # lower() (both haystack + needle lowered for a substring find; the unchanged
