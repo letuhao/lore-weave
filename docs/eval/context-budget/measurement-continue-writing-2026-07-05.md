@@ -326,3 +326,36 @@ back to `book_get_chapter include_body` to read the chapter — it just punts. S
 punts trace to `D-KG-PASSAGES-NOT-INGESTED` (semantic index) + weak-model orchestration, not the
 tool surface. The eval confound (a dropped/hidden search tool) is **removed** — the measurement now
 reflects true agent+tool capability.
+
+### 7.5 SHIPPED — passage ingestion (D-KG-PASSAGES-NOT-INGESTED) → the ch4 punt RESOLVED
+Root cause: passages are ingested on the `chapter.published` event (CM3c), but that path **skips
+when the project has no embedding config at publish time** — the Dracula KG project was
+created/linked to the book AFTER its chapters were published, so **0 passages** were ever ingested,
+leaving semantic search empty. Fix: ingested the 4 published chapters' passages via the production
+`ingest_chapter_passages` path → **116 `:Passage` nodes, all embedded** (bge-m3, $0 local). Made it
+**durable + reproducible** with a new idempotent endpoint
+`POST /internal/projects/{id}/backfill-passages` (`internal_backfill.py`, mirrors the sibling
+backfills) that enumerates a project's published chapters and (re)ingests their passages; resolves
+user + embedding config + book from `knowledge_projects`; skips cleanly on no-book / no-embedding /
+no-neo4j. 2 unit tests + live-smoke (200, 4 chapters, idempotent).
+
+**Result — re-run continue-writing (`postpassages`):**
+- **t0 "where is Harker at the end of chapter 4" → RESOLVED.** The agent now answers grounded from
+  the passages: *"Jonathan is currently a prisoner in Count Dracula's castle in the Carpathians. He
+  is confined to his own room … away from the 'awful women' (the three female vampires) … he
+  attempted to open his door but found it 'hopelessly fast'."* The blind "paste the manuscript"
+  punt is **gone**.
+- **t6 "the firm Harker works for" → grounded + honest** (not a blind punt): *"the firm is not
+  explicitly mentioned … his profession is a 'banking solicitor'"* — correct, cited from passages;
+  the exact "Peter Hawkins" line wasn't in the semantically-retrieved set for that phrasing (a
+  retrieval-recall nuance, not a data gap — `story_search mode=exact "Hawkins"` still finds it).
+- **Cost:** t0 rose to **~85K tokens** (8 `memory_search` calls pulling passages) — rich retrieval
+  is not free; well past the 32K compaction trigger, reinforcing `D-T4-D13A-COMPACTION-EVAL`.
+
+**Net:** with passages ingested, the agent's *own preferred tool* (`memory_search`) now returns
+real chapter context and it **stops punting on chapter-narrative recall**. The measurement is now
+genuinely objective — search reaches the manuscript both lexically (any book) and semantically
+(indexed book). Remaining systemic follow-up: **auto-trigger `backfill-passages`** when a project is
+linked to an already-published book (or fold it into the extraction start), so this isn't a manual
+step. Weak-model orchestration (won't read a whole chapter to chase a needle) is a model-tier limit,
+not a repo gap.
