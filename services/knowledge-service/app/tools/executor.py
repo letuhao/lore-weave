@@ -354,6 +354,18 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
 
 
 async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dict:
+    """Engine-unified project search (see docs/plans/2026-07-05-search-tool-unification.md).
+
+    Two legs, merged, so the tool is NEVER empty when the raw chapter text matches —
+    the fix for the "agent picks memory_search, gets nothing, punts" failure:
+      • MANUSCRIPT leg (chapter source) → the SAME lexical-inclusive hybrid engine
+        `story_search` uses (`run_hybrid_search`). Its lexical FTS leg needs NO
+        embeddings/passages, so chapter-body recall works on a bare book.
+      • PASSAGE leg (chat/glossary source) → the existing semantic vector search over
+        ingested passages; skipped cleanly when no embedding model / no passages.
+    A `source_type` filter runs only the relevant leg(s). Response shape unchanged
+    (`{snippet, text, source_type, score}`), so every existing caller is back-compat —
+    a previously-EMPTY result just becomes a real one (strictly better)."""
     if ctx.project_id is None:
         # No knowledge project linked to this chat → there is simply nothing to search.
         # Return a clean EMPTY result (as memory_recall_entity / memory_timeline already
@@ -373,60 +385,104 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
         # A project_id WAS supplied but doesn't resolve (deleted / wrong / not owned)
         # — a genuine error worth surfacing, distinct from "no project linked" above.
         raise ToolExecutionError("project not found")
-    if project.embedding_model is None or project.embedding_dimension is None:
-        return {"hits": [], "count": 0,
-                "note": "this project has no indexed memory yet"}
-    if project.embedding_dimension not in SUPPORTED_PASSAGE_DIMS:
-        return {"hits": [], "count": 0,
-                "note": "this project's embedding model is not supported"}
 
-    try:
-        embed = await ctx.embedding_client.embed(
-            user_id=ctx.user_id,
-            model_source="user_model",
-            model_ref=project.embedding_model,
-            texts=[args.query],
-        )
-    except EmbeddingError as exc:
-        raise ToolExecutionError(
-            f"memory search is temporarily unavailable: {exc}"
-        )
-    if not embed.embeddings or not embed.embeddings[0]:
-        return {"hits": [], "count": 0}
+    items: list[dict] = []
+    degraded: list | None = None
+    seen: set[str] = set()
 
-    try:
-        async with neo4j_session() as session:
-            hits = await find_passages_by_vector(
-                session,
-                user_id=str(ctx.user_id),
-                project_id=str(ctx.project_id),
-                query_vector=embed.embeddings[0],
-                dim=project.embedding_dimension,
-                embedding_model=project.embedding_model,
-                source_type=args.source_type,
-                limit=args.limit,
+    # ── MANUSCRIPT leg: lexical-inclusive hybrid over the linked book's chapters.
+    # Runs whenever the caller wants the chapter source AND the manuscript engine is
+    # wired on this surface (book + reranker clients). Needs NO embeddings for its
+    # lexical leg — this is what makes chapter-body recall work with 0 passages.
+    if (
+        ctx.book_client is not None
+        and ctx.reranker_client is not None
+        and args.source_type in (None, "chapter")
+        and getattr(project, "book_id", None) is not None
+    ):
+        from app.search.retriever import run_hybrid_search  # heavy deps — late import
+
+        result = await run_hybrid_search(
+            user_id=ctx.user_id, book_id=project.book_id, query=args.query,
+            project=project, book_client=ctx.book_client,
+            embedding_client=ctx.embedding_client, reranker_client=ctx.reranker_client,
+            mode="hybrid", granularity="block", limit=args.limit,
+        )
+        for h in result.hits[: args.limit]:
+            snip = h.get("snippet") or ""
+            key = _one_line(snip)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            items.append({
+                "snippet": key,
+                "text": _truncate(snip),
+                "source_type": "chapter",
+                "score": round(float(h.get("score") or 0.0), 4),
+            })
+        if result.degraded:
+            degraded = result.degraded
+
+    # ── PASSAGE leg: semantic vector search over ingested chat/glossary passages (and
+    # chapter passages, when present). The manuscript leg above already covers chapters
+    # better (lexical), so restrict this leg to chat/glossary unless the caller asked
+    # for a specific non-chapter source. Skipped cleanly when no embedding model.
+    _passage_source = args.source_type if args.source_type in ("chat", "glossary") else None
+    if (
+        args.source_type in (None, "chat", "glossary")
+        and project.embedding_model is not None
+        and project.embedding_dimension is not None
+        and project.embedding_dimension in SUPPORTED_PASSAGE_DIMS
+    ):
+        embed = None
+        try:
+            embed = await ctx.embedding_client.embed(
+                user_id=ctx.user_id, model_source="user_model",
+                model_ref=project.embedding_model, texts=[args.query],
             )
-    except ValueError as exc:
-        # query_vector length disagrees with the project's stored dim
-        # — user changed embedding model out-of-band.
-        raise ToolExecutionError(f"memory search failed: {exc}")
+        except EmbeddingError as exc:
+            # Only a hard failure if we have nothing from the manuscript leg either.
+            if not items:
+                raise ToolExecutionError(
+                    f"memory search is temporarily unavailable: {exc}"
+                )
+        if embed and embed.embeddings and embed.embeddings[0]:
+            try:
+                async with neo4j_session() as session:
+                    hits = await find_passages_by_vector(
+                        session, user_id=str(ctx.user_id), project_id=str(ctx.project_id),
+                        query_vector=embed.embeddings[0], dim=project.embedding_dimension,
+                        embedding_model=project.embedding_model,
+                        source_type=_passage_source, limit=args.limit,
+                    )
+            except ValueError as exc:
+                # query_vector length disagrees with the stored dim (model changed
+                # out-of-band) — only fatal if the manuscript leg found nothing.
+                if not items:
+                    raise ToolExecutionError(f"memory search failed: {exc}")
+                hits = []
+            for h in hits[: args.limit]:
+                key = _one_line(h.passage.text)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                items.append({
+                    "snippet": key,
+                    "text": _truncate(h.passage.text),
+                    "source_type": h.passage.source_type,
+                    "score": round(h.raw_score, 4),
+                })
 
-    items = [
-        {
-            # `snippet` is an additive ≤160-char preview kept at detail="summary";
-            # `text` is the full (≤500-char) body dropped at summary. At full both
-            # are present (no behavior change beyond the additive snippet).
-            "snippet": _one_line(h.passage.text),
-            "text": _truncate(h.passage.text),
-            "source_type": h.passage.source_type,
-            "score": round(h.raw_score, 4),
-        }
-        for h in hits[: args.limit]
-    ]
+    items = items[: args.limit]
     projected, meta = apply_response_contract(
         items, ref_fields=MEMORY_SEARCH_REF_FIELDS, detail=args.detail,
     )
-    return {"hits": projected, "count": len(projected), **meta}
+    out: dict = {"hits": projected, "count": len(projected), **meta}
+    if degraded:
+        out["degraded"] = degraded
+    if not projected:
+        out["note"] = "this project has no indexed memory yet"
+    return out
 
 
 async def _handle_memory_recall_entity(

@@ -82,9 +82,11 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolBookListChapters)
 
 	addTool(srv, "book_get_chapter",
-		"Fetch one chapter's metadata (title, language, sort order, editorial "+
-			"status, published revision) by book_id + chapter_id.",
-		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"chapter detail", "open chapter"}),
+		"Fetch one chapter by book_id + chapter_id: metadata (title, language, sort "+
+			"order, editorial status, published revision) always, plus the chapter's "+
+			"full plain-text prose in `body` when include_body=true (use that to READ a "+
+			"chapter after story_search locates it; the body can be large).",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"chapter detail", "open chapter", "read chapter text"}),
 		s.toolBookGetChapter)
 
 	addTool(srv, "book_list_revisions",

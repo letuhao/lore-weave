@@ -221,6 +221,11 @@ ORDER BY sort_order, created_at LIMIT $2 OFFSET $3`, bookID, limit, offset)
 type getChapterIn struct {
 	BookID    string `json:"book_id" jsonschema:"the book the chapter belongs to (UUID)"`
 	ChapterID string `json:"chapter_id" jsonschema:"the chapter to fetch (UUID)"`
+	// IncludeBody opts into returning the chapter's plain-text prose (the `body`
+	// field) alongside the metadata. Default false — the body can be thousands of
+	// tokens, so a caller that only needs metadata does not pay for it. Use it to
+	// READ a chapter after story_search locates it (the grep→read loop).
+	IncludeBody bool `json:"include_body,omitempty" jsonschema:"return the chapter's full plain-text prose in 'body' (default false; the body can be large)"`
 }
 type chapterDetail struct {
 	ChapterID           string  `json:"chapter_id"`
@@ -247,6 +252,9 @@ func uuidPtrToStr(p *uuid.UUID) *string {
 }
 type getChapterOut struct {
 	Chapter chapterDetail `json:"chapter"`
+	// Body is the chapter's full plain-text prose, present only when the caller
+	// passed include_body=true. omitempty so a metadata-only fetch stays lean.
+	Body *string `json:"body,omitempty"`
 }
 
 func (s *Server) toolBookGetChapter(ctx context.Context, _ *mcp.CallToolRequest, in getChapterIn) (*mcp.CallToolResult, getChapterOut, error) {
@@ -285,7 +293,21 @@ FROM chapters c WHERE c.id=$1 AND c.book_id=$2`, chID, bookID).
 	if titleRaw != "" {
 		c.Title = &titleRaw
 	}
-	return nil, getChapterOut{Chapter: c}, nil
+	out := getChapterOut{Chapter: c}
+	if in.IncludeBody {
+		// The chapter's plain-text prose from the extracted, searchable blocks
+		// (same source story_search's lexical leg hits — so "find then read" is
+		// consistent). COALESCE guards NULL text_content on non-text blocks
+		// (D-CHAPTER-BLOCKS null-nontext class); ordered by block_index.
+		var prose string
+		if err := s.pool.QueryRow(ctx, `
+SELECT COALESCE(string_agg(COALESCE(text_content, ''), E'\n\n' ORDER BY block_index), '')
+FROM chapter_blocks WHERE chapter_id=$1`, chID).Scan(&prose); err != nil {
+			return nil, getChapterOut{}, errors.New("failed to read chapter body")
+		}
+		out.Body = &prose
+	}
+	return nil, out, nil
 }
 
 // ── book_list_revisions ──────────────────────────────────────────────────────

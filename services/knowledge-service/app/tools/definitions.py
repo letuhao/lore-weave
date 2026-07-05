@@ -259,11 +259,12 @@ TOOL_DEFINITIONS: list[dict] = [
     ),
     _tool(
         "memory_search",
-        "Semantic search over the user's stored memory for the current "
-        "project — chapter text, past chat turns, and glossary entries. "
-        "Call this to find what is already known about a topic, "
-        "character, place, or event before answering. Returns the most "
-        "relevant text snippets.",
+        "Search the project's stored knowledge for what is already known about a "
+        "topic, character, place, or event before answering — the book's chapter "
+        "text (lexical + semantic, so it finds an exact phrase even with nothing "
+        "indexed yet), past chat turns, and glossary entries. Returns the most "
+        "relevant snippets. (For locating/reading manuscript prose specifically, "
+        "`story_search` is the primary find tool.)",
         {
             "query": {
                 "type": "string",

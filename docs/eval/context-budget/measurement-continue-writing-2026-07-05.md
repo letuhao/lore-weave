@@ -301,3 +301,28 @@ wiring:
 zero embeddings), which makes the eval more objective — but the agent won't *reliably* stop punting
 on chapter-body recall until (1) passages are ingested so its preferred `memory_search` works, or
 (2) `memory_search` degrades to lexical on an empty semantic hit. These are the next levers.
+
+### 7.4 SHIPPED — search-tool unification (engine + surface) + chapter-body read
+Plan: `docs/plans/2026-07-05-search-tool-unification.md`. User-approved full unify.
+- **Engine-unify (`_handle_memory_search`, knowledge-service):** `memory_search` now runs the SAME
+  lexical-inclusive hybrid engine `story_search` uses over the linked book's chapters (needs no
+  embeddings), plus its existing semantic passage leg for chat/glossary — merged/deduped. So
+  whichever search tool the agent picks is **never empty when the chapter text lexically matches**.
+  Verified live: `memory_search "Hawkins"` now returns the chapter snippet ("…the sealed letter
+  which Mr. Hawkins had entrusted to me") — it returned 0 before. 13 executor tests green.
+- **Chapter-body read (`book_get_chapter`, book-service Go):** opt-in `include_body=true` returns
+  the chapter's plain-text prose from `chapter_blocks` (default omits it — the body can be large).
+  Verified live: returns 28.6k chars incl. "Hawkins"; absent without the flag. DB test green.
+- **Surface:** `story_search` is the hot/canonical find tool (grep); `memory_search` stays
+  registered-but-lazy with an accurate, redirecting description; `book_get_chapter include_body` is
+  the read (glob/read). Minimal, memorable — the Claude-Code shape.
+
+**Residual reality (the honest limit — NOT a wiring bug).** Re-running continue-writing, gemma
+**still punts** on the *semantic* queries ("where is Harker at ch4", "what firm does he work for"),
+because: (a) its queries are semantic but only the **lexical** leg has data (no embedded passages),
+so "firm Harker works for" doesn't lexically match "Mr. Peter Hawkins"; and (b) gemma does NOT fall
+back to `book_get_chapter include_body` to read the chapter — it just punts. So the tools are now
+**correct + unified** (a stronger model, or ingested passages, would use them), but the residual
+punts trace to `D-KG-PASSAGES-NOT-INGESTED` (semantic index) + weak-model orchestration, not the
+tool surface. The eval confound (a dropped/hidden search tool) is **removed** — the measurement now
+reflects true agent+tool capability.
