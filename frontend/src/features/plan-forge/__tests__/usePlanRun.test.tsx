@@ -94,4 +94,53 @@ describe('usePlanRun', () => {
     expect(result.current.error).toBe('boom');
     expect(result.current.run).toBeNull();
   });
+
+  // D-PLANFORGE-NO-RESUME — the Runs-list "click a row" / "+ New propose" paths.
+  it('loadRun fetches an existing run by id (GET, not a fresh propose) and clears prior readouts', async () => {
+    getRun.mockResolvedValue(detail({ id: 'old-run', status: 'validated' }));
+    const { result } = renderHook(() => usePlanRun('b1', 'tok'));
+    await act(async () => { await result.current.loadRun('old-run'); });
+    expect(getRun).toHaveBeenCalledWith('b1', 'old-run', 'tok');
+    expect(createRun).not.toHaveBeenCalled();
+    expect(result.current.run?.id).toBe('old-run');
+    expect(result.current.selfCheck).toBeNull();
+    expect(result.current.validation).toBeNull();
+  });
+
+  it('loadRun surfaces a fetch error the same way createRun does', async () => {
+    getRun.mockRejectedValue(new Error('not found'));
+    const { result } = renderHook(() => usePlanRun('b1', 'tok'));
+    await act(async () => { await result.current.loadRun('missing'); });
+    expect(result.current.error).toBe('not found');
+    expect(result.current.run).toBeNull();
+  });
+
+  it('resetRun clears the run back to empty — local state only, no server call', async () => {
+    createRun.mockResolvedValue(detail({ mode: 'rules', model_ref: null }));
+    selfCheck.mockResolvedValue({ gaps: [], fidelity_score: 0.5 });
+    const { result } = renderHook(() => usePlanRun('b1', 'tok'));
+    await act(async () => { await result.current.createRun({ source_markdown: '# x', mode: 'rules' }); });
+    await act(async () => { await result.current.runSelfCheck(); });
+    expect(result.current.run).not.toBeNull();
+    act(() => { result.current.resetRun(); });
+    expect(result.current.run).toBeNull();
+    expect(result.current.selfCheck).toBeNull();
+    expect(getRun).not.toHaveBeenCalled();
+    expect(createRun).toHaveBeenCalledTimes(1); // resetRun itself never calls the API
+  });
+
+  it('resetRun while a poll is active tears the poll down (run stays null after the tick)', async () => {
+    createRun.mockResolvedValue({ run_id: 'r1', job_id: 'j1', status: 'pending' });
+    getRun.mockResolvedValueOnce(detail({ status: 'pending', active_job_id: 'j1', job_status: 'running' }));
+    const { result } = renderHook(() => usePlanRun('b1', 'tok'));
+    await act(async () => { await result.current.createRun({ source_markdown: '# x', mode: 'llm', model_ref: 'm1' }); });
+    expect(result.current.polling).toBe(true);
+    act(() => { result.current.resetRun(); });
+    expect(result.current.run).toBeNull();
+    // run→null re-runs the poll effect, which sees no run and arms no new timer — the old
+    // timer's cleanup already fired, so nothing resurrects the run on the next tick.
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(result.current.run).toBeNull();
+    expect(getRun).toHaveBeenCalledTimes(1); // only the post-ack fetch — no poll tick after reset
+  });
 });

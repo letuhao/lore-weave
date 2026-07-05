@@ -361,9 +361,22 @@
     "model": "Model",
     "empty": "Dán markdown hệ thống truyện và bấm Đề xuất để bắt đầu.",
     "openAgentMode": "Các lượt chạy Agent tự động →",
+    "tabList": "Các lượt chạy",
+    "tabRun": "Lượt chạy",
     "mode": {
       "rules": "Quy tắc",
       "llm": "LLM"
+    },
+    "list": {
+      "title": "Các lượt chạy của sách này",
+      "newRun": "+ Đề xuất mới",
+      "loading": "Đang tải các lượt chạy…",
+      "error": "Không tải được các lượt chạy.",
+      "empty": "Sách này chưa có lượt chạy nào.",
+      "colRun": "Lượt chạy",
+      "colMode": "Chế độ",
+      "colStatus": "Trạng thái",
+      "colCreated": "Ngày tạo"
     }
   },
   "editor": {

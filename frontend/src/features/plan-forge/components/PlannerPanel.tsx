@@ -1,7 +1,9 @@
-// PlanForge (Writing-Studio M5) — the "Planner" dock panel. A thin view over usePlanRun: a
-// source-markdown textarea + rules/llm toggle + a model picker (required for llm) → Propose, then
-// the run read-out (status · artifacts · self-check · validate · compile). Self-titles its dock tab
-// + registers for the agent rack, mirroring EditorPanel/ComposePanel.
+// PlanForge (Writing-Studio M5) — the "Planner" dock panel. Two views (D-PLANFORGE-NO-RESUME
+// follow-up, mirrors #20_agent_mode.md's Runs-list/Mission-control split): "Runs" lists every
+// plan run that exists server-side for this book (so reopening the panel — or a fresh device —
+// doesn't look like a run was never made, CLAUDE.md "server is the source of truth"), "Run" is
+// the original propose-form-plus-readout view, now also reachable by loading a past run. Both
+// views stay MOUNTED (CSS hidden, never a ternary unmount — this repo's FE rule).
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
@@ -12,6 +14,9 @@ import type { StudioToolRegistration } from '@/features/studio/host/types';
 import { usePlanRun } from '../hooks/usePlanRun';
 import type { PlanRunMode } from '../types';
 import { PlanRunView } from './PlanRunView';
+import { PlanRunsListView } from './PlanRunsListView';
+
+type PlannerView = 'list' | 'run';
 
 export function PlannerPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
@@ -19,9 +24,13 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   const { accessToken } = useAuth();
   const plan = usePlanRun(bookId, accessToken ?? null);
 
+  const [view, setView] = useState<PlannerView>('list');
   const [markdown, setMarkdown] = useState('');
   const [mode, setMode] = useState<PlanRunMode>('rules');
   const [modelRef, setModelRef] = useState('');
+
+  const openRun = (runId: string) => { void plan.loadRun(runId); setView('run'); };
+  const startNewRun = () => { plan.resetRun(); setMarkdown(''); setView('run'); };
 
   const label = t('panels.planner.title', { defaultValue: 'Planner' });
   const registration = useMemo<StudioToolRegistration>(() => ({
@@ -77,79 +86,107 @@ export function PlannerPanel(props: IDockviewPanelProps) {
       >
         {t('planner.openAgentMode', { defaultValue: 'Autonomous Agent Runs →' })}
       </button>
-      <textarea
-        data-testid="plan-source-input"
-        value={markdown}
-        onChange={(e) => setMarkdown(e.target.value)}
-        placeholder={t('planner.sourcePlaceholder', { defaultValue: 'Paste the novel-system markdown…' })}
-        className="min-h-[120px] w-full resize-y rounded border border-border bg-background p-2 text-xs leading-relaxed outline-none focus:border-ring"
-      />
 
-      <div className="mt-2 flex items-end gap-3">
-        <div className="flex gap-1 text-[11px]">
-          {(['rules', 'llm'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              data-testid={`plan-mode-${m}`}
-              onClick={() => setMode(m)}
-              className={`rounded border px-2 py-1 ${
-                mode === m ? 'border-accent bg-accent/10 text-foreground' : 'border-border text-muted-foreground hover:bg-secondary'
-              }`}
-            >
-              {t(`planner.mode.${m}`, { defaultValue: m })}
-            </button>
-          ))}
-        </div>
-        {mode === 'llm' && (
-          <div className="flex-1 text-[11px] text-muted-foreground">
-            <span className="block">{t('planner.model', { defaultValue: 'Model' })}</span>
-            <div data-testid="plan-model-picker" className="mt-1">
-              <ModelPicker
-                capability="chat"
-                compact
-                value={effectiveModelRef || null}
-                onChange={(id) => setModelRef(id ?? '')}
-                ariaLabel={t('planner.model', { defaultValue: 'Model' })}
-              />
-            </div>
-          </div>
-        )}
-        <button
-          type="button"
-          data-testid="plan-propose-btn"
-          onClick={onPropose}
-          disabled={!canPropose}
-          className="ml-auto rounded bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
-        >
-          {t('planner.propose', { defaultValue: 'Propose' })}
-        </button>
+      <div className="mb-2 flex gap-4 border-b" role="tablist" aria-label={t('planner.list.title', { defaultValue: 'Runs for this book' })}>
+        {([
+          { id: 'list' as const, labelKey: 'planner.tabList', label: 'Runs' },
+          { id: 'run' as const, labelKey: 'planner.tabRun', label: 'Run' },
+        ]).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={view === tab.id}
+            data-testid={`plan-tab-${tab.id}`}
+            onClick={() => setView(tab.id)}
+            className={`border-b-2 px-1 pb-2 text-xs font-semibold ${
+              view === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t(tab.labelKey, { defaultValue: tab.label })}
+          </button>
+        ))}
       </div>
 
-      {plan.error && (
-        <p data-testid="plan-error" className="mt-2 rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
-          {plan.error}
-        </p>
-      )}
+      <div data-testid="planner-view-list" className={`min-h-0 flex-1 overflow-auto ${view !== 'list' ? 'hidden' : ''}`}>
+        <PlanRunsListView bookId={bookId} onOpenRun={openRun} onNewRun={startNewRun} />
+      </div>
 
-      <div className="mt-3 min-h-0 flex-1">
-        {plan.run ? (
-          <PlanRunView
-            run={plan.run}
-            polling={plan.polling}
-            busy={plan.busy}
-            selfCheck={plan.selfCheck}
-            validation={plan.validation}
-            compileResult={plan.compileResult}
-            onSelfCheck={() => void plan.runSelfCheck()}
-            onValidate={() => void plan.runValidate()}
-            onCompile={(arcId) => void plan.runCompile(arcId)}
-          />
-        ) : (
-          <p className="text-center text-xs text-muted-foreground">
-            {t('planner.empty', { defaultValue: 'Paste your novel-system markdown and Propose to start a plan run.' })}
+      <div data-testid="planner-view-run" className={`flex min-h-0 flex-1 flex-col ${view !== 'run' ? 'hidden' : ''}`}>
+        <textarea
+          data-testid="plan-source-input"
+          value={markdown}
+          onChange={(e) => setMarkdown(e.target.value)}
+          placeholder={t('planner.sourcePlaceholder', { defaultValue: 'Paste the novel-system markdown…' })}
+          className="min-h-[120px] w-full resize-y rounded border border-border bg-background p-2 text-xs leading-relaxed outline-none focus:border-ring"
+        />
+
+        <div className="mt-2 flex items-end gap-3">
+          <div className="flex gap-1 text-[11px]">
+            {(['rules', 'llm'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                data-testid={`plan-mode-${m}`}
+                onClick={() => setMode(m)}
+                className={`rounded border px-2 py-1 ${
+                  mode === m ? 'border-accent bg-accent/10 text-foreground' : 'border-border text-muted-foreground hover:bg-secondary'
+                }`}
+              >
+                {t(`planner.mode.${m}`, { defaultValue: m })}
+              </button>
+            ))}
+          </div>
+          {mode === 'llm' && (
+            <div className="flex-1 text-[11px] text-muted-foreground">
+              <span className="block">{t('planner.model', { defaultValue: 'Model' })}</span>
+              <div data-testid="plan-model-picker" className="mt-1">
+                <ModelPicker
+                  capability="chat"
+                  compact
+                  value={effectiveModelRef || null}
+                  onChange={(id) => setModelRef(id ?? '')}
+                  ariaLabel={t('planner.model', { defaultValue: 'Model' })}
+                />
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            data-testid="plan-propose-btn"
+            onClick={onPropose}
+            disabled={!canPropose}
+            className="ml-auto rounded bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
+          >
+            {t('planner.propose', { defaultValue: 'Propose' })}
+          </button>
+        </div>
+
+        {plan.error && (
+          <p data-testid="plan-error" className="mt-2 rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
+            {plan.error}
           </p>
         )}
+
+        <div className="mt-3 min-h-0 flex-1">
+          {plan.run ? (
+            <PlanRunView
+              run={plan.run}
+              polling={plan.polling}
+              busy={plan.busy}
+              selfCheck={plan.selfCheck}
+              validation={plan.validation}
+              compileResult={plan.compileResult}
+              onSelfCheck={() => void plan.runSelfCheck()}
+              onValidate={() => void plan.runValidate()}
+              onCompile={(arcId) => void plan.runCompile(arcId)}
+            />
+          ) : (
+            <p className="text-center text-xs text-muted-foreground">
+              {t('planner.empty', { defaultValue: 'Paste your novel-system markdown and Propose to start a plan run.' })}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

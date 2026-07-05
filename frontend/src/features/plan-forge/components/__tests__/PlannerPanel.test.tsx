@@ -16,12 +16,22 @@ vi.mock('@/features/studio/host/StudioHostProvider', () => ({
 }));
 
 const createRun = vi.fn();
+const loadRun = vi.fn();
+const resetRun = vi.fn();
 vi.mock('../../hooks/usePlanRun', () => ({
   usePlanRun: () => ({
     run: null, busy: false, polling: false, error: null,
     selfCheck: null, validation: null, compileResult: null,
-    createRun, runSelfCheck: vi.fn(), runValidate: vi.fn(), runCompile: vi.fn(),
+    createRun, loadRun, resetRun, runSelfCheck: vi.fn(), runValidate: vi.fn(), runCompile: vi.fn(),
   }),
+}));
+
+// D-PLANFORGE-NO-RESUME follow-up — the new "Runs" tab (default view) fetches its own
+// list independently of usePlanRun; empty by default so these pre-existing propose-flow
+// tests (which switch to the "Run" tab) aren't affected by it.
+const listRuns = vi.fn();
+vi.mock('../../api', () => ({
+  planForgeApi: { listRuns: (...a: unknown[]) => listRuns(...a) },
 }));
 
 const listUserModelsMock = vi.fn();
@@ -66,11 +76,13 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
     vi.clearAllMocks();
     localStorage.clear();
     invalidateUserModelsCache();
+    listRuns.mockResolvedValue({ items: [], next_cursor: null });
   });
 
   it('rules mode proposes without any model', () => {
     listUserModelsMock.mockResolvedValue({ items: [] });
     renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
     fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
     fireEvent.click(screen.getByTestId('plan-propose-btn'));
     expect(createRun).toHaveBeenCalledWith({ source_markdown: '# system', mode: 'rules' });
@@ -79,6 +91,7 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
   it('llm mode auto-picks the FAVORITE model as the derived default and proposes with it', async () => {
     listUserModelsMock.mockResolvedValue({ items: [model('m-first', 'First'), model('m-fav', 'Fav', true)] });
     renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
     fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
     fireEvent.click(screen.getByTestId('plan-mode-llm'));
     // the shared picker fetched (capability=chat, active-only) and the favorite shows on the trigger
@@ -96,6 +109,7 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
   it('llm mode with NO models keeps Propose disabled', async () => {
     listUserModelsMock.mockResolvedValue({ items: [] });
     renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
     fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
     fireEvent.click(screen.getByTestId('plan-mode-llm'));
     await waitFor(() => expect(listUserModelsMock).toHaveBeenCalled());
@@ -106,6 +120,7 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
   it('an explicit pick from the listbox overrides the derived default', async () => {
     listUserModelsMock.mockResolvedValue({ items: [model('m-first', 'First'), model('m-fav', 'Fav', true)] });
     renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
     fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
     fireEvent.click(screen.getByTestId('plan-mode-llm'));
     const picker = () => within(screen.getByTestId('plan-model-picker'));
@@ -115,5 +130,73 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
     await waitFor(() => expect(picker().getByRole('combobox')).toHaveTextContent('First'));
     fireEvent.click(screen.getByTestId('plan-propose-btn'));
     expect(createRun).toHaveBeenCalledWith({ source_markdown: '# system', mode: 'llm', model_ref: 'm-first' });
+  });
+});
+
+// D-PLANFORGE-NO-RESUME — the actual bug this closes: usePlanRun never fetched past runs on
+// mount, so reopening the Planner (or a fresh page load) looked exactly like the run was never
+// made even though it exists server-side. These tests lock the fix: a real "Runs" tab, default
+// view, backed by the server list.
+describe('PlannerPanel — Runs list (D-PLANFORGE-NO-RESUME)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    invalidateUserModelsCache();
+  });
+
+  function runFixture(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'run-1', book_id: 'b1', status: 'proposed', mode: 'rules', model_ref: null,
+      source_checksum: 'abc', active_job_id: null, job_status: null, error_detail: null,
+      checkpoint_state: null, artifacts: [], created_at: '2026-07-01T00:00:00Z', updated_at: '', ...overrides,
+    };
+  }
+
+  it('defaults to the Runs list view, not a blank propose form', () => {
+    listRuns.mockResolvedValue({ items: [], next_cursor: null });
+    renderPanel();
+    expect(screen.getByTestId('plan-tab-list').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('planner-view-list').className).not.toMatch(/hidden/);
+    expect(screen.getByTestId('planner-view-run').className).toMatch(/hidden/);
+  });
+
+  it('shows an empty state with zero runs (the bug this fixes: no longer indistinguishable from "never used")', async () => {
+    listRuns.mockResolvedValue({ items: [], next_cursor: null });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId('plan-runs-empty')).toBeTruthy());
+  });
+
+  it('lists real past runs fetched from the server on mount', async () => {
+    listRuns.mockResolvedValue({ items: [runFixture(), runFixture({ id: 'run-2', status: 'failed' })], next_cursor: null });
+    renderPanel();
+    await waitFor(() => expect(screen.getAllByTestId('plan-run-row')).toHaveLength(2));
+    expect(listRuns).toHaveBeenCalledWith('b1', 'tok', { limit: 50 });
+  });
+
+  it('clicking a run row loads it and switches to the Run tab', async () => {
+    listRuns.mockResolvedValue({ items: [runFixture()], next_cursor: null });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId('plan-run-row')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('plan-run-row'));
+    expect(loadRun).toHaveBeenCalledWith('run-1');
+    expect(screen.getByTestId('plan-tab-run').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('"+ New propose" resets the current run and switches to the Run tab', async () => {
+    listRuns.mockResolvedValue({ items: [], next_cursor: null });
+    renderPanel();
+    await waitFor(() => expect(screen.getByTestId('plan-new-run-button')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('plan-new-run-button'));
+    expect(resetRun).toHaveBeenCalled();
+    expect(screen.getByTestId('plan-tab-run').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('switching tabs never unmounts a view (CSS hidden, not a ternary)', () => {
+    listRuns.mockResolvedValue({ items: [], next_cursor: null });
+    renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
+    expect(screen.getByTestId('planner-view-list')).toBeTruthy();
+    expect(screen.getByTestId('planner-view-list').className).toMatch(/hidden/);
+    expect(screen.getByTestId('planner-view-run').className).not.toMatch(/hidden/);
   });
 });

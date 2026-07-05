@@ -374,9 +374,22 @@
     "model": "Model",
     "empty": "Paste your novel-system markdown and Propose to start a plan run.",
     "openAgentMode": "Autonomous Agent Runs →",
+    "tabList": "Runs",
+    "tabRun": "Run",
     "mode": {
       "rules": "Rules",
       "llm": "LLM"
+    },
+    "list": {
+      "title": "Runs for this book",
+      "newRun": "+ New propose",
+      "loading": "Loading runs…",
+      "error": "Could not load runs.",
+      "empty": "No plan runs yet for this book.",
+      "colRun": "Run",
+      "colMode": "Mode",
+      "colStatus": "Status",
+      "colCreated": "Created"
     }
   },
   "editor": {

@@ -361,9 +361,22 @@
     "model": "模型",
     "empty": "貼上小說系統的 Markdown 並按「提出」開始規劃執行。",
     "openAgentMode": "自主代理運行 →",
+    "tabList": "執行清單",
+    "tabRun": "執行",
     "mode": {
       "rules": "規則",
       "llm": "LLM"
+    },
+    "list": {
+      "title": "此書的規劃執行",
+      "newRun": "+ 新提案",
+      "loading": "正在載入執行清單…",
+      "error": "無法載入執行清單。",
+      "empty": "此書尚無規劃執行。",
+      "colRun": "執行",
+      "colMode": "模式",
+      "colStatus": "狀態",
+      "colCreated": "建立時間"
     }
   },
   "editor": {

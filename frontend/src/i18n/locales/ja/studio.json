@@ -361,9 +361,22 @@
     "model": "モデル",
     "empty": "小説システムの Markdown を貼り付けて「提案」でプラン実行を開始します。",
     "openAgentMode": "自律エージェント実行 →",
+    "tabList": "実行一覧",
+    "tabRun": "実行",
     "mode": {
       "rules": "ルール",
       "llm": "LLM"
+    },
+    "list": {
+      "title": "この書籍のプラン実行",
+      "newRun": "+ 新規提案",
+      "loading": "実行を読み込み中…",
+      "error": "実行を読み込めませんでした。",
+      "empty": "この書籍のプラン実行はまだありません。",
+      "colRun": "実行",
+      "colMode": "モード",
+      "colStatus": "状態",
+      "colCreated": "作成日時"
     }
   },
   "editor": {
