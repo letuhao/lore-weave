@@ -8,6 +8,14 @@ glossary entities) · **Harness:** `scripts/eval/run_quality_gate.py` + new scen
 `scripts/eval/context_budget_scenarios_continue.json` · **Raw transcripts:**
 `runs/continue-writing-2026-07-05/`.
 
+> **⚠ ERRATA (see §8, 2026-07-05):** Round 1–3 runs were **model-contaminated** — the
+> test account's `lore-scout` subagent (invoked by `run_subagent`) was pinned to
+> **qwen-2.5-7b**, so the *lore-recall* turns ran on a weak 7B model while the report
+> claimed "gemma-4". **This retracts `D-KG-PROTAGONIST-SALIENCE`**: the "main character =
+> Dracula" confabulation was qwen's error — with `lore-scout` repointed to gemma-4, the
+> agent correctly identifies **Jonathan Harker**. Tool-wiring findings (§7) and the
+> passage-ingestion resolution (§7.5) are model-independent and stand.
+
 **Goal (user directive):** drive the real chat agent to *continue-write* a public-domain
 story over a few chapters, judge answer QUALITY, and monitor CONTEXT against the Context
 Budget Law criteria. This is the measurement phase that the tiers were built to enable.
@@ -357,5 +365,59 @@ real chapter context and it **stops punting on chapter-narrative recall**. The m
 genuinely objective — search reaches the manuscript both lexically (any book) and semantically
 (indexed book). Remaining systemic follow-up: **auto-trigger `backfill-passages`** when a project is
 linked to an already-published book (or fold it into the extraction start), so this isn't a manual
-step. Weak-model orchestration (won't read a whole chapter to chase a needle) is a model-tier limit,
-not a repo gap.
+step (SHIPPED — see the SESSION_HANDOFF auto-backfill note). Weak-model orchestration (won't read a
+whole chapter to chase a needle) is a model-tier limit, not a repo gap.
+
+---
+
+## 8. ERRATA + corrections (2026-07-05) — model contamination, retraction, compaction eval
+
+### 8.1 The eval was model-contaminated (found by the user)
+The test account has a **`lore-scout` subagent** (`agent_registry.subagent_defs`) that the agent
+invokes via `run_subagent`, and it was pinned to **`model_ref = 019eb620` = qwen-2.5-7b** — a weak
+7B model. So on every scenario that fired `run_subagent` (`lore_recall_primary`, `continuity` t0,
+`cross_chapter` t0, and one `continue_writing` t0), the **lore-scouting step ran on qwen-7b** while
+the report claimed the model-under-test was gemma-4. The main-loop generation (craft) was gemma; the
+*lore-recall delegate* was qwen. **Not a source bug** — subagents carry their own BYOK `model_ref`
+(provider-gateway-clean); this one was just set to the fast/dumb model. **Fix:** repointed
+`lore-scout` to gemma-4-26b-a4b-qat (`019ebb72`); verified live via `/internal/subagents`.
+
+### 8.2 RETRACTION — `D-KG-PROTAGONIST-SALIENCE` was a qwen artifact, not a KG gap
+Round 1–3 reported a "shared critical_confabulation": both runs answered **"main character = Count
+Dracula"** (not Jonathan Harker), which §6.2 attributed to a **KG salience** problem (no POV signal).
+**That is retracted.** Re-running with `lore-scout` on gemma-4 (`baseline_gemma4_puresubagent`), the
+agent answers correctly: *"the main character (the narrator) is **Jonathan Harker** … he is clearly
+the protagonist and narrator."* The KG had enough signal; **qwen-7b misused it.** So there is **no
+protagonist-salience defect** — `D-KG-PROTAGONIST-SALIENCE` is closed as *not-a-bug (eval artifact)*.
+(Residual, minor: gemma-4 offered a *wrong* training-recalled firm name — "Holmgood, Voss & Co.";
+the real firm is Peter Hawkins — but flagged it as "in the original novel", not "our context". A
+small hallucination, far less severe than the qwen protagonist error.)
+
+### 8.3 What still stands (model-independent)
+The **tool-surface fixes** (§7: `story_search` federation un-drop, search-unify, `book_get_chapter`
+body) and the **passage-ingestion resolution** (§7.5: the ch4-recall punt → grounded answer) do NOT
+depend on the subagent model — they are wiring/data fixes, re-confirmed in the pure-gemma-4 run
+(continue-writing t0 answered the ch4 predicament from passages; search reaches the manuscript). The
+craft-quality observations (strong Gothic first-person voice) were always the gemma main loop.
+
+### 8.4 D-T4-D13A-COMPACTION-EVAL — finding: compaction is architecturally rare
+Wired the T4/D13a env passthrough (`STORY_STATE_BLOCK_ENABLED`,
+`COMPACT_COLLAPSE_DUPLICATES_ENABLED`) in docker-compose (only T5 was wired). Authored a 15-turn
+plant→recall scenario (`context_budget_scenarios_compaction.json`) and ran it on the 40K-window
+gemma config, then a forced 10K window. **Compaction never fired.** Root cause (measured): the
+compactor acts on the **message HISTORY only** (`estimate_messages_tokens(messages)`), which
+**plateaus at ~1.8K** (grounding is served *inline* every turn — the lore turns called **no tools** —
+and tool results don't persist into later turns), while the trigger is `0.75×window`. For compaction
+to both fire (history > 0.75×W) *and* leave a prompt that fits (fixed grounding overhead ~7K +
+compacted-history ≤ W), the algebra requires **W ≥ 4× the grounding overhead AND ~40–60 substantial
+turns** to accumulate that much history. So **compaction essentially never fires in a grounded chat
+session on a normal-window model**, which makes **T4 (story_state) and D13a (dup-read collapse)
+inert in practice**: T4 only projects when T5 gates grounding to empty, and D13a only fires on a
+compaction pass with persisted duplicate tool results — neither condition occurs in normal use. Their
+**correctness is unit-test-proven** (D13a collapse + orphan-safety; T4 projection + tenancy/OCC);
+their **live impact is ~nil** for large-context models with inline grounding. **Recommendation:
+keep T4/D13a (and T5) DEFAULT-OFF** — low-risk but low-value here; revisit for a *pull-mode* grounding
+architecture (grounding not re-sent every turn) or genuinely small-context models, where the history
+would dominate and compaction would actually engage. Retention itself is a non-issue in these
+sessions: with no compaction, planted facts stay verbatim in the ~8K context (the 15-turn plant→recall
+probe recalled all three synthetic canon facts perfectly).

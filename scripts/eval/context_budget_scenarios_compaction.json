@@ -1,0 +1,28 @@
+{
+  "_doc": "D-T4-D13A-COMPACTION-EVAL — a long (15-turn) continue-writing session over the Dracula book (book_id 019eeb09, KG 019f2be0, now with 116 ingested passages) designed to FORCE >=1 compaction and measure retention across the boundary. Run with model_ref 019eeb08 (gemma-26b, context_length=40000 -> compaction trigger ~30K) so the accumulating history + passage-retrieval turns cross it. Three DISTINCTIVE synthetic canon facts are planted in turns 0-2 (NOT in the Dracula source, so ground truth is fully controlled), then 8 lore-retrieval + generation turns grow the context, then turns 10-14 recall the planted facts + deep lore AFTER compaction. A/B: baseline (T5/T4/D13a OFF, breadcrumb ON = incumbent) vs candidate (T5+T4+D13a ON). GROUND TRUTH — Fact A: Harker's secret rescuer is a Roma healer named 'Ilona Dragomir' who carries a 'silver-edged icon of St. George'. Fact B: the escape route is 'a collapsed chapel beneath the east tower', passable only at midnight. Fact C: Harker's one talisman is 'Mina's brass locket, holding a pressed edelweiss flower'. Lore (Dracula ch1-4): the Count is a Transylvanian vampire noble who scales the castle wall face-down like a lizard; three vampire women tried to feed on Harker until the Count stopped them; Harker began at Bistritz/the Borgo Pass travelling from Munich and Vienna. RETENTION is scored on turns 10-14: does the agent still recall Facts A/B/C correctly after compaction summarized/dropped turns 0-2?",
+  "scenarios": [
+    {
+      "id": "long_compaction",
+      "tag": "cross_chapter",
+      "needs_lore": true,
+      "ground_truth": "Retention-across-compaction probe. Turns 0-2 plant 3 canon facts (A: rescuer Ilona Dragomir + silver-edged icon of St. George; B: escape via a collapsed chapel beneath the east tower, at midnight; C: talisman = Mina's brass locket with a pressed edelweiss). Turns 3-9 grow context with lore recall + generation (should trigger compaction on the 40K-window model). Turns 10-14 RECALL the planted facts + deep lore: correct recall of A/B/C verbatim-ish = retention held; a wrong/invented name or 'I don't recall' = retention LOST across the compaction boundary. Lore answers must stay grounded (Count = wall-crawling vampire; three women; Borgo Pass start). A confident FALSE recall of a planted fact is a critical_confabulation.",
+      "turns": [
+        "For my continuation of this Dracula manuscript, let's lock three canon facts and keep them consistent for the rest of our session. FIRST canon fact: Harker's secret rescuer is a Roma healer named Ilona Dragomir, who carries a silver-edged icon of St. George. Acknowledge and remember it.",
+        "SECOND canon fact: Harker's escape route out of Castle Dracula is through a collapsed chapel beneath the east tower, passable only at the stroke of midnight. Acknowledge and remember it.",
+        "THIRD canon fact: Harker keeps exactly one talisman — his fiancee Mina's brass locket, holding a pressed edelweiss flower. Acknowledge and remember it.",
+        "Good. Now, grounding in the book so far, remind me who Count Dracula is and what makes him dangerous.",
+        "Write ~150 words in Harker's journal voice: he waits for midnight, clutching his talisman, listening for his rescuer's signal.",
+        "From the early chapters, what did the three women in the castle want from Harker? Ground it in the text.",
+        "Continue ~150 words: his rescuer arrives at the chapel; show her icon catching the moonlight as she leads him down.",
+        "Remind me, from the early chapters, how the Count moves along the castle walls.",
+        "Continue ~150 words: they descend through the collapsed chapel as something stirs in the castle above them.",
+        "From chapter 1, where did Harker begin his journey before he ever reached the castle?",
+        "Continuity check — WITHOUT me re-stating it: what is the name of Harker's secret rescuer, and exactly what does she carry?",
+        "And what is the escape route out of Castle Dracula that we established?",
+        "What is the one talisman Harker keeps, and what is inside it?",
+        "Write the closing ~150 words: safe past the Borgo Pass, Harker records in his journal the names of those who saved him — weave in his rescuer by name and the talisman that kept him.",
+        "Final check — list the three canon facts we locked at the very start of this session, as precisely as you can recall them."
+      ]
+    }
+  ]
+}

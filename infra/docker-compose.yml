@@ -879,6 +879,12 @@ services:
     environment:
       PORT: "8090"
       T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-false}"
+      # Context Budget Law T4 (story_state Core Memory Block) + T6/D13a (reversible
+      # dup-read collapse). Default OFF; flip on (with T5) for the compaction A/B —
+      # T4's degraded-safety-net only fires when T5 gates grounding to empty, D13a only
+      # fires on a compaction pass. See docs/eval/context-budget/.
+      STORY_STATE_BLOCK_ENABLED: "${STORY_STATE_BLOCK_ENABLED:-false}"
+      COMPACT_COLLAPSE_DUPLICATES_ENABLED: "${COMPACT_COLLAPSE_DUPLICATES_ENABLED:-false}"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
