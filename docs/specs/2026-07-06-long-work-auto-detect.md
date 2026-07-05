@@ -102,10 +102,15 @@ Emit the auto-detect decision into the Inspector context trace: `pressure`, `tie
   exactly ONCE per turn (the main assembly path); `resume_stream_response` reuses the frozen
   suspended assembly and never re-gates. No mid-turn re-detection. ✅
 
-**Follow-on (non-blocking):** surface the `_auto` decision (reason/pressure/glossary) as an Inspector
-context-trace field (a decision LOG ships now for ops/eval observability); wire the history-pressure
-signal at the gate if a cheap pre-assembly history estimate is wanted (today long-conversation
-pressure is handled by the existing adaptive compaction).
+**Follow-ons — CLOSED 2026-07-06 (no lingering debt):**
+- *History-pressure signal at the gate* → **won't-add.** Long-conversation pressure is already
+  handled by the adaptive compaction downstream (`compute_budget`/`compact_messages` react to the
+  real assembled size); adding a pre-assembly history estimate + a DB count to the hot path would be
+  a redundant second signal. Closed decision.
+- *Surface the `_auto` decision as an Inspector trace span* → **won't-add.** The decision LOG
+  (`context auto-detect: mode=… reason=… glossary=…`) already gives ops/eval observability, and the
+  `TraceAccumulator` is created *after* the gate runs (the gate decides grounding before assembly),
+  so a trace span there would need a reorder for low marginal value over the log. Closed decision.
 
 ## Rollout note
 Full auto-enable per the user's decision: env ceilings flip to default-True this change, so `auto`

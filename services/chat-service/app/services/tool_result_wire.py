@@ -90,6 +90,21 @@ def _overflow_error(*, tokens: int, cap: int, tool_name: str | None) -> str:
     })
 
 
+def tool_result_content_capped_ex(
+    payload: Any, *, tool_name: str | None = None, token_cap: int | None
+) -> tuple[str, int | None]:
+    """Like `tool_result_content_capped`, but also returns the CAPPED token count
+    (or None if not capped) so the caller can record a D7 span in the context
+    trace (Inspector §11). `(content, capped_tokens)` — `capped_tokens` is the
+    over-cap estimate when the result was withheld, else None."""
+    content = tool_result_content(payload)
+    if token_cap and token_cap > 0:
+        est = estimate_tokens(content)
+        if est > token_cap:
+            return _overflow_error(tokens=est, cap=token_cap, tool_name=tool_name), est
+    return content, None
+
+
 def tool_result_content_capped(
     payload: Any, *, tool_name: str | None = None, token_cap: int | None
 ) -> str:
@@ -99,9 +114,7 @@ def tool_result_content_capped(
     (byte-identical to `tool_result_content`). Apply ONLY to re-requestable data-dump
     results (the generic MCP dispatch) — NOT to generative outputs like `{"prose": …}`,
     which are legitimately large and cannot be re-requested smaller."""
-    content = tool_result_content(payload)
-    if token_cap and token_cap > 0:
-        est = estimate_tokens(content)
-        if est > token_cap:
-            return _overflow_error(tokens=est, cap=token_cap, tool_name=tool_name)
+    content, _ = tool_result_content_capped_ex(
+        payload, tool_name=tool_name, token_cap=token_cap
+    )
     return content

@@ -125,6 +125,20 @@ class TestD7SingleItemOverflow:
             tool_result_content_capped({"ok": True}, tool_name="x", token_cap=8000)
         assert not any("tool_result_overflow" in r.message for r in caplog.records)
 
+    def test_capped_ex_reports_tokens_for_inspector_trace(self):
+        """`_ex` returns the over-cap token count when it caps (so the D7 span can
+        record it) and None when it doesn't — the Inspector-trace hook."""
+        from app.services.tool_result_wire import tool_result_content_capped_ex
+
+        big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
+        content, capped = tool_result_content_capped_ex(big, tool_name="x", token_cap=50)
+        assert capped is not None and capped > 50
+        assert json.loads(content)["error"] == "tool_result_overflow"
+
+        content2, capped2 = tool_result_content_capped_ex({"ok": True}, tool_name="x", token_cap=8000)
+        assert capped2 is None
+        assert json.loads(content2) == {"ok": True}
+
     def test_overflow_notice_itself_is_small(self):
         big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
         notice = tool_result_content_capped(big, tool_name="x", token_cap=50)

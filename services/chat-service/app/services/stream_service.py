@@ -85,7 +85,11 @@ from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
 # T0 / L3 (Context Budget Law §6a, §14a) — the single concise-wire funnel for
 # every model-facing tool-result `content` string (ensure_ascii=False + drop-None).
-from app.services.tool_result_wire import tool_result_content, tool_result_content_capped
+from app.services.tool_result_wire import (
+    tool_result_content,
+    tool_result_content_capped,
+    tool_result_content_capped_ex,
+)
 from app.services.compaction import (
     compact_messages,
     inject_recovery_hint,
@@ -661,6 +665,7 @@ async def _stream_with_tools(
     subagent_defs: dict[str, dict] | None = None,
     subagent_depth: int = 0,
     allowed_tool_names: set[str] | None = None,
+    trace: "TraceAccumulator | None" = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -1451,12 +1456,24 @@ async def _stream_with_tools(
                 # re-requestable data dump — cap it so one oversized result can't blow the
                 # window; the model gets a self-correcting notice to re-call at a smaller
                 # scope. Error payloads bypass the cap (already small + the error path).
-                working.append({
-                    "role": "tool", "tool_call_id": c["id"],
-                    "content": tool_result_content_capped(
+                if ok:
+                    _tool_content, _capped_tokens = tool_result_content_capped_ex(
                         tool_payload, tool_name=c["name"],
                         token_cap=settings.tool_result_token_cap,
-                    ) if ok else tool_result_content(tool_payload),
+                    )
+                    # Inspector §11 — surface the D7 trip as a trace span so the GUI
+                    # shows WHY a tool result was withheld (was log-only before).
+                    if _capped_tokens is not None and trace is not None:
+                        trace.add(
+                            "compile", "T6", "results",
+                            f"d7_overflow:{c['name']}",
+                            delta=-(_capped_tokens),
+                        )
+                else:
+                    _tool_content = tool_result_content(tool_payload)
+                working.append({
+                    "role": "tool", "tool_call_id": c["id"],
+                    "content": _tool_content,
                 })
                 tool_chunk: dict = {
                     "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -2708,6 +2725,7 @@ async def _emit_chat_turn(
                 hooks=_turn_hooks,
                 subagent_tool=_subagent_tool,
                 subagent_defs=_subagent_defs_map,
+                trace=trace,
             )
         else:
             chunk_stream = _stream_via_gateway(
