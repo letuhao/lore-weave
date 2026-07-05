@@ -105,6 +105,26 @@ class TestD7SingleItemOverflow:
         assert tool_result_content_capped(big, tool_name="x", token_cap=None) == raw
         assert tool_result_content_capped(big, tool_name="x", token_cap=0) == raw
 
+    def test_cap_trip_is_de_silenced_with_a_warning(self, caplog):
+        """A D7 cap trip logs a diagnosable WARNING (de-silence) so a withheld
+        result is visible in ops/eval, not silent."""
+        import logging
+
+        big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
+        with caplog.at_level(logging.WARNING, logger="app.services.tool_result_wire"):
+            tool_result_content_capped(big, tool_name="composition_list_outline", token_cap=50)
+        assert any(
+            "tool_result_overflow" in r.message and "composition_list_outline" in r.message
+            for r in caplog.records
+        ), "expected a de-silencing WARNING on a D7 cap trip"
+
+    def test_under_cap_does_not_warn(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="app.services.tool_result_wire"):
+            tool_result_content_capped({"ok": True}, tool_name="x", token_cap=8000)
+        assert not any("tool_result_overflow" in r.message for r in caplog.records)
+
     def test_overflow_notice_itself_is_small(self):
         big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
         notice = tool_result_content_capped(big, tool_name="x", token_cap=50)

@@ -24,9 +24,12 @@ MCP tools at once (spec §14a; this is tier **T0**).
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from loreweave_context.tokens import estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 
 def prune_none(value: Any) -> Any:
@@ -64,6 +67,15 @@ def _overflow_error(*, tokens: int, cap: int, tool_name: str | None) -> str:
     never a window-blowing dump. The model re-calls at a smaller scope, so the turn is
     preserved rather than broken."""
     tool = tool_name or "the tool"
+    # D7 de-silence — a cap trip is a real, rare event (a tool returned a
+    # window-threatening dump). Log it so it's diagnosable in ops/eval even
+    # before the Context Inspector surfaces a D7 span (that GUI-trace threading
+    # is tracked separately). Mirrors the summary-skip de-silencing philosophy.
+    logger.warning(
+        "D7 tool_result_overflow: tool=%s tokens=%s cap=%s — result withheld, "
+        "model asked to re-call at a smaller scope",
+        tool_name, tokens, cap,
+    )
     return tool_result_content({
         "error": "tool_result_overflow",
         "tool": tool_name,

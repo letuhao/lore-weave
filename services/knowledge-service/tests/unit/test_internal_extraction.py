@@ -1145,6 +1145,48 @@ def test_persist_pass2_c12_summaries_gated_out_when_not_in_targets(
 @patch("app.routers.internal_extraction.neo4j_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_desilences_skipped_summary_enqueue(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue, caplog,
+):
+    """D-KG-SUMMARIES-TARGET-NOOP — when `summaries` is requested but a P3 dep
+    is missing (here: no embedding model), the endpoint enqueues nothing AND
+    logs a diagnosable WARNING instead of silently no-op'ing."""
+    import logging
+
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(return_value="msg-id-1")
+    mock_get_enqueue.return_value = enqueue_mock
+
+    # hierarchy present + summaries in DEFAULT targets, but NO embedding model
+    # → the summary guard is false, and this must not be silent.
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=None,
+        embedding_dimension=None,
+        is_last_chapter_of_book=False,
+    )
+    client = _client()
+    with caplog.at_level(logging.WARNING, logger="app.routers.internal_extraction"):
+        resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    assert enqueue_mock.await_count == 0
+    assert any(
+        "summary enqueue SKIPPED" in r.message for r in caplog.records
+    ), "expected a de-silencing WARNING when summaries requested but skipped"
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_c12_summaries_enqueued_when_in_targets(
     mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
 ):

@@ -898,6 +898,20 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                 "P3: summary enqueue failed source_id=%s (non-fatal)",
                 body.source_id, exc_info=True,
             )
+    elif summaries_requested:
+        # D-KG-SUMMARIES-TARGET-NOOP — de-silence: summaries were requested but
+        # a P3 dep was missing so NO summary enqueued. Previously invisible;
+        # now diagnosable ([[silent-success-is-a-bug-not-environment]]). The
+        # caller (worker-ai) also logs, but this covers direct callers.
+        logger.warning(
+            "P3: summary enqueue SKIPPED source_id=%s: "
+            "hierarchy_paths=%s embedding_model_uuid=%s embedding_dimension=%s "
+            "— no chapter summary generated",
+            body.source_id,
+            hierarchy_paths is not None,
+            body.embedding_model_uuid is not None,
+            body.embedding_dimension is not None,
+        )
     logger.info(
         "Phase 4b-β: persist-pass2 done source_id=%s "
         "entities=%d relations=%d events=%d facts=%d statuses=%d in %.1fs",

@@ -2110,6 +2110,23 @@ async def process_job(
                         job.scope in ("chapters", "all")
                         and ch.chapter_id == pre_chapters[-1].chapter_id
                     )
+                elif (not job.targets) or ("summaries" in job.targets):
+                    # D-KG-SUMMARIES-TARGET-NOOP — de-silence the skip: a
+                    # requested summary pass built NO p3_hierarchy_paths, so no
+                    # chapter summary will enqueue. Book-service now synthesizes
+                    # an implicit part for undecomposed chapters, so the usual
+                    # remaining cause is a project with no embedding model
+                    # (embedding_dimension None) or a hierarchy fetch failure —
+                    # both were previously invisible ([[silent-success-is-a-bug]]).
+                    logger.warning(
+                        "summary enqueue SKIPPED chapter=%s book=%s: "
+                        "hierarchy_present=%s chapter_path_present=%s "
+                        "embedding_dimension=%s — no chapter summary generated",
+                        ch.chapter_id, book_id,
+                        hierarchy is not None,
+                        (hierarchy is not None and hierarchy.chapter_path is not None),
+                        job.embedding_dimension,
+                    )
 
                 # LLM re-arch Phase 2b WX-T3b — event-driven decouple of the chapter
                 # extraction. Submit the entity job + RELEASE (return); the
