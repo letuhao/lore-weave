@@ -51,7 +51,19 @@ The enterprise audit's numbered plan tops out at P2; P3 (SDK-first) was a user-c
 
 - **2026-07-05 — i18n foundation SHIPPED** (3a + 3b + tool): Language Registry SoT (`frontend/src/lib/languages.ts`, 18 locales × {code, englishName, endonym, script, dir, uiLocale, translationTarget}); `LanguageSelector` + `LanguagePicker` derive from it; `getLanguageDir` for RTL. FE loader (`i18n/index.ts`) rewritten to a **Vite glob** (killed 124 manual imports; auto-picks-up any generated locale; skips `_FAILED.json`) + **RTL `dir`** applied at the document root on `languageChanged`; `supportedLngs`+`nonExplicitSupportedLngs`. Gemma translation tool (`scripts/i18n_translate.py`): flatten→chunk (attention-tuned ~6K, not 224K capacity)→translate→**verify** (JSON/key-set/placeholder/script)→**self-heal** re-prompt (≤3)→**no-silent-drop** `_FAILED.json`→**resumable**; one namespace's timeout no longer aborts the batch. **Proof:** `ru/notifications` generated — idiomatic, all placeholders preserved, `0 hard/1 soft` (loanword "Wiki"). VERIFY: FE tsc clean; 18 registry/picker + 136 i18n/shared tests green. **Speed reality:** ~300s/small-namespace at 224K ctx → full 15×31 batch is a multi-hour resumable job; reloading gemma at ~16–32K ctx would speed it up markedly (we chunk to ~6K anyway).
 
+## Progress log (cont.)
+
+- **2026-07-06 — slices 1, 2, 3d/3e, 4 SHIPPED.**
+  - **3d** (`af164f61a`) — `extensions` namespace (12 comps wrapped, 155 keys × 18 locales, full parity) + notification `message_key`/`message_params` FE render (BE already emitted them; FE read the legacy `metadata.i18n_key`).
+  - **Slice 1 A5** (`52caff911`) — native zh/ja/ko/vi honorifics in `canonical.py` (normalized/simplified forms; pronoun-particles excluded); forward-only under `canonical_version=1`; `recanon_honorifics.py` pure planner + dry-run apply (operator-run). 44 tests.
+  - **Slice 2 A2/A3/A4** (`f32be52c3`) — `extraction/scripts.py` single-source script ranges; glossary + entity_detector script-aware (vi Latin + Han/kana/hangul run pass, degrade-open); stopwords zh+ja particles; negation CJK trailing-NP degrade; `language-bias-gate.py` extended to `[A-Z][\w` + baseline reconciled. 21 tests + 2 reworked.
+  - **3e** — already delivered by the 3a/3b foundation: `LanguagePicker` is registry-driven and wired into SettingsTab (translation target) + BooksPage (source); replaces the free-text `"en"` default.
+  - **Slice 4** — `test_language_coverage.py` enforces ML-1/ML-4 (every extraction language PROVEN or a tracked KNOWN_GAP; ja/ko tracked, self-flips when gold lands). SUPPORTED_LANGUAGES stays 5 (extraction) — deliberately NOT tied to the 18-locale UI registry (DD-6). Standard's enforcement table + bias-site list updated (A2–A6 ✅, A1/A7 open).
+
 ## Deferred (tracked)
 
 - `D-ML-A5-RECANON-BACKFILL` (gate #2/#4) — operator-run one-time re-canonicalization of pre-existing native-honorific entities; script built + unit-tested, not run on shared dev DB.
 - `D-ML-SEGMENTER` (gate #2) — real jieba/MeCab segmentation, only if degrade-open proves insufficient (profiling-gated).
+- `D-ML-TRIPLE-SVO-SCRIPT` (gate #2) — `triple_extractor` SVO subject/object is English word-order; correct CJK SOV extraction is structural (reorder, not a char-class widen). Degrade-open today (CJK → no triple, never a wrong one); baselined in `language-bias-gate.py`.
+- `D-ML-JAKO-GOLDEN-ADJUDICATION` (gate #4 — needs human) — ja/ko golden chapters need a human native-speaker adjudication pass (never LLM-graded-by-LLM). Tracked as KNOWN_GAPs in `test_language_coverage.py`; the test self-flips to *required* when gold is added.
+- **A1 intent classifier** (open) — 100% English keywords on the live L3 path; zh/ja/ko/vi get no retrieval routing. Not in the A2–A5 detection cluster; its own slice (a per-language keyword/intent set or an embedding-based classifier).
