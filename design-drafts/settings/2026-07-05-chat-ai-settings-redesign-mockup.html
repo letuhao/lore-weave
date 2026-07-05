@@ -96,6 +96,18 @@
   .flow .step .inh{position:absolute;top:11px;right:13px;font-size:9px;font-weight:700;letter-spacing:.05em;
     text-transform:uppercase;color:var(--accent);background:#fff;border:1px solid var(--accent-line);
     padding:2px 6px;border-radius:12px}
+  .flow .step.ovr{background:var(--violet-weak)}
+  .flow .step.ovr .k{color:#4b3fb0}
+  .flow .step .inh.ov{color:var(--violet);border-color:#d3ccf3}
+  .reslegend{font-size:12px;color:var(--muted);background:#fafbfc;border:1px solid var(--line2);border-radius:9px;
+    padding:9px 13px;margin:-12px 0 20px}
+  .reslegend b{color:var(--ink2)}
+  .scopebar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--line);
+    border-radius:10px;background:var(--card);margin-bottom:6px}
+  .scopebar .sb-lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .scopebar .sb-hint{font-size:12px;color:var(--muted)}
+  .scopebar .sb-hint b{color:var(--ink2)}
+  .seg.scope button.on{background:var(--violet)}
 
   /* setting rows */
   .sect{margin:26px 0 8px;display:flex;align-items:baseline;gap:10px}
@@ -258,22 +270,35 @@
           the model inside any tool for a single job, but you never have to.</p>
 
         <div class="guide">
-          <h3>How inheritance works</h3>
-          <p>Each role below sets a <b>default</b>. A new chat session copies it; a Studio tool reads
-            it live. An override you make in one place (a session, one tool) stays there and
-            doesn't touch your default — close it and everything falls back to what's set here.</p>
+          <h3>How inheritance works — four tiers, the more specific one wins</h3>
+          <p>Your <b>account default</b> is the base for every book. A <b>book</b> may override it — useful
+            when one novel wants a different model. A <b>chat session</b> inherits the book; a <b>Studio tool</b>
+            reads it live. Each level only overrides <em>below</em> it: clear a book override and it falls back to
+            your account default; close a session override and it falls back to the book.</p>
         </div>
 
-        <!-- the thesis object -->
+        <!-- the thesis object — two-tier resolution made visible: Account → Book → Session → Tool -->
         <div class="flow">
-          <div class="step src"><span class="inh">You are here</span><span class="k">Your default</span>
-            <span class="v">Qwen3 35B (local)</span><small>Set once, in this panel</small></div>
+          <div class="step src"><span class="inh">base</span><span class="k">Account default</span>
+            <span class="v">Qwen3 35B</span><small>Applies to every book</small></div>
           <div class="arrow">→</div>
-          <div class="step"><span class="inh">inherits</span><span class="k">This chat session</span>
-            <span class="v">Qwen3 35B</span><small>Copied on create · overridable in session settings</small></div>
+          <div class="step ovr"><span class="inh ov">overrides ✎</span><span class="k">This book · Dracula</span>
+            <span class="v">Gemma-4 26B</span><small>Wins for this book only</small></div>
+          <div class="arrow">→</div>
+          <div class="step"><span class="inh">inherits book</span><span class="k">This chat</span>
+            <span class="v">Gemma-4 26B</span><small>Overridable in session settings</small></div>
           <div class="arrow">→</div>
           <div class="step"><span class="inh">inherits</span><span class="k">Studio tool</span>
-            <span class="v">Qwen3 35B</span><small>Live-read · optional per-tool override</small></div>
+            <span class="v">Gemma-4 26B</span><small>Optional per-tool override</small></div>
+        </div>
+        <p class="reslegend"><b>Resolution:</b> Tool override ▸ Session override ▸ <b>Book override</b> ▸ Account default ▸ System.
+          Here <em>Dracula</em> overrides your account model, so this chat and its Studio tools all run Gemma-4 26B — until you override deeper.</p>
+
+        <!-- scope switcher: which tier am I editing -->
+        <div class="scopebar">
+          <span class="sb-lbl">Editing</span>
+          <div class="seg scope"><button class="on" data-scope="account">Account default</button><button data-scope="book">This book · Dracula</button></div>
+          <span class="sb-hint" id="scopeHint">Changes apply to <b>all books</b> unless a book overrides them.</span>
         </div>
 
         <div class="sect"><h4>Roles</h4><span class="hint">what each model does · all resolve through provider-registry (BYOK)</span></div>
@@ -590,6 +615,21 @@
     }));
   });
   document.querySelectorAll('.sw').forEach(s=>s.addEventListener('click',()=>s.classList.toggle('on')));
+  // scope switcher — reflect two-tier editing (account vs book override)
+  const scopeHint=document.getElementById('scopeHint');
+  const chatPickerName=document.querySelector('.row .picker .name'); // first role = chat & drafting
+  const chatLbl=document.querySelector('.row .lbl');
+  document.querySelectorAll('.scope button').forEach(b=>b.addEventListener('click',()=>{
+    const book=b.dataset.scope==='book';
+    scopeHint.innerHTML=book
+      ? 'Changes apply to <b>Dracula only</b> and override your account default.'
+      : 'Changes apply to <b>all books</b> unless a book overrides them.';
+    if(chatPickerName) chatPickerName.textContent = book ? 'Gemma-4 26B' : 'Qwen3 35B';
+    // toggle a "Book override" badge on the chat role
+    let bd=chatLbl.querySelector('.badge.ovr-b');
+    if(book && !bd){bd=document.createElement('span');bd.className='badge inherit ovr-b';bd.textContent='Book override';bd.style.background='var(--violet-weak)';chatLbl.appendChild(bd);}
+    if(!book && bd) bd.remove();
+  }));
 </script>
 </body>
 </html>
