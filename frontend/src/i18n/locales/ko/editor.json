@@ -173,7 +173,8 @@
     "copied": "복사됨",
     "copy_prompt": "프롬프트 복사",
     "regenerate": "다시 생성",
-    "generating": "생성 중..."
+    "generating": "생성 중...",
+    "model_label": "AI 모델"
   },
   "image": {
     "err_type": "지원되지 않는 유형: {{type}}. PNG, JPG, GIF 또는 WebP를 사용하세요.",

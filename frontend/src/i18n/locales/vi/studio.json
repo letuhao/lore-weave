@@ -300,6 +300,16 @@
       "desc": "Văn bản gốc chưa dịch của chương này",
       "empty": "Mở một chương từ Trình soạn thảo để xem nguồn gốc của nó."
     },
+    "extensions": {
+      "guideBody": "Cài đặt và quản lý mọi thứ giúp mở rộng khả năng cho agent của bạn — plugin, skill, kết nối máy chủ MCP, lệnh tùy chỉnh, và hook. Mở nó khi bạn muốn thêm một công cụ mới cho agent sử dụng, xem lại những gì đang được bật, hoặc tắt thứ gì đó đang hoạt động sai.",
+      "title": "Tiện ích mở rộng",
+      "desc": "Quản lý plugin, kỹ năng, máy chủ MCP, lệnh & hook"
+    },
+    "proposals": {
+      "guideBody": "Liệt kê các skill mà agent tự đề xuất tạo ra, dựa trên những khuôn mẫu nó nhận thấy trong công việc của bạn, để bạn có thể xem xét và phê duyệt trước khi chúng trở thành một phần trong bộ công cụ của bạn. Mở nó sau một phiên làm việc mà agent có đề cập rằng nó có thể tự động hóa điều gì đó, để quyết định chấp nhận, chỉnh sửa, hay từ chối đề xuất.",
+      "title": "Đề xuất",
+      "desc": "Xem các kỹ năng mà tác nhân đã đề xuất"
+    },
     "user-guide": {
       "title": "Hướng dẫn sử dụng",
       "desc": "Mọi công cụ của Studio, nhóm theo khu vực — tạo tự động từ cùng danh mục với Command Palette",
@@ -314,11 +324,14 @@
       "desc": "Diff đầy đủ trong trình soạn thảo cho một cặp phiên bản chương",
       "empty": "Mở diff phiên bản của một chương từ panel xem xét của Chế độ Agent."
     },
-    "extensions": {
-      "guideBody": "Cài đặt và quản lý mọi thứ giúp mở rộng khả năng cho agent của bạn — plugin, skill, kết nối máy chủ MCP, lệnh tùy chỉnh, và hook. Mở nó khi bạn muốn thêm một công cụ mới cho agent sử dụng, xem lại những gì đang được bật, hoặc tắt thứ gì đó đang hoạt động sai."
+    "translation-review": {
+      "title": "Kiểm tra bản dịch",
+      "desc": "Xem song song theo từng khối với chế độ chỉnh sửa từng khối",
+      "empty": "Mở phần Kiểm tra từ bảng Phiên bản dịch."
     },
-    "proposals": {
-      "guideBody": "Liệt kê các skill mà agent tự đề xuất tạo ra, dựa trên những khuôn mẫu nó nhận thấy trong công việc của bạn, để bạn có thể xem xét và phê duyệt trước khi chúng trở thành một phần trong bộ công cụ của bạn. Mở nó sau một phiên làm việc mà agent có đề cập rằng nó có thể tự động hóa điều gì đó, để quyết định chấp nhận, chỉnh sửa, hay từ chối đề xuất."
+    "skill-editor": {
+      "title": "Kỹ năng",
+      "desc": "Chỉnh sửa tệp SKILL.md"
     }
   },
   "sceneRail": {
@@ -385,7 +398,8 @@
     "save": "Lưu",
     "grammar": "Ngữ pháp",
     "heatmap": "Bản đồ nhiệt",
-    "focus": "Tập trung"
+    "focus": "Tập trung",
+    "translate": "Dịch"
   },
   "popout": {
     "invalid": "Liên kết cửa sổ bật ra này không hợp lệ.",

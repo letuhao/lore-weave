@@ -173,7 +173,8 @@
     "copied": "Kopyalandı",
     "copy_prompt": "Komutu kopyala",
     "regenerate": "Yeniden oluştur",
-    "generating": "Oluşturuluyor..."
+    "generating": "Oluşturuluyor...",
+    "model_label": "Yapay zeka modeli"
   },
   "image": {
     "err_type": "Desteklenmeyen tür: {{type}}. PNG, JPG, GIF veya WebP kullanın.",

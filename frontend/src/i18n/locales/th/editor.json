@@ -173,7 +173,8 @@
     "copied": "คัดลอกแล้ว",
     "copy_prompt": "คัดลอกคำสั่ง",
     "regenerate": "สร้างใหม่",
-    "generating": "กำลังสร้าง..."
+    "generating": "กำลังสร้าง...",
+    "model_label": "โมเดล AI"
   },
   "image": {
     "err_type": "ประเภทไม่รองรับ: {{type}} โปรดใช้ PNG, JPG, GIF หรือ WebP",

@@ -173,7 +173,8 @@
     "copied": "تم النسخ",
     "copy_prompt": "نسخ الأمر",
     "regenerate": "إعادة التوليد",
-    "generating": "جاري التوليد..."
+    "generating": "جاري التوليد...",
+    "model_label": "نموذج الذكاء الاصطناعي"
   },
   "image": {
     "err_type": "نوع غير مدعوم: {{type}}. يرجى استخدام PNG أو JPG أو GIF أو WebP.",

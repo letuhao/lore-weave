@@ -173,7 +173,8 @@
     "copied": "Скопировано",
     "copy_prompt": "Копировать промпт",
     "regenerate": "Перегенерировать",
-    "generating": "Генерация..."
+    "generating": "Генерация...",
+    "model_label": "Модель ИИ"
   },
   "image": {
     "err_type": "Неподдерживаемый тип: {{type}}. Используйте PNG, JPG, GIF или WebP.",

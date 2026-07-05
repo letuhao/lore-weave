@@ -173,7 +173,8 @@
     "copied": "Disalin",
     "copy_prompt": "Salin prompt",
     "regenerate": "Buat ulang",
-    "generating": "Sedang membuat..."
+    "generating": "Sedang membuat...",
+    "model_label": "Model AI"
   },
   "image": {
     "err_type": "Tipe tidak didukung: {{type}}. Gunakan PNG, JPG, GIF, atau WebP.",

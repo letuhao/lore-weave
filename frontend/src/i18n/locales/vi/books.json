@@ -1,5 +1,7 @@
 {
-  "translateIntent": { "hint": "Chọn một cuốn sách để dịch — mở nó, rồi dùng tab Dịch để bắt đầu dịch." },
+  "translateIntent": {
+    "hint": "Chọn một cuốn sách để dịch — mở nó, rồi dùng tab Dịch để bắt đầu dịch."
+  },
   "workspace": "Sách của tôi",
   "new_book": "Sách mới",
   "search_placeholder": "Tìm sách...",
@@ -190,10 +192,18 @@
     "range": "{{start}}–{{end}} trên {{total}}",
     "page_size_label": "Mỗi trang",
     "page_size": "{{count}} / trang",
-    "pager": { "page": "Trang", "prev": "Trang trước", "next": "Trang sau" },
+    "pager": {
+      "page": "Trang",
+      "prev": "Trang trước",
+      "next": "Trang sau"
+    },
     "page_empty": "Trang này trống.",
     "page_empty_first": "Về trang đầu",
-    "match_field": { "name": "tên", "alias": "biệt danh", "translation": "bản dịch" },
+    "match_field": {
+      "name": "tên",
+      "alias": "biệt danh",
+      "translation": "bản dịch"
+    },
     "kind_label": "Loại",
     "status_label": "Trạng thái",
     "status_all": "Tất cả",
@@ -275,7 +285,11 @@
     "subtitle": "Mời người khác qua email để xem, chỉnh sửa hoặc quản lý sách này.",
     "email_placeholder": "Email của cộng tác viên",
     "role_label": "Vai trò",
-    "roles": { "view": "Người xem", "edit": "Người chỉnh sửa", "manage": "Người quản lý" },
+    "roles": {
+      "view": "Người xem",
+      "edit": "Người chỉnh sửa",
+      "manage": "Người quản lý"
+    },
     "invite": "Mời",
     "invited": "Đã mời {{email}}",
     "invite_failed": "Không thể mời cộng tác viên đó",
@@ -320,7 +334,12 @@
       "public": "Hiển thị với mọi người trong danh mục"
     },
     "discard": "Hủy thay đổi",
-    "save": "Lưu cài đặt"
+    "save": "Lưu cài đặt",
+    "world": {
+      "title": "Thế giới",
+      "hint": "Gộp cuốn sách này vào một thế giới để đưa nó vào biểu đồ và dòng thời gian của thế giới đó.",
+      "open": "Mở trong thế giới"
+    }
   },
   "translate": {
     "title": "Dịch chương",

@@ -173,7 +173,8 @@
     "copied": "Copiado",
     "copy_prompt": "Copiar prompt",
     "regenerate": "Regerar",
-    "generating": "Gerando..."
+    "generating": "Gerando...",
+    "model_label": "Modelo de IA"
   },
   "image": {
     "err_type": "Tipo não suportado: {{type}}. Use PNG, JPG, GIF ou WebP.",

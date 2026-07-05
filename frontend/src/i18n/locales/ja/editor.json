@@ -173,7 +173,8 @@
     "copied": "コピーしました",
     "copy_prompt": "プロンプトをコピー",
     "regenerate": "再生成",
-    "generating": "生成中..."
+    "generating": "生成中...",
+    "model_label": "AIモデル"
   },
   "image": {
     "err_type": "サポートされていない形式: {{type}}。PNG、JPG、GIF、またはWebPを使用してください。",

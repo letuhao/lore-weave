@@ -173,7 +173,8 @@
     "copied": "কপি করা হয়েছে",
     "copy_prompt": "প্রম্পট কপি করুন",
     "regenerate": "পুনরায় তৈরি করুন",
-    "generating": "তৈরি করা হচ্ছে..."
+    "generating": "তৈরি করা হচ্ছে...",
+    "model_label": "AI মডেল"
   },
   "image": {
     "err_type": "অসমর্থিত টাইপ: {{type}}। PNG, JPG, GIF, বা WebP ব্যবহার করুন।",

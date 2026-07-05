@@ -291,30 +291,46 @@ def chunk_items(src_flat: dict[str, str], chunk_chars: int = CHUNK_CHARS,
 # plan is built per namespace (with resume-skip), all its chunks are submitted
 # to a shared pool, and the namespace file is written the moment its chunks
 # finish (incremental → resumable against a mid-run process death).
-def plan_namespace(code: str, ns_path: Path, script_re: str | None,
-                   force: bool, chunk_chars: int, max_keys: int) -> dict:
+def plan_namespace(code: str, ns_path: Path, script_re: str | None, force: bool,
+                   chunk_chars: int, max_keys: int, retry_keys: frozenset = frozenset()) -> dict:
     out_path = LOCALES_DIR / code / ns_path.name
     src_flat = flatten(json.loads(ns_path.read_text(encoding="utf-8")))
     str_leaves = {k: v for k, v in src_flat.items() if isinstance(v, str)}
     passthrough = {k: v for k, v in src_flat.items() if not isinstance(v, str)}
 
+    # GAP-FILL + KEY-LEVEL RETRY: on a plain resume, KEEP every existing key that is
+    # already a valid translation (present, non-empty, placeholder-faithful, and NOT
+    # flagged in _FAILED) and (re)translate ONLY the keys that are missing, broken, or
+    # listed in _FAILED.json. This makes the tool safe to run anytime — it fills new
+    # `en` keys + retries prior failures WITHOUT clobbering existing (incl.
+    # hand-authored) translations. `--force` re-translates everything.
+    carry: dict[str, str] = {}
+    to_translate = str_leaves
     if out_path.exists() and not force:
         try:
             existing = flatten(json.loads(out_path.read_text(encoding="utf-8")))
-            if set(existing) == set(src_flat) and not verify_chunk(
-                    str_leaves, {k: existing.get(k) for k in str_leaves}, script_re)[0]:
+            for k, srcv in str_leaves.items():
+                ev = existing.get(k)
+                if (k not in retry_keys and isinstance(ev, str) and ev
+                        and placeholders(ev) == placeholders(srcv)):
+                    carry[k] = ev
+            to_translate = {k: v for k, v in str_leaves.items() if k not in carry}
+            if not to_translate:
                 return {"status": "skip", "code": code, "ns": ns_path.name, "keys": len(str_leaves)}
         except Exception:
-            pass  # unreadable/partial → re-translate
+            carry, to_translate = {}, str_leaves  # unreadable → full re-translate
 
     return {"status": "work", "code": code, "ns": ns_path.name, "out_path": out_path,
-            "chunks": chunk_items(str_leaves, chunk_chars, max_keys),
-            "passthrough": passthrough, "keys": len(str_leaves),
-            "results": {}, "soft": {}}
+            "chunks": chunk_items(to_translate, chunk_chars, max_keys),
+            "passthrough": passthrough, "carry": carry, "keys": len(str_leaves),
+            "n_new": len(to_translate), "results": {}, "soft": {}}
 
 
 def assemble_and_write(plan: dict) -> dict:
+    # Start from non-string passthrough + the CARRIED existing translations
+    # (gap-fill preserves them), then overlay the freshly-translated chunks.
     translated: dict[str, object] = dict(plan["passthrough"])
+    translated.update(plan.get("carry", {}))
     for i, chunk in enumerate(plan["chunks"]):
         out = plan["results"].get(i, {})
         translated.update({k: out.get(k, chunk[k]) for k in chunk})
@@ -371,18 +387,17 @@ def main() -> int:
             print(f"!! unknown lang {code}, skipping")
             continue
         _, script_re = TARGETS[code]
-        failed_ns: set[str] = set()
+        failed_map: dict[str, list] = {}
         fpath = LOCALES_DIR / code / "_FAILED.json"
         if fpath.exists():
             try:
-                failed_ns = set(json.loads(fpath.read_text(encoding="utf-8")))
+                failed_map = json.loads(fpath.read_text(encoding="utf-8"))
             except Exception:
                 pass
         for ns in ns_files:
             try:
-                force = args.force or ns.name in failed_ns
-                plans.append(plan_namespace(code, ns, script_re, force,
-                                            args.chunk_chars, args.max_keys))
+                plans.append(plan_namespace(code, ns, script_re, args.force, args.chunk_chars,
+                                            args.max_keys, frozenset(failed_map.get(ns.name, []))))
             except Exception as e:  # noqa: BLE001
                 print(f"  ✗ {code}/{ns.name} PLAN ERROR: {type(e).__name__}: {e}")
     work = [p for p in plans if p["status"] == "work"]
@@ -417,7 +432,8 @@ def main() -> int:
                 grand_failed += r["failed"]
                 flag = f" ⚠{r['soft']}" if r["soft"] else ""
                 fail = f" ✗{r['failed']}" if r["failed"] else ""
-                print(f"  ✓ {p['code']:<6} {r['ns']:<22} {r['keys']} keys{flag}{fail}  "
+                gap = f" +{p['n_new']} new" if p.get("n_new", 0) < p["keys"] else ""
+                print(f"  ✓ {p['code']:<6} {r['ns']:<22} {r['keys']} keys{gap}{flag}{fail}  "
                       f"[{done}/{len(tasks)} chunks, {time.time()-t0:.0f}s]")
 
     # Per-language _FAILED.json report (keys left as en after heal exhausted).

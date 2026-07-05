@@ -173,7 +173,8 @@
     "copied": "Kopiert",
     "copy_prompt": "Prompt kopieren",
     "regenerate": "Neu generieren",
-    "generating": "Generierung läuft..."
+    "generating": "Generierung läuft...",
+    "model_label": "KI-Modell"
   },
   "image": {
     "err_type": "Nicht unterstützter Typ: {{type}}. Verwende PNG, JPG, GIF oder WebP.",

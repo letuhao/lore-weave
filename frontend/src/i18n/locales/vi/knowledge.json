@@ -70,8 +70,9 @@
       "extraction": "Trích xuất",
       "extractionEnabled": "Đã bật",
       "extractionDisabled": "Đã tắt",
-      "bookId": "Sách",
-      "none": "—"
+      "none": "—",
+      "book": "Sách",
+      "world": "Thế giới"
     },
     "placeholder": {
       "proposals": "Các đề xuất đang chờ sẽ hiển thị ở đây (C11).",
@@ -381,6 +382,8 @@
       "loading": "Đang tải thực thể…",
       "loadFailed": "Không thể tải thực thể: {{error}}",
       "close": "Đóng",
+      "edit": "Chỉnh sửa",
+      "merge": "Hợp nhất vào thực thể khác",
       "metadata": "Siêu dữ liệu",
       "description": "Mô tả",
       "descriptionSource": "Từ mục từ điển được liên kết",
@@ -403,8 +406,6 @@
         "mentions": "Số lần nhắc",
         "anchor": "Điểm neo"
       },
-      "edit": "Chỉnh sửa",
-      "merge": "Hợp nhất vào thực thể khác",
       "promote": "Đưa vào từ điển",
       "promoteHint": "Thực thể được phát hiện. Đưa vào để tạo bản nháp từ điển do AI gợi ý để duyệt.",
       "promotePending": "Đang đưa vào…",
@@ -600,43 +601,6 @@
       "delete": "Xóa",
       "tuneExtraction": "Tinh chỉnh trích xuất",
       "bookId": "book_id"
-    },
-    "extractionTuning": {
-      "title": "Tinh chỉnh trích xuất",
-      "description": "Cài đặt trích xuất theo từng tiểu thuyết. Thay đổi áp dụng cho lần trích xuất tiếp theo của dự án này.",
-      "filterEnabled": "Bộ lọc độ chính xác (loại bỏ trích xuất ít dẫn chứng)",
-      "category": {
-        "entity": "Thực thể",
-        "relation": "Quan hệ",
-        "event": "Sự kiện"
-      },
-      "categoriesRequired": "Chọn ít nhất một loại, hoặc tắt bộ lọc.",
-      "partialPolicy": "Khớp một phần:",
-      "policyKeep": "Giữ",
-      "policyDrop": "Bỏ",
-      "defaultModel": "Mô hình trích xuất mặc định",
-      "defaultModelNone": "Dùng mặc định toàn cục của tôi",
-      "defaultModelHint": "Mô hình dùng cho mọi bước trích xuất trừ khi được ghi đè bên dưới. Để trống thì các vai trò lùi về mô hình mặc định toàn cục của bạn (Cài đặt), rồi tới mô hình mà lần build này chạy.",
-      "recoveryEnabled": "Khôi phục thực thể (phục hồi thực thể bị bỏ sót)",
-      "recoveryModel": "Mô hình khôi phục (tùy chọn)",
-      "recoveryModelNone": "Dùng mô hình trích xuất mặc định",
-      "recoveryModelHint": "LLM khôi phục các thực thể mà lượt chính bỏ sót. Để mặc định thì nó dùng lại mô hình trích xuất mặc định ở trên.",
-      "recoveryBatch": "Cỡ lô",
-      "recoveryBatchHint": "số tên mỗi lần gọi phân loại (1-20; mặc định 5)",
-      "autocreateEnabled": "Tự tạo khi viết (tạo thực thể được tham chiếu bởi quan hệ)",
-      "promptWarning": "Nâng cao: prompt tùy chỉnh thay thế hướng dẫn trích xuất mặc định cho bước đó và có thể làm giảm chất lượng. Để trống để dùng mặc định. Đầu ra JSON luôn được ép buộc.",
-      "promptPlaceholder": "Để trống để dùng prompt mặc định",
-      "prompt": {
-        "entity": "Prompt trích xuất thực thể",
-        "relation": "Prompt trích xuất quan hệ",
-        "event": "Prompt trích xuất sự kiện",
-        "fact": "Prompt trích xuất dữ kiện"
-      },
-      "save": "Lưu",
-      "saving": "Đang lưu…",
-      "cancel": "Hủy",
-      "saved": "Đã lưu cài đặt trích xuất.",
-      "failed": "Lưu thất bại: {{error}}"
     },
     "form": {
       "createTitle": "Dự án mới",
@@ -903,6 +867,43 @@
       "failed": "Đổi thất bại: {{error}}",
       "alreadyAtModel": "Mô hình đã được đặt thành {{model}} — có thể thiết bị khác đã đổi."
     },
+    "extractionTuning": {
+      "title": "Tinh chỉnh trích xuất",
+      "description": "Cài đặt trích xuất theo từng tiểu thuyết. Thay đổi áp dụng cho lần trích xuất tiếp theo của dự án này.",
+      "filterEnabled": "Bộ lọc độ chính xác (loại bỏ trích xuất ít dẫn chứng)",
+      "category": {
+        "entity": "Thực thể",
+        "relation": "Quan hệ",
+        "event": "Sự kiện"
+      },
+      "categoriesRequired": "Chọn ít nhất một loại, hoặc tắt bộ lọc.",
+      "partialPolicy": "Khớp một phần:",
+      "policyKeep": "Giữ",
+      "policyDrop": "Bỏ",
+      "defaultModel": "Mô hình trích xuất mặc định",
+      "defaultModelNone": "Dùng mặc định toàn cục của tôi",
+      "defaultModelHint": "Mô hình dùng cho mọi bước trích xuất trừ khi được ghi đè bên dưới. Để trống thì các vai trò lùi về mô hình mặc định toàn cục của bạn (Cài đặt), rồi tới mô hình mà lần build này chạy.",
+      "recoveryEnabled": "Khôi phục thực thể (phục hồi thực thể bị bỏ sót)",
+      "recoveryModel": "Mô hình khôi phục (tùy chọn)",
+      "recoveryModelNone": "Dùng mô hình trích xuất mặc định",
+      "recoveryModelHint": "LLM khôi phục các thực thể mà lượt chính bỏ sót. Để mặc định thì nó dùng lại mô hình trích xuất mặc định ở trên.",
+      "recoveryBatch": "Cỡ lô",
+      "recoveryBatchHint": "số tên mỗi lần gọi phân loại (1-20; mặc định 5)",
+      "autocreateEnabled": "Tự tạo khi viết (tạo thực thể được tham chiếu bởi quan hệ)",
+      "promptWarning": "Nâng cao: prompt tùy chỉnh thay thế hướng dẫn trích xuất mặc định cho bước đó và có thể làm giảm chất lượng. Để trống để dùng mặc định. Đầu ra JSON luôn được ép buộc.",
+      "promptPlaceholder": "Để trống để dùng prompt mặc định",
+      "prompt": {
+        "entity": "Prompt trích xuất thực thể",
+        "relation": "Prompt trích xuất quan hệ",
+        "event": "Prompt trích xuất sự kiện",
+        "fact": "Prompt trích xuất dữ kiện"
+      },
+      "save": "Lưu",
+      "saving": "Đang lưu…",
+      "cancel": "Hủy",
+      "saved": "Đã lưu cài đặt trích xuất.",
+      "failed": "Lưu thất bại: {{error}}"
+    },
     "confirmDestructive": {
       "cancel": "Hủy",
       "deleteGraph": {
@@ -956,6 +957,7 @@
       "noModels": "Bạn chưa có mô hình chat nào. Vui lòng thêm một mô hình trong mục Mô hình AI trước.",
       "costHint": "Chi phí ước tính: nhỏ (<$0.05). Đầu ra giới hạn 500 token.",
       "editLockHint": "Chỉnh sửa thủ công trong 30 ngày qua được bảo vệ — việc tạo lại sẽ bỏ qua nếu bạn vừa chỉnh sửa.",
+      "disabledDirty": "Vui lòng lưu hoặc đặt lại các chỉnh sửa chưa lưu trước khi tạo lại — kết quả tạo lại sẽ không hiển thị trong trình chỉnh sửa khi bạn có thay đổi chưa lưu.",
       "editLockDefault": "Lần chỉnh sửa thủ công gần nhất của bạn được bảo vệ khỏi việc tạo lại trong 30 ngày.",
       "confirm": "Tạo lại",
       "regenerating": "Đang tạo lại…",
@@ -966,8 +968,7 @@
       "concurrentEdit": "Một chỉnh sửa thủ công đã diễn ra song song. Vui lòng kiểm tra tiểu sử hiện tại và thử lại.",
       "guardrailFailed": "Việc tạo lại không đạt kiểm tra chất lượng: {{reason}}",
       "providerError": "Nhà cung cấp AI của bạn trả về lỗi: {{reason}}",
-      "unknownError": "Tạo lại thất bại: {{reason}}",
-      "disabledDirty": "Vui lòng lưu hoặc đặt lại các chỉnh sửa chưa lưu trước khi tạo lại — kết quả tạo lại sẽ không hiển thị trong trình chỉnh sửa khi bạn có thay đổi chưa lưu."
+      "unknownError": "Tạo lại thất bại: {{reason}}"
     },
     "preferences": {
       "title": "Sở thích đã học",
