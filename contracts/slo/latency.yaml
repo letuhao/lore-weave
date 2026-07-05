@@ -9,9 +9,12 @@
 #   * scripts/slo-latency-lint.py — presence/shape gate (parses this file, checks
 #     every row's required fields + a positive p95, rejects duplicate ids/routes,
 #     and warns if a latency-heavy service has no row).
-#   * (planned) perf-nightly p95 assertion + k6 smoke — asserts the measured p95
-#     against target per row. NO perf-nightly harness exists yet → D-D-PERF-NIGHTLY;
-#     this SoT is that work's prerequisite and is the buildable half.
+#   * scripts/perf/slo_assert.py — consume-side p95 assertion: maps a k6 run summary
+#     (tests/perf/k6/http_platform_slo.js records one `slo_<id>` Trend per row) to these
+#     targets and reds when an endpoint blows its budget. Driven by scripts/perf/platform-slo.sh
+#     (self-test always; live measurement gated on PERF_PLATFORM_TARGET), wired into the
+#     conformance-ci perf-nightly job. The measurement is deployment-gated (needs a booted
+#     platform stack) — the harness + assertion are the buildable half; a live target is env-set.
 #
 # Scope rule — SYNCHRONOUS user HTTP only. Async AI operations (translate, compose,
 # extract, image/video gen) return a fast job-accepted ack and do the heavy work in
