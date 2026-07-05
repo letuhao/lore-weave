@@ -23,6 +23,46 @@ class ProviderRegistryClient:
         resp.raise_for_status()
         return ProviderCredentials(**resp.json())
 
+    async def get_default_model(
+        self, capability: str, user_id: str
+    ) -> tuple[str, str] | None:
+        """Fetch the user's Account-tier default model for a capability (spec §3.4).
+        Returns (model_source, model_ref) or None when unset/unsupported. Best-effort:
+        a transient upstream error returns None (the tier simply contributes nothing;
+        the resolver falls to the next tier) — never raises into the turn."""
+        url = f"{self._base}/internal/default-models/{capability}"
+        try:
+            async with build_internal_client(
+                self._base, internal_token=self._token,
+                timeout_s=5, trace_id_provider=trace_id_var.get,
+            ) as client:
+                resp = await client.get(url, params={"user_id": user_id})
+            if resp.status_code == 200:
+                data = resp.json()
+                return (data.get("model_source", "user_model"), data["user_model_id"])
+            return None  # 404 (unset) / 400 (unsupported capability) / anything else
+        except Exception:
+            return None
+
+    async def is_live(self, model_source: str, model_ref: str, user_id: str) -> bool:
+        """Liveness probe for the settings resolver (spec §3.1). Owner-scoped —
+        reuses the existing credential-resolve route (404 ⇒ not found / inactive
+        / not-owned). A transient/upstream error (non-404) is treated as
+        NOT-dead (returns True) so a flaky provider-registry never silently
+        demotes a user's chosen model to a lower tier; the real resolve at submit
+        is still authoritative.
+
+        NB: this decrypts credentials (heavier than a pure liveness check). The
+        resolver validates only the small DISTINCT candidate set, so cost is
+        bounded; a dedicated batch liveness route is a later optimization."""
+        try:
+            await self.resolve(model_source, model_ref, user_id)
+            return True
+        except ValueError:
+            return False
+        except Exception:
+            return True
+
 
 _client: ProviderRegistryClient | None = None
 

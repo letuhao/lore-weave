@@ -407,6 +407,40 @@ CREATE INDEX IF NOT EXISTS idx_chat_sessions_book
   ON chat_sessions(book_id) WHERE book_id IS NOT NULL;
 
 -- ══════════════════════════════════════════════════════════════════════
+-- Chat & AI settings unify (spec docs/specs/2026-07-05-chat-ai-settings.md).
+-- The Account tier for behavior/grounding/voice/context settings. Model
+-- account defaults deliberately stay in provider-registry `user_default_models`
+-- (one SoT per fact — not duplicated here). Tenancy (LOCKED): PK = owner_user_id
+-- (Per-user tier); one row per user; no shared/global user-writable row. The
+-- System tier (env ceilings, client-seed presets) lives elsewhere, read-only.
+-- `version` is the optimistic-concurrency guard for multi-device field-merge
+-- (PATCH is a deep field-merge, not blob last-write-wins).
+CREATE TABLE IF NOT EXISTS user_chat_ai_prefs (
+  owner_user_id  UUID PRIMARY KEY,
+  behavior       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  grounding      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  voice          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  context        JSONB NOT NULL DEFAULT '{"mode":"auto"}'::jsonb,
+  version        BIGINT NOT NULL DEFAULT 0,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Per-session overrides for the settings resolution cascade. NULL = inherit
+-- from the next tier down (Book ▸ Account ▸ System) — never a hidden default at
+-- this layer. Pre-migration rows are NULL ⇒ inherit, safe by design.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='grounding_enabled') THEN
+    ALTER TABLE chat_sessions ADD COLUMN grounding_enabled BOOLEAN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='voice_overrides') THEN
+    ALTER TABLE chat_sessions ADD COLUMN voice_overrides JSONB;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='context_overrides') THEN
+    ALTER TABLE chat_sessions ADD COLUMN context_overrides JSONB;
+  END IF;
+END $$;
+
+-- ══════════════════════════════════════════════════════════════════════
 -- M7 — System-tier seed templates (the admin/platform path). These are the
 -- shared defaults every tenant sees read-only; a user clones one (POST
 -- /templates) to localize/customize. owner_user_id IS NULL ⇒ tier='system'.
