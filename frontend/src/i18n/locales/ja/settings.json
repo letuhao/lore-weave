@@ -4,6 +4,7 @@
     "tabs_aria": "設定タブ",
     "tab": {
       "account": "アカウント",
+      "chat-ai": "チャットとAI",
       "providers": "モデルプロバイダー",
       "translation": "翻訳",
       "reading": "読書",

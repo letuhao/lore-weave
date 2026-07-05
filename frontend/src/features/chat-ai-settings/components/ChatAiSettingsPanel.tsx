@@ -1,0 +1,169 @@
+// Chat & AI settings — the consolidated account-level panel (MVC "view": render
+// only; logic in useAiPrefsEditor). Folds the fragmented model + behavior
+// settings into one surface built on the resolution cascade (spec §8): every row
+// shows its effective value AND which tier supplied it, so nothing is silent.
+import { DefaultModelsCard } from '@/features/settings/DefaultModelsCard';
+import { useAiPrefsEditor } from '../hooks/useAiPrefsEditor';
+import type { EffectiveSettings, FieldResolution } from '../types';
+
+const MODEL_ROLES: { key: string; label: string }[] = [
+  { key: 'chat', label: 'Chat & drafting' },
+  { key: 'composer', label: 'Prose composer' },
+  { key: 'planner', label: 'Planner' },
+  { key: 'embedding', label: 'Embedding' },
+  { key: 'rerank', label: 'Rerank' },
+];
+
+/** A small chip naming the tier a value was resolved from — the anti-silent
+ *  affordance. Colour-codes the "system default" (a value the user never set,
+ *  surfaced instead of hidden) distinctly from an explicit account override. */
+function SourceChip({ tier }: { tier: string | null | undefined }) {
+  if (!tier) return null;
+  const label =
+    tier === 'system' ? 'default'
+    : tier === 'account' ? 'your default'
+    : tier === 'no_model_configured' ? 'not set'
+    : tier === 'unavailable' ? 'unavailable'
+    : tier;
+  const cls =
+    tier === 'system' ? 'bg-amber-50 text-amber-700 border-amber-200'
+    : tier === 'account' ? 'bg-teal-50 text-teal-700 border-teal-200'
+    : tier === 'no_model_configured' ? 'bg-muted text-muted-foreground border-border'
+    : 'bg-muted text-muted-foreground border-border';
+  return (
+    <span className={`ml-2 rounded border px-1.5 py-0.5 text-[10px] font-medium ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+function effField(eff: EffectiveSettings | null, cat: 'behavior', field: string): FieldResolution | undefined {
+  return eff?.[cat]?.[field];
+}
+
+const SEG = 'rounded border text-xs font-medium px-2.5 py-1';
+const SEG_ON = 'bg-primary text-primary-foreground border-primary';
+const SEG_OFF = 'bg-background text-muted-foreground border-border hover:text-foreground';
+
+export function ChatAiSettingsPanel() {
+  const ed = useAiPrefsEditor();
+  const behavior = ed.prefs?.behavior ?? {};
+  const eff = ed.effective;
+
+  const setBehavior = (field: string, value: unknown) =>
+    void ed.patch({ behavior: { [field]: value } });
+
+  const reasoning = String(effField(eff, 'behavior', 'reasoning_effort')?.effective_value ?? 'off');
+  const permission = String(effField(eff, 'behavior', 'permission_mode')?.effective_value ?? 'write');
+
+  return (
+    <div className="flex flex-col gap-8" data-testid="chat-ai-settings">
+      <header>
+        <h2 className="font-serif text-lg font-semibold">Chat &amp; AI</h2>
+        <p className="mt-1 max-w-[64ch] text-[13px] text-muted-foreground">
+          Your defaults for chat and the Writing Studio, in one place. Each row shows its
+          effective value and which tier it comes from — a chat session or a Studio tool inherits
+          these and may override, never required.
+        </p>
+        {ed.error && <p className="mt-2 text-xs text-amber-700">{ed.error}</p>}
+      </header>
+
+      {/* ── Models ── */}
+      <section className="flex flex-col gap-3">
+        <h3 className="font-serif text-base font-semibold">Models</h3>
+        <div className="rounded-lg border border-border bg-card p-3">
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Resolved now
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {MODEL_ROLES.map((r) => {
+              const m = eff?.models?.[r.key];
+              const name = m?.effective_value?.model_ref ?? null;
+              return (
+                <li key={r.key} className="flex items-center justify-between text-[13px]">
+                  <span className="text-muted-foreground">{r.label}</span>
+                  <span className="flex items-center">
+                    <span className="font-mono text-xs">{name ? name.slice(0, 8) : '—'}</span>
+                    <SourceChip tier={m?.source_tier} />
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        {/* the account-default editor (shared with Providers), embedded here so
+            models are set in the same place they're consumed. */}
+        <DefaultModelsCard />
+      </section>
+
+      {/* ── Behavior (de-silenced defaults) ── */}
+      <section className="flex flex-col gap-4">
+        <h3 className="font-serif text-base font-semibold">Behavior</h3>
+        <p className="-mt-2 max-w-[64ch] text-[12px] text-muted-foreground">
+          These were applied silently before — now they're shown and editable. Blank means the
+          system default (also shown), never a hidden value.
+        </p>
+
+        <div className="flex flex-col gap-1.5" role="group" aria-label="Reasoning effort">
+          <span className="flex items-center text-[13px] font-medium">
+            Reasoning effort <SourceChip tier={effField(eff, 'behavior', 'reasoning_effort')?.source_tier} />
+          </span>
+          <span className="flex gap-1.5">
+            {(['off', 'low', 'medium', 'high'] as const).map((v) => (
+              <button key={v} type="button" disabled={ed.saving}
+                className={`${SEG} ${reasoning === v ? SEG_ON : SEG_OFF}`}
+                onClick={() => setBehavior('reasoning_effort', v)}>
+                {v}
+              </button>
+            ))}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1.5" role="group" aria-label="Tool authority">
+          <span className="flex items-center text-[13px] font-medium">
+            Tool authority <SourceChip tier={effField(eff, 'behavior', 'permission_mode')?.source_tier} />
+          </span>
+          <span className="flex gap-1.5">
+            {(['ask', 'plan', 'write'] as const).map((v) => (
+              <button key={v} type="button" disabled={ed.saving}
+                className={`${SEG} ${permission === v ? SEG_ON : SEG_OFF}`}
+                onClick={() => setBehavior('permission_mode', v)}>
+                {v}
+              </button>
+            ))}
+          </span>
+          <span className="text-[11px] text-muted-foreground">How much the assistant may do without asking. Default granted <b>write</b> silently.</span>
+        </div>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="flex items-center text-[13px] font-medium">
+            Temperature <SourceChip tier={effField(eff, 'behavior', 'temperature')?.source_tier} />
+          </span>
+          <input
+            type="number" min={0} max={2} step={0.05} disabled={ed.saving}
+            className="w-28 rounded border border-border bg-background px-2 py-1 text-sm"
+            placeholder="provider default"
+            value={behavior.temperature != null ? String(behavior.temperature) : ''}
+            onChange={(e) => setBehavior('temperature', e.target.value === '' ? null : Number(e.target.value))}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="flex items-center text-[13px] font-medium">
+            System prompt <SourceChip tier={effField(eff, 'behavior', 'system_prompt')?.source_tier} />
+          </span>
+          <textarea
+            rows={3} disabled={ed.saving}
+            className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+            placeholder="Default persona instructions (blank = none)"
+            defaultValue={typeof behavior.system_prompt === 'string' ? behavior.system_prompt : ''}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              setBehavior('system_prompt', v === '' ? null : v);
+            }}
+          />
+        </label>
+      </section>
+    </div>
+  );
+}

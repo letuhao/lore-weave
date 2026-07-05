@@ -1,6 +1,6 @@
 import { Navigate, useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { User, Cpu, Languages, BookOpen, Globe, KeyRound } from 'lucide-react';
+import { User, Cpu, Languages, BookOpen, Globe, KeyRound, MessagesSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { AccountTab } from '@/features/settings/AccountTab';
@@ -9,11 +9,13 @@ import { TranslationTab } from '@/features/settings/TranslationTab';
 import { ReadingTab } from '@/features/settings/ReadingTab';
 import { LanguageTab } from '@/features/settings/LanguageTab';
 import { McpAccessTab } from '@/features/settings/McpAccessTab';
+import { ChatAiSettingsPanel } from '@/features/chat-ai-settings/components/ChatAiSettingsPanel';
 
-type Tab = 'account' | 'providers' | 'translation' | 'reading' | 'language' | 'mcp';
+type Tab = 'account' | 'chat-ai' | 'providers' | 'translation' | 'reading' | 'language' | 'mcp';
 
 const BASE_TABS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'account', icon: User },
+  { id: 'chat-ai', icon: MessagesSquare },
   { id: 'providers', icon: Cpu },
   { id: 'translation', icon: Languages },
   { id: 'reading', icon: BookOpen },
@@ -67,6 +69,7 @@ export function SettingsPage() {
 
       {/* Tab content */}
       {activeTab === 'account' && <AccountTab />}
+      {activeTab === 'chat-ai' && <ChatAiSettingsPanel />}
       {activeTab === 'providers' && <ProvidersTab />}
       {activeTab === 'translation' && <TranslationTab />}
       {activeTab === 'reading' && <ReadingTab />}
