@@ -27,6 +27,7 @@ from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError
 from app.services.authoring_run_service import (
     ActiveRunOverlapError,
+    ALLOWLISTABLE_TOOLS,
     AuthoringRunService,
     TransitionConflictError,
 )
@@ -52,7 +53,10 @@ class AuthoringRunCreate(BaseModel):
     # C2-allowlist SNAPSHOT, provided by the FE/chat layer at gate time (DR-D
     # deviation-by-necessity: chat's user_tool_approvals DB is not composition's
     # — the snapshot lives on the run row; provenance is the caller's).
-    tool_allowlist: list[str] = Field(default_factory=list)
+    # IN-3 (mcp-tool-io.md, /review-impl 2026-07-05): closed-set enum, single
+    # source of truth = authoring_run_service.ALLOWLISTABLE_TOOLS (gate() also
+    # re-validates against the same set as the shared backstop).
+    tool_allowlist: list[Literal[ALLOWLISTABLE_TOOLS]] = Field(default_factory=list)
     # Drafting-seam inputs: {model_source, model_ref (user-model UUID), guide?}.
     # Models resolve via provider-registry from the ref — never a literal.
     params: dict[str, Any] = Field(default_factory=dict)

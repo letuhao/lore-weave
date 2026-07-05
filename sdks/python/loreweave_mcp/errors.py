@@ -4,6 +4,15 @@
 (INV-2) — an unexpected/injected field is rejected, so the LLM cannot smuggle an
 identity/scope id past the envelope.
 
+`TolerantArgs` is the IN-5 (mcp-tool-io.md) sibling: same identity-smuggling
+protection (still never declares user_id/session_id, so a hallucinated one is
+inert either way), but `extra="ignore"` instead of `extra="forbid"` — a harmless
+unknown field a weak model adds doesn't hard-fail the whole call. Ports the Go MCP
+kit's `relaxAdditionalProps` (`services/glossary-service/internal/api/tool_helpers.go`)
+intent to Python; Go opens `additionalProperties` on the JSON Schema itself, Pydantic
+has no schema-level equivalent, so this achieves the same effect via `extra="ignore"`
+at the model layer instead.
+
 `uniform_not_accessible` collapses "you don't have access" (403) and "it doesn't
 exist" (404) into ONE indistinguishable error so a tool can't be used as an
 enumeration oracle (H13): a denied caller and a non-existent resource look
@@ -15,7 +24,7 @@ from __future__ import annotations
 from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import BaseModel, ConfigDict
 
-__all__ = ["ForbidExtra", "NotAccessibleError", "uniform_not_accessible"]
+__all__ = ["ForbidExtra", "TolerantArgs", "NotAccessibleError", "uniform_not_accessible"]
 
 # The single user-facing message for both "denied" and "missing". Deliberately
 # does NOT reveal which of the two it is.
@@ -32,6 +41,27 @@ class ForbidExtra(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
+
+
+class TolerantArgs(BaseModel):
+    """Base arg model: SILENTLY DROP any field not declared on the schema,
+    rather than rejecting the call (IN-5, mcp-tool-io.md).
+
+    Identity/scope ids are still NEVER declared here — the same rule as
+    `ForbidExtra` — so this is not a weaker security posture, only a friendlier
+    failure mode for a genuinely harmless extra: a weak model hallucinating a
+    plausible-looking field (the standard's cited incident: gemma sent an
+    `old_value` kwarg that 409'd an otherwise-valid `glossary_book_patch` call
+    under the Go kit's un-relaxed default) gets silently ignored instead of a
+    hard validation error the model then has to recover from.
+
+    Prefer `ForbidExtra` for a tool where an unexpected field should be loud
+    (e.g. you want a schema-drift bug in a CALLER to fail fast in CI); prefer
+    `TolerantArgs` for a tool a weak model calls directly and often, where a
+    self-correcting "keep going" beats an extra retry loop.
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class NotAccessibleError(ToolError):

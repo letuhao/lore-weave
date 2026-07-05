@@ -33,7 +33,7 @@ def _run(status="draft", **over) -> AuthoringRun:
     base = dict(
         run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN, level=3,
         scope=[str(CH1), str(CH2)], budget_usd=Decimal("1.00"),
-        spent_usd=Decimal("0"), tool_allowlist=["book_write_draft"],
+        spent_usd=Decimal("0"), tool_allowlist=["composition_write_prose"],
         params={"model_source": "user_model", "model_ref": str(uuid.uuid4())},
         breaker_state={}, status=status, current_unit=0,
         created_at=datetime(2026, 7, 2, tzinfo=timezone.utc),
@@ -205,7 +205,7 @@ def _create_body(**over):
     body = {
         "book_id": str(BOOK), "plan_run_id": str(PLAN), "level": 3,
         "scope": [str(CH1), str(CH2)], "budget_usd": "1.00",
-        "tool_allowlist": ["book_write_draft"],
+        "tool_allowlist": ["composition_write_prose"],
         "params": {"model_source": "user_model", "model_ref": str(uuid.uuid4())},
     }
     body.update(over)

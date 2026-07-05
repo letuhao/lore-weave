@@ -393,7 +393,7 @@ async def make_run(svc, *, scope=None, budget="1.00", allowlist=None, level=3,
         OWNER, BOOK, plan_run_id=PLAN, level=level,
         scope=[str(c) for c in (scope if scope is not None else [CH1, CH2])],
         budget_usd=Decimal(budget),
-        tool_allowlist=allowlist if allowlist is not None else ["book_write_draft"],
+        tool_allowlist=allowlist if allowlist is not None else ["composition_write_prose"],
         params=params, pause_after_each_unit=pause_after_each_unit,
     )
 
@@ -414,7 +414,7 @@ async def test_create_unknown_plan_404():
     with pytest.raises(LookupError):
         await svc.create(
             OWNER, BOOK, plan_run_id=uuid.uuid4(), level=3, scope=[str(CH1)],
-            budget_usd=Decimal("1"), tool_allowlist=["t"],
+            budget_usd=Decimal("1"), tool_allowlist=["composition_write_prose"],
         )
 
 
@@ -469,6 +469,23 @@ async def test_gate_rejects_blank_allowlist_entries():
     run = await make_run(svc, allowlist=["ok", "  "])
     with pytest.raises(ValueError, match="tool_allowlist"):
         await svc.gate(OWNER, run.run_id, book_chapter_ids=BOOK_CHAPTERS)
+
+
+async def test_gate_rejects_non_allowlistable_tool_name():
+    """IN-3 backstop (mcp-tool-io.md, /review-impl): gate() is the ONE chokepoint
+    both REST and MCP funnel through — re-validates against the same closed set
+    the schema-level Literal[] enforces, in case a caller ever bypasses it."""
+    svc, _, _ = make_svc()
+    run = await make_run(svc, allowlist=["not_a_real_tool"])
+    with pytest.raises(ValueError, match="unknown/non-drafting tool"):
+        await svc.gate(OWNER, run.run_id, book_chapter_ids=BOOK_CHAPTERS)
+
+
+async def test_gate_accepts_a_real_allowlistable_tool():
+    svc, _, _ = make_svc()
+    run = await make_run(svc, allowlist=["composition_write_prose"])
+    gated = await svc.gate(OWNER, run.run_id, book_chapter_ids=BOOK_CHAPTERS)
+    assert gated.status == "gated"
 
 
 async def test_gate_overlap_active_run_409():
@@ -538,7 +555,7 @@ async def test_repo_guarded_transition_wrong_from_noops():
     runs = FakeRunsRepo()
     run = await runs.create(
         OWNER, BOOK, plan_run_id=PLAN, level=3, scope=[str(CH1)],
-        budget_usd=Decimal("1"), tool_allowlist=["t"],
+        budget_usd=Decimal("1"), tool_allowlist=["composition_write_prose"],
     )
     out = await runs.transition(
         OWNER, run.run_id, from_statuses=("running",), to_status="paused",
@@ -692,7 +709,7 @@ async def test_create_pause_after_each_unit_defaults_true():
     svc, _, _ = make_svc()
     run = await svc.create(
         OWNER, BOOK, plan_run_id=PLAN, level=3, scope=[str(CH1)],
-        budget_usd=Decimal("1"), tool_allowlist=["t"],
+        budget_usd=Decimal("1"), tool_allowlist=["composition_write_prose"],
     )
     assert run.pause_after_each_unit is True
 
@@ -1159,7 +1176,7 @@ async def test_create_background_flag_persisted_and_default_false():
     assert fg.background is False
     bg = await svc.create(
         OWNER, BOOK, plan_run_id=PLAN, level=3, scope=[str(CH1)],
-        budget_usd=Decimal("1"), tool_allowlist=["t"], background=True,
+        budget_usd=Decimal("1"), tool_allowlist=["composition_write_prose"], background=True,
     )
     assert bg.background is True
 
@@ -1177,7 +1194,7 @@ async def test_sweep_claims_stale_and_skips_fresh_heartbeat():
     # elsewhere — e.g. another replica).
     fresh = await svc.create(
         OWNER, BOOK2, plan_run_id=PLAN2, level=3, scope=[str(CH3)],
-        budget_usd=Decimal("1"), tool_allowlist=["t"],
+        budget_usd=Decimal("1"), tool_allowlist=["composition_write_prose"],
     )
     await svc.gate(OWNER, fresh.run_id, book_chapter_ids={str(CH3)})
     await runs.transition(
@@ -1410,7 +1427,7 @@ async def test_max_inflight_start_defers_and_sweep_respects_cap(monkeypatch):
     # Run B starts (transition succeeds) but the spawn is DEFERRED at the cap.
     run_b = await svc.create(
         OWNER, BOOK2, plan_run_id=PLAN2, level=3, scope=[str(CH3)],
-        budget_usd=Decimal("1"), tool_allowlist=["t"],
+        budget_usd=Decimal("1"), tool_allowlist=["composition_write_prose"],
     )
     await svc.gate(OWNER, run_b.run_id, book_chapter_ids={str(CH3)})
     started_b = await svc.start(OWNER, run_b.run_id)

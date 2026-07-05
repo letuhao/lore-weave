@@ -24,6 +24,7 @@ from loreweave_mcp import (
     MetaValidationError,
     NotAccessibleError,
     ToolContext,
+    TolerantArgs,
     apply_response_contract,
     build_tool_context,
     is_owner_only,
@@ -246,6 +247,33 @@ def test_forbid_extra_rejects_unknown_field():
     Args(name="ok")  # happy
     with pytest.raises(Exception):  # pydantic ValidationError
         Args(name="ok", user_id="injected")
+
+
+# ── TolerantArgs (IN-5, mcp-tool-io.md) ─────────────────────────────────
+
+
+def test_tolerant_args_drops_unknown_field_instead_of_rejecting():
+    class Args(TolerantArgs):
+        name: str
+
+    ok = Args(name="ok")
+    assert ok.name == "ok"
+    # A harmless hallucinated field must not hard-fail the call...
+    tolerated = Args(name="ok", old_value="stale")
+    assert tolerated.name == "ok"
+    # ...and it's genuinely dropped, not smuggled through as an attribute.
+    assert not hasattr(tolerated, "old_value")
+
+
+def test_tolerant_args_cannot_smuggle_identity_because_its_never_declared():
+    """Same guarantee as ForbidExtra, via a different mechanism: identity/scope
+    ids are never fields on the model, so an "injected" user_id is inert
+    whether it's rejected (ForbidExtra) or silently ignored (TolerantArgs)."""
+    class Args(TolerantArgs):
+        name: str
+
+    smuggled = Args(name="ok", user_id="not-mine")
+    assert not hasattr(smuggled, "user_id")
 
 
 # ── uniform_not_accessible (H13) ───────────────────────────────────────

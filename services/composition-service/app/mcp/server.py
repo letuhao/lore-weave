@@ -48,6 +48,7 @@ from loreweave_mcp import (
     ForbidExtra,
     GrantResolver,
     ToolContext,
+    TolerantArgs,
     apply_response_contract,
     build_tool_context,
     make_stateless_fastmcp,
@@ -76,6 +77,7 @@ from app.db.repositories.works import WorksRepo
 from app.deps import get_authoring_run_service
 from app.grant_client import GrantLevel, get_grant_client
 from app.mcp.service_bearer import mint_service_bearer
+from app.services.authoring_run_service import ALLOWLISTABLE_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -1281,7 +1283,7 @@ async def _authoring_run_actor(
 # ── Tier R — reads ──────────────────────────────────────────────────────────
 
 
-class _AuthoringRunListArgs(ForbidExtra):
+class _AuthoringRunListArgs(TolerantArgs):
     book_id: str
     limit: int = Field(default=20, ge=1, le=100)
 
@@ -1314,7 +1316,7 @@ async def composition_authoring_run_list(ctx: MCPContext, args: _AuthoringRunLis
     }
 
 
-class _AuthoringRunGetArgs(ForbidExtra):
+class _AuthoringRunGetArgs(TolerantArgs):
     book_id: str
     run_id: str
 
@@ -1358,13 +1360,15 @@ async def composition_authoring_run_get(ctx: MCPContext, args: _AuthoringRunGetA
 # never a silent default) ────────────────────────────────────────────────────
 
 
-class _AuthoringRunCreateArgs(ForbidExtra):
+class _AuthoringRunCreateArgs(TolerantArgs):
     book_id: str
     plan_run_id: str
     scope: list[str] = Field(default_factory=list)   # ordered chapter-id strings
     level: Literal[3, 4] = 3
     budget_usd: Decimal = Field(gt=0)
-    tool_allowlist: list[str] = Field(default_factory=list)
+    # IN-3 (mcp-tool-io.md): closed-set enum, single source of truth =
+    # authoring_run_service.ALLOWLISTABLE_TOOLS (gate() re-validates the same set).
+    tool_allowlist: list[Literal[ALLOWLISTABLE_TOOLS]] = Field(default_factory=list)
     pause_after_each_unit: bool
     params: dict[str, Any] = Field(default_factory=dict)
 
@@ -1425,7 +1429,7 @@ async def composition_authoring_run_create(
     }
 
 
-class _AuthoringRunIdArgs(ForbidExtra):
+class _AuthoringRunIdArgs(TolerantArgs):
     book_id: str
     run_id: str
 
@@ -1466,7 +1470,7 @@ async def composition_authoring_run_gate(ctx: MCPContext, args: _AuthoringRunIdA
     }
 
 
-class _AuthoringRunStartArgs(ForbidExtra):
+class _AuthoringRunStartArgs(TolerantArgs):
     book_id: str
     run_id: str
     # D4b: an explicit override of the run's stored pause_after_each_unit policy
@@ -1513,7 +1517,7 @@ async def composition_authoring_run_start(ctx: MCPContext, args: _AuthoringRunSt
     }
 
 
-class _AuthoringRunResumeArgs(ForbidExtra):
+class _AuthoringRunResumeArgs(TolerantArgs):
     book_id: str
     run_id: str
     pause_after_each_unit: bool | None = None
@@ -1626,7 +1630,7 @@ async def composition_authoring_run_close(ctx: MCPContext, args: _AuthoringRunId
     return {"success": True, "run": _serialize_authoring_run(run)}
 
 
-class _AuthoringRunUnitArgs(ForbidExtra):
+class _AuthoringRunUnitArgs(TolerantArgs):
     book_id: str
     run_id: str
     unit_index: int = Field(ge=0)

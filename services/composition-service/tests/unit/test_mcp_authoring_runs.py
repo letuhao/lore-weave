@@ -53,7 +53,7 @@ def _run(status="draft", **over) -> AuthoringRun:
     base = dict(
         run_id=RUN, owner_user_id=TEST_USER, book_id=BOOK, plan_run_id=PLAN,
         level=3, scope=[str(CH1), str(CH2)], budget_usd=Decimal("5.00"),
-        spent_usd=Decimal("0"), tool_allowlist=["book_write_draft"], params={},
+        spent_usd=Decimal("0"), tool_allowlist=["composition_write_prose"], params={},
         breaker_state={}, status=status, current_unit=0,
         pause_after_each_unit=True,
     )
@@ -145,6 +145,32 @@ async def test_create_rejects_non_positive_budget():
         )
 
 
+async def test_create_rejects_unknown_tool_allowlist_entry():
+    """IN-3 (mcp-tool-io.md): tool_allowlist is a closed-set enum, not a bare
+    string list — a hallucinated/typo'd tool name must reject at the schema
+    level (self-correcting, before the model wastes a confirm round-trip)."""
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        srv._AuthoringRunCreateArgs(
+            book_id=str(BOOK), plan_run_id=str(uuid.uuid4()),
+            budget_usd=Decimal("1"), pause_after_each_unit=True,
+            tool_allowlist=["not_a_real_tool"],
+        )
+
+
+async def test_create_accepts_a_real_allowlistable_tool():
+    import app.mcp.server as srv
+
+    args = srv._AuthoringRunCreateArgs(
+        book_id=str(BOOK), plan_run_id=str(uuid.uuid4()),
+        budget_usd=Decimal("1"), pause_after_each_unit=True,
+        tool_allowlist=["composition_write_prose"],
+    )
+    assert args.tool_allowlist == ["composition_write_prose"]
+
+
 async def test_unit_args_rejects_negative_unit_index():
     import app.mcp.server as srv
     from pydantic import ValidationError
@@ -176,6 +202,24 @@ async def test_get_returns_run_and_unit_report():
         )
     assert res["run"]["run_id"] == str(RUN)
     assert res["units"] == [{"unit_index": 0, "status": "drafted"}]
+
+
+async def test_get_tolerates_a_harmless_hallucinated_extra_field():
+    """IN-5 (mcp-tool-io.md, /review-impl): all 7 authoring-run arg models were
+    migrated from ForbidExtra to TolerantArgs — a weak model adding a plausible
+    but unrecognized extra kwarg must NOT hard-fail the call (it used to)."""
+    import app.mcp.server as srv
+
+    svc = AsyncMock()
+    svc.get = AsyncMock(return_value=_run(status="report_ready"))
+    svc.unit_report = AsyncMock(return_value=[])
+    args = srv._AuthoringRunGetArgs(
+        book_id=str(BOOK), run_id=str(RUN), reason="just checking",
+    )
+    assert not hasattr(args, "reason")  # dropped, not smuggled through
+    async with _patched(grant_level=1, svc=svc):
+        res = await srv.composition_authoring_run_get(_Ctx(), args)
+    assert res["run"]["run_id"] == str(RUN)
 
 
 async def test_get_run_not_reportable_surfaces_units_error_not_raise():
@@ -236,7 +280,7 @@ async def test_create_mints_confirm_token_with_full_payload():
             srv._AuthoringRunCreateArgs(
                 book_id=str(BOOK), plan_run_id=str(PLAN),
                 scope=[str(CH1), str(CH2)], level=3, budget_usd=Decimal("2.50"),
-                tool_allowlist=["book_write_draft"], pause_after_each_unit=True,
+                tool_allowlist=["composition_write_prose"], pause_after_each_unit=True,
             ),
         )
     assert res["descriptor"] == "composition.authoring_run_create"
@@ -262,12 +306,12 @@ def test_create_args_require_budget_usd_and_pause_after_each_unit():
     with pytest.raises(ValidationError):
         srv._AuthoringRunCreateArgs(
             book_id=str(BOOK), plan_run_id=str(PLAN),
-            tool_allowlist=["t"], pause_after_each_unit=True,
+            tool_allowlist=["composition_write_prose"], pause_after_each_unit=True,
         )  # missing budget_usd
     with pytest.raises(ValidationError):
         srv._AuthoringRunCreateArgs(
             book_id=str(BOOK), plan_run_id=str(PLAN),
-            tool_allowlist=["t"], budget_usd=Decimal("1"),
+            tool_allowlist=["composition_write_prose"], budget_usd=Decimal("1"),
         )  # missing pause_after_each_unit
 
 
@@ -281,7 +325,7 @@ async def test_create_denied_without_edit_grant():
                 _Ctx(),
                 srv._AuthoringRunCreateArgs(
                     book_id=str(BOOK), plan_run_id=str(PLAN),
-                    budget_usd=Decimal("1"), tool_allowlist=["t"],
+                    budget_usd=Decimal("1"), tool_allowlist=["composition_write_prose"],
                     pause_after_each_unit=False,
                 ),
             )

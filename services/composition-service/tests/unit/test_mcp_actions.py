@@ -428,14 +428,14 @@ def test_confirm_executes_authoring_run_create(client, authoring_svc):
     run = AuthoringRun(
         run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
-        tool_allowlist=["book_write_draft"], pause_after_each_unit=True,
+        tool_allowlist=["composition_write_prose"], pause_after_each_unit=True,
     )
     authoring_svc.create = AsyncMock(return_value=run)
     token = _authoring_token(
         "composition.authoring_run_create",
         {
             "book_id": str(BOOK), "plan_run_id": str(PLAN_RUN), "scope": [str(CHAPTER)],
-            "level": 3, "budget_usd": "2.00", "tool_allowlist": ["book_write_draft"],
+            "level": 3, "budget_usd": "2.00", "tool_allowlist": ["composition_write_prose"],
             "pause_after_each_unit": True, "params": {},
         },
         BOOK,
@@ -473,7 +473,7 @@ def test_confirm_executes_authoring_run_gate(client, authoring_svc):
     gated = AuthoringRun(
         run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
-        tool_allowlist=["t"], status="gated",
+        tool_allowlist=["composition_write_prose"], status="gated",
     )
     authoring_svc.gate = AsyncMock(return_value=gated)
     client._book.list_chapters = AsyncMock(
@@ -512,7 +512,7 @@ def test_confirm_executes_authoring_run_start_with_pause_override(client, author
     running = AuthoringRun(
         run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
-        tool_allowlist=["t"], status="running",
+        tool_allowlist=["composition_write_prose"], status="running",
     )
     authoring_svc.set_pause_policy = AsyncMock(return_value=running)
     authoring_svc.start = AsyncMock(return_value=running)
@@ -535,7 +535,7 @@ def test_confirm_executes_authoring_run_start_without_override_skips_policy_call
 
     running = AuthoringRun(
         run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
-        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["t"],
+        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["composition_write_prose"],
         status="running",
     )
     authoring_svc.start = AsyncMock(return_value=running)
@@ -555,7 +555,7 @@ def test_confirm_executes_authoring_run_resume(client, authoring_svc):
 
     running = AuthoringRun(
         run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
-        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["t"],
+        level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["composition_write_prose"],
         status="running",
     )
     authoring_svc.resume = AsyncMock(return_value=running)

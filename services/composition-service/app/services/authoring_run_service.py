@@ -111,6 +111,37 @@ logger = logging.getLogger(__name__)
 # plan (plan_run_status_chk vocabulary — there is no literal 'approved').
 _APPROVED_PLAN_STATUSES = ("validated", "compiled")
 
+# D-RAID-ALLOWLIST-ENFORCE / mcp-tool-io.md IN-3 (/review-impl, 2026-07-05): the
+# closed set of composition tools a drafting run may declare in `tool_allowlist`.
+# NOT yet consulted by the driver — v1's drafting seam invokes no agent tools, so
+# there is nothing to gate against this snapshot yet (edge #5's second half,
+# tracked separately). This is deliberately the prose/outline-adjacent subset,
+# not every composition_* tool: admin/motif/canon-rule/authoring-run-control
+# tools are excluded because they are not something a drafting seam would ever
+# invoke mid-chapter. SINGLE SOURCE OF TRUTH — both the REST router
+# (`AuthoringRunCreate.tool_allowlist`) and the MCP tool
+# (`_AuthoringRunCreateArgs.tool_allowlist`) import this tuple for their
+# `Literal[...]` schema constraint; `gate()` below re-validates against the same
+# set as the shared enforcement backstop. Extend this tuple (not a duplicate
+# list) when a new drafting-relevant tool ships.
+ALLOWLISTABLE_TOOLS: tuple[str, ...] = (
+    "composition_get_work",
+    "composition_list_outline",
+    "composition_get_outline_node",
+    "composition_get_prose",
+    "composition_create_work",
+    "composition_outline_node_create",
+    "composition_outline_node_update",
+    "composition_outline_node_delete",
+    "composition_outline_node_restore",
+    "composition_scene_link_create",
+    "composition_scene_link_delete",
+    "composition_write_prose",
+    "composition_publish",
+    "composition_generate",
+)
+_ALLOWLISTABLE_TOOLS_SET = frozenset(ALLOWLISTABLE_TOOLS)
+
 # Keep strong references to in-flight driver tasks (create_task alone is
 # GC-collectable) + let tests/ops introspect. Keyed by run_id. Module-level on
 # purpose: services are constructed per-request (deps.py) but the driver-task
@@ -717,6 +748,16 @@ class AuthoringRunService:
             raise ValueError(
                 "tool_allowlist must be a non-empty list of tool names (edge #5 — "
                 "an autonomous run declares its side-effecting tools up front)"
+            )
+        # IN-3 backstop (schema-level Literal[] is the primary guard on both entry
+        # points; this re-checks the same closed set here since gate() is the ONE
+        # chokepoint both REST and MCP funnel through, in case either schema is
+        # ever bypassed — e.g. a direct service call in a test or a future 3rd caller).
+        unknown = [t for t in allow if t not in _ALLOWLISTABLE_TOOLS_SET]
+        if unknown:
+            raise ValueError(
+                f"tool_allowlist contains unknown/non-drafting tool(s): {unknown} — "
+                f"must be a subset of {sorted(_ALLOWLISTABLE_TOOLS_SET)}"
             )
 
         try:
