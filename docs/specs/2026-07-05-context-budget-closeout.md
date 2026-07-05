@@ -93,9 +93,26 @@ into a one-line diagnosis. Sites: worker-ai `runner.py` (hierarchy None despite 
 - worker-ai: the relaxed path builds `p3_hierarchy_paths` (part now non-nil from book-service) +
   the de-silence warn fires when `embedding_dimension is None`.
 - knowledge: guard-false branch logs; producer enqueues chapter+book for a single-part book.
-- **LIVE-SMOKE deferred** → `D-KG-SUMMARIES-LIVE-SMOKE` (docker unavailable in this env; needs the
-  full stack to run extraction on the POC book and confirm `summary_chapters > 0` + a graph
-  `:Summary` node + the ch-recap recall turn stops punting).
+- **LIVE-SMOKE — ✅ PASSED** (2026-07-05, full local stack). Confirmed against live data first:
+  *every* book in the dev DB has 100% NULL `part_id`/`structural_path` (Dracula 6ch, 万古神帝 4233ch)
+  and `summary_chapters` had **1 row total** platform-wide — the part-gate was starving summaries for
+  every book. After rebuilding book-service + worker-ai + knowledge: the hierarchy endpoint returns
+  the synthesized `part {path:"book/part-1", id:uuidv5}` + `chapter.path`; a real extraction of
+  Dracula ch.1 enqueued all 3 summary levels (incl. `level=part node=db749273…`, the synthetic
+  part), and `summary_chapters`/`parts`/`books` went **0→1/1/1 with real coherent text** ("Jonathan
+  Harker's journey through the diverse landscapes and superstitions of the East…"). Neo4j confirms
+  the synthetic `:Part`→`:Chapter` hierarchy.
+- **Second bug the smoke EXPOSED (latent, now fixed) — `draft-text` `::bytea` 500.** The
+  summary_processor's legacy-chapter text fallback (`_load_scene_leaf_texts` → `get_chapter_draft_text`)
+  hit book-service `getInternalChapterDraftText`, which did `SELECT cd.body::text::bytea` — Postgres
+  parses text→bytea as an ESCAPE literal, so **any** draft whose JSON contains a backslash escape
+  (`\n`, `\"`) raised `invalid input syntax for type bytea` → 500 → the fallback returned empty → the
+  chapter summary deferred in an infinite re-enqueue loop. Latent because summaries never ran before
+  the part-gate fix. **Fixed** ([`scenes.go`](../../services/book-service/internal/api/scenes.go)):
+  `cd.body::text` scanned into a string. DB-gated regression test
+  (`scenes_draft_text_db_test.go`, seeds a backslash-bearing draft → asserts 200) passes against real
+  Postgres. **This is exactly the value of the live-smoke** — the part-gate fix was necessary but not
+  sufficient; only running the real pipeline surfaced the second blocker.
 
 ---
 
