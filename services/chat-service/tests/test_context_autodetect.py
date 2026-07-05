@@ -29,6 +29,11 @@ def test_auto_small_book_short_chat_stays_off():
     assert r.reason == "auto_below_threshold"
 
 
+# NOTE: the history-pressure arm below is HELPER-GENERAL but currently UNWIRED in
+# the live gate — `stream_response` passes history_tokens=0 (the gate runs before
+# history assembly), so long-conversation pressure is handled by adaptive
+# compaction, not this arm. These tests pin the helper contract for a future
+# caller that supplies history; they do NOT prove long-chat enables tiers in prod.
 def test_auto_long_conversation_trips_on_history():
     r = resolve_context_pressure("auto", window=WINDOW, history_tokens=70_000, glossary_size=10)
     assert r.tiers_allowed is True

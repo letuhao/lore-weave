@@ -1464,10 +1464,13 @@ async def _stream_with_tools(
                     # Inspector §11 — surface the D7 trip as a trace span so the GUI
                     # shows WHY a tool result was withheld (was log-only before).
                     if _capped_tokens is not None and trace is not None:
+                        # is_error per the TraceSpan convention — a D7 withhold is a
+                        # reject/self-correcting-error span, not a plain savings span.
                         trace.add(
                             "compile", "T6", "results",
                             f"d7_overflow:{c['name']}",
                             delta=-(_capped_tokens),
+                            is_error=True,
                         )
                 else:
                     _tool_content = tool_result_content(tool_payload)

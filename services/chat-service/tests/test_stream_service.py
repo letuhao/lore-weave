@@ -2227,7 +2227,9 @@ class TestContextMode:
     small/no-glossary book keeps the tiers OFF even under `auto`. Whether the T5
     gate ran is observed by whether `detect_entity_presence` was called."""
 
-    async def _run_capture_detect(self, *, context_mode: str, glossary_large: bool = False) -> bool:
+    async def _run_capture_detect(
+        self, *, context_mode: str, glossary_large: bool = False, t5_ceiling: bool = True,
+    ) -> bool:
         from app.config import settings
         pool, conn = _make_pool_with_conn()
         pool.fetch.return_value = []
@@ -2263,7 +2265,7 @@ class TestContextMode:
             side_effect=lambda **k: fake_acompletion(**k),
         ), patch(
             "app.services.stream_service.detect_entity_presence", side_effect=_fake_detect,
-        ), patch.object(settings, "t5_intent_gate_enabled", True):
+        ), patch.object(settings, "t5_intent_gate_enabled", t5_ceiling):
             async for _ in stream_response(
                 session_id=TEST_SESSION_ID,
                 user_message_content="q",
@@ -2293,3 +2295,13 @@ class TestContextMode:
     @pytest.mark.asyncio
     async def test_mode_auto_large_book_enables_tiers(self):
         assert await self._run_capture_detect(context_mode="auto", glossary_large=True) is True
+
+    @pytest.mark.asyncio
+    async def test_deploy_ceiling_off_force_disables_even_mode_on(self):
+        """The env flag is a deploy KILL-SWITCH: t5_intent_gate_enabled=False must
+        force the gate OFF even under mode='on' + a large glossary (effective =
+        AND(deploy_ceiling, enablement)). Guards the SET-correct ceiling semantics."""
+        # mode='on' + large glossary would enable — but the ceiling is off.
+        assert await self._run_capture_detect(
+            context_mode="on", glossary_large=True, t5_ceiling=False,
+        ) is False

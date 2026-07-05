@@ -33,10 +33,12 @@ _TOOL_MODULES = [
     "app/tools/project_tools.py",
 ]
 
-# The pinned count of `@small_return:` claims across the tool modules. Bump this
-# ONLY when you have confirmed the added/removed tool genuinely returns bounded
-# data (no heavy body) — that confirmation is the point of the gate.
-_EXPECTED_SMALL_RETURN_CLAIMS = 6
+# The pinned SET of `@small_return:` claim lines (module + the annotation text
+# after the marker), sorted. Pinning the SET — not just a count — means an
+# add-one-remove-one SWAP is caught too (a count would net to the same total).
+# Update this ONLY when you have confirmed the added/removed tool genuinely
+# returns bounded data (no heavy body) — that confirmation IS the gate.
+_EXPECTED_CLAIMS = 6
 
 
 def _service_root() -> pathlib.Path:
@@ -44,18 +46,27 @@ def _service_root() -> pathlib.Path:
     return pathlib.Path(__file__).resolve().parents[2]
 
 
-def test_small_return_claim_set_is_pinned():
+def _collect_claims() -> list[tuple[str, str]]:
+    """(module, normalized annotation text) for every `@small_return` line."""
     root = _service_root()
-    total = 0
-    per_module: dict[str, int] = {}
+    claims: list[tuple[str, str]] = []
     for rel in _TOOL_MODULES:
-        text = (root / rel).read_text(encoding="utf-8")
-        n = text.count("@small_return")
-        per_module[rel] = n
-        total += n
-    assert total == _EXPECTED_SMALL_RETURN_CLAIMS, (
-        f"@small_return claim count drifted to {total} (per-module {per_module}); "
-        "if you added/removed a small-return tool, confirm it truly returns bounded "
-        "data (no heavy body — D7 backstops the pathological case at runtime) and "
-        f"update _EXPECTED_SMALL_RETURN_CLAIMS to {total}."
+        for line in (root / rel).read_text(encoding="utf-8").splitlines():
+            if "@small_return" in line:
+                # the descriptive text after the marker identifies the claim
+                text = line.split("@small_return", 1)[1].lstrip(": ").strip()
+                claims.append((rel, " ".join(text.split())))
+    return claims
+
+
+def test_small_return_claim_set_is_pinned():
+    claims = _collect_claims()
+    # Pin the SET (module, text) — a swap changes the set even if the count holds.
+    unique = sorted(set(claims))
+    assert len(claims) == _EXPECTED_CLAIMS and len(unique) == _EXPECTED_CLAIMS, (
+        f"@small_return claim set drifted (found {len(claims)} lines, "
+        f"{len(unique)} unique; expected {_EXPECTED_CLAIMS}). If you added/removed/"
+        "renamed a small-return tool, confirm it truly returns bounded data (no heavy "
+        "body — D7 backstops the pathological case at runtime) and update this pin.\n"
+        f"current set:\n" + "\n".join(f"  {m}: {t}" for m, t in unique)
     )

@@ -60,6 +60,13 @@ _auto = resolve_context_pressure(context_mode, window=creds.context_length,
 _ctx_tiers_allowed = _auto.tiers_allowed
 ```
 
+**Cost (conscious, `/review-impl` MED#1):** because the glossary size must be known to decide, the
+known-entities fetch now runs on **every grounded `auto`/`on` turn** — including small books where
+tiers end up off (before the ceiling flip it was never fetched in prod, since `_t5_gate_on` was
+always False). Mitigated: the fetch is **per-book TTL-cached** (only turn-1-per-window pays) and
+**best-effort** (any failure → empty set → tiers off, safe). This is inherent to auto-detect — you
+can't classify "big-lore book" without the glossary size — so it's accepted, not a defect.
+
 ### 3. Env flags → deploy ceilings (the SET fix)
 
 `t5_intent_gate_enabled` / `story_state_block_enabled` become **kill-switch ceilings, default True**
