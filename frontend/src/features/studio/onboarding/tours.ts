@@ -14,7 +14,7 @@ import { getStudioPanelDef } from '../panels/catalog';
 // `tours.ts` are unaffected.
 import type { StudioTourId } from './tourCatalog';
 export type { StudioTourId, StudioTourCatalogEntry } from './tourCatalog';
-export { EDITOR_TOUR_CATALOG } from './tourCatalog';
+export { EDITOR_TOUR_CATALOG, COMPOSE_TOUR_CATALOG } from './tourCatalog';
 
 export interface StudioTourStepDef {
   /** Panel to open before this step (host.openPanel is idempotent — open-or-focus). Omit for
@@ -159,5 +159,41 @@ export const STUDIO_TOURS: Record<StudioTourId, StudioTourStepDef[]> = {
   ],
   editorMediaAudio: [
     { panelId: 'editor', target: '[data-testid="format-toolbar-insert-audio"]', titleKey: 'intro.tour.editorMediaAudio.insert.title', bodyKey: 'intro.tour.editorMediaAudio.insert.body' },
+  ],
+
+  // #19 Wave 4 — composer deep-dive tours (docs/specs/2026-07-06-composer-feature-inventory.md).
+  // All steps open the 'compose' panel first. Cards that only exist DURING a live agent turn
+  // (propose-edit, confirm-action, activity strip) have no static anchor to spotlight while idle —
+  // composerAiEditReview instead targets the always-mounted message list with a descriptive body,
+  // rather than a step that would silently skip on every timeout.
+  composerBasics: [
+    { panelId: 'compose', target: '[data-testid="chat-input-textarea"]', titleKey: 'intro.tour.composerBasics.textarea.title', bodyKey: 'intro.tour.composerBasics.textarea.body' },
+    { panelId: 'compose', target: '[data-testid="permission-mode-toggle"]', titleKey: 'intro.tour.composerBasics.permissionMode.title', bodyKey: 'intro.tour.composerBasics.permissionMode.body' },
+    { panelId: 'compose', target: '[data-testid="effort-select"]', titleKey: 'intro.tour.composerBasics.effort.title', bodyKey: 'intro.tour.composerBasics.effort.body' },
+    { panelId: 'compose', target: '[data-testid="chat-attach-context"]', titleKey: 'intro.tour.composerBasics.attachContext.title', bodyKey: 'intro.tour.composerBasics.attachContext.body' },
+    { panelId: 'compose', target: '[data-testid="chat-send-button"]', titleKey: 'intro.tour.composerBasics.send.title', bodyKey: 'intro.tour.composerBasics.send.body' },
+  ],
+  composerSessions: [
+    { panelId: 'compose', target: '[data-testid="session-switcher-trigger"]', titleKey: 'intro.tour.composerSessions.switcher.title', bodyKey: 'intro.tour.composerSessions.switcher.body' },
+    { panelId: 'compose', target: '[data-testid="chat-rename-session"]', titleKey: 'intro.tour.composerSessions.rename.title', bodyKey: 'intro.tour.composerSessions.rename.body' },
+    { panelId: 'compose', target: '[data-testid="chat-session-settings-button"]', titleKey: 'intro.tour.composerSessions.settings.title', bodyKey: 'intro.tour.composerSessions.settings.body' },
+  ],
+  composerAgentTools: [
+    { panelId: 'compose', target: '[data-testid="agent-context-rack"]', titleKey: 'intro.tour.composerAgentTools.rack.title', bodyKey: 'intro.tour.composerAgentTools.rack.body' },
+    { panelId: 'compose', target: '[data-testid="agent-rack-add"]', titleKey: 'intro.tour.composerAgentTools.add.title', bodyKey: 'intro.tour.composerAgentTools.add.body' },
+    { panelId: 'compose', target: '[data-testid="agent-runtime-inspector"]', titleKey: 'intro.tour.composerAgentTools.inspector.title', bodyKey: 'intro.tour.composerAgentTools.inspector.body' },
+  ],
+  composerContextBudget: [
+    { panelId: 'compose', target: '[data-testid="context-meter"]', titleKey: 'intro.tour.composerContextBudget.meter.title', bodyKey: 'intro.tour.composerContextBudget.meter.body' },
+  ],
+  composerAiEditReview: [
+    { panelId: 'compose', target: '[data-testid="chat-message-list"]', titleKey: 'intro.tour.composerAiEditReview.review.title', bodyKey: 'intro.tour.composerAiEditReview.review.body' },
+  ],
+  composerVoice: [
+    { panelId: 'compose', target: '[data-testid="chat-voice-mode-toggle"]', titleKey: 'intro.tour.composerVoice.mode.title', bodyKey: 'intro.tour.composerVoice.mode.body' },
+    { panelId: 'compose', target: '[data-testid="chat-voice-settings-button"]', titleKey: 'intro.tour.composerVoice.settings.title', bodyKey: 'intro.tour.composerVoice.settings.body' },
+  ],
+  composerPopout: [
+    { panelId: 'compose', target: '[data-testid="studio-compose-popout"]', titleKey: 'intro.tour.composerPopout.popout.title', bodyKey: 'intro.tour.composerPopout.popout.body' },
   ],
 };

@@ -24,6 +24,7 @@ import type { EntityNameEntry } from '@/features/glossary/types';
 import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
 import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
 import { usePopoutInsertRelay } from '@/features/composition/hooks/usePopoutInsertRelay';
+import { onPasteToEditor } from '@/features/chat/utils/pasteToEditor';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import { useStudioHost, useRegisterStudioTool, useStudioBusSelector } from '../host/StudioHostProvider';
@@ -112,6 +113,22 @@ export function EditorPanel(props: IDockviewPanelProps) {
     text,
     provenance: { source: 'ai', status: 'unreviewed', model: model ?? null, ts: new Date().toISOString() },
   }));
+
+  // D-COMPOSE-SEND-TO-EDITOR gap fix — Compose's "Send to Editor" (message menu + Output card)
+  // fired this event with NO listener anywhere in the codebase (checked: not even the legacy
+  // ChapterEditorPage ever wired it — a dead button since it was authored, not a regression).
+  // Studio's 'editor' dock panel is a SINGLETON (one hoisted ManuscriptUnitProvider per book,
+  // retargeted by chapter switch — unlike per-chapter multi-instance panels like json-editor), so
+  // a plain window-scoped listener is safe: exactly one EditorPanel is ever mounted to receive it.
+  // Same checkpoint-wrapped seam as the popout relay above, so a Send-to-Editor insert is also
+  // restorable via Checkpoints.
+  useEffect(() => onPasteToEditor(({ text }) => {
+    checkpoints.applyProposedEdit({
+      operation: 'insert_at_cursor',
+      text,
+      provenance: { source: 'ai', status: 'unreviewed', model: null, ts: new Date().toISOString() },
+    });
+  }), [checkpoints]);
 
   // #16 2.7 — wire this panel's own upload context onto the editor instance it owns
   // (editor.storage.mediaUpload, NOT a module singleton — each dockview EditorPanel tab gets

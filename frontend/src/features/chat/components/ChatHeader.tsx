@@ -97,6 +97,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && onToggleVoiceMode && session.status !== 'archived' && (
           <button
             type="button"
+            data-testid="chat-voice-mode-toggle"
             onClick={onToggleVoiceMode}
             title={t('header.voice_mode')}
             aria-label={t('header.voice_mode')}
@@ -114,6 +115,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         {onOpenVoiceSettings && session.status !== 'archived' && (
           <button
             type="button"
+            data-testid="chat-voice-settings-button"
             onClick={onOpenVoiceSettings}
             title={t('header.voice_settings')}
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
@@ -144,6 +146,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         {onRename && (
           <button
             type="button"
+            data-testid="chat-rename-session"
             onClick={onRename}
             title={t('header.rename')}
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"

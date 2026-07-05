@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STUDIO_TOURS, EDITOR_TOUR_CATALOG } from '../tours';
+import { STUDIO_TOURS, EDITOR_TOUR_CATALOG, COMPOSE_TOUR_CATALOG } from '../tours';
 import { getStudioPanelDef } from '../../panels/catalog';
 
 // #19 Wave 2 — the 5 role tours build their `target` from each panel's catalog `tourAnchor`
@@ -71,6 +71,39 @@ describe('STUDIO_TOURS (editor deep-dive tours, #19 Wave 3)', () => {
     for (const tour of EDITOR_TOUR_CATALOG) {
       expect(tour.labelKey).toBe(`tourPicker.${tour.id}.label`);
       expect(tour.descKey).toBe(`tourPicker.${tour.id}.desc`);
+    }
+  });
+});
+
+// #19 Wave 4 — composer deep-dive tours (docs/specs/2026-07-06-composer-feature-inventory.md).
+describe('STUDIO_TOURS (composer deep-dive tours, #19 Wave 4)', () => {
+  it('every COMPOSE_TOUR_CATALOG entry has a corresponding non-empty STUDIO_TOURS entry', () => {
+    for (const tour of COMPOSE_TOUR_CATALOG) {
+      expect(STUDIO_TOURS[tour.id], `no STUDIO_TOURS entry for catalog tour "${tour.id}"`).toBeTruthy();
+      expect(STUDIO_TOURS[tour.id].length).toBeGreaterThan(0);
+    }
+  });
+
+  it('every composer deep-dive step targets a data-testid selector and opens the compose panel', () => {
+    for (const tour of COMPOSE_TOUR_CATALOG) {
+      for (const step of STUDIO_TOURS[tour.id]) {
+        expect(step.target).toMatch(/^\[data-testid="[a-zA-Z0-9-]+"\]$/);
+        expect(step.panelId).toBe('compose');
+      }
+    }
+  });
+
+  it('every COMPOSE_TOUR_CATALOG entry has non-empty label/desc i18n keys under tourPicker.*', () => {
+    for (const tour of COMPOSE_TOUR_CATALOG) {
+      expect(tour.labelKey).toBe(`tourPicker.${tour.id}.label`);
+      expect(tour.descKey).toBe(`tourPicker.${tour.id}.desc`);
+    }
+  });
+
+  it('editor and composer tour ids are disjoint (no accidental id collision)', () => {
+    const editorIds = new Set(EDITOR_TOUR_CATALOG.map((t) => t.id));
+    for (const tour of COMPOSE_TOUR_CATALOG) {
+      expect(editorIds.has(tour.id)).toBe(false);
     }
   });
 });

@@ -253,6 +253,7 @@ export function ChatInputBar({
 
           {/* Textarea */}
           <TextareaAutosize
+            data-testid="chat-input-textarea"
             ref={textareaRef}
             value={value}
             onChange={(e) => { handleValueChange(e.target.value); mention.syncFromInput(e.target); }}
@@ -288,6 +289,7 @@ export function ChatInputBar({
               {/* Attach context button */}
               <button
                 type="button"
+                data-testid="chat-attach-context"
                 onClick={() => setAttachPickerOpen(true)}
                 className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 title={t('input.attach_context')}
@@ -445,6 +447,7 @@ export function ChatInputBar({
             ) : (
               <button
                 type="button"
+                data-testid="chat-send-button"
                 onClick={() => handleSubmit()}
                 disabled={!value.trim() || disabled}
                 title={t('input.send')}

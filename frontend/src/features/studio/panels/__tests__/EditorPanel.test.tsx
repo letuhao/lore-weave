@@ -70,6 +70,7 @@ vi.mock('../../manuscript/unit/ManuscriptUnitProvider', () => ({
 }));
 
 import { EditorPanel } from '../EditorPanel';
+import { firePasteToEditor } from '@/features/chat/utils/pasteToEditor';
 import { StudioHostProvider, useStudioHost } from '../../host/StudioHostProvider';
 import type { StudioHost } from '../../host/StudioHostProvider';
 
@@ -183,5 +184,21 @@ describe('EditorPanel — D-CHAPTER-READER-MODE reader entry point', () => {
     const openPanel = vi.spyOn(hostRef!, 'openPanel');
     fireEvent.click(getByTestId('studio-editor-open-reader'));
     expect(openPanel).toHaveBeenCalledWith('book-reader', { params: { bookId: 'book-1', chapterId: 'ch1' } });
+  });
+});
+
+// D-COMPOSE-SEND-TO-EDITOR — Compose's "Send to Editor" (message menu + Output card) fired
+// PASTE_TO_EDITOR_EVENT with NO listener anywhere in the codebase before this fix — a dead
+// button. EditorPanel is a singleton dock panel (one hoisted unit per book), so a plain
+// window-scoped listener is safe here.
+describe('EditorPanel — D-COMPOSE-SEND-TO-EDITOR', () => {
+  beforeEach(() => { applyProposedEdit.mockClear(); unitState.chapterId = 'ch1'; });
+
+  it('inserts the pasted text via the checkpoint-wrapped applyProposedEdit seam', () => {
+    render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    firePasteToEditor({ text: 'Some AI-generated prose.' });
+    expect(applyProposedEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'insert_at_cursor', text: 'Some AI-generated prose.' }),
+    );
   });
 });

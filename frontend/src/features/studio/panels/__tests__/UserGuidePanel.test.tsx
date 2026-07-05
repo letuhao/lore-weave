@@ -11,7 +11,7 @@ vi.mock('../../host/StudioHostProvider', () => ({
 
 import { UserGuidePanel } from '../UserGuidePanel';
 import { OPENABLE_STUDIO_PANELS } from '../catalog';
-import { EDITOR_TOUR_CATALOG } from '../../onboarding/tours';
+import { EDITOR_TOUR_CATALOG, COMPOSE_TOUR_CATALOG } from '../../onboarding/tours';
 
 const fakeProps = () => ({ api: { setTitle: vi.fn() } }) as never;
 
@@ -62,6 +62,22 @@ describe('UserGuidePanel', () => {
       render(<UserGuidePanel {...fakeProps()} />);
       fireEvent.click(screen.getByTestId('studio-user-guide-tour-editorMediaImage'));
       expect(hostMocks.publish).toHaveBeenCalledWith({ type: 'startGuidedTour', tourId: 'editorMediaImage' });
+    });
+  });
+
+  // #19 Wave 4 — composer deep-dive tours' picker entries.
+  describe('tour picker (#19 Wave 4 — composer)', () => {
+    it('renders a Start row for every composer tour in the catalog', () => {
+      render(<UserGuidePanel {...fakeProps()} />);
+      for (const tour of COMPOSE_TOUR_CATALOG) {
+        expect(screen.getByTestId(`studio-user-guide-tour-${tour.id}`)).toBeInTheDocument();
+      }
+    });
+
+    it('clicking a composer tour row publishes startGuidedTour with that tourId', () => {
+      render(<UserGuidePanel {...fakeProps()} />);
+      fireEvent.click(screen.getByTestId('studio-user-guide-tour-composerAgentTools'));
+      expect(hostMocks.publish).toHaveBeenCalledWith({ type: 'startGuidedTour', tourId: 'composerAgentTools' });
     });
   });
 });

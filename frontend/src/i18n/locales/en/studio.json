@@ -793,12 +793,92 @@
           "title": "Audio",
           "body": "Insert a standalone audio block — upload a file, or generate narration with AI. Tip: hovering ANY paragraph also shows a quick upload/record/AI-generate bar to attach narration directly to that text, no block needed."
         }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Write to your co-writer",
+          "body": "Enter sends, Shift+Enter for a new line. Ctrl+Enter forces a quick reply, Ctrl+Shift+Enter forces deeper thinking. Type / for templates and commands, @ to attach context inline."
+        },
+        "permissionMode": {
+          "title": "Ask, Plan, or Write",
+          "body": "Controls how much the agent can do on its own — Ask confirms everything, Plan lays out steps first, Write acts more freely within its allowlist. Ctrl+. cycles through them."
+        },
+        "effort": {
+          "title": "Reasoning effort",
+          "body": "How hard the model thinks before replying — Off/Low/Medium/High/Auto. Hidden for models that can't reason."
+        },
+        "attachContext": {
+          "title": "Attach context",
+          "body": "Pull in specific book, chapter, or glossary entries so the agent has exactly the context it needs for this message."
+        },
+        "send": {
+          "title": "Send",
+          "body": "Sends your message. While the agent is replying, this becomes a Stop button."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Switch conversations",
+          "body": "Jump between this book's chat sessions, archive old ones, or start a new one — pick a model and a starting persona (Novelist/Translator/Worldbuilder/Editor)."
+        },
+        "rename": {
+          "title": "Rename this chat",
+          "body": "Give the session a name you'll recognize later."
+        },
+        "settings": {
+          "title": "Session settings",
+          "body": "Model, composer/planner model overrides, memory grounding, system prompt, temperature, top-P, and reasoning effort — all scoped to this one session."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Tools & skills rack",
+          "body": "Shows every tool and skill the agent can currently use in this chat — add more, or remove ones you don't want it reaching for."
+        },
+        "add": {
+          "title": "Add tools or skills",
+          "body": "Browse everything available by category and enable exactly what this conversation needs."
+        },
+        "inspector": {
+          "title": "Agent runtime inspector",
+          "body": "See what the agent is doing right now — discovering tools, running one, or idle — and expand for the full detail trail."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Context budget",
+          "body": "Shows how much of the model's context window this conversation is using. Click it to see a full breakdown by category, and to compact the conversation on demand."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "AI edits, reviewed before they land",
+          "body": "When the agent proposes a prose edit, a review card appears here for you to accept or reject per change. Riskier actions (batch edits, destructive operations) get their own confirm card with a cost/impact preview first. Anything the agent auto-applies shows up in an Activity strip with a one-click Undo."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Voice mode",
+          "body": "Talk instead of type — a full hands-free conversation with live transcription."
+        },
+        "settings": {
+          "title": "Voice settings",
+          "body": "Pick your speech-to-text and text-to-speech models, voice, speed, and auto-send behavior."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Pop out to its own window",
+          "body": "Opens Compose in a separate OS window — useful for a second monitor. Edits you approve there still land in this book's editor."
+        }
       }
     }
   },
   "userGuide": {
     "intro": "Every tool Writing Studio can open, grouped the same way as the Command Palette.",
-    "toursGroup": "Guided tours"
+    "toursGroup": "Guided tours",
+    "toursEditor": "Editor",
+    "toursComposer": "Composer"
   },
   "tourPicker": {
     "editorBasics": {
@@ -832,6 +912,34 @@
     "editorMediaAudio": {
       "label": "Media — Audio & Narration",
       "desc": "Standalone audio blocks, plus per-paragraph narration you can upload, record, or AI-generate."
+    },
+    "composerBasics": {
+      "label": "Composer Basics",
+      "desc": "The message box, permission mode, reasoning effort, attach-context, and send."
+    },
+    "composerSessions": {
+      "label": "Session Management",
+      "desc": "Switch, rename, or start conversations, and open per-session settings."
+    },
+    "composerAgentTools": {
+      "label": "Agent Tools & Skills",
+      "desc": "See and manage which tools and skills the agent can currently reach for."
+    },
+    "composerContextBudget": {
+      "label": "Context Budget",
+      "desc": "How much of the model's context window this conversation is using, and how to compact it."
+    },
+    "composerAiEditReview": {
+      "label": "AI Edit Review & Safety",
+      "desc": "How proposed edits, risky actions, and auto-applied changes get reviewed and can be undone."
+    },
+    "composerVoice": {
+      "label": "Voice Assistant",
+      "desc": "Talk instead of type, with configurable speech-to-text and text-to-speech."
+    },
+    "composerPopout": {
+      "label": "Popout Window",
+      "desc": "Pop Compose out into its own OS window for a second monitor."
     }
   }
 }
