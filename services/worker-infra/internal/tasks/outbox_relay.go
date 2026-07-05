@@ -273,16 +273,23 @@ func (t *OutboxRelay) deliverNotification(ctx context.Context, sourceName, idStr
 }
 
 // classifyNotifyStatus maps an HTTP status from the notification ingest to the relay's
-// three outcomes. 2xx (incl. the idempotent-dedup and opt-out-suppressed 200s) = success;
-// 429 / 5xx = transient (retry); any other 4xx = permanent reject (drop, don't loop).
+// three outcomes:
+//   - 2xx (incl. the idempotent-dedup + opt-out-suppressed 200s) = success.
+//   - PERMANENT (drop, don't loop) = ONLY a genuine payload-level reject the retry can
+//     never fix: 400 (malformed body), 413 (too large), 422 (validation). Retrying an
+//     identical payload just poison-loops.
+//   - Everything else = TRANSIENT (retry): 5xx, 429, network errors, AND 401/403/404/405.
+//     A 404 (route skew) or 401/403 (wrong internal token) is a DEPLOY/CONFIG error — the
+//     notification must be PRESERVED and redelivered once fixed, never silently dropped.
 func classifyNotifyStatus(code int) (success bool, permanent bool) {
 	switch {
 	case code >= 200 && code < 300:
 		return true, false
-	case code == http.StatusTooManyRequests || code >= 500:
-		return false, false
-	default:
+	case code == http.StatusBadRequest || code == http.StatusRequestEntityTooLarge ||
+		code == http.StatusUnprocessableEntity:
 		return false, true
+	default:
+		return false, false
 	}
 }
 
@@ -296,7 +303,12 @@ func (t *OutboxRelay) httpNotifyDeliver(ctx context.Context, payload []byte) (bo
 		return false, errors.New("notification delivery not configured (NOTIFICATION_SERVICE_URL unset)")
 	}
 	if t.httpClient == nil {
-		t.httpClient = &http.Client{Timeout: 10 * time.Second}
+		// Bounded so a HANGING notification-service can't starve the shared relay loop
+		// (delivery is inline in the per-source loop that also drains Redis events). A
+		// refused connection fails fast; this caps the worst case (a slow-loris ingest).
+		// Notification volume is low, so the ≤LIMIT×timeout worst case is acceptable; a
+		// dedicated notification-delivery worker is the structural fix if it ever bites.
+		t.httpClient = &http.Client{Timeout: 5 * time.Second}
 	}
 	url := t.NotifyURL + "/internal/notifications"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))

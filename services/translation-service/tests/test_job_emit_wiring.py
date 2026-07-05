@@ -40,6 +40,7 @@ class FakeConn:
 
     def __init__(self, row):
         self._row = row
+        self.executes: list[tuple] = []  # captured execute() positional args
 
     async def fetchrow(self, *a, **k):
         return self._row
@@ -50,6 +51,7 @@ class FakeConn:
         return []
 
     async def execute(self, *a, **k):
+        self.executes.append(a)
         return None
 
     def transaction(self):
@@ -136,6 +138,12 @@ async def test_check_job_completion_emits_completed(monkeypatch):
     # cost was priced from the SUMMED actual tokens (D-JOBS-P4-TRANSLATION-COST)
     assert cost_spy.await_args.kwargs["input_tokens"] == 12000
     assert cost_spy.await_args.kwargs["output_tokens"] == 9000
+    # D-C-PRODUCER-OUTBOX (review-impl MED-2): the durable notification MUST be emitted
+    # into the outbox IN the finalize tx — a regression back to fire-and-forget would drop
+    # this and nothing else would catch it. Assert the notification.requested row is written.
+    notif_execs = [a for a in pool.executes if len(a) >= 3 and a[1] == "notification.requested"]
+    assert notif_execs, "expected a notification.requested outbox insert in the finalize tx"
+    assert notif_execs[0][2] == "notification", "notification row must carry aggregate_type='notification'"
 
 
 @pytest.mark.asyncio

@@ -89,10 +89,15 @@ func TestClassifyNotifyStatus(t *testing.T) {
 		{200, true, false},  // created
 		{201, true, false},  // created
 		{204, true, false},  // idempotent-dedup / opt-out-suppressed 2xx
-		{400, false, true},  // malformed body — permanent reject (don't loop)
-		{404, false, true},  // unknown route — permanent
+		{400, false, true},  // malformed body — permanent (retry never fixes an identical payload)
+		{413, false, true},  // payload too large — permanent
 		{422, false, true},  // validation — permanent
-		{429, false, false}, // rate-limited — transient (retry)
+		// Config/deploy skews must NOT drop the notification — retry, preserved until fixed.
+		{401, false, false}, // wrong internal token — transient
+		{403, false, false}, // forbidden — transient
+		{404, false, false}, // route skew — transient (was wrongly permanent — review-impl MED-1)
+		{405, false, false}, // method skew — transient
+		{429, false, false}, // rate-limited — transient
 		{500, false, false}, // server error — transient
 		{503, false, false}, // notification-service down — transient
 	}

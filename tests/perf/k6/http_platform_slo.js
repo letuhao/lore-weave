@@ -10,6 +10,10 @@
 //   * The mutating / cost-bearing POSTs (search = embed+rerank, chat send, compose/translate
 //     ENQUEUE) are gated behind PERF_DRIVE_MUTATING=1 and only fire when their resource ids
 //     are supplied — so a stray nightly can never spam job queues or paid LLM calls.
+//   ⚠ DANGER: PERF_DRIVE_MUTATING=1 with a REAL BOOK_ID enqueues REAL translation/composition
+//     jobs and runs REAL embed/rerank — i.e. SPENDS MONEY and creates real work. NEVER set it
+//     against production or a stack with a real user's book. Use a THROWAWAY stack + a scratch
+//     book id only. Left off, the 4 mutating endpoints are SKIPPED (measured as no-data).
 // An endpoint whose required id/flag is absent is SKIPPED (logged); slo_assert.py treats an
 // unmeasured row as SKIPPED (or a failure under --require-all on a fully-seeded stack).
 //
