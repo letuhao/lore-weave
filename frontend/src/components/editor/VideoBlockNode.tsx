@@ -13,7 +13,6 @@ import { getUploadContext } from './ImageBlockNode';
 import { MediaPrompt } from './MediaPrompt';
 import { useResize } from './useResize';
 import { videoGenApi } from '@/features/video-gen/api';
-import { aiModelsApi } from '@/features/ai-models/api';
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
@@ -52,6 +51,9 @@ export const VideoBlockExtension = Node.create({
       alt: { default: '' },
       caption: { default: '' },
       ai_prompt: { default: '' },
+      /** Explicit user_model_id chosen via the MediaPrompt model picker — never
+       *  a silently-resolved default (D-MEDIA-MODEL-PICKER). */
+      ai_model_id: { default: null },
       title: { default: '' },
       width: { default: 100 },
       duration: { default: null },
@@ -235,6 +237,11 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const handleGenerate = useCallback(async () => {
     const prompt = (node.attrs.ai_prompt as string)?.trim();
     if (!prompt) return;
+    const modelId = node.attrs.ai_model_id as string | null;
+    if (!modelId) {
+      setGenerateError(t('video.gen_no_model'));
+      return;
+    }
     const ctx = getUploadContext(editor);
     if (!ctx) {
       setGenerateError(t('video.gen_save_first'));
@@ -243,18 +250,10 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     setGenerating(true);
     setGenerateError(null);
     try {
-      // Get preferred or first available video model
-      const { items: models } = await aiModelsApi.listUserModels(ctx.token, { capability: 'video_gen' });
-      const savedId = localStorage.getItem('loreweave:media-prefs') ? JSON.parse(localStorage.getItem('loreweave:media-prefs')!).videoModelId : '';
-      const videoModel = (savedId && models.find(m => m.user_model_id === savedId)) || models.find(m => m.is_active) || models[0];
-      if (!videoModel) {
-        setGenerateError(t('video.gen_no_model'));
-        return;
-      }
       const result = await videoGenApi.generate(ctx.token, {
         prompt,
         model_source: 'user_model',
-        model_ref: videoModel.user_model_id,
+        model_ref: modelId,
         duration_seconds: 5,
         aspect_ratio: '16:9',
       });
@@ -272,7 +271,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     } finally {
       setGenerating(false);
     }
-  }, [node.attrs.ai_prompt, updateAttributes, editor]);
+  }, [node.attrs.ai_prompt, node.attrs.ai_model_id, updateAttributes, editor, t]);
 
   // --- Classic mode: compact locked placeholder ---
   if (isClassic) {
@@ -524,8 +523,13 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         prompt={(node.attrs.ai_prompt as string) || ''}
         onChange={(val) => updateAttributes({ ai_prompt: val })}
         onRegenerate={handleGenerate}
-        regenerateDisabled={generating || !(node.attrs.ai_prompt as string)?.trim()}
+        regenerateDisabled={
+          generating || !(node.attrs.ai_prompt as string)?.trim() || !(node.attrs.ai_model_id as string | null)
+        }
         regenerateLabel={generating ? t('media.generating') : t('video.generate')}
+        modelCapability="video_gen"
+        modelId={(node.attrs.ai_model_id as string | null) ?? null}
+        onModelChange={(id) => updateAttributes({ ai_model_id: id })}
       />
       {generateError && (
         <div className="border-t px-3 py-1 text-[10px] text-destructive" contentEditable={false}>

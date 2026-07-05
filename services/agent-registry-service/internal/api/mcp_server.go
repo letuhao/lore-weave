@@ -23,6 +23,9 @@ func (s *Server) mcpHandler() http.Handler {
 		Name:        "registry_list_skills",
 		Description: "List the skills visible to the signed-in user (System defaults + their own). Returns each skill's slug + description (the L1 metadata) — not the full body. Use to see what skills exist before proposing a new one or reading one in full.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"skills", "list skills", "my skills", "what skills"}),
+		InputSchema: closedSetSchemaFor[listSkillsIn](map[string][]any{
+			"surface": enumSurfaces,
+		}),
 	}, s.toolListSkills)
 
 	registerARTool(srv, &mcp.Tool{
@@ -35,12 +38,18 @@ func (s *Server) mcpHandler() http.Handler {
 		Name:        "registry_propose_skill",
 		Description: "PROPOSE a new prompt-only skill (SKILL.md) for the user. Does NOT create it — it records a proposal the user must approve in the UI. Provide slug (lowercase a-z0-9-), a one-line description, and the markdown body (instructions). Use this to save a useful workflow as a reusable skill.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save skill", "propose skill", "create skill", "remember this as a skill"}),
+		InputSchema: closedSetSchemaFor[proposeSkillIn](map[string][]any{
+			"surfaces[]": enumSurfaces,
+		}),
 	}, s.toolProposeSkill)
 
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_update_skill",
 		Description: "PROPOSE an update to one of the user's OWN skills (by slug). Does NOT apply immediately — the user approves the diff in the UI. Provide the slug and the new description and/or body.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update skill", "edit skill", "change skill"}),
+		InputSchema: closedSetSchemaFor[updateSkillIn](map[string][]any{
+			"surfaces[]": enumSurfaces,
+		}),
 	}, s.toolUpdateSkill)
 
 	registerARTool(srv, &mcp.Tool{
@@ -81,7 +90,7 @@ func (s *Server) resolveVisibleSkillBySlug(ctx context.Context, uid uuid.UUID, s
 // ── Tier R ──────────────────────────────────────────────────────────────────
 
 type listSkillsIn struct {
-	Surface string `json:"surface,omitempty" jsonschema:"filter to skills advertised on this surface (chat, compose, translate, admin)"`
+	Surface string `json:"surface,omitempty" jsonschema:"filter to skills advertised on this surface: chat | compose | translate | admin — omit this argument to see all surfaces; do not send an empty string"`
 }
 type skillMeta struct {
 	Slug        string `json:"slug"`
@@ -155,7 +164,7 @@ type proposeSkillIn struct {
 	Slug        string   `json:"slug" jsonschema:"lowercase a-z0-9- slug, 2-64 chars"`
 	Description string   `json:"description" jsonschema:"one-line description (required)"`
 	BodyMD      string   `json:"body_md" jsonschema:"the SKILL.md markdown body (instructions)"`
-	Surfaces    []string `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate)"`
+	Surfaces    []string `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
 	SessionID   string   `json:"session_id,omitempty" jsonschema:"the chat session this came from (optional)"`
 }
 type proposeSkillOut struct {
@@ -185,7 +194,7 @@ type updateSkillIn struct {
 	Slug        string   `json:"slug" jsonschema:"the slug of the user's OWN skill to update"`
 	Description string   `json:"description,omitempty" jsonschema:"new description"`
 	BodyMD      string   `json:"body_md" jsonschema:"the new SKILL.md body"`
-	Surfaces    []string `json:"surfaces,omitempty"`
+	Surfaces    []string `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
 	SessionID   string   `json:"session_id,omitempty"`
 }
 

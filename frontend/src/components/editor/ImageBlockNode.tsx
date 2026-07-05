@@ -9,7 +9,6 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
-import { aiModelsApi } from '@/features/ai-models/api';
 import { MediaPrompt } from './MediaPrompt';
 import { useResize } from './useResize';
 
@@ -68,6 +67,9 @@ export const ImageBlockExtension = Node.create({
       width: { default: 100 },
       title: { default: '' },
       ai_prompt: { default: '' },
+      /** Explicit user_model_id chosen via the MediaPrompt model picker — never
+       *  a silently-resolved default (D-MEDIA-MODEL-PICKER). */
+      ai_model_id: { default: null },
       _mode: { default: 'ai', rendered: false }, // transient, forces NodeView re-render on mode switch
     };
   },
@@ -258,6 +260,11 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const handleRegenerate = useCallback(async () => {
     const prompt = (node.attrs.ai_prompt as string)?.trim();
     if (!prompt) return;
+    const modelId = node.attrs.ai_model_id as string | null;
+    if (!modelId) {
+      setRegenerateError(t('image.regen_no_model'));
+      return;
+    }
     const ctx = getUploadContext(editor);
     if (!ctx) {
       setRegenerateError(t('image.regen_save_first'));
@@ -266,21 +273,13 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     setRegenerating(true);
     setRegenerateError(null);
     try {
-      // Get preferred or first available image model
-      const { items: models } = await aiModelsApi.listUserModels(ctx.token, { capability: 'image_gen' });
-      const savedId = localStorage.getItem('loreweave:media-prefs') ? JSON.parse(localStorage.getItem('loreweave:media-prefs')!).imageModelId : '';
-      const imageModel = (savedId && models.find(m => m.user_model_id === savedId)) || models.find(m => m.is_active) || models[0];
-      if (!imageModel) {
-        setRegenerateError(t('image.regen_no_model'));
-        return;
-      }
       const blockId = (node.attrs.blockId as string) || crypto.randomUUID().slice(0, 8);
       if (!node.attrs.blockId) updateAttributes({ blockId });
       const result = await booksApi.generateImage(ctx.token, ctx.bookId, ctx.chapterId, {
         block_id: blockId,
         prompt,
         model_source: 'user_model',
-        model_ref: imageModel.user_model_id,
+        model_ref: modelId,
       });
       updateAttributes({ src: result.url });
     } catch (e: any) {
@@ -292,7 +291,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     } finally {
       setRegenerating(false);
     }
-  }, [node.attrs.ai_prompt, node.attrs.blockId, updateAttributes, editor]);
+  }, [node.attrs.ai_prompt, node.attrs.ai_model_id, node.attrs.blockId, updateAttributes, editor, t]);
 
   // --- Classic mode: compact locked placeholder with hover preview ---
   if (isClassic) {
@@ -554,8 +553,13 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         prompt={(node.attrs.ai_prompt as string) || ''}
         onChange={(val) => updateAttributes({ ai_prompt: val })}
         onRegenerate={() => handleRegenerate()}
-        regenerateDisabled={regenerating || !(node.attrs.ai_prompt as string)?.trim()}
+        regenerateDisabled={
+          regenerating || !(node.attrs.ai_prompt as string)?.trim() || !(node.attrs.ai_model_id as string | null)
+        }
         regenerateLabel={regenerating ? t('media.generating') : t('media.regenerate')}
+        modelCapability="image_gen"
+        modelId={(node.attrs.ai_model_id as string | null) ?? null}
+        onModelChange={(id) => updateAttributes({ ai_model_id: id })}
       />
       {regenerateError && (
         <div className="border-t px-3 py-1 text-[10px] text-destructive" contentEditable={false}>

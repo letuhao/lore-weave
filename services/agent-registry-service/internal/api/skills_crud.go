@@ -149,6 +149,12 @@ func (s *Server) patchSkill(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "body exceeds 64 KB")
 		return
 	}
+	if req.Surfaces != nil {
+		if bad := invalidSurface(*req.Surfaces); bad != "" {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid surface '"+bad+"' — must be one of: chat, compose, translate, admin")
+			return
+		}
+	}
 	sets := []string{"updated_at = now()"}
 	args := []any{}
 	set := func(col string, val any) {

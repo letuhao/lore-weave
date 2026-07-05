@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,6 +15,24 @@ import (
 var skillSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,63}$`)
 
 const maxSkillBodyBytes = 64 * 1024 // D2
+
+// validSurfaces is the closed set of surfaces a skill can advertise itself on
+// (chat sessions, the Compose studio, Translate sessions, the admin panel).
+// Single source of truth — the MCP tool schemas' enum (tool_helpers.go
+// enumSurfaces) is derived from this same slice so the REST-path validation
+// below and the MCP-path schema enum can never silently drift apart.
+var validSurfaces = []string{"chat", "compose", "translate", "admin"}
+
+// invalidSurface returns the first surface in `surfaces` that isn't in
+// validSurfaces, or "" if all are valid.
+func invalidSurface(surfaces []string) string {
+	for _, s := range surfaces {
+		if !slices.Contains(validSurfaces, s) {
+			return s
+		}
+	}
+	return ""
+}
 
 // skillQuotaExceeded reports whether the user is at/over the per-user skill cap
 // (REG-X-02 / D2). Counts only the user's own user-tier skills.
@@ -83,6 +102,9 @@ func validateSkill(in *skillInput) (string, bool) {
 	}
 	if scriptsMarkerRe.MatchString(in.BodyMD) {
 		return "executable scripts/ content is not allowed (skills are prompt-only)", false
+	}
+	if bad := invalidSurface(in.Surfaces); bad != "" {
+		return "invalid surface '" + bad + "' — must be one of: chat, compose, translate, admin", false
 	}
 	return "", true
 }
