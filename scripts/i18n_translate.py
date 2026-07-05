@@ -38,6 +38,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 # ── config ────────────────────────────────────────────────────────────────
@@ -140,8 +141,15 @@ def placeholders(s: str) -> set[str]:
 
 # ── model call ─────────────────────────────────────────────────────────────
 def call_model(system: str, user: str, *, temperature: float = 0.2) -> str:
+    # Suppress thinking-mode on the local model — otherwise reasoning_tokens make
+    # every call slow (and can swallow the JSON). Mirrors how the platform disables
+    # it for local OpenAI-compatible servers (provider-registry adapters.go: local
+    # base_url keeps chat_template_kwargs + reasoning_effort). llama.cpp/LM Studio
+    # ignore whichever key the model's template doesn't use.
     body = json.dumps({
         "model": MODEL, "temperature": temperature,
+        "reasoning_effort": "none",
+        "chat_template_kwargs": {"enable_thinking": False, "thinking": False},
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
     }).encode("utf-8")
@@ -301,6 +309,9 @@ def main() -> int:
     ap.add_argument("--chunk-chars", type=int, default=CHUNK_CHARS,
                     help=f"source chars per model call (default {CHUNK_CHARS}; "
                          "attention-quality limit, not capacity)")
+    ap.add_argument("--workers", type=int, default=4,
+                    help="concurrent namespace translations (default 4; urllib releases "
+                         "the GIL on I/O + LM Studio continuous-batches)")
     ap.add_argument("--force", action="store_true", help="re-translate even if valid output exists")
     ap.add_argument("--check", help="verify one <lang>/<ns>.json against en and exit")
     args = ap.parse_args()
@@ -332,28 +343,35 @@ def main() -> int:
         print(f"\n=== {code} ({endonym}) — {len(ns_files)} namespaces ===")
         report: dict[str, list[str]] = {}
         errored: list[str] = []
-        for ns in ns_files:
+
+        def _work(ns: Path):
+            # Each namespace is independent (reads its own src, writes its own file),
+            # so N run concurrently with no shared mutable state.
             t0 = time.time()
             try:
                 r = translate_namespace(code, ns, endonym, script_re, args.max_heal,
                                         args.force, args.chunk_chars)
-            except Exception as e:
-                # A transport timeout / model wedge on ONE namespace must never
-                # abort the batch — it's left untranslated and a re-run resumes it.
-                dt = time.time() - t0
-                print(f"  ✗ {ns.name:<24} ERROR: {type(e).__name__}: {e}  ({dt:.0f}s, resumable)")
-                errored.append(ns.name)
-                continue
-            dt = time.time() - t0
-            if r["status"] == "skip":
-                print(f"  = {r['ns']:<24} skip ({r['keys']} keys)")
-            else:
-                flag = f" ⚠{r['soft']}" if r["soft"] else ""
-                fail = f" ✗{r['failed']}" if r["failed"] else ""
-                print(f"  ✓ {r['ns']:<24} {r['keys']} keys{flag}{fail}  {dt:.0f}s")
-                if r["failed"]:
-                    report[r["ns"]] = r["failed_keys"]
-                    grand_failed += r["failed"]
+                return ns, r, time.time() - t0, None
+            except Exception as e:  # noqa: BLE001 — one namespace's failure must not abort the batch
+                return ns, None, time.time() - t0, e
+
+        # Consume results in the MAIN thread as they complete → prints/aggregation
+        # need no lock (single consumer). Worker threads only do HTTP + file writes.
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as ex:
+            for ns, r, dt, err in (f.result() for f in as_completed(
+                    [ex.submit(_work, ns) for ns in ns_files])):
+                if err is not None:
+                    print(f"  ✗ {ns.name:<24} ERROR: {type(err).__name__}: {err}  ({dt:.0f}s, resumable)")
+                    errored.append(ns.name)
+                elif r["status"] == "skip":
+                    print(f"  = {r['ns']:<24} skip ({r['keys']} keys)")
+                else:
+                    flag = f" ⚠{r['soft']}" if r["soft"] else ""
+                    fail = f" ✗{r['failed']}" if r["failed"] else ""
+                    print(f"  ✓ {r['ns']:<24} {r['keys']} keys{flag}{fail}  {dt:.0f}s")
+                    if r["failed"]:
+                        report[r["ns"]] = r["failed_keys"]
+                        grand_failed += r["failed"]
         if errored:
             print(f"  !! {code}: {len(errored)} namespaces errored (resumable): {', '.join(errored)}")
         if report:

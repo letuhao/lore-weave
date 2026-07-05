@@ -1,0 +1,54 @@
+{
+  "title": "通知",
+  "markAllRead": "全部标记为已读",
+  "markRead": "标记为已读",
+  "delete": "删除",
+  "empty": "暂无通知",
+  "loading": "加载中...",
+  "justNow": "刚刚",
+  "minsAgo": "{{count}}分钟前",
+  "hrsAgo": "{{count}}小时前",
+  "daysAgo": "{{count}}天前",
+  "viewAll": "查看全部通知",
+  "loadMore": "加载更多",
+  "pageTitle": "通知",
+  "notif": {
+    "translation": {
+      "completed": "翻译完成 — 《{{book}}》共 {{count}} 章",
+      "partial": "部分翻译完成 — 已完成 {{done}} 章，失败 {{failed}} 章",
+      "failed": "翻译失败 — 《{{book}}》"
+    },
+    "social": {
+      "followed": "{{name}} 开始关注你"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "聊天",
+      "completion": "文本补全",
+      "embedding": "向量化",
+      "entity_extraction": "实体提取",
+      "fact_extraction": "事实提取",
+      "relation_extraction": "关系提取",
+      "event_extraction": "事件提取",
+      "translation": "翻译",
+      "image_gen": "图像生成",
+      "video_gen": "视频生成"
+    },
+    "status": {
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "running": "进行中",
+      "pending": "待处理"
+    }
+  },
+  "category": {
+    "all": "全部",
+    "translation": "翻译",
+    "social": "社交",
+    "wiki": "维基",
+    "system": "系统"
+  }
+}

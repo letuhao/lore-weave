@@ -1,0 +1,146 @@
+{
+  "loading": "加载中...",
+  "chapter_of": "第 {{current}} / {{total}} 章",
+  "stop_reading": "停止阅读",
+  "read_aloud": "朗读",
+  "reading_theme": "阅读主题",
+  "edit_chapter": "编辑本章",
+  "back_to_book": "返回书籍",
+  "chapter_label": "第 {{n}} 章",
+  "chars": "字符",
+  "words": "单词",
+  "min_read": "~{{minutes}} 分钟阅读",
+  "loading_translation": "正在加载翻译...",
+  "empty_chapter": "章节为空 — 尚未编写内容。",
+  "end_of_chapter": "第 {{n}} 章结束",
+  "next_in": "下一章将在 {{seconds}} 秒后加载...",
+  "cancel": "取消",
+  "progress": "第 {{current}} / {{total}} 章 · 已完成 {{percent}}%",
+  "ch_short": "第 {{n}} 章",
+  "history": {
+    "title": "阅读历史",
+    "subtitle": "您最近阅读的书籍和章节。",
+    "empty": "暂无阅读历史。开始阅读一个章节吧！",
+    "chapters_read": "已读 {{count}} 个章节",
+    "fully_read": "已读完 {{percent}}%",
+    "last_read": "上次阅读时间 {{date}}",
+    "continue": "继续阅读"
+  },
+  "theme": {
+    "title": "阅读主题",
+    "presets": "主题预设",
+    "preset": {
+      "dark": {
+        "name": "深色",
+        "desc": "温暖的深色背景"
+      },
+      "light": {
+        "name": "浅色",
+        "desc": "洁净的白色背景"
+      },
+      "sepia": {
+        "name": "羊皮纸",
+        "desc": "温暖的纸张色调"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "适用于 OLED 屏幕的纯黑背景"
+      },
+      "parchment": {
+        "name": "羊皮纸",
+        "desc": "经典的羊皮纸质感"
+      },
+      "forest": {
+        "name": "森林",
+        "desc": "夜间护眼模式"
+      }
+    },
+    "font": "字体",
+    "typography": "排版",
+    "font_size": "字体大小",
+    "line_height": "行高",
+    "text_width": "文本宽度",
+    "spacing": "间距",
+    "reading_mode": "阅读模式",
+    "show_indices": "显示区块索引 (翻译模式)",
+    "auto_next": "自动加载下一章",
+    "auto_scroll": "TTS 自动滚动"
+  },
+  "tts": {
+    "source": {
+      "attached": "已附加",
+      "ai": "AI TTS",
+      "browser": "浏览器",
+      "inline": "音频"
+    },
+    "prev_block": "上一个区块 (Shift+左方向键)",
+    "play": "播放 (空格)",
+    "pause": "暂停 (空格)",
+    "next_block": "下一个区块 (Shift+右方向键)",
+    "cycle_speed": "循环速度",
+    "autoscroll_on": "自动滚动：开启",
+    "autoscroll_off": "自动滚动：关闭",
+    "settings": "TTS 设置",
+    "stop": "停止 (Esc)",
+    "speed": "语速",
+    "browser_voice": "浏览器语音",
+    "default": "默认",
+    "no_voices": "未找到可用语音。您的浏览器可能不支持 Web Speech API。",
+    "ai_model": "AI TTS 模型",
+    "none_browser": "无 (仅限浏览器 TTS)",
+    "no_models": "未配置模型。请前往“设置 > 服务商”添加。",
+    "ai_voice": "AI 语音",
+    "openai_voices": "OpenAI 语音：alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "行为",
+    "autoscroll_active": "自动滚动至当前区块",
+    "highlight_active": "高亮当前区块",
+    "now_playing": "正在播放",
+    "block_label": "区块: {{id}}",
+    "status": {
+      "playing": "正在播放",
+      "paused": "已暂停",
+      "loading": "加载中"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "已附加",
+      "ai": "AI TTS",
+      "browser": "浏览器",
+      "inline": "音频区块",
+      "none": "无"
+    },
+    "coverage": "音频覆盖范围",
+    "summary": "{{speakable}} 个可朗读区块 · {{missing}} 个使用浏览器 TTS",
+    "generate_missing": "生成缺失音频",
+    "block_chars": "{{count}} 个区块 · ~{{chars}} 字符",
+    "block_chars_other": "{{count}} 个区块 · ~{{chars}} 字符",
+    "est_cost": "预计费用 ${{cost}}",
+    "generating": "正在生成... {{progress}}/{{total}}",
+    "select_model_alert": "请先在 TTS 设置中选择一个 TTS 模型。",
+    "generate_all": "全部生成 ({{count}})",
+    "blocks": "区块",
+    "audio_block_preview": "音频区块"
+  },
+  "block": {
+    "audio_unavailable": "音频不可用",
+    "audio_fallback": "您的浏览器不支持音频元素。",
+    "image_unavailable": "图片不可用",
+    "video_unavailable": "视频不可用"
+  },
+  "indicator": {
+    "pause": "暂停",
+    "play": "播放已附加音频",
+    "mismatch": "音频字幕与区块文本不符"
+  },
+  "citation": {
+    "aria": "引用 {{n}}",
+    "jump": "跳转至原文",
+    "relevance": "相关性",
+    "source": {
+      "glossary": "术语表",
+      "kg": "知识库",
+      "passage": "原文"
+    }
+  }
+}

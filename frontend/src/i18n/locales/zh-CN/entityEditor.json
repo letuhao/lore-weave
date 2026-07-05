@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "未命名",
+    "status": {
+      "draft": "草稿",
+      "active": "已启用",
+      "inactive": "已禁用"
+    },
+    "discard": "舍弃",
+    "save": "保存",
+    "save_entity": "保存实体",
+    "cancel": "取消",
+    "move_to_trash": "移至回收站",
+    "meta": {
+      "chapters": "{{count}} 个章节",
+      "translations": "{{count}} 条翻译",
+      "evidences": "{{count}} 条证据"
+    },
+    "tab": {
+      "attributes": "属性",
+      "evidences": "证据",
+      "history": "历史记录"
+    },
+    "viewing_in_language": "正在以 {{lang}} 语言查看",
+    "viewing_original": "原文 ({{lang}})",
+    "translation_lang_aria": "翻译语言",
+    "no_translation": "暂无翻译",
+    "add_language": "+ 添加语言...",
+    "lang_placeholder": "例如 en",
+    "system_attrs": "系统属性",
+    "user_attrs": "用户属性",
+    "no_attributes": "此实体类型未定义属性。",
+    "toast": {
+      "saved": "实体已保存",
+      "status_changed": "状态已更改为 {{status}}",
+      "invalid_lang": "无效的语言代码 (例如 en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*必填",
+    "modified": "已修改",
+    "has_translations": "包含翻译"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "草稿",
+      "verified": "已验证",
+      "machine": "机器翻译"
+    },
+    "confidence_aria": "翻译置信度",
+    "by": "由 {{name}} 完成",
+    "discard_aria": "舍弃更改",
+    "save": "保存",
+    "delete_aria": "删除翻译",
+    "placeholder": "{{lang}} 翻译...",
+    "tags_add": "+ 添加别名",
+    "delete_title": "删除翻译？",
+    "delete_desc": "该属性的 {{lang}} 翻译将被永久删除。",
+    "delete_confirm": "删除",
+    "toast": {
+      "updated": "翻译已更新",
+      "created": "翻译已创建",
+      "deleted": "翻译已删除"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "引用",
+      "summary": "摘要",
+      "reference": "参考"
+    },
+    "provenance": {
+      "ambiguous": "未验证匹配",
+      "ambiguous_hint": "此引用在原文中有多处匹配——确切位置不确定。",
+      "unmatched": "原文中未找到",
+      "unmatched_hint": "在章节文本中无法定位此引用——可能是改写或幻觉。请在信任前进行验证。",
+      "unverified": "未验证",
+      "unverified_hint": "此引用尚未对照原文进行验证。"
+    },
+    "filter": {
+      "all": "全部",
+      "attr_aria": "按属性筛选",
+      "all_attributes": "所有属性",
+      "chapter_aria": "按章节筛选",
+      "all_chapters": "所有章节",
+      "chapter_n": "第 {{n}} 章",
+      "lang_aria": "显示语言",
+      "original": "原文",
+      "sort_aria": "排序依据",
+      "sort": {
+        "created": "创建时间",
+        "chapter": "章节",
+        "block_line": "区块/行",
+        "attribute": "属性"
+      },
+      "ascending": "升序",
+      "descending": "降序",
+      "add": "添加"
+    },
+    "create": {
+      "title": "新增证据",
+      "attribute": "属性 *",
+      "attr_aria": "新增证据的属性",
+      "type": "类型",
+      "type_aria": "证据类型",
+      "original_text": "原文 *",
+      "text_placeholder": "粘贴原文...",
+      "block_line": "区块 / 行",
+      "block_placeholder": "例如 p.42",
+      "note": "备注",
+      "note_placeholder": "可选备注",
+      "cancel": "取消",
+      "create": "创建"
+    },
+    "card": {
+      "edit_type_aria": "编辑证据类型",
+      "cancel_title": "取消",
+      "block_line": "区块 / 行",
+      "note": "备注",
+      "cancel": "取消",
+      "save": "保存",
+      "edit_title": "编辑",
+      "open_source": "打开原文章节",
+      "delete_title": "删除",
+      "translated": "已翻译 ({{lang}})",
+      "note_label": "备注: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "未找到证据",
+      "clear_filters": "清除筛选",
+      "prev_page": "上一页",
+      "next_page": "下一页",
+      "first_page": "第一页",
+      "last_page": "最后一页",
+      "jump_to_page": "跳转至页码",
+      "page_size": "每页行数",
+      "per_page": "{{n}} / 页",
+      "delete_title": "删除证据？",
+      "delete_desc": "来自 \"{{attr}}\" 的此条证据将被永久删除。",
+      "delete_confirm": "删除"
+    },
+    "toast": {
+      "updated": "证据已更新",
+      "deleted": "证据已删除",
+      "created": "证据已创建",
+      "text_required": "原文是必填项"
+    }
+  },
+  "summarize": {
+    "canonical_label": "合并摘要",
+    "pending_dirty": "将在下次提取后重新汇总",
+    "pending_new": "将在下次提取后进行汇总",
+    "sources": "原始提及 ({{count}})",
+    "empty": "暂无提及"
+  }
+}

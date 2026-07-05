@@ -1,0 +1,374 @@
+{
+  "focus": {
+    "toggle": "专注模式",
+    "continuity": "连续性 ✓",
+    "hint": "✦ 点击行进行定位"
+  },
+  "saved": "章节已保存",
+  "no_content": "暂无可翻译内容",
+  "translation_failed": "翻译失败",
+  "translated_blocks": "已翻译 {{count}} 个区块",
+  "text_translation_received": "已接收文本翻译 — 建议使用区块模式",
+  "breadcrumb": {
+    "workspace": "工作区",
+    "book": "书籍",
+    "chapter": "章节"
+  },
+  "prev_chapter": "上一章",
+  "next_chapter": "下一章",
+  "mode": {
+    "classic": "经典模式",
+    "classic_title": "经典模式 — 专注于写作",
+    "ai": "AI 模式",
+    "ai_title": "AI 助手模式 — 全功能体验"
+  },
+  "workmode": {
+    "write": "写作",
+    "write_desc": "编辑手稿",
+    "translate": "翻译",
+    "translate_desc": "多版本、对比与翻译",
+    "read": "阅读",
+    "read_desc": "打开阅读器 (TTS、主题)",
+    "compose": "创作",
+    "compose_desc": "AI 协同写作工作室"
+  },
+  "grammar_title": "切换语法与拼写检查 (LanguageTool)",
+  "translate_title": "使用 AI 翻译内容 (区块模式)",
+  "translating": "正在翻译...",
+  "translate": "翻译",
+  "view_translations": "翻译版本",
+  "view_translations_title": "查看已保存的翻译版本 (语言、历史记录、并排对比)",
+  "toggle_source": "切换原文面板",
+  "toggle_history": "切换历史记录 / AI 面板",
+  "unsaved": "未保存",
+  "saved_badge": "已保存",
+  "mobile": {
+    "editor": "编辑器",
+    "studio": "工作室",
+    "history": "历史记录",
+    "nav": "编辑器板块"
+  },
+  "discard_title": "丢弃所有未保存的更改",
+  "discard": "丢弃",
+  "save": "保存",
+  "tabs": {
+    "chapters": "章节",
+    "original": "原文",
+    "glossary": "术语表",
+    "outline": "大纲"
+  },
+  "chapter_count": "{{count}} 章",
+  "chapter_count_other": "{{count}} 章",
+  "original_readonly": "上传的原文 — 只读",
+  "no_original": "无原文来源 — 此章节直接在编辑器中创建（未导入文件）。",
+  "title_placeholder": "章节标题",
+  "chars": "{{n}} 字符",
+  "words": "{{n}} 单词",
+  "paragraphs": "{{count}} 段",
+  "paragraphs_other": "{{count}} 段",
+  "save_note_placeholder": "保存备注 (可选) — 例如 \"添加了闪回场景\"",
+  "history": "历史记录",
+  "ai_chat": "AI 对话",
+  "coming_soon": "即将推出",
+  "connected": "已连接",
+  "left_panel": "左侧面板",
+  "right_panel": "右侧面板",
+  "discard_confirm": {
+    "title": "确定丢弃更改吗？",
+    "desc": "所有未保存的更改都将永久丢失。此操作无法撤销。",
+    "confirm": "丢弃更改",
+    "cancel": "继续编辑"
+  },
+  "toolbar": {
+    "paragraph": "段落",
+    "h1": "标题 1",
+    "h2": "标题 2",
+    "h3": "标题 3",
+    "bold": "加粗 (Ctrl+B)",
+    "italic": "斜体 (Ctrl+I)",
+    "strike": "删除线",
+    "underline": "下划线 (Ctrl+U)",
+    "inline_code": "行内代码",
+    "link": "链接",
+    "url_prompt": "URL:",
+    "highlight": "高亮 (Ctrl+Shift+H)",
+    "subscript": "下标",
+    "superscript": "上标",
+    "bullet_list": "无序列表",
+    "ordered_list": "有序列表",
+    "blockquote": "引用",
+    "insert_image": "插入图片",
+    "insert_video": "插入视频",
+    "insert_audio": "插入音频",
+    "code_block": "代码块",
+    "horizontal_rule": "分割线",
+    "undo": "撤销 (Ctrl+Z)",
+    "redo": "重做 (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "段落",
+      "desc": "纯文本区块"
+    },
+    "heading1": {
+      "title": "标题 1",
+      "desc": "大级章节标题"
+    },
+    "heading2": {
+      "title": "标题 2",
+      "desc": "中级章节标题"
+    },
+    "heading3": {
+      "title": "标题 3",
+      "desc": "小级章节标题"
+    },
+    "bullet": {
+      "title": "无序列表",
+      "desc": "项目符号列表"
+    },
+    "numbered": {
+      "title": "有序列表",
+      "desc": "数字列表"
+    },
+    "quote": {
+      "title": "引用",
+      "desc": "块引用"
+    },
+    "image": {
+      "title": "图片",
+      "desc": "上传、粘贴或 AI 生成"
+    },
+    "video": {
+      "title": "视频",
+      "desc": "上传视频文件"
+    },
+    "audio": {
+      "title": "音频",
+      "desc": "上传音频文件"
+    },
+    "code": {
+      "title": "代码块",
+      "desc": "带语法高亮的代码"
+    },
+    "callout": {
+      "title": "标注",
+      "desc": "作者备注或提示"
+    },
+    "divider": {
+      "title": "分割线",
+      "desc": "水平分割线"
+    }
+  },
+  "code": {
+    "language_label": "代码语言",
+    "copy": "复制代码",
+    "delete": "删除代码块"
+  },
+  "media": {
+    "ai_prompt": "AI 提示词",
+    "saved": "已保存",
+    "empty": "空",
+    "placeholder": "描述此媒体以用于 AI 上下文和生成...",
+    "stored_note": "随媒体一起存储，用于 AI 上下文和重新生成。",
+    "copied": "已复制",
+    "copy_prompt": "复制提示词",
+    "regenerate": "重新生成",
+    "generating": "正在生成..."
+  },
+  "image": {
+    "err_type": "不支持的类型: {{type}}。请使用 PNG, JPG, GIF 或 WebP。",
+    "err_size": "文件过大: {{size}} MB。最大限制 10 MB。",
+    "upload_unavailable": "无法上传 — 请先保存章节。",
+    "upload_failed": "上传失败",
+    "regen_save_first": "请先保存章节以启用 AI 生成。",
+    "regen_no_model": "未配置 AI 模型。请在“设置”中添加供应商。",
+    "regen_no_provider": "没有活跃的 AI 供应商。请在“设置 → 供应商”中进行配置。",
+    "regen_failed": "生成失败",
+    "default_title": "图片",
+    "version_history": "版本历史",
+    "copy_filename": "复制文件名",
+    "copy": "复制",
+    "ai_mode": "AI 模式",
+    "replace": "替换",
+    "replace_title": "替换图片",
+    "delete_block": "删除区块",
+    "delete_image_block": "删除图片区块",
+    "uploading": "正在上传... {{pct}}%",
+    "drop_here": "将图片拖到此处",
+    "drop_hint": "拖入图片、点击浏览，或按 Ctrl+V",
+    "formats": "PNG, JPG, GIF, WebP — 最大 10 MB",
+    "width_title": "宽度: {{width}}%",
+    "caption_placeholder": "添加说明...",
+    "caption_aria": "图片说明",
+    "alt_text": "替代文本",
+    "alt_set": "设置",
+    "alt_placeholder": "为屏幕阅读器和 EPUB 导出描述此图片...",
+    "alt_aria": "图片替代文本",
+    "alt_note": "用于屏幕阅读器、搜索和 EPUB 导出。与说明不同。"
+  },
+  "video": {
+    "err_type": "不支持的类型: {{type}}。请使用 MP4 或 WebM。",
+    "err_size": "文件过大: {{size}} MB。最大 100 MB。",
+    "upload_unavailable": "无法上传 — 请先保存章节。",
+    "upload_failed": "上传失败",
+    "gen_save_first": "请先保存章节。",
+    "gen_no_model": "未配置视频生成模型。请前往“设置 > 服务商”添加。",
+    "gen_failed": "生成失败",
+    "default_title": "视频",
+    "version_history": "版本历史",
+    "copy_filename": "复制文件名",
+    "copy": "复制",
+    "ai_mode": "AI 模式",
+    "replace": "替换",
+    "replace_title": "替换视频",
+    "delete_block": "删除区块",
+    "delete_video_block": "删除视频区块",
+    "uploading": "正在上传... {{pct}}%",
+    "drop_here": "将视频拖到此处",
+    "drop_hint": "拖入视频或点击浏览",
+    "formats": "MP4, WebM — 最大 100 MB",
+    "width_title": "宽度: {{width}}%",
+    "caption_placeholder": "添加说明...",
+    "caption_aria": "视频说明",
+    "alt_text": "替代文本",
+    "alt_set": "设置",
+    "alt_placeholder": "为屏幕阅读器和 EPUB 导出描述此视频...",
+    "alt_aria": "视频替代文本",
+    "alt_note": "用于屏幕阅读器、搜索和 EPUB 导出。与说明不同。",
+    "generate": "生成"
+  },
+  "audio": {
+    "err_type": "不支持的类型: {{type}}。请使用 MP3, WAV, OGG, WebM 或 M4A。",
+    "err_size": "文件过大: {{size}} MB。最大 20 MB。",
+    "upload_unavailable": "无法上传 — 请先保存章节。",
+    "upload_failed": "上传失败",
+    "default_title": "音频",
+    "ai_mode": "AI 模式",
+    "play": "播放",
+    "pause": "暂停",
+    "replace_title": "替换音频",
+    "delete_audio_block": "删除音频区块",
+    "uploading": "正在上传... {{pct}}%",
+    "drop_here": "将音频拖到此处",
+    "drop_hint": "拖入音频文件或点击浏览",
+    "formats": "MP3, WAV, OGG, WebM, M4A — 最大 20 MB",
+    "subtitle_placeholder": "添加字幕...",
+    "subtitle_aria": "音频字幕"
+  },
+  "callout": {
+    "type": {
+      "note": "提示",
+      "warning": "警告",
+      "tip": "技巧",
+      "danger": "危险"
+    },
+    "title": "{{type}} — 点击更改类型"
+  },
+  "revision": {
+    "restored": "修订版本已恢复",
+    "header": "修订历史 · {{count}}",
+    "empty": "暂无修订记录。保存以创建修订。",
+    "current": "当前版本",
+    "view": "查看",
+    "restore": "恢复",
+    "confirm_title": "恢复此修订版本？",
+    "confirm_desc": "这将使用此旧版本覆盖您当前的草稿，并创建一个新的修订记录。此操作无法撤销。",
+    "close_preview": "关闭预览",
+    "preview": "修订预览",
+    "restore_version": "恢复此版本",
+    "empty_revision": "空修订版本。"
+  },
+  "source": {
+    "header": "区块 JSON — 章节结构的只读视图",
+    "copied": "已复制",
+    "copy": "复制 JSON"
+  },
+  "version": {
+    "loading": "正在加载版本历史...",
+    "close": "关闭",
+    "title": "版本历史",
+    "block_crumb": "区块",
+    "comparing": "正在对比 v{{old}} → v{{new}}",
+    "previous": "上一个",
+    "old": "旧版本",
+    "no_media": "无媒体内容",
+    "current": "当前版本",
+    "selected": "已选版本",
+    "current_tag": "当前",
+    "no_media_version": "此版本中没有媒体内容",
+    "no_versions": "暂无版本",
+    "version_count": "{{count}} 个版本",
+    "version_count_other": "{{count}} 个版本",
+    "total": "共 {{size}}",
+    "delete_confirm": "删除版本 {{version}}？此操作无法撤销。",
+    "versions": "版本",
+    "restore_version": "恢复 v{{version}}",
+    "timeago": {
+      "just_now": "刚刚",
+      "mins": "{{n}} 分钟前",
+      "hours": "{{n}} 小时前",
+      "yesterday": "昨天",
+      "days": "{{n}} 天前"
+    },
+    "action": {
+      "upload": "媒体已上传",
+      "regenerate": "使用优化后的提示词重新生成",
+      "caption_edit": "说明已更新",
+      "prompt_edit": "提示词已更新"
+    },
+    "diff_identical": "提示词完全相同",
+    "diff_title": "AI 提示词差异 ({{old}} → {{new}})",
+    "diff_previous": "上一个",
+    "diff_current": "当前"
+  },
+  "media_guard": {
+    "protected": "在经典模式下，媒体区块是受保护的。请切换到 AI 模式进行编辑或删除。"
+  },
+  "publish": {
+    "publish": "发布",
+    "republish": "重新发布",
+    "unpublish": "取消发布",
+    "draft_badge": "草稿",
+    "published_badge": "已发布",
+    "confirm_title": "取消发布章节？",
+    "confirm_body": "这将使该章节从正文中移除 —— 其提取的知识和段落将被撤回，直到您重新发布为止。",
+    "published_toast": "章节已发布",
+    "unpublished_toast": "章节已取消发布",
+    "conflict_toast": "自您打开以来草稿已更改 — 发布前请重新加载。",
+    "empty_toast": "此章节没有可发布的内容 — 请先进行创作。",
+    "save_first": "发布前请先保存",
+    "gate_pending": "还有 {{total}} 个场景中的 {{pending}} 个未完成",
+    "gate_no_scenes": "请创建并完成至少一个场景以进行发布",
+    "gate_canon_blocked": "在 {{count}} 个场景中存在未解决的正文矛盾",
+    "gate_unchecked": "有 {{count}} 个场景尚未验证正文",
+    "gate_unchecked_hint": "这些场景包含需要检查的角色，但尚未确定最终阅读顺序，因此无法验证正文。允许发布 —— 如果可以，请进行检查。"
+  },
+  "compare": {
+    "open": "对比",
+    "title": "对比修订版本",
+    "back": "返回编辑器",
+    "left": "左侧修订版",
+    "right": "右侧修订版",
+    "side_by_side": "并排对比",
+    "inline": "行内对比",
+    "no_revisions": "无修订版本",
+    "need_two": "此章节至少需要两个已保存的修订版本才能进行对比。",
+    "loading": "正在加载…",
+    "diffing": "正在计算差异…",
+    "error": "无法加载对比内容。",
+    "truncated": "修订版本过大 —— 将显示完整替换而非细粒度差异对比。",
+    "same": "两侧为同一修订版本 —— 无差异。",
+    "load_more": "加载更多 ({{loaded}}/{{total}})",
+    "load_more_hint": "将更早的修订版本加载到选择器中"
+  },
+  "checkpoint": {
+    "header": "AI 编辑检查点",
+    "insert": "已插入",
+    "polish": "已润色",
+    "restore": "还原",
+    "restored": "已还原至 AI 编辑前的状态",
+    "no_restore": "没有更早的版本可供还原",
+    "confirm_title": "还原至本次 AI 编辑前的状态？",
+    "confirm_desc": "当前草稿将首先被快照保存，因此可以通过修订历史记录进行撤销。"
+  }
+}

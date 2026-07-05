@@ -1,0 +1,119 @@
+{
+  "title": "术语标准",
+  "subtitle": "您的可复用流派、类别和属性。您可以将系统默认设置克隆到您的层级进行自定义，也可以自行创建。",
+  "tabs_aria": "标准部分",
+  "tab": {
+    "genres": "流派",
+    "kinds": "类别",
+    "attributes": "属性"
+  },
+  "loading": "正在加载标准…",
+  "error": "无法加载您的标准。请重试。",
+  "empty": {
+    "genres": "暂无流派。",
+    "kinds": "暂无类别。"
+  },
+  "action": {
+    "clone": "克隆到我的层级",
+    "yours": "您的内容",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "genres": {
+    "new": "新建流派"
+  },
+  "kinds": {
+    "new": "新建类别"
+  },
+  "toast": {
+    "cloned": "已将“{{name}}”克隆到您的标准中",
+    "cloneError": "无法克隆“{{name}}”",
+    "created": "已创建“{{name}}”",
+    "createError": "无法创建",
+    "saved": "已保存",
+    "saveError": "无法保存",
+    "deleted": "已将“{{name}}”移至回收站",
+    "deleteError": "无法删除“{{name}}”",
+    "attrCreated": "已添加“{{name}}”",
+    "attrError": "无法添加“{{name}}”",
+    "linksSaved": "流派已更新",
+    "linksError": "无法更新流派"
+  },
+  "attributes": {
+    "no_user_kinds": "请先克隆或创建类别 —— 属性需绑定到您自己的类别下。",
+    "no_user_genres": "请先克隆或创建流派 —— 属性需绑定到您自己的流派下。",
+    "pick_kind": "选择类别…",
+    "pick_genre": "选择流派…",
+    "pick_both": "请选择一个类别和一个流派以查看并添加属性。",
+    "new": "新建属性",
+    "empty": "此组合暂无属性。",
+    "system_ref": "来自系统（只读）",
+    "your_attrs": "您的属性"
+  },
+  "attrform": {
+    "title_create": "新建属性",
+    "title_edit": "编辑属性",
+    "name": "名称",
+    "name_placeholder": "例如：等级",
+    "name_required": "名称是必填项",
+    "code": "代码",
+    "code_hint": "可选 —— 若为空，则根据名称生成。",
+    "field_type": "字段类型",
+    "required": "必填",
+    "options": "选项",
+    "options_hint": "每行一个（适用于选择/标签）。",
+    "cancel": "取消",
+    "create": "添加属性",
+    "save": "保存",
+    "saving": "正在保存…",
+    "ft": {
+      "text": "文本",
+      "textarea": "长文本",
+      "select": "选择",
+      "number": "数字",
+      "date": "日期",
+      "tags": "标签",
+      "url": "URL",
+      "boolean": "是 / 否"
+    }
+  },
+  "stdform": {
+    "title_create_genre": "新建流派",
+    "title_edit_genre": "编辑流派",
+    "title_create_kind": "新建类别",
+    "title_edit_kind": "编辑类别",
+    "name": "名称",
+    "name_required": "名称是必填项",
+    "icon": "图标",
+    "color": "颜色",
+    "code": "代码",
+    "code_hint": "可选 —— 若为空，则根据名称生成。",
+    "description": "描述",
+    "cancel": "取消",
+    "create": "创建",
+    "save": "保存",
+    "saving": "正在保存…"
+  },
+  "links": {
+    "edit": "流派",
+    "title": "{{name}} 的流派",
+    "save": "保存",
+    "saving": "正在保存…",
+    "empty": "没有可关联的用户流派。请先克隆或创建流派。",
+    "cancel": "取消"
+  },
+  "trash": {
+    "open": "回收站",
+    "title": "回收站",
+    "close": "关闭",
+    "genres": "流派",
+    "kinds": "类别",
+    "empty_section": "此处为空。",
+    "restore": "还原",
+    "purge": "永久删除",
+    "restored": "已还原",
+    "restoreError": "无法还原",
+    "purged": "已永久删除",
+    "purgeError": "无法删除"
+  }
+}
