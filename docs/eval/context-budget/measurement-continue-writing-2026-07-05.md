@@ -442,14 +442,22 @@ Three clean conclusions:
 2. **The tiers add ZERO measurable quality** — baseline ≡ candidate across every dimension. Flipping
    T5+T4+D13a on buys nothing on this workload (consistent with §8.4: they're inert). **Reinforces
    keep-default-OFF** — cost without benefit.
-3. **NEW real defect (both configs, model-tier):** on the firm-name needle it doesn't have indexed,
-   gemma-4 **confabulates a wrong name** (RUN_A "Holmgood, Voss & Co."; RUN_B "Seward & Co.") presented
-   as the "original-novel" fact — instead of using `story_search mode=exact "Hawkins"` (which finds the
-   real "Peter Hawkins of Exeter") or honestly declining. This caps `continue_writing` correctness at 2
-   for both. **`D-AGENT-NEEDLE-CONFAB`** (model-behavior, not a repo bug): the agent hallucinates a
-   plausible answer from training rather than reaching for the lexical tool on a specific-detail recall.
-   Worth a prompt/tool-routing nudge (or a stronger model) — but note it's *less* severe than the qwen
-   protagonist error, and the agent is otherwise correct + grounded (correctness 4.5, groundedness 4.67).
+3. **NEW real defect (both configs, model-tier) — `D-AGENT-NEEDLE-CONFAB` → FIXED same day:** on the
+   firm-name needle it doesn't have indexed, gemma-4 **confabulated a wrong name** (RUN_A "Holmgood,
+   Voss & Co."; RUN_B "Seward & Co.") presented as the "original-novel" fact — instead of using
+   `story_search mode=exact "Hawkins"` (real answer: "Peter Hawkins of Exeter") or declining. Root
+   cause (found in code): the grounding `<instructions>` said "trust the XML as authoritative" but had
+   **no general anti-invention rule** — the only one (`_WITH_ABSENCES`) was scoped to `<no_memory_for>`
+   *entities*, not detail queries. So the model filled the gap from its (wrong) parametric memory of the
+   *published* Dracula. **Fix:** added an always-on `_ANTI_CONFAB` guardrail to
+   `knowledge-service/app/context/formatters/instructions.py` — "THIS manuscript + memory is the ONLY
+   source of truth, NOT your training knowledge of any published work (the user's version may differ);
+   on a missing specific detail, search with story_search first, then decline rather than invent."
+   (Also the correct *product* principle: a continue-writing user is diverging from the original, so the
+   model's memory of it is not canon.) **Live-verified:** the firm-name turn now answers *"the name of
+   the firm … is not recorded in the text provided so far … he is a 'banking solicitor' …"* — an honest,
+   grounded decline, no invented name; generation turns unaffected (no over-declining). 16 instructions
+   tests green (+1 guardrail-present assertion).
 
 **Bottom line (clean):** the shipped-default agent (all tiers off, gemma-4) is a genuinely capable
 grounded continue-writer — correct protagonist/arc, strong Gothic craft, honest on most gaps; the
