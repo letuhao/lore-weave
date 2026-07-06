@@ -1,5 +1,27 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**PlanForge auto-bootstrap Phase 2 M1 (hardening) — done + live-verified, 2026-07-06.**
+User's POST-REVIEW verdict on the POC: complete [B]/[C]/[D] + a real UI
+before production (not ship the POC as-is) — see
+[`docs/specs/2026-07-06-planforge-auto-bootstrap.md`](../specs/2026-07-06-planforge-auto-bootstrap.md)
+§6 for the M1-M4 milestone breakdown. **M1 done**: found+fixed a real
+double-propose race the POC's own tests missed — dedup was scoped to only
+`status='applied'` proposals, so calling `propose()` twice before applying
+the first would silently re-offer (and, if both got approved+applied,
+double-create) the same chapters. Fixed: `list_active_for_book` now covers
+every non-rejected status; dedup reads each active record's `diff` directly.
+Also added: negative-path router tests (403 insufficient-grant, 404
+no-grant, mirroring `test_grant_gate.py`), info/warning logging through
+propose/approve/reject/apply. 6 new tests, full suite green (1595 unit + 162
+integration). Live-verified post-rebuild: propose against the same real
+run now correctly logs "already-claimed by another proposal" and returns
+an empty diff (both target chapters already real from the POC's earlier
+live-verify). Commit `c5a9caf2d`.
+**Remaining milestones (M2 glossary wiring, M3 scene/beat+draft
+reachability, M4 real plain-language UI) not started** — continuing next.
+
+---
+
 **Tool-catalog-simplification — Part D (pinned_legacy_tools) + Part A prompt wiring shipped, 2026-07-06.**
 [`docs/specs/2026-07-06-tool-catalog-simplification.md`](../specs/2026-07-06-tool-catalog-simplification.md).
 Completes the spec's rollout (§10 items 1-3 all DONE): CAT-4 legacy-visibility filter +
