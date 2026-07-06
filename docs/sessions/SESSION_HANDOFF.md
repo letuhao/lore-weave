@@ -1,5 +1,25 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Tool-catalog-simplification — live-verified against the real stack, spec fully CLOSED (all §10 items), 2026-07-06.**
+[`docs/specs/2026-07-06-tool-catalog-simplification.md`](../specs/2026-07-06-tool-catalog-simplification.md) §10
+item 5 (never done before — everything prior was unit/integration tests against mocks or a small offline eval
+catalog). Rebuilt + restarted chat-service/ai-gateway/glossary-service and verified live: metadata passthrough
+(`_meta.visibility` on the real MCP wire), CAT-4 exclusion, and the token measurement (**~4,118 tokens vs the
+original ~24,000-token baseline, an 83% reduction**, live-confirmed on the real 190-tool federated catalog).
+**Found a real bug live verification alone could catch**: `search_catalog`'s fuzzy-rescue branch never actually
+enforced its own documented precondition ("rescues a tool with NO token overlap") — an exact single-shared-word
+overlap (e.g. an unrelated tool's synonym containing "book") auto-qualified as a "strong fuzzy hit," overriding the
+whole score to 1.0. Invisible on eval-doc's small 4-tool test catalog; real at the actual 190-tool scale, where
+`glossary_ontology_upsert` didn't even place top-5 for the eval's own query ("add a new kind to the book"). Fixed
+in both `tool_discovery.py` and `find-tools.ts` (gate on `overlap == 0`), 4 new regression tests, re-verified live
+post-fix (now ranks 1st for all 3 original eval queries). Also live-smoked `glossary_propose_entities` against the
+real POC book (`019f1783-ebb4-…`) — 2 draft entities created, verified by DB effect, cleaned up after. Commit
+`e12bf4056`. **Lesson for future specs: an offline eval catalog this small can hide ranking bugs that only show up
+at real tool-count scale — a live cross-service smoke against the REAL federated catalog is not optional polish,
+it's where this exact bug was found.**
+
+---
+
 **Tool-catalog-simplification — all 6 open questions resolved, spec CLOSED, 2026-07-06.**
 [`docs/specs/2026-07-06-tool-catalog-simplification.md`](../specs/2026-07-06-tool-catalog-simplification.md)
 §11 fully resolved: 5 items confirmed-as-shipped (memory_search stays owned by the
