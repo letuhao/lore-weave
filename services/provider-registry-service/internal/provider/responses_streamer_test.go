@@ -152,6 +152,71 @@ func TestBuildResponsesBody_ConvertsMessagesToolsAndChain(t *testing.T) {
 	}
 }
 
+func TestStreamResponsesSSE_FinishReasonLengthAndToolCalls(t *testing.T) {
+	// truncation → "length" (was hardcoded "stop", hiding the cap)
+	trunc := `data: {"type":"response.incomplete","response":{"id":"r","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":5,"output_tokens":9}}}
+
+`
+	var done *StreamChunk
+	for i, c := range collectResponsesChunks(t, trunc) {
+		if c.Kind == StreamChunkDone {
+			done = &collectResponsesChunks(t, trunc)[i]
+		}
+	}
+	if done == nil || done.FinishReason != "length" {
+		t.Fatalf("truncation must report finish_reason=length, got %+v", done)
+	}
+	// a turn that emitted a function_call → "tool_calls"
+	tc := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc","call_id":"c","name":"x"}}
+
+data: {"type":"response.completed","response":{"id":"r","status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}
+
+`
+	var d2 *StreamChunk
+	ch := collectResponsesChunks(t, tc)
+	for i := range ch {
+		if ch[i].Kind == StreamChunkDone {
+			d2 = &ch[i]
+		}
+	}
+	if d2 == nil || d2.FinishReason != "tool_calls" {
+		t.Fatalf("tool-call turn must report finish_reason=tool_calls, got %+v", d2)
+	}
+}
+
+func TestMessagesToResponsesInput_AssistantToolCalls(t *testing.T) {
+	// an assistant tool_calls message → function_call item(s) so a history replay isn't
+	// an orphaned function_call_output (review H-t).
+	msgs := []map[string]any{
+		{"role": "assistant", "content": "", "tool_calls": []any{
+			map[string]any{"id": "call_1", "type": "function", "function": map[string]any{
+				"name": "glossary_search", "arguments": `{"q":"elf"}`,
+			}},
+		}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "result"},
+	}
+	items := messagesToResponsesInput(msgs)
+	if len(items) != 2 {
+		t.Fatalf("expected function_call + function_call_output, got %d: %+v", len(items), items)
+	}
+	fc, _ := items[0].(map[string]any)
+	if fc["type"] != "function_call" || fc["call_id"] != "call_1" || fc["name"] != "glossary_search" {
+		t.Fatalf("assistant tool_calls must become a function_call item, got %+v", fc)
+	}
+	fco, _ := items[1].(map[string]any)
+	if fco["type"] != "function_call_output" || fco["call_id"] != "call_1" {
+		t.Fatalf("tool result must reference the same call_id, got %+v", fco)
+	}
+}
+
+func TestIsChainNotFound_MatchesOpenAIProse(t *testing.T) {
+	// real OpenAI shape (prose, no machine code) must also classify.
+	body := `{"error":{"message":"Previous response with id 'resp_abc' not found.","type":"invalid_request_error"}}`
+	if !isChainNotFound(&ErrUpstreamPermanent{StatusCode: 404, Body: body}) {
+		t.Fatal("must classify OpenAI's prose 'Previous response … not found'")
+	}
+}
+
 func TestBuildResponsesBody_NestedReasoningEffort(t *testing.T) {
 	// the Responses API needs NESTED reasoning.effort; the flat reasoning_effort is
 	// ignored (live-verified). "off" → {"effort":"none"} disables thinking.

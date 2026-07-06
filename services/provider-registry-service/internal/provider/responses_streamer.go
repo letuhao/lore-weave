@@ -51,6 +51,7 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 	responseID := ""
 	finishReason := "stop"
 	usageEmitted := false
+	sawToolCall := false
 	// map output_index → the tool call's id/name, captured on output_item.added so the
 	// arguments-delta fragments (which carry only the index) can be attributed.
 	toolStarted := map[int]bool{}
@@ -67,10 +68,14 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 				Name   string `json:"name"`
 			} `json:"item"`
 			Response struct {
-				ID    string `json:"id"`
-				Error struct {
+				ID     string `json:"id"`
+				Status string `json:"status"` // completed | incomplete | failed
+				Error  struct {
 					Message string `json:"message"`
 				} `json:"error"`
+				IncompleteDetails struct {
+					Reason string `json:"reason"` // max_output_tokens | content_filter
+				} `json:"incomplete_details"`
 				Usage struct {
 					InputTokens        int `json:"input_tokens"`
 					OutputTokens       int `json:"output_tokens"`
@@ -122,6 +127,7 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 					callID = ev.Item.ID
 				}
 				toolStarted[ev.OutputIndex] = true
+				sawToolCall = true
 				if err := emit(StreamChunk{
 					Kind:       StreamChunkToolCall,
 					Index:      ev.OutputIndex,
@@ -145,6 +151,19 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 		case "response.completed", "response.incomplete":
 			if ev.Response.ID != "" {
 				responseID = ev.Response.ID
+			}
+			// Real finish_reason (review H-t): was "stop" hardcoded, hiding truncation +
+			// tool-stops. incomplete(max_output_tokens)→length; a turn that emitted a
+			// function_call→tool_calls; else stop. Mirrors the chat/completions semantics.
+			switch {
+			case ev.Response.Status == "incomplete" && ev.Response.IncompleteDetails.Reason == "max_output_tokens":
+				finishReason = "length"
+			case ev.Response.Status == "incomplete" && ev.Response.IncompleteDetails.Reason == "content_filter":
+				finishReason = "content_filter"
+			case sawToolCall:
+				finishReason = "tool_calls"
+			default:
+				finishReason = "stop"
 			}
 			if !usageEmitted {
 				chunk := StreamChunk{

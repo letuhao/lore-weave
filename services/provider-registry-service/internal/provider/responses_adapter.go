@@ -166,6 +166,30 @@ func messagesToResponsesInput(messages []map[string]any) []any {
 			})
 			continue
 		}
+		// An ASSISTANT message carrying tool_calls must become `function_call` item(s)
+		// (review H-t) — otherwise a full-history replay (E1 re-establish after a tool
+		// round-trip) sends a `function_call_output` with no preceding `function_call`,
+		// which the Responses API 400s ("no tool call found for function_call_output").
+		if role == "assistant" {
+			if calls, ok := msg["tool_calls"].([]any); ok && len(calls) > 0 {
+				for _, c := range calls {
+					cm, _ := c.(map[string]any)
+					fn, _ := cm["function"].(map[string]any)
+					callID, _ := cm["id"].(string)
+					name, _ := fn["name"].(string)
+					args, _ := fn["arguments"].(string)
+					out = append(out, map[string]any{
+						"type": "function_call", "call_id": callID,
+						"name": name, "arguments": args,
+					})
+				}
+				// keep any assistant text alongside the call(s), if present.
+				if txt := stringifyContent(msg["content"]); txt != "" {
+					out = append(out, map[string]any{"role": "assistant", "content": txt})
+				}
+				continue
+			}
+		}
 		out = append(out, map[string]any{"role": role, "content": stringifyContent(msg["content"])})
 	}
 	return out
@@ -235,9 +259,18 @@ func isChainNotFound(err error) bool {
 	if !errors.As(err, &perm) {
 		return false
 	}
-	b := perm.Body
+	// Match BOTH probed shapes (review M-t): LM Studio's machine code
+	// `previous_response_not_found` + param `previous_response_id`, AND real OpenAI's
+	// prose "Previous response with id 'resp_…' not found." — keyed on "not found" near a
+	// previous-response reference. Gated on ErrUpstreamPermanent (4xx) already, so 429/5xx
+	// can't trip it.
+	b := strings.ToLower(perm.Body)
+	if !strings.Contains(b, "not found") && !strings.Contains(b, "previous_response_not_found") {
+		return false
+	}
 	return strings.Contains(b, "previous_response_not_found") ||
-		(strings.Contains(b, "previous_response_id") && strings.Contains(b, "not found"))
+		strings.Contains(b, "previous_response_id") ||
+		strings.Contains(b, "previous response")
 }
 
 // streamViaResponses runs a stateful turn over `/v1/responses`. Shared by the
