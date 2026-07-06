@@ -1,5 +1,24 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**SPEC: Provider Context Strategy (capability-gated stateful caching) — 2026-07-06, DESIGN done, build
+pending.** [`docs/specs/2026-07-06-provider-context-strategy.md`](../specs/2026-07-06-provider-context-strategy.md).
+Live-verified the crux: on the exact A4B model (LM Studio bug #1563 = no chat/completions prefix-cache),
+**`/v1/responses` + `previous_response_id` caches 1711/1727 tok = 99%** where `/v1/chat/completions`
+caches 0. So the fix for local context-explosion is the **stateful Responses API**, as a capability-gated
+OPTION (not replacing the unified path). Architecture resolved with the user: 2-layer **ProviderContextStrategy**
+(chat-service = context POLICY, provider-registry = TRANSPORT — extends the existing `use_anthropic_cache`
+2-layer pattern); capability-keyed (not provider-name); DB-authoritative + `previous_response_id` as an
+ephemeral degrade-safe hint; **Planner owns strategy + cache-aware budget**. Spec covers 12 edge-case
+resolutions + **caching cost-monitoring/thrashing guardrail** (caching isn't free — Anthropic write=1.25×;
+prove-by-effect) + **Inspector `caching` section** (extends fix-#5 `llm_call_count`) + **cache-aware
+context-management** (server-side budget for stateful, compaction=cache-write-penalty, re-chain-at-boundary
+= E5 resolves cost↔accuracy). Also found: shipped `applyAnthropicPromptCache` double-marks system (chat-service
+already does) → reconcile to **tools-only** (Phase 1). Build phases: **P1** capability+monitoring+Inspector+§10
+reconcile (no new transport, safe) · **P2** responsesAdapter+SDK+DB+stateful (behind `LLM_STATEFUL_CACHE`) ·
+**P3** cache-aware Planner. NEXT: start P1.
+
+---
+
 **`D-PLANFORGE-GUI-AUDIT` — P0 crash FIXED, 4 real UX gaps found + scoped, 2026-07-06** (user: "planner
 GUI thật sự là không thể sử dụng được... đứng ở vai trò người dùng và xem lại UI/UX" — go use it as
 a real user, don't guess from code). Live-drove the Planner panel via Playwright as a real user
