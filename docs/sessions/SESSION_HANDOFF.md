@@ -105,9 +105,28 @@ the actual 6-stage pipeline for real, confirmed completion (previously
 guaranteed to crash) with the correct `chapter_id: "arc_2_event_1"`
 correlation, and confirmed bootstrap's `propose()` reads the completed
 job without error. Commit `8df1be958`.
-**Remaining: M4 (real plain-language UI) not started** — frontend work,
-a different domain from M1-M3's backend build; a natural checkpoint
-before starting it.
+**M4 (real plain-language UI) — done + live-verified, same day. All 4
+milestones of Phase 2 now complete.** New `BootstrapPanel` + `useBootstrap`
+replace raw JSON as the review surface for propose/approve/reject/apply
+(diff items as plain-language cards, every failure state incl. M2's
+"book not adopted" 422 shows the actionable message + Retry, never a dead
+end — the LOCKED DESIGN PRINCIPLE from the earlier redesign mockup).
+**User caught a real adjacent gap mid-verify**: Compile's `arc_id` was
+STILL a bare text input (D-PLANFORGE-GUI-AUDIT gap #1 — designed in the
+mockup, never built) — my new bootstrap panel was unreachable behind it
+for a real user. Fixed: `get_run_detail` now surfaces the spec's own
+`arcs` as `{id, title}` (previously only artifact refs, never content,
+were ever returned); `PlanRunView` renders a real picker by title. 13
+new/changed tests, full suite green (1595 backend unit + 171 integration,
+4482 frontend). Live-verified through the actual browser (real login,
+real Studio, real Planner panel): arc picker shows real titles sourced
+from the real spec; bootstrap propose() against a real compiled run
+renders the correct plain-language state. Commit `9c685c28a`.
+**PlanForge auto-bootstrap Phase 2 (M1-M4) is now complete** — the POC's
+POST-REVIEW gaps are all closed. Not yet done (explicitly out of this
+effort's scope, per the design doc's non-goals): bulk auto-draft,
+line-by-line approve/reject, and re-visiting whether the arc-picker fix
+should extend further (e.g. an empty-arcs self-check hint).
 
 ---
 
