@@ -47,12 +47,13 @@ export function summarizeRack(
   enabledTools: string[],
   activatedTools: string[],
   enabledSkills: string[],
+  pinnedLegacyTools: string[] = [],
 ): { tools: number; skills: number; tokens: number | null } {
   const adv = surface?.advertised;
   const advCount = adv ? adv.core.length + adv.frontend.length + adv.activated.length : 0;
   const tools = adv && advCount > 0
     ? advCount
-    : new Set([...enabledTools, ...activatedTools]).size;
+    : new Set([...enabledTools, ...activatedTools, ...pinnedLegacyTools]).size;
   // 0 injected skills is a REAL measurement (a turn may inject none) — only a
   // missing array falls back to the session pins (?? on the array, never || on
   // the length).
@@ -86,7 +87,7 @@ export function AgentContextRack({
   const [menuOpen, setMenuOpen] = useState(false);
 
   const hasPins = enabledTools.length > 0 || enabledSkills.length > 0 || pinnedLegacyTools.length > 0;
-  const measured = summarizeRack(surface, enabledTools, activatedTools, enabledSkills);
+  const measured = summarizeRack(surface, enabledTools, activatedTools, enabledSkills, pinnedLegacyTools);
 
   // Rack-flash fix: a turn-opening frame carries the tracker defaults (see
   // summarizeRack) — hold the PREVIOUS measured values so the chip/dots don't

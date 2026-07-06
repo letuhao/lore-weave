@@ -131,6 +131,39 @@ describe('useContextRack', () => {
       });
     });
 
+    it('review-impl: a pin within the debounce window of an enabled_tools change must NOT drop the earlier field', () => {
+      const onSessionUpdate = vi.fn();
+      const { result } = renderHook(() =>
+        useContextRack({
+          session: { ...baseSession, enabled_tools: [], enabled_skills: [], pinned_legacy_tools: [] },
+          accessToken: 'tok',
+          onSessionUpdate,
+        }),
+      );
+
+      act(() => {
+        result.current.addTool('book_get_chapter');
+      });
+      act(() => {
+        vi.advanceTimersByTime(100); // still inside the 300ms debounce window
+      });
+      act(() => {
+        result.current.addPinnedLegacyTool('glossary_book_create');
+      });
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      // A single flushed PATCH must carry BOTH fields — the shared debounce
+      // must not let the second call's timer replacement silently drop the
+      // first call's payload.
+      expect(patchSessionMock).toHaveBeenCalledTimes(1);
+      expect(patchSessionMock).toHaveBeenCalledWith('tok', 's1', {
+        enabled_tools: ['book_get_chapter'],
+        pinned_legacy_tools: ['glossary_book_create'],
+      });
+    });
+
     it('warns and refuses past the pin limit', () => {
       const session = {
         ...baseSession,

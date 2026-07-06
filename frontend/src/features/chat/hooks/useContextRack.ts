@@ -35,6 +35,11 @@ export function useContextRack({
   hidden = false,
 }: UseContextRackArgs) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // review-impl: a single shared timer replaced its OWN pending payload on every
+  // call — two different-field mutations (e.g. addTool then addPinnedLegacyTool)
+  // within the 300ms window silently dropped the earlier one's PATCH body. Now
+  // MERGED across calls and flushed as one PATCH, then cleared.
+  const pendingPatchRef = useRef<Record<string, unknown>>({});
 
   const enabledTools = session?.enabled_tools ?? [];
   const enabledSkills = session?.enabled_skills ?? [];
@@ -47,10 +52,13 @@ export function useContextRack({
 
   const patchSession = useCallback(    (payload: { enabled_tools?: string[]; enabled_skills?: string[]; activated_tools?: string[]; pinned_legacy_tools?: string[] }) => {
       if (!accessToken || !session) return;
+      Object.assign(pendingPatchRef.current, payload);
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
+        const merged = pendingPatchRef.current;
+        pendingPatchRef.current = {};
         chatApi
-          .patchSession(accessToken, session.session_id, payload)
+          .patchSession(accessToken, session.session_id, merged)
           .then(onSessionUpdate)
           .catch((err) => toast.error((err as Error).message));
       }, 300);

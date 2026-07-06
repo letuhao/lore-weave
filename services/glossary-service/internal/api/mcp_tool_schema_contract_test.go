@@ -46,6 +46,22 @@ var closedSetArgs = map[string][]string{
 	"glossary_list_merge_candidates": {"status"},
 	"glossary_create_chapter_link":   {"relevance"},
 	"glossary_create_evidence":       {"evidence_type"},
+	"glossary_ontology_upsert":       {"scope", "items[].level", "items[].field_type"},
+	"glossary_ontology_delete":       {"scope", "items[].level"},
+}
+
+// legacyTaggedTools — CAT-4 (mcp-tool-io.md Part 4): the 6 tools superseded by
+// glossary_ontology_upsert/delete MUST carry `_meta.visibility:"legacy"` so both
+// federation surfaces (chat-service tool_discovery.py / ai-gateway find-tools.ts)
+// exclude them from find_tools/hot-seeding. This is the Go-side half of the drift
+// lock those consumer-side tests already prove for their OWN filtering logic —
+// this test instead guards the SOURCE data those filters read: a future edit that
+// drops the WithVisibility(...) wrapper on any of these 6 (e.g. an accidental
+// copy-paste during a refactor) would silently un-hide a superseded tool, and
+// nothing else in this repo's Go suite would catch it.
+var legacyTaggedTools = []string{
+	"glossary_book_create", "glossary_book_patch", "glossary_book_delete",
+	"glossary_user_create", "glossary_user_patch", "glossary_user_delete",
 }
 
 // closedSetAdminArgs — same rule for the SEPARATE admin server (/mcp/admin).
@@ -69,6 +85,15 @@ var closedSetValueSets = map[string][]string{
 // user/book server (token-authed), returning name → inputSchema.
 func listToolsWire(t *testing.T) map[string]map[string]any {
 	t.Helper()
+	schemas, _ := listToolsWireFull(t)
+	return schemas
+}
+
+// listToolsWireFull is listToolsWire plus each tool's `_meta` block (raw, decoded
+// as map[string]any) — the CAT-4 visibility drift-lock needs `_meta.visibility`,
+// which the schema-only helper above doesn't carry.
+func listToolsWireFull(t *testing.T) (map[string]map[string]any, map[string]map[string]any) {
+	t.Helper()
 	ts := mcpTestServer(t)
 	req, _ := http.NewRequest(http.MethodPost, ts.URL,
 		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
@@ -89,17 +114,20 @@ func listToolsWire(t *testing.T) map[string]map[string]any {
 			Tools []struct {
 				Name        string         `json:"name"`
 				InputSchema map[string]any `json:"inputSchema"`
+				Meta        map[string]any `json:"_meta"`
 			} `json:"tools"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(body, &rpc); err != nil {
 		t.Fatalf("tools/list: bad JSON: %v (%s)", err, body)
 	}
-	out := make(map[string]map[string]any, len(rpc.Result.Tools))
+	schemas := make(map[string]map[string]any, len(rpc.Result.Tools))
+	metas := make(map[string]map[string]any, len(rpc.Result.Tools))
 	for _, tool := range rpc.Result.Tools {
-		out[tool.Name] = tool.InputSchema
+		schemas[tool.Name] = tool.InputSchema
+		metas[tool.Name] = tool.Meta
 	}
-	return out
+	return schemas, metas
 }
 
 // listAdminToolsInMemory lists the admin server's tools over an in-memory MCP
@@ -224,6 +252,32 @@ func TestMCPClosedSetArgsAreEnums(t *testing.T) {
 // TestAdminMCPClosedSetArgsAreEnums — the separate /mcp/admin server.
 func TestAdminMCPClosedSetArgsAreEnums(t *testing.T) {
 	assertClosedSetEnums(t, listAdminToolsInMemory(t), closedSetAdminArgs)
+}
+
+// TestLegacyToolsCarryVisibilityMeta — CAT-4 drift lock (see legacyTaggedTools
+// doc comment). Reads `_meta.visibility` over the REAL wire, not the Go source,
+// so it fails if the wrapper is dropped OR if the SDK ever stops serializing
+// `_meta` for a Tool (the passthrough this whole mechanism depends on).
+func TestLegacyToolsCarryVisibilityMeta(t *testing.T) {
+	_, metas := listToolsWireFull(t)
+	for _, name := range legacyTaggedTools {
+		meta, ok := metas[name]
+		if !ok || meta == nil {
+			t.Errorf("%s: no _meta on the wire at all (want visibility:\"legacy\")", name)
+			continue
+		}
+		vis, _ := meta["visibility"].(string)
+		if vis != "legacy" {
+			t.Errorf("%s: _meta.visibility = %q, want \"legacy\" — CAT-4 requires this tool stay hidden from find_tools/hot-seed", name, vis)
+		}
+	}
+	// Control: the tool that supersedes them must NOT be tagged legacy, or it
+	// would hide itself from discovery too.
+	if meta := metas["glossary_ontology_upsert"]; meta != nil {
+		if vis, _ := meta["visibility"].(string); vis == "legacy" {
+			t.Error("glossary_ontology_upsert must not be legacy-tagged — it's the replacement, not the superseded tool")
+		}
+	}
 }
 
 // TestBookPatch409IncludesCurrentVersion pins the W0 #1a contract at the unit

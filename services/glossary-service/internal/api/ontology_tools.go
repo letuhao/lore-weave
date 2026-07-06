@@ -141,10 +141,23 @@ func (s *Server) toolOntologyUpsert(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, ontologyUpsertOut{}, errors.New("items must have at least one entry")
 	}
 	// §8.2 — reject an exact duplicate (level, code) within the SAME call up front,
-	// rather than an ordering-dependent partial result.
+	// rather than an ordering-dependent partial result. Only checked when Code is
+	// explicitly supplied: an omitted code (create-only — derived from Name server-
+	// side, e.g. by slugify) isn't known yet at this point, so two DIFFERENT items
+	// both omitting code (e.g. Name="Sect" and Name="Faction") must NOT collide here
+	// on the shared empty-string key — a review-impl-caught false positive that
+	// blocked the exact "batch-create several new kinds by name only" use case the
+	// schema's own description advertises ("code derived from name on create if
+	// omitted"). A genuine same-derived-code collision is still caught per-item by
+	// the normal unique-constraint error on the second INSERT (CAT-3: per-item
+	// result, not a whole-batch rejection).
 	seen := map[string]bool{}
 	for _, it := range in.Items {
-		key := strings.TrimSpace(it.Level) + "|" + strings.TrimSpace(it.Code)
+		code := strings.TrimSpace(it.Code)
+		if code == "" {
+			continue
+		}
+		key := strings.TrimSpace(it.Level) + "|" + code
 		if seen[key] {
 			return nil, ontologyUpsertOut{}, fmt.Errorf("duplicate level+code %q in this batch — split into separate calls", key)
 		}

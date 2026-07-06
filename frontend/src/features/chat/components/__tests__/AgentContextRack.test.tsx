@@ -97,6 +97,11 @@ describe('summarizeRack', () => {
     const s = summarizeRack({ ...baseSurface, injected_skills: [] }, [], [], ['universal', 'other']);
     expect(s.skills).toBe(0);
   });
+
+  it('review-impl: a pinned legacy tool counts toward the fallback tool total (no frame yet)', () => {
+    const s = summarizeRack(null, ['glossary_search'], [], [], ['glossary_book_create']);
+    expect(s.tools).toBe(2); // 1 enabled + 1 pinned-legacy, not just the enabled pin
+  });
 });
 
 describe('AgentContextRack grouping', () => {

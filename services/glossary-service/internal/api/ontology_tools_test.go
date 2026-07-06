@@ -264,3 +264,48 @@ func TestOntologyDelete_BookScope_BatchIsIdempotentOnPartialReplay(t *testing.T)
 		t.Errorf("t2_del_c should be deleted despite the sibling missing target: live=%d", nC)
 	}
 }
+
+// ── review-impl finding: batch-create with omitted codes false-positives as "duplicate" ──
+
+func TestOntologyUpsert_BatchCreate_MultipleOmittedCodes_NotFalseDuplicate(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	octx := ctxWithUser(f.ownerID)
+
+	_, out, err := f.srv.toolOntologyUpsert(octx, nil, ontologyUpsertToolIn{
+		Scope: "book", BookID: f.bookID.String(),
+		Items: []ontologyUpsertItemIn{
+			{Level: "kind", Name: sptr("Sect")},   // code omitted, derives to "sect"
+			{Level: "kind", Name: sptr("Faction")}, // code omitted, derives to "faction" — NOT a dup
+		},
+	})
+	if err != nil {
+		t.Fatalf("batch with two omitted codes should NOT be rejected as duplicate: %v", err)
+	}
+	if out.Summary.Created != 2 || out.Summary.Failed != 0 {
+		t.Fatalf("want 2 created, got %+v (results=%+v)", out.Summary, out.Results)
+	}
+}
+
+func TestOntologyUpsert_BatchCreate_SameDerivedCode_CaughtPerItemNotWholeBatch(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	octx := ctxWithUser(f.ownerID)
+
+	// Both omit code and share the SAME name → same derived code ("sect") — a
+	// genuine collision. Must be caught per-item at INSERT time (item 2 errors,
+	// item 1 still succeeds), never silently reordered or a whole-batch reject.
+	_, out, err := f.srv.toolOntologyUpsert(octx, nil, ontologyUpsertToolIn{
+		Scope: "book", BookID: f.bookID.String(),
+		Items: []ontologyUpsertItemIn{
+			{Level: "kind", Name: sptr("Sect")},
+			{Level: "kind", Name: sptr("Sect")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("call should succeed with a per-item error, not a whole-batch rejection: %v", err)
+	}
+	if out.Summary.Created != 1 || out.Summary.Failed != 1 {
+		t.Fatalf("want 1 created + 1 per-item failure, got %+v (results=%+v)", out.Summary, out.Results)
+	}
+}
