@@ -63,14 +63,15 @@ async def get_plan_forge_service() -> PlanForgeService:
 
 
 async def get_bootstrap_service() -> "BootstrapService":
-    """PlanForge auto-bootstrap gate (POC) — see
-    docs/specs/2026-07-06-planforge-auto-bootstrap.md §3.1."""
+    """PlanForge auto-bootstrap gate — see
+    docs/specs/2026-07-06-planforge-auto-bootstrap.md §3.1/§6."""
     from app.services.bootstrap_service import BootstrapService
 
     return BootstrapService(
         PlanBootstrapProposalsRepo(get_pool()),
         PlanRunsRepo(get_pool()),
         get_book_client(),
+        get_glossary_client(),
     )
 
 

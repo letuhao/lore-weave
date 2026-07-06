@@ -13,6 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.clients.book_client import BookClientError
+from app.clients.glossary_client import GlossaryClientError
 from app.deps import get_bootstrap_service, get_grant_client_dep
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
@@ -120,4 +121,9 @@ async def apply_bootstrap(
         raise HTTPException(status_code=404, detail="proposal not found")
     except BookClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except GlossaryClientError as exc:
+        # GLOSS_BOOK_NOT_SCAFFOLDED is actionable by the user (adopt an
+        # ontology first), not a transient outage — 422, not 502.
+        status = 422 if exc.code == "GLOSS_BOOK_NOT_SCAFFOLDED" else 502
+        raise HTTPException(status_code=status, detail=exc.detail or str(exc)) from exc
     return record.model_dump(mode="json")

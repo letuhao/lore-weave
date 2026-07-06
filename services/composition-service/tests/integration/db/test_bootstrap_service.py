@@ -16,6 +16,7 @@ import asyncpg
 import pytest
 
 from app.clients.book_client import BookClientError
+from app.clients.glossary_client import GlossaryClientError
 from app.db.migrate import run_migrations
 from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
@@ -72,7 +73,34 @@ class FakeBookClient:
         return {"chapter_id": chapter_id, "title": title}
 
 
-async def _run_with_package(pool, user, book, *, chapters: list[dict[str, Any]]):
+class FakeGlossaryClient:
+    """Fakes `seed_entities_or_raise` — the only glossary_client method
+    BootstrapService calls (M2)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.fail_with: GlossaryClientError | None = None
+        self._next_entity_id = 0
+
+    async def seed_entities_or_raise(self, book_id, *, source_language, entities):
+        self.calls.append({"source_language": source_language, "entities": list(entities)})
+        if self.fail_with is not None:
+            raise self.fail_with
+        out = []
+        for e in entities:
+            self._next_entity_id += 1
+            out.append({
+                "entity_id": f"entity-{self._next_entity_id}",
+                "name": e["name"], "kind_code": e.get("kind_code") or "character",
+                "status": "created",
+            })
+        return out
+
+
+async def _run_with_package(
+    pool, user, book, *,
+    chapters: list[dict[str, Any]], glossary_seeds: list[dict[str, Any]] | None = None,
+):
     runs = PlanRunsRepo(pool)
     run = await runs.create(
         user, book, mode="rules", source_checksum="chk-poc",
@@ -80,13 +108,19 @@ async def _run_with_package(pool, user, book, *, chapters: list[dict[str, Any]])
     )
     await runs.save_artifact(
         user, run.id, "package",
-        {"planning_package": {"arc_id": "arc_1", "chapters": chapters}},
+        {
+            "planning_package": {"arc_id": "arc_1", "chapters": chapters},
+            "glossary_seeds": glossary_seeds or [],
+        },
     )
     return run
 
 
-def _svc(pool, book_client) -> BootstrapService:
-    return BootstrapService(PlanBootstrapProposalsRepo(pool), PlanRunsRepo(pool), book_client)
+def _svc(pool, book_client, glossary_client=None) -> BootstrapService:
+    return BootstrapService(
+        PlanBootstrapProposalsRepo(pool), PlanRunsRepo(pool),
+        book_client, glossary_client or FakeGlossaryClient(),
+    )
 
 
 async def test_propose_excludes_existing_and_prior_applied_titles(pool):
@@ -240,3 +274,92 @@ async def test_apply_partial_failure_then_resume_only_retries_remaining_items(po
     assert set(resumed.applied_results.keys()) == {"e1", "e2"}
     # e1 was NOT re-created on resume — only e2 (the previously-failed item).
     assert len(book_client.created) == 2
+
+
+# ── M2: real glossary wiring ──────────────────────────────────────────────
+
+async def test_propose_includes_glossary_seeds_deduped_across_active_proposals(pool):
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book, chapters=[],
+        glossary_seeds=[
+            {"name": "Lin Feng", "kind_code": "character", "attributes": {"role": "protagonist"}},
+            {"name": "Perfection Addiction", "kind_code": "concept", "attributes": {}},
+        ],
+    )
+    svc = _svc(pool, FakeBookClient())
+
+    first = await svc.propose(user, book, run.id, bearer="tok")
+    names = {e["name"] for e in first.diff["new_glossary_entities"]}
+    assert names == {"Lin Feng", "Perfection Addiction"}
+
+    # A second propose before applying the first must not re-offer the same
+    # entities (same M1 race-guard, extended to glossary items).
+    second = await svc.propose(user, book, run.id, bearer="tok")
+    assert second.diff["new_glossary_entities"] == []
+
+
+async def test_approve_then_apply_seeds_glossary_entities(pool):
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book, chapters=[],
+        glossary_seeds=[{"name": "Lin Feng", "kind_code": "character", "attributes": {}}],
+    )
+    glossary = FakeGlossaryClient()
+    svc = _svc(pool, FakeBookClient(), glossary)
+
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    await svc.approve(user, book, proposed.id)
+    applied = await svc.apply(user, book, proposed.id, bearer="tok")
+
+    assert applied.status == "applied"
+    key = "glossary:character:Lin Feng"
+    assert applied.applied_results[key]["entity_id"] == "entity-1"
+    assert glossary.calls == [{"source_language": "vi", "entities": [
+        {"name": "Lin Feng", "kind_code": "character", "attributes": {}},
+    ]}]
+
+
+async def test_apply_surfaces_book_not_adopted_as_actionable_422(pool):
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book, chapters=[],
+        glossary_seeds=[{"name": "Lin Feng", "kind_code": "character", "attributes": {}}],
+    )
+    glossary = FakeGlossaryClient()
+    glossary.fail_with = GlossaryClientError(422, "GLOSS_BOOK_NOT_SCAFFOLDED", "not adopted")
+    svc = _svc(pool, FakeBookClient(), glossary)
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    await svc.approve(user, book, proposed.id)
+
+    with pytest.raises(GlossaryClientError) as exc_info:
+        await svc.apply(user, book, proposed.id, bearer="tok")
+    assert exc_info.value.code == "GLOSS_BOOK_NOT_SCAFFOLDED"
+    assert "Graph Schema" in exc_info.value.detail
+
+    failed = await svc.get(user, book, proposed.id)
+    assert failed is not None and failed.status == "failed"
+    assert "Graph Schema" in failed.error_detail
+
+    # Retry after "adopting" (the fake stops failing) resumes and succeeds.
+    glossary.fail_with = None
+    resumed = await svc.apply(user, book, proposed.id, bearer="tok")
+    assert resumed.status == "applied"
+
+
+async def test_apply_chapters_and_glossary_together_both_recorded(pool):
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book,
+        chapters=[{"event_id": "e1", "title": "Chapter One", "ordinal": 1}],
+        glossary_seeds=[{"name": "Lin Feng", "kind_code": "character", "attributes": {}}],
+    )
+    book_client = FakeBookClient()
+    glossary = FakeGlossaryClient()
+    svc = _svc(pool, book_client, glossary)
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    await svc.approve(user, book, proposed.id)
+
+    applied = await svc.apply(user, book, proposed.id, bearer="tok")
+    assert applied.status == "applied"
+    assert set(applied.applied_results.keys()) == {"e1", "glossary:character:Lin Feng"}
