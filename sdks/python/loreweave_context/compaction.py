@@ -100,8 +100,14 @@ def recovery_hint_message() -> dict:
 # Opening quote must NOT follow a letter (so a possessive apostrophe — protagonist's — is
 # not mistaken for an opening quote), and the quoted term starts with a letter.
 _QUOTED = re.compile(r"(?<![A-Za-z])['‘“\"]([A-Za-z][^'‘’“”\"\n]{1,38})['’”\"]")
+# CJK/fullwidth quote marks (「」『』《》〈〉“”) around a term — the CJK analogue of _QUOTED,
+# since CJK proper nouns carry no capitalization signal a quote is often the only marker.
+_QUOTED_CJK = re.compile(r"[「『《〈]([^」』》〉\n]{1,20})[」』》〉]")
 _PROPER = re.compile(r"\b[A-Z][A-Za-z’'-]+(?:\s+(?:of\s+|the\s+)?[A-Z][A-Za-z’'-]+){1,4}\b")
-_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
+# Sentence split — ASCII terminators (with trailing space) OR CJK terminators 。！？
+# (which are NOT followed by a space), so a Chinese passage segments instead of being one
+# over-long blob that trips the length gate.
+_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[。！？])")
 # a figure = a digit OR a spelled-out number word (counts like "seven" are dropped as
 # often as "7"), so both make a sentence "fact-bearing" and worth preserving verbatim.
 _NUMWORD = re.compile(
@@ -112,8 +118,18 @@ _NUMWORD = re.compile(
 )
 
 
+# CJK numerals + fullwidth digits — a number-bearing Chinese/Japanese sentence ("三百回合",
+# "一万守军", "２０人") is a fact worth preserving verbatim, but none of these are str.isdigit()
+# and the English _NUMWORD misses them.
+_CJK_NUM = re.compile(r"[0-9０-９一二三四五六七八九十百千万亿萬億兆两兩零]")
+
+
 def _has_figure(s: str) -> bool:
-    return any(c.isdigit() for c in s) or bool(_NUMWORD.search(s))
+    return (
+        any(c.isdigit() for c in s)
+        or bool(_NUMWORD.search(s))
+        or bool(_CJK_NUM.search(s))
+    )
 
 
 # Single-word coined names (VORTHANE, Kael, Emberfall, Dawnbreaker) are the HIGHEST-value
@@ -123,8 +139,13 @@ def _has_figure(s: str) -> bool:
 # them with high precision: ALL-CAPS anywhere, a capital MID-sentence (English only
 # capitalizes proper nouns there, bar "I"), and a SENTENCE-INITIAL capital only when it is
 # not a common opener (so "The"/"Remember"/"Reply" are filtered but "Kael"/"Sorenth" kept).
-_WORD = re.compile(r"[A-Za-z][A-Za-z’'-]*")
-# common capitalized openers / function words that are NOT proper nouns.
+# Unicode-aware word: a run of letters (any script — Vietnamese diacritics, CJK, …) with
+# internal apostrophes/hyphens ("O'Brien", "Anne-Marie"), no digits/underscore. The old
+# ASCII `[A-Za-z]…` shredded Vietnamese names at the first diacritic (Nguyên→"Nguy").
+_WORD = re.compile(r"[^\W\d_]+(?:['’\-][^\W\d_]+)*", re.UNICODE)
+# common capitalized openers / function words / breadcrumb-scaffold that are NOT proper
+# nouns. Applied at EVERY position AND to ALL-CAPS words (so "KEY"/"DETAILS" from a prior
+# breadcrumb don't re-extract — the self-pollution loop).
 _COMMON_CAP = frozenset("""
 a an the this that these those there here it its i we you he she him her they them his their our my your
 and or but so if when while then as at by for from in into of on to with within without about after before
@@ -132,9 +153,13 @@ note remember also more most some any all each every none no not now new next fi
 is are was were be been am do does did has have had will would can could should shall may might must
 what who whom whose which why how where whether yes ok okay please thanks let reply say tell list
 i'm i've it's we're they're you're don't can't won't
+suddenly finally however meanwhile perhaps eventually later soon once well yet still thus hence therefore
+moreover furthermore instead otherwise indeed anyway besides nonetheless nevertheless afterward afterwards
+again already always never often sometimes usually today tomorrow yesterday maybe truly simply just really
 monday tuesday wednesday thursday friday saturday sunday
 january february march april may june july august september october november december
 mr mrs ms dr sir madam king queen lord lady prince princess chapter part book section
+key details facts names terms mentioned figures verbatim context conversation search full
 """.split())
 
 
@@ -148,12 +173,14 @@ def _proper_singletons(text: str, seen: set[str]) -> list[str]:
     for w in _WORD.findall(text):
         if len(w) < 3:
             continue
-        if w.isupper():
-            keep = True
-        elif w[0].isupper() and w != "I" and w.lower() not in _COMMON_CAP:
-            keep = True
-        else:
+        # a word is a proper-noun candidate if it's ALL-CAPS or capitalized; either way it
+        # must NOT be a common word / breadcrumb-scaffold ("KEY", "The", "Suddenly"). The
+        # stoplist applies to ALL-CAPS too (self-pollution fix). CJK/uncased words have
+        # isupper()==False and [0].isupper()==False → skipped (no case signal to key on).
+        if not (w.isupper() or w[0].isupper()) or w == "I" or w.lower() in _COMMON_CAP:
             keep = False
+        else:
+            keep = True
         if keep:
             k = w.lower()
             if k not in seen:
@@ -186,23 +213,24 @@ def extract_breadcrumb(messages: list[dict], *, max_chars: int = 900) -> str:
                 facts.append(s)
 
     names: list[str] = []
-    for pat in (_QUOTED, _PROPER):
+    # Quoted terms (ASCII + CJP quote marks) — an explicit author signal. `_PROPER`
+    # (multi-word capital runs) is deliberately NOT used: it glued sentence-opener adverbs
+    # onto real names ("Suddenly Kael") and is redundant now that _proper_singletons keeps
+    # each capitalized name individually (multi-word names survive as their component words).
+    for pat in (_QUOTED, _QUOTED_CJK):
         for m in pat.findall(text):
             term = m.strip()
             k = term.lower()
-            # skip an all-common-word phrase ("Reply OK", "The Next") — a _PROPER
-            # false positive that carries no fact.
             words = _WORD.findall(term)
             if words and all(w.lower() in _COMMON_CAP for w in words):
-                continue
+                continue  # all-common phrase ("Reply OK") carries no fact
             if len(term) >= 3 and k not in seen:
                 seen.add(k)
                 names.append(term)
-                # mark constituent words seen so _proper_singletons doesn't re-add
-                # "Ashen"/"River" once "Ashen River" is captured.
-                for w in _WORD.findall(term):
-                    seen.add(w.lower())
-    # single-word coined names (the fiction case the multi-word/quoted patterns miss).
+                for w in words:
+                    seen.add(w.lower())  # constituents seen → no re-add by singletons
+    # single-word coined names (the fiction case the multi-word/quoted patterns miss),
+    # now Unicode-aware so Vietnamese/accented names are kept whole (not fragmented).
     names.extend(_proper_singletons(text, seen))
 
     blocks: list[str] = []

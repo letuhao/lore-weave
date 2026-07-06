@@ -102,7 +102,8 @@ class TestBreadcrumb:
         bc = extract_breadcrumb(msgs)
         assert "SEVEN star-anchors" in bc          # whole number-bearing sentence, verbatim
         assert "Verithrax" in bc                    # quoted name (not the possessive trap)
-        assert "Oldan Vex" in bc                    # multi-word proper phrase
+        # multi-word names survive as their component words (single-word extractor)
+        assert "Oldan" in bc and "Vex" in bc
         assert bc.startswith("KEY DETAILS")
 
     def test_preserves_single_word_coined_names(self):
@@ -131,6 +132,22 @@ class TestBreadcrumb:
         assert "reply ok" not in names   # all-common phrase filtered
         for junk in ("; the;", "; more;", "; reply;", "; note;", "; here;"):
             assert junk not in names + ";"
+
+    def test_preserves_vietnamese_diacritic_names(self):
+        # ASCII-only regexes shredded Vietnamese names at the first diacritic
+        # (Nguyên→"Nguy") and dropped the protagonist. Unicode-aware _WORD keeps them whole.
+        bc = extract_breadcrumb([{"role": "user", "content":
+            "Nhân vật chính là Hàn Lập, tu sĩ Kim Đan. Lăng Thiên tại Thành Bắc."}])
+        for name in ("Hàn", "Lập", "Lăng", "Thiên", "Thành", "Kim"):
+            assert name in bc, f"{name} dropped/fragmented in VI breadcrumb"
+
+    def test_preserves_cjk_quoted_name_and_figure_sentence(self):
+        # CJK has no capitalization signal; a quoted name + a Chinese-numeral figure
+        # sentence are the two things the deterministic breadcrumb CAN preserve.
+        bc = extract_breadcrumb([{"role": "user", "content":
+            "主角叫「叶辰」，在北城大战三百回合，有一万守军。"}])
+        assert "叶辰" in bc          # quoted CJK name (via _QUOTED_CJK)
+        assert "三百" in bc          # Chinese-numeral figure sentence (via _CJK_NUM split)
 
     def test_empty_when_nothing_salient(self):
         assert extract_breadcrumb([{"role": "user", "content": "ok thanks"}]) == ""
