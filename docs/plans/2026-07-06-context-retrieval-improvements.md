@@ -37,8 +37,23 @@
 > unit-tested). **Verify:** 8 new unit tests (boost math + resolver + client field) green; **live smoke**
 > on the wangu corpus — `get_chapter_index_for_source` resolved a real chapter_id→index 11 via Neo4j
 > (stale→None), and with the open chapter set the ranking shifted from newest chapters (20/19/18) to the
-> in-scope 11/12/13. ai-gateway is a pure body pass-through, so no gateway change. **M3 (pull-mode pilot)
-> remains the next measurement.**
+> in-scope 11/12/13. ai-gateway is a pure body pass-through, so no gateway change.
+>
+> **UPDATE 4 — M3 pull-mode MEASURED → NO-GO-for-now (2026-07-06):** ran the pull-mode A/B on the wangu
+> corpus — [`../eval/context-budget/M3-pullmode-ab-2026-07-06.md`](../eval/context-budget/M3-pullmode-ab-2026-07-06.md).
+> Findings: prepend injects **~3636 actual tokens/turn** (55% passages + 30% glossary); JIT-pull saves
+> **~59%** (not the ~97% ceiling — the plan turn + a reasoning answer turn that re-reads the stub+pulls
+> cost ~1500 tok). Pull-mode WORKS but has hard prerequisites: a **mandatory seed stub** (without a
+> ~120-tok glossary badge the planner can't resolve role-referenced queries → pulls nothing; WITH it,
+> correct recalls), a **capable tool-caller** (gemma emitted degenerate char-split searches, missed
+> 2/12), and the **chat-service streaming tool-loop** (knowledge's `llm_client` doesn't surface
+> `tool_calls`). Quality-parity vs prepend is **UNPROVEN** — the cheap standalone prepend baseline
+> collapsed to "信息不足" on the raw block (a `ab-baseline-must-model-production` harness artifact; a
+> valid A/B needs the real chat answering path). **Decision:** moderate savings + hard prerequisites +
+> unproven parity ⇒ don't build pull-mode into `retrieval_mode` now. The measurement surfaced a
+> **cheaper lever**: trim the L3 passage-count / glossary budget (direct token win, no tool-calling
+> risk) + fix knowledge's `estimate_tokens` CJK over-count (~40%: 5091 est vs 3636 actual — Inspector
+> token numbers are inflated for non-Latin books).
 
 **Date:** 2026-07-06 · **Branch:** `feat/context-budget-law` · **Status:** M4 measured + answer-quality
 A/B run (through a `/review-impl` correction) → **M1a = GO, but a measured one.** Evidence
