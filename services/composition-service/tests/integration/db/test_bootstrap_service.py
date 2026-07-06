@@ -105,7 +105,10 @@ async def test_propose_excludes_existing_and_prior_applied_titles(pool):
     # Simulate a PRIOR applied bootstrap for "Already Applied" (a separate record).
     prior_run = await _run_with_package(pool, user, book, chapters=[])
     proposals = PlanBootstrapProposalsRepo(pool)
-    prior = await proposals.create(user, book, prior_run.id, diff={"new_chapters": []})
+    prior = await proposals.create(
+        user, book, prior_run.id,
+        diff={"new_chapters": [{"event_id": "e2", "title": "Already Applied", "ordinal": 1}]},
+    )
     await proposals.mark_approved(user, book, prior.id)
     await proposals.claim_for_apply(user, book, prior.id)
     await proposals.mark_item_applied(
@@ -117,6 +120,30 @@ async def test_propose_excludes_existing_and_prior_applied_titles(pool):
     record = await svc.propose(user, book, run.id, bearer="tok")
     titles = {c["title"] for c in record.diff["new_chapters"]}
     assert titles == {"Truly New"}
+
+
+async def test_propose_twice_before_applying_does_not_double_offer(pool):
+    """M1 hardening: the POC's POST-REVIEW found that dedup scoped to only
+    'applied' records let a second propose() (before the first is applied)
+    silently re-offer — and if both got approved+applied, double-create —
+    the same chapters. Dedup must also cover PENDING/APPROVED proposals."""
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book,
+        chapters=[{"event_id": "e1", "title": "Chapter One", "ordinal": 1}],
+    )
+    svc = _svc(pool, FakeBookClient())
+
+    first = await svc.propose(user, book, run.id, bearer="tok")
+    assert {c["title"] for c in first.diff["new_chapters"]} == {"Chapter One"}
+
+    second = await svc.propose(user, book, run.id, bearer="tok")
+    assert second.diff["new_chapters"] == []  # already claimed by `first`, still pending
+
+    # Rejecting the first FREES its claim — a fresh propose can re-offer it.
+    await svc.reject(user, book, first.id)
+    third = await svc.propose(user, book, run.id, bearer="tok")
+    assert {c["title"] for c in third.diff["new_chapters"]} == {"Chapter One"}
 
 
 async def test_propose_raises_without_compiled_package(pool):

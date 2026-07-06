@@ -1855,7 +1855,7 @@ async def test_bootstrap_proposal_failed_apply_is_resumable(pool):
     assert done is not None and done.status == "applied" and done.error_detail is None
 
 
-async def test_bootstrap_proposal_list_applied_for_book_scopes_by_book(pool):
+async def test_bootstrap_proposal_list_active_for_book_scopes_by_book_and_excludes_rejected(pool):
     from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
 
     repo = PlanBootstrapProposalsRepo(pool)
@@ -1863,14 +1863,20 @@ async def test_bootstrap_proposal_list_applied_for_book_scopes_by_book(pool):
     other_book = uuid.uuid4()
     run = await _make_run(pool, user, book)
 
-    rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
-    await repo.mark_approved(user, book, rec.id)
-    await repo.claim_for_apply(user, book, rec.id)
+    applied_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    await repo.mark_approved(user, book, applied_rec.id)
+    await repo.claim_for_apply(user, book, applied_rec.id)
     await repo.mark_item_applied(
-        user, book, rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
+        user, book, applied_rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
     )
-    await repo.mark_applied(user, book, rec.id)
+    await repo.mark_applied(user, book, applied_rec.id)
 
-    applied_for_book = await repo.list_applied_for_book(book)
-    assert [r.id for r in applied_for_book] == [rec.id]
-    assert await repo.list_applied_for_book(other_book) == []
+    pending_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    rejected_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    await repo.mark_rejected(user, book, rejected_rec.id)
+
+    active = await repo.list_active_for_book(book)
+    active_ids = {r.id for r in active}
+    assert active_ids == {applied_rec.id, pending_rec.id}
+    assert rejected_rec.id not in active_ids
+    assert await repo.list_active_for_book(other_book) == []

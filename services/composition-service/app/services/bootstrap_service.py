@@ -13,6 +13,7 @@ auto-bootstrap CLARIFY): a human approves a plan, not a re-negotiated one.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -20,6 +21,8 @@ from app.clients.book_client import BookClient, BookClientError
 from app.db.models import PlanBootstrapProposal
 from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
+
+logger = logging.getLogger(__name__)
 
 
 class BootstrapService:
@@ -37,9 +40,14 @@ class BootstrapService:
         self, owner_user_id: UUID, book_id: UUID, run_id: UUID, bearer: str,
     ) -> PlanBootstrapProposal:
         """One deterministic diff pass — zero LLM calls for this scope (the
-        diff is title-matched against real chapters + prior applied
-        records; see §4.1.3 for why title, not a stable id, is the accepted
-        POC-scope key)."""
+        diff is title-matched against real chapters + every non-rejected
+        prior proposal for this book; see §4.1.3 for why title, not a
+        stable id, is the accepted POC-scope key, and §6 M1 for why
+        dedup covers PENDING/APPROVED proposals too, not just APPLIED
+        ones — a still-open proposal already claims its event_ids; without
+        this, calling propose() twice before applying the first would
+        silently double-offer (and, if both got applied, double-create)
+        the same chapters)."""
         run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
         if run is None:
             raise LookupError("run not found")
@@ -54,13 +62,13 @@ class BootstrapService:
         existing = await self._book.list_chapters(book_id, bearer)
         existing_titles = {c["title"] for c in existing if c.get("title")}
 
-        applied_records = await self._proposals.list_applied_for_book(book_id)
-        realized_titles: set[str] = set()
-        for rec in applied_records:
-            for item in rec.applied_results.values():
-                title = item.get("title") if isinstance(item, dict) else None
+        active_records = await self._proposals.list_active_for_book(book_id)
+        claimed_titles: set[str] = set()
+        for rec in active_records:
+            for ch in rec.diff.get("new_chapters", []):
+                title = ch.get("title") if isinstance(ch, dict) else None
                 if title:
-                    realized_titles.add(title)
+                    claimed_titles.add(title)
 
         new_chapters = [
             {
@@ -69,11 +77,18 @@ class BootstrapService:
                 "ordinal": ch.get("ordinal"),
             }
             for ch in package_chapters
-            if ch.get("title") not in existing_titles and ch.get("title") not in realized_titles
+            if ch.get("title") not in existing_titles and ch.get("title") not in claimed_titles
         ]
 
         diff = {"new_chapters": new_chapters}
-        return await self._proposals.create(owner_user_id, book_id, run_id, diff=diff)
+        record = await self._proposals.create(owner_user_id, book_id, run_id, diff=diff)
+        logger.info(
+            "bootstrap propose: book=%s run=%s proposal=%s new_chapters=%d "
+            "(skipped %d already-existing, %d already-claimed by another proposal)",
+            book_id, run_id, record.id, len(new_chapters),
+            len(existing_titles), len(claimed_titles),
+        )
+        return record
 
     async def get(
         self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
@@ -85,6 +100,7 @@ class BootstrapService:
     ) -> PlanBootstrapProposal:
         result = await self._proposals.mark_approved(owner_user_id, book_id, proposal_id)
         if result is not None:
+            logger.info("bootstrap approve: book=%s proposal=%s", book_id, proposal_id)
             return result
         existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
         if existing is None:
@@ -96,6 +112,7 @@ class BootstrapService:
     ) -> PlanBootstrapProposal:
         result = await self._proposals.mark_rejected(owner_user_id, book_id, proposal_id)
         if result is not None:
+            logger.info("bootstrap reject: book=%s proposal=%s", book_id, proposal_id)
             return result
         existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
         if existing is None:
@@ -115,11 +132,21 @@ class BootstrapService:
             existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
             if existing is None:
                 raise LookupError("proposal not found")
+            logger.info(
+                "bootstrap apply: book=%s proposal=%s claim missed, current status=%s "
+                "(safe no-op — another apply already ran or record isn't applicable)",
+                book_id, proposal_id, existing.status,
+            )
             return existing
 
         book = await self._book.get_book(book_id, bearer)
         original_language = (book or {}).get("original_language") or "en"
         new_chapters: list[dict[str, Any]] = claimed.diff.get("new_chapters", [])
+        logger.info(
+            "bootstrap apply: book=%s proposal=%s claimed, %d item(s) to apply "
+            "(%d already applied in a prior attempt)",
+            book_id, proposal_id, len(new_chapters), len(claimed.applied_results),
+        )
 
         try:
             for ch in new_chapters:
@@ -136,10 +163,15 @@ class BootstrapService:
                     result={"chapter_id": created.get("chapter_id"), "title": ch["title"]},
                 )
         except BookClientError as exc:
+            logger.warning(
+                "bootstrap apply FAILED partway: book=%s proposal=%s error=%s",
+                book_id, proposal_id, exc,
+            )
             await self._proposals.mark_failed(
                 owner_user_id, book_id, proposal_id, error_detail=str(exc),
             )
             raise
 
         applied = await self._proposals.mark_applied(owner_user_id, book_id, proposal_id)
+        logger.info("bootstrap apply: book=%s proposal=%s all items applied", book_id, proposal_id)
         return applied if applied is not None else claimed

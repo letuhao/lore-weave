@@ -19,9 +19,12 @@ PROPOSAL = uuid.uuid4()
 
 
 class StubGrant:
-    async def resolve_grant(self, book_id, caller):
+    def __init__(self, level=None):
         from app.grant_client import GrantLevel
-        return GrantLevel.EDIT
+        self._level = level if level is not None else GrantLevel.EDIT
+
+    async def resolve_grant(self, book_id, caller):
+        return self._level
 
 
 def _record(status="pending", diff=None, applied_results=None):
@@ -61,14 +64,37 @@ class StubBootstrapService:
         return self.record
 
 
-@pytest.fixture
-def client():
+def _client(grant_level=None):
     stub = StubBootstrapService()
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_bearer_token] = lambda: "tok"
-    app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant()
+    app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant(grant_level)
     app.dependency_overrides[get_bootstrap_service] = lambda: stub
-    yield TestClient(app), stub
+    return TestClient(app), stub
+
+
+@pytest.fixture
+def client():
+    c, stub = _client()
+    yield c, stub
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def view_only_client():
+    from app.grant_client import GrantLevel
+
+    c, stub = _client(GrantLevel.VIEW)
+    yield c, stub
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def no_grant_client():
+    from app.grant_client import GrantLevel
+
+    c, stub = _client(GrantLevel.NONE)
+    yield c, stub
     app.dependency_overrides.clear()
 
 
@@ -114,3 +140,42 @@ def test_get_known_proposal_200s(client):
     r = c.get(f"/v1/composition/books/{BOOK}/plan/bootstrap/{PROPOSAL}")
     assert r.status_code == 200
     assert r.json()["id"] == str(PROPOSAL)
+
+
+# ── M1 hardening: negative-path grant coverage (mirrors test_grant_gate.py) ──
+
+def test_propose_view_only_grant_403s(view_only_client):
+    c, _stub = view_only_client
+    r = c.post(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/bootstrap/propose")
+    assert r.status_code == 403
+
+
+def test_propose_no_grant_404s(no_grant_client):
+    c, _stub = no_grant_client
+    r = c.post(f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/bootstrap/propose")
+    assert r.status_code == 404
+
+
+def test_approve_view_only_grant_403s(view_only_client):
+    c, _stub = view_only_client
+    r = c.post(f"/v1/composition/books/{BOOK}/plan/bootstrap/{PROPOSAL}/approve")
+    assert r.status_code == 403
+
+
+def test_apply_view_only_grant_403s(view_only_client):
+    c, _stub = view_only_client
+    r = c.post(f"/v1/composition/books/{BOOK}/plan/bootstrap/{PROPOSAL}/apply")
+    assert r.status_code == 403
+
+
+def test_get_proposal_view_grant_is_allowed(view_only_client):
+    # GET only needs VIEW, unlike the mutating endpoints above.
+    c, _stub = view_only_client
+    r = c.get(f"/v1/composition/books/{BOOK}/plan/bootstrap/{PROPOSAL}")
+    assert r.status_code == 200
+
+
+def test_get_proposal_no_grant_404s(no_grant_client):
+    c, _stub = no_grant_client
+    r = c.get(f"/v1/composition/books/{BOOK}/plan/bootstrap/{PROPOSAL}")
+    assert r.status_code == 404

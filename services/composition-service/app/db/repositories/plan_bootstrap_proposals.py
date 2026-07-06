@@ -71,16 +71,22 @@ class PlanBootstrapProposalsRepo:
             row = await c.fetchrow(query, proposal_id, owner_user_id, book_id)
         return _row(row) if row else None
 
-    async def list_applied_for_book(
+    async def list_active_for_book(
         self, book_id: UUID,
     ) -> list[PlanBootstrapProposal]:
-        """All 'applied' records for this book — the propose step's second
-        dedup source (alongside the book's real current chapters) per spec
-        §4.1.3, since a real chapter row carries no back-reference to the
-        `package.chapters[]` entry that created it."""
+        """Every NON-rejected record for this book (pending/approved/
+        applying/applied/failed) — the propose step's second dedup source
+        (alongside the book's real current chapters), per spec §4.1.3 /
+        §6 M1. Deliberately NOT scoped to 'applied' only: a still-pending or
+        still-approved proposal already "claims" its diff's event_ids, so a
+        second propose() call before the first is applied must not re-offer
+        the same chapters (the M1 hardening fix for the double-propose /
+        cross-record race the POC's POST-REVIEW flagged). A real chapter row
+        carries no back-reference to the `package.chapters[]` entry that
+        created it, so this table is the only place that mapping lives."""
         query = f"""
         SELECT {_SELECT} FROM plan_bootstrap_proposal
-        WHERE book_id = $1 AND status = 'applied'
+        WHERE book_id = $1 AND status != 'rejected'
         ORDER BY created_at DESC
         """
         async with self._pool.acquire() as c:
