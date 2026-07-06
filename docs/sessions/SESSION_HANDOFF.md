@@ -155,6 +155,29 @@ POST-REVIEW gaps are all closed. Not yet done (explicitly out of this
 effort's scope, per the design doc's non-goals): bulk auto-draft,
 line-by-line approve/reject, and re-visiting whether the arc-picker fix
 should extend further (e.g. an empty-arcs self-check hint).
+**`/review-impl` on the whole M1-M4 effort — 1 HIGH + 3 MED + 1 LOW found,
+all fixed same day.** HIGH: `apply()` called `get_book()` OUTSIDE its
+try/except and only caught 2 known error types inside it — ANY other
+failure (a transient book-service blip, a DB hiccup) left the proposal
+stuck at `status='applying'` FOREVER, un-retriable (`claim_for_apply`
+only re-claims from `approved`/`failed`). Fixed: the whole post-claim
+body now sits inside one `try` with a broadened `except Exception`
+(doesn't swallow `CancelledError`). MED: recompiling the same run with a
+different arc left the PREVIOUS arc's stale bootstrap proposal on
+screen — `onCompile` never called `bootstrap.reset()`. MED: 2 REAL
+`plan_bootstrap_proposal` rows already in the live DB predate the
+`new_glossary_entities` key (pre-M2) — backend already defends with
+`.get(key, [])`, `BootstrapPanel` didn't (not reachable today, but
+`api.bootstrapGet` sits unused, inviting the crash the moment a "reload
+proposal" feature calls it). LOW: a malformed `checkpoint_state`
+pipeline_job_id could crash the whole (required) `propose()` call over
+an optional M3 enhancement. 6 new tests (2 against a real Postgres
+proving the stuck-state fix + resumable retry), full suite green (1595
+unit + 173 integration + 4488 frontend), live-verified no regression on
+the real dev stack. Documented-not-fixed: `_serialize_run`'s new `arcs`
+field adds a per-row query to the Runs LIST endpoint though only the
+single-run Compile picker needs it — bounded, low-impact today. Commit
+`6afae09e5`.
 
 ---
 
