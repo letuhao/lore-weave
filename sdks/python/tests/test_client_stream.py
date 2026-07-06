@@ -101,6 +101,31 @@ async def test_stream_happy_path_tokens_usage_done():
 
 
 @pytest.mark.asyncio
+async def test_stream_usage_carries_cache_split():
+    # Provider Context Strategy §7 — the prompt-cache split rides the usage event
+    # (Anthropic write+read here); absent fields default to None.
+    body = sse_body(
+        ("usage", '{"event":"usage","input_tokens":4112,"output_tokens":2,'
+                  '"cache_creation_tok":100,"cache_read_tok":4000}'),
+        ("done", '{"event":"done","finish_reason":"stop"}'),
+    )
+    with respx.mock(base_url=GATEWAY) as mock:
+        mock.post("/internal/llm/stream", params={"user_id": USER_ID}).respond(
+            status_code=200,
+            headers={"Content-Type": "text/event-stream"},
+            content=body,
+        )
+        client = make_internal_client()
+        events = [ev async for ev in client.stream(make_request())]
+        await client.aclose()
+
+    usage = next(e for e in events if isinstance(e, UsageEvent))
+    assert usage.input_tokens == 4112
+    assert usage.cache_creation_tok == 100
+    assert usage.cache_read_tok == 4000
+
+
+@pytest.mark.asyncio
 async def test_stream_tool_call_fragments_dispatched():
     # Phase 0b — the gateway re-frames tool-call deltas into `tool_call`
     # events. First fragment carries id+name (omits arguments_delta when

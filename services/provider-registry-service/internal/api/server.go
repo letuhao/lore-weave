@@ -537,11 +537,12 @@ func (s *Server) getInternalCredentials(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type credResponse struct {
-		ProviderKind      string `json:"provider_kind"`
-		ProviderModelName string `json:"provider_model_name"`
-		BaseURL           string `json:"base_url"`
-		APIKey            string `json:"api_key"`
-		ContextLength     *int   `json:"context_length"`
+		ProviderKind      string          `json:"provider_kind"`
+		ProviderModelName string          `json:"provider_model_name"`
+		BaseURL           string          `json:"base_url"`
+		APIKey            string          `json:"api_key"`
+		ContextLength     *int            `json:"context_length"`
+		Capabilities      map[string]bool `json:"capabilities"`
 	}
 
 	var out credResponse
@@ -600,6 +601,11 @@ WHERE platform_model_id=$1 AND status='active'
 		writeError(w, http.StatusBadRequest, "INTERNAL_VALIDATION_ERROR", "invalid model_source")
 		return
 	}
+
+	// Context Budget / Provider Context Strategy §3 — surface the provider kind's
+	// static caching capabilities so chat-service can pick a ContextStrategy and
+	// label its caching-monitoring frame from a CAPABILITY, not `if kind == "..."`.
+	out.Capabilities = provider.CapabilitiesFor(out.ProviderKind).AsMap()
 
 	writeJSON(w, http.StatusOK, out)
 }

@@ -708,6 +708,25 @@ components:
           minimum: 0
           description: Populated for thinking models (Qwen3.x, OpenAI o-series, etc.).
           nullable: true
+        cache_creation_tok:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: >-
+            Prompt-cache tokens WRITTEN this turn (premium-billed). Provider-normalized:
+            Anthropic cache_creation_input_tokens; absent/0 on auto-caching providers
+            (OpenAI/LM-Studio/vLLM) which have no separate write charge. Omitted when the
+            turn cached nothing. `input_tokens` still carries the full billed input volume
+            (Anthropic folds this back in) — uncached = input_tokens − creation − read.
+        cache_read_tok:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: >-
+            Prompt-cache tokens SERVED FROM cache this turn (cheap/free). Provider-normalized:
+            Anthropic cache_read_input_tokens, OpenAI/Responses
+            *_tokens_details.cached_tokens — the same concept under one name. Omitted when
+            the turn had no cache hit.
 
     DoneEvent:
       type: object

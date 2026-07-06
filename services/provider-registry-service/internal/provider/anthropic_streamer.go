@@ -56,6 +56,8 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 	finishReason := ""
 	inputTokens := 0
 	outputTokens := 0
+	cacheCreation := 0
+	cacheRead := 0
 	usageEmitted := false
 
 	err := readSSELines(ctx, body, func(eventName, data string) error {
@@ -140,6 +142,10 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			inputTokens = parsed.Message.Usage.InputTokens +
 				parsed.Message.Usage.CacheCreationInputTokens +
 				parsed.Message.Usage.CacheReadInputTokens
+			// Keep the split for the caching monitor (§7) even though it's folded
+			// into inputTokens above for billing volume.
+			cacheCreation = parsed.Message.Usage.CacheCreationInputTokens
+			cacheRead = parsed.Message.Usage.CacheReadInputTokens
 		case "content_block_start":
 			// text/thinking blocks: no-op — the first delta does the work.
 			// tool_use blocks: the start event is the ONLY carrier of the
@@ -204,11 +210,31 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			}
 			if !usageEmitted {
 				outputTokens = parsed.Usage.OutputTokens
-				if err := emit(StreamChunk{
+				// message_delta may also carry cache fields (some Anthropic
+				// versions report them terminally rather than on message_start);
+				// prefer a non-zero terminal value, else keep the message_start one.
+				if parsed.Usage.CacheCreationInputTokens > 0 {
+					cacheCreation = parsed.Usage.CacheCreationInputTokens
+				}
+				if parsed.Usage.CacheReadInputTokens > 0 {
+					cacheRead = parsed.Usage.CacheReadInputTokens
+				}
+				chunk := StreamChunk{
 					Kind:         StreamChunkUsage,
 					InputTokens:  inputTokens,
 					OutputTokens: outputTokens,
-				}); err != nil {
+				}
+				// Only attach the split when the turn actually cached something,
+				// so a non-cached turn emits no misleading cache fields.
+				if cacheCreation > 0 {
+					cc := cacheCreation
+					chunk.CacheCreationTokens = &cc
+				}
+				if cacheRead > 0 {
+					cr := cacheRead
+					chunk.CacheReadTokens = &cr
+				}
+				if err := emit(chunk); err != nil {
 					return err
 				}
 				usageEmitted = true

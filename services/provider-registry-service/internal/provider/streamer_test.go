@@ -82,6 +82,61 @@ data: [DONE]
 	}
 }
 
+func TestStreamOpenAICompat_CachedTokensSurfacedAsCacheRead(t *testing.T) {
+	// OpenAI / LM-Studio / vLLM report automatic prefix-cache hits in
+	// usage.prompt_tokens_details.cached_tokens (prompt_tokens already includes
+	// them). §7 monitor maps that to the normalized CacheReadTokens (read hits,
+	// no write charge on auto-caching → CacheCreationTokens stays nil).
+	body := `data: {"choices":[{"delta":{"content":"hi"},"index":0,"finish_reason":null}]}
+
+data: {"choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":1727,"completion_tokens":16,"total_tokens":1743,"prompt_tokens_details":{"cached_tokens":1711}}}
+
+data: [DONE]
+
+`
+	chunks := collectChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	if usage.InputTokens != 1727 {
+		t.Fatalf("InputTokens must stay the full prompt volume: got %d, want 1727", usage.InputTokens)
+	}
+	if usage.CacheReadTokens == nil || *usage.CacheReadTokens != 1711 {
+		t.Fatalf("CacheReadTokens: got %v, want 1711", usage.CacheReadTokens)
+	}
+	if usage.CacheCreationTokens != nil {
+		t.Fatalf("auto-cache has no write charge: CacheCreationTokens must be nil, got %v", usage.CacheCreationTokens)
+	}
+}
+
+func TestStreamOpenAICompat_NoCachedTokensEmitsNoSplit(t *testing.T) {
+	body := `data: {"choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}
+
+data: [DONE]
+
+`
+	chunks := collectChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	if usage.CacheReadTokens != nil || usage.CacheCreationTokens != nil {
+		t.Fatalf("no cached_tokens → no split: read=%v creation=%v",
+			usage.CacheReadTokens, usage.CacheCreationTokens)
+	}
+}
+
 func TestStreamOpenAICompat_ReasoningTokens(t *testing.T) {
 	// LM Studio thinking-model usage payload (qwen3.x format).
 	body := `data: {"choices":[{"delta":{"content":"answer"},"index":0,"finish_reason":null}]}

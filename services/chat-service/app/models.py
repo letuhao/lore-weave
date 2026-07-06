@@ -599,3 +599,9 @@ class ProviderCredentials(BaseModel):
     base_url: str
     api_key: str
     context_length: int | None
+    # Provider Context Strategy §3 — the provider kind's static caching capabilities
+    # (prompt_cache_control / responses_api / auto_prefix_cache), resolved by
+    # provider-registry (the single home) and consumed here to label the caching
+    # monitoring frame + pick a ContextStrategy. Defaults empty so a legacy/absent
+    # field degrades to "no special caching" (StatelessFullContext).
+    capabilities: dict[str, bool] = Field(default_factory=dict)

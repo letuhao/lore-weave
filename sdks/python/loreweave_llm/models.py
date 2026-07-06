@@ -47,6 +47,13 @@ class UsageEvent(_BaseEvent):
     input_tokens: int = 0
     output_tokens: int = 0
     reasoning_tokens: int | None = None
+    # Prompt-cache split (Provider Context Strategy §7 monitoring). None when the
+    # provider reported no cache activity. Provider-normalized: creation = tokens
+    # written to cache this turn (Anthropic only; premium-billed); read = tokens
+    # served from cache (Anthropic cache_read / OpenAI+Responses cached_tokens).
+    # input_tokens stays the full billed volume → uncached = input − creation − read.
+    cache_creation_tok: int | None = None
+    cache_read_tok: int | None = None
 
 
 class DoneEvent(_BaseEvent):
