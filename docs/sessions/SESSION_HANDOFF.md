@@ -1,5 +1,35 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**PlanForge auto-bootstrap — CLARIFY+DESIGN done, POC scoped, NO BUILD yet, 2026-07-06.**
+[`docs/specs/2026-07-06-planforge-auto-bootstrap.md`](../specs/2026-07-06-planforge-auto-bootstrap.md).
+User asked: does planning from a completely empty book auto-create the ontology/KG/arc/chapter/
+scene/beat? **Traced the real code (2 research passes) — answer is no, and worse than assumed.**
+`compile()` only ever produces a JSON `PlanningPackage`; `run_pipeline=true` additionally seeds
+Glossary **character** entities but via an INDEPENDENT `propose_cast` LLM call that ignores the
+spec's own already-parsed character/mechanic data (`compile_artifacts`'s own `glossary_seeds` is
+dead code, computed but never POSTed anywhere); Neo4j KG sync then chains off that (silent no-op
+if Neo4j isn't configured). **No planning code path, in any mode, ever creates a real book-service
+`Chapter` row** — `book_client.py` doesn't even have a `create_chapter` method. "Scene" IS a real
+DB table (`book-service.scenes`) but only populated by the document-IMPORT parser, then
+immediately flattened back into one chapter body — a read-only KG-extraction index, not an
+editable unit. "Beat" has NO persisted representation anywhere — pure in-memory JSON inside the
+Stage 0-5 pipeline, discarded after the job response. **The smallest real editable unit in the
+whole architecture is the entire Chapter's Tiptap body** — this is a design constraint to respect,
+not a gap to invent around.
+User's direction: build a multi-step auto-bootstrap workflow, but **POC first, done rigorously**
+(their words: "cân poc và làm nghiêm ngặt vì nó có rất nhiều bước, khá là lớn"). Proposed 5-step
+workflow in the spec: [A] create real chapter shells from `package.chapters[]` (NEW — zero prior
+art, the foundational unknown) → [B] fix glossary seeding to use the spec's own data (bug fix) →
+[C] wire Stage 0-5 scene/beat plans as per-chapter drafting CONTEXT, not new DB rows → [D] reach
+the already-working `run_chapter_generate` per real chapter_id → [E] KG sync falls out for free
+once [B] is correct. **Recommended POC scope: [A] ALONE** — chapter-shell creation +
+`event_id↔chapter_id` mapping, live-verified in the Studio's Manuscript Navigator, nothing else.
+3 open questions logged in the spec (mapping storage, ordinal collision on non-empty books,
+idempotency on re-compile) for the next CLARIFY checkpoint before even the POC's own BUILD.
+**Correctly classified XL — this doc is CLARIFY+DESIGN only, no code changes.**
+
+---
+
 **`D-PLANFORGE-GUI-AUDIT` follow-up — draft HTML mockup for a Planner panel redesign, 2026-07-06.**
 User confirmed the root diagnosis: the shipped Planner panel (see this file's earlier
 `D-PLANFORGE-GUI-AUDIT` entry — P0 crash fixed same day + 4 UX gaps found) is a **leaky
