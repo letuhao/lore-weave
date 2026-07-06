@@ -17,8 +17,23 @@ integration). Live-verified post-rebuild: propose against the same real
 run now correctly logs "already-claimed by another proposal" and returns
 an empty diff (both target chapters already real from the POC's earlier
 live-verify). Commit `c5a9caf2d`.
-**Remaining milestones (M2 glossary wiring, M3 scene/beat+draft
-reachability, M4 real plain-language UI) not started** — continuing next.
+**M2 (real [B] glossary wiring) — done + live-verified, same day.** Wired
+compile()'s already-correct `glossary_seeds` (previously dead code) into the
+gate as a second diff-item type (`new_glossary_entities`), calling a NEW
+`glossary_client.seed_entities_or_raise()` at apply time (distinct from the
+existing degrade-safe `seed_entities` used by read-time context assembly —
+this gate needs failures to surface, not silently degrade). **Discovered
+mid-build**: glossary-service requires a book's ontology to be "adopted"
+first (`GLOSS_BOOK_NOT_SCAFFOLDED`, 422) — a real, separate, user-driven
+action (picking genres/kinds via the Graph Schema tab), correctly scoped
+OUT of this gate rather than auto-triggered. Surfaced as an actionable 422
+with a clear message; the proposal is marked `failed` (resumable — retry
+after adopting succeeds). 5 new tests, full suite green (1595 unit + 166
+integration). Live-verified: seeded a real glossary entity ("Nữ chính")
+through the gate against the real dev stack, confirmed present in
+glossary-service's own DB with correct attributes/tags. Commit `b606a70a3`.
+**Remaining milestones (M3 scene/beat+draft reachability, M4 real
+plain-language UI) not started** — continuing next.
 
 ---
 
