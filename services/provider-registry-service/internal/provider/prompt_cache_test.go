@@ -100,23 +100,6 @@ func TestAnthropicCache_SystemBlockList_MarksLast(t *testing.T) {
 	}
 }
 
-func TestLmStudioCache_DefaultOnAndKillSwitch(t *testing.T) {
-	// default (LLM_PROMPT_CACHE unset) → cache_prompt set (lm_studio is unambiguously
-	// llama.cpp — safe to default-on, no vLLM on this adapter to 400).
-	body := map[string]any{}
-	applyLmStudioPromptCache(body)
-	if body["cache_prompt"] != true {
-		t.Fatal("LM Studio prompt cache must be ON by default")
-	}
-	// kill-switch disables
-	t.Setenv("LLM_PROMPT_CACHE", "0")
-	body = map[string]any{}
-	applyLmStudioPromptCache(body)
-	if _, ok := body["cache_prompt"]; ok {
-		t.Fatal("LLM_PROMPT_CACHE=0 must disable LM Studio cache_prompt")
-	}
-}
-
 func TestAnthropicCache_BelowMinimumTools_NotMarked(t *testing.T) {
 	// a trivially small tool set is below the cache minimum → don't spend a breakpoint
 	body := map[string]any{
@@ -182,7 +165,9 @@ func TestAnthropicAdapter_Stream_WiresCacheControl(t *testing.T) {
 	}
 }
 
-func TestLmStudioAdapter_Stream_WiresCachePrompt(t *testing.T) {
+func TestLmStudioAdapter_Stream_NeverSendsCachePrompt(t *testing.T) {
+	// LM Studio caches automatically server-side and IGNORES cache_prompt on its
+	// chat endpoint (live-verified) — so we send nothing, same as OpenAI/vLLM.
 	var got map[string]any
 	srv := captureRequestBody(t, func(b map[string]any) { got = b })
 	defer srv.Close()
@@ -191,8 +176,8 @@ func TestLmStudioAdapter_Stream_WiresCachePrompt(t *testing.T) {
 	input := map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hi"}}}
 	_ = a.Stream(context.Background(), srv.URL, "", "local-model", input, func(StreamChunk) error { return nil })
 
-	if got["cache_prompt"] != true {
-		t.Fatalf("lmStudio adapter did not wire cache_prompt=true, body=%#v", got)
+	if _, ok := got["cache_prompt"]; ok {
+		t.Fatal("LM Studio ignores cache_prompt on chat/completions — must not send it")
 	}
 }
 

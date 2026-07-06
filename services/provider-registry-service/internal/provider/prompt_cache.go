@@ -24,16 +24,25 @@ import (
 //	Gemini 2.5+ / DeepSeek     : AUTOMATIC (implicit). Nothing to send.
 //	vLLM (local)               : AUTOMATIC (--enable-prefix-caching, on by default)
 //	                             AND rejects unknown request fields with HTTP 400 —
-//	                             so we must NOT send `cache_prompt` to it.
-//	llama.cpp / LM Studio       : honor `cache_prompt:true` (a llama.cpp extension).
+//	                             so we must NOT send anything.
+//	LM Studio (local)          : AUTOMATIC server-side KV-prefix reuse (on by
+//	                             default). Its OpenAI-compat chat endpoint IGNORES
+//	                             `cache_prompt` (that's a llama.cpp native-endpoint
+//	                             param) — live-verified — so we send nothing here.
 //
-// ⇒ Anthropic needs an explicit request change (default ON). OpenAI / Gemini /
-// DeepSeek / vLLM cache automatically (already "on by default" — sending anything
-// would at best no-op and at worst 400 vLLM, so their adapter sends NOTHING).
-// LM Studio's llama.cpp `cache_prompt` is applied in its OWN dedicated adapter
-// (also default ON) — safe there because that adapter is reached only for
-// lm_studio credentials, so there is no vLLM/OpenAI on the path to 400. The
-// provider IDENTITY (which adapter) is the gate, not a fragile base_url guess.
+// ⇒ Anthropic is the ONLY provider that needs an explicit request change
+// (default ON). Everyone else — OpenAI / Gemini / DeepSeek / vLLM AND LM Studio —
+// caches the stable prefix AUTOMATICALLY (server-side KV-prefix reuse, already on
+// by default), so their adapters send NOTHING.
+//
+// LM Studio note (live-verified 2026-07-06 against a running instance): its
+// OpenAI-compat `/v1/chat/completions` ACCEPTS but IGNORES `cache_prompt` (a
+// llama.cpp *native /completion* param, not honored on the chat endpoint), and
+// its cache-token visibility lives on the separate `/v1/responses` API
+// (`previous_response_id` → `input_tokens_details.cached_tokens`). So sending
+// `cache_prompt` here is a pure no-op — we don't. (Caching still won't help an
+// A3B/A4B MoE model — LM Studio bug #1563 — but that's a server/model limit no
+// request field can change.)
 
 // promptCacheEnabled — deploy kill-switch for the Anthropic path (default ON).
 // Disable platform-wide with LLM_PROMPT_CACHE=0 (or false/off).
@@ -95,15 +104,3 @@ func applyAnthropicPromptCache(body map[string]any) {
 	}
 }
 
-// applyLmStudioPromptCache sets cache_prompt=true for LM Studio, whose llama.cpp
-// backend honors the field (prefix KV reuse). Default ON via the LLM_PROMPT_CACHE
-// kill-switch. Unlike the shared openai adapter (which also serves vLLM / real
-// OpenAI — both 400 on unknown fields), this runs ONLY on the dedicated
-// lmStudioAdapter, so the provider identity is the gate: there is no vLLM/OpenAI
-// on this path to break, so it's safe to default-on with no base_url guard.
-func applyLmStudioPromptCache(body map[string]any) {
-	if !promptCacheEnabled() {
-		return
-	}
-	body["cache_prompt"] = true
-}
