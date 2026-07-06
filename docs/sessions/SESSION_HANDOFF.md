@@ -36,6 +36,16 @@ status (partial-failure visible, not a bare retry). POC scope revised to prove t
 together, not [A] in isolation. 4 open questions now (added: record storage shape — dedicated
 table leaning, given it's a real state machine not a static blob; reject semantics — kept for
 audit like Enrichment's retract, not deleted). Commit `a2d9d6a83`.
+**CLARIFY closed same day — all 4 open questions resolved with fresh code evidence** (book-service's
+`createChapter` Go handler + OpenAPI contract, Enrichment's `enrichment_proposal` schema,
+`plan_artifact`'s own schema). Record lives in a NEW dedicated table `plan_bootstrap_proposal`
+(confirmed `plan_artifact` is write-once with no status/UPDATE path — wrong fit), scoped by
+`book_id`+`owner_user_id`+`run_id` per tenancy rules, modeled on `enrichment_proposal`'s
+status-enum + transition-guard-trigger shape. Ordinal collisions are a non-issue — book-service
+already auto-appends when `sort_order` is omitted. Idempotency dedups against
+`book_client.list_chapters()` (existing method, no new code) + prior applied records' `applied_results`.
+Reject keeps `status='rejected'` for audit. Bonus: POC's propose step needs **zero LLM calls** —
+pure deterministic diffing. Moving to PLAN+BUILD on the POC next. Commit `0f5eeb669`.
 
 ---
 
