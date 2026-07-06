@@ -1,6 +1,38 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**PlanForge auto-bootstrap — CLARIFY+DESIGN done, POC scoped, NO BUILD yet, 2026-07-06.**
+**PlanForge auto-bootstrap POC — BUILT + live-verified end-to-end, 2026-07-06.**
+The gate (propose→record→approve→apply) + [A] chapter-shell creation, per
+[`docs/plans/2026-07-06-planforge-auto-bootstrap-poc.md`](../plans/2026-07-06-planforge-auto-bootstrap-poc.md).
+New: `plan_bootstrap_proposal` table (composition-service migrate.py), repo
+`app/db/repositories/plan_bootstrap_proposals.py` (atomic claim via
+conditional UPDATE, resumable-after-failure), `app/services/bootstrap_service.py`
+(propose is pure deterministic diffing — zero LLM calls for this scope — via
+the already-existing `book_client.list_chapters()` + prior applied records,
+dedup by title per the accepted POC approximation), `app/routers/plan_bootstrap.py`
+(propose/approve/reject/apply/get), `book_client.create_chapter()` (never
+sends `sort_order` — book-service auto-appends). 17 new tests (5 repo + 6
+service + 6 router), all green; full composition-service suite (1589 unit +
+161 integration) still green. **Live-verified against the real dev stack**
+(rebuilt+restarted composition-service, real JWT via gateway login): proposed
+against book `Ma Nữ Nghịch Thiên (POC)` (019f1783-ebb4…) + its real compiled
+run, approved, applied — 2 real chapters ("Event 1 — Nhập Môn", "Event 2 —
+Biến Hóa Đầu Tiên") created via book-service, appended at sort_order 13/14
+after the book's existing 12 chapters (no collision — confirmed book-service's
+auto-append), visible in the real Studio Chapter Browser (screenshot taken,
+not committed). Re-applying the same record was confirmed a safe no-op (no
+duplicate chapters). **These 2 chapters are now real, intentional data in the
+test account's own POC book** (same account this repo's Test Account section
+designates for browser smokes) — left in place as live evidence, not rolled
+back.
+Explicitly out of POC scope (unchanged from the design): real [B] glossary
+POST wiring, [C]/[D] (drafting context + reachability), bulk auto-draft,
+line-by-line approve/reject, polished plain-language review UI (raw JSON
+from `GET .../bootstrap/{id}` is the POC's review surface). These are their
+own future scoped PLAN/BUILD passes.
+
+---
+
+**PlanForge auto-bootstrap — CLARIFY+DESIGN done, POC scoped, NO BUILD yet, 2026-07-06 (superseded by the BUILD above).**
 [`docs/specs/2026-07-06-planforge-auto-bootstrap.md`](../specs/2026-07-06-planforge-auto-bootstrap.md).
 User asked: does planning from a completely empty book auto-create the ontology/KG/arc/chapter/
 scene/beat? **Traced the real code (2 research passes) — answer is no, and worse than assumed.**

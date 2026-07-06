@@ -41,7 +41,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 _TABLES = [
-    "plan_artifact", "plan_run",
+    "plan_bootstrap_proposal", "plan_artifact", "plan_run",
     "composition_daily_progress",
     "composition_progress_baseline",
     "style_profile",
@@ -1755,3 +1755,122 @@ async def test_plan_runs_roundtrip_and_tenancy(pool):
 
     dup = await repo.find_by_checksum(user, book, "chk1")
     assert dup is not None and dup.id == run.id
+
+
+# ─────────── plan_bootstrap_proposal (PlanForge auto-bootstrap gate POC) ───────────
+
+async def _make_run(pool, user, book):
+    from app.db.repositories.plan_runs import PlanRunsRepo
+
+    return await PlanRunsRepo(pool).create(
+        user, book, mode="rules", source_checksum="chk-bootstrap",
+        source_markdown="# plan", status="compiled",
+    )
+
+
+async def test_bootstrap_proposal_roundtrip_and_tenancy(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    other = uuid.uuid4()
+    run = await _make_run(pool, user, book)
+
+    rec = await repo.create(
+        user, book, run.id, diff={"new_chapters": [{"event_id": "e1", "title": "Ch 1"}]},
+    )
+    assert rec.status == "pending"
+    assert await repo.get_for_owner(user, book, rec.id) is not None
+    assert await repo.get_for_owner(other, book, rec.id) is None
+
+
+async def test_bootstrap_proposal_approve_reject_are_guarded_transitions(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    run = await _make_run(pool, user, book)
+    rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+
+    # A second approve on an already-approved record is a no-op miss, not an error.
+    approved = await repo.mark_approved(user, book, rec.id)
+    assert approved is not None and approved.status == "approved"
+    assert await repo.mark_approved(user, book, rec.id) is None
+
+    # Rejecting an approved (not-yet-applied) record is allowed and kept for audit.
+    rejected = await repo.mark_rejected(user, book, rec.id)
+    assert rejected is not None and rejected.status == "rejected"
+    still_there = await repo.get_for_owner(user, book, rec.id)
+    assert still_there is not None and still_there.status == "rejected"
+
+
+async def test_bootstrap_proposal_claim_for_apply_is_atomic(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    run = await _make_run(pool, user, book)
+    rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+
+    # Can't claim a pending (not yet approved) record.
+    assert await repo.claim_for_apply(user, book, rec.id) is None
+
+    await repo.mark_approved(user, book, rec.id)
+    claimed = await repo.claim_for_apply(user, book, rec.id)
+    assert claimed is not None and claimed.status == "applying"
+
+    # A second concurrent/retried claim on the same (now 'applying') record misses.
+    assert await repo.claim_for_apply(user, book, rec.id) is None
+
+    await repo.mark_item_applied(
+        user, book, rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
+    )
+    applied = await repo.mark_applied(user, book, rec.id)
+    assert applied is not None
+    assert applied.status == "applied"
+    assert applied.applied_results == {"e1": {"chapter_id": "c1", "title": "Ch 1"}}
+
+    # Fully-applied record can never be re-claimed (safe no-op at the service layer).
+    assert await repo.claim_for_apply(user, book, rec.id) is None
+
+
+async def test_bootstrap_proposal_failed_apply_is_resumable(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    run = await _make_run(pool, user, book)
+    rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    await repo.mark_approved(user, book, rec.id)
+    await repo.claim_for_apply(user, book, rec.id)
+
+    failed = await repo.mark_failed(user, book, rec.id, error_detail="book-service 502")
+    assert failed is not None and failed.status == "failed" and failed.error_detail == "book-service 502"
+
+    # A 'failed' record CAN be re-claimed (resume), unlike 'applied'.
+    reclaimed = await repo.claim_for_apply(user, book, rec.id)
+    assert reclaimed is not None and reclaimed.status == "applying"
+
+    done = await repo.mark_applied(user, book, rec.id)
+    assert done is not None and done.status == "applied" and done.error_detail is None
+
+
+async def test_bootstrap_proposal_list_applied_for_book_scopes_by_book(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    other_book = uuid.uuid4()
+    run = await _make_run(pool, user, book)
+
+    rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    await repo.mark_approved(user, book, rec.id)
+    await repo.claim_for_apply(user, book, rec.id)
+    await repo.mark_item_applied(
+        user, book, rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
+    )
+    await repo.mark_applied(user, book, rec.id)
+
+    applied_for_book = await repo.list_applied_for_book(book)
+    assert [r.id for r in applied_for_book] == [rec.id]
+    assert await repo.list_applied_for_book(other_book) == []

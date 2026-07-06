@@ -33,6 +33,7 @@ from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
 from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -43,6 +44,7 @@ from app.services.plan_forge_service import PlanForgeService
 
 if TYPE_CHECKING:  # runtime import stays deferred (the service pulls in the engine)
     from app.services.authoring_run_service import AuthoringRunService
+    from app.services.bootstrap_service import BootstrapService
 
 
 async def get_plan_runs_repo() -> PlanRunsRepo:
@@ -57,6 +59,18 @@ async def get_plan_forge_service() -> PlanForgeService:
         GenerationJobsRepo(get_pool()),
         WorksRepo(get_pool()),
         llm=get_llm_client(),
+    )
+
+
+async def get_bootstrap_service() -> "BootstrapService":
+    """PlanForge auto-bootstrap gate (POC) — see
+    docs/specs/2026-07-06-planforge-auto-bootstrap.md §3.1."""
+    from app.services.bootstrap_service import BootstrapService
+
+    return BootstrapService(
+        PlanBootstrapProposalsRepo(get_pool()),
+        PlanRunsRepo(get_pool()),
+        get_book_client(),
     )
 
 

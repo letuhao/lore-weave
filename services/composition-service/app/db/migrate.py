@@ -1087,6 +1087,38 @@ CREATE TABLE IF NOT EXISTS authoring_run_units (
 -- D5 additive column for DBs that created authoring_run_units before D5 (the
 -- CREATE TABLE above is IF NOT EXISTS — it does not evolve an existing table).
 ALTER TABLE authoring_run_units ADD COLUMN IF NOT EXISTS critic_verdict JSONB;
+
+-- ── plan_bootstrap_proposal (PlanForge auto-bootstrap POC): the
+-- propose→record→approve→apply structural-mutation quarantine gate
+-- (docs/specs/2026-07-06-planforge-auto-bootstrap.md §3.1). One
+-- deterministic/LLM PROPOSE pass computes `diff` ONCE; APPLY performs the
+-- real mutations (book-service chapter creation) only after human approval
+-- and never re-runs propose. The pending→approved→applying→applied|failed
+-- transition is enforced by the repository's conditional
+-- `UPDATE ... WHERE status='approved'` claim (no DB trigger for this POC's
+-- small 5-state DAG — contrast lore-enrichment-service's `enrichment_proposal`,
+-- which has a full trigger-guarded DAG; revisit if this generalizes beyond
+-- one consumer). Tenancy: book_id + owner_user_id + run_id, per User
+-- Boundaries & Tenancy (a per-book resource, never a shared/global row).
+CREATE TABLE IF NOT EXISTS plan_bootstrap_proposal (
+  id                UUID PRIMARY KEY DEFAULT uuidv7(),
+  run_id            UUID NOT NULL REFERENCES plan_run(id) ON DELETE CASCADE,
+  book_id           UUID NOT NULL,
+  owner_user_id     UUID NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pending',
+  diff              JSONB NOT NULL,
+  applied_results   JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_detail      TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT plan_bootstrap_proposal_status_chk CHECK (
+    status IN ('pending', 'approved', 'rejected', 'applying', 'applied', 'failed')
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_plan_bootstrap_proposal_book
+  ON plan_bootstrap_proposal(book_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_plan_bootstrap_proposal_run
+  ON plan_bootstrap_proposal(run_id, created_at DESC);
 """
 
 
