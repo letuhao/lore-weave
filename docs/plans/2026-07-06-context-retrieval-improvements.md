@@ -54,6 +54,18 @@
 > **cheaper lever**: trim the L3 passage-count / glossary budget (direct token win, no tool-calling
 > risk) + fix knowledge's `estimate_tokens` CJK over-count (~40%: 5091 est vs 3636 actual — Inspector
 > token numbers are inflated for non-Latin books).
+>
+> **UPDATE 5 — the cheaper lever MEASURED (2026-07-07):**
+> [`../eval/context-budget/M3-tokenlever-tuning-2026-07-07.md`](../eval/context-budget/M3-tokenlever-tuning-2026-07-07.md).
+> (a) **`estimate_tokens` CJK over-count FIXED** (`e37133d0e`): cl100k_base → o200k_base (GPT-4o /
+> modern-local tokenizer). English ~unchanged, CJK drops ~40% to match reality; honest Inspector
+> numbers + fair CJK budget. For under-6000 blocks (common) it's pure relabeling. (b) **Passage/glossary
+> content trim: measured, NOT justified.** A passage top-K sweep (K∈{10,8,6,4}) on the wangu goldens was
+> flat within judge noise, the query mix is mostly SPECIFIC_ENTITY (pool=5, already tight), and the
+> persistent 0-scores are **retrieval MISSES** (answer not retrieved), not over-provisioning. Glossary
+> is near its 800-tok budget with load-bearing badges. The block is 3636 real tok — under the 6000 cap,
+> so no budget pressure. Cutting would risk the M1a/M4 recall gains for no gain. **The real remaining
+> lever is retrieval RECALL** (extraction/embedding gaps on the missed queries), not budget trimming.
 
 **Date:** 2026-07-06 · **Branch:** `feat/context-budget-law` · **Status:** M4 measured + answer-quality
 A/B run (through a `/review-impl` correction) → **M1a = GO, but a measured one.** Evidence
