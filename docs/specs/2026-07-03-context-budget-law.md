@@ -197,6 +197,7 @@ Draft mockup: [`design-drafts/context-management/context-compiler-inspector.html
 - [x] endpoint: turn-trace list `GET …/context-trace?session&limit` — server windows by `limit`; page/filter run **client-side** over the loaded set (a session's turn count is bounded — see router) (BE) — ✓test:services/chat-service/tests/test_context_trace_router.py::test_limit_forwarded_and_capped
 - [x] endpoint: single-turn trace detail (BE) — ✓test:services/chat-service/tests/test_context_trace_router.py::test_returns_turns_with_full_frame_and_user_message
 - [x] all telemetry owner-gated + session-scoped (BE) — ✓test:services/chat-service/tests/test_context_trace_router.py::test_owner_gate_404_and_no_row_query
+- [x] `caching` section — per-turn strategy + cache-token split (create/read/uncached) + hit_rate / cost_delta_ratio / write_premium + rolling thrashing verdict, surfaced on the contextBudget frame not a stored-but-unread blob (BE — Provider Context Strategy §7–§8) — ✓test:services/chat-service/tests/test_caching_monitor.py::test_caching_metrics_surfaced_on_context_budget_frame
 
 **Top bar:**
 - [x] tool title + subtitle (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::renders the tool title and subtitle

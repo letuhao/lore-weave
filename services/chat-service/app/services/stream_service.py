@@ -112,6 +112,7 @@ from app.services.compact_service import (
     persist_auto_compact,
     summarize_for_compaction as _summarize_for_compaction,
 )
+from app.services.caching_monitor import build_caching_metrics, detect_thrashing
 from app.services.token_budget import (
     ContextBreakdown,
     compute_budget,
@@ -147,6 +148,11 @@ class _Usage:
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    # Prompt-cache split (Provider Context Strategy §7). Summed across a turn's
+    # tool-loop iterations, same as prompt_tokens. 0 when the provider reported no
+    # cache activity. Feeds the contextBudget `caching` monitoring section.
+    cache_creation_tok: int = 0
+    cache_read_tok: int = 0
 
 
 _INLINE_EFFORT_RE = re.compile(
@@ -349,6 +355,8 @@ async def _stream_via_gateway(
                 last_usage = _Usage(
                     prompt_tokens=ev.input_tokens,
                     completion_tokens=ev.output_tokens,
+                    cache_creation_tok=ev.cache_creation_tok or 0,
+                    cache_read_tok=ev.cache_read_tok or 0,
                 )
             elif isinstance(ev, DoneEvent):
                 finish_reason = ev.finish_reason
@@ -709,6 +717,11 @@ async def _stream_with_tools(
         # run so the final usage is summed across both runs (design D10).
         total_input = seed_usage[0] if seed_usage else 0
         total_output = seed_usage[1] if seed_usage else 0
+        # Prompt-cache split (§7) summed across this turn's tool-loop iterations, the
+        # same way total_input sums the re-sent prompts. Not seeded from a resume — a
+        # suspended run's cache split is transport-ephemeral, not billed state.
+        total_cache_creation = 0
+        total_cache_read = 0
         # W1/observability (context-explosion fix #5) — count provider completions
         # this turn. `total_input` is the SUM across them (each tool-loop iteration
         # re-sends the full prompt incl. tool schemas), so a turn's input_tokens
@@ -931,6 +944,8 @@ async def _stream_with_tools(
                     elif isinstance(ev, UsageEvent):
                         total_input += ev.input_tokens
                         total_output += ev.output_tokens
+                        total_cache_creation += ev.cache_creation_tok or 0
+                        total_cache_read += ev.cache_read_tok or 0
                         llm_call_count += 1
                     elif isinstance(ev, DoneEvent):
                         finish_reason = ev.finish_reason
@@ -1574,7 +1589,9 @@ async def _stream_with_tools(
                "finish_reason": "stop",
                "llm_call_count": llm_call_count,
                "usage": _Usage(prompt_tokens=total_input,
-                               completion_tokens=total_output)}
+                               completion_tokens=total_output,
+                               cache_creation_tok=total_cache_creation,
+                               cache_read_tok=total_cache_read)}
     finally:
         await client.aclose()
 
@@ -2947,6 +2964,46 @@ async def _emit_chat_turn(
                     overflowed=bool(_compaction is not None and _compaction.overflowed),
                     wire=(trace is not None and _wire_saved > 0),
                 )
+                # ── Prompt-cache monitoring section (§7–§8) ─────────────────
+                # Build the per-turn caching metrics from this turn's cache split
+                # (summed across the tool-loop) + the provider's declared caching
+                # capabilities, then fold in the rolling thrashing verdict. Surfaced
+                # on the frame + persisted so caching is PROVEN-BY-EFFECT, not silent.
+                _caps = getattr(creds, "capabilities", None) or {}
+                _cache_create = getattr(last_usage, "cache_creation_tok", 0) if last_usage else 0
+                _cache_read = getattr(last_usage, "cache_read_tok", 0) if last_usage else 0
+                _caching = build_caching_metrics(
+                    cache_creation_tok=_cache_create,
+                    cache_read_tok=_cache_read,
+                    input_tok=int(input_tok or 0),
+                    capabilities=_caps,
+                )
+                # Rolling thrashing verdict — only meaningful for explicit-cache
+                # providers (auto-cache can't thrash → detect_thrashing returns None,
+                # so skip the query entirely for local/OpenAI). Read the last few
+                # persisted splits for this session and fold THIS turn in.
+                _thrashing = None
+                if _caps.get("prompt_cache_control"):
+                    try:
+                        _rows = await conn.fetch(
+                            """
+                            SELECT (context_breakdown->'caching'->>'create_tok')::int AS c,
+                                   (context_breakdown->'caching'->>'read_tok')::int AS r
+                            FROM chat_messages
+                            WHERE session_id=$1 AND role='assistant' AND branch_id=0
+                              AND context_breakdown ? 'caching'
+                            ORDER BY sequence_num DESC LIMIT 5
+                            """,
+                            session_id,
+                        )
+                        _window = [(_cache_create, _cache_read)] + [
+                            (row["c"], row["r"]) for row in _rows
+                        ]
+                        _thrashing = detect_thrashing(_window, capabilities=_caps)
+                    except Exception:  # degrade-safe: monitoring never breaks a turn
+                        _thrashing = None
+                _caching["thrashing"] = _thrashing
+
                 _ctx_payload = context_budget_event(
                     compute_budget(
                         used_tokens=int(input_tok or 0),
@@ -2967,6 +3024,7 @@ async def _emit_chat_turn(
                     retrieval_mode=settings.retrieval_mode,
                     intent=derive_intent(entity_presence),
                     llm_call_count=_llm_call_count,
+                    caching=_caching,
                 )
 
                 await conn.execute(

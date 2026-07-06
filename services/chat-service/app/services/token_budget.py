@@ -242,6 +242,7 @@ def context_budget_event(
     retrieval_mode: str | None = None,
     intent: str | None = None,
     llm_call_count: int | None = None,
+    caching: dict | None = None,
 ) -> dict:
     """The full contextBudget frame payload — STRICTLY ADDITIVE over
     ContextBudget.to_event(): the original {used_tokens, context_length,
@@ -283,4 +284,11 @@ def context_budget_event(
         # ≈ used_tokens / llm_call_count — this is what makes a 137K "turn" on an
         # 8K conversation legible instead of an unexplained gap.
         payload["llm_call_count"] = int(llm_call_count)
+    if caching is not None:
+        # Prompt-cache monitoring section (Provider Context Strategy §7–§8): the
+        # per-turn strategy + cache-token split + derived hit-rate / cost-delta /
+        # write-premium, plus the rolling thrashing verdict. Built by
+        # `caching_monitor.build_caching_metrics` (+ detect_thrashing) so caching is
+        # PROVEN-BY-EFFECT — surfaced to the Inspector, not a stored-but-unread blob.
+        payload["caching"] = caching
     return payload
