@@ -20,8 +20,12 @@ import os
 def stateful_enabled() -> bool:
     """The deploy flag, read the SAME way the gateway reads it (§5 flag-consistency):
     chat-service must only send a DELTA when it is certain the gateway will run stateful.
-    Default OFF; enable with LLM_STATEFUL_CACHE=1/true/on."""
-    return os.getenv("LLM_STATEFUL_CACHE", "").strip().lower() in ("1", "true", "on")
+    Default ON — stateful prompt caching is the industry standard (99% cache on the
+    re-sent tool/history prefix, reasoning fully controllable, degrade-safe E1). Disable
+    platform-wide with LLM_STATEFUL_CACHE=0/false/off. Only providers declaring the
+    responses_api capability (openai / lm_studio) ever go stateful; all others stay on the
+    unified chat/completions path regardless."""
+    return os.getenv("LLM_STATEFUL_CACHE", "").strip().lower() not in ("0", "false", "off")
 
 
 def _trigger_ratio() -> float:

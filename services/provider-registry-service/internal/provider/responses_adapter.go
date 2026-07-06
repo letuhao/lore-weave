@@ -53,13 +53,15 @@ func responsesDefaultMaxOutput() int {
 	return 16384
 }
 
-// StatefulCacheEnabled — the deploy flag for the stateful strategy (default OFF;
-// staged rollout per spec §11). Enable with LLM_STATEFUL_CACHE=1/true/on. Independent
+// StatefulCacheEnabled — the deploy flag for the stateful strategy (default ON; stateful
+// prompt caching is the industry standard and the transport is capability-gated +
+// degrade-safe). Disable platform-wide with LLM_STATEFUL_CACHE=0/false/off. Independent
 // of LLM_PROMPT_CACHE (which gates the Anthropic cache_control path). Exported so the
-// gateway handler applies the SAME gate before forwarding the stateful marker.
+// gateway handler applies the SAME gate (read identically to chat-service's
+// stateful_enabled) — both default ON so the two processes agree when the env is unset.
 func StatefulCacheEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_STATEFUL_CACHE")))
-	return v == "1" || v == "true" || v == "on"
+	return v != "0" && v != "false" && v != "off"
 }
 
 // isStatefulRequest reports whether the input asks for the stateful transport. The

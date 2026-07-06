@@ -296,14 +296,17 @@ func TestSplitSystemInstructions(t *testing.T) {
 
 func TestIsStatefulRequest_GatedByFlag(t *testing.T) {
 	in := map[string]any{"stateful": true}
-	// flag off (default) → not stateful even if the marker is present
+	// default ON: marker present + flag unset → stateful
+	t.Setenv("LLM_STATEFUL_CACHE", "")
+	if !isStatefulRequest(in) {
+		t.Fatal("stateful must be honored by default (flag unset) when the marker is set")
+	}
+	// explicit disable
+	t.Setenv("LLM_STATEFUL_CACHE", "0")
 	if isStatefulRequest(in) {
-		t.Fatal("stateful must be gated off when LLM_STATEFUL_CACHE is unset")
+		t.Fatal("LLM_STATEFUL_CACHE=0 must disable stateful even with the marker set")
 	}
 	t.Setenv("LLM_STATEFUL_CACHE", "1")
-	if !isStatefulRequest(in) {
-		t.Fatal("stateful must be honored when the marker is set AND the flag is on")
-	}
 	if isStatefulRequest(map[string]any{}) {
 		t.Fatal("no marker → not stateful")
 	}
