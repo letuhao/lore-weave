@@ -1,5 +1,36 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Tool-catalog-simplification — all 6 open questions resolved, spec CLOSED, 2026-07-06.**
+[`docs/specs/2026-07-06-tool-catalog-simplification.md`](../specs/2026-07-06-tool-catalog-simplification.md)
+§11 fully resolved: 5 items confirmed-as-shipped (memory_search stays owned by the
+2026-07-05 plan, `story` stays hot, per-session-only legacy pinning, `maxItems:50`
+accepted as-is), 1 required new BUILD — PO confirmed bulk entity creation is a real
+near-term need, so `glossary_propose_entities` shipped (batch sibling of
+`glossary_propose_new_entity`, now legacy-tagged; same CAT-1/3/4 playbook as the
+ontology tools; reuses `proposeNewEntity` per item). `entity_set_genres`/
+`chapter_link`/`evidence` batching stays unconfirmed, deferred until a real caller
+appears. Commit `ae6358071`.
+
+**Same commit — 3 recurring test failures fixed (user: "quá phiền", just fix them):**
+- chat-service `_emit_chat_turn`: `_chain_reason`/`_stateful`/`_prev_rid`/
+  `_delta_msgs` were only initialized inside the tool-calling branch but read
+  unconditionally later — `UnboundLocalError` on every plain-gateway (non-tool)
+  turn. Hoisted the init above the if/else. Fixed 10/14 `test_stream_service.py`
+  failures; the other 4 were a stale test assumption (a positional INSERT-arg
+  index that shifted when `response_id` was appended as a new trailing param by
+  an earlier unrelated change) — updated the indices.
+- glossary-service `TestFK_WikiArticle_RestrictsEntityDelete`: root-caused to the
+  migration's idempotency guard checking a constraint's NAME instead of its
+  actual delete-action — the pre-existing CASCADE constraint already carried the
+  name the guard was checking for ("already applied"), so the CASCADE→RESTRICT
+  swap had never actually run against a real (non-fresh) `wiki_articles` table.
+  Verified live via `pg_constraint`/`pg_get_constraintdef` before (CASCADE) and
+  after (RESTRICT) the fix.
+- Full glossary-service suite: green (all packages). Full chat-service suite:
+  1084/1084 passed (was 14 failing).
+
+---
+
 **PlanForge auto-bootstrap Phase 2 M1 (hardening) — done + live-verified, 2026-07-06.**
 User's POST-REVIEW verdict on the POC: complete [B]/[C]/[D] + a real UI
 before production (not ship the POC as-is) — see
