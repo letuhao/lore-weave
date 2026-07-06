@@ -270,6 +270,44 @@ def translate_chunk(src: dict[str, str], endonym: str, code: str,
     return out, {**soft, **{k: f"FAILED:{r}" for k, r in hard.items()}}
 
 
+def isolate_retry_soft(p: dict, endonym: str, code: str, script_re: str | None) -> None:
+    """Self-heal only fires on HARD failures (translate_chunk returns early once
+    `hard` is empty) — a key the model silently echoed back in English inside a
+    12-key batch surfaces merely as a SOFT "possibly untranslated" flag and is
+    never retried, so it ships as an English fallback with no report entry
+    forcing a future re-run to fix it. Isolating that ONE key into its own
+    single-key call reliably fixes it (proven live 2026-07-06: zh-TW's
+    `configure.pagesPerChunkHint` failed 3x batched, succeeded instantly alone).
+    Cheap: this soft signal is rare (a handful of keys per run, not per chunk).
+    Also gives a HARD-exhausted ("FAILED:...") key one more isolated shot —
+    heal-exhaustion inside a crowded batch doesn't mean the model can't do it
+    alone, only that it couldn't while also juggling 11 sibling keys.
+    """
+    if not script_re:
+        return  # no target-script signal for Latin-script targets, nothing to detect
+    src_by_key: dict[str, str] = {}
+    for chunk in p["chunks"]:
+        src_by_key.update(chunk)
+    candidates = [k for k, v in p["soft"].items()
+                  if k in src_by_key and (v == "possibly untranslated (no target script)"
+                                          or str(v).startswith("FAILED:"))]
+    for key in candidates:
+        try:
+            out, soft = translate_chunk({key: src_by_key[key]}, endonym, code, script_re, max_heal=1)
+        except Exception:
+            continue
+        fixed = out.get(key)
+        if not fixed or soft.get(key, "").startswith("FAILED"):
+            continue
+        if script_re and _ASCII_LETTER_RE.search(fixed) and not re.search(script_re, fixed):
+            continue  # still untranslated even isolated — leave the soft flag as-is
+        for i, chunk in enumerate(p["chunks"]):
+            if key in chunk:
+                p["results"].setdefault(i, {})[key] = fixed
+                break
+        del p["soft"][key]
+
+
 def chunk_items(src_flat: dict[str, str], chunk_chars: int = CHUNK_CHARS,
                 max_keys: int = MAX_KEYS_PER_CHUNK) -> list[dict[str, str]]:
     chunks, cur, size = [], {}, 0
@@ -427,6 +465,7 @@ def main() -> int:
             done += 1
             remaining[id(p)] -= 1
             if remaining[id(p)] == 0:  # namespace complete → write it now (resumable)
+                isolate_retry_soft(p, TARGETS[p["code"]][0], p["code"], TARGETS[p["code"]][1])
                 r = assemble_and_write(p)
                 by_lang.setdefault(p["code"], []).append(r)
                 grand_failed += r["failed"]

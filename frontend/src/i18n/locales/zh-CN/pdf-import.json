@@ -1,0 +1,68 @@
+{
+  "title": "导入 PDF",
+  "description": "将 PDF 作为书籍导入，按页码范围进行分块",
+  "steps": {
+    "upload": "上传",
+    "configure": "配置",
+    "confirm": "确认",
+    "progress": "进度",
+    "results": "结果"
+  },
+  "upload": {
+    "intro": "将 PDF 作为书籍导入 —— 不仅限于小说，也包括世界观设定或技术参考 PDF。长篇 PDF 将按页码范围（在下一步中配置）拆分为章节。",
+    "choosePdf": "选择 PDF 文件",
+    "pdfOnly": "仅限 .pdf 格式",
+    "checking": "正在检查 PDF…",
+    "pageCount_one": "检测到 {{count}} 页。",
+    "pageCount_other": "检测到 {{count}} 页。",
+    "readError": "无法读取此 PDF。"
+  },
+  "configure": {
+    "pagesPerChunk": "每章节页数",
+    "pagesPerChunkHint": "每组这么多页将合并为一个章节 —— PDF 导入时不使用“第 N 章”标题检测，因此即使是没有任何章节标记的参考书/技术书籍也适用此设置。",
+    "willCreate_one": "这将从 {{pages}} 页中创建 {{count}} 个章节。",
+    "willCreate_other": "这将从 {{pages}} 页中创建 {{count}} 个章节。",
+    "highChapterWarning": "章节数量过多 —— 如果这不是您的本意，请考虑增大“每章节页数”的值。导入仍将继续进行。",
+    "captionImages": "使用 AI 为图片添加说明",
+    "captionImagesHint": "提取图表/图片并通过视觉模型为其添加说明，以便术语表/知识图谱提取功能可以识别图表内容。每张图片将消耗 LLM 额度。",
+    "visionModel": "视觉模型",
+    "visionModelPlaceholder": "选择一个具备视觉能力的模型 (例如 gpt-4o)",
+    "visionModelAriaLabel": "用于图片说明生成的视觉模型",
+    "visionModelHint": "请选择一个真正支持图像输入的模型 —— 并非所有聊天模型都具备此功能。"
+  },
+  "confirm": {
+    "file": "文件",
+    "pages": "页数",
+    "pagesPerChunk": "每分块页数",
+    "chaptersToCreate": "待创建章节数",
+    "captionImages": "使用 AI 为图像生成说明",
+    "yes": "是",
+    "no": "否",
+    "needModel": "开始前请先选择一个视觉模型 —— 当前已启用图像说明功能，但尚未选择模型。",
+    "backgroundNote": "此操作将在后台运行 —— 您可以随时关闭此对话框，并在“任务”面板中查看进度。",
+    "startImport": "开始导入",
+    "startFailed": "无法启动导入"
+  },
+  "progress": {
+    "importing": "正在导入 PDF…",
+    "chapterOf": "第 {{current}} / {{total}} 章",
+    "runInBackground": "在后台运行",
+    "progress": "进度",
+    "longNote": "对于长篇 PDF，这可能需要一段时间——尤其是开启了 AI 标题功能时。您可以随时关闭此对话框；导入操作将在后台继续进行，并可在“任务”面板中查看进度。",
+    "backgroundToast": "导入正在后台继续进行——请在“任务”面板中查看进度。"
+  },
+  "results": {
+    "complete": "导入完成",
+    "failed": "导入失败",
+    "chaptersCreated_one": "已创建 {{count}} 个章节。",
+    "chaptersCreated_other": "已创建 {{count}} 个章节。",
+    "genericError": "导入过程中出现错误。",
+    "importAnother": "导入另一个",
+    "done": "完成"
+  },
+  "button": {
+    "back": "返回",
+    "cancel": "取消",
+    "next": "下一步"
+  }
+}

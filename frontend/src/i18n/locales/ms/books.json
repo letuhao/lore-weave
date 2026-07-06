@@ -150,7 +150,8 @@
       "title": "Pindahkan bab ke tong sampah?",
       "description": "\"{{title}}\" akan dipindahkan ke tong sampah.",
       "confirm": "Pindah ke Tong Sampah"
-    }
+    },
+    "importPdf": "Import PDF"
   },
   "glossary": {
     "header": "Glosari & Lore",

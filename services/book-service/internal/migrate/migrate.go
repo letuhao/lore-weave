@@ -450,6 +450,47 @@ CREATE TABLE IF NOT EXISTS chapter_blocks_extraction_backfill_migration (
   id         TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- PDF book import — docs/specs/2026-07-06-pdf-book-import.md
+--
+-- import_jobs gains pages_per_chunk + caption_images (only meaningful when
+-- file_format='pdf'; NULL/false for every pre-existing docx/epub/txt/md job).
+-- chapters gains import_job_id (L9 idempotency safeguard) — a redelivered
+-- outbox event's per-chunk chapter insert is ON CONFLICT DO NOTHING against
+-- (book_id, import_job_id, structural_path), so a worker crash mid-book only
+-- loses the in-flight chunk, not the whole import (spec §6.7). Scoped to the
+-- PDF path only: import_job_id stays NULL for every existing docx/epub/txt/md
+-- chapter, so the partial index touches none of them.
+--
+-- chapter_page_images is a new per-image asset table (spec §4.4): one row per
+-- extracted+deduped embedded image, caption NULL when caption_images=false
+-- (L7) or a per-image vision call degraded (never fails the chunk, §6.4/§6.7).
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS pages_per_chunk INT;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS caption_images BOOLEAN NOT NULL DEFAULT false;
+-- BYOK model choice for the vision op — only set when caption_images=true.
+-- The vision op has no platform default (Provider gateway invariant), so the
+-- caller (FE) must supply an explicit vision-capable model.
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS vision_model_source TEXT;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS vision_model_ref TEXT;
+
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS import_job_id UUID
+  REFERENCES import_jobs(id) ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chapters_unique_import_job_path
+  ON chapters(book_id, import_job_id, structural_path)
+  WHERE import_job_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS chapter_page_images (
+  id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id  UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  page_number INT NOT NULL,
+  storage_key TEXT NOT NULL,
+  caption     TEXT,
+  model_ref   TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_chapter_page_images_chapter ON chapter_page_images(chapter_id);
 `
 
 // WorldsDownSQL is the explicit reversible DDL for the C20 world container.

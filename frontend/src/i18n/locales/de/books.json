@@ -150,7 +150,8 @@
       "title": "Kapitel in den Papierkorb verschieben?",
       "description": "„{{title}}“ wird in den Papierkorb verschoben.",
       "confirm": "In den Papierkorb verschieben"
-    }
+    },
+    "importPdf": "PDF importieren"
   },
   "glossary": {
     "header": "Glossar & Lore",

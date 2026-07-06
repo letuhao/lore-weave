@@ -692,7 +692,7 @@ export const booksApi = {
     return res.json();
   },
 
-  // ── Import (.docx/.epub) ──────────────────────────────────────────────
+  // ── Import (.docx/.epub/.pdf) ─────────────────────────────────────────
 
   startImport(
     token: string,
@@ -700,11 +700,27 @@ export const booksApi = {
     file: File,
     originalLanguage?: string,
     onProgress?: (pct: number) => void,
+    // docs/specs/2026-07-06-pdf-book-import.md — only meaningful for a
+    // .pdf file; every existing docx/epub/txt/md call site omits this.
+    pdfOptions?: {
+      pagesPerChunk: number;
+      captionImages: boolean;
+      modelSource?: string;
+      modelRef?: string;
+    },
   ): Promise<ImportJob> {
     return new Promise((resolve, reject) => {
       const form = new FormData();
       form.append('file', file);
       if (originalLanguage) form.append('original_language', originalLanguage);
+      if (pdfOptions) {
+        form.append('pages_per_chunk', String(pdfOptions.pagesPerChunk));
+        form.append('caption_images', String(pdfOptions.captionImages));
+        if (pdfOptions.captionImages) {
+          if (pdfOptions.modelSource) form.append('model_source', pdfOptions.modelSource);
+          if (pdfOptions.modelRef) form.append('model_ref', pdfOptions.modelRef);
+        }
+      }
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${base()}/v1/books/${bookId}/import`);
@@ -747,6 +763,36 @@ export const booksApi = {
 
   listImportJobs(token: string, bookId: string) {
     return apiJson<{ imports: ImportJob[] }>(`/v1/books/${bookId}/imports`, { token });
+  },
+
+  /** Cheap page-count check for a PDF, called right after file select —
+   * before the user configures pages_per_chunk (docs/specs/2026-07-06-pdf-book-import.md).
+   * Rejects encrypted/corrupted PDFs with a 422 (surfaced as a thrown Error). */
+  pdfPeek(token: string, bookId: string, file: File): Promise<{ page_count: number }> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${base()}/v1/books/${bookId}/import/pdf-peek`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.addEventListener('load', () => {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(body);
+          } else {
+            reject(Object.assign(new Error(body?.message || xhr.statusText), {
+              status: xhr.status,
+              code: body?.code,
+            }));
+          }
+        } catch {
+          reject(new Error('Invalid response'));
+        }
+      });
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.send(form);
+    });
   },
 };
 

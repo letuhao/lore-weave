@@ -12,6 +12,7 @@ import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ImportDialog } from '@/components/import/ImportDialog';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
+import { PdfImportWizard } from '@/features/pdf-import/PdfImportWizard';
 
 interface ChaptersTabProps {
   bookId: string;
@@ -34,6 +35,9 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
 
   // Import dialog
   const [importOpen, setImportOpen] = useState(false);
+
+  // PDF import wizard — docs/specs/2026-07-06-pdf-book-import.md
+  const [pdfImportOpen, setPdfImportOpen] = useState(false);
 
   // Extraction wizard
   const [extractChapterId, setExtractChapterId] = useState<string | null>(null);
@@ -201,6 +205,13 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
             {t('chapters.import')}
           </button>
           <button
+            onClick={() => setPdfImportOpen(true)}
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {t('chapters.importPdf')}
+          </button>
+          <button
             onClick={() => setCreateOpen(true)}
             data-testid="chapter-add-button"
             className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
@@ -329,6 +340,14 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         onOpenChange={setImportOpen}
         bookId={bookId}
         onImported={() => invalidate()}
+      />
+
+      {/* PDF import wizard — docs/specs/2026-07-06-pdf-book-import.md */}
+      <PdfImportWizard
+        open={pdfImportOpen}
+        onOpenChange={setPdfImportOpen}
+        bookId={bookId}
+        onComplete={() => invalidate()}
       />
 
       <ExtractionWizard

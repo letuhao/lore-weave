@@ -822,6 +822,7 @@ components:
         - fact_extraction
         - summarize_level
         - translation
+        - vision
       description: |
         The semantic operation. The gateway uses this to:
         1. Pick the right adapter method per provider
@@ -1272,6 +1273,70 @@ components:
             If upstream rewrote the prompt (DALL-E-3 safety-rewrite +
             gpt-image-1 caption-rewrite), the rewritten text. `null`
             otherwise.
+
+    # ── Vision (image-caption) operation schemas (PDF-import L5,
+    # docs/specs/2026-07-06-pdf-book-import.md) ───────────────────────
+    VisionInput:
+      type: object
+      required: [image_b64, prompt]
+      description: |
+        Input payload for `SubmitJobRequest` with `operation: vision`.
+        One-shot multimodal chat completion: sends a single image + a
+        text prompt, gateway returns the model's text response (a
+        caption/description) in `VisionResult.caption` — NOT image
+        generation. Supported by OpenAI, Anthropic, Ollama, and LM Studio
+        adapters (a loaded/selected model must itself support vision —
+        e.g. gpt-4o, Claude 3+, llava/qwen2-vl/gemma-vision variants
+        served locally); an unsupported model's rejection surfaces as a
+        normal upstream error, not a distinct not-supported code.
+        Chunking is not supported (single image, single call).
+      properties:
+        image_b64:
+          type: string
+          minLength: 1
+          description: |
+            Base64-encoded image bytes (no data-URI prefix — the gateway
+            builds the data URI from image_b64 + mime_type). Capped at
+            8MB (`MaxVisionInputImageBytes`); larger requests are
+            rejected with `LLM_INVALID_REQUEST`. Caller (knowledge-
+            service's pdf_walker) is responsible for downscaling large
+            extracted images before submission.
+        mime_type:
+          type: string
+          default: "image/png"
+          description: e.g. "image/png", "image/jpeg".
+        prompt:
+          type: string
+          minLength: 1
+          description: |
+            The captioning instruction, e.g. "Describe this chart or
+            image in 1-2 sentences, focusing on any data, labels, or
+            text it contains."
+        max_tokens:
+          type: integer
+          minimum: 0
+          description: Output token cap for the caption. Omit/0 → upstream default.
+
+    VisionResult:
+      type: object
+      required: [caption]
+      description: |
+        Result payload populated in `Job.result` when
+        `operation: vision` and `status: completed`.
+      properties:
+        caption:
+          type: string
+          description: The model's text response (caption/description).
+        finish_reason:
+          type: string
+          nullable: true
+          description: Upstream finish_reason ("stop", "length", ...), when present.
+        provider_kind:
+          type: string
+          description: The resolved provider kind that served this caption (e.g. `openai`).
+        provider_model_name:
+          type: string
+          description: The human-readable upstream model name (e.g. `gpt-4o`).
 
     # ── Video-gen operation schemas (Phase 5d) ────────────────────────
     VideoGenInput:

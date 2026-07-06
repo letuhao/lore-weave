@@ -1,0 +1,68 @@
+{
+  "title": "匯入 PDF",
+  "description": "將 PDF 匯入為書籍，並依頁碼範圍進行分段",
+  "steps": {
+    "upload": "上傳",
+    "configure": "設定",
+    "confirm": "確認",
+    "progress": "進度",
+    "results": "結果"
+  },
+  "upload": {
+    "intro": "將 PDF 匯入為書籍 — 不限於小說，世界觀設定或技術參考 PDF 亦可。長篇 PDF 將根據頁碼範圍（在下一步設定）拆分為章節。",
+    "choosePdf": "選擇 PDF 檔案",
+    "pdfOnly": "僅限 .pdf 格式",
+    "checking": "正在檢查 PDF…",
+    "pageCount_one": "偵測到 {{count}} 頁。",
+    "pageCount_other": "{{count}} 頁",
+    "readError": "無法讀取此 PDF。"
+  },
+  "configure": {
+    "pagesPerChunk": "每章節頁數",
+    "pagesPerChunkHint": "每隔此數量的頁面將組成一個章節 — PDF 匯入時不會偵測「第 N 章」標題，因此即使是沒有章節標記的參考書或技術書籍也適用。",
+    "willCreate_one": "這將從 {{pages}} 頁中建立 {{count}} 個章節。",
+    "willCreate_other": "這將從 {{pages}} 頁中建立 {{count}} 個章節。",
+    "highChapterWarning": "章節數量過多 — 如果這不是您的本意，請考慮增加「每章節頁數」的值。匯入程序仍會繼續執行。",
+    "captionImages": "使用 AI 為圖片生成說明",
+    "captionImagesHint": "擷取圖表/圖片並透過視覺模型生成說明，以便詞彙表/知識圖譜擷取功能可以讀取圖表內容。每張圖片將消耗 LLM 額度。",
+    "visionModel": "視覺模型",
+    "visionModelPlaceholder": "選擇具備視覺能力的模型 (例如 gpt-4o)",
+    "visionModelAriaLabel": "用於圖片說明的視覺模型",
+    "visionModelHint": "請選擇支援圖片輸入的模型 — 並非所有聊天模型都支援此功能。"
+  },
+  "confirm": {
+    "file": "檔案",
+    "pages": "頁數",
+    "pagesPerChunk": "每區塊頁數",
+    "chaptersToCreate": "要建立的章節數",
+    "captionImages": "使用 AI 為圖片生成說明",
+    "yes": "是",
+    "no": "否",
+    "needModel": "開始前請先選擇視覺模型 — 目前已啟用圖片說明功能，但尚未選擇模型。",
+    "backgroundNote": "此程序將在背景執行 — 您可以隨時關閉此對話框，並透過「工作」面板查看進度。",
+    "startImport": "開始匯入",
+    "startFailed": "無法啟動匯入"
+  },
+  "progress": {
+    "importing": "正在匯入 PDF…",
+    "chapterOf": "第 {{current}} / {{total}} 章",
+    "runInBackground": "在背景執行",
+    "progress": "進度",
+    "longNote": "對於長篇 PDF，這可能需要一段時間 — 特別是在啟用 AI 標註功能時。您可以隨時關閉此對話框；匯入程序將在背景繼續執行，並可在「工作」面板中查看進度。",
+    "backgroundToast": "匯入程序正在背景繼續執行 — 請至「工作」面板查看進度。"
+  },
+  "results": {
+    "complete": "匯入完成",
+    "failed": "匯入失敗",
+    "chaptersCreated_one": "已建立 {{count}} 個章節。",
+    "chaptersCreated_other": "已建立 {{count}} 個章節。",
+    "genericError": "匯入過程中發生錯誤。",
+    "importAnother": "匯入另一個",
+    "done": "完成"
+  },
+  "button": {
+    "back": "返回",
+    "cancel": "取消",
+    "next": "下一步"
+  }
+}

@@ -150,7 +150,8 @@
       "title": "Mover capítulo para a lixeira?",
       "description": "\"{{title}}\" será movido para a lixeira.",
       "confirm": "Mover para a Lixeira"
-    }
+    },
+    "importPdf": "Importar PDF"
   },
   "glossary": {
     "header": "Glossário e Lore",

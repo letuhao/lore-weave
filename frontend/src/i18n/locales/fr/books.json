@@ -150,7 +150,8 @@
       "title": "Déplacer le chapitre vers la corbeille ?",
       "description": "« {{title}} » sera déplacé vers la corbeille.",
       "confirm": "Déplacer vers la corbeille"
-    }
+    },
+    "importPdf": "Importer un PDF"
   },
   "glossary": {
     "header": "Glossaire et Lore",

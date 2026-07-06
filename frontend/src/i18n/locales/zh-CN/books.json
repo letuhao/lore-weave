@@ -150,7 +150,8 @@
       "title": "将章节移至回收站？",
       "description": "“{{title}}”将被移至回收站。",
       "confirm": "移至回收站"
-    }
+    },
+    "importPdf": "导入 PDF"
   },
   "glossary": {
     "header": "术语表与设定",

@@ -56,6 +56,7 @@ var validJobOperations = map[string]struct{}{
 	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
 	"summarize_level":   {}, // P3 hierarchical reduce — chapter/part/book summaries
 	"translation":       {},
+	"vision":            {}, // PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5)
 }
 
 // jobSubmitRequest mirrors openapi SubmitJobRequest.
@@ -172,6 +173,12 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 	}
 	if in.Operation == "audio_gen" {
 		if err := validateAudioGenInput(in.Input, in.Chunking); err != nil {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
+			return
+		}
+	}
+	if in.Operation == "vision" {
+		if err := validateVisionInput(in.Input, in.Chunking); err != nil {
 			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
 			return
 		}
@@ -910,6 +917,41 @@ func validateAudioGenInput(raw json.RawMessage, chunking json.RawMessage) error 
 	}
 	if v.Speed != 0 && (v.Speed < 0.25 || v.Speed > 4.0) {
 		return fmt.Errorf("audio_gen speed must be 0.25..4.0 (got %g)", v.Speed)
+	}
+	return nil
+}
+
+// validateVisionInput — PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md
+// L5) handler-level validation for operation=vision. Rejects empty
+// image/prompt, an oversize base64 image, and chunking config (not
+// supported — single upstream call, one image per job). Belt-and-
+// suspenders with adapter-level invariant pre-checks (openai_vision.go),
+// mirroring validateImageGenInput/validateVideoGenInput.
+func validateVisionInput(raw json.RawMessage, chunking json.RawMessage) error {
+	if len(chunking) > 0 && string(chunking) != "null" {
+		return fmt.Errorf("chunking not supported for vision")
+	}
+	var v struct {
+		ImageB64  string `json:"image_b64"`
+		MimeType  string `json:"mime_type"`
+		Prompt    string `json:"prompt"`
+		MaxTokens int    `json:"max_tokens"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return fmt.Errorf("vision input parse: %w", err)
+	}
+	if strings.TrimSpace(v.Prompt) == "" {
+		return fmt.Errorf("vision requires non-empty prompt")
+	}
+	if v.ImageB64 == "" {
+		return fmt.Errorf("vision requires non-empty image_b64")
+	}
+	if len(v.ImageB64) > provider.MaxVisionInputImageBytes {
+		return fmt.Errorf("vision image_b64 exceeds %d-byte cap (got %d)",
+			provider.MaxVisionInputImageBytes, len(v.ImageB64))
+	}
+	if v.MaxTokens < 0 {
+		return fmt.Errorf("vision max_tokens must be >= 0 (got %d)", v.MaxTokens)
 	}
 	return nil
 }

@@ -397,6 +397,15 @@ func (w *Worker) Process(
 		return
 	}
 
+	// PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5) —
+	// vision-caption dispatch. Routes BEFORE chat-streaming whitelist
+	// because vision uses adapter.CaptionImage (not Stream), has no
+	// chunker, and no aggregator. Mirrors image/video dispatch above.
+	if isVisionJobOperation(operation) {
+		w.processVisionJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
+		return
+	}
+
 	// Phase 4a-α Step 0 — op-whitelist. The chat-streaming machinery +
 	// per-op aggregator (cycle 20 jsonListAggregator) is the same wire
 	// shape for chat/completion AND for the *_extraction operations:

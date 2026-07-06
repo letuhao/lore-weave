@@ -27,23 +27,41 @@ from loreweave_parse._types import (
 )
 from loreweave_parse.dispatcher import parse
 from loreweave_parse.html_walker import parse_html
+from loreweave_parse.pdf_walker import (
+    ExtractedImage,
+    PageContent,
+    PdfOpenError,
+    WalkResult,
+    downscale_for_vision,
+    get_page_count,
+    tesseract_lang_for,
+    walk_pdf_pages,
+)
 from loreweave_parse.plaintext_parser import detect_language, parse_plain
 
 __version__ = "0.1.0"
 
 __all__ = [
     "Chapter",
+    "ExtractedImage",
+    "PageContent",
     "ParseOptions",
     "ParseRequest",
     "Part",
+    "PdfOpenError",
     "Scene",
     "SourceFormat",
     "StructuralTree",
+    "WalkResult",
     "WalkerPath",
     "__version__",
     "detect_language",
+    "downscale_for_vision",
+    "get_page_count",
     "html_to_leaf_text",
     "parse",
     "parse_html",
     "parse_plain",
+    "tesseract_lang_for",
+    "walk_pdf_pages",
 ]

@@ -150,7 +150,8 @@
       "title": "Bölümü çöpe taşısın mı?",
       "description": "\"{{title}}\" çöpe taşınacak.",
       "confirm": "Çöpe Taşı"
-    }
+    },
+    "importPdf": "PDF İçe Aktar"
   },
   "glossary": {
     "header": "Sözlük ve Lore",

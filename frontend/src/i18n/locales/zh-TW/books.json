@@ -150,7 +150,8 @@
       "title": "將章節移至回收筒？",
       "description": "「{{title}}」將移至回收筒。",
       "confirm": "移至回收筒"
-    }
+    },
+    "importPdf": "匯入 PDF"
   },
   "glossary": {
     "header": "詞彙表與設定",

@@ -44,6 +44,34 @@ right chapter/page with a REAL gpt-4o caption ("The bar chart compares three eng
 stored in `chapter_page_images` AND correctly inlined into the chapter's scene text as
 `[Image (page 3): ...]` — the exact mechanism meant to make chart content visible to glossary/KG extraction.
 
+**`/review-impl` same session — 3 HIGH findings, all fixed + live-reverified, user-directed.**
+User named the concrete gap: Ollama/LM-Studio/Anthropic genuinely have vision-capable models (e.g.
+`google/gemma-4-26b-a4b-qat` in LM Studio) and the original stub (`ErrOperationNotSupported`) was wrong, not a
+deliberate scope cut. **HIGH#1 — the stub was a real gap, not a safe default**: LM Studio's OWN model-inventory
+parsing (`parseLMStudioNativeModels`, `adapters.go`) already detects+flags `capability_flags.vision`, and
+Ollama/LM-Studio already serve chat over the identical OpenAI-compatible `/v1/chat/completions` endpoint OpenAI
+itself uses — the capability was already discoverable in this codebase, captioning just wasn't wired to it. Fixed:
+real `CaptionImage` for all 3 (`local_vision.go` shares OpenAI's wire-shape builder via new
+`openai_compat_vision.go`; `anthropic_vision.go` uses Anthropic's structurally different Messages-API image-block
+shape), `adapters_vision.go`'s stubs deleted, 17 adapter tests (was 9). **HIGH#2 — self-inflicted migration
+crash-loop**: adding `'vision'` to only the FINAL `llm_jobs_operation_check` constraint block (not backfilling it
+into the 4 earlier historical DROP+ADD blocks) violated a rule the migration file's OWN comment (line 164) already
+documented from a prior incident — Postgres validates each ADD CONSTRAINT against existing rows as the whole
+schemaSQL replays every startup (no version tracking), so an earlier block missing `'vision'` fails outright once
+a `'vision'`-tagged row exists. Caught the instant provider-registry-service was rebuilt after live-testing created
+such a row — service refused to start. Fixed by adding `'vision'` to all 5 blocks. **HIGH#3 — reasoning-model
+token starvation**: live-testing against LM Studio's `google/gemma-4-26b-a4b-qat` (a reasoning-capable local vision
+model) returned `LLM_VISION_CAPTION_FAILED: upstream returned no caption` at the original `max_tokens=150` — the
+model correctly identified the test chart in its `reasoning_content` scratchpad (147 tokens) but got cut off
+(`finish_reason="length"`) before ever writing the real answer into `content`. Confirmed live at `max_tokens=600`
+the same model completes reasoning (~440 tokens) and emits a correct caption. Fixed: `_CAPTION_MAX_TOKENS` raised
+150→700 (`internal_parse_pdf.py`). **Live-reverified end-to-end after all 3 fixes**: real book import via LM
+Studio's local model ($0 cost) — "This bar chart displays three blue bars labeled 'Engine A,' 'Engine B,' and
+'Engine C.' The bars show an increasing trend..." — correctly captioned, stored, and inlined, through the full
+book-service→worker-infra→knowledge-service→provider-registry→LM-Studio chain. Two test books now exist in dev DB:
+`019f3804-...` (gpt-4o captions) and `019f381e-...` (LM Studio captions) — both available for the still-open
+glossary/KG extraction test noted above.
+
 **Deferred / not done this session:**
 - **Glossary/KG extraction was NOT run against the new PDF-imported book** — the original motivating question
   ("does glossary/KG work on a technical book") is still open; this session built+proved the IMPORT pipeline only.
@@ -54,9 +82,15 @@ stored in `chapter_page_images` AND correctly inlined into the chapter's scene t
   extraction profiles are genre-driven and technical books get nothing suggested by default).
 - **Orphaned-MinIO-blob cleanup on a failed PDF import** — consciously deferred (pre-existing gap shared by
   docx/epub too, not introduced by this feature; gate reason: out-of-scope/pre-existing).
-- **i18n for the new wizard strings** — real follow-up, not done (English-only for v1).
-- **Anthropic/Ollama/LM-Studio vision support** — stubs only (`ErrOperationNotSupported`); v1 is OpenAI-only by
-  explicit CLARIFY scope choice.
+- ~~i18n for the new wizard strings~~ → **RESOLVED same day, follow-up.** Authored `en/pdf-import.json` (52
+  keys), wired all 6 step components + the ChaptersTab "Import PDF" button through `useTranslation`, ran
+  `scripts/i18n_translate.py` to generate all 16 other locales — 0 hard/soft verify failures across all 17
+  after fixing one flaky `zh-TW` key by hand (the model echoed English back inside a crowded batch; isolated
+  single-key retry succeeded instantly). That flakiness surfaced a real gap in the translation tool itself
+  (self-heal only retried HARD failures, never SOFT ones) — fixed by adding an `isolate_retry_soft()` pass to
+  `scripts/i18n_translate.py`, verified live against the same key.
+- ~~Anthropic/Ollama/LM-Studio vision support~~ → **RESOLVED at `/review-impl` same session** — real
+  implementations for all 3, live-verified against LM Studio's local `google/gemma-4-26b-a4b-qat` model.
 
 ---
 

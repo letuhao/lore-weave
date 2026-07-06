@@ -201,6 +201,7 @@ JobOperation = Literal[
     "fact_extraction",  # Phase 4a-β
     "summarize_level",  # P3 hierarchical reduce — chapter/part/book summaries
     "translation",
+    "vision",  # PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5)
 ]
 
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
@@ -528,3 +529,39 @@ class AudioGenResult(BaseModel):
 
     created: int
     data: list[AudioGenDataItem] = Field(min_length=1, max_length=10)
+
+
+# ── Vision (image-caption) models — PDF-import L5 ─────────────────────
+# (docs/specs/2026-07-06-pdf-book-import.md)
+
+
+class VisionInput(BaseModel):
+    """Mirrors openapi `VisionInput`. Used as `input` for
+    `operation=vision` on POST /v1/llm/jobs (async job, not streaming).
+
+    One-shot multimodal chat completion: a single image + a text prompt,
+    gateway returns the model's text response (a caption/description) —
+    NOT image generation. Supported by OpenAI, Anthropic, Ollama, and LM
+    Studio adapters (the selected model must itself support vision).
+    Chunking is not supported (single image, single call).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    image_b64: str = Field(..., min_length=1)
+    mime_type: str = "image/png"
+    prompt: str = Field(..., min_length=1)
+    max_tokens: int | None = None
+
+
+class VisionResult(BaseModel):
+    """Mirrors openapi `VisionResult`. Decoded from Job.result when
+    `operation=vision` and `status=completed`.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    caption: str
+    finish_reason: str | None = None
+    provider_kind: str | None = None
+    provider_model_name: str | None = None

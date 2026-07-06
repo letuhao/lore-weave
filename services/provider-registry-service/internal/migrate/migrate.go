@@ -174,7 +174,7 @@ ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN
   'chat','completion','embedding','stt','tts','image_gen',
   'video_gen','audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
-  'fact_extraction','summarize_level','translation'
+  'fact_extraction','summarize_level','translation','vision'
 ));
 
 -- Phase 5d: drop + recreate operation CHECK to add video_gen.
@@ -184,7 +184,7 @@ ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN
   'chat','completion','embedding','stt','tts','image_gen','video_gen',
   'audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
-  'fact_extraction','summarize_level','translation'
+  'fact_extraction','summarize_level','translation','vision'
 ));
 
 -- Phase 5e-β.2: drop + recreate operation CHECK to add audio_gen.
@@ -193,7 +193,7 @@ ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
 ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
   'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
-  'fact_extraction','summarize_level','translation'
+  'fact_extraction','summarize_level','translation','vision'
 ));
 
 -- P3 (D-P3-EXTRACTION-CALLER-WIRE-UP): drop + recreate operation CHECK
@@ -204,7 +204,7 @@ ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
 ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
   'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
-  'fact_extraction','summarize_level','translation'
+  'fact_extraction','summarize_level','translation','vision'
 ));
 
 -- Phase 6a Subsystem A — USD spend guardrail. The estimator reads a per-model
@@ -318,6 +318,30 @@ ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS response_payload TEXT;
 -- PUT /user-models/reorder route assigns 0..N-1 to the provided ids and NULLs the
 -- rest so a partial reorder is well-defined.
 ALTER TABLE user_models ADD COLUMN IF NOT EXISTS sort_order INTEGER;
+
+-- PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5): drop +
+-- recreate operation CHECK to add 'vision'. Same idempotent pattern as the
+-- prior additions — the cross-cutting-enum lesson (validJobOperations map +
+-- this CHECK + openapi.yaml enum must all agree, or INSERT fails 23514
+-- despite the handler already accepting the operation).
+--
+-- /review-impl 2026-07-06 (fixed a self-inflicted instance of the exact
+-- crash-loop the invariant comment above (line 164) warns about): adding
+-- 'vision' ONLY to this final block and not backfilling it into the 4
+-- earlier blocks above crashed provider-registry on next restart the
+-- moment a real 'vision' row existed — Postgres validates each ADD
+-- CONSTRAINT against ALL EXISTING ROWS as the full schemaSQL string
+-- replays in order on every startup (no per-statement version tracking),
+-- so an earlier block whose list predates 'vision' fails outright once
+-- such a row exists. Fixed by adding 'vision' to all 5 blocks. The NEXT
+-- new operation added here MUST do the same to every block above it, not
+-- just append a new one at the end.
+ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
+ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
+  'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
+  'entity_extraction','relation_extraction','event_extraction',
+  'fact_extraction','summarize_level','translation','vision'
+));
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

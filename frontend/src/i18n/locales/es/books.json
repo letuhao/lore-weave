@@ -150,7 +150,8 @@
       "title": "¿Mover capítulo a la papelera?",
       "description": "\"{{title}}\" se moverá a la papelera.",
       "confirm": "Mover a la papelera"
-    }
+    },
+    "importPdf": "Importar PDF"
   },
   "glossary": {
     "header": "Glosario y Lore",

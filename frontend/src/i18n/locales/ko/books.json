@@ -150,7 +150,8 @@
       "title": "챕터를 휴지통으로 이동할까요?",
       "description": "\"{{title}}\"이(가) 휴지통으로 이동됩니다.",
       "confirm": "휴지통으로 이동"
-    }
+    },
+    "importPdf": "PDF 가져오기"
   },
   "glossary": {
     "header": "용어집 및 설정",

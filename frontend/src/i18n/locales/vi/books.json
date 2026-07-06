@@ -150,7 +150,8 @@
       "title": "Chuyển chương vào thùng rác?",
       "description": "\"{{title}}\" sẽ được chuyển vào thùng rác.",
       "confirm": "Chuyển vào thùng rác"
-    }
+    },
+    "importPdf": "Nhập PDF"
   },
   "glossary": {
     "header": "Thuật ngữ & Tri thức",

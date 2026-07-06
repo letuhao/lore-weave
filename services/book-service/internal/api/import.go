@@ -27,6 +27,7 @@ var allowedImportFormats = map[string]string{
 	".epub": "epub",
 	".txt":  "txt",
 	".md":   "markdown", // P1 (2026-05-23) — pandoc -f markdown -t html in worker-infra.
+	".pdf":  "pdf",      // docs/specs/2026-07-06-pdf-book-import.md
 }
 
 // startImport handles POST /v1/books/{book_id}/import
@@ -72,8 +73,38 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 	fileFormat, ok := allowedImportFormats[ext]
 	if !ok {
 		writeError(w, http.StatusBadRequest, "UNSUPPORTED_FORMAT",
-			"supported formats: .docx, .epub, .md, .txt")
+			"supported formats: .docx, .epub, .md, .pdf, .txt")
 		return
+	}
+
+	// docs/specs/2026-07-06-pdf-book-import.md — pages_per_chunk/caption_images
+	// are only meaningful (and only read) for the pdf format. Validated here
+	// (server-side floor, not just the FE clamp — defense in depth across the
+	// book-service -> worker-infra -> knowledge-service hop chain, spec §6.1).
+	var pagesPerChunk int
+	var captionImages bool
+	var visionModelSource, visionModelRef string
+	if fileFormat == "pdf" {
+		pagesPerChunk, err = strconv.Atoi(r.FormValue("pages_per_chunk"))
+		if err != nil || pagesPerChunk < 1 {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR",
+				"pages_per_chunk must be a positive integer")
+			return
+		}
+		captionImages = r.FormValue("caption_images") == "true"
+		if captionImages {
+			// BYOK — the vision op has no platform default (Provider gateway
+			// invariant: explicit model_ref, never a hardcoded model). The FE
+			// must let the user pick a vision-capable model when they enable
+			// captioning.
+			visionModelSource = r.FormValue("model_source")
+			visionModelRef = r.FormValue("model_ref")
+			if visionModelSource == "" || visionModelRef == "" {
+				writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR",
+					"model_source and model_ref are required when caption_images=true")
+				return
+			}
+		}
 	}
 
 	// P1 (H1 fix): .txt path now goes through knowledge-service /internal/parse
@@ -123,10 +154,19 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
+	var pagesPerChunkParam, visionModelSourceParam, visionModelRefParam any
+	if fileFormat == "pdf" {
+		pagesPerChunkParam = pagesPerChunk
+		if captionImages {
+			visionModelSourceParam = visionModelSource
+			visionModelRefParam = visionModelRef
+		}
+	}
 	_, err = tx.Exec(r.Context(), `
-INSERT INTO import_jobs (id, book_id, user_id, status, filename, file_format, file_size, file_storage_key)
-VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
-`, jobID, bookID, caller, fh.Filename, fileFormat, int64(len(data)), storageKey)
+INSERT INTO import_jobs (id, book_id, user_id, status, filename, file_format, file_size, file_storage_key, pages_per_chunk, caption_images, vision_model_source, vision_model_ref)
+VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11)
+`, jobID, bookID, caller, fh.Filename, fileFormat, int64(len(data)), storageKey,
+		pagesPerChunkParam, captionImages, visionModelSourceParam, visionModelRefParam)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to create import job")
 		return
@@ -134,14 +174,23 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 
 	// Outbox event for worker-infra to pick up. user_id = the initiating caller
 	// (drives chapter author_user_id + the WS progress notification in the worker).
-	if err := insertOutboxEvent(r.Context(), tx, "import.requested", jobID, map[string]any{
+	outboxPayload := map[string]any{
 		"job_id":            jobID,
 		"book_id":           bookID,
 		"user_id":           caller,
 		"file_format":       fileFormat,
 		"file_storage_key":  storageKey,
 		"original_language": r.FormValue("original_language"),
-	}); err != nil {
+	}
+	if fileFormat == "pdf" {
+		outboxPayload["pages_per_chunk"] = pagesPerChunk
+		outboxPayload["caption_images"] = captionImages
+		if captionImages {
+			outboxPayload["vision_model_source"] = visionModelSource
+			outboxPayload["vision_model_ref"] = visionModelRef
+		}
+	}
+	if err := insertOutboxEvent(r.Context(), tx, "import.requested", jobID, outboxPayload); err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to queue import")
 		return
 	}

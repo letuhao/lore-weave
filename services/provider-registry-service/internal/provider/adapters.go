@@ -111,6 +111,15 @@ type Adapter interface {
 	// input.Texts[i] per /review-impl(DESIGN) MED#5. Adapters that don't
 	// support TTS return ErrOperationNotSupported.
 	GenerateAudio(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateAudioInput) (GenerateAudioOutput, Usage, error)
+
+	// CaptionImage — PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md
+	// L5). One-shot multimodal chat completion: sends a single image + a text
+	// prompt, returns the model's text response (a caption/description) — NOT
+	// image generation. Adapter posts an OpenAI-compatible
+	// /v1/chat/completions request with a multimodal `content` array
+	// (text + image_url blocks). Adapters whose provider has no
+	// OpenAI-compatible vision-input path return ErrOperationNotSupported.
+	CaptionImage(ctx context.Context, endpointBaseURL, secret, modelName string, input CaptionImageInput) (CaptionImageOutput, Usage, error)
 }
 
 // ErrStreamNotSupported — returned by adapters that don't yet implement
@@ -259,6 +268,61 @@ const MaxAudioGenInputCharsLen = 4096
 // could surprise. If a real gzip-friendly upstream surfaces, document
 // or raise the cap then.
 const MaxImageResponseBytes = 8 * 1024 * 1024
+
+// ── Vision (image-caption) types (PDF-import L5) ──────────────────────
+
+// ErrVisionInvalidParams — adapter-level invariant rejection (empty
+// ImageB64, empty Prompt, oversize image). Caller maps to
+// LLM_INVALID_REQUEST. Belt-and-suspenders with handler-level
+// validateVisionInput, matching the image_gen/video_gen/audio_gen
+// convention.
+var ErrVisionInvalidParams = fmt.Errorf("vision caption params invalid")
+
+// ErrVisionCaptionFailed — generic upstream-failed sentinel (not
+// content-policy, not rate-limited; e.g. malformed upstream response,
+// empty choices array). Caller maps to LLM_VISION_CAPTION_FAILED.
+var ErrVisionCaptionFailed = fmt.Errorf("vision caption failed")
+
+// MaxVisionInputImageBytes — adapter-level cap on the base64-encoded
+// input image. 8MB covers a downscaled figure/chart comfortably (the
+// knowledge-service caller downscales before sending, per
+// docs/specs/2026-07-06-pdf-book-import.md §6.3) while bounding worst-case
+// request body size. Mirrors MaxImg2VidInputBytes's role for video_gen.
+const MaxVisionInputImageBytes = 8 * 1024 * 1024
+
+// CaptionImageInput holds a single-image captioning request. Exactly one
+// image per call (the caller — knowledge-service's pdf_walker — already
+// dedupes/filters/downscales images before calling this op, so batching
+// isn't needed at this layer).
+type CaptionImageInput struct {
+	// ImageB64 — required, base64-encoded image bytes (no data-URI
+	// prefix; the adapter builds the data URI itself from ImageB64 +
+	// MimeType). Capped at MaxVisionInputImageBytes.
+	ImageB64 string
+
+	// MimeType — e.g. "image/png", "image/jpeg". Required so the adapter
+	// can build a correct `data:{mime};base64,...` URL.
+	MimeType string
+
+	// Prompt — the captioning instruction (e.g. "Describe this chart or
+	// image in 1-2 sentences, focusing on any data, labels, or text it
+	// contains."). Required, non-empty.
+	Prompt string
+
+	// MaxTokens — output cap for the caption. 0 → adapter default.
+	MaxTokens int
+}
+
+// CaptionImageOutput holds the parsed caption response.
+type CaptionImageOutput struct {
+	// Caption — the model's text response. Never empty on a nil error
+	// (an empty upstream response is treated as ErrVisionCaptionFailed).
+	Caption string
+
+	// FinishReason — upstream finish_reason ("stop", "length", ...), when
+	// present. Empty if the upstream didn't report one.
+	FinishReason string
+}
 
 // ── Audio types (Phase 5a + 5b) ────────────────────────────────────────
 

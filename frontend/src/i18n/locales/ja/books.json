@@ -150,7 +150,8 @@
       "title": "章をゴミ箱に移動しますか？",
       "description": "「{{title}}」がゴミ箱に移動されます。",
       "confirm": "ゴミ箱に移動"
-    }
+    },
+    "importPdf": "PDFをインポート"
   },
   "glossary": {
     "header": "用語集とロア",

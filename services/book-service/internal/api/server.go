@@ -309,8 +309,9 @@ func (s *Server) Router() http.Handler {
 				r.Post("/progress", s.upsertReadingProgress)
 			})
 
-			// Import (.docx/.epub)
+			// Import (.docx/.epub/.pdf)
 			r.Post("/import", s.startImport)
+			r.Post("/import/pdf-peek", s.pdfPeek)
 			r.Get("/imports", s.listImportJobs)
 			r.Get("/imports/{import_id}", s.getImportJob)
 
