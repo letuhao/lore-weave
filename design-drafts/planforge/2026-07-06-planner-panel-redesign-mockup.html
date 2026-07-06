@@ -48,6 +48,45 @@
   HSL triples (the Studio's actual default theme) so this reads as "inside
   the real app," not a generic doc. Not wired to any real API — click
   affordances just switch panels/selection state for review purposes.
+
+  v2 (2026-07-06, same day) — EDGE CASE PASS after user pushback: "chức năng
+  này phải đủ dễ sử dụng, tránh tình huống check lỗi, người dùng phải mò và
+  sửa raw plan, họ không làm được đâu" (this must be easy enough to use —
+  never make the user hunt through and edit the raw plan themselves, they
+  can't do that). v1 still had 5 real gaps that would have forced exactly
+  that:
+    1. "Quick check" (the fragile regex parser, confirmed fixture-quality-
+       only across this session's testing) was the DEFAULT mode. A first-
+       time writer's own document structure will rarely match its narrow
+       patterns, producing a near-empty extraction with no explanation —
+       defaulted to "AI-assisted" instead; Quick check is now framed as an
+       iteration tool for a plan that's already working, not a first pass.
+    2. No state for "we couldn't understand your document" (0 arcs/0
+       characters extracted) — silently would have dumped the writer into
+       an empty Understood screen with no explanation of what went wrong or
+       what to do. Added a dedicated low-extraction panel (see "Simulate:
+       messy input" link on State 1).
+    3. "Continue anyway" let a writer skip PAST a hard "needs attention"
+       finding — but the REAL backend hard-blocks compile() on any hard-tier
+       rule failure (plan_forge_service._hard_rules_pass, shipped same
+       session). The mockup was lying about what happens next. Fixed: the
+       continue action is disabled with an explanatory label while a hard
+       finding is open; only advisory (💡) findings never block.
+    4. "Fix this for me" had no failure path shown — if an autofix can't
+       resolve something, the ONLY named fallback anywhere in this redesign
+       must still never be "go edit the structured plan." Added an explicit
+       autofix-failed state that suggests a concrete plain-language edit to
+       the ORIGINAL pasted text, or a chat hand-off — never raw JSON/spec.
+    5. The arc picker let you select an admittedly-incomplete Arc 1 with no
+       real guidance. Made incomplete arcs genuinely non-selectable, with an
+       "Ask AI to help complete this arc" escape hatch instead of a bare
+       description.
+
+  LOCKED DESIGN PRINCIPLE (carry into the eventual spec): this panel NEVER
+  exposes a raw spec/JSON editor as a fallback, at any failure point. Every
+  error path routes to exactly one of: (a) an automatic fix attempt, (b) a
+  specific plain-language suggested edit to the writer's OWN pasted text,
+  or (c) a hand-off to chat. The writer never touches structured data.
 */
 :root{
   --background:hsl(25 8% 8%); --foreground:hsl(40 30% 95%);
@@ -127,7 +166,36 @@ textarea.paste::placeholder{color:var(--muted-foreground);font-family:var(--sans
 .btn-fix{background:hsl(215 80% 60% / 0.14);color:var(--info);border:1px solid hsl(215 80% 60% / 0.35);
   padding:5px 11px;font-size:11.5px;border-radius:7px}
 .btn-fix:hover{background:hsl(215 80% 60% / 0.22)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
 .actions{display:flex;gap:10px;margin-top:18px;align-items:center}
+.blocked-note{font-size:11.5px;color:var(--warning);display:flex;align-items:center;gap:6px}
+.spinner{width:12px;height:12px;border-radius:50%;border:2px solid hsl(215 80% 60% / 0.25);
+  border-top-color:var(--info);display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Low-extraction / "we couldn't understand this" state ─────── */
+.empty-hero{text-align:center;padding:36px 20px 8px}
+.empty-hero .ico{font-size:34px;opacity:.7}
+.empty-hero h2{font-family:var(--serif);font-size:19px;margin:12px 0 6px}
+.empty-hero p{color:var(--muted-foreground);max-width:52ch;margin:0 auto;font-size:13px;line-height:1.6}
+.found-scraps{display:flex;justify-content:center;gap:10px;margin:18px 0;flex-wrap:wrap}
+.scrap{font-size:11.5px;color:var(--muted-foreground);background:var(--secondary);border:1px solid var(--border);
+  border-radius:20px;padding:5px 12px}
+.scrap b{color:var(--foreground)}
+.tips-card{background:var(--secondary);border:1px solid var(--border);border-radius:10px;padding:14px 16px;
+  max-width:520px;margin:16px auto 0;text-align:left}
+.tips-card .tt{font-size:12px;font-weight:600;margin-bottom:8px}
+.tips-card ul{margin:0;padding-left:18px;font-size:12px;color:var(--muted-foreground);line-height:1.8}
+
+/* ── Autofix-failed fallback card ──────────────────────────────── */
+.finding.failed-fix{background:hsl(0 72% 58% / 0.06);border:1px solid hsl(0 72% 58% / 0.25)}
+.suggest-box{background:var(--input);border:1px dashed var(--border);border-radius:8px;padding:9px 11px;
+  margin-top:9px;font-size:12px;color:var(--foreground);font-family:var(--mono)}
+.finding-actions{display:flex;gap:8px;margin-top:9px}
+
+.arc-pick-card.disabled{cursor:not-allowed;opacity:.55}
+.arc-pick-card.disabled:hover{border-color:var(--border)}
+.arc-pick-card .apt .lock{font-size:11px;margin-left:6px;color:var(--muted-foreground)}
 
 /* ── State 2: Understood ───────────────────────────────────────── */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
@@ -257,18 +325,46 @@ HA = Humanity_Anchor — neo điểm những khoảnh khắc bình dị
       </div>
 
       <div class="mode-cards">
-        <div class="mode-card on">
-          <div class="mc-title">⚡ Quick check</div>
-          <div class="mc-desc">Free, instant, pattern-based. Best for a first pass or when you're iterating fast.</div>
-        </div>
         <div class="mode-card">
-          <div class="mc-title">✨ AI-assisted</div>
-          <div class="mc-desc">Slower, understands nuance and Vietnamese prose better. Uses your chosen writing model.</div>
+          <div class="mc-title">⚡ Quick check</div>
+          <div class="mc-desc">Free and instant, but literal — it looks for exact patterns. Best once your plan already works and you're making small edits, not for a first pass.</div>
+        </div>
+        <div class="mode-card on">
+          <div class="mc-title">✨ AI-assisted <span style="font-weight:400;color:var(--muted-foreground);font-size:10.5px">(recommended)</span></div>
+          <div class="mc-desc">Understands nuance, structure, and Vietnamese prose — the safer choice for your first pass. Uses your chosen writing model.</div>
         </div>
       </div>
 
       <div class="actions">
         <button class="btn btn-primary" onclick="go(2)">Analyze my story →</button>
+        <button class="btn btn-ghost" onclick="go('empty')" style="margin-left:auto;font-size:11.5px;padding:6px 10px">Reviewer: simulate messy/incomplete input →</button>
+      </div>
+    </div>
+
+    <!-- ══════════════ STATE 1b — COULDN'T UNDERSTAND (low-extraction branch) ══════════════ -->
+    <div class="panel" id="p-empty">
+      <div class="empty-hero">
+        <div class="ico">🔍</div>
+        <h2>We only found a little to work with</h2>
+        <p>Your text didn't have enough of a clear structure for us to build a full plan yet.
+          That's normal for early notes — here's what we DID pick up:</p>
+        <div class="found-scraps">
+          <div class="scrap">👤 <b>0</b> characters</div>
+          <div class="scrap">🗺️ <b>0</b> story arcs</div>
+          <div class="scrap">⚙️ <b>1</b> possible variable <span style="opacity:.7">("power")</span></div>
+        </div>
+        <div class="tips-card">
+          <div class="tt">Try adding a bit more of these, then run it again:</div>
+          <ul>
+            <li>Who your main character is, in a sentence or two</li>
+            <li>A rough outline of what happens, in order</li>
+            <li>Anything that changes over time (a meter, a relationship, a countdown)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="actions" style="justify-content:center">
+        <button class="btn btn-primary" onclick="go(1)">← Add more detail</button>
+        <button class="btn btn-ghost">✨ Try AI-assisted instead</button>
       </div>
     </div>
 
@@ -342,18 +438,40 @@ HA = Humanity_Anchor — neo điểm những khoảnh khắc bình dị
       <p class="lede">We checked your story against its own rules — the things you said in your
         planning notes shouldn't happen, or must happen a certain way.</p>
 
-      <div class="summary-bar">
+      <div class="summary-bar" id="summary-bar">
         <div class="sb-item ok">✓ 6 checks passed</div>
-        <div class="sb-item warn">⚠ 1 needs attention</div>
+        <div class="sb-item warn" id="sb-warn">⚠ 1 needs attention</div>
         <div class="sb-item tip">💡 1 suggestion</div>
       </div>
 
-      <div class="finding warn">
+      <!-- Interactive fix demo: idle → fixing → resolved / couldn't-fix.
+           Reviewer control (not part of the real product) at the bottom
+           of this panel switches between the two possible outcomes. -->
+      <div class="finding warn" id="finding-warn">
         <div class="fi">⚠</div>
         <div class="ft">We couldn't confirm your Open Questions were preserved from your notes.
           <small>Your source document lists 6 open questions, but the plan we built only kept 0 of them. This usually means a formatting mismatch in the "Open Questions" section.</small>
         </div>
-        <div class="fa"><button class="btn btn-fix">🪄 Fix this for me</button></div>
+        <div class="fa"><button class="btn btn-fix" id="fix-btn" onclick="tryFix()">🪄 Fix this for me</button></div>
+      </div>
+
+      <div class="finding" id="finding-resolved" style="display:none;background:hsl(150 65% 48% / 0.07);border:1px solid hsl(150 65% 48% / 0.3)">
+        <div class="fi" style="color:var(--success)">✓</div>
+        <div class="ft">Fixed — all 6 open questions are now carried into your plan.
+          <small>We matched them from your source text's "7. OPEN QUESTIONS" checklist.</small>
+        </div>
+      </div>
+
+      <div class="finding failed-fix" id="finding-failed" style="display:none">
+        <div class="fi">✕</div>
+        <div class="ft">We couldn't fix this automatically — your Open Questions section may use a format we don't recognize.
+          <small>Try changing your source text's list to plain checkbox items, like:</small>
+          <div class="suggest-box">- [ ] Protagonist's name<br>- [ ] Story title</div>
+          <div class="finding-actions">
+            <button class="btn btn-ghost" onclick="go(1)" style="font-size:11.5px;padding:6px 10px">← Edit my original text</button>
+            <button class="btn btn-fix">💬 Ask in chat instead</button>
+          </div>
+        </div>
       </div>
 
       <div class="finding tip">
@@ -377,10 +495,11 @@ HA = Humanity_Anchor — neo điểm những khoảnh khắc bình dị
       </div>
 
       <div class="actions">
-        <button class="btn btn-primary" onclick="go(4)">Continue anyway → Choose your arc</button>
+        <button class="btn btn-primary" id="continue-btn" disabled title="Resolve the issue above first">Resolve the issue above to continue</button>
         <button class="btn btn-ghost" onclick="go(2)">← Back to summary</button>
       </div>
-      <div class="note">Suggestions (💡) never block you from continuing — they're worth a glance, not a requirement. Only "needs attention" (⚠) items are checked before drafting starts.</div>
+      <div class="note">Suggestions (💡) never block you — they're worth a glance, not a requirement. "Needs attention" (⚠) items must be resolved (fixed or explicitly dismissed) before you can move on, since drafting would fail on them anyway.</div>
+      <div class="note" style="margin-top:8px">Reviewer — see the other outcome: <a href="#" onclick="showFixFailed();return false" style="color:var(--info)">what happens if auto-fix can't resolve it →</a></div>
     </div>
 
     <!-- ══════════════ STATE 4 — READY TO DRAFT ══════════════ -->
@@ -390,12 +509,12 @@ HA = Humanity_Anchor — neo điểm những khoảnh khắc bình dị
         and constraints into something the writing tools can use.</p>
 
       <div class="arc-pick">
-        <div class="arc-pick-card">
+        <div class="arc-pick-card disabled">
           <div>
-            <div class="apt">Arc 1</div>
-            <div class="apd">Context pending — needs detail. Not recommended to draft yet.</div>
+            <div class="apt">Arc 1 <span class="lock">🔒 needs more detail</span></div>
+            <div class="apd">Your notes don't describe what happens in this arc yet, so there's nothing to draft.</div>
+            <button class="btn btn-fix" style="margin-top:8px">✨ Ask AI to help complete this arc</button>
           </div>
-          <div class="radio"></div>
         </div>
         <div class="arc-pick-card sel">
           <div>
@@ -432,12 +551,22 @@ HA = Humanity_Anchor — neo điểm những khoảnh khắc bình dị
 </div>
 
 <script>
+// IDs, not DOM order, drive panel switching — the low-extraction branch
+// (#p-empty) sits off the main 1..5 stepper path, so index-based toggling
+// would silently break as soon as a non-stepper panel is inserted in the
+// markup between two stepper panels.
+var PANEL_ID = {1:'p1', 2:'p2', 3:'p3', 4:'p4', 5:'p5', 'empty':'p-empty'};
+
 function go(n){
-  document.querySelectorAll('.panel').forEach(function(p,i){ p.classList.toggle('active', i === n-1); });
-  document.querySelectorAll('.step').forEach(function(s,i){
-    s.classList.toggle('on', i === n-1);
-    s.classList.toggle('done', i < n-1);
-  });
+  var targetId = PANEL_ID[n];
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.toggle('active', p.id === targetId); });
+  document.querySelector('.stepper').style.display = (typeof n === 'number') ? 'flex' : 'none';
+  if (typeof n === 'number') {
+    document.querySelectorAll('.step').forEach(function(s,i){
+      s.classList.toggle('on', i === n-1);
+      s.classList.toggle('done', i < n-1);
+    });
+  }
 }
 document.querySelectorAll('.mode-card').forEach(function(c){
   c.addEventListener('click', function(){
@@ -446,11 +575,46 @@ document.querySelectorAll('.mode-card').forEach(function(c){
   });
 });
 document.querySelectorAll('.arc-pick-card').forEach(function(c){
-  c.addEventListener('click', function(){
+  c.addEventListener('click', function(e){
+    if (c.classList.contains('disabled')) return; // an incomplete arc can't be silently chosen
     document.querySelectorAll('.arc-pick-card').forEach(function(x){ x.classList.remove('sel'); });
     c.classList.add('sel');
   });
 });
+document.querySelectorAll('.arc-pick-card.disabled .btn').forEach(function(b){
+  b.addEventListener('click', function(e){ e.stopPropagation(); }); // don't bubble into the (no-op) card click
+});
+
+// ── Check & Fix: interactive fix-attempt demo ──────────────────────────
+// Two possible outcomes on a REAL autofix call: it resolves the finding,
+// or it can't — and per the locked design principle, "can't" must still
+// never mean "go edit the raw plan yourself."
+function unlockContinue(){
+  var btn = document.getElementById('continue-btn');
+  btn.disabled = false;
+  btn.title = '';
+  btn.textContent = 'Continue → Choose your arc';
+  btn.onclick = function(){ go(4); };
+}
+function tryFix(){
+  var btn = document.getElementById('fix-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Fixing…';
+  setTimeout(function(){
+    document.getElementById('finding-warn').style.display = 'none';
+    document.getElementById('finding-resolved').style.display = 'flex';
+    document.getElementById('sb-warn').outerHTML = '';
+    unlockContinue();
+  }, 900);
+}
+function showFixFailed(){
+  document.getElementById('finding-warn').style.display = 'none';
+  document.getElementById('finding-resolved').style.display = 'none';
+  document.getElementById('finding-failed').style.display = 'flex';
+  // still blocked — an unresolved "needs attention" finding must keep
+  // blocking Continue, exactly like the real hard-tier gate does server-side
+}
+
 go(3); // open on the Check & Fix state — the highest-value redesign surface
 </script>
 </body>
