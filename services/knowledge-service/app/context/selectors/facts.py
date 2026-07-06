@@ -28,6 +28,7 @@ and ``project_id``; the selector does not touch Cypher directly.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from app.context.intent.classifier import Intent, IntentResult
@@ -288,6 +289,39 @@ async def select_l2_facts(
 _MAX_BRIDGE_ANCHORS = 6
 _MAX_BRIDGE_RELS_PER_ANCHOR = 5
 _MAX_BRIDGE_NEW_FACTS = 20
+# `extract_candidates` is a user-MESSAGE proper-noun extractor; run over passage
+# PROSE it also emits quoted dialogue sentences and sentence-initial common words
+# as "candidates". On English that noise is mild, but the multilingual M4 re-measure
+# (Vietnamese corpus 019f1783, 2026-07-06) showed it dominating: 5 of 6 anchor slots
+# filled with junk (quoted sentences + "Một"/"Sự"/"Không") so only 1/6 resolved to a
+# real entity. Two mitigations, bridge-local (never touch the shared extractor):
+#   (1) drop obviously-sentence candidates before the cap (see `_looks_like_sentence`),
+#   (2) resolve-THEN-cap over a bounded pool (see `expand_facts_from_passages`) so
+#       unresolvable junk no longer consumes the anchor budget.
+# NOTE (D-BRIDGE-NAME-FRAGMENT, deferred): a 2nd multilingual defect remains — a
+# multi-token Sino-Vietnamese name ("Cửu U Ma Cơ") gets split by the extractor at the
+# mid-name single-char token ("U") into non-resolving fragments. That fix lives in the
+# SHARED extractor/LATIN_NAME_RE and needs a glossary-path regression pass; tracked, not
+# fixed here.
+_MAX_BRIDGE_CANDIDATE_POOL = 40  # bound the resolve-then-cap I/O on prose-heavy passages
+_MAX_BRIDGE_ANCHOR_WORDS = 8     # a "name" longer than this is prose, not an entity
+
+# Sentence/dialogue punctuation that a real entity name never carries mid-string.
+# `\.\s` catches an interior "period + space" sentence break; a trailing abbreviation
+# dot ("Coutts & Co.") has no following space so it is NOT matched.
+_BRIDGE_SENTENCE_PUNCT = re.compile(r"[!?…。！？]|\.\s")
+
+
+def _looks_like_sentence(candidate: str) -> bool:
+    """True when a bridge candidate is prose (a quoted dialogue line), not a name.
+
+    Bridge-local hygiene for the passage→graph anchor path — keeps `Coutts & Co.`
+    and `Cửu U Ma Cơ` (short, no interior sentence punctuation) while dropping
+    `"Không thể... không thể để nó nuốt chửng mình!"`.
+    """
+    if _BRIDGE_SENTENCE_PUNCT.search(candidate):
+        return True
+    return len(candidate.split()) > _MAX_BRIDGE_ANCHOR_WORDS
 
 
 def select_bridge_anchor_names(
@@ -313,6 +347,11 @@ def select_bridge_anchor_names(
         for cand in extract_candidates(text):
             low = cand.lower()
             if low in already or low in seen:
+                continue
+            # Drop quoted-dialogue-sentence noise before it consumes a cap slot
+            # (multilingual M4 fix). Cheap + bridge-local; the shared extractor
+            # is untouched.
+            if _looks_like_sentence(cand):
                 continue
             seen.add(low)
             out.append(cand)
@@ -342,20 +381,32 @@ async def expand_facts_from_passages(
     the message-anchored path uses, with the same confidence + archived-peer
     filters. Bounded by `max_anchors × max_rels_per_anchor` and `max_new_facts`.
 
+    `max_anchors` bounds RESOLVED anchors, not candidates examined: the selector
+    yields a bounded POOL (`_MAX_BRIDGE_CANDIDATE_POOL`) and this loop resolves in
+    rank order until `max_anchors` candidates hit a real entity. That resolve-then-cap
+    ordering is the multilingual M4 fix — on Vietnamese prose the raw candidate stream
+    is mostly unresolvable noise, and a plain cap-then-resolve wasted 5 of 6 slots on
+    it (only 1/6 anchors real); this way junk is skipped without spending the budget.
+    I/O stays bounded: ≤ pool resolution lookups + ≤ max_anchors relation lookups.
+
     Best-effort at the candidate grain: a name that fails to resolve or expand is
     skipped, never raised — the caller wraps the whole call in a degrade-to-empty
     guard, but per-candidate resilience means one bad anchor can't starve the rest.
     """
+    # Pull a bounded POOL (≥ max_anchors) so unresolvable junk doesn't crowd real
+    # names out of the cap; the resolve loop below enforces the real max_anchors.
+    pool = max(max_anchors, _MAX_BRIDGE_CANDIDATE_POOL)
     anchor_names = select_bridge_anchor_names(
-        passage_texts, already_anchored_names, max_anchors=max_anchors
+        passage_texts, already_anchored_names, max_anchors=pool
     )
     if not anchor_names:
         return []
 
     new_facts: list[str] = []
     seen_ids: set[str] = set()
+    resolved_anchors = 0
     for name in anchor_names:
-        if len(new_facts) >= max_new_facts:
+        if len(new_facts) >= max_new_facts or resolved_anchors >= max_anchors:
             break
         matches = await find_entities_by_name(
             session, user_id=user_id, project_id=project_id, name=name
@@ -368,6 +419,7 @@ async def expand_facts_from_passages(
         if eid in seen_ids:
             continue
         seen_ids.add(eid)
+        resolved_anchors += 1
         rels = await find_relations_for_entity(
             session,
             user_id=user_id,

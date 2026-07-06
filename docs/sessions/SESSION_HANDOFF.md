@@ -1,5 +1,30 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Context-retrieval M4 — M1a passage→graph bridge RE-MEASURED on a 2nd, independent, MULTILINGUAL corpus + a fix it surfaced, 2026-07-06.**
+Plan [`2026-07-06-context-retrieval-improvements.md`](../plans/2026-07-06-context-retrieval-improvements.md);
+eval [`docs/eval/context-budget/M4-multilingual-bridge-remeasure-2026-07-06.md`](../eval/context-budget/M4-multilingual-bridge-remeasure-2026-07-06.md).
+The first M4 A/B was English/Dracula only; the platform is Vietnamese/Chinese. A live Neo4j survey found a
+**2nd usable corpus** the first M4 said didn't exist — Vietnamese xianxia `019f1783` (30 ent / 95 rel / 181 pass,
+denser than Dracula). **Result:** the bridge is **cross-lingually safe** (no genuine answer regression — the one
+apparent A/B "worse" is a judge-truncation artifact on a byte-identical answer) and the Dracula "weak-but-positive"
+GO replicates — BUT shipped M1a was **materially degraded on Vietnamese**: it reuses `extract_candidates` (a
+user-MESSAGE extractor) over passage PROSE, where quoted dialogue sentences + sentence-initial common words
+(`Một`/`Sự`/`Không`) starved the anchor cap → **1/6 slots resolved to a real entity**. **FIX SHIPPED** (bridge-local,
+shared extractor untouched): `_looks_like_sentence` junk-filter + **resolve-THEN-cap** over a bounded pool in
+`facts.py` → mechanism yield **2×** (3.42→6.92 facts/query, 8→11 of 12 queries), 3 new unit tests, `test_facts_selector`
+21/21 (the 3 `test_mode_full` budget reds are PRE-EXISTING — fail identically without this change). Harness gotcha
+recorded: the Vietnamese passages index under a *different* bge-m3 `user_model` id (`019eeb08-8bff…`) than Dracula's —
+an eval must embed the query with the corpus's OWN index model or `find_passages_by_vector` returns 0 (cross-service
+model-ref bug class). **NEXT:** M1b/M3 stay gated on measurement (don't build speculatively). Two tracked rows below.
+- **D-BRIDGE-NAME-FRAGMENT (MED, gate #2 — shared-extractor blast radius):** a 2nd multilingual defect — a
+  multi-token Sino-Vietnamese name (`Cửu U Ma Cơ`) is split by `extract_candidates`/`LATIN_NAME_RE` at the mid-name
+  single-char token `U` into non-resolving fragments (`Cửu`/`Ma Cơ`), so even a perfect anchor selector misses the
+  answer entity. Fix lives in the SHARED extractor + needs a glossary-path regression pass. Not fixed here.
+- **D-EVAL-BOOK (unchanged):** the answer-quality *magnitude* is still bounded by one small book + a local judge;
+  a large-book full passage+relation extraction remains the follow-on to size the lift (buildable, not built this run).
+
+---
+
 **Tool-catalog-simplification — live-verified against the real stack, spec fully CLOSED (all §10 items), 2026-07-06.**
 [`docs/specs/2026-07-06-tool-catalog-simplification.md`](../specs/2026-07-06-tool-catalog-simplification.md) §10
 item 5 (never done before — everything prior was unit/integration tests against mocks or a small offline eval

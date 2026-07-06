@@ -1,5 +1,19 @@
 # Context Retrieval Improvements — plan
 
+> **UPDATE 2026-07-06 (M4 multilingual robustness check — done):** M1a shipped
+> (`31eefb2dc`) and was then re-measured on a **second, independent, Vietnamese** corpus
+> (`019f1783`, 30 ent / 95 rel / 181 pass) —
+> [`docs/eval/context-budget/M4-multilingual-bridge-remeasure-2026-07-06.md`](../eval/context-budget/M4-multilingual-bridge-remeasure-2026-07-06.md).
+> Result: the bridge is **cross-lingually safe** (no genuine answer regression) and the
+> Dracula "weak-but-positive" GO replicates — BUT shipped M1a was **materially degraded on
+> Vietnamese** (junk from `extract_candidates` over prose starved the anchor cap: 1/6 real).
+> **Fixed this run** (sentence-junk filter + resolve-then-cap → 2× mechanism yield, 3 unit
+> tests). A **2nd multilingual defect (`D-BRIDGE-NAME-FRAGMENT`)** — Sino-Vietnamese names
+> fragmented by the shared extractor — is tracked (shared-extractor blast radius). The
+> answer-quality *magnitude* is still bounded by one small book + local judge; the genuine
+> `D-EVAL-BOOK` (large-book full extraction) remains the follow-on. **M1b/M3 stay gated on
+> that measurement, not built speculatively.**
+
 **Date:** 2026-07-06 · **Branch:** `feat/context-budget-law` · **Status:** M4 measured + answer-quality
 A/B run (through a `/review-impl` correction) → **M1a = GO, but a measured one.** Evidence
 ([`docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md`](../eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md)):

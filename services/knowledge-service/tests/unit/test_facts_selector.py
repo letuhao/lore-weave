@@ -537,3 +537,99 @@ async def test_expand_caps_total_new_facts(monkeypatch):
         max_new_facts=3,
     )
     assert len(out) == 3
+
+
+# ── multilingual M4 fix: sentence-junk filter + resolve-then-cap ──────────────
+# The passage→graph bridge reuses `extract_candidates` (a user-MESSAGE proper-noun
+# extractor) over passage PROSE. On Vietnamese (corpus 019f1783) that stream is
+# dominated by quoted dialogue sentences + sentence-initial common words, which a
+# plain cap-then-resolve wasted anchor slots on (1/6 resolved). These guard the two
+# bridge-local mitigations.
+
+
+def test_bridge_drops_quoted_sentence_candidates(monkeypatch):
+    """A quoted-dialogue-sentence candidate is filtered before it eats a cap slot,
+    while real (short, punctuation-free) names survive — incl. multi-token vi names."""
+    per_passage = {
+        "p1": [
+            "Không thể... không thể để nó nuốt chửng mình!",  # quoted sentence → drop
+            "Một",                                              # kept (resolves later, harmless)
+            "Lâm Chấn Nhạc",                                    # real name → keep
+        ],
+        "p2": [
+            "Cửu U Ma Cơ",     # 4-token name, no interior sentence punct → keep
+            "Coutts & Co.",    # trailing abbrev dot (no following space) → keep
+        ],
+    }
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: per_passage[text],
+    )
+    out = select_bridge_anchor_names(["p1", "p2"], set(), max_anchors=10)
+    assert "Không thể... không thể để nó nuốt chửng mình!" not in out
+    assert "Lâm Chấn Nhạc" in out
+    assert "Cửu U Ma Cơ" in out
+    assert "Coutts & Co." in out
+
+
+@pytest.mark.asyncio
+async def test_expand_resolve_then_cap_junk_does_not_starve(monkeypatch):
+    """Unresolvable junk ranked ABOVE two real names must not consume the anchor
+    budget: with max_anchors=2 both real entities still expand (cap-then-resolve
+    would have stopped at the junk and returned nothing)."""
+    # 5 junk candidates (unresolvable) then 2 real names, all within one passage.
+    cands = ["Một", "Sự", "Không", "Thần", "Giọng", "Lin", "Kai"]
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: cands,
+    )
+    lin = _entity("Lin", "e-lin")
+    kai = _entity("Kai", "e-kai")
+
+    async def _resolve(session, *, user_id, project_id, name):
+        return {"Lin": [lin], "Kai": [kai]}.get(name, [])  # only Lin/Kai resolve
+
+    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", _resolve)
+    r_lin = _relation("r1", "Lin", "e-lin", "mentor_of", "Kai", "e-kai")
+    r_kai = _relation("r2", "Kai", "e-kai", "member_of", "Sect", "e-sect")
+    rels = {"e-lin": [r_lin], "e-kai": [r_kai]}
+
+    async def _one_hop(session, *, user_id, project_id, entity_id, min_confidence, limit):
+        return rels.get(entity_id, [])
+
+    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", _one_hop)
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["prose"], already_anchored_names=set(), existing_facts=set(),
+        max_anchors=2,
+    )
+    # Both real names resolved & expanded despite 5 junk candidates ranked first.
+    assert out == ["Lin — mentor_of — Kai", "Kai — member_of — Sect"]
+
+
+@pytest.mark.asyncio
+async def test_expand_resolved_anchor_cap_bounds_expansion(monkeypatch):
+    """max_anchors bounds RESOLVED anchors: with 3 resolvable names but
+    max_anchors=1, only the first is expanded."""
+    cands = ["Aaa", "Bbb", "Ccc"]
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: cands,
+    )
+    ents = {n: [_entity(n, f"e-{n}")] for n in cands}
+
+    async def _resolve(session, *, user_id, project_id, name):
+        return ents.get(name, [])
+
+    one_hop = AsyncMock(return_value=[_relation("r", "X", "e-x", "knows", "Y", "e-y")])
+    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", _resolve)
+    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", one_hop)
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["prose"], already_anchored_names=set(), existing_facts=set(),
+        max_anchors=1,
+    )
+    assert one_hop.await_count == 1  # only ONE anchor expanded
+    assert len(out) == 1
