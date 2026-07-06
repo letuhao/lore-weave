@@ -154,14 +154,31 @@ recalled the codeword. All isolated via a temp compose override (deleted); stack
 **IDENTICAL 4/4 fact-recall** (no quality loss). Each continue turn sends a ~27-tok delta vs a 29.5K
 full re-send; ~100% cached after establish. The tool-schema-dominated base = the original explosion case.
 
-**NEXT (evidence-backed):** (1) **broader sweep then flip `LLM_STATEFUL_CACHE` on** for `responses_api`
-providers (staged; capability-gated + E1 degrade-safe, all live-verified). (2) **P3 cache-aware Planner
-(spec §9) stays DEFERRED — gate #4, no pain observed:** the eval's context (~29.7K) never neared the 200K
-window, so the §5a rule-4 guard never fired and P3's compaction-cache-write-penalty + intelligent
-re-chain-at-boundary (E5) tuning has no evidence to tune against yet. Revisit when a LONG-session
-(window-approaching) eval shows the boundary case matters. (3) Deferred: the no-tools `_stream_via_gateway`
-path is stateless-only (only `_stream_with_tools` is wired) — safe (self-heals via §5a rule-1), a no-tools
-turn just forgoes the cache; wire only if a real no-tools-heavy workload appears.
+**▶ P3 BUILT 2026-07-06** (`dbc5c0b31`) — the long-session (window-boundary) case the user flagged
+("not facing the problem doesn't mean it won't happen; long context hits 1M-3M"). A **22-turn
+growing-context probe** exercised the boundary:
+- **Correct across a long session:** recall of a turn-1 fact passed after 21 filler turns; continues
+  ~95% cached; no overflow. But the accumulated server-side chain GROWS (32K→73K) — stateful holds the
+  full chain (unlike stateless's ~32K-compacted), so it MUST be bounded.
+- **R1 real bug fixed:** rule-4's window guard read the persisted `input_tokens`, which SUMS the tool-loop
+  (N-iteration turn ≈ N× the real context) → fired ~N× too early. Now reads the TRUE single-call
+  `context_size` (tracked in _stream_with_tools, on all 3 terminal yields, persisted on the caching frame).
+- **Observability:** `decide_chain` returns a `reason`; frame carries `chain_action` (continue /
+  establish_first / reestablish_{stateless_prev,model_switch,compaction,window}) + `context_size`.
+- **Bounded re-chain verified** (artificial `LLM_STATEFUL_MAX_CHAIN_TOKENS=45000` forced boundary at
+  turn 9): re-establish RESETS ctx_size (sends compacted context), cycles 39K↔47K, no overflow/thrash.
+- **KEY FINDING:** keep the threshold NEAR the window. A 45K cap (22% of 200K) forced compaction so early
+  it summarized away the turn-1 fact (recall FAIL); the default `0.75×effective_limit` (~143K for 200K)
+  held it. **The real long-session lever is the T6 fact-preserving summarizer's QUALITY at the boundary**
+  — a separate, existing Context-Budget-Law concern, NOT the chain logic. Optional cap only for a provider
+  loading a smaller n_ctx; set near that real window, never low.
+
+**NEXT (evidence-backed):** (1) **broader model/scenario sweep, then flip `LLM_STATEFUL_CACHE` on** for
+`responses_api` providers (staged; capability-gated + E1 degrade-safe, all live-verified). (2) If long
+novel sessions show recall loss at the compaction boundary, that's a **T6 summarizer fact-preservation**
+task (existing subsystem), not stateful-chain. (3) Deferred: the no-tools `_stream_via_gateway` path is
+stateless-only (only `_stream_with_tools` is wired) — safe (self-heals via §5a rule-1), a no-tools turn
+just forgoes the cache; wire only if a real no-tools-heavy workload appears.
 
 ---
 
