@@ -1340,14 +1340,15 @@ class TestK21BToolCallingIntegration:
         assert len(insert_calls) == 1
         # The INSERT SQL writes the tool_calls column.
         assert "tool_calls" in insert_calls[0].args[0]
-        # tool_calls JSON is $11 (second-to-last since W1 appended
-        # context_breakdown as $12).
-        tool_calls_json = insert_calls[0].args[-2]
+        # tool_calls JSON is $11 (third-to-last since W1 appended context_breakdown
+        # as $12, and the stateful-chain feature later appended response_id as $13).
+        tool_calls_json = insert_calls[0].args[-3]
         assert tool_calls_json is not None
         assert json.loads(tool_calls_json) == [tool_call]
-        # W1 — the context_breakdown JSONB ($12, last arg) is persisted and
-        # carries the per-category breakdown incl. the tool_results bucket.
-        ctx_json = insert_calls[0].args[-1]
+        # W1 — the context_breakdown JSONB ($12, second-to-last arg since response_id
+        # was appended as $13) is persisted and carries the per-category breakdown
+        # incl. the tool_results bucket.
+        ctx_json = insert_calls[0].args[-2]
         assert ctx_json is not None
         ctx = json.loads(ctx_json)
         assert set(ctx) >= {"used_tokens", "pct", "breakdown", "baseline_tokens",
@@ -1387,8 +1388,9 @@ class TestK21BToolCallingIntegration:
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
-        # tool_calls JSON ($11, second-to-last arg) is None when no calls were made.
-        assert insert_calls[0].args[-2] is None
+        # tool_calls JSON ($11, third-to-last arg — see note above) is None when
+        # no calls were made.
+        assert insert_calls[0].args[-3] is None
 
     @pytest.mark.asyncio
     async def test_tool_call_chunk_excluded_from_assistant_content(self):
@@ -2014,10 +2016,11 @@ class TestW1ContextBreakdownFrame:
         assert frame["breakdown"]["mcp_tool_schemas"] == 2222
         # baseline includes the schema buckets (fixed overhead before the user word).
         assert frame["baseline_tokens"] >= 111 + 2222
-        # And the same payload was persisted on the assistant row ($12).
+        # And the same payload was persisted on the assistant row ($12, second-to-last
+        # arg since the stateful-chain feature appended response_id as $13).
         insert_calls = [c for c in conn.execute.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
-        persisted = json.loads(insert_calls[0].args[-1])
+        persisted = json.loads(insert_calls[0].args[-2])
         assert persisted["breakdown"]["mcp_tool_schemas"] == 2222
         assert persisted["used_tokens"] == frame["used_tokens"]
 
@@ -2042,7 +2045,8 @@ class TestW1ContextBreakdownFrame:
         insert_calls = [c for c in conn.execute.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
         assert "context_breakdown" in insert_calls[0].args[0]
-        assert json.loads(insert_calls[0].args[-1])["breakdown"]["history"] >= 0
+        # $12, second-to-last arg since response_id trails it as $13.
+        assert json.loads(insert_calls[0].args[-2])["breakdown"]["history"] >= 0
 
 
 class TestW1CompactionFrame:

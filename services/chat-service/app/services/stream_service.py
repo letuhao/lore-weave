@@ -2799,6 +2799,13 @@ async def _emit_chat_turn(
     except Exception:  # noqa: BLE001 — a capability, never load-bearing
         logger.warning("subagent resolution failed (no delegation)", exc_info=False)
 
+    # Chain-decision defaults — read UNCONDITIONALLY later (the `_caching` frame at
+    # the bottom of this function) regardless of which branch below runs, so both
+    # must see them. The plain-gateway (`else`) branch below never had its own
+    # stateful/chain logic (no tools → nothing to decide), so without this hoisted
+    # default it left `_chain_reason` etc. unbound — an UnboundLocalError on every
+    # non-tool-calling turn (review-impl catch, 2026-07-06).
+    _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
     try:
         if use_tools or _subagent_tool is not None:
             # ── Stateful /v1/responses chain decision (P2 §5a) ──────────────────
@@ -2807,7 +2814,6 @@ async def _emit_chat_turn(
             # error falls back to stateless (full context). Only build the delta when
             # continuing from a valid head (system blocks carry the fresh grounding →
             # the gateway lifts them to `instructions`; the user turn is the input).
-            _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
             try:
                 _latest_asst = await pool.fetchrow(
                     """

@@ -55,11 +55,13 @@ Original proposal was "make create/update/edit one tool, single or batch." Cross
 
 `glossary_admin_propose_create/patch/delete` live on the separate `/mcp/admin` server, never exposed on the main `/mcp` endpoint (INV-T6) — this is how "admin-only" write access is structurally enforced (per `docs/CLAUDE.md` § User Boundaries & Tenancy: system-tier rows are admin-managed, never user-mutable). Merging admin-tier tools into the same tool as book/user tiers would require the tool to live on both servers or take a scope value a non-admin caller could pass — a tenancy violation. Admin tools may independently gain `items[]` batch (cheap, no merge) as a low-priority follow-on; they do **not** merge with book/user tools.
 
-### 3.3 Entity/link/evidence writes — batch demand unconfirmed
+### 3.3 RESOLVED (2026-07-06) — entity batch: build now; set_genres/chapter_link/evidence: still unconfirmed
 
-`glossary_propose_new_entity`, `glossary_entity_set_genres`, `glossary_create_chapter_link`, `glossary_create_evidence` act on 4 different resource shapes (entity, genre-override, chapter-link, evidence) — not clean merge candidates with each other. Each *could* independently gain `items[]` batch (e.g. bulk entity creation would help KG-extraction pipelines that mint many entities per pass), but the audit found no measured evidence of batch demand here yet.
+`glossary_propose_new_entity`, `glossary_entity_set_genres`, `glossary_create_chapter_link`, `glossary_create_evidence` act on 4 different resource shapes (entity, genre-override, chapter-link, evidence) — not clean merge candidates with each other, so this is 4 independent batch decisions, not one.
 
-**Decision needed:** is bulk entity creation (from KG-extraction or similar) a real near-term need, or defer this slice until a concrete caller needs it?
+**Decision:** PO confirmed bulk entity creation is a real near-term need (a KG-extraction-style pipeline minting many entities per pass). Shipped: `glossary_propose_entities` (`services/glossary-service/internal/api/entity_batch_tools.go`) — the batch-capable sibling of `glossary_propose_new_entity`, following the SAME playbook as §6/§7 (one new tool, `items[]` 1-50, per-item independent results, old tool tagged `_meta.visibility:"legacy"` rather than deleted). No CAT-1 discriminator needed (create-only, no update/delete branch to design). Reuses `proposeNewEntity` per item — the EXACT core the superseded tool calls — so a batch-created entity is indistinguishable from a singly-created one. 3 new integration tests (mixed new+dedup, unknown-kind per-item error, empty-items rejection); the CAT-4 drift-lock test (`TestLegacyToolsCarryVisibilityMeta`) extended to cover the newly-legacy-tagged tool. While touching `glossary_propose_new_entity`'s registration, also corrected a latent gap: it had no `_meta.tier` at all (defaulting to "R"/read despite being a direct write) — now correctly "A".
+
+`glossary_entity_set_genres`, `glossary_create_chapter_link`, `glossary_create_evidence` remain **unconfirmed** — no near-term caller identified for batching any of these; revisit only when one appears (defer-gate #4: genuinely blocked on a concrete future need, not "missing infrastructure").
 
 ---
 
@@ -281,11 +283,11 @@ Self-review before BUILD, per this repo's mandatory second-pass-review conventio
 
 ---
 
-## 11. Open questions (blocking PLAN)
+## 11. Open questions — ALL RESOLVED 2026-07-06
 
 1. ~~Confirm §3.1~~ — **RESOLVED**: upsert (create+update via `base_version` presence) + separate delete, 6→2 tools (§3.1, §6).
-2. Confirm §3.3: is entity/link/evidence batch a real near-term need, or defer?
-3. Should `memory_search` hard-removal be pulled into this spec's Deferred tracking, or stay solely owned by the 2026-07-05 plan?
-4. Any objection to `story` staying hot (vs. folding into the group-directory-only model) given it's a specific, already-measured exception?
-5. §7: per-session-only legacy-tool pinning, or also a per-user default? Recommend per-session only until real repeat demand appears.
-6. §8.7: is `maxItems: 50` reasonable to ship the eval with, or should the eval itself test a range (10/25/50) to pick the number empirically?
+2. ~~Confirm §3.3~~ — **RESOLVED**: entity batch is a real near-term need (PO-confirmed) — `glossary_propose_entities` shipped. `entity_set_genres`/`chapter_link`/`evidence` batching stays unconfirmed, deferred until a concrete caller appears (§3.3).
+3. ~~Should `memory_search` hard-removal be pulled into this spec's Deferred tracking~~ — **RESOLVED: no.** It stays solely owned by `docs/plans/2026-07-05-search-tool-unification.md` — that plan is the single source of truth for that deferral; duplicating it into this spec's tracking would create a second row for the same item with no new information, exactly the "second source of truth that drifts" pattern `docs/standards/README.md`'s own maintenance rule warns against. This spec only cross-references it (§1B, §5).
+4. ~~Any objection to `story` staying hot~~ — **RESOLVED: no objection, keep as shipped.** `_BOOK_SCOPED_HOT_DOMAINS`/`_STUDIO_HOT_DOMAINS` still include `story` today, unchanged by this spec's Part A/D work; the measured justification (Dracula eval — `story_search` ranked 7th/missed via `find_tools`) still holds and no counter-evidence has emerged since.
+5. ~~§7: per-session-only legacy-tool pinning, or also a per-user default?~~ — **RESOLVED: per-session only, as shipped.** `pinned_legacy_tools` is a `chat_sessions` column (session-scoped), no per-user default cascade was built. Revisit only if real repeat-pin demand across sessions actually appears — no such signal yet.
+6. ~~§8.7: is `maxItems: 50` reasonable?~~ — **RESOLVED: accept 50 as shipped, revisit only on evidence.** The comprehension eval tested sizes 3/5 (not near 50) and found no construction-quality degradation; 50 remains a soft ceiling bounding worst-case payload size, not a tuned product number. Revisit if real usage data shows either weak-model degradation before 50, or a genuine need for larger batches (the same trigger as item 2's `entity_set_genres`/etc. — if those ever get built with real bulk-KG-extraction volume, re-measure then).

@@ -62,6 +62,7 @@ var closedSetArgs = map[string][]string{
 var legacyTaggedTools = []string{
 	"glossary_book_create", "glossary_book_patch", "glossary_book_delete",
 	"glossary_user_create", "glossary_user_patch", "glossary_user_delete",
+	"glossary_propose_new_entity", // superseded by glossary_propose_entities (§3.3)
 }
 
 // closedSetAdminArgs — same rule for the SEPARATE admin server (/mcp/admin).
@@ -271,11 +272,13 @@ func TestLegacyToolsCarryVisibilityMeta(t *testing.T) {
 			t.Errorf("%s: _meta.visibility = %q, want \"legacy\" — CAT-4 requires this tool stay hidden from find_tools/hot-seed", name, vis)
 		}
 	}
-	// Control: the tool that supersedes them must NOT be tagged legacy, or it
-	// would hide itself from discovery too.
-	if meta := metas["glossary_ontology_upsert"]; meta != nil {
-		if vis, _ := meta["visibility"].(string); vis == "legacy" {
-			t.Error("glossary_ontology_upsert must not be legacy-tagged — it's the replacement, not the superseded tool")
+	// Control: the tools that supersede them must NOT be tagged legacy, or they
+	// would hide themselves from discovery too.
+	for _, name := range []string{"glossary_ontology_upsert", "glossary_propose_entities"} {
+		if meta := metas[name]; meta != nil {
+			if vis, _ := meta["visibility"].(string); vis == "legacy" {
+				t.Errorf("%s must not be legacy-tagged — it's the replacement, not the superseded tool", name)
+			}
 		}
 	}
 }

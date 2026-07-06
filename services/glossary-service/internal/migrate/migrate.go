@@ -689,26 +689,34 @@ END $$;
 -- legacy auto-named constraint). kind-delete now removes articles explicitly,
 -- emits wiki.deleted, and surfaces a count instead of a silent cascade.
 --
--- Idempotency: scope the drop to the FK on the entity_id COLUMN specifically —
+-- review-impl fix (2026-07-06): the ORIGINAL guard here checked only whether a
+-- constraint NAMED 'wiki_articles_entity_id_fkey' existed — but that is the
+-- Postgres-assigned DEFAULT name for an inline REFERENCES FK on this exact
+-- column, so the pre-existing CASCADE constraint already carried that name.
+-- The guard therefore always saw "already exists" and skipped the swap forever
+-- — this migration had NEVER actually applied on an already-live wiki_articles
+-- table (only a brand-new CREATE TABLE ever got RESTRICT). Root-caused via
+-- TestFK_WikiArticle_RestrictsEntityDelete failing against the real dev/test DB
+-- and a live pg_constraint/pg_get_constraintdef inspection confirming CASCADE
+-- still in effect. Fixed by checking the FK's ACTUAL delete-action
+-- (confdeltype) instead of a name, so this is self-correcting regardless of
+-- what the constraint happens to be called.
+--
+-- Idempotency: scope the lookup to the FK on the entity_id COLUMN specifically —
 -- wiki_articles has a SECOND FK to glossary_entities (superseded_by_entity_id,
--- added just above), so a column-agnostic single-row select could drop the
--- wrong one and then collide on re-add (the restart bug). Skip entirely when the
--- RESTRICT-named constraint already exists.
+-- added just above), so a column-agnostic select could target the wrong one.
 DO $$
 DECLARE c text;
+DECLARE deltype "char";
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-     WHERE conname = 'wiki_articles_entity_id_fkey'
-       AND conrelid = 'wiki_articles'::regclass
-  ) THEN
-    SELECT conname INTO c FROM pg_constraint
-     WHERE conrelid = 'wiki_articles'::regclass AND contype = 'f'
-       AND confrelid = 'glossary_entities'::regclass
-       AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
-             WHERE attrelid = 'wiki_articles'::regclass
-               AND attname = 'entity_id' AND NOT attisdropped)]::smallint[];
-    IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE wiki_articles DROP CONSTRAINT %I', c); END IF;
+  SELECT conname, confdeltype INTO c, deltype FROM pg_constraint
+   WHERE conrelid = 'wiki_articles'::regclass AND contype = 'f'
+     AND confrelid = 'glossary_entities'::regclass
+     AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+           WHERE attrelid = 'wiki_articles'::regclass
+             AND attname = 'entity_id' AND NOT attisdropped)]::smallint[];
+  IF c IS NOT NULL AND deltype <> 'r' THEN
+    EXECUTE format('ALTER TABLE wiki_articles DROP CONSTRAINT %I', c);
     ALTER TABLE wiki_articles
       ADD CONSTRAINT wiki_articles_entity_id_fkey
       FOREIGN KEY (entity_id) REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT;
