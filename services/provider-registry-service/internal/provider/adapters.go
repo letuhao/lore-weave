@@ -942,6 +942,11 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	// (no custom base_url). Custom base_url (a local OpenAI-compatible server)
 	// keeps it — that's how translation/extraction disable thinking. (TR-4)
 	stripDefaultOpenAIUnsupportedFields(body, modelName, endpointBaseURL)
+	// D-PROMPT-CACHING — real OpenAI / vLLM / Gemini / DeepSeek all cache the
+	// stable prefix AUTOMATICALLY (nothing to send). The one opt-in case is a
+	// llama.cpp/LM-Studio local server, which honors `cache_prompt` (guarded to
+	// non-empty base_url + LOCAL_PROMPT_CACHE=1 so it never reaches OpenAI/vLLM).
+	applyLocalPromptCache(body, endpointBaseURL)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err
@@ -1070,6 +1075,8 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	// "none" or no tools were supplied (zero behavior change for
 	// tool-free Anthropic requests).
 	applyAnthropicTools(payload, input)
+	// D-PROMPT-CACHING — cache the stable tools+system prefix (default ON).
+	applyAnthropicPromptCache(payload)
 	out, err := postJSON(ctx, a.client, base+"/v1/messages",
 		map[string]string{
 			"x-api-key":         secret,
@@ -1130,6 +1137,9 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	// "none" or no tools were supplied (zero behavior change for
 	// tool-free Anthropic requests).
 	applyAnthropicTools(body, input)
+	// D-PROMPT-CACHING — cache the stable tools+system prefix so Anthropic bills
+	// 90% less on the tool-loop's repeated re-sends (must run AFTER tools+system).
+	applyAnthropicPromptCache(body)
 	resp, err := openAnthropicStream(ctx, a.client, base, secret, body)
 	if err != nil {
 		return err

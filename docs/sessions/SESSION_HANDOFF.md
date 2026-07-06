@@ -16,13 +16,15 @@ catalog-aware TOKEN cap (was count-64); #4 verified reasoning_content already st
 omits it, not persisted); #5 `llm_call_count` threaded into the `contextBudget` frame so the summed
 input is legible. **VERIFY:** 241 chat-service tests green (8 new budget tests); hot-seed drop
 24,388→≤4,000 (prod-measured old + budget-bounded new). Live re-measure blocked — chat-service
-container crash-looping (env). **DEFERRED — `D-PROMPT-CACHING` (Fix #3):** cache tool+system prefix —
-gate #2 (large/structural: cross-service polyglot contract = SDK `StreamRequest` cache field + Go
-`anthropic_*`/local adapters `cache_control`/`cache_prompt` + chat-service sets it); NEITHER path
-caches today. Lower marginal value for the reported case (A4B can't KV-reuse, bug #1563) and the
-dominant win (#1+#2) is shipped. Trigger: an Anthropic/dense-local model on the agentic path, or a
-dedicated cost pass. **Container note:** rebuild chat-service image for the fix to run live (only
-`tool_surface.py` hot-copied for the measurement).
+container crash-looping (env). **Fix #3 `D-PROMPT-CACHING` — SHIPPED** (provider-registry, per-provider
+after web-research): Anthropic needs EXPLICIT `cache_control` (added on last tool + system, default-on
+kill-switch `LLM_PROMPT_CACHE`), while OpenAI/Gemini/DeepSeek/vLLM cache AUTOMATICALLY (nothing to
+send — already on by default); llama.cpp/LM-Studio `cache_prompt` kept OPT-IN (`LOCAL_PROMPT_CACHE=1`,
+local-base-url-only) because vLLM 400s on unknown fields and can't be told apart by base_url. New
+`provider/prompt_cache.go` + 5 Go enforcement tests (assert cache_control on tools+system, kill-switch
+off, no-tools no-op, local opt-in + never-to-real-OpenAI); full provider suite green. Note: the
+reported A4B model still can't KV-reuse (bug #1563) — this benefits Anthropic/OpenAI/dense-local
+configs. **Container note:** rebuild chat-service + provider-registry images to run the fixes live.
 
 ---
 
