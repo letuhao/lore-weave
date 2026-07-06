@@ -345,9 +345,21 @@ def _score(intent_tokens: set[str], intent_raw: str, tool_def: dict) -> float:
             r = SequenceMatcher(None, it, tt).ratio()
             if r > best_ratio:
                 best_ratio = r
-    # Only a STRONG fuzzy hit (≥0.8, i.e. a near-spelling) rescues a tool with no
+    # Only a STRONG fuzzy hit (≥0.8, i.e. a near-spelling) rescues a tool with NO
     # token overlap — a weak char-similarity must not invent a match (H10).
-    fuzzy = best_ratio if best_ratio >= 0.8 else 0.0
+    #
+    # review-impl live-verification fix (2026-07-06): this precondition (`overlap
+    # == 0`) was documented above but never actually enforced — `best_ratio` was
+    # computed unconditionally and any EXACT single-token overlap (ratio=1.0 for
+    # identical strings) qualified as a "strong fuzzy hit," overriding token_score
+    # to a perfect 1.0 even when only one incidental, generic shared word (e.g.
+    # "book") connected an otherwise-unrelated tool to the intent. Invisible in
+    # the small offline eval catalog (curated synonyms with no accidental overlap
+    # with intent wording); live-verified at the real ~190-tool federated catalog
+    # scale, where e.g. "add a new kind to the book" scored translation_start_job
+    # a perfect 1.0 (via its unrelated synonym sharing only the word "book"),
+    # outranking glossary_ontology_upsert's genuine 3-token overlap.
+    fuzzy = best_ratio if (overlap == 0 and best_ratio >= 0.8) else 0.0
     return max(token_score, fuzzy)
 
 

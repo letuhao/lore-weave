@@ -177,7 +177,13 @@ function score(intentTokens: Set<string>, t: McpTool): number {
       if (r > best) best = r;
     }
   }
-  const fuzzy = best >= 0.8 ? best : 0;
+  // review-impl live-verification fix (2026-07-06, mirrors tool_discovery.py) — the
+  // "rescues a no-overlap tool" precondition was documented but never enforced: an
+  // EXACT single-token overlap (ratio=1.0 for identical strings) always qualified as
+  // a "strong fuzzy hit," so one incidental shared word (e.g. "book") could override
+  // tokenScore to a perfect 1.0 for an otherwise-unrelated tool. Live-verified at the
+  // real ~190-tool federated catalog scale (invisible in the small offline eval).
+  const fuzzy = overlap === 0 && best >= 0.8 ? best : 0;
   return Math.max(tokenScore, fuzzy);
 }
 

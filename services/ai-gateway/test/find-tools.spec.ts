@@ -40,6 +40,43 @@ describe('searchCatalog', () => {
     const { matches } = searchCatalog(CATALOG, 'book', 1);
     expect(matches.length).toBeLessThanOrEqual(1);
   });
+
+  it('review-impl live-verification finding: one incidental shared word does not outrank a real overlap', () => {
+    // Live-verified at the real ~190-tool federated catalog (2026-07-06): intent
+    // "add a new kind to the book" scored translation_start_job a perfect 1.0
+    // via its synonym "translate a book" sharing only the word "book" -- the
+    // fuzzy-rescue branch's own comment says it rescues a NO-overlap tool, but
+    // the code never enforced that, so any exact single-token overlap
+    // (ratio=1.0) qualified regardless of how weak the rest of the match was.
+    const cat = [
+      {
+        name: 'glossary_ontology_upsert',
+        description: 'Create or update book- or user-tier ontology rows (genre, kind, attribute).',
+        _meta: { synonyms: ['add a kind', 'add a genre', 'add an attribute'] },
+      },
+      {
+        name: 'translation_start_job',
+        description: 'Start translating a chapter into another language',
+        _meta: { synonyms: ['translate a book'] },
+      },
+    ];
+    const { matches, confident } = searchCatalog(cat, 'add a new kind to the book', 8);
+    expect(matches[0].name).toBe('glossary_ontology_upsert');
+    expect(confident).toBe(true);
+  });
+
+  it('fuzzy rescue still works for a genuine no-overlap near-spelling', () => {
+    const cat = [
+      {
+        name: 'translation_start_job',
+        description: 'Start translating a book',
+        _meta: { synonyms: ['translate', 'translation'] },
+      },
+    ];
+    const { matches, confident } = searchCatalog(cat, 'translit this chapter', 8);
+    expect(matches.map((m) => m.name)).toEqual(['translation_start_job']);
+    expect(confident).toBe(true);
+  });
 });
 
 describe('findToolsResult', () => {

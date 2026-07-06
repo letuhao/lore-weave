@@ -128,6 +128,40 @@ class TestSearchCatalog:
         )
         assert "book_create" not in [m["name"] for m in matches]
 
+    def test_one_incidental_shared_word_does_not_outrank_a_real_overlap(self):
+        """review-impl live-verification finding (2026-07-06): the fuzzy-rescue
+        branch's own docstring says it rescues a tool with NO token overlap, but
+        the code never checked that — an EXACT single-token overlap (ratio=1.0
+        for identical strings) always qualified as a "strong fuzzy hit," so ANY
+        incidental shared word (however generic) overrode the whole score to
+        1.0. Live-verified at the real ~190-tool federated catalog: intent "add
+        a new kind to the book" scored translation_start_job a perfect 1.0 via
+        its synonym "translate a book" sharing only the word "book," outranking
+        glossary_ontology_upsert's genuine 3-token overlap (add/a/kind)."""
+        cat = [
+            _tool("glossary_ontology_upsert",
+                  "Create or update book- or user-tier ontology rows (genre, kind, attribute).",
+                  tier="A", synonyms=["add a kind", "add a genre", "add an attribute"]),
+            # Shares ONLY the word "book" with the intent below — via a synonym,
+            # not its name/description — and is otherwise wholly unrelated.
+            _tool("translation_start_job", "Start translating a chapter into another language",
+                  tier="W", synonyms=["translate a book"]),
+        ]
+        matches, confident = td.search_catalog(cat, "add a new kind to the book", 8)
+        names = [m["name"] for m in matches]
+        assert names[0] == "glossary_ontology_upsert"
+        assert confident
+
+    def test_fuzzy_rescue_still_works_for_a_genuine_no_overlap_near_spelling(self):
+        """The overlap==0 gate must not break the rescue it was designed for —
+        a genuine near-miss spelling of the ONLY identifying word, with zero
+        exact token overlap otherwise."""
+        cat = [_tool("translation_start_job", "Start translating a book",
+                      tier="W", synonyms=["translate", "translation"])]
+        matches, confident = td.search_catalog(cat, "translit this chapter", 8)
+        assert [m["name"] for m in matches] == ["translation_start_job"]
+        assert confident
+
 
 class TestTierReaders:
     def test_tier_defaults_to_R_without_meta(self):
