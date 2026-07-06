@@ -11,12 +11,17 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError
 
 logger = logging.getLogger(__name__)
 
 
-class BookServiceError(Exception):
-    """book-service unreachable or returned an unexpected status."""
+class BookServiceError(InternalClientError):
+    """book-service unreachable or returned an unexpected status.
+
+    P3 SDK-first W2-tail: subclasses the shared InternalClientError so a caller can
+    uniformly inspect `.status_code`/`.retryable` (429/502/503) — additive; the
+    non-2xx raise sites thread `status_code`, transport errors leave it None."""
 
 
 class BookNotFound(Exception):
@@ -55,7 +60,9 @@ class BookClient:
         if resp.status_code == 404:
             raise BookNotFound(str(book_id))
         if not resp.is_success:
-            raise BookServiceError(f"projection {resp.status_code}")
+            raise BookServiceError(
+                f"projection {resp.status_code}", status_code=resp.status_code,
+            )
         owner = resp.json().get("owner_user_id")
         if not owner:
             raise BookServiceError("projection missing owner_user_id")
@@ -70,7 +77,9 @@ class BookClient:
         except httpx.RequestError as exc:
             raise BookServiceError(str(exc)) from exc
         if not resp.is_success:
-            raise BookServiceError(f"chapters {resp.status_code}")
+            raise BookServiceError(
+                f"chapters {resp.status_code}", status_code=resp.status_code,
+            )
         items = resp.json().get("items", [])
         return [
             ChapterRef(

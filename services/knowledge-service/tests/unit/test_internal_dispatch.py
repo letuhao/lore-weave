@@ -144,10 +144,16 @@ async def test_public_route_passes_no_campaign_id(mocker):
     body = ext.StartJobRequest(scope="chapters", llm_model=str(MODEL), embedding_model="bge-m3")
     # E0-3 Phase 2b — the dep now yields Principals(owner, caller); owner==caller
     # here is the owner path (no billing). The public route never sets campaign_id.
+    # Called via KEYWORDS (not positionally) — the route later gained a
+    # `background_tasks: BackgroundTasks` param ahead of `principals` for the
+    # D-KG-PASSAGES-NOT-INGESTED backfill, and a positional call silently broke
+    # (background_tasks bound to a Principals instance, no `.add_task`).
     from app.auth.grant_deps import Principals
     await ext.start_extraction_job(
-        PROJ, body, Principals(owner=USER, caller=USER),
-        AsyncMock(), AsyncMock(), AsyncMock(),
+        PROJ, body,
+        background_tasks=AsyncMock(),
+        principals=Principals(owner=USER, caller=USER),
+        projects_repo=AsyncMock(), jobs_repo=AsyncMock(),
     )
     # campaign_id not supplied → core uses its default None
     assert core.call_args.kwargs.get("campaign_id") is None

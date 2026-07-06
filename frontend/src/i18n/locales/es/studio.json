@@ -1,0 +1,945 @@
+{
+  "title": "Writing Studio",
+  "back": "Volver a los libros",
+  "settings": "Ajustes del libro",
+  "welcome": {
+    "tab": "Bienvenido",
+    "title": "Writing Studio",
+    "body": "Un espacio de trabajo acoplable para este libro. Los paneles (composición, planificador, reparto, calidad…) se añadirán aquí uno a uno. Arrastra las pestañas para dividir, apilar, flotar o extraer en su propia ventana.",
+    "openUserGuide": "Abrir la guía del usuario",
+    "paletteHint": "⌘⇧P → «Elegir enfoque» o «Iniciar recorrido guiado» en cualquier momento",
+    "startGuidedTour": "Iniciar recorrido guiado"
+  },
+  "panels": {
+    "compose": {
+      "title": "Composición",
+      "desc": "Chat de coescritura con IA",
+      "guideBody": "El coescritor de IA para este libro: chatea con él sobre una escena, pídele que redacte o revise un pasaje o haz una lluvia de ideas sobre qué pasará después. Ábrelo cuando necesites un compañero de conversación que ya conozca los personajes, el glosario y los capítulos anteriores de este libro."
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "Editor de manuscrito",
+      "guideBody": "El editor principal de manuscritos donde escribes y editas el texto de los capítulos directamente. Ábrelo siempre que estés redactando prosa nueva o realizando ediciones directas; es el lienzo donde converge todo lo demás (Compose, Planner, Steering)."
+    },
+    "planner": {
+      "title": "Planificador",
+      "desc": "Planifica la estructura de la novela",
+      "guideBody": "Diseña la estructura de la novela —arcos, capítulos, beats y cómo se conectan— antes o mientras escribes. Ábrelo cuando necesites ver o reestructurar la forma de la historia, no solo la frase que tienes delante."
+    },
+    "usage": {
+      "title": "Uso",
+      "desc": "Registro de gastos, tokens y peticiones",
+      "guideBody": "Muestra cuánto estás gastando en cada acción impulsada por IA —traducciones, enriquecimiento, chat, compose— desglosado por tokens y peticiones a lo largo del tiempo. Ábrelo cuando quieras comparar tu gasto actual con tu presupuesto, identificar qué función consume más créditos o revisar el coste de una petición específica después de haberla realizado."
+    },
+    "notifications": {
+      "title": "Notificaciones",
+      "desc": "Finalización de tareas y alertas",
+      "guideBody": "Reúne en un solo lugar la finalización de tareas, ejecuciones de traducción, procesos de enriquecimiento y alertas del sistema para que no tengas que estar comprobando constantemente los trabajos de larga duración. Ábrelo tras iniciar una tarea importante (como traducir un capítulo o ejecutar un enriquecimiento) para saber en el momento exacto en que termine, o para detectar cualquier error que requiera atención."
+    },
+    "settings": {
+      "title": "Ajustes",
+      "desc": "Cuenta, proveedores y traducción",
+      "guideBody": "Gestiona tu cuenta, conecta tus propios proveedores de IA (OpenAI, modelos locales, etc.) y configura los valores predeterminados de traducción, como el idioma de destino y el comportamiento del glosario. Ábrelo antes de comenzar un nuevo proyecto para configurar todo, o en cualquier momento que necesites cambiar de proveedor, actualizar credenciales o modificar el comportamiento predeterminado de las traducciones."
+    },
+    "trash": {
+      "title": "Papelera",
+      "desc": "Restaurar libros, capítulos y más",
+      "guideBody": "Contiene los libros, capítulos y otros elementos que has eliminado, manteniéndolos recuperables en lugar de perderlos para siempre. Ábrela cuando hayas eliminado algo por error y necesites restaurarlo, o cuando quieras borrar permanentemente elementos antiguos que ya no necesites."
+    },
+    "steering": {
+      "title": "Dirección",
+      "desc": "Reglas de autor que guían a la IA en este libro",
+      "guideBody": "Escribe las reglas y preferencias que guían la forma en que la IA escribe para este libro específico: tono, punto de vista, elementos a evitar e instrucciones recurrentes que no quieras repetir en cada chat. Ábrelo al principio y vuelve a consultarlo siempre que el resultado de la IA se desvíe de lo que buscas."
+    },
+    "glossary": {
+      "title": "Glosario",
+      "desc": "Entidades, búsqueda y acciones masivas para este libro",
+      "guideBody": "El diccionario dinámico de tu libro con personajes, lugares, objetos y otras entidades con nombre: búscalos, fíltralos y edítalos masivamente desde un solo lugar. Ábrelo cuando necesites verificar qué se ha establecido, corregir un nombre en múltiples entradas a la vez o limpiar entidades de forma masiva."
+    },
+    "glossary-ontology": {
+      "title": "Ontología",
+      "desc": "Tipos, géneros y atributos para este libro",
+      "guideBody": "Define los tipos (personaje, ubicación, objeto, etc.), géneros y atributos personalizados disponibles para clasificar entidades en este libro. Ábrelo antes de empezar a etiquetar entidades, o siempre que necesites añadir un nuevo tipo o atributo que no encaje en el conjunto existente."
+    },
+    "glossary-unknown": {
+      "title": "Entidades desconocidas",
+      "desc": "Reasigna entidades no reconocidas a un tipo",
+      "guideBody": "Lista las entidades que el sistema ha detectado en tu texto pero que no ha podido clasificar con seguridad en un tipo. Ábrelo periódicamente para asignar estos nombres no reconocidos al tipo correcto, de modo que aparezcan correctamente en el Glosario y la Wiki en lugar de quedarse en el limbo."
+    },
+    "glossary-ai-suggestions": {
+      "title": "Sugerencias de IA",
+      "desc": "Revisa las entidades redactadas por la IA",
+      "guideBody": "Muestra las entradas de entidades que la IA ha redactado automáticamente a partir de tu manuscrito y que esperan tu revisión. Ábrelo para aceptar, editar o rechazar cada sugerencia antes de que pase a formar parte de tu glosario oficial."
+    },
+    "glossary-merge-candidates": {
+      "title": "Candidatos a fusión",
+      "desc": "Revisa y confirma entidades que podrían ser duplicados",
+      "guideBody": "Señala pares de entidades que el sistema cree que podrían ser duplicados (p. ej., dos grafías distintas del nombre de un mismo personaje). Ábrelo para confirmar duplicados reales y fusionarlos, o descartar coincidencias falsas, manteniendo tu glosario limpio."
+    },
+    "wiki": {
+      "title": "Wiki",
+      "desc": "Explora y lee los artículos de la wiki generados para este libro",
+      "guideBody": "La wiki autogenerada de artículos legibles, construida a partir de tu glosario y el contenido de la historia; un artículo por cada entidad principal. Ábrela cuando desees una visión general de estilo narrativo sobre un personaje, lugar o facción, en lugar de solo campos de glosario sin procesar."
+    },
+    "wiki-editor": {
+      "title": "Editor de Wiki",
+      "desc": "Edita la prosa, la infobox, el historial y las sugerencias de un artículo de la wiki"
+    },
+    "knowledge": {
+      "title": "Conocimiento",
+      "desc": "Explora y abre tus proyectos de grafos de conocimiento",
+      "guideBody": "Conocimiento es tu punto de entrada al grafo de conocimiento de un libro: las entidades, eventos y trasfondo que tus agentes de IA han extraído y organizado. Ábrelo para elegir en qué proyecto (libro) trabajar antes de sumergirte en las entidades, las líneas temporales o el grafo en sí."
+    },
+    "kg-overview": {
+      "title": "Resumen",
+      "desc": "Resumen del proyecto y acciones rápidas",
+      "guideBody": "El Resumen te ofrece una instantánea del estado de un proyecto de un vistazo: recuento de entidades, actividad reciente y tareas pendientes. Ábrelo primero cuando regreses a un libro para ver qué requiere atención antes de profundizar en una herramienta específica."
+    },
+    "kg-entities": {
+      "title": "Entidades",
+      "desc": "Explora y busca entidades del grafo de conocimiento, limitadas a un proyecto o en todos tus proyectos",
+      "guideBody": "La lista de entidades incluye todos los personajes, lugares, objetos y conceptos que el sistema ha extraído, con funciones de búsqueda y filtros para acotar por tipo o proyecto. Úsala para consultar los detalles de una entidad específica o para auditar lo que el grafo de conocimiento sabe actualmente sobre tu mundo."
+    },
+    "kg-timeline": {
+      "title": "Línea temporal",
+      "desc": "Explora los eventos de la historia por orden cronológico o narrativo",
+      "guideBody": "La línea temporal organiza los eventos de tu historia en orden: ya sea la secuencia en la que ocurrieron dentro del mundo (cronológica) o la secuencia en la que se revelaron al lector (narrativa). Ábrela para verificar la coherencia en la secuenciación de tu trama o para ver qué ha sucedido hasta cierto punto de la historia."
+    },
+    "kg-evidence": {
+      "title": "Evidencia",
+      "desc": "Busca pasajes en capítulos y chats por similitud semántica",
+      "guideBody": "La sección de evidencia te permite buscar en tus capítulos e historial de chat por significado en lugar de palabras exactas, haciendo aparecer pasajes que traten un tema incluso si no utilizan la misma redacción. Úsala cuando necesites encontrar dónde se mencionó o estableció algo, pero no recuerdes las palabras exactas."
+    },
+    "kg-gap": {
+      "title": "Informe de lagunas",
+      "desc": "Encuentra personajes, lugares y conceptos con alta frecuencia de mención que faltan en el glosario",
+      "guideBody": "El Informe de lagunas muestra personajes, lugares y conceptos que aparecen con frecuencia en tu texto pero que aún no se han añadido al glosario. Revísalo periódicamente para detectar elementos del lore que se estén pasando por alto sin una entrada adecuada."
+    },
+    "kg-proposals": {
+      "title": "Propuestas",
+      "desc": "Revisa las sugerencias pendientes para el glosario, la wiki y el enriquecimiento del lore de este libro",
+      "guideBody": "Las propuestas son el lugar donde las adiciones y cambios sugeridos por la IA para tu glosario, wiki y lore esperan tu revisión. Ábrelas para aprobar, editar o rechazar cada sugerencia antes de que formen parte del canon de tu libro."
+    },
+    "kg-schema": {
+      "title": "Esquema",
+      "desc": "Adopta, redacta, visualiza y sincroniza el esquema del grafo de conocimiento de tu libro",
+      "guideBody": "El esquema controla la estructura del grafo de conocimiento de tu libro: qué tipos de entidades y relaciones reconoce. Úsalo para adoptar un esquema inicial, personalizarlo para tu mundo o sincronizar cambios en todo tu proyecto."
+    },
+    "kg-graph": {
+      "title": "Grafo de conocimiento",
+      "desc": "Explora el grafo de relaciones de entidades del proyecto",
+      "guideBody": "El Grafo de conocimiento te ofrece un mapa visual de cómo se conectan las entidades de tu proyecto: quién conoce a quién, qué pertenece a qué lugar y qué eventos involucran a qué personajes. Ábrelo cuando quieras explorar las relaciones de forma espacial en lugar de como una lista."
+    },
+    "kg-insights": {
+      "title": "Minería de información",
+      "desc": "Calidad de la configuración de extracción, rendimiento del modelo y desviación de resultados entre proyectos",
+      "guideBody": "Minería de información informa sobre el rendimiento de la extracción en todos tus proyectos: la calidad de la configuración, qué modelos están produciendo buenos resultados y dónde los resultados se desvían de las expectativas. Consúltalo si las entidades o eventos extraídos parecen incorrectos para diagnosticar si el problema es el modelo o la configuración."
+    },
+    "kg-jobs": {
+      "title": "Trabajos de extracción",
+      "desc": "Monitoriza los trabajos de extracción de conocimiento en todos tus proyectos",
+      "guideBody": "Extraction Jobs muestra el estado de cada ejecución de extracción de conocimiento en todos tus proyectos, para que puedas ver qué está en cola, en progreso, completado o fallido. Ábrelo para supervisar extracciones de larga duración o solucionar problemas en aquellas que no finalizaron como se esperaba."
+    },
+    "kg-bio": {
+      "title": "Bio Global",
+      "desc": "Tu biografía de autor para todos tus libros, utilizada para contextualizar la escritura y el análisis de la IA",
+      "guideBody": "La Bio Global contiene una breve biografía de autor que se comparte en todos tus libros, utilizada para dar contexto a las herramientas de escritura y análisis de IA sobre tu voz y trayectoria. Complétala una sola vez y todos tus proyectos se beneficiarán de la misma base de información."
+    },
+    "kg-privacy": {
+      "title": "Privacidad y Datos",
+      "desc": "Exporta o elimina permanentemente tus datos del grafo de conocimiento",
+      "guideBody": "Privacidad y Datos te permite exportar una copia completa de tus datos del grafo de conocimiento o eliminarlos permanentemente. Úsalo cuando necesites una copia de seguridad, cuando vayas a dejar la plataforma o cuando debas eliminar definitivamente los datos de un proyecto."
+    },
+    "jobs-list": {
+      "title": "Tareas",
+      "desc": "Monitorea procesos y tareas en segundo plano",
+      "guideBody": "Muestra los procesos en segundo plano que se ejecutan para este libro —ejecuciones de traducción, pasadas de enriquecimiento, exportaciones y otras tareas de larga duración— junto con su estado actual y progreso. Ábrelo para comprobar si una tarea aún se está ejecutando, ver si alguna ha fallado o confirmar que una tarea haya finalizado antes de continuar."
+    },
+    "job-detail": {
+      "title": "Tarea",
+      "desc": "Sigue el progreso en tiempo real de una tarea",
+      "empty": "Abre un trabajo desde el panel de Trabajos para verlo aquí."
+    },
+    "books": {
+      "title": "Libros",
+      "desc": "Explora y lee tus otros libros sin salir de este estudio",
+      "guideBody": "Abre una vista de biblioteca ligera de tus otros libros directamente en el estudio, para que puedas consultar detalles, releer un pasaje o saltar entre proyectos sin perder tu sesión de edición actual. Úsalo cuando quieras una referencia rápida entre libros sin alejarte de lo que estás escribiendo."
+    },
+    "book-reader": {
+      "title": "Lector",
+      "desc": "Vista de lectura sin distracciones para un capítulo"
+    },
+    "leaderboard-books": {
+      "title": "Clasificación: Libros",
+      "desc": "Libros mejor posicionados por valoración, lectores y favoritos",
+      "guideBody": "Muestra qué libros están subiendo en el ranking por valoración, número de lectores y favoritos, para que puedas ver qué está resonando con los lectores en este momento. Consulta este panel cuando quieras conocer la tendencia de la plataforma o buscar títulos comparables en tu género."
+    },
+    "leaderboard-authors": {
+      "title": "Clasificación: Autores",
+      "desc": "Autores mejor posicionados por lectores y producción",
+      "guideBody": "Clasifica a los autores según la cantidad de lectores que han alcanzado y cuánto han publicado, dándote una idea de quién está activo y quién está construyendo una audiencia. Ábrelo si tienes curiosidad por saber cómo se comparan tu producción y tu alcance, o si buscas autores prolíficos a los que seguir."
+    },
+    "leaderboard-translators": {
+      "title": "Clasificación: Traductores",
+      "desc": "Traductores mejor posicionados por capítulos e idiomas",
+      "guideBody": "Clasifica a los traductores por capítulos completados y número de idiomas cubiertos, destacando quién impulsa la actividad de traducción en la plataforma. Ábrelo cuando quieras encontrar traductores activos para colaborar o evaluar el volumen de trabajo de traducción en los distintos idiomas."
+    },
+    "leaderboard-trending": {
+      "title": "Clasificación: Tendencias",
+      "desc": "Libros que son tendencia ahora mismo",
+      "guideBody": "Muestra los libros que están ganando impulso en este momento, basándose en la actividad reciente de los lectores en lugar de los totales históricos. Consúltalo cuando quieras descubrir títulos emergentes pronto o ver qué está captando la atención actualmente."
+    },
+    "context-inspector": {
+      "title": "Inspector de contexto",
+      "desc": "Rastrea lo que la gestión de contexto hizo por turno: presupuesto, asignación y decisiones de Planner→Compiler",
+      "guideBody": "Muestra exactamente qué contexto se envió a la IA en un turno determinado: el presupuesto de tokens, qué se incluyó o se descartó, y si se gestionó mediante un pase rápido o un pase de planificación completo. Ábrelo cuando la respuesta de la IA parezca errónea y quieras ver qué «vio» realmente, o cuando tengas curiosidad por saber cómo se está utilizando tu presupuesto de contexto."
+    },
+    "chapter-browser": {
+      "title": "Explorador de capítulos",
+      "desc": "Ordenar, filtrar, buscar y realizar acciones masivas en los capítulos de este libro",
+      "mode_group": "Modo de búsqueda",
+      "mode_title": "Título y nombre de archivo",
+      "mode_content": "Contenido (texto completo)",
+      "sort_chapter_num": "Ordenar por: Cap. #",
+      "sort_updated": "Ordenar por: Última actualización",
+      "sort_word_count": "Ordenar por: Recuento de palabras",
+      "sort_status": "Ordenar por: Estado",
+      "view_flat": "Lista plana",
+      "view_grouped": "Agrupar por arco",
+      "col_title": "Título",
+      "col_lang": "Idioma",
+      "col_status": "Estado",
+      "col_words": "Palabras",
+      "col_updated": "Actualizado",
+      "status_all": "Estado: Todos",
+      "status_draft": "Borrador",
+      "status_published": "Publicado",
+      "status_trashed": "Papelera",
+      "lang_all": "Idioma: Todos",
+      "words_label": "Palabras",
+      "min": "mín",
+      "max": "máx",
+      "updated_within": "Actualizado hace",
+      "days": "días",
+      "n_selected": "{{count}} seleccionados",
+      "clear": "Limpiar",
+      "translate": "Traducir…",
+      "set_status": "Establecer estado…",
+      "set_status_hint": "Restaurar capítulos seleccionados a activos",
+      "export": "Exportar",
+      "trash": "Papelera",
+      "trash_confirm": "¿Mover {{count}} capítulo(s) a la papelera?",
+      "bulk_status_ok": "{{count}} capítulo(s) actualizados",
+      "bulk_status_partial": "{{okCount}} actualizados, {{failCount}} fallidos",
+      "bulk_not_wired": "Próximamente: esta acción masiva aún no está disponible",
+      "empty": "No hay capítulos que coincidan con estos filtros",
+      "client_filtered_note": "Los filtros de recuento de palabras/fecha se aplican a la página cargada actualmente",
+      "chapter_count": "{{count}} capítulos",
+      "guideBody": "Una lista ordenable y filtrable de todos los capítulos del libro, con búsqueda y acciones en lote (como volver a etiquetar o reordenar varios capítulos a la vez). Ábrelo cuando necesites encontrar un capítulo específico rápidamente o realizar el mismo cambio en muchos capítulos a la vez."
+    },
+    "sharing": {
+      "title": "Compartir",
+      "desc": "Visibilidad, enlace no listado y colaboradores para este libro",
+      "guideBody": "Controla quién puede ver y editar este libro: configúralo como privado, genera un enlace de uso compartido no listado para cualquier persona con la URL o invita a colaboradores específicos. Ábrelo cuando quieras compartir un borrador para recibir comentarios o ceder el acceso de edición sin hacer que el libro sea público."
+    },
+    "book-settings": {
+      "title": "Ajustes del libro",
+      "desc": "Título, portada, etiquetas de género y enlace de mundo para este libro",
+      "guideBody": "Gestiona la identidad principal de este libro: su título, imagen de portada, etiquetas de género y el mundo al que está vinculado. Ábrelo cuando estés configurando un nuevo libro o necesites actualizar su etiquetado y categorización antes de compartirlo o publicarlo."
+    },
+    "translation": {
+      "title": "Traducción",
+      "desc": "Matriz de cobertura, filtro de idioma, traducción masiva y extracción de glosario para este libro",
+      "guideBody": "Muestra de un vistazo el progreso de traducción de cada idioma para este libro, con una matriz de cobertura y filtros de idioma para que puedas detectar qué partes no están traducidas o están desactualizadas. Ábrelo para iniciar tareas de traducción masiva o extraer términos del glosario descubiertos durante la traducción, manteniendo la terminología coherente entre idiomas."
+    },
+    "translation-versions": {
+      "title": "Versiones de traducción",
+      "desc": "Gestión de versiones de traducción por capítulo (comparar, establecer activa, volver a traducir)",
+      "empty": "Abra las versiones de traducción de un capítulo desde la Matriz de traducción."
+    },
+    "translation-review": {
+      "title": "Revisión de traducción",
+      "desc": "Revisión comparativa bloque a bloque con corrección individual",
+      "empty": "Abra la Revisión de una versión desde el panel de Versiones de traducción."
+    },
+    "enrichment-compose": {
+      "title": "Crear enriquecimiento",
+      "desc": "Redacte un nuevo borrador de lore enriquecido (ampliar un borrador, pegar contexto, subir archivos o indicar una intención)",
+      "guideBody": "Utilice este panel para iniciar un nuevo borrador de lore cuando la wiki o el glosario carezcan de una entrada que necesite: amplíe un borrador preliminar, pegue contexto de referencia, suba archivos fuente o simplemente describa su intención y deje que la IA genere una primera versión. Es el punto de partida para convertir «necesito una biografía para este personaje» en una propuesta estructurada y editable."
+    },
+    "enrichment-proposals": {
+      "title": "Propuestas de enriquecimiento",
+      "desc": "Revise el lore propuesto por la IA: apruebe, rechace o promueva al canon",
+      "guideBody": "Cada borrador creado en Redactar (o generado por un proceso de enriquecimiento) llega aquí para su revisión antes de convertirse en canon: lea cada entrada propuesta, aprúbela para integrarla en el glosario o rechácela si es incorrecta o no deseada. Abra este panel siempre que quiera comprobar qué ha redactado la IA pero que aún no se ha añadido al lore oficial de su libro."
+    },
+    "enrichment-gaps": {
+      "title": "Huecos de enriquecimiento",
+      "desc": "Detecta entidades poco descritas y enriquécelas automáticamente mediante un proceso en segundo plano",
+      "guideBody": "Este panel escanea tu libro en busca de entidades mencionadas pero poco descritas —personajes, lugares u objetos con muy poco detalle en el glosario— y puede añadirlas a una cola para su enriquecimiento automático en segundo plano. Ábrelo cuando quieras encontrar y rellenar lagunas de trasfondo (lore) sin tener que buscar manualmente qué es lo que falta."
+    },
+    "enrichment-sources": {
+      "title": "Fuentes de enriquecimiento",
+      "desc": "Corpus de fuentes con licencia para recuperación y fundamentación de recook",
+      "guideBody": "Gestiona los corpus de fuentes (textos de referencia, documentos subidos, material con licencia) de los que los procesos de enriquecimiento y recook extraen información para la fundamentación; cada uno está etiquetado con su licencia para que sepas qué es seguro reutilizar. Consulta esto cuando quieras ver qué material de origen alimenta tus borradores generados por IA o para añadir nuevo material de fundamentación."
+    },
+    "enrichment-jobs": {
+      "title": "Tareas de enriquecimiento",
+      "desc": "Monitoriza y reanuda tareas de enriquecimiento con límite de costes",
+      "guideBody": "Realiza un seguimiento del estado de las tareas de enriquecimiento que hayas iniciado: consulta cuáles están en ejecución, completadas o pausadas, observa la acumulación de costes respecto al límite de la tarea y reanuda cualquier proceso que se haya detenido antes de tiempo. Abre este panel cuando quieras comprobar el progreso o retomar una ejecución de enriquecimiento con límite de costes."
+    },
+    "enrichment-settings": {
+      "title": "Perfil de enriquecimiento",
+      "desc": "Configura el perfil de mitigación de sesgos de este libro (visión del mundo, idioma, época, voz)",
+      "guideBody": "Configura aquí el perfil de mitigación de sesgos de este libro: establece la visión del mundo, las convenciones lingüísticas, la época y la voz narrativa deseadas para que los borradores de enriquecimiento y composición sean coherentes con el tono de tu libro en lugar de usar un estándar genérico. Configúralo al principio, antes de ejecutar las tareas de enriquecimiento, para que el trasfondo generado coincida con tu libro desde el primer momento."
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "Vista JSON sin procesar de un recurso"
+    },
+    "media-version-history": {
+      "title": "Historial de versiones",
+      "desc": "Compara y restaura versiones anteriores de un bloque de imagen o vídeo",
+      "empty": "No hay ningún bloque de multimedia seleccionado."
+    },
+    "original-source": {
+      "title": "Fuente original",
+      "desc": "El texto fuente sin traducir de este capítulo",
+      "empty": "Abre un capítulo desde el Editor para ver su fuente original."
+    },
+    "extensions": {
+      "title": "Extensiones",
+      "desc": "Gestiona plugins, habilidades, servidores MCP, comandos y hooks",
+      "guideBody": "Instala y gestiona todo lo que añade capacidades a tu agente: plugins, habilidades, conexiones a servidores MCP, comandos personalizados y hooks. Ábrelo cuando quieras añadir una nueva herramienta que el agente pueda usar, revisar qué está habilitado actualmente o desactivar algo que no funcione correctamente."
+    },
+    "proposals": {
+      "title": "Propuestas",
+      "desc": "Revisa las habilidades propuestas por el agente",
+      "guideBody": "Enumera las habilidades que el agente ha sugerido crear por su cuenta, basándose en patrones detectados en tu trabajo, para que puedas revisarlas y aprobarlas antes de que formen parte de tu conjunto de herramientas. Ábrelo después de una sesión en la que el agente haya mencionado que podría automatizar algo, para decidir si aceptas, editas o rechazas la sugerencia."
+    },
+    "skill-editor": {
+      "title": "Habilidad",
+      "desc": "Editar un archivo SKILL.md"
+    },
+    "user-guide": {
+      "title": "Guía de usuario",
+      "desc": "Todas las herramientas de Studio, agrupadas por área; generadas desde el mismo catálogo que la Paleta de comandos",
+      "guideBody": "Enumera todas las herramientas y paneles de Writing Studio, agrupados por área, con una explicación en lenguaje sencillo de lo que hace cada uno. Se genera directamente desde el mismo catálogo que alimenta la Paleta de comandos y el dock, por lo que a medida que se añaden nuevas herramientas, la guía se actualiza automáticamente; nunca se desincroniza con lo que realmente hay en la aplicación."
+    },
+    "agent-mode": {
+      "title": "Modo Agente",
+      "desc": "Ejecuciones de autoría autónoma de múltiples capítulos: control de misión"
+    },
+    "chapter-revision-compare": {
+      "title": "Comparar revisión de capítulo",
+      "desc": "Comparación detallada del editor para un par de revisiones de un capítulo",
+      "empty": "Abre la comparación de revisión de un capítulo desde el panel de revisión del Modo Agente."
+    }
+  },
+  "sceneRail": {
+    "title": "Escenas",
+    "toggle": "Escenas",
+    "empty": "No hay escenas para este capítulo (créalo en el editor).",
+    "synopsisPlaceholder": "Sinopsis…",
+    "stale": "cambió en otro lugar — recargado",
+    "notAnchored": "La escena aún no está anclada en el texto; usa ⚓ para vincular los encabezados.",
+    "anchored": "{{count}} escena(s) anclada(s), {{unmatched}} sin coincidencia — ⌘S para guardar.",
+    "anchorNoop": "{{count}} ya ancladas, {{unmatched}} sin un encabezado correspondiente.",
+    "anchorTitle": "Vincula las escenas con sus encabezados en el texto",
+    "add": "Añadir escena",
+    "addDisabled": "El capítulo aún no tiene un esquema (créalo en el editor)",
+    "newTitlePlaceholder": "Título de la escena…",
+    "create": "Añadir",
+    "deleted": "Se ha eliminado «{{title}}».",
+    "undo": "Deshacer",
+    "moveUp": "Mover arriba",
+    "moveDown": "Mover abajo",
+    "delete": "Eliminar escena",
+    "status": {
+      "empty": "vacío",
+      "outline": "esquema",
+      "drafting": "redactando",
+      "done": "terminado"
+    }
+  },
+  "jsonEditor": {
+    "empty": "Abra un recurso como JSON desde su panel («Abrir como JSON»).",
+    "invalid": "JSON no válido",
+    "conflict": "conflicto: {{part}}",
+    "format": "Formatear",
+    "revert": "Revertir",
+    "openAs": "Abrir como JSON"
+  },
+  "planner": {
+    "sourcePlaceholder": "Pega el markdown del sistema de la novela…",
+    "propose": "Proponer",
+    "model": "Modelo",
+    "empty": "Pega el markdown de tu sistema de novela y pulsa «Proponer» para iniciar una ejecución del plan.",
+    "openAgentMode": "Ejecuciones de Agente Autónomo →",
+    "tabList": "Ejecuciones",
+    "tabRun": "Ejecución",
+    "mode": {
+      "rules": "Reglas",
+      "llm": "LLM"
+    },
+    "list": {
+      "title": "Planes para este libro",
+      "newRun": "+ Nueva propuesta",
+      "loading": "Cargando planes…",
+      "error": "No se pudieron cargar los planes.",
+      "empty": "Aún no hay planes para este libro.",
+      "colRun": "Plan",
+      "colMode": "Modo",
+      "colStatus": "Estado",
+      "colCreated": "Creado"
+    }
+  },
+  "editor": {
+    "empty": "Selecciona un capítulo en el navegador del manuscrito para editarlo aquí.",
+    "unsaved": "● sin guardar",
+    "save": "Guardar",
+    "grammar": "Gramática",
+    "heatmap": "Mapa de calor",
+    "focus": "Enfoque",
+    "translate": "Traducir",
+    "glossary": "Glosario"
+  },
+  "popout": {
+    "invalid": "Este enlace emergente no es válido.",
+    "open": "Abrir en ventana emergente",
+    "openTitle": "Abrir el editor en su propia ventana"
+  },
+  "dock": {
+    "dock": "Anclar"
+  },
+  "steering": {
+    "heading": "Reglas de dirección",
+    "subheading": "Guía persistente para el autor integrada en las respuestas de la IA para este libro.",
+    "loading": "Cargando reglas de dirección…",
+    "loadError": "No se pudieron cargar las reglas de dirección.",
+    "noBook": "Abre este panel desde un libro para configurar sus reglas de dirección.",
+    "count": "{{n}} / {{max}} reglas",
+    "add": "Añadir regla",
+    "capReached": "Límite de reglas alcanzado ({{max}}). Elimina una regla para añadir otra.",
+    "empty": "Aún no hay reglas de dirección. Añade una para guiar a la IA en este libro.",
+    "enable": "Activar",
+    "disable": "Desactivar",
+    "confirmDelete": "¿Eliminar la regla de dirección «{{name}}»?",
+    "autoNote": "Nota: «auto» se comporta actualmente como «manual»; solo se incluye cuando se referencia mediante #name. La selección automática llegará más adelante.",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "Nombre",
+      "namePlaceholder": "p. ej. Tono y voz",
+      "body": "Regla",
+      "bodyPlaceholder": "Escribe las instrucciones que la IA debe seguir…",
+      "mode": "Cuándo incluir",
+      "matchPattern": "Patrón de coincidencia de escena",
+      "matchPatternPlaceholder": "ej. capítulo 3, batalla, romance…",
+      "enabled": "Activado",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "edit": "Editar regla",
+      "delete": "Eliminar regla"
+    },
+    "mode": {
+      "always": "Siempre",
+      "scene_match": "Coincidencia de escena",
+      "manual": "Manual (#name)",
+      "auto": "Auto"
+    },
+    "error": {
+      "duplicate": "Ya existe una regla con este nombre en este libro.",
+      "cap": "Esto excede un límite (cuerpo ≤ 8000 caracteres, nombre ≤ 200, ≤ 20 reglas) o es un modo no válido.",
+      "other": "No se pudo guardar la regla. Por favor, inténtalo de nuevo.",
+      "forbidden": "No tienes permiso para editar la configuración de este libro."
+    }
+  },
+  "palette": {
+    "openPanel": "Studio: Abrir {{name}}",
+    "placeholder": "Ir a capítulo, escena, arco…",
+    "quickOpenTitle": "Ir a capítulo, escena, arco",
+    "quickOpenPlaceholder": "Ir a capítulo, escena, arco…",
+    "quickOpenHint": "Escribe para buscar capítulos, escenas y arcos",
+    "commandPlaceholder": "Escribe un comando…",
+    "noCommands": "No hay comandos que coincidan.",
+    "group": {
+      "recent": "Recientes",
+      "panels": "Paneles",
+      "navigate": "Navegar",
+      "layout": "Diseño",
+      "editor": "Editor y capítulos",
+      "storyBible": "Biblia de la historia",
+      "knowledge": "Grafo de conocimiento",
+      "translation": "Traducción",
+      "enrichment": "Enriquecimiento",
+      "sharing": "Compartir y ajustes",
+      "platform": "Plataforma",
+      "discovery": "Descubrimiento",
+      "jobs": "Tareas",
+      "help": "Ayuda"
+    },
+    "cmd": {
+      "showManuscript": "Ver: Mostrar manuscrito",
+      "showBible": "Ver: Mostrar biblia de la historia",
+      "showSearch": "Ver: Mostrar búsqueda",
+      "showQuality": "Ver: Mostrar calidad",
+      "goToChapter": "Ver: Ir al capítulo…",
+      "toggleSidebar": "Ver: Alternar barra lateral",
+      "toggleBottom": "Ver: Alternar panel inferior",
+      "chooseYourFocus": "Studio: Elegir tu enfoque",
+      "startGuidedTour": "Studio: Iniciar recorrido guiado"
+    },
+    "desc": {
+      "showManuscript": "Capítulos y escenas",
+      "showBible": "Reparto, mundo y canon",
+      "showSearch": "Texto completo y semántica",
+      "showQuality": "Crítica, promesas y canon",
+      "goToChapter": "Abrir búsqueda rápida",
+      "toggleSidebar": "Mostrar u ocultar la barra lateral",
+      "toggleBottom": "Tareas · Generación · Problemas",
+      "chooseYourFocus": "Reiniciar selector de rol",
+      "startGuidedTour": "Un recorrido rápido por los paneles principales"
+    }
+  },
+  "activity": {
+    "manuscript": "Manuscrito",
+    "bible": "Biblia de la historia",
+    "search": "Buscar",
+    "quality": "Calidad"
+  },
+  "navStub": {
+    "manuscript": {
+      "title": "Manuscrito",
+      "body": "Capítulos y escenas: el navegador que dirige el panel. Próximamente."
+    },
+    "bible": {
+      "title": "Biblia de la historia",
+      "body": "Personajes, mundo y entradas del canon. Próximamente."
+    },
+    "search": {
+      "title": "Buscar",
+      "body": "Búsqueda semántica y de texto completo en todo el libro. Próximamente."
+    },
+    "quality": {
+      "title": "Calidad",
+      "body": "Puntuaciones de la crítica, hilos de promesas y problemas de canon. Próximamente."
+    }
+  },
+  "sidebar": {
+    "collapse": "Contraer"
+  },
+  "bottom": {
+    "jobs": "Tareas",
+    "generation": "Generación",
+    "issues": "Problemas",
+    "collapse": "Contraer panel",
+    "toggle": "Alternar panel inferior",
+    "label": "Panel"
+  },
+  "bottomStub": {
+    "jobs": "Los procesos en segundo plano aparecerán aquí una vez configurados.",
+    "generation": "El progreso de generación en vivo aparecerá aquí una vez configurado.",
+    "issues": "Los problemas de calidad aparecerán aquí una vez configurados."
+  },
+  "status": {
+    "wordsPlaceholder": "— palabras",
+    "words": "{{count}} palabras",
+    "modelPlaceholder": "sin modelo",
+    "notifications": "Notificaciones",
+    "cost24h": "Gasto, últimas 24h"
+  },
+  "manuscript": {
+    "title": "Manuscrito",
+    "newChapter": "Nuevo capítulo",
+    "collapseAll": "Contraer todo",
+    "reload": "Recargar",
+    "arc": "ARC",
+    "loading": "Cargando…",
+    "filter": "Ir al capítulo / escena…",
+    "searching": "Buscando…",
+    "noMatch": "No hay coincidencias.",
+    "empty": "Aún no hay capítulos.",
+    "loadingMore": "Cargando más…",
+    "count": "{{n}} capítulos",
+    "statArcs": "{{n}} arco",
+    "statChapters": "{{n}} cap",
+    "statScenes": "{{n}} esc",
+    "window": "win {{a}}–{{b}} / {{n}}"
+  },
+  "intro": {
+    "title": "Bienvenido a Writing Studio",
+    "subtitle": "¿Qué quieres hacer hoy? Esto personalizará tu panel de bienvenida y el recorrido rápido; puedes cambiarlo en cualquier momento desde la Paleta de comandos.",
+    "skip": "Omitir, prefiero explorar",
+    "roles": {
+      "writer": {
+        "title": "Escribir una novela",
+        "desc": "Componer capítulos con un coescritor de IA, planificar el sistema y editar el manuscrito"
+      },
+      "worldbuilder": {
+        "title": "Crear mundo y lore",
+        "desc": "Entidades del glosario, la wiki y el grafo de conocimiento"
+      },
+      "translator": {
+        "title": "Traducir",
+        "desc": "Matriz de cobertura, traducción masiva, versiones por capítulo"
+      },
+      "enricher": {
+        "title": "Enriquecer texto existente",
+        "desc": "Detectar lagunas, expandir entidades poco descritas, gestionar fuentes"
+      },
+      "manager": {
+        "title": "Gestionar y compartir",
+        "desc": "Visibilidad, colaboradores, ajustes del libro"
+      }
+    },
+    "tour": {
+      "core": {
+        "manuscript": {
+          "title": "Tu manuscrito",
+          "body": "El navegador del Manuscrito controla el panel; selecciona un capítulo o escena aquí para abrirlo."
+        },
+        "palette": {
+          "title": "Salta a cualquier lugar",
+          "body": "⌘P salta a un capítulo/escena/arco; ⌘⇧P abre cualquier herramienta de Studio por su nombre."
+        },
+        "compose": {
+          "title": "Componer",
+          "body": "Tu coescritor de IA: redacta, debate y aplica cambios de prosa aquí."
+        },
+        "editor": {
+          "title": "Editor",
+          "body": "El editor de manuscritos: la gramática, las ayudas del glosario, el modo de enfoque y el guardado automático funcionan aquí."
+        },
+        "grammar": {
+          "title": "Gramática y ortografía",
+          "body": "Activa la corrección gramatical y ortográfica en tiempo real para la escena actual, con tecnología de LanguageTool."
+        },
+        "heatmap": {
+          "title": "Mapa de calor de continuidad",
+          "body": "Resalta las líneas que podrían desviarse del canon establecido, para que puedas revisarlas antes de publicar."
+        }
+      },
+      "actions": {
+        "skip": "Omitir recorrido",
+        "back": "Atrás",
+        "next": "Siguiente ({{current}}/{{total}})",
+        "done": "Listo"
+      },
+      "writer": {
+        "compose": {
+          "title": "Escribe con tu coescritor",
+          "body": "Como escritor, aquí es donde pasarás gran parte del tiempo: pide un primer borrador, una revisión o una lluvia de ideas sobre qué pasará después."
+        },
+        "editor": {
+          "title": "Pule la prosa",
+          "body": "Una vez que una escena tiene palabras, refínala aquí: la revisión gramatical, las ayudas del glosario y el modo de enfoque residen en este editor."
+        },
+        "planner": {
+          "title": "Planifica la estructura de la historia",
+          "body": "Organiza arcos, capítulos y puntos de giro antes o entre tus sesiones de escritura, para que Compose y el Editor tengan una estructura sobre la cual escribir."
+        },
+        "grammar": {
+          "title": "Detecta erratas mientras escribes",
+          "body": "Activa la corrección gramatical y ortográfica en tiempo real sin salir de la página."
+        },
+        "heatmap": {
+          "title": "Detecta inconsistencias",
+          "body": "Resalta las líneas que podrían contradecir el canon establecido; vale la pena echarles un vistazo antes de continuar."
+        }
+      },
+      "worldbuilder": {
+        "glossary": {
+          "title": "El diccionario de tu mundo",
+          "body": "Cada personaje, lugar y objeto que hayas establecido vive aquí: búscalo, etiquétalo y mantén la coherencia."
+        },
+        "wiki": {
+          "title": "Artículos de mundo legibles",
+          "body": "La wiki convierte tu glosario en artículos de estilo narrativo; una excelente forma de revisar tu mundo de un vistazo."
+        },
+        "knowledge": {
+          "title": "El grafo de conocimiento",
+          "body": "Para un desarrollo de mundo más profundo, el grafo de conocimiento rastrea cómo se conecta todo: entidades, eventos y relaciones."
+        }
+      },
+      "translator": {
+        "translation": {
+          "title": "Seguimiento de la cobertura de traducción",
+          "body": "Consulta qué idiomas están cubiertos, qué capítulos están desactualizados y lanza procesos de traducción masiva desde aquí."
+        },
+        "enrichmentCompose": {
+          "title": "Completa el lore faltante",
+          "body": "Cuando una traducción revele una entidad poco descrita, usa este panel para redactar el lore faltante antes de traducir el resto."
+        }
+      },
+      "enricher": {
+        "gaps": {
+          "title": "Encuentra lo que falta",
+          "body": "Este panel identifica entidades que se mencionan con frecuencia pero apenas se describen, para que sepas exactamente qué enriquecer a continuación."
+        },
+        "sources": {
+          "title": "Gestiona tus fuentes de referencia",
+          "body": "Los borradores de enriquecimiento extraen información del material de origen que gestionas aquí; mantenlo organizado y con sus etiquetas de licencia."
+        }
+      },
+      "manager": {
+        "sharing": {
+          "title": "Controla quién ve este libro",
+          "body": "Configura la visibilidad, genera un enlace para compartir o invita a colaboradores; todo desde aquí."
+        },
+        "bookSettings": {
+          "title": "Actualiza los detalles del libro",
+          "body": "El título, la portada, las etiquetas de género y el enlace al mundo se gestionan en Ajustes del libro; actualízalos cuando quieras."
+        }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Gramática y ortografía",
+          "body": "Activa la corrección gramatical y ortográfica en tiempo real para la escena actual."
+        },
+        "heatmap": {
+          "title": "Mapa de calor de continuidad",
+          "body": "Resalta las líneas que podrían desviarse del canon establecido; vale la pena echarles un vistazo antes de continuar."
+        },
+        "glossary": {
+          "title": "Decoración del glosario",
+          "body": "Activa las ayudas del glosario al pasar el cursor y el autocompletado `[[` mientras escribes."
+        },
+        "focus": {
+          "title": "Modo enfoque",
+          "body": "Atenúa todo excepto el párrafo actual y oculta los paneles laterales; ideal para redactar sin distracciones."
+        },
+        "scenes": {
+          "title": "Barra de escenas",
+          "body": "Muestra las escenas de este capítulo: salta entre ellas, reordénalas o sigue su estado."
+        },
+        "openJson": {
+          "title": "Abrir como JSON",
+          "body": "Abre este mismo capítulo como datos estructurados sin procesar; es el mismo documento y los cambios se reflejan en ambos modos."
+        },
+        "originalSource": {
+          "title": "Fuente original",
+          "body": "Una vista de solo lectura del texto original previo a la traducción, en caso de que este capítulo haya sido importado."
+        },
+        "reader": {
+          "title": "Lector",
+          "body": "Abre este capítulo en la vista de lectura: así es como lo ve un lector real."
+        },
+        "translate": {
+          "title": "Traducir",
+          "body": "Te lleva directamente a las versiones traducidas de este capítulo; no hace falta pasar por la matriz de traducción completa."
+        },
+        "save": {
+          "title": "Guardar",
+          "body": "Guarda tus cambios. ⌘S / Ctrl+S funciona desde cualquier parte del editor."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Modo Clásico ⇄ IA",
+          "body": "Cambia entre una superficie de escritura simple y una con herramientas de IA disponibles (selección de Reescribir/Expandir/Describir, continuar desde el cursor)."
+        },
+        "continueStep": {
+          "title": "Continuar escribiendo con IA",
+          "body": "Genera una continuación mediante IA empezando desde tu cursor. Si seleccionas un texto primero, podrás usar las opciones de Reescribir, Expandir o Describir."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "Puntos de restauración de edición por IA",
+          "body": "Cada edición de la IA crea un punto de restauración aquí; así podrás deshacer un cambio de la IA incluso si has seguido escribiendo después."
+        },
+        "revisionHistory": {
+          "title": "Historial de revisiones",
+          "body": "Cada guardado es una versión que puedes previsualizar y restaurar, de forma independiente a los puntos de control de la IA."
+        },
+        "publish": {
+          "title": "Control de publicación",
+          "body": "Antes de publicar, se comprueban las contradicciones de canon no resueltas y las escenas incompletas para que lo que lean los lectores sea coherente."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Barra de escenas",
+          "body": "Lista las escenas de este capítulo: aquí puedes ver su estado, la sinopsis y reordenarlas."
+        },
+        "anchor": {
+          "title": "Escenas de anclaje",
+          "body": "Vincula los títulos de las escenas con los encabezados de la prosa para que la barra pueda saltar directamente a ellos."
+        },
+        "add": {
+          "title": "Añadir una escena",
+          "body": "Crea una nueva entrada de escena para este capítulo."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Glosario",
+          "body": "Resalta los nombres de entidades conocidas en tu prosa al pasar el cursor; además, escribir `[[` abre el autocompletado para insertar o enlazar una. Puedes desactivarlo aquí si te estorba al corregir el texto."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Imágenes",
+          "body": "Sube, arrastra y suelta o pega una imagen, o genérala con IA (tú eliges el modelo explícitamente, nunca un valor predeterminado silencioso). Una vez añadida, puedes reemplazarla, cambiar su tamaño, añadir un pie de foto, texto alt y consultar su historial de versiones."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Vídeo",
+          "body": "Sube un archivo de vídeo o genera un clip corto con IA (selector de modelo explícito). Reemplazar, cambiar el tamaño, añadir pie de foto e historial de versiones funcionan igual que con las imágenes."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Audio",
+          "body": "Inserta un bloque de audio independiente: sube un archivo o genera una narración con IA. Consejo: al pasar el ratón sobre CUALQUIER párrafo, también aparecerá una barra rápida de subir/grabar/generar con IA para adjuntar la narración directamente a ese texto, sin necesidad de un bloque."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Escribe a tu coescritor",
+          "body": "Pulsa Enter para enviar, Shift+Enter para una nueva línea. Ctrl+Enter fuerza una respuesta rápida, Ctrl+Shift+Enter fuerza un pensamiento más profundo. Escribe / para plantillas y comandos, o @ para adjuntar contexto en línea."
+        },
+        "permissionMode": {
+          "title": "Preguntar, Planificar o Escribir",
+          "body": "Controla cuánto puede hacer el agente por su cuenta: «Preguntar» confirma todo, «Planificar» establece los pasos primero y «Escribir» actúa con más libertad dentro de su lista de permitidos. Ctrl+. permite alternar entre ellos."
+        },
+        "effort": {
+          "title": "Esfuerzo de razonamiento",
+          "body": "Qué tanto piensa el modelo antes de responder: Desactivado/Bajo/Medio/Alto/Auto. Oculto para modelos que no pueden razonar."
+        },
+        "attachContext": {
+          "title": "Adjuntar contexto",
+          "body": "Incluye libros, capítulos o entradas del glosario específicos para que el agente tenga exactamente el contexto que necesita para este mensaje."
+        },
+        "send": {
+          "title": "Enviar",
+          "body": "Envía tu mensaje. Mientras el agente responde, este botón se convierte en un botón de «Parar»."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Cambiar conversaciones",
+          "body": "Salta entre las sesiones de chat de este libro, archiva las antiguas o inicia una nueva: elige un modelo y una persona inicial (Novelista/Traductor/Constructor de mundos/Editor)."
+        },
+        "rename": {
+          "title": "Renombrar este chat",
+          "body": "Dale a la sesión un nombre que puedas reconocer más tarde."
+        },
+        "settings": {
+          "title": "Ajustes de la sesión",
+          "body": "Modelo, ajustes de modelo del compositor/planificador, base de memoria, prompt del sistema, temperatura, top-P y esfuerzo de razonamiento; todo limitado a esta sesión."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Panel de herramientas y habilidades",
+          "body": "Muestra todas las herramientas y habilidades que el agente puede usar actualmente en este chat: añade más o elimina las que no quieras que utilice."
+        },
+        "add": {
+          "title": "Añadir herramientas o habilidades",
+          "body": "Explora todo lo disponible por categoría y activa exactamente lo que esta conversación necesite."
+        },
+        "inspector": {
+          "title": "Inspector de ejecución del agente",
+          "body": "Mira qué está haciendo el agente en este momento —descubriendo herramientas, ejecutando una o en espera— y amplía para ver el rastro de detalles completo."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Presupuesto de contexto",
+          "body": "Muestra cuánto está utilizando esta conversación la ventana de contexto del modelo. Haz clic para ver un desglose completo por categoría y para compactar la conversación a demanda."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "Ediciones de IA, revisadas antes de aplicarse",
+          "body": "Cuando el agente propone una edición de prosa, aparecerá aquí una tarjeta de revisión para que aceptes o rechaces cada cambio. Las acciones más arriesgadas (ediciones por lotes, operaciones destructivas) tienen su propia tarjeta de confirmación con una vista previa del coste/impacto. Cualquier cosa que el agente aplique automáticamente aparecerá en una barra de Actividad con la opción de deshacer con un solo clic."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Modo de voz",
+          "body": "Habla en lugar de escribir: una conversación totalmente manos libres con transcripción en vivo."
+        },
+        "settings": {
+          "title": "Ajustes de voz",
+          "body": "Elige tus modelos de voz a texto y texto a voz, la voz, la velocidad y el comportamiento de envío automático."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Abrir en una ventana independiente",
+          "body": "Abre el modo Escritura en una ventana separada del sistema operativo; ideal para usar un segundo monitor. Los cambios que apruebes allí se guardarán en el editor de este libro."
+        }
+      }
+    }
+  },
+  "userGuide": {
+    "intro": "Cada herramienta que Writing Studio puede abrir, agrupada de la misma forma que en la Paleta de comandos.",
+    "toursGroup": "Tours guiados",
+    "toursEditor": "Editor",
+    "toursComposer": "Escritura"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Conceptos básicos del editor",
+      "desc": "La barra de herramientas: gramática, mapa de calor, glosario, modo enfoque, escenas y botones de acceso rápido."
+    },
+    "editorAiTools": {
+      "label": "Herramientas de escritura con IA",
+      "desc": "Continuar desde el cursor, reescribir/expandir/describir selección y el conmutador de modo Clásico/IA."
+    },
+    "editorDataSafety": {
+      "label": "Seguridad de datos",
+      "desc": "Puntos de control de edición con IA, historial de revisiones y el control de publicación."
+    },
+    "editorSceneRail": {
+      "label": "Panel de escenas",
+      "desc": "Rastrea escenas, reordénalas y mantén la línea de tiempo sincronizada con tu prosa."
+    },
+    "editorGlossary": {
+      "label": "Glosario",
+      "desc": "Sugerencias de entidades en línea y autocompletado con «[[» mientras escribes."
+    },
+    "editorMediaImage": {
+      "label": "Media — Imágenes",
+      "desc": "Sube o genera imágenes con IA, con opciones de reemplazar, redimensionar, añadir pie de foto e historial de versiones."
+    },
+    "editorMediaVideo": {
+      "label": "Media — Vídeo",
+      "desc": "Sube o genera clips de vídeo cortos con IA."
+    },
+    "editorMediaAudio": {
+      "label": "Media — Audio y Narración",
+      "desc": "Bloques de audio independientes, además de narración por párrafo que puedes subir, grabar o generar con IA."
+    },
+    "composerBasics": {
+      "label": "Conceptos básicos del editor",
+      "desc": "El cuadro de mensaje, modo de permisos, esfuerzo de razonamiento, adjuntar contexto y enviar."
+    },
+    "composerSessions": {
+      "label": "Gestión de sesiones",
+      "desc": "Cambia, renombra o inicia conversaciones, y abre la configuración de cada sesión."
+    },
+    "composerAgentTools": {
+      "label": "Herramientas y habilidades del agente",
+      "desc": "Consulta y gestiona a qué herramientas y habilidades puede acceder el agente actualmente."
+    },
+    "composerContextBudget": {
+      "label": "Presupuesto de contexto",
+      "desc": "Cuánto espacio de la ventana de contexto del modelo está utilizando esta conversación y cómo compactarlo."
+    },
+    "composerAiEditReview": {
+      "label": "Revisión de edición por IA y seguridad",
+      "desc": "Cómo se revisan las ediciones propuestas, las acciones de riesgo y los cambios aplicados automáticamente, y cómo deshacerlos."
+    },
+    "composerVoice": {
+      "label": "Asistente de voz",
+      "desc": "Habla en lugar de escribir, con funciones configurables de voz a texto y texto a voz."
+    },
+    "composerPopout": {
+      "label": "Ventana emergente",
+      "desc": "Saca el editor a su propia ventana del sistema operativo para usarlo en un segundo monitor."
+    }
+  }
+}

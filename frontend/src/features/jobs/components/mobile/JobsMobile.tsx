@@ -14,7 +14,13 @@ import { useJobLive, useJobsConnection } from '../../context/JobsStreamProvider'
 import { effectiveJob } from '../../lib';
 import { jobKey, type Job } from '../../types';
 
-function JobCard({ job: base }: { job: Job }) {
+function JobCard({
+  job: base,
+  onOpenDetail,
+}: {
+  job: Job;
+  onOpenDetail?: (service: string, jobId: string) => void;
+}) {
   const { t } = useTranslation('jobs');
   const job = effectiveJob(base, useJobLive(jobKey(base)));
   const detailTo =
@@ -23,13 +29,26 @@ function JobCard({ job: base }: { job: Job }) {
       : `/jobs/${encodeURIComponent(job.service)}/${encodeURIComponent(job.job_id)}`;
   const kindLabel = t(`kind.${job.kind}`, { defaultValue: job.kind });
   const label = job.title || kindLabel;
+  // /review-impl HIGH fix (same as JobRow.tsx): never override the campaign deep-link — a
+  // campaign job keeps its real <Link> to /campaigns/:id even when onOpenDetail is supplied.
+  const useCallbackNav = Boolean(onOpenDetail) && job.kind !== 'campaign';
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
       <div className="flex items-start justify-between gap-2">
-        <Link to={detailTo} className="min-w-0 truncate text-sm font-medium hover:underline">
-          {label}
-        </Link>
+        {useCallbackNav ? (
+          <button
+            type="button"
+            onClick={() => onOpenDetail!(job.service, job.job_id)}
+            className="min-w-0 truncate text-left text-sm font-medium hover:underline"
+          >
+            {label}
+          </button>
+        ) : (
+          <Link to={detailTo} className="min-w-0 truncate text-sm font-medium hover:underline">
+            {label}
+          </Link>
+        )}
         <JobStatusBadge status={job.status} />
       </div>
       <span className="text-[11px] text-muted-foreground">
@@ -45,8 +64,12 @@ function JobCard({ job: base }: { job: Job }) {
 }
 
 /** Dedicated mobile dashboard: summary cards + filters + Active cards (live) +
- *  History cards (paginated). */
-export function JobsMobile() {
+ *  History cards (paginated).
+ *
+ *  `onOpenDetail` (studio dockable-migration injectable prop): forwarded to every JobCard
+ *  unchanged. Omitted (the standalone /jobs page on mobile): behavior is byte-identical
+ *  to before. */
+export function JobsMobile({ onOpenDetail }: { onOpenDetail?: (service: string, jobId: string) => void } = {}) {
   const { t } = useTranslation('jobs');
   const d = useJobsDashboard();
   const conn = useJobsConnection();
@@ -76,7 +99,7 @@ export function JobsMobile() {
           {activeItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('list.noActive', { defaultValue: 'No active jobs.' })}</p>
           ) : (
-            activeItems.map((j) => <JobCard key={jobKey(j)} job={j} />)
+            activeItems.map((j) => <JobCard key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} />)
           )}
         </div>
       )}
@@ -90,7 +113,7 @@ export function JobsMobile() {
         ) : historyItems.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('list.empty', { defaultValue: 'No jobs yet.' })}</p>
         ) : (
-          historyItems.map((j) => <JobCard key={jobKey(j)} job={j} />)
+          historyItems.map((j) => <JobCard key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} />)
         )}
       </div>
 

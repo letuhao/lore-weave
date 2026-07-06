@@ -51,6 +51,7 @@ from app.context.formatters.stopwords import (
     CJK_PARTICLES,
     STOPPHRASES_LOWER,
 )
+from app.extraction.scripts import CJK_FAMILY_RUN_RE, LATIN_NAME_RE
 from app.db.models import Project
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import CypherSession
@@ -67,17 +68,17 @@ __all__ = [
 
 # ── candidate extraction ───────────────────────────────────────────────────
 
-# Matches English capitalized phrases: `Kai`, `Master Lin`, `The Dragon Lord`.
-# Limited to 1-3 word sequences to avoid false-positive sentence starts.
-_ENGLISH_CAPITALIZED = re.compile(
-    r"\b[A-Z][a-z]+(?:[\s\-][A-Z][a-z]+){0,2}\b"
-)
+# Matches capitalized phrases (1-3 words), Vietnamese-diacritic aware:
+# `Kai`, `Master Lin`, `Nguy\u1ec5n V\u0103n`, `Tr\u1ea7n \u0110\u01b0\u1eddng`. Shared with the extraction
+# entity detector via app.extraction.scripts (ML-3: was an ASCII-only
+# capitalized regex that shredded vi names \u2014 "Nguy\u1ec5n" \u2192 "Nguy").
+_CAPITALIZED = LATIN_NAME_RE
 
-# Matches runs of 2+ CJK characters. The run is then re-split inside
-# _push_cjk on CJK_PARTICLES (shared in app.context.formatters.stopwords).
-# Python's `re` doesn't support character-class intersection, which is
-# why we split in two passes.
-_CJK_RUN = re.compile(r"[\u4e00-\u9fff]{2,}")
+# Matches runs of 2+ CJK-family characters (Han + kana + hangul; was Han-only,
+# so ja kana \u30ab\u30a4 / ko hangul \uae40\ucca0\uc218 never surfaced). The run is re-split inside
+# _push_cjk on CJK_PARTICLES (zh + ja particles; ko left whole). Python's `re`
+# doesn't support character-class intersection, which is why we split in two passes.
+_CJK_RUN = CJK_FAMILY_RUN_RE
 
 # Secondary splitter used inside _push_cjk to break long CJK runs at particles.
 _CJK_SPLIT = re.compile(f"[{CJK_PARTICLES}]+")
@@ -175,9 +176,9 @@ def extract_candidates(message: str, *, max_candidates: int = MAX_CANDIDATES) ->
         if len(out) >= max_candidates:
             return out
 
-    # 2) English capitalized phrases. For `Master Lin` we also push `Lin`
-    #    (the last token) so a brute exact-match on the bare name wins.
-    for match in _ENGLISH_CAPITALIZED.finditer(message):
+    # 2) Latin capitalized phrases (English + Vietnamese). For `Master Lin` we
+    #    also push `Lin` (the last token) so a brute exact-match on the bare name wins.
+    for match in _CAPITALIZED.finditer(message):
         phrase = match.group(0)
         _push(phrase)
         if len(out) >= max_candidates:

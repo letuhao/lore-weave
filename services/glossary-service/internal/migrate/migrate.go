@@ -243,8 +243,48 @@ func execGuarded(ctx context.Context, pool *pgxpool.Pool, name, sql string) erro
 }
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
-	return execGuarded(ctx, pool, "schema", schemaSQL)
+	if err := execGuarded(ctx, pool, "schema", schemaSQL); err != nil {
+		return err
+	}
+	// P2·F: append-only tenant-boundary audit table.
+	return execGuarded(ctx, pool, "tenant-audit", tenantAuditSQL)
 }
+
+// tenantAuditSQL — P2·F append-only tenant-boundary audit for glossary. A row is
+// written the FIRST time a caller crosses into a book they do NOT own (a
+// collaborator reaching book-scoped glossary data, or a denied under-grant),
+// coalesced to one row per (actor, book, outcome) per window (see
+// api/tenant_audit.go). Unlike book-service, glossary resolves grants via a
+// cross-service ResolveAccess that returns only a Level (no book owner), so this
+// table records the book_id as the tenant boundary and has NO owner_id column —
+// the owner is resolvable from book_id in book-service's DB during forensics.
+// Same append-only shape as auth-service's audit tables: UUID PK, outcome CHECK
+// enum, created_at index, REVOKE UPDATE/DELETE. No FK to any book row (audit must
+// outlive a deleted book).
+const tenantAuditSQL = `
+CREATE TABLE IF NOT EXISTS tenant_access_audit (
+  audit_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  actor_id        UUID NOT NULL,                 -- the crossing (non-owner) caller
+  book_id         UUID NOT NULL,                 -- the tenant boundary (owner resolvable in book-service)
+  outcome         TEXT NOT NULL CHECK (outcome IN ('granted','denied')),
+  coalesce_bucket TIMESTAMPTZ NOT NULL,          -- window start; dedups first-per-window
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_audit_window
+  ON tenant_access_audit (actor_id, book_id, outcome, coalesce_bucket);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_audit_book_created
+  ON tenant_access_audit (book_id, created_at DESC);
+
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE tenant_access_audit FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
+`
 
 // snapshotSQL adds the entity_snapshot column, the recalculation function,
 // five trigger functions, and the triggers themselves.
@@ -649,26 +689,34 @@ END $$;
 -- legacy auto-named constraint). kind-delete now removes articles explicitly,
 -- emits wiki.deleted, and surfaces a count instead of a silent cascade.
 --
--- Idempotency: scope the drop to the FK on the entity_id COLUMN specifically —
+-- review-impl fix (2026-07-06): the ORIGINAL guard here checked only whether a
+-- constraint NAMED 'wiki_articles_entity_id_fkey' existed — but that is the
+-- Postgres-assigned DEFAULT name for an inline REFERENCES FK on this exact
+-- column, so the pre-existing CASCADE constraint already carried that name.
+-- The guard therefore always saw "already exists" and skipped the swap forever
+-- — this migration had NEVER actually applied on an already-live wiki_articles
+-- table (only a brand-new CREATE TABLE ever got RESTRICT). Root-caused via
+-- TestFK_WikiArticle_RestrictsEntityDelete failing against the real dev/test DB
+-- and a live pg_constraint/pg_get_constraintdef inspection confirming CASCADE
+-- still in effect. Fixed by checking the FK's ACTUAL delete-action
+-- (confdeltype) instead of a name, so this is self-correcting regardless of
+-- what the constraint happens to be called.
+--
+-- Idempotency: scope the lookup to the FK on the entity_id COLUMN specifically —
 -- wiki_articles has a SECOND FK to glossary_entities (superseded_by_entity_id,
--- added just above), so a column-agnostic single-row select could drop the
--- wrong one and then collide on re-add (the restart bug). Skip entirely when the
--- RESTRICT-named constraint already exists.
+-- added just above), so a column-agnostic select could target the wrong one.
 DO $$
 DECLARE c text;
+DECLARE deltype "char";
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-     WHERE conname = 'wiki_articles_entity_id_fkey'
-       AND conrelid = 'wiki_articles'::regclass
-  ) THEN
-    SELECT conname INTO c FROM pg_constraint
-     WHERE conrelid = 'wiki_articles'::regclass AND contype = 'f'
-       AND confrelid = 'glossary_entities'::regclass
-       AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
-             WHERE attrelid = 'wiki_articles'::regclass
-               AND attname = 'entity_id' AND NOT attisdropped)]::smallint[];
-    IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE wiki_articles DROP CONSTRAINT %I', c); END IF;
+  SELECT conname, confdeltype INTO c, deltype FROM pg_constraint
+   WHERE conrelid = 'wiki_articles'::regclass AND contype = 'f'
+     AND confrelid = 'glossary_entities'::regclass
+     AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+           WHERE attrelid = 'wiki_articles'::regclass
+             AND attname = 'entity_id' AND NOT attisdropped)]::smallint[];
+  IF c IS NOT NULL AND deltype <> 'r' THEN
+    EXECUTE format('ALTER TABLE wiki_articles DROP CONSTRAINT %I', c);
     ALTER TABLE wiki_articles
       ADD CONSTRAINT wiki_articles_entity_id_fkey
       FOREIGN KEY (entity_id) REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT;

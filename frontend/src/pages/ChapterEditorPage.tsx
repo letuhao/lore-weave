@@ -1,3 +1,21 @@
+// ============================================================================
+// ⚠️ DEPRECATED — DO NOT EDIT (agent or human) — see docs/specs/2026-07-01-writing-studio/16_chapter_editor_parity_and_retirement.md
+// ============================================================================
+// This legacy chapter editor is SUPERSEDED by Writing Studio v2
+// (`/books/:bookId/studio`, `frontend/src/features/studio/**`). Per spec 16 (M1),
+// Studio is the sole chapter-editing surface going forward; this page is kept
+// alive ONLY as a fallback route reachable by direct URL (never linked to from
+// the app UI — `ChaptersTab.tsx`'s row-click/pencil icon already point at
+// Studio, spec 16 task 1.5) — a decision to keep it around, not a decision
+// pending removal (spec 16 Phase 4b, 2026-07-05: kept indefinitely, not deleted).
+//
+// DO NOT port new capabilities here, and DO NOT fix bugs here beyond what's
+// needed to keep it loading — any real editor-craft work belongs in
+// `frontend/src/features/studio/panels/EditorPanel.tsx` and its siblings. If
+// you're an agent about to touch this file because a task mentions "the
+// chapter editor," stop and check whether the task actually means Studio's
+// EditorPanel instead — it almost always does.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -24,8 +42,6 @@ import { useEditorMode } from '@/hooks/useEditorMode';
 import { useWorkmode, type Workmode } from '@/hooks/useWorkmode';
 import { WorkmodeSwitcher } from '@/components/editor/WorkmodeSwitcher';
 import { ChapterTranslationsPanel } from '@/features/translation/components/ChapterTranslationsPanel';
-import { setImageUploadContext, setOnOpenHistory } from '@/components/editor/ImageBlockNode';
-import { setOnOpenVideoHistory } from '@/components/editor/VideoBlockNode';
 import { VersionHistoryPanel } from '@/components/editor/VersionHistoryPanel';
 import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
 import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
@@ -330,19 +346,27 @@ export function ChapterEditorPage() {
   }, [savedBody, savedTitle]);
 
   // ── Wire media upload context for image/video blocks ──────────────────────
+  // #16 Phase 2 (2.7) — routed through the editor's OWN ref method (writes to
+  // `editor.storage.mediaUpload`) instead of the retired module-level singleton
+  // (ImageBlockNode.setImageUploadContext/setOnOpenHistory,
+  // VideoBlockNode.setOnOpenVideoHistory). This page still mounts exactly one TiptapEditor
+  // instance, so behavior is byte-identical to before — same deps, same set/clear shape, just
+  // addressed at this page's own editor instance instead of a global variable.
   useEffect(() => {
     if (accessToken && bookId && chapterId) {
-      setImageUploadContext({ token: accessToken, bookId, chapterId });
       const openHistory = (blockId: string, blockTitle: string, mediaSrc: string | null) => {
         setVersionHistory({ blockId, blockTitle, mediaSrc });
       };
-      setOnOpenHistory(openHistory);
-      setOnOpenVideoHistory(openHistory);
+      tiptapEditorRef.current?.setUploadContext({
+        token: accessToken,
+        bookId,
+        chapterId,
+        onOpenHistory: openHistory,
+        onOpenVideoHistory: openHistory,
+      });
     }
     return () => {
-      setImageUploadContext(null);
-      setOnOpenHistory(null);
-      setOnOpenVideoHistory(null);
+      tiptapEditorRef.current?.setUploadContext(null);
     };
   }, [accessToken, bookId, chapterId]);
 

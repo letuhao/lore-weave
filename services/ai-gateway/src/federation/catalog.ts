@@ -1,5 +1,10 @@
 import { createHash } from 'crypto';
+import { Logger } from '@nestjs/common';
 import { ProviderConfig } from '../config/config.js';
+
+// P2·A2b — default warn sink is the NestJS Logger, not console.* (LG-1). Still
+// injectable (tests pass a capturing fn); only the DEFAULT changed.
+const catalogLog = new Logger('ai-gateway/catalog');
 
 /** One provider's federation outcome: its tools, or an error (→ partial catalog). */
 export interface ProviderResult {
@@ -36,11 +41,11 @@ export interface Catalog {
  * collisions). A provider with no `prefix` (legacy/unmapped) is not policed.
  *
  * @param results  per-provider federation outcomes
- * @param warn     sink for dropped-tool warnings (defaults to `console.warn`)
+ * @param warn     sink for dropped-tool warnings (defaults to the NestJS Logger)
  */
 export function computeCatalog(
   results: ProviderResult[],
-  warn: (msg: string) => void = (m) => console.warn(m),
+  warn: (msg: string) => void = (m) => catalogLog.warn(m),
 ): Catalog {
   const map = new Map<string, ProviderConfig>();
   const tools: any[] = [];
@@ -145,7 +150,7 @@ export function uriScheme(uri: string): string | undefined {
  */
 export function computeAuxCatalog(
   results: ProviderAuxResult[],
-  warn: (msg: string) => void = (m) => console.warn(m),
+  warn: (msg: string) => void = (m) => catalogLog.warn(m),
 ): AuxCatalog {
   const resourceToProvider = new Map<string, ProviderConfig>();
   const promptToProvider = new Map<string, ProviderConfig>();

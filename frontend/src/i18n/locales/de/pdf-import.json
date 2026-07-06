@@ -1,0 +1,68 @@
+{
+  "title": "PDF importieren",
+  "description": "Importieren Sie ein PDF als Buch, unterteilt nach Seitenbereichen",
+  "steps": {
+    "upload": "Hochladen",
+    "configure": "Konfigurieren",
+    "confirm": "Bestätigen",
+    "progress": "Fortschritt",
+    "results": "Ergebnisse"
+  },
+  "upload": {
+    "intro": "Importieren Sie ein PDF als Buch – dazu gehören auch Lore- oder Fachreferenz-PDFs, nicht nur Romane. Lange PDFs werden in Kapitel nach Seitenbereichen unterteilt (im nächsten Schritt konfigurierbar).",
+    "choosePdf": "PDF-Datei auswählen",
+    "pdfOnly": "nur .pdf",
+    "checking": "PDF wird geprüft…",
+    "pageCount_one": "{{count}} Seite erkannt.",
+    "pageCount_other": "{{count}} Seiten erkannt.",
+    "readError": "Diese PDF konnte nicht gelesen werden."
+  },
+  "configure": {
+    "pagesPerChunk": "Seiten pro Abschnitt",
+    "pagesPerChunkHint": "Jede Gruppe dieser Anzahl an Seiten wird zu einem Kapitel – bei PDF-Importen wird keine automatische Erkennung von „Kapitel N“-Überschriften verwendet, daher funktioniert dies auch bei Fach- oder Sachbüchern ohne Kapitelmarkierungen.",
+    "willCreate_one": "Dies wird {{count}} Kapitel aus {{pages}} Seiten erstellen.",
+    "willCreate_other": "Dies wird {{count}} Kapitel aus {{pages}} Seiten erstellen.",
+    "highChapterWarning": "Das sind sehr viele Kapitel – falls dies nicht beabsichtigt war, wählen Sie einen größeren Wert für „Seiten pro Abschnitt“. Der Import wird dennoch durchgeführt.",
+    "captionImages": "Bilder mit KI beschriften",
+    "captionImagesHint": "Extrahiert Diagramme/Bilder und beschriftet diese über ein Vision-Modell, damit die Glossar-/KG-Extraktion den Inhalt der Diagramme erfassen kann. Verbraucht LLM-Credits pro Bild.",
+    "visionModel": "Vision-Modell",
+    "visionModelPlaceholder": "Wählen Sie ein Vision-fähiges Modell (z. B. gpt-4o)",
+    "visionModelAriaLabel": "Vision-Modell zur Bildbeschreibung",
+    "visionModelHint": "Wähle ein Modell, das tatsächlich Bild-Inputs unterstützt – nicht jedes Chat-Modell kann das."
+  },
+  "confirm": {
+    "file": "Datei",
+    "pages": "Seiten",
+    "pagesPerChunk": "Seiten pro Abschnitt",
+    "chaptersToCreate": "Zu erstellende Kapitel",
+    "captionImages": "Bilder mit KI beschriften",
+    "yes": "Ja",
+    "no": "Nein",
+    "needModel": "Wähle ein Vision-Modell aus, bevor du startest – das Beschriften ist aktiviert, aber es wurde kein Modell ausgewählt.",
+    "backgroundNote": "Dies läuft im Hintergrund – du kannst dieses Dialogfenster jederzeit schließen und den Fortschritt im Bereich „Jobs“ verfolgen.",
+    "startImport": "Import starten",
+    "startFailed": "Import konnte nicht gestartet werden"
+  },
+  "progress": {
+    "importing": "PDF wird importiert…",
+    "chapterOf": "Kapitel {{current}} von {{total}}",
+    "runInBackground": "Im Hintergrund ausführen",
+    "progress": "Fortschritt",
+    "longNote": "Bei einer langen PDF kann dies einige Zeit dauern – besonders wenn das KI-Captions aktiviert ist. Sie können das Dialogfeld jederzeit schließen; der Import läuft im Hintergrund weiter und wird im Jobs-Panel angezeigt.",
+    "backgroundToast": "Der Import läuft im Hintergrund weiter – den Fortschritt finden Sie im Jobs-Panel."
+  },
+  "results": {
+    "complete": "Import abgeschlossen",
+    "failed": "Import fehlgeschlagen",
+    "chaptersCreated_one": "{{count}} Kapitel wurde erstellt.",
+    "chaptersCreated_other": "{{count}} Kapitel wurden erstellt.",
+    "genericError": "Beim Import ist ein Fehler aufgetreten.",
+    "importAnother": "Weiteren Import starten",
+    "done": "Fertig"
+  },
+  "button": {
+    "back": "Zurück",
+    "cancel": "Abbrechen",
+    "next": "Weiter"
+  }
+}

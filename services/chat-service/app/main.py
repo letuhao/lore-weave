@@ -9,6 +9,10 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.client.book_steering_client import close_book_steering_client, init_book_steering_client
+from app.client.known_entities_client import (
+    close_known_entities_client,
+    init_known_entities_client,
+)
 from app.client.user_skills_client import close_user_skills_client, init_user_skills_client
 from app.client.registry_commands_client import close_commands_client, init_commands_client
 from app.client.registry_hooks_client import close_hooks_client, init_hooks_client
@@ -21,7 +25,7 @@ from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.middleware.trace_id import TraceIdMiddleware, current_trace_id
-from app.routers import catalog, evaluate, feedback, internal, messages, outputs, sessions, voice
+from app.routers import ai_settings, catalog, evaluate, feedback, internal, messages, outputs, sessions, voice
 from app.storage.minio_client import delete_object, ensure_bucket
 
 logger = logging.getLogger(__name__)
@@ -62,6 +66,9 @@ async def lifespan(app: FastAPI):
     init_knowledge_client()
     # RAID C1: long-lived book-service steering client (degrades to [] when down).
     init_book_steering_client()
+    # T5 (D2): long-lived known-entities client for the intent gate (degrades to
+    # an empty set → gate opens, bias-to-include).
+    init_known_entities_client()
     # REG-P1-05: long-lived agent-registry user-skills client (degrades to constants).
     init_user_skills_client()
     # REG-P4-01: long-lived agent-registry commands client (degrades to pass-through).
@@ -76,6 +83,7 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     await close_knowledge_client()
     await close_book_steering_client()
+    await close_known_entities_client()
     await close_user_skills_client()
     await close_commands_client()
     await close_hooks_client()
@@ -141,6 +149,8 @@ app.include_router(voice.voice_mgmt_router)
 app.include_router(feedback.router)
 app.include_router(internal.router)  # FD-2: chat-turn text fetch for KG extraction
 app.include_router(internal.telemetry_router)  # W1: /internal/tool-health telemetry
+app.include_router(ai_settings.prefs_router)  # Chat & AI settings — per-user prefs blob
+app.include_router(ai_settings.effective_router)  # Chat & AI settings — resolved cascade
 
 
 @app.get("/health", response_class=PlainTextResponse)

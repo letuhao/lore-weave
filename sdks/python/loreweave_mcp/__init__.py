@@ -12,6 +12,9 @@ What is **extracted** from a proven shape (knowledge-service `app/mcp/server.py`
     lift `X-User-Id / X-Project-Id / X-Session-Id / X-Trace-Id` from headers into
     a `ToolContext`. Identity is ALWAYS from the envelope, never a tool arg.
   - `ForbidExtra` — the `extra="forbid"` arg-model base (INV-2).
+  - `TolerantArgs` — the `extra="ignore"` sibling (IN-5, mcp-tool-io.md): same
+    never-declare-identity rule, but a harmless unknown field is dropped, not a
+    hard validation error.
 
 What is **built fresh** (no existing instance):
   - `require_book_owner` / `require_user_scope` / `require_project` — the THREE
@@ -45,6 +48,7 @@ from .context import (
 from .errors import (
     ForbidExtra,
     NotAccessibleError,
+    TolerantArgs,
     uniform_not_accessible,
 )
 from .guards import (
@@ -61,6 +65,15 @@ from .meta import (
     require_meta,
     validate_tool_meta,
 )
+from .response import (
+    DetailLevel,
+    apply_response_contract,
+)
+from .shape_snapshot import (
+    assert_or_write_shape_snapshot,
+    build_shape_map,
+    repo_root_from,
+)
 
 __all__ = [
     # context / server wiring
@@ -71,6 +84,7 @@ __all__ = [
     "apply_public_key_attribution_headers",
     # arg models + uniform error (H13)
     "ForbidExtra",
+    "TolerantArgs",
     "uniform_not_accessible",
     "NotAccessibleError",
     # scope guards (H15)
@@ -92,4 +106,11 @@ __all__ = [
     "MetaValidationError",
     "TIERS",
     "SCOPES",
+    # L1/L2 tool-response contract (Context Budget Law §6b)
+    "apply_response_contract",
+    "DetailLevel",
+    # §13b response-shape snapshot guard (anti re-bloat)
+    "assert_or_write_shape_snapshot",
+    "build_shape_map",
+    "repo_root_from",
 ]

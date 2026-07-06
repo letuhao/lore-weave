@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Loader2, AlertTriangle, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookTranslationSettings, type BookCoverageResponse } from '@/features/translation/api';
@@ -11,6 +11,8 @@ import { LANGUAGE_NAMES } from '@/lib/languages';
 import { cn } from '@/lib/utils';
 import { usePagedList } from '@/components/pagination/usePagedList';
 import { Pager } from '@/components/pagination/Pager';
+import { FormDialog } from '@/components/shared/FormDialog';
+import { useOptionalStudioHost } from '@/features/studio/host/StudioHostProvider';
 import {
   classifyChapters,
   coverageMapFor,
@@ -63,6 +65,17 @@ const STATUS_BADGE: Record<ChapterTxStatus, string> = {
 export function TranslateModal({ open, onClose, bookId, onJobCreated, preselectedChapterIds }: TranslateModalProps) {
   const { t } = useTranslation('books');
   const { accessToken } = useAuth();
+  const navigate = useNavigate();
+  // DOCK-7 — reachable both from the classic TranslationTab/ChaptersTab route pages AND from
+  // inside the studio's `translation`/`chapter-browser` dock panels (this modal is already
+  // reused in-studio today). A bare navigate('/settings') would tear down the whole studio (and
+  // every other open dock tab) just to add a model — branch like ExtractionWizard's handleClose.
+  const studioHost = useOptionalStudioHost();
+  const openModelSettings = () => {
+    onClose();
+    if (studioHost) studioHost.openPanel('settings', { params: { tab: 'providers' } });
+    else navigate('/settings');
+  };
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [coverage, setCoverage] = useState<BookCoverageResponse | null>(null);
   const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
@@ -260,28 +273,46 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
     { status: 'translated', count: counts.translated },
   ];
 
-  return (
+  const footer = (
     <>
-      <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div
-          className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg border bg-background shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">{t('translate.title')}</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">{t('translate.subtitle')}</p>
-          </div>
+      <button
+        onClick={onClose}
+        className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+      >
+        {t('translate.cancel')}
+      </button>
+      <button
+        onClick={() => void submitJob([...selectedChapters], forceRetranslate)}
+        disabled={!canSubmitSelected}
+        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        {t('translate.submit_selected', { count: selectedChapters.size })}
+      </button>
+    </>
+  );
 
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-xs text-muted-foreground">{t('translate.loading_chapters')}</span>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {/* Language + Model row */}
+  // DOCK-9 (docs/standards/dockable-gui.md): FormDialog replaces the previous hand-rolled
+  // `fixed inset-0` backdrop+content pair — this is a chrome-only migration, all existing
+  // behavior/props are preserved. `open` is passed as the literal `true` here (we've already
+  // early-returned above when the prop is false), same as ExtractionWizard's Dialog.Root.
+  return (
+    <FormDialog
+      open
+      onOpenChange={(next) => { if (!next) onClose(); }}
+      title={t('translate.title')}
+      description={t('translate.subtitle')}
+      size="2xl"
+      footer={footer}
+    >
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-xs text-muted-foreground">{t('translate.loading_chapters')}</span>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Language + Model row */}
               <div className="grid grid-cols-2 gap-3">
                 {/* Language */}
                 <div>
@@ -310,9 +341,13 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                     emptyState={
                       <div className="flex h-9 items-center rounded-md border border-dashed bg-background px-3 text-[11px] text-muted-foreground">
                         {t('translate.no_models')}{' '}
-                        <Link to="/settings" onClick={onClose} className="ml-1 text-primary hover:underline">
+                        <button
+                          type="button"
+                          onClick={openModelSettings}
+                          className="ml-1 text-primary hover:underline"
+                        >
                           {t('translate.add_in_settings')}
-                        </Link>
+                        </button>
                       </div>
                     }
                   />
@@ -566,27 +601,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                 />
               </div>
             </div>
-          )}
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
-            <button
-              onClick={onClose}
-              className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-            >
-              {t('translate.cancel')}
-            </button>
-            <button
-              onClick={() => void submitJob([...selectedChapters], forceRetranslate)}
-              disabled={!canSubmitSelected}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {t('translate.submit_selected', { count: selectedChapters.size })}
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
+      )}
+    </FormDialog>
   );
 }

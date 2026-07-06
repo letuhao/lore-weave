@@ -2,6 +2,12 @@
  * ai-gateway configuration (env-driven; no hardcoded secrets — fails fast if the
  * internal service token is missing, per the repo "No hardcoded secrets" rule).
  */
+import { Logger } from '@nestjs/common';
+
+// P2·A2b — the default warn sink is the NestJS Logger, not console.* (LG-1). The
+// sink stays injectable (tests pass a capturing fn); only the DEFAULT changed.
+const configLog = new Logger('ai-gateway/config');
+
 export interface ProviderConfig {
   /** logical provider name (used in logs + tool namespacing) */
   name: string;
@@ -94,9 +100,15 @@ export const DEFAULT_PREFIX_MAP: Record<string, string> = {
  * ontology + views + triage, the KG ontology epic) — without `kg_` here the C-GW gate
  * would silently drop every kg_ tool, hiding the whole agentic KG surface from the
  * federated catalog. `kg_admin_*` (the future /mcp/admin provider) is covered by `kg_`.
+ * `story_` is knowledge's THIRD namespace: `story_search` (the universal manuscript
+ * find — exact/lexical + semantic + block snippets). Without it the C-GW gate silently
+ * dropped `story_search` (proven: ai-gateway logged "dropping tool 'story_search' …
+ * does not match any allowed prefix [memory_, kg_]"), leaving the agent with no
+ * keyword/full-text search over the manuscript — so it punted on "where is X at chapter
+ * N" even though the raw text was reachable. Any future `story_*` tool is covered here.
  */
 export const EXTRA_PREFIX_MAP: Record<string, string[]> = {
-  knowledge: ['kg_'],
+  knowledge: ['kg_', 'story_'],
   // PlanForge MCP tools (composition-service) — federated alongside composition_*
   composition: ['plan_'],
 };
@@ -138,11 +150,11 @@ function defaultProviders(): ProviderConfig[] {
  * `=`, empty name/url) are skipped with a warning rather than crashing the parse.
  *
  * @param raw the env value (defaults to `process.env.AI_GATEWAY_PROVIDERS`)
- * @param warn sink for skipped-entry warnings (defaults to `console.warn`)
+ * @param warn sink for skipped-entry warnings (defaults to the NestJS Logger)
  */
 export function parseProviders(
   raw: string | undefined = process.env.AI_GATEWAY_PROVIDERS,
-  warn: (msg: string) => void = (m) => console.warn(m),
+  warn: (msg: string) => void = (m) => configLog.warn(m),
 ): ProviderConfig[] {
   if (raw === undefined || raw.trim() === '') {
     return defaultProviders();

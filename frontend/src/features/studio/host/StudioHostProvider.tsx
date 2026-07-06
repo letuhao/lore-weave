@@ -137,6 +137,13 @@ export function useStudioHost(): StudioHost {
   return host;
 }
 
+/** Null outside the provider instead of throwing — for shared components (e.g. StepConfig,
+ * used by both a classic route page AND a studio panel) that must branch behavior rather than
+ * assume they're always inside the studio (docs/standards/dockable-gui.md DOCK-7). */
+export function useOptionalStudioHost(): StudioHost | null {
+  return useContext(StudioHostContext);
+}
+
 /** The live list of registered tools (re-renders when a panel (un)registers). */
 export function useRegisteredTools(): StudioToolRegistration[] {
   const { _regStore } = useStudioHost();

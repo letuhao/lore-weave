@@ -1,0 +1,49 @@
+{
+  "anonymous": "Anonyme",
+  "joined": "Rejoint le {{date}}",
+  "followers": "abonnés",
+  "following": "abonnements",
+  "follow": "Suivre",
+  "unfollow": "Abonné",
+  "editProfile": "Modifier le profil",
+  "loading": "Chargement...",
+  "noBooks": "Aucun livre publié pour le moment.",
+  "noTranslations": "Aucune traduction pour le moment.",
+  "errorLoading": "Échec du chargement du profil.",
+  "followError": "Impossible de suivre l'utilisateur.",
+  "unfollowError": "Impossible de ne plus suivre l'utilisateur.",
+  "userNotFound": "Utilisateur non trouvé.",
+  "achievements": "Succès",
+  "chapters": "chapitres",
+  "readers": "lecteurs",
+  "recentActivity": "Activité récente",
+  "last7d": "7 derniers jours",
+  "last30d": "30 derniers jours",
+  "translationLanguages": "Langues de traduction",
+  "stats": {
+    "books": "Livres",
+    "chaptersTranslated": "Chapitres traduits",
+    "totalReaders": "Total lecteurs",
+    "followers": "Abonnés",
+    "totalTranslations": "Total traductions",
+    "languages": "Langues"
+  },
+  "achievement": {
+    "booksPublished": "{{count}} livre publié",
+    "booksPublished_other": "{{count}} livres publiés",
+    "kReaders": "+{{count}}K lecteurs",
+    "hundredReaders": "100+ lecteurs",
+    "followers": "{{count}} abonnés",
+    "multiLangTranslator": "Traducteur {{count}} langues",
+    "fiftyChapters": "50+ chapitres traduits"
+  },
+  "loadError": "Échec du chargement des livres.",
+  "noWiki": "Aucune contribution wiki pour le moment.",
+  "wikiError": "Échec du chargement des contributions wiki.",
+  "untitled": "Sans titre",
+  "tabs": {
+    "books": "Livres",
+    "translations": "Traductions",
+    "wiki": "Contributions Wiki"
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "title": "Impor PDF",
+  "description": "Impor PDF sebagai buku, dibagi berdasarkan rentang halaman",
+  "steps": {
+    "upload": "Unggah",
+    "configure": "Konfigurasi",
+    "confirm": "Konfirmasi",
+    "progress": "Progres",
+    "results": "Hasil"
+  },
+  "upload": {
+    "intro": "Impor PDF sebagai buku — termasuk PDF lore/referensi teknis, tidak hanya novel. PDF yang panjang akan dibagi menjadi bab berdasarkan rentang halaman (dikonfigurasi pada langkah berikutnya).",
+    "choosePdf": "Pilih file PDF",
+    "pdfOnly": ".pdf saja",
+    "checking": "Memeriksa PDF…",
+    "pageCount_one": "{{count}} halaman terdeteksi.",
+    "pageCount_other": "{{count}} halaman terdeteksi.",
+    "readError": "Tidak dapat membaca PDF ini."
+  },
+  "configure": {
+    "pagesPerChunk": "Halaman per bagian",
+    "pagesPerChunkHint": "Setiap grup dengan jumlah halaman ini akan menjadi satu bab — tidak ada deteksi judul «Bab N» yang digunakan untuk impor PDF, jadi ini tetap berfungsi bahkan untuk buku referensi/teknis tanpa penanda bab.",
+    "willCreate_one": "Ini akan membuat {{count}} bab dari {{pages}} halaman.",
+    "willCreate_other": "Ini akan membuat {{count}} bab dari {{pages}} halaman.",
+    "highChapterWarning": "Jumlah bab terlalu banyak — pertimbangkan nilai «halaman per bagian» yang lebih besar jika ini tidak disengaja. Impor akan tetap berjalan.",
+    "captionImages": "Berikan keterangan gambar dengan AI",
+    "captionImagesHint": "Mengekstrak grafik/gambar dan memberikan keterangan melalui model vision agar ekstraksi glosarium/KG dapat melihat konten grafik. Menggunakan kredit LLM per gambar.",
+    "visionModel": "Model vision",
+    "visionModelPlaceholder": "Pilih model yang mendukung vision (misalnya gpt-4o)",
+    "visionModelAriaLabel": "Model vision untuk pemberian keterangan gambar",
+    "visionModelHint": "Pilih model yang benar-benar mendukung input gambar — tidak semua model chat bisa melakukannya."
+  },
+  "confirm": {
+    "file": "File",
+    "pages": "Halaman",
+    "pagesPerChunk": "Halaman per bagian",
+    "chaptersToCreate": "Bab yang akan dibuat",
+    "captionImages": "Berikan keterangan gambar dengan AI",
+    "yes": "Ya",
+    "no": "Tidak",
+    "needModel": "Pilih model vision sebelum memulai — fitur keterangan gambar diaktifkan tetapi belum ada model yang dipilih.",
+    "backgroundNote": "Proses ini berjalan di latar belakang — Anda dapat menutup dialog ini dan memeriksa progres dari panel Pekerjaan kapan saja.",
+    "startImport": "Mulai impor",
+    "startFailed": "Gagal memulai impor"
+  },
+  "progress": {
+    "importing": "Mengimpor PDF…",
+    "chapterOf": "Bab {{current}} dari {{total}}",
+    "runInBackground": "Jalankan di latar belakang",
+    "progress": "Progres",
+    "longNote": "Proses ini mungkin memakan waktu lama untuk PDF yang panjang — terutama jika fitur caption AI diaktifkan. Anda dapat menutup dialog ini kapan saja; proses impor akan tetap berjalan dan dapat dipantau di panel Tugas.",
+    "backgroundToast": "Impor berlanjut di latar belakang — periksa panel Tugas untuk melihat progresnya."
+  },
+  "results": {
+    "complete": "Impor selesai",
+    "failed": "Impor gagal",
+    "chaptersCreated_one": "{{count}} bab berhasil dibuat.",
+    "chaptersCreated_other": "{{count}} bab berhasil dibuat.",
+    "genericError": "Terjadi kesalahan saat proses impor.",
+    "importAnother": "Impor lagi",
+    "done": "Selesai"
+  },
+  "button": {
+    "back": "Kembali",
+    "cancel": "Batal",
+    "next": "Berikutnya"
+  }
+}

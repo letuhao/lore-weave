@@ -1,0 +1,146 @@
+{
+  "loading": "লোড হচ্ছে...",
+  "chapter_of": "{{total}} অধ্যায়ের {{current}}তম",
+  "stop_reading": "পড়া বন্ধ করুন",
+  "read_aloud": "জোরে পড়ুন",
+  "reading_theme": "পড়ার থিম",
+  "edit_chapter": "এই অধ্যায়টি সম্পাদনা করুন",
+  "back_to_book": "বইয়ে ফিরে যান",
+  "chapter_label": "অধ্যায় {{n}}",
+  "chars": "অক্ষর",
+  "words": "শব্দ",
+  "min_read": "~{{minutes}} মিনিট",
+  "loading_translation": "অনুবাদ লোড হচ্ছে...",
+  "empty_chapter": "খালি অধ্যায় — এখনও কিছু লেখা হয়নি।",
+  "end_of_chapter": "অধ্যায় {{n}} শেষ",
+  "next_in": "{{seconds}} সেকেন্ডের মধ্যে পরবর্তী অধ্যায়...",
+  "cancel": "বাতিল",
+  "progress": "অধ্যায় {{current}}/{{total}} · {{percent}}% সম্পন্ন",
+  "ch_short": "অধ্যা. {{n}}",
+  "history": {
+    "title": "পড়ার ইতিহাস",
+    "subtitle": "আপনার সম্প্রতি পড়া বই এবং অধ্যায়সমূহ।",
+    "empty": "এখনও কোনো পড়ার ইতিহাস নেই। একটি অধ্যায় পড়া শুরু করুন!",
+    "chapters_read": "{{count}} অধ্যায় পড়া হয়েছে",
+    "fully_read": "{{percent}}% সম্পূর্ণ পড়া হয়েছে",
+    "last_read": "শেষ পড়া হয়েছে {{date}}",
+    "continue": "தொடরুন"
+  },
+  "theme": {
+    "title": "পড়ার থিম",
+    "presets": "থিম প্রিসেট",
+    "preset": {
+      "dark": {
+        "name": "ডার্ক",
+        "desc": "উষ্ণ গাঢ় ব্যাকগ্রাউন্ড"
+      },
+      "light": {
+        "name": "লাইট",
+        "desc": "পরিচ্ছন্ন সাদা ব্যাকগ্রাউন্ড"
+      },
+      "sepia": {
+        "name": "সেপিয়া",
+        "desc": "উষ্ণ কাগজের রঙ"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "OLED স্ক্রিনের জন্য খাঁটি কালো"
+      },
+      "parchment": {
+        "name": "পার্চমেন্ট",
+        "desc": "ক্লাসিক পার্চমেন্ট অনুভূতি"
+      },
+      "forest": {
+        "name": "ফরেস্ট",
+        "desc": "রাতে চোখের জন্য আরামদায়ক"
+      }
+    },
+    "font": "ফন্ট",
+    "typography": "টাইপোগ্রাফি",
+    "font_size": "ফন্ট সাইজ",
+    "line_height": "লাইন উচ্চতা",
+    "text_width": "টেক্সট প্রস্থ",
+    "spacing": "স্পেসিং",
+    "reading_mode": "পড়ার মোড",
+    "show_indices": "ব্লক ইনডেক্স দেখান (অনুবাদক মোড)",
+    "auto_next": "পরবর্তী অধ্যায় অটো-লোড করুন",
+    "auto_scroll": "TTS-এর সাথে অটো-স্ক্রল"
+  },
+  "tts": {
+    "source": {
+      "attached": "সংযুক্ত",
+      "ai": "AI TTS",
+      "browser": "ব্রাউজার",
+      "inline": "অডিও"
+    },
+    "prev_block": "আগের ব্লক (Shift+Left)",
+    "play": "প্লে (Space)",
+    "pause": "পজ (Space)",
+    "next_block": "পরের ব্লক (Shift+Right)",
+    "cycle_speed": "গতি পরিবর্তন",
+    "autoscroll_on": "অটো-স্ক্রল: চালু",
+    "autoscroll_off": "অটো-স্ক্রল: বন্ধ",
+    "settings": "TTS সেটিংস",
+    "stop": "বন্ধ করুন (Escape)",
+    "speed": "গতি",
+    "browser_voice": "ব্রাউজার ভয়েস",
+    "default": "ডিফল্ট",
+    "no_voices": "কোনো ভয়েস উপলব্ধ নেই। আপনার ব্রাউজার হয়তো Web Speech API সমর্থন করে না।",
+    "ai_model": "AI TTS মডেল",
+    "none_browser": "কোনোটিই না (শুধুমাত্র ব্রাউজার TTS)",
+    "no_models": "কোনো মডেল কনফিগার করা নেই। Settings > Providers-এ একটি প্রোভাইডার যোগ করুন।",
+    "ai_voice": "AI ভয়েস",
+    "openai_voices": "OpenAI ভয়েস: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "আচরণ",
+    "autoscroll_active": "সক্রিয় ব্লকে অটো-স্ক্রল",
+    "highlight_active": "সক্রিয় ব্লক হাইলাইট করুন",
+    "now_playing": "এখন বাজছে",
+    "block_label": "ব্লক: {{id}}",
+    "status": {
+      "playing": "বাজছে",
+      "paused": "স্থগিত",
+      "loading": "লোড হচ্ছে"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "সংযুক্ত",
+      "ai": "AI TTS",
+      "browser": "ব্রাউজার",
+      "inline": "অডিও ব্লক",
+      "none": "কোনোটিই না"
+    },
+    "coverage": "অডিও কভারেজ",
+    "summary": "{{speakable}} স্পেকেবল ব্লক · {{missing}} ব্রাউজার TTS ব্যবহার করছে",
+    "generate_missing": "অনুপস্থিত অডিও তৈরি করুন",
+    "block_chars": "{{count}} ব্লক · ~{{chars}} অক্ষর",
+    "block_chars_other": "{{count}} ব্লক · ~{{chars}} অক্ষর",
+    "est_cost": "আনুমানিক ${{cost}}",
+    "generating": "তৈরি হচ্ছে... {{progress}}/{{total}}",
+    "select_model_alert": "প্রথমে TTS সেটিংস থেকে একটি TTS মডেল নির্বাচন করুন।",
+    "generate_all": "সব তৈরি করুন ({{count}})",
+    "blocks": "ব্লক",
+    "audio_block_preview": "অডিও ব্লক"
+  },
+  "block": {
+    "audio_unavailable": "অডিও উপলব্ধ নেই",
+    "audio_fallback": "আপনার ব্রাউজার অডিও এলিমেন্ট সমর্থন করে না।",
+    "image_unavailable": "ছবি উপলব্ধ নেই",
+    "video_unavailable": "ভিডিও উপলব্ধ নেই"
+  },
+  "indicator": {
+    "pause": "পজ",
+    "play": "সংযুক্ত অডিও প্লে করুন",
+    "mismatch": "অডিও সাবটাইটেল ব্লকের টেক্সট থেকে আলাদা"
+  },
+  "citation": {
+    "aria": "উদ্ধৃতি {{n}}",
+    "jump": "উৎস থেকে দেখুন",
+    "relevance": "প্রাসঙ্গিকতা",
+    "source": {
+      "glossary": "শব্দকোষ",
+      "kg": "জ্ঞানভাণ্ডার",
+      "passage": "অনুচ্ছেদ"
+    }
+  }
+}

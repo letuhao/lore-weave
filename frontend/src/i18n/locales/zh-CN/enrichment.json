@@ -1,0 +1,349 @@
+{
+  "header": "丰富度审查",
+  "subtitle": "审查 AI 为描述不足的实体提出的设定建议，然后将其中的认可内容晋升为本书的正文设定。在您晋升之前，丰富后的草稿仅作为私人变体存在。",
+  "untitled": "未命名",
+  "panel": {
+    "compose": "创建",
+    "proposals": "建议",
+    "gaps": "缺失项",
+    "sources": "来源",
+    "jobs": "任务",
+    "settings": "个人资料"
+  },
+  "compose": {
+    "title": "创建丰富内容",
+    "subtitle": "按您的方式开始丰富——扩展您已写好的草稿，或填补检测到的缺失项。您创建的所有内容在晋升前都属于丰富变体。",
+    "soon": "即将推出",
+    "mode_soon": "将在后续版本中推出。",
+    "mode": {
+      "draft": "基于草稿",
+      "gap": "填补缺失项",
+      "intent": "基于构思",
+      "context": "粘贴上下文",
+      "files": "添加文件"
+    },
+    "draft": {
+      "label": "您的草稿",
+      "placeholder": "在此粘贴或编写该实体的草稿。它将按照本书的维度和语调进行扩展……",
+      "expand_mode": "扩展方式",
+      "rewrite": "重写",
+      "rewrite_hint": "重写并同步本书语调，同时保留您的原意；填补所有维度。",
+      "add_only": "仅添加",
+      "add_only_hint": "逐字保留您的原句；仅添加缺失的维度。"
+    },
+    "context": {
+      "label": "参考文本",
+      "placeholder": "在此粘贴关于该实体的参考文本。它将被作为事实依据进行摄取，并以此生成丰富内容（采用本书语调）。",
+      "license_label": "来源许可",
+      "license": {
+        "public_domain": "公有领域",
+        "licensed": "已获授权使用",
+        "owned": "我拥有 / 我编写的",
+        "copyrighted": "受版权保护（不可使用）"
+      },
+      "copyrighted_warning": "受版权保护的内容无法被摄取。请使用公有领域、已获授权或您自己的文本。",
+      "responsibility": "您需对该文本的权利负责。不构成法律建议。"
+    },
+    "files": {
+      "license_label": "文件许可",
+      "dropzone": "将文件拖到此处或点击浏览",
+      "accept": ".txt .md .pdf .docx .epub — 扫描版 PDF 将进行 OCR 处理",
+      "ready": "{{chars}} 字符{{ocr}}",
+      "ocr": "OCR",
+      "processing": "正在提取……",
+      "failed": "失败",
+      "responsibility": "我拥有这些文件的权利（拥有 / 已获授权 / 公有领域）。不构成法律建议。"
+    },
+    "intent": {
+      "label": "您想创建什么？",
+      "placeholder": "用您自己的话描述它 —— 例如：“那位帮助国王建立王朝的智者”。",
+      "resolve": "解析",
+      "resolving": "正在解析……",
+      "resolve_hint": "将在下方提出目标建议 —— 请审查并编辑，然后运行。"
+    },
+    "target": {
+      "existing": "现有实体",
+      "new": "新实体",
+      "name": "名称",
+      "name_placeholder": "例如：碧遊宮",
+      "kind": "类型",
+      "existing_hint": "使用此名称来丰富现有的术语表实体。",
+      "new_hint": "创建一个新实体 —— 在您晋升该建议之前，不会有任何内容写入您的术语表。"
+    },
+    "kind": {
+      "character": "角色",
+      "location": "地点",
+      "item": "物品",
+      "faction": "势力",
+      "event": "事件",
+      "generic": "通用"
+    },
+    "config": {
+      "gen_model": "生成模型",
+      "embed_model": "嵌入模型",
+      "select_model": "选择……",
+      "max_spend": "最大消耗 (tokens)",
+      "no_cap": "无限制",
+      "top_k": "Top-K",
+      "technique": "技术方案",
+      "technique_opt": {
+        "retrieval": "检索 (P1)",
+        "fabrication": "虚构 (P2)",
+        "recook": "重构 (P3)"
+      },
+      "eval_gate_warning": "P2/P3 需要通过评估门槛 —— 在通过之前，任务将被拒绝。",
+      "dimensions": {
+        "auto": "自动 —— 丰富所有缺失维度"
+      }
+    },
+    "safety": "① 许可 · ② 抽象 · ③ 吞吐保护 · ④ 您负责晋升 —— 丰富内容在您晋升前始终只是变体。",
+    "run_hint": "作为后台任务运行 —— 准备就绪后，建议将出现在“建议”列表中。",
+    "save_corpus": "保存至来源（保留 —— 不自动删除）",
+    "run": "创建草稿",
+    "composing": "正在启动……",
+    "enqueued": "丰富任务已开始 —— 建议将在“建议”列表中显示。"
+  },
+  "h0": {
+    "marker": "变体",
+    "tooltip": "一个丰富后的变体 —— 在您晋升之前，它永远不会成为正式设定。"
+  },
+  "technique": {
+    "template": "模板",
+    "retrieval": "检索",
+    "fabrication": "虚构",
+    "recook": "重构"
+  },
+  "review": {
+    "proposed": "已提出",
+    "author_reviewing": "审查中",
+    "approved": "已批准",
+    "promoted": "已晋升",
+    "rejected": "已拒绝"
+  },
+  "verify": {
+    "none": "无验证标注。",
+    "clean": "验证通过 —— 未发现矛盾、时代错误、注入或原文吞吐。",
+    "degraded": "验证受限 —— 由于无法获取正文设定，无法进行完全的矛盾检查。",
+    "status": {
+      "verified_clean": "已验证",
+      "needs_review": "待审查",
+      "quarantined": "隔离中",
+      "degraded": "受限",
+      "auto_rejected": "自动拒绝"
+    },
+    "flag": {
+      "contradiction": "与设定矛盾",
+      "anachronism": "时代错误",
+      "injection": "提示词注入",
+      "regurgitation": "原文吞吐"
+    },
+    "severity": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    }
+  },
+  "prov": {
+    "technique": "技术方案",
+    "confidence": "置信度",
+    "origin": "来源",
+    "entity_kind": "类型",
+    "model": "模型",
+    "recook_abstracted": "基于抽象事实重构 —— 从中性事实要点生成，而非源文本散文 (②)。",
+    "grounding": "溯源依据",
+    "skipped": "已跳过 (未授权) 来源"
+  },
+  "license": {
+    "public_domain": "公有领域",
+    "public-domain": "公有领域",
+    "licensed": "已授权",
+    "unlicensed": "未授权",
+    "copyrighted": "受版权保护",
+    "restricted": "受限",
+    "unknown": "未知"
+  },
+  "detail": {
+    "h0_note": "这是一个增强变体 (origin=enrichment, confidence<1.0)。只有在您将其“提升”后，它才会成为正典。",
+    "h0_banner": "这是一个增强变体 —— 非原始正典。只有在您将其“提升”后，它才会成为正典。",
+    "dimensions": "{{count}} 个维度",
+    "show_more": "+ 显示更多 {{count}} 个",
+    "show_less": "显示较少",
+    "content": "生成的设定",
+    "verify": "验证",
+    "provenance": "溯源与来源"
+  },
+  "card": {
+    "confidence": "置信度 {{value}}",
+    "summary": "{{dims}} 个维度 · 基于 {{sources}} 个来源",
+    "advisory": "⚠ {{count}} 个警示标记",
+    "auto_rejected": "已自动拒绝"
+  },
+  "proposals": {
+    "search": "搜索提案…",
+    "status_all": "全部",
+    "technique": "技术方案",
+    "project": "项目",
+    "all_projects": "全部项目",
+    "none": "没有匹配的提案。",
+    "error": "无法加载提案。请重试。",
+    "empty": {
+      "title": "暂无提案",
+      "description": "检测缺口并自动增强，为本书生成提案。"
+    }
+  },
+  "actions": {
+    "promote": "提升至正典",
+    "approve": "批准",
+    "edit": "编辑",
+    "reject": "拒绝",
+    "reject_reason": "拒绝原因 (可选)",
+    "reject_confirm": "确认拒绝",
+    "retract": "从正典撤回",
+    "retract_confirm_title": "从正典撤回？",
+    "retract_confirm_desc": "这将从本书的正典中移除该增强补充内容。原始实体将被保留 —— 您稍后可以重新提升。",
+    "author_only": "只有本书作者可以审核并提升增强内容。",
+    "save": "保存",
+    "cancel": "取消",
+    "already_promoted": "已提升至正典。",
+    "rejected_note": "此提案已被拒绝。",
+    "approved": "提案已批准",
+    "rejected": "提案已拒绝",
+    "edited": "提案已更新",
+    "promoted": "已提升至正典",
+    "retracted": "已撤回"
+  },
+  "promote": {
+    "title": "提升至正典",
+    "h0": "此增强变体将成为本书的作者正典。系统将保留永久来源标记，因此它仍可追溯至最初的增强状态。",
+    "responsibility": "通过提升，您作为作者采纳此内容，并确认您拥有其构建来源的权利。不构成法律建议。",
+    "confirm": "提升",
+    "promoting": "正在提升…"
+  },
+  "gaps": {
+    "title": "缺口",
+    "subtitle": "本书术语表中描述不足的实体，按重要性排序。检测后，可通过后台任务自动增强选定的缺口。",
+    "detect": "检测缺口",
+    "detect_hint": "点击“检测缺口”以扫描本书术语表的覆盖范围。",
+    "none": "未检测到缺口 —— 每个实体都有充分的描述。",
+    "extract_first": "尚未提取实体 —— 请先提取本书 (知识卡片页签)。增强功能用于填充平台已知的实体的缺口。",
+    "extract_cta": "立即提取实体",
+    "technique": "技术方案",
+    "gen_model": "生成模型",
+    "embed_model": "嵌入模型",
+    "select_model": "选择…",
+    "max_gaps": "最大缺口数",
+    "max_spend": "最大消耗 (Token)",
+    "no_cap": "无限制",
+    "top_k": "Top-K",
+    "gate_note": "P2 虚构 / P3 重构需要通过评估门控 (多样化评审员)。",
+    "auto_enrich": "自动增强",
+    "enrich_one": "增强",
+    "enrich_one_hint": "在下方选择生成模型 + 嵌入模型进行增强。",
+    "enriching": "正在排队…",
+    "enqueued": "已将 {{count}} 个缺口加入增强队列",
+    "col": {
+      "entity": "实体",
+      "kind": "类型",
+      "missing": "缺失维度",
+      "rank": "排名",
+      "action": "操作"
+    }
+  },
+  "sources": {
+    "title": "来源",
+    "subtitle": "用于检索/重构的已标记许可的语料库。",
+    "register": "注册来源",
+    "name": "名称",
+    "kind": "类型",
+    "license": "许可",
+    "embed_model": "嵌入模型",
+    "ingest": "摄取文本",
+    "ingesting": "正在摄取…",
+    "ingested": "已摄取 — 已嵌入 {{count}} 个分块",
+    "ingest_placeholder": "粘贴公有领域/已授权的来源文本以进行分块 + 嵌入…",
+    "chunks": "{{count}} 个分块",
+    "embedded": "已嵌入 ✓",
+    "partial": "已嵌入 {{done}}/{{total}}",
+    "none": "尚未注册任何来源。",
+    "recook_ok": "重构-通过",
+    "recook_refused": "重构被拒绝 (默认拒绝)",
+    "default_deny": "默认拒绝：仅允许对公有领域/已授权来源进行重构。您需对所注册来源的许可负责。",
+    "registered": "来源已注册",
+    "grounded": "已溯源 — 已嵌入 {{count}} 个章节"
+  },
+  "ground": {
+    "title": "基于章节溯源",
+    "subtitle": "选择特定章节作为溯源语料库进行嵌入 —— 即超出知识 RAG + 术语正典范围的原始散文。文本内容由您提供。",
+    "no_chapters": "本书尚未包含章节。",
+    "showing": "正在显示第 {{shown}} / {{total}} 章 —— 主要溯源路径 (知识 RAG) 已覆盖所有章节；此操作用于有意的额外选择。",
+    "ingest": "溯源 {{count}} 个章节",
+    "ingesting": "正在嵌入…"
+  },
+  "jobs": {
+    "none": "暂无增强任务。",
+    "resume": "恢复",
+    "resumed": "任务恢复已加入队列",
+    "col": {
+      "technique": "技术方案",
+      "status": "状态",
+      "proposals": "提案",
+      "cost": "消耗",
+      "created": "创建时间"
+    },
+    "status": {
+      "pending": "等待中",
+      "estimating": "预估中",
+      "running": "运行中",
+      "paused": "已暂停",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "error": {
+      "gateLocked": "受评估门控限制 —— 请先运行丰富度评估 (enrichment eval)。",
+      "internal": "丰富度处理失败 (内部错误)。悬停查看详情。",
+      "insufficientGrounding": "这些实体缺乏可用的语料库依据 —— 请粘贴参考上下文或使用“虚构模式 (Fabrication)”。"
+    }
+  },
+  "settings": {
+    "title": "丰富度配置方案",
+    "subtitle": "针对每本书设定的世界观，用于消除生成偏差 —— 包括语言、时代、语调以及丰富度填充的维度。修改将应用于新任务。",
+    "error": "无法加载配置方案。请重试。",
+    "worldview": "世界观",
+    "language": "输出语言",
+    "voice": "语调",
+    "era_policy": "时代策略",
+    "era_hint": "时代/时代错误约束，例如“禁止出现商周以后的技术”。留空 = 关闭时代错误检查。",
+    "markers": "时代错误标记",
+    "markers_placeholder": "术语 | 原因 (每行一个)",
+    "markers_hint": "每行一个，格式为“术语 | 原因”。这些是时代错误检查会标记的术语。清除标记将关闭检查。",
+    "dimensions": "维度覆盖",
+    "kind": {
+      "character": "角色",
+      "location": "地点",
+      "item": "物品",
+      "faction": "势力",
+      "event": "事件"
+    },
+    "add_dimension": "添加维度",
+    "no_extra_dims": "此类型使用内置维度。",
+    "dim_id": "ID",
+    "dim_label": "标签",
+    "dim_weight": "权重",
+    "dim_required": "必填",
+    "remove_dimension": "移除维度",
+    "hide": "隐藏",
+    "suggest": "从书籍中建议",
+    "suggesting": "分析中…",
+    "suggest_model": "建议模型",
+    "select_model": "选择模型…",
+    "suggest_hint": "AI 将阅读书籍元数据和章节以提出草案，供您编辑。在点击“保存”前，任何更改都不会被保存。",
+    "suggested": "已生成草案 —— 请检查并保存",
+    "saving": "正在保存…",
+    "saved": "配置已保存",
+    "source": "来源：{{source}}",
+    "source_seed": "种子",
+    "source_ai_suggested": "AI 建议",
+    "source_manual": "手动"
+  }
+}

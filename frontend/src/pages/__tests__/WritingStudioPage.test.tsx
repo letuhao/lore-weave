@@ -28,6 +28,12 @@ vi.mock('@/features/studio/palette/CommandPalette', () => ({ CommandPalette: () 
 // #12 — the hoist resolves the composition Work (react-query) for scenes[]; chrome-only test →
 // no Work, no QueryClient needed.
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+// #16 2.10 — progress-reporting also calls react-query's useQueryClient() internally; stub it
+// out for the same "chrome-only test, no QueryClient" reason as useWork above.
+vi.mock('@/features/composition/hooks/useProgress', () => ({
+  useReportProgress: () => vi.fn(),
+  useEnsureBaseline: () => vi.fn(),
+}));
 
 // The dock is mocked to COUNT mounts — D4: chrome changes must never remount it (a remount
 // drops in-flight panel state); a book switch, conversely, MUST remount it (fresh per-book).
@@ -39,11 +45,25 @@ vi.mock('@/features/studio/components/StudioDock', () => ({
   },
 }));
 
+// #16 1.5 — the deep-link seam: ChaptersTab's row-click/pencil-icon navigate to
+// /books/:id/studio?chapter=<id> instead of the legacy editor route. Spy on the host action the
+// URL param should trigger, rather than asserting on ManuscriptUnitProvider internals.
+const focusManuscriptUnit = vi.hoisted(() => vi.fn());
+vi.mock('@/features/studio/host/StudioHostProvider', async (orig) => {
+  const m = await orig<typeof import('@/features/studio/host/StudioHostProvider')>();
+  return {
+    ...m,
+    useStudioHost: () => ({ ...m.useStudioHost(), focusManuscriptUnit }),
+  };
+});
+
 import { WritingStudioPage } from '../WritingStudioPage';
 
-const renderPage = () => render(<MemoryRouter><WritingStudioPage /></MemoryRouter>);
+const renderPage = (initialEntries: string[] = ['/']) => render(
+  <MemoryRouter initialEntries={initialEntries}><WritingStudioPage /></MemoryRouter>,
+);
 
-beforeEach(() => { localStorage.clear(); dockMounts.n = 0; route.bookId = 'b1'; });
+beforeEach(() => { localStorage.clear(); dockMounts.n = 0; route.bookId = 'b1'; focusManuscriptUnit.mockClear(); });
 
 describe('WritingStudioPage', () => {
   it('D4: mounts the dock exactly once across activity switch + bottom toggle + collapse', () => {
@@ -64,5 +84,16 @@ describe('WritingStudioPage', () => {
     rerender(<MemoryRouter><WritingStudioPage /></MemoryRouter>);
     // The keyed StudioFrame remounts → dock re-created for the new book (guards review-impl #1/#2).
     expect(dockMounts.n).toBe(2);
+  });
+
+  // #16 1.5 — the deep-link seam ChaptersTab's row-click/pencil-icon rely on.
+  it('a ?chapter= query param focuses that manuscript unit on mount', () => {
+    renderPage(['/books/b1/studio?chapter=ch-42']);
+    expect(focusManuscriptUnit).toHaveBeenCalledWith('ch-42');
+  });
+
+  it('no ?chapter= param means no auto-focus (studio opens to Welcome as before)', () => {
+    renderPage(['/books/b1/studio']);
+    expect(focusManuscriptUnit).not.toHaveBeenCalled();
   });
 });

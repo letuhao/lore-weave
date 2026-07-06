@@ -49,7 +49,15 @@ export type StudioBusEvent =
   // #11 F2 — the authoritative unread count. Published by the status item (seed + SSE bump) AND
   // by the notifications panel after mark-read, so badge ↔ panel never drift (the same MED-1
   // class NotificationBell fixed with a route-change resync — no routes here, so it's bus-owned).
-  | { type: 'notificationsUnread'; count: number };
+  | { type: 'notificationsUnread'; count: number }
+  // #19 — a one-shot "start the guided tour" request. WelcomePanel/UserGuidePanel are true
+  // dockview panels (isolated from StudioFrameInner's tree, DOCK-4) with no direct access to the
+  // tour/onboarding hooks that live at frame level, so they ask via the bus instead of a prop
+  // callback (the same seam Quick Open/the agent's ui_focus_manuscript_unit already use to cross
+  // that boundary). `tourId` is a plain string (not the `StudioTourId` union) — the host layer
+  // stays domain-agnostic; the consumer (StudioFrame.tsx) validates it against STUDIO_TOURS.
+  // Omitted `tourId` (the WelcomePanel's quick-start button) falls back to the account's role tour.
+  | { type: 'startGuidedTour'; tourId?: string };
 
 /** The bus's current merged snapshot. `revision` increments on every publish (so a chat turn can
  * stamp `context_revision`). */
@@ -62,6 +70,12 @@ export interface StudioBusSnapshot {
   qualityIssueRef?: { promiseId: string; chapterId?: string };
   activePanelIds: string[];
   notificationsUnread?: number;
+  /** Bumped by 'startGuidedTour' — consumers (StudioFrameInner) diff it against the last value
+   *  they've seen to fire the tour exactly once per request, never on initial mount. */
+  guidedTourRequestSeq?: number;
+  /** The tourId of the most recent 'startGuidedTour' request, or undefined for "use the
+   *  account's role tour" (the WelcomePanel's quick-start button never sets this). */
+  guidedTourRequestedId?: string;
 }
 
 /** Reduce a bus event onto the snapshot (pure — one new object, revision bumped). */
@@ -80,6 +94,8 @@ export function applyBusEvent(s: StudioBusSnapshot, e: StudioBusEvent): StudioBu
       return { ...base, activePanelIds: e.activePanelIds };
     case 'notificationsUnread':
       return { ...base, notificationsUnread: Math.max(0, e.count) };
+    case 'startGuidedTour':
+      return { ...base, guidedTourRequestSeq: (s.guidedTourRequestSeq ?? 0) + 1, guidedTourRequestedId: e.tourId };
     default:
       return base;
   }

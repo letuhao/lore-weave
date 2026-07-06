@@ -491,7 +491,7 @@ func (s *Server) internalResolveEntity(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr def map failed")
 			return
 		}
-		newID, cerr := s.createExtractedEntity(r.Context(), tx, bookID, kindID, extractedEntity{Name: body.Name}, map[string]string{}, attrDefMap, "zh", nil)
+		newID, _, _, cerr := s.createExtractedEntity(r.Context(), tx, bookID, kindID, extractedEntity{Name: body.Name}, map[string]string{}, attrDefMap, "zh", nil)
 		if cerr != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create failed: "+cerr.Error())
 			return
@@ -568,7 +568,7 @@ func (s *Server) internalSplitEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr def map failed")
 		return
 	}
-	newID, err := s.createExtractedEntity(r.Context(), tx, bookID, kindID, extractedEntity{Name: body.NewName}, map[string]string{}, attrDefMap, "zh", nil)
+	newID, _, _, err := s.createExtractedEntity(r.Context(), tx, bookID, kindID, extractedEntity{Name: body.NewName}, map[string]string{}, attrDefMap, "zh", nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create new entity failed: "+err.Error())
 		return

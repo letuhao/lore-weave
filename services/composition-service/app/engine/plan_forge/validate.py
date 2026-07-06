@@ -9,6 +9,13 @@ from typing import Any
 
 import yaml
 
+# D-PLANFORGE-PA-REALM-FALSE-POSITIVE: matches PA-scales-WITH-realm phrasing
+# ("theo cảnh giới", "tỷ lệ với cảnh giới", ...) -- NOT a bare "cảnh giới"
+# mention, which also fires on legitimate one-time realm-breakthrough triggers.
+_REALM_COUPLING_PATTERN = re.compile(
+    r"(theo|tỷ lệ (với|thuận với)|dựa (trên|vào)|gắn (với|liền với)|mỗi)\s+"
+    r"(cấp (độ|bậc)\s+)?cảnh giới"
+)
 
 def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     out = copy.deepcopy(base)
@@ -43,7 +50,18 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
                 continue
             if d.get("coupled_to_realm"):
                 pa_not_realm = False
-            if "cảnh giới" in d.get("reason", "").lower() and d.get("variable") == "PA":
+            reason_lower = d.get("reason", "").lower()
+            # D-PLANFORGE-PA-REALM-FALSE-POSITIVE: a bare "cảnh giới" mention
+            # is NOT proof of forbidden coupling -- live-audited against 5 real
+            # LLM propose runs, EVERY one described the Tiểu Thành realm-entry
+            # event's PA trigger by naming the realm breakthrough itself (e.g.
+            # "Đột phá cảnh giới đầu tiên"), which the story's own design
+            # explicitly sanctions (a one-time perfection EXPERIENCE, not
+            # scaling). Only flag language that describes PA moving
+            # PROPORTIONALLY WITH/BY realm ("theo cảnh giới" etc.) -- the
+            # exact phrase the source doc itself uses for the forbidden case
+            # ("PA... không tăng/giảm theo cảnh giới").
+            if d.get("variable") == "PA" and _REALM_COUPLING_PATTERN.search(reason_lower):
                 pa_not_realm = False
     results.append({"rule": "pa_not_realm", "pass": pa_not_realm, "detail": ""})
 
@@ -115,6 +133,31 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
             "rule": "notes_linked",
             "pass": ratio >= 0.8,
             "detail": f"ratio={ratio:.2f}",
+        }
+    )
+
+    # D-PLANFORGE-STORY-GRID-POC (2026-07-06): 8th rule, ADVISORY tier only.
+    # Adopted after cross-method live-LLM evaluation (see
+    # docs/eval/plan-forge-story-grid-poc-2026-07-06.md) found a real,
+    # cross-method-validated gap this signal alone catches. Tagged
+    # "tier": "advisory" -- callers that hard-gate on run_rules() (validate(),
+    # compile() in plan_forge_service.py) MUST filter to tier=="hard" (the
+    # default for every rule above) before treating a FAIL as blocking. This
+    # rule is intentionally noisy per-event (a single-fixture cross-method
+    # audit showed some events flip between generation methods) -- never
+    # promote it to hard tier without re-running that audit.
+    arc2_events = [e for e in spec.get("events", []) if e.get("arc_id") == "arc_2"]
+    no_value_shift = [e["id"] for e in arc2_events if not e.get("var_deltas") and e.get("id")]
+    results.append(
+        {
+            "rule": "sg_value_shift_per_scene",
+            "pass": not no_value_shift,
+            "detail": (
+                f"events_without_value_shift={no_value_shift}"
+                if no_value_shift
+                else f"checked={len(arc2_events)}"
+            ),
+            "tier": "advisory",
         }
     )
 

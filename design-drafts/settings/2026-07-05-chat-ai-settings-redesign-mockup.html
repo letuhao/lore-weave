@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Draft · Chat &amp; AI settings redesign</title>
+<style>
+  :root{
+    --paper:#fbfcfd; --card:#ffffff; --ink:#14181b; --ink2:#39424c;
+    --muted:#5b6572; --faint:#8b96a5; --line:#e4e8ec; --line2:#eef1f4;
+    --accent:#0d7d6e; --accent-weak:#e7f4f1; --accent-line:#b9ddd6; --accent-deep:#0a6153;
+    --amber:#b7791f; --amber-weak:#fbf4e6; --amber-line:#ecd8ac;
+    --violet:#6d5bd0; --violet-weak:#efecfb;
+    --sidebar:#12161d; --sidebar-ink:#aab4c1;
+    --serif:Charter,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,"Cascadia Code",monospace;
+    --shadow:0 1px 2px rgba(20,24,27,.05), 0 8px 24px rgba(20,24,27,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--sans);font-size:14px;line-height:1.55;color:var(--ink);background:var(--paper)}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 20px 76px}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+    display:inline-flex;align-items:center;gap:8px}
+  .eyebrow::before{content:"";width:22px;height:1px;background:var(--accent)}
+  h1{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.01em;text-wrap:balance;margin:12px 0 4px}
+  .lede{color:var(--muted);max-width:66ch;margin:0 0 18px}
+  .lede b{color:var(--ink2);font-weight:600}
+  code,.mono{font-family:var(--mono);font-size:.86em}
+
+  .app{display:grid;grid-template-columns:250px 1fr;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;box-shadow:var(--shadow);overflow:hidden;min-height:760px}
+
+  /* ── Sidebar nav ── */
+  .side{background:var(--sidebar);color:var(--sidebar-ink);padding:18px 12px;display:flex;flex-direction:column;gap:1px}
+  .side .grp{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#5a6675;margin:16px 10px 7px}
+  .side .grp:first-child{margin-top:2px}
+  .nav{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:8px;color:var(--sidebar-ink);
+    cursor:pointer;font-weight:500}
+  .nav svg{width:16px;height:16px;flex:none;opacity:.82}
+  .nav:hover{background:#1a212b;color:#eef2f6}
+  .nav.active{background:var(--accent);color:#fff}
+  .nav.active svg{opacity:1}
+  .nav .rt{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    color:#6ec9ba;background:#182a2c;padding:2px 6px;border-radius:5px}
+  .nav.active .rt{background:rgba(255,255,255,.16);color:#eafffb}
+  .side .spacer{flex:1;min-height:14px}
+  .advbtn{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;
+    color:#7e8a99;font-weight:600;font-size:12.5px;border:1px dashed #2a333f;background:transparent}
+  .advbtn:hover{color:#c4ccd6;border-color:#3a4552}
+  .advbtn .chev{transition:transform .18s;font-size:11px;margin-left:auto}
+  .advbtn.open .chev{transform:rotate(90deg)}
+  .tag-exp{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    background:#20303a;color:#7fd6c6;padding:2px 6px;border-radius:5px}
+  .advnote{font-size:11px;color:#586472;padding:6px 12px 2px;line-height:1.45}
+  .advlist{display:none}
+  .advlist.open{display:block;padding-top:2px}
+  .advlist .nav{color:#8b97a5;font-weight:500}
+
+  /* ── Main panel ── */
+  .main{padding:26px 34px;min-width:0}
+  .crumb{font-size:12px;color:var(--faint)}
+  .crumb b{color:var(--muted);font-weight:600}
+  .titlebar{display:flex;align-items:center;gap:12px;margin:8px 0 3px;flex-wrap:wrap}
+  .titlebar h2{font-family:var(--serif);font-weight:600;font-size:22px;margin:0;letter-spacing:-.01em}
+  .pill{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);
+    background:var(--accent-weak);border:1px solid var(--accent-line);padding:3px 8px;border-radius:20px}
+  .subhead{color:var(--muted);max-width:70ch;margin:6px 0 20px}
+
+  .panel{display:none}
+  .panel.active{display:block;animation:fade .22s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  /* guide + caution callouts */
+  .guide{border:1px solid var(--accent-line);background:linear-gradient(180deg,var(--accent-weak),#fff);
+    border-radius:12px;padding:16px 18px;margin-bottom:20px}
+  .guide h3{font-family:var(--serif);font-size:16px;margin:0 0 6px;color:var(--accent-deep)}
+  .guide p{margin:0;color:var(--ink2);max-width:74ch;font-size:13.5px}
+  .caution{display:flex;gap:11px;border:1px solid var(--amber-line);background:var(--amber-weak);
+    border-radius:10px;padding:12px 14px;margin-bottom:20px}
+  .caution svg{width:18px;height:18px;color:var(--amber);flex:none;margin-top:1px}
+  .caution p{margin:0;font-size:12.5px;color:#7a5a13}
+  .caution b{color:#5f4610}
+
+  /* inheritance flow — the thesis object */
+  .flow{display:flex;align-items:stretch;gap:0;margin:2px 0 22px;border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;background:var(--card)}
+  .flow .step{flex:1;padding:13px 16px;position:relative;background:#fff}
+  .flow .step + .step{border-left:1px solid var(--line2)}
+  .flow .step .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .flow .step .v{font-family:var(--serif);font-size:15px;color:var(--ink);margin-top:3px}
+  .flow .step small{display:block;color:var(--muted);font-size:11.5px;margin-top:3px;line-height:1.4}
+  .flow .step.src{background:var(--accent-weak)}
+  .flow .step.src .k{color:var(--accent-deep)}
+  .flow .arrow{align-self:center;color:var(--accent);font-size:15px;padding:0 2px;flex:none;position:relative;z-index:2}
+  .flow .step .inh{position:absolute;top:11px;right:13px;font-size:9px;font-weight:700;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--accent);background:#fff;border:1px solid var(--accent-line);
+    padding:2px 6px;border-radius:12px}
+  .flow .step.ovr{background:var(--violet-weak)}
+  .flow .step.ovr .k{color:#4b3fb0}
+  .flow .step .inh.ov{color:var(--violet);border-color:#d3ccf3}
+  .reslegend{font-size:12px;color:var(--muted);background:#fafbfc;border:1px solid var(--line2);border-radius:9px;
+    padding:9px 13px;margin:-12px 0 20px}
+  .reslegend b{color:var(--ink2)}
+  .scopebar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--line);
+    border-radius:10px;background:var(--card);margin-bottom:6px}
+  .scopebar .sb-lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .scopebar .sb-hint{font-size:12px;color:var(--muted)}
+  .scopebar .sb-hint b{color:var(--ink2)}
+  .seg.scope button.on{background:var(--violet)}
+
+  /* setting rows */
+  .sect{margin:26px 0 8px;display:flex;align-items:baseline;gap:10px}
+  .sect h4{font-family:var(--serif);font-size:15px;margin:0;color:var(--ink)}
+  .sect .hint{font-size:12px;color:var(--faint)}
+  .sect::after{content:"";flex:1;height:1px;background:var(--line2);align-self:center}
+
+  .row{display:grid;grid-template-columns:1fr auto;gap:14px 18px;align-items:center;padding:13px 2px;
+    border-bottom:1px solid var(--line2)}
+  .row:last-child{border-bottom:0}
+  .row .lbl{font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .row .lbl .badge{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    padding:2px 6px;border-radius:5px}
+  .badge.shared{color:var(--accent-deep);background:var(--accent-weak);border:1px solid var(--accent-line)}
+  .badge.inherit{color:var(--violet);background:var(--violet-weak);border:1px solid #d8d1f4}
+  .badge.was{color:var(--amber);background:var(--amber-weak);border:1px solid var(--amber-line)}
+  .row .desc{grid-column:1;font-size:12.5px;color:var(--muted);margin-top:-2px;max-width:66ch}
+  .row .ctl{grid-column:2;grid-row:1;justify-self:end}
+
+  /* fake controls */
+  .picker{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);background:#fff;
+    border-radius:9px;padding:7px 11px;min-width:230px;cursor:default;box-shadow:0 1px 1px rgba(20,24,27,.03)}
+  .picker .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .picker .dot.local{background:#cbd2da}
+  .picker .name{font-weight:600;font-size:13px}
+  .picker .src{font-size:10.5px;color:var(--faint);margin-left:auto}
+  .picker .cv{color:var(--faint);font-size:11px}
+  .picker.muted{background:#fafbfc;border-style:dashed}
+  .picker.muted .name{color:var(--muted);font-weight:500}
+
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#f6f8f9}
+  .seg button{border:0;background:transparent;padding:7px 13px;font-family:var(--sans);font-size:12.5px;
+    font-weight:600;color:var(--muted);cursor:pointer;border-right:1px solid var(--line2)}
+  .seg button:last-child{border-right:0}
+  .seg button.on{background:var(--accent);color:#fff}
+  .seg.warn button.on{background:var(--amber)}
+
+  .sw{width:42px;height:24px;border-radius:20px;background:#d3d9df;position:relative;cursor:pointer;flex:none;transition:background .15s}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+  .sw.on{background:var(--accent)}
+  .sw.on::after{transform:translateX(18px)}
+
+  .rng{width:220px;display:flex;align-items:center;gap:10px}
+  .track{flex:1;height:5px;border-radius:4px;background:var(--line);position:relative}
+  .track i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--accent)}
+  .track b{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid var(--accent);
+    transform:translate(-50%,-50%);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .rng .val{font-family:var(--mono);font-size:12px;color:var(--ink2);min-width:58px;text-align:right}
+  .rng .val em{color:var(--faint);font-style:normal}
+
+  /* the "was silent" reveal */
+  .reveal{border:1px solid var(--amber-line);border-radius:12px;overflow:hidden;margin:8px 0 6px;background:#fff}
+  .reveal summary{list-style:none;cursor:pointer;padding:13px 16px;display:flex;align-items:center;gap:11px;
+    background:var(--amber-weak)}
+  .reveal summary::-webkit-details-marker{display:none}
+  .reveal summary svg{width:17px;height:17px;color:var(--amber);flex:none}
+  .reveal summary .t{font-weight:700;color:#6f5211;font-size:13.5px}
+  .reveal summary .c{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--amber);
+    background:#fff;border:1px solid var(--amber-line);padding:2px 8px;border-radius:20px}
+  .reveal[open] summary .chev{transform:rotate(90deg)}
+  .reveal summary .chev{transition:transform .18s;color:var(--amber);font-size:11px}
+  .reveal .body{padding:6px 16px 14px}
+  .fb{display:grid;grid-template-columns:190px 1fr;gap:2px 16px;padding:10px 0;border-bottom:1px solid var(--line2);
+    align-items:baseline}
+  .fb:last-child{border-bottom:0}
+  .fb .n{font-weight:600;color:var(--ink);font-size:13px}
+  .fb .n code{color:var(--amber);font-size:11.5px}
+  .fb .was{grid-column:1;font-size:11.5px;color:var(--muted);margin-top:2px}
+  .fb .now{grid-column:2;grid-row:1/span 2;font-size:12.5px;color:var(--ink2)}
+  .fb .now .pillmini{display:inline-block;font-size:10px;font-weight:700;color:var(--accent-deep);
+    background:var(--accent-weak);border:1px solid var(--accent-line);border-radius:5px;padding:1px 6px;margin-bottom:3px}
+
+  /* two-layer expert accordion (context mgmt handoff) */
+  .expander{border:1px solid var(--line);border-radius:12px;margin-top:14px;background:#fff;overflow:hidden}
+  .expander summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:11px}
+  .expander summary::-webkit-details-marker{display:none}
+  .expander summary .t{font-weight:600}
+  .expander summary .s{font-size:12px;color:var(--faint)}
+  .expander summary .chev{margin-left:auto;transition:transform .18s;color:var(--faint)}
+  .expander[open] summary .chev{transform:rotate(90deg)}
+  .expander .body{padding:4px 16px 16px;border-top:1px solid var(--line2)}
+  .xrow{display:grid;grid-template-columns:1fr auto;gap:6px 16px;padding:11px 0;border-bottom:1px solid var(--line2);align-items:center}
+  .xrow:last-child{border-bottom:0}
+  .xrow .xn{font-weight:600;font-size:13px;display:flex;gap:8px;align-items:center}
+  .xrow .xn .tier{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+  .xrow .xd{grid-column:1;font-size:12px;color:var(--muted)}
+
+  .foot{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center;
+    color:var(--faint);font-size:12px;flex-wrap:wrap}
+  .btn{border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:600;font-size:13px;
+    padding:9px 18px;border-radius:9px;cursor:pointer;font-family:var(--sans)}
+  .btn.ghost{background:#fff;color:var(--ink2);border-color:var(--line)}
+  .foot .sp{flex:1}
+
+  .note{font-size:11.5px;color:var(--faint);margin-top:12px;font-style:italic;max-width:70ch}
+  @media(max-width:820px){
+    .app{grid-template-columns:1fr}
+    .side{flex-direction:row;flex-wrap:wrap;gap:4px;padding:12px}
+    .side .grp,.side .spacer,.advnote{display:none}
+    .flow{flex-direction:column}.flow .step + .step{border-left:0;border-top:1px solid var(--line2)}
+    .flow .arrow{transform:rotate(90deg);padding:4px 0}
+    .fb,.row{grid-template-columns:1fr}.row .ctl{grid-column:1;justify-self:start}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="eyebrow">LoreWeave · Settings redesign · Draft</span>
+  <h1>Chat &amp; AI — one place, nothing hidden, set once</h1>
+  <p class="lede">Today the chat settings are scattered across <b>seven surfaces</b>, model choice is
+    split <b>three ways</b>, TTS lives in <b>two disconnected stores</b>, and several behaviors
+    (grounding, tool-write authority, reasoning, the TTS voice) are chosen <b>silently</b> with no
+    control. This redesign folds all of it into one panel built on a single idea:
+    <b>your defaults live here, and every chat and every Writing&nbsp;Studio tool inherits them —
+    override anywhere, never required.</b></p>
+
+  <div class="app">
+    <!-- ───────────── Sidebar ───────────── -->
+    <nav class="side">
+      <div class="grp">Chat &amp; AI</div>
+      <div class="nav active" data-p="models">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 3v18M4 7.5l8 4.5 8-4.5"/></svg>
+        Models <span class="rt">Shared</span>
+      </div>
+      <div class="nav" data-p="behavior">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="17" cy="18" r="2.4"/></svg>
+        Behavior
+      </div>
+      <div class="nav" data-p="memory">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a4 4 0 00-4 4v1a3 3 0 000 6 4 4 0 004 4 4 4 0 004-4 3 3 0 000-6V7a4 4 0 00-4-4z"/><path d="M12 3v18"/></svg>
+        Grounding &amp; Memory
+      </div>
+      <div class="nav" data-p="voice">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg>
+        Voice
+      </div>
+
+      <div class="spacer"></div>
+      <div class="advnote">Deeper controls most people never need — kept out of the way.</div>
+      <div class="advbtn" id="advToggle">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19 12a7 7 0 00-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 00-1.7-1L14.5 2h-4l-.3 2.6a7 7 0 00-1.7 1l-2.4-1-2 3.4L4 11a7 7 0 000 2l-2 1.6 2 3.4 2.4-1a7 7 0 001.7 1l.3 2.6h4l.3-2.6a7 7 0 001.7-1l2.4 1 2-3.4-2-1.6a7 7 0 00.1-1z"/></svg>
+        Advanced <span class="tag-exp">Expert</span><span class="chev">▸</span>
+      </div>
+      <div class="advlist" id="advList">
+        <div class="nav" data-p="context"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg> Context management <span class="rt">Auto</span></div>
+        <div class="nav" data-p="context"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></svg> Developer / raw params</div>
+      </div>
+    </nav>
+
+    <!-- ───────────── Main ───────────── -->
+    <div class="main">
+
+      <!-- ============ MODELS ============ -->
+      <section class="panel active" data-panel="models">
+        <div class="crumb"><b>Chat &amp; AI</b> · Models</div>
+        <div class="titlebar"><h2>Models</h2><span class="pill">Shared with Writing Studio</span></div>
+        <p class="subhead">Pick your models once here. The chat window and every Studio tool —
+          co-writer, compose, planner, rewrite, scene-graph — start from these. You can still swap
+          the model inside any tool for a single job, but you never have to.</p>
+
+        <div class="guide">
+          <h3>How inheritance works — four tiers, the more specific one wins</h3>
+          <p>Your <b>account default</b> is the base for every book. A <b>book</b> may override it — useful
+            when one novel wants a different model. A <b>chat session</b> inherits the book; a <b>Studio tool</b>
+            reads it live. Each level only overrides <em>below</em> it: clear a book override and it falls back to
+            your account default; close a session override and it falls back to the book.</p>
+        </div>
+
+        <!-- the thesis object — two-tier resolution made visible: Account → Book → Session → Tool -->
+        <div class="flow">
+          <div class="step src"><span class="inh">base</span><span class="k">Account default</span>
+            <span class="v">Qwen3 35B</span><small>Applies to every book</small></div>
+          <div class="arrow">→</div>
+          <div class="step ovr"><span class="inh ov">overrides ✎</span><span class="k">This book · Dracula</span>
+            <span class="v">Gemma-4 26B</span><small>Wins for this book only</small></div>
+          <div class="arrow">→</div>
+          <div class="step"><span class="inh">inherits book</span><span class="k">This chat</span>
+            <span class="v">Gemma-4 26B</span><small>Overridable in session settings</small></div>
+          <div class="arrow">→</div>
+          <div class="step"><span class="inh">inherits</span><span class="k">Studio tool</span>
+            <span class="v">Gemma-4 26B</span><small>Optional per-tool override</small></div>
+        </div>
+        <p class="reslegend"><b>Resolution:</b> Tool override ▸ Session override ▸ <b>Book override</b> ▸ Account default ▸ System.
+          Here <em>Dracula</em> overrides your account model, so this chat and its Studio tools all run Gemma-4 26B — until you override deeper.</p>
+
+        <!-- scope switcher: which tier am I editing -->
+        <div class="scopebar">
+          <span class="sb-lbl">Editing</span>
+          <div class="seg scope"><button class="on" data-scope="account">Account default</button><button data-scope="book">This book · Dracula</button></div>
+          <span class="sb-hint" id="scopeHint">Changes apply to <b>all books</b> unless a book overrides them.</span>
+        </div>
+
+        <div class="sect"><h4>Roles</h4><span class="hint">what each model does · all resolve through provider-registry (BYOK)</span></div>
+
+        <div class="row">
+          <div class="lbl">Chat &amp; drafting <span class="badge shared">Shared</span></div>
+          <div class="desc">The main model for chat replies and Studio prose. This is the one most work runs on.</div>
+          <div class="ctl"><span class="picker"><span class="dot"></span><span class="name">Qwen3 35B</span><span class="src">local · lm_studio</span></span></div>
+        </div>
+
+        <div class="row">
+          <div class="lbl">Prose composer <span class="badge inherit">Inherits chat</span> <span class="badge was">was silent</span></div>
+          <div class="desc">Optional specialist for long prose the agent delegates mid-turn. Left unset, it
+            <b>silently</b> reused the chat model — now that's shown, not hidden.</div>
+          <div class="ctl"><span class="picker muted"><span class="dot local"></span><span class="name">Same as chat &amp; drafting</span><span class="cv">change ▾</span></span></div>
+        </div>
+
+        <div class="row">
+          <div class="lbl">Planner <span class="badge inherit">Inherits chat</span> <span class="badge was">was silent</span></div>
+          <div class="desc">Plans multi-step glossary / knowledge actions. Unset, it fell through to a
+            per-user default that is often <b>empty</b> for this account — surfaced here so it can't fail quietly.</div>
+          <div class="ctl"><span class="picker muted"><span class="dot local"></span><span class="name">Same as chat &amp; drafting</span><span class="cv">change ▾</span></span></div>
+        </div>
+
+        <div class="row">
+          <div class="lbl">Embedding</div>
+          <div class="desc">Powers semantic search &amp; grounding. Used by chat, Studio references, and knowledge.</div>
+          <div class="ctl"><span class="picker"><span class="dot"></span><span class="name">bge-m3</span><span class="src">local</span></span></div>
+        </div>
+
+        <div class="row">
+          <div class="lbl">Rerank</div>
+          <div class="desc">Re-orders retrieved passages for precision. Optional.</div>
+          <div class="ctl"><span class="picker"><span class="dot"></span><span class="name">bge-reranker-v2-m3</span><span class="src">local</span></span></div>
+        </div>
+
+        <div class="sect"><h4>Shared with Writing&nbsp;Studio</h4><span class="hint">tools that used to have their own picker</span></div>
+        <p class="subhead" style="margin:2px 0 12px">These <b>5 tools</b> kept their own model state — the reason you re-picked a model everywhere.
+          They now inherit <b>Chat &amp; drafting</b> by default. Flip a tool to <em>Ask each time</em> only if you
+          genuinely want to choose per run.</p>
+
+        <div class="row">
+          <div class="lbl">Inline rewrite &amp; selection tools</div>
+          <div class="desc">Rewrite-selection toolbar, ghost-text completions.</div>
+          <div class="ctl"><span class="seg"><button class="on">Inherit</button><button>Ask each time</button></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Scene-graph what-if</div>
+          <div class="desc">Alternate-take generation on the scene canvas.</div>
+          <div class="ctl"><span class="seg"><button class="on">Inherit</button><button>Ask each time</button></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Outline planner</div>
+          <div class="desc">Generates &amp; restructures the chapter outline.</div>
+          <div class="ctl"><span class="seg"><button class="on">Inherit</button><button>Ask each time</button></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Motif &amp; arc-conformance</div>
+          <div class="desc">Tags motifs, checks arc conformance.</div>
+          <div class="ctl"><span class="seg"><button class="on">Inherit</button><button>Ask each time</button></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Chapter critic</div>
+          <div class="desc">Assembly-time quality review (had a hidden <code>critic_model_ref</code> with no UI — now surfaced).</div>
+          <div class="ctl"><span class="seg"><button class="on">Inherit</button><button>Ask each time</button></span></div>
+        </div>
+
+        <div class="foot">
+          <button class="btn">Save defaults</button>
+          <button class="btn ghost">Reset to system defaults</button>
+          <span class="sp"></span><span>Draft — controls are non-functional</span>
+        </div>
+      </section>
+
+      <!-- ============ BEHAVIOR ============ -->
+      <section class="panel" data-panel="behavior">
+        <div class="crumb"><b>Chat &amp; AI</b> · Behavior</div>
+        <div class="titlebar"><h2>Behavior</h2></div>
+        <p class="subhead">Persona, sampling, and reasoning — consolidated from the three places they
+          live today (session settings, the input bar, and the new-chat dialog). One set of presets,
+          one source of truth, defaults you can actually see.</p>
+
+        <details class="reveal" open>
+          <summary>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+            <span class="t">What was happening silently — now shown &amp; controllable</span>
+            <span class="c">4 defaults</span><span class="chev">▸</span>
+          </summary>
+          <div class="body">
+            <div class="fb">
+              <div class="n">Reasoning / thinking</div>
+              <div class="was">was: silently <code>off</code></div>
+              <div class="now"><span class="pillmini">now explicit</span><br>Shown as a control that defaults to Off — you can see it's off and turn it on.</div>
+            </div>
+            <div class="fb">
+              <div class="n">Tool write authority</div>
+              <div class="was">was: <code>permission_mode = write</code> by default</div>
+              <div class="now"><span class="pillmini">now explicit</span><br>The default grants tools write authority. Surfaced as Ask / Plan / Write so you choose knowingly.</div>
+            </div>
+            <div class="fb">
+              <div class="n">Temperature · Top-P · Max tokens</div>
+              <div class="was">was: unset → opaque provider default</div>
+              <div class="now"><span class="pillmini">now explicit</span><br>Unset shows the <em>actual</em> value the provider would use, not a blank.</div>
+            </div>
+            <div class="fb">
+              <div class="n">System prompt presets</div>
+              <div class="was">was: two different preset lists (6 vs 4)</div>
+              <div class="now"><span class="pillmini">now unified</span><br>One preset set everywhere a persona is chosen.</div>
+            </div>
+          </div>
+        </details>
+
+        <div class="sect"><h4>Persona</h4></div>
+        <div class="row">
+          <div class="lbl">System prompt preset</div>
+          <div class="desc">Starting instructions for the assistant. Unified list: Novelist · Translator · Worldbuilder · Editor · Analyst · Custom.</div>
+          <div class="ctl"><span class="picker" style="min-width:190px"><span class="name">Novelist</span><span class="cv">▾</span></span></div>
+        </div>
+
+        <div class="sect"><h4>Reasoning &amp; tools</h4></div>
+        <div class="row">
+          <div class="lbl">Reasoning effort</div>
+          <div class="desc">Off by default — now you can see that, instead of it being an invisible default.</div>
+          <div class="ctl"><span class="seg"><button class="on">Off</button><button>Low</button><button>Medium</button><button>High</button></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Tool authority <span class="badge was">was silent</span></div>
+          <div class="desc">How much the assistant may do without asking. Default granted <b>Write</b> silently.</div>
+          <div class="ctl"><span class="seg warn"><button>Ask</button><button>Plan</button><button class="on">Write</button></span></div>
+        </div>
+
+        <div class="sect"><h4>Sampling</h4><span class="hint">unset shows the provider's real value</span></div>
+        <div class="row">
+          <div class="lbl">Temperature</div>
+          <div class="desc">Higher = more varied. Blank previously hid the real default.</div>
+          <div class="ctl"><span class="rng"><span class="track"><i style="width:35%"></i><b style="left:35%"></b></span><span class="val">0.70</span></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Top-P</div>
+          <div class="desc">Nucleus sampling cutoff.</div>
+          <div class="ctl"><span class="rng"><span class="track"><i style="width:100%"></i><b style="left:100%"></b></span><span class="val">1.00 <em>(default)</em></span></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Max tokens</div>
+          <div class="desc">Reply length cap. Unlimited unless set.</div>
+          <div class="ctl"><span class="rng"><span class="track"><i style="width:0%"></i><b style="left:0%"></b></span><span class="val"><em>unlimited</em></span></span></div>
+        </div>
+
+        <p class="note">Scope note: these are your <b>defaults</b>. Each chat session and each Studio tool
+          inherits them and may override for its own use — same inheritance model as Models.</p>
+        <div class="foot"><button class="btn">Save</button><span class="sp"></span><span>Draft</span></div>
+      </section>
+
+      <!-- ============ GROUNDING & MEMORY ============ -->
+      <section class="panel" data-panel="memory">
+        <div class="crumb"><b>Chat &amp; AI</b> · Grounding &amp; Memory</div>
+        <div class="titlebar"><h2>Grounding &amp; Memory</h2></div>
+        <p class="subhead">What the assistant pulls from your story bible and knowledge graph before it
+          answers. The biggest hidden default in the whole product lives here.</p>
+
+        <div class="caution">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+          <p><b>Grounding is always ON today with no way to turn it off.</b> Every turn retrieves glossary,
+            facts, and passages — governed only by a global engine flag, invisible to you. This panel gives
+            it an actual switch (default stays On — it's what makes answers accurate).</p>
+        </div>
+
+        <div class="sect"><h4>Retrieval</h4></div>
+        <div class="row">
+          <div class="lbl">Ground answers in my story <span class="badge was">was silent</span></div>
+          <div class="desc">Pull canonical entities, facts, and manuscript passages into each answer. Recommended On.</div>
+          <div class="ctl"><span class="sw on"></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Linked knowledge graphs</div>
+          <div class="desc">Which project(s) supply memory. Multi-select — this is your only current memory control, kept and made prominent.</div>
+          <div class="ctl"><span class="picker" style="min-width:210px"><span class="dot"></span><span class="name">Dracula · +1 more</span><span class="cv">▾</span></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Recent-message window</div>
+          <div class="desc">How many prior turns are always kept verbatim before summarizing.</div>
+          <div class="ctl"><span class="rng"><span class="track"><i style="width:50%"></i><b style="left:50%"></b></span><span class="val">50 msgs</span></span></div>
+        </div>
+
+        <details class="expander">
+          <summary><span class="t">Anti-confabulation guardrail</span><span class="s">on · always</span><span class="chev">▸</span></summary>
+          <div class="body">
+            <p class="subhead" style="margin:10px 0">When a specific detail isn't in your memory, the assistant
+              searches the manuscript and <b>declines rather than inventing</b> one from its training knowledge of a
+              published work. This is always on and not something you should need to touch — shown here for transparency.</p>
+          </div>
+        </details>
+
+        <div class="foot"><button class="btn">Save</button><span class="sp"></span><span>Draft</span></div>
+      </section>
+
+      <!-- ============ VOICE ============ -->
+      <section class="panel" data-panel="voice">
+        <div class="crumb"><b>Chat &amp; AI</b> · Voice</div>
+        <div class="titlebar"><h2>Voice</h2><span class="pill">Unified</span></div>
+        <p class="subhead">Speech-in and speech-out, in one place. Today this is split across two
+          disconnected stores — chat voice and reading voice — with different model lists and different
+          voice names. This merges them; a "read aloud" voice and a "talk to chat" voice are the same choice.</p>
+
+        <div class="caution">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+          <p>The spoken voice defaulted <b>silently</b> to <code>af_heart</code> and was <b>never saved</b> to your
+            session — so it reset every time. Here it's a saved preference.</p>
+        </div>
+
+        <div class="sect"><h4>Speech in (microphone)</h4></div>
+        <div class="row">
+          <div class="lbl">Source</div><div class="desc">Browser recognition or an AI model.</div>
+          <div class="ctl"><span class="seg"><button>Browser</button><button class="on">AI model</button></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Transcription model</div><div class="desc">Speech-to-text engine.</div>
+          <div class="ctl"><span class="picker" style="min-width:200px"><span class="dot"></span><span class="name">whisper (local)</span><span class="cv">▾</span></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Auto-send on silence</div><div class="desc">Send when you stop speaking.</div>
+          <div class="ctl"><span class="sw on"></span></div>
+        </div>
+
+        <div class="sect"><h4>Speech out (spoken replies)</h4></div>
+        <div class="row">
+          <div class="lbl">Voice model</div><div class="desc">Text-to-speech engine — same list for chat &amp; reading now.</div>
+          <div class="ctl"><span class="picker" style="min-width:200px"><span class="dot"></span><span class="name">Kokoro (local)</span><span class="cv">▾</span></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Voice <span class="badge was">was silent</span></div><div class="desc">Defaulted to <code>af_heart</code> unseen &amp; unsaved. Now a saved choice with preview.</div>
+          <div class="ctl"><span class="picker" style="min-width:200px"><span class="name">af_heart</span><span class="cv">▶ preview</span></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Speed</div><div class="desc">0.5×–2×.</div>
+          <div class="ctl"><span class="rng"><span class="track"><i style="width:33%"></i><b style="left:33%"></b></span><span class="val">1.0×</span></span></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Auto-play replies</div><div class="desc">Speak answers as they arrive.</div>
+          <div class="ctl"><span class="sw"></span></div>
+        </div>
+
+        <details class="expander">
+          <summary><span class="t">Voice-activity tuning</span><span class="s">silence detection · advanced</span><span class="chev">▸</span></summary>
+          <div class="body">
+            <div class="xrow"><div class="xn">Silence frames</div><div class="ctl"><span class="rng"><span class="track"><i style="width:40%"></i><b style="left:40%"></b></span><span class="val">8</span></span></div><div class="xd">Frames of quiet before end-of-speech.</div></div>
+            <div class="xrow"><div class="xn">Min speech duration</div><div class="ctl"><span class="rng"><span class="track"><i style="width:25%"></i><b style="left:25%"></b></span><span class="val">500 ms</span></span></div><div class="xd">Ignore blips shorter than this.</div></div>
+          </div>
+        </details>
+        <div class="foot"><button class="btn">Save</button><span class="sp"></span><span>Draft</span></div>
+      </section>
+
+      <!-- ============ CONTEXT MANAGEMENT (advanced) ============ -->
+      <section class="panel" data-panel="context">
+        <div class="crumb"><b>Advanced</b> · Context management</div>
+        <div class="titlebar"><h2>Context management</h2><span class="pill">Auto</span></div>
+        <p class="subhead">How the assistant manages a very long conversation's memory budget. These were
+          <b>process-global engine flags</b> — the same for every user, invisible, unchangeable. Here they become
+          a per-session setting that <b>derives from your account default</b>. Most people leave it on Auto.</p>
+
+        <div class="guide">
+          <h3>Leave this on Auto</h3>
+          <p>Auto turns the long-work tiers on only when a project is big enough to need them
+            (thousands of chapters, a large glossary, or a conversation filling the model's window).
+            The controls below matter for a handful of very large books — everyone else can ignore them.</p>
+        </div>
+
+        <div class="row">
+          <div class="lbl">Long-work context mode</div>
+          <div class="desc">Auto detects when to engage · Always on forces it · Off keeps the simple path.</div>
+          <div class="ctl"><span class="seg"><button class="on">Auto</button><button>Always on</button><button>Off</button></span></div>
+        </div>
+
+        <details class="expander">
+          <summary><span class="t">Fine-tune individual tiers</span><span class="s">only if you know why</span><span class="chev">▸</span></summary>
+          <div class="body">
+            <div class="xrow"><div class="xn">Smart grounding fetch <span class="tier">T5</span></div><div class="ctl"><span class="sw"></span></div><div class="xd">Fetch memory only when the turn needs it.</div></div>
+            <div class="xrow"><div class="xn">Story-bible safety net <span class="tier">T4</span></div><div class="ctl"><span class="sw"></span></div><div class="xd">Keep a cached bible when live grounding is empty. Needs T5 on.</div></div>
+            <div class="xrow"><div class="xn">Trim repeated lookups <span class="tier">D13a</span></div><div class="ctl"><span class="sw"></span></div><div class="xd">Collapse duplicate tool reads on compaction.</div></div>
+            <div class="xrow"><div class="xn">Compression trigger <span class="tier">T2</span></div><div class="ctl"><span class="rng"><span class="track"><i style="width:75%"></i><b style="left:75%"></b></span><span class="val">75%</span></span></div><div class="xd">Summarize history at this share of the window.</div></div>
+            <div class="xrow"><div class="xn">Large-result cap <span class="tier">D7</span></div><div class="ctl"><span class="rng"><span class="track"><i style="width:40%"></i><b style="left:40%"></b></span><span class="val">8000</span></span></div><div class="xd">Truncate a single oversized tool result.</div></div>
+          </div>
+        </details>
+        <p class="note">This panel supersedes the standalone context-management mockup — folded in here per
+          "bỏ context manage setting vào đây luôn," now inheriting from your account default and settable per session.</p>
+        <div class="foot"><button class="btn">Save</button><span class="sp"></span><span>Draft</span></div>
+      </section>
+
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:20px">Draft mockup · <span class="mono">design-drafts/settings/2026-07-05-chat-ai-settings-redesign-mockup.html</span> ·
+    Sibling to the context-management mockup, same design language. Sources: SessionSettingsPanel, VoiceSettingsPanel,
+    NewChatDialog, ChatInputBar, ProvidersTab/DefaultModelsCard, ReadingTab, and the 8 studio model pickers.</p>
+</div>
+
+<script>
+  // panel nav
+  document.querySelectorAll('.nav[data-p]').forEach(n=>{
+    n.addEventListener('click',()=>{
+      const p=n.dataset.p;
+      document.querySelectorAll('.nav[data-p]').forEach(x=>x.classList.toggle('active',x===n));
+      document.querySelectorAll('.panel').forEach(s=>s.classList.toggle('active',s.dataset.panel===p));
+      window.scrollTo({top:0,behavior:'smooth'});
+    });
+  });
+  // advanced group toggle
+  const at=document.getElementById('advToggle'), al=document.getElementById('advList');
+  at.addEventListener('click',()=>{at.classList.toggle('open');al.classList.toggle('open');});
+  // segmented + switches demo
+  document.querySelectorAll('.seg').forEach(seg=>{
+    seg.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+      seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    }));
+  });
+  document.querySelectorAll('.sw').forEach(s=>s.addEventListener('click',()=>s.classList.toggle('on')));
+  // scope switcher — reflect two-tier editing (account vs book override)
+  const scopeHint=document.getElementById('scopeHint');
+  const chatPickerName=document.querySelector('.row .picker .name'); // first role = chat & drafting
+  const chatLbl=document.querySelector('.row .lbl');
+  document.querySelectorAll('.scope button').forEach(b=>b.addEventListener('click',()=>{
+    const book=b.dataset.scope==='book';
+    scopeHint.innerHTML=book
+      ? 'Changes apply to <b>Dracula only</b> and override your account default.'
+      : 'Changes apply to <b>all books</b> unless a book overrides them.';
+    if(chatPickerName) chatPickerName.textContent = book ? 'Gemma-4 26B' : 'Qwen3 35B';
+    // toggle a "Book override" badge on the chat role
+    let bd=chatLbl.querySelector('.badge.ovr-b');
+    if(book && !bd){bd=document.createElement('span');bd.className='badge inherit ovr-b';bd.textContent='Book override';bd.style.background='var(--violet-weak)';chatLbl.appendChild(bd);}
+    if(!book && bd) bd.remove();
+  }));
+</script>
+</body>
+</html>

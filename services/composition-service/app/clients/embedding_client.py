@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError, build_internal_client
 
 from app.config import settings
 from app.logging_config import trace_id_var
@@ -34,13 +35,18 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingError(Exception):
+class EmbeddingError(InternalClientError):
     """Raised when embedding fails (provider down, bad/non-embedding model, etc.).
-    `retryable` is True for transient failures (timeout / 502 / 503 / 429)."""
 
-    def __init__(self, message: str, retryable: bool = False) -> None:
-        super().__init__(message)
-        self.retryable = retryable
+    P3 SDK-first W2-tail: subclasses the shared InternalClientError so callers get
+    one uniform `.retryable`/`.status_code` surface. `retryable` is True for
+    transient failures (timeout / 502 / 503 / 429) — derived from the status via the
+    SDK's shared predicate, or passed explicitly by the raiser (transport errors)."""
+
+    def __init__(
+        self, message: str, retryable: bool | None = None, *, status_code: int | None = None,
+    ) -> None:
+        super().__init__(message, status_code=status_code, retryable=retryable)
 
 
 @dataclass(frozen=True)
@@ -58,9 +64,11 @@ class EmbeddingClient:
         self, base_url: str, internal_token: str, timeout_s: float = 30.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s, connect=5.0),
-            headers={"X-Internal-Token": internal_token},
+        # W3: shared factory bakes X-Internal-Token + JSON + per-request X-Trace-Id.
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, connect_timeout_s=5.0,
+            trace_id_provider=trace_id_var.get,
         )
 
     async def aclose(self) -> None:
@@ -72,14 +80,10 @@ class EmbeddingClient:
         """Embed `texts` with the user's BYOK model. Raises EmbeddingError on
         failure (with a `retryable` flag)."""
         url = f"{self._base_url}/internal/embed"
-        tid = trace_id_var.get()
         body = {"model_source": model_source, "model_ref": model_ref, "texts": texts}
         params = {"user_id": str(user_id)}
         try:
-            resp = await self._http.post(
-                url, json=body, params=params,
-                headers={"X-Trace-Id": tid} if tid else None,
-            )
+            resp = await self._http.post(url, json=body, params=params)
         except httpx.TimeoutException as exc:
             raise EmbeddingError(f"timeout: {exc}", retryable=True)
         except httpx.HTTPError as exc:
@@ -94,14 +98,15 @@ class EmbeddingClient:
                 prompt_tokens=int(data.get("prompt_tokens") or 0),
             )
 
-        retryable = resp.status_code in (502, 503, 429)
         detail = resp.text[:200]
         try:
             detail = resp.json().get("detail", detail)
         except Exception:  # noqa: BLE001 — best-effort detail extraction
             pass
+        # W2-tail: pass status_code and let the shared base derive `.retryable`
+        # (429/502/503) — no local re-derivation of the transient-status set.
         raise EmbeddingError(
-            f"embedding failed ({resp.status_code}): {detail}", retryable=retryable,
+            f"embedding failed ({resp.status_code}): {detail}", status_code=resp.status_code,
         )
 
 

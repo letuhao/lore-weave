@@ -40,6 +40,10 @@ const (
 	// (adopt, sync_apply, book_set_*, system_*) are intentionally NOT accepted
 	// yet — verify fails closed on them until their phase wires the effect.
 	descBookDelete        = "book_delete"
+	// descBookDeleteBatch — tool-catalog-simplification spec (glossary_ontology_delete,
+	// scope=book): ONE confirm token covers N items, mirroring descSchemaCreateKinds'
+	// per-item-independent, idempotent-skip pattern (§8.8).
+	descBookDeleteBatch   = "book_delete_batch"
 	descSchemaCreateKind  = "schema_create_kind"
 	descSchemaCreateKinds = "schema_create_kinds" // BATCH: many kinds (+ their attrs) on ONE confirm
 	descSchemaCreateAttr  = "schema_create_attribute"
@@ -89,7 +93,7 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateKinds, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
+	case descBookDelete, descBookDeleteBatch, descSchemaCreateKind, descSchemaCreateKinds, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
 		descStatusChange, descRestoreRevision, descReassignKind, descMerge, descDeepResearch, descExecutePlan,
 		descSystemCreate, descSystemPatch, descSystemDelete, descSystemRestore:
 		return true

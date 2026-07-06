@@ -15,11 +15,38 @@ import (
 //
 // The metadata lives in mcp.Tool.Meta (the `_meta` JSON object), under these keys:
 const (
-	MetaKeyTier     = "tier"     // R|A|W|S — drives auto-apply vs confirm
-	MetaKeyScope    = "scope"    // book|project|user|none — drives which guard runs
-	MetaKeyUndoHint = "undo_hint" // optional {tool, args} for C-ACTIVITY
-	MetaKeySynonyms = "synonyms"  // optional alias terms feeding find_tools (H6)
+	MetaKeyTier       = "tier"       // R|A|W|S — drives auto-apply vs confirm
+	MetaKeyScope      = "scope"      // book|project|user|none — drives which guard runs
+	MetaKeyUndoHint   = "undo_hint"  // optional {tool, args} for C-ACTIVITY
+	MetaKeySynonyms   = "synonyms"   // optional alias terms feeding find_tools (H6)
+	MetaKeyVisibility = "visibility" // discoverable|legacy — CAT-4 (mcp-tool-io.md Part 4)
 )
+
+// Visibility is the CAT-4 catalog-hygiene enum. Absent (zero value) reads as
+// VisibilityDiscoverable — a tool with no explicit visibility is discoverable by
+// default, so existing tools need no change. A "legacy" tool keeps its schema and
+// handler working for any existing caller; it is excluded from find_tools/
+// search_catalog and from any domain hot-seed on BOTH federation surfaces
+// (chat-service tool_discovery.py + ai-gateway find-tools.ts must stay in
+// lockstep — see mcp-tool-io.md CAT-4). The ONLY path back to a legacy tool is
+// an explicit, user-initiated per-session pin (Settings & Configuration Boundary
+// SET-1) — never a blanket unlock.
+type Visibility string
+
+const (
+	VisibilityDiscoverable Visibility = "discoverable"
+	VisibilityLegacy       Visibility = "legacy"
+)
+
+// WithVisibility returns a copy of m with _meta.visibility set. A plain function,
+// not a method — mcp.Meta is a map type owned by the go-sdk package, so we can't
+// attach methods to it from here. Callers chain it onto NewToolMeta's result:
+//
+//	Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy)
+func WithVisibility(m mcp.Meta, v Visibility) mcp.Meta {
+	m[MetaKeyVisibility] = string(v)
+	return m
+}
 
 // Tier is the C-TOOL tier enum: R(ead) A(uto) W(rite-confirm) S(chema/secret).
 type Tier string

@@ -16,6 +16,7 @@ from typing import Literal
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
@@ -66,11 +67,13 @@ class GlossaryClient:
     def __init__(self, base_url: str, internal_token: str, timeout_s: float, retries: int) -> None:
         self._base_url = base_url.rstrip("/")
         self._retries = max(0, retries)
-        # K4-I5: token is baked into the client headers — no need for
-        # a separate field.
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s),
-            headers={"X-Internal-Token": internal_token},
+        # K4-I5: token is baked into the client headers — no need for a separate
+        # field. W3/W4: the shared factory also bakes JSON + injects X-Trace-Id per
+        # request (trace_id_var), replacing the hand-rolled per-method trace threading.
+        # The circuit-breaker state below is unchanged (transport-only swap).
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, trace_id_provider=trace_id_var.get,
         )
         self._cb_fail_count = 0
         self._cb_opened_at: float | None = None
@@ -193,12 +196,9 @@ class GlossaryClient:
             return []
         probe_claimed = cb_state == "probe"
 
-        # K7e: forward the inbound trace id so glossary-service can
-        # stitch its logs to the originating chat turn. Empty string →
-        # no header, which lets glossary-service generate its own id.
-        tid = trace_id_var.get()
-        call_headers = {"X-Trace-Id": tid} if tid else None
-
+        # K7e: the inbound trace id is forwarded to glossary-service (so it can
+        # stitch its logs to the originating chat turn) by the client's baked
+        # X-Trace-Id request hook — no per-call header assembly needed.
         try:
             # K4-I4: log AT MOST one warning per call. Per-attempt
             # logging used to spam logs during outages (N candidates ×
@@ -209,7 +209,7 @@ class GlossaryClient:
             last_err_summary: str | None = None
             for _ in range(attempts):
                 try:
-                    resp = await self._http.post(url, json=body, headers=call_headers)
+                    resp = await self._http.post(url, json=body)
                 except httpx.TimeoutException:
                     last_err_summary = "timeout"
                     continue
@@ -285,16 +285,12 @@ class GlossaryClient:
         user-initiated and not on the chat hot path.
         """
         url = f"{self._base_url}/internal/books/{book_id}/entity-count"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
+                url,
             )
             if resp.status_code != 200:
-                logger.warning(
-                    "glossary entity-count %d, trace_id=%s",
-                    resp.status_code, tid,
-                )
+                logger.warning("glossary entity-count %d", resp.status_code)
                 return None
             return int(resp.json().get("count", 0))
         except (httpx.HTTPError, ValueError, KeyError) as exc:
@@ -310,10 +306,9 @@ class GlossaryClient:
         (the FE degrades to manual pinning — never blocks the wizard).
         """
         url = f"{self._base_url}/internal/books/{book_id}/entities/stats"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
+                url,
             )
             if resp.status_code != 200:
                 logger.warning("glossary entities/stats %d", resp.status_code)
@@ -339,11 +334,9 @@ class GlossaryClient:
         chapter spread (e.g. wiki generation on a low-chapter book) pass 1.
         """
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.get(
                 url,
-                headers={"X-Trace-Id": tid} if tid else None,
                 params={"status": status_filter, "min_frequency": str(min_frequency)},
             )
             if resp.status_code != 200:
@@ -376,7 +369,6 @@ class GlossaryClient:
             (retry budget applies upstream)
         """
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
-        tid = trace_id_var.get()
         params = {
             "alive": "true",
             "min_frequency": str(min_frequency),
@@ -387,7 +379,6 @@ class GlossaryClient:
         try:
             resp = await self._http.get(
                 url,
-                headers={"X-Trace-Id": tid} if tid else None,
                 params=params,
             )
         except httpx.HTTPError as exc:
@@ -452,14 +443,12 @@ class GlossaryClient:
         if not entity_ids:
             return []
         url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
-        tid = trace_id_var.get()
         body: dict = {"entity_ids": entity_ids}
         if language:
             body["language"] = language
         try:
             resp = await self._http.post(
                 url, json=body,
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning("glossary entities/by-ids %d", resp.status_code)
@@ -493,12 +482,10 @@ class GlossaryClient:
         if not entity_ids or not language:
             return {}
         url = f"{self._base_url}/internal/books/{book_id}/entity-display-names"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.post(
                 url,
                 json={"language": language, "entity_ids": entity_ids},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning("glossary entity-display-names %d", resp.status_code)
@@ -541,7 +528,6 @@ class GlossaryClient:
         flood triage (mui #1).
         """
         url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
-        tid = trace_id_var.get()
         body: dict = {
             "source_language": source_language,
             "attribute_actions": attribute_actions or {},
@@ -554,7 +540,6 @@ class GlossaryClient:
         try:
             resp = await self._http.post(
                 url, json=body,
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary propose-entities %d", resp.status_code)
@@ -584,11 +569,9 @@ class GlossaryClient:
         if not candidates:
             return None
         url = f"{self._base_url}/internal/books/{book_id}/merge-candidates"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.post(
                 url, json={"candidates": candidates},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary propose-merge-candidates %d", resp.status_code)
@@ -613,11 +596,9 @@ class GlossaryClient:
         batch). `action` distinguishes a direct write from a filed suggestion
         (the human-edited-article guard)."""
         url = f"{self._base_url}/internal/books/{book_id}/wiki/articles"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.post(
                 url, json=body,
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning("glossary wiki-writeback %d", resp.status_code)
@@ -639,11 +620,9 @@ class GlossaryClient:
         server-side) as `[{article_id, entity_id, ai_text, human_text}]`. Best-effort:
         returns [] on ANY failure — missing exemplars must never break generation."""
         url = f"{self._base_url}/internal/books/{book_id}/wiki/gold-pairs"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.get(
                 url, params={"limit": limit},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning("glossary wiki-gold-pairs %d", resp.status_code)
@@ -668,12 +647,10 @@ class GlossaryClient:
         this route, or a dedicated /internal/ route is needed.
         """
         url = f"{self._base_url}/v1/glossary/books/{book_id}/wiki/generate"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.post(
                 url,
                 json={"entity_ids": entity_ids},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary wiki-generate %d", resp.status_code)

@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from loreweave_obs import setup_logging
 
 from app.config import settings
 from app.db.eval_repo import ensure_score_configs
@@ -20,6 +21,7 @@ from app.db.online_eval import ensure_default_online_eval_rule
 from app.db.pool import close_pool, create_pool, get_pool
 from app.clients.llm_client import build_judge_sdk
 from app.events.consumer import EventConsumer
+from app.events.correction_contract import CORRECTION_EVENT_TYPES
 from app.events.eval_runner import EvalRunner
 from app.events.dispatcher import EventDispatcher
 from app.events.llm_judge_consumer import LLMJudgeConsumer
@@ -27,6 +29,7 @@ from app.events.handlers import (
     handle_chat_feedback,
     handle_config_adjusted,
     handle_generation_corrected,
+    handle_glossary_entity_merged,
     handle_glossary_entity_updated,
     handle_knowledge_corrected,
     handle_name_confirmed,
@@ -40,7 +43,7 @@ from app.events.handlers import (
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import corrections, eval as eval_routes, mining, wiki_judge
 
-logging.basicConfig(level=logging.INFO)
+setup_logging("learning-service")  # P2·A2a — shared JSON logging + dual trace ids
 logger = logging.getLogger(__name__)
 
 
@@ -48,6 +51,7 @@ def build_dispatcher() -> EventDispatcher:
     """Register correction event handlers. Extracted for unit-testability."""
     dispatcher = EventDispatcher()
     dispatcher.register("glossary.entity_updated", handle_glossary_entity_updated)
+    dispatcher.register("glossary.entity_merged", handle_glossary_entity_merged)  # D-LEARN-ENTITY-MERGED
     dispatcher.register("knowledge.entity_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.relation_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.event_corrected", handle_knowledge_corrected)
@@ -61,6 +65,18 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("glossary.name_confirmed", handle_name_confirmed)  # M7c-3
     dispatcher.register("wiki.corrected", handle_wiki_corrected)  # D-WIKI-M8
     dispatcher.register("wiki.suggestion_reviewed", handle_wiki_suggestion_reviewed)  # D-WIKI-M8
+    # No-silent-drop (compile/CI half): fail-fast at startup if a DECLARED correction
+    # type has no handler — catches CONSUMER-side drift (a register() deleted, or a
+    # contract row added without a handler). A PRODUCER rename / producer-side new
+    # correction type is not visible here (the contract is consumer-owned) — that is
+    # surfaced at runtime by EventDispatcher.dispatch's correction-marker WARN.
+    missing = CORRECTION_EVENT_TYPES - set(dispatcher.registered_types)
+    if missing:
+        raise RuntimeError(
+            "build_dispatcher does not cover the correction-event contract: missing handlers "
+            f"for {sorted(missing)} (app/events/correction_contract.py). A correction event with "
+            "no handler is silently dropped — register it or remove it from the contract."
+        )
     return dispatcher
 
 

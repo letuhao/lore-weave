@@ -33,6 +33,11 @@ export interface ChatSession {
   // (static project memory). Mirrors the backend column added
   // by chat-service's K5 migration.
   project_id: string | null;
+  // D-COMPOSE-SESSION-RESTORE: set when the session was created from a
+  // book-scoped host (the Writing Studio Compose panel). Independent of
+  // project_id — a book with no knowledge project yet still gets a durable
+  // book_id so its session (and chosen model) can be found again on reopen.
+  book_id?: string | null;
   // Track B B1(2) — multi-KG: the session's grounding project SET (world +
   // member books) unioned into one memory block. Empty = the legacy
   // single-project (project_id) path. ≥2 → the "multi" memory mode.
@@ -59,6 +64,9 @@ export interface ChatSession {
   enabled_tools?: string[];
   enabled_skills?: string[];
   activated_tools?: string[];
+  // Tool-catalog-simplification Part D (CAT-4): legacy (superseded,
+  // find_tools-invisible) tools the user manually pinned for THIS session.
+  pinned_legacy_tools?: string[];
   // W3 — manual steerable compact: messages with sequence_num below this are
   // represented server-side by a stored summary on every later turn.
   // null/absent = never manually compacted. Drives the panel's
@@ -141,6 +149,8 @@ export interface MemoryKnowledgeBreakdown {
 export interface ContextBreakdownMap {
   system_prompt?: number;
   memory_knowledge?: MemoryKnowledgeBreakdown;
+  /** T4 cached story-bible safety-net block (D4; 0 unless projected on a degraded turn). */
+  story_state?: number;
   working_memory?: number;
   steering?: number;
   skills?: number;
@@ -151,6 +161,13 @@ export interface ContextBreakdownMap {
   tool_results?: number;
   frontend_tool_schemas?: number;
   mcp_tool_schemas?: number;
+  // Context Budget Law forward-declared allocation categories (present 0 until
+  // their tier populates them): rolling summary (T6), whitelisted chapter body
+  // (D3), model reasoning budget (D7). Mirrors the BE BREAKDOWN_CATEGORIES vocabulary
+  // (chat-service token_budget.py; parity pinned via contracts/context-trace.contract.json).
+  summary?: number;
+  chapter?: number;
+  reasoning?: number;
 }
 
 export interface ContextBudget {
@@ -175,9 +192,58 @@ export interface ContextHistoryPoint {
   created_at: string;
   input_tokens: number | null;
   output_tokens: number | null;
-  /** Same 12-key vocabulary as the live budget's breakdown (memory_knowledge
+  /** Same category vocabulary as the live budget's breakdown (memory_knowledge
    *  nests {total, sections}). */
   breakdown: ContextBreakdownMap;
+}
+
+// ── Context Compiler · Trace Inspector (spec §11) ──────────────────────────────
+// The Inspector reads the FULL persisted contextBudget frame per turn (not just
+// the breakdown sub-map the chart uses). These mirror chat-service:
+// token_budget.context_budget_event + loreweave_context.TraceSpan.
+
+/** One Planner/Compiler decision (the compile-trace waterfall row). `delta` < 0 =
+ *  tokens SAVED, > 0 = INCLUDED, 0 = neutral; `is_error` = a reject span. */
+export interface TraceSpanFrame {
+  phase: 'planner' | 'compiler';
+  tier: string; // T0..T6
+  category: string;
+  action: string;
+  delta: number;
+  is_error: boolean;
+}
+
+/** The T5 entity-presence gate decision surfaced per turn. */
+export interface EntityPresenceFrame {
+  grounding_needed: boolean;
+  matched: string[];
+  reason: string;
+}
+
+/** The full persisted contextBudget frame — a superset of ContextBudget with the
+ *  §11a Inspector telemetry. Every Inspector-specific field is optional so an
+ *  older/pre-M1 turn (no telemetry) still renders (blank chips, no waterfall). */
+export interface ContextTraceFrame extends ContextBudget {
+  target?: number | null;
+  pct_of_target?: number | null;
+  raw_tokens?: number | null;
+  reduction_pct?: number | null;
+  status_flags?: string[];
+  retrieval_mode?: string | null;
+  intent?: string | null;
+  entity_presence?: EntityPresenceFrame | null;
+  trace?: TraceSpanFrame[];
+}
+
+/** One turn in the Inspector series (GET /v1/chat/sessions/{id}/context-trace).
+ *  Mirrors the BE ContextTracePoint: the full frame + the user message that drove it. */
+export interface ContextTracePoint {
+  sequence_num: number;
+  created_at: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  user_message: string | null;
+  frame: ContextTraceFrame;
 }
 
 // Chat Quality Wave W1/W2 — the `compaction` CUSTOM frame, emitted when
@@ -200,6 +266,9 @@ export interface ToolCatalogItem {
   domain: string;
   tier: string;
   description: string;
+  /** CAT-4: 'discoverable' (default) or 'legacy' (superseded — only pinnable
+   *  via pinned_legacy_tools, GET .../tools/catalog?visibility=legacy). */
+  visibility?: 'discoverable' | 'legacy';
 }
 
 export interface SkillCatalogItem {
@@ -319,6 +388,11 @@ export interface CreateSessionPayload {
   title?: string;
   system_prompt?: string;
   generation_params?: GenerationParams;
+  // D-COMPOSE-SESSION-RESTORE: tag a book-scoped session at creation time
+  // (known upfront, unlike project_id which is bound after the fact) so it
+  // can be found again on the next Compose open regardless of whether a
+  // knowledge project exists for the book.
+  book_id?: string;
 }
 
 export interface PatchSessionPayload {
@@ -349,4 +423,5 @@ export interface PatchSessionPayload {
   enabled_tools?: string[];
   enabled_skills?: string[];
   activated_tools?: string[] | null;
+  pinned_legacy_tools?: string[] | null;
 }

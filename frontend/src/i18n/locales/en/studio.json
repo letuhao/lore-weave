@@ -1,60 +1,359 @@
 {
   "title": "Writing Studio",
-  "back": "Back to book",
+  "back": "Back to books",
   "settings": "Book settings",
   "welcome": {
     "tab": "Welcome",
     "title": "Writing Studio",
-    "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
+    "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window.",
+    "openUserGuide": "Open the User Guide",
+    "startGuidedTour": "Start Guided Tour",
+    "paletteHint": "⌘⇧P also opens the Command Palette anytime"
   },
   "panels": {
     "compose": {
       "title": "Compose",
-      "desc": "AI co-writer chat"
+      "desc": "AI co-writer chat",
+      "guideBody": "The AI co-writer for this book — chat with it about a scene, ask it to draft or revise a passage, or brainstorm what happens next. Open it when you want a conversational partner that already knows this book's characters, glossary, and prior chapters."
     },
     "editor": {
       "title": "Editor",
-      "desc": "Manuscript editor"
+      "desc": "Manuscript editor",
+      "guideBody": "The main manuscript editor where you write and edit chapter text directly. Open it whenever you're drafting new prose or making direct line edits — it's the canvas everything else (Compose, Planner, Steering) feeds into."
     },
     "planner": {
       "title": "Planner",
-      "desc": "Plan the novel's system"
+      "desc": "Plan the novel's system",
+      "guideBody": "Lay out the novel's structure — arcs, chapters, beats, and how they connect — before or while you write. Open it when you need to see or rework the shape of the story, not just the sentence in front of you."
     },
     "usage": {
       "title": "Usage",
-      "desc": "Spend, tokens & request log"
+      "desc": "Spend, tokens & request log",
+      "guideBody": "Shows how much you're spending across every AI-powered action — translations, enrichment, chat, compose — broken down by tokens and requests over time. Open it when you want to check your current spend against your budget, spot which feature is burning the most credits, or review a specific request's cost after the fact."
     },
     "notifications": {
       "title": "Notifications",
-      "desc": "Job completions & alerts"
+      "desc": "Job completions & alerts",
+      "guideBody": "Collects job completions, translation runs, enrichment passes, and system alerts in one place so you don't have to keep checking back on long-running work. Open it after kicking off a big job (like translating a chapter or running enrichment) to know the moment it finishes, or to catch anything that failed and needs attention."
     },
     "settings": {
       "title": "Settings",
-      "desc": "Account, providers & translation"
+      "desc": "Account, providers & translation",
+      "guideBody": "Manage your account, connect your own AI providers (OpenAI, local models, etc.), and configure translation defaults like target language and glossary behavior. Open it before starting a new project to set things up, or any time you need to swap providers, update credentials, or change how translations behave by default."
     },
     "trash": {
       "title": "Trash",
-      "desc": "Restore deleted books, chapters & more"
+      "desc": "Restore deleted books, chapters & more",
+      "guideBody": "Holds books, chapters, and other items you've deleted, keeping them recoverable instead of gone for good. Open it when you've deleted something by mistake and need to restore it, or when you want to permanently clear out old items you no longer need."
     },
     "steering": {
       "title": "Steering",
-      "desc": "Author rules that guide AI on this book"
+      "desc": "Author rules that guide AI on this book",
+      "guideBody": "Write the rules and preferences that guide how the AI writes for this specific book — tone, POV, things to avoid, recurring instructions you don't want to repeat every chat. Open it once early on, then revisit whenever the AI's output drifts from what you want."
+    },
+    "glossary": {
+      "title": "Glossary",
+      "desc": "Entities, search, and bulk actions for this book",
+      "guideBody": "Your book's living dictionary of characters, places, items, and other named entities — search, filter, and bulk-edit them from one place. Open it when you need to check what's already been established, fix a name across many entries at once, or clean up entities in bulk."
+    },
+    "glossary-ontology": {
+      "title": "Ontology",
+      "desc": "Kinds, genres & attributes for this book",
+      "guideBody": "Defines the kinds (character, location, item, etc.), genres, and custom attributes available for classifying entities in this book. Open it before you start tagging entities, or whenever you need to add a new kind or attribute that doesn't fit the existing set."
+    },
+    "glossary-unknown": {
+      "title": "Unknown entities",
+      "desc": "Reassign unrecognized entities to a kind",
+      "guideBody": "Lists entities the system spotted in your text but couldn't confidently classify into a kind. Open it periodically to assign these unrecognized names to the right kind so they show up correctly in the Glossary and Wiki instead of sitting in limbo."
+    },
+    "glossary-ai-suggestions": {
+      "title": "AI suggestions",
+      "desc": "Review AI-drafted entities",
+      "guideBody": "Shows entity entries the AI drafted automatically from your manuscript, waiting for your review. Open it to accept, edit, or reject each suggestion before it becomes part of your official glossary."
+    },
+    "glossary-merge-candidates": {
+      "title": "Merge candidates",
+      "desc": "Review and confirm likely-duplicate entities",
+      "guideBody": "Flags pairs of entities the system thinks might be duplicates (e.g. two spellings of the same character's name). Open it to confirm real duplicates and merge them, or dismiss false matches, keeping your glossary clean."
+    },
+    "wiki": {
+      "title": "Wiki",
+      "desc": "Browse and read this book's generated wiki articles",
+      "guideBody": "The auto-generated wiki of readable articles built from your glossary and story content — one article per major entity. Open it when you want a narrative-style overview of a character, place, or faction instead of raw glossary fields."
+    },
+    "wiki-editor": {
+      "title": "Wiki Editor",
+      "desc": "Edit a wiki article's prose, infobox, history and suggestions"
+    },
+    "knowledge": {
+      "title": "Knowledge",
+      "desc": "Browse and open your knowledge-graph projects",
+      "guideBody": "Knowledge is your entry point into a book's knowledge graph — the entities, events, and lore your AI agents have extracted and organized. Open it to pick which project (book) to work in before diving into entities, timelines, or the graph itself."
+    },
+    "quality": {
+      "title": "Quality",
+      "desc": "Open promises, critic scores, story coverage & canon issues",
+      "guideBody": "Quality is your diagnostic dashboard — advisory only, nothing here changes your prose. Pick a card to see the open-promise debt ledger, per-chapter critic scores, whole-book promise coverage, or confirmed canon contradictions."
+    },
+    "quality-promises": {
+      "title": "Promises",
+      "desc": "The open-promise debt ledger (setups not yet paid off)"
+    },
+    "quality-critic": {
+      "title": "Critic",
+      "desc": "Per-chapter coherence, voice, pacing & canon scores"
+    },
+    "quality-coverage": {
+      "title": "Story coverage",
+      "desc": "Whole-book audit of which outline promises got paid off"
+    },
+    "quality-canon": {
+      "title": "Canon issues",
+      "desc": "Confirmed contradictions from generation & knowledge extraction"
+    },
+    "kg-overview": {
+      "title": "Overview",
+      "desc": "Project summary and quick actions",
+      "guideBody": "Overview gives you a snapshot of a project's health at a glance — entity counts, recent activity, and pending work. Open it first when you return to a book to see what needs attention before drilling into a specific tool."
+    },
+    "kg-entities": {
+      "title": "Entities",
+      "desc": "Browse and search knowledge-graph entities, scoped to a project or across all your projects",
+      "guideBody": "Entities lists every character, place, item, and concept the system has extracted, with search and filters to narrow by kind or project. Use it to look up a specific entity's details or to audit what the knowledge graph currently knows about your world."
+    },
+    "kg-timeline": {
+      "title": "Timeline",
+      "desc": "Browse in-story events by chronological or narrative order",
+      "guideBody": "Timeline lays out the events of your story in order — either the sequence they happened in-world (chronological) or the sequence they were revealed to the reader (narrative). Open it to check consistency in your plot's sequencing or to see what's happened so far at any point in the story."
+    },
+    "kg-evidence": {
+      "title": "Evidence",
+      "desc": "Search chapter and chat passages by semantic similarity",
+      "guideBody": "Evidence lets you search your chapters and chat history by meaning rather than exact wording, surfacing passages that discuss a topic even if they don't use the same phrasing. Use it when you need to find where something was mentioned or established, but can't remember the exact words."
+    },
+    "kg-gap": {
+      "title": "Gap Report",
+      "desc": "Find high-mention characters, places, and concepts missing from the glossary",
+      "guideBody": "Gap Report surfaces characters, places, and concepts that come up often in your text but haven't been added to the glossary yet. Check it periodically to catch lore that's slipping through without a proper entry."
+    },
+    "kg-proposals": {
+      "title": "Proposals",
+      "desc": "Review pending glossary, wiki, and lore-enrichment suggestions for this book",
+      "guideBody": "Proposals is where AI-suggested additions and changes to your glossary, wiki, and lore wait for your review. Open it to approve, edit, or reject each suggestion before it becomes part of your book's canon."
+    },
+    "kg-schema": {
+      "title": "Schema",
+      "desc": "Adopt, author, view, and sync your book's knowledge-graph schema",
+      "guideBody": "Schema controls the structure of your book's knowledge graph — what kinds of entities and relationships it recognizes. Use it to adopt a starting schema, customize it for your world, or sync changes across your project."
+    },
+    "kg-graph": {
+      "title": "Knowledge Graph",
+      "desc": "Explore the project's entity relationship graph",
+      "guideBody": "Knowledge Graph gives you a visual map of how entities in your project connect — who knows whom, what belongs where, which events involve which characters. Open it when you want to explore relationships spatially rather than as a list."
+    },
+    "kg-insights": {
+      "title": "Mining Insights",
+      "desc": "Extraction config quality, model performance & outcome drift across projects",
+      "guideBody": "Mining Insights reports on how well extraction is performing across your projects — config quality, which models are producing good results, and where outcomes are drifting from expectations. Check it if extracted entities or events seem off, to diagnose whether the issue is the model or the config."
+    },
+    "kg-jobs": {
+      "title": "Extraction Jobs",
+      "desc": "Monitor knowledge-extraction jobs across all your projects",
+      "guideBody": "Extraction Jobs shows the status of every knowledge-extraction run across all your projects, so you can see what's queued, in progress, done, or failed. Open it to check on long-running extractions or troubleshoot one that didn't finish as expected."
+    },
+    "kg-bio": {
+      "title": "Global Bio",
+      "desc": "Your cross-book author bio, used to ground AI writing and analysis",
+      "guideBody": "Global Bio holds a short author bio that's shared across all your books, used to give AI writing and analysis tools context about your voice and background. Fill it in once and every project benefits from the same grounding."
+    },
+    "kg-privacy": {
+      "title": "Privacy & Data",
+      "desc": "Export or permanently delete your knowledge-graph data",
+      "guideBody": "Privacy & Data lets you export a full copy of your knowledge-graph data or permanently delete it. Use it when you want a backup, are leaving the platform, or need to remove a project's data for good."
+    },
+    "jobs-list": {
+      "title": "Jobs",
+      "desc": "Monitor background jobs and tasks",
+      "guideBody": "Shows the background jobs running for this book — translation runs, enrichment passes, exports, and other long-running tasks — along with their current status and progress. Open it to check whether a job is still running, see if one failed, or confirm a task finished before you move on."
+    },
+    "job-detail": {
+      "title": "Job",
+      "desc": "Watch one job's live progress",
+      "empty": "Open a job from the Jobs panel to watch it here."
+    },
+    "books": {
+      "title": "Books",
+      "desc": "Browse and read your other books without leaving this studio",
+      "guideBody": "Opens a lightweight library view of your other books right inside the studio, so you can check details, reread a passage, or jump between projects without losing your current editing session. Use it when you want quick cross-book reference without navigating away from what you're writing."
+    },
+    "book-reader": {
+      "title": "Reader",
+      "desc": "Distraction-free reading view for a chapter"
+    },
+    "leaderboard-books": {
+      "title": "Leaderboard: Books",
+      "desc": "Top-ranked books by rating, readers & favorites",
+      "guideBody": "Shows which books are climbing the rankings by rating, reader count, and favorites, so you can see what's resonating with readers right now. Check this panel when you want a pulse on what's working across the platform, or to scout comparable titles in your genre."
+    },
+    "leaderboard-authors": {
+      "title": "Leaderboard: Authors",
+      "desc": "Top-ranked authors by readers & output",
+      "guideBody": "Ranks authors by how many readers they've reached and how much they've published, giving you a sense of who's active and who's building an audience. Open it if you're curious how your output and reach compare, or looking for prolific authors to follow."
+    },
+    "leaderboard-translators": {
+      "title": "Leaderboard: Translators",
+      "desc": "Top-ranked translators by chapters & languages",
+      "guideBody": "Ranks translators by chapters completed and number of languages covered, highlighting who's driving the platform's translation activity. Open this when you want to find active translators to collaborate with, or gauge how much translation work is happening across languages."
+    },
+    "leaderboard-trending": {
+      "title": "Leaderboard: Trending",
+      "desc": "Books trending right now",
+      "guideBody": "Surfaces the books gaining momentum right now, based on recent reader activity rather than all-time totals. Check it when you want to catch rising titles early or see what's currently capturing attention."
+    },
+    "context-inspector": {
+      "title": "Context Inspector",
+      "desc": "Trace what context management did per turn — budget, allocation, Planner→Compiler decisions",
+      "guideBody": "Shows exactly what context was sent to the AI for a given turn — the token budget, what got included or dropped, and whether a quick pass or a fuller planning pass handled it. Open it when the AI's response seems off and you want to see what it actually \"saw\", or when you're curious how your context budget is being spent."
+    },
+    "chapter-browser": {
+      "title": "Chapter Browser",
+      "desc": "Sort, filter, search and bulk-act across this book's chapters",
+      "mode_group": "Search mode",
+      "mode_title": "Title & filename",
+      "mode_content": "Content (full-text)",
+      "sort_chapter_num": "Sort: Chapter #",
+      "sort_updated": "Sort: Last updated",
+      "sort_word_count": "Sort: Word count",
+      "sort_status": "Sort: Status",
+      "view_flat": "Flat list",
+      "view_grouped": "Group by arc",
+      "col_title": "Title",
+      "col_lang": "Lang",
+      "col_status": "Status",
+      "col_words": "Words",
+      "col_updated": "Updated",
+      "status_all": "Status: All",
+      "status_draft": "Draft",
+      "status_published": "Published",
+      "status_trashed": "Trashed",
+      "lang_all": "Lang: All",
+      "words_label": "Words",
+      "min": "min",
+      "max": "max",
+      "updated_within": "Updated within",
+      "days": "days",
+      "n_selected": "{{count}} selected",
+      "clear": "clear",
+      "translate": "Translate…",
+      "set_status": "Set status…",
+      "set_status_hint": "Restore selected chapters to active",
+      "export": "Export",
+      "trash": "Trash",
+      "trash_confirm": "Move {{count}} chapter(s) to trash?",
+      "bulk_status_ok": "{{count}} chapter(s) updated",
+      "bulk_status_partial": "{{okCount}} updated, {{failCount}} failed",
+      "bulk_not_wired": "Coming soon — this bulk action isn't wired up yet",
+      "empty": "No chapters match these filters",
+      "client_filtered_note": "Word-count/date filters apply to the currently loaded page",
+      "chapter_count": "{{count}} chapters",
+      "guideBody": "A sortable, filterable list of every chapter in the book, with search and bulk actions (like retagging or reordering several chapters at once). Open it when you need to find a specific chapter fast or make the same change across many chapters at once."
+    },
+    "sharing": {
+      "title": "Sharing",
+      "desc": "Visibility, unlisted link, and collaborators for this book",
+      "guideBody": "Control who can see and edit this book — set it to private, generate an unlisted share link for anyone with the URL, or invite specific collaborators. Open this when you want to share a draft for feedback or hand off editing access without making the book public."
+    },
+    "book-settings": {
+      "title": "Book Settings",
+      "desc": "Title, cover, genre tags, and world link for this book",
+      "guideBody": "Manage this book's core identity: its title, cover image, genre tags, and the world it's linked to. Open this when you're setting up a new book or need to update how it's labeled and categorized before sharing or publishing."
+    },
+    "translation": {
+      "title": "Translation",
+      "desc": "Coverage matrix, language filter, bulk translate and glossary extraction for this book",
+      "guideBody": "Shows every language's translation progress for this book at a glance, with a coverage matrix and language filters so you can spot what's untranslated or stale. Open it to kick off bulk translation jobs or extract glossary terms discovered during translation, keeping terminology consistent across languages."
+    },
+    "translation-versions": {
+      "title": "Translation Versions",
+      "desc": "Per-chapter translation version management (compare, set active, re-translate)",
+      "empty": "Open a chapter's translation versions from the Translation matrix."
+    },
+    "translation-review": {
+      "title": "Translation Review",
+      "desc": "Block-aligned side-by-side review with per-block correction",
+      "empty": "Open a version's Review from the Translation Versions panel."
+    },
+    "enrichment-compose": {
+      "title": "Create Enrichment",
+      "desc": "Compose a new enriched lore draft (expand a draft, paste context, upload files, or state an intent)",
+      "guideBody": "Use this panel to start a new lore draft when the wiki or glossary is missing an entry you need — expand a rough draft, paste in reference context, upload source files, or just describe your intent and let the AI generate a first pass. It's the entry point for turning \"I need a bio for this character\" into a structured, editable proposal."
+    },
+    "enrichment-proposals": {
+      "title": "Enrichment Proposals",
+      "desc": "Review AI-proposed lore — approve, reject, or promote into canon",
+      "guideBody": "Every draft created in Compose (or generated by an enrichment job) lands here for review before it becomes canon — read through each proposed entry, approve it to promote it into the glossary, or reject it if it's wrong or unwanted. Open this panel whenever you want to check what the AI has drafted but hasn't yet been added to your book's official lore."
+    },
+    "enrichment-gaps": {
+      "title": "Enrichment Gaps",
+      "desc": "Detect under-described entities and auto-enrich them as a background job",
+      "guideBody": "This panel scans your book for entities that are mentioned but under-described — characters, places, or items with too little detail in the glossary — and can queue them for automatic enrichment as a background job. Open it when you want to find and fill lore holes without manually hunting for what's missing."
+    },
+    "enrichment-sources": {
+      "title": "Enrichment Sources",
+      "desc": "License-tagged source corpora for retrieval and recook grounding",
+      "guideBody": "Manage the source corpora (reference texts, uploaded documents, licensed material) that enrichment and recook jobs pull from for grounding, each tagged with its license so you know what's safe to reuse. Check here when you want to see what source material is feeding your AI-generated drafts, or to add new grounding material."
+    },
+    "enrichment-jobs": {
+      "title": "Enrichment Jobs",
+      "desc": "Monitor and resume cost-capped enrichment jobs",
+      "guideBody": "Track the status of enrichment jobs you've kicked off — see what's running, completed, or paused, watch cost accumulate against the job's cap, and resume any job that stopped early. Open this panel when you want to check progress or pick back up a cost-capped enrichment run."
+    },
+    "enrichment-settings": {
+      "title": "Enrichment Profile",
+      "desc": "Author this book's de-bias profile (worldview, language, era, voice)",
+      "guideBody": "Author this book's de-bias profile here — set the intended worldview, language conventions, era, and narrative voice so enrichment and compose drafts come out consistent with your book's tone instead of a generic default. Set this up early, before running enrichment jobs, so generated lore matches your book from the start."
     },
     "json-editor": {
       "title": "JSON",
       "desc": "Raw JSON view of a resource"
     },
+    "media-version-history": {
+      "title": "Version History",
+      "desc": "Compare and restore past versions of an image or video block",
+      "empty": "No media block selected."
+    },
+    "original-source": {
+      "title": "Original Source",
+      "desc": "The untranslated source text for this chapter",
+      "empty": "Open a chapter from the Editor to view its original source."
+    },
     "extensions": {
       "title": "Extensions",
-      "desc": "Manage plugins, skills, MCP servers, commands & hooks"
+      "desc": "Manage plugins, skills, MCP servers, commands & hooks",
+      "guideBody": "Install and manage everything that adds capability to your agent — plugins, skills, MCP server connections, custom commands, and hooks. Open it when you want to add a new tool the agent can use, review what's currently enabled, or disable something that's misbehaving."
     },
     "proposals": {
       "title": "Proposals",
-      "desc": "Review skills the agent proposed"
+      "desc": "Review skills the agent proposed",
+      "guideBody": "Lists skills the agent has suggested creating on its own, based on patterns it noticed in your work, so you can review and approve them before they become part of your toolkit. Open it after a session where the agent mentioned it could automate something, to decide whether to accept, edit, or reject the suggestion."
     },
     "skill-editor": {
       "title": "Skill",
       "desc": "Edit a SKILL.md"
+    },
+    "user-guide": {
+      "title": "User Guide",
+      "desc": "Every Studio tool, grouped by area — generated from the same catalog as the Command Palette",
+      "guideBody": "Lists every tool and panel in Writing Studio, grouped by area, with a plain-language explanation of what each one does. It's generated straight from the same catalog that powers the Command Palette and dock, so as new tools are added the guide updates automatically — it never falls out of sync with what's actually in the app."
+    },
+    "agent-mode": {
+      "title": "Agent Mode",
+      "desc": "Autonomous multi-chapter authoring runs — mission control"
+    },
+    "chapter-revision-compare": {
+      "title": "Chapter Revision Compare",
+      "desc": "Full editor diff for one chapter revision pair",
+      "empty": "Open a chapter's revision diff from Agent Mode's review panel."
     }
   },
   "sceneRail": {
@@ -96,15 +395,42 @@
     "propose": "Propose",
     "model": "Model",
     "empty": "Paste your novel-system markdown and Propose to start a plan run.",
+    "openAgentMode": "Autonomous Agent Runs →",
+    "tabList": "Runs",
+    "tabRun": "Run",
     "mode": {
       "rules": "Rules",
       "llm": "LLM"
+    },
+    "list": {
+      "title": "Runs for this book",
+      "newRun": "+ New propose",
+      "loading": "Loading runs…",
+      "error": "Could not load runs.",
+      "empty": "No plan runs yet for this book.",
+      "colRun": "Run",
+      "colMode": "Mode",
+      "colStatus": "Status",
+      "colCreated": "Created"
     }
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
     "unsaved": "● unsaved",
-    "save": "Save"
+    "save": "Save",
+    "grammar": "Grammar",
+    "heatmap": "Heatmap",
+    "glossary": "Glossary",
+    "focus": "Focus",
+    "translate": "Translate"
+  },
+  "popout": {
+    "invalid": "This pop-out link is invalid.",
+    "open": "Pop out",
+    "openTitle": "Open Compose in its own window"
+  },
+  "dock": {
+    "dock": "Dock"
   },
   "steering": {
     "heading": "Steering rules",
@@ -160,7 +486,17 @@
       "recent": "Recent",
       "panels": "Panels",
       "navigate": "Navigate",
-      "layout": "Layout"
+      "layout": "Layout",
+      "editor": "Editor & Chapters",
+      "storyBible": "Story Bible",
+      "knowledge": "Knowledge Graph",
+      "translation": "Translation",
+      "enrichment": "Enrichment",
+      "sharing": "Sharing & Settings",
+      "platform": "Platform",
+      "discovery": "Discovery",
+      "jobs": "Jobs",
+      "help": "Help"
     },
     "cmd": {
       "showManuscript": "View: Show Manuscript",
@@ -169,7 +505,9 @@
       "showQuality": "View: Show Quality",
       "goToChapter": "View: Go to Chapter…",
       "toggleSidebar": "View: Toggle Side Bar",
-      "toggleBottom": "View: Toggle Bottom Panel"
+      "toggleBottom": "View: Toggle Bottom Panel",
+      "chooseYourFocus": "Studio: Choose Your Focus",
+      "startGuidedTour": "Studio: Start Guided Tour"
     },
     "desc": {
       "showManuscript": "Chapters & scenes",
@@ -178,7 +516,9 @@
       "showQuality": "Critic, promises & canon",
       "goToChapter": "Open Quick Open",
       "toggleSidebar": "Show or hide the side bar",
-      "toggleBottom": "Jobs · Generation · Issues"
+      "toggleBottom": "Jobs · Generation · Issues",
+      "chooseYourFocus": "Re-run the role picker",
+      "startGuidedTour": "A quick tour of the core panels"
     }
   },
   "activity": {
@@ -204,6 +544,30 @@
       "title": "Quality",
       "body": "Critic scores, promise threads & canon issues. Coming soon."
     }
+  },
+  "quality": {
+    "noWork": "This book has no co-writer session yet — start composing a chapter first, then quality data will appear here.",
+    "hubNoWorkHint": "Promises, critic scores, and story coverage need a co-writer session — start composing a chapter first. Canon issues below still work either way.",
+    "pickModel": "Pick a model to analyze with…",
+    "pickChapter": "Pick a chapter",
+    "pickChapterHint": "Pick a chapter above to analyze its quality.",
+    "chaptersTruncated": "showing first {{shown}} of {{total}} chapters",
+    "canonIntro": "Advisory — confirmed contradictions with content marked gone/changed earlier in the book. Nothing here is applied automatically.",
+    "canonEmpty": "No canon issues found.",
+    "canonCompositionError": "Could not load canon issues from generation — try again.",
+    "canonExtractionError": "Could not load canon flags from knowledge extraction — try again.",
+    "canonFromGeneration": "From generation ({{n}})",
+    "canonFromExtraction": "From knowledge extraction ({{n}})",
+    "untitledScene": "Untitled scene",
+    "jumpToChapter": "Open chapter",
+    "promisesTitle": "Promises",
+    "promisesDesc": "Open-promise debt ledger",
+    "criticTitle": "Critic",
+    "criticDesc": "Per-chapter coherence, voice, pacing & canon scores",
+    "coverageTitle": "Story coverage",
+    "coverageDesc": "Whole-book promise coverage",
+    "canonTitle": "Canon issues",
+    "canonDesc": "Confirmed contradictions"
   },
   "sidebar": {
     "collapse": "Collapse"
@@ -245,5 +609,382 @@
     "statChapters": "{{n}} ch",
     "statScenes": "{{n}} sc",
     "window": "win {{a}}–{{b}} / {{n}}"
+  },
+  "intro": {
+    "title": "Welcome to Writing Studio",
+    "subtitle": "What are you here to do? This tailors your Welcome panel and quick tour — change it anytime from the Command Palette.",
+    "skip": "Skip, I'll explore",
+    "roles": {
+      "writer": {
+        "title": "Write a novel",
+        "desc": "Compose chapters with an AI co-writer, plan the system, edit the manuscript"
+      },
+      "worldbuilder": {
+        "title": "Build world & lore",
+        "desc": "Glossary entities, the wiki, and the knowledge graph"
+      },
+      "translator": {
+        "title": "Translate",
+        "desc": "Coverage matrix, bulk translate, per-chapter versions"
+      },
+      "enricher": {
+        "title": "Enrich existing text",
+        "desc": "Find gaps, expand under-described entities, manage sources"
+      },
+      "manager": {
+        "title": "Manage & share",
+        "desc": "Visibility, collaborators, book settings"
+      }
+    },
+    "tour": {
+      "core": {
+        "manuscript": {
+          "title": "Your manuscript",
+          "body": "The Manuscript navigator drives the dock — pick a chapter or scene here to open it."
+        },
+        "palette": {
+          "title": "Jump anywhere",
+          "body": "⌘P jumps to a chapter/scene/arc; ⌘⇧P opens any Studio tool by name."
+        },
+        "compose": {
+          "title": "Compose",
+          "body": "Your AI co-writer — draft, discuss, and apply prose changes here."
+        },
+        "editor": {
+          "title": "Editor",
+          "body": "The manuscript editor — grammar, glossary hints, focus mode, and auto-save live here."
+        },
+        "grammar": {
+          "title": "Grammar & spell check",
+          "body": "Toggle live grammar and spelling checks on the current scene — powered by LanguageTool."
+        },
+        "heatmap": {
+          "title": "Continuity heatmap",
+          "body": "Highlights lines that may drift from established canon, so you can spot-check them before publishing."
+        }
+      },
+      "actions": {
+        "skip": "Skip tour",
+        "back": "Back",
+        "next": "Next ({{current}}/{{total}})",
+        "done": "Done"
+      },
+      "writer": {
+        "compose": {
+          "title": "Draft with your co-writer",
+          "body": "As a writer, this is where you'll spend a lot of time — ask for a first draft, a revision, or a sounding board for what happens next."
+        },
+        "editor": {
+          "title": "Polish the prose",
+          "body": "Once a scene has words, refine it here — grammar checks, glossary hints, and focus mode all live in this editor."
+        },
+        "grammar": {
+          "title": "Catch typos as you write",
+          "body": "Toggle live grammar and spelling checks without leaving the page."
+        },
+        "heatmap": {
+          "title": "Spot continuity drift",
+          "body": "Highlights lines that may contradict established canon — worth a glance before you move on."
+        },
+        "planner": {
+          "title": "Plan the shape of the story",
+          "body": "Lay out arcs, chapters, and beats before or between writing sessions, so Compose and the Editor have a structure to write into."
+        }
+      },
+      "worldbuilder": {
+        "glossary": {
+          "title": "Your world's dictionary",
+          "body": "Every character, place, and item you've established lives here — search it, tag it, and keep it consistent."
+        },
+        "wiki": {
+          "title": "Readable world articles",
+          "body": "The wiki turns your glossary into narrative-style articles — a good way to review your world at a glance."
+        },
+        "knowledge": {
+          "title": "The knowledge graph",
+          "body": "For deeper worldbuilding, the knowledge graph tracks how everything connects — entities, events, and relationships."
+        }
+      },
+      "translator": {
+        "translation": {
+          "title": "Track translation coverage",
+          "body": "See which languages are covered, which chapters are stale, and kick off bulk translation runs from here."
+        },
+        "enrichmentCompose": {
+          "title": "Fill in missing lore",
+          "body": "When a translation surfaces an under-described entity, use this panel to draft the missing lore before translating around it."
+        }
+      },
+      "enricher": {
+        "gaps": {
+          "title": "Find what's missing",
+          "body": "This panel finds entities that are mentioned often but barely described, so you know exactly what to enrich next."
+        },
+        "sources": {
+          "title": "Manage your grounding sources",
+          "body": "Enrichment drafts pull from the source material you manage here — keep it organized and license-tagged."
+        }
+      },
+      "manager": {
+        "sharing": {
+          "title": "Control who sees this book",
+          "body": "Set visibility, generate a share link, or invite collaborators — all from here."
+        },
+        "bookSettings": {
+          "title": "Update the book's details",
+          "body": "Title, cover, genre tags, and world link all live in Book Settings — update them any time."
+        }
+      },
+      "editorBasics": {
+        "grammar": {
+          "title": "Grammar & spell check",
+          "body": "Toggle live grammar and spelling checks for the current scene."
+        },
+        "heatmap": {
+          "title": "Continuity heatmap",
+          "body": "Highlights lines that may drift from established canon — worth a glance before you move on."
+        },
+        "glossary": {
+          "title": "Glossary decoration",
+          "body": "Toggles inline glossary hints on hover and the `[[` autocomplete while you write."
+        },
+        "focus": {
+          "title": "Focus mode",
+          "body": "Dims everything but the current paragraph and hides the side panels — good for drafting without distraction."
+        },
+        "scenes": {
+          "title": "Scene Rail",
+          "body": "Shows this chapter's scenes — jump between them, reorder, or track status."
+        },
+        "openJson": {
+          "title": "Open as JSON",
+          "body": "Opens this same chapter as raw structured data — the same document, edits mirror live either way."
+        },
+        "originalSource": {
+          "title": "Original Source",
+          "body": "A read-only view of the pre-translation source text, if this chapter was imported."
+        },
+        "reader": {
+          "title": "Reader",
+          "body": "Opens this chapter in the reader view — how it looks to an actual reader."
+        },
+        "translate": {
+          "title": "Translate",
+          "body": "Jumps straight to this chapter's translation versions — no need to go through the full Translation matrix."
+        },
+        "save": {
+          "title": "Save",
+          "body": "Saves your changes. ⌘S / Ctrl+S works from anywhere in the editor."
+        }
+      },
+      "editorAiTools": {
+        "mode": {
+          "title": "Classic ⇄ AI mode",
+          "body": "Switch between a plain writing surface and one with AI tools available (selection Rewrite/Expand/Describe, continue-from-cursor)."
+        },
+        "continueStep": {
+          "title": "Continue writing with AI",
+          "body": "Streams an AI-generated continuation starting at your cursor. Select any text first to Rewrite, Expand, or Describe it instead."
+        }
+      },
+      "editorDataSafety": {
+        "checkpoints": {
+          "title": "AI-edit checkpoints",
+          "body": "Every AI edit creates a restore point here — undo an AI change even after you've kept writing since."
+        },
+        "revisionHistory": {
+          "title": "Revision history",
+          "body": "Every save is a version you can preview and restore, independent of AI checkpoints."
+        },
+        "publish": {
+          "title": "Publish gate",
+          "body": "Publishing checks for unresolved canon contradictions and incomplete scenes first, so what readers see stays consistent."
+        }
+      },
+      "editorSceneRail": {
+        "rail": {
+          "title": "Scene Rail",
+          "body": "Lists this chapter's scenes — status, synopsis, and reordering all live here."
+        },
+        "anchor": {
+          "title": "Anchor scenes",
+          "body": "Matches scene titles to headings in the prose so the rail can jump straight to them."
+        },
+        "add": {
+          "title": "Add a scene",
+          "body": "Creates a new scene entry for this chapter."
+        }
+      },
+      "editorGlossary": {
+        "toggle": {
+          "title": "Glossary",
+          "body": "Highlights known entity names in your prose on hover, and typing `[[` opens an autocomplete to insert or link one. Turn it off here if it gets in the way while proofreading."
+        }
+      },
+      "editorMediaImage": {
+        "insert": {
+          "title": "Images",
+          "body": "Upload, drag-and-drop, or paste an image — or generate one with AI (you pick the model explicitly, never a silent default). Once added you can replace, resize, caption, add alt text, and browse its version history."
+        }
+      },
+      "editorMediaVideo": {
+        "insert": {
+          "title": "Video",
+          "body": "Upload a video file, or generate a short clip with AI (explicit model picker). Replace, resize, caption, and version history all work the same as images."
+        }
+      },
+      "editorMediaAudio": {
+        "insert": {
+          "title": "Audio",
+          "body": "Insert a standalone audio block — upload a file, or generate narration with AI. Tip: hovering ANY paragraph also shows a quick upload/record/AI-generate bar to attach narration directly to that text, no block needed."
+        }
+      },
+      "composerBasics": {
+        "textarea": {
+          "title": "Write to your co-writer",
+          "body": "Enter sends, Shift+Enter for a new line. Ctrl+Enter forces a quick reply, Ctrl+Shift+Enter forces deeper thinking. Type / for templates and commands, @ to attach context inline."
+        },
+        "permissionMode": {
+          "title": "Ask, Plan, or Write",
+          "body": "Controls how much the agent can do on its own — Ask confirms everything, Plan lays out steps first, Write acts more freely within its allowlist. Ctrl+. cycles through them."
+        },
+        "effort": {
+          "title": "Reasoning effort",
+          "body": "How hard the model thinks before replying — Off/Low/Medium/High/Auto. Hidden for models that can't reason."
+        },
+        "attachContext": {
+          "title": "Attach context",
+          "body": "Pull in specific book, chapter, or glossary entries so the agent has exactly the context it needs for this message."
+        },
+        "send": {
+          "title": "Send",
+          "body": "Sends your message. While the agent is replying, this becomes a Stop button."
+        }
+      },
+      "composerSessions": {
+        "switcher": {
+          "title": "Switch conversations",
+          "body": "Jump between this book's chat sessions, archive old ones, or start a new one — pick a model and a starting persona (Novelist/Translator/Worldbuilder/Editor)."
+        },
+        "rename": {
+          "title": "Rename this chat",
+          "body": "Give the session a name you'll recognize later."
+        },
+        "settings": {
+          "title": "Session settings",
+          "body": "Model, composer/planner model overrides, memory grounding, system prompt, temperature, top-P, and reasoning effort — all scoped to this one session."
+        }
+      },
+      "composerAgentTools": {
+        "rack": {
+          "title": "Tools & skills rack",
+          "body": "Shows every tool and skill the agent can currently use in this chat — add more, or remove ones you don't want it reaching for."
+        },
+        "add": {
+          "title": "Add tools or skills",
+          "body": "Browse everything available by category and enable exactly what this conversation needs."
+        },
+        "inspector": {
+          "title": "Agent runtime inspector",
+          "body": "See what the agent is doing right now — discovering tools, running one, or idle — and expand for the full detail trail."
+        }
+      },
+      "composerContextBudget": {
+        "meter": {
+          "title": "Context budget",
+          "body": "Shows how much of the model's context window this conversation is using. Click it to see a full breakdown by category, and to compact the conversation on demand."
+        }
+      },
+      "composerAiEditReview": {
+        "review": {
+          "title": "AI edits, reviewed before they land",
+          "body": "When the agent proposes a prose edit, a review card appears here for you to accept or reject per change. Riskier actions (batch edits, destructive operations) get their own confirm card with a cost/impact preview first. Anything the agent auto-applies shows up in an Activity strip with a one-click Undo."
+        }
+      },
+      "composerVoice": {
+        "mode": {
+          "title": "Voice mode",
+          "body": "Talk instead of type — a full hands-free conversation with live transcription."
+        },
+        "settings": {
+          "title": "Voice settings",
+          "body": "Pick your speech-to-text and text-to-speech models, voice, speed, and auto-send behavior."
+        }
+      },
+      "composerPopout": {
+        "popout": {
+          "title": "Pop out to its own window",
+          "body": "Opens Compose in a separate OS window — useful for a second monitor. Edits you approve there still land in this book's editor."
+        }
+      }
+    }
+  },
+  "userGuide": {
+    "intro": "Every tool Writing Studio can open, grouped the same way as the Command Palette.",
+    "toursGroup": "Guided tours",
+    "toursEditor": "Editor",
+    "toursComposer": "Composer"
+  },
+  "tourPicker": {
+    "editorBasics": {
+      "label": "Editor Basics",
+      "desc": "The toolbar strip — grammar, heatmap, glossary, focus, scenes, and quick-access buttons."
+    },
+    "editorAiTools": {
+      "label": "AI Writing Tools",
+      "desc": "Continue-from-cursor, selection Rewrite/Expand/Describe, and the Classic/AI mode toggle."
+    },
+    "editorDataSafety": {
+      "label": "Data Safety",
+      "desc": "AI-edit checkpoints, revision history, and the publish gate."
+    },
+    "editorSceneRail": {
+      "label": "Scene Rail",
+      "desc": "Track scenes, reorder them, and keep the rail in sync with your prose."
+    },
+    "editorGlossary": {
+      "label": "Glossary",
+      "desc": "Inline entity hints and the `[[` autocomplete while you write."
+    },
+    "editorMediaImage": {
+      "label": "Media — Images",
+      "desc": "Upload or AI-generate images, with replace/resize/caption/version-history."
+    },
+    "editorMediaVideo": {
+      "label": "Media — Video",
+      "desc": "Upload or AI-generate short video clips."
+    },
+    "editorMediaAudio": {
+      "label": "Media — Audio & Narration",
+      "desc": "Standalone audio blocks, plus per-paragraph narration you can upload, record, or AI-generate."
+    },
+    "composerBasics": {
+      "label": "Composer Basics",
+      "desc": "The message box, permission mode, reasoning effort, attach-context, and send."
+    },
+    "composerSessions": {
+      "label": "Session Management",
+      "desc": "Switch, rename, or start conversations, and open per-session settings."
+    },
+    "composerAgentTools": {
+      "label": "Agent Tools & Skills",
+      "desc": "See and manage which tools and skills the agent can currently reach for."
+    },
+    "composerContextBudget": {
+      "label": "Context Budget",
+      "desc": "How much of the model's context window this conversation is using, and how to compact it."
+    },
+    "composerAiEditReview": {
+      "label": "AI Edit Review & Safety",
+      "desc": "How proposed edits, risky actions, and auto-applied changes get reviewed and can be undone."
+    },
+    "composerVoice": {
+      "label": "Voice Assistant",
+      "desc": "Talk instead of type, with configurable speech-to-text and text-to-speech."
+    },
+    "composerPopout": {
+      "label": "Popout Window",
+      "desc": "Pop Compose out into its own OS window for a second monitor."
+    }
   }
 }

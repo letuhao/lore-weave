@@ -26,6 +26,7 @@ import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
 import { WritingStudioPage } from '@/pages/WritingStudioPage';
 import { PopoutHost } from '@/features/composition/components/workspace/PopoutHost';
+import { StudioPopoutHost } from '@/features/studio/popout/StudioPopoutHost';
 import { ChapterComparePage } from '@/pages/ChapterComparePage';
 import { WikiEditorPage } from '@/pages/WikiEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
@@ -48,6 +49,7 @@ import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampa
 import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
 import { StandardsPage } from '@/features/standards/pages/StandardsPage';
 import { JobsPage } from '@/features/jobs/pages/JobsPage';
+import { ContextInspectorPage } from '@/features/chat/inspector/ContextInspectorPage';
 import { JobDetailPage } from '@/features/jobs/pages/JobDetailPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
@@ -107,6 +109,9 @@ export function App() {
 
           {/* T5.4 M4 — composition panel OS pop-out window (own root, full-screen, auth) */}
           <Route path="/composition/popout" element={<RequireAuth><PopoutHost /></RequireAuth>} />
+
+          {/* #16 2.8 — Studio Compose panel OS pop-out window (own root, full-screen, auth) */}
+          <Route path="/studio/popout" element={<RequireAuth><StudioPopoutHost /></RequireAuth>} />
 
           {/* Translation review — full screen, auth required */}
           <Route path="/books/:bookId/chapters/:chapterId/review/:versionId" element={<RequireAuth><TranslationReviewPage /></RequireAuth>} />
@@ -192,6 +197,10 @@ export function App() {
 
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />
+
+            {/* Context Budget Law §11 — the Context Compiler · Trace Inspector,
+                standalone (also a dockable studio panel). */}
+            <Route path="/context-inspector" element={<ContextInspectorPage />} />
 
             {/* Glossary standards library (per-user, tier-scoped) */}
             <Route path="/standards" element={<Navigate to="/standards/genres" replace />} />

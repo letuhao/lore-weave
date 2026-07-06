@@ -151,6 +151,8 @@ export async function handleFindTools(
   const intent = typeof args?.intent === 'string' ? args.intent : '';
   const rawLimit = typeof args?.limit === 'number' ? args.limit : FIND_TOOLS_TOOL.inputSchema.properties.limit.default;
   const limit = Math.max(1, Math.min(25, rawLimit));
+  // Part A (tool-catalog-simplification spec) — optional group scoping.
+  const group = typeof args?.group === 'string' ? args.group : undefined;
   const unavailable = federation
     .providerAvailability()
     .filter((p) => !p.available)
@@ -165,6 +167,7 @@ export async function handleFindTools(
     limit,
     new Set([FIND_TOOLS_NAME]),
     unavailable,
+    group,
   );
   return {
     content: [{ type: 'text', text: JSON.stringify(payload) }],

@@ -116,6 +116,51 @@ async def backfill_participant_anchors(project_id: UUID) -> dict:
     }
 
 
+@router.post("/{project_id}/backfill-passages")
+async def backfill_passages(project_id: UUID) -> dict:
+    """D-KG-PASSAGES-NOT-INGESTED — (re)ingest L3 ``:Passage`` nodes for a project's
+    already-published chapters, so semantic memory/story search has chapter-body data.
+
+    Publish-time ingestion (CM3c, ``chapter.published``) is SKIPPED when the project
+    has no embedding config at publish time — e.g. the KG project was created/linked
+    to the book AFTER its chapters were published — leaving the semantic index empty
+    while lexical search still works. This backfills passages from each chapter's
+    pinned published revision. Idempotent (re-ingest deletes + re-upserts per chapter);
+    project-scoped; admin/operator-triggered. Resolves user + embedding config +
+    book from ``knowledge_projects``."""
+    row = await get_knowledge_pool().fetchrow(
+        "SELECT user_id, book_id, embedding_model, embedding_dimension "
+        "FROM knowledge_projects WHERE project_id = $1 LIMIT 1",
+        project_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found",
+        )
+    if not settings.neo4j_uri:
+        return {"project_id": str(project_id), "skipped": "neo4j_unavailable"}
+    if row["book_id"] is None:
+        return {"project_id": str(project_id), "skipped": "no_linked_book"}
+    if not row["embedding_model"] or not row["embedding_dimension"]:
+        return {"project_id": str(project_id), "skipped": "no_embedding_config"}
+
+    # Heavy deps — inline import (mirrors the CM3c publish handler).
+    from app.clients.embedding_client import get_embedding_client
+    from app.extraction.passage_backfill import backfill_project_passages
+
+    result = await backfill_project_passages(
+        project_id=project_id, user_id=row["user_id"], book_id=row["book_id"],
+        embedding_model=row["embedding_model"], embedding_dim=row["embedding_dimension"],
+        book_client=get_book_client(), embedding_client=get_embedding_client(),
+    )
+    if result.get("error") == "book_service_unavailable":
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="book-service unavailable listing chapters",
+        )
+    return {"project_id": str(project_id), **result}
+
+
 class BackfillStatusRequest(BaseModel):
     """A2-S1b-2 — the model used to classify existing event summaries into
     coarse status. Mirrors the extraction model-selection shape."""

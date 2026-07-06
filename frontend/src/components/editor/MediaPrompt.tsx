@@ -2,6 +2,7 @@ import { Sparkles, Copy, Check, Wand2, Loader2 } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { ModelPicker } from '@/components/model-picker';
 
 interface MediaPromptProps {
   prompt: string;
@@ -9,11 +10,19 @@ interface MediaPromptProps {
   onRegenerate?: () => void;
   regenerateDisabled?: boolean;
   regenerateLabel?: string;
+  /** Capability filter for the model picker (e.g. 'image_gen', 'video_gen').
+   *  Omit to render the prompt editor without a model picker. */
+  modelCapability?: string;
+  /** Selected user_model_id for this block's AI generation, or null when unset. */
+  modelId?: string | null;
+  onModelChange?: (userModelId: string | null) => void;
 }
 
 /**
  * Collapsible AI prompt editor for media blocks (image, video).
- * Stores the prompt text for AI generation / re-generation.
+ * Stores the prompt text for AI generation / re-generation, plus an explicit
+ * model picker so generation never falls back to a silently-chosen model
+ * (D-MEDIA-MODEL-PICKER — the block persists its own ai_model_id attribute).
  */
 export function MediaPrompt({
   prompt,
@@ -21,6 +30,9 @@ export function MediaPrompt({
   onRegenerate,
   regenerateDisabled = true,
   regenerateLabel,
+  modelCapability,
+  modelId,
+  onModelChange,
 }: MediaPromptProps) {
   const { t } = useTranslation('editor');
   const label = regenerateLabel ?? t('media.regenerate');
@@ -54,6 +66,7 @@ export function MediaPrompt({
       {/* Toggle header */}
       <button
         type="button"
+        data-testid="media-prompt-toggle"
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-1.5 px-3 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
         aria-expanded={open}
@@ -72,6 +85,7 @@ export function MediaPrompt({
       {open && (
         <div className="border-t px-3 py-2">
           <textarea
+            data-testid="media-prompt-textarea"
             ref={textareaRef}
             value={prompt}
             onChange={(e) => onChange(e.target.value)}
@@ -82,10 +96,26 @@ export function MediaPrompt({
           <p className="mt-1 text-[9px] text-muted-foreground/60">
             {t('media.stored_note')}
           </p>
+          {modelCapability && (
+            <div data-testid="media-prompt-model-picker" className="mt-2 flex items-center gap-2">
+              <span className="shrink-0 text-[10px] text-muted-foreground">
+                {t('media.model_label')}
+              </span>
+              <ModelPicker
+                capability={modelCapability}
+                value={modelId ?? null}
+                onChange={onModelChange ?? (() => {})}
+                compact
+                ariaLabel={t('media.model_label')}
+                className="max-w-[220px]"
+              />
+            </div>
+          )}
           <div className="mt-2 flex items-center gap-2">
             {onRegenerate !== undefined && (
               <button
                 type="button"
+                data-testid="media-prompt-regenerate"
                 onClick={onRegenerate}
                 disabled={regenerateDisabled}
                 className={cn(
@@ -105,6 +135,7 @@ export function MediaPrompt({
             )}
             <button
               type="button"
+              data-testid="media-prompt-copy"
               onClick={handleCopy}
               disabled={!hasPrompt}
               className={cn(

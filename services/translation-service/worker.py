@@ -34,6 +34,7 @@ from collections import Counter
 from contextlib import suppress
 
 import aio_pika
+from loreweave_obs import setup_logging
 
 from app.config import settings
 from app.database import create_pool, get_pool
@@ -52,7 +53,7 @@ from app.workers.chapter_worker import handle_chapter_message, _TransientError
 from app.workers.extraction_worker import handle_extraction_job
 from app.workers.glossary_translate_worker import handle_glossary_translate_job
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+setup_logging("translation-service")  # P2·A2a — shared JSON logging + dual trace ids
 log = logging.getLogger(__name__)
 
 _MAX_TRANSIENT_RETRIES = 3

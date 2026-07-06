@@ -123,19 +123,26 @@ async def test_forward_relays_downstream(monkeypatch):
         status_code = 200
         def json(self): return {"job_id": JID, "status": "paused"}
 
+    seen = {}
+
     class _Client:
-        def __init__(self, *a, **k): pass
+        def __init__(self, *a, **k):
+            # P3 SDK-first (W5): build_internal_client bakes X-Internal-Token into
+            # the CLIENT's default headers (passed to the AsyncClient ctor), not the
+            # per-request post() kwargs — so assert it here, not on post().
+            seen["init"] = k
         async def __aenter__(self): return self
         async def __aexit__(self, *a): return False
         async def post(self, url, **kw):
             assert url.endswith(f"/internal/knowledge/jobs/{JID}/pause")
             assert kw["json"] == {"owner_user_id": TEST_USER, "kind": "extraction"}
-            assert "X-Internal-Token" in kw["headers"]
             return _Resp()
 
     monkeypatch.setattr(control.httpx, "AsyncClient", _Client)
     res = await control.forward_control("knowledge", JID, "pause", TEST_USER, "extraction")
     assert res.status_code == 200 and res.body["status"] == "paused"
+    # the internal token rides every request as a baked default header
+    assert seen["init"]["headers"]["X-Internal-Token"]
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,49 @@
+{
+  "anonymous": "अनाम",
+  "joined": "{{date}} को शामिल हुए",
+  "followers": "फ़ॉलोअर्स",
+  "following": "फ़ॉलो कर रहे हैं",
+  "follow": "फ़ॉलो करें",
+  "unfollow": "फ़ॉलो कर रहे हैं",
+  "editProfile": "प्रोफ़ाइल एडिट करें",
+  "loading": "लोड हो रहा है...",
+  "noBooks": "अभी तक कोई किताब प्रकाशित नहीं हुई है।",
+  "noTranslations": "अभी तक कोई अनुवाद नहीं हुआ है।",
+  "errorLoading": "प्रोफ़ाइल लोड करने में विफल।",
+  "followError": "यूज़र को फ़ॉलो करने में विफल।",
+  "unfollowError": "यूज़र को अनफ़ॉलो करने में विफल।",
+  "userNotFound": "यूज़र नहीं मिला।",
+  "achievements": "उपलब्धियाँ",
+  "chapters": "अध्याय",
+  "readers": "पाठक",
+  "recentActivity": "हालिया गतिविधि",
+  "last7d": "पिछले 7 दिन",
+  "last30d": "पिछले 30 दिन",
+  "translationLanguages": "अनुवाद की भाषाएँ",
+  "stats": {
+    "books": "किताबें",
+    "chaptersTranslated": "अनुवादित अध्याय",
+    "totalReaders": "कुल पाठक",
+    "followers": "फ़ॉलोअर्स",
+    "totalTranslations": "कुल अनुवाद",
+    "languages": "भाषाएँ"
+  },
+  "achievement": {
+    "booksPublished": "{{count}} किताब प्रकाशित",
+    "booksPublished_other": "{{count}} किताबें प्रकाशित",
+    "kReaders": "{{count}}K+ पाठक",
+    "hundredReaders": "100+ पाठक",
+    "followers": "{{count}} फ़ॉलोअर्स",
+    "multiLangTranslator": "{{count}}-भाषा अनुवादक",
+    "fiftyChapters": "50+ अध्याय अनुवादित"
+  },
+  "loadError": "किताबें लोड करने में विफल।",
+  "noWiki": "अभी तक कोई विकी योगदान नहीं।",
+  "wikiError": "विकी योगदान लोड करने में विफल।",
+  "untitled": "शीर्षकहीन",
+  "tabs": {
+    "books": "किताबें",
+    "translations": "अनुवाद",
+    "wiki": "विकी योगदान"
+  }
+}

@@ -31,6 +31,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
 from app.logging_config import trace_id_var
@@ -59,20 +60,22 @@ class RosterIncomplete(Exception):
 class KalClient:
     def __init__(self, base_url: str, internal_token: str, timeout_s: float = 5.0) -> None:
         self._base_url = base_url.rstrip("/")
-        self._internal_token = internal_token
-        self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
+        # W3: shared factory bakes X-Internal-Token + JSON + per-request X-Trace-Id
+        # (trace_id_var). The per-request X-User-Id tenancy header stays in _headers.
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, trace_id_provider=trace_id_var.get,
+        )
 
     async def aclose(self) -> None:
         await self._http.aclose()
 
     def _headers(self, user_id: UUID | str | None) -> dict[str, str]:
-        headers = {"X-Internal-Token": self._internal_token}
+        # X-Internal-Token + X-Trace-Id are baked into the client; only the
+        # per-request X-User-Id tenancy header is added here (merged by httpx).
         if user_id is not None:
-            headers["X-User-Id"] = str(user_id)
-        tid = trace_id_var.get()
-        if tid:
-            headers["X-Trace-Id"] = tid
-        return headers
+            return {"X-User-Id": str(user_id)}
+        return {}
 
     async def roster(
         self, book_id: UUID, *, user_id: UUID | str | None = None, strict: bool = False,

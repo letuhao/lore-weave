@@ -28,7 +28,7 @@ describe('ActivityView', () => {
     const row = screen.getByTestId('activity-row').textContent ?? '';
     expect(row).toContain('subagent·create');
     expect(row).toContain('lore-scout');
-    expect(row).toContain('h ago'); // relative time rendered
+    expect(row).toContain('activity.hoursAgo'); // relative-time key rendered (i18n mock returns keys)
   });
 
   it('shows the empty state when there is no activity', async () => {

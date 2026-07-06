@@ -13,7 +13,6 @@ import { getUploadContext } from './ImageBlockNode';
 import { MediaPrompt } from './MediaPrompt';
 import { useResize } from './useResize';
 import { videoGenApi } from '@/features/video-gen/api';
-import { aiModelsApi } from '@/features/ai-models/api';
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
@@ -31,13 +30,6 @@ function getVideoDuration(file: File): Promise<number | null> {
     video.onerror = () => resolve(null);
     video.src = URL.createObjectURL(file);
   });
-}
-
-// History panel callback — shared with ImageBlockNode's _onOpenHistory
-// Video reuses the same callback since VersionHistoryPanel works for any block type
-let _onOpenVideoHistory: ((blockId: string, blockTitle: string, mediaSrc: string | null) => void) | null = null;
-export function setOnOpenVideoHistory(fn: typeof _onOpenVideoHistory) {
-  _onOpenVideoHistory = fn;
 }
 
 // --- Tiptap node extension ---
@@ -59,6 +51,9 @@ export const VideoBlockExtension = Node.create({
       alt: { default: '' },
       caption: { default: '' },
       ai_prompt: { default: '' },
+      /** Explicit user_model_id chosen via the MediaPrompt model picker — never
+       *  a silently-resolved default (D-MEDIA-MODEL-PICKER). */
+      ai_model_id: { default: null },
       title: { default: '' },
       width: { default: 100 },
       duration: { default: null },
@@ -127,6 +122,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const { t } = useTranslation('editor');
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
+  const uploadCtx = getUploadContext(editor);
   const src = node.attrs.src as string | null;
   const alt = (node.attrs.alt as string) || '';
   const caption = (node.attrs.caption as string) || '';
@@ -169,8 +165,8 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploadError(t(err.key, err.params));
         return;
       }
-      const _uploadCtx = getUploadContext();
-      if (!_uploadCtx) {
+      const ctx = getUploadContext(editor);
+      if (!ctx) {
         setUploadError(t('video.upload_unavailable'));
         return;
       }
@@ -189,9 +185,9 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         }
 
         const result = await booksApi.uploadChapterMedia(
-          _uploadCtx.token,
-          _uploadCtx.bookId,
-          _uploadCtx.chapterId,
+          ctx.token,
+          ctx.bookId,
+          ctx.chapterId,
           file,
           (pct) => setUploadPct(pct),
           blockId,
@@ -208,7 +204,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploading(false);
       }
     },
-    [updateAttributes, node.attrs.blockId],
+    [updateAttributes, node.attrs.blockId, editor],
   );
 
   const handleDrop = useCallback(
@@ -241,7 +237,12 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const handleGenerate = useCallback(async () => {
     const prompt = (node.attrs.ai_prompt as string)?.trim();
     if (!prompt) return;
-    const ctx = getUploadContext();
+    const modelId = node.attrs.ai_model_id as string | null;
+    if (!modelId) {
+      setGenerateError(t('video.gen_no_model'));
+      return;
+    }
+    const ctx = getUploadContext(editor);
     if (!ctx) {
       setGenerateError(t('video.gen_save_first'));
       return;
@@ -249,18 +250,10 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     setGenerating(true);
     setGenerateError(null);
     try {
-      // Get preferred or first available video model
-      const { items: models } = await aiModelsApi.listUserModels(ctx.token, { capability: 'video_gen' });
-      const savedId = localStorage.getItem('loreweave:media-prefs') ? JSON.parse(localStorage.getItem('loreweave:media-prefs')!).videoModelId : '';
-      const videoModel = (savedId && models.find(m => m.user_model_id === savedId)) || models.find(m => m.is_active) || models[0];
-      if (!videoModel) {
-        setGenerateError(t('video.gen_no_model'));
-        return;
-      }
       const result = await videoGenApi.generate(ctx.token, {
         prompt,
         model_source: 'user_model',
-        model_ref: videoModel.user_model_id,
+        model_ref: modelId,
         duration_seconds: 5,
         aspect_ratio: '16:9',
       });
@@ -278,13 +271,13 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     } finally {
       setGenerating(false);
     }
-  }, [node.attrs.ai_prompt, updateAttributes]);
+  }, [node.attrs.ai_prompt, node.attrs.ai_model_id, updateAttributes, editor, t]);
 
   // --- Classic mode: compact locked placeholder ---
   if (isClassic) {
     return (
       <NodeViewWrapper className="group my-2">
-        <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
+        <div data-testid="video-block-classic-placeholder" className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
           <Video className="h-4 w-4 flex-shrink-0 opacity-40" />
           <span className="flex-1 truncate text-xs">{title}</span>
           {sizeBytes && <span className="text-[9px] opacity-50">{formatSize(sizeBytes)}</span>}
@@ -292,10 +285,10 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           {caption && (
             <span className="hidden text-[9px] opacity-50 group-hover:inline">{caption}</span>
           )}
-          {src && _onOpenVideoHistory && (
+          {src && uploadCtx?.onOpenVideoHistory && (
             <button
               type="button"
-              onClick={() => _onOpenVideoHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
+              onClick={() => uploadCtx.onOpenVideoHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
               className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-colors hover:bg-card hover:text-foreground"
               title={t('video.version_history')}
             >
@@ -346,6 +339,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           /* Real video player with hover overlay */
           <div className="relative bg-[#0a0a0a]">
             <video
+              data-testid="video-block-player"
               src={src}
               controls
               className="block w-full rounded-t-lg"
@@ -382,6 +376,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         ) : (
           /* Upload zone */
           <div
+            data-testid="video-block-upload-zone"
             className={cn(
               'flex flex-col items-center justify-center gap-2 border-2 border-dashed py-8 transition-colors',
               uploading
@@ -426,6 +421,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {/* Resize handle — bottom-right corner (only when video loaded) */}
         {src && (
           <div
+            data-testid="video-block-resize-handle"
             className={cn(
               'absolute bottom-1 right-1 flex h-4 w-4 cursor-nwse-resize items-center justify-center rounded-sm bg-primary/70 transition-opacity',
               selected ? 'opacity-80' : 'opacity-0 group-hover:opacity-100',
@@ -450,6 +446,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       >
         <Video className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
         <input
+          data-testid="video-block-caption"
           type="text"
           value={caption}
           onChange={(e) => updateAttributes({ caption: e.target.value })}
@@ -466,6 +463,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {src && (
           <button
             type="button"
+            data-testid="video-block-replace"
             onClick={() => fileInputRef.current?.click()}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('video.replace_title')}
@@ -474,10 +472,11 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           </button>
         )}
         {/* Version history */}
-        {src && _onOpenVideoHistory && (
+        {src && uploadCtx?.onOpenVideoHistory && (
           <button
             type="button"
-            onClick={() => _onOpenVideoHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
+            data-testid="video-block-version-history"
+            onClick={() => uploadCtx.onOpenVideoHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('video.version_history')}
           >
@@ -487,6 +486,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {/* Delete video block */}
         <button
           type="button"
+          data-testid="video-block-delete"
           onClick={() => deleteNode()}
           className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           title={t('video.delete_video_block')}
@@ -499,6 +499,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       <div className="border-t" contentEditable={false}>
         <button
           type="button"
+          data-testid="video-block-alt-toggle"
           onClick={() => setShowAlt(!showAlt)}
           className="flex w-full items-center gap-1.5 px-3 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
           aria-expanded={showAlt}
@@ -511,6 +512,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {showAlt && (
           <div className="border-t px-3 py-1.5">
             <input
+              data-testid="video-block-alt-input"
               type="text"
               value={alt}
               onChange={(e) => updateAttributes({ alt: e.target.value })}
@@ -530,8 +532,13 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         prompt={(node.attrs.ai_prompt as string) || ''}
         onChange={(val) => updateAttributes({ ai_prompt: val })}
         onRegenerate={handleGenerate}
-        regenerateDisabled={generating || !(node.attrs.ai_prompt as string)?.trim()}
+        regenerateDisabled={
+          generating || !(node.attrs.ai_prompt as string)?.trim() || !(node.attrs.ai_model_id as string | null)
+        }
         regenerateLabel={generating ? t('media.generating') : t('video.generate')}
+        modelCapability="video_gen"
+        modelId={(node.attrs.ai_model_id as string | null) ?? null}
+        onModelChange={(id) => updateAttributes({ ai_model_id: id })}
       />
       {generateError && (
         <div className="border-t px-3 py-1 text-[10px] text-destructive" contentEditable={false}>

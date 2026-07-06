@@ -14,6 +14,7 @@ from uuid import UUID
 
 import asyncpg
 import httpx
+from loreweave_internal_client import build_internal_client
 from fastapi import APIRouter, Depends, HTTPException
 from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field
@@ -105,11 +106,10 @@ async def _create_extraction_job_core(
     # The grant gate already authorized + proved the book exists (a missing book
     # resolves to `none` → 404). Fetch the projection only for source_language
     # (original_language); ownership is no longer decided here.
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with build_internal_client(app_settings.book_service_internal_url, internal_token=app_settings.internal_service_token, timeout_s=10) as client:
         try:
             r = await client.get(
                 f"{app_settings.book_service_internal_url}/internal/books/{book_id}/projection",
-                headers={"X-Internal-Token": app_settings.internal_service_token},
             )
         except httpx.RequestError:
             raise HTTPException(status_code=502, detail={"code": "EXTRACT_BOOK_SERVICE_UNAVAILABLE", "message": "Book service unavailable"})

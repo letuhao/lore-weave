@@ -27,6 +27,25 @@ def test_always_emits_base_and_intent_hint(intent):
     )
 
 
+@pytest.mark.parametrize(
+    "intent",
+    [Intent.SPECIFIC_ENTITY, Intent.RELATIONAL, Intent.HISTORICAL,
+     Intent.RECENT_EVENT, Intent.GENERAL],
+)
+def test_always_emits_anti_confab_guardrail(intent):
+    """D-AGENT-NEEDLE-CONFAB: every grounded turn must carry the anti-confabulation
+    guardrail — manuscript is the ONLY source of truth (not the model's training
+    knowledge of a published work), search before answering a missing detail, decline
+    rather than invent. Present regardless of which optional blocks are on."""
+    text = build_instructions_block(
+        intent, has_facts=False, has_passages=False, has_absences=False,
+    )
+    assert "ONLY source of truth" in text
+    assert "training knowledge" in text
+    assert "story_search" in text  # steer to the manuscript search, not invention
+    assert "isn't recorded" in text  # decline-not-invent
+
+
 def test_facts_line_toggles_on_has_facts():
     off = build_instructions_block(
         Intent.GENERAL, has_facts=False, has_passages=False, has_absences=False,

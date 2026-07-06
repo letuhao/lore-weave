@@ -1,0 +1,203 @@
+{
+  "title": "확장 프로그램",
+  "tabs": {
+    "skills": "스킬",
+    "mcp": "MCP 서버",
+    "commands": "명령어 및 훅",
+    "subagents": "서브 에이전트",
+    "plugins": "플러그인",
+    "proposals": "제안",
+    "activity": "활동 로그",
+    "ingest": "레지스트리 소스"
+  },
+  "quota": {
+    "skills": "스킬",
+    "mcp": "MCP 서버",
+    "proposals": "제안"
+  },
+  "scope": {
+    "label": "범위:",
+    "mine": "내 확장 프로그램",
+    "orBook": "또는 다음 도서:",
+    "bookPlaceholder": "도서 범위 지정…",
+    "bookHint": "도서 범위 지정 — 새 항목은 이 도서에만 적용됩니다"
+  },
+  "common": {
+    "loading": "로딩 중…",
+    "delete": "삭제",
+    "add": "추가",
+    "cancel": "취소",
+    "back": "뒤로",
+    "next": "다음",
+    "of": "중",
+    "system": "시스템",
+    "book": "도서"
+  },
+  "skills": {
+    "search": "스킬 검색…",
+    "tier": {
+      "all": "등급: 전체",
+      "system": "시스템",
+      "user": "사용자",
+      "book": "도서"
+    },
+    "sort": {
+      "updated": "정렬: 업데이트순",
+      "name": "이름 A→Z",
+      "lastTriggered": "최근 발동"
+    },
+    "empty": "등록된 스킬이 없습니다. 에이전트에게 제안을 요청하거나 에디터에서 직접 생성하세요.",
+    "draft": "초안"
+  },
+  "mcp": {
+    "status": {
+      "active": "활성",
+      "pending": "스캔 중…",
+      "suspended": "격리됨",
+      "error": "연결 불가"
+    },
+    "search": "서버 검색…",
+    "filter": {
+      "all": "상태: 전체",
+      "active": "활성",
+      "pending": "스캔 중",
+      "suspended": "격리됨",
+      "error": "연결 불가"
+    },
+    "add": "+ 서버 추가",
+    "empty": "아직 MCP 서버가 없습니다. 에이전트에게 추가 도구를 제공하려면 서버를 추가하세요.",
+    "review": "⚠ 검토 필요",
+    "detail": {
+      "back": "‹ 뒤로",
+      "connection": "연결",
+      "auth": "인증",
+      "prefix": "접두사",
+      "egress": "송신 허용 목록",
+      "health": "상태",
+      "lastScanned": "마지막 스캔",
+      "credentialStored": "자격 증명 저장됨",
+      "healthOk": "정상 · {{count}}개 도구 · {{latency}}ms",
+      "healthError": "오류: {{error}}",
+      "unreachable": "연결할 수 없음",
+      "scanning": "스캔 중…",
+      "rescan": "다시 스캔",
+      "reconnect": "OAuth 재연결",
+      "acceptRisk": "위험을 감수하고 활성화"
+    },
+    "scan": {
+      "label": "공급망 스캔:",
+      "clean": "정상",
+      "findings": "{{count}}개의 결과 발견",
+      "tools": "도구 ({{count}})",
+      "flagged": "주의 필요"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "연결",
+        "auth": "인증",
+        "scan": "상태 및 스캔",
+        "review": "검토"
+      },
+      "displayName": "표시 이름",
+      "displayNamePlaceholder": "내 도구 서버",
+      "url": "서버 URL (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "인증",
+      "authNone": "없음",
+      "authBearer": "Bearer 토큰",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "인증 없음 — 이 서버는 공개되어 있습니다. 계속하여 등록 및 스캔을 진행하세요.",
+      "bearerLabel": "Bearer 토큰 (금고에 안전하게 저장되며 다시 표시되지 않습니다)",
+      "bearerPlaceholder": "토큰 붙여넣기",
+      "authzEndpoint": "인증 엔드포인트",
+      "tokenEndpoint": "토큰 엔드포인트",
+      "clientId": "클라이언트 ID",
+      "scopes": "범위 (공백으로 구분)",
+      "registering": "등록 중…",
+      "registerScan": "등록 및 스캔",
+      "statusLabel": "상태:",
+      "connectOauth": "OAuth로 연결하기 →",
+      "runScan": "상태 확인 및 스캔 실행",
+      "refresh": "새로고침",
+      "continue": "계속하기",
+      "authKind": "인증 방식: {{kind}}",
+      "enable": "내 세션에 활성화",
+      "done": "완료"
+    }
+  },
+  "commands": {
+    "title": "슬래시 명령어",
+    "description": "채팅창에 <code>/이름</code>을 입력하여 템플릿을 확장하세요. 인자값에는 <code>{{args}}</code> 또는 <code>{{key}}</code>를 사용합니다.",
+    "namePlaceholder": "이름 (예: plan-scene)",
+    "templatePlaceholder": "템플릿: {{topic}}에 관한 장면 계획하기…",
+    "empty": "등록된 명령어가 없습니다."
+  },
+  "hooks": {
+    "title": "훅(Hooks)",
+    "description": "에이전트 루프의 경계에서 실행되는 선언적 규칙입니다. 코드는 필요 없습니다. 이벤트, 선택적 도구 매칭, 그리고 동작만 정의하면 됩니다.",
+    "matchPlaceholder": "도구 매칭 (예: glossary_delete_*)",
+    "textPlaceholder": "삽입/주석을 달 텍스트",
+    "empty": "등록된 훅이 없습니다."
+  },
+  "subagents": {
+    "title": "서브에이전트",
+    "description": "<code>run_subagent</code>를 통해 에이전트가 특정 하위 작업을 위임할 수 있는 지정된 페르소나입니다. 할당된 도구만 사용하는 격리된 턴에서 실행됩니다. 순수 추론/요약용 페르소나를 만들려면 범위를 비워두세요.",
+    "namePlaceholder": "이름 (예: lore-scout)",
+    "scopePlaceholder": "도구 범위: glossary_*, kg_*",
+    "modelPlaceholder": "모델 (선택 사항, user_model ID)",
+    "promptPlaceholder": "시스템 프롬프트 — 이 페르소나의 정체성과 작동 방식...",
+    "create": "서브에이전트 생성",
+    "empty": "등록된 서브에이전트가 없습니다.",
+    "reasoningOnly": "추론 전용 (도구 없음)",
+    "modelPinned": "모델 고정됨"
+  },
+  "plugins": {
+    "description": "플러그인은 스킬, 명령 및 훅을 하나로 묶은 것입니다. 내보내기로 공유하거나 가져오기로 설치할 수 있습니다.",
+    "importing": "가져오는 중…",
+    "import": "번들 가져오기",
+    "invalidJson": "유효한 JSON 파일이 아닙니다.",
+    "notBundle": "LoreWeave 번들이 아닙니다 (manifest.name 누락).",
+    "empty": "등록된 플러그인이 없습니다. 번들을 가져와 설치하세요.",
+    "export": "내보내기"
+  },
+  "proposals": {
+    "status": {
+      "pending": "대기 중",
+      "approved": "승인됨",
+      "rejected": "거절됨",
+      "expired": "만료됨",
+      "all": "전체"
+    },
+    "total": "총 {{count}}개",
+    "empty": "제안된 내용이 없습니다. 에이전트가 제안한 스킬이 여기에 표시되며, 승인 여부를 결정할 수 있습니다.",
+    "approve": "승인",
+    "reject": "거절",
+    "reason": "사유: {{reason}}"
+  },
+  "activity": {
+    "title": "활동 로그",
+    "allKinds": "모든 유형",
+    "range": {
+      "all": "전체 기간",
+      "7d": "최근 7일",
+      "30d": "최근 30일"
+    },
+    "empty": "이 기간 내 활동이 없습니다.",
+    "secondsAgo": "{{count}}초 전",
+    "minutesAgo": "{{count}}분 전",
+    "hoursAgo": "{{count}}시간 전",
+    "daysAgo": "{{count}}일 전"
+  },
+  "ingest": {
+    "title": "레지스트리 소스 (관리자)",
+    "description": "공식 MCP 레지스트리에서 시스템 카탈로그를 큐레이션합니다. 검증 ≠ 안전 — 모든 승인 항목은 연합(federate) 전 SSRF 가드 및 공급망 스캔을 다시 실행합니다.",
+    "all": "전체",
+    "pulling": "가져오는 중…",
+    "pull": "레지스트리 가져오기",
+    "pullResult": "가져오기 완료: 가져온 항목 {{fetched}} · 신규 {{new}} · 업데이트 {{updated}} · 건너뜀(원격 없음) {{skipped}}",
+    "truncated": "· 부분적 (잘림)",
+    "empty": "이 보기에는 항목이 없습니다. 레지스트리를 가져와 큐를 채우세요.",
+    "approve": "승인",
+    "reject": "거절"
+  }
+}

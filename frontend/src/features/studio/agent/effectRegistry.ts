@@ -1,7 +1,8 @@
 // #09 Lane B — the effect registry. After an MCP domain tool SUCCEEDS, code (not the LLM) refreshes
 // the GUI: invalidate queries / reload a Tier-4 hoist / publish a bus slice. Handlers extract IDs
-// from the structured tool result — NEVER paste a prose body into state (G5). This is the SKELETON:
-// the registry + one book-draft handler; the Tier-4 `reload` lands with #04.
+// from the structured tool result — NEVER paste a prose body into state (G5). Real handlers are
+// registered per-domain in `handlers/*.ts` (book/glossary/knowledge/translation as of 2026-07-05);
+// see `useStudioEffectReconciler.ts` for the registration call sites.
 import type { QueryClient } from '@tanstack/react-query';
 import type { StudioHost } from '../host/StudioHostProvider';
 

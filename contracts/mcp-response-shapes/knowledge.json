@@ -1,0 +1,57 @@
+{
+  "GRAPH_EDGE_REF_FIELDS": [
+    "edge_type",
+    "source_id",
+    "target_id",
+    "valid_from",
+    "valid_to"
+  ],
+  "GRAPH_NODE_REF_FIELDS": [
+    "id",
+    "kind",
+    "name"
+  ],
+  "MEMORY_SEARCH_REF_FIELDS": [
+    "score",
+    "snippet",
+    "source_type"
+  ],
+  "MEMORY_TIMELINE_REF_FIELDS": [
+    "event_date",
+    "participants",
+    "title"
+  ],
+  "STORY_SEARCH_REF_FIELDS": [
+    "chapterId",
+    "chapterTitle",
+    "location",
+    "matchType",
+    "score",
+    "sortOrder",
+    "surface"
+  ],
+  "SUBGRAPH_EDGE_REF_FIELDS": [
+    "id",
+    "predicate",
+    "source",
+    "target"
+  ],
+  "SUBGRAPH_NODE_REF_FIELDS": [
+    "id",
+    "kind",
+    "name",
+    "source_project_id"
+  ],
+  "TIMELINE_INSTANCE_REF_FIELDS": [
+    "target_id",
+    "target_label",
+    "valid_from",
+    "valid_to"
+  ],
+  "TRIAGE_GROUP_REF_FIELDS": [
+    "count",
+    "item_type",
+    "signature",
+    "status"
+  ]
+}

@@ -111,7 +111,17 @@ export function staleChapterIds(
   return { ids, cells };
 }
 
-export function TranslationTab({ bookId }: { bookId: string }) {
+export function TranslationTab({
+  bookId,
+  onManageVersions,
+}: {
+  bookId: string;
+  /** DOCK-7 seam: when provided (the `translation` studio panel), a matrix-cell click routes
+   * through this callback (host.openPanel('translation-versions', ...)) instead of navigating —
+   * the studio never unmounts itself to satisfy one panel's link. The classic route page (no
+   * studio host available) omits this prop and falls back to the original route navigation. */
+  onManageVersions?: (chapterId: string, lang: string) => void;
+}) {
   const { t } = useTranslation('translation');
   const { accessToken } = useAuth();
   const navigate = useNavigate();
@@ -232,6 +242,11 @@ export function TranslationTab({ bookId }: { bookId: string }) {
     [coverage, visibleLangs],
   );
   const selectStale = () => setSelectedChapters(new Set(stale.ids));
+
+  const manageVersions = (chapterId: string, lang: string) => {
+    if (onManageVersions) { onManageVersions(chapterId, lang); return; }
+    navigate(`/books/${bookId}/chapters/${chapterId}/translations?lang=${lang}`);
+  };
 
   if (loading) {
     return (
@@ -419,7 +434,7 @@ export function TranslationTab({ bookId }: { bookId: string }) {
                                     version active (the version page was previously unreachable). */}
                                 <button
                                   type="button"
-                                  onClick={() => navigate(`/books/${bookId}/chapters/${row.chapter_id}/translations?lang=${lang}`)}
+                                  onClick={() => manageVersions(row.chapter_id, lang)}
                                   aria-label={t('matrix.cell_manage_versions', { num: cell!.latest_version_num, count: cell!.version_count })}
                                   className="inline-flex items-center justify-center gap-1 rounded px-1.5 py-0.5 cursor-pointer hover:bg-primary/10 hover:underline focus:outline-none focus:ring-1 focus:ring-ring/40"
                                 >

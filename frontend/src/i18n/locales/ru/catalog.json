@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Откройте для себя истории",
+    "subtitle": "Просматривайте публичные романы сообщества LoreWeave. Читайте, переводите и изучайте истории на разных языках.",
+    "search_placeholder": "Поиск по названию, автору или языку...",
+    "search_aria": "Поиск по каталогу",
+    "no_books": "Книги не найдены. Попробуйте изменить поиск или фильтры.",
+    "load_failed": "Не удалось загрузить каталог"
+  },
+  "filter": {
+    "lang_all": "Все",
+    "clear_genres": "Сбросить жанры",
+    "books_found": "Найдено книг: {{count}}",
+    "sort_aria": "Сортировать книги по",
+    "sort": {
+      "recent": "Самые новые",
+      "popular": "Самые популярные",
+      "chapters": "По количеству глав",
+      "alpha": "По алфавиту"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} гл."
+  },
+  "detail": {
+    "breadcrumb_browse": "Каталог",
+    "public_badge": "Публичная",
+    "unlisted_badge": "Не в списке",
+    "chapters_count": "{{count}} глав",
+    "available_languages": "Доступные языки",
+    "original": "Оригинал",
+    "start_reading": "Начать чтение",
+    "no_chapters_yet": "Глав пока нет",
+    "share": "Поделиться",
+    "copy_link": "Копировать ссылку",
+    "loading": "Загрузка...",
+    "chapters_heading": "Главы",
+    "no_chapters_available": "Главы недоступны.",
+    "untitled": "Без названия",
+    "words": "{{count}} слов",
+    "showing_chapters": "Показано {{from}}–{{to}} из {{total}} глав",
+    "stat_chapters": "Главы",
+    "stat_languages": "Языки",
+    "stat_original": "Оригинал",
+    "stat_published": "Опубликовано",
+    "na": "Н/Д",
+    "book_not_found": "Книга не найдена",
+    "back_to_browse": "Вернуться к каталогу",
+    "link_copied": "Ссылка скопирована",
+    "copy_failed": "Не удалось скопировать",
+    "load_chapters_failed": "Не удалось загрузить главы"
+  },
+  "shared": {
+    "indicator": "Вы просматриваете ссылку, которой поделились. Эта книга не находится в общем доступе.",
+    "invalid": "Эта ссылка недействительна или срок её действия истек.",
+    "not_found": "Ссылка не найдена или устарела",
+    "browse_instead": "Перейти к публичным книгам",
+    "back_to_chapters": "Вернуться к главам",
+    "ch_short": "Гл. {{n}}",
+    "load_chapter_failed": "Не удалось загрузить главу: {{error}}"
+  }
+}

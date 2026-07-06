@@ -514,6 +514,25 @@ class PlanArtifact(BaseModel):
     created_at: datetime | None = None
 
 
+# ── PlanForge auto-bootstrap gate (docs/specs/2026-07-06-planforge-auto-bootstrap.md §3.1)
+PlanBootstrapProposalStatus = Literal[
+    "pending", "approved", "rejected", "applying", "applied", "failed",
+]
+
+
+class PlanBootstrapProposal(BaseModel):
+    id: UUID
+    run_id: UUID
+    book_id: UUID
+    owner_user_id: UUID
+    status: PlanBootstrapProposalStatus = "pending"
+    diff: dict[str, Any]
+    applied_results: dict[str, Any] = Field(default_factory=dict)
+    error_detail: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 # ── authoring run (RAID Wave D2, DR-D — the §10 autonomy-dial level-3/4 run)
 AuthoringRunStatus = Literal[
     "draft", "gated", "running", "paused", "failed", "report_ready", "closed",
@@ -543,6 +562,10 @@ class AuthoringRun(BaseModel):
     driver_id: str | None = None
     driver_heartbeat_at: datetime | None = None
     background: bool = False
+    # D-AGENT-MODE §20 D4: server-side auto-pause-after-each-unit policy (default
+    # ON — matches the DB column default). The driver's per-unit boundary check
+    # honors this flag regardless of entry point (Studio UI or headless MCP).
+    pause_after_each_unit: bool = True
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

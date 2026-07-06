@@ -1340,14 +1340,15 @@ class TestK21BToolCallingIntegration:
         assert len(insert_calls) == 1
         # The INSERT SQL writes the tool_calls column.
         assert "tool_calls" in insert_calls[0].args[0]
-        # tool_calls JSON is $11 (second-to-last since W1 appended
-        # context_breakdown as $12).
-        tool_calls_json = insert_calls[0].args[-2]
+        # tool_calls JSON is $11 (third-to-last since W1 appended context_breakdown
+        # as $12, and the stateful-chain feature later appended response_id as $13).
+        tool_calls_json = insert_calls[0].args[-3]
         assert tool_calls_json is not None
         assert json.loads(tool_calls_json) == [tool_call]
-        # W1 — the context_breakdown JSONB ($12, last arg) is persisted and
-        # carries the per-category breakdown incl. the tool_results bucket.
-        ctx_json = insert_calls[0].args[-1]
+        # W1 — the context_breakdown JSONB ($12, second-to-last arg since response_id
+        # was appended as $13) is persisted and carries the per-category breakdown
+        # incl. the tool_results bucket.
+        ctx_json = insert_calls[0].args[-2]
         assert ctx_json is not None
         ctx = json.loads(ctx_json)
         assert set(ctx) >= {"used_tokens", "pct", "breakdown", "baseline_tokens",
@@ -1387,8 +1388,9 @@ class TestK21BToolCallingIntegration:
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
-        # tool_calls JSON ($11, second-to-last arg) is None when no calls were made.
-        assert insert_calls[0].args[-2] is None
+        # tool_calls JSON ($11, third-to-last arg — see note above) is None when
+        # no calls were made.
+        assert insert_calls[0].args[-3] is None
 
     @pytest.mark.asyncio
     async def test_tool_call_chunk_excluded_from_assistant_content(self):
@@ -2014,10 +2016,11 @@ class TestW1ContextBreakdownFrame:
         assert frame["breakdown"]["mcp_tool_schemas"] == 2222
         # baseline includes the schema buckets (fixed overhead before the user word).
         assert frame["baseline_tokens"] >= 111 + 2222
-        # And the same payload was persisted on the assistant row ($12).
+        # And the same payload was persisted on the assistant row ($12, second-to-last
+        # arg since the stateful-chain feature appended response_id as $13).
         insert_calls = [c for c in conn.execute.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
-        persisted = json.loads(insert_calls[0].args[-1])
+        persisted = json.loads(insert_calls[0].args[-2])
         assert persisted["breakdown"]["mcp_tool_schemas"] == 2222
         assert persisted["used_tokens"] == frame["used_tokens"]
 
@@ -2042,7 +2045,8 @@ class TestW1ContextBreakdownFrame:
         insert_calls = [c for c in conn.execute.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]
         assert "context_breakdown" in insert_calls[0].args[0]
-        assert json.loads(insert_calls[0].args[-1])["breakdown"]["history"] >= 0
+        # $12, second-to-last arg since response_id trails it as $13.
+        assert json.loads(insert_calls[0].args[-2])["breakdown"]["history"] >= 0
 
 
 class TestW1CompactionFrame:
@@ -2169,3 +2173,139 @@ class TestResolveAndStashReasoning:
         gp = {"reasoning_effort": "medium"}
         _resolve_and_stash_reasoning(gp, self._creds(kind="lm_studio", name="qwen3-35b"))
         assert gp.get("reasoning_effort") == "medium"
+
+
+class TestGroundingToggle:
+    """M3 (spec docs/specs/2026-07-05-chat-ai-settings.md) — the explicit grounding
+    switch. When the resolved grounding_enabled is False the turn must fetch NO
+    retrieval (build_context called with grounding=False), short-circuiting the
+    'always on, no toggle' gate-disabled force-on branch. Default True preserves
+    the pre-existing always-grounded behavior."""
+
+    async def _run(self, grounding_enabled: bool):
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kclient = _patched_knowledge(stable="", volatile="")
+
+        async def fake_acompletion(**kwargs):
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client", return_value=kclient,
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_acompletion(**k),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="where is Harker?",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                grounding_enabled=grounding_enabled,
+            ):
+                pass
+        return kclient
+
+    @pytest.mark.asyncio
+    async def test_grounding_disabled_fetches_no_retrieval(self):
+        kclient = await self._run(grounding_enabled=False)
+        assert kclient.build_context.call_args.kwargs["grounding"] is False
+
+    @pytest.mark.asyncio
+    async def test_grounding_enabled_default_pulls_grounding(self):
+        kclient = await self._run(grounding_enabled=True)
+        assert kclient.build_context.call_args.kwargs["grounding"] is True
+
+
+class TestContextMode:
+    """D-LONG-WORK-CONTEXT-MODE — `context.mode` auto-detect. The env
+    `t5_intent_gate_enabled` is now a deploy CEILING (default on); the per-turn
+    enablement is the pressure decision. `off` force-disables; `on` forces the
+    tiers allowed; `auto` enables only on a big-lore book (large glossary) — so a
+    small/no-glossary book keeps the tiers OFF even under `auto`. Whether the T5
+    gate ran is observed by whether `detect_entity_presence` was called."""
+
+    async def _run_capture_detect(
+        self, *, context_mode: str, glossary_large: bool = False, t5_ceiling: bool = True,
+    ) -> bool:
+        from app.config import settings
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kclient = _patched_knowledge(stable="", volatile="")
+        # A big-lore book: resolve a book_id + a large known-entity (glossary) set so
+        # auto-detect trips the glossary signal. Small/absent → glossary_size 0.
+        kclient.resolve_book_id = AsyncMock(return_value="book-1" if glossary_large else None)
+        seen = {"called": False}
+
+        def _fake_detect(msg, tokens):
+            seen["called"] = True
+            from app.services.stream_service import EntityPresence
+            return EntityPresence(True, reason="test")
+
+        async def fake_acompletion(**kwargs):
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        big = frozenset(f"entity{i}" for i in range(400))  # ≥ GLOSSARY_LARGE (300)
+        known = AsyncMock()
+        known.get_known_entity_tokens = AsyncMock(return_value=big if glossary_large else frozenset())
+
+        with patch(
+            "app.services.stream_service.get_knowledge_client", return_value=kclient,
+        ), patch(
+            "app.services.stream_service.get_known_entities_client", return_value=known,
+        ), patch(
+            "app.services.stream_service.resolve_grounding_target",
+            return_value=("proj-1", ["proj-1"]),
+        ), patch(
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=lambda **k: fake_acompletion(**k),
+        ), patch(
+            "app.services.stream_service.detect_entity_presence", side_effect=_fake_detect,
+        ), patch.object(settings, "t5_intent_gate_enabled", t5_ceiling):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="q",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                context_mode=context_mode,
+            ):
+                pass
+        return seen["called"]
+
+    @pytest.mark.asyncio
+    async def test_mode_off_bypasses_t5_gate(self):
+        assert await self._run_capture_detect(context_mode="off", glossary_large=True) is False
+
+    @pytest.mark.asyncio
+    async def test_mode_on_forces_t5_gate_even_small_book(self):
+        assert await self._run_capture_detect(context_mode="on", glossary_large=False) is True
+
+    @pytest.mark.asyncio
+    async def test_mode_auto_small_book_keeps_tiers_off(self):
+        assert await self._run_capture_detect(context_mode="auto", glossary_large=False) is False
+
+    @pytest.mark.asyncio
+    async def test_mode_auto_large_book_enables_tiers(self):
+        assert await self._run_capture_detect(context_mode="auto", glossary_large=True) is True
+
+    @pytest.mark.asyncio
+    async def test_deploy_ceiling_off_force_disables_even_mode_on(self):
+        """The env flag is a deploy KILL-SWITCH: t5_intent_gate_enabled=False must
+        force the gate OFF even under mode='on' + a large glossary (effective =
+        AND(deploy_ceiling, enablement)). Guards the SET-correct ceiling semantics."""
+        # mode='on' + large glossary would enable — but the ceiling is off.
+        assert await self._run_capture_detect(
+            context_mode="on", glossary_large=True, t5_ceiling=False,
+        ) is False

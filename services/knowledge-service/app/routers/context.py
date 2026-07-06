@@ -87,6 +87,16 @@ class ContextBuildRequest(BaseModel):
     # S6 (optional): the display/target language for entity aliases shown in context.
     # Omitted → source-language aliases only (back-compat).
     language: str | None = Field(default=None, max_length=35)
+    # T5 (Context Budget Law D2): the entity-presence intent gate's decision. False
+    # ⇒ the turn references no book lore, so skip the EXPENSIVE retrieval (passages +
+    # semantic glossary + LLM) and serve the light static path. Default True keeps
+    # every existing caller's behavior byte-identical (a versioned opt-in).
+    grounding: bool = True
+    # M1b (2026-07-06): the chapter the editor `<Chat>` panel is open on. When
+    # present (editor turns only), the Mode-3 L3 ranker boosts passages near this
+    # chapter (working-scope boost). Omitted on every non-editor turn → boost inert.
+    # Additive/optional so an older chat-service that never sends it is byte-identical.
+    current_chapter_id: UUID | None = None
 
 
 class ContextBuildResponse(BaseModel):
@@ -123,6 +133,27 @@ class ContextBuildResponse(BaseModel):
     sections: dict[str, int] = {}
 
 
+class ProjectBookResponse(BaseModel):
+    book_id: str | None = None
+
+
+@router.get("/project-book/{project_id}", response_model=ProjectBookResponse)
+async def project_book(
+    project_id: UUID,
+    user_id: UUID,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> ProjectBookResponse:
+    """T5 (audit) — resolve a knowledge project's linked `book_id` for the chat
+    entity-presence gate. The gate needs the BOOK id (glossary known-entities is
+    book-scoped) but a chat session carries the KNOWLEDGE project id; this is the
+    project→book bridge, resolvable on turn 1 (owner-scoped via projects_repo.get).
+    `book_id=None` for a Mode-1 (no-book) project or a stale/foreign id — the gate
+    then stays open (bias-to-include)."""
+    project = await projects_repo.get(user_id, project_id)
+    book_id = str(project.book_id) if project and project.book_id else None
+    return ProjectBookResponse(book_id=book_id)
+
+
 @router.post("/build", response_model=ContextBuildResponse)
 async def build(
     req: ContextBuildRequest,
@@ -153,6 +184,8 @@ async def build(
             language=req.language,
             entity_access_repo=entity_access_repo,
             project_ids=req.project_ids,
+            grounding=req.grounding,
+            current_chapter_id=req.current_chapter_id,
         )
         _mode_label = built.mode
     except ProjectNotFound:

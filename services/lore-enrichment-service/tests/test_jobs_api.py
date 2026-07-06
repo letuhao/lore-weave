@@ -33,7 +33,7 @@ BOOK = "019e7850-a8d9-78dd-8b2a-f33ccc2396ad"
 def _bearer(sub: str = OWNER) -> str:
     """A bearer whose unverified `sub` resolves to the acting principal (the
     handler decodes `sub` without signature verification at this stage)."""
-    return pyjwt.encode({"sub": sub}, "irrelevant", algorithm="HS256")
+    return pyjwt.encode({"sub": sub, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
 
 
 # ── fake async DB seam ────────────────────────────────────────────────────────

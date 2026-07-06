@@ -14,6 +14,8 @@ from app.models import (
     ChatMessage,
     ContextHistoryPoint,
     ContextHistoryResponse,
+    ContextTracePoint,
+    ContextTraceResponse,
     LatestContextBudgetResponse,
     MessageListResponse,
     SendMessageRequest,
@@ -234,6 +236,71 @@ async def latest_context_budget(
     return LatestContextBudgetResponse(budget=frame if isinstance(frame, dict) else None)
 
 
+@router.get("/{session_id}/context-trace", response_model=ContextTraceResponse)
+async def context_trace(
+    session_id: UUID,
+    # Window to the most recent `limit` turns. Client-side pagination + status/search
+    # filtering run over the returned set (a session's turn count is bounded — not
+    # thousands — and the Inspector paginates the loaded series in the browser).
+    limit: int = Query(100, ge=1, le=200),
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> ContextTraceResponse:
+    """The Context Compiler · Trace Inspector's data source (spec §11).
+
+    Returns the ordered SERIES of per-turn contextBudget frames VERBATIM (raw_tokens,
+    reduction_pct, target, status_flags, retrieval_mode, intent, entity_presence, the
+    trace spans, the allocation breakdown) plus the user message that drove each turn —
+    everything the Inspector renders per turn. Owner-gated like the sibling routes;
+    windowed to the most recent `limit` turns, returned oldest-first."""
+    exists = await pool.fetchval(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    # LEFT JOIN the parent user turn so the Inspector shows what the author typed.
+    # branch_id=0 pins the live timeline; only assistant turns carrying a frame.
+    rows = await pool.fetch(
+        """
+        SELECT a.sequence_num, a.created_at, a.input_tokens, a.output_tokens,
+               a.context_breakdown, u.content AS user_message
+        FROM (
+            SELECT sequence_num, created_at, input_tokens, output_tokens,
+                   context_breakdown, parent_message_id
+            FROM chat_messages
+            WHERE session_id=$1 AND owner_user_id=$2 AND branch_id=0
+              AND role='assistant' AND context_breakdown IS NOT NULL
+            ORDER BY sequence_num DESC
+            LIMIT $3
+        ) a
+        LEFT JOIN chat_messages u ON u.message_id = a.parent_message_id
+        ORDER BY a.sequence_num ASC
+        """,
+        str(session_id), user_id, limit,
+    )
+
+    items: list[ContextTracePoint] = []
+    for r in rows:
+        frame = _parse_content_parts(r["context_breakdown"])
+        # Skip resume-path turns that persisted no measured frame (no breakdown) —
+        # they have no allocation/telemetry for the Inspector to render.
+        if not isinstance(frame, dict) or not frame.get("breakdown"):
+            continue
+        items.append(
+            ContextTracePoint(
+                sequence_num=r["sequence_num"],
+                created_at=r["created_at"],
+                input_tokens=r["input_tokens"],
+                output_tokens=r["output_tokens"],
+                user_message=r["user_message"],
+                frame=frame,
+            )
+        )
+    return ContextTraceResponse(items=items)
+
+
 @router.get("/{session_id}/branches")
 async def list_branches(
     session_id: UUID,
@@ -296,6 +363,37 @@ async def send_message(
 
     model_source = session["model_source"]
     model_ref = str(session["model_ref"])
+
+    # ── Chat & AI settings (M3) — resolve grounding on/off for this turn:
+    # session override ▸ account default ▸ system default (ON). OFF short-circuits
+    # retrieval + the T4 story-state net (the "grounding always on, no toggle"
+    # silent default is now a real, per-user/per-session control).
+    _grounding_pref = session.get("grounding_enabled")
+    _ctx_override = session.get("context_overrides") or {}
+    if isinstance(_ctx_override, str):
+        import json as _json
+        _ctx_override = _json.loads(_ctx_override) or {}
+    _ctx_mode = _ctx_override.get("mode")
+    # permission_mode is per-turn (default None ⇒ omitted); fall back to the
+    # account default before "write" so the panel's "tool authority" is honored.
+    _permission = body.permission_mode
+    if _grounding_pref is None or _ctx_mode is None or _permission is None:
+        from app.db.user_chat_ai_prefs import get_prefs
+        _acct_prefs = await get_prefs(pool, owner_user_id=user_id)
+        if _grounding_pref is None:
+            _grounding_pref = _acct_prefs.grounding.get("grounding_enabled")
+        if _ctx_mode is None:
+            _ctx_mode = _acct_prefs.context.get("mode")
+        if _permission is None:
+            _permission = _acct_prefs.behavior.get("permission_mode")
+    turn_permission_mode = _permission or "write"
+    turn_grounding_enabled = True if _grounding_pref is None else bool(_grounding_pref)
+    # Chat & AI settings (M4) — long-work context mode. 'off' force-disables the
+    # context-budget tiers (T5 gate / T4 story-state) for this session regardless
+    # of the deploy env default; 'auto'/'on' defer to the env ceiling (§5). The
+    # fine-grained per-tier + compaction-path consumption is tracked separately
+    # (D-CHATAI-M4-TIER-CONSUMPTION) — these tiers are eval-proven inert + default-off.
+    turn_context_mode = _ctx_mode or "auto"
 
     # ── P4 REG-P4-01: expand a user-authored slash command (/name args) in place —
     # BEFORE the user message is persisted + streamed, so both the transcript and the
@@ -438,8 +536,11 @@ async def send_message(
             enabled_skills=body.enabled_skills,
             # #09 Lane A — presence enables the studio dock-nav frontend tools.
             studio_context=body.studio_context.model_dump() if body.studio_context else None,
-            # RAID Wave C2 (DR-C2) — HITL permission mode (ask|write, default write).
-            permission_mode=body.permission_mode,
+            # RAID Wave C2 (DR-C2) — HITL permission mode, resolved body ▸ account
+            # default ▸ "write" (Chat & AI settings).
+            permission_mode=turn_permission_mode,
+            grounding_enabled=turn_grounding_enabled,
+            context_mode=turn_context_mode,
         ),
         media_type="text/event-stream",
         headers=headers,

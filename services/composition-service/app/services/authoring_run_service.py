@@ -111,6 +111,37 @@ logger = logging.getLogger(__name__)
 # plan (plan_run_status_chk vocabulary — there is no literal 'approved').
 _APPROVED_PLAN_STATUSES = ("validated", "compiled")
 
+# D-RAID-ALLOWLIST-ENFORCE / mcp-tool-io.md IN-3 (/review-impl, 2026-07-05): the
+# closed set of composition tools a drafting run may declare in `tool_allowlist`.
+# NOT yet consulted by the driver — v1's drafting seam invokes no agent tools, so
+# there is nothing to gate against this snapshot yet (edge #5's second half,
+# tracked separately). This is deliberately the prose/outline-adjacent subset,
+# not every composition_* tool: admin/motif/canon-rule/authoring-run-control
+# tools are excluded because they are not something a drafting seam would ever
+# invoke mid-chapter. SINGLE SOURCE OF TRUTH — both the REST router
+# (`AuthoringRunCreate.tool_allowlist`) and the MCP tool
+# (`_AuthoringRunCreateArgs.tool_allowlist`) import this tuple for their
+# `Literal[...]` schema constraint; `gate()` below re-validates against the same
+# set as the shared enforcement backstop. Extend this tuple (not a duplicate
+# list) when a new drafting-relevant tool ships.
+ALLOWLISTABLE_TOOLS: tuple[str, ...] = (
+    "composition_get_work",
+    "composition_list_outline",
+    "composition_get_outline_node",
+    "composition_get_prose",
+    "composition_create_work",
+    "composition_outline_node_create",
+    "composition_outline_node_update",
+    "composition_outline_node_delete",
+    "composition_outline_node_restore",
+    "composition_scene_link_create",
+    "composition_scene_link_delete",
+    "composition_write_prose",
+    "composition_publish",
+    "composition_generate",
+)
+_ALLOWLISTABLE_TOOLS_SET = frozenset(ALLOWLISTABLE_TOOLS)
+
 # Keep strong references to in-flight driver tasks (create_task alone is
 # GC-collectable) + let tests/ops introspect. Keyed by run_id. Module-level on
 # purpose: services are constructed per-request (deps.py) but the driver-task
@@ -630,13 +661,18 @@ class AuthoringRunService:
         tool_allowlist: list[str],
         params: dict[str, Any] | None = None,
         background: bool = False,
+        pause_after_each_unit: bool = True,
     ) -> AuthoringRun:
         """Create the run in `draft`. Deliberately permissive — ALL semantic
         validation happens at gate() (the start-gate is the enforcement point);
         only the referenced plan_run must exist+be owned (FK + tenancy).
         `background` (D4): a pure FE display/filter flag surfaced in GET/list —
         sweep-resume durability applies to BOTH fg and bg runs; the real fg/bg
-        UX is FE-side later."""
+        UX is FE-side later. `pause_after_each_unit` (D-AGENT-MODE §20 D4):
+        server-side auto-pause policy, default True (safe — matches the DB
+        column default); the REST router's Pydantic model also defaults it True
+        for the human path, and the MCP create tool requires it explicitly (no
+        silent default there — D4b)."""
         plan = await self._plan_runs.get_for_owner(owner_user_id, book_id, plan_run_id)
         if plan is None:
             raise LookupError("plan run not found")
@@ -645,7 +681,24 @@ class AuthoringRunService:
             plan_run_id=plan_run_id, level=level, scope=scope,
             budget_usd=budget_usd, tool_allowlist=tool_allowlist,
             params=params or {}, background=background,
+            pause_after_each_unit=pause_after_each_unit,
         )
+
+    async def set_pause_policy(
+        self, owner_user_id: UUID, run_id: UUID, pause_after_each_unit: bool,
+    ) -> AuthoringRun:
+        """D-AGENT-MODE §20 D4a: flip the auto-pause-after-each-unit policy —
+        allowed at any status except `closed` (a run-header toggle, not itself
+        an FSM transition)."""
+        run = await self._require(owner_user_id, run_id)
+        if run.status == "closed":
+            raise TransitionConflictError("cannot change pause policy on a closed run")
+        updated = await self._runs.set_pause_policy(
+            owner_user_id, run_id, pause_after_each_unit,
+        )
+        if updated is None:
+            raise TransitionConflictError("run closed while updating pause policy (raced)")
+        return updated
 
     async def gate(
         self,
@@ -695,6 +748,16 @@ class AuthoringRunService:
             raise ValueError(
                 "tool_allowlist must be a non-empty list of tool names (edge #5 — "
                 "an autonomous run declares its side-effecting tools up front)"
+            )
+        # IN-3 backstop (schema-level Literal[] is the primary guard on both entry
+        # points; this re-checks the same closed set here since gate() is the ONE
+        # chokepoint both REST and MCP funnel through, in case either schema is
+        # ever bypassed — e.g. a direct service call in a test or a future 3rd caller).
+        unknown = [t for t in allow if t not in _ALLOWLISTABLE_TOOLS_SET]
+        if unknown:
+            raise ValueError(
+                f"tool_allowlist contains unknown/non-drafting tool(s): {unknown} — "
+                f"must be a subset of {sorted(_ALLOWLISTABLE_TOOLS_SET)}"
             )
 
         try:
@@ -1173,6 +1236,30 @@ class AuthoringRunService:
                 if not await self._critique_unit(owner_user_id, run_id, run,
                                                  chapter_id):
                     return
+            # D-AGENT-MODE §20 D4: server-side auto-pause-after-each-unit. THIS
+            # unit (run.current_unit, from the snapshot claimed at the top of
+            # this iteration) is now fully complete (drafted + critiqued) — if
+            # the run's policy asks to pause after every unit AND more scope
+            # remains, stop HERE at the unit boundary via the SAME guarded
+            # transition the budget/critic breakers use, rather than looping
+            # into the next unit unconditionally. Never pauses after the LAST
+            # unit — that case falls through to the top-of-loop scope-exhausted
+            # check (→ report_ready), preserving existing end-of-scope behavior.
+            # This holds regardless of entry point (Studio UI or headless MCP
+            # start/resume) because the flag lives on the run row, not a client
+            # poll.
+            if run.pause_after_each_unit and (run.current_unit + 1) < len(scope):
+                paused = await self._runs.transition(
+                    owner_user_id, run_id,
+                    from_statuses=("running",), to_status="paused",
+                    breaker_state={
+                        "reason": "pause_after_each_unit",
+                        "unit": run.current_unit,
+                    },
+                )
+                if paused is not None:
+                    await self._notify_terminal(paused)
+                return
 
     async def _critique_unit(
         self,
@@ -1323,10 +1410,13 @@ class AuthoringRunService:
                     f"{units_drafted} chapter(s) drafted before the stop"
                 )
             notify = self._notify_impl
-            if notify is None:  # lazy real client (keeps unit tests httpx-free)
-                from app.clients.notification_client import NotificationClient
+            if notify is None:  # lazy real producer (keeps unit tests db/httpx-free)
+                # D-C-PRODUCER-OUTBOX — durable outbox enqueue (relay-delivered),
+                # not the former fire-and-forget POST that was lost if the ingest
+                # was down. See app/clients/outbox_notifier.py for the tx rationale.
+                from app.clients.outbox_notifier import OutboxNotifier
 
-                notify = NotificationClient()
+                notify = OutboxNotifier()
             await notify.notify(
                 run.owner_user_id,
                 title=title,
@@ -1337,6 +1427,10 @@ class AuthoringRunService:
                     "status": run.status,
                     "units_drafted": units_drafted,
                     "spent_usd": str(run.spent_usd),
+                    # D4 follow-up (D-AGENT-MODE-NOTIFY): deep-link so clicking the
+                    # notification lands on Mission Control for THIS run, not just
+                    # a title in the inbox. Resolved by frontend/studioLinks.ts.
+                    "link": f"/books/{run.book_id}/agent-mode/runs/{run.run_id}",
                 },
             )
         except Exception:  # noqa: BLE001 — best-effort by contract

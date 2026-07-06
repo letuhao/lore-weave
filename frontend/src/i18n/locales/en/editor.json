@@ -173,7 +173,8 @@
     "copied": "Copied",
     "copy_prompt": "Copy prompt",
     "regenerate": "Re-generate",
-    "generating": "Generating..."
+    "generating": "Generating...",
+    "model_label": "AI model"
   },
   "image": {
     "err_type": "Unsupported type: {{type}}. Use PNG, JPG, GIF, or WebP.",

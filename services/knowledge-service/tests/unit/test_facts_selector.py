@@ -373,3 +373,263 @@ async def test_select_returns_empty_when_name_unresolved(monkeypatch):
         intent=_intent(entities=("NotInGraph",)),
     )
     assert result.total() == 0
+
+
+# ── M1a: passage→graph anchor bridge ─────────────────────────────────
+
+from app.context.selectors.facts import (  # noqa: E402
+    expand_facts_from_passages,
+    select_bridge_anchor_names,
+)
+
+
+def test_bridge_anchor_names_skips_anchored_dedups_and_caps(monkeypatch):
+    """Rank-order, first-seen wins, skip already-anchored, cap — deterministic."""
+    # Controlled candidate stream so the test isn't coupled to extract_candidates'
+    # proper-noun heuristic — we're testing the dedup/skip/cap logic here.
+    per_passage = {
+        "p1": ["Dracula", "Harker"],
+        "p2": ["Harker", "Mina", "Bistritz"],
+    }
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: per_passage[text],
+    )
+    out = select_bridge_anchor_names(
+        ["p1", "p2"],
+        already_anchored_names={"dracula"},  # message already anchored Dracula
+        max_anchors=2,
+    )
+    # Dracula skipped (already anchored); Harker first-seen then Mina; cap at 2
+    # so Bistritz never makes it. Order preserved = passage rank order.
+    assert out == ["Harker", "Mina"]
+
+
+def test_bridge_anchor_names_empty_passages():
+    assert select_bridge_anchor_names([], set()) == []
+
+
+@pytest.mark.asyncio
+async def test_expand_from_passages_happy_path(monkeypatch):
+    """Resolve passage anchors → 1-hop expand → new fact strings."""
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: ["Harker"],
+    )
+    harker = _entity("Harker", "e-harker")
+    r1 = _relation("r1", "Harker", "e-harker", "works_for", "Hawkins", "e-hawk")
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[harker]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_relations_for_entity",
+        AsyncMock(return_value=[r1]),
+    )
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["a passage mentioning Harker"],
+        already_anchored_names=set(),
+        existing_facts=set(),
+    )
+    assert out == ["Harker — works_for — Hawkins"]
+
+
+@pytest.mark.asyncio
+async def test_expand_dedups_against_existing_facts(monkeypatch):
+    """A relation already in the message-anchored facts is NOT re-added."""
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: ["Harker"],
+    )
+    harker = _entity("Harker", "e-harker")
+    r1 = _relation("r1", "Harker", "e-harker", "works_for", "Hawkins", "e-hawk")
+    r2 = _relation("r2", "Harker", "e-harker", "knows", "Mina", "e-mina")
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[harker]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_relations_for_entity",
+        AsyncMock(return_value=[r1, r2]),
+    )
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["Harker"],
+        already_anchored_names=set(),
+        existing_facts={"Harker — works_for — Hawkins"},  # already present
+    )
+    assert out == ["Harker — knows — Mina"]  # r1 deduped out
+
+
+@pytest.mark.asyncio
+async def test_expand_dedups_by_entity_id(monkeypatch):
+    """Two surface names resolving to the same entity expand it only once."""
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: ["Harker", "Jonathan"],
+    )
+    harker = _entity("Harker", "e-harker")
+    r1 = _relation("r1", "Harker", "e-harker", "works_for", "Hawkins", "e-hawk")
+    find_by_name = AsyncMock(return_value=[harker])  # both names → same entity
+    find_1hop = AsyncMock(return_value=[r1])
+    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", find_by_name)
+    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", find_1hop)
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["Harker Jonathan"],
+        already_anchored_names=set(), existing_facts=set(),
+    )
+    assert out == ["Harker — works_for — Hawkins"]
+    # both names resolved, but the 1-hop expansion ran only ONCE (dedup by id)
+    assert find_1hop.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_expand_skips_unresolved_names(monkeypatch):
+    """A candidate that resolves to no entity is skipped, not raised."""
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: ["Ghost"],
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[]),  # no match
+    )
+    find_1hop = AsyncMock(return_value=[])
+    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", find_1hop)
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["Ghost"], already_anchored_names=set(), existing_facts=set(),
+    )
+    assert out == []
+    find_1hop.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expand_caps_total_new_facts(monkeypatch):
+    """max_new_facts bounds the output even with many relations."""
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: ["Harker"],
+    )
+    harker = _entity("Harker", "e-harker")
+    many = [
+        _relation(f"r{i}", "Harker", "e-harker", f"pred{i}", f"Obj{i}", f"e{i}")
+        for i in range(10)
+    ]
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[harker]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_relations_for_entity",
+        AsyncMock(return_value=many),
+    )
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["Harker"], already_anchored_names=set(), existing_facts=set(),
+        max_new_facts=3,
+    )
+    assert len(out) == 3
+
+
+# ── multilingual M4 fix: sentence-junk filter + resolve-then-cap ──────────────
+# The passage→graph bridge reuses `extract_candidates` (a user-MESSAGE proper-noun
+# extractor) over passage PROSE. On Vietnamese (corpus 019f1783) that stream is
+# dominated by quoted dialogue sentences + sentence-initial common words, which a
+# plain cap-then-resolve wasted anchor slots on (1/6 resolved). These guard the two
+# bridge-local mitigations.
+
+
+def test_bridge_drops_quoted_sentence_candidates(monkeypatch):
+    """A quoted-dialogue-sentence candidate is filtered before it eats a cap slot,
+    while real (short, punctuation-free) names survive — incl. multi-token vi names."""
+    per_passage = {
+        "p1": [
+            "Không thể... không thể để nó nuốt chửng mình!",  # quoted sentence → drop
+            "Một",                                              # kept (resolves later, harmless)
+            "Lâm Chấn Nhạc",                                    # real name → keep
+        ],
+        "p2": [
+            "Cửu U Ma Cơ",     # 4-token name, no interior sentence punct → keep
+            "Coutts & Co.",    # trailing abbrev dot (no following space) → keep
+        ],
+    }
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: per_passage[text],
+    )
+    out = select_bridge_anchor_names(["p1", "p2"], set(), max_anchors=10)
+    assert "Không thể... không thể để nó nuốt chửng mình!" not in out
+    assert "Lâm Chấn Nhạc" in out
+    assert "Cửu U Ma Cơ" in out
+    assert "Coutts & Co." in out
+
+
+@pytest.mark.asyncio
+async def test_expand_resolve_then_cap_junk_does_not_starve(monkeypatch):
+    """Unresolvable junk ranked ABOVE two real names must not consume the anchor
+    budget: with max_anchors=2 both real entities still expand (cap-then-resolve
+    would have stopped at the junk and returned nothing)."""
+    # 5 junk candidates (unresolvable) then 2 real names, all within one passage.
+    cands = ["Một", "Sự", "Không", "Thần", "Giọng", "Lin", "Kai"]
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: cands,
+    )
+    lin = _entity("Lin", "e-lin")
+    kai = _entity("Kai", "e-kai")
+
+    async def _resolve(session, *, user_id, project_id, name):
+        return {"Lin": [lin], "Kai": [kai]}.get(name, [])  # only Lin/Kai resolve
+
+    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", _resolve)
+    r_lin = _relation("r1", "Lin", "e-lin", "mentor_of", "Kai", "e-kai")
+    r_kai = _relation("r2", "Kai", "e-kai", "member_of", "Sect", "e-sect")
+    rels = {"e-lin": [r_lin], "e-kai": [r_kai]}
+
+    async def _one_hop(session, *, user_id, project_id, entity_id, min_confidence, limit):
+        return rels.get(entity_id, [])
+
+    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", _one_hop)
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["prose"], already_anchored_names=set(), existing_facts=set(),
+        max_anchors=2,
+    )
+    # Both real names resolved & expanded despite 5 junk candidates ranked first.
+    assert out == ["Lin — mentor_of — Kai", "Kai — member_of — Sect"]
+
+
+@pytest.mark.asyncio
+async def test_expand_resolved_anchor_cap_bounds_expansion(monkeypatch):
+    """max_anchors bounds RESOLVED anchors: with 3 resolvable names but
+    max_anchors=1, only the first is expanded."""
+    cands = ["Aaa", "Bbb", "Ccc"]
+    monkeypatch.setattr(
+        "app.context.selectors.facts.extract_candidates",
+        lambda text, **kw: cands,
+    )
+    ents = {n: [_entity(n, f"e-{n}")] for n in cands}
+
+    async def _resolve(session, *, user_id, project_id, name):
+        return ents.get(name, [])
+
+    one_hop = AsyncMock(return_value=[_relation("r", "X", "e-x", "knows", "Y", "e-y")])
+    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", _resolve)
+    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", one_hop)
+    out = await expand_facts_from_passages(
+        MagicMock(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        passage_texts=["prose"], already_anchored_names=set(), existing_facts=set(),
+        max_anchors=1,
+    )
+    assert one_hop.await_count == 1  # only ONE anchor expanded
+    assert len(out) == 1

@@ -1,0 +1,1161 @@
+{
+  "page": {
+    "title": "지식",
+    "subtitle": "AI가 기억할 프로젝트, 글로벌 바이오 및 개인정보 제어 설정",
+    "tabs": {
+      "label": "지식 탭",
+      "projects": "프로젝트",
+      "jobs": "작업",
+      "global": "글로벌",
+      "entities": "엔티티",
+      "timeline": "타임라인",
+      "raw": "원시 데이터",
+      "privacy": "개인정보",
+      "insights": "인사이트"
+    }
+  },
+  "graph": {
+    "title": "지식 그래프",
+    "counts": "{{nodes}} 노드 · {{edges}} 관계",
+    "truncated": "상위 {{n}}개 표시 — 노드를 확장하여 더 보기",
+    "expanding": "확장 중...",
+    "hint": "스크롤하여 확대/축소 · 빈 공간을 드래그하여 이동 · 노드를 클릭하여 상세 정보 보기 · ⊞를 눌러 확장",
+    "loading": "그래프 로딩 중...",
+    "loadFailed": "그래프 로드 실패: {{error}}",
+    "empty": "지식 그래프가 없습니다 — 프로젝트를 구축하여 네트워크를 탐색하세요."
+  },
+  "schemaSection": {
+    "title": "스키마",
+    "subtitle": "이 프로젝트의 지식 그래프 스키마(노드 종류, 엣지 유형, 사실 유형 및 어휘)를 작성합니다. 수정 사항은 이 프로젝트의 그래프에 적용됩니다.",
+    "editCta": "스키마 편집",
+    "freeEdges": "어휘 외 관계 허용 (프리 엣지).",
+    "closedEdges": "관계가 선언된 엣지 유형으로 제한됩니다. 그 외의 관계는 분류(triage)로 이동합니다.",
+    "error": "이 프로젝트의 스키마를 불러올 수 없습니다.",
+    "emptyHelp": "이 프로젝트에는 아직 스키마가 없습니다. 처음부터 시작하거나, 템플릿을 복제하거나, 기존 스키마를 채택하세요.",
+    "newBlank": "새 빈 스키마",
+    "schemaNamePlaceholder": "스키마 이름",
+    "createBlankButton": "빈 스키마 생성",
+    "created": "스키마 생성됨",
+    "cloneTemplate": "템플릿 복제",
+    "pickTemplate": "템플릿 선택...",
+    "cloneButton": "내 스키마로 복제",
+    "cloned": "템플릿 복제 완료",
+    "adoptTemplate": "템플릿 채택",
+    "adoptHelp": "템플릿을 이 프로젝트로 복사합니다 (먼저 용어집을 확인합니다).",
+    "adoptCta": "도서의 Ontology 탭에서 채택",
+    "adoptBooklessHint": "도서가 연결된 프로젝트에서만 채택이 가능합니다.",
+    "forbidden": "스키마를 작성하려면 이 프로젝트에 대한 '관리(Manage)' 권한이 필요합니다.",
+    "createFailed": "스키마를 생성할 수 없습니다."
+  },
+  "shell": {
+    "backToProjects": "모든 프로젝트",
+    "sections": {
+      "label": "프로젝트 섹션",
+      "overview": "개요",
+      "entities": "엔티티",
+      "timeline": "타임라인",
+      "evidence": "증거",
+      "proposals": "제안",
+      "gap": "공백",
+      "insights": "인사이트",
+      "schema": "스키마",
+      "graph": "그래프 구축 / 탐색"
+    },
+    "notFound": "프로젝트를 찾을 수 없습니다.",
+    "loading": "프로젝트 로딩 중...",
+    "overview": {
+      "configHeading": "설정",
+      "embeddingModel": "임베딩 모델",
+      "rerankModel": "리랭크 모델",
+      "extraction": "추출",
+      "extractionEnabled": "활성화됨",
+      "extractionDisabled": "비활성화됨",
+      "book": "도서",
+      "world": "월드",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "검토 대기 중인 제안이 여기에 표시됩니다 (C11).",
+      "gap": "용어집 공백 보고서가 여기에 표시됩니다 (C10).",
+      "graph": "그래프 구축 및 탐색이 여기에 표시됩니다 (C5 / C19)."
+    }
+  },
+  "gap": {
+    "heading": "용어집 공백 보고서",
+    "subtitle": "도서에서 발견되었으나 아직 용어집에 포함되지 않은 주요 등장인물, 장소 및 개념입니다. 유지할 가치가 있는 항목을 승인하세요.",
+    "summary": {
+      "candidates": "공백 후보",
+      "threshold": "최소 언급 횟수",
+      "top": "최대 공백",
+      "topLabel": "최대 공백",
+      "topMentions": "{{count}}회 언급",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "최소 언급 횟수",
+      "limit": "최대 표시"
+    },
+    "selectAll": "모두 선택",
+    "selectRow": "{{name}} 선택",
+    "loading": "공백 로딩 중...",
+    "empty": "이 임계값을 넘는 공백이 없습니다. 더 많은 항목을 보려면 최소 언급 횟수를 낮추거나, 용어집이 이미 잘 구성되어 있습니다.",
+    "error": "공백 보고서를 불러올 수 없습니다. 다시 시도하세요.",
+    "mentions": "{{count}}회 언급",
+    "mentionsTitle": "도서 전체 언급 횟수",
+    "itemFailed": "실패",
+    "bulkPromote": {
+      "cta_one": "{{count}}개를 용어집으로 승인",
+      "cta_other": "{{count}}개를 용어집으로 승인",
+      "cta_zero": "용어집으로 승인",
+      "progress": "{{done}} / {{total}} 승인됨",
+      "failedCount": "({{count}}개 실패)",
+      "allOk": "{{count}}개를 용어집 초안으로 승인했습니다.",
+      "allFailed": "모든 {{count}}개 승인에 실패했습니다. 다시 시도하세요.",
+      "partial": "{{ok}}개 승인됨; {{failed}}개 실패."
+    }
+  },
+  "proposals": {
+    "heading": "대기 중인 제안",
+    "subtitle": "용어집 AI 제안, 위키 편집, 설정 보강 제안 등 검토가 필요한 모든 항목을 한 곳에서 확인하세요. 행을 열어 별도 화면에서 검토하고 수락할 수 있습니다.",
+    "noBook": "제안 대기열을 보려면 이 프로젝트에 도서를 연결하세요.",
+    "loading": "제안 로딩 중...",
+    "error": "제안 목록을 불러올 수 없습니다. 다시 시도하세요.",
+    "empty": "대기 중인 제안이 없습니다. 새로운 AI 제안이 생성되면 여기에 표시됩니다.",
+    "review": "검토",
+    "openRow": "{{title}} 검토",
+    "sourceError": "이 대기열을 불러올 수 없습니다. 다른 목록은 계속 표시됩니다.",
+    "origin": {
+      "glossary": "용어집 초안",
+      "wiki": "위키 편집",
+      "enrichment": "설정 보강 제안"
+    },
+    "originLabel": {
+      "glossary": "용어집 AI 초안",
+      "wiki": "위키 제안",
+      "enrichment": "설정 보강 제안"
+    },
+    "count": "{{count}}"
+  },
+  "mobile": {
+    "sections": {
+      "global": "글로벌 바이오",
+      "projects": "프로젝트",
+      "jobs": "추출 작업"
+    },
+    "desktopOnly": {
+      "title": "데스크톱에서 더 많은 기능 사용",
+      "body": "엔티티 브라우징, 내러티브 타임라인 및 Raw drawer 검색은 더 넓은 화면이 필요합니다. 노트북이나 태블릿에서 Lore Weave를 열어 사용하세요."
+    },
+    "privacyLink": "개인정보 및 데이터 제어",
+    "backToKnowledge": "Knowledge로 돌아가기",
+    "global": {
+      "placeholder": "모든 대화가 당신에 대해 기억해야 할 것은 무엇인가요?",
+      "save": "저장",
+      "saving": "저장 중…",
+      "saved": "저장됨.",
+      "unsaved": "저장되지 않음",
+      "saveFailed": "저장 실패. 다시 시도하세요.",
+      "conflict": "다른 기기에서 이 바이오를 업데이트했습니다. 최신 내용을 검토하고 다시 저장하세요.",
+      "loadFailed": "글로벌 바이오를 불러올 수 없습니다: {{error}}"
+    },
+    "projects": {
+      "empty": "아직 프로젝트가 없습니다. 데스크톱에서 생성하세요.",
+      "loadFailed": "프로젝트를 불러올 수 없습니다: {{error}}",
+      "noDescription": "설명이 없습니다.",
+      "build": "그래프 구축",
+      "status": {
+        "disabled": "비활성화됨",
+        "building": "구축 중",
+        "paused": "일시 중지됨",
+        "ready": "준비 완료",
+        "failed": "실패"
+      },
+      "detail": {
+        "lastExtracted": "최근 추출일",
+        "embeddingModel": "임베딩 모델",
+        "noEmbedding": "설정되지 않음"
+      }
+    },
+    "jobs": {
+      "empty": "추출 작업이 아직 없습니다.",
+      "loadFailed": "작업을 불러올 수 없습니다: {{error}}",
+      "unknownProject": "프로젝트 {{id}}",
+      "actionFailed": "{{action}} 실패: {{error}}",
+      "status": {
+        "pending": "대기 중",
+        "running": "실행 중",
+        "paused": "일시 중지됨",
+        "complete": "완료",
+        "failed": "실패",
+        "cancelled": "취소됨"
+      },
+      "actions": {
+        "pause": "일시 중지",
+        "pausing": "일시 중지 중…",
+        "resume": "재개",
+        "resuming": "재개 중…",
+        "cancel": "취소",
+        "cancelling": "취소 중…"
+      },
+      "detail": {
+        "items": "항목",
+        "created": "생성일",
+        "completed": "완료일"
+      }
+    }
+  },
+  "drawers": {
+    "loading": "Drawer 검색 중…",
+    "loadFailed": "검색 실패: {{error}}",
+    "empty": "이 쿼리에 일치하는 Drawer가 없습니다.",
+    "noProject": "검색할 Drawer가 포함된 프로젝트를 선택하세요.",
+    "noQuery": "Drawer를 찾으려면 검색어를 입력하세요.",
+    "minQueryHint": "의미론적 검색을 수행하려면 최소 {{min}}자 이상 입력하세요.",
+    "notIndexed": "이 프로젝트는 아직 의미론적 검색을 위한 인덱싱이 완료되지 않았습니다.",
+    "notIndexedHint": "Drawer 검색을 활성화하려면 임베딩 모델을 사용하여 추출을 실행하세요.",
+    "refreshing": "새로고침 중…",
+    "embedCost": "쿼리 임베딩: {{tokens}} 토큰 · ${{cost}}",
+    "retry": "재시도",
+    "fixConfig": "설정에서 프로젝트의 임베딩 모델 구성을 확인하세요.",
+    "unknownError": "알 수 없는 오류가 발생했습니다. 다시 시도해 주세요.",
+    "filters": {
+      "project": "프로젝트",
+      "selectProject": "프로젝트 선택",
+      "sourceType": {
+        "label": "소스",
+        "any": "전체",
+        "chapter": "챕터",
+        "chat": "채팅",
+        "glossary": "용어 사전"
+      }
+    },
+    "searchInput": {
+      "label": "검색",
+      "placeholder": "예: 다리에서의 결투"
+    },
+    "card": {
+      "sourcePrefix": "소스",
+      "chapterLabel": "챕터 {{index}}",
+      "chunkLabel": "청크 {{index}}",
+      "matchLabel": "일치 점수",
+      "openLabel": "일치도 {{score}}로 {{sourceType}} Drawer 열기",
+      "hubBadge": "요약",
+      "hubHint": "이 청크는 요약 또는 긴 바이오 발췌본입니다. 랭킹에서 가중치가 낮을 수 있지만 검색 결과에 나타날 수 있습니다.",
+      "langHint": "소스 언어: {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{total}}개 중 {{count}}개의 결과가 사용자의 언어({{lang}})로 되어 있습니다. 나머지는 소스 언어로 표시됩니다.",
+      "none": "사용자의 언어({{lang}})로 된 결과가 없습니다. 소스 언어 결과를 표시합니다."
+    },
+    "detail": {
+      "title": "Drawer",
+      "close": "닫기",
+      "text": "전체 텍스트",
+      "sourceType": "소스 유형",
+      "sourceId": "소스 ID",
+      "chunkIndex": "청크 인덱스",
+      "chapterIndex": "챕터 인덱스",
+      "matchScore": "일치 점수",
+      "createdAt": "생성일",
+      "hubLabel": "청크 종류",
+      "hubValue": "요약 / 허브 청크"
+    }
+  },
+  "timeline": {
+    "loading": "타임라인 로딩 중…",
+    "loadFailed": "타임라인을 불러올 수 없습니다: {{error}}",
+    "empty": "추출된 이벤트가 아직 없습니다. 추출 파이프라인이 실행됨에 따라 여기에 표시됩니다.",
+    "emptyForFilters": "이 필터와 일치하는 이벤트가 없습니다.",
+    "filters": {
+      "project": "프로젝트",
+      "anyProject": "모든 프로젝트",
+      "entity": "엔티티",
+      "entityPlaceholder": "이름으로 검색…",
+      "entitySearchMinHint": "최소 2자 이상 입력하세요.",
+      "entityNoMatches": "일치하는 엔티티가 없습니다.",
+      "clearEntity": "엔티티 필터 해제",
+      "chronologicalRange": "연대기적 범위",
+      "after": "이후",
+      "before": "이전",
+      "chronoReversed": "'이전' 날짜는 '이후' 날짜보다 커야 합니다.",
+      "dateRange": "날짜 범위",
+      "dateFrom": "시작일",
+      "dateTo": "종료일",
+      "dateInvalid": "YYYY, YYYY-MM 또는 YYYY-MM-DD 형식을 사용하세요.",
+      "dateReversed": "'종료일'은 '시작일'과 같거나 그 이후여야 합니다."
+    },
+    "sort": {
+      "label": "정렬",
+      "narrative": "내러티브 순서",
+      "chronological": "연대순",
+      "direction": "방향",
+      "asc": "오래된 순",
+      "desc": "최신순"
+    },
+    "importance": {
+      "major": "주요 사건",
+      "pivotal": "중요 사건"
+    },
+    "row": {
+      "orderLabel": "서사 순서",
+      "noOrder": "—",
+      "chapterLabel": "장",
+      "chapterUnresolved": "장 ID {{id}} — 제목 미확인",
+      "participantsMore": "+{{count}}명 더",
+      "confidenceLabel": "신뢰도",
+      "timeLabel": "작중 시간"
+    },
+    "detail": {
+      "summary": "요약",
+      "noSummary": "추출된 요약이 없습니다.",
+      "participants": "참여자",
+      "sources": "출처"
+    },
+    "pagination": {
+      "range": "{{total}}개 중 {{from}}–{{to}}",
+      "refreshing": "새로고침 중…",
+      "prev": "이전",
+      "next": "다음",
+      "backToFirst": "첫 페이지로 이동",
+      "pageSize": "페이지당"
+    },
+    "localization": {
+      "sourceMarker": "원본 언어로 표시됨 — 번역 대기 중"
+    },
+    "search": {
+      "placeholder": "이벤트 검색…",
+      "label": "이벤트 검색",
+      "clear": "검색 지우기"
+    }
+  },
+  "entities": {
+    "loading": "엔티티 로딩 중…",
+    "loadFailed": "엔티티를 로드할 수 없습니다: {{error}}",
+    "empty": "추출된 엔티티가 없습니다 — 추출 파이프라인이 실행되면 여기에 표시됩니다.",
+    "emptyForFilters": "필터와 일치하는 엔티티가 없습니다.",
+    "filters": {
+      "project": "프로젝트",
+      "kind": "종류",
+      "status": "상태",
+      "search": "검색",
+      "searchPlaceholder": "이름 또는 별칭 (최소 2자)",
+      "semantic": "의미론적 검색",
+      "semanticPlaceholder": "찾고 있는 내용을 설명하세요 (벡터 검색)",
+      "anyProject": "모든 프로젝트",
+      "anyKind": "모든 종류",
+      "anyStatus": "모든 상태"
+    },
+    "status": {
+      "canonical": "표준",
+      "discovered": "발견됨",
+      "archived": "보관됨"
+    },
+    "legend": {
+      "title": "상태",
+      "canonical": "용어집에 포함됨",
+      "discovered": "발견됨, 아직 승인되지 않음",
+      "archived": "검색에서 제외됨"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "앵커 점수 {{pct}}% — 이 엔티티의 근거 강도"
+    },
+    "table": {
+      "ariaLabel": "엔티티",
+      "global": "전체",
+      "col": {
+        "name": "이름",
+        "kind": "종류",
+        "project": "프로젝트",
+        "mentions": "언급 횟수",
+        "confidence": "신뢰도",
+        "updated": "수정됨"
+      }
+    },
+    "pagination": {
+      "range": "{{total}}개 중 {{from}}–{{to}}",
+      "refreshing": "새로고침 중…",
+      "prev": "이전",
+      "next": "다음"
+    },
+    "detail": {
+      "loading": "엔티티 로딩 중…",
+      "loadFailed": "엔티티를 로드할 수 없습니다: {{error}}",
+      "close": "닫기",
+      "edit": "편집",
+      "merge": "다른 엔티티로 병합",
+      "metadata": "메타데이터",
+      "description": "설명",
+      "descriptionSource": "연결된 용어집 항목에서 가져옴",
+      "aliases": "별칭",
+      "relations": "관계 ({{count}})",
+      "truncated": "{{total}}개 중 {{shown}}개 표시 중 — 표에서 필터링하거나 검색하세요",
+      "noRelations": "관계가 없습니다 — 추출이 실행됨에 따라 더 많은 관계가 나타납니다.",
+      "relationArrow": "→",
+      "pendingBadge": "대기 중",
+      "pendingValidation": "Pass-1 격리 — LLM 검증 대기 중",
+      "unlock": "잠금 해제 (추출 재활성화)",
+      "unlockHint": "이 엔티티는 사용자가 편집했습니다. 잠금을 해제하기 전까지는 추출 시 삭제된 별칭이 다시 추가되지 않습니다.",
+      "unlockConfirm": "이 엔티티의 잠금을 해제할까요? 향후 추출 시 별칭을 다시 추가할 수 있습니다.",
+      "unlockSuccess": "잠금 해제됨.",
+      "unlockFailed": "잠금을 해제할 수 없습니다: {{error}}",
+      "field": {
+        "project": "프로젝트",
+        "global": "전체",
+        "confidence": "신뢰도",
+        "mentions": "언급 횟수",
+        "anchor": "앵커 점수"
+      },
+      "promote": "용어집으로 승격",
+      "promoteHint": "발견된 엔티티입니다. 승격하면 검토를 위한 AI 제안 용어집 초안이 생성됩니다.",
+      "promotePending": "승격 중…",
+      "promoteSuccess": "승격됨 — 검토를 위한 용어집 초안이 생성되었습니다.",
+      "promoteFailed": "승격할 수 없습니다: {{error}}",
+      "unpin": "컨텍스트 고정 해제",
+      "unpinHint": "이 엔티티는 추출 컨텍스트에 고정되어 있습니다.",
+      "unpinSuccess": "컨텍스트에서 고정 해제됨.",
+      "unpinFailed": "고정을 해제할 수 없습니다: {{error}}",
+      "facts": "알려진 사실 ({{count}})",
+      "factSource": "장 {{chapter}}",
+      "factType": {
+        "decision": "결정",
+        "preference": "선호도",
+        "milestone": "이정표",
+        "negation": "부정"
+      }
+    },
+    "edit": {
+      "title": "엔티티 편집",
+      "description": "이 엔티티의 이름을 변경하거나 조정합니다. 편집을 완료하면 향후 추출 시 삭제된 별칭이 다시 추가되지 않도록 고정됩니다.",
+      "conflict": "다른 기기에서 이 엔티티를 업데이트했습니다. 최신 내용을 검토한 후 다시 시도하세요.",
+      "field": {
+        "name": "표시 이름",
+        "kind": "종류",
+        "aliases": "별칭"
+      },
+      "aliasesPlaceholder": "한 줄에 별칭 하나씩",
+      "aliasesHint": "한 줄에 별칭 하나씩 입력하세요. 저장 후에는 추출 프로세스가 삭제된 변형을 자동으로 다시 추가하지 않습니다.",
+      "userEditedHint": "저장하면 이 엔티티는 사용자가 편집한 것으로 표시됩니다.",
+      "save": "저장",
+      "saving": "저장 중…",
+      "cancel": "취소",
+      "success": "엔티티 업데이트됨",
+      "failed": "저장 실패: {{error}}"
+    },
+    "merge": {
+      "title": "엔티티 병합",
+      "description": "{{name}}을(를) 다른 엔티티로 병합합니다. {{name}}은(는) 삭제되며, 관련 관계와 별칭은 대상 엔티티로 이동합니다.",
+      "targetLabel": "대상 엔티티",
+      "searchPlaceholder": "이름으로 검색 (최소 2글자)…",
+      "searchMinHint": "검색하려면 최소 2글자를 입력하세요.",
+      "searching": "검색 중…",
+      "noMatches": "일치하는 엔티티가 없습니다.",
+      "warning": "이 작업은 되돌릴 수 없습니다. 원본 엔티티는 삭제되며, 관련 관계와 별칭은 대상 엔티티로 이전됩니다.",
+      "mentions": "언급",
+      "clear": "지우기",
+      "confirm": "병합",
+      "merging": "병합 중…",
+      "cancel": "취소",
+      "success": "{{source}}을(를) {{target}}(으)로 병합했습니다",
+      "errSameEntity": "엔티티를 자기 자신과 병합할 수 없습니다.",
+      "errNotFound": "엔티티 중 하나를 찾을 수 없습니다.",
+      "errArchived": "보관된 엔티티는 병합할 수 없습니다. 먼저 보관을 해제하세요.",
+      "errGlossaryConflict": "두 엔티티가 서로 다른 용어집 항목에 고정되어 있습니다. 병합하기 전에 용어집 고정을 해제하세요.",
+      "errUnknown": "병합 실패: {{reason}}"
+    }
+  },
+  "jobs": {
+    "loading": "작업 로딩 중…",
+    "loadMore": "더 보기",
+    "loadingMore": "추가 로딩 중…",
+    "error": {
+      "active": "실행 중인 작업을 로드할 수 없습니다.",
+      "history": "작업 기록을 로드할 수 없습니다."
+    },
+    "sections": {
+      "running": {
+        "title": "실행 중",
+        "empty": "실행 중인 작업이 없습니다."
+      },
+      "paused": {
+        "title": "일시 중지됨",
+        "empty": "일시 중지된 작업이 없습니다."
+      },
+      "complete": {
+        "title": "완료됨",
+        "empty": "완료된 작업이 아직 없습니다."
+      },
+      "failed": {
+        "title": "실패함",
+        "empty": "실패한 작업이 없습니다."
+      }
+    },
+    "row": {
+      "started": "{{when}} 시작됨",
+      "completed": "{{when}} 완료됨",
+      "unknownProject": "프로젝트 {{id}}…"
+    },
+    "detail": {
+      "title": "작업 상세 정보",
+      "close": "닫기",
+      "status": "상태",
+      "currentChapter": "현재 챕터",
+      "scope": "범위",
+      "llmModel": "채팅 모델",
+      "embeddingModel": "임베딩 모델",
+      "maxSpend": "예산 한도",
+      "startedAt": "시작 시간",
+      "completedAt": "완료 시간",
+      "errorTitle": "오류",
+      "eta": "~{{duration}} 남음",
+      "itemsProgress": "{{total}}개 중 {{processed}}개 처리됨",
+      "actionFailed": "{{label}} 실패: {{error}}",
+      "actions": {
+        "pause": "일시 중지",
+        "resume": "재개",
+        "cancel": "취소"
+      },
+      "logs": {
+        "title": "로그",
+        "loading": "로그 로딩 중…",
+        "loadingNewer": "새 로그 로딩 중…",
+        "error": "로그를 로드할 수 없습니다.",
+        "empty": "로그가 없습니다.",
+        "loadNewer": "새 로그 불러오기",
+        "levels": {
+          "info": "정보",
+          "warning": "경고",
+          "error": "오류"
+        }
+      }
+    },
+    "retry": {
+      "button": "다른 설정으로 재시도"
+    },
+    "costSummary": {
+      "title": "AI 사용량",
+      "loading": "사용량 로딩 중…",
+      "loadFailed": "비용 요약을 로드할 수 없습니다.",
+      "thisMonth": "이번 달",
+      "allTime": "전체 기간",
+      "budget": "월간 예산",
+      "editBudget": "예산 수정",
+      "remaining": "이번 달 잔여 금액: {{remaining}}",
+      "invalid": "0 이상의 숫자 또는 빈칸을 입력하세요.",
+      "saveFailed": "예산을 저장할 수 없습니다: {{error}}",
+      "dialog": {
+        "title": "월간 AI 예산 수정",
+        "description": "프로젝트 통합 한도입니다. 한도를 삭제하려면 빈칸으로 두세요.",
+        "label": "월간 예산 (USD)",
+        "hint": "소수점 4자리까지 입력 가능합니다. 한도를 삭제하려면 빈칸으로 두세요.",
+        "cancel": "취소",
+        "save": "저장",
+        "saving": "저장 중…"
+      }
+    }
+  },
+  "projects": {
+    "showArchived": "보관된 항목 표시",
+    "refresh": "새로고침",
+    "newProject": "새 프로젝트",
+    "createFirst": "첫 번째 프로젝트 만들기",
+    "empty": {
+      "title": "프로젝트 없음",
+      "description": "프로젝트는 AI가 특정 작업에 대해 기억하는 범위를 정의합니다."
+    },
+    "loadFailed": "프로젝트를 로드할 수 없습니다: {{error}}",
+    "paginationNote": "처음 100개의 프로젝트를 표시합니다 — 전체 페이지는 Track 2에서 확인 가능합니다.",
+    "browser": {
+      "searchPlaceholder": "프로젝트 검색…",
+      "searchLabel": "이름으로 프로젝트 검색",
+      "filterLabel": "상태별 필터",
+      "sortLabel": "프로젝트 정렬",
+      "noMatches": "검색 및 필터 조건과 일치하는 프로젝트가 없습니다.",
+      "loadMore": "더 보기",
+      "loadingMore": "로딩 중…",
+      "stateFilter": {
+        "all": "모든 상태",
+        "disabled": "정적 메모리",
+        "building": "빌드 중",
+        "paused": "일시 중지됨",
+        "ready": "준비됨",
+        "failed": "실패함",
+        "archived": "보관됨"
+      },
+      "sortOption": {
+        "recent": "최근 업데이트순",
+        "oldest": "오래된 순",
+        "name_asc": "이름 (A–Z)",
+        "name_desc": "이름 (Z–A)"
+      },
+      "thisBookOnly": "현재 도서만",
+      "showAllBooks": "모든 도서 표시"
+    },
+    "card": {
+      "staticMemory": "정적 메모리",
+      "archivedBadge": "보관됨",
+      "open": "열기",
+      "edit": "수정",
+      "archive": "보관",
+      "restore": "복구",
+      "delete": "삭제",
+      "tuneExtraction": "추출 설정 조정",
+      "bookId": "book_id"
+    },
+    "form": {
+      "createTitle": "새 프로젝트",
+      "editTitle": "프로젝트 수정",
+      "createDescription": "프로젝트는 AI가 특정 작업에 대해 기억할 범위를 설정합니다.",
+      "name": "이름",
+      "namePlaceholder": "예: 동방의 바람",
+      "type": "유형",
+      "typeImmutable": "프로젝트 유형은 생성 후 변경할 수 없습니다.",
+      "typeOptions": {
+        "book": "도서",
+        "translation": "번역",
+        "code": "코드",
+        "general": "일반"
+      },
+      "bookId": "도서 ID (선택 사항)",
+      "bookIdPlaceholder": "uuid",
+      "description": "설명 (선택 사항)",
+      "instructions": "지침 (선택 사항)",
+      "instructionsPlaceholder": "문체, 어조, 제약 사항 등 — 이 프로젝트의 모든 채팅에 적용됩니다.",
+      "nameError": "이름은 {{max}}자 이내여야 합니다.",
+      "bookIdError": "유효한 UUID를 입력하세요.",
+      "cancel": "취소",
+      "create": "생성",
+      "save": "저장",
+      "benchmark": {
+        "run": "벤치마크 실행",
+        "running": "벤치마크 실행 중…",
+        "success": "{{model}} 벤치마크 완료 (recall@3 {{recall}}).",
+        "errorNoModel": "벤치마크를 실행하기 전에 임베딩 모델을 선택하세요.",
+        "errorUnknownModel": "이 임베딩 모델은 벤치마크 도구에서 지원하지 않습니다.",
+        "errorNotBenchmarkProject": "샌드박스에서 벤치마크를 시작할 수 없습니다. 잠시 후 다시 시도하세요.",
+        "errorAlreadyRunning": "이 프로젝트에 대해 이미 실행 중인 벤치마크가 있습니다. 잠시 후 다시 시도하세요.",
+        "errorProviderFlake": "실행 중 임베딩 제공업체 오류가 발생했습니다. 다시 시도하세요.",
+        "errorGeneric": "벤치마크 실패: {{message}}"
+      }
+    },
+    "archiveDialog": {
+      "title": "프로젝트를 보관할까요?",
+      "description": "\"{{name}}\"이(가) 활성 목록에서 숨겨집니다. 나중에 다시 복구할 수 있습니다.",
+      "confirm": "보관"
+    },
+    "deleteDialog": {
+      "title": "프로젝트를 삭제할까요?",
+      "description": "\"{{name}}\"와(과) 요약 내용이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+      "confirm": "삭제"
+    },
+    "toast": {
+      "archived": "프로젝트 보관됨",
+      "archiveFailed": "보관 실패",
+      "restored": "프로젝트 복구됨",
+      "restoreFailed": "복구 실패",
+      "deleted": "프로젝트 삭제됨",
+      "deleteFailed": "삭제 실패",
+      "created": "프로젝트 생성됨",
+      "updated": "프로젝트 업데이트됨",
+      "conflict": "다른 기기에서 이 프로젝트를 수정했습니다. 최신 내용을 검토한 후 다시 저장하세요.",
+      "actionFailed": "{{label}}: {{error}}",
+      "noPriorJob": "재생할 이전 작업이 없습니다. 빌드 대화 상자를 여세요.",
+      "noPriorRebuild": "재빌드할 이전 작업이 없습니다.",
+      "rebuildNoPriorJob": "재빌드: 이전 작업 없음"
+    },
+    "state": {
+      "labels": {
+        "disabled": "정적 메모리",
+        "estimating": "비용 계산 중...",
+        "ready_to_build": "빌드 준비 완료",
+        "building_running": "빌드 중...",
+        "building_paused_user": "일시 중지됨",
+        "building_paused_budget": "예산 도달",
+        "building_paused_error": "일시 중지됨 (오류)",
+        "complete": "준비 완료",
+        "stale": "업데이트 대기 중",
+        "failed": "실패",
+        "model_change_pending": "모델 변경 시 재빌드가 필요합니다",
+        "cancelling": "취소 중...",
+        "deleting": "그래프 삭제 중..."
+      },
+      "actions": {
+        "buildGraph": "지식 그래프 빌드",
+        "start": "시작",
+        "pause": "일시 중지",
+        "resume": "재개",
+        "cancel": "취소",
+        "retry": "재시도",
+        "deleteGraph": "그래프 삭제",
+        "rebuild": "처음부터 다시 빌드",
+        "viewError": "오류 상세 정보 보기",
+        "disable": "비활성화",
+        "changeModel": "임베딩 모델 변경",
+        "extractNew": "새 챕터 추출",
+        "ignore": "무시",
+        "confirm": "확인",
+        "confirmModelChange": "모델 변경 확인",
+        "exploreGraph": "그래프 탐색",
+        "setConcurrency": "동시성 설정"
+      },
+      "cards": {
+        "disabled": {
+          "body": "사용 중: 내 프로필 + 프로젝트 지침 + 용어집 + 최근 메시지",
+          "costZero": "비용: $0"
+        },
+        "estimating": {
+          "body": "이 범위에 대한 예상 비용을 계산 중..."
+        },
+        "ready_to_build": {
+          "hint": "예상 비용: ${{low}} – ${{high}} · {{chapters}}개 챕터, {{turns}}개 대화 턴, {{tokens}}개 토큰",
+          "durationSec": "예상 소요 시간: ~{{n}}초",
+          "durationMin": "예상 소요 시간: ~{{n}}분"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} 항목 (챕터 + 채팅 + 용어집)",
+          "elapsed": "경과 시간: {{elapsed}}",
+          "spent": "사용 금액: ${{spent}}",
+          "spentOfBudget": "사용 금액: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "병렬 호출",
+          "concurrencyApply": "적용",
+          "stagesTitle": "빌드 단계",
+          "stages": "엔티티 → 관계 · 이벤트 · 사실 → 요약",
+          "stagesNote": "패스는 이 순서로 실행됩니다. 사실(Facts) 및 요약(Summaries)은 엔티티와 관계 추출이 완료된 후 실행되므로 전체 빌드 시 나중에 나타납니다. 조기 종료 시 이 단계들은 건너뛰게 됩니다."
+        },
+        "building_paused_user": {
+          "body": "작업을 일시 중지했습니다. 준비되면 재개하거나, 취소하여 부분 그래프를 유지하세요."
+        },
+        "building_paused_budget": {
+          "body": "지출 한도 ${{budget}}에 도달했습니다. 한도를 높이고 재개하거나, 취소하여 부분 그래프를 유지하세요.",
+          "remaining": "남은 금액: ${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "재시도 가능한 오류: {{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} 엔티티 · {{facts}} 사실 · {{events}} 이벤트 · {{passages}} 구절",
+          "lastExtracted": "마지막 추출: {{date}}"
+        },
+        "stale": {
+          "body": "마지막 추출 이후 {{count}}개의 새 챕터가 추가되었습니다. 지금 추출하거나 무시하세요."
+        },
+        "failed": {
+          "body": "추출 실패: {{error}}"
+        },
+        "model_change_pending": {
+          "body": "모델이 {{oldModel}}에서 {{newModel}}으로 변경되면 기존 그래프를 삭제하고 다시 빌드해야 합니다."
+        },
+        "cancelling": {
+          "body": "실행 중인 작업 중지 중..."
+        },
+        "deleting": {
+          "body": "지식 그래프 삭제 중..."
+        }
+      }
+    },
+    "buildDialog": {
+      "title": "지식 그래프 빌드",
+      "description": "이 프로젝트의 콘텐츠에서 엔티티, 사실, 구절을 추출합니다. 범위를 선택하고 모델을 지정한 다음, 확인하기 전에 비용을 미리 확인하세요.",
+      "scope": {
+        "label": "범위",
+        "chapters": "도서 챕터",
+        "chat": "채팅 기록",
+        "glossary_sync": "용어집 동기화",
+        "all": "전체",
+        "noBookHint": "이 프로젝트는 도서와 연결되어 있지 않습니다. 챕터 및 용어집 동기화 범위가 숨겨집니다."
+      },
+      "chapterRange": {
+        "label": "챕터 범위 (선택 사항)",
+        "from": "시작",
+        "to": "끝",
+        "hint": "정렬 순서에 따른 범위를 필터링합니다. 모든 챕터를 포함하려면 둘 다 비워두세요.",
+        "invalid": "범위는 음수가 아닌 정수여야 하며, 시작값이 끝값보다 작거나 같아야 합니다."
+      },
+      "llmModel": {
+        "label": "LLM 모델",
+        "placeholder": "채팅 모델 선택…",
+        "loading": "모델 로딩 중…",
+        "empty": "설정된 채팅 가능 모델이 없습니다. AI Models → Credentials에서 추가하세요."
+      },
+      "maxSpend": {
+        "label": "최대 지출 (USD, 선택 사항)",
+        "hint": "강제 제한 — 누적 비용이 이 금액에 도달하면 작업이 일시 중지됩니다. 제한을 없애려면 비워두세요.",
+        "invalid": "소수점 둘째 자리까지 허용되는 음수가 아닌 금액을 입력하세요.",
+        "monthlyRemaining": "이번 달 모든 프로젝트의 남은 금액: {{amount}}"
+      },
+      "estimate": {
+        "heading": "비용 미리보기",
+        "pickLlmFirst": "비용 견적을 보려면 LLM 모델을 선택하세요.",
+        "loading": "견적 계산 중…",
+        "failed": "견적 실패: {{error}}",
+        "cost": "예상 비용: ${{low}} – ${{high}}",
+        "items": "{{chapters}} 챕터 · {{turns}} 채팅 턴 · 약 {{tokens}} 토큰",
+        "duration": "예상 소요 시간: 약 {{seconds}}초",
+        "pinned": "고정된 컨텍스트: +{{tokens}} 토큰 (모든 창에서 {{count}}개 고정됨)"
+      },
+      "cancel": "취소",
+      "confirm": "그래프 빌드",
+      "starting": "시작 중…",
+      "startSuccess": "빌드 시작 — 지식 그래프를 추출합니다.",
+      "startFailed": "시작 실패: {{error}}",
+      "wizard": {
+        "step1": "대상",
+        "step2": "고정(Pinning)",
+        "step3": "예산",
+        "next": "다음",
+        "back": "이전",
+        "step2Placeholder": "용어집 고정은 다음 단계에서 진행됩니다. 현재는 모든 추출 창이 각자의 챕터 컨텍스트를 사용합니다."
+      },
+      "targets": {
+        "label": "추출 항목",
+        "hint": "실행할 패스를 선택하세요. 모두 선택 해제하면 모든 항목이 실행됩니다 (기본값).",
+        "entities": "엔티티",
+        "relations": "관계",
+        "events": "이벤트 · 타임라인",
+        "facts": "사실",
+        "summaries": "요약",
+        "autoIncluded": "자동 포함됨",
+        "autoIncludedHint": "관계, 이벤트 또는 사실이 해당 엔티티를 참조하므로 엔티티가 자동으로 추출됩니다.",
+        "recoveryDisabledHint": "엔티티가 추출 대상으로 선택되지 않았으므로 엔티티 복구 및 정밀 필터링이 건너뛰어집니다."
+      },
+      "concurrency": {
+        "label": "병렬 LLM 호출 (선택 사항)",
+        "hint": "동시에 실행할 추출 호출 수를 제한합니다. 기본값을 사용하려면 비워두세요."
+      },
+      "pinning": {
+        "intro": "용어집 엔티티를 고정하여 모든 추출 창에 강제로 주입합니다. 이를 통해 언급되지 않는 챕터에서도 중요도가 낮은 엔티티가 연결 상태를 유지할 수 있습니다.",
+        "autopin": "고정할 가치가 있는 희소하지만 광범위한 영향력을 가진 엔티티가 {{count}}개 있습니다.",
+        "autopinApply": "{{count}}개 제안 고정",
+        "loading": "엔티티 통계 로딩 중…",
+        "unavailable": "엔티티 통계를 사용할 수 없습니다. 아래에서 수동으로 고정할 수 있습니다.",
+        "searchPlaceholder": "이름으로 검색…",
+        "kindAll": "모든 유형",
+        "minMentions": "최소 언급 횟수 ×",
+        "available": "사용 가능 ({{count}})",
+        "availableEmpty": "필터와 일치하는 엔티티가 없습니다.",
+        "pinned": "고정됨 ({{count}})",
+        "pinnedEmpty": "고정된 항목이 없습니다.",
+        "pin": "고정",
+        "unpin": "고정 해제",
+        "budget": "윈도우당 +{{tokens}} 토큰 (고정 항목 {{count}}개 × 약 50개).",
+        "noBook": "고정하려면 연결된 도서가 필요합니다. 먼저 이 프로젝트에 도서를 첨부하세요."
+      }
+    },
+    "errorViewer": {
+      "title": "추출 오류",
+      "description": "추출 작업에서 캡처된 전체 오류 메시지입니다. 버그 보고 또는 근본 원인 분석에 사용하세요.",
+      "jobIdLabel": "작업 ID",
+      "startedLabel": "시작 시간",
+      "scopeLabel": "범위",
+      "progressLabel": "진행률",
+      "progressValue": "{{processed}} / {{total}} 항목",
+      "costLabel": "소모 비용",
+      "errorLabel": "오류",
+      "copy": "복사",
+      "copied": "복사됨",
+      "close": "닫기"
+    },
+    "changeModelDialog": {
+      "title": "임베딩 모델 변경",
+      "description": "임베딩 모델을 변경하면 기존 지식 그래프가 삭제됩니다. 변경 후에는 새로 추출을 시작해야 합니다.",
+      "warningTitle": "데이터 삭제 주의",
+      "warningBody": "현재 모델: {{currentModel}}. 모델을 변경하면 추출된 모든 엔티티, 사실, 이벤트 및 구절이 삭제됩니다. 새로운 빌드를 시작할 때까지 추출 기능이 비활성화됩니다.",
+      "sameModel": "확인 버튼을 활성화하려면 다른 모델을 선택하세요.",
+      "cancel": "취소",
+      "confirm": "모델 변경 및 그래프 삭제",
+      "submitting": "변경 중…",
+      "failed": "변경 실패: {{error}}",
+      "alreadyAtModel": "모델이 이미 {{model}}로 설정되어 있습니다. 다른 기기에서 변경했을 수 있습니다."
+    },
+    "extractionTuning": {
+      "title": "추출 설정 조정",
+      "description": "소설별 추출 설정입니다. 변경 사항은 이 프로젝트의 다음 추출 실행 시 적용됩니다.",
+      "filterEnabled": "정밀도 필터 (지원도가 낮은 추출 항목 제외)",
+      "category": {
+        "entity": "엔티티",
+        "relation": "관계",
+        "event": "이벤트"
+      },
+      "categoriesRequired": "최소 하나 이상의 카테고리를 선택하거나 필터를 끄세요.",
+      "partialPolicy": "부분 일치 항목:",
+      "policyKeep": "유지",
+      "policyDrop": "제외",
+      "defaultModel": "기본 추출 모델",
+      "defaultModelNone": "내 글로벌 기본값 사용",
+      "defaultModelHint": "아래에서 별도로 지정하지 않는 한 모든 추출 단계에서 사용하는 모델입니다. 비워두면 역할(Role)은 글로벌 기본 모델(설정)을 따르며, 그 다음은 현재 빌드에서 실행 중인 모델을 따릅니다.",
+      "recoveryEnabled": "엔티티 복구 (누락된 엔티티 복구)",
+      "recoveryModel": "복구 모델 (선택 사항)",
+      "recoveryModelNone": "기본 추출 모델 사용",
+      "recoveryModelHint": "메인 패스에서 놓친 엔티티를 복구하는 LLM입니다. 기본값으로 두면 위의 기본 추출 모델을 재사용합니다.",
+      "recoveryBatch": "배치 크기",
+      "recoveryBatchHint": "분류기 호출당 이름 개수 (1-20; 기본값 5)",
+      "autocreateEnabled": "작가 자동 생성 (관계에서 참조되는 엔티티 생성)",
+      "promptWarning": "고급: 사용자 지정 프롬프트는 해당 단계의 기본 추출 지침을 대체하며 품질을 저하시킬 수 있습니다. 기본값을 사용하려면 비워두세요. JSON 출력은 항상 강제됩니다.",
+      "promptPlaceholder": "기본 프롬프트를 사용하려면 비워두세요",
+      "prompt": {
+        "entity": "엔티티 추출 프롬프트",
+        "relation": "관계 추출 프롬프트",
+        "event": "이벤트 추출 프롬프트",
+        "fact": "사실 추출 프롬프트"
+      },
+      "save": "저장",
+      "saving": "저장 중…",
+      "cancel": "취소",
+      "saved": "추출 설정이 저장되었습니다.",
+      "failed": "저장 실패: {{error}}"
+    },
+    "confirmDestructive": {
+      "cancel": "취소",
+      "deleteGraph": {
+        "title": "지식 그래프를 삭제할까요?",
+        "description": "이 작업은 이 프로젝트에 대해 추출된 모든 엔티티, 사실, 이벤트 및 구절을 영구적으로 제거합니다. 프로젝트 자체는 유지되며, 나중에 다시 빌드할 수 있습니다."
+      },
+      "rebuildStep1": {
+        "title": "처음부터 다시 빌드할까요?",
+        "description": "재빌드를 하면 기존 그래프를 삭제하고 동일한 모델과 범위로 새로운 추출을 시작합니다. 비용이 발생할 수 있으며 시간이 걸릴 수 있습니다.",
+        "confirmLabel": "계속하기"
+      },
+      "rebuildStep2": {
+        "title": "마지막 기회입니다 — 정말 재빌드하시겠습니까?",
+        "description": "지금 '재빌드'를 클릭하면 삭제 및 재빌드 작업이 시작됩니다. 새 작업이 실행되면 되돌릴 수 없습니다."
+      },
+      "disable": {
+        "title": "추출 기능을 비활성화할까요?",
+        "description": "새로운 콘텐츠 추출을 중단합니다. 기존 지식 그래프는 유지되며 계속 읽을 수 있습니다. 다시 활성화하려면 추출을 새로 시작해야 합니다."
+      }
+    }
+  },
+  "global": {
+    "title": "글로벌 바이오",
+    "description": "모든 프로젝트에서 AI가 볼 수 있는 짧은 자기소개입니다. 문체 선호도, 작업 관련 맥락 등 세션 전반에 걸쳐 유지하고 싶은 내용을 입력하세요. 최대 {{max}}자.",
+    "placeholder": "예: 나는 어반 판타지를 써. 이름은 일본식 순서로 유지해줘. 수식어는 절제하고 화려한 형용사는 피할 것.",
+    "loadFailed": "요약 로드 실패: {{error}}",
+    "unsavedChanges": "저장되지 않은 변경 사항",
+    "saving": "저장 중…",
+    "save": "저장",
+    "saved": "글로벌 바이오 저장됨",
+    "saveFailed": "저장 실패",
+    "version": "v{{version}}",
+    "conflict": "다른 기기에서 이 바이오를 업데이트했습니다. 최신 내용을 검토하고 다시 저장하세요.",
+    "tokenEstimate": "~{{tokens}} 토큰",
+    "reset": "초기화",
+    "resetting": "초기화 중…",
+    "resetConfirm": "바이오 삭제",
+    "resetCancel": "취소",
+    "resetConfirmTitle": "글로벌 바이오를 삭제하시겠습니까?",
+    "resetConfirmBody": "서버의 바이오가 삭제됩니다. 언제든 되돌릴 수 있도록 새 버전이 기록에 저장됩니다.",
+    "resetConfirmNote": "대신 히스토리 패널에서 이전 버전으로 되돌릴 수도 있습니다.",
+    "resetSuccess": "글로벌 바이오 삭제됨",
+    "resetFailed": "초기화 실패",
+    "regenerate": {
+      "button": "다시 생성",
+      "title": "글로벌 바이오 다시 생성",
+      "description": "최근 대화 내용을 바탕으로 바이오를 재구성합니다. 현재 바이오는 히스토리에 저장되어 언제든 되돌릴 수 있습니다.",
+      "modelLabel": "모델",
+      "modelLoading": "모델 로딩 중…",
+      "modelPlaceholder": "채팅 모델 선택",
+      "noModels": "등록된 채팅 모델이 없습니다. 먼저 AI 모델을 추가하세요.",
+      "costHint": "예상 비용: 낮음 (<$0.05). 출력은 500토큰으로 제한됩니다.",
+      "editLockHint": "최근 30일 이내에 수동으로 편집한 내용은 보호됩니다. 최근에 이 바이오를 편집했다면 재생성이 건너뛰어집니다.",
+      "disabledDirty": "재생성하기 전에 저장하거나 저장되지 않은 편집 내용을 초기화하세요. 변경 사항이 남아 있는 동안에는 재생성된 결과가 에디터에 나타나지 않습니다.",
+      "editLockDefault": "가장 최근의 수동 편집은 30일 동안 재생성으로부터 보호됩니다.",
+      "confirm": "다시 생성",
+      "regenerating": "재생성 중…",
+      "cancel": "취소",
+      "success": "글로벌 바이오 재생성 완료",
+      "noOpSimilarity": "새 버전이 현재 바이오와 거의 동일합니다. 변경 사항이 없습니다.",
+      "noOpEmptySource": "재구성할 최근 대화 내용이 없습니다. 대화를 몇 번 더 진행해 주세요.",
+      "concurrentEdit": "수동 편집이 재생성보다 먼저 이루어졌습니다. 현재 바이오를 검토한 후 다시 시도하세요.",
+      "guardrailFailed": "재생성 품질 검사 실패: {{reason}}",
+      "providerError": "AI 제공업체에서 오류를 반환했습니다: {{reason}}",
+      "unknownError": "재생성 실패: {{reason}}"
+    },
+    "preferences": {
+      "title": "학습된 선호도",
+      "description": "AI가 대화를 통해 추출한 프로젝트 공통 선호도입니다. 삭제하면 향후 맥락에서 제외됩니다.",
+      "loading": "선호도 로딩 중…",
+      "loadFailed": "선호도를 불러올 수 없습니다.",
+      "empty": "아직 학습된 선호도가 없습니다. 대화를 몇 번 나누고 나면 여기에 나타납니다.",
+      "delete": "삭제",
+      "deleting": "삭제 중…",
+      "cancel": "취소",
+      "deleteAria": "{{name}} 삭제",
+      "confirmTitle": "이 선호도를 삭제하시겠습니까?",
+      "confirmBody": "{{name}}이(가) 향후 맥락 구성에서 제외됩니다. 한 번 삭제하면 복구할 수 없으나, AI가 나중에 대화를 통해 다시 학습할 수는 있습니다.",
+      "confirmNote": "이것은 소프트 아카이브입니다. 데이터 자체가 삭제되는 것은 아닙니다.",
+      "deleteSuccess": "선호도에서 {{name}}이(가) 제거되었습니다.",
+      "deleteFailed": "선호도를 삭제할 수 없습니다: {{error}}"
+    },
+    "versions": {
+      "toggle": "히스토리",
+      "title": "버전 히스토리",
+      "close": "닫기",
+      "loading": "히스토리 로딩 중…",
+      "loadFailed": "히스토리를 불러오지 못했습니다: {{error}}",
+      "empty": "이전 버전이 없습니다. 다음 저장 시점부터 히스토리가 쌓이기 시작합니다.",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(비어 있음)",
+      "view": "보기",
+      "rollback": "되돌리기",
+      "rollbackFromPreview": "이 버전으로 되돌리기",
+      "rollingBack": "되돌리는 중…",
+      "confirmTitle": "이 버전으로 되돌리시겠습니까?",
+      "confirmBody": "현재 바이오가 v{{version}}의 내용으로 교체됩니다. 새 버전이 생성되며, 현재 상태는 히스토리에 보관됩니다.",
+      "confirm": "되돌리기",
+      "rollbackSuccess": "선택한 버전으로 되돌렸습니다.",
+      "rollbackFailed": "되돌리기 실패",
+      "previewTitle": "버전 {{version}} 미리보기",
+      "source": {
+        "manual": "수동",
+        "rollback": "되돌리기"
+      },
+      "diffToggle": "현재 버전과 차이점 보기",
+      "diffEmpty": "차이점이 없습니다."
+    }
+  },
+  "indicator": {
+    "label": "지식 인디케이터",
+    "title": "지식",
+    "modes": {
+      "global": "글로벌",
+      "project": "프로젝트",
+      "degraded": "저하됨"
+    },
+    "popover": {
+      "projectHeading": "프로젝트 메모리",
+      "globalHeading": "글로벌 메모리 전용",
+      "loading": "로딩 중…",
+      "fallbackProject": "프로젝트",
+      "projectBody": "이 세션은 <strong>{{name}}</strong>과(와) 연결되어 있습니다. AI는 매 턴마다 사용자의 글로벌 프로필과 프로젝트의 요약 및 용어집 항목을 참조합니다.",
+      "globalBody": "이 세션에는 연결된 프로젝트가 없습니다. AI는 사용자의 글로벌 프로필만 참조합니다. 프로젝트의 고유 메모리를 사용하려면 세션 설정에서 프로젝트를 연결하세요.",
+      "degradedBody": "지난 턴에서 지식 서비스에 연결할 수 없었습니다. AI가 최근 메시지만을 참조했습니다. 프로젝트 메모리가 일시적으로 프롬프트에 포함되지 않았습니다. 서비스가 복구되면 다음 턴에 자동으로 복구됩니다.",
+      "manage": "지식 관리"
+    }
+  },
+  "picker": {
+    "label": "프로젝트 메모리",
+    "noProject": "프로젝트 없음 — 글로벌 메모리만 사용",
+    "archivedPlaceholder": "(보관된 프로젝트 — 다른 프로젝트 선택)",
+    "hint": "이 채팅을 지식 서비스 프로젝트에 연결하여, AI가 매 턴마다 해당 프로젝트의 요약과 용어집을 참조하도록 합니다."
+  },
+  "privacy": {
+    "export": {
+      "title": "데이터 내보내기",
+      "description": "AI가 저장한 모든 프로젝트와 요약 내용을 단일 JSON 파일로 다운로드합니다. GDPR 제20조에 의거합니다.",
+      "button": "내보내기 다운로드",
+      "preparing": "준비 중...",
+      "success": "내보내기 다운로드 완료",
+      "failed": "내보내기 실패"
+    },
+    "delete": {
+      "title": "모든 지식 데이터 삭제",
+      "description": "모든 프로젝트와 요약 내용을 영구적으로 삭제합니다. 이 작업은 도서, 챕터 또는 계정에는 영향을 주지 않으며, 메모리 시스템에 저장된 데이터만 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
+      "button": "모두 삭제",
+      "deleting": "삭제 중...",
+      "success": "{{projects}}개의 프로젝트와 {{summaries}}개의 요약 항목을 삭제했습니다.",
+      "failed": "삭제 실패"
+    },
+    "dialog": {
+      "title": "모든 지식 데이터를 삭제하시겠습니까?",
+      "description": "모든 프로젝트와 요약 내용이 영구적으로 삭제됩니다. 확인하려면 아래에 {{token}}을 입력하세요.",
+      "cancel": "취소"
+    }
+  },
+  "relations": {
+    "edit": {
+      "cta": "관계 수정",
+      "title": "관계 수정",
+      "description": "이 관계의 서술어(predicate)를 수정하거나, 잘못된 것으로 표시하여 삭제합니다.",
+      "field": {
+        "predicate": "서술어"
+      },
+      "save": "수정",
+      "saving": "수정 중...",
+      "cancel": "취소",
+      "correctSuccess": "관계가 수정되었습니다.",
+      "invalidateSuccess": "관계가 삭제되었습니다.",
+      "invalidateHint": "이 관계가 추출되지 말아야 했던 것이라면, 잘못된 것으로 표시하여 삭제하세요.",
+      "invalidateConfirm": "이 관계를 잘못된 것으로 표시하고 삭제하시겠습니까?",
+      "markWrong": "잘못된 것으로 표시",
+      "invalidating": "삭제 중...",
+      "failed": "수정 사항을 저장할 수 없습니다: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "수정",
+      "title": "이벤트 수정",
+      "description": "이 이벤트의 제목, 요약 또는 타이밍을 조정합니다.",
+      "field": {
+        "title": "제목",
+        "summary": "요약",
+        "timeCue": "시간 힌트",
+        "dateIso": "날짜 (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY 또는 YYYY-MM-DD",
+      "save": "저장",
+      "saving": "저장 중...",
+      "cancel": "취소",
+      "success": "이벤트가 업데이트되었습니다.",
+      "conflict": "다른 기기에서 이 이벤트를 업데이트했습니다. 최신 내용을 검토한 후 다시 시도하세요.",
+      "failed": "이벤트를 업데이트할 수 없습니다: {{error}}",
+      "invalidDate": "날짜는 YYYY, YYYY-MM 또는 YYYY-MM-DD 형식이어야 합니다."
+    },
+    "archive": {
+      "cta": "삭제",
+      "confirm": "이 이벤트를 삭제(숨기기)하시겠습니까?",
+      "archiving": "삭제 중...",
+      "success": "이벤트가 삭제되었습니다.",
+      "failed": "이벤트를 삭제할 수 없습니다: {{error}}"
+    }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "설정 품질",
+        "description": "장르 및 설정별 성공률. 동일한 설정 해시를 공유하는 2회 이상의 추출 실행 후 데이터가 생성됩니다.",
+        "empty": "데이터 없음 — 장르별로 동일한 설정 해시를 가진 2회 이상의 추출 실행이 필요합니다.",
+        "exploration": "탐색 샘플 (랜덤 테일)"
+      },
+      "modelMatrix": {
+        "title": "모델 매트릭스",
+        "description": "모델 및 작업 범위별 가중치 결과 점수. 성공=1.0 · 건너뜀=0.3 · 실패=0.0.",
+        "empty": "데이터 없음 — 동일한 모델과 범위로 2회 이상의 추출 실행이 필요합니다."
+      },
+      "defaultDrift": {
+        "title": "설정 드리프트",
+        "description": "어떤 추출 파라미터가 기본값에서 벗어나는지, 그리고 프로젝트들이 동일한 값으로 수렴하는지 여부.",
+        "empty": "기록된 파라미터 조정 내역이 없습니다."
+      },
+      "outcomeRecompute": {
+        "title": "결과 재계산",
+        "description": "실행 후 사용자의 수정을 적용한 뒤 재평가된 추출 실행 결과.",
+        "empty": "수정 데이터가 없습니다. 수정 사항이 추출 실행과 연결되면 결과 재계산이 활성화됩니다."
+      }
+    },
+    "columns": {
+      "genre": "장르",
+      "configHash": "설정",
+      "runs": "실행 횟수",
+      "successRate": "성공률",
+      "avgEntities": "평균 엔티티",
+      "model": "모델",
+      "scope": "범위",
+      "filter": "필터",
+      "weightedOutcome": "점수",
+      "target": "파라미터",
+      "affectedProjects": "프로젝트",
+      "driftPattern": "패턴",
+      "runsWithOutcome": "결과 포함 실행",
+      "runId": "실행",
+      "outcome": "결과",
+      "recomputed": "재계산됨",
+      "corrections": "수정 사항"
+    },
+    "driftPattern": {
+      "convergent": "수렴",
+      "divergent": "발산"
+    },
+    "totalRuns": "총 {{count}}회 실행"
+  }
+}

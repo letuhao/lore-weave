@@ -209,6 +209,7 @@
     "detect_hint": "Bấm \"Phát hiện\" để quét độ phủ glossary của sách.",
     "none": "Không phát hiện thiếu hụt — mọi thực thể đều được mô tả tốt.",
     "extract_first": "Chưa có thực thể — hãy trích xuất sách này trước (tab Tri thức). Bồi đắp chỉ lấp khoảng trống cho các thực thể nền tảng đã biết.",
+    "extract_cta": "Trích xuất thực thể ngay",
     "technique": "Kỹ thuật",
     "gen_model": "Model sinh",
     "embed_model": "Model embedding",

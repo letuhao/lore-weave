@@ -71,6 +71,7 @@ function SessionItem({
 
   return (
     <div
+      data-testid="chat-session-row"
       onClick={() => { if (!isEditing) onSelect(); }}
       className={cn(
         'group cursor-pointer border-l-2 px-4 py-3 transition-colors',

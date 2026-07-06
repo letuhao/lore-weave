@@ -245,3 +245,81 @@ data: {"type":"message_stop"}
 		t.Errorf("empty delta should be skipped, got %v", tokens)
 	}
 }
+
+// D-PROMPT-CACHING — with cache_control, Anthropic reports input_tokens EXCLUDING
+// the cached prefix (cache_creation/cache_read carry it). The streamer must fold
+// them into InputTokens so enabling caching never under-counts input volume.
+func TestStreamAnthropicSSE_FoldsCacheTokensIntoInput(t *testing.T) {
+	body := `event: message_start
+data: {"type":"message_start","message":{"id":"m1","model":"claude","usage":{"input_tokens":12,"cache_creation_input_tokens":100,"cache_read_input_tokens":4000}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
+	chunks := collectAnthropicChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	// 12 uncached + 100 cache-write + 4000 cache-read = 4112 total input volume
+	if usage.InputTokens != 4112 {
+		t.Fatalf("cache tokens not folded into InputTokens: got %d, want 4112", usage.InputTokens)
+	}
+	if usage.OutputTokens != 2 {
+		t.Fatalf("OutputTokens: got %d, want 2", usage.OutputTokens)
+	}
+	// §7 monitor: the split is ALSO emitted (not only folded), so the caching
+	// monitor can see write-premium (100) vs read-hit (4000).
+	if usage.CacheCreationTokens == nil || *usage.CacheCreationTokens != 100 {
+		t.Fatalf("CacheCreationTokens: got %v, want 100", usage.CacheCreationTokens)
+	}
+	if usage.CacheReadTokens == nil || *usage.CacheReadTokens != 4000 {
+		t.Fatalf("CacheReadTokens: got %v, want 4000", usage.CacheReadTokens)
+	}
+}
+
+func TestStreamAnthropicSSE_NoCacheEmitsNoSplit(t *testing.T) {
+	body := `event: message_start
+data: {"type":"message_start","message":{"id":"m1","model":"claude","usage":{"input_tokens":42}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
+	chunks := collectAnthropicChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	if usage.InputTokens != 42 {
+		t.Fatalf("InputTokens: got %d, want 42", usage.InputTokens)
+	}
+	// A non-cached turn must NOT attach misleading cache fields (nil, omitempty).
+	if usage.CacheCreationTokens != nil || usage.CacheReadTokens != nil {
+		t.Fatalf("uncached turn must emit no split: creation=%v read=%v",
+			usage.CacheCreationTokens, usage.CacheReadTokens)
+	}
+}

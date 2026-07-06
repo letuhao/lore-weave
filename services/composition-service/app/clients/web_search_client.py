@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
 from app.logging_config import trace_id_var
@@ -94,10 +95,12 @@ class WebSearchClient:
     ) -> None:
         self._base_url = base_url.rstrip("/")
         # Advanced web search fetches pages — a longer timeout than the 5s read
-        # clients, still bounded (mirrors glossary's 20s).
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s, connect=5.0),
-            headers={"X-Internal-Token": internal_token},
+        # clients, still bounded (mirrors glossary's 20s). W3: shared factory bakes
+        # X-Internal-Token + JSON + per-request X-Trace-Id.
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, connect_timeout_s=5.0,
+            trace_id_provider=trace_id_var.get,
         )
 
     async def aclose(self) -> None:
@@ -114,12 +117,10 @@ class WebSearchClient:
             return WebSearchResult(error="unavailable")
         n = max(1, min(int(max_results or 5), 10))
         url = f"{self._base_url}/internal/web-search"
-        tid = trace_id_var.get()
         try:
             resp = await self._http.post(
                 url, json={"query": q, "max_results": n},
                 params={"user_id": str(user_id)},
-                headers={"X-Trace-Id": tid} if tid else None,
             )
         except httpx.HTTPError as exc:
             logger.warning("web-search unreachable: %s", exc)

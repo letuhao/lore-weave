@@ -80,7 +80,7 @@ describe('QuickCreateModal', () => {
   it('closes on Escape when idle', () => {
     const onClose = vi.fn();
     render(<QuickCreateModal kind="genre" onCreate={vi.fn()} onClose={onClose} />);
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -96,7 +96,7 @@ describe('QuickCreateModal', () => {
     fireEvent.click(screen.getByText('quickcreate.create'));
     // now in the submitting state (button label flips to "creating")
     expect(screen.getByText('quickcreate.creating')).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
   });
 });

@@ -228,6 +228,22 @@ async def get_publish_gate(
     return await outline.chapter_scene_gate(user_id, project_id, chapter_id)
 
 
+@router.get("/works/{project_id}/canon-issues")
+async def get_canon_issues(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, Any]:
+    """Studio Quality tab (`quality-canon` panel): every scene in the book whose
+    latest completed auto-generation left a CONFIRMED canon contradiction —
+    itemized, not the `publish-gate`'s per-chapter count. Verifies the Work
+    exists (user-scoped 404) first."""
+    await _require_work(works, user_id, project_id)
+    items = await outline.canon_issues(user_id, project_id)
+    return {"items": items}
+
+
 @router.post("/works/{project_id}/outline/nodes", status_code=201)
 async def create_node(
     project_id: UUID,

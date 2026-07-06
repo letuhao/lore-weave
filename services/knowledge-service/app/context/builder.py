@@ -56,6 +56,8 @@ async def build_context(
     language: str | None = None,
     entity_access_repo=None,
     project_ids: list[UUID] | None = None,
+    grounding: bool = True,
+    current_chapter_id: UUID | None = None,
 ) -> BuiltContext:
     # Track B B1(2) — normalize the requested project set. `project_ids` (multi-KG)
     # takes precedence; else the single `project_id` (back-compat). Order-preserving
@@ -77,6 +79,25 @@ async def build_context(
     if not resolved:
         # None of the requested projects exist for this user (all stale/foreign).
         raise ProjectNotFound()
+
+    # T5 (Context Budget Law D2) — grounding intent gate. chat-service decided this
+    # turn references NO book lore (entity-presence heuristic), so skip the EXPENSIVE
+    # retrieval (passage vector search + semantic glossary + LLM summarization) and
+    # serve the LIGHT project-aware path (static: glossary badges + summaries +
+    # instruction, no vectors/LLM). The always-on story_state block (chat-side, D4)
+    # remains the safety net, so a false-negative gate never strips loaded lore. For
+    # a multi-KG union we serve the light path for the first resolved project (the
+    # union's expensive cross-project rank is exactly what the gate is skipping).
+    if not grounding:
+        return await build_static_mode(
+            summaries_repo,
+            glossary_client,
+            user_id=user_id,
+            project=resolved[0],
+            message=message,
+            language=language,
+            entity_access_repo=entity_access_repo,
+        )
 
     if len(resolved) >= 2:
         # ≥2 readable projects → the multi-KG union (shared budget, cross-project
@@ -106,6 +127,7 @@ async def build_context(
             llm_client=llm_client,
             language=language,
             entity_access_repo=entity_access_repo,
+            current_chapter_id=current_chapter_id,
         )
 
     return await build_static_mode(

@@ -7,7 +7,12 @@ from app.services.compaction import (
     COMPACT_TRIGGER_RATIO,
     CompactionReport,
     compact_messages,
+    extract_breadcrumb,
+    inject_recovery_hint,
+    recovery_hint_message,
+    summary_message,
     _PLACEHOLDER,
+    _DUP_PLACEHOLDER,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -85,6 +90,170 @@ class TestNoTrigger:
         msgs = [_tool("web_search"), {"role": "user", "content": _big(9999)}]
         out, rep = await compact_messages(msgs, effective_limit=None)
         assert rep.triggered is False
+
+
+class TestBreadcrumb:
+    """T6/D6 — the deterministic verbatim breadcrumb preserved across the LLM summary."""
+
+    def test_extracts_number_facts_and_names(self):
+        msgs = [{"role": "user", "content":
+                 "The ritual needs exactly SEVEN star-anchors; the blade 'Verithrax' was "
+                 "forged by Oldan Vex."}]
+        bc = extract_breadcrumb(msgs)
+        assert "SEVEN star-anchors" in bc          # whole number-bearing sentence, verbatim
+        assert "Verithrax" in bc                    # quoted name (not the possessive trap)
+        # multi-word names survive as their component words (single-word extractor)
+        assert "Oldan" in bc and "Vex" in bc
+        assert bc.startswith("KEY DETAILS")
+
+    def test_preserves_single_word_coined_names(self):
+        # the fiction case the multi-word/quoted patterns MISSED (measured: 7/9 dropped),
+        # which made a compacted long session lose character/place/spell names → recall
+        # failure. Single-word coined names are the highest-value novel facts.
+        msgs = [
+            {"role": "user", "content": "The secret rune is VORTHANE. Remember it."},
+            {"role": "user", "content": "Kael the blacksmith forged Dawnbreaker in Emberfall."},
+            {"role": "user", "content": "Sorenth rules Rimehold. Mira is a healer."},
+        ]
+        bc = extract_breadcrumb(msgs)
+        for name in ("VORTHANE", "Kael", "Dawnbreaker", "Emberfall", "Sorenth", "Rimehold", "Mira"):
+            assert name in bc, f"{name} dropped from breadcrumb"
+
+    def test_filters_common_openers_and_allcommon_phrases(self):
+        # precision: capitalized common words (sentence openers, even after a colon) and
+        # all-common multi-word phrases must NOT pollute the breadcrumb.
+        bc = extract_breadcrumb([{"role": "user", "content":
+            "Kael forged Dawnbreaker. Reply OK. More lore: The chronicle is long."}])
+        names = ""
+        for line in bc.splitlines():
+            if line.startswith("Names"):
+                names = line.lower()
+        assert "kael" in names and "dawnbreaker" in names
+        assert "reply ok" not in names   # all-common phrase filtered
+        for junk in ("; the;", "; more;", "; reply;", "; note;", "; here;"):
+            assert junk not in names + ";"
+
+    def test_preserves_vietnamese_diacritic_names(self):
+        # ASCII-only regexes shredded Vietnamese names at the first diacritic
+        # (Nguyên→"Nguy") and dropped the protagonist. Unicode-aware _WORD keeps them whole.
+        bc = extract_breadcrumb([{"role": "user", "content":
+            "Nhân vật chính là Hàn Lập, tu sĩ Kim Đan. Lăng Thiên tại Thành Bắc."}])
+        for name in ("Hàn", "Lập", "Lăng", "Thiên", "Thành", "Kim"):
+            assert name in bc, f"{name} dropped/fragmented in VI breadcrumb"
+
+    def test_preserves_cjk_quoted_name_and_figure_sentence(self):
+        # CJK has no capitalization signal; a quoted name + a Chinese-numeral figure
+        # sentence are the two things the deterministic breadcrumb CAN preserve.
+        bc = extract_breadcrumb([{"role": "user", "content":
+            "主角叫「叶辰」，在北城大战三百回合，有一万守军。"}])
+        assert "叶辰" in bc          # quoted CJK name (via _QUOTED_CJK)
+        assert "三百" in bc          # Chinese-numeral figure sentence (via _CJK_NUM split)
+
+    def test_empty_when_nothing_salient(self):
+        assert extract_breadcrumb([{"role": "user", "content": "ok thanks"}]) == ""
+        assert extract_breadcrumb([]) == ""
+
+    async def test_breadcrumb_survives_a_failed_summarizer(self):
+        # the summary LLM returns nothing, but add_breadcrumb still preserves the facts
+        # deterministically rather than hard-dropping the middle.
+        async def _empty_summarize(_middle):
+            return ""
+        msgs = [{"role": "system", "content": "sys"}]
+        msgs += [{"role": "user", "content": _big(300) + "."} for _ in range(4)]
+        msgs.append({"role": "assistant", "content": "The debt is 4,400 salt-marks."})
+        msgs += [{"role": "user", "content": _big(300) + "."} for _ in range(2)]
+        msgs.append({"role": "user", "content": "latest"})
+        out, rep = await compact_messages(
+            msgs, effective_limit=2_000, keep_recent=1,
+            summarize=_empty_summarize, add_breadcrumb=True)
+        joined = " ".join(m.get("content", "") for m in out if m.get("role") == "system")
+        assert "4,400 salt-marks" in joined         # the figure survived the empty summary
+        assert rep.summarized is True and "breadcrumb" in rep.steps
+
+    async def test_off_by_default_no_breadcrumb(self):
+        async def _sum(_m):
+            return "SYNOPSIS: stuff"
+        msgs = [{"role": "user", "content": _big(400) + " 4,400 salt-marks"} for _ in range(6)]
+        msgs.append({"role": "user", "content": "latest"})
+        out, _ = await compact_messages(
+            msgs, effective_limit=2_000, keep_recent=1, summarize=_sum)  # add_breadcrumb defaults False
+        joined = " ".join(m.get("content", "") for m in out if m.get("role") == "system")
+        assert "KEY DETAILS" not in joined
+
+
+class TestRecoveryHint:
+    """T6/D6 — the post-compaction recovery hint that points the model at
+    conversation_search (so a lossy summary → a SEARCH, not a guess/omission)."""
+
+    async def test_hint_message_is_system_and_names_the_tool(self):
+        m = recovery_hint_message()
+        assert m["role"] == "system"
+        assert "conversation_search" in m["content"]
+        # tells the model NOT to guess/omit without searching
+        assert "guess" in m["content"].lower()
+
+    async def test_injected_after_leading_pinned_block_incl_summary(self):
+        # after compaction the array is [system…, <summary>, …tail]. The hint must land
+        # right after the leading pinned block (so it reads as guidance about the summary)
+        # and BEFORE the first conversation turn.
+        msgs = [
+            {"role": "system", "content": "sys"},
+            summary_message("old turns condensed here"),
+            {"role": "user", "content": "recall the blade name"},
+        ]
+        inject_recovery_hint(msgs)
+        assert len(msgs) == 4
+        # inserted at index 2 — after system + summary, before the user turn
+        assert msgs[2]["role"] == "system" and "conversation_search" in msgs[2]["content"]
+        assert msgs[3]["role"] == "user"
+
+    async def test_injected_at_end_when_all_pinned(self):
+        # degenerate: no conversation tail (all pinned) → append at the end, no crash.
+        msgs = [{"role": "system", "content": "sys"}]
+        inject_recovery_hint(msgs)
+        assert len(msgs) == 2 and msgs[-1]["content"] == recovery_hint_message()["content"]
+
+
+class TestTaskElasticTarget:
+    """T2/D3 — the `target` param fires compaction at a SMALLER soft budget than the
+    flat 0.75×window trigger (or, when target > window, clamps to the hard ceiling)."""
+
+    async def test_target_triggers_earlier_than_flat(self):
+        # ~10K tok: far UNDER the flat 0.75×100_000=75_000 trigger (baseline never
+        # compacts), but far OVER a task-elastic target of 3_000 → the target makes
+        # it fire. This is the whole mechanism (a light turn compacts sooner).
+        msgs = [{"role": "system", "content": "sys"},
+                {"role": "user", "content": _big(4_000)},
+                {"role": "assistant", "content": _big(4_000)},
+                {"role": "user", "content": "latest"}]
+        _, base = await compact_messages(
+            [dict(m) for m in msgs], effective_limit=100_000)
+        assert base.triggered is False  # under the flat trigger
+        _, cand = await compact_messages(
+            [dict(m) for m in msgs], effective_limit=100_000, target=3_000)
+        assert cand.triggered is True   # the soft target fires it
+
+    async def test_none_target_keeps_flat_behavior(self):
+        # target=None (flag OFF) is byte-identical to not passing target at all.
+        msgs = [{"role": "user", "content": _big(4_000)},
+                {"role": "assistant", "content": _big(4_000)}]
+        _, a = await compact_messages([dict(m) for m in msgs], effective_limit=100_000)
+        _, b = await compact_messages(
+            [dict(m) for m in msgs], effective_limit=100_000, target=None)
+        assert a.triggered is False and b.triggered is False
+
+    async def test_target_above_ceiling_clamps_and_delays(self):
+        # A target ABOVE the effective limit must not push the trigger past the hard
+        # ceiling: trigger = min(target, effective_limit). ~7K tok is over the flat
+        # 0.75×8_000=6_000 trigger (baseline fires) but under the clamped ceiling
+        # 8_000 (candidate does NOT fire — a roomy/high-task_weight turn).
+        msgs = [{"role": "user", "content": _big(2_800)},
+                {"role": "assistant", "content": _big(2_800)}]
+        _, base = await compact_messages([dict(m) for m in msgs], effective_limit=8_000)
+        assert base.triggered is True
+        _, cand = await compact_messages(
+            [dict(m) for m in msgs], effective_limit=8_000, target=999_999)
+        assert cand.triggered is False
 
 
 class TestMicrocompact:
@@ -238,4 +407,108 @@ class TestToolPairSafety:
         # so pairing is intact even when it clears old results.
         msgs = self._resume_shaped()
         out, rep = await compact_messages(msgs, effective_limit=2_000, keep_tool_results=1)
+        assert not _has_orphan_tool(out)
+
+
+def _result(call_id: str, content: str) -> dict:
+    """A tool result with EXPLICIT content (to construct duplicate reads)."""
+    return {"role": "tool", "tool_call_id": call_id, "content": content}
+
+
+class TestDuplicateReadCollapse:
+    """T6/D13a — reversible dup-read collapse: an EXACT-duplicate tool result (the model
+    re-read an unchanged resource) is collapsed to a reference, keeping the latest full."""
+
+    async def test_collapses_earlier_identical_read_keeps_latest(self):
+        dup = _big(400)
+        msgs = [
+            {"role": "system", "content": "sys"},
+            _asst_call("c1"), _result("c1", dup),
+            {"role": "user", "content": "and again?"},
+            _asst_call("c2"), _result("c2", dup),  # identical re-read (most recent)
+            {"role": "user", "content": "now"},
+        ]
+        # keep_tool_results high so microcompact clears nothing → isolate the collapse tier.
+        out, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=99, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 1
+        assert "collapse_duplicates" in rep.steps
+        tool_contents = [m["content"] for m in out if m.get("role") == "tool"]
+        assert tool_contents == [_DUP_PLACEHOLDER, dup]  # earlier collapsed, latest full
+        assert not _has_orphan_tool(out)  # only content rewritten → pairing intact
+
+    async def test_off_by_default_no_collapse(self):
+        dup = _big(400)
+        msgs = [
+            _asst_call("c1"), _result("c1", dup),
+            _asst_call("c2"), _result("c2", dup),
+            {"role": "user", "content": "now"},
+        ]
+        # collapse_duplicates defaults False → the dup contents are never referenced-away.
+        out, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=99)
+        assert rep.duplicates_collapsed == 0
+        assert "collapse_duplicates" not in rep.steps
+        assert _DUP_PLACEHOLDER not in [m.get("content") for m in out]
+
+    async def test_distinct_reads_are_not_collapsed(self):
+        msgs = [
+            _asst_call("c1"), _result("c1", _big(400) + " ALPHA"),
+            _asst_call("c2"), _result("c2", _big(400) + " BETA"),  # different content
+            {"role": "user", "content": "now"},
+        ]
+        _, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=99, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 0
+
+    async def test_excluded_tool_never_collapsed(self):
+        dup = _big(400)
+        msgs = [
+            _asst_call("c1"), {"role": "tool", "name": "web_search", "tool_call_id": "c1", "content": dup},
+            _asst_call("c2"), {"role": "tool", "name": "web_search", "tool_call_id": "c2", "content": dup},
+            {"role": "user", "content": "now"},
+        ]
+        _, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=99, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 0  # web_search results are load-bearing/cited
+
+    async def test_collapse_never_orphans_on_resume_shape(self):
+        # a resume array with a duplicated read: collapse must keep every pair intact.
+        dup = _big(500)
+        msgs = [
+            {"role": "system", "content": "sys"},
+            _asst_call("c_1"), _result("c_1", dup),
+            {"role": "assistant", "content": _big(300)},
+            _asst_call("c_2"), _result("c_2", dup),  # identical re-read
+            _asst_call("c_3"), _result("c_3", _big(300)),
+        ]
+        out, rep = await compact_messages(
+            msgs, effective_limit=1_500, keep_tool_results=99, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 1
+        assert not _has_orphan_tool(out)
+
+    async def test_did_work_true_when_only_collapse_fired(self):
+        assert CompactionReport(duplicates_collapsed=1).did_work is True
+
+    async def test_collapse_survives_microcompact_no_double_count(self):
+        # collapse fires, then (still over trigger) microcompact runs. The collapsed dup
+        # must be left as its SPECIFIC reference (not re-cleared to _PLACEHOLDER) and must
+        # NOT be counted in tool_results_cleared (no double-count vs duplicates_collapsed).
+        dup = _big(400)
+        msgs = [
+            {"role": "system", "content": "sys"},
+            _asst_call("c1"), _result("c1", dup),            # oldest dup → collapsed
+            _asst_call("c2"), _result("c2", _big(400) + " A"),  # unique
+            _asst_call("c3"), _result("c3", _big(400) + " B"),  # unique
+            _asst_call("c4"), _result("c4", dup),            # most-recent dup → kept full
+            {"role": "user", "content": "now"},
+        ]
+        out, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=1, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 1
+        assert "microcompact" in rep.steps
+        c1 = next(m for m in out if m.get("tool_call_id") == "c1")
+        assert c1["content"] == _DUP_PLACEHOLDER          # NOT overwritten to _PLACEHOLDER
+        # only the two UNIQUE results were microcompacted — the collapsed dup isn't re-counted
+        assert rep.tool_results_cleared == 2
         assert not _has_orphan_tool(out)

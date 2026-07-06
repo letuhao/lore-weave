@@ -27,8 +27,13 @@ const (
 // at the default similarity_threshold; similarity() only ranks. The
 // idx_chapter_blocks_trgm GIN index accelerates both legs of the OR.
 //
+// A5/CB6: $5 = OFFSET is now REAL (previously always ignored — LOW-3). Paging
+// is stable as long as chapter_blocks doesn't change between page loads (a
+// plain LIMIT/OFFSET over a fixed ORDER BY) — no residual instability beyond
+// that for this flat block-granularity query.
+//
 //	$1 = book_id   $2 = raw query (similarity + trigram)
-//	$3 = escaped ILIKE pattern   $4 = limit
+//	$3 = escaped ILIKE pattern   $4 = limit   $5 = offset
 const lexicalSearchSQL = `
 SELECT cb.chapter_id, c.title, c.sort_order, cb.block_index, cb.heading_context,
        cb.text_content, similarity(cb.text_content, $2) AS sim, c.original_language
@@ -38,7 +43,7 @@ WHERE c.book_id = $1
   AND c.lifecycle_state = 'active'
   AND (cb.text_content ILIKE $3 OR cb.text_content % $2)
 ORDER BY (cb.text_content ILIKE $3) DESC, sim DESC, c.sort_order, cb.block_index
-LIMIT $4`
+LIMIT $4 OFFSET $5`
 
 // lexicalSearchChapterSQL — E5 "chapter" granularity (navigate): one BEST block
 // per chapter, so `LIMIT $4` bounds distinct CHAPTERS, not blocks. The flat
@@ -47,7 +52,16 @@ LIMIT $4`
 // keeps the top-ranked block per chapter (exact-first, then similarity), then the
 // outer query ranks chapters. Same 7 projected columns as lexicalSearchSQL.
 //
-//	$1 = book_id   $2 = raw query   $3 = escaped ILIKE pattern   $4 = limit
+// A5/CB6: $5 = OFFSET is now REAL. HONEST CAVEAT (this replaces the old
+// "v1 has no pagination" note): the window function re-ranks the
+// best-block-per-chapter PER REQUEST, so if chapters are edited/added/removed
+// between page loads, the ranking (and therefore which chapter lands on which
+// page) can shift — this is NOT keyset-stable pagination, just LIMIT/OFFSET
+// over a snapshot that can move under you. Acceptable for v1 (documented, not
+// silently claimed as stable); the chapter-browser Content-mode footer surfaces
+// this to users.
+//
+//	$1 = book_id   $2 = raw query   $3 = escaped ILIKE pattern   $4 = limit   $5 = offset
 const lexicalSearchChapterSQL = `
 SELECT t.chapter_id, t.title, t.sort_order, t.block_index, t.heading_context,
        t.text_content, t.sim, t.original_language
@@ -68,7 +82,7 @@ FROM (
 ) t
 WHERE t.rn = 1
 ORDER BY t.exact DESC, t.sim DESC, t.sort_order
-LIMIT $4`
+LIMIT $4 OFFSET $5`
 
 // lexicalSearchCanonSQL — P3-B canon surface. Searches the PUBLISHED revision
 // text per chapter (chapter_revisions.body JSONB `_text` elements) rather than
@@ -78,10 +92,19 @@ LIMIT $4`
 // exists (then denormalize to a canon_blocks table). Same 7 projected columns as
 // the draft SQLs so buildLexicalHit/runLexicalSQL are shared.
 //
-//	$1 = book_id   $2 = raw query   $3 = escaped ILIKE pattern   $4 = limit
+// A5/CB6: $5 = OFFSET is now REAL. Canon text only changes on publish/unpublish
+// (much rarer than draft edits), so this leg is the closest to genuinely stable
+// pagination of the three, though still not a true keyset (a publish between
+// page loads can still shift results).
+//
+//	$1 = book_id   $2 = raw query   $3 = escaped ILIKE pattern   $4 = limit   $5 = offset
+//
 // Per-node text = the `_text` projection when present, else the node's nested
 // standard-tiptap text leaves ($.**.text) — the `_text`-only read silently
 // excluded standard-tiptap canon from search (same class as the publish guard fix).
+// `strict` jsonpath mode: lax mode's automatic array-unwrap double-visits a
+// single-text-node block (heading/paragraph, the overwhelmingly common case)
+// via `**`, silently DUPLICATING every such block's matched/snippeted text.
 const lexicalSearchCanonSQL = `
 SELECT c.id, c.title, c.sort_order, (x.ord - 1)::int AS block_index,
        NULL::text AS heading_context, nt.node_text AS text_content,
@@ -92,7 +115,7 @@ CROSS JOIN LATERAL jsonb_array_elements(rv.body -> 'content') WITH ORDINALITY AS
 CROSS JOIN LATERAL (
   SELECT COALESCE(
     x.elem ->> '_text',
-    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
   ) AS node_text
 ) nt
 WHERE c.book_id = $1
@@ -100,7 +123,7 @@ WHERE c.book_id = $1
   AND nt.node_text IS NOT NULL
   AND (nt.node_text ILIKE $3 OR nt.node_text % $2)
 ORDER BY (nt.node_text ILIKE $3) DESC, sim DESC, c.sort_order, x.ord
-LIMIT $4`
+LIMIT $4 OFFSET $5`
 
 // validateSearchQuery trims ?q= and enforces presence + the length cap (SP5).
 // errMsg non-empty ⇒ the handler returns 400.
@@ -251,8 +274,12 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
-	limit, _ := parseLimitOffset(r) // default 20, max 100; v1 has no pagination (offset ignored, LOW-3)
-	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, granularity, surface)
+	// A5/CB6: offset is now applied (was always ignored — LOW-3). See
+	// runLexicalSearch's doc comment for the per-surface pagination-stability
+	// caveat (draft/canon: real OFFSET, stable unless data changes between
+	// page loads; all/chapter-granularity: re-ranks per request).
+	limit, offset := parseLimitOffset(r) // default 20, max 100
+	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, offset, granularity, surface)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
 		return
@@ -288,8 +315,8 @@ func (s *Server) searchChapterTextInternal(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
 		return
 	}
-	limit, _ := parseLimitOffset(r)
-	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, granularity, surface)
+	limit, offset := parseLimitOffset(r)
+	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, offset, granularity, surface)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
 		return
@@ -340,20 +367,32 @@ func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, 
 // chapter_blocks, default), "canon" (published-revision text), or "all" (both,
 // merged by score). `granularity` applies to the draft leg (chapter-best vs
 // every-block). matchType="lexical" by construction.
-func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q string, limit int, granularity, surface string) ([]map[string]any, error) {
+//
+// A5/CB6 offset handling: for "draft"/"canon" surface, offset is pushed straight
+// into the underlying SQL's real OFFSET (see the SQL const doc comments for the
+// per-surface stability caveat). For "all", offset CANNOT be pushed
+// independently into each leg — merging two independently-offset result sets
+// and re-sorting would return the WRONG page (e.g. offset=10,limit=10 pulling
+// rows 10-19 from EACH leg, merging, and re-slicing the top 10 does not equal
+// the true 11th-20th ranked item of the union). Instead both legs fetch their
+// own top (offset+limit) at SQL-offset 0 — sufficient because any item in the
+// true merged top-N must rank within the top-N of whichever leg it came from —
+// then the merge sorts once and slices [offset:offset+limit] in Go.
+func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q string, limit, offset int, granularity, surface string) ([]map[string]any, error) {
 	draftSQL := lexicalSearchSQL // "block": every matching block (exhaustive mining)
 	if granularity == "chapter" {
 		draftSQL = lexicalSearchChapterSQL // best block per chapter (navigate)
 	}
 	switch surface {
 	case "canon":
-		return s.runLexicalSQL(ctx, lexicalSearchCanonSQL, bookID, q, limit, "canon")
+		return s.runLexicalSQL(ctx, lexicalSearchCanonSQL, bookID, q, limit, offset, "canon")
 	case "all":
-		draft, err := s.runLexicalSQL(ctx, draftSQL, bookID, q, limit, "draft")
+		fetch := offset + limit
+		draft, err := s.runLexicalSQL(ctx, draftSQL, bookID, q, fetch, 0, "draft")
 		if err != nil {
 			return nil, err
 		}
-		canon, err := s.runLexicalSQL(ctx, lexicalSearchCanonSQL, bookID, q, limit, "canon")
+		canon, err := s.runLexicalSQL(ctx, lexicalSearchCanonSQL, bookID, q, fetch, 0, "canon")
 		if err != nil {
 			return nil, err
 		}
@@ -361,19 +400,23 @@ func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q strin
 		sort.SliceStable(merged, func(i, j int) bool {
 			return merged[i]["score"].(float64) > merged[j]["score"].(float64)
 		})
-		if len(merged) > limit {
-			merged = merged[:limit]
+		if offset >= len(merged) {
+			return []map[string]any{}, nil
 		}
-		return merged, nil
+		end := offset + limit
+		if end > len(merged) {
+			end = len(merged)
+		}
+		return merged[offset:end], nil
 	default: // "draft"
-		return s.runLexicalSQL(ctx, draftSQL, bookID, q, limit, "draft")
+		return s.runLexicalSQL(ctx, draftSQL, bookID, q, limit, offset, "draft")
 	}
 }
 
 // runLexicalSQL runs one lexical SQL ($1 book_id, $2 raw q, $3 escaped pattern,
-// $4 limit) and maps each row → a hit with the given surface label.
-func (s *Server) runLexicalSQL(ctx context.Context, sql string, bookID uuid.UUID, q string, limit int, surface string) ([]map[string]any, error) {
-	rows, err := s.pool.Query(ctx, sql, bookID, q, escapeLikePattern(q), limit)
+// $4 limit, $5 offset) and maps each row → a hit with the given surface label.
+func (s *Server) runLexicalSQL(ctx context.Context, sql string, bookID uuid.UUID, q string, limit, offset int, surface string) ([]map[string]any, error) {
+	rows, err := s.pool.Query(ctx, sql, bookID, q, escapeLikePattern(q), limit, offset)
 	if err != nil {
 		return nil, err
 	}

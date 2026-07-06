@@ -34,7 +34,9 @@ describe('AdminIngestView', () => {
     await waitFor(() => expect(screen.getByTestId('ingest-pull')).toBeTruthy());
     fireEvent.click(screen.getByTestId('ingest-pull'));
     await waitFor(() => expect(api.ingestPull).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByTestId('ingest-pull-result').textContent).toContain('fetched 100'));
+    // i18n mock returns the key (interpolated counts aren't shown); assert the
+    // result banner rendered post-pull. The count→param wiring is covered by tsc.
+    await waitFor(() => expect(screen.getByTestId('ingest-pull-result').textContent).toContain('ingest.pullResult'));
   });
 
   it('approve + reject call the API for a pending row', async () => {

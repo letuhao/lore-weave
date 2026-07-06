@@ -56,3 +56,16 @@ krippendorff==0.7.0
 # fastmcp CLI + dev tooling. Mounted at /mcp in app/main.py. The
 # bespoke /internal/tools/* path is retained (dual-run).
 mcp[cli]>=1.9,<2
+
+# PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md) —
+# sdks/python/loreweave_parse/pdf_walker.py. pymupdf (imports as `fitz`)
+# does per-page text + embedded-image extraction in one library; pypdf
+# alone (used by lore-enrichment-service) doesn't expose embedded-image
+# extraction. OCR fallback libs (pytesseract/pdf2image/Pillow) are
+# import-guarded in pdf_walker.py the same way lore-enrichment-service's
+# extract.py guards them — a missing lib/binary degrades gracefully
+# (text-layer only), it never crashes the service.
+pymupdf>=1.24
+pytesseract>=0.3.10
+pdf2image>=1.17
+Pillow>=10.3

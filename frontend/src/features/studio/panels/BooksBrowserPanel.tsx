@@ -1,0 +1,261 @@
+// 14_utility_panels.md Phase C2 — the `books` dock panel: browse/search/filter/create, the
+// SAME list `BooksPage.tsx` renders, via the shared `useBooksList()` hook (C1, DOCK-2 — no
+// forked logic). Unlike `BooksPage.tsx` (a standalone route where a row click is a real
+// route-link navigation), a row click here opens the `book-reader` dock panel as a SIBLING tab
+// in the SAME studio (`host.openPanel`) — the active book's studio never unmounts (DOCK-7).
+// The create dialog reuses `FormDialog` as-is (already DOCK-9 compliant).
+import { useTranslation } from 'react-i18next';
+import { BookOpen, Plus, ChevronRight } from 'lucide-react';
+import { FilterToolbar, Pagination, EmptyState, FormDialog, StatusBadge, SkeletonCard, LanguagePicker } from '@/components/shared';
+import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
+import { useBooksList, hashToHue } from '@/features/books/hooks/useBooksList';
+import { useStudioHost } from '../host/StudioHostProvider';
+import { useStudioPanel } from './useStudioPanel';
+import type { IDockviewPanelProps } from 'dockview-react';
+
+export function BooksBrowserPanel(props: IDockviewPanelProps) {
+  useStudioPanel('books', props.api);
+  const { t } = useTranslation('books');
+  const host = useStudioHost();
+
+  const {
+    total,
+    loading,
+    error,
+    search,
+    setSearch,
+    offset,
+    setOffset,
+    limit,
+    createOpen,
+    setCreateOpen,
+    creating,
+    newTitle,
+    setNewTitle,
+    newDesc,
+    setNewDesc,
+    newLang,
+    setNewLang,
+    langFilter,
+    setLangFilter,
+    bookLangs,
+    filteredBooks,
+    allLanguages,
+    handleCreate,
+  } = useBooksList();
+
+  const openReader = (bookId: string) => {
+    // Reads the book from where its FIRST chapter is (a plain browse-then-read open — no
+    // chapterId is known yet). BookReaderPanel shows a placeholder until one resolves via its
+    // own chapter fetch; opening WITHOUT a chapterId still retargets the singleton reader tab.
+    host.openPanel('book-reader', { params: { bookId } });
+  };
+
+  return (
+    <div data-testid="studio-books-panel" className="flex h-full min-h-0 flex-col gap-4 overflow-auto p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-sm font-semibold">{t('workspace')}</h2>
+        <button
+          onClick={() => setCreateOpen(true)}
+          data-testid="book-create-button"
+          className="btn-glow inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" />
+          {t('new_book')}
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      <FilterToolbar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder={t('search_placeholder')}
+        trailing={
+          <div className="flex items-center gap-3">
+            {allLanguages.length > 1 && (
+              <select
+                value={langFilter}
+                onChange={(e) => setLangFilter(e.target.value)}
+                className="appearance-none rounded-md border bg-background px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+              >
+                <option value="">{t('all_languages')}</option>
+                {allLanguages.map((l) => (
+                  <option key={l} value={l}>{l}</option>
+                ))}
+              </select>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {t('book_count', { count: filteredBooks.length })}
+            </span>
+          </div>
+        }
+      />
+
+      {loading && (
+        <div className="space-y-2">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      )}
+
+      {!loading && filteredBooks.length === 0 && (
+        <EmptyState
+          icon={BookOpen}
+          title={t('empty.title')}
+          description={t('empty.description')}
+          variant="primary"
+          action={
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground"
+            >
+              <Plus className="h-4 w-4" />
+              {t('new_book')}
+            </button>
+          }
+        />
+      )}
+
+      {!loading && filteredBooks.length > 0 && (
+        <div className="space-y-2">
+          {filteredBooks.map((book) => (
+            <button
+              key={book.book_id}
+              type="button"
+              onClick={() => openReader(book.book_id)}
+              data-testid="book-row"
+              className="group flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-card"
+            >
+              <div
+                className="flex h-16 w-11 flex-shrink-0 items-end overflow-hidden rounded border border-[hsl(var(--border-hover,25_6%_24%))]"
+                style={{
+                  background: `linear-gradient(135deg, hsl(${hashToHue(book.book_id)} 30% 12%), hsl(${hashToHue(book.book_id)} 25% 16%))`,
+                  boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)',
+                }}
+              >
+                <span className="p-1 font-serif text-[6px] leading-tight" style={{ color: `hsl(${hashToHue(book.book_id)} 40% 75%)` }}>
+                  {book.title.slice(0, 20)}
+                </span>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-serif font-medium">{book.title}</span>
+                  {book.visibility && <StatusBadge variant={book.visibility} />}
+                </div>
+                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  {book.original_language ? (
+                    <LanguageDisplay code={book.original_language} />
+                  ) : (
+                    <span>{t('card.no_language')}</span>
+                  )}
+                  <span className="text-border">·</span>
+                  <span>{t('card.chapters', { count: book.chapter_count })}</span>
+                  {book.updated_at && (
+                    <>
+                      <span className="text-border">·</span>
+                      <span>{new Date(book.updated_at).toLocaleDateString()}</span>
+                    </>
+                  )}
+                </div>
+                {book.genre_tags && book.genre_tags.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {book.genre_tags.slice(0, 4).map((g) => (
+                      <span key={g} className="rounded-full border border-border bg-secondary px-1.5 py-px text-[9px] font-medium text-muted-foreground">
+                        {g}
+                      </span>
+                    ))}
+                    {book.genre_tags.length > 4 && (
+                      <span className="rounded-full border border-border bg-secondary px-1.5 py-px text-[9px] font-medium text-muted-foreground">
+                        +{book.genre_tags.length - 4}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {bookLangs[book.book_id] && bookLangs[book.book_id].length > 0 && (
+                <div className="flex items-center gap-1" title={t('translated_to', { langs: bookLangs[book.book_id].join(', ') })}>
+                  {bookLangs[book.book_id].map((lang) => (
+                    <span key={lang} className="h-2 w-2 rounded-full bg-success" title={lang} />
+                  ))}
+                </div>
+              )}
+
+              <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Pagination total={total} limit={limit} offset={offset} onChange={setOffset} />
+
+      <FormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title={t('create.title')}
+        description={t('create.description')}
+        footer={
+          <>
+            <button
+              onClick={() => setCreateOpen(false)}
+              data-testid="book-create-cancel"
+              className="rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-secondary"
+            >
+              {t('common.cancel', { ns: 'common' })}
+            </button>
+            <button
+              onClick={() => void handleCreate()}
+              disabled={creating || !newTitle.trim()}
+              data-testid="book-create-submit"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {t('create.submit')}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">{t('create.book_title')}</label>
+            <input
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder={t('create.book_title_placeholder')}
+              data-testid="book-title-input"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">{t('create.language')}</label>
+            <LanguagePicker
+              value={newLang}
+              onChange={setNewLang}
+              placeholder={t('select_language')}
+              data-testid="book-language-input"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">{t('create.book_description')}</label>
+            <textarea
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              placeholder={t('create.book_description_placeholder')}
+              rows={3}
+              data-testid="book-description-input"
+              className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
+            />
+          </div>
+        </div>
+      </FormDialog>
+    </div>
+  );
+}

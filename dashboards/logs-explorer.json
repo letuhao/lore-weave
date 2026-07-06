@@ -81,25 +81,6 @@
       ],
       "title": "ERROR + WARN rate (foundation)",
       "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prom-primary"
-      },
-      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 18},
-      "id": 4,
-      "targets": [
-        {
-          "datasource": {"type": "prometheus", "uid": "prom-primary"},
-          "expr": "sum by (kind) (rate(lw_log_redactions_total[5m]))",
-          "legendFormat": "redactions: {{kind}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Source-side PII redaction rate (cycle-32 logger)",
-      "description": "Counts redactions performed by contracts/logging Redactor seam. Non-zero baseline OK; spike == regression that started leaking PII into raw log lines (caught at the SOURCE before reaching Vector ingest scrubber).",
-      "type": "timeseries"
     }
   ],
   "refresh": "30s",

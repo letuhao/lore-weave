@@ -1,0 +1,22 @@
+{
+  "heading": "Apa yang anda ingin lakukan?",
+  "subheading": "Pilih titik permulaan — anda boleh menukarnya pada bila-bila masa.",
+  "intent": {
+    "write": {
+      "title": "Menulis",
+      "desc": "Mulakan buku baharu atau sambung menulis — draf bab dengan pembantu penulisan AI."
+    },
+    "world": {
+      "title": "Bina dunia",
+      "desc": "Cipta lore — watak, tempat, kumpulan — tanpa memerlukan manuskrip."
+    },
+    "translate": {
+      "title": "Terjemah",
+      "desc": "Terjemahkan buku sedia ada ke bahasa lain dengan saluran terjemahan."
+    },
+    "explore": {
+      "title": "Teroka",
+      "desc": "Semak pengetahuan anda — entiti, garis masa dan graf hubungan."
+    }
+  }
+}

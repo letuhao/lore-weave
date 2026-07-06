@@ -48,6 +48,7 @@ CHAPTER = uuid.UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
 EXPECTED_TOOLS = {
     # Tier R
     "composition_get_work", "composition_list_outline",
+    "composition_get_outline_node",
     "composition_get_prose", "composition_list_canon_rules",
     "composition_get_generation_job",
     # Tier A
@@ -59,6 +60,16 @@ EXPECTED_TOOLS = {
     "composition_canon_rule_delete", "composition_write_prose",
     # Tier W
     "composition_publish", "composition_generate",
+    # ── D-AGENT-MODE §20 authoring-run tools (register on the SAME server) ──
+    # Tier R
+    "composition_authoring_run_list", "composition_authoring_run_get",
+    # Tier A
+    "composition_authoring_run_pause", "composition_authoring_run_close",
+    "composition_authoring_run_accept_unit", "composition_authoring_run_reject_unit",
+    # Tier W
+    "composition_authoring_run_create", "composition_authoring_run_gate",
+    "composition_authoring_run_start", "composition_authoring_run_resume",
+    "composition_authoring_run_revert_all",
     # ── W4 narrative-motif-library tools (register on the SAME server) ──
     # Tier R (motif)
     "composition_motif_search", "composition_motif_get",
@@ -80,15 +91,20 @@ EXPECTED_TOOLS = {
     "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
+          "composition_get_outline_node",
           "composition_get_prose", "composition_list_canon_rules",
           "composition_get_generation_job",
           "composition_motif_search", "composition_motif_get",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
           "composition_get_mine_job", "composition_motif_link_list",
-          "plan_validate", "plan_self_check"}
+          "plan_validate", "plan_self_check",
+          "composition_authoring_run_list", "composition_authoring_run_get"}
 TIER_W = {"composition_publish", "composition_generate",
           "composition_motif_adopt", "composition_motif_mine",
-          "composition_arc_import_analyze", "composition_conformance_run"}
+          "composition_arc_import_analyze", "composition_conformance_run",
+          "composition_authoring_run_create", "composition_authoring_run_gate",
+          "composition_authoring_run_start", "composition_authoring_run_resume",
+          "composition_authoring_run_revert_all"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────
@@ -443,6 +459,62 @@ async def test_get_generation_job_missing_rejected():
         with pytest.raises(NotAccessibleError):
             await srv.composition_get_generation_job(
                 _Ctx(), project_id=str(PROJECT), job_id=str(uuid.uuid4()),
+            )
+
+
+# ── composition_get_outline_node — the cheap single-node read's IDOR guard
+# (T1 review MED-1: the security-load-bearing `node.project_id != pid` check must
+# be proven by test, same discipline as get_generation_job above). ──────────────
+
+
+async def test_get_outline_node_owner_ok():
+    """A node in the caller's Work+project is returned with its version (the
+    concurrency token the whole tool exists to hand back)."""
+    import app.mcp.server as srv
+
+    node_id = uuid.uuid4()
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=_node(id=node_id, version=4))
+    async with _patched(grant_level=1, OutlineRepo=outline):
+        res = await srv.composition_get_outline_node(
+            _Ctx(), project_id=str(PROJECT), node_id=str(node_id),
+        )
+    assert res["id"] == str(node_id)
+    assert res["version"] == 4
+    outline.get_node.assert_awaited_once_with(TEST_USER, node_id)
+
+
+async def test_get_outline_node_foreign_project_rejected():
+    """A node_id the caller owns but under a DIFFERENT Work/project is not readable
+    through this project (no cross-Work leak) → H13 uniform error."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    other_project = uuid.uuid4()
+    foreign = OutlineNode(
+        id=uuid.uuid4(), user_id=TEST_USER, project_id=other_project,
+        kind="scene", rank="a0", title="S", status="empty", version=1,
+    )
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=foreign)
+    async with _patched(grant_level=1, OutlineRepo=outline):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_outline_node(
+                _Ctx(), project_id=str(PROJECT), node_id=str(foreign.id),
+            )
+
+
+async def test_get_outline_node_missing_rejected():
+    """An unknown node_id (repo returns None — user-scoped miss) → H13 uniform error."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=None)
+    async with _patched(grant_level=1, OutlineRepo=outline):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_outline_node(
+                _Ctx(), project_id=str(PROJECT), node_id=str(uuid.uuid4()),
             )
 
 

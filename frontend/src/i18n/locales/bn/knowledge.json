@@ -1,0 +1,1161 @@
+{
+  "page": {
+    "title": "জ্ঞান",
+    "subtitle": "প্রকল্প, গ্লোবাল বায়ো এবং এআই কী মনে রাখবে তার জন্য প্রাইভেসি কন্ট্রোল।",
+    "tabs": {
+      "label": "জ্ঞানের ট্যাবসমূহ",
+      "projects": "প্রকল্প",
+      "jobs": "জব",
+      "global": "গ্লোবাল",
+      "entities": "এনটিটি",
+      "timeline": "টাইমলাইন",
+      "raw": "র",
+      "privacy": "প্রাইভেসি",
+      "insights": "ইনসাইটস"
+    }
+  },
+  "graph": {
+    "title": "নলেজ গ্রাফ",
+    "counts": "{{nodes}} নোড · {{edges}} সম্পর্ক",
+    "truncated": "শীর্ষ {{n}}টি দেখাচ্ছে — আরও লোড করতে একটি নোড এক্সপ্যান্ড করুন",
+    "expanding": "এক্সপ্যান্ড হচ্ছে…",
+    "hint": "জুম করতে স্ক্রল করুন · প্যান করতে খালি জায়গায় ড্র্যাগ করুন · বিস্তারিত দেখতে নোডে ক্লিক করুন · এক্সপ্যান্ড করতে ⊞",
+    "loading": "গ্রাফ লোড হচ্ছে…",
+    "loadFailed": "গ্রাফ লোড করা সম্ভব হয়নি: {{error}}",
+    "empty": "এখনো কোনো নলেজ গ্রাফ নেই — এর নেটওয়ার্ক অন্বেষণ করতে এই প্রকল্পটি তৈরি করুন।"
+  },
+  "schemaSection": {
+    "title": "স্কিমা",
+    "subtitle": "এই প্রকল্পের নলেজ-গ্রাফ স্কিমা তৈরি করুন — নোডের ধরন, এজ টাইপ, ফ্যাক্ট টাইপ এবং ভোকাব। পরিবর্তনগুলো এই প্রকল্পের গ্রাফে প্রযোজ্য হবে।",
+    "editCta": "স্কিমা এডিট করুন",
+    "freeEdges": "অফ-ভোকাবুলারি সম্পর্ক অনুমোদিত (ফ্রি এজ)।",
+    "closedEdges": "সম্পর্কগুলো ঘোষিত এজ-টাইপের মধ্যে সীমাবদ্ধ; অন্যগুলো ট্রায়েজ লিস্টে যাবে।",
+    "error": "এই প্রকল্পের স্কিমা লোড করা সম্ভব হয়নি।",
+    "emptyHelp": "এই প্রকল্পে এখনও কোনো স্কিমা নেই। শুরু থেকে শুরু করুন, একটি টেমপ্লেট ক্লোন করুন, অথবা একটি গ্রহণ করুন।",
+    "newBlank": "নতুন ফাঁকা স্কিমা",
+    "schemaNamePlaceholder": "স্কিমার নাম",
+    "createBlankButton": "ফাঁকা তৈরি করুন",
+    "created": "স্কিমা তৈরি করা হয়েছে",
+    "cloneTemplate": "একটি টেমপ্লেট ক্লোন করুন",
+    "pickTemplate": "একটি টেমপ্লেট বেছে নিন…",
+    "cloneButton": "আমার স্কিমাগুলোতে ক্লোন করুন",
+    "cloned": "টেমপ্লেট ক্লোন করা হয়েছে",
+    "adoptTemplate": "একটি টেমপ্লেট গ্রহণ করুন",
+    "adoptHelp": "এই প্রকল্পে একটি টেমপ্লেট কপি করুন (প্রথমে গ্লসারি চেক করা হবে)।",
+    "adoptCta": "বইয়ের Ontology ট্যাবে গ্রহণ করুন",
+    "adoptBooklessHint": "বই-লিঙ্কড প্রকল্পের জন্য 'Adopt' সুবিধাটি উপলব্ধ।",
+    "forbidden": "স্কিমা তৈরি করতে এই প্রকল্পে আপনার 'Manage' অ্যাক্সেস প্রয়োজন।",
+    "createFailed": "স্কিমা তৈরি করা সম্ভব হয়নি।"
+  },
+  "shell": {
+    "backToProjects": "সব প্রকল্প",
+    "sections": {
+      "label": "প্রকল্পের বিভাগসমূহ",
+      "overview": "ওভারভিউ",
+      "entities": "এনটিটি",
+      "timeline": "টাইমলাইন",
+      "evidence": "প্রমাণ",
+      "proposals": "প্রপোজাল",
+      "gap": "গ্যাপ",
+      "insights": "ইনসাইটস",
+      "schema": "স্কিমা",
+      "graph": "গ্রাফ তৈরি করুন / অন্বেষণ করুন"
+    },
+    "notFound": "প্রকল্প পাওয়া যায়নি।",
+    "loading": "প্রকল্প লোড হচ্ছে…",
+    "overview": {
+      "configHeading": "কনফিগারেশন",
+      "embeddingModel": "এমবেডিং মডেল",
+      "rerankModel": "রিনক মডেল",
+      "extraction": "এক্সট্রাকশন",
+      "extractionEnabled": "সক্রিয়",
+      "extractionDisabled": "নিষ্ক্রিয়",
+      "book": "বই",
+      "world": "ওয়ার্ল্ড",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "পেন্ডিং প্রপোজাল এখানে জমা হবে (C11)।",
+      "gap": "গ্লসারি গ্যাপ রিপোর্ট এখানে জমা হবে (C10)।",
+      "graph": "গ্রাফ তৈরি ও অন্বেষণ এখানে হবে (C5 / C19)।"
+    }
+  },
+  "gap": {
+    "heading": "গ্লসারি গ্যাপ রিপোর্ট",
+    "subtitle": "আপনার বইতে বারবার আসা চরিত্র, স্থান এবং ধারণা যা এখনও গ্লসারিতে নেই। যেগুলো রাখা দরকার সেগুলো প্রমোট করুন।",
+    "summary": {
+      "candidates": "গ্যাপ ক্যান্ডিডেট",
+      "threshold": "ন্যূনতম উল্লেখ",
+      "top": "শীর্ষ গ্যাপ",
+      "topLabel": "শীর্ষ গ্যাপ",
+      "topMentions": "{{count}} বার উল্লেখ করা হয়েছে",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "ন্যূনতম উল্লেখ",
+      "limit": "সর্বোচ্চ দেখান"
+    },
+    "selectAll": "সব নির্বাচন করুন",
+    "selectRow": "{{name}} নির্বাচন করুন",
+    "loading": "গ্যাপ লোড হচ্ছে…",
+    "empty": "এই থ্রেশহোল্ডের উপরে কোনো গ্যাপ নেই। আরও বেশি দেখতে ন্যূনতম উল্লেখের সংখ্যা কমান, অথবা আপনার গ্লসারি ইতিমধ্যেই সম্পূর্ণ।",
+    "error": "গ্যাপ রিপোর্ট লোড করা সম্ভব হয়নি। আবার চেষ্টা করুন।",
+    "mentions": "{{count}} বার উল্লেখ করা হয়েছে",
+    "mentionsTitle": "বই জুড়ে কতবার উল্লেখ করা হয়েছে",
+    "itemFailed": "ব্যর্থ",
+    "bulkPromote": {
+      "cta_one": "{{count}} টি প্রমোট করুন গ্লসারিতে",
+      "cta_other": "{{count}} টি প্রমোট করুন গ্লসারিতে",
+      "cta_zero": "গ্লসারিতে প্রমোট করুন",
+      "progress": "{{done}} / {{total}} প্রমোট করা হয়েছে",
+      "failedCount": "({{count}} ব্যর্থ)",
+      "allOk": "{{count}} টি গ্লসারি ড্রাফটে প্রমোট করা হয়েছে।",
+      "allFailed": "সব {{count}} টি প্রমোশন ব্যর্থ হয়েছে। আবার চেষ্টা করুন।",
+      "partial": "{{ok}} টি প্রমোট করা হয়েছে; {{failed}} টি ব্যর্থ হয়েছে।"
+    }
+  },
+  "proposals": {
+    "heading": "পেন্ডিং প্রপোজাল",
+    "subtitle": "আপনার পর্যালোচনার অপেক্ষায় থাকা সবকিছুর জন্য একটি ইনবক্স — গ্লসারি এআই সাজেশন, উইকি এডিট এবং লোর-এনরিচমেন্ট প্রপোজাল। বিস্তারিত দেখতে এবং গ্রহণ করতে একটি রো ওপেন করুন।",
+    "noBook": "প্রপোজাল কিউ দেখতে এই প্রকল্পে একটি বই লিঙ্ক করুন।",
+    "loading": "প্রপোজাল লোড হচ্ছে…",
+    "error": "প্রপোজাল ইনবক্স লোড করা সম্ভব হয়নি। আবার চেষ্টা করুন।",
+    "empty": "কোনো পেন্ডিং প্রপোজাল নেই। নতুন এআই সাজেশন তৈরি হওয়ার সাথে সাথে এখানে দেখা যাবে।",
+    "review": "পর্যালোচনা",
+    "openRow": "{{title}} পর্যালোচনা করুন",
+    "sourceError": "এই কিউ লোড করা সম্ভব হয়নি। অন্যগুলো দেখা যাচ্ছে।",
+    "origin": {
+      "glossary": "গ্লসারি ড্রাফট",
+      "wiki": "উইকি এডিট",
+      "enrichment": "লোর প্রপোজাল"
+    },
+    "originLabel": {
+      "glossary": "গ্লসারি এআই ড্রাফট",
+      "wiki": "উইকি সাজেশন",
+      "enrichment": "লোর-এনরিচমেন্ট প্রপোজাল"
+    },
+    "count": "{{count}}"
+  },
+  "mobile": {
+    "sections": {
+      "global": "গ্লোবাল বায়ো",
+      "projects": "প্রকল্প",
+      "jobs": "এক্সট্রাকশন জব"
+    },
+    "desktopOnly": {
+      "title": "ডেস্কটপে আরও বিস্তারিত",
+      "body": "Entities browsing, the narrative Timeline, এবং Raw drawer search ব্যবহারের জন্য একটি বড় স্ক্রিন প্রয়োজন। এগুলো ব্যবহার করতে ল্যাপটপ বা ট্যাবলেটে Lore Weave ওপেন করুন।"
+    },
+    "privacyLink": "প্রাইভেসি এবং ডেটা নিয়ন্ত্রণ",
+    "backToKnowledge": "জ্ঞানের ভাণ্ডারে ফিরে যান",
+    "global": {
+      "placeholder": "প্রতিটি কথোপকথনে আপনার সম্পর্কে কী মনে রাখা উচিত?",
+      "save": "সেভ করুন",
+      "saving": "সেভ হচ্ছে…",
+      "saved": "সেভ করা হয়েছে।",
+      "unsaved": "অসংরক্ষিত",
+      "saveFailed": "সেভ করা সম্ভব হয়নি। আবার চেষ্টা করুন।",
+      "conflict": "অন্য একটি ডিভাইস এই বায়োটি আপডেট করেছে। সর্বশেষটি পর্যালোচনা করুন এবং আবার সেভ করুন।",
+      "loadFailed": "গ্লোবাল বায়ো লোড করা সম্ভব হয়নি: {{error}}"
+    },
+    "projects": {
+      "empty": "এখনো কোনো প্রজেক্ট নেই। ডেস্কটপ থেকে একটি তৈরি করুন।",
+      "loadFailed": "প্রজেক্ট লোড করা সম্ভব হয়নি: {{error}}",
+      "noDescription": "কোনো বর্ণনা নেই।",
+      "build": "গ্রাফ তৈরি করুন",
+      "status": {
+        "disabled": "নিষ্ক্রিয়",
+        "building": "তৈরি হচ্ছে",
+        "paused": "স্থগিত",
+        "ready": "প্রস্তুত",
+        "failed": "ব্যর্থ"
+      },
+      "detail": {
+        "lastExtracted": "সর্বশেষ এক্সট্রাক্ট করা হয়েছে",
+        "embeddingModel": "এম্বেডিং মডেল",
+        "noEmbedding": "কনফিগার করা নেই"
+      }
+    },
+    "jobs": {
+      "empty": "এখনো কোনো এক্সট্রাকশন জব নেই।",
+      "loadFailed": "জব লোড করা সম্ভব হয়নি: {{error}}",
+      "unknownProject": "প্রজেক্ট {{id}}",
+      "actionFailed": "{{action}} ব্যর্থ হয়েছে: {{error}}",
+      "status": {
+        "pending": "পেন্ডিং",
+        "running": "চলমান",
+        "paused": "স্থগিত",
+        "complete": "সম্পন্ন",
+        "failed": "ব্যর্থ",
+        "cancelled": "বাতিল করা হয়েছে"
+      },
+      "actions": {
+        "pause": "স্থগিত করুন",
+        "pausing": "স্থগিত করা হচ্ছে…",
+        "resume": "পুনরায় শুরু করুন",
+        "resuming": "পুনরায় শুরু করা হচ্ছে…",
+        "cancel": "বাতিল করুন",
+        "cancelling": "বাতিল করা হচ্ছে…"
+      },
+      "detail": {
+        "items": "আইটেম",
+        "created": "তৈরি করা হয়েছে",
+        "completed": "সম্পন্ন হয়েছে"
+      }
+    }
+  },
+  "drawers": {
+    "loading": "ড্রয়ার খোঁজা হচ্ছে…",
+    "loadFailed": "সার্চ ব্যর্থ হয়েছে: {{error}}",
+    "empty": "এই কুয়েরির জন্য কোনো ম্যাচিং ড্রয়ার পাওয়া যায়নি।",
+    "noProject": "সার্চ করার জন্য একটি প্রজেক্ট নির্বাচন করুন।",
+    "noQuery": "ড্রয়ার খুঁজে পেতে একটি সার্চ কুয়েরি লিখুন।",
+    "minQueryHint": "সিম্যান্টিক সার্চ করতে কমপক্ষে {{min}}টি অক্ষর লিখুন।",
+    "notIndexed": "এই প্রজেক্টটি এখনও সিম্যান্টিক সার্চের জন্য ইনডেক্স করা হয়নি।",
+    "notIndexedHint": "ড্রয়ার সার্চ সক্ষম করতে একটি এম্বেডিং মডেল দিয়ে এক্সট্রাকশন চালান।",
+    "refreshing": "রিফ্রেশ করা হচ্ছে…",
+    "embedCost": "কুয়েরি এম্বেডেড: {{tokens}} টোকেন · ${{cost}}",
+    "retry": "আবার চেষ্টা করুন",
+    "fixConfig": "সেটিংস থেকে আপনার প্রজেক্টের এম্বেডিং মডেল কনফিগারেশন চেক করুন।",
+    "unknownError": "অজানা ত্রুটি। দয়া করে আবার চেষ্টা করুন।",
+    "filters": {
+      "project": "প্রজেক্ট",
+      "selectProject": "একটি প্রজেক্ট নির্বাচন করুন",
+      "sourceType": {
+        "label": "উৎস",
+        "any": "যেকোনো",
+        "chapter": "অধ্যায়",
+        "chat": "চ্যাট",
+        "glossary": "গ্লসারি"
+      }
+    },
+    "searchInput": {
+      "label": "সার্চ",
+      "placeholder": "যেমন: ব্রিজের কাছে দ্বন্দ্ব"
+    },
+    "card": {
+      "sourcePrefix": "উৎস",
+      "chapterLabel": "অধ্যায় {{index}}",
+      "chunkLabel": "Chunk {{index}}",
+      "matchLabel": "ম্যাচ স্কোর",
+      "openLabel": "{{score}} ম্যাচসহ {{sourceType}} ড্রয়ার ওপেন করুন",
+      "hubBadge": "সারসংক্ষেপ",
+      "hubHint": "এই চাঙ্কটি একটি সারসংক্ষেপ বা দীর্ঘ বায়ো অংশ; র‍্যাঙ্কিংয়ে এর গুরুত্ব কম হতে পারে তবে এটি সামনে আসতে পারে।",
+      "langHint": "উৎস ভাষা: {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{total}}টির মধ্যে {{count}}টি ফলাফল আপনার ভাষায় ({{lang}}); বাকিগুলো মূল ভাষায় দেখানো হচ্ছে।",
+      "none": "আপনার ভাষায় কোনো ফলাফল নেই ({{lang}}); মূল ভাষায় ফলাফল দেখানো হচ্ছে।"
+    },
+    "detail": {
+      "title": "ড্রয়ার",
+      "close": "বন্ধ করুন",
+      "text": "সম্পূর্ণ টেক্সট",
+      "sourceType": "উতসের ধরন",
+      "sourceId": "উতসের আইডি",
+      "chunkIndex": "চাঙ্ক ইনডেক্স",
+      "chapterIndex": "অধ্যায় ইনডেক্স",
+      "matchScore": "ম্যাচ স্কোর",
+      "createdAt": "তৈরি করা হয়েছে",
+      "hubLabel": "চাঙ্ক ধরন",
+      "hubValue": "সারসংক্ষেপ / হাব চাঙ্ক"
+    }
+  },
+  "timeline": {
+    "loading": "টাইমলাইন লোড হচ্ছে…",
+    "loadFailed": "টাইমলাইন লোড করা সম্ভব হয়নি: {{error}}",
+    "empty": "এখনো কোনো ইভেন্ট এক্সট্রাক্ট করা হয়নি — এক্সট্রাকশন পাইপলাইন চলাকালীন এগুলো এখানে দেখা যাবে।",
+    "emptyForFilters": "এই ফিল্টারগুলোর সাথে কোনো ইভেন্ট মিলছে না।",
+    "filters": {
+      "project": "প্রজেক্ট",
+      "anyProject": "যেকোনো প্রজেক্ট",
+      "entity": "এনটিটি",
+      "entityPlaceholder": "নাম দিয়ে খুঁজুন…",
+      "entitySearchMinHint": "কমপক্ষে ২ টি অক্ষর লিখুন।",
+      "entityNoMatches": "কোনো ম্যাচিং এনটিটি পাওয়া যায়নি।",
+      "clearEntity": "এনটিটি ফিল্টার মুছে ফেলুন",
+      "chronologicalRange": "কালানুক্রমিক পরিসর",
+      "after": "পরবর্তী",
+      "before": "পূর্ববর্তী",
+      "chronoReversed": "পূর্ববর্তী তারিখ অবশ্যই পরবর্তী তারিখের চেয়ে বড় হতে হবে।",
+      "dateRange": "তারিখের পরিসর",
+      "dateFrom": "থেকে",
+      "dateTo": "পর্যন্ত",
+      "dateInvalid": "YYYY, YYYY-MM, অথবা YYYY-MM-DD ব্যবহার করুন।",
+      "dateReversed": "\"পর্যন্ত\" তারিখটি \"থেকে\" তারিখের সমান বা তার পরে হতে হবে।"
+    },
+    "sort": {
+      "label": "সাজান",
+      "narrative": "ন্যারেটিভ ক্রম",
+      "chronological": "কালানুক্রমিক",
+      "direction": "দিক",
+      "asc": "পুরানো আগে",
+      "desc": "নতুন আগে"
+    },
+    "importance": {
+      "major": "প্রধান",
+      "pivotal": "গুরুত্বপূর্ণ"
+    },
+    "row": {
+      "orderLabel": "Narrative order",
+      "noOrder": "—",
+      "chapterLabel": "Chapter",
+      "chapterUnresolved": "Chapter id {{id}} — title unresolved",
+      "participantsMore": "+{{count}} more",
+      "confidenceLabel": "Confidence",
+      "timeLabel": "In-story time"
+    },
+    "detail": {
+      "summary": "Summary",
+      "noSummary": "No summary extracted.",
+      "participants": "Participants",
+      "sources": "Sources"
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} of {{total}}",
+      "refreshing": "refreshing…",
+      "prev": "Previous",
+      "next": "Next",
+      "backToFirst": "Back to first page",
+      "pageSize": "Per page"
+    },
+    "localization": {
+      "sourceMarker": "Shown in source language — translation pending"
+    },
+    "search": {
+      "placeholder": "Search events…",
+      "label": "Search events",
+      "clear": "Clear search"
+    }
+  },
+  "entities": {
+    "loading": "Loading entities…",
+    "loadFailed": "Couldn't load entities: {{error}}",
+    "empty": "No entities extracted yet — they appear here as the extraction pipeline runs.",
+    "emptyForFilters": "No entities match these filters.",
+    "filters": {
+      "project": "Project",
+      "kind": "Kind",
+      "status": "Status",
+      "search": "Search",
+      "searchPlaceholder": "Name or alias (min 2 chars)",
+      "semantic": "Semantic search",
+      "semanticPlaceholder": "Describe what you're looking for (vector search)",
+      "anyProject": "Any project",
+      "anyKind": "Any kind",
+      "anyStatus": "Any status"
+    },
+    "status": {
+      "canonical": "Canonical",
+      "discovered": "Discovered",
+      "archived": "Archived"
+    },
+    "legend": {
+      "title": "Status",
+      "canonical": "in your glossary",
+      "discovered": "found, not yet promoted",
+      "archived": "hidden from retrieval"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "Anchor score {{pct}}% — how strongly this entity is grounded"
+    },
+    "table": {
+      "ariaLabel": "Entities",
+      "global": "Global",
+      "col": {
+        "name": "Name",
+        "kind": "Kind",
+        "project": "Project",
+        "mentions": "Mentions",
+        "confidence": "Confidence",
+        "updated": "Updated"
+      }
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} of {{total}}",
+      "refreshing": "refreshing…",
+      "prev": "Previous",
+      "next": "Next"
+    },
+    "detail": {
+      "loading": "Loading entity…",
+      "loadFailed": "Couldn't load entity: {{error}}",
+      "close": "Close",
+      "edit": "Edit",
+      "merge": "Merge into another entity",
+      "metadata": "Metadata",
+      "description": "Description",
+      "descriptionSource": "From the linked glossary entry",
+      "aliases": "Aliases",
+      "relations": "Relations ({{count}})",
+      "truncated": "Showing {{shown}} of {{total}} — filter or search in the table",
+      "noRelations": "No relations yet — more will appear as extraction runs.",
+      "relationArrow": "→",
+      "pendingBadge": "Pending",
+      "pendingValidation": "Pass-1 quarantine — awaiting LLM validation",
+      "unlock": "Unlock (re-enable extractions)",
+      "unlockHint": "This entity is user-edited. Extractions won't re-append removed aliases until you unlock.",
+      "unlockConfirm": "Unlock this entity? Future extractions will be able to add aliases again.",
+      "unlockSuccess": "Unlocked.",
+      "unlockFailed": "Couldn't unlock: {{error}}",
+      "field": {
+        "project": "Project",
+        "global": "Global",
+        "confidence": "Confidence",
+        "mentions": "Mentions",
+        "anchor": "Anchor score"
+      },
+      "promote": "Promote to glossary",
+      "promoteHint": "Discovered entity. Promote it to create an AI-suggested glossary draft for review.",
+      "promotePending": "Promoting…",
+      "promoteSuccess": "Promoted — a glossary draft was created for review.",
+      "promoteFailed": "Couldn't promote: {{error}}",
+      "unpin": "Remove from context pin",
+      "unpinHint": "This entity is pinned into extraction context.",
+      "unpinSuccess": "Unpinned from context.",
+      "unpinFailed": "Couldn't unpin: {{error}}",
+      "facts": "Known facts ({{count}})",
+      "factSource": "Chapter {{chapter}}",
+      "factType": {
+        "decision": "Decision",
+        "preference": "Preference",
+        "milestone": "Milestone",
+        "negation": "Negation"
+      }
+    },
+    "edit": {
+      "title": "এন্টটি সম্পাদনা করুন",
+      "description": "এই এন্টটি রিনেম বা সমন্বয় করুন। আপনার সম্পাদনাগুলো ভবিষ্যতে এক্সট্রাকশন থেকে মুছে ফেলা এলিয়াসগুলো পুনরায় যোগ করা থেকে বিরত রাখবে।",
+      "conflict": "অন্য একটি ডিভাইস এই এন্টটি আপডেট করেছে। সর্বশেষটি পর্যালোচনা করুন এবং আবার চেষ্টা করুন।",
+      "field": {
+        "name": "ডিসপ্লে নাম",
+        "kind": "ধরণ",
+        "aliases": "এলিয়াস"
+      },
+      "aliasesPlaceholder": "প্রতি লাইনে একটি এলিয়াস",
+      "aliasesHint": "প্রতি লাইনে একটি এলিয়াস। আপনি সেভ করার পরে এক্সট্রাকশন আপনার মুছে ফেলা ভেরিয়েন্টগুলো নীরবে পুনরায় যোগ করবে না।",
+      "userEditedHint": "সেভ করা মানে এই এন্টটি ব্যবহারকারী দ্বারা সম্পাদিত হিসেবে চিহ্নিত করা হয়েছে।",
+      "save": "সেভ করুন",
+      "saving": "সেভ করা হচ্ছে…",
+      "cancel": "বাতিল",
+      "success": "এন্টটি আপডেট করা হয়েছে",
+      "failed": "সেভ করা সম্ভব হয়নি: {{error}}"
+    },
+    "merge": {
+      "title": "এন্টটি মার্জ করুন",
+      "description": "{{name}}-কে অন্য একটি এনটিটির সাথে মার্জ (Merge) করুন। {{name}} মুছে ফেলা হবে; এর সব সম্পর্ক এবং এলিয়াস (alias) টার্গেট এনটিটিতে চলে যাবে।",
+      "targetLabel": "টার্গেট এনটিটি",
+      "searchPlaceholder": "নাম দিয়ে খুঁজুন (ন্যূনতম ২ অক্ষর)…",
+      "searchMinHint": "খুঁজতে অন্তত ২ টি অক্ষর লিখুন।",
+      "searching": "খুঁজছি…",
+      "noMatches": "কোনো মিল পাওয়া যায়নি।",
+      "warning": "এটি আর আগের অবস্থায় ফিরিয়ে নেওয়া সম্ভব নয়। সোর্স এনটিটিটি মুছে ফেলা হবে; এর সব সম্পর্ক এবং এলিয়াস টার্গেট এনটিটিতে স্থানান্তরিত হবে।",
+      "mentions": "মেনশন",
+      "clear": "মুছে ফেলুন",
+      "confirm": "মার্জ করুন",
+      "merging": "মার্জ হচ্ছে…",
+      "cancel": "বাতিল",
+      "success": "{{source}}-কে {{target}}-এ মার্জ করা হয়েছে",
+      "errSameEntity": "একটি এনটিটিকে তার নিজের সাথেই মার্জ করা সম্ভব নয়।",
+      "errNotFound": "এনটিটিগুলোর মধ্যে একটি খুঁজে পাওয়া যায়নি।",
+      "errArchived": "আর্কাইভ করা এনটিটি মার্জ করা সম্ভব নয়। আগে সেগুলো রিস্টোর (Restore) করুন।",
+      "errGlossaryConflict": "উভয় এনটিটি ভিন্ন ভিন্ন গ্লসারি এন্ট্রির সাথে যুক্ত। মার্জ করার আগে গ্লসারি অ্যাঙ্করগুলো সমাধান করুন।",
+      "errUnknown": "মার্জ ব্যর্থ হয়েছে: {{reason}}"
+    }
+  },
+  "jobs": {
+    "loading": "জব লোড হচ্ছে…",
+    "loadMore": "আরও লোড করুন",
+    "loadingMore": "আরও লোড হচ্ছে…",
+    "error": {
+      "active": "চলমান জবগুলো লোড করা সম্ভব হয়নি।",
+      "history": "জব হিস্ট্রি লোড করা সম্ভব হয়নি।"
+    },
+    "sections": {
+      "running": {
+        "title": "চলমান",
+        "empty": "কোনো জব চলছে না।"
+      },
+      "paused": {
+        "title": "স্থগিত",
+        "empty": "কোনো স্থগিত জব নেই।"
+      },
+      "complete": {
+        "title": "সম্পন্ন",
+        "empty": "এখনো কোনো জব সম্পন্ন হয়নি।"
+      },
+      "failed": {
+        "title": "ব্যর্থ",
+        "empty": "কোনো ব্যর্থ জব নেই।"
+      }
+    },
+    "row": {
+      "started": "{{when}} শুরু হয়েছে",
+      "completed": "{{when}} শেষ হয়েছে",
+      "unknownProject": "প্রজেক্ট {{id}}…"
+    },
+    "detail": {
+      "title": "জব ডিটেইলস",
+      "close": "বন্ধ করুন",
+      "status": "স্ট্যাটাস",
+      "currentChapter": "বর্তমান চ্যাপ্টার",
+      "scope": "স্কোপ",
+      "llmModel": "চ্যাট মডেল",
+      "embeddingModel": "এম্বেডিং মডেল",
+      "maxSpend": "বাজেট সীমা",
+      "startedAt": "শুরু হয়েছে",
+      "completedAt": "সম্পন্ন হয়েছে",
+      "errorTitle": "ত্রুটি",
+      "eta": "~{{duration}} বাকি আছে",
+      "itemsProgress": "{{total}}টির মধ্যে {{processed}}টি আইটেম প্রসেস হয়েছে",
+      "actionFailed": "{{label}} করা সম্ভব হয়নি: {{error}}",
+      "actions": {
+        "pause": "স্থগিত",
+        "resume": "পুনরায় শুরু",
+        "cancel": "বাতিল"
+      },
+      "logs": {
+        "title": "লগস",
+        "loading": "লগস লোড হচ্ছে…",
+        "loadingNewer": "নতুনগুলো লোড হচ্ছে…",
+        "error": "লগস লোড করা সম্ভব হয়নি।",
+        "empty": "এখনো কোনো লগ নেই।",
+        "loadNewer": "নতুনগুলো লোড করুন",
+        "levels": {
+          "info": "INFO",
+          "warning": "WARN",
+          "error": "ERROR"
+        }
+      }
+    },
+    "retry": {
+      "button": "অন্য সেটিংস দিয়ে পুনরায় চেষ্টা করুন"
+    },
+    "costSummary": {
+      "title": "AI খরচ",
+      "loading": "খরচ লোড হচ্ছে…",
+      "loadFailed": "খরচের সারাংশ লোড করা সম্ভব হয়নি।",
+      "thisMonth": "এই মাস",
+      "allTime": "সর্বমোট",
+      "budget": "মাসিক বাজেট",
+      "editBudget": "বাজেট এডিট করুন",
+      "remaining": "এই মাসে {{remaining}} বাকি আছে",
+      "invalid": "একটি ধনাত্মক দশমিক সংখ্যা লিখুন অথবা খালি রাখুন।",
+      "saveFailed": "বাজেট সেভ করা সম্ভব হয়নি: {{error}}",
+      "dialog": {
+        "title": "মাসিক AI বাজেট এডিট করুন",
+        "description": "প্রজেক্টের মধ্যে সমন্বিত সীমা। সীমাটি সরিয়ে ফেলতে খালি রাখুন।",
+        "label": "মাসিক বাজেট (USD)",
+        "hint": "সর্বোচ্চ ৪টি দশমিক স্থান। সীমাটি মুছে ফেলতে খালি রাখুন।",
+        "cancel": "বাতিল",
+        "save": "সেভ করুন",
+        "saving": "সেভ হচ্ছে…"
+      }
+    }
+  },
+  "projects": {
+    "showArchived": "আর্কাইভ করাগুলো দেখান",
+    "refresh": "রিফ্রেশ",
+    "newProject": "নতুন প্রজেক্ট",
+    "createFirst": "আপনার প্রথম প্রজেক্ট তৈরি করুন",
+    "empty": {
+      "title": "এখনো কোনো প্রজেক্ট নেই",
+      "description": "প্রজেক্ট হলো সেই কাজের পরিধি যা AI নির্দিষ্ট কোনো কাজের জন্য মনে রাখে।"
+    },
+    "loadFailed": "প্রজেক্ট লোড করা সম্ভব হয়নি: {{error}}",
+    "paginationNote": "প্রথম ১০০টি প্রজেক্ট দেখানো হচ্ছে — পূর্ণ পেজিনেশন দেখতে Track 2 ব্যবহার করুন।",
+    "browser": {
+      "searchPlaceholder": "প্রজেক্ট খুঁজুন…",
+      "searchLabel": "নাম দিয়ে প্রজেক্ট খুঁজুন",
+      "filterLabel": "অবস্থা অনুযায়ী ফিল্টার করুন",
+      "sortLabel": "প্রজেক্ট সাজান",
+      "noMatches": "বর্তমান অনুসন্ধান এবং ফিল্টারের সাথে কোনো প্রজেক্টের মিল নেই।",
+      "loadMore": "আরও লোড করুন",
+      "loadingMore": "লোড হচ্ছে…",
+      "stateFilter": {
+        "all": "সবগুলো",
+        "disabled": "Static memory",
+        "building": "নির্মাণাধীন",
+        "paused": "স্থগিত",
+        "ready": "প্রস্তুত",
+        "failed": "ব্যর্থ",
+        "archived": "আর্কাইভ করা"
+      },
+      "sortOption": {
+        "recent": "সম্প্রতি আপডেট করা",
+        "oldest": "সবচেয়ে পুরনো আগে",
+        "name_asc": "নাম (A–Z)",
+        "name_desc": "নাম (Z–A)"
+      },
+      "thisBookOnly": "শুধুমাত্র এই বই",
+      "showAllBooks": "সব বই দেখান"
+    },
+    "card": {
+      "staticMemory": "Static memory",
+      "archivedBadge": "archived",
+      "open": "খুলুন",
+      "edit": "এডিট",
+      "archive": "আর্কাইভ",
+      "restore": "রিস্টোর",
+      "delete": "ডিলিট",
+      "tuneExtraction": "Extraction টিউন করুন",
+      "bookId": "book_id"
+    },
+    "form": {
+      "createTitle": "নতুন প্রজেক্ট",
+      "editTitle": "প্রজেক্ট এডিট করুন",
+      "createDescription": "একটি প্রজেক্ট নির্ধারণ করে যে AI কোনো নির্দিষ্ট কাজের জন্য কী কী মনে রাখবে।",
+      "name": "নাম",
+      "namePlaceholder": "যেমন: Winds of the Eastern Sea",
+      "type": "ধরণ",
+      "typeImmutable": "প্রজেক্ট তৈরির পর এর ধরণ পরিবর্তন করা সম্ভব নয়।",
+      "typeOptions": {
+        "book": "বই",
+        "translation": "অনুবাদ",
+        "code": "কোড",
+        "general": "সাধারণ"
+      },
+      "bookId": "বুক ID (ঐচ্ছিক)",
+      "bookIdPlaceholder": "uuid",
+      "description": "বিবরণ (ঐচ্ছিক)",
+      "instructions": "নির্দেশনা (ঐচ্ছিক)",
+      "instructionsPlaceholder": "স্টাইল নোট, ভয়েস, সীমাবদ্ধতা — এই প্রজেক্টের প্রতিটি চ্যাটের জন্য ইনজেক্ট করা হবে।",
+      "nameError": "নাম অবশ্যই ১–{{max}} অক্ষরের হতে হবে।",
+      "bookIdError": "একটি বৈধ UUID হতে হবে।",
+      "cancel": "বাতিল",
+      "create": "তৈরি করুন",
+      "save": "সেভ করুন",
+      "benchmark": {
+        "run": "বেঞ্চমার্ক চালান",
+        "running": "বেঞ্চমার্ক চলছে…",
+        "success": "{{model}} এর জন্য বেঞ্চমার্ক সম্পন্ন হয়েছে (recall@3 {{recall}})।",
+        "errorNoModel": "বেঞ্চমার্ক চালানোর আগে একটি এমবেডিং মডেল নির্বাচন করুন।",
+        "errorUnknownModel": "এই এমবেডিং মডেলটি বেঞ্চমার্কের জন্য সমর্থিত নয়।",
+        "errorNotBenchmarkProject": "স্যান্ডবক্সে বেঞ্চমার্কটি শুরু করা সম্ভব হয়নি — দয়া করে কিছুক্ষণ পর আবার চেষ্টা করুন।",
+        "errorAlreadyRunning": "এই প্রজেক্টের জন্য একটি বেঞ্চমার্ক ইতিমধ্যে চলছে। অপেক্ষা করে আবার চেষ্টা করুন।",
+        "errorProviderFlake": "এমবেডিং প্রোভাইডার চলাকালীন ত্রুটি হয়েছে। দয়া করে আবার চেষ্টা করুন।",
+        "errorGeneric": "বেঞ্চমার্ক ব্যর্থ হয়েছে: {{message}}"
+      }
+    },
+    "archiveDialog": {
+      "title": "প্রজেক্ট আর্কাইভ করবেন?",
+      "description": "\"{{name}}\" সক্রিয় তালিকা থেকে লুকিয়ে ফেলা হবে। আপনি এটি পরে রিস্টোর করতে পারেন।",
+      "confirm": "আর্কাইভ করুন"
+    },
+    "deleteDialog": {
+      "title": "প্রজেক্ট ডিলিট করবেন?",
+      "description": "\"{{name}}\" এবং এর সারাংশ স্থায়ীভাবে মুছে ফেলা হবে। এটি আর পুনরুদ্ধার করা সম্ভব নয়।",
+      "confirm": "ডিলিট করুন"
+    },
+    "toast": {
+      "archived": "প্রজেক্ট আর্কাইভ করা হয়েছে",
+      "archiveFailed": "আর্কাইভ করতে ব্যর্থ",
+      "restored": "প্রজেক্ট রিস্টোর করা হয়েছে",
+      "restoreFailed": "রিস্টোর করতে ব্যর্থ",
+      "deleted": "প্রজেক্ট ডিলিট করা হয়েছে",
+      "deleteFailed": "ডিলিট করতে ব্যর্থ",
+      "created": "প্রজেক্ট তৈরি করা হয়েছে",
+      "updated": "প্রজেক্ট আপডেট করা হয়েছে",
+      "conflict": "অন্য একটি ডিভাইস থেকে এই প্রজেক্টটি পরিবর্তন করা হয়েছে। সর্বশেষ পরিবর্তনটি দেখে আবার সেভ করুন।",
+      "actionFailed": "{{label}}: {{error}}",
+      "noPriorJob": "পুনরায় চালানোর মতো কোনো পূর্ববর্তী জব নেই — Build ডায়ালগটি খুলুন।",
+      "noPriorRebuild": "পুনর্নির্মাণের জন্য কোনো পূর্ববর্তী জব নেই।",
+      "rebuildNoPriorJob": "পুনর্নির্মাণ: কোনো পূর্ববর্তী জব নেই"
+    },
+    "state": {
+      "labels": {
+        "disabled": "স্ট্যাটিক মেমরি",
+        "estimating": "খরচ গণনা করা হচ্ছে...",
+        "ready_to_build": "তৈরি করার জন্য প্রস্তুত",
+        "building_running": "তৈরি হচ্ছে...",
+        "building_paused_user": "স্থগিত",
+        "building_paused_budget": "বাজেট শেষ",
+        "building_paused_error": "স্থগিত (ত্রুটি)",
+        "complete": "প্রস্তুত",
+        "stale": "আপডেট পেন্ডিং",
+        "failed": "ব্যর্থ",
+        "model_change_pending": "মডেল পরিবর্তনের জন্য পুনর্নির্মাণ প্রয়োজন",
+        "cancelling": "বাতিল করা হচ্ছে...",
+        "deleting": "গ্রাফ ডিলিট করা হচ্ছে..."
+      },
+      "actions": {
+        "buildGraph": "নলেজ গ্রাফ তৈরি করুন",
+        "start": "শুরু করুন",
+        "pause": "স্থগিত",
+        "resume": "পুনরায় শুরু",
+        "cancel": "বাতিল",
+        "retry": "আবার চেষ্টা করুন",
+        "deleteGraph": "গ্রাফ ডিলিট করুন",
+        "rebuild": "শুরু থেকে পুনর্নির্মাণ করুন",
+        "viewError": "ত্রুটির বিবরণ দেখুন",
+        "disable": "নিষ্ক্রিয় করুন",
+        "changeModel": "এমবেডিং মডেল পরিবর্তন করুন",
+        "extractNew": "নতুন চ্যাপ্টার এক্সট্রাক্ট করুন",
+        "ignore": "উপেক্ষা করুন",
+        "confirm": "নিশ্চিত করুন",
+        "confirmModelChange": "মডেল পরিবর্তন নিশ্চিত করুন",
+        "exploreGraph": "গ্রাফ এক্সপ্লোর করুন",
+        "setConcurrency": "কনকারেন্সি সেট করুন"
+      },
+      "cards": {
+        "disabled": {
+          "body": "ব্যবহার করা হচ্ছে: আপনার বায়ো + প্রজেক্ট নির্দেশনা + গ্লসারি + সাম্প্রতিক মেসেজ।",
+          "costZero": "খরচ: $0"
+        },
+        "estimating": {
+          "body": "এই স্কোপের জন্য খরচের প্রাক্কলন নেওয়া হচ্ছে..."
+        },
+        "ready_to_build": {
+          "hint": "প্রাক্কলিত খরচ: ${{low}} – ${{high}} · {{chapters}} চ্যাপ্টার, {{turns}} চ্যাট টার্ন, {{tokens}} টোকেন",
+          "durationSec": "~{{n}}s প্রাক্কলিত",
+          "durationMin": "~{{n}} মিনিট প্রাক্কলিত"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} আইটেম (চ্যাপ্টার + চ্যাট + গ্লসারি)",
+          "elapsed": "অতিক্রান্ত সময়: {{elapsed}}",
+          "spent": "ব্যয় হয়েছে: ${{spent}}",
+          "spentOfBudget": "ব্যয় হয়েছে: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "প্যারালাল কল",
+          "concurrencyApply": "প্রয়োগ করুন",
+          "stagesTitle": "নির্মাণ ধাপসমূহ",
+          "stages": "এনটিটি → রিলেশন · ইভেন্ট · ফ্যাক্ট → সামারি",
+          "stagesNote": "Passes এই ক্রমে চলে। Facts এবং Summaries, Entities এবং Relations শেষ হওয়ার পর চলে, তাই পূর্ণাঙ্গ বিল্ডে এগুলো পরে আসে — কাজ মাঝপথে থামিয়ে দিলে এগুলো বাদ পড়ে যাবে।"
+        },
+        "building_paused_user": {
+          "body": "আপনি এই জবটি সাময়িকভাবে থামিয়ে রেখেছেন। প্রস্তুত হলে পুনরায় শুরু করুন, অথবা আংশিক গ্রাফটি রাখতে চাইলে বাতিল করুন।"
+        },
+        "building_paused_budget": {
+          "body": "আপনার খরচ করা বাজেটের সীমা ${{budget}}-এ পৌঁছে গেছে। সীমা বাড়িয়ে পুনরায় শুরু করুন, অথবা আংশিক গ্রাফটি রাখতে চাইলে বাতিল করুন।",
+          "remaining": "অবশিষ্ট: ${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "পুনরায় চেষ্টাযোগ্য ত্রুটি: {{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} এনটিটি · {{facts}} তথ্য · {{events}} ঘটনা · {{passages}} অনুচ্ছেদ",
+          "lastExtracted": "সর্বশেষ এক্সট্রাক্ট করা হয়েছে: {{date}}"
+        },
+        "stale": {
+          "body": "শেষ এক্সট্রাকশনের পর থেকে {{count}}টি নতুন অধ্যায় এসেছে। এগুলো এখন এক্সট্রাক্ট করুন অথবা উপেক্ষা করুন।"
+        },
+        "failed": {
+          "body": "এক্সট্রাকশন ব্যর্থ হয়েছে: {{error}}"
+        },
+        "model_change_pending": {
+          "body": "{{oldModel}} থেকে {{newModel}}-এ মডেল পরিবর্তন করতে বর্তমান গ্রাফটি মুছে ফেলে নতুন করে বিল্ড করতে হবে।"
+        },
+        "cancelling": {
+          "body": "সক্রিয় জবটি বন্ধ করা হচ্ছে..."
+        },
+        "deleting": {
+          "body": "নলেজ গ্রাফটি মুছে ফেলা হচ্ছে..."
+        }
+      }
+    },
+    "buildDialog": {
+      "title": "নলেজ গ্রাফ তৈরি করুন",
+      "description": "এই প্রজেক্টের কন্টেন্ট থেকে এনটিটি, তথ্য এবং অনুচ্ছেদ এক্সট্রাক্ট করুন। একটি স্কোপ এবং মডেল নির্বাচন করুন, তারপর নিশ্চিত করার আগে খরচের পূর্বাভাস দেখে নিন।",
+      "scope": {
+        "label": "স্কোপ",
+        "chapters": "বইয়ের অধ্যায়",
+        "chat": "চ্যাট হিস্ট্রি",
+        "glossary_sync": "গ্লসারি সিঙ্ক",
+        "all": "সবকিছু",
+        "noBookHint": "এই প্রজেক্টটি কোনো বইয়ের সাথে যুক্ত নয় — অধ্যায় এবং গ্লসারি সিঙ্ক স্কোপগুলো লুকানো আছে।"
+      },
+      "chapterRange": {
+        "label": "অধ্যায়ের পরিসর (ঐচ্ছিক)",
+        "from": "থেকে",
+        "to": "পর্যন্ত",
+        "hint": "একটি নির্দিষ্ট ক্রমের পরিসর ফিল্টার করুন। সব অধ্যায়ের জন্য উভয় ঘর খালি রাখুন।",
+        "invalid": "পরিসরটি অবশ্যই অঋণাত্মক পূর্ণসংখ্যা হতে হবে এবং From ≤ To হতে হবে।"
+      },
+      "llmModel": {
+        "label": "LLM মডেল",
+        "placeholder": "একটি চ্যাট মডেল নির্বাচন করুন…",
+        "loading": "মডেল লোড হচ্ছে…",
+        "empty": "কোনো চ্যাট-সক্ষম মডেল কনফিগার করা নেই। AI Models → Credentials-এ একটি যোগ করুন।"
+      },
+      "maxSpend": {
+        "label": "সর্বোচ্চ খরচ (USD, ঐচ্ছিক)",
+        "hint": "কঠোর সীমা — মোট খরচ এই সীমার সমান হলে জবটি থেমে যাবে। কোনো সীমা না রাখতে ঘরটি খালি রাখুন।",
+        "invalid": "২ দশমিক স্থান পর্যন্ত একটি অঋণাত্মক পরিমাণ লিখুন।",
+        "monthlyRemaining": "সব প্রজেক্ট মিলিয়ে এই মাসে {{amount}} বাকি আছে।"
+      },
+      "estimate": {
+        "heading": "খরচের পূর্বাভাস",
+        "pickLlmFirst": "খরচের পূর্বাভাস দেখতে একটি LLM মডেল নির্বাচন করুন।",
+        "loading": "হিসাব করা হচ্ছে…",
+        "failed": "পূর্বাভাস ব্যর্থ হয়েছে: {{error}}",
+        "cost": "আনুমানিক খরচ: ${{low}} – ${{high}}",
+        "items": "{{chapters}} অধ্যায় · {{turns}} চ্যাট টার্ন · ~{{tokens}} টোকেন",
+        "duration": "~{{seconds}}s আনুমানিক সময়",
+        "pinned": "পিন করা কনটেক্সট: +{{tokens}} টোকেন (সব উইন্ডোতে {{count}}টি পিন করা আছে)"
+      },
+      "cancel": "বাতিল",
+      "confirm": "গ্রাফ তৈরি করুন",
+      "starting": "শুরু করা হচ্ছে…",
+      "startSuccess": "বিল্ড শুরু হয়েছে — এখন নলেজ গ্রাফ এক্সট্রাক্ট করা হচ্ছে।",
+      "startFailed": "শুরু করা ব্যর্থ হয়েছে: {{error}}",
+      "wizard": {
+        "step1": "টার্গেট",
+        "step2": "পিন করা",
+        "step3": "বাজেট",
+        "next": "পরবর্তী",
+        "back": "আগের",
+        "step2Placeholder": "গ্লসারি পিন করা পরবর্তী ধাপে আসবে — আপাতত, প্রতিটি এক্সট্রাকশন উইন্ডো তার নিজস্ব অধ্যায় কনটেক্সট ব্যবহার করবে।"
+      },
+      "targets": {
+        "label": "কী এক্সট্রাক্ট করবেন",
+        "hint": "কোন কোন পাস চলবে তা নির্বাচন করুন। সব আনচেক রাখলে সবকিছু এক্সট্রাক্ট হবে (ডিফল্ট)।",
+        "entities": "এনটিটি",
+        "relations": "সম্পর্ক",
+        "events": "ঘটনা · টাইমলাইন",
+        "facts": "তথ্য",
+        "summaries": "সারসংক্ষেপ",
+        "autoIncluded": "স্বয়ংক্রিয়ভাবে অন্তর্ভুক্ত",
+        "autoIncludedHint": "এনটিটিগুলো স্বয়ংক্রিয়ভাবে এক্সট্রাক্ট করা হচ্ছে কারণ সম্পর্ক, ঘটনা বা তথ্য এদের সাথে যুক্ত।",
+        "recoveryDisabledHint": "এনটিটি রিকভারি এবং প্রিসিশন ফিল্টারিং বাদ দেওয়া হয়েছে কারণ এনটিটিগুলোকে টার্গেট হিসেবে নির্বাচন করা হয়নি।"
+      },
+      "concurrency": {
+        "label": "প্যারালাল LLM কল (ঐচ্ছিক)",
+        "hint": "একসাথে কতগুলো এক্সট্রাকশন কল চলবে তার সীমা নির্ধারণ করুন। ডিফল্ট রাখতে ঘরটি খালি রাখুন।"
+      },
+      "pinning": {
+        "intro": "গ্লসারি এনটিটিগুলো পিন করুন যাতে সেগুলো প্রতিটি এক্সট্রাকশন উইন্ডোতে জোরপূর্বক ইনজেক্ট করা যায় — ফলে বিরল কিন্তু গুরুত্বপূর্ণ এনটিটিগুলো সেই অধ্যায়েও স্থির থাকবে যেখানে তাদের উল্লেখ নেই।",
+        "autopin": "{{count}}টি বিরল কিন্তু গুরুত্বপূর্ণ এনটিটি পিন করার মতো মনে হচ্ছে।",
+        "autopinApply": "{{count}}টি সাজেশন পিন করুন",
+        "loading": "এনটিটি স্ট্যাটাস লোড হচ্ছে…",
+        "unavailable": "এনটিটি স্ট্যাটাস পাওয়া যাচ্ছে না — আপনি নিচে ম্যানুয়ালি পিন করতে পারেন।",
+        "searchPlaceholder": "নাম দিয়ে খুঁজুন…",
+        "kindAll": "সব ধরণের",
+        "minMentions": "মিন ×",
+        "available": "উপলব্ধ ({{count}})",
+        "availableEmpty": "ফিল্টারের সাথে মিলে এমন কোনো সত্তা নেই।",
+        "pinned": "পিন করা ({{count}})",
+        "pinnedEmpty": "এখনো কিছু পিন করা হয়নি।",
+        "pin": "পিন করুন",
+        "unpin": "আনপিন করুন",
+        "budget": "প্রতি উইন্ডোতে +{{tokens}} টোকেন ({{count}} পিন করা × ~৫০)।",
+        "noBook": "পিন করার জন্য একটি লিঙ্ক করা বই প্রয়োজন। প্রথমে এই প্রজেক্টের সাথে একটি বই যুক্ত করুন।"
+      }
+    },
+    "errorViewer": {
+      "title": "এক্সট্রাকশন ত্রুটি",
+      "description": "এক্সট্রাকশন জব থেকে প্রাপ্ত সম্পূর্ণ ত্রুটি বার্তা। বাগ রিপোর্ট বা মূল কারণ বিশ্লেষণের জন্য এটি ব্যবহার করুন।",
+      "jobIdLabel": "জব আইডি",
+      "startedLabel": "শুরু হয়েছে",
+      "scopeLabel": "স্কোপ",
+      "progressLabel": "প্রগতি",
+      "progressValue": "{{processed}} / {{total}} আইটেম",
+      "costLabel": "ব্যয়িত খরচ",
+      "errorLabel": "ত্রুটি",
+      "copy": "কপি করুন",
+      "copied": "কপি করা হয়েছে",
+      "close": "বন্ধ করুন"
+    },
+    "changeModelDialog": {
+      "title": "এম্বেডিং মডেল পরিবর্তন করুন",
+      "description": "এম্বেডিং মডেল পরিবর্তন করতে বর্তমান নলেজ গ্রাফটি মুছে ফেলতে হবে। এরপর আপনাকে একটি নতুন এক্সট্রাকশন শুরু করতে হবে।",
+      "warningTitle": "ধ্বংসাত্মক পরিবর্তন",
+      "warningBody": "বর্তমান মডেল: {{currentModel}}। এটি পরিবর্তন করলে সমস্ত এক্সট্রাক্ট করা সত্তা (entities), তথ্য (facts), ঘটনা (events) এবং অনুচ্ছেদ (passages) মুছে যাবে। নতুন বিল্ড শুরু না করা পর্যন্ত এক্সট্রাকশন নিষ্ক্রিয় থাকবে।",
+      "sameModel": "Confirm করতে একটি ভিন্ন মডেল বেছে নিন।",
+      "cancel": "বাতিল",
+      "confirm": "মডেল পরিবর্তন করুন এবং গ্রাফ মুছে ফেলুন",
+      "submitting": "পরিবর্তিত হচ্ছে…",
+      "failed": "পরিবর্তন ব্যর্থ হয়েছে: {{error}}",
+      "alreadyAtModel": "মডেল ইতিমধ্যে {{model}} সেট করা আছে — অন্য কোনো ডিভাইস এটি পরিবর্তন করে থাকতে পারে।"
+    },
+    "extractionTuning": {
+      "title": "এক্সট্রাকশন টিউন করুন",
+      "description": "প্রতিটি উপন্যাসের জন্য এক্সট্রাকশন সেটিংস। পরিবর্তনগুলো এই প্রজেক্টের পরবর্তী এক্সট্রাকশন রানের জন্য প্রযোজ্য হবে।",
+      "filterEnabled": "প্রিসিশন ফিল্টার (কম সাপোর্টযুক্ত এক্সট্রাকশন বাদ দেয়)",
+      "category": {
+        "entity": "সত্তা (Entities)",
+        "relation": "সম্পর্ক (Relations)",
+        "event": "ঘটনা (Events)"
+      },
+      "categoriesRequired": "অন্তত একটি বিভাগ নির্বাচন করুন, অথবা ফিল্টারটি বন্ধ রাখুন।",
+      "partialPolicy": "আংশিক মিল:",
+      "policyKeep": "রক্ষণ করুন",
+      "policyDrop": "বাদ দিন",
+      "defaultModel": "ডিফল্ট এক্সট্রাকশন মডেল",
+      "defaultModelNone": "আমার গ্লোবাল ডিফল্ট ব্যবহার করুন",
+      "defaultModelHint": "নিচে ওভাররাইড না করা পর্যন্ত প্রতিটি এক্সট্রাকশন ধাপে এই মডেলটি ব্যবহৃত হয়। খালি রাখলে, এটি আপনার গ্লোবাল ডিফল্ট মডেল (Settings) এবং তারপর এই বিল্ডে ব্যবহৃত মডেলটি অনুসরণ করবে।",
+      "recoveryEnabled": "সত্তা রিকভারি (মিস করা সত্তা পুনরুদ্ধার করুন)",
+      "recoveryModel": "রিকভারি মডেল (ঐচ্ছিক)",
+      "recoveryModelNone": "ডিফল্ট এক্সট্রাকশন মডেল ব্যবহার করুন",
+      "recoveryModelHint": "প্রধান পাসে মিস করা সত্তাগুলো পুনরুদ্ধার করার জন্য LLM। ডিফল্ট হিসেবে রাখলে, এটি উপরের ডিফল্ট এক্সট্রাকশন মডেলটি পুনরায় ব্যবহার করবে।",
+      "recoveryBatch": "ব্যাচ সাইজ",
+      "recoveryBatchHint": "প্রতিটি ক্লাসিফায়ার কলের জন্য নামের সংখ্যা (১-২০; ডিফল্ট ৫)",
+      "autocreateEnabled": "রাইটার অটোক্রিয়েট (সম্পর্কের মাধ্যমে রেফারেন্স করা সত্তা তৈরি করুন)",
+      "promptWarning": "অ্যাডভান্সড: কাস্টম প্রম্পট সেই ধাপের জন্য ডিফল্ট এক্সট্রাকশন নির্দেশাবলী প্রতিস্থাপন করে এবং গুণমান কমিয়ে দিতে পারে। ডিফল্ট ব্যবহার করতে খালি রাখুন। JSON আউটপুট সর্বদা বাধ্যতামূলক।",
+      "promptPlaceholder": "ডিফল্ট প্রম্পট ব্যবহার করতে খালি রাখুন",
+      "prompt": {
+        "entity": "সত্তা এক্সট্রাকশন প্রম্পট",
+        "relation": "সম্পর্ক এক্সট্রাকশন প্রম্পট",
+        "event": "ঘটনা এক্সট্রাকশন প্রম্পট",
+        "fact": "তথ্য এক্সট্রাকশন প্রম্পট"
+      },
+      "save": "সেভ করুন",
+      "saving": "সেভ হচ্ছে…",
+      "cancel": "বাতিল",
+      "saved": "এক্সট্রাকশন সেটিংস সেভ করা হয়েছে।",
+      "failed": "সেভ করা ব্যর্থ হয়েছে: {{error}}"
+    },
+    "confirmDestructive": {
+      "cancel": "বাতিল",
+      "deleteGraph": {
+        "title": "নলেজ গ্রাফ মুছে ফেলবেন?",
+        "description": "এটি এই প্রজেক্টের জন্য এক্সট্রাক্ট করা সমস্ত সত্তা, তথ্য, ঘটনা এবং অনুচ্ছেদ স্থায়ীভাবে মুছে ফেলবে। প্রজেক্টটি থাকবে; আপনি পরে পুনরায় তৈরি করতে পারবেন।"
+      },
+      "rebuildStep1": {
+        "title": "একেবারে শুরু থেকে পুনরায় তৈরি করবেন?",
+        "description": "Rebuild করলে বিদ্যমান গ্রাফটি মুছে যাবে এবং একই মডেল ও স্কোপ দিয়ে নতুন এক্সট্রাকশন শুরু হবে। এতে খরচ এবং সময় উভয়ই লাগতে পারে।",
+        "confirmLabel": "চালিয়ে যান"
+      },
+      "rebuildStep2": {
+        "title": "শেষ সুযোগ — সত্যিই কি পুনরায় তৈরি করবেন?",
+        "description": "এখন Rebuild-এ ক্লিক করলে ধ্বংস এবং পুনরায় তৈরির প্রক্রিয়া শুরু হবে। নতুন জবটি একবার চালু হয়ে গেলে আর ফিরে আসার সুযোগ নেই।"
+      },
+      "disable": {
+        "title": "এক্সট্রাকশন নিষ্ক্রিয় করবেন?",
+        "description": "নতুন কন্টেন্ট এক্সট্র্যাক্ট করা বন্ধ করে দেবে। বিদ্যমান নলেজ গ্রাফ সংরক্ষিত থাকবে এবং পড়া যাবে। পুনরায় সক্রিয় করতে নতুন করে এক্সট্রাকশন শুরু করতে হবে।"
+      }
+    }
+  },
+  "global": {
+    "title": "গ্লোবাল বায়ো",
+    "description": "আপনার সম্পর্কে একটি সংক্ষিপ্ত বর্ণনা যা AI প্রতিটি প্রজেক্টে দেখতে পাবে। লেখার ধরন, আপনার কাজের প্রেক্ষাপট, বা এমন কিছু যা আপনি প্রতিটি সেশনে বজায় রাখতে চান। সর্বোচ্চ {{max}} ক্যারেক্টার।",
+    "placeholder": "যেমন: আমি আরবান ফ্যান্টাসি লিখি। নামগুলো জাপানিজ ক্রমে রাখুন। বাহুল্য বর্জন করুন, অতিরিক্ত বিশেষণ ব্যবহার করবেন না।",
+    "loadFailed": "সামারি লোড করা সম্ভব হয়নি: {{error}}",
+    "unsavedChanges": "অসংরক্ষিত পরিবর্তন",
+    "saving": "সেভ করা হচ্ছে…",
+    "save": "সেভ করুন",
+    "saved": "গ্লোবাল বায়ো সংরক্ষিত হয়েছে",
+    "saveFailed": "সেভ করা সম্ভব হয়নি",
+    "version": "v{{version}}",
+    "conflict": "অন্য একটি ডিভাইস থেকে এই বায়োটি আপডেট করা হয়েছে। সর্বশেষটি পর্যালোচনা করুন এবং আবার সেভ করুন।",
+    "tokenEstimate": "~{{tokens}} টোকেন",
+    "reset": "রিসেট",
+    "resetting": "রিসেট করা হচ্ছে…",
+    "resetConfirm": "বায়ো মুছে ফেলুন",
+    "resetCancel": "বাতিল",
+    "resetConfirmTitle": "আপনার গ্লোবাল বায়ো মুছে ফেলবেন?",
+    "resetConfirmBody": "এটি সার্ভার থেকে বায়োটি মুছে ফেলবে। একটি নতুন ভার্সন ইতিহাসে রেকর্ড করা হবে যাতে আপনি যেকোনো সময় আগের অবস্থায় ফিরে যেতে পারেন।",
+    "resetConfirmNote": "আপনি চাইলে হিস্ট্রি প্যানেল থেকে পূর্ববর্তী ভার্সনেও ফিরে যেতে পারেন।",
+    "resetSuccess": "গ্লোবাল বায়ো মুছে ফেলা হয়েছে",
+    "resetFailed": "রিসেট করা সম্ভব হয়নি",
+    "regenerate": {
+      "button": "পুনরায় তৈরি করুন",
+      "title": "গ্লোবাল বায়ো পুনরায় তৈরি করুন",
+      "description": "সাম্প্রতিক চ্যাট থেকে আপনার বায়ো পুনর্গঠন করে। আপনার বর্তমান বায়ো ইতিহাসে সংরক্ষিত থাকবে যাতে আপনি যেকোনো সময় আগের অবস্থায় ফিরে যেতে পারেন।",
+      "modelLabel": "মডেল",
+      "modelLoading": "মডেল লোড করা হচ্ছে…",
+      "modelPlaceholder": "একটি চ্যাট মডেল নির্বাচন করুন",
+      "noModels": "আপনার কোনো নিবন্ধিত চ্যাট মডেল নেই। প্রথমে AI Models-এ একটি যোগ করুন।",
+      "costHint": "আনুমানিক খরচ: সামান্য (<$0.05)। আউটপুট ৫০০ টোকেনে সীমাবদ্ধ।",
+      "editLockHint": "গত ৩০ দিনের মধ্যে করা ম্যানুয়াল এডিট সংরক্ষিত থাকে — আপনি যদি সম্প্রতি এই বায়োটি এডিট করে থাকেন, তবে রিজেনারেট করার সময় এটি এড়িয়ে যাবে।",
+      "disabledDirty": "পুনরায় তৈরি করার আগে আপনার অসংরক্ষিত এডিটগুলো সেভ বা রিসেট করুন — পেন্ডিং পরিবর্তন থাকা অবস্থায় রিজেনারেট করা আউটপুট এডিটরে দেখা যাবে না।",
+      "editLockDefault": "আপনার সাম্প্রতিক ম্যানুয়াল এডিটটি ৩০ দিনের জন্য রিজেনারেট হওয়া থেকে সুরক্ষিত থাকবে।",
+      "confirm": "পুনরায় তৈরি করুন",
+      "regenerating": "পুনরায় তৈরি করা হচ্ছে…",
+      "cancel": "বাতিল",
+      "success": "গ্লোবাল বায়ো পুনরায় তৈরি করা হয়েছে",
+      "noOpSimilarity": "নতুন ভার্সনটি আপনার বর্তমান বায়োর প্রায় হুবহু এক ছিল — কিছু লেখা হয়নি।",
+      "noOpEmptySource": "নির্মাণ করার মতো সাম্প্রতিক কোনো চ্যাট কন্টেন্ট নেই — আগে কিছু চ্যাট করুন।",
+      "concurrentEdit": "একটি ম্যানুয়াল এডিট রিজেনারেট করার সাথে সংঘর্ষে পড়েছে। আপনার বর্তমান বায়োটি পর্যালোচনা করুন এবং আবার চেষ্টা করুন।",
+      "guardrailFailed": "রিজেনারেট করার সময় কোয়ালিটি চেক ব্যর্থ হয়েছে: {{reason}}",
+      "providerError": "আপনার AI প্রোভাইডার একটি ত্রুটি প্রদান করেছে: {{reason}}",
+      "unknownError": "রিজেনারেট করা সম্ভব হয়নি: {{reason}}"
+    },
+    "preferences": {
+      "title": "শেখা পছন্দসমূহ",
+      "description": "আপনার চ্যাট থেকে AI দ্বারা প্রজেক্ট জুড়ে শেখা পছন্দসমূহ। ভবিষ্যতে প্রেক্ষাপট থেকে এটি লুকাতে একটি ডিলিট করুন।",
+      "loading": "পছন্দসমূহ লোড করা হচ্ছে…",
+      "loadFailed": "পছন্দসমূহ লোড করা সম্ভব হয়নি।",
+      "empty": "এখনো কোনো পছন্দ শেখা হয়নি — কিছু চ্যাট করার পর এগুলো এখানে দেখা যাবে।",
+      "delete": "মুছে ফেলুন",
+      "deleting": "মুছে ফেলা হচ্ছে…",
+      "cancel": "বাতিল",
+      "deleteAria": "{{name}} মুছে ফেলুন",
+      "confirmTitle": "এই পছন্দটি কি মুছে ফেলবেন?",
+      "confirmBody": "এটি ভবিষ্যতে প্রেক্ষাপট তৈরির সময় {{name}}-কে লুকিয়ে রাখবে। আপনি এটি পুনরুদ্ধার করতে পারবেন না — AI পরবর্তীতে চ্যাট থেকে এটি আবার শিখে নিতে পারে।",
+      "confirmNote": "এটি একটি সফট আর্কাইভ। আপনার ডেটা মুছে ফেলা হচ্ছে না।",
+      "deleteSuccess": "পছন্দ তালিকা থেকে {{name}} সরানো হয়েছে",
+      "deleteFailed": "পছন্দটি মুছে ফেলা সম্ভব হয়নি: {{error}}"
+    },
+    "versions": {
+      "toggle": "হিস্ট্রি",
+      "title": "ভার্সন হিস্ট্রি",
+      "close": "বন্ধ করুন",
+      "loading": "হিস্ট্রি লোড করা হচ্ছে…",
+      "loadFailed": "হিস্ট্রি লোড করা সম্ভব হয়নি: {{error}}",
+      "empty": "কোনো পূর্ববর্তী ভার্সন নেই — আপনার পরবর্তী সেভের পর হিস্ট্রি তৈরি হতে শুরু করবে।",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(খালি)",
+      "view": "দেখুন",
+      "rollback": "রোলব্যাক",
+      "rollbackFromPreview": "এই ভার্সনে ফিরে যান",
+      "rollingBack": "রোলব্যাক করা হচ্ছে…",
+      "confirmTitle": "এই ভার্সনে ফিরে যাবেন?",
+      "confirmBody": "আপনার বর্তমান বায়োটি v{{version}} এর কন্টেন্ট দিয়ে প্রতিস্থাপিত হবে। একটি নতুন ভার্সন তৈরি করা হবে; বর্তমান অবস্থাটি ইতিহাসে আর্কাইভ করা থাকবে।",
+      "confirm": "রোলব্যাক",
+      "rollbackSuccess": "নির্বাচিত ভার্সনে ফিরে আসা হয়েছে",
+      "rollbackFailed": "রোলব্যাক করা সম্ভব হয়নি",
+      "previewTitle": "ভার্সন {{version}} প্রিভিউ",
+      "source": {
+        "manual": "ম্যানুয়াল",
+        "rollback": "রোলব্যাক"
+      },
+      "diffToggle": "বর্তমান ভার্সনের সাথে পার্থক্য দেখান",
+      "diffEmpty": "কোনো পার্থক্য নেই।"
+    }
+  },
+  "indicator": {
+    "label": "নলেজ ইন্ডিকেটর",
+    "title": "নলেজ",
+    "modes": {
+      "global": "গ্লোবাল",
+      "project": "প্রজেক্ট",
+      "degraded": "ডিগ্রেডেড"
+    },
+    "popover": {
+      "projectHeading": "প্রজেক্ট মেমরি",
+      "globalHeading": "শুধুমাত্র গ্লোবাল মেমরি",
+      "loading": "লোড হচ্ছে…",
+      "fallbackProject": "একটি প্রজেক্ট",
+      "projectBody": "এই সেশনটি <strong>{{name}}</strong>-এর সাথে যুক্ত। AI প্রতিটি টার্নে আপনার গ্লোবাল বায়ো এবং সাথে প্রকল্পের সারাংশ ও গ্লোসারি এন্ট্রিগুলো দেখতে পায়।",
+      "globalBody": "এই সেশনের সাথে কোনো প্রকল্প যুক্ত নেই। AI শুধুমাত্র আপনার গ্লোবাল বায়ো দেখতে পায়। বই-নির্দিষ্ট মেমোরি অ্যাক্সেস দিতে সেশন সেটিংসে একটি প্রকল্প লিঙ্ক করুন।",
+      "degradedBody": "গত টার্নে নলেজ সার্ভিস পাওয়া যায়নি। AI শুধুমাত্র সাম্প্রতিক মেসেজগুলোর ওপর ভিত্তি করে কাজ করেছে — আপনার প্রজেক্ট মেমোরি সাময়িকভাবে প্রম্পটে নেই। সার্ভিস পুনরায় চালু হলে পরবর্তী টার্নে এটি স্বয়ংক্রিয়ভাবে ঠিক হয়ে যাবে।",
+      "manage": "নলেজ পরিচালনা করুন"
+    }
+  },
+  "picker": {
+    "label": "প্রজেক্ট মেমোরি",
+    "noProject": "কোনো প্রকল্প নেই — শুধুমাত্র গ্লোবাল মেমোরি",
+    "archivedPlaceholder": "(আর্কাইভ করা প্রকল্প — অন্যটি বেছে নিন)",
+    "hint": "এই চ্যাটটিকে একটি নলেজ-সার্ভিস প্রজেক্টের সাথে লিঙ্ক করে, যাতে AI প্রতিটি টার্নে তার সারাংশ ও গ্লোসারি দেখতে পায়।"
+  },
+  "privacy": {
+    "export": {
+      "title": "আপনার ডেটা এক্সপোর্ট করুন",
+      "description": "AI আপনার জন্য সংরক্ষণ করা প্রতিটি প্রকল্প এবং সারাংশ একটি একক JSON ফাইল হিসেবে ডাউনলোড করুন। GDPR অনুচ্ছেদ ২০।",
+      "button": "এক্সপোর্ট ডাউনলোড করুন",
+      "preparing": "প্রস্তুত করা হচ্ছে…",
+      "success": "এক্সপোর্ট ডাউনলোড হয়েছে",
+      "failed": "এক্সপোর্ট ব্যর্থ হয়েছে"
+    },
+    "delete": {
+      "title": "সব নলেজ ডেটা মুছে ফেলুন",
+      "description": "স্থায়ীভাবে প্রতিটি প্রকল্প এবং সারাংশ মুছে ফেলুন। এটি আপনার বই, অধ্যায় বা অ্যাকাউন্টের কোনো ক্ষতি করবে না — শুধুমাত্র মেমোরি সিস্টেমে সংরক্ষিত ডেটা মুছে ফেলবে। এটি আর পুনরুদ্ধার করা সম্ভব নয়।",
+      "button": "সবকিছু মুছে ফেলুন",
+      "deleting": "মুছে ফেলা হচ্ছে…",
+      "success": "{{projects}}টি প্রকল্প এবং {{summaries}}টি সারাংশ মুছে ফেলা হয়েছে",
+      "failed": "মুছে ফেলা ব্যর্থ হয়েছে"
+    },
+    "dialog": {
+      "title": "সব নলেজ ডেটা মুছে ফেলবেন?",
+      "description": "এটি স্থায়ীভাবে প্রতিটি প্রকল্প এবং সারাংশ মুছে ফেলবে। নিশ্চিত করতে নিচে {{token}} লিখুন।",
+      "cancel": "বাতিল"
+    }
+  },
+  "relations": {
+    "edit": {
+      "cta": "সম্পর্ক সংশোধন করুন",
+      "title": "সম্পর্ক সংশোধন করুন",
+      "description": "এই সম্পর্কের প্রেডিকেট ঠিক করুন, অথবা এটি ভুল হিসেবে চিহ্নিত করুন যাতে এটি মুছে ফেলা যায়।",
+      "field": {
+        "predicate": "প্রেডিকেট"
+      },
+      "save": "সংশোধন করুন",
+      "saving": "সংশোধন করা হচ্ছে…",
+      "cancel": "বাতিল",
+      "correctSuccess": "সম্পর্কটি সংশোধন করা হয়েছে।",
+      "invalidateSuccess": "সম্পর্কটি মুছে ফেলা হয়েছে।",
+      "invalidateHint": "যদি এই সম্পর্কটি কখনোই এক্সট্রাক্ট করার প্রয়োজন না হয়ে থাকে, তবে এটি মুছে ফেলতে ভুল হিসেবে চিহ্নিত করুন।",
+      "invalidateConfirm": "এই সম্পর্কটিকে ভুল হিসেবে চিহ্নিত করে মুছে ফেলবেন?",
+      "markWrong": "ভুল হিসেবে চিহ্নিত করুন",
+      "invalidating": "মুছে ফেলা হচ্ছে…",
+      "failed": "সংশোধনটি সেভ করা সম্ভব হয়নি: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "এডিট",
+      "title": "ইভেন্ট এডিট করুন",
+      "description": "এই ইভেন্টের শিরোনাম, সারাংশ বা সময় পরিবর্তন করুন।",
+      "field": {
+        "title": "শিরোনাম",
+        "summary": "সারাংশ",
+        "timeCue": "টাইম কিউ",
+        "dateIso": "তারিখ (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY বা YYYY-MM-DD",
+      "save": "সেভ করুন",
+      "saving": "সেভ করা হচ্ছে…",
+      "cancel": "বাতিল",
+      "success": "ইভেন্ট আপডেট করা হয়েছে।",
+      "conflict": "অন্য একটি ডিভাইস থেকে এই ইভেন্টটি আপডেট করা হয়েছে। সর্বশেষ ভার্সনটি দেখে আবার চেষ্টা করুন।",
+      "failed": "ইভেন্টটি আপডেট করা সম্ভব হয়নি: {{error}}",
+      "invalidDate": "তারিখ অবশ্যই YYYY, YYYY-MM, অথবা YYYY-MM-DD হতে হবে।"
+    },
+    "archive": {
+      "cta": "মুছে ফেলুন",
+      "confirm": "এই ইভেন্টটি মুছে (লুকিয়ে) ফেলবেন?",
+      "archiving": "মুছে ফেলা হচ্ছে…",
+      "success": "ইভেন্টটি মুছে ফেলা হয়েছে।",
+      "failed": "ইভেন্টটি মুছে ফেলা সম্ভব হয়নি: {{error}}"
+    }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "কনফিগ কোয়ালিটি",
+        "description": "জেনার এবং কনফিগারেশন অনুযায়ী সাফল্যের হার। একই কনফিগ হ্যাশ ব্যবহার করে ২+ এক্সট্রাকশন রান সম্পন্ন হলে এটি দেখা যাবে।",
+        "empty": "এখনো কোনো ডেটা নেই — প্রতিটি জেনারের জন্য একই কনফিগ হ্যাশ দিয়ে ২+ এক্সট্রাকশন রান প্রয়োজন।",
+        "exploration": "এক্সপ্লোরেশন স্যাম্পল (র্যান্ডম টেল)"
+      },
+      "modelMatrix": {
+        "title": "মডেল ম্যাট্রিক্স",
+        "description": "মডেল এবং টাস্ক স্কোপ অনুযায়ী ওয়েটেড আউটকাম স্কোর। সফল=১.০ · স্কিপ করা=০.৩ · ব্যর্থ=০.০।",
+        "empty": "এখনো কোনো ডেটা নেই — একই মডেল এবং স্কোপ দিয়ে ২+ এক্সট্রাকশন রান প্রয়োজন।"
+      },
+      "defaultDrift": {
+        "title": "কনফিগ ড্রিফট",
+        "description": "কোন এক্সট্রাকশন প্যারামিটারগুলো ডিফল্ট থেকে বিচ্যুত হচ্ছে এবং প্রজেক্টগুলো কি একই মানের দিকে যাচ্ছে কি না।",
+        "empty": "এখনো কোনো প্যারামিটার অ্যাডজাস্টমেন্ট রেকর্ড করা হয়নি।"
+      },
+      "outcomeRecompute": {
+        "title": "আউটকাম রিকম্পিউট",
+        "description": "রানার পর ব্যবহারকারীর করা সংশোধন প্রয়োগ করার পর এক্সট্রাকশন রানগুলোর পুনর্মূল্যায়ন।",
+        "empty": "এখনো কোনো সংশোধনী ডেটা নেই। সংশোধনগুলো যখন কোনো এক্সট্রাকশন রানের সাথে যুক্ত হবে, তখন আউটকাম রিকম্পিউট সক্রিয় হবে।"
+      }
+    },
+    "columns": {
+      "genre": "জেনার",
+      "configHash": "কনফিগ",
+      "runs": "রান",
+      "successRate": "সাফল্যের হার",
+      "avgEntities": "গড় এন্টিটি",
+      "model": "মডেল",
+      "scope": "স্কোপ",
+      "filter": "ফিল্টার",
+      "weightedOutcome": "স্কোর",
+      "target": "প্যারামিটার",
+      "affectedProjects": "প্রজেক্ট",
+      "driftPattern": "প্যাটার্ন",
+      "runsWithOutcome": "আউটকামসহ রান",
+      "runId": "রান",
+      "outcome": "আউটকাম",
+      "recomputed": "রিকম্পিউটেড",
+      "corrections": "সংশোধন"
+    },
+    "driftPattern": {
+      "convergent": "কনভারজেন্ট",
+      "divergent": "ডাইভারজেন্ট"
+    },
+    "totalRuns": "মোট {{count}}টি রান"
+  }
+}

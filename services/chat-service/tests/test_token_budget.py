@@ -82,6 +82,66 @@ class TestComputeBudget:
         assert (b.pct or 0) > 1.0  # over budget → meter goes red
 
 
+class TestComputeTarget:
+    def test_band_for_large_window(self):
+        # 200K window: floor = min(6K, 20K) = 6K; surface_max = min(32K, 70K) = 32K.
+        from app.services.token_budget import compute_target
+
+        assert compute_target(200_000, task_weight=0.0) == 6_000       # floor
+        assert compute_target(200_000, task_weight=1.0) == 32_000      # surface_max
+        mid = compute_target(200_000, task_weight=0.5)
+        assert 6_000 < mid < 32_000
+
+    def test_band_scales_with_small_window(self):
+        # 20K window: floor = min(6K, 2K) = 2K; surface_max = min(32K, 7K) = 7K.
+        from app.services.token_budget import compute_target
+
+        assert compute_target(20_000, task_weight=0.0) == 2_000
+        assert compute_target(20_000, task_weight=1.0) == 7_000
+
+    def test_task_weight_clamped(self):
+        from app.services.token_budget import compute_target
+
+        assert compute_target(200_000, task_weight=5.0) == 32_000   # >1 clamps to max
+        assert compute_target(200_000, task_weight=-1.0) == 6_000   # <0 clamps to floor
+
+    def test_unknown_window_is_none(self):
+        from app.services.token_budget import compute_target
+
+        assert compute_target(None) is None
+        assert compute_target(0) is None
+
+    def test_nan_task_weight_fails_safe_roomy(self):
+        # T2 review COSMETIC-2: a Planner NaN must fail SAFE = surface_max (roomy),
+        # never be silently masked as "lean" (floor) → over-compaction.
+        from app.services.token_budget import compute_target
+
+        assert compute_target(200_000, task_weight=float("nan")) == 32_000  # surface_max
+
+
+class TestBudgetTarget:
+    def test_budget_carries_target_and_pct_of_target(self):
+        # default task_weight=1.0 → surface_max target.
+        b = compute_budget(used_tokens=16_000, context_length=200_000, max_output_tokens=4_000)
+        assert b.target == 32_000
+        assert b.pct_of_target == 16_000 / 32_000  # 0.5 — half the soft budget
+        ev = b.to_event()
+        assert ev["target"] == 32_000
+        assert 0.49 <= ev["pct_of_target"] <= 0.51
+
+    def test_task_weight_shrinks_target(self):
+        lean = compute_budget(
+            used_tokens=8_000, context_length=200_000, max_output_tokens=4_000, task_weight=0.0)
+        assert lean.target == 6_000
+        assert (lean.pct_of_target or 0) > 1.0  # 8K > 6K floor → over the lean target
+
+    def test_unknown_window_target_none(self):
+        b = compute_budget(used_tokens=10, context_length=None, max_output_tokens=0)
+        assert b.target is None
+        assert b.to_event()["target"] is None
+        assert b.to_event()["pct_of_target"] is None
+
+
 # ── W1: per-category breakdown + extended frame payload ───────────────────────
 
 
@@ -115,6 +175,18 @@ class TestContextBreakdown:
         assert payload["history"] == 7
         assert payload["steering"] == 0
         assert payload["memory_knowledge"] == {"total": 0, "sections": {}}
+
+    def test_story_state_is_a_first_class_emitted_category(self):
+        # Regression (T4→T2-LOW-2): stream_service sets a `story_state` category, but
+        # to_payload only emits keys in BREAKDOWN_CATEGORIES — so a key in the emit dict
+        # that is NOT in the tuple is SILENTLY DROPPED (the Inspector never sees it). This
+        # pins story_state into the vocabulary + baseline so the safety-net block's tokens
+        # actually surface.
+        assert "story_state" in BREAKDOWN_CATEGORIES
+        payload = ContextBreakdown(categories={"story_state": 1150}).to_payload()
+        assert payload["story_state"] == 1150  # survives to_payload (not dropped)
+        # it is fixed per-turn overhead (a memory block before the first user word)
+        assert ContextBreakdown(categories={"story_state": 1150}).baseline_tokens == 1150
 
     def test_memory_knowledge_nests_total_and_sections(self):
         payload = _full_breakdown().to_payload()
@@ -185,3 +257,13 @@ class TestContextBudgetEvent:
         payload = context_budget_event(b, None)
         assert payload["pct"] is None
         assert payload["until_compact_pct"] is None
+
+    def test_entity_presence_attached_when_provided(self):
+        """T5 — the intent-gate decision rides the frame ONLY when the caller ran the
+        gate; omitted (no key) on the resume/degraded paths so the frame stays additive."""
+        b = compute_budget(used_tokens=10, context_length=40_000, max_output_tokens=0)
+        ep = {"grounding_needed": False, "matched": [], "reason": "no_entity_no_anaphora"}
+        payload = context_budget_event(b, None, entity_presence=ep)
+        assert payload["entity_presence"] == ep
+        # absent when not passed
+        assert "entity_presence" not in context_budget_event(b, None)

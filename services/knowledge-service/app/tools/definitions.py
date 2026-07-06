@@ -56,6 +56,26 @@ SEARCH_LIMIT_DEFAULT = 10
 TIMELINE_LIMIT_MAX = 50
 TIMELINE_LIMIT_DEFAULT = 20
 
+# L1/L2 reference-first contract (Context Budget Law §6b). `detail` is a
+# versioned-default migration lever: it defaults to "full" (legacy/federated
+# callers unchanged) and the chat-compiler passes "summary" for a compact,
+# reference-only projection. Enum-locked so a weak local model can't guess a
+# free-string value. Shared by the SET-returning memory tools (story_search /
+# memory_search / memory_timeline); the executor applies `apply_response_contract`
+# with the per-tool ref-field set. Drift-locked against the arg models by
+# test_schema_properties_match_arg_model_fields + the MCP mirror test.
+_DETAIL_PROP = {
+    "type": "string",
+    "enum": ["summary", "full"],
+    "description": (
+        "Response granularity. 'full' (default) = every field of each item. "
+        "'summary' = a compact reference projection (ids/title/snippet/score "
+        "only, heavy bodies dropped) — use it to scan many results cheaply, then "
+        "re-read the ones you need at full detail (or via a get-by-id sibling). "
+        "Result `meta` always reports total/returned/truncated."
+    ),
+}
+
 # H-I: the optional, ownership-checked project_id parameter shared by the
 # project-scoped memory tools (mirrors ProjectScopedArgs.project_id). Drift-locked
 # against the model by test_schema_properties_match_arg_model_fields.
@@ -81,6 +101,8 @@ class MemorySearchArgs(ProjectScopedArgs):
         default=SEARCH_LIMIT_DEFAULT, ge=1, le=SEARCH_LIMIT_MAX
     )
     source_type: Literal["chapter", "chat", "glossary"] | None = None
+    # L1/L2 reference-first contract (§6b) — versioned default "full".
+    detail: Literal["summary", "full"] = "full"
 
 
 class StorySearchArgs(ProjectScopedArgs):
@@ -97,6 +119,8 @@ class StorySearchArgs(ProjectScopedArgs):
     mode: Literal["hybrid", "exact", "semantic"] = "hybrid"
     granularity: Literal["chapter", "block"] = "chapter"
     limit: int = Field(default=SEARCH_LIMIT_DEFAULT, ge=1, le=SEARCH_LIMIT_MAX)
+    # L1/L2 reference-first contract (§6b) — versioned default "full".
+    detail: Literal["summary", "full"] = "full"
 
 
 class MemoryRecallEntityArgs(ProjectScopedArgs):
@@ -114,6 +138,8 @@ class MemoryTimelineArgs(ProjectScopedArgs):
     limit: int = Field(
         default=TIMELINE_LIMIT_DEFAULT, ge=1, le=TIMELINE_LIMIT_MAX
     )
+    # L1/L2 reference-first contract (§6b) — versioned default "full".
+    detail: Literal["summary", "full"] = "full"
 
     @model_validator(mode="after")
     def _reject_reversed_range(self) -> "MemoryTimelineArgs":
@@ -226,17 +252,19 @@ TOOL_DEFINITIONS: list[dict] = [
                     f"Max hits to return (default {SEARCH_LIMIT_DEFAULT})."
                 ),
             },
+            "detail": _DETAIL_PROP,
             "project_id": _PROJECT_ID_PROP,
         },
         ["query"],
     ),
     _tool(
         "memory_search",
-        "Semantic search over the user's stored memory for the current "
-        "project — chapter text, past chat turns, and glossary entries. "
-        "Call this to find what is already known about a topic, "
-        "character, place, or event before answering. Returns the most "
-        "relevant text snippets.",
+        "Search the project's stored knowledge for what is already known about a "
+        "topic, character, place, or event before answering — the book's chapter "
+        "text (lexical + semantic, so it finds an exact phrase even with nothing "
+        "indexed yet), past chat turns, and glossary entries. Returns the most "
+        "relevant snippets. (For locating/reading manuscript prose specifically, "
+        "`story_search` is the primary find tool.)",
         {
             "query": {
                 "type": "string",
@@ -257,6 +285,7 @@ TOOL_DEFINITIONS: list[dict] = [
                     "Optional — restrict to one source. Omit to search all."
                 ),
             },
+            "detail": _DETAIL_PROP,
             "project_id": _PROJECT_ID_PROP,
         },
         ["query"],
@@ -308,6 +337,7 @@ TOOL_DEFINITIONS: list[dict] = [
                     f"Max events to return (default {TIMELINE_LIMIT_DEFAULT})."
                 ),
             },
+            "detail": _DETAIL_PROP,
             "project_id": _PROJECT_ID_PROP,
         },
         [],

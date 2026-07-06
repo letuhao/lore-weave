@@ -69,6 +69,11 @@ type streamRequest struct {
 	// hidden thinking so reasoning_tokens don't burn the output budget.
 	ReasoningEffort    *string        `json:"reasoning_effort,omitempty"`
 	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
+	// Provider Context Strategy §5 — stateful /v1/responses routing. Honored only
+	// when the resolved provider declares responses_api AND LLM_STATEFUL_CACHE is on
+	// (gated in doLlmStream); otherwise stripped so the turn degrades to chat/completions.
+	Stateful           bool           `json:"stateful,omitempty"`
+	PreviousResponseID string         `json:"previous_response_id,omitempty"`
 	// Structured-output enforcement — forwarded to the provider unchanged via the
 	// adapter's forwardOptionalChatFields allowlist. OpenAI/LM Studio/vLLM shape:
 	// {"type":"json_object"} or {"type":"json_schema","json_schema":{…}}. Lets the
@@ -93,7 +98,7 @@ type streamRequest struct {
 
 // llmStream — public POST /v1/llm/stream (JWT auth).
 func (s *Server) llmStream(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return
@@ -361,6 +366,15 @@ WHERE platform_model_id=$1 AND status='active'
 		}
 	}
 
+	// Provider Context Strategy §5 — gate the stateful marker: honor it ONLY when the
+	// resolved provider declares responses_api AND LLM_STATEFUL_CACHE is on. Otherwise
+	// strip it so the turn transparently degrades to chat/completions (E10 capability-
+	// gated; the single point of truth for the gate — the adapter trusts this).
+	if in.Stateful && !(provider.CapabilitiesFor(providerKind).ResponsesAPI && provider.StatefulCacheEnabled()) {
+		in.Stateful = false
+		in.PreviousResponseID = ""
+	}
+
 	// Branch on operation — chat uses adapter.Stream, tts uses adapter.Speak.
 	switch op {
 	case "tts":
@@ -406,6 +420,14 @@ func buildChatStreamInput(in streamRequest) map[string]any {
 	if in.ResponseFormat != nil {
 		input["response_format"] = in.ResponseFormat
 	}
+	// §5 — the stateful marker + chain id (already gated in doLlmStream; here we only
+	// forward what survived the gate). The adapter routes to /v1/responses on these.
+	if in.Stateful {
+		input["stateful"] = true
+		if in.PreviousResponseID != "" {
+			input["previous_response_id"] = in.PreviousResponseID
+		}
+	}
 	return input
 }
 
@@ -421,6 +443,10 @@ func (s *Server) streamChat(
 	guard *streamGuard,
 ) error {
 	input := buildChatStreamInput(in)
+	// P0-2 (B1) — capture the assembled provider request (post-injection: messages
+	// already carry the system + context prompt the caller built) as the audit input
+	// payload, bounded so a huge context is logged by reference.
+	guard.captureRequest(boundedPayload(input))
 
 	emit := func(chunk provider.StreamChunk) error {
 		select {
@@ -474,6 +500,9 @@ func (s *Server) streamChat(
 			Message: message,
 		})
 	}
+	// P0-2 (B2) — classify the terminal outcome so the deferred guard.settle records
+	// the real request_status (settle runs after streamChat returns).
+	guard.finalizeOutcome(err)
 	return err
 }
 

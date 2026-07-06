@@ -56,6 +56,7 @@ var validJobOperations = map[string]struct{}{
 	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
 	"summarize_level":   {}, // P3 hierarchical reduce — chapter/part/book summaries
 	"translation":       {},
+	"vision":            {}, // PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5)
 }
 
 // jobSubmitRequest mirrors openapi SubmitJobRequest.
@@ -72,7 +73,7 @@ type jobSubmitRequest struct {
 
 // submitLlmJob — POST /v1/llm/jobs (JWT auth).
 func (s *Server) submitLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return
@@ -172,6 +173,12 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 	}
 	if in.Operation == "audio_gen" {
 		if err := validateAudioGenInput(in.Input, in.Chunking); err != nil {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
+			return
+		}
+	}
+	if in.Operation == "vision" {
+		if err := validateVisionInput(in.Input, in.Chunking); err != nil {
 			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
 			return
 		}
@@ -914,6 +921,41 @@ func validateAudioGenInput(raw json.RawMessage, chunking json.RawMessage) error 
 	return nil
 }
 
+// validateVisionInput — PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md
+// L5) handler-level validation for operation=vision. Rejects empty
+// image/prompt, an oversize base64 image, and chunking config (not
+// supported — single upstream call, one image per job). Belt-and-
+// suspenders with adapter-level invariant pre-checks (openai_vision.go),
+// mirroring validateImageGenInput/validateVideoGenInput.
+func validateVisionInput(raw json.RawMessage, chunking json.RawMessage) error {
+	if len(chunking) > 0 && string(chunking) != "null" {
+		return fmt.Errorf("chunking not supported for vision")
+	}
+	var v struct {
+		ImageB64  string `json:"image_b64"`
+		MimeType  string `json:"mime_type"`
+		Prompt    string `json:"prompt"`
+		MaxTokens int    `json:"max_tokens"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return fmt.Errorf("vision input parse: %w", err)
+	}
+	if strings.TrimSpace(v.Prompt) == "" {
+		return fmt.Errorf("vision requires non-empty prompt")
+	}
+	if v.ImageB64 == "" {
+		return fmt.Errorf("vision requires non-empty image_b64")
+	}
+	if len(v.ImageB64) > provider.MaxVisionInputImageBytes {
+		return fmt.Errorf("vision image_b64 exceeds %d-byte cap (got %d)",
+			provider.MaxVisionInputImageBytes, len(v.ImageB64))
+	}
+	if v.MaxTokens < 0 {
+		return fmt.Errorf("vision max_tokens must be >= 0 (got %d)", v.MaxTokens)
+	}
+	return nil
+}
+
 // formatFieldList renders a slice of field names for the field-name
 // diagnostic in 'expected file field "audio"; got [...]' errors.
 func formatFieldList(names []string) string {
@@ -925,7 +967,7 @@ func formatFieldList(names []string) string {
 
 // getLlmJob — GET /v1/llm/jobs/{job_id} (JWT auth).
 func (s *Server) getLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return
@@ -973,7 +1015,7 @@ func (s *Server) doGetJob(w http.ResponseWriter, r *http.Request, userID uuid.UU
 // (spec §5.1 D2). Cancel is idempotent — a no-op if the job is already terminal.
 // cancelLlmJob — DELETE /v1/llm/jobs/{job_id} (JWT auth).
 func (s *Server) cancelLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return

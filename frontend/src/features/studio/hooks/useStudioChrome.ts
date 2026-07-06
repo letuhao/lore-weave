@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { ACTIVITY_VIEWS, DEFAULT_CHROME, type ActivityView, type StudioChromeState } from '../types';
 
 /**
@@ -9,10 +10,13 @@ import { ACTIVITY_VIEWS, DEFAULT_CHROME, type ActivityView, type StudioChromeSta
  */
 const chromeKey = (bookId: string) => `lw_studio_chrome_${bookId}`;
 
-function load(bookId: string): StudioChromeState {
+// #16 Phase 4 (M6) — a first-time mobile visit has no persisted preference yet; defaulting the
+// sidebar OPEN there eats ~300px of a ~390px screen before the dock even starts (confirmed live).
+// A returning user's explicit choice (persisted) always wins over this mobile default.
+function load(bookId: string, mobileDefault: boolean): StudioChromeState {
   try {
     const raw = localStorage.getItem(chromeKey(bookId));
-    if (!raw) return DEFAULT_CHROME;
+    if (!raw) return { ...DEFAULT_CHROME, sidebarCollapsed: mobileDefault };
     const parsed = JSON.parse(raw) as Partial<StudioChromeState>;
     return {
       activeView: ACTIVITY_VIEWS.includes(parsed.activeView as ActivityView)
@@ -22,12 +26,13 @@ function load(bookId: string): StudioChromeState {
       bottomOpen: !!parsed.bottomOpen,
     };
   } catch {
-    return DEFAULT_CHROME;
+    return { ...DEFAULT_CHROME, sidebarCollapsed: mobileDefault };
   }
 }
 
 export function useStudioChrome(bookId: string) {
-  const [state, setState] = useState<StudioChromeState>(() => load(bookId));
+  const isMobile = useIsMobile();
+  const [state, setState] = useState<StudioChromeState>(() => load(bookId, isMobile));
 
   const setActiveView = useCallback((activeView: ActivityView) => {
     setState((s) => {

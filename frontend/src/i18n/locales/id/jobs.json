@@ -1,0 +1,155 @@
+{
+  "title": "Pekerjaan",
+  "status": {
+    "pending": "Menunggu",
+    "running": "Berjalan",
+    "paused": "Dijeda",
+    "cancelling": "Membatalkan",
+    "completed": "Selesai",
+    "failed": "Gagal",
+    "cancelled": "Dibatalkan"
+  },
+  "kind": {
+    "extraction": "Ekstraksi pengetahuan",
+    "glossary_extraction": "Ekstraksi glosarium",
+    "wiki_gen": "Pembuatan wiki",
+    "translation": "Terjemahan",
+    "glossary_translation": "Terjemahan glosarium",
+    "video_gen": "Pembuatan video",
+    "campaign": "Kampanye",
+    "enrichment_job": "Pengayaan lore",
+    "book_import": "Impor buku",
+    "composition": {
+      "generate": "Komposisi"
+    }
+  },
+  "summary": {
+    "active": "Aktif",
+    "completed": "Selesai",
+    "failed": "Gagal",
+    "cancelled": "Dibatalkan"
+  },
+  "filters": {
+    "status": "Status",
+    "kind": "Jenis",
+    "allStatuses": "Semua status",
+    "allKinds": "Semua jenis",
+    "search": "Cari judul…",
+    "searchWide": "Cari judul, jenis, layanan, model, atau ID pekerjaan…",
+    "searchHint": "Pencarian mencakup judul · jenis · layanan · model · ID pekerjaan (dengan jeda waktu)."
+  },
+  "col": {
+    "job": "Pekerjaan",
+    "status": "Status",
+    "progress": "Progres",
+    "cost": "Biaya · token",
+    "started": "Dimulai",
+    "actions": "Tindakan"
+  },
+  "section": {
+    "active": "Aktif · langsung",
+    "activeHint": "tidak dipaginasi — diperbarui di tempat via SSE",
+    "history": "Riwayat",
+    "historyHint": "diurutkan berdasarkan waktu dibuat · dipaginasi"
+  },
+  "list": {
+    "loading": "Memuat…",
+    "error": "Gagal memuat pekerjaan.",
+    "empty": "Belum ada pekerjaan.",
+    "noActive": "Tidak ada pekerjaan aktif.",
+    "more": "Muat lebih banyak",
+    "toggleChildren": "Tampilkan anak pekerjaan",
+    "noChildren": "Tidak ada anak pekerjaan."
+  },
+  "row": {
+    "ran": "berjalan {{d}}",
+    "running": "berjalan {{d}}",
+    "details": "Detail ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} dari {{total}}",
+    "pageSize": "Ukuran halaman",
+    "perPage": "{{n}} / halaman",
+    "page": "Halaman {{n}}",
+    "prev": "Halaman sebelumnya",
+    "next": "Halaman berikutnya",
+    "outOfRange": "Tidak ada baris di halaman ini (total {{total}}).",
+    "first": "Kembali ke halaman pertama"
+  },
+  "live": {
+    "on": "● langsung",
+    "onShort": "langsung",
+    "reconnecting": "menghubungkan kembali…",
+    "off": "offline"
+  },
+  "controls": {
+    "pause": "Jeda",
+    "resume": "Lanjutkan",
+    "cancel": "Batal",
+    "cancelConfirm": "Berhenti sekarang? Pekerjaan yang sedang berjalan akan dibuang; bagian yang sudah selesai akan tetap disimpan.",
+    "cancelYes": "Ya",
+    "cancelNo": "Tidak",
+    "cancelled": "Dibatalkan.",
+    "paused": "Dijeda.",
+    "resumed": "Dilanjutkan.",
+    "retry": "Coba lagi",
+    "retried": "Dikirim ulang sebagai pekerjaan baru.",
+    "stale": "Status pekerjaan berubah — diperbarui.",
+    "actionFailed": "Tindakan gagal: {{error}}"
+  },
+  "monitor": {
+    "back": "Semua pekerjaan",
+    "error": "Gagal memuat pekerjaan.",
+    "pausedBanner": "Dijeda — tidak ada unit baru yang dikirim dan unit yang sedang berjalan akan diselesaikan. Lanjutkan di atas.",
+    "children": "Anak pekerjaan"
+  },
+  "detail": {
+    "progress": "Progres",
+    "llmCalls": "Panggilan LLM",
+    "elapsed": "Durasi",
+    "throughput": "Throughput",
+    "throughputVal": "~{{n}} /jam",
+    "eta": "ETA",
+    "costSoFar": "Biaya sejauh ini",
+    "tokensIn": "Token masuk",
+    "tokensOut": "Token keluar",
+    "bestEffort": "best-effort",
+    "models": "Model",
+    "parameters": "Parameter",
+    "parametersHint": "dinamis, dari objek params pekerjaan",
+    "jobId": "ID Pekerjaan",
+    "kind": "Jenis",
+    "service": "Layanan",
+    "parent": "Induk",
+    "viewParent": "Lihat induk ↗",
+    "created": "Dibuat",
+    "lastUpdate": "Pembaruan terakhir",
+    "copied": "ID Pekerjaan disalin.",
+    "copyFailed": "Gagal menyalin.",
+    "activity": "Aktivitas (langsung)",
+    "errorTitle": "Kesalahan"
+  },
+  "activity": {
+    "created": "Dibuat",
+    "pending": "Dalam antrean",
+    "running": "Berjalan",
+    "paused": "Dijeda",
+    "cancelling": "Membatalkan",
+    "completed": "Selesai",
+    "failed": "Gagal",
+    "cancelled": "Dibatalkan"
+  },
+  "mobile": {
+    "children": "anak"
+  },
+  "fairness": {
+    "title": "Penjadwalan adil",
+    "running": "{{running}}/{{cap}} berjalan",
+    "queued": "· {{queued}} dalam antrean",
+    "lane": {
+      "translation": "Terjemahan",
+      "knowledge": "Pengetahuan",
+      "loreEnrichment": "Pengayaan lore"
+    }
+  }
+}

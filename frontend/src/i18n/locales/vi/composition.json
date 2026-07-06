@@ -749,5 +749,120 @@
       "deceived": "Deceived",
       "gap": "Gap"
     }
+  },
+  "authoringRun": {
+    "navRuns": "Lượt chạy",
+    "navNewRun": "Lượt chạy mới",
+    "navMission": "Trung tâm điều khiển",
+    "list": {
+      "title": "Các lượt chạy cho sách này",
+      "newRun": "+ Lượt chạy mới",
+      "blockedBanner": "Đã có một lượt chạy đang {{status}} cho sách này — mỗi sách chỉ được phép có một lượt chạy đang hoạt động. Mở nó bên dưới, hoặc tạm dừng/đóng nó trước.",
+      "blockedTooltip": "Hãy tạm dừng hoặc đóng lượt chạy đang hoạt động trước.",
+      "colRun": "Lượt chạy",
+      "colScope": "Phạm vi",
+      "colStatus": "Trạng thái",
+      "colSpent": "Đã chi",
+      "colCreated": "Tạo lúc",
+      "scopeCount": "{{count}} chương",
+      "empty": "Chưa có lượt chạy tự động nào cho sách này.",
+      "loading": "Đang tải các lượt chạy…",
+      "error": "Không tải được các lượt chạy."
+    },
+    "newRun": {
+      "title": "Lượt chạy mới — cấu hình",
+      "planLabel": "Kế hoạch (bắt buộc — một lượt chạy soạn thảo theo các beat của một kế hoạch đã được duyệt)",
+      "planEmpty": "Chưa có lượt lập kế hoạch nào được duyệt cho sách này.",
+      "planEmptyCta": "Mở Planner để tạo →",
+      "chaptersLabel": "Các chương cần đưa vào (mục lục sách)",
+      "chaptersHint": "{{total}} chương trong sách · đã chọn {{selected}}",
+      "orderLabel": "Thứ tự chạy",
+      "budgetLabel": "Ngân sách (USD)",
+      "levelLabel": "Cấp độ",
+      "level3": "Cấp 3 — chỉnh sửa",
+      "level4": "Cấp 4 — soạn thảo",
+      "allowlistLabel": "Danh sách công cụ cho phép",
+      "allowlistAdd": "Thêm công cụ…",
+      "runGateCheck": "Kiểm tra điều kiện chạy →",
+      "gating": "Đang kiểm tra…",
+      "cancel": "Hủy"
+    },
+    "gate": {
+      "title": "Kiểm tra điều kiện",
+      "checkPlan": "Kế hoạch tồn tại và đã được duyệt",
+      "checkScope": "Các chương trong phạm vi tồn tại & có thể sắp xếp thứ tự",
+      "checkBudget": "Đã khai báo ngân sách (> $0)",
+      "checkAllowlist": "Đã cấu hình danh sách công cụ cho phép",
+      "startBlocked": "Hãy khắc phục (các) điều kiện chưa đạt bên dưới trước."
+    },
+    "header": {
+      "gate": "Kiểm tra →",
+      "start": "Bắt đầu",
+      "pause": "Tạm dừng",
+      "resume": "Tiếp tục",
+      "close": "Đóng",
+      "revertAll": "Hoàn tác tất cả",
+      "closedNote": "Lượt chạy đã đóng — trạng thái cuối, không còn thao tác nào khác.",
+      "breakerLabel": "cầu dao",
+      "breakerHealthy": "bình thường",
+      "breakerReason": {
+        "pauseAfterEachUnit": "tạm dừng để xem lại (sau mỗi chương)",
+        "budget": "đã hết ngân sách",
+        "criticSevere": "critic phát hiện vấn đề nghiêm trọng",
+        "unitFailed": "một chương bị lỗi",
+        "driverCrashed": "driver đã gặp sự cố"
+      },
+      "heartbeatLabel": "nhịp tim",
+      "heartbeatFresh": "mới",
+      "heartbeatStale": "CŨ — driver có thể đã chết",
+      "heartbeatNA": "không có",
+      "budgetLabel": "Ngân sách",
+      "budgetDanger": "gần đạt giới hạn",
+      "pollActive": "Đang poll mỗi {{secs}}s (REST — không có live stream)",
+      "pollLastRefreshed": "cập nhật lần cuối {{secs}}s trước",
+      "pollRefreshingNow": "đang làm mới…",
+      "pollSuspended": "Đã tạm dừng poll — run không còn active",
+      "pausePolicyLabel": "Tự động tạm dừng sau mỗi đơn vị",
+      "errorPrefix": "error_message:"
+    },
+    "queue": {
+      "title": "Hàng đợi đơn vị",
+      "hint": "Nhấp vào một chương để đọc bản nháp của nó bên dưới.",
+      "unitLabel": "Đơn vị {{index}}"
+    },
+    "diff": {
+      "title": "Xem lại bản nháp",
+      "prev": "← Trước",
+      "next": "Sau →",
+      "openFullDiff": "Mở diff đầy đủ trong trình soạn thảo",
+      "notDrafted": "Chưa có bản nháp — không có gì để xem.",
+      "notReached": "Lượt chạy đã dừng trước khi đến chương này.",
+      "failedUnit": "Đơn vị này thất bại:",
+      "verdictShow": "Hiện chi tiết ▾",
+      "verdictHide": "Ẩn chi tiết ▴",
+      "sev": { "ok": "ổn", "warn": "cảnh báo", "severe": "nghiêm trọng" },
+      "cascadeWarning": "{{count}} đơn vị phía sau đã được soạn/chấp nhận ({{chapters}}) — điều này chỉ mang tính tham khảo; từ chối đơn vị này KHÔNG tự động hoàn tác chúng.",
+      "accept": "Chấp nhận",
+      "reject": "Từ chối",
+      "alreadyReviewed": "Đã xem xét — hiện đang {{status}}.",
+      "blockedReview": "Chấp nhận/Từ chối bị chặn khi lượt chạy đang {{status}} — hệ thống chỉ cho phép xem xét khi lượt chạy đã dừng (report_ready / failed / paused). Hãy tạm dừng lượt chạy để xem xét chương này ngay bây giờ.",
+      "keyboardHint": "Phím tắt: a=chấp nhận · r=từ chối · ←/→ hoặc p/n = đơn vị trước/sau"
+    },
+    "revert": {
+      "title": "Hoàn tác tất cả đơn vị đã soạn/chấp nhận?",
+      "body": "Thao tác này từ chối mọi đơn vị đã soạn/chấp nhận theo thứ tự ngược lại và khôi phục mỗi chương về phiên bản trước khi chạy. Không thể hoàn tác lại từ giao diện này. Bị ảnh hưởng:",
+      "none": "Không có đơn vị đã soạn/chấp nhận nào để hoàn tác.",
+      "confirm": "Hoàn tác tất cả",
+      "cancel": "Hủy",
+      "reverting": "Đang hoàn tác…",
+      "partialTitle": "Hoàn tác dừng giữa chừng",
+      "partialBody": "Đơn vị {{index}} khôi phục thất bại ({{error}}). {{count}} đơn vị đã được hoàn tác thành công trước khi dừng; lượt chạy được để mở (giữ nguyên trạng thái như trước) để bạn có thể thử lại.",
+      "successBody": "Tất cả {{count}} đơn vị đã được hoàn tác; lượt chạy hiện đã đóng."
+    },
+    "mission": {
+      "empty": "Mở một lượt chạy từ danh sách Lượt chạy để xem trung tâm điều khiển của nó.",
+      "loading": "Đang tải lượt chạy…",
+      "back": "← Quay lại danh sách lượt chạy"
+    }
   }
 }

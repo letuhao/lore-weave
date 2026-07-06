@@ -88,7 +88,7 @@ type createMcpReq struct {
 }
 
 func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -169,8 +169,8 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 		ownerArg = uid
 		prefix = userToolPrefix("user", uid, uuid.Nil)
 	case "system":
-		if role != "admin" {
-			writeError(w, http.StatusForbidden, "FORBIDDEN", "only admin may register System-tier servers")
+		// System-tier is platform-owned: RS256 admin token required (D-JWT-ROLE-GATE).
+		if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 			return
 		}
 		// An EXTERNAL System server is namespaced (s_<hash>_) so it can't shadow a
@@ -224,7 +224,7 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not register server")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "mcp_server", "register", &row.McpServerID, row.DisplayName, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "mcp_server", "register", &row.McpServerID, row.DisplayName, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	registryWrites.WithLabelValues("mcp_server", "register").Inc()
 	// External servers register QUARANTINED (pending); kick a best-effort supply-chain
@@ -237,7 +237,7 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listMcpServers(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -285,7 +285,7 @@ func (s *Server) listMcpServers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteMcpServer(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -299,21 +299,23 @@ func (s *Server) deleteMcpServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
 		return
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
+		}
 		return
 	}
 	if _, err := s.db.Exec(r.Context(), `DELETE FROM mcp_server_registrations WHERE mcp_server_id = $1`, mid); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not delete server")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "mcp_server", "delete", &mid, "", tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "mcp_server", "delete", &mid, "", tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) setMcpEnabled(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -346,7 +348,7 @@ func (s *Server) setMcpEnabled(w http.ResponseWriter, r *http.Request) {
 	if body.Enabled {
 		action = "enable"
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "mcp_server", action, &mid, "", "", nil)
+	s.audit(r.Context(), uid, "user", "mcp_server", action, &mid, "", "", nil)
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{"mcp_server_id": mid, "enabled": body.Enabled})
 }

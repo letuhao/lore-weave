@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "শিরোনামহীন",
+    "status": {
+      "draft": "খসড়া",
+      "active": "সক্রিয়",
+      "inactive": "নিষ্ক্রিয়"
+    },
+    "discard": "বাতিল করুন",
+    "save": "সংরক্ষণ করুন",
+    "save_entity": "এনটিটি সংরক্ষণ করুন",
+    "cancel": "বাতিল",
+    "move_to_trash": "ট্র্যাশে পাঠান",
+    "meta": {
+      "chapters": "{{count}}টি অধ্যায়",
+      "translations": "{{count}}টি অনুবাদ",
+      "evidences": "{{count}}টি প্রমাণ"
+    },
+    "tab": {
+      "attributes": "বৈশিষ্ট্যসমূহ",
+      "evidences": "প্রমাণসমূহ",
+      "history": "ইতিহাস"
+    },
+    "viewing_in_language": "{{lang}} ভাষায় দেখা হচ্ছে",
+    "viewing_original": "মূল ({{lang}})",
+    "translation_lang_aria": "অনুবাদ ভাষা",
+    "no_translation": "কোনো অনুবাদ নেই",
+    "add_language": "+ ভাষা যোগ করুন...",
+    "lang_placeholder": "যেমন: en",
+    "system_attrs": "সিস্টেম বৈশিষ্ট্য",
+    "user_attrs": "ব্যবহারকারীর বৈশিষ্ট্য",
+    "no_attributes": "এই এনটিটি ধরনের জন্য কোনো বৈশিষ্ট্য সংজ্ঞায়িত করা নেই।",
+    "toast": {
+      "saved": "এনটিটি সংরক্ষিত হয়েছে",
+      "status_changed": "অবস্থা পরিবর্তন করে {{status}} করা হয়েছে",
+      "invalid_lang": "অবৈধ ভাষা কোড (যেমন: en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*প্রয়োজনীয়",
+    "modified": "পরিবর্তিত",
+    "has_translations": "অনুবাদ আছে"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "খসড়া",
+      "verified": "যাচাইকৃত",
+      "machine": "মেশিন"
+    },
+    "confidence_aria": "অনুবাদ নিশ্চিততা",
+    "by": "{{name}} দ্বারা",
+    "discard_aria": "পরিবর্তন বাতিল করুন",
+    "save": "সংরক্ষণ করুন",
+    "delete_aria": "অনুবাদটি মুছে ফেলুন",
+    "placeholder": "{{lang}} অনুবাদ...",
+    "tags_add": "+ এলিয়াস যোগ করুন",
+    "delete_title": "অনুবাদটি মুছে ফেলবেন?",
+    "delete_desc": "এই বৈশিষ্ট্যের {{lang}} অনুবাদটি স্থায়ীভাবে মুছে ফেলা হবে।",
+    "delete_confirm": "মুছে ফেলুন",
+    "toast": {
+      "updated": "অনুবাদ আপডেট করা হয়েছে",
+      "created": "অনুবাদ তৈরি করা হয়েছে",
+      "deleted": "অনুবাদ মুছে ফেলা হয়েছে"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "উদ্ধৃতি",
+      "summary": "সারসংক্ষেপ",
+      "reference": "রেফারেন্স"
+    },
+    "provenance": {
+      "ambiguous": "অনিশ্চিত মিল",
+      "ambiguous_hint": "এই উদ্ধৃতিটি মূল পাঠ্যের একাধিক স্থানে মিলেছে — সঠিক অবস্থানটি নিশ্চিত নয়।",
+      "unmatched": "মূল পাঠ্যে পাওয়া যায়নি",
+      "unmatched_hint": "এই উদ্ধৃতিটি অধ্যায়ের পাঠ্যে খুঁজে পাওয়া যায়নি — এটি সম্ভবত প্যারাফ্রেজ করা বা ভুলভাবে তৈরি করা। বিশ্বাস করার আগে যাচাই করে নিন।",
+      "unverified": "অনিশ্চিত",
+      "unverified_hint": "এই উদ্ধৃতিটি মূল পাঠ্যের সাথে যাচাই করা হয়নি।"
+    },
+    "filter": {
+      "all": "সব",
+      "attr_aria": "বৈশিষ্ট্য অনুযায়ী ফিল্টার করুন",
+      "all_attributes": "সব বৈশিষ্ট্য",
+      "chapter_aria": "অধ্যায় অনুযায়ী ফিল্টার করুন",
+      "all_chapters": "সব অধ্যায়",
+      "chapter_n": "অধ্যায় {{n}}",
+      "lang_aria": "প্রদর্শন ভাষা",
+      "original": "মূল",
+      "sort_aria": "সাজান",
+      "sort": {
+        "created": "তৈরি করা হয়েছে",
+        "chapter": "অধ্যায়",
+        "block_line": "ব্লক/লাইন",
+        "attribute": "বৈশিষ্ট্য"
+      },
+      "ascending": "ঊর্ধ্বক্রম",
+      "descending": "নিম্নক্রম",
+      "add": "যোগ করুন"
+    },
+    "create": {
+      "title": "নতুন প্রমাণ",
+      "attribute": "বৈশিষ্ট্য *",
+      "attr_aria": "নতুন প্রমাণের জন্য বৈশিষ্ট্য",
+      "type": "ধরণ",
+      "type_aria": "প্রমাণের ধরণ",
+      "original_text": "মূল পাঠ্য *",
+      "text_placeholder": "মূল পাঠ্যটি পেস্ট করুন...",
+      "block_line": "ব্লক / লাইন",
+      "block_placeholder": "যেমন: p.42",
+      "note": "নোট",
+      "note_placeholder": "ঐচ্ছিক নোট",
+      "cancel": "বাতিল",
+      "create": "তৈরি করুন"
+    },
+    "card": {
+      "edit_type_aria": "প্রমাণের ধরণ সম্পাদনা করুন",
+      "cancel_title": "বাতিল",
+      "block_line": "ব্লক / লাইন",
+      "note": "নোট",
+      "cancel": "বাতিল",
+      "save": "সংরক্ষণ করুন",
+      "edit_title": "সম্পাদনা",
+      "open_source": "মূল অধ্যায়টি খুলুন",
+      "delete_title": "মুছে ফেলুন",
+      "translated": "অনুবাদিত ({{lang}})",
+      "note_label": "নোট: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "কোনো প্রমাণ পাওয়া যায়নি",
+      "clear_filters": "ফিল্টার পরিষ্কার করুন",
+      "prev_page": "আগের পৃষ্ঠা",
+      "next_page": "পরের পৃষ্ঠা",
+      "first_page": "প্রথম পৃষ্ঠা",
+      "last_page": "শেষ পৃষ্ঠা",
+      "jump_to_page": "পৃষ্ঠায় যান",
+      "page_size": "প্রতি পৃষ্ঠায় সারি",
+      "per_page": "{{n}} / পৃষ্ঠা",
+      "delete_title": "প্রমাণটি মুছে ফেলবেন?",
+      "delete_desc": "\"{{attr}}\" থেকে এই প্রমাণটি স্থায়ীভাবে মুছে ফেলা হবে।",
+      "delete_confirm": "মুছে ফেলুন"
+    },
+    "toast": {
+      "updated": "প্রমাণ আপডেট করা হয়েছে",
+      "deleted": "প্রমাণ মুছে ফেলা হয়েছে",
+      "created": "প্রমাণ তৈরি করা হয়েছে",
+      "text_required": "মূল পাঠ্য প্রয়োজন"
+    }
+  },
+  "summarize": {
+    "canonical_label": "একীভূত সারসংক্ষেপ",
+    "pending_dirty": "পরবর্তী এক্সট্রাকশনের পরে পুনরায় সারসংক্ষেপ করা হবে",
+    "pending_new": "পরবর্তী এক্সট্রাকশনের পরে সারসংক্ষেপ করা হবে",
+    "sources": "কাঁচা উল্লেখ ({{count}})",
+    "empty": "এখনো কোনো উল্লেখ নেই"
+  }
+}

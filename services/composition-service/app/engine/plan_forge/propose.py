@@ -113,7 +113,11 @@ def _parse_events_in_block(arc_id: str, body: str) -> list[dict[str, Any]]:
             continue
         lines = part.strip().splitlines()
         header = "### " + lines[0]
-        ev_body = "\n".join(lines[1:])
+        # The LAST event in a block has no following "### " to split on, so
+        # without this it swallows the arc's trailing "---"-delimited closing
+        # summary (e.g. "**Trạng thái cuối Arc N:**...") as part of its own
+        # body — spuriously matching var_delta regexes meant for other events.
+        ev_body = "\n".join(lines[1:]).split("\n---", 1)[0]
         m = re.match(r"### Event (\d+)", header)
         num = m.group(1) if m else str(len(events) + 1)
         ev_id = f"{arc_id}_event_{num}"

@@ -300,7 +300,8 @@ async def test_jobs_list_shape_and_owner_scope():
 
     async with _patched(_seed()) as (srv, _ctx):
         res = await srv.jobs_list(_ctx(UUID(TEST_USER)))
-    assert set(res) == {"items", "next_cursor"}
+    assert set(res) == {"items", "next_cursor", "detail"}
+    assert res["detail"] == "full"  # versioned-default migration (spec §6b)
     # Only the TEST_USER's two jobs — never OTHER_USER's.
     ids = {j["job_id"] for j in res["items"]}
     assert ids == {
@@ -310,6 +311,24 @@ async def test_jobs_list_shape_and_owner_scope():
     # control_caps derived per-row (the running translation job can be cancelled).
     running = next(j for j in res["items"] if j["status"] == "running")
     assert "cancel" in running["control_caps"]
+
+
+async def test_jobs_list_summary_drops_heavy_params(seed_params=None):
+    """T1 / L1 — detail=summary drops the heavy params (spec §6b); full keeps it."""
+    from uuid import UUID
+
+    store = _seed()
+    # give the running job a fat params payload to prove it's dropped at summary
+    store._jobs[0]["params"] = {"model": "x", "estimated_llm_calls": 200, "big": "y" * 500}
+    async with _patched(store) as (srv, _ctx):
+        full = await srv.jobs_list(_ctx(UUID(TEST_USER)), detail="full")
+        summ = await srv.jobs_list(_ctx(UUID(TEST_USER)), detail="summary")
+    running_full = next(j for j in full["items"] if j["status"] == "running")
+    running_summ = next(j for j in summ["items"] if j["status"] == "running")
+    assert running_full.get("params")           # full keeps params
+    assert "params" not in running_summ          # summary drops it
+    assert "control_caps" in running_summ        # ref field kept
+    assert summ["detail"] == "summary"
 
 
 async def test_jobs_list_foreign_user_sees_nothing():

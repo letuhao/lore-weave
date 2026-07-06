@@ -1,0 +1,146 @@
+{
+  "loading": "Загрузка...",
+  "chapter_of": "Глава {{current}} из {{total}}",
+  "stop_reading": "Прекратить чтение",
+  "read_aloud": "Читать вслух",
+  "reading_theme": "Тема чтения",
+  "edit_chapter": "Редактировать главу",
+  "back_to_book": "Вернуться к книге",
+  "chapter_label": "Глава {{n}}",
+  "chars": "симв.",
+  "words": "слов.",
+  "min_read": "~{{minutes}} мин. чтения",
+  "loading_translation": "Загрузка перевода...",
+  "empty_chapter": "Пустая глава — текст еще не написан.",
+  "end_of_chapter": "Конец главы {{n}}",
+  "next_in": "Следующая глава через {{seconds}}с...",
+  "cancel": "Отмена",
+  "progress": "Глава {{current}} из {{total}} · завершено: {{percent}}%",
+  "ch_short": "Гл. {{n}}",
+  "history": {
+    "title": "История чтения",
+    "subtitle": "Ваши недавно прочитанные книги и главы.",
+    "empty": "История чтения пуста. Начните читать!",
+    "chapters_read": "Прочитано глав: {{count}}",
+    "fully_read": "Прочитано: {{percent}}%",
+    "last_read": "Последнее чтение: {{date}}",
+    "continue": "Продолжить"
+  },
+  "theme": {
+    "title": "Тема чтения",
+    "presets": "Предустановки темы",
+    "preset": {
+      "dark": {
+        "name": "Темная",
+        "desc": "Теплый темный фон"
+      },
+      "light": {
+        "name": "Светлая",
+        "desc": "Чистый белый фон"
+      },
+      "sepia": {
+        "name": "Сепия",
+        "desc": "Теплый оттенок бумаги"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "Настоящий черный для OLED-экранов"
+      },
+      "parchment": {
+        "name": "Пергамент",
+        "desc": "Классический эффект пергамента"
+      },
+      "forest": {
+        "name": "Лес",
+        "desc": "Комфортно для глаз ночью"
+      }
+    },
+    "font": "Шрифт",
+    "typography": "Типографика",
+    "font_size": "Размер шрифта",
+    "line_height": "Межстрочный интервал",
+    "text_width": "Ширина текста",
+    "spacing": "Интервалы",
+    "reading_mode": "Режим чтения",
+    "show_indices": "Показывать индексы блоков (режим переводчика)",
+    "auto_next": "Автозагрузка следующей главы",
+    "auto_scroll": "Автопрокрутка с TTS"
+  },
+  "tts": {
+    "source": {
+      "attached": "Прикреплено",
+      "ai": "AI TTS",
+      "browser": "Браузер",
+      "inline": "Аудио"
+    },
+    "prev_block": "Предыдущий блок (Shift+Влево)",
+    "play": "Воспроизвести (Space)",
+    "pause": "Пауза (Space)",
+    "next_block": "Следующий блок (Shift+Вправо)",
+    "cycle_speed": "Переключение скорости",
+    "autoscroll_on": "Автопрокрутка: ВКЛ",
+    "autoscroll_off": "Автопрокрутка: ВЫКЛ",
+    "settings": "Настройки TTS",
+    "stop": "Стоп (Escape)",
+    "speed": "Скорость",
+    "browser_voice": "Голос браузера",
+    "default": "По умолчанию",
+    "no_voices": "Голоса недоступны. Возможно, ваш браузер не поддерживает Web Speech API.",
+    "ai_model": "Модель AI TTS",
+    "none_browser": "Нет (только браузерный TTS)",
+    "no_models": "Модели не настроены. Добавьте провайдера в Настройки > Провайдеры.",
+    "ai_voice": "AI Голос",
+    "openai_voices": "Голоса OpenAI: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "Поведение",
+    "autoscroll_active": "Автопрокрутка к активному блоку",
+    "highlight_active": "Выделять активный блок",
+    "now_playing": "Сейчас играет",
+    "block_label": "Блок: {{id}}",
+    "status": {
+      "playing": "воспроизведение",
+      "paused": "пауза",
+      "loading": "загрузка"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "Прикреплено",
+      "ai": "AI TTS",
+      "browser": "Браузер",
+      "inline": "Аудиоблок",
+      "none": "Нет"
+    },
+    "coverage": "Охват аудио",
+    "summary": "{{speakable}} доступных блоков · {{missing}} через браузерный TTS",
+    "generate_missing": "Сгенерировать недостающее аудио",
+    "block_chars": "{{count}} блок · ~{{chars}} симв.",
+    "block_chars_other": "{{count}} блоков · ~{{chars}} симв.",
+    "est_cost": "прибл. ${{cost}}",
+    "generating": "Генерация... {{progress}}/{{total}}",
+    "select_model_alert": "Сначала выберите модель TTS в настройках TTS.",
+    "generate_all": "Сгенерировать всё ({{count}})",
+    "blocks": "Блоки",
+    "audio_block_preview": "Аудиоблок"
+  },
+  "block": {
+    "audio_unavailable": "Аудио недоступно",
+    "audio_fallback": "Ваш браузер не поддерживает элемент audio.",
+    "image_unavailable": "Изображение недоступно",
+    "video_unavailable": "Видео недоступно"
+  },
+  "indicator": {
+    "pause": "Пауза",
+    "play": "Воспроизвести прикрепленное аудио",
+    "mismatch": "Аудиосубтитры не совпадают с текстом блока"
+  },
+  "citation": {
+    "aria": "Цитата {{n}}",
+    "jump": "Перейти к источнику",
+    "relevance": "Релевантность",
+    "source": {
+      "glossary": "Глоссарий",
+      "kg": "Знания",
+      "passage": "Отрывок"
+    }
+  }
+}

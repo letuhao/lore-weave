@@ -13,12 +13,10 @@ import logging
 
 from app.config import settings
 from app.db.pool import close_pool, create_pool, get_pool
+from app.logging_config import setup_logging
 from app.worker.job_consumer import CompositionJobConsumer
 
-logging.basicConfig(
-    level=settings.log_level,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+setup_logging(settings.log_level)  # P2·A2a — shared JSON logging (composition-service)
 logger = logging.getLogger("composition.worker")
 
 

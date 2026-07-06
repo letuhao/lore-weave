@@ -1,12 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { LANGUAGE_REGISTRY } from '@/lib/languages';
 
-const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'vi', name: 'Tiếng Việt' },
-  { code: 'ja', name: '日本語' },
-  { code: 'zh-TW', name: '繁體中文' },
-];
+// UI-locale switcher: one button per registry language flagged `uiLocale`.
+const UI_LOCALE_ENTRIES = LANGUAGE_REGISTRY.filter((l) => l.uiLocale);
 
 export function LanguageSelector({ className }: { className?: string }) {
   const { i18n } = useTranslation();
@@ -14,7 +11,7 @@ export function LanguageSelector({ className }: { className?: string }) {
 
   return (
     <div className={cn('flex flex-wrap gap-2', className)}>
-      {LANGUAGES.map((lang) => (
+      {UI_LOCALE_ENTRIES.map((lang) => (
         <button
           key={lang.code}
           onClick={() => void i18n.changeLanguage(lang.code)}
@@ -25,7 +22,7 @@ export function LanguageSelector({ className }: { className?: string }) {
               : 'border-border text-foreground hover:bg-secondary',
           )}
         >
-          {lang.name}
+          {lang.endonym}
         </button>
       ))}
     </div>

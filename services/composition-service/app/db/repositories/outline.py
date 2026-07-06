@@ -774,6 +774,59 @@ class OutlineRepo:
             "can_publish": total > 0 and done == total and not canon_blocked,
         }
 
+    async def canon_issues(self, user_id: UUID, project_id: UUID) -> list[dict[str, Any]]:
+        """Book-wide ITEMIZED canon issues (Studio Quality tab, `quality-canon` panel).
+
+        Same base predicate as `chapter_scene_gate`'s canon half (DISTINCT ON the
+        node's latest completed, non-synthetic job; `result.canon.resolved ==
+        false`), but un-scoped from a single chapter and returning the actual
+        violation rows instead of a count — `chapter_scene_gate` answers "can this
+        chapter publish", this answers "show me every open contradiction in the
+        book". Returns `chapter_id` only (not a title) — composition-service
+        doesn't own chapter titles (book-service does); the caller resolves them
+        from whatever chapter list it already has loaded (scope-separation)."""
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                SELECT
+                  n.id AS scene_id, n.title AS scene_title, n.chapter_id,
+                  latest.job_id, latest.created_at,
+                  (latest.result -> 'canon' ->> 'resolved') = 'false' AS unresolved,
+                  (latest.result -> 'canon' ->> 'status') AS status,
+                  COALESCE(latest.result -> 'canon' -> 'violations', '[]'::jsonb) AS violations
+                FROM (
+                  SELECT DISTINCT ON (j.outline_node_id)
+                    j.outline_node_id, j.id AS job_id, j.result, j.created_at
+                  FROM generation_job j
+                  JOIN outline_node n2 ON n2.id = j.outline_node_id
+                  WHERE j.user_id = $1 AND j.project_id = $2
+                    AND n2.kind = 'scene' AND NOT n2.is_archived
+                    AND j.status = 'completed'
+                    -- D-M3-PROSEJOB-PUBLISHGATE (same exclusion as chapter_scene_gate):
+                    -- a synthetic prose-persist job carries no canon verdict and must
+                    -- never shadow an earlier auto-gen's real verdict.
+                    AND j.operation <> 'promoted_scene_prose'
+                  ORDER BY j.outline_node_id, j.created_at DESC, j.id DESC
+                ) latest
+                JOIN outline_node n ON n.id = latest.outline_node_id
+                WHERE (latest.result -> 'canon' ->> 'resolved') = 'false'
+                ORDER BY latest.created_at DESC
+                """,
+                user_id, project_id,
+            )
+        return [
+            {
+                "scene_id": str(r["scene_id"]),
+                "scene_title": r["scene_title"],
+                "chapter_id": str(r["chapter_id"]) if r["chapter_id"] else None,
+                "job_id": str(r["job_id"]),
+                "created_at": r["created_at"].isoformat(),
+                "status": r["status"],
+                "violations": json.loads(r["violations"]) if isinstance(r["violations"], str) else r["violations"],
+            }
+            for r in rows
+        ]
+
     async def archive_node(self, user_id: UUID, node_id: UUID) -> OutlineNode | None:
         """Soft-archive a node AND its descendants (PO decision — no orphaned-
         visible children). A recursive CTE walks parent_id down from the target,

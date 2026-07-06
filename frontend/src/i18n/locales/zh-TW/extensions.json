@@ -1,0 +1,203 @@
+{
+  "title": "擴充功能",
+  "tabs": {
+    "skills": "技能",
+    "mcp": "MCP 伺服器",
+    "commands": "指令與 Hook",
+    "subagents": "子代理",
+    "plugins": "外掛程式",
+    "proposals": "提案",
+    "activity": "活動日誌",
+    "ingest": "註冊來源"
+  },
+  "quota": {
+    "skills": "技能",
+    "mcp": "MCP 伺服器",
+    "proposals": "提案"
+  },
+  "scope": {
+    "label": "範圍：",
+    "mine": "我的擴充功能",
+    "orBook": "或書籍：",
+    "bookPlaceholder": "書籍範圍…",
+    "bookHint": "書籍範圍 — 新項目僅適用於此書籍"
+  },
+  "common": {
+    "loading": "載入中…",
+    "delete": "刪除",
+    "add": "新增",
+    "cancel": "取消",
+    "back": "返回",
+    "next": "下一步",
+    "of": "共",
+    "system": "系統",
+    "book": "書籍"
+  },
+  "skills": {
+    "search": "搜尋技能…",
+    "tier": {
+      "all": "等級：全部",
+      "system": "系統",
+      "user": "使用者",
+      "book": "書籍"
+    },
+    "sort": {
+      "updated": "排序：更新時間",
+      "name": "名稱 A→Z",
+      "lastTriggered": "最後觸發時間"
+    },
+    "empty": "尚無技能。代理人可以提議新技能，或在編輯器中建立。",
+    "draft": "草稿"
+  },
+  "mcp": {
+    "status": {
+      "active": "執行中",
+      "pending": "掃描中…",
+      "suspended": "已隔離",
+      "error": "無法連線"
+    },
+    "search": "搜尋伺服器…",
+    "filter": {
+      "all": "狀態：全部",
+      "active": "執行中",
+      "pending": "掃描中",
+      "suspended": "已隔離",
+      "error": "無法連線"
+    },
+    "add": "+ 新增伺服器",
+    "empty": "尚未新增 MCP 伺服器。新增伺服器可為代理程式提供額外工具。",
+    "review": "⚠ 審查",
+    "detail": {
+      "back": "‹ 返回",
+      "connection": "連線",
+      "auth": "驗證",
+      "prefix": "前綴",
+      "egress": "出口白名單",
+      "health": "狀態",
+      "lastScanned": "最後掃描時間",
+      "credentialStored": "憑證已儲存",
+      "healthOk": "正常 · {{count}} 個工具 · {{latency}}ms",
+      "healthError": "錯誤：{{error}}",
+      "unreachable": "無法連線",
+      "scanning": "正在掃描…",
+      "rescan": "重新掃描",
+      "reconnect": "重新連接 OAuth",
+      "acceptRisk": "接受風險並啟用"
+    },
+    "scan": {
+      "label": "供應鏈掃描：",
+      "clean": "乾淨",
+      "findings": "{{count}} 個發現",
+      "tools": "工具 ({{count}})",
+      "flagged": "已標記"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "連接",
+        "auth": "驗證",
+        "scan": "健康檢查與掃描",
+        "review": "檢查"
+      },
+      "displayName": "顯示名稱",
+      "displayNamePlaceholder": "我的工具伺服器",
+      "url": "伺服器 URL (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "身分驗證",
+      "authNone": "無",
+      "authBearer": "Bearer 權杖",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "無身分驗證 — 此伺服器是公開的。繼續進行註冊與掃描。",
+      "bearerLabel": "Bearer 權杖 (將儲存在保險箱中；之後不會再次顯示)",
+      "bearerPlaceholder": "貼上權杖",
+      "authzEndpoint": "授權端點",
+      "tokenEndpoint": "權杖端點",
+      "clientId": "用戶端 ID",
+      "scopes": "範圍 (以空格分隔)",
+      "registering": "正在註冊…",
+      "registerScan": "註冊並掃描",
+      "statusLabel": "狀態：",
+      "connectOauth": "使用 OAuth 連線 →",
+      "runScan": "執行健康檢查與掃描",
+      "refresh": "重新整理",
+      "continue": "繼續",
+      "authKind": "驗證方式：{{kind}}",
+      "enable": "為我的工作階段啟用",
+      "done": "完成"
+    }
+  },
+  "commands": {
+    "title": "斜線指令",
+    "description": "在對話中輸入 <code>/name</code> 以展開範本。使用 <code>{{args}}</code> 或 <code>{{key}}</code> 來傳遞參數。",
+    "namePlaceholder": "名稱 (例如：plan-scene)",
+    "templatePlaceholder": "範本：規劃關於 {{topic}} 的場景…",
+    "empty": "尚無指令。"
+  },
+  "hooks": {
+    "title": "鉤子 (Hooks)",
+    "description": "在代理人迴圈節點觸發的宣告式規則。無需撰寫程式碼 —— 僅需設定事件、選填的工具比對，以及對應動作。",
+    "matchPlaceholder": "工具比對 (例如：glossary_delete_*)",
+    "textPlaceholder": "要注入或標註的文字",
+    "empty": "尚無鉤子。"
+  },
+  "subagents": {
+    "title": "子代理 (Subagents)",
+    "description": "一個具備特定名稱的角色，代理可以透過 <code>run_subagent</code> 將受限的子任務委派給它。它會在一個隔離的對話回合中執行，且「僅」能使用其權限範圍內的工具。若要建立純粹用於推理或摘要的角色，請將範圍留空。",
+    "namePlaceholder": "名稱 (例如：lore-scout)",
+    "scopePlaceholder": "工具範圍：glossary_*, kg_*",
+    "modelPlaceholder": "模型 (選填，user_model ID)",
+    "promptPlaceholder": "系統提示詞 — 說明此角色的身份與運作方式…",
+    "create": "建立子代理",
+    "empty": "目前尚無子代理。",
+    "reasoningOnly": "僅限推理 (無工具)",
+    "modelPinned": "模型已固定"
+  },
+  "plugins": {
+    "description": "外掛程式將技能、指令與鉤子（hooks）封裝在一起 — 匯出以進行分享，匯入以進行安裝。",
+    "importing": "匯入中…",
+    "import": "匯入套件",
+    "invalidJson": "該檔案不是有效的 JSON 格式。",
+    "notBundle": "這不是 LoreWeave 套件（缺少 manifest.name）。",
+    "empty": "目前尚無套件。請匯入套件以進行安裝。",
+    "export": "匯出"
+  },
+  "proposals": {
+    "status": {
+      "pending": "待處理",
+      "approved": "已核准",
+      "rejected": "已拒絕",
+      "expired": "已過期",
+      "all": "全部"
+    },
+    "total": "總計 {{count}} 筆",
+    "empty": "目前沒有提案。代理人建議的技能將顯示在此供您核准。",
+    "approve": "核准",
+    "reject": "拒絕",
+    "reason": "原因：{{reason}}"
+  },
+  "activity": {
+    "title": "活動日誌",
+    "allKinds": "所有類型",
+    "range": {
+      "all": "所有時間",
+      "7d": "過去 7 天",
+      "30d": "過去 30 天"
+    },
+    "empty": "此範圍內無活動。",
+    "secondsAgo": "{{count}} 秒前",
+    "minutesAgo": "{{count}} 分鐘前",
+    "hoursAgo": "{{count}} 小時前",
+    "daysAgo": "{{count}} 天前"
+  },
+  "ingest": {
+    "title": "註冊表來源 (管理員)",
+    "description": "從官方 MCP Registry 整理系統目錄。驗證 ≠ 安全 — 每次核准都會在聯集前重新執行 SSRF 防護與供應鏈掃描。",
+    "all": "全部",
+    "pulling": "拉取中…",
+    "pull": "拉取註冊表",
+    "pullResult": "已拉取：獲取 {{fetched}} · 新增 {{new}} · 更新 {{updated}} · 跳過遠端 {{skipped}}",
+    "truncated": "· 部分內容 (已截斷)",
+    "empty": "此檢視中沒有項目。請拉取註冊表以填充隊列。",
+    "approve": "核准",
+    "reject": "拒絕"
+  }
+}

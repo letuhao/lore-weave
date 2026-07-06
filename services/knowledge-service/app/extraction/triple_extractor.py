@@ -21,11 +21,13 @@ Pass 2 will refine or K18 validator will promote / drop.
            a capital letter AND not be a stopword. This rejects
            bare adjective-noun captures and article-only matches.
 
-**English-first scope.** SVO pattern matching is a Latin-script
-concept; CJK lacks capital-letter signals and verb inflection.
-K15.4 handles non-English text via the skip-marker filter only
-(the triple pattern will simply not match CJK sentences). K17
-LLM extractor is the multilingual fallback.
+**Script coverage.** The SVO regex is English-only (capitalized subjects +
+`-ed/-s/-ing` verb morphology). Non-English sentences run a **per-language
+relation-marker** extractor instead (`relations.py`, D-ML-TRIPLE-SVO-SCRIPT):
+a closed high-precision lexicon anchored on entity candidates, SVO for zh/vi and
+SOV for ja/ko. It emits only when two entities anchor a marker — a degrade-open
+PRE-SEED (never a wrong triple), so the K17 LLM leans on cheap anchors rather than
+extracting non-English relations from scratch. English uses the SVO regex only.
 
 **What this module deliberately does NOT do:**
   - Canonicalize subject/object (caller handles via K15.1)
@@ -55,6 +57,7 @@ from app.extraction.patterns import (
     get_patterns,
     split_by_language,
 )
+from app.extraction.relations import RELATION_LANGS, extract_relation_triples
 
 __all__ = [
     "Triple",
@@ -260,6 +263,24 @@ def extract_triples(
                     sentence=sentence,
                 )
             )
+
+        # D-ML-TRIPLE-SVO-SCRIPT: for non-English sentences the English SVO regex
+        # matches nothing (no capitals, no -ed/-s verbs), so run the per-language
+        # relation-marker extractor (zh/ja/ko/vi, SVO+SOV aware) on the SAME
+        # entity candidates. High-precision, degrade-open pre-seed; the K17 LLM
+        # refines. English keeps the SVO regex above only (byte-identical).
+        if lang in RELATION_LANGS:
+            for subj, predicate, obj in extract_relation_triples(sentence, lang, candidates):
+                out.append(
+                    Triple(
+                        subject=subj,
+                        predicate=predicate,
+                        object=obj,
+                        confidence=_QUARANTINE_CONFIDENCE,
+                        pending_validation=True,
+                        sentence=sentence,
+                    )
+                )
 
     return out
 

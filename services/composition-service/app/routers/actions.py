@@ -74,12 +74,30 @@ _MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
 _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
 
+# D-AGENT-MODE §20 D5/D6 — the authoring-run confirm-gated descriptors. Like
+# motif_adopt/arc_import, these are BOOK-scoped (a book_id in the payload), NOT
+# Work/project_id-scoped — they skip the shared Work re-resolve below and are
+# EDIT-gated directly on the payload's book_id (mirrors the motif_adopt
+# per-book branch). No replay ledger (mirrors publish/generate, not the W4
+# mine/import/conformance jobs — D6 says "same shape as composition_generate").
+_AUTHORING_RUN_CREATE_DESCRIPTOR = "composition.authoring_run_create"
+_AUTHORING_RUN_GATE_DESCRIPTOR = "composition.authoring_run_gate"
+_AUTHORING_RUN_START_DESCRIPTOR = "composition.authoring_run_start"
+_AUTHORING_RUN_RESUME_DESCRIPTOR = "composition.authoring_run_resume"
+_AUTHORING_RUN_REVERT_ALL_DESCRIPTOR = "composition.authoring_run_revert_all"
+_AUTHORING_RUN_DESCRIPTORS = (
+    _AUTHORING_RUN_CREATE_DESCRIPTOR, _AUTHORING_RUN_GATE_DESCRIPTOR,
+    _AUTHORING_RUN_START_DESCRIPTOR, _AUTHORING_RUN_RESUME_DESCRIPTOR,
+    _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR,
+)
+
 # The full Tier-W descriptor allowlist this confirm path commits (MD-9 routes each
 # to its scope: adopt/arc_import = user-scoped; mine = book/corpus; the rest = Work).
 _ALL_DESCRIPTORS = (
     _PUBLISH_DESCRIPTOR, _GENERATE_DESCRIPTOR,
     _MOTIF_ADOPT_DESCRIPTOR, _MOTIF_MINE_DESCRIPTOR,
     _ARC_IMPORT_DESCRIPTOR, _CONFORMANCE_RUN_DESCRIPTOR,
+    *_AUTHORING_RUN_DESCRIPTORS,
 )
 
 # The generate effect's service bearer must outlive a multi-minute LLM generation
@@ -270,6 +288,28 @@ async def confirm_action(
             except (OwnershipError, InsufficientGrant) as exc:
                 raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_motif_mine(payload, envelope_user, token=token, claims=claims)
+
+    # ── D-AGENT-MODE §20: authoring-run descriptors are BOOK-scoped (no Work/
+    # project_id — mirrors motif_adopt's per-book branch). Re-check EDIT on the
+    # book at confirm time (a grant revoked since propose stops the write).
+    if claims.descriptor in _AUTHORING_RUN_DESCRIPTORS:
+        try:
+            book_id = UUID(str(payload["book_id"]))
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        try:
+            await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        except (OwnershipError, InsufficientGrant) as exc:
+            raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+        if claims.descriptor == _AUTHORING_RUN_CREATE_DESCRIPTOR:
+            return await _execute_authoring_run_create(payload, book_id, envelope_user)
+        if claims.descriptor == _AUTHORING_RUN_GATE_DESCRIPTOR:
+            return await _execute_authoring_run_gate(payload, book_id, envelope_user, book)
+        if claims.descriptor == _AUTHORING_RUN_START_DESCRIPTOR:
+            return await _execute_authoring_run_start(payload, book_id, envelope_user)
+        if claims.descriptor == _AUTHORING_RUN_RESUME_DESCRIPTOR:
+            return await _execute_authoring_run_resume(payload, book_id, envelope_user)
+        return await _execute_authoring_run_revert_all(payload, book_id, envelope_user, book)
 
     # ── Work-scoped descriptors (publish / generate / conformance): re-resolve
     # ownership + EDIT at confirm time (the Work is user-scoped → None if not the
@@ -698,4 +738,251 @@ async def _execute_conformance_run(
         "descriptor": _CONFORMANCE_RUN_DESCRIPTOR,
         "job_id": job_id,
         "poll": "composition_get_mine_job",
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# D-AGENT-MODE §20 — authoring-run confirm effects (spec docs/specs/
+# 2026-07-01-writing-studio/20_agent_mode.md, decisions D5/D6/D7). Book-scoped
+# (no Work/project_id); the dispatch above already re-checked EDIT on the
+# book_id at confirm time. No replay ledger (mirrors publish/generate — the
+# service's own guarded OCC transitions make a re-confirm a clean no-op/409,
+# not a double-effect).
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _serialize_authoring_run(run: Any) -> dict[str, Any]:
+    """Minimal MCP-facing run projection (mirrors routers/authoring_runs.py's
+    `_serialize` field set; kept local so this module doesn't import a router's
+    private helper)."""
+    return {
+        "run_id": str(run.run_id),
+        "book_id": str(run.book_id),
+        "plan_run_id": str(run.plan_run_id),
+        "level": run.level,
+        "scope": [str(c) for c in run.scope],
+        "budget_usd": str(run.budget_usd),
+        "spent_usd": str(run.spent_usd),
+        "tool_allowlist": run.tool_allowlist,
+        "params": run.params,
+        "breaker_state": run.breaker_state,
+        "status": run.status,
+        "current_unit": run.current_unit,
+        "error_message": run.error_message,
+        "background": run.background,
+        "pause_after_each_unit": run.pause_after_each_unit,
+    }
+
+
+async def _execute_authoring_run_create(
+    payload: dict[str, Any], book_id: UUID, envelope_user: UUID,
+) -> dict[str, Any]:
+    """composition.authoring_run_create effect — create the run in `draft`.
+    No chapters are drafted here (create is deliberately permissive — the
+    start-gate at `gate()` is the real enforcement point); the confirm-gate is
+    about the run holding the book's active-run slot + declaring a budget, per
+    D6."""
+    from decimal import Decimal, InvalidOperation
+
+    from app.deps import get_authoring_run_service
+
+    try:
+        plan_run_id = UUID(str(payload["plan_run_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    scope = payload.get("scope") or []
+    if not isinstance(scope, list) or not all(isinstance(s, str) for s in scope):
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    tool_allowlist = payload.get("tool_allowlist") or []
+    if not isinstance(tool_allowlist, list):
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    try:
+        budget_usd = Decimal(str(payload["budget_usd"]))
+    except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    try:
+        level = int(payload.get("level", 3))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    if "pause_after_each_unit" not in payload:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    pause_after_each_unit = bool(payload["pause_after_each_unit"])
+    params = payload.get("params") or {}
+    if not isinstance(params, dict):
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+
+    svc = await get_authoring_run_service()
+    try:
+        run = await svc.create(
+            envelope_user, book_id,
+            plan_run_id=plan_run_id, level=level, scope=scope,
+            budget_usd=budget_usd, tool_allowlist=tool_allowlist,
+            params=params, pause_after_each_unit=pause_after_each_unit,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    return {
+        "outcome": "action_done",
+        "descriptor": _AUTHORING_RUN_CREATE_DESCRIPTOR,
+        "run": _serialize_authoring_run(run),
+    }
+
+
+async def _execute_authoring_run_gate(
+    payload: dict[str, Any], book_id: UUID, envelope_user: UUID, book: BookClient,
+) -> dict[str, Any]:
+    """composition.authoring_run_gate effect — the start-gate check (draft →
+    gated). Headless (MCP has no caller JWT) — mint a service bearer for the
+    envelope user to resolve the book's chapter-id set, same as the REST
+    router's gate endpoint does with the caller's own bearer."""
+    from app.services.authoring_run_service import (
+        ActiveRunOverlapError,
+        TransitionConflictError,
+    )
+    from app.deps import get_authoring_run_service
+
+    try:
+        run_id = UUID(str(payload["run_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    svc = await get_authoring_run_service()
+    bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
+    try:
+        chapters = await book.list_chapters(book_id, bearer)
+    except BookClientError as exc:
+        raise HTTPException(status_code=502, detail={"code": "action_error"}) from exc
+    chapter_ids = {str(c["chapter_id"]) for c in chapters if c.get("chapter_id")}
+    try:
+        run = await svc.gate(envelope_user, run_id, book_chapter_ids=chapter_ids)
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    except ActiveRunOverlapError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "action_error", "reason": "active_run_overlap"},
+        ) from exc
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
+    return {
+        "outcome": "action_done",
+        "descriptor": _AUTHORING_RUN_GATE_DESCRIPTOR,
+        "run": _serialize_authoring_run(run),
+    }
+
+
+async def _apply_pause_override(
+    svc: Any, envelope_user: UUID, run_id: UUID, payload: dict[str, Any],
+) -> None:
+    """D4b: start/resume optionally OVERRIDE the run's pause_after_each_unit
+    policy at the same time. `None`/absent = leave the run's existing policy
+    untouched (set at create time)."""
+    from app.services.authoring_run_service import TransitionConflictError
+
+    override = payload.get("pause_after_each_unit")
+    if override is None:
+        return
+    try:
+        await svc.set_pause_policy(envelope_user, run_id, bool(override))
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+
+
+async def _execute_authoring_run_start(
+    payload: dict[str, Any], book_id: UUID, envelope_user: UUID,
+) -> dict[str, Any]:
+    """composition.authoring_run_start effect — gated → running (spawns the
+    driver). Applies an explicit `pause_after_each_unit` override FIRST (D4b),
+    then starts."""
+    from app.services.authoring_run_service import TransitionConflictError
+    from app.deps import get_authoring_run_service
+
+    try:
+        run_id = UUID(str(payload["run_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    svc = await get_authoring_run_service()
+    await _apply_pause_override(svc, envelope_user, run_id, payload)
+    try:
+        run = await svc.start(envelope_user, run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+    return {
+        "outcome": "action_done",
+        "descriptor": _AUTHORING_RUN_START_DESCRIPTOR,
+        "run": _serialize_authoring_run(run),
+    }
+
+
+async def _execute_authoring_run_resume(
+    payload: dict[str, Any], book_id: UUID, envelope_user: UUID,
+) -> dict[str, Any]:
+    """composition.authoring_run_resume effect — paused → running (resumes the
+    driver, spending more money — why resume is confirm-gated, per D6). Same
+    optional pause-policy override as start (D4b)."""
+    from app.services.authoring_run_service import TransitionConflictError
+    from app.deps import get_authoring_run_service
+
+    try:
+        run_id = UUID(str(payload["run_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    svc = await get_authoring_run_service()
+    await _apply_pause_override(svc, envelope_user, run_id, payload)
+    try:
+        run = await svc.resume(envelope_user, run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+    return {
+        "outcome": "action_done",
+        "descriptor": _AUTHORING_RUN_RESUME_DESCRIPTOR,
+        "run": _serialize_authoring_run(run),
+    }
+
+
+async def _execute_authoring_run_revert_all(
+    payload: dict[str, Any], book_id: UUID, envelope_user: UUID, book: BookClient,
+) -> dict[str, Any]:
+    """composition.authoring_run_revert_all effect — reject every drafted/
+    accepted unit in reverse order, closing the run on full success (D9: the
+    UI must render the partial-failure path, not just success — mirrored here
+    by mapping a partial failure to a 502 with the same shape the REST route
+    uses). Headless restore bearer (MCP path), mirrors the gate effect."""
+    from app.services.authoring_run_service import TransitionConflictError
+    from app.deps import get_authoring_run_service
+
+    try:
+        run_id = UUID(str(payload["run_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    svc = await get_authoring_run_service()
+    bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
+
+    async def _restore(bid: UUID, chapter_id: UUID, revision_id: UUID) -> None:
+        await book.restore_revision(bid, chapter_id, revision_id, bearer)
+
+    try:
+        result = await svc.revert_all(envelope_user, run_id, restore=_restore)
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+    if result["failed_unit_index"] is not None:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "action_error", "reason": "revert_all_partial", **result},
+        )
+    return {
+        "outcome": "action_done",
+        "descriptor": _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR,
+        **result,
     }

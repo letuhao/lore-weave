@@ -15,12 +15,12 @@ from __future__ import annotations
 import logging
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
+from app.logging_config import trace_id_var
 
 log = logging.getLogger(__name__)
-
-_TIMEOUT = httpx.Timeout(5.0)
 
 
 async def resolve_user_default_model(
@@ -37,12 +37,12 @@ async def resolve_user_default_model(
     base = settings.provider_registry_internal_url.rstrip("/")
     url = f"{base}/internal/default-models/{capability}"
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(
-                url,
-                params={"user_id": user_id},
-                headers={"X-Internal-Token": settings.internal_service_token},
-            )
+        # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON + trace.
+        async with build_internal_client(
+            base, internal_token=settings.internal_service_token,
+            timeout_s=5.0, trace_id_provider=trace_id_var.get,
+        ) as client:
+            resp = await client.get(url, params={"user_id": user_id})
         if resp.status_code == 404:  # DEFAULT_MODEL_NOT_SET — expected, not an error
             return None
         if resp.status_code != 200:

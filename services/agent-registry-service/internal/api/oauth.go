@@ -94,7 +94,7 @@ func buildAuthorizationURL(meta oauthMeta, redirectURI, state, challenge string)
 // ── /oauth/start ─────────────────────────────────────────────────────────────
 
 func (s *Server) startOAuth(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}

@@ -54,3 +54,46 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run ${{ matrix.lint }}
         run: bash scripts/${{ matrix.lint }}.sh
+
+  # P1 security/quality lints (audit P1) — now BLOCKING. Each carries a baseline/
+  # allowlist (seeded from today's known offenders) so it passes on current code and
+  # fails only on a NEW violation; the baselines are clean, so these are flipped off
+  # `continue-on-error` to give the standards teeth (audit P1: "flip advisory →
+  # blocking once the baseline is clean"). These are Python scripts
+  # (`python scripts/<name>.py`), so they get their own job rather than the
+  # `bash scripts/<name>.sh` matrix above. NOTE: `timeout-discipline-lint` is already
+  # a BLOCKING leg in the matrix above (its Python extension WARNs internally — the
+  # asyncpg-pool `command_timeout` debt is tracked in SESSION_HANDOFF), so it is
+  # intentionally not duplicated here.
+  p1-lints:
+    name: P1 ${{ matrix.lint }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        lint:
+          - pagination-cap-lint
+          - blocking-in-async-lint
+          - raw-sql-lint
+          - injection-coverage-lint
+          - language-bias-gate
+          - sdk-duplication-gate
+          - slo-latency-lint
+          # Context Budget Law §13c — the §11a Inspector coverage manifest stays
+          # un-gameable: every checklist item must bind to an existing proving test.
+          # Static (no suite execution); the referenced tests' green-ness is enforced
+          # by the normal vitest/pytest CI jobs, and the §13d refute-pass is the net
+          # for a gutted test that a static check can't see.
+          - context-inspector-checklist-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # slo-latency-lint parses YAML; the others are stdlib-only. Installing here is
+      # a fast no-op for the stdlib lints and keeps the single shared step simple.
+      - name: Install lint deps
+        run: python -m pip install --quiet pyyaml
+      - name: Run ${{ matrix.lint }}
+        run: python scripts/${{ matrix.lint }}.py

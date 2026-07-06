@@ -3,6 +3,7 @@
 // pasting the tool result body into state (G5). Registration is idempotent (guarded) so the
 // reconciler can call it on every mount without duplicating handlers.
 import { registerEffectHandler, type EffectContext } from '../effectRegistry';
+import { unwrapToolResult } from './resultEnvelope';
 
 let registered = false;
 
@@ -16,22 +17,14 @@ function readChapterId(o: unknown): string | null {
 }
 
 function chapterIdFromResult(result: unknown): string | null {
-  // The live stream delivers the chat-service TOOL_CALL_RESULT envelope
-  // `{ok, result}` — the domain payload (the node dump carrying chapter_id) is
-  // NESTED, and may itself still be a JSON string (MCP text content). The M-E
-  // live gate caught the bare top-level read returning null → Lane B never
-  // reloaded the Scene Rail (unit tests fed the payload unwrapped, so stayed
-  // green — the cross-boundary-normalization bug class).
+  // The live stream delivers the chat-service TOOL_CALL_RESULT envelope `{ok, result}` — the
+  // domain payload (the node dump carrying chapter_id) is NESTED, and may itself still be a JSON
+  // string (MCP text content). The M-E live gate caught the bare top-level read returning null →
+  // Lane B never reloaded the Scene Rail (unit tests fed the payload unwrapped, so stayed green —
+  // the cross-boundary-normalization bug class). See resultEnvelope.ts for the shared unwrap.
   const direct = readChapterId(result);
   if (direct) return direct;
-  if (result && typeof result === 'object') {
-    let inner = (result as Record<string, unknown>).result;
-    if (typeof inner === 'string') {
-      try { inner = JSON.parse(inner); } catch { return null; }
-    }
-    return readChapterId(inner);
-  }
-  return null;
+  return readChapterId(unwrapToolResult(result));
 }
 
 /** After a book/composition draft-or-save write: refresh the affected chapter. Invalidates the

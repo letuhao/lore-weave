@@ -1,0 +1,87 @@
+{
+  "title": "용어집 번역",
+  "subtitle": "AI를 사용하여 엔티티 속성을 일괄 번역합니다",
+  "steps": {
+    "config": "설정",
+    "confirm": "확인",
+    "progress": "진행률",
+    "results": "결과"
+  },
+  "config": {
+    "title": "번역 설정",
+    "description": "대상 언어와 모델을 선택하세요. 원문이 있는 모든 속성이 번역됩니다.",
+    "sourceLanguage": "원본 언어",
+    "sourceUnknown": "도서에서 가져오기",
+    "targetLanguage": "대상 언어",
+    "overwriteMode": "덮어쓰기 정책",
+    "model": "모델",
+    "noModels": "설정된 모델이 없습니다.",
+    "addInSettings": "설정에서 추가",
+    "selectModel": "모델 선택...",
+    "allAttrsNote": "원본 값이 있는 모든 속성이 포함됩니다. 검증된 번역은 절대 덮어쓰지 않습니다.",
+    "sameLanguageError": "대상 언어는 도서의 원본 언어와 달라야 합니다.",
+    "thinkingEnabled": "사고/추론 기능 활성화",
+    "thinkingHint": "기본값은 꺼짐입니다. Gemma 및 유사 모델에서 모델이 답변 전 추론 과정을 거치길 원하면 이 기능을 켜세요.",
+    "mode": {
+      "missing_only": {
+        "label": "누락된 항목만",
+        "hint": "대상 언어로 이미 번역된 속성은 건너뜁니다."
+      },
+      "refresh_machine": {
+        "label": "기계 번역 새로고침",
+        "hint": "초안 및 기계 번역을 다시 번역합니다. 검증된 번역은 변경되지 않고 유지됩니다."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "언어",
+    "mode": "모드",
+    "model": "모델",
+    "estimateNote": "엔티티 수와 토큰 사용량은 작업 시작 시 결정됩니다. 실제 사용량은 엔티티당 속성 수에 따라 달라집니다.",
+    "editConfig": "설정 편집",
+    "startTranslate": "번역 시작",
+    "startFailed": "번역 작업을 시작하지 못했습니다",
+    "thinkingOn": "사고 기능: 켜짐",
+    "thinkingOff": "사고 기능: 꺼짐"
+  },
+  "progress": {
+    "title": "용어집 번역 중",
+    "processing": "엔티티 처리 중: {{current}} / {{total}}...",
+    "entityProgress": "엔티티 진행률",
+    "entitiesCount": "{{completed}} / {{total}} 엔티티 완료",
+    "failedCount": "{{count}}개 실패",
+    "attrsTranslated": "번역된 속성",
+    "attrsSkipped": "건너뛴 속성",
+    "entitiesDone": "완료된 엔티티",
+    "entitiesFailed": "실패한 엔티티",
+    "cancel": "취소",
+    "cancelConfirm": "이 번역 작업을 취소할까요? 이미 처리된 엔티티의 번역은 유지됩니다.",
+    "cancelRequested": "취소 요청됨",
+    "noEntities": "이 언어에 대해 번역할 엔티티가 없습니다."
+  },
+  "results": {
+    "title": "번역 완료",
+    "titleNoEntities": "번역할 항목 없음",
+    "titleWithErrors": "번역 완료 (오류 발생)",
+    "titleFailed": "번역 실패",
+    "titleCancelled": "번역 취소됨",
+    "duration": "{{duration}} 동안 {{count}}개 엔티티 완료",
+    "attrsTranslated": "번역됨",
+    "attrsSkipped": "건너뜀",
+    "entitiesDone": "완료된 엔티티",
+    "entitiesFailed": "실패함",
+    "partialFailure": "{{count}}개 엔티티 실패",
+    "tokenUsage": "토큰 사용량",
+    "estimated": "예상: {{tokens}}",
+    "noEntities": "모든 엔티티 속성에 이미 이 언어로 된 번역이 있거나, 원문이 있는 속성이 없습니다.",
+    "machineNote": "번역은 기계 번역 신뢰도로 저장됩니다. 엔티티 편집기에서 검토 및 확인을 수행하세요.",
+    "viewGlossary": "용어집에서 검토",
+    "runAgain": "다시 번역",
+    "close": "닫기"
+  },
+  "button": {
+    "next": "다음",
+    "back": "이전",
+    "cancel": "취소"
+  }
+}

@@ -30,6 +30,17 @@ const DEFAULT_CONFIG: ComposeConfigValue = {
   requestedDimensions: null, // null = auto (server derives the dimensions)
 };
 
+interface ComposePanelProps {
+  /** Cross-panel "use gaps" routing (mode A in ModeSelector). Defaults to the internal
+   *  EnrichmentView tab-switch (`setActivePanel('gaps')`) so the classic tabbed
+   *  EnrichmentTab shell keeps working unmodified (DOCK-2 — no fork). The standalone
+   *  `enrichment-compose` studio dock panel has no sibling tab reading `activePanel`
+   *  (each of the 6 dock panels mounts its own EnrichmentProvider instance), so it
+   *  overrides this to a real `host.openPanel('enrichment-gaps')` jump — otherwise the
+   *  button would silently no-op once split out of the tab strip. */
+  onUseGaps?: () => void;
+}
+
 /** The "Tạo / Compose" panel — the controller for the unified input modes. Drives
  *  mode D (draft expansion) and mode C (paste-context): pick a target (existing | new)
  *  + provide the input (a draft, or pasted reference text + license) + models, then run
@@ -37,7 +48,7 @@ const DEFAULT_CONFIG: ComposeConfigValue = {
  *  files (extract+OCR), then grounds on them like context. Mode B (intent) resolves a
  *  free-text intent into a target (2-step: resolve→confirm→run). Mode A routes to the
  *  Gaps tab. Owns the form state; the API calls live in useCompose / useUploads. */
-export function ComposePanel() {
+export function ComposePanel({ onUseGaps }: ComposePanelProps = {}) {
   const { t } = useTranslation('enrichment');
   const { bookId, setActivePanel } = useEnrichmentContext();
   const { compose, composing, resolveIntent, resolving } = useCompose(bookId);
@@ -195,7 +206,7 @@ export function ComposePanel() {
         <p className="text-xs text-muted-foreground">{t('compose.subtitle')}</p>
       </div>
 
-      <ModeSelector mode={mode} onSelect={setMode} onUseGaps={() => setActivePanel('gaps')} />
+      <ModeSelector mode={mode} onSelect={setMode} onUseGaps={onUseGaps ?? (() => setActivePanel('gaps'))} />
 
       {showComposer && (
         <>

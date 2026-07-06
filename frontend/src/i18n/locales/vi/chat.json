@@ -17,6 +17,7 @@
     "export": "Xuất",
     "rename": "Đổi tên",
     "session_settings": "Cài đặt phiên",
+    "context_inspector": "Trình kiểm tra ngữ cảnh",
     "context_meter": {
       "label": "Ngữ cảnh đã dùng",
       "unknown": "Không rõ mức sử dụng cửa sổ ngữ cảnh cho mô hình này",
@@ -401,6 +402,12 @@
     "search_placeholder": "Tìm kiếm…",
     "tools_tab": "Công cụ",
     "skills_tab": "Kỹ năng",
+    "category_all": "Tất cả",
+    "category_see_all": "Xem tất cả {{count}} →",
+    "no_tools_title": "Không có công cụ phù hợp",
+    "no_tools_description": "Hãy thử từ khóa hoặc danh mục khác.",
+    "no_skills_title": "Không có kỹ năng phù hợp",
+    "no_skills_description": "Hãy thử từ khóa khác.",
     "summary": "{{tools}} công cụ · {{skills}} kỹ năng · {{tokens}} tok",
     "summary_no_tokens": "{{tools}} công cụ · {{skills}} kỹ năng",
     "summary_tooltip": "Mở bảng phân tích ngữ cảnh",
@@ -419,7 +426,10 @@
       "ui": "Giao diện",
       "chat": "Trò chuyện",
       "other": "Khác"
-    }
+    },
+    "advanced_tools": "Công cụ nâng cao ({{count}})",
+    "advanced_tools_hint": "Các công cụ cũ được giữ lại để hỗ trợ các trình gọi cũ hơn. Hãy ưu tiên sử dụng các công cụ ở trên trừ khi bạn thực sự cần một trong số các công cụ này.",
+    "legacy_pin_tooltip": "Bạn đã kích hoạt công cụ cũ này cho phiên làm việc này"
   },
   "inspector": {
     "title": "Trạng thái agent",

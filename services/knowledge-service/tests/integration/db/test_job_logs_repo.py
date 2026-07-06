@@ -19,6 +19,13 @@ from app.db.repositories.projects import ProjectsRepo
 async def _make_job(pool, user_id: UUID) -> UUID:
     """Seed a project + extraction job so job_logs can point at a real
     parent row (the FK requires it)."""
+    job_id, _ = await _make_job_with_project(pool, user_id)
+    return job_id
+
+
+async def _make_job_with_project(pool, user_id: UUID) -> tuple[UUID, UUID]:
+    """Same as `_make_job` but also returns the project_id — needed for the
+    project-scoped canon-flags query (D-KG-CANON-FLAG-REVIEW-UI)."""
     projects_repo = ProjectsRepo(pool)
     jobs_repo = ExtractionJobsRepo(pool)
     proj = await projects_repo.create(
@@ -35,7 +42,7 @@ async def _make_job(pool, user_id: UUID) -> UUID:
             max_spend_usd=Decimal("1.00"),
         ),
     )
-    return job.job_id
+    return job.job_id, proj.project_id
 
 
 @pytest.mark.asyncio
@@ -140,3 +147,75 @@ async def test_list_user_isolation_and_cascade_delete(pool):
     # User B's logs are untouched.
     b_after = await repo.list(user_b, job_b)
     assert len(b_after) == 1
+
+
+# ── Studio Quality tab (`quality-canon`) / D-KG-CANON-FLAG-REVIEW-UI ──
+
+@pytest.mark.asyncio
+async def test_list_canon_flags_filters_event_and_spans_multiple_jobs(pool):
+    """Two DIFFERENT extraction jobs under the SAME project both contribute
+    canon-flag rows (the join is across ALL of the project's jobs, not just
+    one) — and a non-canon-flag log in between is excluded."""
+    repo = JobLogsRepo(pool)
+    user = uuid4()
+    job_a, project_id = await _make_job_with_project(pool, user)
+    jobs_repo = ExtractionJobsRepo(pool)
+    # A project allows only ONE active (pending/running/paused) job at a time
+    # (idx_extraction_jobs_one_active_per_project) — complete job_a first so
+    # job_b's create doesn't violate that constraint.
+    await jobs_repo.update_status(user, job_a, "complete")
+    job_b_row = await jobs_repo.create(
+        user,
+        ExtractionJobCreate(
+            project_id=project_id, scope="chapters",
+            llm_model="test-llm", embedding_model="test-embed",
+            max_spend_usd=Decimal("1.00"),
+        ),
+    )
+    job_b = job_b_row.job_id
+
+    await repo.append(user, job_a, "info", "unrelated lifecycle event")
+    await repo.append(
+        user, job_a, "warning",
+        "Canon check: 'Old Man Wu' referenced as active despite being marked gone",
+        context={"event": "pass2_canon_flag", "entity_id": "e1", "name": "Old Man Wu"},
+    )
+    await repo.append(
+        user, job_b, "warning",
+        "Canon check: 'Su Han' referenced as active despite being marked gone",
+        context={"event": "pass2_canon_flag", "entity_id": "e2", "name": "Su Han"},
+    )
+
+    flags = await repo.list_canon_flags_for_project(user, project_id)
+    assert len(flags) == 2
+    names = {f.context["name"] for f in flags}
+    assert names == {"Old Man Wu", "Su Han"}
+    assert all(f.context["event"] == "pass2_canon_flag" for f in flags)
+
+
+@pytest.mark.asyncio
+async def test_list_canon_flags_project_and_user_isolation(pool):
+    repo = JobLogsRepo(pool)
+    user_a, user_b = uuid4(), uuid4()
+    job_a, project_a = await _make_job_with_project(pool, user_a)
+    job_b, project_b = await _make_job_with_project(pool, user_b)
+
+    await repo.append(user_a, job_a, "warning", "flag a",
+                       context={"event": "pass2_canon_flag", "name": "A"})
+    await repo.append(user_b, job_b, "warning", "flag b",
+                       context={"event": "pass2_canon_flag", "name": "B"})
+
+    assert [f.context["name"] for f in await repo.list_canon_flags_for_project(user_a, project_a)] == ["A"]
+    # cross-user read of a real project_id from another user's data → empty.
+    assert await repo.list_canon_flags_for_project(user_b, project_a) == []
+    # a genuinely unknown project_id → empty, not an error.
+    assert await repo.list_canon_flags_for_project(user_a, uuid4()) == []
+
+
+@pytest.mark.asyncio
+async def test_list_canon_flags_empty_when_no_flags_emitted(pool):
+    repo = JobLogsRepo(pool)
+    user = uuid4()
+    job_id, project_id = await _make_job_with_project(pool, user)
+    await repo.append(user, job_id, "info", "just a normal lifecycle log")
+    assert await repo.list_canon_flags_for_project(user, project_id) == []

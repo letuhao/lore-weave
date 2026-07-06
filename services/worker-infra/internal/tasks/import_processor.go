@@ -109,14 +109,7 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 				}
 
 				payloadStr, _ := msg.Values["payload"].(string)
-				var payload struct {
-					JobID            string `json:"job_id"`
-					BookID           string `json:"book_id"`
-					UserID           string `json:"user_id"`
-					FileFormat       string `json:"file_format"`
-					FileStorageKey   string `json:"file_storage_key"`
-					OriginalLanguage string `json:"original_language"`
-				}
+				var payload importRequestedPayload
 				if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
 					slog.Error("import-processor bad payload", "error", err, "msg_id", msg.ID)
 					t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
@@ -127,7 +120,17 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 				t.updateJobStatus(ctx, payload.JobID, "processing", 0, nil)
 				t.publishWSEvent(ctx, payload.UserID, payload.JobID, "processing", 0, nil)
 
-				chaptersCreated, procErr := t.processImport(ctx, payload)
+				var chaptersCreated int
+				var procErr error
+				if payload.FileFormat == "pdf" {
+					// docs/specs/2026-07-06-pdf-book-import.md — dedicated
+					// per-chunk pipeline (L6): skips pandoc, loops chunks
+					// against knowledge-service /internal/parse/pdf-chunk
+					// instead of one whole-book /internal/parse call.
+					chaptersCreated, procErr = t.processPdfImport(ctx, payload)
+				} else {
+					chaptersCreated, procErr = t.processImport(ctx, payload)
+				}
 				if procErr != nil {
 					slog.Error("import-processor failed", "job_id", payload.JobID, "error", procErr)
 					errMsg := procErr.Error()
@@ -145,14 +148,24 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 	}
 }
 
-func (t *ImportProcessor) processImport(ctx context.Context, payload struct {
+// importRequestedPayload mirrors book-service's import.requested outbox
+// event payload (import.go's outboxPayload map). The pdf-specific fields
+// are only populated when file_format="pdf" (docs/specs/2026-07-06-pdf-book-import.md).
+type importRequestedPayload struct {
 	JobID            string `json:"job_id"`
 	BookID           string `json:"book_id"`
 	UserID           string `json:"user_id"`
 	FileFormat       string `json:"file_format"`
 	FileStorageKey   string `json:"file_storage_key"`
 	OriginalLanguage string `json:"original_language"`
-}) (int, error) {
+
+	PagesPerChunk     int    `json:"pages_per_chunk"`
+	CaptionImages     bool   `json:"caption_images"`
+	VisionModelSource string `json:"vision_model_source"`
+	VisionModelRef    string `json:"vision_model_ref"`
+}
+
+func (t *ImportProcessor) processImport(ctx context.Context, payload importRequestedPayload) (int, error) {
 	// 1. Download file from MinIO
 	obj, err := t.Minio.GetObject(ctx, t.Cfg.MinioBucket, payload.FileStorageKey, minio.GetObjectOptions{})
 	if err != nil {

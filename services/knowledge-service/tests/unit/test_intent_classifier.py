@@ -118,6 +118,51 @@ def test_general_fallback():
     assert r.intent is Intent.GENERAL
 
 
+# ── A1 (ML-1): per-language routing supersedes the P0-7 blanket degrade ──
+
+
+def test_chinese_relational_routes_via_keyword_not_degrade():
+    # Post-A1: a zh relational query matches its OWN vocabulary (是什么关系) and
+    # routes RELATIONAL through the real cascade — no longer the blanket net.
+    r = classify("凯和林大师之间是什么关系？")  # relationship between Kai and Master Lin
+    assert r.intent is Intent.RELATIONAL
+    assert r.hop_count == 2
+    assert "multilingual_degrade_open" not in r.signals  # a REAL signal won
+    assert any(s.startswith("relational") for s in r.signals)
+
+
+def test_vietnamese_recent_routes_via_keyword_not_degrade():
+    # Post-A1: "chương này" (this chapter) is a Vietnamese RECENT anchor, so this
+    # routes RECENT_EVENT — real routing, not the pre-A1 blanket RELATIONAL.
+    r = classify("Chuyện gì đã xảy ra ở chương này?")  # what happened in this chapter
+    assert r.intent is Intent.RECENT_EVENT
+    assert "multilingual_degrade_open" not in r.signals
+
+
+def test_english_general_unchanged_by_degrade_open():
+    # Pure-ASCII English never enters the degrade-open branch — byte-identical.
+    r = classify("What is love?")
+    assert r.intent is Intent.GENERAL
+    assert r.hop_count == 1
+    assert r.recency_weight == 1.0
+    assert "multilingual_degrade_open" not in r.signals
+
+
+def test_english_with_punctuation_dash_not_treated_as_non_english():
+    # A non-ASCII em-dash / ellipsis is PUNCTUATION, not a letter — must NOT
+    # trip the multilingual rule; this stays GENERAL.
+    r = classify("What is love — really…?")
+    assert r.intent is Intent.GENERAL
+    assert "multilingual_degrade_open" not in r.signals
+
+
+def test_english_cascade_still_wins_for_ascii_queries():
+    # Degrade-open must not shadow the English cascade. A clear English
+    # relational/recent query keeps its normal routing.
+    assert classify("How does Kai know Master Lin?").intent is Intent.RELATIONAL
+    assert classify("What is Kai doing right now?").intent is Intent.RECENT_EVENT
+
+
 # ── golden-set accuracy (the real bar) ────────────────────────────────
 
 
@@ -200,3 +245,66 @@ def test_signals_record_all_hits_not_just_winner():
     joined = " ".join(r.signals)
     assert "relational_strong" in joined
     assert "recent" in joined
+
+
+# ── A1 (ML-1) — per-language routing ──────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def multilingual_queries() -> list[tuple[str, Intent]]:
+    path = Path(__file__).parent / "fixtures" / "intent_queries_multilingual.yaml"
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    out: list[tuple[str, Intent]] = []
+    for label, queries in raw.items():
+        intent = Intent(label)
+        for q in queries:
+            out.append((q, intent))
+    return out
+
+
+def test_multilingual_queries_route_to_real_intent(multilingual_queries):
+    """zh/ja/ko/vi queries route to their correct intent via per-language
+    keywords — NOT the old blanket-RELATIONAL degrade. Requires 100% here
+    (a small hand-verified set), and specifically that non-relational cases
+    are NOT swept into RELATIONAL."""
+    misses = []
+    for q, expected in multilingual_queries:
+        got = classify(q).intent
+        if got is not expected:
+            misses.append((q, expected.value, got.value))
+    assert not misses, f"multilingual routing misses: {misses}"
+
+
+def test_non_relational_multilingual_not_swept_to_relational(multilingual_queries):
+    # The whole point of A1: a CJK/vi query that isn't relational must not be
+    # blanket-routed to RELATIONAL (the pre-A1 degrade behavior).
+    for q, expected in multilingual_queries:
+        if expected is not Intent.RELATIONAL:
+            assert classify(q).intent is not Intent.RELATIONAL, (
+                f"{q!r} (expected {expected.value}) was swept to RELATIONAL"
+            )
+
+
+def test_english_routing_byte_identical_after_multilingual_union():
+    # Union-compiling the CJK/vi keywords must not change English outcomes
+    # (disjoint scripts). Spot-check one per class.
+    assert classify("Tell me about Kai").intent is Intent.SPECIFIC_ENTITY
+    assert classify("What just happened to Kai?").intent is Intent.RECENT_EVENT
+    assert classify("Long ago, who ruled?").intent is Intent.HISTORICAL
+    assert classify("How does Kai know Master Lin?").intent is Intent.RELATIONAL
+
+
+def test_uncovered_script_degrades_open_to_relational():
+    # An uncovered non-ASCII script (Arabic) with no keyword + no entity still
+    # degrades OPEN to RELATIONAL/2-hop (the retained net), not narrow GENERAL.
+    r = classify("مرحبا بالعالم")
+    assert r.intent is Intent.RELATIONAL
+    assert r.hop_count == 2
+    assert "multilingual_degrade_open" in r.signals
+
+
+def test_english_no_signal_stays_general_not_degraded():
+    # Pure-ASCII with no signal must stay GENERAL (never enters the net).
+    r = classify("the weather is nice today and everything feels calm")
+    assert r.intent is Intent.GENERAL
+    assert "multilingual_degrade_open" not in r.signals

@@ -150,16 +150,26 @@ class TestFrontendToolDefs:
         assert UI_OPEN_STUDIO_PANEL_TOOL not in frontend_tool_defs(editor=True, book_scoped=True)
 
     def test_studio_ui_tool_schemas_are_wire_standard(self):
+        # NOTE: this used to also assert `panel_id`'s enum against a hand-copied literal
+        # list — that list drifted stale at least twice (missing context-inspector,
+        # sharing, book-settings, translation, enrichment-*, user-guide, agent-mode) because
+        # nothing forced it to stay in sync with the real enum. The actual anti-drift
+        # mechanism for that is test_frontend_tools_contract.py's committed
+        # contracts/frontend-tools.contract.json (regenerated via WRITE_FRONTEND_CONTRACT=1),
+        # which the FE guard also reads — duplicating the list here only added a second,
+        # unmaintained copy that could fail for reasons unrelated to whatever change
+        # actually broke the contract. Keep this test to what it can uniquely catch:
+        # wire shape + no duplicate/empty enum values.
         p = UI_OPEN_STUDIO_PANEL_TOOL["function"]
         assert p["name"] == "ui_open_studio_panel"
         assert set(p["parameters"]["required"]) == {"panel_id"}
         # panel_id is enum-constrained so a weak model can't drift the value (or the arg name) —
         # a live gemma-26b smoke otherwise sent the ui_show_panel `panel` arg + guessed a value.
-        assert p["parameters"]["properties"]["panel_id"]["enum"] == [
-            "compose", "editor", "planner", "usage", "notifications", "settings", "trash",
-            "steering",  # RAID C1 — steering editor panel
-            "extensions", "proposals",  # added by e292d1ee2 (extensions/studio track)
-        ]
+        panel_ids = p["parameters"]["properties"]["panel_id"]["enum"]
+        assert panel_ids, "panel_id must declare a non-empty enum"
+        assert all(isinstance(v, str) and v for v in panel_ids), "every panel_id value must be a non-empty string"
+        assert len(panel_ids) == len(set(panel_ids)), "panel_id enum has a duplicate value"
+        assert "agent-mode" in panel_ids  # 20_agent_mode.md D1 — mission control panel
         f = UI_FOCUS_MANUSCRIPT_UNIT_TOOL["function"]
         assert f["name"] == "ui_focus_manuscript_unit"
         assert set(f["parameters"]["required"]) == {"chapter_id"}

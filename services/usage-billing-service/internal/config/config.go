@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -12,6 +13,45 @@ type Config struct {
 	DatabaseURL          string
 	JWTSecret            string
 	InternalServiceToken string
+
+	// AdminJWTPublicKeyPEM (D-JWT-ROLE-GATE) — the RS256 public key that verifies
+	// admin tokens for the System-tier admin endpoints (admin/usage +
+	// admin/reconciliation), via contracts/adminjwt (glossary/provider-registry
+	// requireAdminScope pattern). Optional: when unset those admin endpoints fail
+	// closed (503). PEM or base64-PEM.
+	AdminJWTPublicKeyPEM string
+
+	// LLMPayloadEncryptionKey is the DEDICATED master key (KEK) that wraps the
+	// per-row session key used to AES-256-GCM the logged request/response
+	// payloads (LOG-5). It MUST be distinct from JWTSecret: rotating the JWT
+	// secret must never render logged payloads undecryptable, and a JWT leak
+	// must not also expose every logged prompt. Required (fail-to-start) —
+	// mirrors the JWT_SECRET ≥32-char rule.
+	//
+	// KEY DERIVATION (D-REVIEW-AESKEY-DERIVE): prefix the value with "sha256:" to
+	// derive the AES key via SHA-256 of the passphrase (full-length entropy, the
+	// hardened default for new deployments). WITHOUT the prefix the value keeps the
+	// legacy zero-pad/truncate coercion (only the first 32 bytes matter) for
+	// backward compatibility. The derivation is version-gated PER KEY, so no
+	// re-encrypt migration is needed — the read path try-alls active → legacy →
+	// retired regardless of each key's derivation.
+	//
+	// ROTATION RUNBOOK (also upgrades derivation): move the current
+	// LLM_PAYLOAD_ENCRYPTION_KEY value into LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED
+	// (comma-separated, keeps decrypting old rows under its original derivation) and
+	// set a fresh "sha256:"-prefixed LLM_PAYLOAD_ENCRYPTION_KEY. New rows wrap under
+	// the new SHA-256 key; prior rows still decrypt via the retired keyring.
+	LLMPayloadEncryptionKey string
+
+	// LLMPayloadEncryptionKeysRetired are PREVIOUS dedicated KEK values, kept only
+	// for DECRYPTION so a genuine key rotation works: to rotate, move the current
+	// LLM_PAYLOAD_ENCRYPTION_KEY value into LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED
+	// (comma-separated) and set a fresh LLM_PAYLOAD_ENCRYPTION_KEY. New rows wrap
+	// under the new key; rows written under a retired key still decrypt (the read
+	// path tries current -> legacy -> each retired). Without this, rotating the KEK
+	// orphaned every prior row — the LOG-5 "rotatable key version" promise was
+	// documented but unbacked. Optional; each entry must be >=32 chars (else weak).
+	LLMPayloadEncryptionKeysRetired []string
 
 	// Phase 6a — spend-guardrail default limits (USD). Config-driven, no
 	// hardcoded literal (billing ADR P5). Seeded into a user's
@@ -38,10 +78,12 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{
-		HTTPAddr:             getEnv("HTTP_ADDR", ":8086"),
-		DatabaseURL:          os.Getenv("DATABASE_URL"),
-		JWTSecret:            os.Getenv("JWT_SECRET"),
-		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		HTTPAddr:                getEnv("HTTP_ADDR", ":8086"),
+		DatabaseURL:             os.Getenv("DATABASE_URL"),
+		JWTSecret:               os.Getenv("JWT_SECRET"),
+		InternalServiceToken:    os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		AdminJWTPublicKeyPEM:    os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
+		LLMPayloadEncryptionKey: os.Getenv("LLM_PAYLOAD_ENCRYPTION_KEY"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -51,6 +93,30 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	// LOG-5 — dedicated payload KEK, distinct from JWT_SECRET, ≥32 bytes for
+	// AES-256. Fail-to-start if missing so payloads are never wrapped with the
+	// JWT secret by default.
+	if len(c.LLMPayloadEncryptionKey) < 32 {
+		return nil, fmt.Errorf("LLM_PAYLOAD_ENCRYPTION_KEY must be at least 32 characters")
+	}
+	if c.LLMPayloadEncryptionKey == c.JWTSecret {
+		return nil, fmt.Errorf("LLM_PAYLOAD_ENCRYPTION_KEY must differ from JWT_SECRET")
+	}
+	// Retired KEKs (decrypt-only, for rotation). Each non-empty entry must be
+	// ≥32 chars — a short retired key would silently weaken via the zero-pad
+	// coercion, defeating the fail-closed intent of the active-key rule.
+	if v := os.Getenv("LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED"); v != "" {
+		for _, k := range strings.Split(v, ",") {
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
+			}
+			if len(k) < 32 {
+				return nil, fmt.Errorf("each LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED entry must be at least 32 characters")
+			}
+			c.LLMPayloadEncryptionKeysRetired = append(c.LLMPayloadEncryptionKeysRetired, k)
+		}
 	}
 
 	daily, err := requiredFloat("GUARDRAIL_DEFAULT_DAILY_USD")

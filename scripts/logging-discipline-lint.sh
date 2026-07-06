@@ -2,17 +2,31 @@
 # logging-discipline-lint.sh — RAID cycle 32 (L7.E.9).
 #
 # Detects bare `fmt.Println`, `log.Println`, `log.Printf`, `print`, `println`
-# outside test/debug code. Production services MUST use the typed structured
-# logger from `contracts/logging` (`logging.NewLogger` + `Emit`).
+# outside test/debug code (SOFT / advisory), AND `logging.basicConfig` in Python
+# service runtime (HARD / blocking — P2·A2a). Production services MUST use the
+# shared structured logger: Go → `log/slog` wired via
+# `github.com/loreweave/observability` (`observability.SetupLogging`, the A1 fleet
+# idiom); Python → `loreweave_obs.setup_logging`.
 #
-# Exit code 0 = no violations; non-zero = violations found.
+# NOTE (P2·A2b): the old Go idiom `contracts/logging` (typed Field/Emit, 0 adopters)
+# was RETIRED — the fleet standardized on slog + observability's span-reading handler.
+# The allowlist entry below is gone with it.
+#
+# Two violation classes:
+#   * SOFT (bare print / log.Print / println!) — advisory (warn-mode default). The
+#     fleet still has ~67 legitimate ones (CLI drivers, Rust examples, *main.rs*
+#     binaries), so these stay warn until a dedicated sweep; `error` mode flips them.
+#   * HARD (`logging.basicConfig` in Python runtime; bare `console.*` in backend TS) —
+#     ALWAYS blocking regardless of mode. The runtime basicConfig sites were all
+#     migrated to setup_logging (P2·A2a) and every backend console.* to a framework/
+#     structured logger (P2·A2b), so the baseline is 0; a NEW one fails CI. CLI
+#     `__main__` drivers + script/benchmark/eval/migration dirs are exempt for Python;
+#     tests + the game-server structured-logger sink are exempt for TS.
+#
+# Exit code 0 = no HARD violations (and no SOFT ones in error-mode); non-zero otherwise.
 #
 # Scope (default): services/, contracts/, crates/.
 # Exclude: *_test.go, *_test.rs, *_test.py, doc.go, scripts/, infra/.
-#
-# Cycle 32 starts in warn-mode (echo violations; exit 0). Flip to error-mode
-# in cycle 33+ after foundation services migrate (mirrors cycle-7 lint flip
-# discipline used by observability-inventory-lint).
 
 set -euo pipefail
 
@@ -20,23 +34,23 @@ repo_root="$(cd "$(dirname "$0")/../" && pwd)"
 cd "$repo_root"
 
 mode="${1:-warn}"
-violations=0
+violations=0        # SOFT (bare print / log.Print / println!) — advisory
+hard_violations=0   # HARD (Python runtime logging.basicConfig) — always blocking
 violators=()
 
 # Go: detect fmt.Print(ln/f) and bare log.Print(ln/f).
 #
-# Allow contracts/logging itself (it's the canonical impl).
 # Allow files ending in _test.go (tests stay terse).
 # Allow doc.go files (godoc examples may show Print).
 # Allow scripts/ and infra/ (not service code).
+# (P2·A2b: the contracts/logging allowlist is gone — that module was retired.)
 go_targets=$(git ls-files 'services/**/*.go' 'contracts/**/*.go' 2>/dev/null | \
     grep -v '_test\.go$' | \
-    grep -v '/doc\.go$' | \
-    grep -v '^contracts/logging/' || true)
+    grep -v '/doc\.go$' || true)
 
 for f in $go_targets ; do
     if grep -nE '(^|[^a-zA-Z_])(fmt\.Println|fmt\.Printf|fmt\.Print|log\.Println|log\.Printf|log\.Print)\(' "$f" >/dev/null 2>&1; then
-        echo "[logging-discipline-lint] WARN: $f uses fmt.Print*/log.Print* — use contracts/logging instead"
+        echo "[logging-discipline-lint] WARN: $f uses fmt.Print*/log.Print* — use log/slog via observability.SetupLogging instead"
         violations=$((violations + 1))
         violators+=("$f")
     fi
@@ -52,7 +66,7 @@ for f in $py_targets ; do
     # Strict pattern: ^\s*print\( — top-of-line print only (avoid matching
     # `breakpoint().print(...)` debugger calls etc.).
     if grep -nE '^[[:space:]]*print\(' "$f" >/dev/null 2>&1; then
-        echo "[logging-discipline-lint] WARN: $f uses bare print() — use contracts/logging adapter"
+        echo "[logging-discipline-lint] WARN: $f uses bare print() — use loreweave_obs.setup_logging"
         violations=$((violations + 1))
         violators+=("$f")
     fi
@@ -76,15 +90,69 @@ for f in $rs_targets ; do
     fi
 done
 
+# Python HARD: `logging.basicConfig` in service RUNTIME → use loreweave_obs.setup_logging.
+# Exempt: tests, scripts/, benchmark/, eval/, migrations/ (+ db/migrations), poc, and a
+# CLI `__main__` driver (basicConfig line AFTER an `if __name__ == "__main__"` guard —
+# plain logging is the right output for a hand-run tool). Baseline is 0 (P2·A2a migrated
+# every runtime site), so this catches a NEW regression.
+bc_targets=$(git ls-files 'services/**/*.py' 2>/dev/null | \
+    grep -v '_test\.py$' | \
+    grep -v '/tests/' | \
+    grep -v '/scripts/' | \
+    grep -v '/benchmark/' | \
+    grep -v '/eval/' | \
+    grep -v '/migrations/' | \
+    grep -v '/poc' || true)
+
+for f in $bc_targets ; do
+    # `|| true` — grep exits 1 on no-match; under `set -euo pipefail` a failed
+    # command substitution in an assignment would kill the script.
+    bc_line=$(grep -nE 'logging\.basicConfig\(' "$f" 2>/dev/null | head -1 | cut -d: -f1 || true)
+    [ -z "$bc_line" ] && continue
+    main_line=$(grep -nE '^if __name__[[:space:]]*==' "$f" 2>/dev/null | head -1 | cut -d: -f1 || true)
+    if [ -n "$main_line" ] && [ "$bc_line" -gt "$main_line" ] ; then
+        continue  # CLI __main__ driver — plain logging is fine for a hand-run tool
+    fi
+    echo "[logging-discipline-lint] ERROR: $f uses logging.basicConfig — use loreweave_obs.setup_logging"
+    hard_violations=$((hard_violations + 1))
+    violators+=("$f")
+done
+
+# TypeScript HARD: bare `console.*` in backend service RUNTIME → use the framework
+# logger (NestJS `Logger`) or a service's structured JSON logger (P2·A2b). Baseline is
+# 0 (A2b converted every backend console.*), so this catches a NEW regression. Exempt:
+# tests, and the ONE legitimate stdout sink (game-server/src/log.ts — the structured
+# JSON logger itself, whose console write IS the sink). Frontend (frontend/**) is out
+# of scope — this gate is backend services only.
+ts_targets=$(git ls-files 'services/**/*.ts' 2>/dev/null | \
+    grep -vE '\.(spec|test)\.ts$' | \
+    grep -v '/__tests__/' | \
+    grep -v '/tests/' | \
+    grep -v '^services/game-server/src/log\.ts$' || true)
+
+for f in $ts_targets ; do
+    if grep -nE 'console\.(log|error|warn|info|debug)\(' "$f" >/dev/null 2>&1; then
+        echo "[logging-discipline-lint] ERROR: $f uses console.* — use the NestJS Logger or a structured logger (P2·A2b)"
+        hard_violations=$((hard_violations + 1))
+        violators+=("$f")
+    fi
+done
+
+# HARD violations always block (a cleaned rule with a ready replacement), regardless of mode.
+if [ "$hard_violations" -gt 0 ] ; then
+    echo "[logging-discipline-lint] FAIL: $hard_violations basicConfig violation(s) — blocking (use loreweave_obs.setup_logging)"
+    exit 1
+fi
+
 if [ "$violations" -eq 0 ] ; then
-    echo "[logging-discipline-lint] clean (no bare log calls in service code)"
+    echo "[logging-discipline-lint] clean (no basicConfig; no bare log calls in service code)"
     exit 0
 fi
 
 if [ "$mode" = "error" ] ; then
-    echo "[logging-discipline-lint] FAIL: $violations violations (error-mode)"
+    echo "[logging-discipline-lint] FAIL: $violations soft violations (error-mode)"
     exit 1
 fi
 
-echo "[logging-discipline-lint] $violations violations (warn-mode, exit 0)"
+echo "[logging-discipline-lint] $violations soft violations (warn-mode, exit 0); 0 hard (basicConfig)"
 exit 0

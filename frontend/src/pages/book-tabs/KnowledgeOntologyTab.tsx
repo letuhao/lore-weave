@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/shared';
 import { cn } from '@/lib/utils';
-import { useProjects } from '@/features/knowledge/hooks/useProjects';
+import { useBookKnowledgeProject } from '@/features/knowledge/hooks/useBookKnowledgeProject';
 import { useGraphSchema, useGraphSchemaList } from '@/features/knowledge/hooks/useGraphSchema';
 import { useOntologyAdopt } from '@/features/knowledge/hooks/useOntologyAdopt';
 import { useGraphViews } from '@/features/knowledge/hooks/useGraphViews';
@@ -34,12 +34,7 @@ export function KnowledgeOntologyTab({ bookId }: { bookId: string }) {
   const [view, setView] = useState<OntologyView>(initialView);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const { items: projects, isLoading: projectsLoading } = useProjects(false);
-  const project = useMemo(
-    () => projects.find((p) => p.book_id === bookId) ?? null,
-    [projects, bookId],
-  );
-  const projectId = project?.project_id ?? null;
+  const { projectId, isLoading: projectsLoading } = useBookKnowledgeProject(bookId);
 
   // One schema list (system + user + this project); split client-side. Adopt
   // sources = the non-project (template) rows; the project's own active schema

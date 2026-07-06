@@ -107,8 +107,9 @@ class TestPlanChokepoint:
         with _patch_client(scripts):
             await _drain(_run_plan(scripts, knowledge_client=kc))
         req = _FakeClient.instances[0].requests[0]
+        # + conversation_search (T6/D6) — always appended when tools are offered.
         assert {t["function"]["name"] for t in req.tools} == (
-            R_CATALOG_NAMES | PLAN_TOOL_NAMES
+            R_CATALOG_NAMES | PLAN_TOOL_NAMES | {"conversation_search"}
         )
 
     @pytest.mark.asyncio

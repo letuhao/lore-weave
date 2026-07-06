@@ -36,16 +36,20 @@ service-bearer seam with a direct internal call.
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
 from mcp.server.fastmcp import Context as MCPContext
+from pydantic import Field
 
 from loreweave_mcp import (
     ForbidExtra,
     GrantResolver,
     ToolContext,
+    TolerantArgs,
+    apply_response_contract,
     build_tool_context,
     make_stateless_fastmcp,
     mint_confirm_token,
@@ -70,8 +74,10 @@ from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
+from app.deps import get_authoring_run_service
 from app.grant_client import GrantLevel, get_grant_client
 from app.mcp.service_bearer import mint_service_bearer
+from app.services.authoring_run_service import ALLOWLISTABLE_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +100,16 @@ _MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
 _MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
 _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
+
+# ── D-AGENT-MODE §20 — authoring-run confirm descriptors (D5/D6). Book-scoped
+# (payload carries book_id, not project_id); the confirm route
+# (app/routers/actions.py) dispatches these BEFORE its Work-resolution branch,
+# mirroring the motif_adopt per-book gate.
+_AUTHORING_RUN_CREATE_DESCRIPTOR = "composition.authoring_run_create"
+_AUTHORING_RUN_GATE_DESCRIPTOR = "composition.authoring_run_gate"
+_AUTHORING_RUN_START_DESCRIPTOR = "composition.authoring_run_start"
+_AUTHORING_RUN_RESUME_DESCRIPTOR = "composition.authoring_run_resume"
+_AUTHORING_RUN_REVERT_ALL_DESCRIPTOR = "composition.authoring_run_revert_all"
 
 # The motif kinds + the closed enums the LLM may pass (R1.4 schema). Defined here so
 # the arg models below and the tests share one source.
@@ -173,6 +189,29 @@ def _motif_view(motif: Any, caller_id: UUID) -> dict[str, Any]:
     if motif.owner_user_id is not None and motif.owner_user_id == caller_id:
         return motif.model_dump(mode="json")
     return _motif_public_projection(motif)
+
+
+# L1/L2 reference-first projection for motif SET tools (Context Budget Law §6b). At
+# `detail=summary` a motif collapses to these ref fields — the heavy structural lists
+# (roles/beats/preconditions/effects and examples) are dropped; fetch one motif's full
+# body via composition_motif_get. Keep the ≤1-line `summary`, the concurrency token
+# (`version`), and the fields the model needs to recognise/pick a pattern (code/kind/
+# name/genre/language/visibility/status).
+_MOTIF_REF_FIELDS = (
+    "id", "code", "name", "kind", "summary", "genre_tags",
+    "language", "visibility", "status", "version",
+)
+# The book-library variant additionally keeps the shared-tier badge fields (present on
+# owner full-dumps and stamped onto non-owner shared rows by _motif_book_view) so the
+# summary still tells the model which rows are the book's SHARED tier.
+_MOTIF_BOOK_REF_FIELDS = _MOTIF_REF_FIELDS + ("book_id", "book_shared")
+# Arc-template ref set (parallels the motif one): drop the heavy structure
+# (threads/layout/pacing/arc_roster) + embedding; keep id/name/≤1-line/version + the
+# navigational fields. Fetch the full arc structure via the owner's full dump / a get.
+_ARC_REF_FIELDS = (
+    "id", "code", "name", "summary", "genre_tags", "language",
+    "chapter_span", "visibility", "status", "version",
+)
 
 
 def _motif_owner_resolver(repo: MotifRepo):
@@ -265,12 +304,29 @@ async def composition_get_work(
     return work.model_dump(mode="json")
 
 
+# L1/L2 reference-first projection for outline nodes (Context Budget Law §6b). At
+# `detail=summary` a node collapses to these ref fields — the heavy `goal`/`synopsis`
+# prose (the 146K-case bloat) is dropped; fetch one node's full body via
+# composition_get_outline_node. Keep the structural fields the model needs to
+# navigate the tree (kind/parent/order/status/version).
+# NOTE (T1 review LOW-2): `child_count` is NOT selected by list_tree (only
+# list_children computes it), so it's intentionally omitted here — listing a dead
+# ref field would falsely imply the summary carries a leaf/parent indicator.
+_OUTLINE_REF_FIELDS = (
+    "id", "kind", "parent_id", "title", "status", "version",
+    "story_order", "chapter_id",
+)
+
+
 @mcp_server.tool(
     name="composition_list_outline",
     description=(
         "List the outline/scene-graph of a Work — the Arc→Chapter→Scene→Beat tree "
         "plus its scene-links (setup/payoff edges). Use to see the planned structure "
-        "before generating or editing. Owner/grant-filtered (VIEW)."
+        "before generating or editing. Pass `detail=summary` (default `full`) for a "
+        "lightweight ref list ({id,kind,title,status,version,...} — no goal/synopsis "
+        "prose) and `limit` to bound large outlines; fetch one node's full body via "
+        "composition_get_outline_node. Owner/grant-filtered (VIEW)."
     ),
     meta=require_meta(
         "R", "book",
@@ -281,6 +337,16 @@ async def composition_get_work(
 async def composition_list_outline(
     ctx: MCPContext,
     project_id: Annotated[str, "The Work's project_id."],
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = refs only (id/kind/title/status/version, no prose); full = every field.",
+    ] = "full",
+    limit: Annotated[
+        int | None,
+        "Coarse cap on nodes returned (a flat prefix of the tree — may drop later "
+        "arcs' scenes; `truncated` reports how many). To read ONE node use "
+        "composition_get_outline_node, not pagination.",
+    ] = None,
     include_archived: Annotated[bool, "Include soft-archived nodes."] = False,
 ) -> dict:
     tc = _ctx(ctx)
@@ -292,10 +358,69 @@ async def composition_list_outline(
     pid = UUID(project_id)
     nodes = await outline.list_tree(tc.user_id, pid, include_archived=include_archived)
     links = await scene_links.list_by_project(tc.user_id, pid)
+    node_dicts = [n.model_dump(mode="json") for n in nodes]
+    projected, meta = apply_response_contract(
+        node_dicts, ref_fields=_OUTLINE_REF_FIELDS, detail=detail, limit=limit,
+    )
     return {
-        "nodes": [n.model_dump(mode="json") for n in nodes],
+        "nodes": projected,
         "scene_links": [l.model_dump(mode="json") for l in links],
+        **meta,
     }
+
+
+@mcp_server.tool(
+    name="composition_get_outline_node",
+    description=(
+        "Read ONE outline node by id — its fields plus `version`, the concurrency "
+        "token you pass back to composition_outline_node_update. Use this instead of "
+        "listing the whole outline when you only need one node's current state or "
+        "version (e.g. before a status/title edit). Owner/grant-filtered (VIEW)."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["get node", "node version", "read scene", "read chapter node",
+                  "outline node", "get scene", "node status"],
+        tool_name="composition_get_outline_node",
+    ),
+)
+async def composition_get_outline_node(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    node_id: Annotated[str, "The outline node's id."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.VIEW)
+    outline = OutlineRepo(get_pool())
+    node = await outline.get_node(tc.user_id, UUID(node_id))
+    # get_node filters (user_id, id) only — project-scope the target so a node_id
+    # from another of the caller's Works can't be read through this project (same
+    # H13 discipline as composition_get_generation_job / node_update).
+    if node is None or node.project_id != pid:
+        raise uniform_not_accessible()
+    return node.model_dump(mode="json")
+
+
+# T1/L2 (Context Budget Law §6b/D2) — the heavy field a get_prose SUMMARY drops. A full
+# chapter body (Tiptap JSON) is routinely many thousands of tokens; an agent that only
+# needs the `draft_version` concurrency token (e.g. to prep a write, or to check whether a
+# chapter has content) should not have to pull the whole chapter.
+_PROSE_BODY_KEY = "body"
+
+
+def _project_prose(draft: dict, detail: str) -> dict:
+    """At detail=summary, drop the heavy `body` but KEEP the metadata + the `draft_version`
+    concurrency token. Never a silent drop — signal `body_omitted` + the `detail` so the
+    model knows the body exists and re-fetches with detail=full to get it."""
+    if detail != "summary":
+        return draft
+    summary = {k: v for k, v in draft.items() if k != _PROSE_BODY_KEY}
+    summary["body_omitted"] = True
+    summary["detail"] = "summary"
+    return summary
 
 
 @mcp_server.tool(
@@ -303,7 +428,9 @@ async def composition_list_outline(
     description=(
         "Get the current DRAFT prose of a chapter (the editable body + its "
         "`draft_version` — the concurrency token you MUST pass back to write_prose). "
-        "Owner/grant-filtered (VIEW)."
+        "`detail=summary` returns just the metadata + `draft_version` (drops the chapter "
+        "`body` — use it when you only need the version to prep a write); `detail=full` "
+        "(default) returns the whole body. Owner/grant-filtered (VIEW)."
     ),
     meta=require_meta(
         "R", "book",
@@ -315,6 +442,10 @@ async def composition_get_prose(
     ctx: MCPContext,
     project_id: Annotated[str, "The Work's project_id."],
     chapter_id: Annotated[str, "The chapter's id."],
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = metadata + draft_version only (drops the chapter body); full = the body too.",
+    ] = "full",
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -329,7 +460,7 @@ async def composition_get_prose(
         return _book_error_result(exc)
     items = revisions.get("items") or []
     draft["base_revision_id"] = items[0].get("revision_id") if items else None
-    return draft
+    return _project_prose(draft, detail)
 
 
 @mcp_server.tool(
@@ -507,8 +638,9 @@ class _NodeUpdateArgs(ForbidExtra):
     description=(
         "Edit an outline node's fields (title/goal/synopsis/status). Requires "
         "`expected_version` (optimistic concurrency — a stale version is rejected, "
-        "no blind clobber). EDIT required (auto-applied; Undo restores the prior "
-        "values via a follow-up update)."
+        "no blind clobber); read the current version cheaply via "
+        "composition_get_outline_node (no need to list the whole outline). EDIT "
+        "required (auto-applied; Undo restores the prior values via a follow-up update)."
     ),
     meta=require_meta(
         "A", "book",
@@ -1087,6 +1219,569 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# D-AGENT-MODE §20 — AUTHORING-RUN MCP TOOLS (spec docs/specs/2026-07-01-writing-
+# studio/20_agent_mode.md, decisions D5/D6/D7). The autonomous multi-chapter
+# drafting run FSM (draft→gated→running→(paused⇄running)→report_ready→closed)
+# lives in AuthoringRunService/authoring_runs REST router; these 11 tools are
+# the MCP surface (previously zero MCP consumers existed — REST-only). Every
+# tool takes an explicit `book_id` (D7 — never inferred from ambient/header
+# context, per memory `gateway-drops-xprojectid-envelope`). Spend-triggering
+# tools (create/gate/start/resume) + revert_all (destructive+irreversible)
+# confirm-gate via the SAME mint_confirm_token → confirm_action pattern as
+# composition_generate (D6); list/get/pause/close/accept_unit/reject_unit
+# execute directly.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _serialize_authoring_run(run: Any) -> dict[str, Any]:
+    """MCP-facing run projection (mirrors routers/authoring_runs.py's
+    `_serialize`; kept local — this module doesn't import a router's private
+    helper)."""
+    return {
+        "run_id": str(run.run_id),
+        "book_id": str(run.book_id),
+        "plan_run_id": str(run.plan_run_id),
+        "level": run.level,
+        "scope": [str(c) for c in run.scope],
+        "budget_usd": str(run.budget_usd),
+        "spent_usd": str(run.spent_usd),
+        "tool_allowlist": run.tool_allowlist,
+        "params": run.params,
+        "breaker_state": run.breaker_state,
+        "status": run.status,
+        "current_unit": run.current_unit,
+        "error_message": run.error_message,
+        "background": run.background,
+        "pause_after_each_unit": run.pause_after_each_unit,
+    }
+
+
+async def _authoring_run_actor(
+    tc: ToolContext, svc: Any, book_id: UUID, run_id: UUID, *, allow_book_owner: bool,
+) -> UUID:
+    """Resolve the acting owner_user_id for a run-scoped action, mirroring the
+    REST router's `_transition_route` `book_owner_may_act` widening (pause/
+    close only — the scope fence is per-BOOK across users, so a collaborator's
+    abandoned run would otherwise lock the book owner out forever). The plain
+    path (caller owns the run) does no extra book-grant check, matching the
+    REST router exactly — ownership of the row is itself sufficient. Denial is
+    the uniform H13 refusal throughout (no existence oracle)."""
+    run = await svc.get(tc.user_id, run_id)
+    if run is not None:
+        if run.book_id != book_id:
+            raise uniform_not_accessible()
+        return tc.user_id
+    if not allow_book_owner:
+        raise uniform_not_accessible()
+    foreign = await svc.get_any(run_id)
+    if foreign is None or foreign.book_id != book_id:
+        raise uniform_not_accessible()
+    await _gate(tc, book_id, GrantLevel.OWNER)
+    return foreign.owner_user_id
+
+
+# ── Tier R — reads ──────────────────────────────────────────────────────────
+
+
+class _AuthoringRunListArgs(TolerantArgs):
+    book_id: str
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_list",
+    description=(
+        "List autonomous authoring runs (Agent Mode / Mission Control) for a book — "
+        "run id, scope, status, spend/budget, created-at. VIEW on the book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["list authoring runs", "agent mode runs", "autonomous runs",
+                  "mission control", "list agent runs"],
+        tool_name="composition_authoring_run_list",
+    ),
+)
+async def composition_authoring_run_list(ctx: MCPContext, args: _AuthoringRunListArgs) -> dict:
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    await _gate(tc, book_id, GrantLevel.VIEW)
+    svc = await get_authoring_run_service()
+    # OUT-5 (mcp-tool-io.md): never silently truncate — over-fetch by one to detect
+    # a capped result and report it honestly instead of looking like "everything".
+    runs = await svc.list(tc.user_id, book_id, limit=args.limit + 1)
+    has_more = len(runs) > args.limit
+    return {
+        "items": [_serialize_authoring_run(r) for r in runs[: args.limit]],
+        "has_more": has_more,
+    }
+
+
+class _AuthoringRunGetArgs(TolerantArgs):
+    book_id: str
+    run_id: str
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_get",
+    description=(
+        "Get the full state of one autonomous authoring run, plus its per-unit "
+        "(per-chapter) report — status, cost, critic verdict, pre/post revision ids. "
+        "Owner-only (the report requires the run to be in report_ready/failed/"
+        "paused/closed; other statuses return the run with no unit report)."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["get authoring run", "run report", "mission control detail",
+                  "agent run status", "run detail"],
+        tool_name="composition_authoring_run_get",
+    ),
+)
+async def composition_authoring_run_get(ctx: MCPContext, args: _AuthoringRunGetArgs) -> dict:
+    from app.services.authoring_run_service import TransitionConflictError
+
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    run_id = UUID(args.run_id)
+    svc = await get_authoring_run_service()
+    run = await svc.get(tc.user_id, run_id)
+    if run is None or run.book_id != book_id:
+        raise uniform_not_accessible()
+    result: dict[str, Any] = {"run": _serialize_authoring_run(run)}
+    try:
+        result["units"] = await svc.unit_report(run)
+    except TransitionConflictError as exc:
+        result["units"] = None
+        result["units_error"] = str(exc)
+    return result
+
+
+# ── Tier W — create (confirm-gated, D6: budget_usd + pause_after_each_unit
+# are REQUIRED args with no default — a missing value is a validation error,
+# never a silent default) ────────────────────────────────────────────────────
+
+
+class _AuthoringRunCreateArgs(TolerantArgs):
+    book_id: str
+    plan_run_id: str
+    scope: list[str] = Field(default_factory=list)   # ordered chapter-id strings
+    level: Literal[3, 4] = 3
+    budget_usd: Decimal = Field(gt=0)
+    # IN-3 (mcp-tool-io.md): closed-set enum, single source of truth =
+    # authoring_run_service.ALLOWLISTABLE_TOOLS (gate() re-validates the same set).
+    tool_allowlist: list[Literal[ALLOWLISTABLE_TOOLS]] = Field(default_factory=list)
+    pause_after_each_unit: bool
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_create",
+    description=(
+        "PROPOSE creating a new autonomous multi-chapter authoring run (draft state) "
+        "over an approved PlanForge plan. Cost-gated: returns a `confirm_token` + "
+        "descriptor and creates NOTHING until confirmed via confirm_action. "
+        "`budget_usd` and `pause_after_each_unit` are REQUIRED — there is no silent "
+        "default for either. `pause_after_each_unit=true` makes the run stop for "
+        "human review after every chapter (the safe default for the Studio UI); "
+        "`false` drafts the whole scope unattended (only stopping on budget "
+        "exhaustion or a severe critic verdict) — pass false explicitly when asked "
+        "to 'keep drafting without asking me each chapter'. EDIT on the book "
+        "required. Only one run may be gated/running/paused per book at a time."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["start autonomous run", "agent mode", "autonomous authoring",
+                  "draft chapters unattended", "mission control", "create authoring run"],
+        tool_name="composition_authoring_run_create",
+    ),
+)
+async def composition_authoring_run_create(
+    ctx: MCPContext, args: _AuthoringRunCreateArgs,
+) -> dict:
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    await _gate(tc, book_id, GrantLevel.EDIT)
+    payload = {
+        "book_id": args.book_id,
+        "plan_run_id": args.plan_run_id,
+        "scope": args.scope,
+        "level": args.level,
+        "budget_usd": str(args.budget_usd),
+        "tool_allowlist": args.tool_allowlist,
+        "pause_after_each_unit": args.pause_after_each_unit,
+        "params": args.params,
+    }
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, book_id, _AUTHORING_RUN_CREATE_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _AUTHORING_RUN_CREATE_DESCRIPTOR,
+        "title": (
+            f"Create a level-{args.level} autonomous authoring run "
+            f"(budget ${args.budget_usd}, {len(args.scope)} chapter(s), "
+            f"pause_after_each_unit={args.pause_after_each_unit})"
+        ),
+        "domain": "composition",
+        "requires": "human confirmation via the review surface — no chapters are "
+                    "drafted at create time, but the run holds the book's active-run "
+                    "slot until closed",
+    }
+
+
+class _AuthoringRunIdArgs(TolerantArgs):
+    book_id: str
+    run_id: str
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_gate",
+    description=(
+        "PROPOSE running the start-gate check (draft → gated) on an authoring run — "
+        "validates the plan is approved, the scope's chapters all belong to the book, "
+        "budget_usd > 0, and the tool_allowlist is non-empty. Cost-gated only in the "
+        "sense that it commits the book's one-active-run slot; returns a "
+        "`confirm_token` and gates NOTHING until confirmed. A failing check is "
+        "reported at confirm time. EDIT on the book required."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["gate authoring run", "start gate check", "validate authoring run",
+                  "run start-gate"],
+        tool_name="composition_authoring_run_gate",
+    ),
+)
+async def composition_authoring_run_gate(ctx: MCPContext, args: _AuthoringRunIdArgs) -> dict:
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    await _gate(tc, book_id, GrantLevel.EDIT)
+    run_id = UUID(args.run_id)
+    payload = {"book_id": args.book_id, "run_id": args.run_id}
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, run_id, _AUTHORING_RUN_GATE_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _AUTHORING_RUN_GATE_DESCRIPTOR,
+        "title": "Run the start-gate check (draft → gated)",
+        "domain": "composition",
+        "requires": "human confirmation — a failing gate check is reported at confirm time",
+    }
+
+
+class _AuthoringRunStartArgs(TolerantArgs):
+    book_id: str
+    run_id: str
+    # D4b: an explicit override of the run's stored pause_after_each_unit policy
+    # (None = leave the policy set at create time untouched).
+    pause_after_each_unit: bool | None = None
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_start",
+    description=(
+        "PROPOSE starting a gated authoring run (gated → running) — spawns the "
+        "server-side driver, which starts drafting chapters and SPENDS LLM tokens. "
+        "Cost-gated: returns a `confirm_token`; nothing drafts until confirmed. "
+        "Optionally pass `pause_after_each_unit` to OVERRIDE the policy set at "
+        "create time (omit to leave it as-is). Owner-only — a book OWNER grant does "
+        "NOT let you start someone else's run (it spends their budget)."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["start authoring run", "begin autonomous drafting", "run gated run",
+                  "kick off agent mode"],
+        tool_name="composition_authoring_run_start",
+    ),
+)
+async def composition_authoring_run_start(ctx: MCPContext, args: _AuthoringRunStartArgs) -> dict:
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    await _gate(tc, book_id, GrantLevel.EDIT)
+    run_id = UUID(args.run_id)
+    payload: dict[str, Any] = {"book_id": args.book_id, "run_id": args.run_id}
+    if args.pause_after_each_unit is not None:
+        payload["pause_after_each_unit"] = args.pause_after_each_unit
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, run_id, _AUTHORING_RUN_START_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _AUTHORING_RUN_START_DESCRIPTOR,
+        "title": "Start the authoring run (spends LLM tokens)",
+        "domain": "composition",
+        "requires": "human confirmation via the review surface — this spends LLM "
+                    "tokens; nothing drafts until confirmed",
+    }
+
+
+class _AuthoringRunResumeArgs(TolerantArgs):
+    book_id: str
+    run_id: str
+    pause_after_each_unit: bool | None = None
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_resume",
+    description=(
+        "PROPOSE resuming a paused authoring run (paused → running) — the driver "
+        "continues from its current unit and SPENDS MORE LLM tokens. Cost-gated: "
+        "returns a `confirm_token`; nothing resumes until confirmed. Optionally pass "
+        "`pause_after_each_unit` to override the policy (e.g. `false` to 'keep "
+        "drafting without asking me each chapter'; omit to leave it as-is). "
+        "Owner-only."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["resume authoring run", "continue autonomous drafting",
+                  "unpause agent mode", "keep drafting"],
+        tool_name="composition_authoring_run_resume",
+    ),
+)
+async def composition_authoring_run_resume(ctx: MCPContext, args: _AuthoringRunResumeArgs) -> dict:
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    await _gate(tc, book_id, GrantLevel.EDIT)
+    run_id = UUID(args.run_id)
+    payload: dict[str, Any] = {"book_id": args.book_id, "run_id": args.run_id}
+    if args.pause_after_each_unit is not None:
+        payload["pause_after_each_unit"] = args.pause_after_each_unit
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, run_id, _AUTHORING_RUN_RESUME_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _AUTHORING_RUN_RESUME_DESCRIPTOR,
+        "title": "Resume the authoring run (spends more LLM tokens)",
+        "domain": "composition",
+        "requires": "human confirmation via the review surface — this spends more "
+                    "LLM tokens; nothing resumes until confirmed",
+    }
+
+
+# ── Tier A — direct writes (pause/close/accept/reject: no new spend, no
+# confirm needed per D6) ──────────────────────────────────────────────────────
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_pause",
+    description=(
+        "Pause a running authoring run (running → paused) at the next unit "
+        "boundary — no new spend, executes immediately. The book's OWNER-grant "
+        "holder may pause ANY run on their book (not just their own), so a "
+        "collaborator's run can always be stopped."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["pause authoring run", "stop agent mode", "halt autonomous drafting",
+                  "pause my run"],
+        tool_name="composition_authoring_run_pause",
+    ),
+)
+async def composition_authoring_run_pause(ctx: MCPContext, args: _AuthoringRunIdArgs) -> dict:
+    from app.services.authoring_run_service import TransitionConflictError
+
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    run_id = UUID(args.run_id)
+    svc = await get_authoring_run_service()
+    actor = await _authoring_run_actor(tc, svc, book_id, run_id, allow_book_owner=True)
+    try:
+        run = await svc.pause(actor, run_id)
+    except LookupError:
+        raise uniform_not_accessible()
+    except TransitionConflictError as exc:
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "run": _serialize_authoring_run(run)}
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_close",
+    description=(
+        "Terminally close an authoring run — allowed from every non-running state "
+        "(pause a running one first). No new spend, executes immediately. Closing a "
+        "gated/paused run releases the book's active-run slot for a new one. The "
+        "book's OWNER-grant holder may close ANY run on their book."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["close authoring run", "end agent mode", "cancel autonomous run",
+                  "release run slot"],
+        tool_name="composition_authoring_run_close",
+    ),
+)
+async def composition_authoring_run_close(ctx: MCPContext, args: _AuthoringRunIdArgs) -> dict:
+    from app.services.authoring_run_service import TransitionConflictError
+
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    run_id = UUID(args.run_id)
+    svc = await get_authoring_run_service()
+    actor = await _authoring_run_actor(tc, svc, book_id, run_id, allow_book_owner=True)
+    try:
+        run = await svc.close(actor, run_id)
+    except LookupError:
+        raise uniform_not_accessible()
+    except TransitionConflictError as exc:
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "run": _serialize_authoring_run(run)}
+
+
+class _AuthoringRunUnitArgs(TolerantArgs):
+    book_id: str
+    run_id: str
+    unit_index: int = Field(ge=0)
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_accept_unit",
+    description=(
+        "Accept a drafted chapter unit (drafted → accepted) — keeps its prose as-is. "
+        "Only legal while the run is report_ready/failed/paused (edge #12 — a "
+        "partial run's completed units are still reviewable). Owner-only, no new "
+        "spend."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["accept chapter draft", "approve unit", "keep this chapter",
+                  "accept authoring unit"],
+        tool_name="composition_authoring_run_accept_unit",
+    ),
+)
+async def composition_authoring_run_accept_unit(
+    ctx: MCPContext, args: _AuthoringRunUnitArgs,
+) -> dict:
+    from app.services.authoring_run_service import TransitionConflictError
+
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    run_id = UUID(args.run_id)
+    svc = await get_authoring_run_service()
+    run = await svc.get(tc.user_id, run_id)
+    if run is None or run.book_id != book_id:
+        raise uniform_not_accessible()
+    try:
+        unit = await svc.accept_unit(tc.user_id, run_id, args.unit_index)
+    except LookupError as exc:
+        return {"success": False, "error": str(exc)}
+    except TransitionConflictError as exc:
+        return {"success": False, "error": str(exc)}
+    return {
+        "success": True,
+        "unit_index": unit.unit_index,
+        "status": unit.status,
+    }
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_reject_unit",
+    description=(
+        "Reject a drafted chapter unit (drafted → rejected) — restores the chapter "
+        "to its pre-run revision FIRST, then marks rejected (never rejected without "
+        "the actual revert). Returns `cascade_warning.downstream_unit_indexes`: "
+        "LATER drafted/accepted units threaded on this chapter's prose (v1: advisory "
+        "only, not auto-rejected — review or reject those too). Only legal while the "
+        "run is report_ready/failed/paused. Owner-only, no new spend."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["reject chapter draft", "discard unit", "undo this chapter",
+                  "reject authoring unit", "revert chapter"],
+        tool_name="composition_authoring_run_reject_unit",
+    ),
+)
+async def composition_authoring_run_reject_unit(
+    ctx: MCPContext, args: _AuthoringRunUnitArgs,
+) -> dict:
+    from app.services.authoring_run_service import TransitionConflictError
+
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    run_id = UUID(args.run_id)
+    svc = await get_authoring_run_service()
+    run = await svc.get(tc.user_id, run_id)
+    if run is None or run.book_id != book_id:
+        raise uniform_not_accessible()
+    bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
+
+    async def _restore(bid: UUID, chapter_id: UUID, revision_id: UUID) -> None:
+        await get_book_client().restore_revision(bid, chapter_id, revision_id, bearer)
+
+    try:
+        unit, cascade, reverted = await svc.reject_unit(
+            tc.user_id, run_id, args.unit_index, restore=_restore,
+        )
+    except BookClientError as exc:
+        return {
+            "success": False,
+            "error": f"book-service restore failed ({exc}); unit left drafted",
+        }
+    except LookupError as exc:
+        return {"success": False, "error": str(exc)}
+    except TransitionConflictError as exc:
+        return {"success": False, "error": str(exc)}
+    return {
+        "success": True,
+        "unit_index": unit.unit_index,
+        "status": unit.status,
+        "reverted": reverted,
+        "cascade_warning": {
+            "downstream_unit_indexes": cascade,
+            "note": (
+                "these later drafted/accepted units were threaded on the rejected "
+                "chapter's prose — review or reject them too (not auto-rejected)"
+            ),
+        },
+    }
+
+
+# ── Tier W — revert_all (confirm-gated, D6: destructive + irreversible from
+# the UI even though it is not itself new spend) ──────────────────────────────
+
+
+@mcp_server.tool(
+    name="composition_authoring_run_revert_all",
+    description=(
+        "PROPOSE reverting EVERY drafted/accepted unit of a run, in reverse unit "
+        "order (downstream first), restoring each chapter to its pre-run revision; "
+        "full success closes the run. Destructive + irreversible from the UI, so "
+        "this confirm-gates even though it spends no new LLM tokens. Confirming may "
+        "return a PARTIAL result (the effect stops at the first restore failure — "
+        "the response reports which units reverted and which failed; the run is "
+        "left open for a retry). Only legal while the run is report_ready/failed/"
+        "paused. Owner-only."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["revert all chapters", "undo entire run", "roll back authoring run",
+                  "discard all drafted chapters"],
+        tool_name="composition_authoring_run_revert_all",
+    ),
+)
+async def composition_authoring_run_revert_all(ctx: MCPContext, args: _AuthoringRunIdArgs) -> dict:
+    tc = _ctx(ctx)
+    book_id = UUID(args.book_id)
+    await _gate(tc, book_id, GrantLevel.EDIT)
+    run_id = UUID(args.run_id)
+    payload = {"book_id": args.book_id, "run_id": args.run_id}
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, run_id, _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR,
+        "title": "Revert ALL drafted/accepted chapters in this run (destructive)",
+        "domain": "composition",
+        "requires": "human confirmation — this is destructive and irreversible "
+                    "from this surface; nothing reverts until confirmed",
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # W4 — NARRATIVE MOTIF LIBRARY MCP TOOLS (spec §R2.8 / §13 · domain owns its tools;
 # ai-gateway federates the `composition_` prefix). 4 R · 4 A · 4 W-confirm · 1 R
 # poll. Identity from the envelope ONLY; ForbidExtra on every arg model; the closed
@@ -1108,6 +1803,10 @@ class _MotifSearchArgs(ForbidExtra):
     status: Literal["draft", "active", "archived"] | None = None
     language: str | None = None
     limit: int = 20
+    # L1/L2 reference-first (Context Budget Law §6b). Default "full" (versioned
+    # migration — federated/legacy callers unchanged); the chat-compiler passes
+    # "summary" for a lightweight ref list (no roles/beats/preconditions/effects).
+    detail: Literal["summary", "full"] = "full"
 
 
 @mcp_server.tool(
@@ -1117,8 +1816,10 @@ class _MotifSearchArgs(ForbidExtra):
         "situations, hooks, emotion arcs, schemes (e.g. 套路 / 爽点 / 打脸). Filter by "
         "genre, kind, free text (q), language, or status. `scope` narrows the tier: "
         "'mine' (your motifs), 'public' (shared), 'system' (the seeded library), 'all'. "
-        "Returns a list projection (no private internals). Use composition_motif_get for "
-        "a single motif's full detail."
+        "Returns a list projection (no private internals). Pass `detail=summary` "
+        "(default `full`) for a lightweight ref list ({id,code,name,kind,summary,...} — "
+        "no roles/beats/preconditions/effects) and use composition_motif_get for a "
+        "single motif's full detail."
     ),
     meta=require_meta(
         "R", "user",
@@ -1140,11 +1841,15 @@ async def composition_motif_search(ctx: MCPContext, args: _MotifSearchArgs) -> d
         status=args.status, q=args.q, language=args.language, limit=args.limit,
     )
     # MD-1: uniform allow-list projection in search (owner reads full via _get) — no
-    # per-row branch, no embedding/examples leak in a list view.
-    return {
-        "motifs": [_motif_public_projection(m) for m in motifs],
-        "count": len(motifs),
-    }
+    # per-row branch, no embedding/examples leak in a list view. On top of that,
+    # apply the L1/L2 reference-first contract: detail=summary drops the heavy
+    # structural lists. limit=None here — the repo SELECT already bounded to args.limit,
+    # so `total`/`returned` reflect the fetched set (truncated=0; narrow via filters).
+    projected, meta = apply_response_contract(
+        [_motif_public_projection(m) for m in motifs],
+        ref_fields=_MOTIF_REF_FIELDS, detail=args.detail,
+    )
+    return {"motifs": projected, "count": len(motifs), **meta}
 
 
 @mcp_server.tool(
@@ -1166,6 +1871,8 @@ async def composition_motif_get(
     ctx: MCPContext,
     motif_id: Annotated[str, "The motif's id."],
 ) -> dict:
+    # @small_return: single-object read (the get_by_id sibling) — this IS the
+    # full-detail fetch the summary refs point to; no detail arg / SET projection.
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
     # get_visible IS the IDOR guard for a non-book resource: it enforces R1.1
@@ -1196,7 +1903,9 @@ def _motif_book_view(motif: Any, caller_id: UUID) -> dict[str, Any]:
         "List the motifs available IN a book: your own library motifs plus the book's SHARED "
         "tier — motifs collaborators adopted/authored into THIS book that everyone with access "
         "can see and (with EDIT) edit. VIEW on the book required. Shared rows are badged "
-        "book_shared=true. Use composition_motif_adopt target='book_shared' to add one."
+        "book_shared=true. Pass `detail=summary` (default `full`) for a lightweight ref list "
+        "(no roles/beats/preconditions/effects); fetch a full motif via composition_motif_get. "
+        "Use composition_motif_adopt target='book_shared' to add one."
     ),
     meta=require_meta(
         "R", "book",
@@ -1214,6 +1923,10 @@ async def composition_motif_book_list(
     status: Annotated[Literal["draft", "active", "archived"] | None, "Status filter."] = "active",
     language: Annotated[str | None, "Language filter."] = None,
     limit: Annotated[int, "Max rows."] = 50,
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = refs only (id/code/name/kind/summary/badges, no roles/beats); full = every field.",
+    ] = "full",
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
@@ -1224,11 +1937,13 @@ async def composition_motif_book_list(
         tc.user_id, bid, genre=genre, kind=kind, status=status, q=q,
         language=language, limit=limit,
     )
-    return {
-        "motifs": [_motif_book_view(m, tc.user_id) for m in motifs],
-        "count": len(motifs),
-        "book_id": book_id,
-    }
+    # L1/L2 reference-first: keep the shared-tier badges (_MOTIF_BOOK_REF_FIELDS) at
+    # summary. limit=None — the repo already bounded to `limit` (truncated=0).
+    projected, meta = apply_response_contract(
+        [_motif_book_view(m, tc.user_id) for m in motifs],
+        ref_fields=_MOTIF_BOOK_REF_FIELDS, detail=detail,
+    )
+    return {"motifs": projected, "count": len(motifs), "book_id": book_id, **meta}
 
 
 @mcp_server.tool(
@@ -1236,7 +1951,10 @@ async def composition_motif_book_list(
     description=(
         "Suggest motifs that fit a specific chapter — ranked candidates with a 'why "
         "this motif' breakdown (tension/genre/precondition/semantic match), so you can "
-        "pick a plot pattern grounded in the Work. VIEW on the book required."
+        "pick a plot pattern grounded in the Work. Pass `detail=summary` (default `full`) "
+        "to get each candidate's motif as a lightweight ref (no roles/beats) while keeping "
+        "the score + match_reason; fetch a full motif via composition_motif_get. VIEW on "
+        "the book required."
     ),
     meta=require_meta(
         "R", "book",
@@ -1250,6 +1968,11 @@ async def composition_motif_suggest_for_chapter(
     project_id: Annotated[str, "The Work's project_id."],
     node_id: Annotated[str, "The chapter outline node to rank motifs against."],
     limit: Annotated[int, "Max candidates."] = 5,
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = each candidate's motif is refs only (no roles/beats); full = every field. "
+        "score + match_reason are kept at both levels.",
+    ] = "full",
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1269,15 +1992,20 @@ async def composition_motif_suggest_for_chapter(
         language=getattr(work, "language", None) or "en",
         beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
     )
+    # L1/L2 reference-first on the ranked candidates: project each candidate's (heavy)
+    # motif body through the contract, keeping the score + match_reason wrapper. The
+    # retriever already bounded to `limit`, so the contract only does the detail
+    # projection (limit=None → truncated=0); `**meta` reports the detail level + count.
+    motif_dicts, meta = apply_response_contract(
+        [_motif_view(c.motif, tc.user_id) for c in candidates],
+        ref_fields=_MOTIF_REF_FIELDS, detail=detail,
+    )
     return {
         "candidates": [
-            {
-                "motif": _motif_view(c.motif, tc.user_id),
-                "score": c.score,
-                "match_reason": c.match_reason,
-            }
-            for c in candidates
-        ]
+            {"motif": motif_dicts[i], "score": c.score, "match_reason": c.match_reason}
+            for i, c in enumerate(candidates)
+        ],
+        **meta,
     }
 
 
@@ -1286,7 +2014,9 @@ async def composition_motif_suggest_for_chapter(
     description=(
         "Suggest multi-chapter ARC templates that fit a Work's premise/genre — the "
         "large-scale structures (parallel threads × motifs over a chapter span). Returns "
-        "ranked candidates with a match breakdown. VIEW on the book required."
+        "ranked candidates with a match breakdown. Pass `detail=summary` (default `full`) "
+        "to get each candidate's arc_template as a lightweight ref (no threads/layout/"
+        "pacing) while keeping the score + match_reason. VIEW on the book required."
     ),
     meta=require_meta(
         "R", "book",
@@ -1301,6 +2031,11 @@ async def composition_arc_suggest(
     premise: Annotated[str | None, "Optional premise text to seed the rank."] = None,
     genre: Annotated[str | None, "Optional genre filter."] = None,
     limit: Annotated[int, "Max candidates."] = 5,
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = each candidate's arc_template is refs only (no threads/layout/pacing); "
+        "full = every field. score + match_reason are kept at both levels.",
+    ] = "full",
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1316,19 +2051,25 @@ async def composition_arc_suggest(
         tc.user_id, book_id=work.book_id, project_id=pid,
         premise=premise, genre=genre, limit=limit,
     )
+    # L1/L2 reference-first on the ranked candidates: project each (heavy) arc_template
+    # body through the contract while keeping the score + match_reason wrapper. The
+    # retriever already bounded to `limit` (limit=None → truncated=0); `**meta` reports
+    # the detail level + count. Owner vs non-owner projection is preserved pre-contract.
+    arc_dicts, meta = apply_response_contract(
+        [
+            c.arc_template.model_dump(mode="json")
+            if getattr(c.arc_template, "owner_user_id", None) == tc.user_id
+            else _arc_public_projection(c.arc_template)
+            for c in candidates
+        ],
+        ref_fields=_ARC_REF_FIELDS, detail=detail,
+    )
     return {
         "candidates": [
-            {
-                "arc_template": (
-                    c.arc_template.model_dump(mode="json")
-                    if getattr(c.arc_template, "owner_user_id", None) == tc.user_id
-                    else _arc_public_projection(c.arc_template)
-                ),
-                "score": c.score,
-                "match_reason": c.match_reason,
-            }
-            for c in candidates
-        ]
+            {"arc_template": arc_dicts[i], "score": c.score, "match_reason": c.match_reason}
+            for i, c in enumerate(candidates)
+        ],
+        **meta,
     }
 
 
@@ -1620,6 +2361,9 @@ async def composition_motif_link_list(
         "the book. Omit for your own/system/public motif.",
     ] = None,
 ) -> dict:
+    # @small_return: bounded, lightweight edge rows (each = kind/ord/direction + a
+    # {id,code,name} neighbor stub — no motif body). Nothing heavy to project away, so
+    # a detail=summary level would equal full; a get_by_id on a neighbor is motif_get.
     tc = _ctx(ctx)
     if direction not in ("out", "in", "both"):
         return {"success": False, "error": "direction must be 'out', 'in', or 'both'"}
@@ -1984,6 +2728,9 @@ class _MotifMineArgs(ForbidExtra):
     ),
 )
 async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
+    # @small_return: Tier-W PROPOSE card — returns a single {confirm_token, estimate}
+    # object (no set, no motif bodies); the mined drafts land via the background job,
+    # read back through composition_motif_search/get.
     tc = _ctx(ctx)
     if args.scope == "book":
         if not args.book_id:
@@ -2057,6 +2804,9 @@ class _ArcImportArgs(ForbidExtra):
     ),
 )
 async def composition_arc_import_analyze(ctx: MCPContext, args: _ArcImportArgs) -> dict:
+    # @small_return: Tier-W PROPOSE card — returns a single {confirm_token, estimate}
+    # object (no set); the derived arc_template lands via the background job and is read
+    # back through composition_arc_suggest.
     tc = _ctx(ctx)
     isid = UUID(args.import_source_id)
     # USER scope on the import_source row (§12.6/B-3 — structurally un-shareable):

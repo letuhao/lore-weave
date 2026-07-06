@@ -1,0 +1,203 @@
+{
+  "title": "扩展",
+  "tabs": {
+    "skills": "技能",
+    "mcp": "MCP 服务器",
+    "commands": "命令与钩子",
+    "subagents": "子代理",
+    "plugins": "插件",
+    "proposals": "提案",
+    "activity": "活动日志",
+    "ingest": "注册表源"
+  },
+  "quota": {
+    "skills": "技能",
+    "mcp": "MCP 服务器",
+    "proposals": "提案"
+  },
+  "scope": {
+    "label": "范围：",
+    "mine": "我的扩展",
+    "orBook": "或一本书：",
+    "bookPlaceholder": "书籍范围…",
+    "bookHint": "书籍范围 — 新项目仅适用于本书"
+  },
+  "common": {
+    "loading": "加载中…",
+    "delete": "删除",
+    "add": "添加",
+    "cancel": "取消",
+    "back": "返回",
+    "next": "下一步",
+    "of": "共",
+    "system": "系统",
+    "book": "书籍"
+  },
+  "skills": {
+    "search": "搜索技能…",
+    "tier": {
+      "all": "等级：全部",
+      "system": "系统",
+      "user": "用户",
+      "book": "书籍"
+    },
+    "sort": {
+      "updated": "排序：更新时间",
+      "name": "名称 A→Z",
+      "lastTriggered": "最后触发"
+    },
+    "empty": "暂无技能。智能体可以提议一个，或在编辑器中创建。",
+    "draft": "草稿"
+  },
+  "mcp": {
+    "status": {
+      "active": "运行中",
+      "pending": "正在扫描…",
+      "suspended": "已隔离",
+      "error": "无法连接"
+    },
+    "search": "搜索服务器…",
+    "filter": {
+      "all": "状态：全部",
+      "active": "运行中",
+      "pending": "扫描中",
+      "suspended": "已隔离",
+      "error": "无法连接"
+    },
+    "add": "+ 添加服务器",
+    "empty": "暂无 MCP 服务器。添加一个以赋予智能体更多工具。",
+    "review": "⚠ 审核",
+    "detail": {
+      "back": "‹ 返回",
+      "connection": "连接",
+      "auth": "身份验证",
+      "prefix": "前缀",
+      "egress": "出站白名单",
+      "health": "健康状态",
+      "lastScanned": "最后扫描时间",
+      "credentialStored": "凭据已存储",
+      "healthOk": "正常 · {{count}} 个工具 · {{latency}}ms",
+      "healthError": "错误: {{error}}",
+      "unreachable": "无法连接",
+      "scanning": "正在扫描…",
+      "rescan": "重新扫描",
+      "reconnect": "重新连接 OAuth",
+      "acceptRisk": "接受风险并激活"
+    },
+    "scan": {
+      "label": "供应链扫描：",
+      "clean": "已清理",
+      "findings": "{{count}} 个发现",
+      "tools": "工具 ({{count}})",
+      "flagged": "已标记"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "连接",
+        "auth": "身份验证",
+        "scan": "健康检查与扫描",
+        "review": "检查"
+      },
+      "displayName": "显示名称",
+      "displayNamePlaceholder": "我的工具服务器",
+      "url": "服务器 URL (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "身份验证",
+      "authNone": "无",
+      "authBearer": "Bearer 令牌",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "无需身份验证 — 此服务器是公开的。继续进行注册并扫描。",
+      "bearerLabel": "Bearer 令牌 (已加密存储在保险库中；此后不再显示)",
+      "bearerPlaceholder": "粘贴令牌",
+      "authzEndpoint": "授权端点",
+      "tokenEndpoint": "令牌端点",
+      "clientId": "客户端 ID",
+      "scopes": "权限范围 (以空格分隔)",
+      "registering": "正在注册…",
+      "registerScan": "注册并扫描",
+      "statusLabel": "状态：",
+      "connectOauth": "通过 OAuth 连接 →",
+      "runScan": "运行健康检查与扫描",
+      "refresh": "刷新",
+      "continue": "继续",
+      "authKind": "auth: {{kind}}",
+      "enable": "为我的会话启用",
+      "done": "完成"
+    }
+  },
+  "commands": {
+    "title": "斜杠命令",
+    "description": "在聊天中输入 <code>/name</code> 来展开模板。使用 <code>{{args}}</code> 或 <code>{{key}}</code> 来传递参数。",
+    "namePlaceholder": "名称 (例如 plan-scene)",
+    "templatePlaceholder": "模板：规划关于 {{topic}} 的场景…",
+    "empty": "暂无命令。"
+  },
+  "hooks": {
+    "title": "钩子",
+    "description": "在智能体循环节点触发的声明式规则。无需编写代码 —— 只需定义一个事件、一个可选的工具匹配项以及一个动作。",
+    "matchPlaceholder": "工具匹配 (例如 glossary_delete_*)",
+    "textPlaceholder": "要注入/标注的文本",
+    "empty": "暂无钩子。"
+  },
+  "subagents": {
+    "title": "子代理",
+    "description": "一个命名的角色，代理可以通过 <code>run_subagent</code> 将受限的子任务委派给它。它在隔离的轮次中运行，且仅能使用其权限范围内的工具。如果只需进行纯推理/总结，请将权限范围留空。",
+    "namePlaceholder": "名称 (例如 lore-scout)",
+    "scopePlaceholder": "工具权限范围: glossary_*, kg_*",
+    "modelPlaceholder": "模型 (可选，user_model ID)",
+    "promptPlaceholder": "系统提示词 — 该角色的身份及其工作方式……",
+    "create": "创建子代理",
+    "empty": "暂无子代理。",
+    "reasoningOnly": "仅限推理 (无工具)",
+    "modelPinned": "模型已固定"
+  },
+  "plugins": {
+    "description": "插件封装了技能、命令和钩子 — 导出以分享，导入以安装。",
+    "importing": "正在导入……",
+    "import": "导入压缩包",
+    "invalidJson": "该文件不是有效的 JSON。",
+    "notBundle": "不是 LoreWeave 压缩包（缺少 manifest.name）。",
+    "empty": "暂无插件。导入压缩包以进行安装。",
+    "export": "导出"
+  },
+  "proposals": {
+    "status": {
+      "pending": "待处理",
+      "approved": "已批准",
+      "rejected": "已拒绝",
+      "expired": "已过期",
+      "all": "全部"
+    },
+    "total": "共 {{count}} 项",
+    "empty": "暂无提案。智能体建议的技能将在此处显示，等待您批准。",
+    "approve": "批准",
+    "reject": "拒绝",
+    "reason": "原因：{{reason}}"
+  },
+  "activity": {
+    "title": "活动日志",
+    "allKinds": "所有类型",
+    "range": {
+      "all": "所有时间",
+      "7d": "过去 7 天",
+      "30d": "过去 30 天"
+    },
+    "empty": "此时间范围内无活动。",
+    "secondsAgo": "{{count}}秒前",
+    "minutesAgo": "{{count}}分钟前",
+    "hoursAgo": "{{count}}小时前",
+    "daysAgo": "{{count}}天前"
+  },
+  "ingest": {
+    "title": "注册表源 (管理员)",
+    "description": "从官方 MCP Registry 整理系统目录。验证 ≠ 安全 —— 每次批准都会在联邦化之前重新运行 SSRF 防护 + 供应链扫描。",
+    "all": "全部",
+    "pulling": "正在拉取…",
+    "pull": "拉取注册表",
+    "pullResult": "已拉取：获取 {{fetched}} · 新增 {{new}} · 更新 {{updated}} · 跳过 {{skipped}}",
+    "truncated": "· 部分 (已截断)",
+    "empty": "此视图中没有条目。请拉取注册表以填充队列。",
+    "approve": "批准",
+    "reject": "拒绝"
+  }
+}

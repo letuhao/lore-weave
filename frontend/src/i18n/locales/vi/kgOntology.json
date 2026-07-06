@@ -4,6 +4,7 @@
     "tabs": { "adopt": "Áp dụng", "schema": "Lược đồ", "views": "Góc nhìn", "sync": "Đồng bộ" },
     "noProject": "Sách này chưa có dự án tri thức",
     "noProjectHelp": "Sách này chưa được liên kết với dự án tri thức nào. Hãy chạy trích xuất hoặc tạo một dự án để quản lý lược đồ đồ thị.",
+    "createProject": "Tạo dự án tri thức",
     "noSchema": "Chưa áp dụng lược đồ nào — hãy áp dụng một mẫu để bắt đầu."
   },
   "common": {

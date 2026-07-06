@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -22,6 +23,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
+	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/book-service/internal/config"
@@ -56,11 +58,22 @@ type Server struct {
 	// (*Server).resolveBookAuth in NewServer; tests override it to exercise the
 	// route→need mapping (the grant chokepoint) without a real DB.
 	resolveBook func(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, uuid.UUID, string, error)
+	// emitTenantAudit is the P2·F cross-tenant audit hook. Production wires it to
+	// (*Server).asyncTenantAudit (fire-and-forget insert); tests override it with a
+	// synchronous spy to assert authBook emits on a cross-tenant crossing and stays
+	// silent on own-book / missing-book. nil ⇒ no-op (struct-literal Server).
+	emitTenantAudit func(actorID, bookID, ownerID uuid.UUID, outcome string)
+	// auditDedup bounds the P2·F audit WRITE path to first-per-window (skips the
+	// goroutine+insert on a repeat this window). nil ⇒ no dedup (still correct — the
+	// DB ON CONFLICT dedups the row). Wired in NewServer.
+	auditDedup *tenantAuditDedup
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	s := &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
 	s.resolveBook = s.resolveBookAuth
+	s.emitTenantAudit = s.asyncTenantAudit
+	s.auditDedup = &tenantAuditDedup{}
 	if cfg.MinioEndpoint != "" && cfg.MinioSecretKey != "" {
 		mc, err := minio.New(cfg.MinioEndpoint, &minio.Options{
 			Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
@@ -262,6 +275,10 @@ func (s *Server) Router() http.Handler {
 			// Keyset/cursor-paged chapter list for the manuscript navigator (10k+ chapters).
 			// Static path (before /chapters/{chapter_id}) — same reason as bulk.
 			r.Get("/chapters/page", s.listChaptersKeyset)
+			// Chapter Browser A3/A4 — bulk lifecycle change + bulk zip export. Static
+			// paths (before /chapters/{chapter_id}) — same reason as bulk/page above.
+			r.Patch("/chapters/bulk-status", s.bulkUpdateChapterStatus)
+			r.Post("/chapters/export-zip", s.bulkExportChapters)
 
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)
@@ -292,8 +309,9 @@ func (s *Server) Router() http.Handler {
 				r.Post("/progress", s.upsertReadingProgress)
 			})
 
-			// Import (.docx/.epub)
+			// Import (.docx/.epub/.pdf)
 			r.Post("/import", s.startImport)
+			r.Post("/import/pdf-peek", s.pdfPeek)
 			r.Get("/imports", s.listImportJobs)
 			r.Get("/imports/{import_id}", s.getImportJob)
 
@@ -347,20 +365,11 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	tokenStr := strings.TrimPrefix(auth, "Bearer ")
-	tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.secret, nil
-	})
-	if err != nil || !tok.Valid {
+	claims, err := platformjwt.Verify(tokenStr, s.secret)
+	if err != nil {
 		return uuid.Nil, false
 	}
-	claims, ok := tok.Claims.(*accessClaims)
-	if !ok {
-		return uuid.Nil, false
-	}
-	id, err := uuid.Parse(claims.Subject)
+	id, err := claims.UserID()
 	if err != nil {
 		return uuid.Nil, false
 	}
@@ -1090,11 +1099,16 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 		args = append(args, escapeLikePattern(q))
 		where += fmt.Sprintf(" AND (title ILIKE $%d OR original_filename ILIKE $%d)", len(args), len(args))
 	}
+	orderBy, sortErrMsg := chapterOffsetSortClause(r.URL.Query().Get("sort"))
+	if sortErrMsg != "" {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", sortErrMsg)
+		return
+	}
 	countArgs := append([]any{}, args...)
 	var total int
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, countArgs...).Scan(&total)
 	args = append(args, limit, offset)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at FROM chapters WHERE `+where+` ORDER BY sort_order, created_at LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1103,28 +1117,32 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, bid uuid.UUID
-		var title, fn, lang, ctype, lstate string
+		var title, fn, lang, ctype, lstate, editorialStatus string
 		var size int64
-		var order int
+		var order, wordCount int
 		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var revCount int
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt)
+		var publishedRevisionID *uuid.UUID
+		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID)
 		items = append(items, map[string]any{
-			"chapter_id":           id,
-			"book_id":              bid,
-			"title":                nullableString(title),
-			"original_filename":    fn,
-			"original_language":    lang,
-			"content_type":         ctype,
-			"byte_size":            size,
-			"sort_order":           order,
-			"draft_updated_at":     draftUpdated,
-			"draft_revision_count": revCount,
-			"lifecycle_state":      lstate,
-			"trashed_at":           trashedAt,
-			"purge_eligible_at":    purgeAt,
-			"created_at":           createdAt,
-			"updated_at":           updatedAt,
+			"chapter_id":            id,
+			"book_id":               bid,
+			"title":                 nullableString(title),
+			"original_filename":     fn,
+			"original_language":     lang,
+			"content_type":          ctype,
+			"byte_size":             size,
+			"sort_order":            order,
+			"draft_updated_at":      draftUpdated,
+			"draft_revision_count":  revCount,
+			"lifecycle_state":       lstate,
+			"trashed_at":            trashedAt,
+			"purge_eligible_at":     purgeAt,
+			"created_at":            createdAt,
+			"updated_at":            updatedAt,
+			"word_count":            wordCount,
+			"editorial_status":      editorialStatus,
+			"published_revision_id": publishedRevisionID,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1133,6 +1151,28 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 		"limit":  limit,
 		"offset": offset,
 	})
+}
+
+// chapterOffsetSortClause maps the chapter-browser's ?sort= param (CB7) to an
+// ORDER BY clause for the offset-paginated listChapters. Unset/"sort_order"
+// preserves the pre-existing default ordering exactly. Every branch carries a
+// stable tiebreak (sort_order) so ties (e.g. two chapters with the same
+// word_count) still order deterministically across pages. An unrecognised
+// value is a 400 (BOOK_VALIDATION_ERROR) — never a silent fallback to default,
+// which would look like the sort was applied but wasn't.
+func chapterOffsetSortClause(sort string) (orderBy, errMsg string) {
+	switch sort {
+	case "", "sort_order":
+		return "sort_order, created_at", ""
+	case "updated_at":
+		return "updated_at DESC, sort_order", ""
+	case "word_count":
+		return "word_count DESC, sort_order", ""
+	case "lifecycle_state":
+		return "lifecycle_state, sort_order", ""
+	default:
+		return "", "invalid sort (must be sort_order, updated_at, word_count, or lifecycle_state)"
+	}
 }
 
 // ── keyset cursor pagination (manuscript navigator, 10k+ chapters) ───────────
@@ -1165,12 +1205,47 @@ func parseChapterCursor(s string) (sortOrder int, id uuid.UUID, ok bool) {
 	return n, pid, true
 }
 
+// encodeChapterCursorUpdatedAt / parseChapterCursorUpdatedAt — CB7's ?sort=updated_at
+// keyset cursor variant. A DISTINCT token shape from encodeChapterCursor's (sort_order,id)
+// tuple (tagged "u|") so the two are never cross-decodable — a stale sort_order cursor
+// reused after switching ?sort= would otherwise silently misdecode instead of cleanly
+// failing. updated_at ties are broken by id DESC (see listChaptersKeyset's ORDER BY).
+func encodeChapterCursorUpdatedAt(t time.Time, id uuid.UUID) string {
+	return base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "u|%s|%s", t.UTC().Format(time.RFC3339Nano), id.String()))
+}
+
+func parseChapterCursorUpdatedAt(s string) (t time.Time, id uuid.UUID, ok bool) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	parts := strings.SplitN(string(raw), "|", 3)
+	if len(parts) != 3 || parts[0] != "u" {
+		return time.Time{}, uuid.Nil, false
+	}
+	pt, err := time.Parse(time.RFC3339Nano, parts[1])
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	pid, err := uuid.Parse(parts[2])
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	return pt, pid, true
+}
+
 // listChaptersKeyset is the cursor-paged chapter list for the manuscript navigator, ordered by
-// the strict keyset (sort_order, id). id is a UUIDv7 (time-ordered) so the tuple is a total
-// order with a stable, unique tiebreak — no offset drift as chapters are added/removed
+// a strict keyset. id is a UUIDv7 (time-ordered) so pairing it with the primary sort key gives a
+// total order with a stable, unique tiebreak — no offset drift as chapters are added/removed
 // mid-scroll. Response: {items, next_cursor, total}. next_cursor is null on the last page;
 // total is emitted only on the first page (no cursor) so the virtual scrollbar can size itself
 // without a COUNT on every page.
+//
+// CB7: ?sort= is restricted to sort_order (default) and updated_at — the two keys with a
+// genuinely stable total order to cursor over. word_count/lifecycle_state are NOT accepted
+// here (400) — true cursor-stable paging over those needs a monotonic tiebreak scheme this
+// v1 doesn't build; callers wanting those sorts use the offset-paginated listChapters instead
+// (CB7 — an honest, documented restriction, not a silently-dropped feature).
 func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -1180,6 +1255,15 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	sortParam := r.URL.Query().Get("sort")
+	switch sortParam {
+	case "", "sort_order", "updated_at":
+		// ok
+	default:
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "keyset pagination only supports sort=sort_order or sort=updated_at (word_count/lifecycle_state need offset pagination — see GET .../chapters)")
+		return
+	}
+	byUpdatedAt := sortParam == "updated_at"
 	lifecycle := r.URL.Query().Get("lifecycle_state")
 	if lifecycle == "" {
 		if state == "trashed" {
@@ -1216,6 +1300,16 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 		var n int
 		_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, append([]any{}, args...)...).Scan(&n)
 		total = n
+	} else if byUpdatedAt {
+		cursorUpdated, cursorID, valid := parseChapterCursorUpdatedAt(cursor)
+		if !valid {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid cursor")
+			return
+		}
+		// ORDER BY updated_at DESC, id DESC ⇒ "comes after" means a strictly
+		// SMALLER (updated_at, id) tuple (both descending) — see doc comment.
+		args = append(args, cursorUpdated, cursorID)
+		where += fmt.Sprintf(" AND (updated_at, id) < ($%d, $%d)", len(args)-1, len(args))
 	} else {
 		cursorSort, cursorID, valid := parseChapterCursor(cursor)
 		if !valid {
@@ -1227,9 +1321,14 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 		where += fmt.Sprintf(" AND (sort_order, id) > ($%d, $%d)", len(args)-1, len(args))
 	}
 
+	orderBy := "sort_order, id"
+	if byUpdatedAt {
+		orderBy = "updated_at DESC, id DESC"
+	}
+
 	// Fetch limit+1 to detect a further page without a second COUNT.
 	args = append(args, limit+1)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at FROM chapters WHERE `+where+` ORDER BY sort_order, id LIMIT $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1238,28 +1337,32 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, limit)
 	for rows.Next() {
 		var id, bid uuid.UUID
-		var title, fn, lang, ctype, lstate string
+		var title, fn, lang, ctype, lstate, editorialStatus string
 		var size int64
-		var order int
+		var order, wordCount int
 		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var revCount int
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt)
+		var publishedRevisionID *uuid.UUID
+		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID)
 		items = append(items, map[string]any{
-			"chapter_id":           id,
-			"book_id":              bid,
-			"title":                nullableString(title),
-			"original_filename":    fn,
-			"original_language":    lang,
-			"content_type":         ctype,
-			"byte_size":            size,
-			"sort_order":           order,
-			"draft_updated_at":     draftUpdated,
-			"draft_revision_count": revCount,
-			"lifecycle_state":      lstate,
-			"trashed_at":           trashedAt,
-			"purge_eligible_at":    purgeAt,
-			"created_at":           createdAt,
-			"updated_at":           updatedAt,
+			"chapter_id":            id,
+			"book_id":               bid,
+			"title":                 nullableString(title),
+			"original_filename":     fn,
+			"original_language":     lang,
+			"content_type":          ctype,
+			"byte_size":             size,
+			"sort_order":            order,
+			"draft_updated_at":      draftUpdated,
+			"draft_revision_count":  revCount,
+			"lifecycle_state":       lstate,
+			"trashed_at":            trashedAt,
+			"purge_eligible_at":     purgeAt,
+			"created_at":            createdAt,
+			"updated_at":            updatedAt,
+			"word_count":            wordCount,
+			"editorial_status":      editorialStatus,
+			"published_revision_id": publishedRevisionID,
 		})
 	}
 
@@ -1269,7 +1372,11 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 	if len(items) > limit {
 		items = items[:limit]
 		last := items[limit-1]
-		nextCursor = encodeChapterCursor(last["sort_order"].(int), last["chapter_id"].(uuid.UUID))
+		if byUpdatedAt {
+			nextCursor = encodeChapterCursorUpdatedAt(*last["updated_at"].(*time.Time), last["chapter_id"].(uuid.UUID))
+		} else {
+			nextCursor = encodeChapterCursor(last["sort_order"].(int), last["chapter_id"].(uuid.UUID))
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":       items,
@@ -1437,14 +1544,14 @@ func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, book
 	var id, bid uuid.UUID
 	var title, fn, lang, ctype, state, editorialStatus string
 	var size int64
-	var order, revCount int
+	var order, revCount, wordCount int
 	var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var publishedRevID *uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id
+SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.word_count
 FROM chapters c
 WHERE c.id=$1 AND c.book_id=$2
-`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID)
+`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID, &wordCount)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1471,6 +1578,7 @@ WHERE c.id=$1 AND c.book_id=$2
 		"updated_at":            updatedAt,
 		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
+		"word_count":            wordCount,
 	})
 }
 
@@ -1545,6 +1653,100 @@ func (s *Server) restoreChapter(w http.ResponseWriter, r *http.Request) {
 func (s *Server) purgeChapter(w http.ResponseWriter, r *http.Request) {
 	s.transitionChapterLifecycle(w, r, "purge_pending")
 }
+
+// errChapterNotFound / errInvalidLifecycle — sentinel errors from
+// transitionOneChapterLifecycle so callers (the single-chapter HTTP handler
+// AND the A3 bulk-status handler) can map them to their own response shape
+// (a single HTTP status for one chapter; a per-id outcome for a batch)
+// without the shared helper knowing about either caller's response format.
+var (
+	errChapterNotFound  = errors.New("chapter not found")
+	errInvalidLifecycle = errors.New("invalid lifecycle transition")
+)
+
+// chapterLifecycleNeed returns the grant level a lifecycle transition needs.
+// Trash/restore are reversible content edits → edit; purge is irreversible
+// whole-chapter removal → manage (PO-locked CLARIFY 2026-06-11). Shared by the
+// single-chapter route and the A3 bulk-status endpoint so the two can't drift.
+func chapterLifecycleNeed(target string) GrantLevel {
+	if target == "purge_pending" {
+		return GrantManage
+	}
+	return GrantEdit
+}
+
+// transitionOneChapterLifecycle applies ONE chapter's lifecycle transition
+// (trashed/active/purge_pending) — state validation, the UPDATE, and outbox
+// event emission where applicable. Extracted from transitionChapterLifecycle
+// (B-A3) so the per-chapter route and the bulk status-change endpoint
+// (bulkUpdateChapterStatus) share one implementation and can never diverge on
+// what counts as a valid transition. Callers MUST have already authorized the
+// caller (authBook) at chapterLifecycleNeed(target) — this function does not
+// re-check the grant, only the book/chapter's current lifecycle state.
+func (s *Server) transitionOneChapterLifecycle(ctx context.Context, bookID, chID uuid.UUID, target string) error {
+	var bState, cState string
+	err := s.pool.QueryRow(ctx, `
+SELECT b.lifecycle_state,c.lifecycle_state FROM books b JOIN chapters c ON c.book_id=b.id
+WHERE b.id=$1 AND c.id=$2
+`, bookID, chID).Scan(&bState, &cState)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errChapterNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("failed to transition chapter: %w", err)
+	}
+	switch target {
+	case "trashed":
+		if bState != "active" || cState != "active" {
+			return errInvalidLifecycle
+		}
+		tx, txErr := s.pool.Begin(ctx)
+		if txErr != nil {
+			return fmt.Errorf("failed to trash chapter: %w", txErr)
+		}
+		defer tx.Rollback(ctx) //nolint:errcheck
+		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, chID); err != nil {
+			return fmt.Errorf("failed to trash chapter: %w", err)
+		}
+		if err := insertOutboxEvent(ctx, tx, "chapter.trashed", chID, map[string]any{"book_id": bookID}); err != nil {
+			return fmt.Errorf("failed to trash chapter: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to trash chapter: %w", err)
+		}
+		return nil
+	case "active":
+		if bState != "active" || cState != "trashed" {
+			return errInvalidLifecycle
+		}
+		if _, err := s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`, chID); err != nil {
+			return fmt.Errorf("failed to restore chapter: %w", err)
+		}
+		return nil
+	case "purge_pending":
+		if cState != "trashed" {
+			return errInvalidLifecycle
+		}
+		tx, txErr := s.pool.Begin(ctx)
+		if txErr != nil {
+			return fmt.Errorf("failed to purge chapter: %w", txErr)
+		}
+		defer tx.Rollback(ctx) //nolint:errcheck
+		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, chID); err != nil {
+			return fmt.Errorf("failed to purge chapter: %w", err)
+		}
+		if err := insertOutboxEvent(ctx, tx, "chapter.deleted", chID, map[string]any{"book_id": bookID}); err != nil {
+			return fmt.Errorf("failed to purge chapter: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to purge chapter: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported lifecycle_state %q", target)
+	}
+}
+
 func (s *Server) transitionChapterLifecycle(w http.ResponseWriter, r *http.Request, target string) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
@@ -1554,80 +1756,126 @@ func (s *Server) transitionChapterLifecycle(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	// Chapter trash/restore are reversible content edits → edit; purge is
-	// irreversible whole-chapter removal → manage (PO-locked CLARIFY 2026-06-11).
-	need := GrantEdit
-	if target == "purge_pending" {
-		need = GrantManage
-	}
-	caller, _, _, ok := s.authBook(w, r, bookID, need)
+	caller, _, _, ok := s.authBook(w, r, bookID, chapterLifecycleNeed(target))
 	if !ok {
 		return
 	}
-	var bState, cState string
-	err := s.pool.QueryRow(r.Context(), `
-SELECT b.lifecycle_state,c.lifecycle_state FROM books b JOIN chapters c ON c.book_id=b.id
-WHERE b.id=$1 AND c.id=$2
-`, bookID, chID).Scan(&bState, &cState)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := s.transitionOneChapterLifecycle(r.Context(), bookID, chID, target)
+	switch {
+	case errors.Is(err, errChapterNotFound):
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to transition chapter")
+	case errors.Is(err, errInvalidLifecycle):
+		msg := "invalid lifecycle for transition"
+		switch target {
+		case "trashed":
+			msg = "invalid lifecycle for trash"
+		case "active":
+			msg = "chapter not trashed or book inactive"
+		case "purge_pending":
+			msg = "chapter must be trashed before purge"
+		}
+		writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", msg)
+		return
+	case err != nil:
+		// Any other failure (the lifecycle-state lookup, or a downstream
+		// write/outbox/commit) — a generic 500. transitionOneChapterLifecycle's
+		// wrapped error message already names the specific step for logs.
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to transition chapter")
 		return
 	}
 	switch target {
-	case "trashed":
-		if bState != "active" || cState != "active" {
-			writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", "invalid lifecycle for trash")
-			return
-		}
-		tx, txErr := s.pool.Begin(r.Context())
-		if txErr != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash chapter")
-			return
-		}
-		defer tx.Rollback(r.Context())
-		_, _ = tx.Exec(r.Context(), `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, chID)
-		if err := insertOutboxEvent(r.Context(), tx, "chapter.trashed", chID, map[string]any{"book_id": bookID}); err != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash chapter")
-			return
-		}
-		if err := tx.Commit(r.Context()); err != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash chapter")
-			return
-		}
+	case "trashed", "purge_pending":
 		w.WriteHeader(http.StatusNoContent)
 	case "active":
-		if bState != "active" || cState != "trashed" {
-			writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", "chapter not trashed or book inactive")
-			return
-		}
-		_, _ = s.pool.Exec(r.Context(), `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`, chID)
 		s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
-	case "purge_pending":
-		if cState != "trashed" {
-			writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", "chapter must be trashed before purge")
-			return
-		}
-		tx, txErr := s.pool.Begin(r.Context())
-		if txErr != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to purge chapter")
-			return
-		}
-		defer tx.Rollback(r.Context())
-		_, _ = tx.Exec(r.Context(), `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, chID)
-		if err := insertOutboxEvent(r.Context(), tx, "chapter.deleted", chID, map[string]any{"book_id": bookID}); err != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to purge chapter")
-			return
-		}
-		if err := tx.Commit(r.Context()); err != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to purge chapter")
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// maxBulkChapterIDs caps a single bulk request's chapter_ids — both A3
+// (bulk-status) and A4 (bulk zip export). 500 matches the existing offset
+// pagination cap (parseLimitOffset's max=100 page ×5, comfortably above any
+// realistic multi-select in the chapter-browser UI) while bounding one
+// request's blast radius/latency.
+const maxBulkChapterIDs = 500
+
+// bulkChapterStatusOutcome — one requested chapter_id's result. CB5: the bulk
+// endpoint NEVER reports a single all-or-nothing success/fail for the whole
+// batch — a partial failure across N chapters must be visible per-id, never
+// silently swallowed.
+type bulkChapterStatusOutcome struct {
+	ChapterID string `json:"chapter_id"`
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+}
+
+// bulkUpdateChapterStatus — PATCH /v1/books/{book_id}/chapters/bulk-status
+// (A3). Body: {"chapter_ids": string[], "lifecycle_state": "trashed"|"active"|"purge_pending"}.
+// Response: {"results": [{"chapter_id","ok","error?"}, ...]} — always 200 with
+// a per-id outcome array (CB5); the endpoint itself only 4xx/5xxs on a
+// request-level problem (bad payload, no grant, cap exceeded), never because
+// one of N chapter_ids failed.
+//
+// Tenancy (judgment call — see final report): the grant check is done ONCE
+// against the book (same authBook chokepoint every single-chapter lifecycle
+// route already uses, at the SAME grant level chapterLifecycleNeed(target)
+// requires), not loosened "because it's bulk". Each chapter_id is still
+// existence-scoped to THIS book_id inside transitionOneChapterLifecycle's own
+// query (`WHERE b.id=$1 AND c.id=$2`), so a chapter_id from a different book
+// can't be smuggled into the batch — it just comes back as a per-id
+// "chapter not found" outcome, identical to the single-chapter route's 404.
+func (s *Server) bulkUpdateChapterStatus(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	var in struct {
+		ChapterIDs     []string `json:"chapter_ids"`
+		LifecycleState string   `json:"lifecycle_state"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
+		return
+	}
+	if len(in.ChapterIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "chapter_ids is required")
+		return
+	}
+	if len(in.ChapterIDs) > maxBulkChapterIDs {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", fmt.Sprintf("too many chapter_ids (max %d)", maxBulkChapterIDs))
+		return
+	}
+	switch in.LifecycleState {
+	case "trashed", "active", "purge_pending":
+		// ok
+	default:
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "lifecycle_state must be trashed, active, or purge_pending")
+		return
+	}
+	target := in.LifecycleState
+	if _, _, _, ok := s.authBook(w, r, bookID, chapterLifecycleNeed(target)); !ok {
+		return
+	}
+
+	results := make([]bulkChapterStatusOutcome, 0, len(in.ChapterIDs))
+	for _, raw := range in.ChapterIDs {
+		chID, perr := uuid.Parse(raw)
+		if perr != nil {
+			results = append(results, bulkChapterStatusOutcome{ChapterID: raw, OK: false, Error: "invalid chapter_id"})
+			continue
+		}
+		switch err := s.transitionOneChapterLifecycle(r.Context(), bookID, chID, target); {
+		case err == nil:
+			results = append(results, bulkChapterStatusOutcome{ChapterID: raw, OK: true})
+		case errors.Is(err, errChapterNotFound):
+			results = append(results, bulkChapterStatusOutcome{ChapterID: raw, OK: false, Error: "chapter not found"})
+		case errors.Is(err, errInvalidLifecycle):
+			results = append(results, bulkChapterStatusOutcome{ChapterID: raw, OK: false, Error: "invalid lifecycle for this transition"})
+		default:
+			results = append(results, bulkChapterStatusOutcome{ChapterID: raw, OK: false, Error: "failed to update chapter"})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
 func (s *Server) getChapterContent(w http.ResponseWriter, r *http.Request) {
@@ -1689,20 +1937,10 @@ WHERE c.id=$1 AND c.book_id=$2
 		writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to fetch chapter")
 		return
 	}
-	// Read plain text from chapter_blocks (trigger-extracted); fall back to draft body
-	var textContent string
-	err = s.pool.QueryRow(r.Context(), `
-SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
-FROM chapter_blocks WHERE chapter_id=$1
-`, chID).Scan(&textContent)
-	if err != nil || textContent == "" {
-		// Fallback: no blocks yet (legacy data), read raw draft body as text
-		var rawBody []byte
-		if ferr := s.pool.QueryRow(r.Context(), `SELECT d.body FROM chapter_drafts d WHERE d.chapter_id=$1`, chID).Scan(&rawBody); ferr != nil {
-			writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to fetch draft")
-			return
-		}
-		textContent = string(rawBody)
+	textContent, err := s.fetchChapterExportText(r.Context(), chID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to fetch draft")
+		return
 	}
 	filename := "chapter.txt"
 	if title != nil && *title != "" {
@@ -1714,6 +1952,187 @@ FROM chapter_blocks WHERE chapter_id=$1
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(textContent))
+}
+
+// fetchChapterExportText returns the export-ready plain text for ONE chapter:
+// the aggregated chapter_blocks.text_content (trigger-extracted), falling
+// back to the raw chapter_drafts.body when no blocks exist yet (legacy data
+// pre-dating the extraction trigger). Extracted verbatim from exportChapter's
+// prior inline logic (A4 — do not duplicate this read for the bulk zip
+// export; both call this ONE helper so the two paths can't drift on what
+// "chapter text" means).
+func (s *Server) fetchChapterExportText(ctx context.Context, chID uuid.UUID) (string, error) {
+	var textContent string
+	err := s.pool.QueryRow(ctx, `
+SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
+FROM chapter_blocks WHERE chapter_id=$1
+`, chID).Scan(&textContent)
+	// TrimSpace, not ==: blocks can exist with every text_content empty/NULL
+	// (stale extraction — see D-CHAPTER-BLOCKS-STALE-EXTRACTION), in which case
+	// string_agg still returns a non-empty string of bare "\n\n" separators.
+	// A raw == "" check never falls back for that case and silently exports
+	// whitespace garbage instead of the real chapter_drafts.body text.
+	if err != nil || strings.TrimSpace(textContent) == "" {
+		// Fallback: no blocks yet (legacy data), read raw draft body as text.
+		var rawBody []byte
+		if ferr := s.pool.QueryRow(ctx, `SELECT d.body FROM chapter_drafts d WHERE d.chapter_id=$1`, chID).Scan(&rawBody); ferr != nil {
+			return "", ferr
+		}
+		textContent = string(rawBody)
+	}
+	return textContent, nil
+}
+
+// bulkExportChapters — POST /v1/books/{book_id}/chapters/export-zip (A4). Body:
+// {"chapter_ids": string[]}. Streams a real application/zip (Go stdlib
+// archive/zip, no new dependency) with one "<sort_order>-<name>.txt" entry per
+// FOUND, accessible chapter — reusing fetchChapterExportText, the SAME source
+// exportChapter reads (chapter_blocks, fallback chapter_drafts.body).
+//
+// POST-with-body (not GET+query) — spec's own call: a large multi-select could
+// carry hundreds of UUIDs (500 ids × 36 chars ≈ 18KB), well past many
+// browsers'/proxies' default URL-length limits; POST has no such ceiling and
+// matches A3's bulk-status body shape for FE consistency.
+//
+// Partial-failure discipline (CB5's spirit, adapted to a binary response): a
+// zip stream can't carry a JSON per-id outcome alongside its bytes, so any
+// requested chapter_id that doesn't resolve (bad UUID caught before headers
+// are written → 400; not found/not in this book/export failure discovered
+// mid-stream) is never silently dropped — it's listed in a "_errors.txt" entry
+// baked into the archive itself, so the failure is visible in the downloaded
+// artifact rather than swallowed.
+func (s *Server) bulkExportChapters(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	var in struct {
+		ChapterIDs []string `json:"chapter_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
+		return
+	}
+	if len(in.ChapterIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "chapter_ids is required")
+		return
+	}
+	if len(in.ChapterIDs) > maxBulkChapterIDs {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", fmt.Sprintf("too many chapter_ids (max %d)", maxBulkChapterIDs))
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(in.ChapterIDs))
+	for _, raw := range in.ChapterIDs {
+		id, perr := uuid.Parse(raw)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid chapter_id: "+raw)
+			return
+		}
+		ids = append(ids, id)
+	}
+
+	// Export is a read — GrantView matches the single-chapter exportChapter's
+	// own requirement (no tighter/looser check "because it's bulk").
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+		return
+	}
+
+	type chapterMeta struct {
+		title     *string
+		filename  string
+		sortOrder int
+	}
+	metas := make(map[uuid.UUID]chapterMeta, len(ids))
+	rows, err := s.pool.Query(r.Context(), `
+SELECT id, title, original_filename, sort_order
+FROM chapters WHERE book_id=$1 AND id = ANY($2)
+`, bookID, ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to fetch chapters")
+		return
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		var m chapterMeta
+		if err := rows.Scan(&id, &m.title, &m.filename, &m.sortOrder); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to read chapter")
+			return
+		}
+		metas[id] = m
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to read chapters")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="chapters-export.zip"`)
+	w.WriteHeader(http.StatusOK)
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	var missing []string
+	usedNames := make(map[string]int, len(ids))
+	for i, id := range ids {
+		m, found := metas[id]
+		if !found {
+			missing = append(missing, in.ChapterIDs[i]+" (not found or not in this book)")
+			continue
+		}
+		text, terr := s.fetchChapterExportText(r.Context(), id)
+		if terr != nil {
+			missing = append(missing, in.ChapterIDs[i]+" (export failed)")
+			continue
+		}
+		name := zipEntryName(m.sortOrder, m.title, m.filename)
+		if n := usedNames[name]; n > 0 {
+			usedNames[name] = n + 1
+			name = strings.TrimSuffix(name, ".txt") + fmt.Sprintf("-%d.txt", n)
+		} else {
+			usedNames[name] = 1
+		}
+		fw, ferr := zw.Create(name)
+		if ferr != nil {
+			continue
+		}
+		_, _ = fw.Write([]byte(text))
+	}
+	if len(missing) > 0 {
+		if fw, ferr := zw.Create("_errors.txt"); ferr == nil {
+			_, _ = fw.Write([]byte("The following requested chapter_ids could not be exported:\n" + strings.Join(missing, "\n") + "\n"))
+		}
+	}
+}
+
+// zipUnsafeChars replaces filesystem-unsafe characters in a chapter title/
+// filename before it becomes a zip entry name.
+var zipUnsafeChars = strings.NewReplacer(
+	"/", "-", "\\", "-", ":", "-", "*", "-", "?", "-", `"`, "'", "<", "-", ">", "-", "|", "-",
+)
+
+// zipEntryName builds a unique-enough, human-readable zip entry name:
+// "<sort_order zero-padded>-<sanitized title-or-filename>.txt". The sort_order
+// prefix (a) guarantees natural reading order when the archive is extracted
+// and listed alphabetically, and (b) is the FIRST de-dupe line of defense
+// (chapters in one book have distinct sort_order); bulkExportChapters' caller
+// still de-dupes exact-name collisions on top (two chapters CAN share both
+// sort_order-formatting and a sanitized title in edge cases).
+func zipEntryName(sortOrder int, title *string, filename string) string {
+	base := filename
+	if title != nil && strings.TrimSpace(*title) != "" {
+		base = *title
+	}
+	base = strings.TrimSpace(zipUnsafeChars.Replace(base))
+	if base == "" {
+		base = "chapter"
+	}
+	if !strings.HasSuffix(strings.ToLower(base), ".txt") {
+		base += ".txt"
+	}
+	return fmt.Sprintf("%04d-%s", sortOrder, base)
 }
 
 func (s *Server) getDraft(w http.ResponseWriter, r *http.Request) {
@@ -2082,13 +2501,17 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 	// present, else nested standard-tiptap text leaves (same union as the publish
 	// guard / revision-text endpoint). Also drops the old `t::text` quirk that
 	// kept JSON quotes around each segment (compare already extracted unquoted).
+	// `strict` (not the default lax) mode on the jsonpath — lax mode's automatic
+	// array-unwrap double-visits a single-text-node block (heading/paragraph,
+	// the overwhelmingly common case) via `**`, silently DUPLICATING every such
+	// block's text (D-CHAPTER-BLOCKS-STALE-EXTRACTION follow-up).
 	var textContent *string
 	_ = s.pool.QueryRow(r.Context(), `
 SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
 FROM (
   SELECT x.ord, COALESCE(
     x.elem->>'_text',
-    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
   ) AS node_text
   FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
 ) n
@@ -2143,13 +2566,14 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 	}
 	// text_content projection (unquoted — the compare diffs this text). Union of
 	// the `_text` projection and nested standard-tiptap text leaves, same as the
-	// publish guard / revision-text / getRevision extraction.
+	// publish guard / revision-text / getRevision extraction. `strict` jsonpath
+	// mode — see getRevision's comment on the lax-mode double-visit bug.
 	_ = s.pool.QueryRow(r.Context(), `
 SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
 FROM (
   SELECT x.ord, COALESCE(
     x.elem->>'_text',
-    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
   ) AS node_text
   FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
 ) n
@@ -2623,13 +3047,14 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND c.lifecycle_state='acti
 	// nested standard-tiptap text leaves ($.**.text). The `_text`-only extraction
 	// returned NULL for standard tiptap bodies → the CM3b extraction runner skipped
 	// every such chapter as "text unavailable" (same class as the publish guard fix).
+	// `strict` jsonpath mode — see getRevision's comment on the lax-mode double-visit bug.
 	var textContent *string
 	_ = s.pool.QueryRow(r.Context(), `
 SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
 FROM (
   SELECT x.ord, COALESCE(
     x.elem->>'_text',
-    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
   ) AS node_text
   FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
 ) n

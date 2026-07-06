@@ -60,10 +60,6 @@ vi.mock('@/components/editor/VersionHistoryPanel', () => ({ VersionHistoryPanel:
 vi.mock('@/components/editor/GlossaryTooltip', () => ({ GlossaryTooltip: () => null }));
 vi.mock('@/components/editor/GlossaryAutocomplete', () => ({ GlossaryAutocomplete: () => null }));
 vi.mock('@/components/editor/GlossaryPanel', () => ({ GlossaryPanel: () => null }));
-vi.mock('@/components/editor/ImageBlockNode', () => ({
-  setImageUploadContext: vi.fn(), setOnOpenHistory: vi.fn(),
-}));
-vi.mock('@/components/editor/VideoBlockNode', () => ({ setOnOpenVideoHistory: vi.fn() }));
 vi.mock('@/features/books/components/PublishControl', () => ({
   PublishControl: (props: any) => (
     <button data-testid="publish-ctrl" disabled={!!props.blockedReason}>Publish</button>

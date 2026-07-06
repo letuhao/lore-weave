@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Inbox, BookText, FileText, Sparkles, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,11 +16,24 @@ import type { ProposalInboxRow, ProposalOrigin, ProposalSourceResult } from '../
 // source's surface. Per-source graceful degrade lives in fetchProposalInbox;
 // this view shows an error chip for a down source while still rendering the
 // healthy ones.
+//
+// 14_kg_panels.md K9/DOCK-7 — the row action used to be a raw <Link
+// to={row.deepLinkUrl}>, which hard-codes react-router navigation and can't
+// be reused from inside a dock panel (DOCK-7 forbids <Link>/useNavigate in a
+// panel). Same extraction shape as ProjectsBrowser/ProjectsTab (14_kg_panels.md
+// A2): the tab takes an `onOpenRow` callback instead, so the classic
+// ProjectDetailShell route can supply `navigate(row.deepLinkUrl)` and the
+// studio `kg-proposals` panel can supply `followStudioLink(...)`.
 
 interface ProposalsInboxTabProps {
   // The route-scoped project's book_id (the 3 sources are all book-scoped).
   // null when the project has no linked book → noBook empty-state.
   bookId: string | null;
+  // Row click handler — the caller decides how to reach the source's own
+  // review UI (route navigate() for the classic shell, the studio link
+  // resolver for the `kg-proposals` dock panel). Called with the row's
+  // `deepLinkUrl` intact so the caller can pattern-match or navigate as-is.
+  onOpenRow: (row: ProposalInboxRow) => void;
 }
 
 // Stable origin order so the grouped list is deterministic.
@@ -33,7 +45,7 @@ const ORIGIN_ICON: Record<ProposalOrigin, React.ComponentType<{ className?: stri
   enrichment: Sparkles,
 };
 
-export function ProposalsInboxTab({ bookId }: ProposalsInboxTabProps) {
+export function ProposalsInboxTab({ bookId, onOpenRow }: ProposalsInboxTabProps) {
   const { t } = useTranslation('knowledge');
   const { inbox, isLoading, isFetching, error } = useProposalsInbox(bookId);
 
@@ -110,6 +122,7 @@ export function ProposalsInboxTab({ bookId }: ProposalsInboxTabProps) {
               origin={g.origin}
               rows={g.rows}
               error={g.source?.error ?? null}
+              onOpenRow={onOpenRow}
             />
           ))}
         </div>
@@ -122,10 +135,12 @@ function ProposalSourceGroup({
   origin,
   rows,
   error,
+  onOpenRow,
 }: {
   origin: ProposalOrigin;
   rows: ProposalInboxRow[];
   error: Error | null;
+  onOpenRow: (row: ProposalInboxRow) => void;
 }) {
   const { t } = useTranslation('knowledge');
   const Icon = ORIGIN_ICON[origin];
@@ -165,13 +180,14 @@ function ProposalSourceGroup({
         <ul className="divide-y rounded-md border" data-testid={`proposals-list-${origin}`}>
           {rows.map((row) => (
             <li key={`${row.origin}:${row.id}`}>
-              <Link
-                to={row.deepLinkUrl}
+              <button
+                type="button"
+                onClick={() => onOpenRow(row)}
                 data-testid={`proposals-row-${row.origin}-${row.id}`}
                 data-deeplink={row.deepLinkUrl}
                 aria-label={t('proposals.openRow', { title: row.title })}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/50',
+                  'flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50',
                 )}
               >
                 <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -184,7 +200,7 @@ function ProposalSourceGroup({
                   {t('proposals.review')}
                   <ChevronRight className="h-3.5 w-3.5" />
                 </span>
-              </Link>
+              </button>
             </li>
           ))}
         </ul>

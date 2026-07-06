@@ -116,6 +116,7 @@
     "count": "{{count}} chapter",
     "count_other": "{{count}} chapters",
     "import": "Import",
+    "importPdf": "Import PDF",
     "new": "New Chapter",
     "col": {
       "title": "Title",

@@ -21,6 +21,9 @@ interface Props {
   panels: StudioPanelDef[];
   onOpenQuickOpen: () => void;
   onOpenPanel: (panelId: string) => void;
+  /** #19 — Help group: re-run the role picker / start the guided tour. */
+  onChooseYourFocus: () => void;
+  onStartGuidedTour: () => void;
 }
 
 const RECENT_MAX = 5;
@@ -30,7 +33,7 @@ const toEntry = (c: StudioCommand, idPrefix = ''): PaletteEntry => ({
   id: `${idPrefix}${c.id}`, label: c.label, sublabel: c.description, group: c.group,
 });
 
-export function CommandPalette({ open, onClose, chrome, panels, onOpenQuickOpen, onOpenPanel }: Props) {
+export function CommandPalette({ open, onClose, chrome, panels, onOpenQuickOpen, onOpenPanel, onChooseYourFocus, onStartGuidedTour }: Props) {
   const { t } = useTranslation('studio');
   const [query, setQuery] = useState('');
   const [recentIds, setRecentIds] = useState<string[]>([]);
@@ -38,8 +41,8 @@ export function CommandPalette({ open, onClose, chrome, panels, onOpenQuickOpen,
   useEffect(() => { if (open) setQuery(''); }, [open]);
 
   const commands = useMemo(
-    () => buildStudioCommands({ chrome, panels, onOpenPanel, onOpenQuickOpen, t }),
-    [chrome, panels, onOpenPanel, onOpenQuickOpen, t],
+    () => buildStudioCommands({ chrome, panels, onOpenPanel, onOpenQuickOpen, onChooseYourFocus, onStartGuidedTour, t }),
+    [chrome, panels, onOpenPanel, onOpenQuickOpen, onChooseYourFocus, onStartGuidedTour, t],
   );
 
   const entries: PaletteEntry[] = useMemo(() => {

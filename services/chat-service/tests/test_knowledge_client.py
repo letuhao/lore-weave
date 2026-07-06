@@ -312,6 +312,31 @@ class TestKnowledgeClientBodyNormalisation:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_current_chapter_id_forwarded_when_present(self):
+        """M1b: an editor turn's open chapter rides the body for the
+        working-scope boost."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(
+            user_id="u", message="hi",
+            current_chapter_id="00000000-0000-0000-0000-0000000000ab",
+        )
+        body = self._json_body(captured[0])
+        assert body["current_chapter_id"] == "00000000-0000-0000-0000-0000000000ab"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_current_chapter_id_omitted_when_absent(self):
+        """Non-editor turns (no chapter) never send the field → older
+        knowledge-service byte-identical, and no empty-string 422."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi", current_chapter_id=None)
+        body = self._json_body(captured[0])
+        assert "current_chapter_id" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_long_message_truncated_to_max(self):
         captured: list = []
         client = _make_client(_capture(captured))
@@ -364,6 +389,28 @@ class TestKnowledgeClientBodyNormalisation:
         assert "project_ids" not in body
         await client.aclose()
 
+    @pytest.mark.asyncio
+    async def test_grounding_true_omits_field_backcompat(self):
+        """T5: grounding=True (default) omits the field so an older knowledge-service
+        without the `grounding` param is byte-identical to before."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi")  # default grounding=True
+        body = self._json_body(captured[0])
+        assert "grounding" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_grounding_false_forwarded_to_body(self):
+        """T5: the intent gate's gate-OUT decision is forwarded so the builder serves
+        the light static path (skips the expensive retrieval)."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="give me a plan", grounding=False)
+        body = self._json_body(captured[0])
+        assert body["grounding"] is False
+        await client.aclose()
+
     @staticmethod
     def _json_body(request: httpx.Request) -> dict:
         import json as _json
@@ -371,6 +418,62 @@ class TestKnowledgeClientBodyNormalisation:
 
 
 # ── headers ────────────────────────────────────────────────────────────────
+
+
+class TestResolveBookId:
+    """T5 (audit) — project→book_id resolution for the entity-presence gate."""
+
+    @pytest.mark.asyncio
+    async def test_resolves_and_caches(self):
+        calls = {"n": 0}
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            assert "/internal/context/project-book/" in str(req.url)
+            assert "user_id=u1" in str(req.url)
+            return httpx.Response(200, json={"book_id": "book-123"})
+
+        client = _make_client(handler)
+        try:
+            a = await client.resolve_book_id(user_id="u1", project_id="proj-9")
+            b = await client.resolve_book_id(user_id="u1", project_id="proj-9")
+        finally:
+            await client.aclose()
+        assert a == "book-123" and b == "book-123"
+        assert calls["n"] == 1  # second call served from cache
+
+    @pytest.mark.asyncio
+    async def test_no_book_returns_none_cached(self):
+        client = _make_client(_ok_response({"book_id": None}))
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="p") is None
+        finally:
+            await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_none_not_cached(self):
+        state = {"fail": True}
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            if state["fail"]:
+                return httpx.Response(500, text="boom")
+            return httpx.Response(200, json={"book_id": "b"})
+
+        client = _make_client(handler)
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="p") is None
+            state["fail"] = False
+            assert await client.resolve_book_id(user_id="u", project_id="p") == "b"  # retried
+        finally:
+            await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_project_id_returns_none(self):
+        client = _make_client(_ok_response({"book_id": "b"}))
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="") is None
+        finally:
+            await client.aclose()
 
 
 class TestKnowledgeClientHeaders:

@@ -12,6 +12,7 @@ import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ImportDialog } from '@/components/import/ImportDialog';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
+import { PdfImportWizard } from '@/features/pdf-import/PdfImportWizard';
 
 interface ChaptersTabProps {
   bookId: string;
@@ -34,6 +35,9 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
 
   // Import dialog
   const [importOpen, setImportOpen] = useState(false);
+
+  // PDF import wizard — docs/specs/2026-07-06-pdf-book-import.md
+  const [pdfImportOpen, setPdfImportOpen] = useState(false);
 
   // Extraction wizard
   const [extractChapterId, setExtractChapterId] = useState<string | null>(null);
@@ -66,7 +70,9 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       setNewTitle('');
       setNewLang('');
       setNewBody('');
-      navigate(`/books/${bookId}/chapters/${created.chapter_id}/edit`);
+      // #16 1.5 — same rationale as the row-click/pencil-icon flip below: a newly created chapter
+      // opens in Studio, not the legacy editor.
+      navigate(`/books/${bookId}/studio?chapter=${created.chapter_id}`);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -140,8 +146,11 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       className: 'w-36 text-right',
       render: (ch) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          {/* #16 1.5 — opens the Writing Studio focused on this chapter, not the legacy editor
+              route (spec 16 M3: Phase 1 data-safety parity reached, so Studio is no longer
+              strictly worse). The legacy route stays reachable directly by URL until Phase 4. */}
           <Link
-            to={`/books/${bookId}/chapters/${ch.chapter_id}/edit`}
+            to={`/books/${bookId}/studio?chapter=${ch.chapter_id}`}
             className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('chapters.action.edit')}
           >
@@ -196,6 +205,13 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
             {t('chapters.import')}
           </button>
           <button
+            onClick={() => setPdfImportOpen(true)}
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {t('chapters.importPdf')}
+          </button>
+          <button
             onClick={() => setCreateOpen(true)}
             data-testid="chapter-add-button"
             className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
@@ -243,7 +259,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
           columns={columns}
           data={chapters}
           rowKey={(ch) => ch.chapter_id}
-          onRowClick={(ch) => navigate(`/books/${bookId}/chapters/${ch.chapter_id}/edit`)}
+          onRowClick={(ch) => navigate(`/books/${bookId}/studio?chapter=${ch.chapter_id}`)}
         />
       )}
 
@@ -324,6 +340,14 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         onOpenChange={setImportOpen}
         bookId={bookId}
         onImported={() => invalidate()}
+      />
+
+      {/* PDF import wizard — docs/specs/2026-07-06-pdf-book-import.md */}
+      <PdfImportWizard
+        open={pdfImportOpen}
+        onOpenChange={setPdfImportOpen}
+        bookId={bookId}
+        onComplete={() => invalidate()}
       />
 
       <ExtractionWizard

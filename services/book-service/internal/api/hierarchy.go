@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -18,10 +19,16 @@ import (
 //          construct the HierarchyPathsPayload the persist-pass2
 //          handler expects.
 //
-// Legacy chapters (NULL part_id from pre-P1 imports) return part=null
-// + scenes=[]; worker-ai treats that as "skip P3 enqueue" so the
-// summarize_processor doesn't churn re-enqueue cycles on chapters that
-// can't be summarized yet.
+// Undecomposed chapters (NULL part_id / NULL structural_path from pre-P1
+// imports) get a DETERMINISTIC synthesized single implicit part
+// ("book/part-1") + a synthesized chapter path, so the P3
+// Book→Part→Chapter summary pipeline runs for legacy/flat books instead
+// of silently opting out (D-KG-SUMMARIES-TARGET-NOOP — the majority of
+// imported novels had NO part tier, so their chapter summaries never
+// generated and "where is X at chapter N" recall punted). MERGE-on-path
+// is idempotent + deterministic, so a later real decomposition reuses
+// the same node (no graph drift). scenes stay []; :MENTIONED_IN then
+// targets :Chapter directly (D6 fallback).
 
 type hierarchyBook struct {
 	ID    string  `json:"id"`
@@ -182,12 +189,11 @@ ORDER BY sort_order
 		Index: chapterSortOrder, SortOrder: chapterSortOrder,
 	}
 	var part *hierarchyPart
-	if partID != nil && partPath != nil && partSortOrder != nil {
-		part = &hierarchyPart{
-			ID: partID.String(), Path: *partPath,
-			Index: *partSortOrder, Title: partTitle,
-		}
-	}
+	part, bookParts, chapter.Path = resolveHierarchyPart(
+		bookID,
+		partID, partPath, partSortOrder, partTitle,
+		chapter.Path, chapterSortOrder, bookParts,
+	)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"book":       book,
@@ -196,4 +202,48 @@ ORDER BY sort_order
 		"scenes":     scenes,
 		"book_parts": bookParts,
 	})
+}
+
+// resolveHierarchyPart returns the part a chapter attaches to, the (possibly
+// extended) book_parts list, and the (possibly synthesized) chapter path.
+//
+// A decomposed chapter (real part_id) passes through unchanged. An UNDECOMPOSED
+// chapter (NULL part_id / structural_path — the common legacy/flat-book case)
+// gets a DETERMINISTIC single implicit part "book/part-1"
+// (part_id = uuidv5(book_id,"book/part-1")) + a synthesized chapter path, so
+// the P3 Book→Part→Chapter summary pipeline runs instead of silently opting out
+// (D-KG-SUMMARIES-TARGET-NOOP). MERGE-on-path is idempotent + deterministic, so
+// a later real decomposition reuses the node — no graph drift. Pure (no DB) so
+// the synthesis decision is unit-testable without a pool mock.
+func resolveHierarchyPart(
+	bookID uuid.UUID,
+	partID *uuid.UUID, partPath *string, partSortOrder *int, partTitle *string,
+	chapterPath *string, chapterSortOrder int,
+	bookParts []hierarchyPart,
+) (*hierarchyPart, []hierarchyPart, *string) {
+	if partID != nil && partPath != nil && partSortOrder != nil {
+		return &hierarchyPart{
+			ID: partID.String(), Path: *partPath,
+			Index: *partSortOrder, Title: partTitle,
+		}, bookParts, chapterPath
+	}
+	const synthPartPath = "book/part-1"
+	synthPartID := uuid.NewSHA1(bookID, []byte(synthPartPath))
+	part := &hierarchyPart{
+		ID: synthPartID.String(), Path: synthPartPath, Index: 1, Title: nil,
+	}
+	// The is_last_chapter_of_book tail enqueues one summary.part per book_parts
+	// entry — a flat book's parts query is empty, so include the synthetic part
+	// for the book-summary roll-up. If real parts exist (mixed book) leave them.
+	if len(bookParts) == 0 {
+		bookParts = append(bookParts, *part)
+	}
+	// Synthesize the chapter's structural path when it was never decomposed
+	// (NULL structural_path) so :Chapter MERGEs under the implicit part.
+	// chapter_index (knowledge payload ge=1) is the ≥1 sort_order.
+	if chapterPath == nil {
+		cp := fmt.Sprintf("%s/chapter-%d", synthPartPath, chapterSortOrder)
+		chapterPath = &cp
+	}
+	return part, bookParts, chapterPath
 }

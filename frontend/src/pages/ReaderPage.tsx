@@ -3,15 +3,11 @@ import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next';
 import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun } from 'lucide-react';
 import { useAuth } from '@/auth';
-import { booksApi, type Book, type Chapter } from '@/features/books/api';
-import { versionsApi } from '@/features/translation/api';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
-import { TOCSidebar, type LanguageOption } from '@/components/reader/TOCSidebar';
+import { TOCSidebar } from '@/components/reader/TOCSidebar';
 import { ThemeCustomizer } from '@/components/reader/ThemeCustomizer';
 import { TTSBar } from '@/components/reader/TTSBar';
 import { TTSSettings } from '@/components/reader/TTSSettings';
-import type { JSONContent } from '@tiptap/react';
-import { extractText } from '@/lib/tiptap-utils';
 import { useReaderTheme } from '@/providers/ThemeProvider';
 import { useTTSState, useTTSControls } from '@/hooks/useTTS';
 import { useReadingTracker } from '@/hooks/useReadingTracker';
@@ -19,26 +15,7 @@ import { useBlockScroll } from '@/hooks/useBlockScroll';
 import { useTTSShortcuts } from '@/hooks/useTTSShortcuts';
 import { extractSpeakableBlocks } from '@/lib/audio-utils';
 import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
-
-/** CJK Unicode ranges: CJK Unified Ideographs, Hiragana, Katakana, Hangul */
-const CJK_REGEX = /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/;
-
-function computeReadingStats(blocks: JSONContent[], language?: string) {
-  const text = blocks.map((b) => extractText(b)).join(' ');
-  const isCJK = CJK_REGEX.test(text) || ['ja', 'zh', 'ko'].includes(language ?? '');
-
-  if (isCJK) {
-    // CJK: count characters (excluding spaces/punctuation), ~400 chars/min
-    const chars = text.replace(/[\s\p{P}]/gu, '').length;
-    const minutes = Math.max(1, Math.round(chars / 400));
-    return { count: chars.toLocaleString(), unit: 'chars', minutes };
-  }
-
-  // Latin: count words, ~230 wpm
-  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-  const minutes = Math.max(1, Math.round(words / 230));
-  return { count: words.toLocaleString(), unit: 'words', minutes };
-}
+import { useBookReaderContent, computeReadingStats } from '@/features/books/hooks/useBookReaderContent';
 
 export function ReaderPage() {
   const { t } = useTranslation('reader');
@@ -51,28 +28,37 @@ export function ReaderPage() {
   const sentinelRef = useReadingTracker({ bookId, chapterId, accessToken });
   const navigate = useNavigate();
   const { cssVars: readerCssVars, theme: readerTheme } = useReaderTheme();
-  const [originalBlocks, setOriginalBlocks] = useState<JSONContent[]>([]);
-  const [blocks, setBlocks] = useState<JSONContent[]>([]);
-  const [chapter, setChapter] = useState<Chapter | null>(null);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [book, setBook] = useState<Book | null>(null);
+
+  // C3 — content-bootstrapping (book/chapters/chapter/blocks/languages/readProgress/loading)
+  // extracted into useBookReaderContent() (docs/specs/2026-07-01-writing-studio/
+  // 14_utility_panels.md Phase C3) so this page and the studio `book-reader` dock panel
+  // (BookReaderPanel) share one fetch/state implementation instead of forking it.
+  const {
+    book,
+    chapters,
+    chapter,
+    blocks,
+    languages,
+    activeLanguage,
+    langLoading,
+    readProgress,
+    loading,
+    handleLanguageChange,
+    currentIdx,
+    prevCh,
+    nextCh,
+    progress,
+  } = useBookReaderContent(bookId, chapterId);
+
+  // UI-only toggle state — stays page-local (Tier-1), not hoisted into the shared hook.
   const [tocOpen, setTocOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [ttsSettingsOpen, setTtsSettingsOpen] = useState(false);
   const [showIndices, setShowIndices] = useState(() => localStorage.getItem('lw_reader_indices') === 'true');
-  const [loading, setLoading] = useState(true);
   const [autoNextEnabled, setAutoNextEnabled] = useState(() => localStorage.getItem('lw_reader_auto_next') !== 'false');
   const [autoScrollTTS, setAutoScrollTTS] = useState(() => localStorage.getItem('lw_reader_tts_scroll') !== 'false');
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const chapterEndRef = useRef<HTMLDivElement>(null);
-
-  // Language state
-  const [languages, setLanguages] = useState<LanguageOption[]>([]);
-  const [activeLanguage, setActiveLanguage] = useState('');
-  // Map: language code → active translation version ID
-  const [langVersionMap, setLangVersionMap] = useState<Record<string, string>>({});
-  const [langLoading, setLangLoading] = useState(false);
-  const [readProgress, setReadProgress] = useState<import('@/features/books/api').ReadingProgress[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // TTS playback
@@ -119,85 +105,6 @@ export function ReaderPage() {
     return active?.text || active?.subtitle || '';
   }, [blocks, ttsState.activeBlockId]);
 
-  useEffect(() => {
-    if (!accessToken) return;
-    setLoading(true);
-    Promise.all([
-      booksApi.getBook(accessToken, bookId),
-      booksApi.getDraft(accessToken, bookId, chapterId),
-      booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 100 }),
-      versionsApi.listChapterVersions(accessToken, chapterId).catch(() => null),
-      booksApi.getReadingProgress(accessToken, bookId).catch(() => ({ items: [] })),
-    ]).then(([b, d, chs, versions, rp]) => {
-      setReadProgress(rp.items);
-      setBook(b);
-      const body = d.body as JSONContent | null;
-      const origBlocks = body?.content ?? [];
-      setOriginalBlocks(origBlocks);
-      setBlocks(origBlocks);
-      setChapter(chs.items.find((c) => c.chapter_id === chapterId) ?? null);
-      setChapters(chs.items);
-
-      // Build language options
-      const origLang = b.original_language ?? 'original';
-      const langs: LanguageOption[] = [{ code: origLang, isOriginal: true }];
-      const versionMap: Record<string, string> = {};
-      if (versions?.languages) {
-        for (const g of versions.languages) {
-          if (g.target_language !== origLang) {
-            langs.push({ code: g.target_language, isOriginal: false });
-          }
-          if (g.active_id) {
-            versionMap[g.target_language] = g.active_id;
-          }
-        }
-      }
-      setLanguages(langs);
-      setLangVersionMap(versionMap);
-      setActiveLanguage(origLang);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, [accessToken, bookId, chapterId]);
-
-  /** Convert flat translated text to paragraph blocks for ContentRenderer */
-  const textToBlocks = useCallback((text: string): JSONContent[] => {
-    return text.split(/\n\n+/).filter(Boolean).map((p) => ({
-      type: 'paragraph',
-      content: [{ type: 'text', text: p }],
-    }));
-  }, []);
-
-  /** Switch reading language */
-  const handleLanguageChange = useCallback(async (lang: string) => {
-    setActiveLanguage(lang);
-    const origLang = book?.original_language ?? 'original';
-    if (lang === origLang) {
-      setBlocks(originalBlocks);
-      return;
-    }
-    const versionId = langVersionMap[lang];
-    if (!versionId || !accessToken) return;
-    setLangLoading(true);
-    try {
-      const version = await versionsApi.getChapterVersion(accessToken, chapterId, versionId);
-      if (version.translated_body_format === 'json' && Array.isArray(version.translated_body_json)) {
-        // Phase 8F: block-level JSONB translation — render natively
-        setBlocks(version.translated_body_json as JSONContent[]);
-      } else if (version.translated_body) {
-        // Legacy: plain text → synthetic paragraph blocks
-        setBlocks(textToBlocks(version.translated_body));
-      }
-    } catch {
-      setBlocks(originalBlocks);
-      setActiveLanguage(origLang);
-    } finally {
-      setLangLoading(false);
-    }
-  }, [book, originalBlocks, langVersionMap, accessToken, chapterId, textToBlocks]);
-
-  const currentIdx = chapters.findIndex((c) => c.chapter_id === chapterId);
-  const prevCh = currentIdx > 0 ? chapters[currentIdx - 1] : null;
-  const nextCh = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
-  const progress = chapters.length > 0 ? ((currentIdx + 1) / chapters.length) * 100 : 0;
   const chapterLang = chapter?.original_language;
   const stats = useMemo(() => computeReadingStats(blocks, chapterLang ?? undefined), [blocks, chapterLang]);
 
@@ -360,9 +267,23 @@ export function ReaderPage() {
       {/* P5: the book-scoped glossary assistant (floating dock → embedded chat). */}
       {bookId && <BookAssistantDock bookId={bookId} />}
 
-      {/* Reading area — reader theme applied here, chrome stays on app theme */}
-      <div ref={scrollRef} className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px', background: readerTheme.bg, color: readerTheme.fg, ...readerCssVars as React.CSSProperties }}>
-        <article style={{ maxWidth: 'var(--reader-width, 680px)', width: '100%' }}>
+      {/* Reading area — reader theme applied here, chrome stays on app theme.
+          D-READER-WIDTH-SCALE: see BookReaderPanel.tsx for why `cqw` (container-relative, not
+          `vw`) and why `--reader-effective-width` is set ONCE here and consumed by both the
+          article AND ContentRenderer's `.content-renderer` (reader.css) — same shared reader
+          chrome, same fixed-width-wastes-space fix, kept consistent across both consumers
+          (DOCK-2 no-fork). */}
+      <div
+        ref={scrollRef}
+        className="flex flex-1 justify-center overflow-y-auto"
+        style={{
+          padding: '64px 24px 120px', background: readerTheme.bg, color: readerTheme.fg,
+          containerType: 'inline-size',
+          '--reader-effective-width': 'clamp(var(--reader-width, 680px), 85cqw, 1100px)',
+          ...readerCssVars as React.CSSProperties,
+        } as React.CSSProperties}
+      >
+        <article style={{ maxWidth: 'var(--reader-effective-width)', width: '100%' }}>
 
           {/* Chapter header */}
           <div className="chapter-header">

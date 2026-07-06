@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     audio_cleanup_interval_hours: int = 4  # How often to run cleanup
     internal_service_token: str
     statistics_service_internal_url: str = "http://statistics-service:8089"
+    composition_service_internal_url: str = "http://composition-service:8092"
     redis_url: str = "redis://redis:6379"
     port: int = 8090
 
@@ -50,12 +51,118 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_steering_timeout_s: float = 2.0
 
+    # T5 (Context Budget Law D2) — entity-presence intent gate. chat-service reads
+    # the book's known-entity token set from glossary-service's internal route and
+    # caches it in-process (A3: no new table). Used ONLY to decide whether a turn's
+    # message references book lore → whether the expensive grounding pull is worth
+    # it. Failure degrades to "gate open" (bias-to-include), so the turn is never
+    # harmed by a glossary outage.
+    glossary_service_url: str = "http://glossary-service:8088"
+    known_entities_timeout_s: float = 2.0
+    known_entities_cache_ttl_s: float = 300.0
+    # T5 intent gate. As of 2026-07-06 (D-LONG-WORK-CONTEXT-MODE) this is a deploy
+    # KILL-SWITCH / CEILING, not the enablement knob — per the Settings & Config
+    # Boundary (env = ceiling, not a per-user behavior toggle). Default TRUE (deploy
+    # allows); the actual per-turn enablement is the `context.mode` auto-detect
+    # (`context_autodetect.resolve_context_pressure`): effective = AND(this, auto).
+    # So on a small/thin book `mode=auto` keeps it OFF (the 2026-07-04 audit case,
+    # unchanged) and on a big-lore book it turns ON. Set False to force-kill globally.
+    t5_intent_gate_enabled: bool = True
+
+    # ── T6/D13a (Context Budget Law) — reversible dup-read collapse ──────────────
+    # When a compaction pass fires AND this is ON, collapse EXACT-duplicate tool results
+    # (the model re-read an unchanged resource) to a reference, keeping the latest full copy
+    # — pure-waste reduction that loses no information and can't orphan a tool pair (it only
+    # rewrites content). Raw turns stay in Postgres (reversible; this is the send-time view).
+    # DEFAULT OFF for staged rollout on the load-bearing compaction path; flip on with the
+    # T5-phase measurement. Fires ONLY when compaction already triggered (over budget), so it
+    # is inert on normal turns even when enabled.
+    compact_collapse_duplicates_enabled: bool = False
+
+    # ── T6/D7 (Context Budget Law) — single-item tool-result overflow ceiling ────
+    # A single MCP tool result that ALONE exceeds this many estimated tokens is withheld
+    # at the dispatch site and replaced with a self-correcting overflow notice (re-call
+    # with detail=summary / limit / fields / a range) — never a silent truncation, never a
+    # window-blowing dump (the 146K case class). Applies ONLY to re-requestable data-dump
+    # results, NOT to generative outputs (compose prose). Default 8000 (~32KB of text — a
+    # single result that large is already pathological; normal results are <2K). 0 disables.
+    tool_result_token_cap: int = 8000
+
+    # ── T4 (Context Budget Law D4/D5) — story_state Core Memory Block ────────────
+    # When ON, chat-service maintains a cached, bounded `story_state` block per session
+    # (chat_session_blocks, owner-scoped + OCC) distilled from the message-INDEPENDENT
+    # grounding prefix (kctx.stable_context), refreshed on cadence/hash (D5), and projects
+    # it as a tail block ONLY when the live grounding prefix is EMPTY — the degraded /
+    # gated-empty safety net (D4: a turn that lost its live bible still carries the last
+    # good one). As of 2026-07-06 this is a deploy KILL-SWITCH / CEILING (default TRUE),
+    # AND-ed with the `context.mode` auto-detect: effective = AND(this, grounding_enabled,
+    # _ctx_tiers_allowed). So it projects the net only when auto-detect turns the tiers on
+    # (a big-lore book) AND grounding is on — inert on small books (the block would just
+    # duplicate the live prefix there). Set False to force-kill globally.
+    story_state_block_enabled: bool = True
+
+    # ── T2/D3 (Context Budget Law) — task-elastic compaction trigger ────────────
+    # Today compaction fires at 0.75×effective_limit (near the window). With this
+    # ON, it instead fires at the task-elastic `compute_target` (a SOFT budget far
+    # below the window): a lore/continuity turn keeps a roomy target, a status-op /
+    # smalltalk turn a leaner one — so a light turn compacts sooner (token win).
+    # DEFAULT OFF (reverted 2026-07-04 by the optimization sweep — SUPERSEDED by C_persist).
+    # The ephemeral task-elastic compaction re-summarizes the full history EVERY turn (it does
+    # not persist), so on a long session it made ~11 summarizer calls (62% overhead) + 7×
+    # latency at EQUAL recall — a net cost/latency REGRESSION vs the flat trigger
+    # (docs/eval/context-budget/OPTIMIZATION-RESULTS-2026-07-04.md). `compact_persist_enabled`
+    # replaces it: compact ONCE, persist, reuse. Set True only to A/B the old ephemeral path.
+    # `task_weight` for a NON-grounding turn is `compact_light_task_weight` (grounding → 1.0).
+    compact_task_elastic_enabled: bool = False
+    compact_light_task_weight: float = 0.5
+
+    # T6/D6 — post-compaction recovery hint. On a turn where compaction summarized
+    # earlier turns, inject a system hint telling the model the raw history is
+    # recoverable via the `conversation_search` tool (so a lossy summary that dropped a
+    # specific fact leads to a SEARCH, not a guess/omission). DEFAULT OFF: a live A/B
+    # (docs/eval/context-budget/T2-compaction-trigger-2026-07-04.md) found gemma-4-26b
+    # IGNORES the hint — across 4 compacted runs it never called conversation_search
+    # (weak local-model tool-use), so the hint adds ~60 tok/compacted-turn with no benefit
+    # FOR OUR MODELS. Kept + flagged for a future stronger tool-following model to enable
+    # and re-validate; independent of `compact_task_elastic_enabled`.
+    compact_recovery_hint_enabled: bool = False
+
+    # C_persist (T2 optimization) — PERSISTENT automatic compaction. When ON, a turn whose live
+    # history exceeds the target persists the compact ({compact_summary, compacted_before_seq})
+    # BEFORE loading, so later turns load the summary (via the W3 loader) instead of
+    # re-summarizing the raw history EVERY turn — fixing the 62%-summarizer-overhead regression
+    # the optimization sweep found (docs/eval/context-budget/OPTIMIZATION-RESULTS-2026-07-04.md).
+    # DEFAULT ON (adopted 2026-07-04 — the optimization sweep WINNER; persist threshold =
+    # compute_target(context_length)). On S1 (15-turn) it compacted ONCE then reused: ~46%
+    # cheaper than the flat trigger + ~55% vs task-elastic, at C1-fast latency, EQUAL recall.
+    # 30-turn multi-persist-cycle test: recall stable 7/9 across the summary-of-summary fold,
+    # blind judge depth 5/5 · consistency 5/5 · no confabulation · no degradation — the agent
+    # stays smart post-compression. Set False to restore no-persist (ephemeral tiers only).
+    compact_persist_enabled: bool = True
+
+    # T6/D6 — compaction BREADCRUMB. Before the lossy LLM summarizer runs, a DETERMINISTIC
+    # extractor (compaction.extract_breadcrumb) pulls the highest-value, most-often-dropped
+    # facts (number-bearing sentences, quoted names, proper-noun phrases) VERBATIM from the
+    # turns being compacted away and leads the summary with them. Fixes the root cause the
+    # T2 light-target A/B found: a lossy summary drops a fact ENTIRELY → the model has no
+    # trace it existed → can't answer or even know to recover it (user insight 2026-07-04).
+    # Deterministic (immune to summarizer variance), ~150 tok. Default ON — a strict
+    # reliability improvement to any compaction that summarizes.
+    compact_breadcrumb_enabled: bool = True
+
     # Agent Extensibility Registry (P1) — user/book prompt-only skills. chat-service
     # reads /internal/skills and injects them alongside the built-in SYSTEM_SKILLS,
     # honouring per-user disable + shadow. EVERY failure degrades to "constants only"
     # (the built-in skills still work), so a registry outage never breaks a turn.
     agent_registry_url: str = "http://agent-registry-service:8099"
     agent_registry_timeout_s: float = 2.0
+
+    # Context Budget Law sealed-decision #1 — retrieval mode is `prepend`/`hybrid` for ALL
+    # by default (true `pull`/JIT is deferred to a future strong-model capability). Surfaced
+    # in the per-turn contextBudget frame so the Inspector shows WHICH retrieval discipline
+    # ran (the D1 substrate flips this to `pull` when a strong-model pull mode lands). Not a
+    # model name (provider-gate exempt) — a retrieval-strategy label.
+    retrieval_mode: str = "prepend"
 
     # ARCH-1 C3 — default stream event format when a request sends no
     # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or

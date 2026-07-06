@@ -16,7 +16,7 @@ import logging
 import os
 from uuid import UUID
 
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from loreweave_jobs import emit_job_event_safe
 from loreweave_llm.attribution import set_public_key_attribution
@@ -816,11 +816,10 @@ async def _process_extraction_chapter(
     _ch_start = _time.monotonic()
 
     # 1. Fetch chapter from book-service
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=30, write=30, pool=5)) as client:
+    async with build_internal_client(settings.book_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30, connect_timeout_s=10) as client:
         r = await client.get(
             f"{settings.book_service_internal_url}"
             f"/internal/books/{book_id}/chapters/{chapter_id}",
-            headers={"X-Internal-Token": settings.internal_service_token},
         )
     if r.status_code != 200:
         raise RuntimeError(f"book-service returned {r.status_code} for chapter {chapter_id}")
@@ -1298,11 +1297,10 @@ async def _process_extraction_chapter(
     # supersedes them). Re-fetch + re-hash; on drift, skip the writeback. Best-effort:
     # a re-fetch failure does not abort (the writeback_key still guards double-apply).
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=30, write=30, pool=5)) as client:
+        async with build_internal_client(settings.book_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30, connect_timeout_s=10) as client:
             rr = await client.get(
                 f"{settings.book_service_internal_url}"
                 f"/internal/books/{book_id}/chapters/{chapter_id}",
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
         if rr.status_code == 200:
             current_hash = hashlib.sha256(prepare_chapter_text(rr.json()).encode("utf-8")).hexdigest()

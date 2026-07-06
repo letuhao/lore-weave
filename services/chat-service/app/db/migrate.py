@@ -193,6 +193,23 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Provider Context Strategy §5 (Phase 2) — the stateful /v1/responses CHAIN HEAD.
+-- Set on an assistant row produced by a stateful turn; the "current head" for a
+-- (session, branch) is simply the latest assistant message carrying a non-NULL
+-- response_id, so branching (E7) and re-chain (E5) fall out for free — no separate
+-- table. NULL on stateless turns and all pre-migration rows (⇒ start a fresh chain).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='response_id') THEN
+    ALTER TABLE chat_messages ADD COLUMN response_id TEXT;
+  END IF;
+END $$;
+
+-- Chain-head lookup: newest non-NULL response_id per (session, branch). Partial index
+-- keeps it tiny (only stateful rows) and the DESC matches the ORDER BY sequence_num DESC.
+CREATE INDEX IF NOT EXISTS idx_chat_messages_chain_head
+  ON chat_messages (session_id, branch_id, sequence_num DESC)
+  WHERE response_id IS NOT NULL;
+
 -- Chat Quality Wave W3 — manual steerable compact, PERSISTED on the session
 -- (PO decision #2: multi-device consistent, unlike the per-turn ephemeral
 -- auto-compaction). `compact_summary` is the LLM synopsis of every message
@@ -289,6 +306,40 @@ CREATE INDEX IF NOT EXISTS idx_message_feedback_user
   ON message_feedback(user_id, created_at DESC);
 
 -- ══════════════════════════════════════════════════════════════════════
+-- T4 (Context Budget Law) — Core Memory Blocks. A per-session, owner-scoped
+-- cache of the always-on context blocks (sealed #3: `story_state` only first)
+-- so the Compiler can project the load-bearing lore gist as a SAFETY NET on a
+-- turn whose expensive build_context grounding was gated (T5) — the follow-up
+-- ("make it darker") never loses the lore the rewrite still needs (D4). Refreshed
+-- on a cadence (sealed #5: lore-gate / scene change / every 5 turns), projected
+-- from cache otherwise (D5 — no per-turn build_context round-trip).
+--   TENANCY (CLAUDE.md, LOCKED): owns its own owner_user_id; every read/write
+--   filters `session_id AND owner_user_id` (not join-only). UNIQUE per
+--   (session, owner, label) → one row per block.
+--   `version` is the OCC token (NET-NEW to chat-service — no prior PG OCC to
+--   copy): a compare-and-set guards a future agent-writable block against a
+--   multi-device stale clobber (D9); the auto-projected story_state cache uses
+--   a plain upsert (derived data, last-refresh-wins is safe).
+-- ══════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS chat_session_blocks (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  session_id      UUID NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  owner_user_id   UUID NOT NULL,
+  label           TEXT NOT NULL,              -- 'story_state' (the block key)
+  value           TEXT NOT NULL DEFAULT '',   -- the rendered block body
+  token_estimate  INT NOT NULL DEFAULT 0,     -- cached script-aware estimate of value
+  refreshed_turn  INT NOT NULL DEFAULT 0,     -- session message_count at last refresh (cadence)
+  source_hash     TEXT,                       -- hash of the grounding distilled from (skip no-op refresh)
+  version         INT NOT NULL DEFAULT 1,     -- OCC token (compare-and-set; net-new)
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (session_id, owner_user_id, label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_session_blocks_session
+  ON chat_session_blocks (session_id, owner_user_id);
+
+-- ══════════════════════════════════════════════════════════════════════
 -- Interview-Practice Roleplay (POC for roleplay-service).
 -- docs/specs/2026-06-23-interview-roleplay.md
 --
@@ -351,6 +402,69 @@ DO $$ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='activated_tools') THEN
     ALTER TABLE chat_sessions ADD COLUMN activated_tools TEXT[] NOT NULL DEFAULT '{}';
+  END IF;
+END $$;
+
+-- D-COMPOSE-SESSION-RESTORE: a book-scoped chat (e.g. the Writing Studio
+-- Compose panel) had no durable link to its book beyond the optional
+-- knowledge-project id — for a book with no KG project yet, project_id stays
+-- NULL forever, so the embedded binding logic could never find "the session
+-- for this book" and always forced a fresh Start-New-Chat prompt (losing the
+-- session AND its chosen model on every reopen). book_id is set at creation
+-- time when the caller knows which book it's for; NULL for chat-page/roleplay
+-- sessions that aren't book-scoped. No FK (books lives in loreweave_book, a
+-- different DB) — an unknown/deleted book_id is harmless (just an inert tag).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='book_id') THEN
+    ALTER TABLE chat_sessions ADD COLUMN book_id UUID;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_book
+  ON chat_sessions(book_id) WHERE book_id IS NOT NULL;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- Chat & AI settings unify (spec docs/specs/2026-07-05-chat-ai-settings.md).
+-- The Account tier for behavior/grounding/voice/context settings. Model
+-- account defaults deliberately stay in provider-registry `user_default_models`
+-- (one SoT per fact — not duplicated here). Tenancy (LOCKED): PK = owner_user_id
+-- (Per-user tier); one row per user; no shared/global user-writable row. The
+-- System tier (env ceilings, client-seed presets) lives elsewhere, read-only.
+-- `version` is the optimistic-concurrency guard for multi-device field-merge
+-- (PATCH is a deep field-merge, not blob last-write-wins).
+CREATE TABLE IF NOT EXISTS user_chat_ai_prefs (
+  owner_user_id  UUID PRIMARY KEY,
+  behavior       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  grounding      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  voice          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  context        JSONB NOT NULL DEFAULT '{"mode":"auto"}'::jsonb,
+  version        BIGINT NOT NULL DEFAULT 0,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Per-session overrides for the settings resolution cascade. NULL = inherit
+-- from the next tier down (Book ▸ Account ▸ System) — never a hidden default at
+-- this layer. Pre-migration rows are NULL ⇒ inherit, safe by design.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='grounding_enabled') THEN
+    ALTER TABLE chat_sessions ADD COLUMN grounding_enabled BOOLEAN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='voice_overrides') THEN
+    ALTER TABLE chat_sessions ADD COLUMN voice_overrides JSONB;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='context_overrides') THEN
+    ALTER TABLE chat_sessions ADD COLUMN context_overrides JSONB;
+  END IF;
+END $$;
+
+-- Tool-catalog-simplification Part D (CAT-4) — a per-SESSION manual escape
+-- hatch back to a `_meta.visibility:"legacy"` tool that find_tools can no
+-- longer discover. Session tier (SET-1): a user wants the old tool for THIS
+-- conversation, not a standing account preference. Server-validated closed-set
+-- (SET-6) against the live catalog at write time, not free text.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='pinned_legacy_tools') THEN
+    ALTER TABLE chat_sessions ADD COLUMN pinned_legacy_tools TEXT[] NOT NULL DEFAULT '{}';
   END IF;
 END $$;
 

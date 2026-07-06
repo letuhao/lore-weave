@@ -1,0 +1,35 @@
+{
+  "title": "排行榜",
+  "subtitle": "探索社区中最受欢迎的书籍、作者和翻译家。",
+  "tabs": {
+    "books": "热门书籍",
+    "authors": "作者",
+    "translators": "翻译家",
+    "trending": "趋势"
+  },
+  "period": {
+    "7d": "本周",
+    "30d": "本月",
+    "all": "总榜"
+  },
+  "filters": {
+    "allGenres": "所有类型",
+    "allLanguages": "所有语言"
+  },
+  "ranking": {
+    "fullRankings": "完整排名 — 热门书籍",
+    "readers": "读者数",
+    "favorites": "收藏数",
+    "ratings": "评分",
+    "chapters": "章节数",
+    "translations": "翻译数",
+    "rating": "评分",
+    "showMore": "查看更多排名",
+    "noResults": "暂无排名。开始阅读和翻译吧！"
+  },
+  "quickStats": {
+    "topAuthors": "顶尖作者",
+    "topTranslators": "顶尖翻译家",
+    "viewAll": "查看全部"
+  }
+}

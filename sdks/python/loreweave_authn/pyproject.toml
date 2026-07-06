@@ -1,0 +1,34 @@
+# Standalone package descriptor for loreweave_authn.
+#
+# The other sdks/python/loreweave_* packages are shipped under the shared
+# sdks/python/pyproject.toml distribution (registered in its
+# [tool.setuptools.packages.find] include list). This package ships its own
+# descriptor so it can be created without editing that shared file (the
+# migration step will add "loreweave_authn*" to the shared include list). Either
+# path works — tests run via `PYTHONPATH=sdks/python` and import the package
+# directly, no install required.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loreweave_authn"
+version = "0.1.0"
+description = "Shared platform user JWT verifier for LoreWeave Python services (HS256, alg-pinned, exp-required, sub→UUID)."
+requires-python = ">=3.11"
+dependencies = [
+  "PyJWT>=2.8",
+  "fastapi>=0.110",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+]
+
+[tool.setuptools.packages.find]
+include = ["loreweave_authn*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

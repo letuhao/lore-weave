@@ -55,10 +55,12 @@ from loreweave_extraction.schema_projection import ExtractionSchema
 from app.clients.book_client import get_book_client
 from app.clients.llm_client import LLMClient
 from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.entity_status import list_gone_entities
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
+from app.extraction.canon_check import check_extraction_canon
 from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
 
@@ -533,6 +535,78 @@ async def _maybe_apply_precision_filter(
         filtered.events,
         facts,
     )
+
+
+# ── D-KG-EXTRACTION-CANON-WIRE — quarantine gate (advisory, never blocks) ────
+
+
+async def _maybe_run_canon_check_gate(
+    session: CypherSession,
+    *,
+    text: str,
+    user_id: str,
+    project_id: str | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    llm_client: LLMClient,
+    job_logs_repo: JobLogsRepo | None,
+    job_id: str,
+    source_type: str,
+    source_id: str,
+) -> None:
+    """2026-07-06 — the extraction canon-check gate from the eval-validated POC
+    (`app/extraction/canon_check.py`; see docs/eval/canon-check-judge-2026-07-06.md).
+
+    Quarantine, not hard-block: a confirmed contradiction is logged to
+    ``job_logs`` (already wired to the Studio's JobLogsPanel) so it's visible
+    for human review — the write proceeds UNCHANGED regardless. Reuses the
+    SAME model already resolved for this extraction job (no new setting;
+    the eval found no reason to prefer a different/bigger model). Best-effort:
+    any failure here must never break real extraction (CC4 — a critic never
+    blocks on its own failure).
+    """
+    try:
+        gone = await list_gone_entities(session, user_id=user_id, project_id=project_id)
+        if not gone:
+            return
+        snapshot = {
+            "entities": [
+                {
+                    "entity_id": g["entity_id"],
+                    "name": g["name"],
+                    "canonical_name": g["canonical_name"],
+                    "status": "gone",
+                    "from_order": g["from_order"],
+                }
+                for g in gone
+            ]
+        }
+        candidates = await check_extraction_canon(
+            text, snapshot, llm=llm_client, user_id=user_id,
+            model_source=model_source, model_ref=model_ref,
+        )
+        for c in candidates:
+            if not c.confirmed:
+                continue
+            await _emit_log(
+                job_logs_repo, user_id, job_id,
+                f"Canon check: '{c.name}' referenced as active/present despite "
+                f"being marked gone at order {c.gone_from_order} -- {c.why}",
+                context={
+                    "event": "pass2_canon_flag",
+                    "source_type": source_type,
+                    "source_id": source_id,
+                    "entity_id": c.entity_id,
+                    "name": c.name,
+                    "span": c.span,
+                    "why": c.why,
+                },
+            )
+    except Exception:
+        logger.warning(
+            "D-KG-EXTRACTION-CANON-WIRE: canon-check gate failed (non-fatal)",
+            exc_info=True,
+        )
 
 
 # ── P2 (hierarchical extraction T3) — D3 cache integration ──────────────────
@@ -1108,6 +1182,15 @@ async def _run_pipeline(
             "facts": len(fact_cands),
             "duration_ms": int(gather_elapsed * 1000),
         },
+    )
+
+    # D-KG-EXTRACTION-CANON-WIRE — advisory gate, before the write (never
+    # blocks it; see _maybe_run_canon_check_gate's docstring).
+    await _maybe_run_canon_check_gate(
+        session, text=text, user_id=user_id, project_id=project_id,
+        model_source=model_source, model_ref=model_ref, llm_client=llm_client,
+        job_logs_repo=job_logs_repo, job_id=job_id,
+        source_type=source_type, source_id=source_id,
     )
 
     # Step 5 — write everything to Neo4j.

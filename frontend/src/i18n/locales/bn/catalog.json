@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "গল্প খুঁজুন",
+    "subtitle": "LoreWeave কমিউনিটির পাবলিক উপন্যাসগুলো ব্রাউজ করুন। বিভিন্ন ভাষার গল্প পড়ুন, অনুবাদ করুন এবং অন্বেষণ করুন।",
+    "search_placeholder": "শিরোনাম, লেখক বা ভাষা দিয়ে খুঁজুন...",
+    "search_aria": "ক্যাটালগ খুঁজুন",
+    "no_books": "কোনো বই পাওয়া যায়নি। অন্য কোনো সার্চ বা ফিল্টার চেষ্টা করুন।",
+    "load_failed": "ক্যাটালগ লোড করা সম্ভব হয়নি"
+  },
+  "filter": {
+    "lang_all": "সব",
+    "clear_genres": "জেনার মুছুন",
+    "books_found": "{{count}}টি বই পাওয়া গেছে",
+    "sort_aria": "বই সাজান",
+    "sort": {
+      "recent": "সবচেয়ে সাম্প্রতিক",
+      "popular": "সবচেয়ে জনপ্রিয়",
+      "chapters": "সবচেয়ে বেশি অধ্যায়",
+      "alpha": "বর্ণানুক্রমিক"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} অধ্যায়"
+  },
+  "detail": {
+    "breadcrumb_browse": "ব্রাউজ",
+    "public_badge": "পাবলিক",
+    "unlisted_badge": "আনলিস্টেড",
+    "chapters_count": "{{count}}টি অধ্যায়",
+    "available_languages": "উপলব্ধ ভাষা",
+    "original": "মূল",
+    "start_reading": "পড়া শুরু করুন",
+    "no_chapters_yet": "এখনো কোনো অধ্যায় নেই",
+    "share": "শেয়ার করুন",
+    "copy_link": "লিঙ্ক কপি করুন",
+    "loading": "লোড হচ্ছে...",
+    "chapters_heading": "অধ্যায়",
+    "no_chapters_available": "কোনো অধ্যায় উপলব্ধ নেই।",
+    "untitled": "শিরোনামহীন",
+    "words": "{{count}}টি শব্দ",
+    "showing_chapters": "{{total}}টি অধ্যায়ের মধ্যে {{from}}–{{to}}টি দেখানো হচ্ছে",
+    "stat_chapters": "অধ্যায়",
+    "stat_languages": "ভাষা",
+    "stat_original": "মূল",
+    "stat_published": "প্রকাশিত",
+    "na": "প্রযোজ্য নয়",
+    "book_not_found": "বই পাওয়া যায়নি",
+    "back_to_browse": "ব্রাউজে ফিরে যান",
+    "link_copied": "লিঙ্ক কপি করা হয়েছে",
+    "copy_failed": "কপি করা সম্ভব হয়নি",
+    "load_chapters_failed": "অধ্যায় লোড করা সম্ভব হয়নি"
+  },
+  "shared": {
+    "indicator": "আপনি একটি শেয়ার করা লিঙ্ক দেখছেন। এই বইটি পাবলিকলি তালিকাভুক্ত নয়।",
+    "invalid": "এই শেয়ার করা লিঙ্কটি ভুল অথবা মেয়াদোত্তীর্ণ হয়ে গেছে।",
+    "not_found": "শেয়ার করা লিঙ্কটি পাওয়া যায়নি বা মেয়াদোত্তীর্ণ হয়ে গেছে",
+    "browse_instead": "পরিবর্তে পাবলিক বইগুলো দেখুন",
+    "back_to_chapters": "অধ্যায়ে ফিরে যান",
+    "ch_short": "অধ্যায় {{n}}",
+    "load_chapter_failed": "অধ্যায় লোড করা সম্ভব হয়নি: {{error}}"
+  }
+}

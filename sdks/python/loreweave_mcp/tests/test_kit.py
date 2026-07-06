@@ -24,6 +24,8 @@ from loreweave_mcp import (
     MetaValidationError,
     NotAccessibleError,
     ToolContext,
+    TolerantArgs,
+    apply_response_contract,
     build_tool_context,
     is_owner_only,
     make_stateless_fastmcp,
@@ -247,6 +249,33 @@ def test_forbid_extra_rejects_unknown_field():
         Args(name="ok", user_id="injected")
 
 
+# ── TolerantArgs (IN-5, mcp-tool-io.md) ─────────────────────────────────
+
+
+def test_tolerant_args_drops_unknown_field_instead_of_rejecting():
+    class Args(TolerantArgs):
+        name: str
+
+    ok = Args(name="ok")
+    assert ok.name == "ok"
+    # A harmless hallucinated field must not hard-fail the call...
+    tolerated = Args(name="ok", old_value="stale")
+    assert tolerated.name == "ok"
+    # ...and it's genuinely dropped, not smuggled through as an attribute.
+    assert not hasattr(tolerated, "old_value")
+
+
+def test_tolerant_args_cannot_smuggle_identity_because_its_never_declared():
+    """Same guarantee as ForbidExtra, via a different mechanism: identity/scope
+    ids are never fields on the model, so an "injected" user_id is inert
+    whether it's rejected (ForbidExtra) or silently ignored (TolerantArgs)."""
+    class Args(TolerantArgs):
+        name: str
+
+    smuggled = Args(name="ok", user_id="not-mine")
+    assert not hasattr(smuggled, "user_id")
+
+
 # ── uniform_not_accessible (H13) ───────────────────────────────────────
 
 
@@ -444,6 +473,60 @@ async def test_project_guard_requires_envelope():
         await guard(tc)
 
 
+# ── L1/L2 tool-response contract (Context Budget Law §6b) ──────────────
+
+_ROWS = [
+    {"id": "1", "title": "Arc I", "version": 3, "synopsis": "a" * 400, "goal": "g1"},
+    {"id": "2", "title": "Ch 1", "version": 1, "synopsis": "b" * 400, "goal": "g2"},
+    {"id": "3", "title": "Ch 2", "version": 1, "synopsis": "c" * 400, "goal": "g3"},
+]
+_REF = ("id", "title", "version")
+
+
+def test_response_contract_full_is_unchanged():
+    out, meta = apply_response_contract(_ROWS, ref_fields=_REF, detail="full")
+    assert out == _ROWS
+    assert meta == {"detail": "full", "total": 3, "returned": 3, "truncated": 0}
+
+
+def test_response_contract_summary_drops_heavy_fields():
+    out, meta = apply_response_contract(_ROWS, ref_fields=_REF, detail="summary")
+    assert all("synopsis" not in it and "goal" not in it for it in out)
+    assert out[0] == {"id": "1", "title": "Arc I", "version": 3}
+    # the reference-first body is materially smaller than the full row
+    assert len(str(out)) < len(str(_ROWS)) * 0.5
+    assert meta["detail"] == "summary"
+
+
+def test_response_contract_limit_caps_and_reports_truncation():
+    out, meta = apply_response_contract(_ROWS, ref_fields=_REF, detail="summary", limit=2)
+    assert len(out) == 2
+    assert meta == {"detail": "summary", "total": 3, "returned": 2, "truncated": 1}
+
+
+def test_response_contract_limit_applies_to_full_too():
+    out, meta = apply_response_contract(_ROWS, ref_fields=_REF, detail="full", limit=1)
+    assert len(out) == 1
+    assert meta["truncated"] == 2
+
+
+def test_response_contract_summary_missing_ref_field_skipped_not_crash():
+    rows = [{"id": "1"}]  # no title/version present
+    out, _ = apply_response_contract(rows, ref_fields=_REF, detail="summary")
+    assert out == [{"id": "1"}]
+
+
+def test_response_contract_fields_allowlist_intersects():
+    out, _ = apply_response_contract(_ROWS, ref_fields=_REF, detail="full", fields=("id",))
+    assert out[0] == {"id": "1"}
+
+
+def test_response_contract_does_not_mutate_input():
+    out, _ = apply_response_contract(_ROWS, ref_fields=_REF, detail="full", fields=("id",))
+    out[0]["id"] = "MUT"
+    assert _ROWS[0]["id"] == "1"  # source row untouched
+
+
 @pytest.mark.asyncio
 async def test_project_guard_happy_no_owner_check():
     pid = uuid.uuid4()
@@ -615,3 +698,140 @@ def test_validate_tool_meta_rejects_bad_undo_hint_and_synonyms():
         validate_tool_meta({"tier": "A", "scope": "book", "undo_hint": {"no_tool": 1}})
     with pytest.raises(MetaValidationError):
         validate_tool_meta({"tier": "R", "scope": "none", "synonyms": "notalist"})
+
+
+# ── §13b response-shape snapshot guard ──────────────────────────────────────
+def test_build_shape_map_normalizes_and_sorts():
+    from loreweave_mcp import build_shape_map
+
+    out = build_shape_map({"B_REF": ("z", "a"), "A_REF": ["m", "b"]})
+    # keys sorted, each ref set sorted, tuples/lists both accepted
+    assert list(out.keys()) == ["A_REF", "B_REF"]
+    assert out["A_REF"] == ["b", "m"]
+    assert out["B_REF"] == ["a", "z"]
+
+
+def test_shape_snapshot_write_then_assert_and_drift_bites(tmp_path, monkeypatch):
+    """The guard must BITE on drift, not just pass on identical input — else a
+    silent re-bloat sails through (checklist-is-self-report anti-pattern)."""
+    import json as _json
+
+    from loreweave_mcp import assert_or_write_shape_snapshot, shape_snapshot
+
+    # a fake repo root (contracts/ + services/) so the helper resolves here
+    (tmp_path / "services").mkdir()
+    (tmp_path / "contracts").mkdir()
+    fake_test = tmp_path / "services" / "x-service" / "tests" / "t.py"
+    fake_test.parent.mkdir(parents=True)
+    fake_test.write_text("# marker", encoding="utf-8")
+
+    ref = {"FOO_REF": ("a", "b")}
+    # 1) missing snapshot + no WRITE → fails (never a silent green)
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    with pytest.raises(AssertionError, match="missing"):
+        assert_or_write_shape_snapshot("x", ref, test_file=str(fake_test))
+
+    # 2) WRITE regenerates then skips
+    monkeypatch.setenv("WRITE_MCP_SHAPES", "1")
+    with pytest.raises(pytest.skip.Exception):
+        assert_or_write_shape_snapshot("x", ref, test_file=str(fake_test))
+    snap = tmp_path / "contracts" / "mcp-response-shapes" / "x.json"
+    assert _json.loads(snap.read_text(encoding="utf-8")) == {"FOO_REF": ["a", "b"]}
+
+    # 3) identical input now passes
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    assert_or_write_shape_snapshot("x", ref, test_file=str(fake_test))
+
+    # 4) DRIFT (a heavy field added back) → the guard bites
+    with pytest.raises(AssertionError, match="drifted"):
+        assert_or_write_shape_snapshot(
+            "x", {"FOO_REF": ("a", "b", "heavy_body")}, test_file=str(fake_test)
+        )
+
+
+def test_shape_snapshot_coverage_scan_catches_unpinned_constant(tmp_path, monkeypatch):
+    """§13 coverage: a *_REF_FIELDS defined in a scanned module but absent from the
+    snapshot ref_sets must FAIL (an un-pinned ref set silently escapes the guard)."""
+    import types
+
+    from loreweave_mcp import assert_or_write_shape_snapshot
+
+    (tmp_path / "services").mkdir()
+    (tmp_path / "contracts").mkdir()
+    fake_test = tmp_path / "services" / "x-service" / "tests" / "t.py"
+    fake_test.parent.mkdir(parents=True)
+    fake_test.write_text("# marker", encoding="utf-8")
+
+    mod = types.ModuleType("fake_tool_mod")
+    mod.FOO_REF_FIELDS = ("a", "b")
+    mod.BAR_REF_FIELDS = ("c",)  # defined but NOT pinned below
+    mod.NOT_A_REF = ("z",)       # ignored (wrong suffix)
+
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    # write a snapshot with only FOO pinned
+    monkeypatch.setenv("WRITE_MCP_SHAPES", "1")
+    with pytest.raises(pytest.skip.Exception):
+        assert_or_write_shape_snapshot(
+            "x", {"FOO_REF_FIELDS": mod.FOO_REF_FIELDS}, test_file=str(fake_test)
+        )
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    # now scanning the module (which also defines BAR) must bite
+    with pytest.raises(AssertionError, match="BAR_REF_FIELDS"):
+        assert_or_write_shape_snapshot(
+            "x", {"FOO_REF_FIELDS": mod.FOO_REF_FIELDS},
+            test_file=str(fake_test), scan_modules=[mod],
+        )
+
+
+def test_inline_ref_literal_rejected(tmp_path, monkeypatch):
+    """§13/MED-1: an apply_response_contract call passing an INLINE tuple to
+    ref_fields must FAIL (it dodges the named-constant snapshot pin)."""
+    import types
+
+    from loreweave_mcp import assert_or_write_shape_snapshot
+
+    (tmp_path / "services").mkdir()
+    (tmp_path / "contracts").mkdir()
+    fake_test = tmp_path / "services" / "x-service" / "tests" / "t.py"
+    fake_test.parent.mkdir(parents=True)
+    fake_test.write_text("# marker", encoding="utf-8")
+
+    # a module whose source has an INLINE ref literal at a call site
+    bad = tmp_path / "services" / "x-service" / "badtool.py"
+    bad.write_text(
+        "def h(rows):\n"
+        "    return apply_response_contract(rows, ref_fields=('id', 'body_full'), detail='summary')\n",
+        encoding="utf-8",
+    )
+    mod = types.ModuleType("badtool")
+    mod.__file__ = str(bad)
+
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    with pytest.raises(AssertionError, match="INLINE literal"):
+        assert_or_write_shape_snapshot("x", {}, test_file=str(fake_test), scan_modules=[mod])
+
+
+def test_named_ref_arg_allowed(tmp_path, monkeypatch):
+    """A NAME arg (pinned constant OR helper param) is allowed — no false positive on
+    the knowledge _project_graph(node_ref, edge_ref) indirection."""
+    import types
+
+    from loreweave_mcp import assert_or_write_shape_snapshot
+
+    (tmp_path / "services").mkdir()
+    (tmp_path / "contracts").mkdir()
+    fake_test = tmp_path / "services" / "x-service" / "tests" / "t.py"
+    fake_test.parent.mkdir(parents=True)
+    fake_test.write_text("# marker", encoding="utf-8")
+
+    ok = tmp_path / "services" / "x-service" / "oktool.py"
+    ok.write_text(
+        "def h(rows, node_ref):\n"
+        "    return apply_response_contract(rows, ref_fields=node_ref, detail='summary')\n",
+        encoding="utf-8",
+    )
+    mod = types.ModuleType("oktool")
+    mod.__file__ = str(ok)
+    monkeypatch.setenv("WRITE_MCP_SHAPES", "1")
+    with pytest.raises(pytest.skip.Exception):  # regen path, no literal rejection
+        assert_or_write_shape_snapshot("x", {}, test_file=str(fake_test), scan_modules=[mod])

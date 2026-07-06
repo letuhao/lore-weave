@@ -11,8 +11,11 @@ import { useJobsConnection } from '../context/JobsStreamProvider';
 import { jobKey, type Job } from '../types';
 
 /** Desktop dashboard: live indicator + summary cards (quick-filters) + filter bar +
- *  Active table (live, unpaginated) + History table (offset+total, ORDER BY created). */
-export function JobsList() {
+ *  Active table (live, unpaginated) + History table (offset+total, ORDER BY created).
+ *
+ *  `onOpenDetail` (studio dockable-migration injectable prop): forwarded to every JobRow
+ *  unchanged. Omitted (the standalone /jobs page): behavior is byte-identical to before. */
+export function JobsList({ onOpenDetail }: { onOpenDetail?: (service: string, jobId: string) => void } = {}) {
   const { t } = useTranslation('jobs');
   const d = useJobsDashboard();
   const conn = useJobsConnection();
@@ -60,7 +63,7 @@ export function JobsList() {
           ) : activeItems.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted-foreground">{t('list.noActive', { defaultValue: 'No active jobs.' })}</p>
           ) : (
-            activeItems.map((j) => <JobRow key={jobKey(j)} job={j} />)
+            activeItems.map((j) => <JobRow key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} />)
           )}
           {d.active.hasNextPage && (
             <button
@@ -91,7 +94,7 @@ export function JobsList() {
         ) : historyItems.length === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('list.empty', { defaultValue: 'No jobs yet.' })}</p>
         ) : (
-          historyItems.map((j) => <JobRow key={jobKey(j)} job={j} />)
+          historyItems.map((j) => <JobRow key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} />)
         )}
       </div>
       <HistoryPager

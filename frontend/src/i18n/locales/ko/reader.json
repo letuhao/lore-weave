@@ -1,0 +1,146 @@
+{
+  "loading": "로딩 중...",
+  "chapter_of": "{{total}}장 중 {{current}}장",
+  "stop_reading": "읽기 중단",
+  "read_aloud": "낭독하기",
+  "reading_theme": "읽기 테마",
+  "edit_chapter": "이 장 편집",
+  "back_to_book": "책으로 돌아가기",
+  "chapter_label": "제 {{n}}장",
+  "chars": "자",
+  "words": "단어",
+  "min_read": "~{{minutes}}분 소요",
+  "loading_translation": "번역 로딩 중...",
+  "empty_chapter": "내용이 없는 장입니다 — 아직 작성된 내용이 없습니다.",
+  "end_of_chapter": "제 {{n}}장 끝",
+  "next_in": "{{seconds}}초 후 다음 장이 시작됩니다...",
+  "cancel": "취소",
+  "progress": "{{total}}장 중 {{current}}장 · {{percent}}% 완료",
+  "ch_short": "Ch. {{n}}",
+  "history": {
+    "title": "읽기 기록",
+    "subtitle": "최근에 읽은 책과 장 목록입니다.",
+    "empty": "읽기 기록이 없습니다. 읽기를 시작해 보세요!",
+    "chapters_read": "{{count}}개 장 읽음",
+    "fully_read": "{{percent}}% 완료",
+    "last_read": "마지막 읽은 날짜: {{date}}",
+    "continue": "계속 읽기"
+  },
+  "theme": {
+    "title": "읽기 테마",
+    "presets": "테마 프리셋",
+    "preset": {
+      "dark": {
+        "name": "다크",
+        "desc": "따뜻한 느낌의 어두운 배경"
+      },
+      "light": {
+        "name": "라이트",
+        "desc": "깔끔한 흰색 배경"
+      },
+      "sepia": {
+        "name": "세피아",
+        "desc": "따뜻한 종이 질감"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "OLED 화면을 위한 완전한 블랙"
+      },
+      "parchment": {
+        "name": "양피지",
+        "desc": "클래식한 양피지 느낌"
+      },
+      "forest": {
+        "name": "포레스트",
+        "desc": "밤에 눈이 편안한 색상"
+      }
+    },
+    "font": "글꼴",
+    "typography": "타이포그래피",
+    "font_size": "글자 크기",
+    "line_height": "줄 간격",
+    "text_width": "텍스트 너비",
+    "spacing": "간격",
+    "reading_mode": "읽기 모드",
+    "show_indices": "블록 인덱스 표시 (번역가 모드)",
+    "auto_next": "다음 장 자동 로드",
+    "auto_scroll": "TTS 자동 스크롤"
+  },
+  "tts": {
+    "source": {
+      "attached": "첨부됨",
+      "ai": "AI TTS",
+      "browser": "브라우저",
+      "inline": "오디오"
+    },
+    "prev_block": "이전 블록 (Shift+Left)",
+    "play": "재생 (Space)",
+    "pause": "일시정지 (Space)",
+    "next_block": "다음 블록 (Shift+Right)",
+    "cycle_speed": "속도 전환",
+    "autoscroll_on": "자동 스크롤: ON",
+    "autoscroll_off": "자동 스크롤: OFF",
+    "settings": "TTS 설정",
+    "stop": "중지 (Escape)",
+    "speed": "속도",
+    "browser_voice": "브라우저 음성",
+    "default": "기본값",
+    "no_voices": "사용 가능한 음성이 없습니다. 브라우저가 Web Speech API를 지원하지 않을 수 있습니다.",
+    "ai_model": "AI TTS 모델",
+    "none_browser": "없음 (브라우저 TTS만 사용)",
+    "no_models": "설정된 모델이 없습니다. 설정 > 제공업체에서 제공업체를 추가하세요.",
+    "ai_voice": "AI 음성",
+    "openai_voices": "OpenAI 음성: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "동작",
+    "autoscroll_active": "활성 블록으로 자동 스크롤",
+    "highlight_active": "활성 블록 강조",
+    "now_playing": "현재 재생 중",
+    "block_label": "블록: {{id}}",
+    "status": {
+      "playing": "재생 중",
+      "paused": "일시정지됨",
+      "loading": "로딩 중"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "첨부됨",
+      "ai": "AI TTS",
+      "browser": "브라우저",
+      "inline": "오디오 블록",
+      "none": "없음"
+    },
+    "coverage": "오디오 범위",
+    "summary": "{{speakable}}개 블록 읽기 가능 · {{missing}}개 브라우저 TTS 사용",
+    "generate_missing": "누락된 오디오 생성",
+    "block_chars": "{{count}}개 블록 · 약 {{chars}}자",
+    "block_chars_other": "{{count}}개 블록 · 약 {{chars}}자",
+    "est_cost": "예상 비용: ${{cost}}",
+    "generating": "생성 중... {{progress}}/{{total}}",
+    "select_model_alert": "먼저 TTS 설정에서 TTS 모델을 선택하세요.",
+    "generate_all": "모두 생성 ({{count}})",
+    "blocks": "블록",
+    "audio_block_preview": "오디오 블록"
+  },
+  "block": {
+    "audio_unavailable": "오디오를 사용할 수 없음",
+    "audio_fallback": "브라우저가 오디오 요소를 지원하지 않습니다.",
+    "image_unavailable": "이미지를 사용할 수 없음",
+    "video_unavailable": "비디오를 사용할 수 없음"
+  },
+  "indicator": {
+    "pause": "일시정지",
+    "play": "첨부된 오디오 재생",
+    "mismatch": "오디오 자막이 블록 텍스트와 다릅니다"
+  },
+  "citation": {
+    "aria": "인용 {{n}}",
+    "jump": "출처로 이동",
+    "relevance": "관련성",
+    "source": {
+      "glossary": "용어 사전",
+      "kg": "지식 베이스",
+      "passage": "본문 구절"
+    }
+  }
+}

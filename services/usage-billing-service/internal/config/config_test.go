@@ -12,6 +12,7 @@ func setValidEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("DATABASE_URL", "postgres://localhost/usage_billing_test")
 	t.Setenv("JWT_SECRET", "test_jwt_secret_at_least_32_characters_long")
+	t.Setenv("LLM_PAYLOAD_ENCRYPTION_KEY", "test_payload_kek_at_least_32_characters_long")
 	t.Setenv("INTERNAL_SERVICE_TOKEN", "internal-token")
 	t.Setenv("GUARDRAIL_DEFAULT_DAILY_USD", "10")
 	t.Setenv("GUARDRAIL_DEFAULT_MONTHLY_USD", "100")
@@ -46,6 +47,7 @@ func TestLoad_MissingRequired(t *testing.T) {
 		name, key string
 	}{
 		{"DATABASE_URL", "DATABASE_URL"},
+		{"LLM_PAYLOAD_ENCRYPTION_KEY", "LLM_PAYLOAD_ENCRYPTION_KEY"},
 		{"INTERNAL_SERVICE_TOKEN", "INTERNAL_SERVICE_TOKEN"},
 		{"GUARDRAIL_DEFAULT_DAILY_USD", "GUARDRAIL_DEFAULT_DAILY_USD"},
 		{"GUARDRAIL_DEFAULT_MONTHLY_USD", "GUARDRAIL_DEFAULT_MONTHLY_USD"},
@@ -67,6 +69,26 @@ func TestLoad_ShortJWTSecret(t *testing.T) {
 	t.Setenv("JWT_SECRET", "too-short")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for short JWT_SECRET")
+	}
+}
+
+func TestLoad_ShortPayloadKey(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("LLM_PAYLOAD_ENCRYPTION_KEY", "too-short")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for short LLM_PAYLOAD_ENCRYPTION_KEY")
+	}
+}
+
+// LOG-5: the dedicated payload KEK must be distinct from JWT_SECRET so rotating
+// or leaking the JWT secret never touches logged payloads.
+func TestLoad_PayloadKeyMustDifferFromJWT(t *testing.T) {
+	setValidEnv(t)
+	shared := "identical_secret_used_for_both_32_chars_x"
+	t.Setenv("JWT_SECRET", shared)
+	t.Setenv("LLM_PAYLOAD_ENCRYPTION_KEY", shared)
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when LLM_PAYLOAD_ENCRYPTION_KEY equals JWT_SECRET")
 	}
 }
 

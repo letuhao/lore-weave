@@ -16,9 +16,19 @@ interface Props {
   createBlank: (body: BlankSchemaCreate) => Promise<unknown>;
   clone: (body: CloneSchemaRequest) => Promise<unknown>;
   busy?: boolean;
+  /**
+   * 14_kg_panels.md K6/K9 (DOCK-7) — when rendered inside the `kg-schema` studio
+   * panel, the "Adopt a template" CTA must switch the panel's own internal tab
+   * to `adopt` instead of a hard route navigation (a panel must never render
+   * `<Link>` — the studio never unmounts itself for one capability's link out).
+   * When provided, this callback replaces the `<Link>` entirely. Omitted (the
+   * legacy `ProjectDetailShell` route call site) keeps the original `<Link>`
+   * behaviour so that non-panel context keeps working unchanged.
+   */
+  onAdoptCta?: () => void;
 }
 
-export function CreateSchemaEntry({ bookId, templates, createBlank, clone, busy }: Props) {
+export function CreateSchemaEntry({ bookId, templates, createBlank, clone, busy, onAdoptCta }: Props) {
   const { t } = useTranslation('knowledge');
   const [name, setName] = useState('');
   const [cloneId, setCloneId] = useState('');
@@ -80,7 +90,11 @@ export function CreateSchemaEntry({ bookId, templates, createBlank, clone, busy 
             <Download className="h-3.5 w-3.5" /> {t('schemaSection.adoptTemplate')}
           </h4>
           <p className="text-[11px] text-muted-foreground">{t('schemaSection.adoptHelp')}</p>
-          {bookId ? (
+          {onAdoptCta ? (
+            <button type="button" onClick={onAdoptCta}
+              className="block w-full rounded-md border px-3 py-1.5 text-center text-[12px] font-medium hover:bg-muted/40"
+              data-testid="adopt-template-cta">{t('schemaSection.adoptCta')}</button>
+          ) : bookId ? (
             <Link to={`/books/${bookId}/kg-ontology?view=adopt`}
               className="block w-full rounded-md border px-3 py-1.5 text-center text-[12px] font-medium hover:bg-muted/40"
               data-testid="adopt-template-cta">{t('schemaSection.adoptCta')}</Link>

@@ -1,0 +1,375 @@
+{
+  "focus": {
+    "toggle": "Modo foco",
+    "continuity": "Continuidade ✓",
+    "hint": "✦ toque em uma linha para ancoragem"
+  },
+  "saved": "Capítulo salvo",
+  "no_content": "Sem conteúdo para traduzir",
+  "translation_failed": "Falha na tradução",
+  "translated_blocks": "{{count}} blocos traduzidos",
+  "text_translation_received": "Tradução de texto recebida — modo de bloco recomendado",
+  "breadcrumb": {
+    "workspace": "Workspace",
+    "book": "Livro",
+    "chapter": "Capítulo"
+  },
+  "prev_chapter": "Capítulo anterior",
+  "next_chapter": "Próximo capítulo",
+  "mode": {
+    "classic": "Clássico",
+    "classic_title": "Modo clássico — escrita focada",
+    "ai": "IA",
+    "ai_title": "Modo Assistente de IA — recursos completos"
+  },
+  "workmode": {
+    "write": "Escrever",
+    "write_desc": "Editar o manuscrito",
+    "translate": "Traduzir",
+    "translate_desc": "Versões, comparação e tradução",
+    "read": "Ler",
+    "read_desc": "Abrir o leitor (TTS, temas)",
+    "compose": "Compor",
+    "compose_desc": "Estúdio de coescrita com IA"
+  },
+  "grammar_title": "Alternar correção gramatical e ortográfica (LanguageTool)",
+  "translate_title": "Traduzir conteúdo usando IA (modo de bloco)",
+  "translating": "Traduzindo...",
+  "translate": "Traduzir",
+  "view_translations": "Traduções",
+  "view_translations_title": "Ver versões de tradução salvas (idiomas, histórico, comparação lado a lado)",
+  "toggle_source": "Alternar painel de origem",
+  "toggle_history": "Alternar histórico / painel de IA",
+  "unsaved": "Não salvo",
+  "saved_badge": "Salvo",
+  "mobile": {
+    "editor": "Editor",
+    "studio": "Estúdio",
+    "history": "Histórico",
+    "nav": "Seções do editor"
+  },
+  "discard_title": "Descartar todas as alterações não salvas",
+  "discard": "Descartar",
+  "save": "Salvar",
+  "tabs": {
+    "chapters": "Capítulos",
+    "original": "Original",
+    "glossary": "Glossário",
+    "outline": "Esboço"
+  },
+  "chapter_count": "{{count}} capítulo",
+  "chapter_count_other": "{{count}} capítulos",
+  "original_readonly": "Texto original enviado — apenas leitura",
+  "no_original": "Sem fonte original — este capítulo foi criado diretamente no editor (nenhum arquivo foi importado).",
+  "title_placeholder": "Título do capítulo",
+  "chars": "{{n}} caracteres",
+  "words": "{{n}} palavras",
+  "paragraphs": "{{count}} parágrafo",
+  "paragraphs_other": "{{count}} parágrafos",
+  "save_note_placeholder": "Nota de salvamento (opcional) — ex: \"adicionada cena de flashback\"",
+  "history": "Histórico",
+  "ai_chat": "Chat de IA",
+  "coming_soon": "Em breve",
+  "connected": "Conectado",
+  "left_panel": "Painel esquerdo",
+  "right_panel": "Painel direito",
+  "discard_confirm": {
+    "title": "Descartar alterações?",
+    "desc": "Todas as alterações não salvas serão perdidas permanentemente. Isso não pode ser desfeito.",
+    "confirm": "Descartar alterações",
+    "cancel": "Continuar editando"
+  },
+  "toolbar": {
+    "paragraph": "Parágrafo",
+    "h1": "Título 1",
+    "h2": "Título 2",
+    "h3": "Título 3",
+    "bold": "Negrito (Ctrl+B)",
+    "italic": "Itálico (Ctrl+I)",
+    "strike": "Tachado",
+    "underline": "Sublinhado (Ctrl+U)",
+    "inline_code": "Código em linha",
+    "link": "Link",
+    "url_prompt": "URL:",
+    "highlight": "Destaque (Ctrl+Shift+H)",
+    "subscript": "Subscrito",
+    "superscript": "Sobrescrito",
+    "bullet_list": "Lista com marcadores",
+    "ordered_list": "Lista numerada",
+    "blockquote": "Citação",
+    "insert_image": "Inserir imagem",
+    "insert_video": "Inserir vídeo",
+    "insert_audio": "Inserir áudio",
+    "code_block": "Bloco de código",
+    "horizontal_rule": "Linha horizontal",
+    "undo": "Desfazer (Ctrl+Z)",
+    "redo": "Refazer (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "Parágrafo",
+      "desc": "Bloco de texto simples"
+    },
+    "heading1": {
+      "title": "Título 1",
+      "desc": "Título de seção grande"
+    },
+    "heading2": {
+      "title": "Título 2",
+      "desc": "Título de seção média"
+    },
+    "heading3": {
+      "title": "Título 3",
+      "desc": "Título de seção pequena"
+    },
+    "bullet": {
+      "title": "Lista com marcadores",
+      "desc": "Lista não ordenada"
+    },
+    "numbered": {
+      "title": "Lista numerada",
+      "desc": "Lista ordenada"
+    },
+    "quote": {
+      "title": "Citação",
+      "desc": "Bloco de citação"
+    },
+    "image": {
+      "title": "Imagem",
+      "desc": "Upload, colar ou gerar com IA"
+    },
+    "video": {
+      "title": "Vídeo",
+      "desc": "Upload de arquivo de vídeo"
+    },
+    "audio": {
+      "title": "Áudio",
+      "desc": "Upload de arquivo de áudio"
+    },
+    "code": {
+      "title": "Bloco de código",
+      "desc": "Código com realce de sintaxe"
+    },
+    "callout": {
+      "title": "Callout",
+      "desc": "Nota do autor ou dica"
+    },
+    "divider": {
+      "title": "Divisor",
+      "desc": "Linha horizontal"
+    }
+  },
+  "code": {
+    "language_label": "Linguagem de código",
+    "copy": "Copiar código",
+    "delete": "Excluir bloco de código"
+  },
+  "media": {
+    "ai_prompt": "Prompt de IA",
+    "saved": "salvo",
+    "empty": "vazio",
+    "placeholder": "Descreva esta mídia para contexto e geração de IA...",
+    "stored_note": "Armazenado com a mídia para contexto e regeneração de IA.",
+    "copied": "Copiado",
+    "copy_prompt": "Copiar prompt",
+    "regenerate": "Regerar",
+    "generating": "Gerando...",
+    "model_label": "Modelo de IA"
+  },
+  "image": {
+    "err_type": "Tipo não suportado: {{type}}. Use PNG, JPG, GIF ou WebP.",
+    "err_size": "Arquivo muito grande: {{size}} MB. Máximo 10 MB.",
+    "upload_unavailable": "Upload indisponível — salve o capítulo primeiro.",
+    "upload_failed": "Falha no upload",
+    "regen_save_first": "Salve o capítulo primeiro para habilitar a geração por IA.",
+    "regen_no_model": "Nenhum modelo de IA configurado. Adicione um provedor nas Configurações.",
+    "regen_no_provider": "Nenhum provedor de IA ativo. Configure um em Configurações → Provedores.",
+    "regen_failed": "Falha na geração",
+    "default_title": "Imagem",
+    "version_history": "Histórico de versões",
+    "copy_filename": "Copiar nome do arquivo",
+    "copy": "Copiar",
+    "ai_mode": "Modo IA",
+    "replace": "Substituir",
+    "replace_title": "Substituir imagem",
+    "delete_block": "Excluir bloco",
+    "delete_image_block": "Excluir bloco de imagem",
+    "uploading": "Carregando... {{pct}}%",
+    "drop_here": "Solte a imagem aqui",
+    "drop_hint": "Arraste uma imagem, clique para selecionar ou Ctrl+V",
+    "formats": "PNG, JPG, GIF, WebP — Máx. 10 MB",
+    "width_title": "Largura: {{width}}%",
+    "caption_placeholder": "Adicionar uma legenda...",
+    "caption_aria": "Legenda da imagem",
+    "alt_text": "Texto alternativo",
+    "alt_set": "definir",
+    "alt_placeholder": "Descreva esta imagem para leitores de tela e exportação EPUB...",
+    "alt_aria": "Texto alternativo da imagem",
+    "alt_note": "Usado por leitores de tela, buscas e exportação EPUB. Diferente da legenda."
+  },
+  "video": {
+    "err_type": "Tipo não suportado: {{type}}. Use MP4 ou WebM.",
+    "err_size": "Arquivo muito grande: {{size}} MB. Máx. 100 MB.",
+    "upload_unavailable": "Upload indisponível — salve o capítulo primeiro.",
+    "upload_failed": "Falha no upload",
+    "gen_save_first": "Salve o capítulo primeiro.",
+    "gen_no_model": "Nenhum modelo de geração de vídeo configurado. Adicione um em Configurações > Provedores.",
+    "gen_failed": "Falha na geração",
+    "default_title": "Vídeo",
+    "version_history": "Histórico de versões",
+    "copy_filename": "Copiar nome do arquivo",
+    "copy": "Copiar",
+    "ai_mode": "Modo IA",
+    "replace": "Substituir",
+    "replace_title": "Substituir vídeo",
+    "delete_block": "Excluir bloco",
+    "delete_video_block": "Excluir bloco de vídeo",
+    "uploading": "Enviando... {{pct}}%",
+    "drop_here": "Arraste o vídeo aqui",
+    "drop_hint": "Arraste um vídeo ou clique para selecionar",
+    "formats": "MP4, WebM — Máx. 100 MB",
+    "width_title": "Largura: {{width}}%",
+    "caption_placeholder": "Adicionar uma legenda...",
+    "caption_aria": "Legenda do vídeo",
+    "alt_text": "Texto alternativo",
+    "alt_set": "definir",
+    "alt_placeholder": "Descreva este vídeo para leitores de tela e exportação EPUB...",
+    "alt_aria": "Texto alternativo do vídeo",
+    "alt_note": "Usado por leitores de tela, buscas e exportação EPUB. Diferente da legenda.",
+    "generate": "Gerar"
+  },
+  "audio": {
+    "err_type": "Tipo não suportado: {{type}}. Use MP3, WAV, OGG, WebM ou M4A.",
+    "err_size": "Arquivo muito grande: {{size}} MB. Máx. 20 MB.",
+    "upload_unavailable": "Upload indisponível — salve o capítulo primeiro.",
+    "upload_failed": "Falha no upload",
+    "default_title": "Áudio",
+    "ai_mode": "Modo IA",
+    "play": "Reproduzir",
+    "pause": "Pausar",
+    "replace_title": "Substituir áudio",
+    "delete_audio_block": "Excluir bloco de áudio",
+    "uploading": "Enviando... {{pct}}%",
+    "drop_here": "Arraste o áudio aqui",
+    "drop_hint": "Arraste um arquivo de áudio ou clique para selecionar",
+    "formats": "MP3, WAV, OGG, WebM, M4A — Máx. 20 MB",
+    "subtitle_placeholder": "Adicionar uma legenda...",
+    "subtitle_aria": "Legenda de áudio"
+  },
+  "callout": {
+    "type": {
+      "note": "nota",
+      "warning": "aviso",
+      "tip": "dica",
+      "danger": "perigo"
+    },
+    "title": "{{type}} — clique para alterar o tipo"
+  },
+  "revision": {
+    "restored": "Revisão restaurada",
+    "header": "Histórico de Revisões · {{count}}",
+    "empty": "Nenhuma revisão ainda. Salve para criar uma.",
+    "current": "Atual",
+    "view": "Visualizar",
+    "restore": "Restaurar",
+    "confirm_title": "Restaurar esta revisão?",
+    "confirm_desc": "Isso substituirá seu rascunho atual por esta versão antiga e criará uma nova entrada de revisão. Esta ação não pode ser desfeita.",
+    "close_preview": "Fechar visualização",
+    "preview": "Visualização da revisão",
+    "restore_version": "Restaurar esta versão",
+    "empty_revision": "Revisão vazia."
+  },
+  "source": {
+    "header": "JSON do Bloco — visualização de apenas leitura da estrutura do capítulo",
+    "copied": "Copiado",
+    "copy": "Copiar JSON"
+  },
+  "version": {
+    "loading": "Carregando histórico de versões...",
+    "close": "Fechar",
+    "title": "Histórico de Versões",
+    "block_crumb": "Bloco",
+    "comparing": "Comparando v{{old}} → v{{new}}",
+    "previous": "Anterior",
+    "old": "antiga",
+    "no_media": "Sem mídia",
+    "current": "Atual",
+    "selected": "Selecionada",
+    "current_tag": "atual",
+    "no_media_version": "Sem mídia nesta versão",
+    "no_versions": "Nenhuma versão ainda",
+    "version_count": "{{count}} versão",
+    "version_count_other": "{{count}} versões",
+    "total": "{{size}} total",
+    "delete_confirm": "Excluir versão {{version}}? Esta ação não pode ser desfeita.",
+    "versions": "Versões",
+    "restore_version": "Restaurar v{{version}}",
+    "timeago": {
+      "just_now": "agora mesmo",
+      "mins": "há {{n}}m",
+      "hours": "há {{n}}h",
+      "yesterday": "Ontem",
+      "days": "há {{n}} dias"
+    },
+    "action": {
+      "upload": "Mídia enviada",
+      "regenerate": "Regerada com prompt refinado",
+      "caption_edit": "Legenda atualizada",
+      "prompt_edit": "Prompt atualizado"
+    },
+    "diff_identical": "Os prompts são idênticos",
+    "diff_title": "Diferença de Prompt de IA ({{old}} → {{new}})",
+    "diff_previous": "Anterior",
+    "diff_current": "Atual"
+  },
+  "media_guard": {
+    "protected": "Blocos de mídia estão protegidos no modo Clássico. Mude para o modo IA para editar ou excluir."
+  },
+  "publish": {
+    "publish": "Publicar",
+    "republish": "Republicar",
+    "unpublish": "Despublicar",
+    "draft_badge": "Rascunho",
+    "published_badge": "Publicado",
+    "confirm_title": "Despublicar capítulo?",
+    "confirm_body": "Isso removerá o capítulo do cânone — seu conhecimento extraído e passagens serão retirados até que você publique novamente.",
+    "published_toast": "Capítulo publicado",
+    "unpublished_toast": "Capítulo despublicado",
+    "conflict_toast": "O rascunho foi alterado desde que você o abriu — recarregue antes de publicar.",
+    "empty_toast": "Este capítulo não tem conteúdo para publicar — escreva algo primeiro.",
+    "save_first": "Salve antes de publicar",
+    "gate_pending": "{{pending}} de {{total}} cenas ainda não concluídas",
+    "gate_no_scenes": "Crie e complete pelo menos uma cena para publicar",
+    "gate_canon_blocked": "uma contradição de cânone não resolvida em {{count}} cena(s)",
+    "gate_unchecked": "Cânone não verificado em {{count}} cena(s)",
+    "gate_unchecked_hint": "Estas cenas possuem personagens para verificar, mas não têm uma posição de ordem de leitura definida, portanto o cânone não foi verificado. A publicação é permitida — revise-as se puder."
+  },
+  "compare": {
+    "open": "Comparar",
+    "title": "Comparar revisões",
+    "back": "Voltar ao editor",
+    "left": "Revisão à esquerda",
+    "right": "Revisão à direita",
+    "side_by_side": "Lado a lado",
+    "inline": "Em linha",
+    "no_revisions": "Sem revisões",
+    "need_two": "Este capítulo precisa de pelo menos duas revisões salvas para comparar.",
+    "loading": "Carregando…",
+    "diffing": "Calculando diferenças…",
+    "error": "Não foi possível carregar a comparação.",
+    "truncated": "Estas revisões são muito grandes — exibindo uma substituição completa em vez de uma comparação detalhada.",
+    "same": "Ambos os lados são a mesma revisão — sem diferenças.",
+    "load_more": "Carregar mais ({{loaded}}/{{total}})",
+    "load_more_hint": "Carregar revisões mais antigas no seletor"
+  },
+  "checkpoint": {
+    "header": "Checkpoints de edição de IA",
+    "insert": "Inserido",
+    "polish": "Polido",
+    "restore": "Restaurar",
+    "restored": "Restaurado para antes da edição de IA",
+    "no_restore": "Não há versão anterior para restaurar",
+    "confirm_title": "Restaurar para antes desta edição de IA?",
+    "confirm_desc": "O rascunho atual será salvo como um snapshot primeiro, portanto esta ação é reversível através do histórico de revisões."
+  }
+}

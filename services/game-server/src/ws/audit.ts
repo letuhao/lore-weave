@@ -8,6 +8,8 @@
  * so a real emitter swaps in without touching the call sites.
  */
 
+import { log } from '../log.js';
+
 export type WsAuditEvent =
   | { kind: 'ws.connection.opened'; connectionId: string; userRefId: string; at: number }
   | { kind: 'ws.connection.closed'; connectionId: string; userRefId: string; reason: string; at: number }
@@ -19,10 +21,12 @@ export interface WsAuditSink {
 
 /**
  * Default sink: one structured JSON line per event (stdout). Stable top-level
- * keys (`audit`, `service`) so a log pipeline can route on them.
+ * keys (`audit`, `service`) so a log pipeline can route on them. P2·A2b — the
+ * default writer is the shared `log.line` JSON-line sink (not bare console.*);
+ * still injectable so a real emitter swaps in.
  */
 export class LogWsAuditSink implements WsAuditSink {
-  constructor(private readonly out: (line: string) => void = (line) => console.log(line)) {}
+  constructor(private readonly out: (line: string) => void = (line) => log.line(line)) {}
 
   emit(event: WsAuditEvent): void {
     this.out(JSON.stringify({ audit: 'ws', service: 'game-server', ...event }));

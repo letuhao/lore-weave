@@ -46,6 +46,14 @@ def _spec_checksum(spec: dict[str, Any] | None) -> str:
     ).hexdigest()
 
 
+def _hard_rules_pass(rules_out: list[dict[str, Any]]) -> bool:
+    """Advisory-tier rules (e.g. Story Grid's sg_value_shift_per_scene, see
+    docs/eval/plan-forge-story-grid-poc-2026-07-06.md) are reported but must
+    NEVER block validate()/compile() -- only hard tier (the default) gates.
+    """
+    return all(r["pass"] for r in rules_out if r.get("tier", "hard") == "hard")
+
+
 def _work_project_id(work: CompositionWork) -> UUID:
     """generation_job.project_id is NOT NULL — knowledge project or surrogate work.id."""
     if work.project_id is not None:
@@ -275,6 +283,20 @@ class PlanForgeService:
             if job is not None:
                 job_status = job.status
         artifacts = await self._runs.list_artifact_refs(owner_user_id, run.id)
+        # D-PLANFORGE-ARC-PICKER: the Compile step's `arc_id` was a bare text input —
+        # a writer has no reason to know a spec's internal arc ids ("arc_2"). The spec
+        # itself already HAS the picker data (id + a human title); it was just never
+        # surfaced to the FE (only artifact REFS — kind + id, no content — were ever
+        # returned). Cheap to add: read the already-fetched-elsewhere latest spec
+        # artifact once here. Empty list (not an error) when no spec exists yet.
+        arcs: list[dict[str, Any]] = []
+        spec_art = await self._runs.latest_artifact(owner_user_id, run.id, "spec")
+        if spec_art is not None:
+            arcs = [
+                {"id": a.get("id"), "title": a.get("title") or a.get("id")}
+                for a in spec_art.content.get("arcs", [])
+                if a.get("id")
+            ]
         return {
             "id": str(run.id),
             "book_id": str(run.book_id),
@@ -286,6 +308,7 @@ class PlanForgeService:
             "job_status": job_status,
             "error_detail": run.error_detail,
             "checkpoint_state": run.checkpoint_state,
+            "arcs": arcs,
             "artifacts": [
                 {"kind": a["kind"], "artifact_id": str(a["artifact_id"])}
                 for a in artifacts
@@ -327,7 +350,7 @@ class PlanForgeService:
         package = pkg_art.content.get("planning_package") if pkg_art else None
         graph = build_graph(spec)
         rules_out = run_rules(spec, package)
-        passed_rules = all(r["pass"] for r in rules_out)
+        passed_rules = _hard_rules_pass(rules_out)
         fidelity_score = None
         golden_rules: list[dict[str, Any]] = [
             {"id": r["rule"], "passed": r["pass"], "message": r.get("detail", "")}
@@ -635,7 +658,7 @@ class PlanForgeService:
             raise ValueError("no spec to compile")
         spec = spec_art.content
         rules_out = run_rules(spec)
-        if not all(r["pass"] for r in rules_out):
+        if not _hard_rules_pass(rules_out):
             raise ValueError("validation failed — compile blocked")
 
         compiled = compile_artifacts(spec, arc_id=arc_id)
@@ -659,16 +682,45 @@ class PlanForgeService:
         if model_ref is None:
             raise ValueError("model_ref required when run_pipeline=true")
         project_id = _work_project_id(work)
+        # D-PLANFORGE-PIPELINE-CHAPTERPLAN-FIX: package.chapters[] is
+        # {title, ordinal, event_id} (compile.py) — the worker's
+        # `run_plan_pipeline` needs `ChapterPlan`-shaped dicts
+        # {chapter_id, title, sort_order, beat_role, intent}. This mapping
+        # was previously ABSENT (raw package.chapters[] passed straight
+        # through), so `ChapterPlan(**c)` raised a TypeError on every real
+        # invocation — confirmed via a code audit 2026-07-06, never
+        # exercised successfully in production. `chapter_id=event_id` is
+        # the correlation key the auto-bootstrap gate (§6 M3) uses to
+        # attach each event's resulting scene/beat plan back to the real
+        # chapter it creates. `beats: []` degrades the pipeline's L1
+        # beat-map stage to a no-op (beat_role stays None) — PlanForge's
+        # `arc_kind` (e.g. "discovery"/"power") is a THEME tag, not a
+        # `structure_template.kind`, so there is no beats list to source
+        # here without inventing a new mapping; the pipeline's own
+        # degrade-safe design (planning_pipeline.py) tolerates this.
         pipe_input = {
             "worker_op": "plan_pipeline",
             "model_source": "user_model",
             "model_ref": str(model_ref),
             "premise": package.get("premise", ""),
             "beats": [],
-            "chapters": package.get("chapters", []),
+            "chapters": [
+                {
+                    "chapter_id": ch["event_id"], "title": ch["title"],
+                    "sort_order": ch.get("ordinal", i),
+                    "beat_role": None, "intent": "",
+                }
+                for i, ch in enumerate(package.get("chapters", []), start=1)
+            ],
             "genre_tags": package.get("genre_tags", []),
             "book_id": str(book_id),
             "project_id": str(project_id),
+            "k_ceiling": settings.compose_diverge_k,
+            "high_threshold": settings.plan_high_tension_threshold,
+            "min_scenes": settings.plan_min_scenes_per_chapter,
+            "max_scenes": settings.plan_max_scenes_per_chapter,
+            "source_language": "auto",
+            "self_heal": True,
             "plan_forge_package": package,
         }
         if settings.composition_worker_enabled:
@@ -682,6 +734,17 @@ class PlanForgeService:
                 user_id=str(owner_user_id), project_id=str(project_id),
             )
             body["pipeline_job_id"] = str(job.id)
+            # §6 M3: persist the job id onto the run (checkpoint_state — a
+            # scratch JSONB field already used for exactly this kind of
+            # cross-call bookkeeping) so the auto-bootstrap gate's propose()
+            # can find + consume this job's result later. Previously this
+            # id was returned in the response body ONCE and never
+            # persisted anywhere queryable — a caller that didn't capture
+            # the response had no way to find it again.
+            await self._runs.update_run(
+                owner_user_id, book_id, run_id,
+                checkpoint_state={**run.checkpoint_state, "pipeline_job_id": str(job.id)},
+            )
             return "async", body
         body["pipeline_preview"] = mock_pipeline_result(package)
         return "sync", body

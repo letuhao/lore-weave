@@ -3,8 +3,11 @@
 // refresh (G3). Dedupes so a re-render / message refetch never re-runs a handler.
 //
 // Mounted only in the studio Compose panel (via the chat provider-slot), so useStudioHost() is
-// inside a provider. SKELETON: handlers are stubbed (book/composition draft) until the Tier-4
-// hoist (#04) provides a real reload + the dirty-guard.
+// inside a provider. Handlers registered below (book/glossary/knowledge/translation) are real,
+// not stubs — see #16 Phase 4's LIVE-SYNC audit (2026-07-05) for the last gap it closed
+// (translation_job_control) and the two tool families it confirmed DON'T need a handler
+// (composition_generate's actual write already reaches a separately-matched tool name;
+// authoring_run has no MCP tools at all, REST-only, no Studio consumer to go stale).
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatStream } from '@/features/chat/providers';
@@ -13,6 +16,9 @@ import { useStudioHost } from '../host/StudioHostProvider';
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
 import { runEffectHandlers } from './effectRegistry';
 import { registerDefaultEffectHandlers } from './handlers/bookEffects';
+import { registerGlossaryEffectHandlers } from './handlers/glossaryEffects';
+import { registerKnowledgeEffectHandlers } from './handlers/knowledgeEffects';
+import { registerTranslationEffectHandlers } from './handlers/translationEffects';
 
 export function useStudioEffectReconciler(): void {
   const host = useStudioHost();
@@ -25,7 +31,12 @@ export function useStudioEffectReconciler(): void {
   unitRef.current = unit;
 
   // Register the default handlers once (idempotent).
-  useEffect(() => { registerDefaultEffectHandlers(); }, []);
+  useEffect(() => {
+    registerDefaultEffectHandlers();
+    registerGlossaryEffectHandlers();
+    registerKnowledgeEffectHandlers();
+    registerTranslationEffectHandlers();
+  }, []);
 
   useEffect(() => {
     for (const m of messages) {

@@ -1,0 +1,60 @@
+{
+  "title": "Benachrichtigungen",
+  "markAllRead": "Alle als gelesen markieren",
+  "markRead": "Als gelesen markieren",
+  "delete": "Löschen",
+  "empty": "Noch keine Benachrichtigungen",
+  "loading": "Lädt...",
+  "justNow": "Gerade eben",
+  "minsAgo": "vor {{count}} Min.",
+  "hrsAgo": "vor {{count}} Std.",
+  "daysAgo": "vor {{count}} T.",
+  "viewAll": "Alle Benachrichtigungen anzeigen",
+  "loadMore": "Mehr laden",
+  "pageTitle": "Benachrichtigungen",
+  "notif": {
+    "translation": {
+      "completed": "Übersetzung abgeschlossen — {{count}} Kapitel von „{{book}}“",
+      "partial": "Übersetzung teilweise abgeschlossen — {{done}} erfolgreich, {{failed}} fehlgeschlagen",
+      "failed": "Übersetzung fehlgeschlagen — „{{book}}“"
+    },
+    "social": {
+      "followed": "{{name}} folgt dir jetzt"
+    },
+    "llm_job": {
+      "completed": "{{operation}} abgeschlossen",
+      "failed": "{{operation}} fehlgeschlagen",
+      "cancelled": "{{operation}} abgebrochen",
+      "unknown": "{{operation}}"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Chat",
+      "completion": "Abschluss",
+      "embedding": "Embedding",
+      "entity_extraction": "Entitätsextraktion",
+      "fact_extraction": "Faktenextraktion",
+      "relation_extraction": "Relationsextraktion",
+      "event_extraction": "Ereignisextraktion",
+      "translation": "Übersetzung",
+      "image_gen": "Bildgenerierung",
+      "video_gen": "Videogenerierung"
+    },
+    "status": {
+      "completed": "abgeschlossen",
+      "failed": "fehlgeschlagen",
+      "cancelled": "abgebrochen",
+      "running": "läuft",
+      "pending": "ausstehend"
+    }
+  },
+  "category": {
+    "all": "Alle",
+    "translation": "Übersetzung",
+    "social": "Social",
+    "wiki": "Wiki",
+    "system": "System"
+  }
+}

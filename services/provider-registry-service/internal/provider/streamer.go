@@ -152,8 +152,28 @@ type StreamChunk struct {
 	OutputTokens    int  `json:"output_tokens,omitempty"`
 	ReasoningTokens *int `json:"reasoning_tokens,omitempty"`
 
+	// Cache-token split (Provider Context Strategy §7 monitoring). Populated on a
+	// usage chunk when the provider reports cache activity; nil when it reports none
+	// (or the provider doesn't cache). Provider-NORMALIZED to one concept each:
+	//   CacheCreationTokens — tokens WRITTEN to cache this turn (premium-billed;
+	//                         Anthropic cache_creation_input_tokens; 0/absent elsewhere).
+	//   CacheReadTokens     — tokens SERVED FROM cache this turn (cheap/free;
+	//                         Anthropic cache_read_input_tokens, OpenAI/Responses
+	//                         *_tokens_details.cached_tokens — same concept, one name).
+	// InputTokens stays the FULL billed input volume (Anthropic folds creation+read
+	// back in; OpenAI's prompt_tokens already includes cached), so uncached input is
+	// derived downstream as InputTokens − creation − read. Pointers so an omitted
+	// field is distinguishable from a real 0 and never emits a misleading `:0`.
+	CacheCreationTokens *int `json:"cache_creation_tok,omitempty"`
+	CacheReadTokens     *int `json:"cache_read_tok,omitempty"`
+
 	// Done fields (Kind == StreamChunkDone)
 	FinishReason string `json:"finish_reason,omitempty"`
+	// ResponseID — the stateful /v1/responses chain head (Provider Context Strategy
+	// §5). Present ONLY on the terminal Done of a stateful turn; the caller persists
+	// it as `previous_response_id` for the next turn. Empty/omitted on the stateless
+	// chat/completions path.
+	ResponseID string `json:"response_id,omitempty"`
 
 	// Error fields (Kind == StreamChunkError)
 	Code    string `json:"code,omitempty"`
@@ -290,6 +310,11 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 				CompletionTokensDetails *struct {
 					ReasoningTokens int `json:"reasoning_tokens"`
 				} `json:"completion_tokens_details"`
+				// OpenAI + LM-Studio + vLLM report automatic prefix-cache hits here
+				// (prompt_tokens already INCLUDES these). §7 caching monitor reads it.
+				PromptTokensDetails *struct {
+					CachedTokens int `json:"cached_tokens"`
+				} `json:"prompt_tokens_details"`
 			} `json:"usage"`
 		}
 		if err := json.Unmarshal([]byte(data), &parsed); err != nil {
@@ -358,6 +383,13 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 			if parsed.Usage.CompletionTokensDetails != nil {
 				rt := parsed.Usage.CompletionTokensDetails.ReasoningTokens
 				chunk.ReasoningTokens = &rt
+			}
+			// Automatic prefix-cache hits (server-side). These are READ hits (no
+			// separate write charge on OpenAI-compat), so map to CacheReadTokens —
+			// the same normalized concept as Anthropic's cache_read_input_tokens.
+			if d := parsed.Usage.PromptTokensDetails; d != nil && d.CachedTokens > 0 {
+				ct := d.CachedTokens
+				chunk.CacheReadTokens = &ct
 			}
 			if err := emit(chunk); err != nil {
 				return err

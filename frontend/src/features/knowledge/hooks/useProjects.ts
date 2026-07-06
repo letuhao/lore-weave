@@ -31,6 +31,12 @@ export interface ProjectsQueryParams {
   sortBy?: ProjectSortBy;
   sortDir?: ProjectSortDir;
   status?: ProjectStatusFilter;
+  /** 14_kg_panels.md /review-impl — server-side book_id filter (the BE route already
+   *  supports it). Lets useBookKnowledgeProject resolve a book's project WITHOUT relying
+   *  on the project being inside the first cached page (a client-side `.find()` over an
+   *  unfiltered list silently misses a project past PAGE_LIMIT for a user with many
+   *  projects). */
+  bookId?: string;
 }
 
 // Back-compat: callers that only care about archived visibility (the
@@ -43,14 +49,14 @@ export function useProjects(arg: boolean | ProjectsQueryParams) {
 
   const params: ProjectsQueryParams =
     typeof arg === 'boolean' ? { includeArchived: arg } : arg;
-  const { includeArchived, search, sortBy, sortDir, status } = params;
+  const { includeArchived, search, sortBy, sortDir, status, bookId } = params;
 
   // The narrowing is part of the query identity — a changed search /
   // sort / status starts a fresh server-side query (new first page),
   // not a re-narrow of the previously-loaded rows.
   const queryKey = [
     'knowledge-projects',
-    { includeArchived, search, sortBy, sortDir, status },
+    { includeArchived, search, sortBy, sortDir, status, bookId },
   ] as const;
 
   const query = useInfiniteQuery({
@@ -65,6 +71,7 @@ export function useProjects(arg: boolean | ProjectsQueryParams) {
           sort_by: sortBy,
           sort_dir: sortDir,
           status,
+          book_id: bookId,
         },
         accessToken!,
       ),

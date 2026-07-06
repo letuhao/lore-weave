@@ -1016,7 +1016,14 @@ CREATE TABLE IF NOT EXISTS authoring_runs (
   -- real fg/bg UX is FE-side later).
   driver_id           TEXT,
   driver_heartbeat_at TIMESTAMPTZ,
-  background          BOOLEAN NOT NULL DEFAULT false
+  background          BOOLEAN NOT NULL DEFAULT false,
+  -- D-AGENT-MODE §20 D4: server-side auto-pause policy — when true (the safe
+  -- default), the driver's per-unit guarded claim ALSO pauses the run at each
+  -- unit boundary (same code path as the budget/critic breaker stops) instead
+  -- of drafting the next unit unconditionally. Moved server-side (not a client
+  -- poll) because a run started/resumed headlessly via MCP with no Studio
+  -- panel open must still honor "stop and let a human look" by default.
+  pause_after_each_unit BOOLEAN NOT NULL DEFAULT true
 );
 -- Scope fence (edge #11): ONE active run per book — across users too (two runs
 -- over the same chapters conflict regardless of who started them). The gate's
@@ -1030,6 +1037,9 @@ CREATE INDEX IF NOT EXISTS idx_authoring_runs_owner_book
 ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_id TEXT;
 ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_heartbeat_at TIMESTAMPTZ;
 ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS background BOOLEAN NOT NULL DEFAULT false;
+-- D-AGENT-MODE additive column for DBs that created authoring_runs before it
+-- (same IF-NOT-EXISTS evolution pattern as the D4 columns above).
+ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS pause_after_each_unit BOOLEAN NOT NULL DEFAULT true;
 -- Sweep scan: 'running' runs ordered by heartbeat age (partial — the fleet of
 -- non-running runs never pollutes it).
 CREATE INDEX IF NOT EXISTS idx_authoring_runs_running_heartbeat
@@ -1077,6 +1087,38 @@ CREATE TABLE IF NOT EXISTS authoring_run_units (
 -- D5 additive column for DBs that created authoring_run_units before D5 (the
 -- CREATE TABLE above is IF NOT EXISTS — it does not evolve an existing table).
 ALTER TABLE authoring_run_units ADD COLUMN IF NOT EXISTS critic_verdict JSONB;
+
+-- ── plan_bootstrap_proposal (PlanForge auto-bootstrap POC): the
+-- propose→record→approve→apply structural-mutation quarantine gate
+-- (docs/specs/2026-07-06-planforge-auto-bootstrap.md §3.1). One
+-- deterministic/LLM PROPOSE pass computes `diff` ONCE; APPLY performs the
+-- real mutations (book-service chapter creation) only after human approval
+-- and never re-runs propose. The pending→approved→applying→applied|failed
+-- transition is enforced by the repository's conditional
+-- `UPDATE ... WHERE status='approved'` claim (no DB trigger for this POC's
+-- small 5-state DAG — contrast lore-enrichment-service's `enrichment_proposal`,
+-- which has a full trigger-guarded DAG; revisit if this generalizes beyond
+-- one consumer). Tenancy: book_id + owner_user_id + run_id, per User
+-- Boundaries & Tenancy (a per-book resource, never a shared/global row).
+CREATE TABLE IF NOT EXISTS plan_bootstrap_proposal (
+  id                UUID PRIMARY KEY DEFAULT uuidv7(),
+  run_id            UUID NOT NULL REFERENCES plan_run(id) ON DELETE CASCADE,
+  book_id           UUID NOT NULL,
+  owner_user_id     UUID NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pending',
+  diff              JSONB NOT NULL,
+  applied_results   JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_detail      TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT plan_bootstrap_proposal_status_chk CHECK (
+    status IN ('pending', 'approved', 'rejected', 'applying', 'applied', 'failed')
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_plan_bootstrap_proposal_book
+  ON plan_bootstrap_proposal(book_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_plan_bootstrap_proposal_run
+  ON plan_bootstrap_proposal(run_id, created_at DESC);
 """
 
 

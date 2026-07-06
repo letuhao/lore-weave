@@ -15,6 +15,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -47,11 +48,20 @@ type streamGuard struct {
 
 	// chat-only running tally.
 	inputCostUSD float64 // fixed: estimated input tokens × input price
+	inputTokens  int     // P0-2: estimated input token count (the record's input_tokens when no final usage chunk arrives)
 	abortUSD     float64 // hard-abort threshold = caller's available budget
 	outChars     int     // accumulated output delta chars (token + reasoning)
 	outNonASCII  int
 	finalUsage   *provider.StreamChunk // last usage chunk seen, if any
 	aborted      bool                  // observe tripped the hard-abort
+
+	// P0-2 (B1/B2 — full request/response logging). requestPayload is the assembled
+	// provider request (post-injection, bounded); completion accumulates the visible
+	// streamed answer (token deltas only, capped) for the audit response payload;
+	// requestStatus is the terminal outcome set by finalizeOutcome at stream end.
+	requestPayload map[string]any
+	completion     strings.Builder
+	requestStatus  string
 }
 
 // preflightStream runs the streaming spend-guardrail pre-flight: estimate the
@@ -115,7 +125,8 @@ func (s *Server) preflightStream(
 	if op == "chat" {
 		// EstimateUSD("chat") succeeded → both text price dimensions are
 		// present (textCost requires them), so the deref below is safe.
-		g.inputCostUSD = float64(s.estimator.InputTokens(inputMap, 1)) / 1e6 * (*pricing.InputPerMTok)
+		g.inputTokens = s.estimator.InputTokens(inputMap, 1)
+		g.inputCostUSD = float64(g.inputTokens) / 1e6 * (*pricing.InputPerMTok)
 	}
 	return g, true
 }
@@ -134,6 +145,13 @@ func (g *streamGuard) observe(chunk provider.StreamChunk) (abort bool) {
 		c, n := billing.CountScriptChars(chunk.Delta)
 		g.outChars += c
 		g.outNonASCII += n
+		// P0-2 (B1) — accumulate the VISIBLE completion (token deltas) for the audit
+		// response payload, capped at usagePayloadCapBytes so a runaway stream can't
+		// balloon the record. Reasoning deltas count toward billing but are hidden
+		// thinking, so they're not stored in the logged answer.
+		if chunk.Kind == provider.StreamChunkToken && g.completion.Len() < usagePayloadCapBytes {
+			g.completion.WriteString(chunk.Delta)
+		}
 		if g.tallyCostUSD() > g.abortUSD {
 			g.aborted = true
 		}
@@ -148,6 +166,34 @@ func (g *streamGuard) observe(chunk provider.StreamChunk) (abort bool) {
 // didAbort reports whether observe tripped the hard-abort. Nil-safe.
 func (g *streamGuard) didAbort() bool {
 	return g != nil && g.aborted
+}
+
+// captureRequest stores the assembled provider request (post-injection) so settle
+// can log it as the audit input payload (P0-2 B1). Nil-safe. Bounded by the caller.
+func (g *streamGuard) captureRequest(payload map[string]any) {
+	if g != nil {
+		g.requestPayload = payload
+	}
+}
+
+// finalizeOutcome classifies the stream's terminal outcome from the streamChat
+// error so settle records the real request_status (P0-2 B2) — success on a clean
+// finish, aborted on a budget hard-abort, cancelled on client disconnect, and
+// provider_error on any other upstream failure. Nil-safe.
+func (g *streamGuard) finalizeOutcome(streamErr error) {
+	if g == nil {
+		return
+	}
+	switch {
+	case g.aborted:
+		g.requestStatus = "aborted"
+	case errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded):
+		g.requestStatus = "cancelled"
+	case streamErr != nil:
+		g.requestStatus = "provider_error"
+	default:
+		g.requestStatus = "success"
+	}
 }
 
 // settle reconciles the stream's spend reservation at stream end. Runs
@@ -185,35 +231,56 @@ func (g *streamGuard) settle(ctx context.Context) {
 			"reservation_id", g.reservationID.String(), "err", err)
 	}
 
-	// D-PHASE6A-BETA-STREAM-RECORD. Mirror jobs.Worker.settleBilling step (2):
-	// after the reservation is reconciled, write a model-level `usage_logs`
-	// audit row via /internal/model-billing/record so streaming jobs appear
-	// in the same per-model spend ledger as non-streaming jobs. Only when:
-	//   - the stream is chat (tts has no token usage)
-	//   - the stream completed normally (no hard-abort — partial output
-	//     is not a successful billable unit; the reservation reconcile
-	//     already captured the spend, but the audit row is reserved for
-	//     successful requests like jobs.Worker.settleBilling does)
-	//   - the provider sent a final usage chunk (authoritative token
-	//     counts). Without it the estimate is too noisy for a billing
-	//     ledger entry; we skip rather than guess.
-	// Best-effort: a failure is logged, never propagated; the sweeper is
-	// the backstop. RequestID = jobID so a retry is idempotent on the
-	// usage-billing side (same pattern as the job path).
-	if g.op == "chat" && !g.aborted && g.finalUsage != nil {
-		reasoning := 0
-		if g.finalUsage.ReasoningTokens != nil {
-			reasoning = *g.finalUsage.ReasoningTokens
+	// P0-2 (B1/B2). Mirror jobs.Worker.settleBilling step (2): after the reservation
+	// is reconciled, write a model-level `usage_logs` audit row via
+	// /internal/model-billing/record so streaming chat appears in the same per-model
+	// spend ledger — AND carries the assembled request + accumulated completion so the
+	// highest-volume path is no longer audit-invisible.
+	//
+	// B2 fix: record on EVERY terminal status (success, provider_error, aborted,
+	// cancelled), not just a clean-finish-with-usage. An aborted/disconnected stream
+	// still spent real tokens + produced partial output; recording zero rows for it is
+	// the audit hole. When the provider sent a final usage chunk we use its
+	// authoritative token counts; otherwise we fall back to the delta-estimated tally
+	// (the same numbers reconcile already used). tts is exempt — its cost is per-char,
+	// not per-token, and it has no completion text to log.
+	//
+	// Best-effort: a failure is logged, never propagated; the sweeper is the backstop.
+	// RequestID = jobID so a retry is idempotent on the usage-billing side.
+	if g.op == "chat" {
+		status := g.requestStatus
+		if status == "" {
+			status = "success"
+		}
+		inTok, outTok := g.inputTokens, billing.EstimateTokens(g.outChars, g.outNonASCII)
+		if g.finalUsage != nil {
+			reasoning := 0
+			if g.finalUsage.ReasoningTokens != nil {
+				reasoning = *g.finalUsage.ReasoningTokens
+			}
+			inTok = g.finalUsage.InputTokens
+			outTok = g.finalUsage.OutputTokens + reasoning
+		}
+		// LOW-1: bound the completion the same way the input payload is bounded
+		// (stream_handler buildChatStreamInput → boundedPayload) so a very long
+		// generation is logged by reference, not shipped inline. Symmetric with the
+		// sync path (recordSyncUsage bounds both sides).
+		var outPayload map[string]any
+		if c := g.completion.String(); c != "" {
+			outPayload = boundedPayload(map[string]any{"content": c})
 		}
 		if err := g.guardrail.RecordUsage(ctx, billing.UsageRecord{
-			RequestID:    g.jobID,
-			OwnerUserID:  g.ownerUserID,
-			ModelSource:  g.modelSource,
-			ModelRef:     g.modelRef,
-			Operation:    g.op,
-			InputTokens:  g.finalUsage.InputTokens,
-			OutputTokens: g.finalUsage.OutputTokens + reasoning,
-			TotalCostUSD: actual, // authoritative per-model cost (matches reconcile)
+			RequestID:     g.jobID,
+			OwnerUserID:   g.ownerUserID,
+			ModelSource:   g.modelSource,
+			ModelRef:      g.modelRef,
+			Operation:     g.op,
+			InputTokens:   inTok,
+			OutputTokens:  outTok,
+			RequestStatus: status,
+			InputPayload:  g.requestPayload,
+			OutputPayload: outPayload,
+			TotalCostUSD:  actual, // authoritative per-model cost (matches reconcile)
 		}); err != nil {
 			slog.Warn("stream usage record failed",
 				"request_id", g.jobID.String(), "err", err)

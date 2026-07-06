@@ -28,5 +28,11 @@
   "index_drafts_error": "草稿索引建立失敗。",
   "copy": "複製",
   "copied": "已複製",
-  "degraded": "部分結果可能受限（某個搜尋後端無法使用）。"
+  "degraded": "部分結果可能受限（某個搜尋後端無法使用）。",
+  "content_view": {
+    "chapter_label": "第 {{n}} 章",
+    "block_position": "第 {{n}} 段落",
+    "passage_position": "第 {{n}} 篇章",
+    "jump": "跳至原文"
+  }
 }

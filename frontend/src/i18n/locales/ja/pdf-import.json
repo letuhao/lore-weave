@@ -1,0 +1,68 @@
+{
+  "title": "PDFをインポート",
+  "description": "PDFを本としてインポートします（ページ範囲ごとに分割）",
+  "steps": {
+    "upload": "アップロード",
+    "configure": "設定",
+    "confirm": "確認",
+    "progress": "進行状況",
+    "results": "結果"
+  },
+  "upload": {
+    "intro": "PDFを本としてインポートします。小説だけでなく、設定資料や技術リファレンスなどのPDFも可能です。長いPDFは、次のステップで設定するページ範囲に基づいて章ごとに分割されます。",
+    "choosePdf": "PDFファイルを選択",
+    "pdfOnly": ".pdfのみ",
+    "checking": "PDFをチェック中…",
+    "pageCount_one": "{{count}} ページ検出されました。",
+    "pageCount_other": "{{count}} ページが検出されました。",
+    "readError": "この PDF を読み取れませんでした。"
+  },
+  "configure": {
+    "pagesPerChunk": "1チャプターあたりのページ数",
+    "pagesPerChunkHint": "指定したページ数ごとに1つのチャプターが作成されます。PDFインポートでは「第N章」といった見出しの自動検出は行われないため、章の区切りがない参考書や技術書でもこの設定で分割可能です。",
+    "willCreate_one": "{{pages}} ページから {{count}} つのチャプターを作成します。",
+    "willCreate_other": "{{pages}} ページから {{count}} つのチャプターを作成します。",
+    "highChapterWarning": "チャプター数が非常に多くなります。意図的でない場合は「1チャプターあたりのページ数」を増やしてください。このままインポートを続行することも可能です。",
+    "captionImages": "AIで画像にキャプションを付ける",
+    "captionImagesHint": "図表や画像を抽出し、ビジョンモデルを使用してキャプションを生成します。これにより、用語集や知識グラフの抽出時に図表の内容を反映できます。画像ごとにLLMクレジットを消費します。",
+    "visionModel": "ビジョンモデル",
+    "visionModelPlaceholder": "ビジョン機能を持つモデルを選択（例: gpt-4o）",
+    "visionModelAriaLabel": "画像キャプション生成用のビジョンモデル",
+    "visionModelHint": "画像入力に対応しているモデルを選択してください。すべてのチャットモデルが画像に対応しているわけではありません。"
+  },
+  "confirm": {
+    "file": "ファイル",
+    "pages": "ページ数",
+    "pagesPerChunk": "1チャンクあたりのページ数",
+    "chaptersToCreate": "作成するチャプター数",
+    "captionImages": "AIで画像にキャプションを付ける",
+    "yes": "はい",
+    "no": "いいえ",
+    "needModel": "開始する前にビジョンモデルを選択してください。キャプション作成は有効になっていますが、モデルが選択されていません。",
+    "backgroundNote": "この処理はバックグラウンドで実行されます。このダイアログを閉じた後も、いつでも「ジョブ」パネルから進捗を確認できます。",
+    "startImport": "インポートを開始",
+    "startFailed": "インポートの開始に失敗しました"
+  },
+  "progress": {
+    "importing": "PDFをインポート中…",
+    "chapterOf": "{{total}} 章のうち {{current}} 章目",
+    "runInBackground": "バックグラウンドで実行",
+    "progress": "進捗状況",
+    "longNote": "長いPDFの場合、特にAIキャプション機能が有効な場合は時間がかかることがあります。ダイアログはいつでも閉じることができます。インポートはバックグラウンドで継続され、進捗は「ジョブ」パネルで確認できます。",
+    "backgroundToast": "バックグラウンドでインポートを継続しています。進捗は「ジョブ」パネルで確認してください。"
+  },
+  "results": {
+    "complete": "インポート完了",
+    "failed": "インポート失敗",
+    "chaptersCreated_one": "{{count}} 章を作成しました。",
+    "chaptersCreated_other": "{{count}} 章を作成しました。",
+    "genericError": "インポート中にエラーが発生しました。",
+    "importAnother": "別のファイルをインポート",
+    "done": "完了"
+  },
+  "button": {
+    "back": "戻る",
+    "cancel": "キャンセル",
+    "next": "次へ"
+  }
+}

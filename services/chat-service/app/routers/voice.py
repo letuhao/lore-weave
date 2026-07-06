@@ -6,6 +6,7 @@ from uuid import UUID
 
 import asyncpg
 import httpx
+from loreweave_internal_client import build_internal_client
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
+from app.middleware.trace_id import trace_id_var
 from app.deps import get_current_user, get_db
 from app.services.voice_stream_service import voice_stream_response, generate_tts_for_message
 from app.storage.minio_client import delete_object, generate_presigned_url
@@ -36,6 +38,14 @@ async def send_voice_message(
         voice_config = json.loads(config)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="invalid config JSON")
+
+    # Chat & AI settings (M5) — overlay the user's SAVED voice
+    # (user_chat_ai_prefs.voice, the unified home) so a voice set in the Chat & AI
+    # panel wins over the FE's echoed default. Kills the "af_heart resets every
+    # request" behavior; the request/System default remain the fallbacks.
+    from app.db.user_chat_ai_prefs import get_prefs
+    from app.services.voice_settings import merge_voice_config
+    voice_config = merge_voice_config(voice_config, (await get_prefs(pool, owner_user_id=user_id)).voice)
 
     # Verify session ownership (same as send_message)
     session = await pool.fetchrow(
@@ -88,9 +98,12 @@ async def send_voice_message(
 
 
 class GenerateTTSRequest(BaseModel):
-    tts_model_source: str = "user_model"
-    tts_model_ref: str
-    tts_voice: str = "af_heart"
+    # All optional — omitted fields fall back to the user's saved voice
+    # (user_chat_ai_prefs.voice, the unified home), then the System default. The
+    # FE need not know the voice; the account settings supply it (M5).
+    tts_model_source: str | None = None
+    tts_model_ref: str | None = None
+    tts_voice: str | None = None
 
 
 @router.post("/{session_id}/messages/{message_id}/generate-tts")
@@ -114,14 +127,27 @@ async def generate_tts(
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
 
+    # Resolve the effective voice/model: request field ▸ saved account voice ▸
+    # System default (M5 — the account voice is authoritative where set).
+    from app.db.user_chat_ai_prefs import get_prefs
+    from app.services.voice_settings import merge_voice_config
+    _req = {k: v for k, v in {
+        "tts_voice": body.tts_voice, "tts_model_ref": body.tts_model_ref,
+        "tts_model_source": body.tts_model_source,
+    }.items() if v is not None}
+    _merged = merge_voice_config(_req, (await get_prefs(pool, owner_user_id=user_id)).voice)
+    _tts_model_ref = _merged.get("tts_model_ref")
+    if not _tts_model_ref:
+        raise HTTPException(status_code=400, detail="TTS model not configured. Set it in Chat & AI settings.")
+
     return StreamingResponse(
         generate_tts_for_message(
             session_id=str(session_id),
             message_id=str(message_id),
             user_id=user_id,
-            tts_model_source=body.tts_model_source,
-            tts_model_ref=body.tts_model_ref,
-            tts_voice=body.tts_voice,
+            tts_model_source=_merged.get("tts_model_source") or "user_model",
+            tts_model_ref=_tts_model_ref,
+            tts_voice=_merged.get("tts_voice") or "af_heart",
             pool=pool,
         ),
         media_type="text/event-stream",
@@ -188,10 +214,14 @@ async def get_recommended_voice_settings(
 ) -> dict:
     """Get recommended VAD settings based on user's voice analytics history."""
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON + trace.
+        async with build_internal_client(
+            settings.statistics_service_internal_url,
+            internal_token=settings.internal_service_token,
+            timeout_s=5, trace_id_provider=trace_id_var.get,
+        ) as client:
             resp = await client.get(
                 f"{settings.statistics_service_internal_url}/internal/voice-stats/{user_id}",
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code == 200:
                 stats = resp.json()

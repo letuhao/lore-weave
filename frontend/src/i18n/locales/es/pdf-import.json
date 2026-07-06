@@ -1,0 +1,68 @@
+{
+  "title": "Importar PDF",
+  "description": "Importa un PDF como un libro, dividido por rangos de páginas",
+  "steps": {
+    "upload": "Subir",
+    "configure": "Configurar",
+    "confirm": "Confirmar",
+    "progress": "Progreso",
+    "results": "Resultados"
+  },
+  "upload": {
+    "intro": "Importa un PDF como un libro — incluyendo PDFs de lore o de referencia técnica, no solo novelas. Los PDF largos se dividen en capítulos por rangos de páginas (se configuran en el siguiente paso).",
+    "choosePdf": "Elegir un archivo PDF",
+    "pdfOnly": "solo .pdf",
+    "checking": "Comprobando PDF…",
+    "pageCount_one": "Se detectó {{count}} página.",
+    "pageCount_other": "{{count}} páginas detectadas.",
+    "readError": "No se pudo leer este PDF."
+  },
+  "configure": {
+    "pagesPerChunk": "Páginas por fragmento",
+    "pagesPerChunkHint": "Cada grupo de este número de páginas se convertirá en un capítulo. No se utiliza la detección de encabezados «Capítulo N» para las importaciones de PDF, por lo que esto funciona incluso con libros de referencia o técnicos que no tienen marcadores de capítulo.",
+    "willCreate_one": "Esto creará {{count}} capítulo a partir de {{pages}} páginas.",
+    "willCreate_other": "Esto creará {{count}} capítulos a partir de {{pages}} páginas.",
+    "highChapterWarning": "Eso es una gran cantidad de capítulos; considera un valor de «páginas por fragmento» mayor si esto no fue intencional. La importación se ejecutará de todos modos.",
+    "captionImages": "Poner subtítulos a las imágenes con IA",
+    "captionImagesHint": "Extrae gráficos/imágenes y les añade subtítulos mediante un modelo de visión para que la extracción de glosario/KG pueda ver el contenido del gráfico. Utiliza créditos de LLM por imagen.",
+    "visionModel": "Modelo de visión",
+    "visionModelPlaceholder": "Elige un modelo con capacidad de visión (p. ej. gpt-4o)",
+    "visionModelAriaLabel": "Modelo de visión para el subtitulado de imágenes",
+    "visionModelHint": "Elige un modelo que realmente admita entrada de imágenes; no todos los modelos de chat pueden hacerlo."
+  },
+  "confirm": {
+    "file": "Archivo",
+    "pages": "Páginas",
+    "pagesPerChunk": "Páginas por fragmento",
+    "chaptersToCreate": "Capítulos a crear",
+    "captionImages": "Añadir subtítulos a las imágenes con IA",
+    "yes": "Sí",
+    "no": "No",
+    "needModel": "Elige un modelo de visión antes de comenzar; la función de subtitulado está activada, pero no hay ningún modelo seleccionado.",
+    "backgroundNote": "Esto se ejecuta en segundo plano; puedes cerrar este diálogo y consultar el progreso en el panel de Tareas en cualquier momento.",
+    "startImport": "Iniciar importación",
+    "startFailed": "Error al iniciar la importación"
+  },
+  "progress": {
+    "importing": "Importando PDF…",
+    "chapterOf": "Capítulo {{current}} de {{total}}",
+    "runInBackground": "Ejecutar en segundo plano",
+    "progress": "Progreso",
+    "longNote": "Esto puede tardar un poco si el PDF es extenso, especialmente si la generación de subtítulos por IA está activada. Puedes cerrar este diálogo en cualquier momento; la importación continuará ejecutándose y podrás seguir su progreso en el panel de Tareas.",
+    "backgroundToast": "La importación continúa en segundo plano; consulta el panel de Tareas para ver el progreso."
+  },
+  "results": {
+    "complete": "Importación completada",
+    "failed": "Error en la importación",
+    "chaptersCreated_one": "Se ha creado {{count}} capítulo.",
+    "chaptersCreated_other": "Se han creado {{count}} capítulos.",
+    "genericError": "Algo salió mal durante la importación.",
+    "importAnother": "Importar otro",
+    "done": "Listo"
+  },
+  "button": {
+    "back": "Atrás",
+    "cancel": "Cancelar",
+    "next": "Siguiente"
+  }
+}

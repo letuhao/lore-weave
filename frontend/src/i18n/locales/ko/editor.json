@@ -1,0 +1,375 @@
+{
+  "focus": {
+    "toggle": "집중 모드",
+    "continuity": "연속성 유지 ✓",
+    "hint": "✦ 줄을 탭하여 집중하기"
+  },
+  "saved": "챕터 저장됨",
+  "no_content": "번역할 내용이 없습니다",
+  "translation_failed": "번역 실패",
+  "translated_blocks": "{{count}}개 블록 번역됨",
+  "text_translation_received": "텍스트 번역 수신됨 — 블록 모드 권장",
+  "breadcrumb": {
+    "workspace": "워크스페이스",
+    "book": "도서",
+    "chapter": "챕터"
+  },
+  "prev_chapter": "이전 챕터",
+  "next_chapter": "다음 챕터",
+  "mode": {
+    "classic": "클래식",
+    "classic_title": "클래식 모드 — 집중에 최적화된 글쓰기",
+    "ai": "AI",
+    "ai_title": "AI 어시스턴트 모드 — 모든 기능 제공"
+  },
+  "workmode": {
+    "write": "쓰기",
+    "write_desc": "원고 편집",
+    "translate": "번역",
+    "translate_desc": "버전 관리, 비교 및 번역",
+    "read": "읽기",
+    "read_desc": "리더 열기 (TTS, 테마)",
+    "compose": "작성",
+    "compose_desc": "AI 공동 집필 스튜디오"
+  },
+  "grammar_title": "맞춤법 및 문법 검사 토글 (LanguageTool)",
+  "translate_title": "AI를 사용하여 콘텐츠 번역 (블록 모드)",
+  "translating": "번역 중...",
+  "translate": "번역",
+  "view_translations": "번역 내역",
+  "view_translations_title": "저장된 번역 버전 보기 (언어, 기록, 나란히 비교)",
+  "toggle_source": "원본 패널 토글",
+  "toggle_history": "기록 / AI 패널 토글",
+  "unsaved": "저장되지 않음",
+  "saved_badge": "저장됨",
+  "mobile": {
+    "editor": "에디터",
+    "studio": "스튜디오",
+    "history": "기록",
+    "nav": "에디터 섹션"
+  },
+  "discard_title": "저장되지 않은 모든 변경 사항 삭제",
+  "discard": "삭제",
+  "save": "저장",
+  "tabs": {
+    "chapters": "챕터",
+    "original": "원본",
+    "glossary": "용어 사전",
+    "outline": "개요"
+  },
+  "chapter_count": "{{count}}개 챕터",
+  "chapter_count_other": "{{count}}개 챕터",
+  "original_readonly": "업로드된 원본 텍스트 — 읽기 전용",
+  "no_original": "원본 소스 없음 — 이 챕터는 에디터에서 직접 작성되었습니다 (파일을 가져오지 않음).",
+  "title_placeholder": "챕터 제목",
+  "chars": "{{n}}자",
+  "words": "{{n}}단어",
+  "paragraphs": "{{count}}문단",
+  "paragraphs_other": "{{count}}문단",
+  "save_note_placeholder": "저장 메모 (선택 사항) — 예: \"회상 장면 추가\"",
+  "history": "기록",
+  "ai_chat": "AI 채팅",
+  "coming_soon": "출시 예정",
+  "connected": "연결됨",
+  "left_panel": "왼쪽 패널",
+  "right_panel": "오른쪽 패널",
+  "discard_confirm": {
+    "title": "변경 사항을 삭제하시겠습니까?",
+    "desc": "저장되지 않은 모든 변경 사항은 영구적으로 손실됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "confirm": "변경 사항 삭제",
+    "cancel": "계속 편집"
+  },
+  "toolbar": {
+    "paragraph": "문단",
+    "h1": "제목 1",
+    "h2": "제목 2",
+    "h3": "제목 3",
+    "bold": "굵게 (Ctrl+B)",
+    "italic": "기울임꼴 (Ctrl+I)",
+    "strike": "취소선",
+    "underline": "밑줄 (Ctrl+U)",
+    "inline_code": "인라인 코드",
+    "link": "링크",
+    "url_prompt": "URL:",
+    "highlight": "하이라이트 (Ctrl+Shift+H)",
+    "subscript": "아래 첨자",
+    "superscript": "위 첨자",
+    "bullet_list": "글머리 기호 목록",
+    "ordered_list": "번호 매기기 목록",
+    "blockquote": "인용구",
+    "insert_image": "이미지 삽입",
+    "insert_video": "동영상 삽입",
+    "insert_audio": "오디오 삽입",
+    "code_block": "코드 블록",
+    "horizontal_rule": "구분선",
+    "undo": "실행 취소 (Ctrl+Z)",
+    "redo": "다시 실행 (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "문단",
+      "desc": "일반 텍스트 블록"
+    },
+    "heading1": {
+      "title": "제목 1",
+      "desc": "대주제 제목"
+    },
+    "heading2": {
+      "title": "제목 2",
+      "desc": "중주제 제목"
+    },
+    "heading3": {
+      "title": "제목 3",
+      "desc": "소주제 제목"
+    },
+    "bullet": {
+      "title": "글머리 기호 목록",
+      "desc": "순서 없는 목록"
+    },
+    "numbered": {
+      "title": "번호 매기기 목록",
+      "desc": "순서 있는 목록"
+    },
+    "quote": {
+      "title": "인용구",
+      "desc": "블록 인용"
+    },
+    "image": {
+      "title": "이미지",
+      "desc": "업로드, 붙여넣기 또는 AI 생성"
+    },
+    "video": {
+      "title": "동영상",
+      "desc": "동영상 파일 업로드"
+    },
+    "audio": {
+      "title": "오디오",
+      "desc": "오디오 파일 업로드"
+    },
+    "code": {
+      "title": "코드 블록",
+      "desc": "구문 강조 코딩"
+    },
+    "callout": {
+      "title": "콜아웃",
+      "desc": "작가 노트 또는 팁"
+    },
+    "divider": {
+      "title": "구분선",
+      "desc": "가로 구분선"
+    }
+  },
+  "code": {
+    "language_label": "코드 언어",
+    "copy": "코드 복사",
+    "delete": "코드 블록 삭제"
+  },
+  "media": {
+    "ai_prompt": "AI 프롬프트",
+    "saved": "저장됨",
+    "empty": "비어 있음",
+    "placeholder": "AI 문맥 및 생성을 위해 이 미디어를 설명하세요...",
+    "stored_note": "AI 문맥 및 재생성을 위해 미디어와 함께 저장됨.",
+    "copied": "복사됨",
+    "copy_prompt": "프롬프트 복사",
+    "regenerate": "다시 생성",
+    "generating": "생성 중...",
+    "model_label": "AI 모델"
+  },
+  "image": {
+    "err_type": "지원되지 않는 유형: {{type}}. PNG, JPG, GIF 또는 WebP를 사용하세요.",
+    "err_size": "파일이 너무 큼: {{size}} MB. 최대 10 MB까지 가능합니다.",
+    "upload_unavailable": "업로드를 사용할 수 없습니다 — 챕터를 먼저 저장하세요.",
+    "upload_failed": "업로드 실패",
+    "regen_save_first": "AI 생성을 활성화하려면 챕터를 먼저 저장하세요.",
+    "regen_no_model": "설정된 AI 모델이 없습니다. 설정에서 제공업체를 추가하세요.",
+    "regen_no_provider": "활성 AI 제공업체가 없습니다. 설정 → 제공업체에서 구성하세요.",
+    "regen_failed": "생성 실패",
+    "default_title": "이미지",
+    "version_history": "버전 기록",
+    "copy_filename": "파일명 복사",
+    "copy": "복사",
+    "ai_mode": "AI 모드",
+    "replace": "교체",
+    "replace_title": "이미지 교체",
+    "delete_block": "블록 삭제",
+    "delete_image_block": "이미지 블록 삭제",
+    "uploading": "업로드 중... {{pct}}%",
+    "drop_here": "여기에 이미지를 드롭하세요",
+    "drop_hint": "이미지를 드래그하거나, 클릭하여 탐색하거나, Ctrl+V를 누르세요",
+    "formats": "PNG, JPG, GIF, WebP — 최대 10 MB",
+    "width_title": "너비: {{width}}%",
+    "caption_placeholder": "캡션 추가...",
+    "caption_aria": "이미지 캡션",
+    "alt_text": "대체 텍스트",
+    "alt_set": "설정",
+    "alt_placeholder": "스크린 리더 및 EPUB 내보내기를 위한 이미지 설명을 입력하세요...",
+    "alt_aria": "이미지 대체 텍스트",
+    "alt_note": "스크린 리더, 검색 및 EPUB 내보내기에 사용됩니다. 캡션과는 다릅니다."
+  },
+  "video": {
+    "err_type": "지원되지 않는 형식: {{type}}. MP4 또는 WebM을 사용하세요.",
+    "err_size": "파일이 너무 큽니다: {{size}} MB. 최대 100 MB까지 가능합니다.",
+    "upload_unavailable": "업로드할 수 없음 — 먼저 챕터를 저장하세요.",
+    "upload_failed": "업로드 실패",
+    "gen_save_first": "먼저 챕터를 저장하세요.",
+    "gen_no_model": "설정된 비디오 생성 모델이 없습니다. 설정 > 제공업체에서 추가하세요.",
+    "gen_failed": "생성 실패",
+    "default_title": "비디오",
+    "version_history": "버전 기록",
+    "copy_filename": "파일명 복사",
+    "copy": "복사",
+    "ai_mode": "AI 모드",
+    "replace": "교체",
+    "replace_title": "비디오 교체",
+    "delete_block": "블록 삭제",
+    "delete_video_block": "비디오 블록 삭제",
+    "uploading": "업로드 중... {{pct}}%",
+    "drop_here": "여기에 비디오를 드래그하세요",
+    "drop_hint": "비디오를 드래그하거나 클릭하여 탐색하세요",
+    "formats": "MP4, WebM — 최대 100 MB",
+    "width_title": "너비: {{width}}%",
+    "caption_placeholder": "캡션 추가...",
+    "caption_aria": "비디오 캡션",
+    "alt_text": "대체 텍스트",
+    "alt_set": "설정",
+    "alt_placeholder": "스크린 리더 및 EPUB 내보내기를 위한 비디오 설명을 입력하세요...",
+    "alt_aria": "비디오 대체 텍스트",
+    "alt_note": "스크린 리더, 검색 및 EPUB 내보내기에 사용됩니다. 캡션과는 다릅니다.",
+    "generate": "생성"
+  },
+  "audio": {
+    "err_type": "지원되지 않는 형식: {{type}}. MP3, WAV, OGG, WebM 또는 M4A를 사용하세요.",
+    "err_size": "파일이 너무 큽니다: {{size}} MB. 최대 20 MB까지 가능합니다.",
+    "upload_unavailable": "업로드할 수 없음 — 먼저 챕터를 저장하세요.",
+    "upload_failed": "업로드 실패",
+    "default_title": "오디오",
+    "ai_mode": "AI 모드",
+    "play": "재생",
+    "pause": "일시정지",
+    "replace_title": "오디오 교체",
+    "delete_audio_block": "오디오 블록 삭제",
+    "uploading": "업로드 중... {{pct}}%",
+    "drop_here": "여기에 오디오를 드래그하세요",
+    "drop_hint": "오디오 파일을 드래그하거나 클릭하여 탐색하세요",
+    "formats": "MP3, WAV, OGG, WebM, M4A — 최대 20 MB",
+    "subtitle_placeholder": "자막 추가...",
+    "subtitle_aria": "오디오 자막"
+  },
+  "callout": {
+    "type": {
+      "note": "노트",
+      "warning": "경고",
+      "tip": "팁",
+      "danger": "위험"
+    },
+    "title": "{{type}} — 클릭하여 유형 변경"
+  },
+  "revision": {
+    "restored": "버전 복원됨",
+    "header": "버전 기록 · {{count}}",
+    "empty": "아직 버전이 없습니다. 저장하면 버전이 생성됩니다.",
+    "current": "현재",
+    "view": "보기",
+    "restore": "복원",
+    "confirm_title": "이 버전을 복원하시겠습니까?",
+    "confirm_desc": "현재 초안이 이 이전 버전으로 덮어씌워지며, 새로운 버전 항목이 생성됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "close_preview": "미리보기 닫기",
+    "preview": "버전 미리보기",
+    "restore_version": "이 버전 복원",
+    "empty_revision": "내용이 없는 버전입니다."
+  },
+  "source": {
+    "header": "블록 JSON — 챕터 구조의 읽기 전용 보기",
+    "copied": "복사됨",
+    "copy": "JSON 복사"
+  },
+  "version": {
+    "loading": "버전 기록 로딩 중...",
+    "close": "닫기",
+    "title": "버전 기록",
+    "block_crumb": "블록",
+    "comparing": "v{{old}} → v{{new}} 비교 중",
+    "previous": "이전",
+    "old": "이전",
+    "no_media": "미디어 없음",
+    "current": "현재",
+    "selected": "선택됨",
+    "current_tag": "현재",
+    "no_media_version": "이 버전에는 미디어가 없습니다",
+    "no_versions": "아직 버전이 없습니다",
+    "version_count": "{{count}}개 버전",
+    "version_count_other": "{{count}}개 버전",
+    "total": "총 {{size}}",
+    "delete_confirm": "{{version}} 버전을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+    "versions": "버전",
+    "restore_version": "v{{version}} 복원",
+    "timeago": {
+      "just_now": "방금 전",
+      "mins": "{{n}}분 전",
+      "hours": "{{n}}시간 전",
+      "yesterday": "어제",
+      "days": "{{n}}일 전"
+    },
+    "action": {
+      "upload": "미디어 업로드됨",
+      "regenerate": "개선된 프롬프트로 재생성됨",
+      "caption_edit": "캡션 업데이트됨",
+      "prompt_edit": "프롬프트 업데이트됨"
+    },
+    "diff_identical": "프롬프트가 동일합니다",
+    "diff_title": "AI 프롬프트 차이 ({{old}} → {{new}})",
+    "diff_previous": "이전",
+    "diff_current": "현재"
+  },
+  "media_guard": {
+    "protected": "클래식 모드에서는 미디어 블록이 보호됩니다. 편집하거나 삭제하려면 AI 모드로 전환하세요."
+  },
+  "publish": {
+    "publish": "발행",
+    "republish": "재발행",
+    "unpublish": "발행 취소",
+    "draft_badge": "초안",
+    "published_badge": "발행됨",
+    "confirm_title": "챕터를 발행 취소하시겠습니까?",
+    "confirm_body": "이 작업을 수행하면 챕터가 정식 세계관(Canon)에서 제외됩니다. 다시 발행하기 전까지 추출된 지식과 구절이 회수됩니다.",
+    "published_toast": "챕터가 발행되었습니다",
+    "unpublished_toast": "챕터 발행이 취소되었습니다",
+    "conflict_toast": "파일을 여는 동안 초안이 변경되었습니다 — 발행하기 전에 다시 불러오세요.",
+    "empty_toast": "이 챕터에는 발행할 내용이 없습니다 — 먼저 내용을 작성하세요.",
+    "save_first": "발행하기 전에 저장하세요",
+    "gate_pending": "{{total}}개 장면 중 {{pending}}개 장면이 아직 완료되지 않음",
+    "gate_no_scenes": "발행하려면 최소 하나 이상의 장면을 생성하고 완료하세요",
+    "gate_canon_blocked": "{{count}}개의 장면에서 해결되지 않은 설정 충돌이 있습니다",
+    "gate_unchecked": "{{count}}개의 장면에서 캐논(Canon)이 확인되지 않음",
+    "gate_unchecked_hint": "이 장면들은 확인해야 할 캐릭터는 있으나 확정된 읽기 순서 위치가 없어 캐논 검증이 완료되지 않았습니다. 게시할 수 있지만, 가능하다면 검토해 주세요."
+  },
+  "compare": {
+    "open": "비교하기",
+    "title": "수정 사항 비교",
+    "back": "에디터로 돌아가기",
+    "left": "왼쪽 버전",
+    "right": "오른쪽 버전",
+    "side_by_side": "나란히 보기",
+    "inline": "인라인 비교",
+    "no_revisions": "수정 사항 없음",
+    "need_two": "이 챕터를 비교하려면 최소 두 개의 저장된 수정 버전이 필요합니다.",
+    "loading": "로딩 중…",
+    "diffing": "차이점 계산 중…",
+    "error": "비교 내용을 불러올 수 없습니다.",
+    "truncated": "수정 사항이 너무 커서 세밀한 차이점 대신 전체 교체 내용을 표시합니다.",
+    "same": "양쪽 버전이 동일합니다. 차이점이 없습니다.",
+    "load_more": "더 보기 ({{loaded}}/{{total}})",
+    "load_more_hint": "이전 버전들을 선택기에 불러옵니다"
+  },
+  "checkpoint": {
+    "header": "AI 편집 체크포인트",
+    "insert": "삽입됨",
+    "polish": "다듬기 완료",
+    "restore": "복원",
+    "restored": "AI 편집 이전 상태로 복원됨",
+    "no_restore": "복원할 이전 버전이 없습니다",
+    "confirm_title": "이 AI 편집 이전 상태로 복원하시겠습니까?",
+    "confirm_desc": "현재 초안이 먼저 스냅샷으로 저장되므로, 수정 기록을 통해 언제든 되돌릴 수 있습니다."
+  }
+}

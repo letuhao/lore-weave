@@ -43,13 +43,13 @@ describe('parseProviders (C-GW env-driven registry)', () => {
     expect(ps[0]).toEqual({ name: 'myprov', mcpUrl: 'http://m:9000/mcp', prefix: 'my_' });
   });
 
-  it('resolves knowledge extraPrefixes (kg_) by name so kg_* tools are allowed (HIGH-1)', () => {
+  it('resolves knowledge extraPrefixes (kg_, story_) by name so kg_* + story_* tools are allowed (HIGH-1)', () => {
     const ps = parseProviders('knowledge=http://k:8092/mcp', jest.fn());
     expect(ps[0].prefix).toBe('memory_');
-    expect(ps[0].extraPrefixes).toEqual(['kg_']);
+    expect(ps[0].extraPrefixes).toEqual(['kg_', 'story_']);
     // defaults path carries the same extras
     const def = parseProviders(undefined, jest.fn());
-    expect(def[0].extraPrefixes).toEqual(['kg_']);
+    expect(def[0].extraPrefixes).toEqual(['kg_', 'story_']);
   });
 
   it('resolves composition extraPrefixes (plan_) for PlanForge MCP tools', () => {

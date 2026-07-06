@@ -99,4 +99,20 @@ describe('FormDialog', () => {
     expect(scrollRegion.contains(footerWrap)).toBe(false);
     expect(scrollRegion.parentElement).toBe(footerWrap.parentElement);
   });
+
+  // dockable-gui.md DOCK-9 — adopting this shared dialog (instead of a hand-rolled
+  // `fixed inset-0`) must not force every caller into the original max-w-lg width.
+  it('defaults to max-w-lg (same rendered width as every pre-existing call site)', () => {
+    render(<FormDialog {...defaultProps}><div>content</div></FormDialog>);
+    expect(screen.getByRole('dialog').className).toContain('max-w-lg');
+  });
+
+  it('honors a wider size for multi-column/wizard content', () => {
+    render(
+      <FormDialog {...defaultProps} size="3xl"><div>content</div></FormDialog>,
+    );
+    const dialogClass = screen.getByRole('dialog').className;
+    expect(dialogClass).toContain('max-w-3xl');
+    expect(dialogClass).not.toContain('max-w-lg');
+  });
 });

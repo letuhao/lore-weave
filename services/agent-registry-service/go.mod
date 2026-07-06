@@ -5,8 +5,11 @@ go 1.25.0
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.4
+	github.com/loreweave/foundation/contracts/adminjwt v0.0.0
+	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/grantclient v0.1.0
 	github.com/loreweave/loreweave_mcp v0.1.0
 	github.com/loreweave/observability v0.1.0
@@ -22,7 +25,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -61,3 +63,7 @@ replace github.com/loreweave/observability => ../../sdks/go/observability
 replace github.com/loreweave/loreweave_mcp => ../../sdks/go/loreweave_mcp
 
 replace github.com/loreweave/grantclient => ../../sdks/go/grantclient
+
+replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
+
+replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt

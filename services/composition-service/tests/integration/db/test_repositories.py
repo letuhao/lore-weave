@@ -41,7 +41,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 _TABLES = [
-    "plan_artifact", "plan_run",
+    "plan_bootstrap_proposal", "plan_artifact", "plan_run",
     "composition_daily_progress",
     "composition_progress_baseline",
     "style_profile",
@@ -1239,6 +1239,91 @@ async def test_chapter_scene_gate_surfaces_unchecked_without_blocking(pool):
     assert gate["can_publish"] is True  # surfaced, NOT blocked
 
 
+async def test_canon_issues_empty_book_returns_empty_list(pool):
+    repo = OutlineRepo(pool)
+    _, project, _ = _ids()
+    assert await repo.canon_issues(uuid.uuid4(), project) == []
+
+
+async def test_canon_issues_lists_unresolved_scenes_itemized(pool):
+    """Studio Quality tab (`quality-canon`): book-wide, itemized — not the
+    publish-gate's per-chapter COUNT. Two scenes in two different chapters each
+    with an unresolved contradiction must both appear, each carrying its own
+    violations payload and chapter_id (no title — composition doesn't own that)."""
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    ch1, ch2 = uuid.uuid4(), uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=ch1, title="Scene A")
+    s2 = await repo.create_node(user, project, kind="scene", chapter_id=ch2, title="Scene B")
+
+    j1, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j1.id, "completed",
+                             result={"text": "x", "canon": {"resolved": False, "status": "checked",
+                                                            "violations": [{"entity_id": "e1", "name": "Old Man Wu"}]}})
+    j2, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s2.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j2.id, "completed",
+                             result={"text": "y", "canon": {"resolved": False, "status": "checked",
+                                                            "violations": [{"entity_id": "e2", "name": "Su Han"}]}})
+
+    issues = await repo.canon_issues(user, project)
+    assert len(issues) == 2
+    by_scene = {i["scene_id"]: i for i in issues}
+    assert by_scene[str(s1.id)]["chapter_id"] == str(ch1)
+    assert by_scene[str(s1.id)]["scene_title"] == "Scene A"
+    assert by_scene[str(s1.id)]["violations"][0]["name"] == "Old Man Wu"
+    assert by_scene[str(s2.id)]["chapter_id"] == str(ch2)
+    assert by_scene[str(s2.id)]["violations"][0]["name"] == "Su Han"
+
+
+async def test_canon_issues_resolved_scene_absent_and_newer_job_supersedes(pool):
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+
+    # a resolved job never appears.
+    j1, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j1.id, "completed", result={"text": "x", "canon": {"resolved": True}})
+    assert await repo.canon_issues(user, project) == []
+
+    # an unresolved job appears...
+    j2, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j2.id, "completed",
+                             result={"text": "y", "canon": {"resolved": False, "violations": []}})
+    issues = await repo.canon_issues(user, project)
+    assert len(issues) == 1 and issues[0]["job_id"] == str(j2.id)
+
+    # ...until a NEWER resolved job supersedes it (DISTINCT ON latest, same as chapter_scene_gate).
+    j3, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j3.id, "completed", result={"text": "z", "canon": {"resolved": True}})
+    assert await repo.canon_issues(user, project) == []
+
+
+async def test_canon_issues_synthetic_prose_job_does_not_mask(pool):
+    """D-M3-PROSEJOB-PUBLISHGATE parity: a synthetic promoted_scene_prose job (no
+    canon verdict) must not shadow an earlier confirmed contradiction here either —
+    same exclusion as chapter_scene_gate, itemized list must stay conservative-for-canon."""
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    j1, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j1.id, "completed",
+                             result={"text": "x", "canon": {"resolved": False, "violations": [{"entity_id": "e"}]}})
+    await jobs.upsert_promoted_scene_prose(user, project, s1.id, "author's edited take prose")
+    issues = await repo.canon_issues(user, project)
+    assert len(issues) == 1 and issues[0]["job_id"] == str(j1.id)
+
+
 # ──────────────────── generation_correction (V1 flywheel slice 1) ────────────────────
 
 import json as _json  # noqa: E402
@@ -1755,3 +1840,231 @@ async def test_plan_runs_roundtrip_and_tenancy(pool):
 
     dup = await repo.find_by_checksum(user, book, "chk1")
     assert dup is not None and dup.id == run.id
+
+
+async def test_get_run_detail_surfaces_arcs_for_a_picker(pool):
+    """D-PLANFORGE-ARC-PICKER: Compile's arc_id was a bare text input — the
+    spec already HAS a picker-worthy {id, title} list, it just was never
+    surfaced (get_run_detail only ever returned artifact REFS, not content).
+    No spec yet -> [] (not an error, not a crash)."""
+    from app.db.repositories.generation_jobs import GenerationJobsRepo
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.works import WorksRepo
+    from app.services.plan_forge_service import PlanForgeService
+
+    user, _project, book = _ids()
+    runs = PlanRunsRepo(pool)
+    svc = PlanForgeService(runs, GenerationJobsRepo(pool), WorksRepo(pool))
+
+    run = await runs.create(
+        user, book, mode="rules", source_checksum="chk-arcs",
+        source_markdown="# plan", status="pending",
+    )
+
+    empty_detail = await svc.get_run_detail(user, book, run.id)
+    assert empty_detail is not None and empty_detail["arcs"] == []
+
+    await runs.save_artifact(user, run.id, "spec", {
+        "arcs": [
+            {"id": "arc_1", "title": "Origins"},
+            {"id": "arc_2", "title": "Bước Lên Tiên Lộ"},
+            {"id": "arc_3"},  # no title -> falls back to the id itself, never blank
+        ],
+    })
+    detail = await svc.get_run_detail(user, book, run.id)
+    assert detail is not None
+    assert detail["arcs"] == [
+        {"id": "arc_1", "title": "Origins"},
+        {"id": "arc_2", "title": "Bước Lên Tiên Lộ"},
+        {"id": "arc_3", "title": "arc_3"},
+    ]
+
+
+async def test_compile_run_pipeline_shapes_chapters_and_persists_job_id(pool, monkeypatch):
+    """D-PLANFORGE-PIPELINE-CHAPTERPLAN-FIX (§6 M3): before this fix,
+    compile(run_pipeline=true) passed raw package.chapters[]
+    ({title, ordinal, event_id}) straight through as job input; the worker's
+    `ChapterPlan(**c)` then raised TypeError on every real invocation
+    (confirmed never exercised successfully in production). This proves the
+    fix — job input chapters are ChapterPlan-shaped with chapter_id=event_id
+    — and that pipeline_job_id is now persisted onto the run's
+    checkpoint_state (previously returned once in the response body and
+    never queryable again)."""
+    from pathlib import Path
+
+    from app.db.repositories.generation_jobs import GenerationJobsRepo
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.works import WorksRepo
+    from app.engine.plan_forge.ingest import ingest_file
+    from app.engine.plan_forge.propose import propose_spec
+    from app.services import plan_forge_service as pfs_module
+    from app.services.plan_forge_service import PlanForgeService
+
+    captured: dict[str, Any] = {}
+
+    async def _fake_enqueue_job(redis_url, *, job_id, user_id, project_id):
+        captured["job_id"] = job_id
+        return True
+
+    monkeypatch.setattr(pfs_module, "enqueue_job", _fake_enqueue_job)
+    monkeypatch.setattr(pfs_module.settings, "composition_worker_enabled", True)
+
+    fixture = Path(__file__).resolve().parents[2] / "fixtures" / "plan-forge" / "story-plan-v1.md"
+    spec = propose_spec(ingest_file(fixture))
+
+    user, _project, book = _ids()
+    runs = PlanRunsRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    svc = PlanForgeService(runs, jobs, WorksRepo(pool))
+
+    run = await runs.create(
+        user, book, mode="rules", source_checksum="chk-pipeline",
+        source_markdown="# plan", status="pending",
+    )
+    await runs.save_artifact(user, run.id, "spec", spec)
+
+    mode, body = await svc.compile(
+        user, book, run.id, arc_id="arc_2", run_pipeline=True, model_ref=uuid.uuid4(),
+    )
+    assert mode == "async"
+    assert body["pipeline_job_id"] == str(captured["job_id"])
+
+    job = await jobs.get(user, captured["job_id"])
+    assert job is not None
+    chapters_in = job.input["chapters"]
+    assert chapters_in, "compile() must produce at least one chapter for arc_2"
+    from app.engine.plan import ChapterPlan  # the exact constructor that used to TypeError
+
+    for c in chapters_in:
+        assert set(c.keys()) == {"chapter_id", "title", "sort_order", "beat_role", "intent"}
+        assert c["chapter_id"].startswith("arc_2_event_")  # correlates back to PlanForge's event_id
+        ChapterPlan(**c)  # must not raise — this is the exact call site that used to crash
+
+    updated_run = await runs.get_for_owner(user, book, run.id)
+    assert updated_run is not None
+    assert updated_run.checkpoint_state.get("pipeline_job_id") == str(captured["job_id"])
+
+
+# ─────────── plan_bootstrap_proposal (PlanForge auto-bootstrap gate POC) ───────────
+
+async def _make_run(pool, user, book):
+    from app.db.repositories.plan_runs import PlanRunsRepo
+
+    return await PlanRunsRepo(pool).create(
+        user, book, mode="rules", source_checksum="chk-bootstrap",
+        source_markdown="# plan", status="compiled",
+    )
+
+
+async def test_bootstrap_proposal_roundtrip_and_tenancy(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    other = uuid.uuid4()
+    run = await _make_run(pool, user, book)
+
+    rec = await repo.create(
+        user, book, run.id, diff={"new_chapters": [{"event_id": "e1", "title": "Ch 1"}]},
+    )
+    assert rec.status == "pending"
+    assert await repo.get_for_owner(user, book, rec.id) is not None
+    assert await repo.get_for_owner(other, book, rec.id) is None
+
+
+async def test_bootstrap_proposal_approve_reject_are_guarded_transitions(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    run = await _make_run(pool, user, book)
+    rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+
+    # A second approve on an already-approved record is a no-op miss, not an error.
+    approved = await repo.mark_approved(user, book, rec.id)
+    assert approved is not None and approved.status == "approved"
+    assert await repo.mark_approved(user, book, rec.id) is None
+
+    # Rejecting an approved (not-yet-applied) record is allowed and kept for audit.
+    rejected = await repo.mark_rejected(user, book, rec.id)
+    assert rejected is not None and rejected.status == "rejected"
+    still_there = await repo.get_for_owner(user, book, rec.id)
+    assert still_there is not None and still_there.status == "rejected"
+
+
+async def test_bootstrap_proposal_claim_for_apply_is_atomic(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    run = await _make_run(pool, user, book)
+    rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+
+    # Can't claim a pending (not yet approved) record.
+    assert await repo.claim_for_apply(user, book, rec.id) is None
+
+    await repo.mark_approved(user, book, rec.id)
+    claimed = await repo.claim_for_apply(user, book, rec.id)
+    assert claimed is not None and claimed.status == "applying"
+
+    # A second concurrent/retried claim on the same (now 'applying') record misses.
+    assert await repo.claim_for_apply(user, book, rec.id) is None
+
+    await repo.mark_item_applied(
+        user, book, rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
+    )
+    applied = await repo.mark_applied(user, book, rec.id)
+    assert applied is not None
+    assert applied.status == "applied"
+    assert applied.applied_results == {"e1": {"chapter_id": "c1", "title": "Ch 1"}}
+
+    # Fully-applied record can never be re-claimed (safe no-op at the service layer).
+    assert await repo.claim_for_apply(user, book, rec.id) is None
+
+
+async def test_bootstrap_proposal_failed_apply_is_resumable(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    run = await _make_run(pool, user, book)
+    rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    await repo.mark_approved(user, book, rec.id)
+    await repo.claim_for_apply(user, book, rec.id)
+
+    failed = await repo.mark_failed(user, book, rec.id, error_detail="book-service 502")
+    assert failed is not None and failed.status == "failed" and failed.error_detail == "book-service 502"
+
+    # A 'failed' record CAN be re-claimed (resume), unlike 'applied'.
+    reclaimed = await repo.claim_for_apply(user, book, rec.id)
+    assert reclaimed is not None and reclaimed.status == "applying"
+
+    done = await repo.mark_applied(user, book, rec.id)
+    assert done is not None and done.status == "applied" and done.error_detail is None
+
+
+async def test_bootstrap_proposal_list_active_for_book_scopes_by_book_and_excludes_rejected(pool):
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    repo = PlanBootstrapProposalsRepo(pool)
+    user, _project, book = _ids()
+    other_book = uuid.uuid4()
+    run = await _make_run(pool, user, book)
+
+    applied_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    await repo.mark_approved(user, book, applied_rec.id)
+    await repo.claim_for_apply(user, book, applied_rec.id)
+    await repo.mark_item_applied(
+        user, book, applied_rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
+    )
+    await repo.mark_applied(user, book, applied_rec.id)
+
+    pending_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    rejected_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
+    await repo.mark_rejected(user, book, rejected_rec.id)
+
+    active = await repo.list_active_for_book(book)
+    active_ids = {r.id for r in active}
+    assert active_ids == {applied_rec.id, pending_rec.id}
+    assert rejected_rec.id not in active_ids
+    assert await repo.list_active_for_book(other_book) == []

@@ -34,7 +34,7 @@ beforeEach(() => {
 describe('SkillsView §4 — toolbar + states', () => {
   it('shows the empty state when there are no skills (and no rows)', async () => {
     render(<SkillsView />);
-    await waitFor(() => expect(screen.getByText(/No skills yet/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('skills.empty')).toBeTruthy());
     expect(screen.queryByTestId('skill-row')).toBeNull(); // empty ⇔ no rows (mutual exclusivity)
   });
 
@@ -70,7 +70,8 @@ describe('SkillsView §4 — pager', () => {
   it('shows "X–Y of N" and pages forward (offset advances); ‹ disabled at page 0', async () => {
     api.listSkills.mockResolvedValue({ items: [skill()], total: 45, limit: 20, offset: 0 });
     render(<SkillsView />);
-    await waitFor(() => expect(screen.getByText(/1–20 of 45/)).toBeTruthy());
+    // i18n mock renders the `common.of` key literally between the range parts.
+    await waitFor(() => expect(screen.getByText(/1–20 common\.of 45/)).toBeTruthy());
     const prev = screen.getByText('‹') as HTMLButtonElement;
     expect(prev.disabled).toBe(true);
     fireEvent.click(screen.getByText('›'));
@@ -85,7 +86,7 @@ describe('SkillsView §4 — rows', () => {
     api.deleteSkill.mockResolvedValue({});
     render(<SkillsView />);
     await waitFor(() => expect(screen.getByTestId('skill-row')).toBeTruthy());
-    expect(screen.queryByText(/No skills yet/i)).toBeNull(); // rows ⇔ no empty state
+    expect(screen.queryByText('skills.empty')).toBeNull(); // rows ⇔ no empty state
     expect(screen.getByText('user')).toBeTruthy(); // tier badge
     fireEvent.click(screen.getByTestId('skill-toggle'));
     await waitFor(() => expect(api.setSkillEnabled).toHaveBeenCalledWith('test-token', 's1', false));

@@ -3,6 +3,7 @@
 // contract changes here — this is the FE consumer of the composition-service /plan surface.
 import { apiJson } from '@/api';
 import type {
+  BootstrapProposal,
   CompilePlanBody,
   CreatePlanRunBody,
   InterpretPlanBody,
@@ -86,6 +87,31 @@ export const planForgeApi = {
   ): Promise<PlanCompileResult | PlanRunAck> {
     return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/compile`, {
       method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  // Auto-bootstrap gate (M4) — propose runs the diff ONCE; approve/reject/apply never
+  // re-propose. See docs/specs/2026-07-06-planforge-auto-bootstrap.md §6.
+  bootstrapPropose(bookId: string, runId: string, token: string): Promise<BootstrapProposal> {
+    return apiJson<BootstrapProposal>(`${BASE}/books/${bookId}/plan/runs/${runId}/bootstrap/propose`, {
+      method: 'POST', token,
+    });
+  },
+  bootstrapGet(bookId: string, proposalId: string, token: string): Promise<BootstrapProposal> {
+    return apiJson<BootstrapProposal>(`${BASE}/books/${bookId}/plan/bootstrap/${proposalId}`, { token });
+  },
+  bootstrapApprove(bookId: string, proposalId: string, token: string): Promise<BootstrapProposal> {
+    return apiJson<BootstrapProposal>(`${BASE}/books/${bookId}/plan/bootstrap/${proposalId}/approve`, {
+      method: 'POST', token,
+    });
+  },
+  bootstrapReject(bookId: string, proposalId: string, token: string): Promise<BootstrapProposal> {
+    return apiJson<BootstrapProposal>(`${BASE}/books/${bookId}/plan/bootstrap/${proposalId}/reject`, {
+      method: 'POST', token,
+    });
+  },
+  bootstrapApply(bookId: string, proposalId: string, token: string): Promise<BootstrapProposal> {
+    return apiJson<BootstrapProposal>(`${BASE}/books/${bookId}/plan/bootstrap/${proposalId}/apply`, {
+      method: 'POST', token,
     });
   },
 };

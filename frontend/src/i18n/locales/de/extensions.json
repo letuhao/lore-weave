@@ -1,0 +1,203 @@
+{
+  "title": "Erweiterungen",
+  "tabs": {
+    "skills": "Fähigkeiten",
+    "mcp": "MCP-Server",
+    "commands": "Befehle & Hooks",
+    "subagents": "Subagenten",
+    "plugins": "Plugins",
+    "proposals": "Vorschläge",
+    "activity": "Aktivitätsprotokoll",
+    "ingest": "Registry-Quellen"
+  },
+  "quota": {
+    "skills": "Fähigkeiten",
+    "mcp": "MCP-Server",
+    "proposals": "Vorschläge"
+  },
+  "scope": {
+    "label": "Geltungsbereich:",
+    "mine": "Meine Erweiterungen",
+    "orBook": "oder ein Buch:",
+    "bookPlaceholder": "Buch-spezifisch…",
+    "bookHint": "Buch-spezifisch — neue Elemente gelten nur für dieses Buch"
+  },
+  "common": {
+    "loading": "Laden…",
+    "delete": "Löschen",
+    "add": "Hinzufügen",
+    "cancel": "Abbrechen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "of": "von",
+    "system": "System",
+    "book": "Buch"
+  },
+  "skills": {
+    "search": "Fähigkeiten suchen…",
+    "tier": {
+      "all": "Stufe: Alle",
+      "system": "System",
+      "user": "Nutzer",
+      "book": "Buch"
+    },
+    "sort": {
+      "updated": "Sortieren nach: Aktualisiert",
+      "name": "Name A→Z",
+      "lastTriggered": "Zuletzt ausgelöst"
+    },
+    "empty": "Noch keine Fähigkeiten vorhanden. Der Agent kann eine vorschlagen oder sie im Editor erstellen.",
+    "draft": "Entwurf"
+  },
+  "mcp": {
+    "status": {
+      "active": "aktiv",
+      "pending": "Scan läuft…",
+      "suspended": "quarantäne",
+      "error": "nicht erreichbar"
+    },
+    "search": "Server suchen…",
+    "filter": {
+      "all": "Status: Alle",
+      "active": "Aktiv",
+      "pending": "Scan läuft",
+      "suspended": "Quarantäne",
+      "error": "Nicht erreichbar"
+    },
+    "add": "+ Server hinzufügen",
+    "empty": "Noch keine MCP-Server vorhanden. Füge einen hinzu, um dem Agenten zusätzliche Werkzeuge zur Verfügung zu stellen.",
+    "review": "⚠ Überprüfung",
+    "detail": {
+      "back": "‹ Zurück",
+      "connection": "Verbindung",
+      "auth": "Authentifizierung",
+      "prefix": "Präfix",
+      "egress": "Egress-Allowlist",
+      "health": "Status",
+      "lastScanned": "Zuletzt gescannt",
+      "credentialStored": "Anmeldedaten gespeichert",
+      "healthOk": "ok · {{count}} Tools · {{latency}}ms",
+      "healthError": "Fehler: {{error}}",
+      "unreachable": "nicht erreichbar",
+      "scanning": "Scannen…",
+      "rescan": "Erneut scannen",
+      "reconnect": "OAuth erneut verbinden",
+      "acceptRisk": "Risiko akzeptieren & aktivieren"
+    },
+    "scan": {
+      "label": "Lieferketten-Scan:",
+      "clean": "sauber",
+      "findings": "{{count}} Fund(e)",
+      "tools": "Tools ({{count}})",
+      "flagged": "markiert"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "Verbindung",
+        "auth": "Authentifizierung",
+        "scan": "Status & Scan",
+        "review": "Überprüfen"
+      },
+      "displayName": "Anzeigename",
+      "displayNamePlaceholder": "Mein Tool-Server",
+      "url": "Server-URL (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "Authentifizierung",
+      "authNone": "Keine",
+      "authBearer": "Bearer-Token",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "Keine Authentifizierung – dieser Server ist offen. Fahren Sie fort, um ihn zu registrieren und zu scannen.",
+      "bearerLabel": "Bearer-Token (im Tresor gesichert; wird nie wieder angezeigt)",
+      "bearerPlaceholder": "Token einfügen",
+      "authzEndpoint": "Autorisierungs-Endpunkt",
+      "tokenEndpoint": "Token-Endpunkt",
+      "clientId": "Client-ID",
+      "scopes": "Bereiche (durch Leerzeichen getrennt)",
+      "registering": "Registrierung läuft…",
+      "registerScan": "Registrieren & scannen",
+      "statusLabel": "Status:",
+      "connectOauth": "Mit OAuth verbinden →",
+      "runScan": "Health-Check & Scan ausführen",
+      "refresh": "Aktualisieren",
+      "continue": "Weiter",
+      "authKind": "auth: {{kind}}",
+      "enable": "Für meine Sitzungen aktivieren",
+      "done": "Fertig"
+    }
+  },
+  "commands": {
+    "title": "Slash-Befehle",
+    "description": "Gib <code>/name</code> im Chat ein, um eine Vorlage zu erweitern. Verwende <code>{{args}}</code> oder <code>{{key}}</code> für Argumente.",
+    "namePlaceholder": "Name (z. B. plan-scene)",
+    "templatePlaceholder": "Vorlage: Plane eine Szene über {{topic}}…",
+    "empty": "Noch keine Befehle vorhanden."
+  },
+  "hooks": {
+    "title": "Hooks",
+    "description": "Deklarative Regeln, die an den Schnittstellen der Agenten-Schleife ausgelöst werden. Kein Code – nur ein Event, ein optionaler Tool-Match und eine Aktion.",
+    "matchPlaceholder": "Tool-Match (z. B. glossary_delete_*)",
+    "textPlaceholder": "Text zum Einfügen / Annotieren",
+    "empty": "Noch keine Hooks vorhanden."
+  },
+  "subagents": {
+    "title": "Subagenten",
+    "description": "Eine benannte Persona, der der Agent über <code>run_subagent</code> eine begrenzte Unteraufgabe delegieren kann. Sie läuft in einem isolierten Durchgang mit NUR ihren zugewiesenen Tools. Lassen Sie den Scope leer, um eine reine Denk-/Zusammenfassungs-Persona zu erstellen.",
+    "namePlaceholder": "Name (z. B. lore-scout)",
+    "scopePlaceholder": "Tool-Scope: glossary_*, kg_*",
+    "modelPlaceholder": "Modell (optional, user_model ID)",
+    "promptPlaceholder": "System-Prompt — wer diese Persona ist und wie sie arbeitet…",
+    "create": "Subagent erstellen",
+    "empty": "Noch keine Subagenten vorhanden.",
+    "reasoningOnly": "Nur Denken (keine Tools)",
+    "modelPinned": "Modell fixiert"
+  },
+  "plugins": {
+    "description": "Ein Plugin bündelt Fähigkeiten, Befehle & Hooks — exportieren zum Teilen, importieren zum Installieren.",
+    "importing": "Importieren…",
+    "import": "Bundle importieren",
+    "invalidJson": "Diese Datei ist kein gültiges JSON.",
+    "notBundle": "Kein LoreWeave-Bundle (manifest.name fehlt).",
+    "empty": "Noch keine Plugins vorhanden. Importiere ein Bundle, um eines zu installieren.",
+    "export": "Exportieren"
+  },
+  "proposals": {
+    "status": {
+      "pending": "Ausstehend",
+      "approved": "Genehmigt",
+      "rejected": "Abgelehnt",
+      "expired": "Abgelaufen",
+      "all": "Alle"
+    },
+    "total": "{{count}} insgesamt",
+    "empty": "Keine Vorschläge. Die vom Agenten vorgeschlagenen Fähigkeiten erscheinen hier zur Genehmigung.",
+    "approve": "Annehmen",
+    "reject": "Ablehnen",
+    "reason": "Grund: {{reason}}"
+  },
+  "activity": {
+    "title": "Aktivitätsprotokoll",
+    "allKinds": "Alle Arten",
+    "range": {
+      "all": "Gesamte Zeit",
+      "7d": "Letzte 7 Tage",
+      "30d": "Letzte 30 Tage"
+    },
+    "empty": "Keine Aktivitäten in diesem Zeitraum.",
+    "secondsAgo": "Vor {{count}}s",
+    "minutesAgo": "Vor {{count}}m",
+    "hoursAgo": "Vor {{count}}h",
+    "daysAgo": "vor {{count}} T."
+  },
+  "ingest": {
+    "title": "Registry-Quellen (Admin)",
+    "description": "Kuratiere den Systemkatalog aus dem offiziellen MCP-Registry. Verifizierung ≠ Sicherheit — jede Freigabe führt erneut den SSRF-Schutz + Supply-Chain-Scan aus, bevor sie federiert wird.",
+    "all": "Alle",
+    "pulling": "Wird geladen…",
+    "pull": "Registry abrufen",
+    "pullResult": "Abgerufen: {{fetched}} abgerufen · {{new}} neu · {{updated}} aktualisiert · {{skipped}} übersprungen (kein Remote)",
+    "truncated": "· teilweise (gekürzt)",
+    "empty": "Keine Einträge in dieser Ansicht. Rufe die Registry ab, um die Warteschlange zu füllen.",
+    "approve": "Genehmigen",
+    "reject": "Ablehnen"
+  }
+}

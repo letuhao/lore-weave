@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
+from loreweave_obs import setup_logging
 
 from .config import settings
 from .database import create_pool, close_pool
@@ -26,7 +27,7 @@ from .clients.dispatch_clients import (
     KnowledgeDispatchClient,
 )
 
-logging.basicConfig(level=logging.INFO)
+setup_logging("campaign-service")  # P2·A2a — shared JSON logging + dual trace ids
 logger = logging.getLogger(__name__)
 
 

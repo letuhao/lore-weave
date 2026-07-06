@@ -90,7 +90,10 @@ def test_k11_8_source_types_constant():
 
 
 def test_k11_8_target_labels_constant():
-    assert set(TARGET_LABELS) == {"Entity", "Event", "Fact"}
+    # A2-S1b later widened this closed set to admit "EntityStatus" (see
+    # test_a2_s1b_entity_status_is_a_target_label below) — keep this guard's
+    # expected set in sync with that addition, not the original K11.8 trio.
+    assert set(TARGET_LABELS) == {"Entity", "Event", "Fact", "EntityStatus"}
 
 
 # ── upsert_extraction_source ──────────────────────────────────────────

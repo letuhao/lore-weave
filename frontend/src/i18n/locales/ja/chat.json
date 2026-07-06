@@ -17,6 +17,7 @@
     "export": "エクスポート",
     "rename": "名前を変更",
     "session_settings": "セッション設定",
+    "context_inspector": "コンテキストインスペクター",
     "context_meter": {
       "label": "使用中のコンテキスト",
       "unknown": "このモデルのコンテキストウィンドウ使用量は不明です",
@@ -401,6 +402,12 @@
     "search_placeholder": "検索…",
     "tools_tab": "ツール",
     "skills_tab": "スキル",
+    "category_all": "すべて",
+    "category_see_all": "{{count}} 件すべて表示 →",
+    "no_tools_title": "一致するツールがありません",
+    "no_tools_description": "検索語またはカテゴリを変更してください。",
+    "no_skills_title": "一致するスキルがありません",
+    "no_skills_description": "別の検索語を試してください。",
     "summary": "ツール {{tools}} · スキル {{skills}} · {{tokens}} トークン",
     "summary_no_tokens": "ツール {{tools}} · スキル {{skills}}",
     "summary_tooltip": "コンテキスト内訳を開く",
@@ -419,7 +426,10 @@
       "ui": "UI",
       "chat": "チャット",
       "other": "その他"
-    }
+    },
+    "advanced_tools": "高度なツール ({{count}})",
+    "advanced_tools_hint": "旧バージョンの呼び出し元のために、非推奨となったツールが保持されています。特定のツールがどうしても必要な場合を除き、上のツールを使用してください。",
+    "legacy_pin_tooltip": "このセッションでは、このレガシーツールが有効になっています"
   },
   "inspector": {
     "title": "エージェントランタイム",

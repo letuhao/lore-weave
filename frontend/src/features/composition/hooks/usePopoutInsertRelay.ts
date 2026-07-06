@@ -8,7 +8,19 @@
 import { useEffect, useRef } from 'react';
 import { openPopoutChannel } from '../workspace/popoutChannel';
 
-export function usePopoutInsertRelay(bookId: string, chapterId: string, onInsert: (text: string, model?: string) => void) {
+/**
+ * `onInsert` may return `false` to report a failed/rejected insert; anything else
+ * (`true`/`undefined`/void) is treated as success. #16 2.8 /review-impl HIGH fix: when the
+ * incoming message carries a `reqId`, this hook replies with `{kind:'insert-ack', reqId, ok}` —
+ * the sender (e.g. Studio's popped-out ProposeEditCard) awaits this instead of assuming the
+ * fire-and-forget post succeeded. A message with no `reqId` (legacy PopoutHost's
+ * generate-and-accept flow) gets no ack — unchanged behavior.
+ */
+export function usePopoutInsertRelay(
+  bookId: string,
+  chapterId: string,
+  onInsert: (text: string, model?: string) => boolean | void,
+) {
   // Latest handler without re-subscribing the channel on every render.
   const cb = useRef(onInsert);
   cb.current = onInsert;
@@ -19,7 +31,9 @@ export function usePopoutInsertRelay(bookId: string, chapterId: string, onInsert
     // another tab of the same book (/review-impl MED).
     const ch = openPopoutChannel(bookId, chapterId);
     const unsub = ch.subscribe((msg) => {
-      if (msg.kind === 'insert-prose') cb.current(msg.text, msg.model);
+      if (msg.kind !== 'insert-prose') return;
+      const result = cb.current(msg.text, msg.model);
+      if (msg.reqId) ch.post({ kind: 'insert-ack', reqId: msg.reqId, ok: result !== false });
     });
     return () => { unsub(); ch.close(); };
   }, [bookId, chapterId]);

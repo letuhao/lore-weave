@@ -32,6 +32,22 @@ _BASE = (
     "references."
 )
 
+# Anti-confabulation guardrail — always included. Two jobs: (1) THIS manuscript +
+# memory is the only canon, NOT the model's parametric memory of any published work
+# (a continue-writing user is often DIVERGING from the original, and the model's recall
+# of the original is frequently wrong anyway); (2) on a missing specific detail, SEARCH
+# before answering, and DECLINE rather than invent. Fixes D-AGENT-NEEDLE-CONFAB: gemma-4
+# supplied a wrong firm name ("Holmgood, Voss & Co.") from its memory of Dracula instead
+# of using story_search to find the real "Peter Hawkins" in the manuscript.
+_ANTI_CONFAB = (
+    "This memory and the user's manuscript are the ONLY source of truth — NOT your own "
+    "training knowledge of any published work (the user's version may differ, and your "
+    "recall of the original is often wrong). If a specific detail (a name, place, date, "
+    "or quote) is NOT present above, do not supply it from general knowledge: search the "
+    "manuscript with story_search (mode=exact for an exact name or phrase) first, and if "
+    "it still isn't found, say plainly it isn't recorded yet rather than inventing one."
+)
+
 # Conditional lines, added when their respective blocks are present.
 _WITH_FACTS = (
     "Engage with the <facts> as established truth — do not contradict "
@@ -100,7 +116,7 @@ def build_instructions_block(
     # locale hook for future i18n; today only "en" has strings.
     del locale
 
-    lines = [_BASE, _INTENT_HINTS[intent]]
+    lines = [_BASE, _ANTI_CONFAB, _INTENT_HINTS[intent]]
     if has_facts:
         lines.append(_WITH_FACTS)
     if has_passages:

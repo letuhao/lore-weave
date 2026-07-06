@@ -1,4 +1,4 @@
-import { FIND_TOOLS_TOOL, findToolsResult, searchCatalog } from '../src/federation/find-tools.js';
+import { FIND_TOOLS_TOOL, GROUP_DIRECTORY, findToolsResult, searchCatalog } from '../src/federation/find-tools.js';
 
 const CATALOG = [
   { name: 'book_create', description: 'Create a new book' },
@@ -40,6 +40,43 @@ describe('searchCatalog', () => {
     const { matches } = searchCatalog(CATALOG, 'book', 1);
     expect(matches.length).toBeLessThanOrEqual(1);
   });
+
+  it('review-impl live-verification finding: one incidental shared word does not outrank a real overlap', () => {
+    // Live-verified at the real ~190-tool federated catalog (2026-07-06): intent
+    // "add a new kind to the book" scored translation_start_job a perfect 1.0
+    // via its synonym "translate a book" sharing only the word "book" -- the
+    // fuzzy-rescue branch's own comment says it rescues a NO-overlap tool, but
+    // the code never enforced that, so any exact single-token overlap
+    // (ratio=1.0) qualified regardless of how weak the rest of the match was.
+    const cat = [
+      {
+        name: 'glossary_ontology_upsert',
+        description: 'Create or update book- or user-tier ontology rows (genre, kind, attribute).',
+        _meta: { synonyms: ['add a kind', 'add a genre', 'add an attribute'] },
+      },
+      {
+        name: 'translation_start_job',
+        description: 'Start translating a chapter into another language',
+        _meta: { synonyms: ['translate a book'] },
+      },
+    ];
+    const { matches, confident } = searchCatalog(cat, 'add a new kind to the book', 8);
+    expect(matches[0].name).toBe('glossary_ontology_upsert');
+    expect(confident).toBe(true);
+  });
+
+  it('fuzzy rescue still works for a genuine no-overlap near-spelling', () => {
+    const cat = [
+      {
+        name: 'translation_start_job',
+        description: 'Start translating a book',
+        _meta: { synonyms: ['translate', 'translation'] },
+      },
+    ];
+    const { matches, confident } = searchCatalog(cat, 'translit this chapter', 8);
+    expect(matches.map((m) => m.name)).toEqual(['translation_start_job']);
+    expect(confident).toBe(true);
+  });
 });
 
 describe('findToolsResult', () => {
@@ -76,5 +113,73 @@ describe('findToolsResult', () => {
   it('the meta-tool schema requires an intent', () => {
     expect(FIND_TOOLS_TOOL.name).toBe('find_tools');
     expect(FIND_TOOLS_TOOL.inputSchema.required).toContain('intent');
+  });
+});
+
+// review-impl finding: CAT-4 (mcp-tool-io.md Part 4) is enforced identically on
+// BOTH federation surfaces — chat-service's tool_discovery.py has a dedicated
+// TestSearchCatalogCAT4/TestGroupDirectory suite proving legacy-exclusion and
+// group-scoping, but this ai-gateway TS mirror (find-tools.ts) had ZERO tests of
+// its own for the exact same logic — a silent TS-only regression (e.g. a future
+// refactor dropping the isLegacyTool check) would have shipped undetected even
+// though the two files' own header comments say they "must stay in lockstep."
+const LEGACY_CATALOG = [
+  {
+    name: 'glossary_book_create',
+    description: 'Create a book-native genre, kind, or attribute.',
+    _meta: { visibility: 'legacy', synonyms: ['add a kind', 'add a genre'] },
+  },
+  {
+    name: 'glossary_ontology_upsert',
+    description: 'Create or update book- or user-tier ontology rows (genre, kind, attribute).',
+    _meta: { synonyms: ['add a kind', 'add a genre', 'add an attribute'] },
+  },
+  { name: 'glossary_search', description: 'Search glossary entities' },
+  { name: 'book_create', description: 'Create a new book' },
+];
+
+describe('searchCatalog — CAT-4 legacy exclusion (TS mirror)', () => {
+  it('a legacy-tagged tool never matches, even on an exact synonym', () => {
+    const { matches, confident } = searchCatalog(LEGACY_CATALOG, 'add a new kind to the book', 8);
+    const names = matches.map((m) => m.name);
+    expect(names).not.toContain('glossary_book_create');
+    expect(names).toContain('glossary_ontology_upsert');
+    expect(confident).toBe(true);
+  });
+
+  it('an untagged tool (no _meta.visibility) is unaffected — defaults discoverable', () => {
+    const { matches } = searchCatalog(LEGACY_CATALOG, 'search glossary entities', 8);
+    expect(matches.map((m) => m.name)).toContain('glossary_search');
+  });
+
+  it('group scopes the search to one domain prefix', () => {
+    const { matches } = searchCatalog(LEGACY_CATALOG, 'create', 8, new Set(), 'book');
+    const names = matches.map((m) => m.name);
+    expect(names).toContain('book_create');
+    expect(names).not.toContain('glossary_ontology_upsert');
+  });
+
+  it('group=null/omitted searches every domain', () => {
+    const { matches } = searchCatalog(LEGACY_CATALOG, 'create', 8, new Set(), null);
+    const names = matches.map((m) => m.name);
+    expect(names).toContain('book_create');
+    expect(names).toContain('glossary_ontology_upsert');
+  });
+});
+
+describe('GROUP_DIRECTORY (Part A, TS mirror)', () => {
+  it('mirrors chat-service GROUP_DIRECTORY verbatim (same keys)', () => {
+    // Keep this list in sync BY HAND with tool_discovery.py's GROUP_DIRECTORY —
+    // this test is the drift-lock: a key added to one side and not the other
+    // (or a description edited on only one side) fails here.
+    expect(Object.keys(GROUP_DIRECTORY).sort()).toEqual([
+      'book', 'catalog', 'composition', 'glossary', 'jobs',
+      'knowledge', 'registry', 'settings', 'story', 'translation',
+    ]);
+  });
+
+  it('find_tools schema advertises the group enum sorted', () => {
+    const props = FIND_TOOLS_TOOL.inputSchema.properties as { group: { enum: string[] } };
+    expect(props.group.enum).toEqual(Object.keys(GROUP_DIRECTORY).sort());
   });
 });

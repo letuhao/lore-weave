@@ -1,0 +1,68 @@
+{
+  "title": "Import PDF",
+  "description": "Import a PDF as a book, chunked by page range",
+  "steps": {
+    "upload": "Upload",
+    "configure": "Configure",
+    "confirm": "Confirm",
+    "progress": "Progress",
+    "results": "Results"
+  },
+  "upload": {
+    "intro": "Import a PDF as a book — including lore/technical reference PDFs, not just novels. Long PDFs are split into chapters by page range (configured on the next step).",
+    "choosePdf": "Choose a PDF file",
+    "pdfOnly": ".pdf only",
+    "checking": "Checking PDF…",
+    "pageCount_one": "{{count}} page detected.",
+    "pageCount_other": "{{count}} pages detected.",
+    "readError": "Could not read this PDF."
+  },
+  "configure": {
+    "pagesPerChunk": "Pages per chunk",
+    "pagesPerChunkHint": "Each group of this many pages becomes one chapter — no 'Chapter N' heading detection is used for PDF imports, so this works even for reference/technical books with no chapter markers.",
+    "willCreate_one": "This will create {{count}} chapter from {{pages}} page.",
+    "willCreate_other": "This will create {{count}} chapters from {{pages}} pages.",
+    "highChapterWarning": "That's a lot of chapters — consider a larger 'pages per chunk' value if this wasn't intentional. The import will still run.",
+    "captionImages": "Caption images with AI",
+    "captionImagesHint": "Extracts charts/images and captions them via a vision model so glossary/KG extraction can see chart content. Uses LLM credits per image.",
+    "visionModel": "Vision model",
+    "visionModelPlaceholder": "Choose a vision-capable model (e.g. gpt-4o)",
+    "visionModelAriaLabel": "Vision model for image captioning",
+    "visionModelHint": "Pick a model that actually supports image input — not every chat model does."
+  },
+  "confirm": {
+    "file": "File",
+    "pages": "Pages",
+    "pagesPerChunk": "Pages per chunk",
+    "chaptersToCreate": "Chapters to create",
+    "captionImages": "Caption images with AI",
+    "yes": "Yes",
+    "no": "No",
+    "needModel": "Choose a vision model before starting — captioning is enabled but no model is selected.",
+    "backgroundNote": "This runs in the background — you can close this dialog and check progress from the Jobs panel at any time.",
+    "startImport": "Start import",
+    "startFailed": "Failed to start import"
+  },
+  "progress": {
+    "importing": "Importing PDF…",
+    "chapterOf": "Chapter {{current}} of {{total}}",
+    "runInBackground": "Run in background",
+    "progress": "Progress",
+    "longNote": "This can take a while for a long PDF — especially with AI captioning enabled. Dismiss the dialog any time; the import keeps running and is tracked in the Jobs panel.",
+    "backgroundToast": "Import continues in the background — check the Jobs panel for progress."
+  },
+  "results": {
+    "complete": "Import complete",
+    "failed": "Import failed",
+    "chaptersCreated_one": "{{count}} chapter created.",
+    "chaptersCreated_other": "{{count}} chapters created.",
+    "genericError": "Something went wrong during import.",
+    "importAnother": "Import another",
+    "done": "Done"
+  },
+  "button": {
+    "back": "Back",
+    "cancel": "Cancel",
+    "next": "Next"
+  }
+}

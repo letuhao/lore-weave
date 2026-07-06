@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/loreweave/foundation/contracts/adminjwt v0.0.0
+	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/grantclient v0.1.0
 	github.com/loreweave/loreweave_extraction v0.0.0
 	github.com/loreweave/loreweave_mcp v0.0.0
@@ -19,6 +20,8 @@ require (
 )
 
 replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
+
+replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
 
 replace github.com/loreweave/grantclient => ../../sdks/go/grantclient
 

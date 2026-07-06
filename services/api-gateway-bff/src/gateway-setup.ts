@@ -1,8 +1,10 @@
-import type { INestApplication } from '@nestjs/common';
+import { Logger, type INestApplication } from '@nestjs/common';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { json } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import type { Socket } from 'net';
+import { loadRateLimitConfig, makeRateLimitMiddleware } from './rate-limit/rate-limit';
+import { makeRateLimitRedisFromEnv } from './rate-limit/redis-client';
 
 /**
  * CORS, /v1 proxy by domain, and GET /health.
@@ -533,6 +535,34 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  // D-EDGE-RATELIMIT — HTTP-edge fixed-window rate limiter. Registered BEFORE the
+  // /v1 proxy dispatch so a rejected request is never forwarded upstream; exemptions
+  // (health, internal-token, SSE/streaming) bypass inside the middleware. Config-
+  // gated on REDIS_URL: with no URL (dev/test) it is a pure pass-through. FAIL-OPEN —
+  // any Redis error allows the request (a Redis outage must never take down the edge).
+  // D-EDGE-RATELIMIT (M2) — trust the known reverse-proxy hop(s) (e.g. the ALB) so
+  // Express derives `req.ip` from the trusted chain instead of the client-controlled
+  // leftmost X-Forwarded-For entry. The limiter keys on req.ip; without this an
+  // attacker rotates XFF to mint a fresh IP bucket per request and bypass the IP cap.
+  // Default 1 (a single proxy in front); override with EDGE_TRUSTED_PROXIES.
+  const trustedProxies = Number.parseInt(process.env.EDGE_TRUSTED_PROXIES ?? '1', 10);
+  instance.set('trust proxy', Number.isFinite(trustedProxies) && trustedProxies >= 0 ? trustedProxies : 1);
+  const rateLimitConfig = loadRateLimitConfig();
+  const rateLimitRedis = makeRateLimitRedisFromEnv();
+  const rateLimitLogger = new Logger('EdgeRateLimit');
+  if (rateLimitConfig.enabled && rateLimitRedis) {
+    rateLimitLogger.log(
+      `edge rate-limit ON: ${rateLimitConfig.userMax}/user + ${rateLimitConfig.ipMax}/ip per ${Math.round(
+        rateLimitConfig.windowMs / 1000,
+      )}s`,
+    );
+  } else {
+    rateLimitLogger.log(
+      `edge rate-limit OFF (${rateLimitConfig.enabled ? 'no REDIS_URL' : 'EDGE_RATE_LIMIT_ENABLED=false'})`,
+    );
+  }
+  instance.use(makeRateLimitMiddleware(rateLimitRedis, rateLimitConfig, rateLimitLogger));
+
   instance.use((req: Request, res: Response, next: NextFunction) => {
     // PUBLIC MCP (unversioned, external-agent entry) — matched before the /v1 chain.
     // Includes the P5 RFC 9728 Protected Resource Metadata served by the edge.

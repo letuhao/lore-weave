@@ -250,6 +250,59 @@ async def test_memory_search_forwards_limit_and_source_type(monkeypatch):
     assert kwargs["source_type"] == "chat"
 
 
+@pytest.mark.asyncio
+async def test_memory_search_manuscript_leg_lexical_inclusive(monkeypatch):
+    """Engine-unify (docs/plans/2026-07-05-search-tool-unification.md): with the
+    manuscript engine wired (book + reranker clients), memory_search runs the SAME
+    lexical-inclusive hybrid story_search uses — so it returns chapter hits EVEN with
+    NO embedding model / 0 passages. Fixes 'agent picks memory_search → empty → punts'."""
+    result = SimpleNamespace(
+        hits=[{"snippet": "the sealed letter which Mr. Hawkins had entrusted to me",
+               "score": 0.87, "chapterId": "c2", "chapterTitle": "Ch II"}],
+        degraded=None,
+    )
+    monkeypatch.setattr(
+        "app.search.retriever.run_hybrid_search", AsyncMock(return_value=result)
+    )
+    projects_repo = AsyncMock()
+    # NO embedding model — proves the lexical leg needs none.
+    projects_repo.get = AsyncMock(return_value=SimpleNamespace(
+        embedding_model=None, embedding_dimension=None, book_id=_BOOK,
+        memory_remember_confirm=False))
+    ctx = _ctx(projects_repo=projects_repo)
+    ctx.book_client = AsyncMock()
+    ctx.reranker_client = AsyncMock()
+    res = await execute_tool(ctx, "memory_search", {"query": "Hawkins"})
+    assert res.success
+    assert res.result["count"] == 1
+    assert "Hawkins" in res.result["hits"][0]["snippet"]
+    assert res.result["hits"][0]["source_type"] == "chapter"
+
+
+@pytest.mark.asyncio
+async def test_memory_search_chat_source_skips_manuscript_leg(monkeypatch):
+    """source_type='chat' runs ONLY the semantic passage leg (the manuscript leg is
+    chapter-only) — even with the manuscript engine wired."""
+    hybrid = AsyncMock()
+    monkeypatch.setattr("app.search.retriever.run_hybrid_search", hybrid)
+    repo = AsyncMock(return_value=[_hit("a past chat turn", source_type="chat")])
+    monkeypatch.setattr("app.tools.executor.find_passages_by_vector", repo)
+    projects_repo = AsyncMock()
+    projects_repo.get = AsyncMock(return_value=SimpleNamespace(
+        embedding_model="bge-m3", embedding_dimension=1024, book_id=_BOOK,
+        memory_remember_confirm=False))
+    embedding_client = AsyncMock()
+    embedding_client.embed = AsyncMock(
+        return_value=SimpleNamespace(embeddings=[[0.1] * 1024]))
+    ctx = _ctx(projects_repo=projects_repo, embedding_client=embedding_client)
+    ctx.book_client = AsyncMock()
+    ctx.reranker_client = AsyncMock()
+    res = await execute_tool(ctx, "memory_search", {"query": "x", "source_type": "chat"})
+    assert res.success
+    hybrid.assert_not_awaited()  # manuscript leg skipped for a chat-source query
+    assert res.result["hits"][0]["source_type"] == "chat"
+
+
 # ── memory_recall_entity ──────────────────────────────────────────────
 
 

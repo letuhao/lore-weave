@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Agent Mode / Mission Control (#4, unnumbered) — v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       AGENT MODE — MISSION CONTROL  (throwaway draft v2, 2026-07-05)
+
+       "Cursor-for-novels" register item #4. Still no CLARIFY/spec file — this
+       mockup exists to agree UX + confirm the real backend shape first.
+
+       v2 changelog (self-review found v1 covered the control-plane FSM well
+       but was missing the reason the UI exists at all — reading the draft):
+       - NEW: Runs list/history view + "+ New run" entry point (v1 dropped the
+         viewer into a run that already existed with no way to get there).
+       - NEW: New-run config now has a plan picker + a real chapter checklist
+         (v1's "scope" was a fixed pre-populated list, not actually pickable).
+       - NEW: a full-width diff panel with actual before/after chapter prose
+         (v1 only showed the critic's 1-sentence summary — nobody accepts/
+         rejects a chapter from a summary of it).
+       - NEW: breaker_state + driver_heartbeat_at surfaced in the run header
+         (real model fields v1 silently dropped; this project has hit the
+         "worker died silently, status never updated" bug class before).
+       - NEW: revert-all now opens a confirmation modal listing exactly what
+         it reverts (destructive action; v1 fired it with a bare button).
+       - NEW: gate-check can demonstrate a FAILING check (v1 only showed all-
+         green), and budget bar now turns red past 85% spent.
+       - NEW: a blocked "+New run" example for the one-active-run-per-book
+         constraint, and Prev/Next navigation across the review queue.
+       - STILL NOT modeled (documented, not solved): keyboard triage (j/k
+         accept/reject like a PR review) and a cross-panel notification when a
+         backgrounded run finishes. Mobile (390px, chrome-devtools emulate)
+         WAS checked — the existing flex-wrap stack holds up fine, no gap.
+
+       CLARIFY UPDATE (2026-07-05, post-spec edge-case pass — see
+       docs/specs/2026-07-01-writing-studio/20_agent_mode.md D4/D4a/D4b):
+       "auto-pause after each unit" is NOT client-poll-driven as first drafted
+       below — that design silently no-ops for any run started/resumed via the
+       new MCP tools with no Studio panel open (exactly the scenario the MCP
+       tools exist for). It is now a SERVER-SIDE `pause_after_each_unit` flag
+       on the run, checked by the driver at its own unit-boundary re-claim —
+       same code path as the existing budget/critic stops. This mockup's poll-
+       and-call-/pause behavior below is illustrative of the OLD (superseded)
+       design; the FE's real job is just to set/toggle the flag and reflect
+       the resulting `paused` state, not to race a poll against the driver.
+
+       Ground truth (services/composition-service/app/services/
+       authoring_run_service.py + app/routers/authoring_runs.py, surveyed
+       2026-07-05):
+       - Run FSM: draft -> gated -> running -> (paused <-> running) ->
+         report_ready -> closed; running -> failed on unit failure.
+       - Unit FSM: pending -> drafted -> (accepted | rejected); pending -> failed.
+       - A unit = ONE CHAPTER. No scene/beat sub-granularity server-side.
+       - REST-ONLY — zero MCP tools exist for authoring_run. The chat agent
+         cannot drive this today, only a human via a UI like this one. Whether
+         to add MCP tools is an OPEN QUESTION for CLARIFY, not decided here.
+       - POLL-ONLY — no WebSocket/SSE for run progress.
+       - No retry endpoint — a failed/report_ready run can only be closed or
+         reverted (revert-all rejects every drafted/accepted unit in reverse
+         order, auto-closes on full success).
+       - downstream_unit_indexes is ADVISORY (later drafted/accepted units) —
+         rejecting a unit does NOT auto-revert them.
+       - Only one run may be gated/running/paused per book at a time (partial
+         unique index) — a second create attempt must be blocked in the UI.
+    ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --success-muted: rgba(61,186,106,.14);
+      --danger: #e85a5a; --danger-muted: rgba(232,90,90,.14);
+      --warn: #e8b87e; --warn-muted: rgba(232,184,126,.16);
+      --info: #5496e8; --info-muted: rgba(84,150,232,.14);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); min-height: 100vh; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    h1 { font-size: 18px; font-weight: 600; padding: 24px 24px 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); padding: 0 24px 6px; line-height: 1.55; max-width: 980px; }
+    .warn-note { font-size: 11px; color: var(--warn); padding: 0 24px 16px; line-height: 1.5; max-width: 980px; }
+    .warn-note strong { color: var(--foreground); }
+
+    .nav-tabs { display: flex; gap: 22px; padding: 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .nav-tab { padding: 10px 2px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--muted-fg); border-bottom: 2px solid transparent; }
+    .nav-tab.active { color: var(--primary); border-color: var(--primary); }
+    .view { padding: 0 24px 32px; }
+    .view.hidden { display: none; }
+
+    .state-pills { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+    .state-pill {
+      padding: 6px 12px; font-size: 11px; font-weight: 500; border-radius: 999px; cursor: pointer;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted-fg);
+    }
+    .state-pill.active { border-color: var(--primary); background: var(--primary-muted); color: var(--primary); }
+
+    .stage { display: flex; gap: 20px; align-items: flex-start; }
+    .main { flex: 1; min-width: 560px; }
+    .sidebar { width: 300px; flex-shrink: 0; }
+    @media (max-width: 980px) { .stage { flex-direction: column; } .sidebar { width: 100%; } .main { min-width: 0; } }
+
+    .panel {
+      border: 1px solid var(--border); border-radius: 10px; background: var(--background);
+      padding: 16px; margin-bottom: 16px;
+    }
+    .panel h2 { font-size: 12px; font-weight: 600; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted-fg); display: flex; align-items: center; }
+
+    .btn {
+      height: 30px; padding: 0 13px; border-radius: 7px; font-size: 11.5px; font-weight: 500; cursor: pointer;
+      border: 1px solid var(--border); background: var(--secondary); color: var(--foreground);
+    }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+    .btn.primary { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+    .btn.danger { background: var(--danger-muted); border-color: var(--danger); color: var(--danger); }
+    .btn.accent { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+    .btn.ghost { background: transparent; }
+    .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+
+    /* Runs list */
+    .block-banner {
+      border: 1px solid var(--danger); background: var(--danger-muted); border-radius: 8px;
+      padding: 10px 12px; font-size: 11.5px; line-height: 1.5; margin-bottom: 14px;
+    }
+    .runs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .runs-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--muted-fg); font-weight: 500; text-transform: uppercase; font-size: 10px; letter-spacing: .03em; }
+    .runs-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+    .runs-table tbody tr { cursor: pointer; }
+    .runs-table tbody tr:hover td { background: var(--card); }
+    .sim-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted-fg); margin-top: 14px; }
+
+    /* New run config */
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 10.5px; color: var(--muted-fg); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .03em; }
+    .field input, .field select {
+      width: 100%; background: var(--secondary); border: 1px solid var(--border); border-radius: 7px;
+      padding: 7px 10px; font-size: 12px; color: var(--foreground);
+    }
+    .field-hint { font-size: 10.5px; color: var(--muted-fg); margin-top: 4px; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-size: 10.5px; padding: 3px 9px; border-radius: 999px; background: var(--secondary); border: 1px solid var(--border); color: var(--muted-fg); }
+    .chk-list { border: 1px solid var(--border); border-radius: 8px; max-height: 230px; overflow-y: auto; }
+    .chk-row { display: flex; align-items: center; gap: 9px; padding: 7px 10px; font-size: 11.5px; border-bottom: 1px solid var(--border); }
+    .chk-row:last-child { border-bottom: none; }
+    .chk-row input[type=checkbox] { accent-color: var(--primary); }
+    .scope-list { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .scope-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 11.5px; border-bottom: 1px solid var(--border); }
+    .scope-row:last-child { border-bottom: none; }
+    .drag-handle { color: var(--muted-fg); cursor: grab; }
+    .sim-fail-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--warn); margin: 10px 0; }
+
+    /* Gate checks */
+    .check-row { display: flex; align-items: center; gap: 9px; padding: 8px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+    .check-row:last-child { border-bottom: none; }
+    .check-ok { color: var(--success); font-weight: 700; }
+    .check-fail { color: var(--danger); font-weight: 700; }
+    .check-desc { color: var(--muted-fg); font-size: 10.5px; margin-left: auto; }
+
+    /* Run header */
+    .run-header { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+    .run-ids { font-size: 11px; color: var(--muted-fg); }
+    .run-title { font-size: 15px; font-weight: 600; margin-right: 4px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .03em; padding: 3px 9px; border-radius: 999px;
+    }
+    .badge-draft, .badge-closed { background: var(--secondary); color: var(--muted-fg); }
+    .badge-gated { background: var(--info-muted); color: var(--info); }
+    .badge-running { background: var(--success-muted); color: var(--success); }
+    .badge-paused { background: var(--warn-muted); color: var(--warn); }
+    .badge-failed { background: var(--danger-muted); color: var(--danger); }
+    .badge-report_ready { background: var(--accent-muted); color: var(--accent-fg); }
+    .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+    .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .health-row { width: 100%; display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+    .health-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); color: var(--muted-fg); }
+    .health-chip.ok { border-color: var(--success); color: var(--success); }
+    .health-chip.warn { border-color: var(--warn); color: var(--warn); }
+    .health-chip.danger { border-color: var(--danger); color: var(--danger); }
+    .health-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+    .budget-row { width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 11px; color: var(--muted-fg); }
+    .bar { flex: 1; height: 6px; border-radius: 999px; background: var(--secondary); overflow: hidden; }
+    .bar > i { display: block; height: 100%; border-radius: 999px; background: var(--primary); }
+    .bar.danger > i { background: var(--danger); }
+    .budget-danger-label { color: var(--danger); font-weight: 600; }
+    .poll-note { font-size: 10.5px; color: var(--muted-fg); display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+    .poll-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--info); }
+
+    .error-banner {
+      border: 1px solid var(--danger); background: var(--danger-muted); border-radius: 8px;
+      padding: 10px 12px; font-size: 11.5px; color: var(--foreground); margin-top: 12px; line-height: 1.5;
+    }
+    .error-banner .mono { color: var(--danger); }
+
+    /* Unit queue */
+    .queue-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 7px; background: var(--card); font-size: 12px; cursor: pointer;
+    }
+    .queue-row:hover { border-color: var(--border-hover); }
+    .queue-row.current { border-color: var(--primary); background: var(--primary-muted); }
+    .queue-row.sel { box-shadow: 0 0 0 1px var(--accent) inset; }
+    .queue-idx { width: 20px; color: var(--muted-fg); font-size: 10px; text-align: center; }
+    .queue-title { flex: 1; font-weight: 500; }
+    .unit-badge {
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+      padding: 2px 8px; border-radius: 999px;
+    }
+    .unit-pending { background: var(--secondary); color: var(--muted-fg); }
+    .unit-drafted { background: var(--info-muted); color: var(--info); }
+    .unit-failed { background: var(--danger-muted); color: var(--danger); }
+    .unit-accepted { background: var(--success-muted); color: var(--success); }
+    .unit-rejected { background: var(--warn-muted); color: var(--warn); }
+    .sev-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .sev-ok { background: var(--success); }
+    .sev-warn { background: var(--warn); }
+    .sev-severe { background: var(--danger); }
+    .queue-cost { font-size: 10.5px; color: var(--muted-fg); width: 56px; text-align: right; }
+    .not-reached { opacity: .45; }
+    .queue-hint { font-size: 10.5px; color: var(--muted-fg); margin-bottom: 10px; }
+
+    /* Diff / review panel (full width) */
+    .diff-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .diff-nav { margin-left: auto; display: flex; gap: 6px; }
+    .diff-legend { display: flex; gap: 16px; font-size: 10.5px; color: var(--muted-fg); margin: 8px 0 12px; }
+    .diff-legend .diff-add, .diff-legend .diff-del { padding: 1px 6px; border-radius: 3px; }
+    .diff-box { border: 1px solid var(--border); border-radius: 8px; background: #12100e; padding: 16px; font-size: 13px; line-height: 1.85; max-height: 260px; overflow-y: auto; }
+    .diff-add { background: rgba(61,186,106,.18); color: #cdf3d8; padding: 0 2px; border-radius: 3px; }
+    .diff-del { background: rgba(232,90,90,.18); color: #f2c6c6; text-decoration: line-through; padding: 0 2px; border-radius: 3px; }
+    .rev-anchors { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--muted-fg); margin: 10px 0; }
+    .rev-anchors .mono { background: var(--secondary); padding: 2px 6px; border-radius: 5px; }
+    .verdict-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--card); margin-top: 12px; }
+    .verdict-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+    .verdict-summary { font-size: 12px; line-height: 1.5; }
+    .verdict-detail { margin-top: 8px; font-size: 10.5px; color: var(--muted-fg); border-top: 1px solid var(--border); padding-top: 8px; display: none; }
+    .verdict-toggle { font-size: 10px; color: var(--accent-fg); cursor: pointer; margin-top: 6px; display: inline-block; }
+    .cascade-warn {
+      border: 1px solid var(--warn); background: var(--warn-muted); border-radius: 8px;
+      padding: 9px 10px; font-size: 11px; line-height: 1.5; color: var(--foreground); margin-top: 12px;
+    }
+    .reviewed-note { font-size: 11px; color: var(--muted-fg); font-style: italic; }
+    .rev-empty { font-size: 11.5px; color: var(--muted-fg); line-height: 1.6; padding: 8px 0; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 50; }
+    .modal-overlay.hidden { display: none; }
+    .modal-box { background: var(--background); border: 1px solid var(--border); border-radius: 10px; padding: 20px; width: 460px; max-width: 92vw; }
+    .modal-box h3 { font-size: 14px; margin-bottom: 6px; }
+    .modal-box p { font-size: 11.5px; color: var(--muted-fg); line-height: 1.5; }
+    .modal-list { font-size: 11.5px; color: var(--foreground); margin: 12px 0; max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+    .modal-list li { margin-bottom: 5px; list-style: none; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+    .footer-note { padding: 0 24px 28px; font-size: 10.5px; color: var(--muted-fg); line-height: 1.6; max-width: 980px; }
+    .footer-note b { color: var(--foreground); }
+  </style>
+</head>
+<body>
+  <h1>Agent Mode <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— "mission control" for an autonomous multi-chapter authoring run (register #4, unnumbered) — draft v2</span></h1>
+  <p class="sub">
+    A human starts a bounded run over an ordered list of chapters; a server-side driver drafts them one at a time,
+    a critic scores each draft, and the human reads + accepts/rejects before the next unit proceeds. Backend
+    (<code class="mono">authoring_run_service.py</code>, 1346 lines) is fully built; frontend is 0% — this is the
+    first artifact toward it.
+  </p>
+  <p class="warn-note">
+    ✅ <strong>CLARIFY complete 2026-07-05 — spec:</strong> <span class="mono">docs/specs/2026-07-01-writing-studio/20_agent_mode.md</span>.
+    Locked: MCP tools ARE being built (chat can supervise a run); "auto-pause after each unit" (default ON) is now a
+    <strong>server-side</strong> <span class="mono">pause_after_each_unit</span> flag the driver itself honors at
+    its unit-boundary check — NOT the client-poll-and-call-/pause approach still shown running below (that design
+    was found to silently no-op for any run started via MCP with no Studio panel open, which defeats the point of
+    the MCP tools existing at all). Keyboard triage (accept/reject/next) is also locked in for v1. This mockup's
+    interactive demo below is frozen at the point that surfaced the gap — it is a UX/data reference, not a literal
+    build target for the pause mechanism; follow the spec, not this page, where the two disagree.
+  </p>
+
+  <div class="nav-tabs" id="nav-tabs"></div>
+
+  <!-- ============ VIEW: RUNS LIST ============ -->
+  <div class="view" id="view-runs">
+    <div class="panel">
+      <h2>Runs for this book <button type="button" class="btn primary" style="margin-left:auto" onclick="tryNewRun()">+ New run</button></h2>
+      <div class="block-banner" id="block-banner" style="display:none">
+        🚫 A run is already <b>gated / running / paused</b> for this book — the backend enforces one active run per
+        book (partial unique index). Open it below, or pause/close it first.
+      </div>
+      <table class="runs-table">
+        <thead><tr><th>Run</th><th>Scope</th><th>Status</th><th>Spent</th><th>Created</th></tr></thead>
+        <tbody id="runs-body"></tbody>
+      </table>
+      <label class="sim-row"><input type="checkbox" id="sim-active" onchange="renderBlockBanner()" /> Simulate: this book already has an active (gated/running/paused) run — demonstrates the one-run-per-book block.</label>
+    </div>
+  </div>
+
+  <!-- ============ VIEW: NEW RUN ============ -->
+  <div class="view hidden" id="view-newrun">
+    <div class="panel">
+      <h2>New run — configure</h2>
+      <div class="field">
+        <label>Plan (required — a run drafts an already-approved plan's beats)</label>
+        <select id="cfg-plan"><option>Plan A — "Act 2 revision pass" · approved 2026-07-01</option><option>Plan B — "Rewrite intro arc" · approved 2026-06-20</option></select>
+      </div>
+      <div class="field">
+        <label>Chapters to include (book TOC — pick + the order below is the run order)</label>
+        <div class="chk-list" id="chk-list"></div>
+        <div class="field-hint">8 chapters in book · 6 selected</div>
+      </div>
+      <div class="field">
+        <label>Run order (drag to reorder — cosmetic in this mockup, not wired)</label>
+        <div class="scope-list" id="scope-list"></div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div class="field" style="flex:1"><label for="cfg-budget">Budget (USD)</label><input id="cfg-budget" name="budget" value="4.00" /></div>
+        <div class="field" style="flex:1"><label for="cfg-level">Level</label><select id="cfg-level" name="level"><option>revise</option><option>draft</option><option>polish</option></select></div>
+      </div>
+      <div class="field">
+        <label>Tool allowlist</label>
+        <div class="chip-row"><span class="chip">composition_write_prose</span><span class="chip">composition_read_outline</span><span class="chip">glossary_lookup</span></div>
+      </div>
+      <label class="sim-fail-row"><input type="checkbox" id="sim-gate-fail" /> Simulate: budget exceeds account limit (demonstrates a failing gate check)</label>
+      <div class="btn-row"><button type="button" class="btn primary" onclick="runGateCheck()">Run gate check →</button><button type="button" class="btn ghost" onclick="viewNav('runs')">Cancel</button></div>
+    </div>
+  </div>
+
+  <!-- ============ VIEW: MISSION CONTROL ============ -->
+  <div class="view hidden" id="view-mission">
+    <div class="state-pills" id="state-pills"></div>
+    <div class="stage">
+      <div class="main">
+
+        <div class="panel">
+          <h2>Run</h2>
+          <div class="run-header">
+            <span class="run-title">Ch.1–6 revision pass</span>
+            <span class="run-ids mono">run_01f3…c2 · book_019f…83 · level: revise</span>
+            <span class="badge" id="run-badge"></span>
+            <div class="actions" id="run-actions"></div>
+            <div class="health-row" id="health-row"></div>
+            <div class="budget-row">
+              <span>Budget</span>
+              <div class="bar" id="budget-bar-wrap"><i id="budget-bar" style="width:0%"></i></div>
+              <span class="mono" id="budget-label"></span>
+            </div>
+          </div>
+          <div id="error-slot"></div>
+          <div class="poll-note" id="poll-slot"></div>
+        </div>
+
+        <div class="panel" id="panel-gate" style="display:none">
+          <h2>Gate check result</h2>
+          <div id="gate-checks"></div>
+        </div>
+
+        <div class="panel" id="panel-queue">
+          <h2>Unit queue <span class="mono" style="text-transform:none;font-weight:400" id="queue-caption"></span></h2>
+          <p class="queue-hint">Click a chapter to read its draft below.</p>
+          <div id="queue-list"></div>
+        </div>
+
+        <div class="panel" id="panel-diff" style="display:none">
+          <h2>
+            <span id="diff-title">Draft review</span>
+            <div class="diff-nav">
+              <button type="button" class="btn ghost" onclick="navUnit(-1)">← Prev</button>
+              <button type="button" class="btn ghost" onclick="navUnit(1)">Next →</button>
+            </div>
+          </h2>
+          <div id="diff-body"></div>
+        </div>
+
+      </div>
+
+      <div class="sidebar">
+        <div class="panel">
+          <h2>Run FSM (ground truth)</h2>
+          <p style="font-size:10.5px;line-height:1.7;color:var(--muted-fg)">
+            <span class="mono">draft → gated → running → (paused ⇄ running) → report_ready → closed</span><br>
+            <span class="mono">running → failed</span> on unit failure. No retry — only <b style="color:var(--foreground)">close</b> or
+            <b style="color:var(--foreground)">revert-all</b> from a non-running state.<br><br>
+            <b style="color:var(--foreground)">Confirmed 2026-07-05 (was an open question in v2's first pass):</b> the
+            driver does <b style="color:var(--foreground)">not</b> wait for accept/reject — it drafts every unit
+            back-to-back until budget/scope/critic-severe stops it. Accept/Reject/Revert-all are server-gated to
+            <span class="mono">report_ready / failed / paused</span> only — reviewing "as you go" means the human
+            must actively pause.
+          </p>
+        </div>
+        <div class="panel">
+          <h2>Driver health legend</h2>
+          <p style="font-size:10.5px;line-height:1.7;color:var(--muted-fg)">
+            <b style="color:var(--foreground)">breaker_state</b>: open = repeated provider failures, calls blocked.<br>
+            <b style="color:var(--foreground)">driver_heartbeat_at</b>: stale ⇒ the driver process may have died
+            without updating run status — this project has shipped exactly that bug class before.
+          </p>
+        </div>
+        <div class="btn-row"><button type="button" class="btn ghost" onclick="viewNav('runs')">← Back to runs list</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Revert-all confirmation modal -->
+  <div class="modal-overlay hidden" id="modal-revert">
+    <div class="modal-box">
+      <h3>Revert all drafted/accepted units?</h3>
+      <p>This rejects every drafted/accepted unit in reverse order and restores each chapter to its
+        <span class="mono">pre_revision_id</span>. This cannot be undone from this UI. Affected:</p>
+      <ul class="modal-list" id="revert-list"></ul>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" onclick="closeRevertModal()">Cancel</button>
+        <button type="button" class="btn danger" onclick="confirmRevert()">Revert all</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="footer-note">
+    Throwaway HTML mockup — agree UX + confirm real data model before any code, per this repo's
+    <span class="mono">design-drafts/</span> convention. v2 closes the gaps a self-review found in v1 (no content
+    to review, no way to create/find a run, missing breaker/heartbeat fields, unguarded destructive revert).
+    Live-checked at 390px (chrome-devtools <span class="mono">emulate</span>, not the flaky resize_page path) —
+    the single-column stack, wrapped action row, and diff panel all held up fine as-is, no mobile-specific layout
+    needed for this screen. Still not modeled: keyboard triage (accept/reject + next, like reviewing a PR) and a
+    cross-panel notification when a backgrounded run finishes while the panel isn't open.
+  </p>
+
+  <script>
+    const NAV = [['runs','Runs'], ['newrun','New run'], ['mission','Mission control']];
+    let currentView = 'runs';
+
+    function renderNav(){
+      document.getElementById('nav-tabs').innerHTML = NAV.map(([id,label]) =>
+        `<div class="nav-tab ${id===currentView?'active':''}" onclick="viewNav('${id}')">${label}</div>`
+      ).join('');
+    }
+    function viewNav(v){
+      currentView = v;
+      renderNav();
+      ['runs','newrun','mission'].forEach(id => document.getElementById('view-'+id).classList.toggle('hidden', id !== v));
+    }
+
+    // ---------- Runs list ----------
+    const runsHistory = [
+      { id:'run_01f3…c2', scope:'Ch.1–6 revision pass', status:'report_ready', spent:3.79, budget:4.00, created:'2026-07-05 09:12' },
+      { id:'run_00a1…9e', scope:'Ch.1–3 first draft', status:'closed', spent:0.94, budget:2.00, created:'2026-07-03 14:02' },
+      { id:'run_00f2…4b', scope:'Ch.7–9 polish', status:'failed', spent:0.71, budget:4.00, created:'2026-07-01 21:40' },
+    ];
+    function renderRunsTable(){
+      document.getElementById('runs-body').innerHTML = runsHistory.map(r => `
+        <tr onclick="openRun('${r.status}')">
+          <td class="mono">${r.id}</td>
+          <td>${r.scope}</td>
+          <td><span class="badge badge-${r.status}">${r.status.replace('_',' ')}</span></td>
+          <td class="mono">$${r.spent.toFixed(2)} / $${r.budget.toFixed(2)}</td>
+          <td class="mono">${r.created}</td>
+        </tr>`).join('');
+    }
+    function renderBlockBanner(){
+      const on = document.getElementById('sim-active').checked;
+      document.getElementById('block-banner').style.display = on ? 'block' : 'none';
+    }
+    function tryNewRun(){
+      if (document.getElementById('sim-active').checked) {
+        document.getElementById('block-banner').scrollIntoView({behavior:'smooth'});
+        return;
+      }
+      renderChecklist();
+      viewNav('newrun');
+    }
+    function openRun(status){ viewNav('mission'); setState(status); }
+
+    // ---------- New run config ----------
+    const bookChapters = ['Ch.1 — Arrival','Ch.2 — The Letter','Ch.3 — Descent','Ch.4 — The Choice','Ch.5 — Reckoning','Ch.6 — Aftermath','Ch.7 — Epilogue A','Ch.8 — Epilogue B'];
+    function renderChecklist(){
+      document.getElementById('chk-list').innerHTML = bookChapters.map((c,i) =>
+        `<div class="chk-row"><input type="checkbox" id="chk-${i}" ${i<6?'checked':''} onchange="renderScopeFromChecklist()" /><label for="chk-${i}">${c}</label></div>`
+      ).join('');
+      renderScopeFromChecklist();
+    }
+    function renderScopeFromChecklist(){
+      const picked = bookChapters.filter((c,i) => document.getElementById('chk-'+i) && document.getElementById('chk-'+i).checked);
+      document.getElementById('scope-list').innerHTML = picked.map((c,i) =>
+        `<div class="scope-row"><span class="drag-handle">⠿</span><span class="mono" style="width:16px;color:var(--muted-fg)">${i+1}</span>${c}</div>`
+      ).join('');
+    }
+    function runGateCheck(){
+      window.simulateGateFail = document.getElementById('sim-gate-fail').checked;
+      viewNav('mission');
+      setState('gated');
+    }
+
+    // ---------- Mission control ----------
+    const STATES = ['draft','gated','running','paused','failed','report_ready','closed'];
+    let currentState = 'running';
+    let selectedUnit = null;
+
+    const scopeChapters = ['Ch.1 — Arrival','Ch.2 — The Letter','Ch.3 — Descent','Ch.4 — The Choice','Ch.5 — Reckoning','Ch.6 — Aftermath'];
+
+    const unitsByState = {
+      draft: [],
+      gated: scopeChapters.map((t,i)=>({i, t, status:'pending'})),
+      running: [
+        {i:0,t:scopeChapters[0],status:'accepted',cost:0.31,sev:'ok'},
+        {i:1,t:scopeChapters[1],status:'accepted',cost:0.28,sev:'ok'},
+        {i:2,t:scopeChapters[2],status:'drafted',cost:0.34,sev:'warn',current:true,downstream:[]},
+        {i:3,t:scopeChapters[3],status:'pending'},
+        {i:4,t:scopeChapters[4],status:'pending'},
+        {i:5,t:scopeChapters[5],status:'pending'},
+      ],
+      paused: [
+        {i:0,t:scopeChapters[0],status:'accepted',cost:0.31,sev:'ok'},
+        {i:1,t:scopeChapters[1],status:'accepted',cost:0.28,sev:'ok'},
+        {i:2,t:scopeChapters[2],status:'drafted',cost:0.34,sev:'warn',downstream:[]},
+        {i:3,t:scopeChapters[3],status:'pending'},
+        {i:4,t:scopeChapters[4],status:'pending'},
+        {i:5,t:scopeChapters[5],status:'pending'},
+      ],
+      failed: [
+        {i:0,t:scopeChapters[0],status:'accepted',cost:0.31,sev:'ok'},
+        {i:1,t:scopeChapters[1],status:'accepted',cost:0.28,sev:'ok'},
+        {i:2,t:scopeChapters[2],status:'failed',cost:0.12,error:'Provider timeout after 3 retries (gpt-4o, 90s budget exceeded)'},
+        {i:3,t:scopeChapters[3],status:'pending',notReached:true},
+        {i:4,t:scopeChapters[4],status:'pending',notReached:true},
+        {i:5,t:scopeChapters[5],status:'pending',notReached:true},
+      ],
+      report_ready: [
+        {i:0,t:scopeChapters[0],status:'accepted',cost:0.31,sev:'ok'},
+        {i:1,t:scopeChapters[1],status:'accepted',cost:0.28,sev:'ok'},
+        {i:2,t:scopeChapters[2],status:'rejected',cost:0.34,sev:'warn',downstream:[3,4]},
+        {i:3,t:scopeChapters[3],status:'accepted',cost:0.29,sev:'ok'},
+        {i:4,t:scopeChapters[4],status:'accepted',cost:0.30,sev:'ok'},
+        {i:5,t:scopeChapters[5],status:'drafted',cost:0.27,sev:'severe',downstream:[]},
+      ],
+      closed: null,
+    };
+    unitsByState.closed = unitsByState.report_ready;
+
+    const budgetByState = { draft:[0,4], gated:[0,4], running:[0.93,4], paused:[0.93,4], failed:[0.71,4], report_ready:[3.79,4], closed:[3.79,4] };
+
+    const healthByState = {
+      draft:    { breaker:['n/a','ok'], heart:['n/a','ok'] },
+      gated:    { breaker:['closed — healthy','ok'], heart:['not started','ok'] },
+      running:  { breaker:['closed — healthy','ok'], heart:['fresh · 3s ago','ok'] },
+      paused:   { breaker:['closed — healthy','ok'], heart:['n/a — driver stopped while paused','ok'] },
+      failed:   { breaker:['open — 3 consecutive provider timeouts, calls blocked','danger'], heart:['STALE — driver exited 41s ago','danger'] },
+      report_ready: { breaker:['closed — healthy','ok'], heart:['n/a — run finished','ok'] },
+      closed:   { breaker:['closed — healthy','ok'], heart:['n/a','ok'] },
+    };
+
+    const verdicts = {
+      ok: { label:'ok', summary:'Consistent with established voice and prior chapter continuity.', detail:'Checked: POV consistency, glossary term usage (4/4 matched), no contradiction with accepted Ch.1-2 facts.' },
+      warn: { label:'warn', summary:'Minor pacing drift — the confrontation resolves faster than the outline beat implies.', detail:'Outline beat "Descent" allots ~1200 words of rising tension; draft resolves it in ~400. Not a factual error, a pacing risk.' },
+      severe: { label:'severe', summary:'Introduces a detail contradicting an accepted fact from Ch.4 (character believed dead is referenced as present).', detail:'Ch.4 (accepted) establishes character "Mira" died at the descent. This draft has Mira speaking in dialogue at Ch.6 with no revival/flashback framing — likely continuity break, recommend reject.' },
+    };
+
+    const diffText = {
+      before: 'Rin descended into the collapsed mine alone, her lantern guttering against a wind that shouldn’t have existed underground. She called out once. No answer came. She pressed forward anyway, telling herself the silence only meant the others had gone ahead.',
+      afterHtml: 'Rin descended into the collapsed mine <span class="diff-del">alone</span><span class="diff-add">with only Kest’s cracked compass for company</span>, her lantern guttering against a wind that shouldn’t have existed underground. She called out once. <span class="diff-add">Twice.</span> No answer came. She pressed forward anyway, telling herself the silence only meant the others had gone ahead<span class="diff-del">, though some colder part of her didn’t believe it</span>.',
+    };
+
+    function badgeClass(s){ return 'badge-' + s; }
+    function fmtState(s){ return s.replace('_',' '); }
+
+    function renderPills(){
+      document.getElementById('state-pills').innerHTML = STATES.map(s =>
+        `<button type="button" class="state-pill ${s===currentState?'active':''}" onclick="setState('${s}')">${fmtState(s)}</button>`
+      ).join('');
+    }
+
+    function actionsFor(state){
+      switch(state){
+        case 'draft':   return `<button class="btn primary" onclick="setState('gated')">Gate →</button>`;
+        case 'gated':   return `<button class="btn primary" ${window.simulateGateFail?'disabled title="Fix failing checks first"':''} onclick="setState('running')">Start</button><button class="btn" onclick="setState('closed')">Close</button>`;
+        case 'running': return `<button class="btn accent" onclick="setState('paused')">Pause</button>`;
+        case 'paused':  return `<button class="btn primary" onclick="setState('running')">Resume</button><button class="btn" onclick="setState('closed')">Close</button>`;
+        case 'failed':  return `<button class="btn" onclick="setState('closed')">Close</button><button class="btn danger" onclick="openRevertModal()">Revert all</button>`;
+        case 'report_ready': return `<button class="btn" onclick="setState('closed')">Close</button><button class="btn danger" onclick="openRevertModal()">Revert all</button>`;
+        case 'closed':  return `<span class="reviewed-note">Run closed — terminal, no further actions.</span>`;
+      }
+    }
+
+    function renderGate(){
+      if (currentState !== 'gated') { document.getElementById('panel-gate').style.display = 'none'; return; }
+      document.getElementById('panel-gate').style.display = 'block';
+      const fail = !!window.simulateGateFail;
+      document.getElementById('gate-checks').innerHTML = `
+        <div class="check-row"><span class="check-ok">✓</span> Plan exists and resolves <span class="check-desc">plan_run_id → 3 approved beats</span></div>
+        <div class="check-row"><span class="check-ok">✓</span> Scope chapters exist &amp; are orderable <span class="check-desc">6 chapters, no gaps</span></div>
+        <div class="check-row">${fail
+          ? `<span class="check-fail">✕</span> Budget within account limit <span class="check-desc">$4.00 &gt; $2.50 remaining — reduce budget or top up</span>`
+          : `<span class="check-ok">✓</span> Budget within account limit <span class="check-desc">$4.00 ≤ $25.00 remaining</span>`}</div>
+        <div class="check-row"><span class="check-ok">✓</span> Tool allowlist configured <span class="check-desc">3 tools</span></div>
+      `;
+    }
+
+    function renderHeader(){
+      document.getElementById('run-badge').className = 'badge ' + badgeClass(currentState);
+      document.getElementById('run-badge').innerHTML = (currentState==='running' ? '<span class="pulse"></span> ' : '') + fmtState(currentState);
+      document.getElementById('run-actions').innerHTML = actionsFor(currentState);
+
+      const h = healthByState[currentState];
+      document.getElementById('health-row').innerHTML = `
+        <span class="health-chip ${h.breaker[1]}"><span class="health-dot"></span>breaker: ${h.breaker[0]}</span>
+        <span class="health-chip ${h.heart[1]}"><span class="health-dot"></span>heartbeat: ${h.heart[0]}</span>
+      `;
+
+      const [spent, budget] = budgetByState[currentState];
+      const ratio = spent/budget;
+      const danger = ratio >= 0.85;
+      document.getElementById('budget-bar-wrap').className = 'bar' + (danger ? ' danger' : '');
+      document.getElementById('budget-bar').style.width = Math.min(100, ratio*100) + '%';
+      document.getElementById('budget-label').innerHTML = `<span class="${danger?'budget-danger-label':''}">$${spent.toFixed(2)} / $${budget.toFixed(2)}${danger?' — near limit':''}</span>`;
+
+      const errSlot = document.getElementById('error-slot');
+      errSlot.innerHTML = (currentState === 'failed')
+        ? `<div class="error-banner">Unit 3 (${scopeChapters[2]}) failed — run halted, no retry endpoint exists.<br><span class="mono">error_message: "Provider timeout after 3 retries (gpt-4o, 90s budget exceeded)"</span></div>`
+        : '';
+
+      const pollSlot = document.getElementById('poll-slot');
+      pollSlot.innerHTML = (currentState === 'running' || currentState === 'paused')
+        ? `<span class="poll-dot"></span> ${currentState==='running' ? 'Polling every 5s (REST GET /run_id — no SSE/WS exists server-side)' : 'Polling paused while run is paused'} · last refreshed <span id="poll-age">0s</span> ago`
+        : '';
+
+      document.getElementById('panel-queue').style.display = currentState === 'draft' ? 'none' : 'block';
+      renderGate();
+    }
+
+    function renderQueue(){
+      const units = unitsByState[currentState];
+      const caption = document.getElementById('queue-caption');
+      if (!units || !units.length) { document.getElementById('queue-list').innerHTML = ''; caption.textContent=''; return; }
+      caption.textContent = `· ${units.length} chapters, sequential`;
+      document.getElementById('queue-list').innerHTML = units.map(u => {
+        const sevDot = u.sev ? `<span class="sev-dot sev-${u.sev}"></span>` : '';
+        const cost = (u.cost!=null) ? `<span class="queue-cost mono">$${u.cost.toFixed(2)}</span>` : `<span class="queue-cost"></span>`;
+        return `<div class="queue-row ${u.current?'current':''} ${u.notReached?'not-reached':''} ${selectedUnit===u.i?'sel':''}" onclick="selectUnit(${u.i})">
+          <span class="queue-idx">${u.i+1}</span>
+          <span class="queue-title">${u.t}</span>
+          ${sevDot}
+          <span class="unit-badge unit-${u.status}">${u.status}</span>
+          ${cost}
+        </div>`;
+      }).join('');
+    }
+
+    function navUnit(delta){
+      const units = unitsByState[currentState] || [];
+      if (selectedUnit === null || !units.length) return;
+      const next = Math.max(0, Math.min(units.length - 1, selectedUnit + delta));
+      selectUnit(next);
+    }
+
+    function selectUnit(i){
+      selectedUnit = i;
+      const units = unitsByState[currentState] || [];
+      const u = units.find(x => x.i === i);
+      renderQueue();
+      const diffPanel = document.getElementById('panel-diff');
+      const body = document.getElementById('diff-body');
+      diffPanel.style.display = 'block';
+      document.getElementById('diff-title').textContent = u ? `${u.t} — unit ${i+1}` : `Unit ${i+1}`;
+
+      if (!u || u.status === 'pending') {
+        body.innerHTML = `<div class="rev-empty">${u && u.notReached ? 'Run halted before reaching this chapter.' : 'Not drafted yet — nothing to review.'}</div>`;
+        return;
+      }
+      if (u.status === 'failed') {
+        body.innerHTML = `<div class="error-banner mono" style="margin-top:0">${u.error}</div>`;
+        return;
+      }
+      const v = verdicts[u.sev] || verdicts.ok;
+      const cascade = (u.downstream && u.downstream.length)
+        ? `<div class="cascade-warn">⚠ ${u.downstream.length} downstream unit(s) already drafted/accepted (Ch.${u.downstream.map(d=>d+1).join(', Ch.')}) — this is <b>advisory only</b>; rejecting unit ${i+1} does NOT auto-revert them.</div>`
+        : '';
+      const reviewed = (u.status === 'accepted' || u.status === 'rejected');
+      const REVIEWABLE = ['report_ready', 'failed', 'paused'];
+      const runIsReviewable = REVIEWABLE.includes(currentState);
+      let actionSlot;
+      if (reviewed) {
+        actionSlot = `<div class="reviewed-note" style="margin-top:12px">Already reviewed — currently <b style="color:var(--foreground)">${u.status}</b>.</div>`;
+      } else if (!runIsReviewable) {
+        actionSlot = `<div class="reviewed-note" style="margin-top:12px">⛔ Accept/Reject blocked while the run is <b style="color:var(--foreground)">${fmtState(currentState)}</b> — the backend only allows review once the run has stopped (<span class="mono">report_ready / failed / paused</span>, <span class="mono">_REVIEWABLE_STATUSES</span>). Pause the run to review this chapter now.</div>`;
+      } else {
+        actionSlot = `<div class="btn-row"><button class="btn primary" onclick="alert('POST /units/${i}/accept')">Accept</button><button class="btn danger" onclick="alert('POST /units/${i}/reject — restores chapter to pre_revision_id')">Reject</button></div>`;
+      }
+      body.innerHTML = `
+        <div class="diff-legend"><span><span class="diff-del">removed</span></span><span><span class="diff-add">added</span></span></div>
+        <div class="diff-box">${diffText.afterHtml}</div>
+        <div class="rev-anchors"><span class="mono">pre_rev_0${i}a1</span> → <span class="mono">post_rev_0${i}c3</span> <span style="color:var(--accent-fg);cursor:pointer">Open full editor diff</span></div>
+        <div class="verdict-card">
+          <div class="verdict-head"><span class="sev-dot sev-${u.sev}"></span><b style="text-transform:uppercase;font-size:10.5px">${v.label}</b><span class="mono" style="margin-left:auto;color:var(--muted-fg);font-size:10px">$${u.cost.toFixed(2)}</span></div>
+          <div class="verdict-summary">${v.summary}</div>
+          <span class="verdict-toggle" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display==='block' ? 'none' : 'block'">Show detail ▾</span>
+          <div class="verdict-detail">${v.detail}</div>
+        </div>
+        ${cascade}
+        ${actionSlot}
+      `;
+    }
+
+    function setState(s){
+      currentState = s;
+      selectedUnit = null;
+      document.getElementById('panel-diff').style.display = 'none';
+      renderPills();
+      renderHeader();
+      renderQueue();
+    }
+
+    function openRevertModal(){
+      const units = (unitsByState[currentState] || []).filter(u => u.status === 'drafted' || u.status === 'accepted');
+      document.getElementById('revert-list').innerHTML = units.length
+        ? units.map(u => `<li>Unit ${u.i+1} · ${u.t} — currently <b>${u.status}</b> → will become <b>rejected</b>, chapter restored to pre-revision</li>`).join('')
+        : '<li>No drafted/accepted units to revert.</li>';
+      document.getElementById('modal-revert').classList.remove('hidden');
+    }
+    function closeRevertModal(){ document.getElementById('modal-revert').classList.add('hidden'); }
+    function confirmRevert(){ closeRevertModal(); setState('closed'); }
+
+    let pollAge = 0;
+    setInterval(() => {
+      if (currentState === 'running' && currentView === 'mission') {
+        pollAge += 1;
+        const el = document.getElementById('poll-age');
+        if (el) el.textContent = (pollAge % 5) + 's';
+      }
+    }, 1000);
+
+    renderNav();
+    renderRunsTable();
+    renderChecklist();
+    renderPills();
+    setState('running');
+    viewNav('runs');
+  </script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "스토리 둘러보기",
+    "subtitle": "LoreWeave 커뮤니티의 공개 소설을 둘러보세요. 다양한 언어로 된 이야기를 읽고, 번역하고, 탐험하세요.",
+    "search_placeholder": "제목, 작가 또는 언어로 검색...",
+    "search_aria": "카탈로그 검색",
+    "no_books": "검색 결과가 없습니다. 다른 검색어나 필터를 시도해 보세요.",
+    "load_failed": "카탈로그를 불러오지 못했습니다"
+  },
+  "filter": {
+    "lang_all": "전체",
+    "clear_genres": "장르 초기화",
+    "books_found": "{{count}}개의 도서 발견",
+    "sort_aria": "도서 정렬 기준",
+    "sort": {
+      "recent": "최신순",
+      "popular": "인기순",
+      "chapters": "챕터 많은 순",
+      "alpha": "가나다순"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}}화"
+  },
+  "detail": {
+    "breadcrumb_browse": "둘러보기",
+    "public_badge": "공개",
+    "unlisted_badge": "비공개",
+    "chapters_count": "{{count}}개 챕터",
+    "available_languages": "지원 언어",
+    "original": "원문",
+    "start_reading": "읽기 시작",
+    "no_chapters_yet": "아직 등록된 챕터가 없습니다",
+    "share": "공유하기",
+    "copy_link": "링크 복사",
+    "loading": "로딩 중...",
+    "chapters_heading": "챕터",
+    "no_chapters_available": "사용 가능한 챕터가 없습니다.",
+    "untitled": "제목 없음",
+    "words": "{{count}} 단어",
+    "showing_chapters": "{{total}}개 중 {{from}}–{{to}}번째 챕터 표시 중",
+    "stat_chapters": "챕터",
+    "stat_languages": "언어",
+    "stat_original": "원문",
+    "stat_published": "발행일",
+    "na": "N/A",
+    "book_not_found": "도서를 찾을 수 없습니다",
+    "back_to_browse": "둘러보기로 돌아가기",
+    "link_copied": "링크가 복사되었습니다",
+    "copy_failed": "복사 실패",
+    "load_chapters_failed": "챕터를 불러오지 못했습니다"
+  },
+  "shared": {
+    "indicator": "공유된 링크를 보고 계십니다. 이 책은 공개 목록에 표시되지 않습니다.",
+    "invalid": "공유된 링크가 유효하지 않거나 만료되었습니다.",
+    "not_found": "공유된 링크를 찾을 수 없거나 만료되었습니다",
+    "browse_instead": "대신 공개 도서 둘러보기",
+    "back_to_chapters": "챕터로 돌아가기",
+    "ch_short": "{{n}}화",
+    "load_chapter_failed": "챕터를 불러오지 못했습니다: {{error}}"
+  }
+}

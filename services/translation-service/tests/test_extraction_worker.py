@@ -349,7 +349,7 @@ async def test_cache_hit_skips_llm_and_reuses_entities():
     }
     put_mock = AsyncMock()
 
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
          patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
@@ -389,7 +389,7 @@ async def test_cache_busts_on_model_change_when_enabled(monkeypatch):
         "parsed_entities": [{"name": "X", "kind_code": "character"}], "finish_reason": "stop",
         "input_tokens": 0, "output_tokens": 0, "parse_status": "ok", "model_ref": str(uuid4()),
     }
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
          patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
@@ -433,7 +433,7 @@ async def test_unplannable_oversized_window_skips_llm(caplog):
 
     huge_window = "这是一个非常长的段落。" * 60_000  # one block far larger than the 8192 ctx
 
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
          patch.object(ew, "_plan_chapter_windows", return_value=[huge_window]), \
@@ -470,7 +470,7 @@ async def _run_with_window_and_ctx(window: str, ctx: int, llm_job):
     async def _cap(pool, job_id, owner, book, chap, outcomes):
         captured["outcomes"] = outcomes
 
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="t")), \
          patch.object(ew, "_get_model_context_window", new=AsyncMock(return_value=ctx)), \
@@ -508,7 +508,7 @@ async def test_graded_effort_reaches_llm_input():
     llm = MagicMock()
     llm.submit_and_wait = AsyncMock(return_value=_sdk_job("stop"))
     put_mock = AsyncMock()
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
          patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
@@ -573,7 +573,7 @@ async def test_truncated_batch_is_not_cached():
     put_mock = AsyncMock()
     entities = [{"name": "张若尘", "kind_code": "character"}]
 
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
          patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
@@ -650,7 +650,7 @@ async def _run_one_chapter_batch(finish_reason: str | None, entities: list[dict]
     else:
         prepare_mock = MagicMock(return_value="some chapter text")
 
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=prepare_mock), \
          patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
@@ -699,7 +699,7 @@ async def test_batch_concurrency_runs_all_units_via_gather():
             ParseStats(raw_count=1, parse_ok=True),
         )
 
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
          patch.object(ew, "plan_kind_batches", return_value=batches), \
@@ -741,7 +741,7 @@ async def _capture_llm_input(*, thinking_enabled: bool, reasoning_effort):
     llm.submit_and_wait = AsyncMock(return_value=_sdk_job("stop"))
     post = AsyncMock(return_value={"created": 1, "updated": 0, "skipped": 0})
     entities = [{"name": "x", "kind_code": "character"}]
-    with patch.object(ew.httpx, "AsyncClient",
+    with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
          patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \

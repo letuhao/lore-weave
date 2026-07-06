@@ -199,6 +199,7 @@ func (s *Server) mergeEntitiesCore(ctx context.Context, bookID, winnerID uuid.UU
 		}, winnerID, entityMergedPayload{
 			BookID: bookID.String(), WinnerEntityID: winnerID.String(),
 			LoserEntityID: loserID.String(), Op: "merged",
+			ActorID:   actorIDStr(actor),
 			EmittedAt: time.Now().UTC().Format(time.RFC3339),
 		})
 	}
@@ -477,7 +478,7 @@ func (s *Server) revertMerge(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
-	reason, err := s.revertMergeCore(r.Context(), bookID, journalID)
+	reason, err := s.revertMergeCore(r.Context(), bookID, journalID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "revert failed: "+err.Error())
 		return
@@ -502,7 +503,7 @@ func (s *Server) revertMerge(w http.ResponseWriter, r *http.Request) {
 // on success, (businessReason, nil) for a 4xx condition, or (_, err) for a 500.
 // Auth/ownership is the caller's concern (so this is unit-testable without
 // book-service).
-func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUID) (string, error) {
+func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID, actor uuid.UUID) (string, error) {
 	var (
 		winnerID, loserID uuid.UUID
 		jBook             uuid.UUID
@@ -611,6 +612,7 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 	}, winnerID, entityMergedPayload{
 		BookID: bookID.String(), WinnerEntityID: winnerID.String(),
 		LoserEntityID: loserID.String(), Op: "unmerged",
+		ActorID:   actorIDStr(actor),
 		EmittedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 

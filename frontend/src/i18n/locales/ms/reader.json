@@ -1,0 +1,146 @@
+{
+  "loading": "Memuat...",
+  "chapter_of": "Bab {{current}} daripada {{total}}",
+  "stop_reading": "Berhenti membaca",
+  "read_aloud": "Baca kuat",
+  "reading_theme": "Tema pembacaan",
+  "edit_chapter": "Edit bab ini",
+  "back_to_book": "Kembali ke buku",
+  "chapter_label": "Bab {{n}}",
+  "chars": "aksara",
+  "words": "perkataan",
+  "min_read": "~{{minutes}} min bacaan",
+  "loading_translation": "Memuat terjemahan...",
+  "empty_chapter": "Bab kosong — belum ada apa-apa yang ditulis.",
+  "end_of_chapter": "Tamat Bab {{n}}",
+  "next_in": "Bab seterusnya dalam {{seconds}}s...",
+  "cancel": "Batal",
+  "progress": "Bab {{current}} daripada {{total}} · {{percent}}% lengkap",
+  "ch_short": "Bab {{n}}",
+  "history": {
+    "title": "Sejarah Pembacaan",
+    "subtitle": "Buku dan bab yang baru dibaca.",
+    "empty": "Tiada sejarah pembacaan lagi. Mula membaca bab!",
+    "chapters_read": "{{count}} bab telah dibaca",
+    "fully_read": "{{percent}}% dibaca sepenuhnya",
+    "last_read": "Terakhir dibaca {{date}}",
+    "continue": "Sambung"
+  },
+  "theme": {
+    "title": "Tema Pembacaan",
+    "presets": "Tetapan Tema",
+    "preset": {
+      "dark": {
+        "name": "Gelap",
+        "desc": "Latar belakang gelap yang hangat"
+      },
+      "light": {
+        "name": "Cerah",
+        "desc": "Latar belakang putih yang bersih"
+      },
+      "sepia": {
+        "name": "Sepia",
+        "desc": "Nada kertas yang hangat"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "Hitam pekat untuk skrin OLED"
+      },
+      "parchment": {
+        "name": "Parchment",
+        "desc": "Rasa kertas klasik"
+      },
+      "forest": {
+        "name": "Hutan",
+        "desc": "Mesra mata pada waktu malam"
+      }
+    },
+    "font": "Fon",
+    "typography": "Tipografi",
+    "font_size": "Saiz fon",
+    "line_height": "Jarak baris",
+    "text_width": "Lebar teks",
+    "spacing": "Jarak",
+    "reading_mode": "Mod Pembacaan",
+    "show_indices": "Tunjukkan indeks blok (mod penterjemah)",
+    "auto_next": "Muat turun bab seterusnya secara automatik",
+    "auto_scroll": "Skrol automatik dengan TTS"
+  },
+  "tts": {
+    "source": {
+      "attached": "Terlampir",
+      "ai": "AI TTS",
+      "browser": "Pelayar",
+      "inline": "Audio"
+    },
+    "prev_block": "Blok sebelumnya (Shift+Kiri)",
+    "play": "Main (Space)",
+    "pause": "Jeda (Space)",
+    "next_block": "Blok seterusnya (Shift+Kanan)",
+    "cycle_speed": "Kitaran kelajuan",
+    "autoscroll_on": "Skrol automatik: ON",
+    "autoscroll_off": "Skrol automatik: OFF",
+    "settings": "Tetapan TTS",
+    "stop": "Berhenti (Escape)",
+    "speed": "Kelajuan",
+    "browser_voice": "Suara Pelayar",
+    "default": "Lalai",
+    "no_voices": "Tiada suara tersedia. Pelayar anda mungkin tidak menyokong Web Speech API.",
+    "ai_model": "Model AI TTS",
+    "none_browser": "Tiada (hanya TTS pelayar)",
+    "no_models": "Tiada model dikonfigurasi. Tambah penyedia dalam Tetapan > Penyedia.",
+    "ai_voice": "Suara AI",
+    "openai_voices": "Suara OpenAI: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "Tingkah Laku",
+    "autoscroll_active": "Skrol automatik ke blok aktif",
+    "highlight_active": "Sorot blok aktif",
+    "now_playing": "Sedang Dimainkan",
+    "block_label": "Blok: {{id}}",
+    "status": {
+      "playing": "sedang dimainkan",
+      "paused": "dijeda",
+      "loading": "memuat..."
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "Terlampir",
+      "ai": "AI TTS",
+      "browser": "Pelayar",
+      "inline": "Blok Audio",
+      "none": "Tiada"
+    },
+    "coverage": "Liputan Audio",
+    "summary": "{{speakable}} blok boleh dibaca · {{missing}} menggunakan TTS pelayar",
+    "generate_missing": "Jana Audio yang Hilang",
+    "block_chars": "{{count}} blok · ~{{chars}} aksara",
+    "block_chars_other": "{{count}} blok · ~{{chars}} aksara",
+    "est_cost": "anggaran ${{cost}}",
+    "generating": "Menjana... {{progress}}/{{total}}",
+    "select_model_alert": "Pilih model TTS dalam Tetapan TTS terlebih dahulu.",
+    "generate_all": "Jana Semua ({{count}})",
+    "blocks": "Blok",
+    "audio_block_preview": "Blok audio"
+  },
+  "block": {
+    "audio_unavailable": "Audio tidak tersedia",
+    "audio_fallback": "Pelayar anda tidak menyokong elemen audio.",
+    "image_unavailable": "Imej tidak tersedia",
+    "video_unavailable": "Video tidak tersedia"
+  },
+  "indicator": {
+    "pause": "Jeda",
+    "play": "Main audio terlampir",
+    "mismatch": "Sari kata audio berbeza daripada teks blok"
+  },
+  "citation": {
+    "aria": "Petikan {{n}}",
+    "jump": "Lompat ke sumber",
+    "relevance": "Relevansi",
+    "source": {
+      "glossary": "Glosari",
+      "kg": "Pengetahuan",
+      "passage": "Petikan"
+    }
+  }
+}

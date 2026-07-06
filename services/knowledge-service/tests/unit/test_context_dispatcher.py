@@ -129,6 +129,71 @@ async def test_missing_project_raises_not_found(monkeypatch):
         )
 
 
+# ── T5 (Context Budget Law D2): grounding intent gate routing ───────────────
+
+
+@pytest.mark.asyncio
+async def test_grounding_false_routes_full_eligible_to_static(monkeypatch):
+    """The gate: an extraction-enabled (full-mode) project with grounding=False
+    serves the LIGHT static path — skipping the expensive passage/semantic/LLM
+    retrieval — instead of full mode. Default (grounding=True) still routes full."""
+    p1 = _project(extraction_enabled=True)
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(return_value=p1)
+    static = AsyncMock(return_value=MagicMock(mode="static"))
+    full = AsyncMock(return_value=MagicMock(mode="full"))
+    monkeypatch.setattr("app.context.builder.build_static_mode", static)
+    monkeypatch.setattr("app.context.builder.build_full_mode", full)
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=uuid4(),
+        message="give me a plan", embedding_client=MagicMock(), grounding=False,
+    )
+    static.assert_awaited_once()
+    full.assert_not_called()
+    _, kwargs = static.await_args
+    assert kwargs["project"] is p1
+
+
+@pytest.mark.asyncio
+async def test_grounding_false_routes_multi_to_light_first_project(monkeypatch):
+    """A multi-KG union with grounding=False skips the expensive cross-project rank
+    and serves the light static path for the first resolved project."""
+    p1, p2 = _project(), _project()
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(side_effect=[p1, p2])
+    multi = AsyncMock(return_value=MagicMock(mode="multi"))
+    static = AsyncMock(return_value=MagicMock(mode="static"))
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", multi)
+    monkeypatch.setattr("app.context.builder.build_static_mode", static)
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="what can you do", project_ids=[p1.project_id, p2.project_id],
+        grounding=False,
+    )
+    static.assert_awaited_once()
+    multi.assert_not_called()
+    _, kwargs = static.await_args
+    assert kwargs["project"] is p1
+
+
+@pytest.mark.asyncio
+async def test_grounding_false_with_no_project_still_mode1(monkeypatch):
+    """No project + grounding=False → still the cheapest no_project mode (the gate
+    doesn't change the no-project path)."""
+    m1 = AsyncMock(return_value=MagicMock(mode="no_project"))
+    monkeypatch.setattr("app.context.builder.build_no_project_mode", m1)
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=MagicMock(),
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="hi", grounding=False,
+    )
+    m1.assert_awaited_once()
+
+
 # ── K21.12-BE (design D9): ContextBuildResponse carries the flag ────────────
 
 

@@ -83,7 +83,7 @@ func (s *Server) scanAsync(mid uuid.UUID) {
 // rescanMcpServer — POST /mcp-servers/{id}/rescan. Synchronous: re-probe + re-scan,
 // return the verdict. Owner/grant-gated like any write on the row.
 func (s *Server) rescanMcpServer(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -97,12 +97,14 @@ func (s *Server) rescanMcpServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
 		return
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
+		}
 		return
 	}
 	res, health, status, probeErr := s.runScan(r.Context(), mid)
-	s.audit(r.Context(), uid, actorKindOf(role), "mcp_server", "rescan", &mid, "", tier, map[string]any{"clean": res.Clean, "status": status})
+	s.audit(r.Context(), uid, actorKindOf(tier), "mcp_server", "rescan", &mid, "", tier, map[string]any{"clean": res.Clean, "status": status})
 	resp := map[string]any{"mcp_server_id": mid, "status": status, "scan_result": res, "last_health": health}
 	if probeErr != nil {
 		resp["probe_error"] = probeErr.Error()
@@ -113,7 +115,7 @@ func (s *Server) rescanMcpServer(w http.ResponseWriter, r *http.Request) {
 // getMcpServer — GET /mcp-servers/{id}. Server detail: full row (incl. scan_result,
 // last_health, egress_allowlist, auth_kind, has_secret) for the detail page.
 func (s *Server) getMcpServer(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -139,7 +141,7 @@ func (s *Server) getMcpServer(w http.ResponseWriter, r *http.Request) {
 // quarantined (suspended) server: force status→active despite scan findings, audited.
 // REG-P3-08. Owner/grant-gated.
 func (s *Server) acceptRiskMcpServer(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -153,8 +155,10 @@ func (s *Server) acceptRiskMcpServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
 		return
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
+		}
 		return
 	}
 	// Only a SCANNED-and-flagged server (suspended) may be accept-risked. A 'pending'
@@ -168,7 +172,7 @@ func (s *Server) acceptRiskMcpServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not update status")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "mcp_server", "accept_risk", &mid, "", tier, map[string]any{"from_status": status})
+	s.audit(r.Context(), uid, actorKindOf(tier), "mcp_server", "accept_risk", &mid, "", tier, map[string]any{"from_status": status})
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{"mcp_server_id": mid, "status": "active", "risk_accepted": true})
 }

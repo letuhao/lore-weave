@@ -304,6 +304,15 @@ export interface JobLogsResponse {
   next_cursor: number | null;
 }
 
+// Studio Quality tab (`quality-canon`) / D-KG-CANON-FLAG-REVIEW-UI — a JobLog row
+// whose context carries a confirmed pass2_canon_flag; same shape as JobLog, listed
+// separately from the raw job-logs stream (project-wide, event-filtered).
+export type CanonFlag = JobLog;
+
+export interface CanonFlagsResponse {
+  flags: CanonFlag[];
+}
+
 // K19b.6 — GET /v1/knowledge/costs response shape. Decimal fields land
 // as JSON strings; callers cast via Number() for display arithmetic.
 // `monthly_budget_usd` and `monthly_remaining_usd` are null when the
@@ -1434,6 +1443,14 @@ export const knowledgeApi = {
       `${BASE}/extraction/jobs/${jobId}/logs${q ? `?${q}` : ''}`,
       { token },
     );
+  },
+
+  // Studio Quality tab (`quality-canon`) / D-KG-CANON-FLAG-REVIEW-UI — every
+  // judge-confirmed canon contradiction flagged during KG extraction for this
+  // project, newest first.
+  listCanonFlags(projectId: string, token: string, limit?: number): Promise<CanonFlagsResponse> {
+    const q = limit != null ? `?limit=${limit}` : '';
+    return apiJson<CanonFlagsResponse>(`${BASE}/extraction/projects/${projectId}/canon-flags${q}`, { token });
   },
 
   // ── K19b.6 — user-wide costs & budget ──────────────────────────────────

@@ -1,0 +1,87 @@
+{
+  "title": "Sözlük Çevirisi",
+  "subtitle": "Varlık niteliklerini yapay zeka ile toplu çevirin",
+  "steps": {
+    "config": "Ayarlar",
+    "confirm": "Onayla",
+    "progress": "İlerleme",
+    "results": "Sonuçlar"
+  },
+  "config": {
+    "title": "Çeviri Ayarları",
+    "description": "Hedef dili ve modeli seçin. Kaynak metni olan tüm nitelikler çevrilecektir.",
+    "sourceLanguage": "Kaynak dil",
+    "sourceUnknown": "Kitaptan",
+    "targetLanguage": "Hedef dil",
+    "overwriteMode": "Üzerine yazma politikası",
+    "model": "Model",
+    "noModels": "Yapılandırılmış model bulunamadı.",
+    "addInSettings": "Ayarlardan ekle",
+    "selectModel": "Model seç...",
+    "allAttrsNote": "Orijinal değeri olan her nitelik dahil edilir. Doğrulanmış çevirilerin üzerine asla yazılmaz.",
+    "sameLanguageError": "Hedef dil, kitabın kaynak dilinden farklı olmalıdır.",
+    "thinkingEnabled": "Düşünme / akıl yürütme özelliğini etkinleştir",
+    "thinkingHint": "Varsayılan olarak kapalıdır. Modelin cevap vermeden önce akıl yürütmesini istiyorsanız Gemma ve benzeri modeller için açın.",
+    "mode": {
+      "missing_only": {
+        "label": "Sadece eksikler",
+        "hint": "Hedef dilde zaten çevirisi olan nitelikleri atla."
+      },
+      "refresh_machine": {
+        "label": "Makine çevirisini yenile",
+        "hint": "Taslak ve makine çevirilerini yeniden çevir. Doğrulanmış çeviriler değişmeden kalır."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "Diller",
+    "mode": "Mod",
+    "model": "Model",
+    "estimateNote": "Varlık sayısı ve token kullanımı iş başladığında belirlenir. Gerçek kullanım, varlık başına düşen nitelik sayısına bağlıdır.",
+    "editConfig": "Ayarları düzenle",
+    "startTranslate": "Çeviriyi Başlat",
+    "startFailed": "Çeviri işi başlatılamadı",
+    "thinkingOn": "Düşünme: açık",
+    "thinkingOff": "Düşünme: kapalı"
+  },
+  "progress": {
+    "title": "Sözlük Çevriliyor",
+    "processing": "Varlık işleniyor: {{current}} / {{total}}...",
+    "entityProgress": "Varlık ilerlemesi",
+    "entitiesCount": "{{completed}} / {{total}} varlık",
+    "failedCount": "{{count}} başarısız",
+    "attrsTranslated": "Çevrilen nitelikler",
+    "attrsSkipped": "Atlanan nitelikler",
+    "entitiesDone": "Tamamlanan varlıklar",
+    "entitiesFailed": "Hatalı varlıklar",
+    "cancel": "İptal Et",
+    "cancelConfirm": "Bu çeviri işini iptal etmek istiyor musunuz? İşlenen varlıklar çevirilerini koruyacaktır.",
+    "cancelRequested": "İptal talebi alındı",
+    "noEntities": "Bu dil için çevrilmesi gereken varlık bulunamadı."
+  },
+  "results": {
+    "title": "Çeviri Tamamlandı",
+    "titleNoEntities": "Çevrilecek bir şey yok",
+    "titleWithErrors": "Çeviri Tamamlandı (hatalarla birlikte)",
+    "titleFailed": "Çeviri Başarısız",
+    "titleCancelled": "Çeviri İptal Edildi",
+    "duration": "{{duration}} sürede {{count}} varlık",
+    "attrsTranslated": "Çevrildi",
+    "attrsSkipped": "Atlandı",
+    "entitiesDone": "Tamamlanan varlıklar",
+    "entitiesFailed": "Hatalı varlıklar",
+    "partialFailure": "{{count}} varlık başarısız oldu",
+    "tokenUsage": "Token kullanımı",
+    "estimated": "Tahmini: {{tokens}}",
+    "noEntities": "Tüm varlık nitelikleri bu dilde zaten çevrilmiş veya kaynak metni olan nitelik bulunmuyor.",
+    "machineNote": "Çeviriler makine güven puanı olarak kaydedilir; varlık düzenleyicide inceleyin ve doğrulayın.",
+    "viewGlossary": "Sözlükte İncele",
+    "runAgain": "Tekrar çevir",
+    "close": "Kapat"
+  },
+  "button": {
+    "next": "Sonraki",
+    "back": "Geri",
+    "cancel": "İptal"
+  }
+}

@@ -53,6 +53,7 @@ function createBar(
 
   const bar = document.createElement('div');
   bar.className = 'audio-attach-bar';
+  bar.setAttribute('data-testid', 'narration-bar');
   bar.contentEditable = 'false';
   bar.style.cssText = `
     margin: 4px 0 2px; padding: 6px 10px; background: var(--secondary, #282320);
@@ -64,6 +65,7 @@ function createBar(
   // Play button
   const playBtn = document.createElement('button');
   playBtn.type = 'button';
+  playBtn.setAttribute('data-testid', 'narration-bar-play');
   playBtn.textContent = '\u25B6';
   playBtn.title = 'Play/Pause';
   playBtn.style.cssText = `
@@ -142,6 +144,7 @@ function createBar(
   // Remove button
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
+  removeBtn.setAttribute('data-testid', 'narration-bar-remove');
   removeBtn.textContent = '\u2715';
   removeBtn.title = 'Remove audio';
   removeBtn.style.cssText = `

@@ -94,7 +94,7 @@ func importJobEventPayload(id, ownerUserID uuid.UUID, nativeStatus string, chapt
 func emitJobEvent(ctx context.Context, tx pgx.Tx, jobID, ownerUserID uuid.UUID, kind, nativeStatus string, extra map[string]any) error {
 	status, ok := canonicalJobStatus[nativeStatus]
 	if !ok {
-		slog.Warn("emitJobEvent: skipping unmappable status", "kind", kind, "status", nativeStatus, "job_id", jobID)
+		slog.WarnContext(ctx, "emitJobEvent: skipping unmappable status", "kind", kind, "status", nativeStatus, "job_id", jobID)
 		return nil
 	}
 	payload := map[string]any{

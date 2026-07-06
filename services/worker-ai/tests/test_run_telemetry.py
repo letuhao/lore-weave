@@ -213,6 +213,69 @@ async def test_complete_job_stamps_all_skipped_error_message():
     assert "items_skipped" in sql.split("RETURNING")[1]  # counters returned for the log
 
 
+async def test_complete_job_flags_zero_llm_call_noop(caplog):
+    # D-EXTRACTION-SILENT-NOOP: a job that PROCESSED items but made 0 LLM calls did no
+    # extraction — the UPDATE must carry the honesty CASE, RETURN the counters, and the
+    # completion must log a loud warning (not read as a clean success).
+    import logging
+
+    from app.runner import _complete_job
+
+    pool = AsyncMock()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "job_id": uuid.uuid4(), "cost_spent_usd": 0,
+        "items_skipped": 0, "items_total": 2,
+        "items_processed": 2, "llm_calls_made": 0,
+    })
+    _acq = MagicMock()
+    _acq.__aenter__ = AsyncMock(return_value=conn)
+    _acq.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire = MagicMock(return_value=_acq)
+
+    with caplog.at_level(logging.WARNING):
+        await _complete_job(pool, uuid.uuid4(), uuid.uuid4())
+    sql = conn.fetchrow.await_args.args[0]
+    assert "llm_calls_made" in sql and "0 LLM calls" in sql   # the new honesty CASE
+    ret = sql.split("RETURNING")[1]
+    assert "items_processed" in ret and "llm_calls_made" in ret  # counters for the log
+    assert any("0 LLM calls" in r.message for r in caplog.records)  # loud, not silent
+
+
+async def test_sweep_stalled_jobs_fails_stale_running(monkeypatch):
+    # gap #3: a running job with stale updated_at is failed via _fail_job (once each),
+    # and the query targets running + a make_interval age threshold.
+    from app import runner
+
+    pool = AsyncMock()
+    u, j1, j2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    pool.fetch = AsyncMock(return_value=[
+        {"user_id": u, "job_id": j1}, {"user_id": u, "job_id": j2},
+    ])
+    failed = []
+
+    async def _fake_fail(p, uid, jid, err):
+        failed.append((jid, err))
+
+    monkeypatch.setattr(runner, "_fail_job", _fake_fail)
+    n = await runner.sweep_stalled_jobs(pool, stall_minutes=30)
+    assert n == 2
+    assert {f[0] for f in failed} == {j1, j2}
+    assert all("stalled" in f[1] for f in failed)
+    sql = pool.fetch.await_args.args[0]
+    assert "status = 'running'" in sql and "make_interval" in sql
+
+
+async def test_sweep_stalled_jobs_disabled_is_noop():
+    # stall_minutes<=0 disables the backstop — no query, no fails.
+    from app import runner
+
+    pool = AsyncMock()
+    pool.fetch = AsyncMock()
+    assert await runner.sweep_stalled_jobs(pool, stall_minutes=0) == 0
+    pool.fetch.assert_not_awaited()
+
+
 async def test_chapter_extracted_best_effort_on_txn_fallback():
     # On the tx-failure fallback, the cursor still advances AND we best-effort emit
     # the chapter event (the campaign's stuck-reconcile is the backstop for loss).

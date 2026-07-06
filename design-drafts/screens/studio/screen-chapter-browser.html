@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Chapter Browser (studio dock panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     CHAPTER BROWSER — a new Writing Studio dock panel (catalog id
+     `chapter-browser`), distinct from the Manuscript Navigator (#02, the
+     Side Bar tree used for read/write navigation while composing).
+
+     WHY A SEPARATE PANEL FROM THE NAVIGATOR
+     The Navigator answers "where am I, what's next" — a tree you scroll
+     while writing. This answers a DIFFERENT question that only shows up at
+     scale: "find/triage/bulk-act across hundreds-to-thousands of chapters"
+     — sort by staleness, filter by status/language, multi-select for a
+     batch translate/export/trash, or full-text search INSIDE chapter
+     bodies (not just titles). A tree can't do a sortable/filterable table
+     well; a table can't do drag-to-reorder / lazy-scene-expansion well.
+     Different job, same standard (DOCK-1..11), sibling dock tab.
+
+     NOT BUILT FROM SCRATCH — this migrates + enhances two components that
+     ALREADY EXIST but are under-used:
+       • components/shared/ChapterListBrowser.tsx — server-paged, debounced
+         title search, multi-select w/ "select all N matching" loop-fetch.
+         Today only wired into the extraction wizard's chapter picker.
+       • features/raw-search/components/RawSearchPanel.tsx — full-text
+         content search (hybrid/lexical, chapter/block granularity, draft
+         vs canon, snippet+relevance+jump-to-source). Today a totally
+         separate standalone page (/books/:id/search), not reachable from
+         any chapter list at all.
+     This screen fuses them into ONE panel with a search-MODE toggle
+     (Title vs Content) — same accepted in-panel-toggle shape RawSearchPanel
+     already uses for hybrid/lexical + chapter/block + canon/all (not a
+     DOCK-8 violation: one coherent "find a chapter" capability, not two
+     unrelated ones).
+
+     SCALE (same hard requirement as the Navigator — this repo explicitly
+     targets 10k+ chapter books):
+       ① CURSOR/KEYSET PAGING for the Title-mode list (booksApi already has
+          listChaptersKeyset — built for exactly this) — "Load more", not
+          classic page-N-of-M, once past the first page.
+       ② VIRTUALIZED rows above a few hundred visible.
+       ③ Content-mode search results are inherently bounded (top-K relevance
+          hits), so classic limit/offset is fine there — but the BE's
+          search.go today IGNORES offset (LOW-3, known gap) — needs a real
+          fix before Content-mode can page past page 1 on a huge book.
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagging up front, not silently):
+       • `sort` param on GET /v1/books/{id}/chapters(/page) — today fixed to
+         sort_order,created_at only. This mock's sort dropdown (Last
+         updated / Word count / Status) needs the endpoint to accept it.
+       • `word_count` on the Chapter record — doesn't exist today (only an
+         unrelated public-catalog `word_count_estimate`). Needed for the
+         word-count column/sort/filter shown here.
+       • search.go real offset/limit (fixes LOW-3) so Content-mode can page.
+       • Optional: an updated_at date-range filter param (not present today).
+     None of these are structural — additive params/columns on endpoints
+     that already exist.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 20px; max-width: 900px; line-height: 1.5; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+
+  /* ── Dock panel frame (a wide content panel, not a slim sidebar) ─────── */
+  .panel {
+    width: 980px; max-width: 100%; height: 660px;
+    background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .panel-head {
+    height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg);
+  }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────────── */
+  .toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .row1 { display: flex; align-items: center; gap: 8px; }
+
+  .mode-toggle { display: flex; border: 1px solid var(--border); border-radius: 7px; padding: 2px; flex-shrink: 0; }
+  .mode-toggle button {
+    appearance: none; border: none; background: transparent; color: var(--muted-fg); font: inherit;
+    font-size: 11.5px; font-weight: 600; padding: 5px 10px; border-radius: 5px; cursor: pointer;
+    display: flex; align-items: center; gap: 5px; transition: all .12s;
+  }
+  .mode-toggle button.active { background: var(--primary-muted); color: var(--primary); }
+  .mode-toggle button:not(.active):hover { color: var(--foreground); }
+  .mode-toggle svg { width: 13px; height: 13px; }
+
+  .search-box {
+    flex: 1; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12.5px;
+  }
+  .search-box:focus-within { border-color: var(--border-hover); }
+  .search-box svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12.5px; }
+  .search-box .kbd { font-family: 'JetBrains Mono'; font-size: 9px; border: 1px solid var(--border-hover); border-radius: 3px; padding: 1px 4px; }
+
+  .view-toggle { display: flex; border: 1px solid var(--border); border-radius: 7px; padding: 2px; flex-shrink: 0; }
+  .view-toggle button {
+    appearance: none; border: none; background: transparent; color: var(--muted-fg); cursor: pointer;
+    width: 26px; height: 26px; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+  }
+  .view-toggle button.active { background: var(--secondary); color: var(--foreground); }
+  .view-toggle svg { width: 14px; height: 14px; }
+
+  .select-wrap { position: relative; flex-shrink: 0; }
+  select {
+    appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 7px; cursor: pointer;
+  }
+  select:hover { border-color: var(--border-hover); }
+  .select-wrap svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+
+  .row2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid transparent; color: var(--muted-fg); font-size: 11px; font-weight: 500; cursor: pointer;
+  }
+  .chip.active { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+  .chip:hover:not(.active) { border-color: var(--border-hover); color: var(--foreground); }
+  .chip .x { opacity: .6; }
+  .chip-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+  .range-chip { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 100px; background: var(--secondary); font-size: 11px; color: var(--muted-fg); }
+  .range-chip input { width: 48px; background: transparent; border: none; border-bottom: 1px dashed var(--border-hover); color: var(--foreground); font-size: 11px; text-align: center; outline: none; }
+
+  /* ── Bulk action bar (shown when ≥1 selected) ────────────────────────── */
+  .bulk-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 7px 12px; background: var(--primary-muted); border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .bulk-bar .count { font-size: 12px; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+  .bulk-bar .count button { background: none; border: none; color: var(--muted-fg); font-size: 11px; text-decoration: underline; cursor: pointer; }
+  .bulk-actions { display: flex; align-items: center; gap: 6px; }
+  .bulk-actions button {
+    display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 6px;
+    background: var(--background); border: 1px solid var(--border); color: var(--foreground); font-size: 11.5px; font-weight: 500; cursor: pointer;
+  }
+  .bulk-actions button:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .bulk-actions button.danger { color: var(--destructive); }
+  .bulk-actions button.danger:hover { border-color: var(--destructive); background: var(--destructive-muted); }
+  .bulk-actions svg { width: 13px; height: 13px; }
+
+  /* ── Body: two swappable modes ────────────────────────────────────────── */
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }
+
+  /* Title-mode: table */
+  .thead {
+    display: grid; grid-template-columns: 30px 44px 1fr 90px 92px 84px 110px 118px;
+    gap: 10px; padding: 7px 12px; position: sticky; top: 0; background: var(--background-alt); z-index: 2;
+    border-bottom: 1px solid var(--border); font-size: 9.5px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--muted-fg);
+  }
+  .thead .sortable { display: flex; align-items: center; gap: 3px; cursor: pointer; }
+  .thead .sortable:hover { color: var(--foreground); }
+  .thead .sortable svg { width: 10px; height: 10px; }
+  .thead .sortable.active { color: var(--primary); }
+
+  .trow {
+    display: grid; grid-template-columns: 30px 44px 1fr 90px 92px 84px 110px 118px;
+    gap: 10px; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--border); font-size: 12px; cursor: pointer;
+  }
+  .trow:hover { background: var(--secondary); }
+  .trow.selected { background: rgba(232,168,50,.06); }
+  .trow input[type=checkbox] { accent-color: var(--primary); cursor: pointer; }
+  .trow .num { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); }
+  .trow .title-cell { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .trow .title-cell .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trow .title-cell .arc { font-size: 10px; color: var(--accent); display: flex; align-items: center; gap: 4px; }
+  .trow .title-cell .arc svg { width: 9px; height: 9px; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 100px; width: fit-content; }
+  .badge.draft { background: var(--secondary); color: var(--muted-fg); }
+  .badge.published { background: rgba(61,186,106,.12); color: var(--success); }
+  .badge.trashed { background: var(--destructive-muted); color: var(--destructive); }
+  .lang-pill { font-size: 10.5px; color: var(--muted-fg); font-family: 'JetBrains Mono'; }
+  .wc { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--muted-fg); text-align: right; }
+  .updated { font-size: 10.5px; color: var(--muted-fg); }
+  .row-acts { display: flex; align-items: center; gap: 2px; justify-content: flex-end; opacity: 0; transition: opacity .1s; }
+  .trow:hover .row-acts { opacity: 1; }
+  .row-acts button { width: 22px; height: 22px; border-radius: 5px; border: none; background: transparent; color: var(--muted-fg); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .row-acts button:hover { background: var(--card-hover); color: var(--foreground); }
+  .row-acts svg { width: 12.5px; height: 12.5px; }
+
+  .group-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--secondary);
+    border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; color: var(--accent-fg);
+    position: sticky; top: 34px; z-index: 1;
+  }
+  .group-head .rn { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--accent); }
+  .group-head .n { margin-left: auto; font-size: 10px; font-weight: 500; color: var(--muted-fg); font-family: 'JetBrains Mono'; }
+
+  /* Content (full-text) search-mode: snippet cards */
+  .snippet-list { display: none; padding: 8px 10px; flex-direction: column; gap: 8px; }
+  .snippet-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+  .snippet-card:hover { border-color: var(--border-hover); background: var(--secondary); }
+  .snippet-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .snippet-head .t { font-size: 12.5px; font-weight: 600; }
+  .snippet-head .meta { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .relevance { display: flex; gap: 2px; align-items: center; }
+  .relevance i { width: 3px; height: 10px; border-radius: 1px; background: var(--border-hover); }
+  .relevance i.on { background: var(--primary); }
+  .surface-tag { font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 100px; background: var(--accent-muted); color: var(--accent-fg); }
+  .snippet-body { font-size: 12px; color: var(--muted-fg); line-height: 1.6; }
+  .snippet-body mark { background: rgba(232,168,50,.22); color: var(--primary); border-radius: 2px; padding: 0 1px; }
+  .snippet-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+  .snippet-foot .jump { font-size: 10.5px; color: var(--accent); display: flex; align-items: center; gap: 4px; }
+  .snippet-foot .jump svg { width: 10px; height: 10px; }
+  .heading-crumb { font-size: 10px; color: var(--border-hover); font-family: 'JetBrains Mono'; }
+
+  /* Sentinel / footer */
+  .sentinel { display: flex; align-items: center; justify-content: center; gap: 8px; height: 36px; font-size: 11px; color: var(--muted-fg); border-top: 1px dashed var(--border); }
+  .spin { width: 12px; height: 12px; border: 2px solid var(--border-hover); border-top-color: var(--primary); border-radius: 50%; animation: rot .7s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+
+  .panel-foot {
+    height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px;
+    border-top: 1px solid var(--border); font-size: 10.5px; color: var(--muted-fg); font-family: 'JetBrains Mono';
+  }
+  .panel-foot .hint { font-family: 'Inter'; opacity: .8; }
+
+  /* Annotation callouts */
+  .note-strip { margin-top: 18px; max-width: 980px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .note {
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--background-alt);
+  }
+  .note h3 { font-size: 11.5px; font-weight: 700; color: var(--primary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .note h3 svg { width: 13px; height: 13px; }
+  .note p, .note li { font-size: 11.5px; color: var(--muted-fg); line-height: 1.6; }
+  .note ul { padding-left: 16px; }
+  .note code { font-family: 'JetBrains Mono'; font-size: 10.5px; background: var(--secondary); padding: 1px 4px; border-radius: 3px; color: var(--accent-fg); }
+</style>
+</head>
+<body>
+
+<h1>Chapter Browser — new studio dock panel <span class="mono" style="color:var(--muted-fg);font-size:12px;">(catalog id: chapter-browser)</span></h1>
+<p class="sub">
+  Sibling to the <b>Manuscript Navigator</b> (tree, for reading/writing) — this panel is the
+  <b>table/search surface</b> for triage at scale: sort, filter, multi-select bulk actions, and a
+  Title-vs-Content search-mode toggle that fuses the existing (but under-used)
+  <code class="mono">ChapterListBrowser</code> + <code class="mono">RawSearchPanel</code> instead of
+  building a third chapter list from scratch. Click the mode/view toggles below — this mock is
+  interactive enough to show both states.
+</p>
+
+<div class="panel">
+  <div class="panel-head">
+    <span>CHAPTER BROWSER</span>
+    <div class="acts">
+      <div class="ico" title="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+      </div>
+      <div class="ico" title="Pop out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <div class="mode-toggle" role="group" aria-label="Search mode">
+        <button class="active" onclick="setMode('title', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+          Title &amp; filename
+        </button>
+        <button onclick="setMode('content', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          Content (full-text)
+        </button>
+      </div>
+
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search-input" type="text" placeholder="Search chapter titles &amp; filenames…" />
+        <span class="kbd">⌘F</span>
+      </div>
+
+      <div class="select-wrap">
+        <select id="sort-select">
+          <option>Sort: Chapter #</option>
+          <option>Sort: Last updated</option>
+          <option>Sort: Word count</option>
+          <option>Sort: Status</option>
+        </select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+
+      <div class="view-toggle" role="group" aria-label="View">
+        <button class="active" title="Flat list" onclick="setView('flat', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        </button>
+        <button title="Group by arc" onclick="setView('grouped', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="row2" id="filter-row">
+      <span class="chip active">Status: All <span class="x">▾</span></span>
+      <span class="chip">Draft</span>
+      <span class="chip">Published</span>
+      <span class="chip">Trashed</span>
+      <span class="chip-sep"></span>
+      <span class="chip active">Lang: All <span class="x">▾</span></span>
+      <span class="chip-sep"></span>
+      <div class="range-chip">
+        Words <input type="text" placeholder="min" value="" /> – <input type="text" placeholder="max" value="" />
+      </div>
+      <div class="range-chip">
+        Updated within <input type="text" placeholder="30" value="30" style="width:32px" /> days
+      </div>
+    </div>
+  </div>
+
+  <div class="bulk-bar" id="bulk-bar">
+    <div class="count">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M20 6 9 17l-5-5"/></svg>
+      3 selected
+      <button onclick="clearSel()">clear</button>
+      <button style="text-decoration:underline;color:var(--accent);">select all 1,842 matching</button>
+    </div>
+    <div class="bulk-actions">
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 8 6 6 6-6"/><path d="M3 3h18"/></svg> Translate…</button>
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/></svg> Set status…</button>
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3M6 9l6 6 6-6"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg> Export</button>
+      <button class="danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg> Trash</button>
+    </div>
+  </div>
+
+  <div class="body" id="body-title">
+    <div class="thead">
+      <span></span><span>#</span>
+      <span class="sortable active">Title <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg></span>
+      <span>Lang</span><span>Status</span>
+      <span class="sortable" style="justify-content:flex-end">Words</span>
+      <span class="sortable" style="justify-content:flex-end">Updated</span>
+      <span></span>
+    </div>
+
+    <div class="group-head">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><path d="m6 9 6 6 6-6"/></svg>
+      <span class="rn">ARC II</span> The Crimson Court <span class="n">chapters 41–96 · 56 total</span>
+    </div>
+
+    <div class="trow selected">
+      <input type="checkbox" checked />
+      <span class="num">#041</span>
+      <div class="title-cell">
+        <span class="t">The Regent's Gambit</span>
+      </div>
+      <span class="lang-pill">en</span>
+      <span class="badge published">published</span>
+      <span class="wc">3,204</span>
+      <span class="updated">2 days ago</span>
+      <div class="row-acts">
+        <button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg></button>
+        <button title="Translations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg></button>
+        <button title="More"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+      </div>
+    </div>
+    <div class="trow selected">
+      <input type="checkbox" checked />
+      <span class="num">#042</span>
+      <div class="title-cell"><span class="t">Ashes of the Old Guard</span></div>
+      <span class="lang-pill">en</span>
+      <span class="badge published">published</span>
+      <span class="wc">2,890</span>
+      <span class="updated">2 days ago</span>
+      <div class="row-acts"><button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg></button></div>
+    </div>
+    <div class="trow">
+      <input type="checkbox" />
+      <span class="num">#043</span>
+      <div class="title-cell"><span class="t">A Letter Unsent</span></div>
+      <span class="lang-pill">en</span>
+      <span class="badge draft">draft</span>
+      <span class="wc">1,412</span>
+      <span class="updated">6 hours ago</span>
+      <div class="row-acts"><button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg></button></div>
+    </div>
+    <div class="trow selected">
+      <input type="checkbox" checked />
+      <span class="num">#044</span>
+      <div class="title-cell"><span class="t">The Duel at Dawn</span></div>
+      <span class="lang-pill">en</span>
+      <span class="badge published">published</span>
+      <span class="wc">4,015</span>
+      <span class="updated">5 days ago</span>
+      <div class="row-acts"><button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg></button></div>
+    </div>
+    <div class="trow">
+      <input type="checkbox" />
+      <span class="num">#045</span>
+      <div class="title-cell"><span class="t">What the Ravens Saw</span></div>
+      <span class="lang-pill">vi</span>
+      <span class="badge published">published</span>
+      <span class="wc">2,233</span>
+      <span class="updated">1 week ago</span>
+      <div class="row-acts"><button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg></button></div>
+    </div>
+    <div class="trow">
+      <input type="checkbox" />
+      <span class="num">#046</span>
+      <div class="title-cell"><span class="t">Untitled draft</span></div>
+      <span class="lang-pill">en</span>
+      <span class="badge draft">draft</span>
+      <span class="wc">88</span>
+      <span class="updated">just now</span>
+      <div class="row-acts"><button title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg></button></div>
+    </div>
+
+    <div class="group-head" style="top:34px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11" style="transform:rotate(-90deg)"><path d="m6 9 6 6 6-6"/></svg>
+      <span class="rn">ARC III</span> The Long Winter <span class="n">chapters 97–210 · 114 total (collapsed)</span>
+    </div>
+
+    <div class="sentinel"><div class="spin"></div> loading next 100 of 1,842…</div>
+  </div>
+
+  <div class="body snippet-list" id="body-content">
+    <div class="snippet-card">
+      <div class="snippet-head">
+        <span class="t">Ch. 41 — The Regent's Gambit</span>
+        <div class="meta">
+          <span class="surface-tag">canon</span>
+          <div class="relevance"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        </div>
+      </div>
+      <div class="heading-crumb">§ The war council</div>
+      <div class="snippet-body">…the regent set down his cup and said, <mark>"the crimson banner falls tonight"</mark>, and no one at the table dared answer him. Outside, the rain had not stopped for three days…</div>
+      <div class="snippet-foot">
+        <span class="heading-crumb">block 14 of 52</span>
+        <span class="jump">Jump to source <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M7 7h10v10"/></svg></span>
+      </div>
+    </div>
+    <div class="snippet-card">
+      <div class="snippet-head">
+        <span class="t">Ch. 58 — The Siege Begins</span>
+        <div class="meta">
+          <span class="surface-tag">canon</span>
+          <div class="relevance"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+      <div class="heading-crumb">§ Before the gates</div>
+      <div class="snippet-body">…she remembered the <mark>crimson banner</mark> from her childhood, how it had hung in the great hall long before the war, long before any of this…</div>
+      <div class="snippet-foot">
+        <span class="heading-crumb">block 3 of 40</span>
+        <span class="jump">Jump to source <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M7 7h10v10"/></svg></span>
+      </div>
+    </div>
+    <div class="snippet-card">
+      <div class="snippet-head">
+        <span class="t">Ch. 3 — A Kingdom Divided (draft)</span>
+        <div class="meta">
+          <span class="surface-tag" style="background:var(--primary-muted);color:var(--primary);">draft</span>
+          <div class="relevance"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+      <div class="snippet-body">…no <mark>crimson</mark> flag would fly over this city while she still drew breath — a line she'd cut from three previous drafts and kept coming back to…</div>
+      <div class="snippet-foot">
+        <span class="heading-crumb">block 9 of 22</span>
+        <span class="jump">Jump to source <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M7 7h10v10"/></svg></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span id="foot-count">1–100 of 1,842 chapters</span>
+    <span class="hint">⌘⇧F full-text · click a row to open in Reader/Editor</span>
+  </div>
+</div>
+
+<div class="note-strip">
+  <div class="note">
+    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg> Reuses, doesn't fork</h3>
+    <p>Title-mode = <code>ChapterListBrowser</code> (already server-paged + debounced search + multi-select) migrated in as-is, extended with sort/word-count/date-range. Content-mode = <code>RawSearchPanel</code>'s hit list restyled to this panel's row density. Both existing hooks (<code>useServerPagedList</code>, <code>useRawSearch</code>) stay the data layer — no new fetch logic invented.</p>
+  </div>
+  <div class="note">
+    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> DOCK-1..11 shape</h3>
+    <p>New catalog row <code>chapter-browser</code> (palette + agent openable — an agent plausibly wants "show me chapters missing a translation"). Row click opens the existing <code>editor</code>/<code>book-reader</code> panel via <code>host.openPanel</code>, never a route push. Bulk-translate opens the existing translate wizard as a sibling — not reimplemented here.</p>
+  </div>
+  <div class="note">
+    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg> Scale contract</h3>
+    <p>Title-mode: keyset cursor via <code>listChaptersKeyset</code> (already built for 10k+). Content-mode: top-K relevance hits, inherently bounded — but <code>search.go</code>'s offset is currently ignored (known LOW-3 gap); paging past page 1 in Content-mode needs that fixed first.</p>
+  </div>
+  <div class="note">
+    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Backend additions needed</h3>
+    <ul>
+      <li><code>sort</code> param on the chapters list endpoints (fixed today)</li>
+      <li><code>word_count</code> on the Chapter record (doesn't exist yet)</li>
+      <li>real offset/limit in <code>search.go</code> (LOW-3)</li>
+      <li>optional: <code>updated_since</code> date-range filter</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  function setMode(mode, btn) {
+    document.querySelectorAll('.mode-toggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const isContent = mode === 'content';
+    document.getElementById('body-title').style.display = isContent ? 'none' : 'block';
+    document.getElementById('body-content').style.display = isContent ? 'flex' : 'none';
+    document.getElementById('search-input').placeholder = isContent
+      ? 'Search inside chapter text (full-text)…'
+      : 'Search chapter titles & filenames…';
+    document.getElementById('filter-row').style.display = isContent ? 'none' : 'flex';
+    document.getElementById('foot-count').textContent = isContent ? '3 matches (relevance-ranked)' : '1–100 of 1,842 chapters';
+  }
+  function setView(view, btn) {
+    document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.group-head').forEach(g => g.style.display = view === 'grouped' ? 'flex' : 'none');
+  }
+  function clearSel() {
+    document.querySelectorAll('.trow.selected').forEach(r => { r.classList.remove('selected'); r.querySelector('input[type=checkbox]').checked = false; });
+    document.getElementById('bulk-bar').style.display = 'none';
+  }
+  // init: content body hidden until toggled
+  document.getElementById('body-content').style.display = 'none';
+</script>
+
+</body>
+</html>

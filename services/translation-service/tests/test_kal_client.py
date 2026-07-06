@@ -46,6 +46,7 @@ class _FakeResp:
 class _FakeClient:
     last_call: dict = {}
     call_count: int = 0
+    factory_kwargs: dict = {}  # W5: build_internal_client(...) kwargs (token baked here)
 
     def __init__(self, resp=None, exc=None):
         self._resp = resp
@@ -67,8 +68,11 @@ class _FakeClient:
 
 def _patch_client(monkeypatch, *, resp=None, exc=None):
     def factory(*a, **k):
+        _FakeClient.factory_kwargs = k
         return _FakeClient(resp=resp, exc=exc)
-    monkeypatch.setattr(kal.httpx, "AsyncClient", factory)
+    # W5: kal_client builds its client via build_internal_client (X-Internal-Token
+    # baked there; X-User-Id stays a per-request header via _headers).
+    monkeypatch.setattr(kal, "build_internal_client", factory)
     _FakeClient.last_call = {}
     _FakeClient.call_count = 0
 
@@ -131,7 +135,7 @@ async def test_get_facts_success_threads_as_of_and_attrs(monkeypatch):
     assert _FakeClient.last_call["params"] == {"as_of": "7", "attrs": "rank,leads"}
     assert _FakeClient.last_call["url"].endswith("/v1/kal/books/b1/entities/e1/facts")
     # auth: internal token + forwarded user id
-    assert _FakeClient.last_call["headers"]["X-Internal-Token"] == "tok"
+    assert _FakeClient.factory_kwargs["internal_token"] == "tok"
     assert _FakeClient.last_call["headers"]["X-User-Id"] == "u1"
 
 

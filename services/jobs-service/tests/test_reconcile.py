@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from app import reconcile
@@ -57,7 +58,15 @@ def _patch_client(monkeypatch, *, body=None, captured=None, raise_exc=None):
                 raise raise_exc
             return _Resp(body)
 
-    monkeypatch.setattr(reconcile.httpx, "AsyncClient", _Client)
+    # P3 SDK-first (W5): reconcile builds its client via build_internal_client
+    # (token baked). Patch the factory to return the fake client + capture the
+    # factory kwargs so tests can still assert the internal token was supplied.
+    def _factory(*a, **k):
+        if captured is not None:
+            captured.update(factory_kwargs=k)
+        return _Client()
+
+    monkeypatch.setattr(reconcile, "build_internal_client", _factory)
 
 
 @pytest.mark.asyncio
@@ -86,7 +95,7 @@ async def test_fetch_sends_since_limit_and_internal_token(monkeypatch):
     assert cap["url"].endswith("/internal/composition/jobs")
     assert "since" in cap["params"]
     assert cap["params"]["limit"] == reconcile._PAGE_LIMIT  # shared page-cap contract
-    assert "X-Internal-Token" in cap["headers"]
+    assert cap["factory_kwargs"]["internal_token"]  # token baked into the client via the factory
 
 
 @pytest.mark.asyncio
@@ -125,7 +134,7 @@ async def test_full_page_advances_to_last_row_not_now(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_source_error_is_tolerated(monkeypatch):
-    _patch_client(monkeypatch, raise_exc=reconcile.httpx.ConnectError("down"))
+    _patch_client(monkeypatch, raise_exc=httpx.ConnectError("down"))
     monkeypatch.setattr(reconcile.store, "upsert_job_event", AsyncMock(return_value=True))
     sweeper = reconcile.ReconcileSweeper(pool=object())
     res = await sweeper.sweep_once()  # must NOT raise

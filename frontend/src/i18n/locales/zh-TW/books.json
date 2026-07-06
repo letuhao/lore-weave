@@ -1,5 +1,7 @@
 {
-  "translateIntent": { "hint": "選擇一本要翻譯的書 — 開啟它，然後使用「翻譯」分頁開始翻譯。" },
+  "translateIntent": {
+    "hint": "選擇一本要翻譯的書 — 開啟它，然後使用「翻譯」分頁開始翻譯。"
+  },
   "workspace": "我的書籍",
   "new_book": "新書",
   "search_placeholder": "搜尋書籍...",
@@ -148,7 +150,8 @@
       "title": "將章節移至回收筒？",
       "description": "「{{title}}」將移至回收筒。",
       "confirm": "移至回收筒"
-    }
+    },
+    "importPdf": "匯入 PDF"
   },
   "glossary": {
     "header": "詞彙表與設定",
@@ -190,10 +193,18 @@
     "range": "第 {{start}}–{{end}} 筆，共 {{total}} 筆",
     "page_size_label": "每頁",
     "page_size": "{{count}} 筆/頁",
-    "pager": { "page": "頁", "prev": "上一頁", "next": "下一頁" },
+    "pager": {
+      "page": "頁",
+      "prev": "上一頁",
+      "next": "下一頁"
+    },
     "page_empty": "此頁為空。",
     "page_empty_first": "回到第一頁",
-    "match_field": { "name": "名稱", "alias": "別名", "translation": "翻譯" },
+    "match_field": {
+      "name": "名稱",
+      "alias": "別名",
+      "translation": "翻譯"
+    },
     "kind_label": "種類",
     "status_label": "狀態",
     "status_all": "全部",
@@ -275,7 +286,11 @@
     "subtitle": "透過電子郵件邀請他人檢視、編輯或管理這本書。",
     "email_placeholder": "協作者的電子郵件",
     "role_label": "角色",
-    "roles": { "view": "檢視者", "edit": "編輯者", "manage": "管理者" },
+    "roles": {
+      "view": "檢視者",
+      "edit": "編輯者",
+      "manage": "管理者"
+    },
     "invite": "邀請",
     "invited": "已邀請 {{email}}",
     "invite_failed": "無法邀請該協作者",
@@ -320,7 +335,12 @@
       "public": "在目錄中對所有人可見"
     },
     "discard": "捨棄變更",
-    "save": "儲存設定"
+    "save": "儲存設定",
+    "world": {
+      "title": "世界",
+      "hint": "將此書納入一個世界中，以便將其整合至世界的關係圖與時間軸。",
+      "open": "在世界中開啟"
+    }
   },
   "translate": {
     "title": "翻譯章節",

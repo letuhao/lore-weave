@@ -13,6 +13,11 @@ COPY sdks/go/observability /src/sdks/go/observability
 # build context for the go.mod replace directives to resolve in-container.
 COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
 COPY sdks/go/grantclient /src/sdks/go/grantclient
+# contracts/{platformjwt,adminjwt} — shared HS256 user-JWT verifier + RS256 admin-JWT
+# verifier (D-JWT-ROLE-GATE); their replace directives must resolve inside the container.
+COPY contracts/platformjwt /src/contracts/platformjwt
+COPY contracts/adminjwt /src/contracts/adminjwt
+COPY contracts/notifyevent /src/contracts/notifyevent
 COPY services/provider-registry-service /src/services/provider-registry-service
 
 WORKDIR /src/services/provider-registry-service

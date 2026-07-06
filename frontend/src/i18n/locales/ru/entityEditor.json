@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "Без названия",
+    "status": {
+      "draft": "Черновик",
+      "active": "Активен",
+      "inactive": "Неактивен"
+    },
+    "discard": "Отбросить",
+    "save": "Сохранить",
+    "save_entity": "Сохранить сущность",
+    "cancel": "Отмена",
+    "move_to_trash": "В корзину",
+    "meta": {
+      "chapters": "{{count}} глав",
+      "translations": "{{count}} переводов",
+      "evidences": "{{count}} доказательств"
+    },
+    "tab": {
+      "attributes": "Атрибуты",
+      "evidences": "Доказательства",
+      "history": "История"
+    },
+    "viewing_in_language": "Просмотр на {{lang}}",
+    "viewing_original": "Оригинал ({{lang}})",
+    "translation_lang_aria": "Язык перевода",
+    "no_translation": "Нет перевода",
+    "add_language": "+ Добавить язык...",
+    "lang_placeholder": "напр. en",
+    "system_attrs": "Системные атрибуты",
+    "user_attrs": "Пользовательские атрибуты",
+    "no_attributes": "Для этого типа сущности не определены атрибуты.",
+    "toast": {
+      "saved": "Сущность сохранена",
+      "status_changed": "Статус изменен на {{status}}",
+      "invalid_lang": "Неверный код языка (напр. en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*обязательно",
+    "modified": "изменено",
+    "has_translations": "Есть переводы"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "Черновик",
+      "verified": "Проверено",
+      "machine": "Машинный"
+    },
+    "confidence_aria": "Уверенность перевода",
+    "by": "от {{name}}",
+    "discard_aria": "Отбросить изменения",
+    "save": "Сохранить",
+    "delete_aria": "Удалить перевод",
+    "placeholder": "Перевод на {{lang}}...",
+    "tags_add": "+ Добавить псевдоним",
+    "delete_title": "Удалить перевод?",
+    "delete_desc": "Перевод атрибута на языке {{lang}} будет безвозвратно удален.",
+    "delete_confirm": "Удалить",
+    "toast": {
+      "updated": "Перевод обновлен",
+      "created": "Перевод создан",
+      "deleted": "Перевод удален"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "Цитата",
+      "summary": "Резюме",
+      "reference": "Ссылка"
+    },
+    "provenance": {
+      "ambiguous": "Неподтвержденное совпадение",
+      "ambiguous_hint": "Эта цитата совпала с исходным текстом в нескольких местах — точное местоположение не определено.",
+      "unmatched": "Не найдено в источнике",
+      "unmatched_hint": "Эту цитату не удалось найти в тексте главы — возможно, это пересказ или галлюцинация. Проверьте перед использованием.",
+      "unverified": "Не проверено",
+      "unverified_hint": "Эта цитата не была сопоставлена с исходным текстом."
+    },
+    "filter": {
+      "all": "Все",
+      "attr_aria": "Фильтр по атрибуту",
+      "all_attributes": "Все атрибуты",
+      "chapter_aria": "Фильтр по главе",
+      "all_chapters": "Все главы",
+      "chapter_n": "Глава {{n}}",
+      "lang_aria": "Язык отображения",
+      "original": "Оригинал",
+      "sort_aria": "Сортировать по",
+      "sort": {
+        "created": "Дата создания",
+        "chapter": "Глава",
+        "block_line": "Блок/Строка",
+        "attribute": "Атрибут"
+      },
+      "ascending": "По возрастанию",
+      "descending": "По убыванию",
+      "add": "Добавить"
+    },
+    "create": {
+      "title": "Новое доказательство",
+      "attribute": "Атрибут *",
+      "attr_aria": "Атрибут для нового доказательства",
+      "type": "Тип",
+      "type_aria": "Тип доказательства",
+      "original_text": "Исходный текст *",
+      "text_placeholder": "Вставьте исходный текст...",
+      "block_line": "Блок / Строка",
+      "block_placeholder": "напр. p.42",
+      "note": "Примечание",
+      "note_placeholder": "Необязательное примечание",
+      "cancel": "Отмена",
+      "create": "Создать"
+    },
+    "card": {
+      "edit_type_aria": "Редактировать тип доказательства",
+      "cancel_title": "Отмена",
+      "block_line": "Блок / Строка",
+      "note": "Примечание",
+      "cancel": "Отмена",
+      "save": "Сохранить",
+      "edit_title": "Редактировать",
+      "open_source": "Открыть исходную главу",
+      "delete_title": "Удалить",
+      "translated": "Переведено ({{lang}})",
+      "note_label": "Примечание: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "Доказательства не найдены",
+      "clear_filters": "Очистить фильтры",
+      "prev_page": "Предыдущая страница",
+      "next_page": "Следующая страница",
+      "first_page": "Первая страница",
+      "last_page": "Последняя страница",
+      "jump_to_page": "Перейти на страницу",
+      "page_size": "Строк на странице",
+      "per_page": "{{n}} / стр.",
+      "delete_title": "Удалить доказательство?",
+      "delete_desc": "Это доказательство из \"{{attr}}\" будет безвозвратно удалено.",
+      "delete_confirm": "Удалить"
+    },
+    "toast": {
+      "updated": "Доказательство обновлено",
+      "deleted": "Доказательство удалено",
+      "created": "Доказательство создано",
+      "text_required": "Исходный текст обязателен"
+    }
+  },
+  "summarize": {
+    "canonical_label": "Объединенное резюме",
+    "pending_dirty": "Будет переделано после следующего извлечения",
+    "pending_new": "Будет резюмировано после следующего извлечения",
+    "sources": "Сырые упоминания ({{count}})",
+    "empty": "Упоминаний пока нет"
+  }
+}

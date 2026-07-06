@@ -26,28 +26,25 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/loreweave/foundation/contracts/notifyevent"
 	"github.com/loreweave/observability"
+
+	"github.com/loreweave/notification-service/internal/category"
+	"github.com/loreweave/notification-service/internal/prefs"
+	"github.com/loreweave/notification-service/internal/redact"
 )
 
 const (
-	exchangeName = "loreweave.events"
+	exchangeName = notifyevent.EventsExchange
 	queueName    = "notification-service.llm-jobs"
 	bindingKey   = "user.*.llm.#"
 )
 
-// terminalEvent mirrors provider-registry's jobs.TerminalEvent. We
-// duplicate the struct here to avoid importing across services.
-type terminalEvent struct {
-	JobID        uuid.UUID       `json:"job_id"`
-	OwnerUserID  uuid.UUID       `json:"owner_user_id"`
-	Operation    string          `json:"operation"`
-	Status       string          `json:"status"`
-	TraceID      string          `json:"trace_id,omitempty"`
-	Result       json.RawMessage `json:"result,omitempty"`
-	ErrorCode    string          `json:"error_code,omitempty"`
-	ErrorMessage string          `json:"error_message,omitempty"`
-	FinishReason string          `json:"finish_reason,omitempty"`
-}
+// terminalEvent is the SHARED wire contract (contracts/notifyevent), aliased so
+// this consumer's existing references keep working. The producer
+// (provider-registry jobs.Notifier) imports the same type, so the struct can no
+// longer drift between the two services (it used to be a hand-maintained copy).
+type terminalEvent = notifyevent.TerminalEvent
 
 // notificationArgs is the row-shape transformer output. Decoupled from
 // the SQL itself so unit tests can verify shape without a DB.
@@ -57,13 +54,28 @@ type notificationArgs struct {
 	Title    string
 	Body     string
 	Metadata []byte // JSON-encoded
+	// D-NOTIF-I18N (NOTIF-1): i18n substrate written alongside the rendered
+	// English Title/Body (which remain the fallback). MessageKey is a stable
+	// per-(category,status) key; MessageParams carries the interpolation
+	// values (operation, error_code) as JSON. A locale-aware FE renders from
+	// these; any other client keeps showing Title/Body.
+	MessageKey    string
+	MessageParams []byte // JSON-encoded
+	// DedupKey (P2·C) — idempotency key for the at-least-once AMQP delivery. A
+	// broker redelivery (committed INSERT, lost ACK) carries the same job_id:status,
+	// so the INSERT ... ON CONFLICT (user_id, dedup_key) DO NOTHING collapses it to
+	// one row. Pure-derived here so the key shape is unit-locked.
+	DedupKey string
 }
 
 // transformTerminalEvent converts a parsed event into the args we'll
 // INSERT. Pure function — testable without a broker.
 func transformTerminalEvent(ev terminalEvent) notificationArgs {
+	const cat = "llm_job"
 	title := titleFor(ev.Operation, ev.Status)
-	body := bodyFor(ev)
+	// P2·C — scrub secret-shaped tokens an upstream error message may have echoed
+	// before it lands in the notifications table / push feed.
+	body := redact.Body(bodyFor(ev))
 	meta, _ := json.Marshal(map[string]any{
 		"job_id":        ev.JobID.String(),
 		"operation":     ev.Operation,
@@ -73,12 +85,55 @@ func transformTerminalEvent(ev terminalEvent) notificationArgs {
 		"error_code":    ev.ErrorCode,
 	})
 	return notificationArgs{
-		UserID:   ev.OwnerUserID,
-		Category: "llm_job",
-		Title:    title,
-		Body:     body,
-		Metadata: meta,
+		UserID:        ev.OwnerUserID,
+		Category:      cat,
+		Title:         title,
+		Body:          body,
+		Metadata:      meta,
+		MessageKey:    messageKey(cat, ev.Status),
+		MessageParams: messageParams(ev),
+		DedupKey:      dedupKey(ev),
 	}
+}
+
+// dedupKey is the at-least-once idempotency key for a terminal event: one row per
+// (job, terminal status). A redelivery of the same terminal event collapses via
+// ON CONFLICT; distinct statuses of one job (a job that emits running→completed is
+// not this path — only terminal events reach here) stay distinct. Empty status
+// falls back to job_id alone rather than a trailing colon, so the key is always
+// well-formed.
+func dedupKey(ev terminalEvent) string {
+	if ev.Status == "" {
+		return ev.JobID.String()
+	}
+	return ev.JobID.String() + ":" + ev.Status
+}
+
+// messageKey builds the stable i18n key: notif.<category>.<status>
+// (e.g. notif.llm_job.completed). The status comes straight from the
+// terminal event enum (completed | failed | cancelled); an unexpected
+// status still yields a well-formed, deterministic key rather than an
+// empty string, so the FE can fall back to title/body predictably.
+func messageKey(category, status string) string {
+	if status == "" {
+		status = "unknown"
+	}
+	return fmt.Sprintf("notif.%s.%s", category, status)
+}
+
+// messageParams returns the JSON-encoded interpolation params a locale-aware
+// FE substitutes into the localized template. Always carries `operation`;
+// failures additionally carry `error_code` (when present) so a localized
+// error notification can name the failure. Go's json.Marshal emits UTF-8
+// (ML-5: no \uXXXX inflation) — operation/error_code are ASCII enum tokens
+// anyway, but any future prose param stays UTF-8 on the wire.
+func messageParams(ev terminalEvent) []byte {
+	params := map[string]any{"operation": ev.Operation}
+	if ev.Status == "failed" && ev.ErrorCode != "" {
+		params["error_code"] = ev.ErrorCode
+	}
+	b, _ := json.Marshal(params)
+	return b
 }
 
 // titleFor produces a short human-readable label per (operation, status).
@@ -230,10 +285,36 @@ func (c *Consumer) handle(ctx context.Context, d rabbitmq.Delivery) {
 		attribute.String("llm.operation", ev.Operation),
 	)
 	args := transformTerminalEvent(ev)
+	// Route the consumer insert through the SAME validation the HTTP
+	// ingress path uses (audit P0-4 / NOTIF-2): the consumer previously
+	// inserted its category via raw SQL, bypassing validCategory. A
+	// category not in the single source-of-truth set is a poison message —
+	// discard without requeue so it can't loop forever.
+	if !category.Valid(args.Category) {
+		c.logger.Error("invalid notification category — discarding",
+			"category", args.Category, "job_id", ev.JobID.String())
+		span.SetStatus(codes.Error, "invalid notification category")
+		_ = d.Nack(false, false)
+		return
+	}
+	// P2·C (opt-out) — the user disabled this category → don't store/push. Ack (it's
+	// a successful decision, not a failure); fail-OPEN on a lookup error so a prefs
+	// hiccup never silently drops a notification.
+	if suppressed, perr := prefs.Suppressed(ctx, c.pool, args.UserID, args.Category); perr != nil {
+		c.logger.Warn("opt-out check failed — delivering anyway", "err", perr, "job_id", ev.JobID.String())
+	} else if suppressed {
+		span.SetAttributes(attribute.Bool("notification.suppressed", true))
+		_ = d.Ack(false)
+		return
+	}
+	// P2·C — dedup on (user_id, dedup_key): a broker redelivery of an already-
+	// inserted terminal event is collapsed to one row (partial-unique index). The
+	// ON CONFLICT predicate mirrors the index's WHERE so it targets that index.
 	_, err := c.pool.Exec(ctx, `
-INSERT INTO notifications (user_id, category, title, body, metadata)
-VALUES ($1, $2, $3, $4, $5)
-`, args.UserID, args.Category, args.Title, args.Body, args.Metadata)
+INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params, dedup_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
+`, args.UserID, args.Category, args.Title, args.Body, args.Metadata, args.MessageKey, args.MessageParams, args.DedupKey)
 	if err != nil {
 		c.logger.Error("notification insert failed — requeueing",
 			"err", err, "job_id", ev.JobID.String())

@@ -260,6 +260,7 @@ class _WResp:
 
 class _WClient:
     last = {}
+    factory_kwargs = {}  # W5: build_internal_client(...) kwargs (token baked here)
 
     def __init__(self, resp=None, exc=None):
         self._resp = resp
@@ -282,7 +283,11 @@ def _patch_w(monkeypatch, *, url="http://gloss:8088", resp=None, exc=None):
     from app.workers import glossary_client as gc
     monkeypatch.setattr(gc.settings, "glossary_service_internal_url", url)
     monkeypatch.setattr(gc.settings, "internal_service_token", "tok")
-    monkeypatch.setattr(gc.httpx, "AsyncClient", lambda *a, **k: _WClient(resp=resp, exc=exc))
+    def _factory(*a, **k):
+        _WClient.factory_kwargs = k
+        return _WClient(resp=resp, exc=exc)
+    # W5: glossary_client builds its client via build_internal_client (token baked).
+    monkeypatch.setattr(gc, "build_internal_client", _factory)
     _WClient.last = {}
 
 
@@ -319,7 +324,7 @@ class TestWritebackNamePairs:
             "translation": {"language_code": "vi", "value": "Tirami"},
         }
         assert body["entities"][1]["kind_code"] == "location"
-        assert _WClient.last["headers"]["X-Internal-Token"] == "tok"
+        assert _WClient.factory_kwargs["internal_token"] == "tok"
         assert _WClient.last["url"].endswith("/internal/books/b1/extract-entities")
 
     async def test_null_gate_when_unconfigured(self, monkeypatch):

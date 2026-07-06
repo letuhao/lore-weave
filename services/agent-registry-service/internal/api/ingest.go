@@ -278,17 +278,23 @@ func (s *Server) upsertIngest(ctx context.Context, m ingestMapped) (bool, error)
 
 // ── admin gate ───────────────────────────────────────────────────────────────
 
-// requireAdmin is the preamble for the ingest routes: a valid JWT AND role==admin.
-// A non-admin gets 403 (the route is admin-only); an unknown ingest id later gets
-// anti-oracle 404.
+// requireAdmin is the preamble for the ingest routes: a valid RS256 admin token with
+// the admin:write scope (D-JWT-ROLE-GATE — the dead HS256 `role` claim is gone).
+// requireAdminScope writes its own 401/403/503; the admin principal's user id is taken
+// from the token subject for the audit trail. An unknown ingest id later gets anti-oracle 404.
 func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	uid, role, ok := s.requireUser(w, r)
+	claims, ok := s.requireAdminScope(w, r, scopeAdminWrite)
 	if !ok {
 		return uuid.Nil, false
 	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "FORBIDDEN", "admin only")
+	if s.db == nil {
+		writeError(w, http.StatusServiceUnavailable, "NO_DB", "database unavailable")
 		return uuid.Nil, false
+	}
+	// The admin token subject is the acting principal (used for the audit actor).
+	uid, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		uid = uuid.Nil
 	}
 	return uid, true
 }

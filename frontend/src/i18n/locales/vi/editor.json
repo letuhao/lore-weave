@@ -173,7 +173,8 @@
     "copied": "Đã sao chép",
     "copy_prompt": "Sao chép prompt",
     "regenerate": "Tạo lại",
-    "generating": "Đang tạo..."
+    "generating": "Đang tạo...",
+    "model_label": "Mô hình AI"
   },
   "image": {
     "err_type": "Loại không hỗ trợ: {{type}}. Dùng PNG, JPG, GIF hoặc WebP.",

@@ -156,6 +156,18 @@ func (s *Server) authBook(w http.ResponseWriter, r *http.Request, bookID uuid.UU
 		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "grant resolution failed")
 		return uuid.Nil, uuid.Nil, "", false
 	}
+	// P2·F tenant-boundary audit. A crossing exists only when the book has a KNOWN
+	// owner that is NOT the caller (owner==Nil ⇒ missing book, no tenant to cross;
+	// owner==caller ⇒ own book). Emit 'granted' when the caller's grant satisfies
+	// `need`, 'denied' otherwise (under-grant 403 OR no-grant-on-existing-book 404).
+	// Coalesced first-per-window; fire-and-forget, never blocks the response.
+	if s.emitTenantAudit != nil && owner != uuid.Nil && owner != caller {
+		outcome := auditOutcomeGranted
+		if lvl == GrantNone || !lvl.AtLeast(need) {
+			outcome = auditOutcomeDenied
+		}
+		s.emitTenantAudit(caller, bookID, owner, outcome)
+	}
 	if lvl == GrantNone {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return uuid.Nil, uuid.Nil, "", false
@@ -182,12 +194,19 @@ func (s *Server) getBookAccess(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_USER_ID", "invalid user_id")
 		return
 	}
-	lvl, lifecycle, err := s.resolveAccess(r.Context(), bookID, userID)
+	lvl, owner, lifecycle, err := s.resolve(r.Context(), bookID, userID)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "grant resolution failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"grant_level": lvl.String(), "lifecycle_state": lifecycle})
+	resp := map[string]string{"grant_level": lvl.String(), "lifecycle_state": lifecycle}
+	// owner_user_id lets a grant-holder consumer resolve a cross-tenant read of the
+	// owner's per-(user,book) rows (e.g. the book-tier model settings). Returned ONLY
+	// to a grantee (lvl != none) so a non-grantee never gets an owner/existence oracle.
+	if lvl != GrantNone && owner != uuid.Nil {
+		resp["owner_user_id"] = owner.String()
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // requireBookOwner gates owner-only grant management (D-E0-D). Not-owner and

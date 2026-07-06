@@ -56,6 +56,8 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 	finishReason := ""
 	inputTokens := 0
 	outputTokens := 0
+	cacheCreation := 0
+	cacheRead := 0
 	usageEmitted := false
 
 	err := readSSELines(ctx, body, func(eventName, data string) error {
@@ -84,11 +86,20 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			Message struct {
 				Usage struct {
 					InputTokens int `json:"input_tokens"`
+					// D-PROMPT-CACHING — with cache_control, Anthropic reports
+					// input_tokens EXCLUDING cached tokens; the cached prefix rides
+					// these two fields. Fold them into the total so enabling caching
+					// never silently under-counts input (OpenAI, by contrast, keeps
+					// cached tokens INSIDE prompt_tokens, so its path needs no fold).
+					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+					CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 				} `json:"usage"`
 			} `json:"message"`
 			Usage struct {
-				InputTokens  int `json:"input_tokens"`
-				OutputTokens int `json:"output_tokens"`
+				InputTokens              int `json:"input_tokens"`
+				OutputTokens             int `json:"output_tokens"`
+				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 			} `json:"usage"`
 			Error struct {
 				Type    string `json:"type"`
@@ -123,8 +134,18 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 
 		switch kind {
 		case "message_start":
-			// Anthropic includes input_tokens in message_start.usage.
-			inputTokens = parsed.Message.Usage.InputTokens
+			// Anthropic includes input_tokens in message_start.usage. With prompt
+			// caching (D-PROMPT-CACHING) the cached prefix is reported separately in
+			// cache_creation/cache_read; fold both in so the total input volume is
+			// counted (bills at standard input rate as if uncached — the platform
+			// keeps the Anthropic-side cache savings, and no spend/cap under-counts).
+			inputTokens = parsed.Message.Usage.InputTokens +
+				parsed.Message.Usage.CacheCreationInputTokens +
+				parsed.Message.Usage.CacheReadInputTokens
+			// Keep the split for the caching monitor (§7) even though it's folded
+			// into inputTokens above for billing volume.
+			cacheCreation = parsed.Message.Usage.CacheCreationInputTokens
+			cacheRead = parsed.Message.Usage.CacheReadInputTokens
 		case "content_block_start":
 			// text/thinking blocks: no-op — the first delta does the work.
 			// tool_use blocks: the start event is the ONLY carrier of the
@@ -189,11 +210,31 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			}
 			if !usageEmitted {
 				outputTokens = parsed.Usage.OutputTokens
-				if err := emit(StreamChunk{
+				// message_delta may also carry cache fields (some Anthropic
+				// versions report them terminally rather than on message_start);
+				// prefer a non-zero terminal value, else keep the message_start one.
+				if parsed.Usage.CacheCreationInputTokens > 0 {
+					cacheCreation = parsed.Usage.CacheCreationInputTokens
+				}
+				if parsed.Usage.CacheReadInputTokens > 0 {
+					cacheRead = parsed.Usage.CacheReadInputTokens
+				}
+				chunk := StreamChunk{
 					Kind:         StreamChunkUsage,
 					InputTokens:  inputTokens,
 					OutputTokens: outputTokens,
-				}); err != nil {
+				}
+				// Only attach the split when the turn actually cached something,
+				// so a non-cached turn emits no misleading cache fields.
+				if cacheCreation > 0 {
+					cc := cacheCreation
+					chunk.CacheCreationTokens = &cc
+				}
+				if cacheRead > 0 {
+					cr := cacheRead
+					chunk.CacheReadTokens = &cr
+				}
+				if err := emit(chunk); err != nil {
 					return err
 				}
 				usageEmitted = true

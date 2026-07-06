@@ -425,10 +425,13 @@ async def test_budget_drops_lowest_score_passages_first(monkeypatch):
 
     project = _project()
     project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
-    # Budget chosen so ~2 passages fit — forces the trimmer to drop
-    # the lowest-score ones first.
+    # Budget chosen so ~2 passages fit — forces the trimmer to drop the
+    # lowest-score ones first. Must clear the fixed project+instructions
+    # overhead (~184-209 tokens as of 2026-07-06 — grown from earlier
+    # feature additions to the CoT instruction block) with room left for
+    # at least one passage (~30-40 tokens each); re-tune if this drifts.
     monkeypatch.setattr(
-        "app.context.modes.full.settings.mode3_token_budget", 200,
+        "app.context.modes.full.settings.mode3_token_budget", 320,
     )
 
     result = await build_full_mode(
@@ -468,8 +471,11 @@ async def test_budget_demotes_glossary_to_entity_refs_not_drop(monkeypatch):
 
     project = _project()
     project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
-    # Budget small enough to force glossary trimming, big enough for refs to fit.
-    monkeypatch.setattr("app.context.modes.full.settings.mode3_token_budget", 220)
+    # Budget small enough to force glossary trimming, big enough for refs to
+    # fit. Must clear the fixed project+instructions overhead (~184 tokens as
+    # of 2026-07-06 — grown from earlier feature additions to the CoT
+    # instruction block) with room for the entity_refs tier; re-tune if this drifts.
+    monkeypatch.setattr("app.context.modes.full.settings.mode3_token_budget", 320)
 
     result = await build_full_mode(
         summaries_repo=MagicMock(), glossary_client=MagicMock(),
@@ -482,7 +488,7 @@ async def test_budget_demotes_glossary_to_entity_refs_not_drop(monkeypatch):
     for i in range(8):
         assert f"Hero{i}" in result.context
     # and it still fits the budget
-    assert result.token_count <= 220
+    assert result.token_count <= 320
 
 
 @pytest.mark.asyncio
@@ -1143,10 +1149,14 @@ async def test_summaries_lowest_weighted_score_dropped_first(monkeypatch):
     project = _project()
     project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
 
-    # Each summary payload ≈ 250 tokens; two ≈ 500 tokens; base+CoT
-    # block ≈ 80 tokens. Budget 400 fits one (~330) but not both (~580).
+    # Each summary payload ≈ 195-200 tokens rendered; two together don't fit
+    # alongside the fixed project+absences+instructions overhead for this
+    # "synopsis" message (~308 tokens as of 2026-07-06 — this message's intent
+    # classification pulls in a heavier CoT/absence block than a plain "Tell
+    # me"). Budget 650 fits one summary (~503) but not both (~698); re-tune if
+    # this drifts.
     monkeypatch.setattr(
-        "app.context.modes.full.settings.mode3_token_budget", 400,
+        "app.context.modes.full.settings.mode3_token_budget", 650,
     )
 
     result = await build_full_mode(
@@ -1288,3 +1298,149 @@ async def test_mode3_sections_empty_everything_still_has_project_and_instruction
     )
     assert set(result.sections) >= {"project", "instructions"}
     assert "facts" not in result.sections
+
+
+# ── M1a: passage→graph anchor bridge wiring ──────────────────────────
+
+@pytest.mark.asyncio
+async def test_m1a_bridge_facts_appear_in_context(monkeypatch):
+    """When passages are present, bridge-expanded facts land in the facts block."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text="He arrived at the inn late at night.",
+            source_type="chapter", source_id="chap-1", chunk_index=0,
+            score=0.9, is_hub=False, chapter_index=1,
+        ),
+    ]
+    # Message-anchored L2 finds nothing (natural query) → bridge is the only source.
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages, l2_result=L2FactResult())
+    monkeypatch.setattr(
+        "app.context.modes.full._safe_expand_from_passages",
+        AsyncMock(return_value=["Count Dracula — hosts — Jonathan Harker"]),
+    )
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="Who did he meet at the inn?",
+    )
+    assert "Count Dracula — hosts — Jonathan Harker" in result.context
+    assert "<facts>" in result.context
+
+
+@pytest.mark.asyncio
+async def test_m1a_bridge_kill_switch_disables_expansion(monkeypatch):
+    """context_passage_graph_expansion_enabled=False → bridge is never called."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text="He arrived at the inn.", source_type="chapter",
+            source_id="chap-1", chunk_index=0, score=0.9, is_hub=False,
+            chapter_index=1,
+        ),
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages, l2_result=L2FactResult())
+    bridge = AsyncMock(return_value=["SHOULD — not — APPEAR"])
+    monkeypatch.setattr("app.context.modes.full._safe_expand_from_passages", bridge)
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.context_passage_graph_expansion_enabled", False
+    )
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="Who did he meet at the inn?",
+    )
+    bridge.assert_not_called()
+    assert "SHOULD — not — APPEAR" not in result.context
+
+
+# ── M1b working-scope boost wiring (_safe_l3_passages) ──────────────────────
+# These guard the resolve→thread SEAM that lives only in _safe_l3_passages: a
+# future edit dropping `current_chapter_index=working_chapter_index` (or the
+# boost knobs) would pass every select_l3_passages unit test yet silently
+# disable the boost in production. The one-shot live smoke can't catch a
+# regression; a spy at the call site can (nil-tolerant-decorator wiring lesson).
+
+
+def _fake_neo4j_session(monkeypatch):
+    @asynccontextmanager
+    async def fake_session():
+        yield MagicMock()
+    monkeypatch.setattr("app.context.modes.full.neo4j_session", fake_session)
+
+
+@pytest.mark.asyncio
+async def test_safe_l3_resolves_chapter_and_threads_boost(monkeypatch):
+    """boost>0 + current_chapter_id set → resolve chapter_index and pass it +
+    the boost knobs to select_l3_passages."""
+    from app.context.modes.full import _safe_l3_passages
+    from app.context.intent.classifier import classify
+
+    _fake_neo4j_session(monkeypatch)
+    resolve = AsyncMock(return_value=7)
+    monkeypatch.setattr(
+        "app.db.neo4j_repos.passages.get_chapter_index_for_source", resolve,
+    )
+    spy = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        "app.context.selectors.passages.select_l3_passages", spy,
+    )
+    monkeypatch.setattr("app.context.modes.full.settings.context_working_scope_boost", 0.30)
+    monkeypatch.setattr("app.context.modes.full.settings.context_working_scope_window", 2)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    chap = uuid4()
+
+    await _safe_l3_passages(
+        _embed_returning(), user_id=USER_ID, project=project,
+        message="what happens here", intent=classify("what happens here"),
+        current_chapter_id=chap,
+    )
+    # the resolver was called, scoped to owner + project + the open chapter …
+    resolve.assert_awaited_once()
+    assert resolve.await_args.kwargs["chapter_id"] == str(chap)
+    assert resolve.await_args.kwargs["project_id"] == str(project.project_id)
+    # … and the resolved index + boost knobs reached the selector.
+    kw = spy.await_args.kwargs
+    assert kw["current_chapter_index"] == 7
+    assert kw["working_scope_boost"] == 0.30
+    assert kw["working_scope_window"] == 2
+
+
+@pytest.mark.asyncio
+async def test_safe_l3_killswitch_skips_resolution(monkeypatch):
+    """boost=0.0 → the resolution query is skipped entirely and the selector
+    gets current_chapter_index=None (byte-identical to pre-M1b)."""
+    from app.context.modes.full import _safe_l3_passages
+    from app.context.intent.classifier import classify
+
+    _fake_neo4j_session(monkeypatch)
+    resolve = AsyncMock(return_value=7)
+    monkeypatch.setattr(
+        "app.db.neo4j_repos.passages.get_chapter_index_for_source", resolve,
+    )
+    spy = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        "app.context.selectors.passages.select_l3_passages", spy,
+    )
+    monkeypatch.setattr("app.context.modes.full.settings.context_working_scope_boost", 0.0)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    await _safe_l3_passages(
+        _embed_returning(), user_id=USER_ID, project=project,
+        message="q", intent=classify("q"),
+        current_chapter_id=uuid4(),
+    )
+    resolve.assert_not_called()
+    kw = spy.await_args.kwargs
+    assert kw["current_chapter_index"] is None
+    assert kw["working_scope_boost"] == 0.0

@@ -21,6 +21,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError
 
 from app.clients.kal import KalClient, KalServiceError
 from app.clients.sanitize import neutralize_injection
@@ -39,11 +40,10 @@ __all__ = [
 _MAX_FIELDMAP_PAGES = 500
 
 
-class GlossaryServiceError(Exception):
-    def __init__(self, message: str, *, retryable: bool = False, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.retryable = retryable
-        self.status_code = status_code
+# P3 SDK-first: subclass the shared InternalClientError (`.retryable` derived from
+# `.status_code`); name kept so `except GlossaryServiceError` sites are unchanged.
+class GlossaryServiceError(InternalClientError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -265,10 +265,8 @@ class GlossaryClient:
             raise GlossaryServiceError(f"connection error calling {url}: {exc}", retryable=True)
         if resp.status_code == 200:
             return resp
-        retryable = resp.status_code in (502, 503, 429)
         raise GlossaryServiceError(
             f"GET {url} failed ({resp.status_code})",
-            retryable=retryable,
             status_code=resp.status_code,
         )
 

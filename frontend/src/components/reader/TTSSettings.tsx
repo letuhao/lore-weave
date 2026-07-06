@@ -95,7 +95,8 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-y-0 right-0 z-40 flex w-72 flex-col border-l bg-card shadow-xl">
+    // D-READER-RESPONSIVE: `absolute`, see TOCSidebar for why.
+    <div className="absolute inset-y-0 right-0 z-40 flex w-72 max-w-full flex-col border-l bg-card shadow-xl">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium">

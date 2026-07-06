@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/shared';
 import { OntologyChip } from './OntologyChip';
 import { EdgeTypeRow } from './EdgeTypeRow';
 import { NodeKindRow } from './NodeKindRow';
@@ -56,6 +57,15 @@ export function SchemaWorkbench({
   const [pending, setPending] = useState<
     { nodeType: string; code: string; count: number; run: () => void } | null
   >(null);
+  // 14_kg_panels.md K8 (DOCK-9) — ConfirmDialog (Radix) keeps rendering during its
+  // ~150ms exit animation; clearing `pending` to null to close would blank the
+  // title/description mid-fade (the hand-rolled overlay unmounted instantly, no
+  // animation, so this never mattered before). Keep the last-shown value so the
+  // closing dialog still renders real content (mirrors VersionsPanel's
+  // displayedPreview/displayedConfirmRollback precedent, 14_kg_panels.md A3).
+  const lastPending = useRef<typeof pending>(null);
+  if (pending) lastPending.current = pending;
+  const displayedPending = pending ?? lastPending.current;
   const schema = controller.schema;
   if (!schema) return null;
 
@@ -294,27 +304,23 @@ export function SchemaWorkbench({
       </>
       )}
 
-      {/* A4 — orphan-count delete confirm (only when graph elements reference it) */}
-      {pending && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog" aria-modal="true" data-testid="delete-confirm">
-          <div className="w-full max-w-md space-y-3 rounded-lg border bg-card p-4 shadow-lg">
-            <h3 className="text-sm font-bold">{t('schema.deleteConfirmTitle')}</h3>
-            <p className="text-[12px] text-muted-foreground" data-testid="delete-confirm-message">
-              {t('schema.deleteConfirmBody', { code: pending.code, count: pending.count })}
-            </p>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setPending(null)}
-                className="rounded-md border px-3 py-1.5 text-[12px]"
-                data-testid="delete-confirm-cancel">{t('common.cancel')}</button>
-              <button type="button"
-                onClick={() => { pending.run(); setPending(null); }}
-                className="rounded-md bg-rose-600 px-3 py-1.5 text-[12px] font-medium text-white"
-                data-testid="delete-confirm-yes">{t('common.delete')}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* A4 — orphan-count delete confirm (only when graph elements reference it).
+          14_kg_panels.md K8 (DOCK-9) — was a hand-rolled `fixed inset-0` overlay;
+          migrated onto the shared ConfirmDialog (Radix-portal-based). */}
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(o) => { if (!o) setPending(null); }}
+        title={t('schema.deleteConfirmTitle')}
+        description={
+          displayedPending
+            ? t('schema.deleteConfirmBody', { code: displayedPending.code, count: displayedPending.count })
+            : ''
+        }
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        onConfirm={() => { if (pending) { pending.run(); setPending(null); } }}
+        variant="destructive"
+      />
     </div>
   );
 }

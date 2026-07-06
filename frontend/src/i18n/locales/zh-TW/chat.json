@@ -17,6 +17,7 @@
     "export": "匯出",
     "rename": "重新命名",
     "session_settings": "工作階段設定",
+    "context_inspector": "情境檢查器",
     "context_meter": {
       "label": "已使用的脈絡",
       "unknown": "無法得知此模型的脈絡視窗使用量",
@@ -401,6 +402,12 @@
     "search_placeholder": "搜尋…",
     "tools_tab": "工具",
     "skills_tab": "技能",
+    "category_all": "全部",
+    "category_see_all": "查看全部 {{count}} 項 →",
+    "no_tools_title": "沒有符合的工具",
+    "no_tools_description": "請嘗試其他搜尋字詞或類別。",
+    "no_skills_title": "沒有符合的技能",
+    "no_skills_description": "請嘗試其他搜尋字詞。",
     "summary": "{{tools}} 個工具 · {{skills}} 個技能 · {{tokens}} tok",
     "summary_no_tokens": "{{tools}} 個工具 · {{skills}} 個技能",
     "summary_tooltip": "開啟情境細目",
@@ -419,7 +426,10 @@
       "ui": "介面",
       "chat": "聊天",
       "other": "其他"
-    }
+    },
+    "advanced_tools": "進階工具 ({{count}})",
+    "advanced_tools_hint": "保留舊版工具以供舊版呼叫者使用。除非您有特定需求，否則請優先使用上方的工具。",
+    "legacy_pin_tooltip": "您已在此工作階段啟用此舊版工具"
   },
   "inspector": {
     "title": "代理執行狀態",

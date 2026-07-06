@@ -1,0 +1,155 @@
+{
+  "title": "İşler",
+  "status": {
+    "pending": "Bekliyor",
+    "running": "Çalışıyor",
+    "paused": "Duraklatıldı",
+    "cancelling": "İptal ediliyor",
+    "completed": "Tamamlandı",
+    "failed": "Hata oluştu",
+    "cancelled": "İptal edildi"
+  },
+  "kind": {
+    "extraction": "Bilgi çıkarma",
+    "glossary_extraction": "Sözlük çıkarma",
+    "wiki_gen": "Wiki oluşturma",
+    "translation": "Çeviri",
+    "glossary_translation": "Sözlük çevirisi",
+    "video_gen": "Video oluşturma",
+    "campaign": "Kampanya",
+    "enrichment_job": "Evren zenginleştirme",
+    "book_import": "Kitap içe aktarma",
+    "composition": {
+      "generate": "Kompozisyon"
+    }
+  },
+  "summary": {
+    "active": "Aktif",
+    "completed": "Tamamlandı",
+    "failed": "Hata oluştu",
+    "cancelled": "İptal edildi"
+  },
+  "filters": {
+    "status": "Durum",
+    "kind": "Tür",
+    "allStatuses": "Tüm durumlar",
+    "allKinds": "Tüm türler",
+    "search": "Başlık ara…",
+    "searchWide": "Başlık, tür, servis, model veya iş ID'si ara…",
+    "searchHint": "Başlık · tür · servis · model · iş ID'si üzerinden arama yapılır (gecikmeli)."
+  },
+  "col": {
+    "job": "İş",
+    "status": "Durum",
+    "progress": "İlerleme",
+    "cost": "Maliyet · token",
+    "started": "Başlangıç",
+    "actions": "İşlemler"
+  },
+  "section": {
+    "active": "Aktif · canlı",
+    "activeHint": "sayfalanmamış — SSE ile yerinde güncellenir",
+    "history": "Geçmiş",
+    "historyHint": "oluşturma tarihine göre sıralanmış · sayfalanmış"
+  },
+  "list": {
+    "loading": "Yükleniyor…",
+    "error": "İşler yüklenemedi.",
+    "empty": "Henüz iş yok.",
+    "noActive": "Aktif iş yok.",
+    "more": "Daha fazla yükle",
+    "toggleChildren": "Alt işleri göster/gizle",
+    "noChildren": "Alt iş yok."
+  },
+  "row": {
+    "ran": "{{d}} önce çalıştı",
+    "running": "{{d}} süredir çalışıyor",
+    "details": "Detaylar ↗"
+  },
+  "pager": {
+    "range": "{{total}} içinden {{from}}–{{to}}",
+    "pageSize": "Sayfa boyutu",
+    "perPage": "sayfa başına {{n}}",
+    "page": "Sayfa {{n}}",
+    "prev": "Önceki sayfa",
+    "next": "Sonraki sayfa",
+    "outOfRange": "Bu sayfada sonuç yok (toplam {{total}}).",
+    "first": "İlk sayfaya dön"
+  },
+  "live": {
+    "on": "● canlı",
+    "onShort": "canlı",
+    "reconnecting": "yeniden bağlanıyor…",
+    "off": "çevrimdışı"
+  },
+  "controls": {
+    "pause": "Duraklat",
+    "resume": "Devam et",
+    "cancel": "İptal et",
+    "cancelConfirm": "Şimdi durdurulsun mu? Devam eden çalışmalar atılır; tamamlanan kısımlar saklanır.",
+    "cancelYes": "Evet",
+    "cancelNo": "Hayır",
+    "cancelled": "İptal edildi.",
+    "paused": "Duraklatıldı.",
+    "resumed": "Devam ediyor.",
+    "retry": "Tekrar dene",
+    "retried": "Yeni bir iş olarak yeniden gönderildi.",
+    "stale": "İş durumu değişti — güncellendi.",
+    "actionFailed": "İşlem başarısız: {{error}}"
+  },
+  "monitor": {
+    "back": "Tüm işler",
+    "error": "İş yüklenemedi.",
+    "pausedBanner": "Duraklatıldı — yeni birim gönderimi yapılmaz, mevcut olanlar tamamlanır. Devam etmek için yukarıdan devam et.",
+    "children": "Alt işler"
+  },
+  "detail": {
+    "progress": "İlerleme",
+    "llmCalls": "LLM çağrıları",
+    "elapsed": "Geçen süre",
+    "throughput": "Verim",
+    "throughputVal": "~{{n}} /saat",
+    "eta": "Tahmini bitiş",
+    "costSoFar": "Şu ana kadarki maliyet",
+    "tokensIn": "Giren token",
+    "tokensOut": "Çıkan token",
+    "bestEffort": "en iyi çaba",
+    "models": "Modeller",
+    "parameters": "Parametreler",
+    "parametersHint": "dinamik, işin params nesnesinden",
+    "jobId": "İş ID'si",
+    "kind": "Tür",
+    "service": "Servis",
+    "parent": "Üst İş",
+    "viewParent": "Üst işi görüntüle ↗",
+    "created": "Oluşturulma",
+    "lastUpdate": "Son güncelleme",
+    "copied": "İş ID'si kopyalandı.",
+    "copyFailed": "Kopyalanamadı.",
+    "activity": "Etkinlik (canlı)",
+    "errorTitle": "Hata"
+  },
+  "activity": {
+    "created": "Oluşturuldu",
+    "pending": "Sırada",
+    "running": "Çalışıyor",
+    "paused": "Duraklatıldı",
+    "cancelling": "İptal ediliyor",
+    "completed": "Tamamlandı",
+    "failed": "Hata oluştu",
+    "cancelled": "İptal edildi"
+  },
+  "mobile": {
+    "children": "alt işler"
+  },
+  "fairness": {
+    "title": "Adil kuyruk yönetimi",
+    "running": "{{running}}/{{cap}} çalışıyor",
+    "queued": "· {{queued}} sırada",
+    "lane": {
+      "translation": "Çeviri",
+      "knowledge": "Bilgi",
+      "loreEnrichment": "Evren zenginleştirme"
+    }
+  }
+}

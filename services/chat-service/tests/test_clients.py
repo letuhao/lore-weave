@@ -15,7 +15,7 @@ from app.client.billing_client import BillingClient
 
 class TestProviderRegistryClient:
     @pytest.mark.asyncio
-    @patch("app.client.provider_client.httpx.AsyncClient")
+    @patch("app.client.provider_client.build_internal_client")
     async def test_resolve_success(self, mock_client_cls):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -42,7 +42,7 @@ class TestProviderRegistryClient:
         mock_http.get.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch("app.client.provider_client.httpx.AsyncClient")
+    @patch("app.client.provider_client.build_internal_client")
     async def test_resolve_404_raises_value_error(self, mock_client_cls):
         mock_resp = MagicMock()
         mock_resp.status_code = 404
@@ -60,7 +60,7 @@ class TestProviderRegistryClient:
 
 class TestBillingClient:
     @pytest.mark.asyncio
-    @patch("app.client.billing_client.httpx.AsyncClient")
+    @patch("app.client.billing_client.build_internal_client")
     async def test_log_usage_success(self, mock_client_cls):
         mock_http = AsyncMock()
         mock_resp = MagicMock()
@@ -85,7 +85,7 @@ class TestBillingClient:
         mock_http.post.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch("app.client.billing_client.httpx.AsyncClient")
+    @patch("app.client.billing_client.build_internal_client")
     async def test_log_usage_sends_internal_token_header(self, mock_client_cls):
         """D-CHAT-BILLING-01 regression-lock: usage-billing's middleware
         rejects calls without ``X-Internal-Token``. The original
@@ -113,13 +113,15 @@ class TestBillingClient:
             session_id="sess-1",
             message_id="msg-1",
         )
-        # Header inspection — the bug surface.
-        _args, kwargs = mock_http.post.call_args
-        headers = kwargs.get("headers") or {}
-        assert headers.get("X-Internal-Token") == "test-internal-token"
+        # P3 SDK-first (W5): the token is now BAKED into the client by
+        # build_internal_client (a default header on every request), not passed
+        # per-request. The regression-lock intent is unchanged — the billing call
+        # MUST carry X-Internal-Token — so assert the factory received the token.
+        _args, kwargs = mock_client_cls.call_args
+        assert kwargs.get("internal_token") == "test-internal-token"
 
     @pytest.mark.asyncio
-    @patch("app.client.billing_client.httpx.AsyncClient")
+    @patch("app.client.billing_client.build_internal_client")
     async def test_log_usage_swallows_errors(self, mock_client_cls):
         mock_http = AsyncMock()
         mock_http.post.side_effect = Exception("network error")

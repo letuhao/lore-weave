@@ -1,0 +1,22 @@
+{
+  "heading": "Ne yapmak istersiniz?",
+  "subheading": "Bir başlangıç noktası seçin — istediğiniz zaman değiştirebilirsiniz.",
+  "intent": {
+    "write": {
+      "title": "Yaz",
+      "desc": "Yeni bir kitaba başlayın veya yazmaya devam edin — bölümleri bir yapay zeka yardımcıyla taslak haline getirin."
+    },
+    "world": {
+      "title": "Dünya kur",
+      "desc": "Taslak metne ihtiyaç duymadan karakterler, mekanlar ve gruplar gibi evren detaylarını oluşturun."
+    },
+    "translate": {
+      "title": "Çevir",
+      "desc": "Mevcut bir kitabı çeviri iş akışıyla başka bir dile dönüştürün."
+    },
+    "explore": {
+      "title": "Keşfet",
+      "desc": "Bilgi birikiminizi —varlıklar, zaman çizelgeleri ve ilişki grafiği— inceleyin."
+    }
+  }
+}

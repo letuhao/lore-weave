@@ -217,6 +217,49 @@ class TestStudioSurface:
         assert "a book_id is NOT a project_id" in content
 
     @pytest.mark.asyncio
+    async def test_group_directory_rides_the_system_prompt_when_tools_are_live(self):
+        """Tool-catalog-simplification Part A — group_directory_text() must actually be
+        wired into the system prompt (not just the find_tools schema/filter side), so a
+        book-scoped agui turn gets the domain map instead of relying purely on whole-domain
+        hot-seeding."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetchrow.return_value = _session_row()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "book_get_chapter"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="what can you do here?",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                stream_format="agui",
+                book_context={"book_id": "b1"},
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        system = next((m for m in msgs if m["role"] == "system"), None)
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        assert "Tool domains (use find_tools with group=<name> to search one):" in content
+        assert "- glossary: Lore entities" in content
+
+    @pytest.mark.asyncio
     async def test_no_studio_context_does_not_advertise_studio_tools(self):
         """Control: a non-studio chat never advertises the studio tools (so it never suspends)."""
         pool, conn = _make_pool_with_conn()

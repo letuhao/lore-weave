@@ -26,12 +26,9 @@ import (
 func lw69Token(t *testing.T, userID uuid.UUID) string {
 	t.Helper()
 	secret := "12345678901234567890123456789012"
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   userID.String(),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-		},
-		Role: "user",
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Subject:   userID.String(),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 	})
 	signed, err := tok.SignedString([]byte(secret))
 	if err != nil {

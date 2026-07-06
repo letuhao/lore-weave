@@ -111,6 +111,15 @@ type Adapter interface {
 	// input.Texts[i] per /review-impl(DESIGN) MED#5. Adapters that don't
 	// support TTS return ErrOperationNotSupported.
 	GenerateAudio(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateAudioInput) (GenerateAudioOutput, Usage, error)
+
+	// CaptionImage — PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md
+	// L5). One-shot multimodal chat completion: sends a single image + a text
+	// prompt, returns the model's text response (a caption/description) — NOT
+	// image generation. Adapter posts an OpenAI-compatible
+	// /v1/chat/completions request with a multimodal `content` array
+	// (text + image_url blocks). Adapters whose provider has no
+	// OpenAI-compatible vision-input path return ErrOperationNotSupported.
+	CaptionImage(ctx context.Context, endpointBaseURL, secret, modelName string, input CaptionImageInput) (CaptionImageOutput, Usage, error)
 }
 
 // ErrStreamNotSupported — returned by adapters that don't yet implement
@@ -259,6 +268,61 @@ const MaxAudioGenInputCharsLen = 4096
 // could surprise. If a real gzip-friendly upstream surfaces, document
 // or raise the cap then.
 const MaxImageResponseBytes = 8 * 1024 * 1024
+
+// ── Vision (image-caption) types (PDF-import L5) ──────────────────────
+
+// ErrVisionInvalidParams — adapter-level invariant rejection (empty
+// ImageB64, empty Prompt, oversize image). Caller maps to
+// LLM_INVALID_REQUEST. Belt-and-suspenders with handler-level
+// validateVisionInput, matching the image_gen/video_gen/audio_gen
+// convention.
+var ErrVisionInvalidParams = fmt.Errorf("vision caption params invalid")
+
+// ErrVisionCaptionFailed — generic upstream-failed sentinel (not
+// content-policy, not rate-limited; e.g. malformed upstream response,
+// empty choices array). Caller maps to LLM_VISION_CAPTION_FAILED.
+var ErrVisionCaptionFailed = fmt.Errorf("vision caption failed")
+
+// MaxVisionInputImageBytes — adapter-level cap on the base64-encoded
+// input image. 8MB covers a downscaled figure/chart comfortably (the
+// knowledge-service caller downscales before sending, per
+// docs/specs/2026-07-06-pdf-book-import.md §6.3) while bounding worst-case
+// request body size. Mirrors MaxImg2VidInputBytes's role for video_gen.
+const MaxVisionInputImageBytes = 8 * 1024 * 1024
+
+// CaptionImageInput holds a single-image captioning request. Exactly one
+// image per call (the caller — knowledge-service's pdf_walker — already
+// dedupes/filters/downscales images before calling this op, so batching
+// isn't needed at this layer).
+type CaptionImageInput struct {
+	// ImageB64 — required, base64-encoded image bytes (no data-URI
+	// prefix; the adapter builds the data URI itself from ImageB64 +
+	// MimeType). Capped at MaxVisionInputImageBytes.
+	ImageB64 string
+
+	// MimeType — e.g. "image/png", "image/jpeg". Required so the adapter
+	// can build a correct `data:{mime};base64,...` URL.
+	MimeType string
+
+	// Prompt — the captioning instruction (e.g. "Describe this chart or
+	// image in 1-2 sentences, focusing on any data, labels, or text it
+	// contains."). Required, non-empty.
+	Prompt string
+
+	// MaxTokens — output cap for the caption. 0 → adapter default.
+	MaxTokens int
+}
+
+// CaptionImageOutput holds the parsed caption response.
+type CaptionImageOutput struct {
+	// Caption — the model's text response. Never empty on a nil error
+	// (an empty upstream response is treated as ErrVisionCaptionFailed).
+	Caption string
+
+	// FinishReason — upstream finish_reason ("stop", "length", ...), when
+	// present. Empty if the upstream didn't report one.
+	FinishReason string
+}
 
 // ── Audio types (Phase 5a + 5b) ────────────────────────────────────────
 
@@ -911,6 +975,11 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	if base == "" {
 		base = openaiBaseURL
 	}
+	// Provider Context Strategy §5 — stateful /v1/responses branch (gated in the
+	// handler by capability + LLM_STATEFUL_CACHE). Serves OpenAI + vLLM-behind-custom.
+	if isStatefulRequest(input) {
+		return streamViaResponses(ctx, a.client, base, secret, modelName, input, emit)
+	}
 	headers := map[string]string{}
 	if secret != "" {
 		headers["Authorization"] = "Bearer " + secret
@@ -942,6 +1011,10 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	// (no custom base_url). Custom base_url (a local OpenAI-compatible server)
 	// keeps it — that's how translation/extraction disable thinking. (TR-4)
 	stripDefaultOpenAIUnsupportedFields(body, modelName, endpointBaseURL)
+	// D-PROMPT-CACHING — this adapter serves real OpenAI, Gemini, DeepSeek AND
+	// vLLM (custom base_url), all of which cache the stable prefix AUTOMATICALLY.
+	// We send NOTHING: they cache server-side, and OpenAI/vLLM 400 on an unknown
+	// `cache_prompt`. (LM Studio also auto-caches — see lmStudioAdapter.)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err
@@ -1070,6 +1143,8 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	// "none" or no tools were supplied (zero behavior change for
 	// tool-free Anthropic requests).
 	applyAnthropicTools(payload, input)
+	// D-PROMPT-CACHING — cache the stable tools+system prefix (default ON).
+	applyAnthropicPromptCache(payload)
 	out, err := postJSON(ctx, a.client, base+"/v1/messages",
 		map[string]string{
 			"x-api-key":         secret,
@@ -1082,7 +1157,12 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	}
 	var usage Usage
 	if u, ok := out["usage"].(map[string]any); ok {
-		usage.InputTokens = int(toFloat(u["input_tokens"]))
+		// D-PROMPT-CACHING — Anthropic reports input_tokens EXCLUDING cached
+		// tokens; fold cache_creation/cache_read back in so enabling caching never
+		// under-counts the input volume (see anthropic_streamer.go for the rationale).
+		usage.InputTokens = int(toFloat(u["input_tokens"]) +
+			toFloat(u["cache_creation_input_tokens"]) +
+			toFloat(u["cache_read_input_tokens"]))
 		usage.OutputTokens = int(toFloat(u["output_tokens"]))
 	}
 	return out, usage, nil
@@ -1130,6 +1210,9 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	// "none" or no tools were supplied (zero behavior change for
 	// tool-free Anthropic requests).
 	applyAnthropicTools(body, input)
+	// D-PROMPT-CACHING — cache the stable tools+system prefix so Anthropic bills
+	// 90% less on the tool-loop's repeated re-sends (must run AFTER tools+system).
+	applyAnthropicPromptCache(body)
 	resp, err := openAnthropicStream(ctx, a.client, base, secret, body)
 	if err != nil {
 		return err
@@ -1439,6 +1522,12 @@ func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secr
 // to strip a possible trailing /v1 (mirrors Invoke).
 func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
 	base := NormalizeLmStudioBase(endpointBaseURL)
+	// Provider Context Strategy §5 — stateful /v1/responses branch (gated in the
+	// handler). This is the transport that caches 99% on A4B where chat/completions
+	// caches 0 (LM Studio bug #1563); NormalizeLmStudioBase already yields the /v1 base.
+	if isStatefulRequest(input) {
+		return streamViaResponses(ctx, a.client, base, secret, modelName, input, emit)
+	}
 	headers := map[string]string{}
 	if secret != "" {
 		headers["Authorization"] = "Bearer " + secret
@@ -1465,6 +1554,10 @@ func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, m
 		body["tool_choice"] = v
 	}
 	forwardOptionalChatFields(input, body)
+	// D-PROMPT-CACHING — LM Studio caches the stable prefix AUTOMATICALLY
+	// (server-side KV-prefix reuse, on by default); its OpenAI-compat chat endpoint
+	// ignores `cache_prompt` (live-verified). So we send NOTHING, same as
+	// OpenAI/vLLM. (Explicit cache tokens are only on LM Studio's /v1/responses API.)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err

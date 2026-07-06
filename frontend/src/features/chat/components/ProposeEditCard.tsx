@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Sparkles, Check, X } from 'lucide-react';
@@ -7,6 +7,10 @@ import { getEditorTarget } from '../context/editorBridge';
 import { buildHunks, reconstruct } from '../utils/proseHunks';
 import { useChatStream } from '../providers';
 import type { ToolCallRecord } from '../types';
+// #16 2.8 — cross-window Apply escape hatch. Non-null ONLY inside Studio's popped-out
+// Compose window (StudioPopoutHost provides it); every other surface (ChapterEditorPage's
+// chat dock, Studio's docked ComposePanel) never supplies it, so this is strictly additive.
+import { PopoutRelayContext } from '@/features/studio/popout/popoutRelayContext';
 
 // ARCH-1 C6 — the editor write-back proposal card.
 //
@@ -34,6 +38,8 @@ export function ProposeEditCard({ record, chapterId }: Props) {
   const { submitToolResult } = useChatStream();
   const [done, setDone] = useState<null | 'applied' | 'dismissed'>(null);
   const [busy, setBusy] = useState(false);
+  // #16 2.8 — non-null only inside Studio's popped-out Compose window.
+  const popoutRelay = useContext(PopoutRelayContext);
 
   const args = (record.args ?? {}) as ProposeArgs;
   const text = args.text ?? '';
@@ -49,6 +55,19 @@ export function ProposeEditCard({ record, chapterId }: Props) {
     const sel = getEditorTarget()?.handle.getSelection();
     return sel && !sel.empty ? sel.text : null;
   });
+  // /review-impl HIGH fix — the `chapterId` prop below is never actually supplied by any
+  // caller (AssistantMessage renders `<ProposeEditCard record={tc} />` with no chapterId), so
+  // the "never write a proposal into a different document" guard at apply() was dead: on any
+  // surface where the editor stays mounted across a chapter switch (Studio's dock — a route
+  // navigation would remount the legacy editor page instead, key={bookId} only), a user could
+  // switch chapters after a proposal renders and Apply would silently splice chapter A's
+  // suggestion into chapter B's document. Self-derive the target chapter from the live editor
+  // bridge AT MOUNT (immediately after this card first renders for the suspended tool call —
+  // the same instant editor_context/registerEditorTarget agree on "the chapter this proposal
+  // is for") so the guard has a real value without requiring prop-threading through the whole
+  // shared message-list chain (AssistantMessage/MessageBubble/MessageList serve surfaces with
+  // no chapter concept at all). The `chapterId` prop still wins if a caller ever supplies one.
+  const [mountChapterId] = useState<string | null>(() => chapterId ?? getEditorTarget()?.chapterId ?? null);
   const model = useMemo(
     () => (oldSel != null ? buildHunks(oldSel, text) : null),
     [oldSel, text],
@@ -80,11 +99,54 @@ export function ProposeEditCard({ record, chapterId }: Props) {
     }
     const target = getEditorTarget();
     if (!target) {
+      // #16 2.8 — inside a popped-out Compose window, getEditorTarget() is ALWAYS null (the
+      // module-singleton editorBridge only exists in the window that registered it — the main
+      // Studio window's EditorPanel). When PopoutRelayContext is present, relay instead of
+      // showing the "no editor" error — the opener's EditorPanel receives it over the
+      // per-(book,chapter) BroadcastChannel via usePopoutInsertRelay and applies it through
+      // checkpoints.applyProposedEdit, so it still captures a restore point like every other
+      // AI-apply path.
+      if (popoutRelay) {
+        if (operation === 'replace_selection') {
+          // A popout has no live editor selection to check against (oldSel is captured via
+          // getEditorTarget() at mount too, so it's always null here — hasHunks is always
+          // false in a popout) — there is nothing sensible to relay a "replace" onto.
+          toast.error(t('propose.popout_no_rewrite', {
+            defaultValue: 'Rewrites need to be applied from the docked editor — dock this window first.',
+          }));
+          return;
+        }
+        // insert_at_cursor: hasHunks is always false in a popout (no live selection to diff
+        // against), so `text` IS the applied text — no hunk-merge branch to run through.
+        // #16 2.8 /review-impl HIGH fix — AWAIT the opener's ack instead of assuming the relay
+        // landed. The opener may have since navigated to a different chapter (its
+        // usePopoutInsertRelay subscription re-keys on chapterId), in which case nothing is
+        // listening on this channel and the message vanishes — without this check the card
+        // would show "Applied ✓" and tell the LLM the edit succeeded while the document was
+        // never touched.
+        setBusy(true);
+        try {
+          const delivered = await popoutRelay.post(text, undefined);
+          if (!delivered) {
+            toast.error(t('propose.popout_not_delivered', {
+              defaultValue: 'Could not confirm the edit reached the docked editor — open the chapter in Studio and try again.',
+            }));
+            return;
+          }
+          setDone('applied');
+          if (record.runId && record.toolCallId) {
+            await submitToolResult(record.runId, record.toolCallId, 'applied', text);
+          }
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
       toast.error(t('propose.no_editor', { defaultValue: 'Open the chapter to apply this edit.' }));
       return;
     }
     // Chapter-match guard — never write a proposal into a different document.
-    if (chapterId && target.chapterId !== chapterId) {
+    if (mountChapterId && target.chapterId !== mountChapterId) {
       toast.error(t('propose.wrong_chapter', { defaultValue: 'This suggestion was for a different chapter.' }));
       return;
     }
@@ -106,15 +168,23 @@ export function ProposeEditCard({ record, chapterId }: Props) {
       }
       applied = reconstruct(model, accepted);
     }
+    // #16 P1 (Lane C — spec 09) — when the registrant supplies a hoist-owned write action
+    // (Studio's ManuscriptUnitProvider), call it instead of reaching into the raw handle
+    // directly; same underlying Tiptap command either way (legacy has no hoist and omits
+    // this field, so its Apply path is byte-identical to before).
     let ok = false;
     if (operation === 'replace_selection') {
-      ok = target.handle.replaceSelection(applied, prov);
+      ok = target.applyProposedEdit
+        ? target.applyProposedEdit({ operation: 'replace_selection', text: applied, provenance: prov })
+        : target.handle.replaceSelection(applied, prov);
       if (!ok) {
         toast.error(t('propose.no_selection', { defaultValue: 'Select the text to replace, then Apply.' }));
         return;
       }
     } else {
-      ok = target.handle.insertAtCursor(applied, prov);
+      ok = target.applyProposedEdit
+        ? target.applyProposedEdit({ operation: 'insert_at_cursor', text: applied, provenance: prov })
+        : target.handle.insertAtCursor(applied, prov);
       if (!ok) {
         toast.error(t('propose.apply_failed', { defaultValue: 'Could not apply the edit.' }));
         return;

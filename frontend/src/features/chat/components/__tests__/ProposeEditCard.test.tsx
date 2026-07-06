@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { PopoutRelayContext } from '@/features/studio/popout/popoutRelayContext';
 
 // C6 hunk-review — a replace_selection proposal is diffed against the live editor
 // selection (captured at mount) and offered as per-hunk accept/reject. Accept-all
@@ -10,20 +11,30 @@ const submitToolResult = vi.fn().mockResolvedValue('');
 const replaceSelection = vi.fn(() => true);
 const insertAtCursor = vi.fn(() => true);
 let selection: { from: number; to: number; empty: boolean; text: string } | null;
+let targetChapterId = 'ch1';
+const toastError = vi.fn();
+// #16 P1 — undefined by default (legacy path: no hoist, Apply calls target.handle.* directly,
+// same as before). Tests that need the Studio hoist-preferred path set this to a vi.fn().
+let applyProposedEdit: ReturnType<typeof vi.fn> | undefined;
+// #16 2.8 — a popped-out Compose window has NO registered editorBridge target (a popout is a
+// separate JS realm from the window that called registerEditorTarget). Tests for the
+// popout-relay branch set this true to simulate that.
+let noEditorTarget = false;
 
 vi.mock('../../providers', () => ({ useChatStream: () => ({ submitToolResult }) }));
 vi.mock('../../context/editorBridge', () => ({
-  getEditorTarget: () => ({
+  getEditorTarget: () => (noEditorTarget ? null : {
     bookId: 'b1',
-    chapterId: 'ch1',
+    chapterId: targetChapterId,
     handle: {
       getSelection: () => selection,
       replaceSelection: (...a: unknown[]) => replaceSelection(...a),
       insertAtCursor: (...a: unknown[]) => insertAtCursor(...a),
     },
+    applyProposedEdit,
   }),
 }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => toastError(...a) } }));
 
 import { ProposeEditCard } from '../ProposeEditCard';
 import type { ToolCallRecord } from '../../types';
@@ -37,7 +48,11 @@ describe('ProposeEditCard — hunk review', () => {
     submitToolResult.mockClear();
     replaceSelection.mockClear();
     insertAtCursor.mockClear();
+    toastError.mockClear();
     selection = { from: 0, to: 10, empty: false, text: 'A. B. C.' };
+    targetChapterId = 'ch1';
+    applyProposedEdit = undefined;
+    noEditorTarget = false;
   });
 
   it('renders per-hunk diff for a replace_selection rewrite', () => {
@@ -108,5 +123,164 @@ describe('ProposeEditCard — hunk review', () => {
     expect(screen.queryByTestId('propose-hunks')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('propose.apply'));
     await waitFor(() => expect(replaceSelection).toHaveBeenCalledWith('Whole rewrite.', expect.anything()));
+  });
+
+  // /review-impl HIGH — no caller ever passes the `chapterId` prop (AssistantMessage renders
+  // `<ProposeEditCard record={tc} />` bare), so the cross-chapter guard was dead in production:
+  // on a surface where the editor stays mounted across a chapter switch (Studio's dock), Apply
+  // would silently splice a stale proposal into whatever chapter is CURRENTLY open. The card now
+  // self-derives the target chapter from the live editor bridge at mount instead.
+  describe('cross-chapter guard (self-derived, no chapterId prop from the caller)', () => {
+    it('blocks Apply if the open chapter changed since this card mounted', async () => {
+      // Card mounts while chapter 'ch1' is open (the chapter the proposal was generated for).
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      // User navigates to a different chapter in the studio manuscript tree before clicking Apply.
+      targetChapterId = 'ch2';
+      fireEvent.click(screen.getByText('propose.apply'));
+      // i18n isn't initialized in this test env — useTranslation resolves to the raw key.
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.wrong_chapter'));
+      expect(insertAtCursor).not.toHaveBeenCalled();
+      expect(submitToolResult).not.toHaveBeenCalled();
+      // The run stays suspended — buttons remain for a re-ask, not silently resolved.
+      expect(screen.getByText('propose.apply')).toBeInTheDocument();
+    });
+
+    it('applies normally when the chapter is unchanged at Apply time', async () => {
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(insertAtCursor).toHaveBeenCalledTimes(1));
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it('an explicit chapterId prop still overrides the self-derived snapshot', async () => {
+      // A future caller that resolves its own canonical chapterId should win over the bridge.
+      render(
+        <ProposeEditCard
+          record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })}
+          chapterId="ch-explicit"
+        />,
+      );
+      // Live bridge target is 'ch1' — mismatched against the explicit prop — Apply must block.
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.wrong_chapter'));
+      expect(insertAtCursor).not.toHaveBeenCalled();
+    });
+  });
+
+  // #16 P1 (Lane C — spec 09) — when the registrant (Studio's EditorPanel) supplies a hoist-owned
+  // applyProposedEdit action, Apply must call it INSTEAD of the raw handle. Legacy (no hoist,
+  // applyProposedEdit undefined) keeps calling target.handle.* directly — covered by every test
+  // above, which never set applyProposedEdit.
+  describe('hoist-preferred apply (#16 P1)', () => {
+    it('calls applyProposedEdit instead of target.handle.insertAtCursor when supplied', async () => {
+      applyProposedEdit = vi.fn(() => true);
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(applyProposedEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ operation: 'insert_at_cursor', text: 'New paragraph.' }),
+      ));
+      expect(insertAtCursor).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'applied', 'New paragraph.'));
+    });
+
+    it('calls applyProposedEdit instead of target.handle.replaceSelection when supplied', async () => {
+      applyProposedEdit = vi.fn(() => true);
+      render(<ProposeEditCard record={record({ operation: 'replace_selection', text: 'X. B. Y.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(applyProposedEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ operation: 'replace_selection', text: 'X. B. Y.' }),
+      ));
+      expect(replaceSelection).not.toHaveBeenCalled();
+    });
+
+    it('a false return from applyProposedEdit surfaces the same failure toast as the raw handle', async () => {
+      applyProposedEdit = vi.fn(() => false);
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.apply_failed'));
+      expect(submitToolResult).not.toHaveBeenCalled();
+    });
+
+    // /review-impl coverage gap — the chapter-mismatch guard (mountChapterId) runs BEFORE the
+    // hoist-vs-raw-handle branch in code, but nothing proved the combination: a hoist action
+    // being configured must not bypass the guard.
+    it('the cross-chapter guard still blocks Apply even when a hoist applyProposedEdit is configured', async () => {
+      applyProposedEdit = vi.fn(() => true);
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      targetChapterId = 'ch2'; // chapter switched after mount, before Apply
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.wrong_chapter'));
+      expect(applyProposedEdit).not.toHaveBeenCalled();
+      expect(submitToolResult).not.toHaveBeenCalled();
+    });
+  });
+
+  // #16 2.8 — inside Studio's popped-out Compose window, getEditorTarget() is always null (a
+  // separate JS realm from the window that registered the editorBridge singleton). When
+  // PopoutRelayContext supplies a relay, Apply must post over it instead of showing the
+  // "no editor" error — and must NOT do so when no relay is present (every existing surface).
+  describe('cross-window popout relay (#16 2.8)', () => {
+    // #16 2.8 /review-impl HIGH fix — post() is now async (awaits the opener's ack); default
+    // mock resolves true (delivered) so tests that don't care about delivery still exercise
+    // the success path.
+    function renderInPopout(ui: Parameters<typeof render>[0], post = vi.fn().mockResolvedValue(true)) {
+      return { post, ...render(
+        <PopoutRelayContext.Provider value={{ post }}>{ui}</PopoutRelayContext.Provider>,
+      ) };
+    }
+
+    it('relays insert_at_cursor text over the popout channel and resolves applied', async () => {
+      noEditorTarget = true;
+      const { post } = renderInPopout(
+        <ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />,
+      );
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(post).toHaveBeenCalledWith('New paragraph.', undefined));
+      expect(insertAtCursor).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'applied', 'New paragraph.'));
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it('does NOT relay a replace_selection rewrite — shows a dock-first error instead', async () => {
+      noEditorTarget = true;
+      const { post } = renderInPopout(
+        <ProposeEditCard record={record({ operation: 'replace_selection', text: 'Whole rewrite.' })} />,
+      );
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.popout_no_rewrite'));
+      expect(post).not.toHaveBeenCalled();
+      expect(replaceSelection).not.toHaveBeenCalled();
+      expect(submitToolResult).not.toHaveBeenCalled();
+      // run stays suspended — buttons remain for a re-ask (e.g. dock the window, then retry)
+      expect(screen.getByText('propose.apply')).toBeInTheDocument();
+    });
+
+    it('falls back to the "no editor" error when no popout relay is provided (unchanged legacy/docked behavior)', async () => {
+      noEditorTarget = true;
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.no_editor'));
+      expect(submitToolResult).not.toHaveBeenCalled();
+    });
+
+    // #16 2.8 /review-impl HIGH fix — the opener may have navigated to a different chapter
+    // since the popout opened; its usePopoutInsertRelay subscription re-keys on chapterId, so
+    // nothing acks the relayed insert. Without this check the card would show "Applied ✓" and
+    // tell the LLM the edit succeeded while the document was never touched.
+    it('shows an error and stays suspended when the opener never acks the relay (silent-drop guard)', async () => {
+      noEditorTarget = true;
+      const post = vi.fn().mockResolvedValue(false);
+      renderInPopout(
+        <ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />,
+        post,
+      );
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.popout_not_delivered'));
+      expect(submitToolResult).not.toHaveBeenCalled();
+      // run stays suspended — buttons remain for a re-ask
+      expect(screen.getByText('propose.apply')).toBeInTheDocument();
+    });
   });
 });

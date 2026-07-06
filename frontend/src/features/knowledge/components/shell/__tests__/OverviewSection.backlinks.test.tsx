@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
@@ -36,26 +35,36 @@ import type { Project } from '../../../types';
 
 const project = { project_id: 'p1', book_id: 'b1', embedding_model: null, rerank_model: null, extraction_enabled: true } as unknown as Project;
 
-function renderOverview(p: Project | null) {
+function renderOverview(
+  p: Project | null,
+  opts?: { onOpenBook?: (bookId: string) => void; onOpenWorld?: (worldId: string) => void },
+) {
   render(
-    <MemoryRouter>
-      <OverviewSection project={p} onExploreGraph={vi.fn()} />
-    </MemoryRouter>,
+    <OverviewSection
+      project={p}
+      onExploreGraph={vi.fn()}
+      onOpenBook={opts?.onOpenBook ?? vi.fn()}
+      onOpenWorld={opts?.onOpenWorld ?? vi.fn()}
+    />,
   );
 }
 
 beforeEach(() => backlinks.mockReset());
 
 describe('OverviewSection backlinks (D-WORLD-PROJECT-BACKLINK)', () => {
-  it('links to the book by title and to the world when grouped', () => {
+  it('links to the book by title and to the world when grouped (DOCK-7: via callback, not <Link>)', () => {
     backlinks.mockReturnValue({ bookTitle: 'Cradle', worldId: 'w1', worldName: 'Aethyr', isLoading: false });
-    renderOverview(project);
+    const onOpenBook = vi.fn();
+    const onOpenWorld = vi.fn();
+    renderOverview(project, { onOpenBook, onOpenWorld });
     const bookLink = screen.getByTestId('overview-book-link');
-    expect(bookLink).toHaveAttribute('href', '/books/b1');
     expect(bookLink).toHaveTextContent('Cradle');
+    fireEvent.click(bookLink);
+    expect(onOpenBook).toHaveBeenCalledWith('b1');
     const worldLink = screen.getByTestId('overview-world-link');
-    expect(worldLink).toHaveAttribute('href', '/worlds/w1');
     expect(worldLink).toHaveTextContent('Aethyr');
+    fireEvent.click(worldLink);
+    expect(onOpenWorld).toHaveBeenCalledWith('w1');
   });
 
   it('omits the world link when the book is standalone', () => {

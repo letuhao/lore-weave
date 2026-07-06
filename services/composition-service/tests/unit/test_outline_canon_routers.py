@@ -52,6 +52,7 @@ class StubOutline:
         self.reorder_raises = None
         self.gate = {"chapter_id": "c", "scenes_total": 2, "scenes_done": 2, "can_publish": True}
         self.commit_aware_called = False
+        self.canon_issues_result = []
     async def list_tree(self, u, p, **kw): return self.tree
     async def create_node(self, u, p, **kw):
         if self.create_raises: raise self.create_raises
@@ -65,6 +66,7 @@ class StubOutline:
         if self.update_raises: raise self.update_raises
         return self.update_result
     async def chapter_scene_gate(self, u, p, ch): return self.gate
+    async def canon_issues(self, u, p): return self.canon_issues_result
     async def archive_node(self, u, n): return self.archive_result
     async def restore_node(self, u, n): return self.restore_result
     async def reorder_node(self, u, n, **kw):
@@ -213,6 +215,36 @@ def test_publish_gate_404_when_work_missing(ctx):
     c, works, _, _, _ = ctx
     works.work = None
     assert c.get(f"/v1/composition/works/{PROJECT}/chapters/{uuid.uuid4()}/publish-gate").status_code == 404
+
+
+# ── Studio Quality tab: book-wide itemized canon issues ──
+
+def test_canon_issues_returns_items(ctx):
+    c, _, outline, _, _ = ctx
+    chapter = uuid.uuid4()
+    outline.canon_issues_result = [
+        {"scene_id": str(NODE), "scene_title": "Scene A", "chapter_id": str(chapter),
+         "job_id": str(uuid.uuid4()), "created_at": "2026-07-06T00:00:00+00:00",
+         "status": "checked", "violations": [{"entity_id": "e1", "name": "Old Man Wu"}]},
+    ]
+    r = c.get(f"/v1/composition/works/{PROJECT}/canon-issues")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert len(items) == 1 and items[0]["scene_title"] == "Scene A"
+    assert items[0]["violations"][0]["name"] == "Old Man Wu"
+
+
+def test_canon_issues_empty_returns_empty_items(ctx):
+    c, _, outline, _, _ = ctx
+    outline.canon_issues_result = []
+    r = c.get(f"/v1/composition/works/{PROJECT}/canon-issues")
+    assert r.status_code == 200 and r.json()["items"] == []
+
+
+def test_canon_issues_404_when_work_missing(ctx):
+    c, works, _, _, _ = ctx
+    works.work = None
+    assert c.get(f"/v1/composition/works/{PROJECT}/canon-issues").status_code == 404
 
 
 def test_patch_status_done_routes_through_commit_aware(ctx):

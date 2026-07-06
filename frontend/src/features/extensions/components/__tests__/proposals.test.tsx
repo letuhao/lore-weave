@@ -29,7 +29,7 @@ beforeEach(() => {
 describe('ProposalsView §6', () => {
   it('shows the empty state (and no cards)', async () => {
     render(<ProposalsView />);
-    await waitFor(() => expect(screen.getByText(/No proposals/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('proposals.empty')).toBeTruthy());
     expect(screen.queryByTestId('proposal-card')).toBeNull(); // empty ⇔ no cards
   });
 

@@ -1,5 +1,5 @@
 """Thin internal client for book-service reads the translation worker needs."""
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from .config import settings
 
@@ -33,8 +33,12 @@ async def book_owns_chapter(book_id, chapter_id) -> bool:
         f"{settings.book_service_internal_url}"
         f"/internal/books/{book_id}/chapters/{chapter_id}/blocks"
     )
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(url, headers={"X-Internal-Token": settings.internal_service_token})
+    # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON.
+    async with build_internal_client(
+        settings.book_service_internal_url,
+        internal_token=settings.internal_service_token, timeout_s=10,
+    ) as client:
+        r = await client.get(url)
         if r.status_code == 404:
             return False
         r.raise_for_status()
@@ -48,8 +52,11 @@ async def get_chapter_blocks(book_id, chapter_id) -> list[dict]:
         f"{settings.book_service_internal_url}"
         f"/internal/books/{book_id}/chapters/{chapter_id}/blocks"
     )
-    async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.get(url, headers={"X-Internal-Token": settings.internal_service_token})
+    async with build_internal_client(
+        settings.book_service_internal_url,
+        internal_token=settings.internal_service_token, timeout_s=30,
+    ) as client:
+        r = await client.get(url)
         # A chapter present in chapter_translations but absent in book-service (deleted /
         # orphaned translation row) → no blocks → no segments. Treat 404 as empty rather
         # than raising, so a backfill / finalize-hook rebuild is a clean no-op instead of
@@ -81,12 +88,14 @@ async def get_chapter_word_counts(book_id, chapter_ids) -> dict[str, int]:
     out: dict[str, int] = {}
     offset = 0
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with build_internal_client(
+            settings.book_service_internal_url,
+            internal_token=settings.internal_service_token, timeout_s=15,
+        ) as client:
             for _ in range(_CHAPTER_LIST_MAX_PAGES):
                 r = await client.get(
                     base,
                     params={"limit": _CHAPTER_LIST_PAGE, "offset": offset},
-                    headers={"X-Internal-Token": settings.internal_service_token},
                 )
                 r.raise_for_status()
                 items = r.json().get("items") or []

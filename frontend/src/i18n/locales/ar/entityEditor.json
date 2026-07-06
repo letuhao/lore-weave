@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "بدون عنوان",
+    "status": {
+      "draft": "مسودة",
+      "active": "نشط",
+      "inactive": "غير نشط"
+    },
+    "discard": "تجاهل",
+    "save": "حفظ",
+    "save_entity": "حفظ الكيان",
+    "cancel": "إلغاء",
+    "move_to_trash": "نقل إلى المهملات",
+    "meta": {
+      "chapters": "{{count}} فصول",
+      "translations": "{{count}} ترجمات",
+      "evidences": "{{count}} أدلة"
+    },
+    "tab": {
+      "attributes": "السمات",
+      "evidences": "الأدلة",
+      "history": "السجل"
+    },
+    "viewing_in_language": "عرض بـ {{lang}}",
+    "viewing_original": "الأصل ({{lang}})",
+    "translation_lang_aria": "لغة الترجمة",
+    "no_translation": "لا توجد ترجمة",
+    "add_language": "+ إضافة لغة...",
+    "lang_placeholder": "مثال: en",
+    "system_attrs": "سمات النظام",
+    "user_attrs": "سمات المستخدم",
+    "no_attributes": "لم يتم تحديد أي سمات لهذا النوع من الكيانات.",
+    "toast": {
+      "saved": "تم حفظ الكيان",
+      "status_changed": "تغيرت الحالة إلى {{status}}",
+      "invalid_lang": "رمز لغة غير صالح (مثلاً en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*مطلوب",
+    "modified": "مُعدّل",
+    "has_translations": "يحتوي على ترجمات"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "مسودة",
+      "verified": "تم التحقق منها",
+      "machine": "آلي"
+    },
+    "confidence_aria": "دقة الترجمة",
+    "by": "بواسطة {{name}}",
+    "discard_aria": "تجاهل التغييرات",
+    "save": "حفظ",
+    "delete_aria": "حذف الترجمة",
+    "placeholder": "ترجمة {{lang}}...",
+    "tags_add": "+ إضافة اسم مستعار",
+    "delete_title": "هل تريد حذف الترجمة؟",
+    "delete_desc": "سيتم حذف ترجمة {{lang}} لهذا السمة نهائياً.",
+    "delete_confirm": "حذف",
+    "toast": {
+      "updated": "تم تحديث الترجمة",
+      "created": "تم إنشاء الترجمة",
+      "deleted": "تم حذف الترجمة"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "اقتباس",
+      "summary": "ملخص",
+      "reference": "مرجع"
+    },
+    "provenance": {
+      "ambiguous": "تطابق غير مؤكد",
+      "ambiguous_hint": "تطابق هذا الاقتباس مع النص الأصلي في أكثر من موضع — الموقع الدقيق غير محدد.",
+      "unmatched": "لم يتم العثور عليه في المصدر",
+      "unmatched_hint": "تعذر تحديد موقع هذا الاقتباس في نص الفصل — قد يكون النص مُعاد صياغته أو متخيلاً. تحقق منه قبل الاعتماد عليه.",
+      "unverified": "غير مؤكد",
+      "unverified_hint": "لم يتم التحقق من هذا الاقتباس مقابل النص الأصلي."
+    },
+    "filter": {
+      "all": "الكل",
+      "attr_aria": "تصفية حسب السمة",
+      "all_attributes": "جميع السمات",
+      "chapter_aria": "تصفية حسب الفصل",
+      "all_chapters": "جميع الفصول",
+      "chapter_n": "الفصل {{n}}",
+      "lang_aria": "لغة العرض",
+      "original": "الأصل",
+      "sort_aria": "ترتيب حسب",
+      "sort": {
+        "created": "تاريخ الإنشاء",
+        "chapter": "الفصل",
+        "block_line": "الكتلة/السطر",
+        "attribute": "السمة"
+      },
+      "ascending": "تصاعدي",
+      "descending": "تنازلي",
+      "add": "إضافة"
+    },
+    "create": {
+      "title": "دليل جديد",
+      "attribute": "السمة *",
+      "attr_aria": "سمة الدليل الجديد",
+      "type": "النوع",
+      "type_aria": "نوع الدليل",
+      "original_text": "النص الأصلي *",
+      "text_placeholder": "ألصق النص المصدر...",
+      "block_line": "الفقرة / السطر",
+      "block_placeholder": "مثال: ص. 42",
+      "note": "ملاحظة",
+      "note_placeholder": "ملاحظة اختيارية",
+      "cancel": "إلغاء",
+      "create": "إنشاء"
+    },
+    "card": {
+      "edit_type_aria": "تعديل نوع الدليل",
+      "cancel_title": "إلغاء",
+      "block_line": "الفقرة / السطر",
+      "note": "ملاحظة",
+      "cancel": "إلغاء",
+      "save": "حفظ",
+      "edit_title": "تعديل",
+      "open_source": "فتح الفصل المصدر",
+      "delete_title": "حذف",
+      "translated": "مترجم ({{lang}})",
+      "note_label": "ملاحظة: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "لم يتم العثور على أدلة",
+      "clear_filters": "مسح الفلاتر",
+      "prev_page": "الصفحة السابقة",
+      "next_page": "الصفحة التالية",
+      "first_page": "الصفحة الأولى",
+      "last_page": "الصفحة الأخيرة",
+      "jump_to_page": "انتقل إلى صفحة",
+      "page_size": "الصفوف في الصفحة",
+      "per_page": "{{n}} / صفحة",
+      "delete_title": "هل تريد حذف الدليل؟",
+      "delete_desc": "سيتم حذف هذا الدليل من «{{attr}}» نهائياً.",
+      "delete_confirm": "حذف"
+    },
+    "toast": {
+      "updated": "تم تحديث الدليل",
+      "deleted": "تم حذف الدليل",
+      "created": "تم إنشاء الدليل",
+      "text_required": "النص الأصلي مطلوب"
+    }
+  },
+  "summarize": {
+    "canonical_label": "ملخص مدمج",
+    "pending_dirty": "سيتم إعادة التلخيص بعد عملية الاستخراج التالية",
+    "pending_new": "سيتم التلخيص بعد عملية الاستخراج التالية",
+    "sources": "الإشارات الخام ({{count}})",
+    "empty": "لا توجد إشارات بعد"
+  }
+}

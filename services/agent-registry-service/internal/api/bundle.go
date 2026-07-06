@@ -61,7 +61,7 @@ type bundle struct {
 // exportBundle — GET /plugins/{id}/export. Serializes the plugin + its members
 // (WHERE plugin_id = id) into a portable bundle. Owner/System visible only.
 func (s *Server) exportBundle(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -164,7 +164,7 @@ func (s *Server) validateBundle(b *bundle) string {
 // importBundle — POST /plugins/import. Creates the plugin + every member in one
 // transaction (all-or-nothing), each linked to the new plugin_id. User-tier only.
 func (s *Server) importBundle(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -212,7 +212,7 @@ func (s *Server) importBundle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not commit import")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "plugin", "import", &pid, b.Manifest.Name, "user",
+	s.audit(r.Context(), uid, "user", "plugin", "import", &pid, b.Manifest.Name, "user",
 		map[string]any{"skills": len(b.Skills), "commands": len(b.Commands), "hooks": len(b.Hooks)})
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusCreated, map[string]any{

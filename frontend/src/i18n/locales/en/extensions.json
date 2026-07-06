@@ -1,0 +1,203 @@
+{
+  "title": "Extensions",
+  "tabs": {
+    "skills": "Skills",
+    "mcp": "MCP Servers",
+    "commands": "Commands & Hooks",
+    "subagents": "Subagents",
+    "plugins": "Plugins",
+    "proposals": "Proposals",
+    "activity": "Activity log",
+    "ingest": "Registry sources"
+  },
+  "quota": {
+    "skills": "Skills",
+    "mcp": "MCP servers",
+    "proposals": "Proposals"
+  },
+  "scope": {
+    "label": "Scope:",
+    "mine": "My extensions",
+    "orBook": "or a book:",
+    "bookPlaceholder": "book-scoped…",
+    "bookHint": "book-scoped — new items apply to this book only"
+  },
+  "common": {
+    "loading": "Loading…",
+    "delete": "Delete",
+    "add": "Add",
+    "cancel": "Cancel",
+    "back": "Back",
+    "next": "Next",
+    "of": "of",
+    "system": "system",
+    "book": "book"
+  },
+  "skills": {
+    "search": "Search skills…",
+    "tier": {
+      "all": "Tier: All",
+      "system": "System",
+      "user": "User",
+      "book": "Book"
+    },
+    "sort": {
+      "updated": "Sort: Updated",
+      "name": "Name A→Z",
+      "lastTriggered": "Last triggered"
+    },
+    "empty": "No skills yet. The agent can propose one, or create it in the editor.",
+    "draft": "draft"
+  },
+  "mcp": {
+    "status": {
+      "active": "active",
+      "pending": "scanning…",
+      "suspended": "quarantined",
+      "error": "unreachable"
+    },
+    "search": "Search servers…",
+    "filter": {
+      "all": "Status: All",
+      "active": "Active",
+      "pending": "Scanning",
+      "suspended": "Quarantined",
+      "error": "Unreachable"
+    },
+    "add": "+ Add server",
+    "empty": "No MCP servers yet. Add one to give the agent extra tools.",
+    "review": "⚠ review",
+    "detail": {
+      "back": "‹ Back",
+      "connection": "Connection",
+      "auth": "Auth",
+      "prefix": "Prefix",
+      "egress": "Egress allowlist",
+      "health": "Health",
+      "lastScanned": "Last scanned",
+      "credentialStored": "credential stored",
+      "healthOk": "ok · {{count}} tools · {{latency}}ms",
+      "healthError": "error: {{error}}",
+      "unreachable": "unreachable",
+      "scanning": "Scanning…",
+      "rescan": "Rescan",
+      "reconnect": "Reconnect OAuth",
+      "acceptRisk": "Accept risk & activate"
+    },
+    "scan": {
+      "label": "Supply-chain scan:",
+      "clean": "clean",
+      "findings": "{{count}} finding(s)",
+      "tools": "Tools ({{count}})",
+      "flagged": "flagged"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "Connection",
+        "auth": "Auth",
+        "scan": "Health & Scan",
+        "review": "Review"
+      },
+      "displayName": "Display name",
+      "displayNamePlaceholder": "My tools server",
+      "url": "Server URL (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "Authentication",
+      "authNone": "None",
+      "authBearer": "Bearer token",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "No authentication — this server is open. Continue to register and scan it.",
+      "bearerLabel": "Bearer token (sealed in the vault; never shown again)",
+      "bearerPlaceholder": "paste token",
+      "authzEndpoint": "Authorization endpoint",
+      "tokenEndpoint": "Token endpoint",
+      "clientId": "Client ID",
+      "scopes": "Scopes (space-separated)",
+      "registering": "Registering…",
+      "registerScan": "Register & scan",
+      "statusLabel": "Status:",
+      "connectOauth": "Connect with OAuth →",
+      "runScan": "Run health & scan",
+      "refresh": "Refresh",
+      "continue": "Continue",
+      "authKind": "auth: {{kind}}",
+      "enable": "Enable for my sessions",
+      "done": "Done"
+    }
+  },
+  "commands": {
+    "title": "Slash commands",
+    "description": "Type <code>/name</code> in chat to expand a template. Use <code>{{args}}</code> or <code>{{key}}</code> for arguments.",
+    "namePlaceholder": "name (e.g. plan-scene)",
+    "templatePlaceholder": "Template: Plan a scene about {{topic}}…",
+    "empty": "No commands yet."
+  },
+  "hooks": {
+    "title": "Hooks",
+    "description": "Declarative rules that fire at agent-loop seams. No code — just an event, an optional tool match, and an action.",
+    "matchPlaceholder": "tool match (e.g. glossary_delete_*)",
+    "textPlaceholder": "text to inject / annotate",
+    "empty": "No hooks yet."
+  },
+  "subagents": {
+    "title": "Subagents",
+    "description": "A named persona the agent can delegate a bounded sub-task to via <code>run_subagent</code>. It runs in an isolated turn with ONLY its scoped tools. Leave the scope empty for a pure reasoning/summarize persona.",
+    "namePlaceholder": "name (e.g. lore-scout)",
+    "scopePlaceholder": "tool scope: glossary_*, kg_*",
+    "modelPlaceholder": "model (optional, user_model id)",
+    "promptPlaceholder": "System prompt — who this persona is and how it works…",
+    "create": "Create subagent",
+    "empty": "No subagents yet.",
+    "reasoningOnly": "reasoning-only (no tools)",
+    "modelPinned": "model pinned"
+  },
+  "plugins": {
+    "description": "A plugin bundles skills, commands & hooks — export to share, import to install.",
+    "importing": "Importing…",
+    "import": "Import bundle",
+    "invalidJson": "That file is not valid JSON.",
+    "notBundle": "Not a LoreWeave bundle (missing manifest.name).",
+    "empty": "No plugins yet. Import a bundle to install one.",
+    "export": "Export"
+  },
+  "proposals": {
+    "status": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "expired": "Expired",
+      "all": "All"
+    },
+    "total": "{{count}} total",
+    "empty": "No proposals. Skills the agent proposes appear here for your approval.",
+    "approve": "Approve",
+    "reject": "Reject",
+    "reason": "Reason: {{reason}}"
+  },
+  "activity": {
+    "title": "Activity log",
+    "allKinds": "All kinds",
+    "range": {
+      "all": "All time",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days"
+    },
+    "empty": "No activity in this range.",
+    "secondsAgo": "{{count}}s ago",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago"
+  },
+  "ingest": {
+    "title": "Registry sources (admin)",
+    "description": "Curate the System catalog from the official MCP Registry. verification ≠ safety — every approval re-runs the SSRF guard + supply-chain scan before it federates.",
+    "all": "All",
+    "pulling": "Pulling…",
+    "pull": "Pull registry",
+    "pullResult": "Pulled: fetched {{fetched}} · new {{new}} · updated {{updated}} · no-remote {{skipped}}",
+    "truncated": "· partial (truncated)",
+    "empty": "No entries in this view. Pull the registry to populate the queue.",
+    "approve": "Approve",
+    "reject": "Reject"
+  }
+}

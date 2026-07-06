@@ -20,6 +20,13 @@ export interface PlanArtifact {
   artifact_id: string;
 }
 
+// D-PLANFORGE-ARC-PICKER: the spec's own arcs, {id, title} — lets Compile offer a
+// picker instead of a bare arc_id text box a writer has no way to fill in correctly.
+export interface PlanArc {
+  id: string;
+  title: string;
+}
+
 // GET /runs/{runId} — the canonical run detail. `active_job_id`/`job_status` drive the poll:
 // while a job is pending|running the FE re-fetches; on terminal it stops.
 export interface PlanRunDetail {
@@ -33,6 +40,7 @@ export interface PlanRunDetail {
   job_status: string | null; // pending | running | completed | failed | null (rules → no job)
   error_detail: string | null;
   checkpoint_state: Record<string, unknown> | null;
+  arcs: PlanArc[]; // [] before a spec exists yet — never missing, so the FE never has to guess
   artifacts: PlanArtifact[];
   created_at: string;
   updated_at: string;
@@ -85,7 +93,7 @@ export type PlanInterpretation = Record<string, unknown>;
 // POST /runs/{runId}/compile
 export interface PlanCompileResult {
   package: Record<string, unknown>;
-  pipeline_job_id: string;
+  pipeline_job_id: string | null;
   work_id: string;
 }
 
@@ -123,4 +131,56 @@ export function isRunPolling(detail: Pick<PlanRunDetail, 'active_job_id' | 'job_
   if (!detail.active_job_id) return false;
   const s = detail.job_status;
   return s === 'pending' || s === 'running';
+}
+
+// ── Auto-bootstrap gate (M4, docs/specs/2026-07-06-planforge-auto-bootstrap.md §6) ──
+// propose -> record -> approve -> apply: the LLM/deterministic diff runs ONCE (propose),
+// a human reviews + approves, apply is a separate deterministic replay. Never re-propose
+// on retry — the FE must not call propose() again just because apply() is being retried.
+export type BootstrapStatus = 'pending' | 'approved' | 'rejected' | 'applying' | 'applied' | 'failed';
+
+export interface BootstrapNewChapter {
+  event_id: string;
+  title: string;
+  ordinal: number | null;
+  drafting_guide?: string; // M3 — a plain-text scene/beat synopsis, when a pipeline job supplied one
+}
+
+export interface BootstrapNewGlossaryEntity {
+  name: string;
+  kind_code: string; // 'character' | 'concept' | … (open — mirrors glossary's own kind codes)
+  attributes: Record<string, unknown>;
+}
+
+export interface BootstrapDiff {
+  new_chapters: BootstrapNewChapter[];
+  new_glossary_entities: BootstrapNewGlossaryEntity[];
+}
+
+// applied_results is keyed by event_id (chapters) or `glossary:{kind_code}:{name}` (entities) —
+// the FE never constructs these keys itself, only reads them back to show "done" state.
+export interface BootstrapAppliedChapterResult {
+  chapter_id: string;
+  title: string;
+  drafting_guide?: string;
+}
+export interface BootstrapAppliedGlossaryResult {
+  entity_id: string;
+  name: string;
+  kind_code: string;
+  status: string; // 'created' | 'updated' | 'skipped'
+}
+export type BootstrapAppliedResult = BootstrapAppliedChapterResult | BootstrapAppliedGlossaryResult;
+
+export interface BootstrapProposal {
+  id: string;
+  run_id: string;
+  book_id: string;
+  owner_user_id: string;
+  status: BootstrapStatus;
+  diff: BootstrapDiff;
+  applied_results: Record<string, BootstrapAppliedResult>;
+  error_detail: string | null;
+  created_at: string;
+  updated_at: string;
 }

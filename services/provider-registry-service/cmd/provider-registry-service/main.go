@@ -20,7 +20,9 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "provider-registry-service"))
+	// P2·A1 — shared JSON slog logger that injects otel_trace_id from the active
+	// span on ctx-carrying log calls (slog.*Context). Replaces the bare SetDefault.
+	observability.SetupLogging("provider-registry-service")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -81,6 +83,12 @@ func main() {
 		notifier = n
 		slog.Info("rabbitmq notifier connected", "exchange", "loreweave.events")
 		defer func() { _ = notifier.Close() }()
+	} else {
+		// P2·C — NoopNotifier silently drops every terminal event. That is fine for a
+		// broker-less dev run, but in a real deployment it means users never get their
+		// "job completed/failed" notifications — a misconfiguration worth surfacing
+		// loudly ONCE at startup rather than discovering via missing notifications.
+		slog.Warn("RABBITMQ_URL unset — terminal-event notifications DISABLED (NoopNotifier); users will not receive job-completion notifications")
 	}
 
 	// Phase 5e-β.2 — bootstrap audio cache for audio_gen URL mode.

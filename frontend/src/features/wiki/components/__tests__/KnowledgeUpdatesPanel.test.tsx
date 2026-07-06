@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { StudioHostProvider } from '@/features/studio/host/StudioHostProvider';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -181,5 +182,24 @@ describe('KnowledgeUpdatesPanel', () => {
     });
     render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
     expect(screen.queryByTestId('staleness-diff-toggle')).toBeNull();
+  });
+
+  // 15_wiki_panels.md B4 (DOCK-7) — inside the studio, the jump must not <Link> the whole app
+  // away from the mounted dock layout; it should route through followStudioLink instead.
+  it('inside the studio, the view-source jump is a button that resolves via followStudioLink, not a <Link>', () => {
+    const onClose = vi.fn();
+    useWikiStalenessMock.mockReturnValue({
+      ...baseHook(),
+      rows: [row({ staleness_id: 's1', reason_code: 'entity_changed', source_ref: { source_type: 'entity', source_id: 'e9' } })],
+    });
+    render(
+      <StudioHostProvider bookId="b">
+        <KnowledgeUpdatesPanel bookId="b" open onClose={onClose} onRegenerate={() => {}} />
+      </StudioHostProvider>,
+    );
+    const jump = screen.getByTestId('staleness-source-jump');
+    expect(jump.tagName).toBe('BUTTON');
+    expect(() => fireEvent.click(jump)).not.toThrow();
+    expect(onClose).toHaveBeenCalled();
   });
 });

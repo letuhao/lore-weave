@@ -1,0 +1,375 @@
+{
+  "focus": {
+    "toggle": "Fokus-Modus",
+    "continuity": "Kontinuität ✓",
+    "hint": "✦ Tippe auf eine Zeile zur Orientierung"
+  },
+  "saved": "Kapitel gespeichert",
+  "no_content": "Keine Inhalte zum Übersetzen",
+  "translation_failed": "Übersetzung fehlgeschlagen",
+  "translated_blocks": "{{count}} Blöcke übersetzt",
+  "text_translation_received": "Textübersetzung empfangen — Block-Modus empfohlen",
+  "breadcrumb": {
+    "workspace": "Workspace",
+    "book": "Buch",
+    "chapter": "Kapitel"
+  },
+  "prev_chapter": "Vorheriges Kapitel",
+  "next_chapter": "Nächstes Kapitel",
+  "mode": {
+    "classic": "Klassisch",
+    "classic_title": "Klassischer Modus — Fokussiertes Schreiben",
+    "ai": "KI",
+    "ai_title": "KI-Assistenten-Modus — Voller Funktionsumfang"
+  },
+  "workmode": {
+    "write": "Schreiben",
+    "write_desc": "Das Manuskript bearbeiten",
+    "translate": "Übersetzen",
+    "translate_desc": "Versionen, vergleichen & übersetzen",
+    "read": "Lesen",
+    "read_desc": "Reader öffnen (TTS, Themes)",
+    "compose": "Komponieren",
+    "compose_desc": "KI-Co-Writer Studio"
+  },
+  "grammar_title": "Grammatik- & Rechtschreibprüfung umschalten (LanguageTool)",
+  "translate_title": "Inhalt mit KI übersetzen (Block-Modus)",
+  "translating": "Übersetzung läuft...",
+  "translate": "Übersetzen",
+  "view_translations": "Übersetzungen",
+  "view_translations_title": "Gespeicherte Übersetzungsversionen anzeigen (Sprachen, Verlauf, Side-by-Side-Vergleich)",
+  "toggle_source": "Quell-Panel umschalten",
+  "toggle_history": "Verlauf / KI-Panel umschalten",
+  "unsaved": "Nicht gespeichert",
+  "saved_badge": "Gespeichert",
+  "mobile": {
+    "editor": "Editor",
+    "studio": "Studio",
+    "history": "Verlauf",
+    "nav": "Editor-Bereiche"
+  },
+  "discard_title": "Alle ungespeicherten Änderungen verwerfen",
+  "discard": "Verwerfen",
+  "save": "Speichern",
+  "tabs": {
+    "chapters": "Kapitel",
+    "original": "Original",
+    "glossary": "Glossar",
+    "outline": "Gliederung"
+  },
+  "chapter_count": "{{count}} Kapitel",
+  "chapter_count_other": "{{count}} Kapitel",
+  "original_readonly": "Originaltext hochgeladen — schreibgeschützt",
+  "no_original": "Keine Originalquelle — dieses Kapitel wurde direkt im Editor erstellt (keine Datei importiert).",
+  "title_placeholder": "Kapitel-Titel",
+  "chars": "{{n}} Zeichen",
+  "words": "{{n}} Wörter",
+  "paragraphs": "{{count}} Absatz",
+  "paragraphs_other": "{{count}} Absätze",
+  "save_note_placeholder": "Notiz speichern (optional) — z. B. „Rückblende hinzugefügt\"",
+  "history": "Verlauf",
+  "ai_chat": "KI-Chat",
+  "coming_soon": "Demnächst verfügbar",
+  "connected": "Verbunden",
+  "left_panel": "Linkes Panel",
+  "right_panel": "Rechtes Panel",
+  "discard_confirm": {
+    "title": "Änderungen verwerfen?",
+    "desc": "Alle ungespeicherten Änderungen gehen unwiderruflich verloren. Dies kann nicht rückgängig gemacht werden.",
+    "confirm": "Änderungen verwerfen",
+    "cancel": "Weiter bearbeiten"
+  },
+  "toolbar": {
+    "paragraph": "Absatz",
+    "h1": "Überschrift 1",
+    "h2": "Überschrift 2",
+    "h3": "Überschrift 3",
+    "bold": "Fett (Strg+B)",
+    "italic": "Kursiv (Strg+I)",
+    "strike": "Durchgestrichen",
+    "underline": "Unterstrichen (Strg+U)",
+    "inline_code": "Inline-Code",
+    "link": "Link",
+    "url_prompt": "URL:",
+    "highlight": "Markieren (Strg+Umschalt+H)",
+    "subscript": "Tiefgestellt",
+    "superscript": "Hochgestellt",
+    "bullet_list": "Aufzählungsliste",
+    "ordered_list": "Nummerierte Liste",
+    "blockquote": "Zitat",
+    "insert_image": "Bild einfügen",
+    "insert_video": "Video einfügen",
+    "insert_audio": "Audio einfügen",
+    "code_block": "Code-Block",
+    "horizontal_rule": "Trennlinie",
+    "undo": "Rückgängig (Strg+Z)",
+    "redo": "Wiederholen (Strg+Umschalt+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "Absatz",
+      "desc": "Fließtext-Block"
+    },
+    "heading1": {
+      "title": "Überschrift 1",
+      "desc": "Große Abschnittsüberschrift"
+    },
+    "heading2": {
+      "title": "Überschrift 2",
+      "desc": "Mittlere Abschnittsüberschrift"
+    },
+    "heading3": {
+      "title": "Überschrift 3",
+      "desc": "Kleine Abschnittsüberschrift"
+    },
+    "bullet": {
+      "title": "Aufzählungsliste",
+      "desc": "Ungeordnete Liste"
+    },
+    "numbered": {
+      "title": "Nummerierte Liste",
+      "desc": "Geordnete Liste"
+    },
+    "quote": {
+      "title": "Zitat",
+      "desc": "Blockzitat"
+    },
+    "image": {
+      "title": "Bild",
+      "desc": "Hochladen, einfügen oder per KI generieren"
+    },
+    "video": {
+      "title": "Video",
+      "desc": "Videodatei hochladen"
+    },
+    "audio": {
+      "title": "Audio",
+      "desc": "Audiodatei hochladen"
+    },
+    "code": {
+      "title": "Code-Block",
+      "desc": "Syntax-highlighted Code"
+    },
+    "callout": {
+      "title": "Callout",
+      "desc": "Autorennotiz oder Tipp"
+    },
+    "divider": {
+      "title": "Trennlinie",
+      "desc": "Horizontale Linie"
+    }
+  },
+  "code": {
+    "language_label": "Programmiersprache",
+    "copy": "Code kopieren",
+    "delete": "Code-Block löschen"
+  },
+  "media": {
+    "ai_prompt": "KI-Prompt",
+    "saved": "gespeichert",
+    "empty": "leer",
+    "placeholder": "Beschreibe dieses Medium für den KI-Kontext und die Generierung...",
+    "stored_note": "Wird mit dem Medium für den KI-Kontext und die Neugenerierung gespeichert.",
+    "copied": "Kopiert",
+    "copy_prompt": "Prompt kopieren",
+    "regenerate": "Neu generieren",
+    "generating": "Generierung läuft...",
+    "model_label": "KI-Modell"
+  },
+  "image": {
+    "err_type": "Nicht unterstützter Typ: {{type}}. Verwende PNG, JPG, GIF oder WebP.",
+    "err_size": "Datei zu groß: {{size}} MB. Max. 10 MB.",
+    "upload_unavailable": "Upload nicht verfügbar — speichere zuerst das Kapitel.",
+    "upload_failed": "Upload fehlgeschlagen",
+    "regen_save_first": "Speichere zuerst das Kapitel, um die KI-Generierung zu aktivieren.",
+    "regen_no_model": "Kein KI-Modell konfiguriert. Füge einen Anbieter in den Einstellungen hinzu.",
+    "regen_no_provider": "Kein aktiver KI-Anbieter. Konfiguriere einen unter Einstellungen → Anbieter.",
+    "regen_failed": "Generierung fehlgeschlagen",
+    "default_title": "Bild",
+    "version_history": "Versionsverlauf",
+    "copy_filename": "Dateinamen kopieren",
+    "copy": "Kopieren",
+    "ai_mode": "KI-Modus",
+    "replace": "Ersetzen",
+    "replace_title": "Bild ersetzen",
+    "delete_block": "Block löschen",
+    "delete_image_block": "Bild-Block löschen",
+    "uploading": "Upload läuft... {{pct}}%",
+    "drop_here": "Bild hier ablegen",
+    "drop_hint": "Bild hierher ziehen, zum Durchsuchen klicken oder Strg+V",
+    "formats": "PNG, JPG, GIF, WebP — Max. 10 MB",
+    "width_title": "Breite: {{width}}%",
+    "caption_placeholder": "Bildunterschrift hinzufügen...",
+    "caption_aria": "Bildunterschrift",
+    "alt_text": "Alt-Text",
+    "alt_set": "festlegen",
+    "alt_placeholder": "Beschreiben Sie dieses Bild für Screenreader und den EPUB-Export...",
+    "alt_aria": "Alt-Text des Bildes",
+    "alt_note": "Wird von Screenreadern, der Suche und dem EPUB-Export verwendet. Unterscheidet sich von der Bildunterschrift."
+  },
+  "video": {
+    "err_type": "Nicht unterstützter Typ: {{type}}. Verwenden Sie MP4 oder WebM.",
+    "err_size": "Datei zu groß: {{size}} MB. Max. 100 MB.",
+    "upload_unavailable": "Upload nicht verfügbar — speichern Sie zuerst das Kapitel.",
+    "upload_failed": "Upload fehlgeschlagen",
+    "gen_save_first": "Speichern Sie zuerst das Kapitel.",
+    "gen_no_model": "Kein Videogenerierungs-Modell konfiguriert. Fügen Sie eines unter Einstellungen > Anbieter hinzu.",
+    "gen_failed": "Generierung fehlgeschlagen",
+    "default_title": "Video",
+    "version_history": "Versionsverlauf",
+    "copy_filename": "Dateinamen kopieren",
+    "copy": "Kopieren",
+    "ai_mode": "KI-Modus",
+    "replace": "Ersetzen",
+    "replace_title": "Video ersetzen",
+    "delete_block": "Block löschen",
+    "delete_video_block": "Video-Block löschen",
+    "uploading": "Wird hochgeladen... {{pct}}%",
+    "drop_here": "Video hierher ziehen",
+    "drop_hint": "Video hierher ziehen oder zum Durchsuchen klicken",
+    "formats": "MP4, WebM — Max. 100 MB",
+    "width_title": "Breite: {{width}}%",
+    "caption_placeholder": "Untertitel hinzufügen...",
+    "caption_aria": "Video-Untertitel",
+    "alt_text": "Alt-Text",
+    "alt_set": "festlegen",
+    "alt_placeholder": "Beschreiben Sie dieses Video für Screenreader und den EPUB-Export...",
+    "alt_aria": "Alt-Text des Videos",
+    "alt_note": "Wird von Screenreadern, der Suche und dem EPUB-Export verwendet. Unterscheidet sich von der Bildunterschrift.",
+    "generate": "Generieren"
+  },
+  "audio": {
+    "err_type": "Nicht unterstützter Typ: {{type}}. Verwenden Sie MP3, WAV, OGG, WebM oder M4A.",
+    "err_size": "Datei zu groß: {{size}} MB. Max. 20 MB.",
+    "upload_unavailable": "Upload nicht verfügbar — speichern Sie zuerst das Kapitel.",
+    "upload_failed": "Upload fehlgeschlagen",
+    "default_title": "Audio",
+    "ai_mode": "KI-Modus",
+    "play": "Abspielen",
+    "pause": "Pause",
+    "replace_title": "Audio ersetzen",
+    "delete_audio_block": "Audio-Block löschen",
+    "uploading": "Wird hochgeladen... {{pct}}%",
+    "drop_here": "Audio hierher ziehen",
+    "drop_hint": "Audiodatei hierher ziehen oder zum Durchsuchen klicken",
+    "formats": "MP3, WAV, OGG, WebM, M4A — Max. 20 MB",
+    "subtitle_placeholder": "Untertitel hinzufügen...",
+    "subtitle_aria": "Audio-Untertitel"
+  },
+  "callout": {
+    "type": {
+      "note": "Hinweis",
+      "warning": "Warnung",
+      "tip": "Tipp",
+      "danger": "Gefahr"
+    },
+    "title": "{{type}} — zum Ändern des Typs klicken"
+  },
+  "revision": {
+    "restored": "Revision wiederhergestellt",
+    "header": "Versionsverlauf · {{count}}",
+    "empty": "Noch keine Revisionen. Speichern, um eine zu erstellen.",
+    "current": "Aktuell",
+    "view": "Ansehen",
+    "restore": "Wiederherstellen",
+    "confirm_title": "Diese Revision wiederherstellen?",
+    "confirm_desc": "Dies wird Ihren aktuellen Entwurf mit dieser älteren Version überschreiben und einen neuen Revisionseintrag erstellen. Dies kann nicht rückgängig gemacht werden.",
+    "close_preview": "Vorschau schließen",
+    "preview": "Revisionsvorschau",
+    "restore_version": "Diese Version wiederherstellen",
+    "empty_revision": "Leere Revision."
+  },
+  "source": {
+    "header": "Block-JSON — Nur-Lese-Ansicht der Kapitelstruktur",
+    "copied": "Kopiert",
+    "copy": "JSON kopieren"
+  },
+  "version": {
+    "loading": "Versionsverlauf wird geladen...",
+    "close": "Schließen",
+    "title": "Versionsverlauf",
+    "block_crumb": "Block",
+    "comparing": "Vergleich v{{old}} → v{{new}}",
+    "previous": "Vorherige",
+    "old": "alt",
+    "no_media": "Keine Medien",
+    "current": "Aktuell",
+    "selected": "Ausgewählt",
+    "current_tag": "aktuell",
+    "no_media_version": "Keine Medien in dieser Version",
+    "no_versions": "Noch keine Versionen",
+    "version_count": "{{count}} Version",
+    "version_count_other": "{{count}} Versionen",
+    "total": "{{size}} insgesamt",
+    "delete_confirm": "Version {{version}} löschen? Dies kann nicht rückgängig gemacht werden.",
+    "versions": "Versionen",
+    "restore_version": "v{{version}} wiederherstellen",
+    "timeago": {
+      "just_now": "gerade eben",
+      "mins": "vor {{n}} Min.",
+      "hours": "vor {{n}} Std.",
+      "yesterday": "Gestern",
+      "days": "vor {{n}} Tagen"
+    },
+    "action": {
+      "upload": "Medien hochgeladen",
+      "regenerate": "Neu generiert mit verfeinertem Prompt",
+      "caption_edit": "Bildunterschrift aktualisiert",
+      "prompt_edit": "Prompt aktualisiert"
+    },
+    "diff_identical": "Prompts sind identisch",
+    "diff_title": "KI-Prompt-Differenz ({{old}} → {{new}})",
+    "diff_previous": "Vorherige",
+    "diff_current": "Aktuelle"
+  },
+  "media_guard": {
+    "protected": "Medienblöcke sind im Classic-Modus geschützt. Wechseln Sie in den KI-Modus, um sie zu bearbeiten oder zu löschen."
+  },
+  "publish": {
+    "publish": "Veröffentlichen",
+    "republish": "Neu veröffentlichen",
+    "unpublish": "Nicht mehr veröffentlichen",
+    "draft_badge": "Entwurf",
+    "published_badge": "Veröffentlicht",
+    "confirm_title": "Kapitel nicht mehr veröffentlichen?",
+    "confirm_body": "Dies entfernt das Kapitel aus dem Kanon — das extrahierte Wissen und die Textpassagen werden zurückgezogen, bis Sie es erneut veröffentlichen.",
+    "published_toast": "Kapitel veröffentlicht",
+    "unpublished_toast": "Kapitel nicht mehr veröffentlicht",
+    "conflict_toast": "Entwurf wurde seit dem Öffnen geändert — bitte vor dem Veröffentlichen neu laden.",
+    "empty_toast": "Dieses Kapitel enthält keine Inhalte zum Veröffentlichen — schreiben Sie zuerst etwas.",
+    "save_first": "Vor dem Veröffentlichen speichern",
+    "gate_pending": "{{pending}} von {{total}} Szenen noch nicht fertig",
+    "gate_no_scenes": "Erstellen und vervollständigen Sie mindestens eine Szene, um zu veröffentlichen",
+    "gate_canon_blocked": "ein ungelöster Kanon-Widerspruch in {{count}} Szene(n)",
+    "gate_unchecked": "Kanon in {{count}} Szene(n) nicht verifiziert",
+    "gate_unchecked_hint": "Diese Szenen enthalten Charaktere, die überprüft werden müssen, haben aber keine feste Lesereihenfolge, daher wurde der Kanon nicht verifiziert. Das Veröffentlichen ist erlaubt – überprüfe sie bei Bedarf."
+  },
+  "compare": {
+    "open": "Vergleichen",
+    "title": "Revisionen vergleichen",
+    "back": "Zurück zum Editor",
+    "left": "Linke Revision",
+    "right": "Rechte Revision",
+    "side_by_side": "Nebeneinander",
+    "inline": "Inline",
+    "no_revisions": "Keine Revisionen",
+    "need_two": "Dieses Kapitel benötigt mindestens zwei gespeicherte Revisionen, um sie zu vergleichen.",
+    "loading": "Lädt…",
+    "diffing": "Differenz wird berechnet…",
+    "error": "Vergleich konnte nicht geladen werden.",
+    "truncated": "Diese Revisionen sind sehr groß – es wird ein vollständiger Ersatz statt einer detaillierten Differenz angezeigt.",
+    "same": "Beide Seiten sind identisch – keine Unterschiede.",
+    "load_more": "Mehr laden ({{loaded}}/{{total}})",
+    "load_more_hint": "Ältere Revisionen im Picker laden"
+  },
+  "checkpoint": {
+    "header": "KI-Bearbeitungs-Checkpoints",
+    "insert": "Eingefügt",
+    "polish": "Poliert",
+    "restore": "Wiederherstellen",
+    "restored": "Wiederhergestellt auf den Stand vor der KI-Bearbeitung",
+    "no_restore": "Keine frühere Version zum Wiederherstellen verfügbar",
+    "confirm_title": "Auf den Stand vor dieser KI-Bearbeitung zurücksetzen?",
+    "confirm_desc": "Der aktuelle Entwurf wird zuerst als Snapshot gesichert, sodass dieser Vorgang über den Versionsverlauf rückgängig gemacht werden kann."
+  }
+}

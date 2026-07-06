@@ -97,6 +97,11 @@ describe('summarizeRack', () => {
     const s = summarizeRack({ ...baseSurface, injected_skills: [] }, [], [], ['universal', 'other']);
     expect(s.skills).toBe(0);
   });
+
+  it('review-impl: a pinned legacy tool counts toward the fallback tool total (no frame yet)', () => {
+    const s = summarizeRack(null, ['glossary_search'], [], [], ['glossary_book_create']);
+    expect(s.tools).toBe(2); // 1 enabled + 1 pinned-legacy, not just the enabled pin
+  });
 });
 
 describe('AgentContextRack grouping', () => {
@@ -150,6 +155,69 @@ describe('AgentContextRack grouping', () => {
     expect(onRemoveTool).toHaveBeenCalledWith('glossary_search');
     const discovered = screen.getByTestId('agent-rack-chip-tool-memory_search');
     expect(discovered.querySelector('button')).toBeNull();
+  });
+});
+
+describe('AgentContextRack pinned legacy tools (CAT-4 Part D)', () => {
+  it('renders a distinct chip per pinned legacy tool, separate from the normal groups', () => {
+    render(
+      <AgentContextRack
+        {...rackProps}
+        enabledTools={[]}
+        activatedTools={[]}
+        pinnedLegacyTools={['glossary_book_create']}
+        surface={null}
+      />,
+    );
+    expect(screen.getByTestId('agent-rack-legacy-glossary_book_create')).toBeInTheDocument();
+  });
+
+  it('a legacy chip has its own remove callback, independent of onRemoveTool', () => {
+    const onRemoveTool = vi.fn();
+    const onRemoveLegacyTool = vi.fn();
+    render(
+      <AgentContextRack
+        {...rackProps}
+        onRemoveTool={onRemoveTool}
+        onRemoveLegacyTool={onRemoveLegacyTool}
+        enabledTools={[]}
+        activatedTools={[]}
+        pinnedLegacyTools={['glossary_book_create']}
+        surface={null}
+      />,
+    );
+    const chip = screen.getByTestId('agent-rack-legacy-glossary_book_create');
+    fireEvent.click(chip.querySelector('button')!);
+    expect(onRemoveLegacyTool).toHaveBeenCalledWith('glossary_book_create');
+    expect(onRemoveTool).not.toHaveBeenCalled();
+  });
+
+  it('no remove button when onRemoveLegacyTool is not supplied', () => {
+    render(
+      <AgentContextRack
+        {...rackProps}
+        enabledTools={[]}
+        activatedTools={[]}
+        pinnedLegacyTools={['glossary_book_create']}
+        surface={null}
+      />,
+    );
+    const chip = screen.getByTestId('agent-rack-legacy-glossary_book_create');
+    expect(chip.querySelector('button')).toBeNull();
+  });
+
+  it('a pinned legacy tool alone counts as "has pins" (enables the ⋯ menu)', () => {
+    render(
+      <AgentContextRack
+        {...rackProps}
+        enabledTools={[]}
+        activatedTools={[]}
+        pinnedLegacyTools={['glossary_book_create']}
+        surface={null}
+      />,
+    );
+    const menuButton = screen.getByText('⋯');
+    expect(menuButton).not.toBeDisabled();
   });
 });
 

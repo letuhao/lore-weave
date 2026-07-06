@@ -173,7 +173,8 @@
     "copied": "已複製",
     "copy_prompt": "複製提示",
     "regenerate": "重新生成",
-    "generating": "生成中..."
+    "generating": "生成中...",
+    "model_label": "AI 模型"
   },
   "image": {
     "err_type": "不支援的類型：{{type}}。請使用 PNG、JPG、GIF 或 WebP。",

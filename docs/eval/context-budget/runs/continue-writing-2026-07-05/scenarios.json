@@ -1,0 +1,66 @@
+{
+  "_doc": "Measurement-phase scenario set for the CONTINUE-WRITING evaluation over the public-domain Dracula book (book_id 019eeb09, 4 published chapters of Harker's Journal + draft Escape chapters; KG project 019f2be0; 100 glossary entities). Fuses the existing recall/continuity probes with a realistic multi-turn continue-writing arc so we measure (a) answer QUALITY on a real generative task and (b) the CONTEXT frame per turn against the Context Budget Law criteria. Ground-truth notes are for the BLIND judge only. Bram Stoker's Dracula facts (ch1-4): Jonathan Harker = English solicitor's clerk sent to Transylvania to finalize Count Dracula's purchase of a London estate (Carfax); he realizes he is a prisoner in the castle; the Count scales the sheer wall face-down like a lizard; three vampire women in the castle try to feed on Harker until the Count stops them ('This man belongs to me'); Harker works for the firm of Peter Hawkins of Exeter; Harker is engaged to Mina Murray.",
+  "scenarios": [
+    {
+      "id": "smalltalk_capabilities",
+      "tag": "no_lore_smalltalk",
+      "needs_lore": false,
+      "ground_truth": "A capabilities/help answer. No book lore should be asserted. Turn should be CHEAP (no over-fetch of memory/graph). With T5 intent-gate ON this must take the LIGHT path.",
+      "turns": [
+        "What can you help me with in this writing workspace?"
+      ]
+    },
+    {
+      "id": "status_plan_op",
+      "tag": "status_op",
+      "needs_lore": false,
+      "ground_truth": "A no-lore planning op. The agent should give a brief 3-step drafting plan without pulling the whole outline / full lore dump. Cheap turn expected (T5 light path). Must NOT confabulate Dracula facts unprompted.",
+      "turns": [
+        "I'm about to start writing. Give me a brief 3-step plan to draft a chapter."
+      ]
+    },
+    {
+      "id": "lore_recall_primary",
+      "tag": "lore_recall",
+      "needs_lore": true,
+      "ground_truth": "The agent should retrieve the protagonist Jonathan Harker (English solicitor's clerk, sent to Count Dracula's castle in Transylvania) from the bound glossary/KG and state facts consistent with the DB and ch1-4. A confabulated character/fact caps correctness at <=2.",
+      "turns": [
+        "Who is the main character of this book, and what do we know about them so far?"
+      ]
+    },
+    {
+      "id": "continue_writing_dracula",
+      "tag": "continue_writing",
+      "needs_lore": true,
+      "ground_truth": "The heart of the measurement: a real continue-writing arc from the end of chapter 4 (Harker trapped in Castle Dracula, desperate to escape). Judge on: (1) craft_quality of the generated prose (first-person journal voice, Gothic dread, specificity, not generic filler); (2) collaborative_competence + cross_turn_coherence (revision keeps the same character/voice; builds on prior turns); (3) grounding/correctness (the three vampire women threat and the Count's nature are used consistently; the ch1 red-eyed driver / Count's wall-climbing may be referenced accurately); (4) retention across the arc (final turn must recall the firm 'Peter Hawkins of Exeter' or Harker's fiancee 'Mina', established early). Any confident FALSE lore fact (wrong character, invented event contradicting ch1-4) is a critical_confabulation.",
+      "turns": [
+        "I'm continuing this Dracula manuscript. Remind me where Jonathan Harker is at the end of chapter 4 and what his predicament is.",
+        "Write the opening ~180 words of the next scene: Harker attempts to climb down the castle wall to escape. Keep his first-person journal voice and the Gothic dread.",
+        "Make it darker and more claustrophobic — emphasize the fear that the Count may be watching from the shadows. Keep Harker's voice and everything already written.",
+        "Quick check before I continue: what did the three women in the castle want from Harker, and does that threat still loom over this escape?",
+        "Mark this as a working draft and give me a one-line summary of the scene so far.",
+        "Continue the scene: Harker hears something stir on the stones below him. If it fits, echo the earlier detail about how the Count moves along the castle wall.",
+        "One more thing for continuity — what is the name of the firm Harker works for, mentioned back in the early chapters?"
+      ]
+    },
+    {
+      "id": "continuity_darker_keep_character",
+      "tag": "continuity",
+      "needs_lore": true,
+      "ground_truth": "Turn 1 recalls the protagonist's core conflict (trapped, must escape a supernatural captor). Turn 2 is a style op that must KEEP the turn-1 facts (the gating safety-net: a gated turn must not drop already-loaded lore). Turn-2 reply should still reference Jonathan Harker consistently.",
+      "turns": [
+        "Tell me about the main character's core conflict in this book.",
+        "Now make that conflict feel darker and higher-stakes — keep the same character."
+      ]
+    },
+    {
+      "id": "cross_chapter_change",
+      "tag": "cross_chapter",
+      "needs_lore": true,
+      "ground_truth": "Recall spanning chapters (T4/T6). The agent should describe how Harker changes from the confident traveller of chapter 1 to the trapped, dread-filled prisoner of chapter 4, grounded in retrieved lore, without inventing events.",
+      "turns": [
+        "How does Jonathan Harker change from the beginning of the book to the later chapters?"
+      ]
+    }
+  ]
+}

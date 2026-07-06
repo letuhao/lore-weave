@@ -7,6 +7,7 @@ import { providerApi } from '@/features/settings/api';
 import { booksApi, type Book } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
 import type { GlossaryEntity } from '@/features/glossary/types';
+import { chatApi } from '../api';
 import { useSessions } from '../hooks/useSessions';
 import { buildContextBlock, tiptapDocToText } from '../context/formatContext';
 import { onSendToChat } from '../context/sendToChat';
@@ -104,14 +105,37 @@ export function ChatSessionProvider({ children, embedded = false }: ChatSessionP
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
 
   // Restore session from URL param (page mode only — embedded hosts inject
-  // the active session themselves via selectSession).
+  // the active session themselves via selectSession). Prefer the already-loaded
+  // list; if the session is OUTSIDE the loaded window (a deep-link to an old
+  // session past the first page, or a fresh 0-message session that sorts to the
+  // bottom by last-activity), fetch it individually once the list settles — so a
+  // `/chat/{id}` link always activates instead of silently showing nothing.
+  // (functional setState → no dependency on activeSession, so no re-fetch loop.)
   useEffect(() => {
-    if (embedded || !urlSessionId || sessions.length === 0) return;
+    if (embedded || !urlSessionId) return;
     const match = sessions.find((s) => s.session_id === urlSessionId);
-    if (match && match.session_id !== activeSession?.session_id) {
-      setActiveSession(match);
+    if (match) {
+      setActiveSession((prev) => (prev?.session_id === match.session_id ? prev : match));
+      return;
     }
-  }, [embedded, urlSessionId, sessions]);
+    // not in the loaded window — fall back to a direct fetch (once the list has
+    // finished loading, so we don't fetch prematurely while it's still arriving).
+    if (!accessToken || sessionsLoading) return;
+    let ignore = false;
+    void chatApi
+      .getSession(accessToken, urlSessionId)
+      .then((s) => {
+        if (!ignore && s) {
+          setActiveSession((prev) => (prev?.session_id === s.session_id ? prev : s));
+        }
+      })
+      .catch(() => {
+        /* 404 / not owned → leave the empty state; the URL just doesn't resolve */
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [embedded, urlSessionId, sessions, accessToken, sessionsLoading]);
 
   const selectSession = useCallback((session: ChatSession | null) => {
     setActiveSession(session);

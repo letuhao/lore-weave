@@ -73,6 +73,59 @@ describe('resolveStudioLink', () => {
     expect(resolveStudioLink('//usage', ctx).kind).toBe('blocked');
   });
 
+  it('14_kg_panels.md — the global KG panel paths → openPanel with the right kg-* id', () => {
+    for (const [path, panelId] of [
+      ['/knowledge', 'knowledge'],
+      ['/knowledge/projects', 'knowledge'],
+      ['/knowledge/jobs', 'kg-jobs'],
+      ['/knowledge/global', 'kg-bio'],
+      ['/knowledge/entities', 'kg-entities'],
+      ['/knowledge/timeline', 'kg-timeline'],
+      ['/knowledge/raw', 'kg-evidence'],
+      ['/knowledge/insights', 'kg-insights'],
+      ['/knowledge/privacy', 'kg-privacy'],
+    ] as const) {
+      const host = fakeHost();
+      runStudio(path, host);
+      expect(host.openPanel).toHaveBeenCalledWith(panelId, { title: `T:${panelId}`, params: undefined });
+    }
+  });
+
+  it('14_kg_panels.md — a project-id-keyed /knowledge/projects/:id/:section path is NOT mapped (ambiguous project identity) — external', () => {
+    expect(resolveStudioLink('/knowledge/projects/proj-9/overview', ctx)).toEqual({
+      kind: 'external', url: '/knowledge/projects/proj-9/overview',
+    });
+  });
+
+  it('same-book glossary page → openPanel(glossary)', () => {
+    const host = fakeHost();
+    runStudio('/books/b1/glossary', host);
+    expect(host.openPanel).toHaveBeenCalledWith('glossary', { title: 'T:glossary', params: undefined });
+  });
+
+  it('other-book glossary page → external (studio is per-book)', () => {
+    expect(resolveStudioLink('/books/OTHER/glossary', ctx)).toEqual({
+      kind: 'external', url: '/books/OTHER/glossary',
+    });
+  });
+
+  it('same-book wiki/enrichment pages → external (no dock panel exists yet for those)', () => {
+    expect(resolveStudioLink('/books/b1/wiki', ctx)).toEqual({ kind: 'external', url: '/books/b1/wiki' });
+    expect(resolveStudioLink('/books/b1/enrichment', ctx)).toEqual({ kind: 'external', url: '/books/b1/enrichment' });
+  });
+
+  it('D-AGENT-MODE-NOTIFY: same-book agent-mode run link → openPanel(agent-mode, {runId})', () => {
+    const host = fakeHost();
+    runStudio('/books/b1/agent-mode/runs/run-9', host);
+    expect(host.openPanel).toHaveBeenCalledWith('agent-mode', { title: 'T:agent-mode', params: { runId: 'run-9' } });
+  });
+
+  it('D-AGENT-MODE-NOTIFY: other-book agent-mode run link → external to that book\'s Studio (no standalone run page)', () => {
+    expect(resolveStudioLink('/books/OTHER/agent-mode/runs/run-9', ctx)).toEqual({
+      kind: 'external', url: '/books/OTHER/studio',
+    });
+  });
+
   it('works without titleFor (panels self-title on mount)', () => {
     const host = fakeHost();
     const r = resolveStudioLink('/usage', { bookId: 'b1' });

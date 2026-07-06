@@ -109,9 +109,15 @@ func (s *Server) getInternalChapterDraftText(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var body []byte
+	// D-KG-SUMMARIES-LIVE-SMOKE — scan the Tiptap draft as jsonb→text, NOT
+	// through ::bytea. `text::bytea` makes Postgres parse the JSON string as a
+	// bytea ESCAPE literal, which errors ("invalid input syntax for type bytea")
+	// on any body containing a backslash escape — a latent 500 that only
+	// surfaced once legacy-chapter summaries began reading the draft as their
+	// text fallback. `body::text` yields the raw JSON string directly.
+	var body string
 	err := s.pool.QueryRow(r.Context(), `
-SELECT cd.body::text::bytea
+SELECT cd.body::text
 FROM chapter_drafts cd
 JOIN chapters c ON c.id = cd.chapter_id
 WHERE cd.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
@@ -125,7 +131,7 @@ WHERE cd.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
 		return
 	}
 
-	text := tiptapJSONToPlainText(body)
+	text := tiptapJSONToPlainText([]byte(body))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id": chapterID,
 		"book_id":    bookID,

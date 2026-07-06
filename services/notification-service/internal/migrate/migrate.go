@@ -35,8 +35,44 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- D-NOTIF-I18N (NOTIF-1): i18n columns so a locale-aware client can render
+-- per-locale from a stable key + interpolation params. title/body remain the
+-- rendered-English FALLBACK for existing consumers (never dropped). Both are
+-- nullable — legacy rows and any producer that doesn't supply a key keep
+-- working with the text fallback only.
+--   message_key    — stable i18n key, e.g. 'notif.llm_job.completed'
+--   message_params — interpolation params, e.g. {"operation":"entity_extraction"}
+-- ALTER ... IF NOT EXISTS is idempotent: fresh DBs (just created above) and
+-- existing DBs both converge to the same shape on every Up().
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_key    TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_params JSONB;
+
+-- P2·C (NOTIF dedup): idempotency key for at-least-once producers. The AMQP
+-- consumer is at-least-once (a broker redelivery after a committed INSERT but
+-- lost ACK would duplicate the row); the key + partial-unique below collapses a
+-- redelivery to ONE row via INSERT ... ON CONFLICT DO NOTHING. For llm_job events
+-- the key is job_id:status. NULL for producers that don't set one (legacy rows,
+-- ad-hoc notifications) — those keep the prior no-dedup behavior (partial index
+-- ignores NULLs, so unlimited NULL-key rows are still allowed).
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedup_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedup
+  ON notifications(user_id, dedup_key) WHERE dedup_key IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_notif_user_unread ON notifications(user_id, created_at DESC) WHERE read_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_notif_user_all ON notifications(user_id, created_at DESC);
+
+-- P2·C (opt-out): per-user, per-category delivery preference. Per-user scope tier
+-- (PK is the scope key user_id) — a user only ever sees/edits their own rows. A
+-- category is delivered by DEFAULT (no row = enabled); a row with enabled=false
+-- suppresses storage+push of that category for that user. Categories validate
+-- against the same category.Allowed SSOT the ingress paths use.
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  user_id    UUID    NOT NULL,
+  category   TEXT    NOT NULL,
+  enabled    BOOLEAN NOT NULL DEFAULT true,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, category)
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

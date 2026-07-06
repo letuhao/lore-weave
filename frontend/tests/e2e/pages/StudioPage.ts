@@ -1,4 +1,4 @@
-import type { Page, Locator } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
 import type { ActivityView } from '../../../src/features/studio/types';
 
 /** Page object for the Writing Studio (v2) frame. */
@@ -36,5 +36,29 @@ export class StudioPage {
     await this.page.goto(`/books/${bookId}/studio`);
     // The activity bar is always present regardless of navigator/collapse state.
     await this.activity('manuscript').waitFor({ state: 'attached' });
+  }
+
+  /** Open a dock panel via the Command Palette (⌘⇧P → search title → Enter), the
+   *  same live path a real user takes. `paletteEntryId` is the registered
+   *  `commandId` (`studio.openPanel.<panelId>`), typed by `useStudioPanel`. */
+  async openPanel(panelId: string, searchTerm: string): Promise<void> {
+    await this.page.keyboard.press('ControlOrMeta+Shift+P');
+    await this.commandPaletteModal.waitFor({ state: 'visible' });
+    await this.paletteInput.fill(searchTerm);
+    const entry = this.page.getByTestId(`palette-entry-studio.openPanel.${panelId}`);
+    await entry.waitFor({ state: 'visible' });
+    await entry.click();
+    await expect(this.commandPaletteModal).toHaveCount(0);
+  }
+
+  /** Close a dock tab by its CURRENT title text — dockview's default tab renders a
+   *  `.dv-default-tab-action` close button (no data-testid; this is dockview's own DOM, not
+   *  ours) inside the `.dv-default-tab` carrying that title. 15_wiki_panels.md's DOCK-10
+   *  /review-impl fix needs this: closing (not just switching away from) a dock tab is a real
+   *  unmount dockview performs, and no existing spec had exercised that path before. */
+  async closePanel(title: string): Promise<void> {
+    const tab = this.page.locator('.dv-default-tab', { hasText: title });
+    await tab.waitFor({ state: 'visible' });
+    await tab.locator('.dv-default-tab-action').click();
   }
 }

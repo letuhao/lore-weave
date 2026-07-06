@@ -3,7 +3,9 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -398,6 +400,97 @@ CREATE TABLE IF NOT EXISTS book_steering (
   UNIQUE (book_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_book_steering_book ON book_steering(book_id, created_at);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Chapter Browser CB3 (word_count) - 2026-07-04
+-- Spec: docs/specs/2026-07-01-writing-studio/15_chapter_browser.md §CB3
+--
+-- word_count is a denormalized, DB-maintained aggregate over a chapter's
+-- chapter_blocks.text_content (multilingual: CJK char-count vs Latin
+-- word-split-count, mirroring computeReadingStats' CJK_REGEX heuristic —
+-- see fn_word_count_for_text below). Kept fresh by a trigger on
+-- chapter_blocks (fn_recompute_chapter_word_count, mirrors the existing
+-- fn_extract_chapter_blocks/trg_extract_chapter_blocks shape — same table,
+-- same "recompute-parent-on-child-write" pattern, not a new mechanism).
+--
+-- NEW rows default 0 (never NULL) — backward compatible with every existing
+-- INSERT into chapters. EXISTING rows also start at 0 until the batched,
+-- marker-gated backfill (backfillWordCounts in migrate.go) runs — a Go loop
+-- (not a single giant UPDATE) so a book with thousands of chapters (real dev
+-- data: up to ~4200/book) never takes one table-locking statement.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS word_count INT NOT NULL DEFAULT 0;
+
+-- One-row-per-step marker (mirrors canon_model_migration) so the batched
+-- backfill runs to completion once, not on every startup. Safe to re-run to
+-- completion if interrupted mid-way (recompute is idempotent — no correctness
+-- risk, only wasted CPU), so no per-batch checkpointing is needed.
+CREATE TABLE IF NOT EXISTS word_count_backfill_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ═══════════════════════════════════════════════════════════════
+-- D-CHAPTER-BLOCKS-STALE-EXTRACTION — 2026-07-05
+--
+-- fn_extract_chapter_blocks read ONLY the client-supplied _text snapshot
+-- (addTextSnapshots, frontend/src/lib/tiptap-utils.ts). Every sibling _text-only
+-- SQL read was swept to union _text else nested standard-tiptap text leaves
+-- (7b9cd4fda), but that sweep missed this WRITE-side trigger — the one thing
+-- word_count, lexical search, and chapter export all actually read
+-- (chapter_blocks), not the raw body. Any chapter saved without a client _text
+-- annotation (import, agent/MCP write, pre-annotation-era save) got
+-- permanently-empty chapter_blocks text_content — invisible until word_count/
+-- Chapter-Browser export made it visible live. Fixed in fn_extract_chapter_blocks
+-- itself (same union); this table gates a ONE-TIME re-extraction backfill
+-- (backfillChapterBlocksExtraction) for chapters whose blocks exist but are
+-- ALL empty under the old logic.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS chapter_blocks_extraction_backfill_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ═══════════════════════════════════════════════════════════════
+-- PDF book import — docs/specs/2026-07-06-pdf-book-import.md
+--
+-- import_jobs gains pages_per_chunk + caption_images (only meaningful when
+-- file_format='pdf'; NULL/false for every pre-existing docx/epub/txt/md job).
+-- chapters gains import_job_id (L9 idempotency safeguard) — a redelivered
+-- outbox event's per-chunk chapter insert is ON CONFLICT DO NOTHING against
+-- (book_id, import_job_id, structural_path), so a worker crash mid-book only
+-- loses the in-flight chunk, not the whole import (spec §6.7). Scoped to the
+-- PDF path only: import_job_id stays NULL for every existing docx/epub/txt/md
+-- chapter, so the partial index touches none of them.
+--
+-- chapter_page_images is a new per-image asset table (spec §4.4): one row per
+-- extracted+deduped embedded image, caption NULL when caption_images=false
+-- (L7) or a per-image vision call degraded (never fails the chunk, §6.4/§6.7).
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS pages_per_chunk INT;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS caption_images BOOLEAN NOT NULL DEFAULT false;
+-- BYOK model choice for the vision op — only set when caption_images=true.
+-- The vision op has no platform default (Provider gateway invariant), so the
+-- caller (FE) must supply an explicit vision-capable model.
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS vision_model_source TEXT;
+ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS vision_model_ref TEXT;
+
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS import_job_id UUID
+  REFERENCES import_jobs(id) ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chapters_unique_import_job_path
+  ON chapters(book_id, import_job_id, structural_path)
+  WHERE import_job_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS chapter_page_images (
+  id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id  UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  page_number INT NOT NULL,
+  storage_key TEXT NOT NULL,
+  caption     TEXT,
+  model_ref   TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_chapter_page_images_chapter ON chapter_page_images(chapter_id);
 `
 
 // WorldsDownSQL is the explicit reversible DDL for the C20 world container.
@@ -423,6 +516,51 @@ DROP INDEX IF EXISTS idx_worlds_owner;
 const rawSearchExtensionSQL = `CREATE EXTENSION IF NOT EXISTS pg_trgm`
 const rawSearchIndexSQL = `CREATE INDEX IF NOT EXISTS idx_chapter_blocks_trgm
   ON chapter_blocks USING gin (text_content gin_trgm_ops)`
+
+// tenantAuditSQL — P2·F append-only tenant-boundary audit. A row is written the
+// FIRST time a caller crosses into a book they do NOT own (a collaborator read, or
+// a denied under-grant / no-grant attempt on an existing book), coalesced to one
+// row per (actor, book, outcome) per window (see api/tenant_audit.go). It records
+// ONLY ids + a coarse outcome enum — never a free-text detail, path, or payload —
+// so there is nothing to scrub (the P2·F "no un-scrubbed field" guarantee is
+// structural). Modeled on auth-service's admin_token_issuance_audit / mcp_call_audit
+// append-only pattern: UUID PK, denormalized owner for post-deletion forensics,
+// outcome CHECK enum, created_at index, REVOKE UPDATE/DELETE. No FK to books: the
+// audit trail must OUTLIVE a deleted book (forensics), same rationale as
+// mcp_call_audit not FK-ing its key_id.
+const tenantAuditSQL = `
+CREATE TABLE IF NOT EXISTS tenant_access_audit (
+  audit_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  actor_id        UUID NOT NULL,                 -- the crossing (non-owner) caller
+  book_id         UUID NOT NULL,                 -- the resource crossed into
+  owner_id        UUID NOT NULL,                 -- the tenant boundary owner (denormalized)
+  outcome         TEXT NOT NULL CHECK (outcome IN ('granted','denied')),
+  coalesce_bucket TIMESTAMPTZ NOT NULL,          -- window start; dedups first-per-window
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- First-per-window coalescing: one row per (actor, book, outcome) per bucket. The
+-- emit does ON CONFLICT DO NOTHING against this, so a collaborator paging chapters
+-- emits at most one 'granted' row per window instead of one per request.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_audit_window
+  ON tenant_access_audit (actor_id, book_id, outcome, coalesce_bucket);
+
+-- Owner-forensics read path: who crossed into my books, newest first.
+CREATE INDEX IF NOT EXISTS idx_tenant_audit_owner_created
+  ON tenant_access_audit (owner_id, created_at DESC);
+
+-- Append-only: REVOKE UPDATE/DELETE so even a compromised app role can't rewrite
+-- the trail. Same dev-stack caveat as auth-service's audit tables — a no-op when
+-- connected as the DB owner (dev); production MUST run book-service under
+-- app_service_role for this to bite.
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE tenant_access_audit FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
+`
 
 // migrationLockKey is a fixed application-defined key for the migration advisory
 // lock (arbitrary 64-bit constant — the ASCII bytes of "bookmig8"). Distinct from
@@ -487,6 +625,175 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
+	// P2·F: append-only tenant-boundary audit table.
+	if err := execGuarded(ctx, pool, "tenant-audit", tenantAuditSQL); err != nil {
+		return err
+	}
+
+	// D-CHAPTER-BLOCKS-STALE-EXTRACTION: re-fire the (now-fixed) extraction trigger
+	// for every chapter whose blocks are stale under the old _text-only logic.
+	// Must run BEFORE backfillWordCounts so a fresh install's word_count backfill
+	// reads already-corrected chapter_blocks; on an existing install (word_count
+	// already backfilled once) each re-touch cascades word_count via
+	// fn_recompute_chapter_word_count regardless of that marker.
+	if err := backfillChapterBlocksExtraction(ctx, pool); err != nil {
+		slog.Error("book-service: chapter_blocks extraction backfill failed; will retry on next startup", "err", err)
+	}
+
+	// CB3: batched, marker-gated word_count backfill for pre-existing chapters.
+	// Best-effort — a failure here must NEVER block book-service startup (word_count
+	// simply stays 0 for un-backfilled rows, a graceful degrade, not a hard
+	// requirement); the marker stays unset on failure so the next startup retries.
+	if err := backfillWordCounts(ctx, pool); err != nil {
+		slog.Error("book-service: word_count backfill failed; will retry on next startup", "err", err)
+	}
+
+	return nil
+}
+
+// wordCountBackfillBatchSize — chapters processed per batch. Chosen so a book
+// with thousands of chapters (real dev data: up to ~4200/book) never takes one
+// giant table-locking UPDATE (spec CB3 / plan risk note).
+const wordCountBackfillBatchSize = 500
+
+// backfillWordCounts computes word_count for every pre-existing chapter, in
+// small batches ordered by id (chapters.id is a UUIDv7 — time-ordered, so a
+// simple keyset `id > lastID ORDER BY id LIMIT N` cursor is a total order with
+// no duplicate/skip risk). Marker-gated (word_count_backfill_migration) so a
+// fresh install's chapters (which already got a correct word_count from the
+// INSERT-time trigger) don't get needlessly recomputed on every startup. Safe
+// to re-run to completion if a prior run was interrupted by a crash — the
+// computation is a pure function of current data, so repeating it is wasted
+// CPU, never a correctness risk.
+func backfillWordCounts(ctx context.Context, pool *pgxpool.Pool) error {
+	var done bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM word_count_backfill_migration WHERE id='wc_backfill_v1')`).Scan(&done); err != nil {
+		return fmt.Errorf("check marker: %w", err)
+	}
+	if done {
+		return nil
+	}
+
+	var lastID uuid.UUID // zero UUID sorts before every real chapter id
+	for {
+		rows, err := pool.Query(ctx, `SELECT id FROM chapters WHERE id > $1 ORDER BY id LIMIT $2`, lastID, wordCountBackfillBatchSize)
+		if err != nil {
+			return fmt.Errorf("fetch batch: %w", err)
+		}
+		ids := make([]uuid.UUID, 0, wordCountBackfillBatchSize)
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan batch id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate batch: %w", err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		lastID = ids[len(ids)-1]
+
+		// Chapters with no blocks (agg has no matching row) simply keep their
+		// default word_count=0 — correct for an empty chapter.
+		if _, err := pool.Exec(ctx, `
+WITH agg AS (
+  SELECT chapter_id, string_agg(text_content, ' ' ORDER BY block_index) AS txt
+  FROM chapter_blocks WHERE chapter_id = ANY($1)
+  GROUP BY chapter_id
+)
+UPDATE chapters c
+SET word_count = fn_word_count_for_text(agg.txt, c.original_language)
+FROM agg WHERE c.id = agg.chapter_id
+`, ids); err != nil {
+			return fmt.Errorf("backfill batch (after id %s): %w", lastID, err)
+		}
+
+		if len(ids) < wordCountBackfillBatchSize {
+			break // last (partial) batch — no more rows
+		}
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO word_count_backfill_migration (id) VALUES ('wc_backfill_v1') ON CONFLICT DO NOTHING`); err != nil {
+		return fmt.Errorf("mark backfill complete: %w", err)
+	}
+	return nil
+}
+
+// chapterBlocksExtractionBackfillBatchSize mirrors wordCountBackfillBatchSize's
+// rationale (never one giant table-locking statement).
+const chapterBlocksExtractionBackfillBatchSize = 500
+
+// backfillChapterBlocksExtraction re-fires fn_extract_chapter_blocks (via a
+// no-op `body = body` UPDATE, which the AFTER UPDATE OF body trigger treats as
+// a real fire regardless of whether the value changed) for every chapter whose
+// blocks exist but are ALL empty — the exact signature of the old _text-only
+// extraction bug (D-CHAPTER-BLOCKS-STALE-EXTRACTION). Scoped to that signature,
+// not every chapter_drafts row, so a chapter that's genuinely empty (never had
+// prose) is correctly left alone, and a book with thousands of already-correct
+// chapters isn't needlessly re-touched. Re-running the extraction is a pure
+// function of current draft body content, so repeating it on retry/restart is
+// wasted CPU, never a correctness risk — same safety argument as
+// backfillWordCounts. Marker-gated so it runs to completion once.
+func backfillChapterBlocksExtraction(ctx context.Context, pool *pgxpool.Pool) error {
+	var done bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapter_blocks_extraction_backfill_migration WHERE id='cb_extraction_backfill_v1')`).Scan(&done); err != nil {
+		return fmt.Errorf("check marker: %w", err)
+	}
+	if done {
+		return nil
+	}
+
+	var lastID uuid.UUID // zero UUID sorts before every real chapter id
+	for {
+		rows, err := pool.Query(ctx, `
+SELECT d.chapter_id
+FROM chapter_drafts d
+WHERE d.chapter_id > $1
+  AND EXISTS (SELECT 1 FROM chapter_blocks cb WHERE cb.chapter_id = d.chapter_id)
+  AND NOT EXISTS (
+    SELECT 1 FROM chapter_blocks cb
+    WHERE cb.chapter_id = d.chapter_id AND cb.text_content IS NOT NULL AND cb.text_content <> ''
+  )
+ORDER BY d.chapter_id LIMIT $2
+`, lastID, chapterBlocksExtractionBackfillBatchSize)
+		if err != nil {
+			return fmt.Errorf("fetch batch: %w", err)
+		}
+		ids := make([]uuid.UUID, 0, chapterBlocksExtractionBackfillBatchSize)
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan batch id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate batch: %w", err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		lastID = ids[len(ids)-1]
+
+		if _, err := pool.Exec(ctx, `UPDATE chapter_drafts SET body = body WHERE chapter_id = ANY($1)`, ids); err != nil {
+			return fmt.Errorf("re-extract batch (after id %s): %w", lastID, err)
+		}
+
+		if len(ids) < chapterBlocksExtractionBackfillBatchSize {
+			break // last (partial) batch — no more rows
+		}
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO chapter_blocks_extraction_backfill_migration (id) VALUES ('cb_extraction_backfill_v1') ON CONFLICT DO NOTHING`); err != nil {
+		return fmt.Errorf("mark backfill complete: %w", err)
+	}
 	return nil
 }
 
@@ -519,25 +826,36 @@ RETURNS TRIGGER AS $fn$
 DECLARE
   _max_idx INT;
 BEGIN
-  -- 1. UPSERT blocks from JSON_TABLE reading _text snapshots
+  -- 1. UPSERT blocks. Per-node text prefers the editor's _text snapshot
+  -- (addTextSnapshots, frontend/src/lib/tiptap-utils.ts), else joins the node's
+  -- nested standard-tiptap text leaves ($.**.text) — the SAME union already
+  -- applied to every sibling _text-only read (getInternalChapterRevisionText/
+  -- getRevision/revisionForCompare/lexicalSearchCanonSQL, 7b9cd4fda) but missed
+  -- here: a _text-only extraction left ANY chapter written without that client
+  -- annotation (import, agent/MCP write, pre-annotation-era save) with permanently
+  -- empty chapter_blocks — word_count/search/export all read this table, not the
+  -- raw body, so the gap was invisible until those features shipped.
+  -- strict jsonpath mode (not the default lax): lax mode's automatic array-unwrap
+  -- double-visits a single-text-node block (heading/paragraph, the overwhelmingly
+  -- common case) via **, silently DUPLICATING every such block's extracted text —
+  -- caught live re-testing this exact fix; the same latent bug existed in all 4
+  -- pre-existing call sites above and is fixed there too in this same change.
   INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content, content_hash, attrs)
   SELECT
     NEW.chapter_id,
-    (jt.block_index - 1),
-    jt.block_type,
-    COALESCE(jt.text_content, ''),
-    encode(sha256(COALESCE(jt.text_content, '')::bytea), 'hex'),
-    jt.block_attrs
-  FROM JSON_TABLE(
-    NEW.body, '$.content[*]'
-    COLUMNS (
-      block_index FOR ORDINALITY,
-      block_type  TEXT  PATH '$.type',
-      text_content TEXT PATH '$._text',
-      block_attrs JSONB PATH '$.attrs'
-    )
-  ) AS jt
-  WHERE jt.block_type IS NOT NULL
+    (x.ord - 1),
+    x.elem->>'type',
+    COALESCE(n.node_text, ''),
+    encode(sha256(COALESCE(n.node_text, '')::bytea), 'hex'),
+    x.elem->'attrs'
+  FROM jsonb_array_elements(NEW.body -> 'content') WITH ORDINALITY AS x(elem, ord)
+  CROSS JOIN LATERAL (
+    SELECT COALESCE(
+      x.elem->>'_text',
+      NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
+    ) AS node_text
+  ) n
+  WHERE x.elem->>'type' IS NOT NULL
   ON CONFLICT (chapter_id, block_index)
   DO UPDATE SET
     block_type   = EXCLUDED.block_type,
@@ -552,7 +870,7 @@ BEGIN
 
   -- 2. Delete blocks beyond new document length
   SELECT count(*) INTO _max_idx
-  FROM JSON_TABLE(NEW.body, '$.content[*]' COLUMNS (i FOR ORDINALITY)) AS jt;
+  FROM jsonb_array_elements(NEW.body -> 'content') AS x(elem);
 
   DELETE FROM chapter_blocks
   WHERE chapter_id = NEW.chapter_id AND block_index >= _max_idx;
@@ -598,6 +916,78 @@ DO $$ BEGIN
     AFTER INSERT ON outbox_events
     FOR EACH ROW
     EXECUTE FUNCTION fn_outbox_notify();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- ── fn_word_count_for_text: multilingual word-count heuristic (CB3) ──────
+-- Ports computeReadingStats' CJK_REGEX heuristic (useBookReaderContent.ts)
+-- to Postgres: CJK-detected text (the same Unicode ranges — CJK Unified
+-- Ideographs, Hiragana, Katakana, Hangul, fullwidth forms — OR an explicit
+-- ja/zh/ko chapter language) counts CHARACTERS excluding whitespace/
+-- punctuation; everything else counts WHITESPACE-SPLIT WORDS. POSIX
+-- [[:space:][:punct:]] approximates the TS regex's \s\p{P} classes closely
+-- enough for a browse-list estimate (not required to be byte-identical to
+-- the frontend's own live reading-time estimate). IMMUTABLE + pure (no
+-- table access) so it's usable in both the trigger and the batched backfill
+-- without duplicating the classification logic in two places.
+CREATE OR REPLACE FUNCTION fn_word_count_for_text(_text TEXT, _lang TEXT)
+RETURNS INT AS $fn$
+DECLARE
+  _is_cjk BOOLEAN;
+BEGIN
+  _text := COALESCE(_text, '');
+  _is_cjk := (_text ~ '[　-鿿가-힯＀-￯]') OR (_lang IN ('ja', 'zh', 'ko'));
+  IF _is_cjk THEN
+    RETURN char_length(regexp_replace(_text, '[[:space:][:punct:]]', '', 'g'));
+  ELSIF trim(_text) = '' THEN
+    RETURN 0;
+  ELSE
+    RETURN array_length(regexp_split_to_array(trim(_text), '\s+'), 1);
+  END IF;
+END;
+$fn$ LANGUAGE plpgsql IMMUTABLE;
+
+-- ── fn_recompute_chapter_word_count: recompute parent chapter's word_count ──
+-- Mirrors fn_extract_chapter_blocks' "denormalized aggregate kept fresh by a
+-- trigger on chapter_blocks" shape. Fires AFTER INSERT/DELETE/UPDATE OF
+-- text_content (NOT heading_context-only updates — that column-restriction
+-- avoids a redundant recompute on fn_extract_chapter_blocks' 3rd internal
+-- statement, which only touches heading_context). Runs once per affected
+-- chapter_blocks row; by the time the LAST row of a multi-row statement
+-- fires, all of that statement's changes are already visible (Postgres
+-- advances the command-id between row-trigger invocations), so the final
+-- recompute is correct even though earlier invocations are redundant.
+-- AFTER-trigger return value is ignored — RETURN NULL is valid for both
+-- row-insert/update and row-delete invocations.
+CREATE OR REPLACE FUNCTION fn_recompute_chapter_word_count()
+RETURNS TRIGGER AS $fn$
+DECLARE
+  _chapter_id UUID;
+  _agg_text   TEXT;
+  _lang       TEXT;
+BEGIN
+  _chapter_id := COALESCE(NEW.chapter_id, OLD.chapter_id);
+
+  SELECT string_agg(text_content, ' ' ORDER BY block_index) INTO _agg_text
+  FROM chapter_blocks WHERE chapter_id = _chapter_id;
+
+  SELECT original_language INTO _lang FROM chapters WHERE id = _chapter_id;
+
+  -- A missing chapter row (e.g. mid-cascade-delete: chapters row already
+  -- gone, chapter_blocks rows cascading after it) makes this UPDATE match
+  -- zero rows — harmless no-op, not an error.
+  UPDATE chapters SET word_count = fn_word_count_for_text(_agg_text, _lang)
+  WHERE id = _chapter_id;
+
+  RETURN NULL;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER trg_recompute_chapter_word_count
+    AFTER INSERT OR DELETE OR UPDATE OF text_content ON chapter_blocks
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_recompute_chapter_word_count();
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 `

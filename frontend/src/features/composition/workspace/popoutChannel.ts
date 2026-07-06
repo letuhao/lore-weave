@@ -22,7 +22,15 @@ export type AssembleSnapshot = {
 };
 
 export type PopoutMessage =
-  | { kind: 'insert-prose'; text: string; model?: string }
+  // #16 2.8 /review-impl HIGH fix — `reqId` is OPTIONAL so legacy senders (PopoutHost's
+  // generate-and-accept flow) are unaffected. A sender that DOES set `reqId` (Studio's
+  // human-gated ProposeEditCard Apply) can await a matching `insert-ack` to know whether the
+  // opener actually applied it, instead of assuming success once the message left the window.
+  // Without this, an opener that has since navigated to a different chapter unsubscribes from
+  // this channel (usePopoutInsertRelay re-keys on chapterId) — the message vanishes silently
+  // and the popout's "Applied ✓" was a false positive (the LLM and the user were both lied to).
+  | { kind: 'insert-prose'; text: string; model?: string; reqId?: string }
+  | { kind: 'insert-ack'; reqId: string; ok: boolean }
   | { kind: 'dock-back'; panel: WorkspacePanelId }
   // WS-D: the Assemble draft sync. `assemble-request` asks the other window(s) for the
   // current draft (a fresh pop-out hydrates from the opener); `assemble-state` carries it.

@@ -541,9 +541,20 @@ async def backfill_published_passages(
     embedding_model: str,
     embedding_dim: int,
     pool: "asyncpg.Pool | None" = None,
+    chapter_range: tuple[int, int] | None = None,
+    max_chapters: int | None = None,
 ) -> BackfillResult:
-    """D-KG-PASSAGE-BACKFILL — ingest `:Passage` nodes for ALL of a book's already-
-    PUBLISHED chapters as `canon=True`.
+    """D-KG-PASSAGE-BACKFILL — ingest `:Passage` nodes for a book's already-PUBLISHED
+    chapters as `canon=True`.
+
+    Scope (D-BACKFILL-NO-SCOPE-LIMIT): ``chapter_range=(lo, hi)`` (inclusive
+    ``sort_order``) bounds the backfill to a slice — used so a scoped extraction only
+    ingests the chapters it extracts, never the whole book. ``max_chapters`` is a
+    runaway guard for the UNSCOPED inline (embedding-PUT) path: when no range is given
+    and the published-chapter count exceeds it, the backfill is SKIPPED (returns zero)
+    rather than synchronously embedding an entire large book in-request. A caller that
+    wants the whole book indexed starts a (scoped or unscoped) extraction job, whose
+    backfill runs off the request path.
 
     Fixes the ordering gap: passages are normally ingested by the `chapter.published`
     event handler, but that handler SKIPS when no knowledge project / embedding model
@@ -562,6 +573,22 @@ async def backfill_published_passages(
     """
     items = await book_client.list_chapters(book_id, editorial_status="published")
     if not items:
+        return BackfillResult(0, 0, 0)
+
+    # D-BACKFILL-NO-SCOPE-LIMIT — bound to a chapter slice when asked, else guard the
+    # unscoped whole-book path against a runaway synchronous embed on a large book.
+    if chapter_range is not None:
+        lo, hi = chapter_range
+        items = [
+            it for it in items
+            if isinstance(it.get("sort_order"), int) and lo <= it["sort_order"] <= hi
+        ]
+    elif max_chapters and len(items) > max_chapters:
+        logger.warning(
+            "D-KG-PASSAGE-BACKFILL: book=%s has %d published chapters > inline cap %d; "
+            "SKIPPING inline backfill — start a (scoped) extraction to ingest passages",
+            book_id, len(items), max_chapters,
+        )
         return BackfillResult(0, 0, 0)
 
     indexed = skipped = created = 0

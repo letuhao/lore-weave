@@ -1,0 +1,155 @@
+{
+  "title": "Jobs",
+  "status": {
+    "pending": "En attente",
+    "running": "En cours",
+    "paused": "En pause",
+    "cancelling": "Annulation en cours",
+    "completed": "Terminé",
+    "failed": "Échec",
+    "cancelled": "Annulé"
+  },
+  "kind": {
+    "extraction": "Extraction de connaissances",
+    "glossary_extraction": "Extraction de glossaire",
+    "wiki_gen": "Génération de wiki",
+    "translation": "Traduction",
+    "glossary_translation": "Traduction de glossaire",
+    "video_gen": "Génération de vidéo",
+    "campaign": "Campagne",
+    "enrichment_job": "Enrichissement de lore",
+    "book_import": "Import de livre",
+    "composition": {
+      "generate": "Composition"
+    }
+  },
+  "summary": {
+    "active": "Actif",
+    "completed": "Terminé",
+    "failed": "Échec",
+    "cancelled": "Annulé"
+  },
+  "filters": {
+    "status": "Statut",
+    "kind": "Type",
+    "allStatuses": "Tous les statuts",
+    "allKinds": "Tous les types",
+    "search": "Rechercher un titre…",
+    "searchWide": "Rechercher titre, type, service, modèle ou ID de job…",
+    "searchHint": "La recherche porte sur le titre · type · service · modèle · ID de job (débitée)."
+  },
+  "col": {
+    "job": "Job",
+    "status": "Statut",
+    "progress": "Progression",
+    "cost": "Coût · tokens",
+    "started": "Démarré",
+    "actions": "Actions"
+  },
+  "section": {
+    "active": "Actif · en direct",
+    "activeHint": "non paginé — mise à jour en place via SSE",
+    "history": "Historique",
+    "historyHint": "trié par création · paginé"
+  },
+  "list": {
+    "loading": "Chargement…",
+    "error": "Échec du chargement des jobs.",
+    "empty": "Aucun job pour le moment.",
+    "noActive": "Aucun job actif.",
+    "more": "Charger plus",
+    "toggleChildren": "Afficher les sous-jobs",
+    "noChildren": "Aucun sous-job."
+  },
+  "row": {
+    "ran": "effectué il y a {{d}}",
+    "running": "en cours depuis {{d}}",
+    "details": "Détails ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} sur {{total}}",
+    "pageSize": "Taille de page",
+    "perPage": "{{n}} / page",
+    "page": "Page {{n}}",
+    "prev": "Page précédente",
+    "next": "Page suivante",
+    "outOfRange": "Aucune ligne sur cette page ({{total}} au total).",
+    "first": "Retour à la première page"
+  },
+  "live": {
+    "on": "● en direct",
+    "onShort": "direct",
+    "reconnecting": "reconnexion…",
+    "off": "hors ligne"
+  },
+  "controls": {
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "cancel": "Annuler",
+    "cancelConfirm": "Arrêter maintenant ? Le travail en cours sera perdu ; les parties terminées seront conservées.",
+    "cancelYes": "Oui",
+    "cancelNo": "Non",
+    "cancelled": "Annulé.",
+    "paused": "Mis en pause.",
+    "resumed": "Repris.",
+    "retry": "Réessayer",
+    "retried": "Soumis comme un nouveau job.",
+    "stale": "L'état du job a changé — actualisé.",
+    "actionFailed": "Action échouée : {{error}}"
+  },
+  "monitor": {
+    "back": "Tous les jobs",
+    "error": "Échec du chargement du job.",
+    "pausedBanner": "En pause — aucune nouvelle unité n'est envoyée et les processus en cours se terminent. Reprenez ci-dessus.",
+    "children": "Sous-jobs"
+  },
+  "detail": {
+    "progress": "Progression",
+    "llmCalls": "Appels LLM",
+    "elapsed": "Durée écoulée",
+    "throughput": "Débit",
+    "throughputVal": "~{{n}} /h",
+    "eta": "ETA",
+    "costSoFar": "Coût actuel",
+    "tokensIn": "Tokens entrants",
+    "tokensOut": "Tokens sortants",
+    "bestEffort": "best-effort",
+    "models": "Modèles",
+    "parameters": "Paramètres",
+    "parametersHint": "dynamique, provenant de l'objet params du job",
+    "jobId": "ID du job",
+    "kind": "Type",
+    "service": "Service",
+    "parent": "Parent",
+    "viewParent": "Voir le parent ↗",
+    "created": "Créé le",
+    "lastUpdate": "Dernière mise à jour",
+    "copied": "ID du job copié.",
+    "copyFailed": "Échec de la copie.",
+    "activity": "Activité (en direct)",
+    "errorTitle": "Erreur"
+  },
+  "activity": {
+    "created": "Créé",
+    "pending": "En file d'attente",
+    "running": "En cours",
+    "paused": "En pause",
+    "cancelling": "Annulation en cours",
+    "completed": "Terminé",
+    "failed": "Échec",
+    "cancelled": "Annulé"
+  },
+  "mobile": {
+    "children": "sous-jobs"
+  },
+  "fairness": {
+    "title": "Ordonnancement équitable",
+    "running": "{{running}}/{{cap}} en cours",
+    "queued": "· {{queued}} en attente",
+    "lane": {
+      "translation": "Traduction",
+      "knowledge": "Connaissances",
+      "loreEnrichment": "Enrichissement de lore"
+    }
+  }
+}

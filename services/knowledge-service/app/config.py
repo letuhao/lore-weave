@@ -90,6 +90,37 @@ class Settings(BaseSettings):
     # on the empty path only; default ON (a miss-path fallback, not a re-ranker).
     context_l2_retry_widened: bool = True
 
+    # M1a (2026-07-06) — passage→graph anchor bridge. After L2 facts + L3 passages
+    # are retrieved, 1-hop-expand entities the PASSAGES surfaced that the message
+    # didn't anchor, injecting the new relations into the L2 facts block. Deploy
+    # CEILING / kill-switch (default ON) — a per-turn Mode-3 assembly step, not a
+    # per-user setting. See docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md.
+    context_passage_graph_expansion_enabled: bool = True
+
+    # M1b (2026-07-06) — working-scope boost. When the editor `<Chat>` panel is
+    # open on a chapter, chat-service forwards that chapter_id; the L3 passage
+    # ranker resolves it to a chapter_index and multiplicatively boosts passages
+    # WITHIN `window` chapters of it (linear falloff), so "what I'm editing right
+    # now" outranks equally-relevant-but-distant lore — the Aider open-file idea
+    # (research 04 §2). Intent-INDEPENDENT (separate from the recency term, which
+    # only fires for HISTORICAL/RECENT_EVENT). Inert on every non-editor turn
+    # (reader/glossary chat send no chapter_id) and when the chapter has no
+    # ingested passages. `boost=0.0` ⇒ OFF (byte-identical). Conservative default:
+    # a same-chapter passage gets ×1.3, so a distant passage with materially higher
+    # cosine still wins — bounds the reorder-a-far-true-answer regression risk.
+    context_working_scope_boost: float = 0.30
+    context_working_scope_window: int = 2
+
+    # D-BACKFILL-NO-SCOPE-LIMIT (2026-07-06) — the published-passage backfill embeds
+    # EVERY published chapter of a book, and on the embedding-model PUT it runs
+    # SYNCHRONOUSLY in-request. On a large book (万古神帝: 4232 published chapters) that
+    # is a runaway whole-book embed that a client timeout only hides. Cap the INLINE
+    # (embedding-PUT) backfill: when the book has more than this many published
+    # chapters and no explicit chapter_range, skip the inline backfill and let a scoped
+    # extraction job ingest passages instead. The extraction-start backfill is bounded
+    # to the job's chapter_range separately. Deploy ceiling; 0 ⇒ never skip (old behavior).
+    kg_backfill_max_inline_chapters: int = 200
+
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0

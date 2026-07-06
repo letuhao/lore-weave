@@ -517,7 +517,7 @@ func writeGuardrailJSON(w http.ResponseWriter, dLimit, mLimit, dSpent, mSpent, r
 // getGuardrail — GET /v1/model-billing/guardrail. The authed user's
 // Subsystem-A limits + (window-aware) spend. No row yet → config defaults.
 func (s *Server) getGuardrail(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -540,7 +540,7 @@ func (s *Server) getGuardrail(w http.ResponseWriter, r *http.Request) {
 // limit must be > 0. Lowering a limit below current spend is allowed — it
 // bounds NEW work, never aborts in-flight work (billing ADR).
 func (s *Server) patchGuardrail(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -605,7 +605,7 @@ WHERE owner_user_id = $1`, userID, in.DailyLimitUSD, in.MonthlyLimitUSD); err !=
 // getPlatformBalance — GET /v1/model-billing/platform-balance. The authed
 // user's Subsystem-B free tier + credits. No row yet → config free tier.
 func (s *Server) getPlatformBalance(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return

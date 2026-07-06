@@ -1,11 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useStudioChrome } from '../useStudioChrome';
 
 const KEY = 'lw_studio_chrome_b1';
+const isMobileState = vi.hoisted(() => ({ value: false }));
+vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => isMobileState.value }));
 
 describe('useStudioChrome', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    isMobileState.value = false;
+  });
 
   it('defaults to manuscript / expanded / bottom-closed when empty', () => {
     const { result } = renderHook(() => useStudioChrome('b1'));
@@ -68,5 +73,20 @@ describe('useStudioChrome', () => {
     act(() => a.result.current.setActiveView('quality'));
     const b = renderHook(() => useStudioChrome('b2'));
     expect(b.result.current.activeView).toBe('manuscript'); // b2 untouched
+  });
+
+  // #16 Phase 4 (M6) — a first-time mobile visit has no persisted preference; the sidebar must
+  // default collapsed there (confirmed live: sidebar + activity bar left ~88px of a 390px screen).
+  it('defaults the sidebar collapsed on a first mobile visit (no persisted state)', () => {
+    isMobileState.value = true;
+    const { result } = renderHook(() => useStudioChrome('b1'));
+    expect(result.current.sidebarCollapsed).toBe(true);
+  });
+
+  it('a returning mobile user\'s persisted choice wins over the mobile default', () => {
+    localStorage.setItem(KEY, JSON.stringify({ activeView: 'manuscript', sidebarCollapsed: false, bottomOpen: false }));
+    isMobileState.value = true;
+    const { result } = renderHook(() => useStudioChrome('b1'));
+    expect(result.current.sidebarCollapsed).toBe(false);
   });
 });

@@ -1,0 +1,1161 @@
+{
+  "page": {
+    "title": "Pengetahuan",
+    "subtitle": "Proyek, bio global, dan kontrol privasi untuk apa yang diingat AI.",
+    "tabs": {
+      "label": "Tab pengetahuan",
+      "projects": "Proyek",
+      "jobs": "Pekerjaan",
+      "global": "Global",
+      "entities": "Entitas",
+      "timeline": "Timeline",
+      "raw": "Mentah",
+      "privacy": "Privasi",
+      "insights": "Wawasan"
+    }
+  },
+  "graph": {
+    "title": "Graf pengetahuan",
+    "counts": "{{nodes}} simpul · {{edges}} relasi",
+    "truncated": "menampilkan {{n}} teratas — perluas simpul untuk memuat lebih banyak",
+    "expanding": "memperluas...",
+    "hint": "Gulir untuk zoom · seret ruang kosong untuk geser · klik simpul untuk detail · ⊞ untuk memperluas",
+    "loading": "Memuat graf...",
+    "loadFailed": "Gagal memuat graf: {{error}}",
+    "empty": "Belum ada graf pengetahuan — bangun proyek ini untuk menjelajahi jaringannya."
+  },
+  "schemaSection": {
+    "title": "Skema",
+    "subtitle": "Susun skema graf pengetahuan proyek ini — jenis simpul, tipe relasi, tipe fakta, dan kosakata. Perubahan berlaku pada graf proyek ini.",
+    "editCta": "Edit skema",
+    "freeEdges": "Relasi di luar kosakata diizinkan (free edges).",
+    "closedEdges": "Relasi dibatasi pada tipe relasi yang dideklarasikan; lainnya akan masuk ke triase.",
+    "error": "Tidak dapat memuat skema proyek ini.",
+    "emptyHelp": "Proyek ini belum memiliki skema. Mulai dari awal, kloning templat, atau gunakan yang sudah ada.",
+    "newBlank": "Skema kosong baru",
+    "schemaNamePlaceholder": "Nama skema",
+    "createBlankButton": "Buat kosong",
+    "created": "Skema berhasil dibuat",
+    "cloneTemplate": "Kloning templat",
+    "pickTemplate": "Pilih templat...",
+    "cloneButton": "Kloning ke skema saya",
+    "cloned": "Templat berhasil dikloning",
+    "adoptTemplate": "Adopsi templat",
+    "adoptHelp": "Salin templat ke proyek ini (memeriksa glosarium terlebih dahulu).",
+    "adoptCta": "Adopsi di tab Ontologi buku",
+    "adoptBooklessHint": "Adopsi tersedia untuk proyek yang terhubung dengan buku.",
+    "forbidden": "Anda memerlukan akses Manage pada proyek ini untuk menyusun skema.",
+    "createFailed": "Tidak dapat membuat skema."
+  },
+  "shell": {
+    "backToProjects": "Semua proyek",
+    "sections": {
+      "label": "Bagian proyek",
+      "overview": "Ikhtisar",
+      "entities": "Entitas",
+      "timeline": "Timeline",
+      "evidence": "Bukti",
+      "proposals": "Proposal",
+      "gap": "Celah",
+      "insights": "Wawasan",
+      "schema": "Skema",
+      "graph": "Bangun / Jelajahi graf"
+    },
+    "notFound": "Proyek tidak ditemukan.",
+    "loading": "Memuat proyek...",
+    "overview": {
+      "configHeading": "Konfigurasi",
+      "embeddingModel": "Model embedding",
+      "rerankModel": "Model rerank",
+      "extraction": "Ekstraksi",
+      "extractionEnabled": "Aktif",
+      "extractionDisabled": "Nonaktif",
+      "book": "Buku",
+      "world": "Dunia",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "Proposal tertunda muncul di sini (C11).",
+      "gap": "Laporan celah glosarium muncul di sini (C10).",
+      "graph": "Bangun & jelajahi graf muncul di sini (C5 / C19)."
+    }
+  },
+  "gap": {
+    "heading": "Laporan celah glosarium",
+    "subtitle": "Karakter, tempat, dan konsep dengan penyebutan tinggi yang kami temukan di buku Anda namun belum ada di glosarium. Promosikan yang layak disimpan.",
+    "summary": {
+      "candidates": "Kandidat celah",
+      "threshold": "Min. penyebutan",
+      "top": "Celah utama",
+      "topLabel": "Celah utama",
+      "topMentions": "{{count}} penyebutan",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "Min. penyebutan",
+      "limit": "Tampilkan hingga"
+    },
+    "selectAll": "Pilih semua",
+    "selectRow": "Pilih {{name}}",
+    "loading": "Memuat celah...",
+    "empty": "Tidak ada celah di atas ambang batas ini. Turunkan min-penyebutan untuk memunculkan lebih banyak, atau glosarium Anda sudah cukup lengkap.",
+    "error": "Tidak dapat memuat laporan celah. Coba lagi.",
+    "mentions": "{{count}} penyebutan",
+    "mentionsTitle": "Jumlah penyebutan di seluruh buku",
+    "itemFailed": "Gagal",
+    "bulkPromote": {
+      "cta_one": "Promosikan {{count}} ke glosarium",
+      "cta_other": "Promosikan {{count}} ke glosarium",
+      "cta_zero": "Promosikan ke glosarium",
+      "progress": "{{done}} / {{total}} dipromosikan",
+      "failedCount": "({{count}} gagal)",
+      "allOk": "Berhasil mempromosikan {{count}} ke draf glosarium.",
+      "allFailed": "Semua {{count}} promosi gagal. Coba lagi.",
+      "partial": "Berhasil {{ok}}; {{failed}} gagal."
+    }
+  },
+  "proposals": {
+    "heading": "Proposal tertunda",
+    "subtitle": "Satu kotak masuk untuk semua yang menunggu tinjauan Anda — saran AI glosarium, edit wiki, dan proposal pengayaan lore. Buka baris untuk meninjau dan menerimanya.",
+    "noBook": "Hubungkan buku ke proyek ini untuk melihat antrean proposalnya.",
+    "loading": "Memuat proposal...",
+    "error": "Tidak dapat memuat kotak masuk proposal. Coba lagi.",
+    "empty": "Tidak ada proposal tertunda. Saran AI baru akan muncul di sini saat dihasilkan.",
+    "review": "Tinjau",
+    "openRow": "Tinjau {{title}}",
+    "sourceError": "Tidak dapat memuat antrean ini. Antrean lainnya tetap ditampilkan.",
+    "origin": {
+      "glossary": "Draf glosarium",
+      "wiki": "Edit wiki",
+      "enrichment": "Proposal lore"
+    },
+    "originLabel": {
+      "glossary": "Draf AI glosarium",
+      "wiki": "Saran wiki",
+      "enrichment": "Proposal pengayaan lore"
+    },
+    "count": "{{count}}"
+  },
+  "mobile": {
+    "sections": {
+      "global": "Bio global",
+      "projects": "Proyek",
+      "jobs": "Pekerjaan ekstraksi"
+    },
+    "desktopOnly": {
+      "title": "Selengkapnya di desktop",
+      "body": "Penjelajahan Entitas, Timeline narasi, dan pencarian laci Raw memerlukan layar yang lebih lebar. Buka Lore Weave di laptop atau tablet untuk menggunakannya."
+    },
+    "privacyLink": "Kontrol privasi & data",
+    "backToKnowledge": "Kembali ke Knowledge",
+    "global": {
+      "placeholder": "Apa yang harus diingat setiap percakapan tentang Anda?",
+      "save": "Simpan",
+      "saving": "Menyimpan…",
+      "saved": "Tersimpan.",
+      "unsaved": "Belum disimpan",
+      "saveFailed": "Gagal menyimpan. Coba lagi.",
+      "conflict": "Perangkat lain telah memperbarui bio ini. Tinjau versi terbaru dan simpan kembali.",
+      "loadFailed": "Tidak dapat memuat bio global: {{error}}"
+    },
+    "projects": {
+      "empty": "Belum ada proyek. Buat satu di desktop.",
+      "loadFailed": "Tidak dapat memuat proyek: {{error}}",
+      "noDescription": "Tidak ada deskripsi.",
+      "build": "Bangun graf",
+      "status": {
+        "disabled": "Dinonaktifkan",
+        "building": "Sedang membangun",
+        "paused": "Dijeda",
+        "ready": "Siap",
+        "failed": "Gagal"
+      },
+      "detail": {
+        "lastExtracted": "Terakhir diekstraksi",
+        "embeddingModel": "Model embedding",
+        "noEmbedding": "Belum dikonfigurasi"
+      }
+    },
+    "jobs": {
+      "empty": "Belum ada tugas ekstraksi.",
+      "loadFailed": "Tidak dapat memuat tugas: {{error}}",
+      "unknownProject": "Proyek {{id}}",
+      "actionFailed": "{{action}} gagal: {{error}}",
+      "status": {
+        "pending": "Menunggu",
+        "running": "Berjalan",
+        "paused": "Dijeda",
+        "complete": "Selesai",
+        "failed": "Gagal",
+        "cancelled": "Dibatalkan"
+      },
+      "actions": {
+        "pause": "Jeda",
+        "pausing": "Menjeda…",
+        "resume": "Lanjutkan",
+        "resuming": "Melanjutkan…",
+        "cancel": "Batal",
+        "cancelling": "Membatalkan…"
+      },
+      "detail": {
+        "items": "Item",
+        "created": "Dibuat pada",
+        "completed": "Selesai pada"
+      }
+    }
+  },
+  "drawers": {
+    "loading": "Mencari laci…",
+    "loadFailed": "Pencarian gagal: {{error}}",
+    "empty": "Tidak ada laci yang cocok untuk kueri ini.",
+    "noProject": "Pilih proyek untuk mencari lacinya.",
+    "noQuery": "Masukkan kueri pencarian untuk menemukan laci.",
+    "minQueryHint": "Ketik setidaknya {{min}} karakter untuk menjalankan pencarian semantik.",
+    "notIndexed": "Proyek ini belum diindeks untuk pencarian semantik.",
+    "notIndexedHint": "Jalankan ekstraksi dengan model embedding untuk mengaktifkan pencarian laci.",
+    "refreshing": "Memperbarui…",
+    "embedCost": "Kueri tersemat: {{tokens}} token · ${{cost}}",
+    "retry": "Coba lagi",
+    "fixConfig": "Periksa konfigurasi model embedding proyek Anda di Pengaturan.",
+    "unknownError": "Kesalahan tidak dikenal. Silakan coba lagi.",
+    "filters": {
+      "project": "Proyek",
+      "selectProject": "Pilih proyek",
+      "sourceType": {
+        "label": "Sumber",
+        "any": "Semua",
+        "chapter": "Bab",
+        "chat": "Chat",
+        "glossary": "Glosarium"
+      }
+    },
+    "searchInput": {
+      "label": "Cari",
+      "placeholder": "misal. duel di jembatan"
+    },
+    "card": {
+      "sourcePrefix": "Sumber",
+      "chapterLabel": "Bab {{index}}",
+      "chunkLabel": "Chunk {{index}}",
+      "matchLabel": "Skor kecocokan",
+      "openLabel": "Buka laci {{sourceType}} dengan kecocokan {{score}}",
+      "hubBadge": "Ringkasan",
+      "hubHint": "Chunk ini adalah ringkasan atau kutipan bio panjang; peringkatnya dikurangi tetapi mungkin tetap muncul.",
+      "langHint": "Bahasa sumber: {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{count}} dari {{total}} hasil dalam bahasa Anda ({{lang}}); sisanya ditampilkan dalam bahasa sumber.",
+      "none": "Tidak ada hasil dalam bahasa Anda ({{lang}}); menampilkan hasil dalam bahasa sumber."
+    },
+    "detail": {
+      "title": "Laci",
+      "close": "Tutup",
+      "text": "Teks lengkap",
+      "sourceType": "Tipe sumber",
+      "sourceId": "ID sumber",
+      "chunkIndex": "Indeks chunk",
+      "chapterIndex": "Indeks bab",
+      "matchScore": "Skor kecocokan",
+      "createdAt": "Dibuat pada",
+      "hubLabel": "Jenis chunk",
+      "hubValue": "Ringkasan / chunk hub"
+    }
+  },
+  "timeline": {
+    "loading": "Memuat timeline…",
+    "loadFailed": "Tidak dapat mem물 load timeline: {{error}}",
+    "empty": "Belum ada peristiwa yang diekstraksi — peristiwa akan muncul di sini saat proses ekstraksi berjalan.",
+    "emptyForFilters": "Tidak ada peristiwa yang cocok dengan filter ini.",
+    "filters": {
+      "project": "Proyek",
+      "anyProject": "Semua proyek",
+      "entity": "Entitas",
+      "entityPlaceholder": "Cari berdasarkan nama…",
+      "entitySearchMinHint": "Ketik setidaknya 2 karakter.",
+      "entityNoMatches": "Entitas tidak ditemukan.",
+      "clearEntity": "Hapus filter entitas",
+      "chronologicalRange": "Rentang kronologis",
+      "after": "Setelah",
+      "before": "Sebelum",
+      "chronoReversed": "Tanggal 'Sebelum' harus lebih besar dari 'Setelah'.",
+      "dateRange": "Rentang tanggal",
+      "dateFrom": "Dari",
+      "dateTo": "Sampai",
+      "dateInvalid": "Gunakan YYYY, YYYY-MM, atau YYYY-MM-DD.",
+      "dateReversed": "\"Sampai\" harus sama dengan atau setelah \"Dari\"."
+    },
+    "sort": {
+      "label": "Urutkan",
+      "narrative": "Urutan narasi",
+      "chronological": "Kronologis",
+      "direction": "Arah",
+      "asc": "Terlama ke terbaru",
+      "desc": "Terbaru ke terlama"
+    },
+    "importance": {
+      "major": "Utama",
+      "pivotal": "Pivotal"
+    },
+    "row": {
+      "orderLabel": "Urutan narasi",
+      "noOrder": "—",
+      "chapterLabel": "Bab",
+      "chapterUnresolved": "Bab id {{id}} — judul belum teridentifikasi",
+      "participantsMore": "+{{count}} lagi",
+      "confidenceLabel": "Keyakinan",
+      "timeLabel": "Waktu dalam cerita"
+    },
+    "detail": {
+      "summary": "Ringkasan",
+      "noSummary": "Ringkasan belum diekstraksi.",
+      "participants": "Partisipan",
+      "sources": "Sumber"
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} dari {{total}}",
+      "refreshing": "memperbarui…",
+      "prev": "Sebelumnya",
+      "next": "Berikutnya",
+      "backToFirst": "Kembali ke halaman pertama",
+      "pageSize": "Per halaman"
+    },
+    "localization": {
+      "sourceMarker": "Ditampilkan dalam bahasa sumber — terjemahan tertunda"
+    },
+    "search": {
+      "placeholder": "Cari peristiwa…",
+      "label": "Cari peristiwa",
+      "clear": "Hapus pencarian"
+    }
+  },
+  "entities": {
+    "loading": "Memuat entitas…",
+    "loadFailed": "Gagal memuat entitas: {{error}}",
+    "empty": "Belum ada entitas yang diekstraksi — entitas akan muncul di sini saat proses ekstraksi berjalan.",
+    "emptyForFilters": "Tidak ada entitas yang cocok dengan filter ini.",
+    "filters": {
+      "project": "Proyek",
+      "kind": "Jenis",
+      "status": "Status",
+      "search": "Cari",
+      "searchPlaceholder": "Nama atau alias (min 2 karakter)",
+      "semantic": "Pencarian semantik",
+      "semanticPlaceholder": "Deskripsikan apa yang Anda cari (pencarian vektor)",
+      "anyProject": "Semua proyek",
+      "anyKind": "Semua jenis",
+      "anyStatus": "Semua status"
+    },
+    "status": {
+      "canonical": "Kanonikal",
+      "discovered": "Ditemukan",
+      "archived": " Diarsipkan"
+    },
+    "legend": {
+      "title": "Status",
+      "canonical": "dalam glosarium Anda",
+      "discovered": "ditemukan, belum dipromosikan",
+      "archived": "disembunyikan dari pengambilan data"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "Skor jangkar {{pct}}% — seberapa kuat entitas ini berdasar pada teks"
+    },
+    "table": {
+      "ariaLabel": "Entitas",
+      "global": "Global",
+      "col": {
+        "name": "Nama",
+        "kind": "Jenis",
+        "project": "Proyek",
+        "mentions": "Penyebutan",
+        "confidence": "Keyakinan",
+        "updated": "Diperbarui"
+      }
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} dari {{total}}",
+      "refreshing": "memperbarui…",
+      "prev": "Sebelumnya",
+      "next": "Berikutnya"
+    },
+    "detail": {
+      "loading": "Memuat entitas…",
+      "loadFailed": "Gagal memuat entitas: {{error}}",
+      "close": "Tutup",
+      "edit": "Edit",
+      "merge": "Gabungkan ke entitas lain",
+      "metadata": "Metadata",
+      "description": "Deskripsi",
+      "descriptionSource": "Dari entri glosarium yang tertaut",
+      "aliases": "Alias",
+      "relations": "Relasi ({{count}})",
+      "truncated": "Menampilkan {{shown}} dari {{total}} — gunakan filter atau cari di tabel",
+      "noRelations": "Belum ada relasi — lebih banyak akan muncul seiring berjalannya ekstraksi.",
+      "relationArrow": "→",
+      "pendingBadge": "Tertunda",
+      "pendingValidation": "Karantina Tahap-1 — menunggu validasi LLM",
+      "unlock": "Buka kunci (aktifkan kembali ekstraksi)",
+      "unlockHint": "Entitas ini telah diedit oleh pengguna. Ekstraksi tidak akan menambahkan kembali alias yang dihapus sampai Anda membukanya.",
+      "unlockConfirm": "Buka kunci entitas ini? Ekstraksi di masa mendatang akan dapat menambahkan alias lagi.",
+      "unlockSuccess": "Berhasil dibuka.",
+      "unlockFailed": "Gagal membuka kunci: {{error}}",
+      "field": {
+        "project": "Proyek",
+        "global": "Global",
+        "confidence": "Keyakinan",
+        "mentions": "Penyebutan",
+        "anchor": "Skor jangkar"
+      },
+      "promote": "Promosikan ke glosarium",
+      "promoteHint": "Entitas ditemukan. Promosikan untuk membuat draf glosarium saran AI untuk ditinjau.",
+      "promotePending": "Memproses promosi…",
+      "promoteSuccess": "Berhasil dipromosikan — draf glosarium telah dibuat untuk ditinjau.",
+      "promoteFailed": "Gagal mempromosikan: {{error}}",
+      "unpin": "Hapus dari pin konteks",
+      "unpinHint": "Entitas ini sedang disematkan ke dalam konteks ekstraksi.",
+      "unpinSuccess": "Berhasil dilepas dari konteks.",
+      "unpinFailed": "Gagal melepas pin: {{error}}",
+      "facts": "Fakta yang diketahui ({{count}})",
+      "factSource": "Bab {{chapter}}",
+      "factType": {
+        "decision": "Keputusan",
+        "preference": "Preferensi",
+        "milestone": "Tonggak sejarah",
+        "negation": "Negasi"
+      }
+    },
+    "edit": {
+      "title": "Edit entitas",
+      "description": "Ubah nama atau sesuaikan entitas ini. Pengeditan Anda akan mengunci ekstraksi di masa mendatang agar tidak menambahkan kembali alias yang telah dihapus.",
+      "conflict": "Perangkat lain telah memperbarui entitas ini. Tinjau versi terbaru dan coba lagi.",
+      "field": {
+        "name": "Nama tampilan",
+        "kind": "Jenis",
+        "aliases": "Alias"
+      },
+      "aliasesPlaceholder": "Satu alias per baris",
+      "aliasesHint": "Satu alias per baris. Ekstraksi tidak akan menambahkan kembali varian yang dihapus secara diam-diam setelah Anda menyimpan.",
+      "userEditedHint": "Menyimpan akan menandai entitas ini sebagai hasil editan pengguna.",
+      "save": "Simpan",
+      "saving": "Menyimpan…",
+      "cancel": "Batal",
+      "success": "Entitas diperbarui",
+      "failed": "Gagal menyimpan: {{error}}"
+    },
+    "merge": {
+      "title": "Gabungkan entitas",
+      "description": "Gabungkan {{name}} ke entitas lain. {{name}} akan dihapus; relasi dan aliasnya akan dipindahkan ke target.",
+      "targetLabel": "Entitas target",
+      "searchPlaceholder": "Cari berdasarkan nama (min 2 karakter)…",
+      "searchMinHint": "Ketik setidaknya 2 karakter untuk mencari.",
+      "searching": "Mencari…",
+      "noMatches": "Tidak ada entitas yang cocok.",
+      "warning": "Tindakan ini tidak dapat dibatalkan. Entitas sumber akan dihapus; relasi dan aliasnya akan ditransfer ke target.",
+      "mentions": "mentions",
+      "clear": "Hapus",
+      "confirm": "Gabungkan",
+      "merging": "Menggabungkan…",
+      "cancel": "Batal",
+      "success": "Berhasil menggabungkan {{source}} ke {{target}}",
+      "errSameEntity": "Tidak dapat menggabungkan entitas ke dirinya sendiri.",
+      "errNotFound": "Salah satu entitas tidak ditemukan.",
+      "errArchived": "Tidak dapat menggabungkan entitas yang diarsipkan. Pulihkan terlebih dahulu.",
+      "errGlossaryConflict": "Kedua entitas tertambat pada entri glosarium yang berbeda. Selesaikan penambatan glosarium sebelum menggabungkan.",
+      "errUnknown": "Penggabungan gagal: {{reason}}"
+    }
+  },
+  "jobs": {
+    "loading": "Memuat pekerjaan…",
+    "loadMore": "Muat lebih banyak",
+    "loadingMore": "Memuat lebih banyak…",
+    "error": {
+      "active": "Gagal memuat pekerjaan yang sedang berjalan.",
+      "history": "Gagal memuat riwayat pekerjaan."
+    },
+    "sections": {
+      "running": {
+        "title": "Berjalan",
+        "empty": "Tidak ada pekerjaan yang sedang berjalan."
+      },
+      "paused": {
+        "title": "Dijeda",
+        "empty": "Tidak ada pekerjaan yang dijeda."
+      },
+      "complete": {
+        "title": "Selesai",
+        "empty": "Belum ada pekerjaan yang selesai."
+      },
+      "failed": {
+        "title": "Gagal",
+        "empty": "Tidak ada pekerjaan yang gagal."
+      }
+    },
+    "row": {
+      "started": "Dimulai {{when}}",
+      "completed": "Selesai {{when}}",
+      "unknownProject": "Proyek {{id}}…"
+    },
+    "detail": {
+      "title": "Detail pekerjaan",
+      "close": "Tutup",
+      "status": "Status",
+      "currentChapter": "Bab saat ini",
+      "scope": "Cakupan",
+      "llmModel": "Model chat",
+      "embeddingModel": "Model embedding",
+      "maxSpend": "Batas anggaran",
+      "startedAt": "Dimulai",
+      "completedAt": "Selesai",
+      "errorTitle": "Error",
+      "eta": "~{{duration}} tersisa",
+      "itemsProgress": "{{processed}} dari {{total}} item diproses",
+      "actionFailed": "Gagal {{label}}: {{error}}",
+      "actions": {
+        "pause": "Jeda",
+        "resume": "Lanjutkan",
+        "cancel": "Batal"
+      },
+      "logs": {
+        "title": "Log",
+        "loading": "Memuat log…",
+        "loadingNewer": "Memuat yang terbaru…",
+        "error": "Gagal memuat log.",
+        "empty": "Belum ada log.",
+        "loadNewer": "Muat yang terbaru",
+        "levels": {
+          "info": "INFO",
+          "warning": "WARN",
+          "error": "ERROR"
+        }
+      }
+    },
+    "retry": {
+      "button": "Coba lagi dengan pengaturan berbeda"
+    },
+    "costSummary": {
+      "title": "Pengeluaran AI",
+      "loading": "Memuat pengeluaran…",
+      "loadFailed": "Gagal memuat ringkasan biaya.",
+      "thisMonth": "Bulan ini",
+      "allTime": "Sepanjang waktu",
+      "budget": "Anggaran bulanan",
+      "editBudget": "Edit anggaran",
+      "remaining": "{{remaining}} tersisa bulan ini",
+      "invalid": "Masukkan angka desimal non-negatif atau kosongkan.",
+      "saveFailed": "Gagal menyimpan anggaran: {{error}}",
+      "dialog": {
+        "title": "Edit anggaran AI bulanan",
+        "description": "Batas lintas proyek. Kosongkan untuk menghapus batas.",
+        "label": "Anggaran bulanan (USD)",
+        "hint": "Maksimal 4 digit desimal. Kosongkan untuk menghapus batas.",
+        "cancel": "Batal",
+        "save": "Simpan",
+        "saving": "Menyimpan…"
+      }
+    }
+  },
+  "projects": {
+    "showArchived": "Tampilkan yang diarsipkan",
+    "refresh": "Segarkan",
+    "newProject": "Proyek baru",
+    "createFirst": "Buat proyek pertama Anda",
+    "empty": {
+      "title": "Belum ada proyek",
+      "description": "Cakupan proyek menentukan apa yang diingat AI untuk bagian pekerjaan tertentu."
+    },
+    "loadFailed": "Gagal memuat proyek: {{error}}",
+    "paginationNote": "Menampilkan 100 proyek pertama — paginasi lengkap tersedia di Track 2.",
+    "browser": {
+      "searchPlaceholder": "Cari proyek…",
+      "searchLabel": "Cari proyek berdasarkan nama",
+      "filterLabel": "Filter berdasarkan status",
+      "sortLabel": "Urutkan proyek",
+      "noMatches": "Tidak ada proyek yang cocok dengan pencarian dan filter saat ini.",
+      "loadMore": "Muat lebih banyak",
+      "loadingMore": "Memuat…",
+      "stateFilter": {
+        "all": "Semua status",
+        "disabled": "Memori statis",
+        "building": "Sedang dibangun",
+        "paused": "Dijeda",
+        "ready": "Siap",
+        "failed": "Gagal",
+        "archived": "Diarsipkan"
+      },
+      "sortOption": {
+        "recent": "Terbaru diperbarui",
+        "oldest": "Terlama",
+        "name_asc": "Nama (A–Z)",
+        "name_desc": "Nama (Z–A)"
+      },
+      "thisBookOnly": "Buku ini saja",
+      "showAllBooks": "Tampilkan semua buku"
+    },
+    "card": {
+      "staticMemory": "Memori statis",
+      "archivedBadge": "diarsipkan",
+      "open": "Buka",
+      "edit": "Edit",
+      "archive": "Arsipkan",
+      "restore": "Pulihkan",
+      "delete": "Hapus",
+      "tuneExtraction": "Atur ekstraksi",
+      "bookId": "book_id"
+    },
+    "form": {
+      "createTitle": "Proyek baru",
+      "editTitle": "Edit proyek",
+      "createDescription": "Proyek menentukan cakupan apa yang diingat AI untuk pekerjaan tertentu.",
+      "name": "Nama",
+      "namePlaceholder": "mis. Angin dari Laut Timur",
+      "type": "Tipe",
+      "typeImmutable": "Tipe proyek tidak dapat diubah setelah dibuat.",
+      "typeOptions": {
+        "book": "Buku",
+        "translation": "Terjemahan",
+        "code": "Kode",
+        "general": "Umum"
+      },
+      "bookId": "ID Buku (opsional)",
+      "bookIdPlaceholder": "uuid",
+      "description": "Deskripsi (opsional)",
+      "instructions": "Instruksi (opsional)",
+      "instructionsPlaceholder": "Catatan gaya, nada bicara, batasan — akan dimasukkan ke setiap chat dalam proyek ini.",
+      "nameError": "Nama harus terdiri dari 1–{{max}} karakter.",
+      "bookIdError": "Harus berupa UUID yang valid.",
+      "cancel": "Batal",
+      "create": "Buat",
+      "save": "Simpan",
+      "benchmark": {
+        "run": "Jalankan benchmark",
+        "running": "Menjalankan benchmark…",
+        "success": "Benchmark selesai untuk {{model}} (recall@3 {{recall}}).",
+        "errorNoModel": "Pilih model embedding sebelum menjalankan benchmark.",
+        "errorUnknownModel": "Model embedding ini tidak didukung oleh sistem benchmark.",
+        "errorNotBenchmarkProject": "Benchmark tidak dapat dimulai di sandbox — silakan coba lagi sebentar lagi.",
+        "errorAlreadyRunning": "Benchmark sedang berjalan untuk proyek ini. Tunggu dan coba lagi.",
+        "errorProviderFlake": "Penyedia embedding gagal di tengah proses. Silakan coba lagi.",
+        "errorGeneric": "Benchmark gagal: {{message}}"
+      }
+    },
+    "archiveDialog": {
+      "title": "Arsipkan proyek?",
+      "description": "\"{{name}}\" akan disembunyikan dari daftar aktif. Anda dapat memulihkannya nanti.",
+      "confirm": "Arsipkan"
+    },
+    "deleteDialog": {
+      "title": "Hapus proyek?",
+      "description": "\"{{name}}\" dan ringkasannya akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.",
+      "confirm": "Hapus"
+    },
+    "toast": {
+      "archived": "Proyek diarsipkan",
+      "archiveFailed": "Gagal mengarsipkan",
+      "restored": "Proyek dipulihkan",
+      "restoreFailed": "Gagal memulihkan",
+      "deleted": "Proyek dihapus",
+      "deleteFailed": "Gagal menghapus",
+      "created": "Proyek dibuat",
+      "updated": "Proyek diperbarui",
+      "conflict": "Perangkat lain telah mengubah proyek ini. Tinjau versi terbaru dan simpan kembali.",
+      "actionFailed": "{{label}}: {{error}}",
+      "noPriorJob": "Tidak ada pekerjaan sebelumnya untuk diputar ulang — buka dialog Build.",
+      "noPriorRebuild": "Tidak ada pekerjaan sebelumnya untuk dibangun ulang.",
+      "rebuildNoPriorJob": "Bangun ulang: tidak ada pekerjaan sebelumnya"
+    },
+    "state": {
+      "labels": {
+        "disabled": "Memori statis",
+        "estimating": "Menghitung estimasi biaya...",
+        "ready_to_build": "Siap dibangun",
+        "building_running": "Sedang membangun...",
+        "building_paused_user": "Dijeda",
+        "building_paused_budget": "Anggaran tercapai",
+        "building_paused_error": "Dijeda (error)",
+        "complete": "Siap",
+        "stale": "Pembaruan tertunda",
+        "failed": "Gagal",
+        "model_change_pending": "Perubahan model memerlukan pembangunan ulang",
+        "cancelling": "Membatalkan...",
+        "deleting": "Menghapus graf..."
+      },
+      "actions": {
+        "buildGraph": "Bangun knowledge graph",
+        "start": "Mulai",
+        "pause": "Jeda",
+        "resume": "Lanjutkan",
+        "cancel": "Batal",
+        "retry": "Coba lagi",
+        "deleteGraph": "Hapus graf",
+        "rebuild": "Bangun ulang dari awal",
+        "viewError": "Lihat detail error",
+        "disable": "Nonaktifkan",
+        "changeModel": "Ganti model embedding",
+        "extractNew": "Ekstrak bab baru",
+        "ignore": "Abaikan",
+        "confirm": "Konfirmasi",
+        "confirmModelChange": "Konfirmasi perubahan model",
+        "exploreGraph": "Jelajahi graf",
+        "setConcurrency": "Atur konkurensi"
+      },
+      "cards": {
+        "disabled": {
+          "body": "Menggunakan: bio Anda + instruksi proyek + glosarium + pesan terbaru.",
+          "costZero": "Biaya: $0"
+        },
+        "estimating": {
+          "body": "Mengambil estimasi biaya untuk cakupan ini..."
+        },
+        "ready_to_build": {
+          "hint": "Estimasi biaya: ${{low}} – ${{high}} · {{chapters}} bab, {{turns}} giliran chat, {{tokens}} token",
+          "durationSec": "~{{n}} detik estimasi",
+          "durationMin": "~{{n}} menit estimasi"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} item (bab + chat + glosarium)",
+          "elapsed": "Waktu berjalan: {{elapsed}}",
+          "spent": "Terpakai: ${{spent}}",
+          "spentOfBudget": "Terpakai: ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "Panggilan paralel",
+          "concurrencyApply": "Terapkan",
+          "stagesTitle": "Tahap pembangunan",
+          "stages": "Entitas → Relasi · Peristiwa · Fakta → Ringkasan",
+          "stagesNote": "Pass dijalankan dalam urutan ini. Fakta dan Ringkasan dijalankan setelah Entitas dan Relasi selesai, sehingga muncul belakangan dalam proses build lengkap — menghentikan proses lebih awal akan melewatkan bagian tersebut."
+        },
+        "building_paused_user": {
+          "body": "Anda menjeda pekerjaan ini. Lanjutkan saat siap, atau batalkan untuk menyimpan graf parsial."
+        },
+        "building_paused_budget": {
+          "body": "Mencapai batas pengeluaran sebesar ${{budget}}. Naikkan batas dan lanjutkan, atau batalkan untuk menyimpan graf parsial.",
+          "remaining": "Sisa: ${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "Kesalahan yang dapat dicoba kembali: {{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} entitas · {{facts}} fakta · {{events}} peristiwa · {{passages}} bagian",
+          "lastExtracted": "Terakhir diekstraksi: {{date}}"
+        },
+        "stale": {
+          "body": "{{count}} bab baru sejak ekstraksi terakhir. Ekstrak sekarang atau abaikan."
+        },
+        "failed": {
+          "body": "Ekstraksi gagal: {{error}}"
+        },
+        "model_change_pending": {
+          "body": "Perubahan model dari {{oldModel}} ke {{newModel}} memerlukan penghapusan graf yang ada dan membangun ulang."
+        },
+        "cancelling": {
+          "body": "Menghentikan pekerjaan aktif..."
+        },
+        "deleting": {
+          "body": "Menghapus knowledge graph..."
+        }
+      }
+    },
+    "buildDialog": {
+      "title": "Bangun knowledge graph",
+      "description": "Ekstrak entitas, fakta, dan bagian dari konten proyek ini. Pilih cakupan dan model, lalu pratinjau biaya sebelum mengonfirmasi.",
+      "scope": {
+        "label": "Cakupan",
+        "chapters": "Bab buku",
+        "chat": "Riwayat chat",
+        "glossary_sync": "Sinkronisasi glosarium",
+        "all": "Semuanya",
+        "noBookHint": "Proyek ini tidak tertaut ke buku — cakupan bab dan sinkronisasi glosarium disembunyikan."
+      },
+      "chapterRange": {
+        "label": "Rentang bab (opsional)",
+        "from": "Dari",
+        "to": "Ke",
+        "hint": "Filter ke rentang urutan tertentu. Biarkan kosong untuk semua bab.",
+        "invalid": "Rentang harus berupa bilangan bulat non-negatif dengan Dari ≤ Ke."
+      },
+      "llmModel": {
+        "label": "Model LLM",
+        "placeholder": "Pilih model chat…",
+        "loading": "Memuat model…",
+        "empty": "Tidak ada model yang mendukung chat yang dikonfigurasi. Tambahkan di AI Models → Credentials."
+      },
+      "maxSpend": {
+        "label": "Maksimal pengeluaran (USD, opsional)",
+        "hint": "Batas keras — pekerjaan akan dijeda saat biaya kumulatif mencapai angka ini. Biarkan kosong jika tidak ada batas.",
+        "invalid": "Masukkan jumlah non-negatif dengan maksimal 2 angka di belakang koma.",
+        "monthlyRemaining": "{{amount}} tersisa bulan ini untuk semua proyek."
+      },
+      "estimate": {
+        "heading": "Pratinjau biaya",
+        "pickLlmFirst": "Pilih model LLM untuk melihat estimasi biaya.",
+        "loading": "Mengestimasi…",
+        "failed": "Estimasi gagal: {{error}}",
+        "cost": "Estimasi biaya: ${{low}} – ${{high}}",
+        "items": "{{chapters}} bab · {{turns}} giliran chat · ~{{tokens}} token",
+        "duration": "~{{seconds}}s estimasi",
+        "pinned": "Konteks yang disematkan: +{{tokens}} token ({{count}} disematkan di semua jendela)"
+      },
+      "cancel": "Batal",
+      "confirm": "Bangun graf",
+      "starting": "Memulai…",
+      "startSuccess": "Pembangunan dimulai — sedang mengekstraksi knowledge graph.",
+      "startFailed": "Mulai gagal: {{error}}",
+      "wizard": {
+        "step1": "Target",
+        "step2": "Penyematan",
+        "step3": "Anggaran",
+        "next": "Berikutnya",
+        "back": "Kembali",
+        "step2Placeholder": "Penyematan glosarium ada di langkah berikutnya — untuk saat ini, setiap jendela ekstraksi menggunakan konteks babnya sendiri."
+      },
+      "targets": {
+        "label": "Apa yang diekstrak",
+        "hint": "Pilih pass mana yang dijalankan. Membiarkan semua tidak dicentang akan menjalankan semuanya (default).",
+        "entities": "Entitas",
+        "relations": "Relasi",
+        "events": "Peristiwa · lini masa",
+        "facts": "Fakta",
+        "summaries": "Ringkasan",
+        "autoIncluded": "otomatis disertakan",
+        "autoIncludedHint": "Entitas diekstraksi secara otomatis karena relasi, peristiwa, atau fakta tertaut padanya.",
+        "recoveryDisabledHint": "Pemulihan entitas dan penyaringan presisi dilewati karena entitas tidak dipilih sebagai target."
+      },
+      "concurrency": {
+        "label": "Panggilan LLM paralel (opsional)",
+        "hint": "Batasi berapa banyak panggilan ekstraksi yang berjalan sekaligus. Biarkan kosong untuk pengaturan default."
+      },
+      "pinning": {
+        "intro": "Sematkan entitas glosarium untuk memaksakan penyisipannya ke setiap jendela ekstraksi — sehingga entitas yang jarang muncul namun krusial tetap tertaut bahkan dalam bab yang tidak pernah menyebutkannya.",
+        "autopin": "{{count}} entitas yang jarang muncul namun berdampak luas layak untuk disematkan.",
+        "autopinApply": "Sematkan {{count}} saran",
+        "loading": "Memuat statistik entitas…",
+        "unavailable": "Statistik entitas tidak tersedia — Anda masih dapat menyematkan secara manual di bawah.",
+        "searchPlaceholder": "Cari berdasarkan nama…",
+        "kindAll": "Semua jenis",
+        "minMentions": "Min ×",
+        "available": "Tersedia ({{count}})",
+        "availableEmpty": "Tidak ada entitas yang cocok dengan filter.",
+        "pinned": "Disematkan ({{count}})",
+        "pinnedEmpty": "Belum ada yang disematkan.",
+        "pin": "Sematkan",
+        "unpin": "Lepas sematan",
+        "budget": "+{{tokens}} token per jendela ({{count}} disematkan × ~50).",
+        "noBook": "Penyematan memerlukan buku yang tertaut. Hubungkan buku ke proyek ini terlebih dahulu."
+      }
+    },
+    "errorViewer": {
+      "title": "Kesalahan ekstraksi",
+      "description": "Pesan kesalahan lengkap yang ditangkap dari proses ekstraksi. Gunakan ini untuk laporan bug atau analisis akar masalah.",
+      "jobIdLabel": "ID Pekerjaan",
+      "startedLabel": "Dimulai",
+      "scopeLabel": "Cakupan",
+      "progressLabel": "Progres",
+      "progressValue": "{{processed}} / {{total}} item",
+      "costLabel": "Biaya yang dihabiskan",
+      "errorLabel": "Kesalahan",
+      "copy": "Salin",
+      "copied": "Tersalin",
+      "close": "Tutup"
+    },
+    "changeModelDialog": {
+      "title": "Ubah model embedding",
+      "description": "Mengganti model embedding memerlukan penghapusan knowledge graph yang ada. Anda perlu memulai ekstraksi baru setelahnya.",
+      "warningTitle": "Perubahan destruktif",
+      "warningBody": "Model saat ini: {{currentModel}}. Menggantinya akan menghapus semua entitas, fakta, peristiwa, dan kutipan yang telah diekstraksi. Ekstraksi akan dinonaktifkan sampai Anda memulai build baru.",
+      "sameModel": "Pilih model yang berbeda untuk mengaktifkan tombol Konfirmasi.",
+      "cancel": "Batal",
+      "confirm": "Ubah model dan hapus graph",
+      "submitting": "Mengubah...",
+      "failed": "Perubahan gagal: {{error}}",
+      "alreadyAtModel": "Model sudah diatur ke {{model}} — perangkat lain mungkin telah mengubahnya."
+    },
+    "extractionTuning": {
+      "title": "Atur ekstraksi",
+      "description": "Pengaturan ekstraksi per novel. Perubahan akan diterapkan pada proses ekstraksi berikutnya untuk proyek ini.",
+      "filterEnabled": "Filter presisi (menghapus ekstraksi dengan dukungan rendah)",
+      "category": {
+        "entity": "Entitas",
+        "relation": "Relasi",
+        "event": "Peristiwa"
+      },
+      "categoriesRequired": "Pilih setidaknya satu kategori, atau matikan filter.",
+      "partialPolicy": "Hasil parsial:",
+      "policyKeep": "Simpan",
+      "policyDrop": "Hapus",
+      "defaultModel": "Model ekstraksi default",
+      "defaultModelNone": "Gunakan default global saya",
+      "defaultModelHint": "Model yang digunakan oleh setiap langkah ekstraksi kecuali jika ditimpa di bawah. Jika dikosongkan, peran akan kembali ke model default global Anda (Pengaturan), lalu ke model yang digunakan build ini.",
+      "recoveryEnabled": "Pemulihan entitas (memulihkan entitas yang terlewat)",
+      "recoveryModel": "Model pemulihan (opsional)",
+      "recoveryModelNone": "Gunakan model ekstraksi default",
+      "recoveryModelHint": "LLM yang memulihkan entitas yang terlewat oleh proses utama. Jika dibiarkan default, ia akan menggunakan kembali model ekstraksi default di atas.",
+      "recoveryBatch": "Ukuran batch",
+      "recoveryBatchHint": "nama per panggilan classifier (1-20; default 5)",
+      "autocreateEnabled": "Autocreate penulis (membuat entitas yang dirujuk oleh relasi)",
+      "promptWarning": "Lanjutan: prompt kustom menggantikan instruksi ekstraksi default untuk langkah tersebut dan dapat menurunkan kualitas. Biarkan kosong untuk menggunakan default. Output JSON akan selalu diterapkan.",
+      "promptPlaceholder": "Biarkan kosong untuk menggunakan prompt default",
+      "prompt": {
+        "entity": "Prompt ekstraksi entitas",
+        "relation": "Prompt ekstraksi relasi",
+        "event": "Prompt ekstraksi peristiwa",
+        "fact": "Prompt ekstraksi fakta"
+      },
+      "save": "Simpan",
+      "saving": "Menyimpan...",
+      "cancel": "Batal",
+      "saved": "Pengaturan ekstraksi disimpan.",
+      "failed": "Penyimpanan gagal: {{error}}"
+    },
+    "confirmDestructive": {
+      "cancel": "Batal",
+      "deleteGraph": {
+        "title": "Hapus knowledge graph?",
+        "description": "Ini akan menghapus secara permanen semua entitas, fakta, peristiwa, dan kutipan yang telah diekstraksi untuk proyek ini. Proyek tetap ada; Anda dapat membangun ulang nanti."
+      },
+      "rebuildStep1": {
+        "title": "Bangun ulang dari awal?",
+        "description": "Membangun ulang akan menghapus graph yang ada dan memulai ekstraksi baru dengan model dan cakupan yang sama. Ini dapat memakan biaya dan waktu.",
+        "confirmLabel": "Lanjutkan"
+      },
+      "rebuildStep2": {
+        "title": "Kesempatan terakhir — benar-benar bangun ulang?",
+        "description": "Mengeklik Bangun Ulang sekarang akan memulai proses penghapusan-dan-pembangunan-ulang. Tidak ada pembatalan setelah pekerjaan baru berjalan."
+      },
+      "disable": {
+        "title": "Nonaktifkan ekstraksi?",
+        "description": "Menghentikan ekstraksi konten baru. Knowledge graph yang ada tetap dipertahankan dan tetap dapat dibaca. Mengaktifkan kembali memerlukan proses ekstraksi baru."
+      }
+    }
+  },
+  "global": {
+    "title": "Bio Global",
+    "description": "Deskripsi singkat tentang Anda yang dapat dilihat AI di setiap proyek. Preferensi gaya, konteks pekerjaan Anda, atau apa pun yang ingin Anda bawa ke berbagai sesi. Maksimal {{max}} karakter.",
+    "placeholder": "mis. Saya menulis fantasi urban. Gunakan urutan nama Jepang. Gunakan prosa yang hemat, hindari kata sifat yang berlebihan.",
+    "loadFailed": "Gagal memuat ringkasan: {{error}}",
+    "unsavedChanges": "Perubahan belum disimpan",
+    "saving": "Menyimpan…",
+    "save": "Simpan",
+    "saved": "Bio global disimpan",
+    "saveFailed": "Gagal menyimpan",
+    "version": "v{{version}}",
+    "conflict": "Perangkat lain telah memperbarui bio ini. Tinjau versi terbaru dan simpan kembali.",
+    "tokenEstimate": "~{{tokens}} token",
+    "reset": "Atur Ulang",
+    "resetting": "Mengatur ulang…",
+    "resetConfirm": "Hapus bio",
+    "resetCancel": "Batal",
+    "resetConfirmTitle": "Hapus bio global Anda?",
+    "resetConfirmBody": "Ini akan menghapus bio di server. Versi baru akan dicatat dalam riwayat sehingga Anda dapat mengembalikannya kapan saja.",
+    "resetConfirmNote": "Anda juga dapat kembali ke versi sebelumnya melalui panel Riwayat.",
+    "resetSuccess": "Bio global telah dihapus",
+    "resetFailed": "Gagal mengatur ulang",
+    "regenerate": {
+      "button": "Regenerasi",
+      "title": "Regenerasi bio global",
+      "description": "Membangun kembali bio Anda dari percakapan terakhir. Bio Anda saat ini disimpan ke riwayat sehingga Anda dapat mengembalikannya kapan saja.",
+      "modelLabel": "Model",
+      "modelLoading": "Memuat model…",
+      "modelPlaceholder": "Pilih model chat",
+      "noModels": "Anda tidak memiliki model chat yang terdaftar. Tambahkan satu di Model AI terlebih dahulu.",
+      "costHint": "Estimasi biaya: kecil (<$0.05). Output dibatasi hingga 500 token.",
+      "editLockHint": "Edit manual dalam 30 hari terakhir dilindungi — regenerasi akan dilewati jika Anda baru saja mengedit bio ini.",
+      "disabledDirty": "Simpan atau atur ulang pengeditan Anda yang belum disimpan sebelum regenerasi — output regenerasi tidak akan muncul di editor selama masih ada perubahan tertunda.",
+      "editLockDefault": "Edit manual terbaru Anda dilindungi dari regenerasi selama 30 hari.",
+      "confirm": "Regenerasi",
+      "regenerating": "Meregenerasi…",
+      "cancel": "Batal",
+      "success": "Bio global berhasil diregenerasi",
+      "noOpSimilarity": "Versi baru hampir identik dengan bio Anda saat ini — tidak ada yang ditulis.",
+      "noOpEmptySource": "Tidak ada konten chat terbaru untuk membangun bio — lakukan beberapa percakapan terlebih dahulu.",
+      "concurrentEdit": "Edit manual terjadi bersamaan dengan regenerasi. Tinjau bio Anda saat ini dan coba lagi.",
+      "guardrailFailed": "Regenerasi gagal dalam pemeriksaan kualitas: {{reason}}",
+      "providerError": "Penyedia AI Anda mengembalikan kesalahan: {{reason}}",
+      "unknownError": "Regenerasi gagal: {{reason}}"
+    },
+    "preferences": {
+      "title": "Preferensi yang dipelajari",
+      "description": "Preferensi lintas-proyek yang diekstraksi oleh AI dari chat Anda. Hapus satu untuk menyembunyikannya dari konteks di masa mendatang.",
+      "loading": "Memuat preferensi…",
+      "loadFailed": "Tidak dapat memuat preferensi.",
+      "empty": "Belum ada preferensi yang dipelajari — preferensi akan muncul di sini setelah Anda melakukan beberapa percakapan.",
+      "delete": "Hapus",
+      "deleting": "Menghapus…",
+      "cancel": "Batal",
+      "deleteAria": "Hapus {{name}}",
+      "confirmTitle": "Hapus preferensi ini?",
+      "confirmBody": "Menyembunyikan {{name}} dari penyusunan konteks di masa mendatang. Anda tidak dapat memulihkannya — AI mungkin mempelajarinya kembali dari chat berikutnya.",
+      "confirmNote": "Ini adalah pengarsipan lunak. Data Anda tidak dihapus.",
+      "deleteSuccess": "{{name}} dihapus dari preferensi",
+      "deleteFailed": "Tidak dapat menghapus preferensi: {{error}}"
+    },
+    "versions": {
+      "toggle": "Riwayat",
+      "title": "Riwayat versi",
+      "close": "Tutup",
+      "loading": "Memuat riwayat…",
+      "loadFailed": "Gagal memuat riwayat: {{error}}",
+      "empty": "Tidak ada versi sebelumnya — riwayat mulai dibangun setelah penyimpanan berikutnya.",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(kosong)",
+      "view": "Lihat",
+      "rollback": "Rollback",
+      "rollbackFromPreview": "Rollback ke versi ini",
+      "rollingBack": "Mengembalikan…",
+      "confirmTitle": "Rollback ke versi ini?",
+      "confirmBody": "Bio Anda saat ini akan diganti dengan konten dari v{{version}}. Versi baru akan dibuat; status saat ini akan diarsipkan dalam riwayat.",
+      "confirm": "Rollback",
+      "rollbackSuccess": "Berhasil kembali ke versi terpilih",
+      "rollbackFailed": "Rollback gagal",
+      "previewTitle": "Pratinjau Versi {{version}}",
+      "source": {
+        "manual": "Manual",
+        "rollback": "Rollback"
+      },
+      "diffToggle": "Tampilkan perbedaan vs saat ini",
+      "diffEmpty": "Tidak ada perbedaan."
+    }
+  },
+  "indicator": {
+    "label": "Indikator pengetahuan",
+    "title": "Pengetahuan",
+    "modes": {
+      "global": "Global",
+      "project": "Proyek",
+      "degraded": "Menurun"
+    },
+    "popover": {
+      "projectHeading": "Memori proyek",
+      "globalHeading": "Hanya memori global",
+      "loading": "memuat…",
+      "fallbackProject": "sebuah proyek",
+      "projectBody": "Sesi ini terhubung ke <strong>{{name}}</strong>. AI melihat bio global Anda serta ringkasan proyek dan entri glosarium pada setiap giliran.",
+      "globalBody": "Sesi ini tidak memiliki proyek yang terhubung. AI hanya melihat bio global Anda. Hubungkan proyek di pengaturan sesi untuk memberikan akses ke memori khusus buku.",
+      "degradedBody": "Layanan pengetahuan tidak dapat dijangkau pada giliran terakhir. AI hanya menggunakan pesan terbaru — memori proyek Anda untuk sementara tidak ada dalam prompt. Akan pulih otomatis pada giliran berikutnya setelah layanan kembali aktif.",
+      "manage": "Kelola pengetahuan"
+    }
+  },
+  "picker": {
+    "label": "Memori proyek",
+    "noProject": "Tidak ada proyek — hanya memori global",
+    "archivedPlaceholder": "(proyek diarsipkan — pilih yang lain)",
+    "hint": "Menghubungkan chat ini ke proyek layanan-pengetahuan sehingga AI dapat melihat ringkasan dan glosariumnya pada setiap giliran."
+  },
+  "privacy": {
+    "export": {
+      "title": "Ekspor data Anda",
+      "description": "Unduh setiap proyek dan ringkasan yang telah disimpan AI untuk Anda dalam satu file JSON tunggal. GDPR Pasal 20.",
+      "button": "Unduh ekspor",
+      "preparing": "Menyiapkan...",
+      "success": "Ekspor berhasil diunduh",
+      "failed": "Ekspor gagal"
+    },
+    "delete": {
+      "title": "Hapus semua data pengetahuan",
+      "description": "Hapus secara permanen setiap proyek dan ringkasan. Ini tidak akan menyentuh buku, bab, atau akun Anda — hanya apa yang telah disimpan oleh sistem memori. Tindakan ini tidak dapat dibatalkan.",
+      "button": "Hapus semua",
+      "deleting": "Menghapus...",
+      "success": "Berhasil menghapus {{projects}} proyek dan {{summaries}} item ringkasan",
+      "failed": "Penghapusan gagal"
+    },
+    "dialog": {
+      "title": "Hapus semua data pengetahuan?",
+      "description": "Ini akan menghapus setiap proyek dan ringkasan secara permanen. Ketik {{token}} di bawah untuk mengonfirmasi.",
+      "cancel": "Batal"
+    }
+  },
+  "relations": {
+    "edit": {
+      "cta": "Perbaiki relasi",
+      "title": "Perbaiki relasi",
+      "description": "Perbaiki predikat relasi ini, atau tandai sebagai salah agar dihapus.",
+      "field": {
+        "predicate": "Predikat"
+      },
+      "save": "Perbaiki",
+      "saving": "Memperbaiki...",
+      "cancel": "Batal",
+      "correctSuccess": "Relasi diperbaiki.",
+      "invalidateSuccess": "Relasi dihapus.",
+      "invalidateHint": "Jika relasi ini seharusnya tidak pernah diekstraksi, tandai sebagai salah untuk menghapusnya.",
+      "invalidateConfirm": "Tandai relasi ini sebagai salah dan hapus?",
+      "markWrong": "Tandai salah",
+      "invalidating": "Menghapus...",
+      "failed": "Tidak dapat menyimpan perbaikan: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "Edit",
+      "title": "Edit peristiwa",
+      "description": "Sesuaikan judul, ringkasan, atau waktu peristiwa ini.",
+      "field": {
+        "title": "Judul",
+        "summary": "Ringkasan",
+        "timeCue": "Petunjuk waktu",
+        "dateIso": "Tanggal (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY atau YYYY-MM-DD",
+      "save": "Simpan",
+      "saving": "Menyimpan...",
+      "cancel": "Batal",
+      "success": "Peristiwa diperbarui.",
+      "conflict": "Perangkat lain telah memperbarui peristiwa ini. Tinjau versi terbaru dan coba lagi.",
+      "failed": "Tidak dapat memperbarui peristiwa: {{error}}",
+      "invalidDate": "Tanggal harus dalam format YYYY, YYYY-MM, atau YYYY-MM-DD."
+    },
+    "archive": {
+      "cta": "Hapus",
+      "confirm": "Hapus (sembunyikan) peristiwa ini?",
+      "archiving": "Menghapus...",
+      "success": "Peristiwa dihapus.",
+      "failed": "Tidak dapat menghapus peristiwa: {{error}}"
+    }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "Konfigurasi Kualitas",
+        "description": "Tingkat keberhasilan berdasarkan genre dan konfigurasi. Diisi setelah 2+ proses ekstraksi dengan hash konfigurasi yang sama.",
+        "empty": "Belum ada data — butuh 2+ proses ekstraksi dengan hash konfigurasi yang sama per genre.",
+        "exploration": "Sampel eksplorasi (ekor acak)"
+      },
+      "modelMatrix": {
+        "title": "Matriks Model",
+        "description": "Skor hasil tertimbang berdasarkan model dan cakupan tugas. berhasil=1.0 · dilewati=0.3 · gagal=0.0.",
+        "empty": "Belum ada data — butuh 2+ proses ekstraksi dengan model dan cakupan yang sama."
+      },
+      "defaultDrift": {
+        "title": "Drift Konfigurasi",
+        "description": "Parameter ekstraksi mana yang menyimpang dari default, dan apakah proyek-proyek konvergen pada nilai yang sama.",
+        "empty": "Belum ada penyesuaian parameter yang tercatat."
+      },
+      "outcomeRecompute": {
+        "title": "Hitung Ulang Hasil",
+        "description": "Proses ekstraksi yang dievaluasi kembali setelah menerapkan koreksi pengguna pasca-proses.",
+        "empty": "Belum ada data koreksi. Hitung ulang hasil aktif setelah koreksi terhubung kembali ke proses ekstraksi."
+      }
+    },
+    "columns": {
+      "genre": "Genre",
+      "configHash": "Konfigurasi",
+      "runs": "Proses",
+      "successRate": "Tingkat keberhasilan",
+      "avgEntities": "Rata-rata entitas",
+      "model": "Model",
+      "scope": "Cakupan",
+      "filter": "Filter",
+      "weightedOutcome": "Skor",
+      "target": "Parameter",
+      "affectedProjects": "Proyek",
+      "driftPattern": "Pola",
+      "runsWithOutcome": "Proses dgn hasil",
+      "runId": "Proses",
+      "outcome": "Hasil",
+      "recomputed": "Dihitung ulang",
+      "corrections": "Koreksi"
+    },
+    "driftPattern": {
+      "convergent": "Konvergen",
+      "divergent": "Divergen"
+    },
+    "totalRuns": "{{count}} proses total"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "breakdown_categories": [
+    "system_prompt",
+    "memory_knowledge",
+    "story_state",
+    "working_memory",
+    "steering",
+    "skills",
+    "plan_nudge",
+    "book_note",
+    "attached_context",
+    "history",
+    "tool_results",
+    "frontend_tool_schemas",
+    "mcp_tool_schemas",
+    "summary",
+    "chapter",
+    "reasoning"
+  ],
+  "frame_fields": [
+    "baseline_tokens",
+    "breakdown",
+    "context_length",
+    "entity_presence",
+    "intent",
+    "raw_tokens",
+    "reduction_pct",
+    "retrieval_mode",
+    "status_flags",
+    "target",
+    "trace",
+    "until_compact_pct",
+    "used_tokens"
+  ],
+  "trace_span_fields": [
+    "action",
+    "category",
+    "delta",
+    "is_error",
+    "phase",
+    "tier"
+  ]
+}

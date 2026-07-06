@@ -231,6 +231,10 @@ class CreateSessionRequest(BaseModel):
     # When set, chat-service injects it into the agent's glossary_plan call.
     planner_model_source: str | None = None
     planner_model_ref: UUID | None = None
+    # D-COMPOSE-SESSION-RESTORE: set by a book-scoped caller (Writing Studio
+    # Compose) so the session survives being found again on the next open,
+    # independent of whether a knowledge project is linked yet.
+    book_id: UUID | None = None
 
 
 class PatchSessionRequest(BaseModel):
@@ -245,6 +249,10 @@ class PatchSessionRequest(BaseModel):
     enabled_tools: list[str] | None = Field(default=None, max_length=32)
     enabled_skills: list[str] | None = Field(default=None, max_length=16)
     activated_tools: list[str] | None = None  # write: clear discovered tools via []
+    # Tool-catalog-simplification Part D (CAT-4): manually pin a legacy (superseded,
+    # find_tools-invisible) tool into this session. Validated server-side against
+    # the live legacy catalog — see GET /v1/chat/sessions/tools/legacy.
+    pinned_legacy_tools: list[str] | None = Field(default=None, max_length=16)
     # K5: PATCH can set or clear project_id. Use Pydantic's model_dump
     # exclude_unset semantics — explicit `null` clears, omitted leaves alone.
     project_id: UUID | None = None
@@ -275,6 +283,7 @@ class ChatSession(BaseModel):
     created_at: datetime
     updated_at: datetime
     project_id: UUID | None = None  # K5
+    book_id: UUID | None = None  # D-COMPOSE-SESSION-RESTORE
     # Track B B1(2) — multi-KG grounding set. Empty list = the legacy
     # single-project path. Default-empty so an older row / no-project session
     # stays back-compatible.
@@ -294,6 +303,7 @@ class ChatSession(BaseModel):
     enabled_tools: list[str] = Field(default_factory=list)
     enabled_skills: list[str] = Field(default_factory=list)
     activated_tools: list[str] = Field(default_factory=list)
+    pinned_legacy_tools: list[str] = Field(default_factory=list)
     # W3 — manual steerable compact: messages with sequence_num < this are
     # represented by the session's stored compact_summary on every later turn.
     # NULL/None = never manually compacted. (The summary text itself is not
@@ -350,6 +360,9 @@ class ToolCatalogItem(BaseModel):
     domain: str
     tier: str
     description: str
+    # CAT-4: discoverable (default, browsable/pinnable via enabled_tools) or
+    # legacy (superseded — only reachable via pinned_legacy_tools).
+    visibility: str = "discoverable"
 
 
 class ToolCatalogResponse(BaseModel):
@@ -449,7 +462,11 @@ class SendMessageRequest(BaseModel):
     # RAID Wave B2 (07S §5b) — 'plan' = the ask surface PLUS the PlanForge
     # `plan_*` server tools (they write plan artifacts, never prose); plan_forge
     # skill auto-injects and a plan-mode system nudge is appended.
-    permission_mode: Literal["ask", "write", "plan"] = "write"
+    # Default None (not "write") so the turn can tell "omitted" from an explicit
+    # "write" and fall back to the user's account default (user_chat_ai_prefs.
+    # behavior.permission_mode) when omitted, then to "write". The FE input bar
+    # always sends an explicit value, so this only affects callers that omit it.
+    permission_mode: Literal["ask", "write", "plan"] | None = None
 
 
 class ToolResultRequest(BaseModel):
@@ -522,6 +539,29 @@ class ContextHistoryResponse(BaseModel):
     items: list[ContextHistoryPoint]
 
 
+# ── Context trace (the Inspector's per-turn data source, spec §11) ─────────────
+# Unlike ContextHistoryPoint (the chart — breakdown sub-map only), the Inspector
+# needs the WHOLE persisted contextBudget frame per turn (raw_tokens, reduction_pct,
+# target, status_flags, retrieval_mode, intent, entity_presence, the trace spans, the
+# allocation breakdown) plus the user message that drove the turn. `frame` is the
+# frame verbatim so the FE reads exactly what the compiler emitted (no lossy reshape).
+
+class ContextTracePoint(BaseModel):
+    sequence_num: int
+    created_at: datetime
+    input_tokens: int | None
+    output_tokens: int | None
+    # The parent user turn's text (what the author typed). None when the assistant
+    # turn has no text-column parent (e.g. a parts-only user message).
+    user_message: str | None
+    # The full persisted contextBudget frame (context_breakdown JSONB) verbatim.
+    frame: dict[str, Any]
+
+
+class ContextTraceResponse(BaseModel):
+    items: list[ContextTracePoint]
+
+
 class LatestContextBudgetResponse(BaseModel):
     # The LAST assistant turn's persisted contextBudget frame (the same shape the
     # SSE `contextBudget` event carries: used_tokens / context_length /
@@ -567,3 +607,9 @@ class ProviderCredentials(BaseModel):
     base_url: str
     api_key: str
     context_length: int | None
+    # Provider Context Strategy §3 — the provider kind's static caching capabilities
+    # (prompt_cache_control / responses_api / auto_prefix_cache), resolved by
+    # provider-registry (the single home) and consumed here to label the caching
+    # monitoring frame + pick a ContextStrategy. Defaults empty so a legacy/absent
+    # field degrades to "no special caching" (StatelessFullContext).
+    capabilities: dict[str, bool] = Field(default_factory=dict)

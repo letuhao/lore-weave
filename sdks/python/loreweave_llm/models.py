@@ -47,11 +47,21 @@ class UsageEvent(_BaseEvent):
     input_tokens: int = 0
     output_tokens: int = 0
     reasoning_tokens: int | None = None
+    # Prompt-cache split (Provider Context Strategy §7 monitoring). None when the
+    # provider reported no cache activity. Provider-normalized: creation = tokens
+    # written to cache this turn (Anthropic only; premium-billed); read = tokens
+    # served from cache (Anthropic cache_read / OpenAI+Responses cached_tokens).
+    # input_tokens stays the full billed volume → uncached = input − creation − read.
+    cache_creation_tok: int | None = None
+    cache_read_tok: int | None = None
 
 
 class DoneEvent(_BaseEvent):
     event_type: Literal["done"] = Field("done", alias="event")
     finish_reason: str | None = None
+    # Stateful /v1/responses chain head (Provider Context Strategy §5). Present only on
+    # a stateful turn; the caller persists it as previous_response_id for the next turn.
+    response_id: str | None = None
 
 
 class ErrorEvent(_BaseEvent):
@@ -149,6 +159,15 @@ class StreamRequest(BaseModel):
     # cancellable context under this id, so the caller can abort the in-flight
     # stream via DELETE /internal/llm/jobs/{id}. None (default) → today's behavior.
     stream_job_id: str | None = None
+    # Provider Context Strategy §5 (Phase 2) — stateful /v1/responses routing.
+    # `stateful=True` asks the gateway to use the provider's Responses API (server
+    # holds the prior context); `previous_response_id` chains this call onto the prior
+    # response (None = start a fresh chain). Both are OPTIONAL and additive: unset ⇒
+    # the wire body is byte-identical to today's chat/completions request. The gateway
+    # only honors `stateful` when the credential declares the `responses_api`
+    # capability and LLM_STATEFUL_CACHE is on; otherwise it degrades to chat/completions.
+    stateful: bool = False
+    previous_response_id: str | None = None
 
     def to_request_body(self) -> dict[str, Any]:
         """Serialize to the wire JSON body. Drops `max_tokens` when it's
@@ -159,6 +178,9 @@ class StreamRequest(BaseModel):
         data = self.model_dump(mode="json", exclude_none=True)
         if data.get("max_tokens") == 0:
             data.pop("max_tokens", None)
+        # Keep the stateless path byte-identical: only emit `stateful` when True.
+        if not data.get("stateful"):
+            data.pop("stateful", None)
         return data
 
 
@@ -179,6 +201,7 @@ JobOperation = Literal[
     "fact_extraction",  # Phase 4a-β
     "summarize_level",  # P3 hierarchical reduce — chapter/part/book summaries
     "translation",
+    "vision",  # PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5)
 ]
 
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
@@ -506,3 +529,39 @@ class AudioGenResult(BaseModel):
 
     created: int
     data: list[AudioGenDataItem] = Field(min_length=1, max_length=10)
+
+
+# ── Vision (image-caption) models — PDF-import L5 ─────────────────────
+# (docs/specs/2026-07-06-pdf-book-import.md)
+
+
+class VisionInput(BaseModel):
+    """Mirrors openapi `VisionInput`. Used as `input` for
+    `operation=vision` on POST /v1/llm/jobs (async job, not streaming).
+
+    One-shot multimodal chat completion: a single image + a text prompt,
+    gateway returns the model's text response (a caption/description) —
+    NOT image generation. Supported by OpenAI, Anthropic, Ollama, and LM
+    Studio adapters (the selected model must itself support vision).
+    Chunking is not supported (single image, single call).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    image_b64: str = Field(..., min_length=1)
+    mime_type: str = "image/png"
+    prompt: str = Field(..., min_length=1)
+    max_tokens: int | None = None
+
+
+class VisionResult(BaseModel):
+    """Mirrors openapi `VisionResult`. Decoded from Job.result when
+    `operation=vision` and `status=completed`.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    caption: str
+    finish_reason: str | None = None
+    provider_kind: str | None = None
+    provider_model_name: str | None = None

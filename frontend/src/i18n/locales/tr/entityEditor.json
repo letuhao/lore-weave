@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "Başlıksız",
+    "status": {
+      "draft": "Taslak",
+      "active": "Aktif",
+      "inactive": "Pasif"
+    },
+    "discard": "Kaldır",
+    "save": "Kaydet",
+    "save_entity": "Varlığı Kaydet",
+    "cancel": "İptal",
+    "move_to_trash": "Çöp Kutusuna Taşı",
+    "meta": {
+      "chapters": "{{count}} bölüm",
+      "translations": "{{count}} çeviri",
+      "evidences": "{{count}} kanıt"
+    },
+    "tab": {
+      "attributes": "Öznitelikler",
+      "evidences": "Kanıtlar",
+      "history": "Geçmiş"
+    },
+    "viewing_in_language": "{{lang}} dilinde görüntüleniyor",
+    "viewing_original": "Orijinal ({{lang}})",
+    "translation_lang_aria": "Çeviri dili",
+    "no_translation": "Çeviri yok",
+    "add_language": "+ Dil ekle...",
+    "lang_placeholder": "örn. en",
+    "system_attrs": "Sistem Öznitelikleri",
+    "user_attrs": "Kullanıcı Öznitelikleri",
+    "no_attributes": "Bu varlık türü için tanımlanmış öznitelik yok.",
+    "toast": {
+      "saved": "Varlık kaydedildi",
+      "status_changed": "Durum {{status}} olarak değiştirildi",
+      "invalid_lang": "Geçersiz dil kodu (örn. en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*zorunlu",
+    "modified": "değiştirildi",
+    "has_translations": "Çevirileri var"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "Taslak",
+      "verified": "Doğrulanmış",
+      "machine": "Makine"
+    },
+    "confidence_aria": "Çeviri güven düzeyi",
+    "by": "{{name}} tarafından",
+    "discard_aria": "Değişiklikleri kaldır",
+    "save": "Kaydet",
+    "delete_aria": "Çeviriyi sil",
+    "placeholder": "{{lang}} çevirisi...",
+    "tags_add": "+ Takma ad ekle",
+    "delete_title": "Çeviri silinsin mi?",
+    "delete_desc": "Bu öznitelik için {{lang}} çevirisi kalıcı olarak silinecektir.",
+    "delete_confirm": "Sil",
+    "toast": {
+      "updated": "Çeviri güncellendi",
+      "created": "Çeviri oluşturuldu",
+      "deleted": "Çeviri silindi"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "Alıntı",
+      "summary": "Özet",
+      "reference": "Referans"
+    },
+    "provenance": {
+      "ambiguous": "Doğrulanmamış eşleşme",
+      "ambiguous_hint": "Bu alıntı kaynak metinle birden fazla yerde eşleşti; tam konum belirsiz.",
+      "unmatched": "Kaynakta bulunamadı",
+      "unmatched_hint": "Bu alıntı bölüm metninde bulunamadı; başka kelimelerle ifade edilmiş veya uydurulmuş olabilir. Güvenmeden önce doğrulayın.",
+      "unverified": "Doğrulanmamış",
+      "unverified_hint": "Bu alıntı kaynak metne karşı doğrulanmadı."
+    },
+    "filter": {
+      "all": "Hepsi",
+      "attr_aria": "Özniteliğe göre filtrele",
+      "all_attributes": "Tüm öznitelikler",
+      "chapter_aria": "Bölüme göre filtrele",
+      "all_chapters": "Tüm bölümler",
+      "chapter_n": "Bölüm {{n}}",
+      "lang_aria": "Görüntüleme dili",
+      "original": "Orijinal",
+      "sort_aria": "Sırala",
+      "sort": {
+        "created": "Oluşturulma",
+        "chapter": "Bölüm",
+        "block_line": "Blok/Satır",
+        "attribute": "Öznitelik"
+      },
+      "ascending": "Artan",
+      "descending": "Azalan",
+      "add": "Ekle"
+    },
+    "create": {
+      "title": "Yeni Kanıt",
+      "attribute": "Öznitelik *",
+      "attr_aria": "Yeni kanıt için öznitelik",
+      "type": "Tür",
+      "type_aria": "Kanıt türü",
+      "original_text": "Orijinal Metin *",
+      "text_placeholder": "Kaynak metni yapıştırın...",
+      "block_line": "Blok / Satır",
+      "block_placeholder": "örn. s.42",
+      "note": "Not",
+      "note_placeholder": "İsteğe bağlı not",
+      "cancel": "İptal",
+      "create": "Oluştur"
+    },
+    "card": {
+      "edit_type_aria": "Kanıt türünü düzenle",
+      "cancel_title": "İptal",
+      "block_line": "Blok / Satır",
+      "note": "Not",
+      "cancel": "İptal",
+      "save": "Kaydet",
+      "edit_title": "Düzenle",
+      "open_source": "Kaynak bölümü aç",
+      "delete_title": "Sil",
+      "translated": "Çevrildi ({{lang}})",
+      "note_label": "Not: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "Kanıt bulunamadı",
+      "clear_filters": "Filtreleri temizle",
+      "prev_page": "Önceki sayfa",
+      "next_page": "Sonraki sayfa",
+      "first_page": "İlk sayfa",
+      "last_page": "Son sayfa",
+      "jump_to_page": "Sayfaya git",
+      "page_size": "Sayfa başına satır",
+      "per_page": "{{n}} / sayfa",
+      "delete_title": "Kanıt silinsin mi?",
+      "delete_desc": "\"{{attr}}\" öğesine ait bu kanıt kalıcı olarak silinecektir.",
+      "delete_confirm": "Sil"
+    },
+    "toast": {
+      "updated": "Kanıt güncellendi",
+      "deleted": "Kanıt silindi",
+      "created": "Kanıt oluşturuldu",
+      "text_required": "Orijinal metin zorunludur"
+    }
+  },
+  "summarize": {
+    "canonical_label": "Birleştirilmiş özet",
+    "pending_dirty": "Bir sonraki çıkarma işleminden sonra yeniden özetlenecek",
+    "pending_new": "Bir sonraki çıkarma işleminden sonra özetlenecek",
+    "sources": "Ham atıflar ({{count}})",
+    "empty": "Henüz atıf yok"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "heading": "Was möchtest du tun?",
+  "subheading": "Wähle einen Startpunkt – du kannst ihn jederzeit ändern.",
+  "intent": {
+    "write": {
+      "title": "Schreiben",
+      "desc": "Beginne ein neues Buch oder schreibe weiter – entwirf Kapitel mit einem KI-Co-Autor."
+    },
+    "world": {
+      "title": "Eine Welt erschaffen",
+      "desc": "Erstelle Lore – Charaktere, Orte, Fraktionen – ganz ohne Manuskript."
+    },
+    "translate": {
+      "title": "Übersetzen",
+      "desc": "Bringe ein bestehendes Buch mit der Translation Pipeline in eine andere Sprache."
+    },
+    "explore": {
+      "title": "Entdecken",
+      "desc": "Durchsuche dein Wissen – Entitäten, Zeitlinien und den Beziehungs-Graph."
+    }
+  }
+}

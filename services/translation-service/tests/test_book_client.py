@@ -36,7 +36,7 @@ class _Client:
 
 
 def _patch(monkeypatch, resp):
-    monkeypatch.setattr(book_client.httpx, "AsyncClient", lambda *a, **k: _Client(resp))
+    monkeypatch.setattr(book_client, "build_internal_client", lambda *a, **k: _Client(resp))
 
 
 @pytest.mark.asyncio
@@ -84,7 +84,7 @@ class _PagedClient:
 
 def _patch_paged(monkeypatch, pages):
     client = _PagedClient(pages)
-    monkeypatch.setattr(book_client.httpx, "AsyncClient", lambda *a, **k: client)
+    monkeypatch.setattr(book_client, "build_internal_client", lambda *a, **k: client)
     return client
 
 

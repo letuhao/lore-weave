@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { BubbleMenu } from '@tiptap/react/menus';
 import type { Editor } from '@tiptap/react';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
+import { useEffectiveModel } from '@/features/chat-ai-settings/context/ChatAiSettingsContext';
 import { trackRange, type RangeHandle } from '../../../components/editor/TrackedPositions';
 import { useCompositionStream } from '../hooks/useCompositionStream';
 import type { SelectionOperation } from '../types';
@@ -45,7 +46,10 @@ export function SelectionToolbar({
   // every other chat picker in the view via the module cache).
   const models = useUserModels({ capability: 'chat' });
   const modelList = models.models ?? [];
-  const effectiveModel = modelRef || modelList[0]?.user_model_id || '';
+  // Inherit the shared cascade model (spec §8) before falling back to list[0], so
+  // this tool matches the chat/studio model instead of an arbitrary favorite.
+  const inheritedModel = useEffectiveModel('chat');
+  const effectiveModel = modelRef || inheritedModel || modelList[0]?.user_model_id || '';
   const selectedModel = modelList.find((m) => m.user_model_id === effectiveModel);
 
   const selText = () => {

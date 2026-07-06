@@ -842,7 +842,7 @@ def _api_client(repo, ports):
 def _owner_bearer() -> str:
     """A bearer whose unverified `sub` is the book owner (the handler decodes sub
     without signature verification at this stage)."""
-    return pyjwt.encode({"sub": str(OWNER)}, "irrelevant", algorithm="HS256")
+    return pyjwt.encode({"sub": str(OWNER), "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
 
 
 @pytest.mark.asyncio
@@ -884,7 +884,7 @@ async def test_api_retract_non_owner_is_403():
     p = replace(p, promoted_from_proposal_id=p.proposal_id)
     ports = FakePorts(owner=OWNER)
     client = _api_client(FakeRepo(p), ports)
-    other_bearer = pyjwt.encode({"sub": str(OTHER)}, "irrelevant", algorithm="HS256")
+    other_bearer = pyjwt.encode({"sub": str(OTHER), "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = client.post(
         f"/v1/lore-enrichment/proposals/{p.proposal_id}/retract",
         params={"project_id": str(PROJECT)},

@@ -1,0 +1,35 @@
+{
+  "title": "लीडरबोर्ड",
+  "subtitle": "समुदाय के शीर्ष पुस्तकों, लेखकों और अनुवादकों को जानें।",
+  "tabs": {
+    "books": "शीर्ष पुस्तकें",
+    "authors": "लेखक",
+    "translators": "अनुवादक",
+    "trending": "ट्रेंडिंग"
+  },
+  "period": {
+    "7d": "इस सप्ताह",
+    "30d": "इस महीने",
+    "all": "अब तक"
+  },
+  "filters": {
+    "allGenres": "सभी शैलियाँ",
+    "allLanguages": "सभी भाषाएँ"
+  },
+  "ranking": {
+    "fullRankings": "पूर्ण रैंकिंग — शीर्ष पुस्तकें",
+    "readers": "पाठक",
+    "favorites": "पसंदीदा",
+    "ratings": "रेटिंग",
+    "chapters": "अध्याय",
+    "translations": "अनुवाद",
+    "rating": "रेटिंग",
+    "showMore": "अधिक रैंकिंग देखें",
+    "noResults": "अभी तक कोई रैंकिंग नहीं। पढ़ना और अनुवाद करना शुरू करें!"
+  },
+  "quickStats": {
+    "topAuthors": "शीर्ष लेखक",
+    "topTranslators": "शीर्ष अनुवादक",
+    "viewAll": "सभी देखें"
+  }
+}

@@ -81,7 +81,7 @@ func (s *Server) listAudioSegments(w http.ResponseWriter, r *http.Request) {
 		ORDER BY block_index ASC
 	`, chapterID, language, voice)
 	if err != nil {
-		slog.Error("listAudioSegments query", "error", err)
+		slog.ErrorContext(r.Context(), "listAudioSegments query", "error", err)
 		writeError(w, http.StatusInternalServerError, "AUDIO_QUERY_ERROR", "failed to query audio segments")
 		return
 	}
@@ -91,7 +91,7 @@ func (s *Server) listAudioSegments(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var seg audioSegmentSummary
 		if err := rows.Scan(&seg.SegmentID, &seg.BlockIndex, &seg.SourceTextHash, &seg.Voice, &seg.Provider, &seg.Language, &seg.MediaKey, &seg.DurationMs, &seg.CreatedAt); err != nil {
-			slog.Error("listAudioSegments scan", "error", err)
+			slog.ErrorContext(r.Context(), "listAudioSegments scan", "error", err)
 			continue
 		}
 		segments = append(segments, seg)
@@ -165,7 +165,7 @@ func (s *Server) deleteAudioSegments(w http.ResponseWriter, r *http.Request) {
 		WHERE chapter_id = $1 AND language = $2 AND voice = $3
 	`, chapterID, language, voice)
 	if err != nil {
-		slog.Error("deleteAudioSegments fetch keys", "error", err)
+		slog.ErrorContext(r.Context(), "deleteAudioSegments fetch keys", "error", err)
 		writeError(w, http.StatusInternalServerError, "AUDIO_QUERY_ERROR", "failed to query audio segments")
 		return
 	}
@@ -184,7 +184,7 @@ func (s *Server) deleteAudioSegments(w http.ResponseWriter, r *http.Request) {
 		WHERE chapter_id = $1 AND language = $2 AND voice = $3
 	`, chapterID, language, voice)
 	if err != nil {
-		slog.Error("deleteAudioSegments delete", "error", err)
+		slog.ErrorContext(r.Context(), "deleteAudioSegments delete", "error", err)
 		writeError(w, http.StatusInternalServerError, "AUDIO_DELETE_ERROR", "failed to delete audio segments")
 		return
 	}
@@ -193,7 +193,7 @@ func (s *Server) deleteAudioSegments(w http.ResponseWriter, r *http.Request) {
 	if s.minio != nil {
 		for _, key := range mediaKeys {
 			if err := s.minio.RemoveObject(r.Context(), mediaBucket, key, minio.RemoveObjectOptions{}); err != nil {
-				slog.Warn("deleteAudioSegments minio cleanup", "key", key, "error", err)
+				slog.WarnContext(r.Context(), "deleteAudioSegments minio cleanup", "key", key, "error", err)
 			}
 		}
 	}
@@ -386,7 +386,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 		// /review-impl(BUILD) H#2 — log contract violation explicitly;
 		// 502 GENERATION_FAILED is the closest user-facing surface but
 		// the underlying issue is an adapter-or-worker bug, not AI failure.
-		slog.Error("generateAudio: gateway contract violation",
+		slog.ErrorContext(ctx, "generateAudio: gateway contract violation",
 			"got_results", len(result.Data), "want_results", len(inputs))
 		writeError(w, http.StatusBadGateway, "GENERATION_FAILED",
 			fmt.Sprintf("audio_gen returned %d results for %d inputs", len(result.Data), len(inputs)))
@@ -419,7 +419,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 		}
 		audioBytes, err := base64.StdEncoding.DecodeString(item.B64JSON)
 		if err != nil {
-			slog.Error("generateAudio b64 decode", "block_index", inputs[i].idx, "error", err)
+			slog.ErrorContext(ctx, "generateAudio b64 decode", "block_index", inputs[i].idx, "error", err)
 			genErrors = append(genErrors, segError{BlockIndex: inputs[i].idx, Error: "audio decode failed"})
 			continue
 		}
@@ -429,7 +429,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 			bytes.NewReader(audioBytes), int64(len(audioBytes)),
 			minio.PutObjectOptions{ContentType: "audio/mpeg"})
 		if err != nil {
-			slog.Error("generateAudio minio upload", "block_index", inputs[i].idx, "error", err)
+			slog.ErrorContext(ctx, "generateAudio minio upload", "block_index", inputs[i].idx, "error", err)
 			genErrors = append(genErrors, segError{BlockIndex: inputs[i].idx, Error: "failed to store audio"})
 			continue
 		}
@@ -439,7 +439,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		`, chapterID, inputs[i].idx, inputs[i].text, hash, body.Voice, body.Provider, body.Language, objectKey, item.DurationMs)
 		if err != nil {
-			slog.Error("generateAudio db insert", "block_index", inputs[i].idx, "error", err)
+			slog.ErrorContext(ctx, "generateAudio db insert", "block_index", inputs[i].idx, "error", err)
 			_ = s.minio.RemoveObject(ctx, mediaBucket, objectKey, minio.RemoveObjectOptions{})
 			genErrors = append(genErrors, segError{BlockIndex: inputs[i].idx, Error: "failed to save segment record"})
 			continue
@@ -507,7 +507,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 		billingReq.Header.Set("Content-Type", "application/json")
 		billingReq.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
 		if resp, err := internalClient.Do(billingReq); err != nil {
-			slog.Warn("generateAudio billing failed", "error", err)
+			slog.WarnContext(ctx, "generateAudio billing failed", "error", err)
 		} else {
 			resp.Body.Close()
 		}
@@ -609,7 +609,7 @@ func (s *Server) uploadBlockAudio(w http.ResponseWriter, r *http.Request) {
 	_, err = s.minio.PutObject(ctx, mediaBucket, objectKey, io.LimitReader(f, maxAudioSize), fh.Size,
 		minio.PutObjectOptions{ContentType: contentType})
 	if err != nil {
-		slog.Error("uploadBlockAudio minio put", "error", err)
+		slog.ErrorContext(ctx, "uploadBlockAudio minio put", "error", err)
 		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "upload failed")
 		return
 	}

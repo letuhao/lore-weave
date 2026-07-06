@@ -149,6 +149,8 @@ async def select_l3_passages(
     user_uuid,   # UUID, needed by embedding_client
     model_source: str = "user_model",
     current_chapter_index: int | None = None,
+    working_scope_boost: float = 0.0,
+    working_scope_window: int = 2,
     llm_client: LLMClient | None = None,
     rerank_model: str | None = None,
     reranker_client=None,
@@ -223,7 +225,15 @@ async def select_l3_passages(
         ]
         ref_chapter = max(chapter_indices) if chapter_indices else None
     scored = [
-        (_apply_post_filters(hit, hub_penalty, recency_w, ref_chapter), hit)
+        (
+            _apply_post_filters(
+                hit, hub_penalty, recency_w, ref_chapter,
+                working_chapter=current_chapter_index,
+                working_boost=working_scope_boost,
+                working_window=working_scope_window,
+            ),
+            hit,
+        )
         for hit in hits
     ]
 
@@ -250,9 +260,11 @@ async def select_l3_passages(
 
     logger.info(
         "K18.3: L3 selection intent=%s pool=%d hits=%d final=%d hub_penalty=%.2f "
-        "recency_w=%+.1f",
+        "recency_w=%+.1f working_chapter=%s working_boost=%.2f",
         intent.intent.value, pool_size, len(hits), len(final),
         hub_penalty, recency_w,
+        current_chapter_index if working_scope_boost > 0.0 else None,
+        working_scope_boost,
     )
     passages = [
         L3Passage(
@@ -318,8 +330,13 @@ def _apply_post_filters(
     hub_penalty: float,
     recency_weight: float,
     current_chapter: int | None,
+    *,
+    working_chapter: int | None = None,
+    working_boost: float = 0.0,
+    working_window: int = 2,
 ) -> float:
-    """Combine raw cosine score with hub penalty + recency weight.
+    """Combine raw cosine score with hub penalty + recency weight + M1b
+    working-scope boost.
 
     Recency decay: `1 / (1 + age_in_chapters)`. Multiplied by the
     intent's `recency_weight`, which is signed — HISTORICAL intent
@@ -327,6 +344,16 @@ def _apply_post_filters(
     multiplier and older chapters float up. The `1 +` in the
     product prevents the score from going to zero when `recency_w`
     is exactly the magnitude of the decay.
+
+    M1b working-scope boost (`working_boost > 0` + a resolved
+    `working_chapter`): passages WITHIN `working_window` chapters of the
+    chapter the editor has open are multiplicatively boosted with a linear
+    falloff — ×(1 + boost) at the open chapter itself, tapering to a small
+    positive at the window edge, and untouched beyond it. Purely additive
+    (never penalizes a distant passage below its raw score), and independent
+    of `recency_weight` so it fires on GENERAL intent too. `working_chapter`
+    is the EDITOR's open chapter (not the recency `current_chapter` fallback,
+    which is the newest passage in the pool when the caller supplies none).
     """
     score = hit.raw_score
     if hit.passage.is_hub:
@@ -340,6 +367,17 @@ def _apply_post_filters(
         # decay around 0 so weight -1 inverts the preference rather
         # than just flattening it.
         score *= 1.0 + recency_weight * (decay - 0.5)
+
+    if (
+        working_boost > 0.0
+        and working_chapter is not None
+        and hit.passage.chapter_index is not None
+    ):
+        dist = abs(working_chapter - hit.passage.chapter_index)
+        if dist <= working_window:
+            # Linear falloff over (window + 1): dist=0 → full boost;
+            # dist=window → boost * 1/(window+1); beyond window → no change.
+            score *= 1.0 + working_boost * (1.0 - dist / (working_window + 1))
     return score
 
 

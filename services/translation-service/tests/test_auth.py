@@ -1,9 +1,13 @@
-"""Unit tests for auth.py — JWT minting and verification."""
+"""Unit tests for auth.py — the short-lived internal JWT minter.
+
+(P3 SDK-first: the hand-rolled `verify_request_jwt` was removed — user-JWT VERIFY
+now lives in the shared `loreweave_authn` SDK, tested in
+`sdks/python/loreweave_authn/tests/test_verify.py`. Only the minter remains here.)
+"""
 import time
 import jwt
-import pytest
 
-from app.auth import mint_user_jwt, verify_request_jwt
+from app.auth import mint_user_jwt
 
 SECRET = "test_secret_for_unit_tests_32chars!!"
 USER_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -27,26 +31,3 @@ def test_mint_respects_custom_ttl():
     token = mint_user_jwt(USER_ID, SECRET, ttl_seconds=60)
     data = jwt.decode(token, SECRET, algorithms=["HS256"])
     assert data["exp"] - data["iat"] == 60
-
-
-def test_verify_valid_token_returns_sub():
-    token = mint_user_jwt(USER_ID, SECRET)
-    result = verify_request_jwt(token, SECRET)
-    assert result == USER_ID
-
-
-def test_verify_expired_token_raises():
-    token = mint_user_jwt(USER_ID, SECRET, ttl_seconds=-1)
-    with pytest.raises(jwt.ExpiredSignatureError):
-        verify_request_jwt(token, SECRET)
-
-
-def test_verify_wrong_secret_raises():
-    token = mint_user_jwt(USER_ID, SECRET)
-    with pytest.raises(jwt.InvalidTokenError):
-        verify_request_jwt(token, "wrong_secret_completely_different!!")
-
-
-def test_verify_garbage_raises():
-    with pytest.raises(jwt.InvalidTokenError):
-        verify_request_jwt("not.a.token", SECRET)

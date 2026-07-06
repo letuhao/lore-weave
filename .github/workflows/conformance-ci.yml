@@ -288,6 +288,21 @@ jobs:
         run: |
           set +e; bash scripts/perf/k6-game-server.sh; rc=$?; set -e
           [ "$rc" = 1 ] && exit 1 || echo "F4 rc=$rc (0=pass,2=notrun)"
+      - name: install PyYAML (platform SLO assertion)
+        run: python -m pip install --quiet pyyaml
+      - name: D-D platform p95 SLO battery (self-test always; live gated on target)
+        # Consume-side of contracts/slo/latency.yaml. The self-test proves the p95
+        # assertion reds on a breach with NO stack (always green here); the live k6
+        # measurement runs only when PERF_PLATFORM_TARGET points at a booted platform
+        # (staging/dev) — the novel-platform stack isn't booted in this foundation job,
+        # so absent a target this NOTRUNs (rc=2, green), exactly like A1's Tempo gate.
+        env:
+          PERF_PLATFORM_TARGET: ${{ vars.PERF_PLATFORM_TARGET }}
+          PERF_TOKEN: ${{ secrets.PERF_PLATFORM_TOKEN }}
+          PERF_BOOK_ID: ${{ vars.PERF_PLATFORM_BOOK_ID }}
+        run: |
+          set +e; bash scripts/perf/platform-slo.sh; rc=$?; set -e
+          [ "$rc" = 1 ] && exit 1 || echo "platform-slo rc=$rc (0=pass,2=notrun)"
       - name: upload perf artifacts
         if: always()
         uses: actions/upload-artifact@v4

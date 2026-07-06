@@ -9,6 +9,7 @@ package observability
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -70,6 +71,49 @@ func InitTracer(ctx context.Context, serviceName string) (func(context.Context) 
 // spans (e.g. the detached worker's llm.job.process span).
 func Tracer(name string) trace.Tracer {
 	return otel.Tracer(name)
+}
+
+// SetupLogging installs the shared JSON slog logger as the process default,
+// stamping every record with `service` and — for records logged with a context
+// that carries an active OTel span — the `otel_trace_id` (the id Grafana Tempo
+// indexes by), so Loki logs JOIN Tempo traces. This is the Go half of the
+// correlation-id unification; `otel_trace_id` is the SAME field name the Python
+// loreweave_obs.setup_logging emits, so a log query joins by one key fleet-wide.
+//
+// IMPORTANT (the call-site contract): only records logged with a context reach a
+// span — i.e. `slog.InfoContext(ctx, …)` / `ErrorContext` / `WarnContext`. The
+// ctx-LESS `slog.Info(msg, …)` passes context.Background() → no span → no
+// otel_trace_id (the line still emits, just without the join key). Request-path
+// logging should therefore thread ctx (r.Context()) through the *Context variants.
+//
+// The bespoke X-Trace-Id channel (glossary's 500-body + the auth audit column) is
+// untouched — this ADDS otel_trace_id, it does not replace anything. Call once in
+// main(). Mirrors Python's loreweave_obs.setup_logging.
+func SetupLogging(serviceName string) {
+	handler := &traceHandler{Handler: slog.NewJSONHandler(os.Stdout, nil)}
+	slog.SetDefault(slog.New(handler).With("service", serviceName))
+}
+
+// traceHandler wraps a slog.Handler and, when the record's context carries a valid
+// OTel span, adds `otel_trace_id`. Kept unexported — services install it via
+// SetupLogging, never construct it directly.
+type traceHandler struct{ slog.Handler }
+
+func (h *traceHandler) Handle(ctx context.Context, r slog.Record) error {
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		r.AddAttrs(slog.String("otel_trace_id", sc.TraceID().String()))
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+// WithAttrs / WithGroup must re-wrap so the trace injection survives a
+// `logger.With(...)`-derived child handler (e.g. SetupLogging's own .With("service")).
+func (h *traceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &traceHandler{Handler: h.Handler.WithAttrs(attrs)}
+}
+
+func (h *traceHandler) WithGroup(name string) slog.Handler {
+	return &traceHandler{Handler: h.Handler.WithGroup(name)}
 }
 
 // HTTPTransport wraps base (nil → http.DefaultTransport) so outbound requests

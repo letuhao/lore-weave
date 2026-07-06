@@ -1,10 +1,13 @@
 package tasks
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -13,6 +16,17 @@ import (
 
 	"github.com/loreweave/worker-infra/internal/config"
 )
+
+// notifyAggregateType marks an outbox row whose payload is a notification-service
+// ingest body ({user_id, category, title, body, metadata, message_key,
+// message_params, dedup_key}). D-C-PRODUCER-OUTBOX: instead of the Redis fan-out
+// (nothing consumes loreweave:events:notification), the relay DELIVERS these rows to
+// notification-service's /internal/notifications ingest — turning the 3 producers'
+// former fire-and-forget-swallow POST into a durable outbox+retry drain, idempotent
+// via the payload's dedup_key. The relay's existing published_at/retry_count give
+// at-least-once for free; this is the "relay calls HTTP for notification-typed rows"
+// path the P2·C spec lists (reuses the ingest unchanged, no new consumer/contract).
+const notifyAggregateType = "notification"
 
 // streamMaxLen keys the Redis Stream MAXLEN per aggregate_type.
 // Matches 101_DATA_RE_ENGINEERING_PLAN.md §"Stream MAXLEN budgets":
@@ -87,6 +101,18 @@ type OutboxRelay struct {
 	SourcePools map[string]*pgxpool.Pool
 	EventsPool *pgxpool.Pool
 	Redis      *redis.Client
+
+	// NotifyURL + InternalToken address notification-service's /internal/notifications
+	// ingest for notification-typed outbox rows (D-C-PRODUCER-OUTBOX). Empty NotifyURL
+	// disables delivery (rows stay unpublished until configured — never dropped).
+	NotifyURL     string
+	InternalToken string
+	// NotifyDeliver is injectable for tests; nil ⇒ the built-in HTTP deliverer.
+	// Returns (permanent, err): err==nil is success; a permanent error (4xx reject)
+	// is a poison row that must NOT retry forever; a transient error (5xx/network)
+	// leaves the row unpublished for the next tick.
+	NotifyDeliver func(ctx context.Context, payload []byte) (permanent bool, err error)
+	httpClient    *http.Client
 
 	// tableMissing tracks which sources last reported 42P01 (undefined_table).
 	// Used to log exactly once per cold-start transition instead of per poll.
@@ -179,6 +205,16 @@ LIMIT 100
 		idStr := uuidStr(id)
 		aggIDStr := uuidStr(aggregateID)
 
+		// Notification-typed rows are DELIVERED to notification-service, not fanned
+		// out to Redis (nothing consumes loreweave:events:notification). Durable +
+		// idempotent (dedup_key in the payload); transient failure retries next tick.
+		if aggregateType == notifyAggregateType {
+			if t.deliverNotification(ctx, sourceName, idStr, payload, pool) {
+				count++
+			}
+			continue
+		}
+
 		// Publish to Redis Stream — MAXLEN sized per aggregate_type to
 		// reflect expected throughput (chat spikes, others cool).
 		streamKey := "loreweave:events:" + aggregateType
@@ -207,4 +243,91 @@ ON CONFLICT (source_service, source_outbox_id) DO NOTHING
 	}
 
 	return count, nil
+}
+
+// deliverNotification drains one notification-typed outbox row to notification-service.
+// Returns true iff the row is now terminal (published) — success OR a permanent 4xx
+// reject (dropped so a poison row can't spin forever). A transient failure returns
+// false: the row stays unpublished (retry_count bumped) for the next poll.
+func (t *OutboxRelay) deliverNotification(ctx context.Context, sourceName, idStr string, payload []byte, pool *pgxpool.Pool) bool {
+	deliver := t.NotifyDeliver
+	if deliver == nil {
+		deliver = t.httpNotifyDeliver
+	}
+	permanent, err := deliver(ctx, payload)
+	if err == nil {
+		pool.Exec(ctx, `UPDATE outbox_events SET published_at=now() WHERE id=$1`, idStr)
+		return true
+	}
+	if permanent {
+		// 4xx reject (malformed/unknown category) — mark published + record why, so
+		// it stops re-polling. Losing a malformed notification beats an infinite loop.
+		slog.Error("outbox-relay notification permanently rejected — dropping",
+			"source", sourceName, "id", idStr, "error", err)
+		pool.Exec(ctx, `UPDATE outbox_events SET published_at=now(), last_error=$2 WHERE id=$1`, idStr, err.Error())
+		return true
+	}
+	// Transient (5xx / network / notification-service down) — keep for the next tick.
+	pool.Exec(ctx, `UPDATE outbox_events SET retry_count=retry_count+1, last_error=$2 WHERE id=$1`, idStr, err.Error())
+	return false
+}
+
+// classifyNotifyStatus maps an HTTP status from the notification ingest to the relay's
+// three outcomes:
+//   - 2xx (incl. the idempotent-dedup + opt-out-suppressed 200s) = success.
+//   - PERMANENT (drop, don't loop) = ONLY a genuine payload-level reject the retry can
+//     never fix: 400 (malformed body), 413 (too large), 422 (validation). Retrying an
+//     identical payload just poison-loops.
+//   - Everything else = TRANSIENT (retry): 5xx, 429, network errors, AND 401/403/404/405.
+//     A 404 (route skew) or 401/403 (wrong internal token) is a DEPLOY/CONFIG error — the
+//     notification must be PRESERVED and redelivered once fixed, never silently dropped.
+func classifyNotifyStatus(code int) (success bool, permanent bool) {
+	switch {
+	case code >= 200 && code < 300:
+		return true, false
+	case code == http.StatusBadRequest || code == http.StatusRequestEntityTooLarge ||
+		code == http.StatusUnprocessableEntity:
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+// httpNotifyDeliver POSTs a notification outbox payload to notification-service's
+// internal ingest. The payload is already the exact ingest body, so it is forwarded
+// verbatim (the producer owns the shape + the dedup_key).
+func (t *OutboxRelay) httpNotifyDeliver(ctx context.Context, payload []byte) (bool, error) {
+	if t.NotifyURL == "" {
+		// Delivery not configured — treat as transient so the row is preserved
+		// (never dropped) until a NotifyURL is set.
+		return false, errors.New("notification delivery not configured (NOTIFICATION_SERVICE_URL unset)")
+	}
+	if t.httpClient == nil {
+		// Bounded so a HANGING notification-service can't starve the shared relay loop
+		// (delivery is inline in the per-source loop that also drains Redis events). A
+		// refused connection fails fast; this caps the worst case (a slow-loris ingest).
+		// Notification volume is low, so the ≤LIMIT×timeout worst case is acceptable; a
+		// dedicated notification-delivery worker is the structural fix if it ever bites.
+		t.httpClient = &http.Client{Timeout: 5 * time.Second}
+	}
+	url := t.NotifyURL + "/internal/notifications"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return true, fmt.Errorf("build notify request: %w", err) // malformed URL is permanent
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if t.InternalToken != "" {
+		req.Header.Set("X-Internal-Token", t.InternalToken)
+	}
+	resp, err := t.httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("notify POST: %w", err) // network/timeout is transient
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	success, permanent := classifyNotifyStatus(resp.StatusCode)
+	if success {
+		return false, nil
+	}
+	return permanent, fmt.Errorf("notification ingest returned %d", resp.StatusCode)
 }

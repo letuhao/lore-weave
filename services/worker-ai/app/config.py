@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     extraction_resume_sweep_timeout_s: int = 900
     extraction_resume_sweep_batch: int = 20
 
+    # D-EXTRACTION-SILENT-NOOP gap #3 — generic STALL backstop. The resume-sweeper
+    # above only re-drives DECOUPLED rows with resume_state (+ it's off by default);
+    # a NON-decoupled job whose runner/provider died mid-loop sits 'running' forever,
+    # looking healthy. This catch-all fails a job with NO progress (updated_at is
+    # bumped on every cursor advance / stage / count change) for this many minutes.
+    # Generous (> the 15-min resume timeout) so a recoverable row is re-driven first
+    # and a long-but-live LLM call isn't wrongly failed. 0 ⇒ off.
+    extraction_stall_minutes: int = 30
+
     # Max items to process per poll cycle before re-checking job status.
     # Lower = more responsive to pause/cancel, higher = less DB overhead.
     items_per_status_check: int = 1

@@ -1,0 +1,203 @@
+{
+  "title": "ส่วนขยาย",
+  "tabs": {
+    "skills": "ทักษะ",
+    "mcp": "เซิร์ฟเวอร์ MCP",
+    "commands": "คำสั่งและฮุก",
+    "subagents": "ตัวแทนย่อย",
+    "plugins": "ปลั๊กอิน",
+    "proposals": "ข้อเสนอ",
+    "activity": "บันทึกกิจกรรม",
+    "ingest": "แหล่งข้อมูลรีจิสทรี"
+  },
+  "quota": {
+    "skills": "ทักษะ",
+    "mcp": "เซิร์ฟเวอร์ MCP",
+    "proposals": "ข้อเสนอ"
+  },
+  "scope": {
+    "label": "ขอบเขต:",
+    "mine": "ส่วนขยายของฉัน",
+    "orBook": "หรือหนังสือ:",
+    "bookPlaceholder": "ขอบเขตหนังสือ…",
+    "bookHint": "ขอบเขตหนังสือ — รายการใหม่จะมีผลกับหนังสือเล่มนี้เท่านั้น"
+  },
+  "common": {
+    "loading": "กำลังโหลด…",
+    "delete": "ลบ",
+    "add": "เพิ่ม",
+    "cancel": "ยกเลิก",
+    "back": "ย้อนกลับ",
+    "next": "ถัดไป",
+    "of": "จาก",
+    "system": "ระบบ",
+    "book": "หนังสือ"
+  },
+  "skills": {
+    "search": "ค้นหาทักษะ…",
+    "tier": {
+      "all": "ระดับ: ทั้งหมด",
+      "system": "ระบบ",
+      "user": "ผู้ใช้",
+      "book": "หนังสือ"
+    },
+    "sort": {
+      "updated": "เรียงตาม: อัปเดตล่าสุด",
+      "name": "ชื่อ ก-ฮ",
+      "lastTriggered": "ใช้งานล่าสุด"
+    },
+    "empty": "ยังไม่มีทักษะ ตัวแทนสามารถเสนอทักษะใหม่ หรือสร้างขึ้นในตัวแก้ไขได้",
+    "draft": "ฉบับร่าง"
+  },
+  "mcp": {
+    "status": {
+      "active": "ใช้งานอยู่",
+      "pending": "กำลังสแกน…",
+      "suspended": "ถูกกักกัน",
+      "error": "ไม่สามารถเชื่อมต่อได้"
+    },
+    "search": "ค้นหาเซิร์ฟเวอร์…",
+    "filter": {
+      "all": "สถานะ: ทั้งหมด",
+      "active": "ใช้งานอยู่",
+      "pending": "กำลังสแกน",
+      "suspended": "ถูกกักกัน",
+      "error": "ไม่สามารถเชื่อมต่อได้"
+    },
+    "add": "+ เพิ่มเซิร์ฟเวอร์",
+    "empty": "ยังไม่มีเซิร์ฟเวอร์ MCP เพิ่มเซิร์ฟเวอร์เพื่อมอบเครื่องมือพิเศษให้กับเอเจนต์",
+    "review": "⚠ ตรวจสอบ",
+    "detail": {
+      "back": "‹ ย้อนกลับ",
+      "connection": "การเชื่อมต่อ",
+      "auth": "การยืนยันตัวตน",
+      "prefix": "คำนำหน้า",
+      "egress": "รายการอนุญาตขาออก (Egress allowlist)",
+      "health": "สถานะการทำงาน",
+      "lastScanned": "สแกนล่าสุดเมื่อ",
+      "credentialStored": "จัดเก็บข้อมูลประจำตัวแล้ว",
+      "healthOk": "ปกติ · {{count}} เครื่องมือ · {{latency}}ms",
+      "healthError": "ข้อผิดพลาด: {{error}}",
+      "unreachable": "ไม่สามารถติดต่อได้",
+      "scanning": "กำลังสแกน…",
+      "rescan": "สแกนใหม่",
+      "reconnect": "เชื่อมต่อ OAuth อีกครั้ง",
+      "acceptRisk": "ยอมรับความเสี่ยงและเปิดใช้งาน"
+    },
+    "scan": {
+      "label": "การสแกนห่วงโซ่อุปทาน:",
+      "clean": "สะอาด",
+      "findings": "พบ {{count}} รายการ",
+      "tools": "เครื่องมือ ({{count}})",
+      "flagged": "ถูกทำเครื่องหมาย"
+    },
+    "wizard": {
+      "steps": {
+        "connection": "การเชื่อมต่อ",
+        "auth": "การยืนยันตัวตน",
+        "scan": "การตรวจสอบสุขภาพและสแกน",
+        "review": "ตรวจสอบ"
+      },
+      "displayName": "ชื่อที่แสดง",
+      "displayNamePlaceholder": "เซิร์ฟเวอร์เครื่องมือของฉัน",
+      "url": "URL ของเซิร์ฟเวอร์ (streamable-http)",
+      "urlPlaceholder": "https://mcp.example.com/mcp",
+      "authentication": "การยืนยันตัวตน",
+      "authNone": "ไม่มี",
+      "authBearer": "Bearer token",
+      "authOauth": "OAuth 2.1",
+      "noAuthHint": "ไม่มีการยืนยันตัวตน — เซิร์ฟเวอร์นี้เป็นแบบสาธารณะ ดำเนินการต่อเพื่อลงทะเบียนและสแกน",
+      "bearerLabel": "Bearer token (ถูกเก็บรักษาไว้ใน vault และจะไม่แสดงให้เห็นอีก)",
+      "bearerPlaceholder": "วางโทเคน",
+      "authzEndpoint": "Endpoint สำหรับการอนุญาตสิทธิ์",
+      "tokenEndpoint": "Endpoint สำหรับโทเคน",
+      "clientId": "Client ID",
+      "scopes": "Scopes (คั่นด้วยช่องว่าง)",
+      "registering": "กำลังลงทะเบียน…",
+      "registerScan": "ลงทะเบียนและสแกน",
+      "statusLabel": "สถานะ:",
+      "connectOauth": "เชื่อมต่อด้วย OAuth →",
+      "runScan": "ตรวจสอบความสมบูรณ์และสแกน",
+      "refresh": "รีเฟรช",
+      "continue": "ดำเนินการต่อ",
+      "authKind": "auth: {{kind}}",
+      "enable": "เปิดใช้งานสำหรับเซสชันของฉัน",
+      "done": "เสร็จสิ้น"
+    }
+  },
+  "commands": {
+    "title": "คำสั่ง Slash",
+    "description": "พิมพ์ <code>/name</code> ในแชทเพื่อขยายเทมเพลต ใช้ <code>{{args}}</code> หรือ <code>{{key}}</code> สำหรับอาร์กิวเมนต์",
+    "namePlaceholder": "ชื่อ (เช่น plan-scene)",
+    "templatePlaceholder": "เทมเพลต: วางแผนฉากเกี่ยวกับ {{topic}}…",
+    "empty": "ยังไม่มีคำสั่ง"
+  },
+  "hooks": {
+    "title": "Hooks",
+    "description": "กฎแบบ Declarative ที่จะทำงานเมื่อเกิดเหตุการณ์ใน Agent-loop ไม่ต้องเขียนโค้ด — เพียงแค่ระบุเหตุการณ์, การจับคู่เครื่องมือ (ถ้ามี), และการดำเนินการ",
+    "matchPlaceholder": "การจับคู่เครื่องมือ (เช่น glossary_delete_*)",
+    "textPlaceholder": "ข้อความที่จะแทรก / ใส่คำอธิบาย",
+    "empty": "ยังไม่มี Hooks"
+  },
+  "subagents": {
+    "title": "Subagents",
+    "description": "Persona ที่กำหนดชื่อขึ้นมาเพื่อให้ Agent สามารถมอบหมายงานย่อยที่มีขอบเขตจำกัดผ่าน <code>run_subagent</code> โดยจะทำงานในเทิร์นที่แยกส่วนกันพร้อมกับเครื่องมือที่มีขอบเขตเฉพาะเท่านั้น หากต้องการ Persona สำหรับการใช้เหตุผลหรือสรุปความเพียงอย่างเดียว ให้เว้นขอบเขตว่างไว้",
+    "namePlaceholder": "ชื่อ (เช่น lore-scout)",
+    "scopePlaceholder": "ขอบเขตเครื่องมือ: glossary_*, kg_*",
+    "modelPlaceholder": "โมเดล (ไม่บังคับ, user_model id)",
+    "promptPlaceholder": "System prompt — Persona นี้คือใครและทำงานอย่างไร…",
+    "create": "สร้าง Subagent",
+    "empty": "ยังไม่มี Subagent",
+    "reasoningOnly": "ใช้สำหรับการใช้เหตุผลเท่านั้น (ไม่มีเครื่องมือ)",
+    "modelPinned": "ตรึงโมเดลไว้"
+  },
+  "plugins": {
+    "description": "Plugin คือการรวมชุดทักษะ คำสั่ง และ Hook เข้าด้วยกัน — ส่งออกเพื่อแชร์ หรือนำเข้าเพื่อติดตั้ง",
+    "importing": "กำลังนำเข้า…",
+    "import": "นำเข้า Bundle",
+    "invalidJson": "ไฟล์นี้ไม่ใช่รูปแบบ JSON ที่ถูกต้อง",
+    "notBundle": "ไม่ใช่ Bundle ของ LoreWeave (ไม่พบ manifest.name)",
+    "empty": "ยังไม่มีปลั๊กอิน นำเข้า Bundle เพื่อติดตั้งปลั๊กอิน",
+    "export": "ส่งออก"
+  },
+  "proposals": {
+    "status": {
+      "pending": "รอดำเนินการ",
+      "approved": "อนุมัติแล้ว",
+      "rejected": "ปฏิเสธแล้ว",
+      "expired": "หมดอายุ",
+      "all": "ทั้งหมด"
+    },
+    "total": "ทั้งหมด {{count}} รายการ",
+    "empty": "ไม่มีข้อเสนอ ทักษะที่เอเจนท์เสนอจะปรากฏที่นี่เพื่อให้คุณอนุมัติ",
+    "approve": "อนุมัติ",
+    "reject": "ปฏิเสธ",
+    "reason": "เหตุผล: {{reason}}"
+  },
+  "activity": {
+    "title": "บันทึกกิจกรรม",
+    "allKinds": "ทุกประเภท",
+    "range": {
+      "all": "ทั้งหมด",
+      "7d": "7 วันที่ผ่านมา",
+      "30d": "30 วันที่ผ่านมา"
+    },
+    "empty": "ไม่มีกิจกรรมในช่วงเวลานี้",
+    "secondsAgo": "{{count}} วินาทีที่แล้ว",
+    "minutesAgo": "{{count}} นาทีที่แล้ว",
+    "hoursAgo": "{{count}} ชั่วโมงที่แล้ว",
+    "daysAgo": "{{count}} วันที่แล้ว"
+  },
+  "ingest": {
+    "title": "แหล่งข้อมูลทะเบียน (ผู้ดูแลระบบ)",
+    "description": "คัดกรองแคตตาล็อกของระบบจาก MCP Registry อย่างเป็นทางการ การตรวจสอบ ≠ ความปลอดภัย — ทุกการอนุมัติจะมีการรัน SSRF guard + การสแกนห่วงโซ่อุปทาน (supply-chain scan) อีกครั้งก่อนที่จะทำการเชื่อมโยงข้อมูล",
+    "all": "ทั้งหมด",
+    "pulling": "กำลังดึงข้อมูล…",
+    "pull": "ดึงข้อมูลจากทะเบียน",
+    "pullResult": "ดึงข้อมูลแล้ว: ดึงมาได้ {{fetched}} · ใหม่ {{new}} · อัปเดต {{updated}} · ข้าม (ไม่มีในรีโมท) {{skipped}}",
+    "truncated": "· บางส่วน (ถูกตัดออก)",
+    "empty": "ไม่มีรายการในมุมมองนี้ โปรดดึงข้อมูลจากทะเบียนเพื่อเพิ่มรายการในคิว",
+    "approve": "อนุมัติ",
+    "reject": "ปฏิเสธ"
+  }
+}

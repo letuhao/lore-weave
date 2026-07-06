@@ -15,8 +15,21 @@ import { isTerminal, jobKey, type Job } from '../types';
 
 /** One desktop grid row. Reads its own live overlay (subscribes to just this key),
  *  deep-links campaigns to their monitor, and lazy-expands children under a parent.
- *  `nested` (child) rows drop the expander and indent the Job cell. */
-export function JobRow({ job: base, nested }: { job: Job; nested?: boolean }) {
+ *  `nested` (child) rows drop the expander and indent the Job cell.
+ *
+ *  `onOpenDetail` (studio dockable-migration injectable prop, docs/standards/dockable-gui.md
+ *  U3): when provided (the studio JobsListPanel), row/detail clicks call it instead of
+ *  rendering a route `<Link>` — the panel opens `job-detail` as a sibling dock tab rather than
+ *  navigating away. Omitted (the standalone /jobs page): behavior is byte-identical to before. */
+export function JobRow({
+  job: base,
+  nested,
+  onOpenDetail,
+}: {
+  job: Job;
+  nested?: boolean;
+  onOpenDetail?: (service: string, jobId: string) => void;
+}) {
   const { t } = useTranslation('jobs');
   const job = effectiveJob(base, useJobLive(jobKey(base)));
   const [expanded, setExpanded] = useState(false);
@@ -32,6 +45,12 @@ export function JobRow({ job: base, nested }: { job: Job; nested?: boolean }) {
   const terminal = isTerminal(job.status);
   const started = formatRelative(job.created_at);
   const duration = formatDuration(job.created_at, job.updated_at);
+  const openDetail = () => onOpenDetail?.(job.service, job.job_id);
+  // /review-impl HIGH fix: onOpenDetail must never override the campaign deep-link — job-detail
+  // (JobMonitor) explicitly assumes it's never reached for a campaign job (see its own header
+  // comment: "Campaign jobs redirect to /campaigns/:id upstream"). A campaign row keeps the real
+  // <Link> even when the studio panel supplies onOpenDetail.
+  const useCallbackNav = Boolean(onOpenDetail) && job.kind !== 'campaign';
 
   return (
     <div className={nested ? 'bg-muted/20' : ''}>
@@ -53,9 +72,19 @@ export function JobRow({ job: base, nested }: { job: Job; nested?: boolean }) {
 
         {/* col 2 — job: title + kind badge + service·model */}
         <div className={`min-w-0 ${nested ? 'pl-3' : ''}`}>
-          <Link to={detailTo} className={`block truncate font-medium hover:underline ${nested ? 'text-sm' : ''}`}>
-            {label}
-          </Link>
+          {useCallbackNav ? (
+            <button
+              type="button"
+              onClick={openDetail}
+              className={`block truncate text-left font-medium hover:underline ${nested ? 'text-sm' : ''}`}
+            >
+              {label}
+            </button>
+          ) : (
+            <Link to={detailTo} className={`block truncate font-medium hover:underline ${nested ? 'text-sm' : ''}`}>
+              {label}
+            </Link>
+          )}
           <div className="mt-0.5 flex items-center gap-2">
             <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
               {kindLabel}
@@ -102,12 +131,22 @@ export function JobRow({ job: base, nested }: { job: Job; nested?: boolean }) {
         {/* col 7 — actions */}
         <div className="flex flex-wrap items-center gap-1.5">
           <JobControls service={job.service} jobId={job.job_id} controlCaps={job.control_caps} compact />
-          <Link
-            to={detailTo}
-            className="inline-flex items-center rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            {t('row.details', { defaultValue: 'Details ↗' })}
-          </Link>
+          {useCallbackNav ? (
+            <button
+              type="button"
+              onClick={openDetail}
+              className="inline-flex items-center rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              {t('row.details', { defaultValue: 'Details ↗' })}
+            </button>
+          ) : (
+            <Link
+              to={detailTo}
+              className="inline-flex items-center rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              {t('row.details', { defaultValue: 'Details ↗' })}
+            </Link>
+          )}
         </div>
       </div>
 

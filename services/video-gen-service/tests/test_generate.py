@@ -22,6 +22,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# The platform user `sub` is always a UUID (auth-service subjects) — the shared
+# loreweave_authn verifier enforces that, so test tokens must use a UUID id.
+TEST_USER = "00000000-0000-0000-0000-0000000000aa"
+
 
 # ──────────────────────────────────────────────────────────────────────
 # _aspect_to_size — pure function unit test (/review-impl(DESIGN) LOW#3)
@@ -122,13 +126,13 @@ def test_generate_happy_path_uses_sdk_not_direct_httpx(client, jwt_for_user):
                 "duration_seconds": 5,
                 "aspect_ratio": "16:9",
             },
-            headers={"Authorization": f"Bearer {jwt_for_user('test-user')}"},
+            headers={"Authorization": f"Bearer {jwt_for_user(TEST_USER)}"},
         )
 
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["status"] == "completed"
-    assert body["video_url"].startswith("http://localhost:9000/loreweave-media/video-gen/test-user/")
+    assert body["video_url"].startswith(f"http://localhost:9000/loreweave-media/video-gen/{TEST_USER}/")
     assert body["video_url"].endswith(".mp4")
     assert body["content_type"] == "video/mp4"
     assert body["size_bytes"] == 1024
@@ -157,7 +161,7 @@ def _run_with_sdk_error(client, jwt_for_user, exc_class, exc_msg, *, prompt="a c
                 "duration_seconds": 5,
                 "aspect_ratio": "16:9",
             },
-            headers={"Authorization": f"Bearer {jwt_for_user('test-user')}"},
+            headers={"Authorization": f"Bearer {jwt_for_user(TEST_USER)}"},
         )
 
 
@@ -248,7 +252,7 @@ def test_generate_non_default_aspect_ratio_reaches_sdk(client, jwt_for_user):
                 "duration_seconds": 5,
                 "aspect_ratio": "9:16",  # NON-default → 1080x1920
             },
-            headers={"Authorization": f"Bearer {jwt_for_user('test-user')}"},
+            headers={"Authorization": f"Bearer {jwt_for_user(TEST_USER)}"},
         )
 
     assert resp.status_code == 201, resp.text
@@ -283,7 +287,7 @@ def test_bad_signature_returns_401(client, jwt_for_user):
     even produce a non-dict payload, so that edge collapses into
     InvalidTokenError).
     """
-    forged = jwt_for_user("test-user", secret="a_totally_different_secret_value_32chr")
+    forged = jwt_for_user(TEST_USER, secret="a_totally_different_secret_value_32chr")
     resp = client.post(
         "/v1/video-gen/generate",
         json=_GEN_BODY,
@@ -294,17 +298,19 @@ def test_bad_signature_returns_401(client, jwt_for_user):
 
 
 def test_expired_token_returns_401(client, jwt_for_user):
-    """A correctly-signed but EXPIRED token MUST return 401 'Token expired'."""
+    """A correctly-signed but EXPIRED token MUST return 401. P3 (SDK-first): the
+    shared verifier returns a UNIFORM 'Invalid token' for every bad-token mode
+    (expired/forged/malformed) — deliberately no oracle distinguishing them."""
     import time
 
-    expired = jwt_for_user("test-user", exp=int(time.time()) - 3600)
+    expired = jwt_for_user(TEST_USER, exp=int(time.time()) - 3600)
     resp = client.post(
         "/v1/video-gen/generate",
         json=_GEN_BODY,
         headers={"Authorization": f"Bearer {expired}"},
     )
     assert resp.status_code == 401, resp.text
-    assert resp.json()["detail"] == "Token expired"
+    assert resp.json()["detail"] == "Invalid token"
 
 
 def test_missing_authorization_returns_401(client):

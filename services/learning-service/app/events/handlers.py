@@ -170,6 +170,69 @@ async def handle_glossary_entity_updated(event: EventData, *, pool: asyncpg.Pool
     )
 
 
+# payload `op` ("merged"/"unmerged") → corrections `op`. Both map to a verb that
+# derive_diff_class treats as merge-class (`_MERGE_OPS = {"merge", "split"}`), so a
+# merge AND its compensating un-merge both classify as diff_class="merge" (the
+# reversal is still a same/not-same resolution signal). "split" is the codebase's
+# idiomatic un-merge verb (diff_class.py's _MERGE_OPS).
+_MERGE_OP = {"merged": "merge", "unmerged": "split"}
+
+
+async def handle_glossary_entity_merged(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.entity_merged` → an entity resolution correction (D-LEARN-ENTITY-MERGED).
+
+    A user merged two duplicate glossary entities ("these two are the same") — a
+    resolution-quality correction on the extractor's entity boundaries. Emitted by
+    glossary `merge_handler.go` (op="merged") and its compensating un-merge
+    (op="unmerged"). The payload carries only the winner/loser entity ids (+ book),
+    NOT the name/kind snapshot the entity_updated path uses, so the correction is
+    encoded structurally: target = the surviving winner; before = the absorbed
+    loser ref, after = the surviving winner ref (structural id refs — no novel
+    content, like relation endpoint ids). op="merge"/"split" ⇒ derive_diff_class →
+    "merge".
+
+    Owner: the merging user. Today owner == actor (glossary `verifyBookOwner`), so
+    user_id := actor_id, mirroring handle_glossary_entity_updated. Same R3-W1
+    discipline as the siblings — an empty outbox_id or a missing owner raises →
+    DLQ (a merge with no attributable owner cannot be persisted per-tenant).
+
+    NOTE (producer gap, out of scope here — services/learning-service only): the
+    glossary entity_merged payload does NOT currently carry actor_id, so until the
+    producer adds it every merge event lands in the DLQ rather than persisting. The
+    learning-side handler is ready; the one-field producer addition is the remaining
+    slice (see the task report / D-LEARN-ENTITY-MERGED)."""
+    payload = event.payload
+    actor_id = _uuid_or_none(payload.get("actor_id"))
+    op = _MERGE_OP.get(payload.get("op"), "merge")
+    winner_id = payload.get("winner_glossary_id") or event.aggregate_id
+    loser_id = payload.get("loser_glossary_id")
+
+    await _persist_correction(
+        pool,
+        user_id=actor_id,  # owner == actor (verifyBookOwner); see handle_glossary_entity_updated
+        project_id=None,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        target_type="entity",
+        target_id=str(winner_id),  # the surviving canon (aggregate_id = winner)
+        op=op,
+        before_snapshot={"entity_id": loser_id} if loser_id else None,  # the absorbed side
+        after_snapshot={"entity_id": str(winner_id)},  # the surviving side
+        source_chapter=None,
+        source_span=None,
+        source_extraction_run_id=None,
+        actor_type="user",
+        actor_id=actor_id,
+        origin_service="glossary",
+        origin_event_id=event.outbox_id,
+        origin_event_type=event.event_type,
+        emitted_at=_parse_ts(payload.get("emitted_at")),
+    )
+    logger.debug(
+        "entity merge correction persisted: winner=%s loser=%s op=%s origin=glossary:%s",
+        winner_id, loser_id, op, event.outbox_id,
+    )
+
+
 async def handle_knowledge_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
     """`knowledge.{entity,relation,event}_corrected` → a correction.
 

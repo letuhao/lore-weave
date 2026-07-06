@@ -24,6 +24,10 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-http>=1.27",
   "opentelemetry-instrumentation-fastapi>=0.48b0",
   "opentelemetry-instrumentation-httpx>=0.48b0",
+  # P2·A2a (687fd4949) — loreweave_obs.logging_setup imports pythonjsonlogger for structured
+  # JSON logs but the dep was never declared → every service rebuild crashed on startup
+  # (ModuleNotFoundError). Declared here so `pip install /sdk` resolves it fleet-wide.
+  "python-json-logger>=2.0",
   # Unified Job Control Plane P1 — loreweave_jobs.BaseTerminalConsumer is a Redis-Streams
   # consumer-group transport scaffold. Every consuming Python service already runs redis;
   # the SDK declares it so its own unit tests + the import resolve. (emit.py is duck-typed
@@ -34,6 +38,12 @@ dependencies = [
   # _meta validator). It needs the MCP SDK; every Python MCP provider service that
   # `pip install /sdk`s gets the kit + its transport.
   "mcp>=1.27",
+  # SDK-2 / SEC-2 (2026-07-04) — loreweave_authn is the shared platform-user JWT
+  # verifier (replaces the ~6 copy-pasted jwt.decode blocks). It needs PyJWT; every
+  # service that `pip install /sdk`s + imports the verifier gets it (a migrated
+  # service drops its own PyJWT pin). fastapi is already a core dep of every
+  # consuming FastAPI service, so it stays in the test extras here.
+  "PyJWT>=2.8",
 ]
 
 [project.optional-dependencies]
@@ -83,6 +93,27 @@ include = [
   # validator built fresh). Depends on the `mcp` SDK + pydantic. Consumed by every
   # Python MCP provider service (jobs, composition, translation).
   "loreweave_mcp*",
+  # SDK-2 / SEC-2 (2026-07-04) — `loreweave_authn` added (the shared platform-user
+  # JWT verifier, HS256/alg-pinned/exp-required/sub→UUID; mirrors Go
+  # contracts/platformjwt). Replaces the ~6 copy-pasted jwt.decode middleware blocks
+  # in composition/knowledge/chat/learning/campaign/jobs. Depends on PyJWT + fastapi.
+  "loreweave_authn*",
+  # T3.1 (2026-07-04) — `loreweave_context` added (the Context Budget Law Planner/Compiler
+  # kernel; T3.1 ships the system-message assembly renderer unifying chat's two lockstep
+  # prompt ladders — A1). Pure-Python string logic, no provider SDK (provider-gate clean).
+  # First consumer: chat-service/stream_service; roleplay/composition to follow.
+  "loreweave_context*",
+  # P3 SDK-first (2026-07-05) — `loreweave_internal_client` added (shared mechanics for
+  # internal S2S HTTP clients: token/JSON headers, uniform X-Trace-Id propagation, the
+  # 502/503/429-retryable predicate + error base, and the model-name resolver collapsed
+  # from 5 byte-identical copies). Pure httpx. Wave 1 consumers: translation/knowledge/
+  # composition/campaign/video model_name shims; more client migrations to follow.
+  "loreweave_internal_client*",
+  # D-CANON-CHECK-SDK-UNIFY (2026-07-06) — `loreweave_canon_check` added (shared
+  # symbolic-prefilter + LLM-judge plumbing, hoisted from composition-service's
+  # canon_check.py + knowledge-service's near-duplicate mirror). Pure pydantic +
+  # stdlib, no LLM/HTTP hard dep (the caller injects its own submit_and_wait).
+  "loreweave_canon_check*",
 ]
 exclude = ["tests*"]
 

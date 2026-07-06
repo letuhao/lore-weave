@@ -1,0 +1,35 @@
+{
+  "title": "Ranking",
+  "subtitle": "Descubra os melhores livros, autores e tradutores da comunidade.",
+  "tabs": {
+    "books": "Melhores Livros",
+    "authors": "Autores",
+    "translators": "Tradutores",
+    "trending": "Em alta"
+  },
+  "period": {
+    "7d": "Esta semana",
+    "30d": "Este mês",
+    "all": "Todo o período"
+  },
+  "filters": {
+    "allGenres": "Todos os gêneros",
+    "allLanguages": "Todos os idiomas"
+  },
+  "ranking": {
+    "fullRankings": "Rankings completos — Melhores Livros",
+    "readers": "Leitores",
+    "favorites": "Favoritos",
+    "ratings": "avaliações",
+    "chapters": "capítulos",
+    "translations": "traduções",
+    "rating": "Avaliação",
+    "showMore": "Ver mais rankings",
+    "noResults": "Ainda não há rankings. Comece a ler e traduzir!"
+  },
+  "quickStats": {
+    "topAuthors": "Principais Autores",
+    "topTranslators": "Principais Tradutores",
+    "viewAll": "Ver todos"
+  }
+}

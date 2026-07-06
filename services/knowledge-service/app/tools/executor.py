@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import redis.asyncio as aioredis
+from loreweave_mcp import apply_response_contract
 from pydantic import BaseModel, ValidationError
 
 if TYPE_CHECKING:  # deps used only as ToolContext type hints (lane LF + story_search)
@@ -100,6 +101,40 @@ _REMEMBER_RL_TTL_S = 24 * 3600
 # Result-size guards (design D7).
 _SNIPPET_CHARS = 500
 _OTHER_MATCHES_CAP = 5
+
+# One-line preview cap for the L1 summary projection (§6b) — the compact snippet
+# a `detail=summary` result keeps in place of the full body.
+_PREVIEW_CHARS = 160
+
+# ── L1/L2 reference-first ref-field sets (Context Budget Law §6b) ──────
+# At detail="summary" `apply_response_contract` keeps ONLY these keys per item and
+# drops the heavy bodies; at detail="full" the row is unchanged. Exported so the
+# per-tool contract-guard tests can assert the ref set never re-admits a heavy
+# field (mirrors composition's _OUTLINE_REF_FIELDS).
+#
+# story_search: keep the chapter reference + score/type + the jump location; DROP
+# the full `snippet` passage text (the bloat) + `highlights` + `relevance`/
+# `sourceLang`. Re-read a hit via book_get_chapter (named in the tool description).
+STORY_SEARCH_REF_FIELDS = (
+    "chapterId", "chapterTitle", "sortOrder", "surface", "matchType",
+    "score", "location",
+)
+# memory_search: keep the 1-line `snippet` preview + source_type + score; DROP the
+# full (≤500-char) `text` body. The preview is added additively in the handler so
+# detail="full" still carries the full `text` (no behavior change).
+MEMORY_SEARCH_REF_FIELDS = ("snippet", "source_type", "score")
+# memory_timeline: keep the event's title/date/participants; DROP the (≤500-char)
+# `summary` body at summary detail.
+MEMORY_TIMELINE_REF_FIELDS = ("title", "event_date", "participants")
+
+
+def _one_line(text: str | None, limit: int = _PREVIEW_CHARS) -> str:
+    """Collapse whitespace to a single ≤`limit`-char preview line for the L1
+    summary snippet — so a summary item carries a cheap gist, not the full body."""
+    if not text:
+        return ""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[:limit] + "…"
 
 
 # ── result / context types ────────────────────────────────────────────
@@ -300,10 +335,17 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
         limit=args.limit,
     )
     hits = result.hits[: args.limit]
-    out: dict = {"hits": hits, "count": len(hits)}
+    # L1/L2 reference-first (§6b): at detail="summary" drop the heavy passage
+    # `snippet` (+ highlights/relevance) and keep only the chapter ref + score +
+    # jump location; `count` stays = returned for back-compat, `meta` reports
+    # total/returned/truncated so a cap is never a silent drop.
+    projected, meta = apply_response_contract(
+        hits, ref_fields=STORY_SEARCH_REF_FIELDS, detail=args.detail,
+    )
+    out: dict = {"hits": projected, "count": len(projected), **meta}
     if result.degraded:
         out["degraded"] = result.degraded
-    if not hits:
+    if not projected:
         out["note"] = (
             "no matches — try mode='semantic' for ideas described in your own "
             "words, or a shorter exact phrase"
@@ -312,6 +354,18 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
 
 
 async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dict:
+    """Engine-unified project search (see docs/plans/2026-07-05-search-tool-unification.md).
+
+    Two legs, merged, so the tool is NEVER empty when the raw chapter text matches —
+    the fix for the "agent picks memory_search, gets nothing, punts" failure:
+      • MANUSCRIPT leg (chapter source) → the SAME lexical-inclusive hybrid engine
+        `story_search` uses (`run_hybrid_search`). Its lexical FTS leg needs NO
+        embeddings/passages, so chapter-body recall works on a bare book.
+      • PASSAGE leg (chat/glossary source) → the existing semantic vector search over
+        ingested passages; skipped cleanly when no embedding model / no passages.
+    A `source_type` filter runs only the relevant leg(s). Response shape unchanged
+    (`{snippet, text, source_type, score}`), so every existing caller is back-compat —
+    a previously-EMPTY result just becomes a real one (strictly better)."""
     if ctx.project_id is None:
         # No knowledge project linked to this chat → there is simply nothing to search.
         # Return a clean EMPTY result (as memory_recall_entity / memory_timeline already
@@ -331,58 +385,113 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
         # A project_id WAS supplied but doesn't resolve (deleted / wrong / not owned)
         # — a genuine error worth surfacing, distinct from "no project linked" above.
         raise ToolExecutionError("project not found")
-    if project.embedding_model is None or project.embedding_dimension is None:
-        return {"hits": [], "count": 0,
-                "note": "this project has no indexed memory yet"}
-    if project.embedding_dimension not in SUPPORTED_PASSAGE_DIMS:
-        return {"hits": [], "count": 0,
-                "note": "this project's embedding model is not supported"}
 
-    try:
-        embed = await ctx.embedding_client.embed(
-            user_id=ctx.user_id,
-            model_source="user_model",
-            model_ref=project.embedding_model,
-            texts=[args.query],
-        )
-    except EmbeddingError as exc:
-        raise ToolExecutionError(
-            f"memory search is temporarily unavailable: {exc}"
-        )
-    if not embed.embeddings or not embed.embeddings[0]:
-        return {"hits": [], "count": 0}
+    items: list[dict] = []
+    degraded: list | None = None
+    seen: set[str] = set()
 
-    try:
-        async with neo4j_session() as session:
-            hits = await find_passages_by_vector(
-                session,
-                user_id=str(ctx.user_id),
-                project_id=str(ctx.project_id),
-                query_vector=embed.embeddings[0],
-                dim=project.embedding_dimension,
-                embedding_model=project.embedding_model,
-                source_type=args.source_type,
-                limit=args.limit,
+    # ── MANUSCRIPT leg: lexical-inclusive hybrid over the linked book's chapters.
+    # Runs whenever the caller wants the chapter source AND the manuscript engine is
+    # wired on this surface (book + reranker clients). Needs NO embeddings for its
+    # lexical leg — this is what makes chapter-body recall work with 0 passages.
+    if (
+        ctx.book_client is not None
+        and ctx.reranker_client is not None
+        and args.source_type in (None, "chapter")
+        and getattr(project, "book_id", None) is not None
+    ):
+        from app.search.retriever import run_hybrid_search  # heavy deps — late import
+
+        result = await run_hybrid_search(
+            user_id=ctx.user_id, book_id=project.book_id, query=args.query,
+            project=project, book_client=ctx.book_client,
+            embedding_client=ctx.embedding_client, reranker_client=ctx.reranker_client,
+            mode="hybrid", granularity="block", limit=args.limit,
+        )
+        for h in result.hits[: args.limit]:
+            snip = h.get("snippet") or ""
+            key = _one_line(snip)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            items.append({
+                "snippet": key,
+                "text": _truncate(snip),
+                "source_type": "chapter",
+                "score": round(float(h.get("score") or 0.0), 4),
+            })
+        if result.degraded:
+            degraded = result.degraded
+
+    # ── PASSAGE leg: semantic vector search over ingested chat/glossary passages (and
+    # chapter passages, when present). The manuscript leg above already covers chapters
+    # better (lexical), so restrict this leg to chat/glossary unless the caller asked
+    # for a specific non-chapter source. Skipped cleanly when no embedding model.
+    _passage_source = args.source_type if args.source_type in ("chat", "glossary") else None
+    if (
+        args.source_type in (None, "chat", "glossary")
+        and project.embedding_model is not None
+        and project.embedding_dimension is not None
+        and project.embedding_dimension in SUPPORTED_PASSAGE_DIMS
+    ):
+        embed = None
+        try:
+            embed = await ctx.embedding_client.embed(
+                user_id=ctx.user_id, model_source="user_model",
+                model_ref=project.embedding_model, texts=[args.query],
             )
-    except ValueError as exc:
-        # query_vector length disagrees with the project's stored dim
-        # — user changed embedding model out-of-band.
-        raise ToolExecutionError(f"memory search failed: {exc}")
+        except EmbeddingError as exc:
+            # Only a hard failure if we have nothing from the manuscript leg either.
+            if not items:
+                raise ToolExecutionError(
+                    f"memory search is temporarily unavailable: {exc}"
+                )
+        if embed and embed.embeddings and embed.embeddings[0]:
+            try:
+                async with neo4j_session() as session:
+                    hits = await find_passages_by_vector(
+                        session, user_id=str(ctx.user_id), project_id=str(ctx.project_id),
+                        query_vector=embed.embeddings[0], dim=project.embedding_dimension,
+                        embedding_model=project.embedding_model,
+                        source_type=_passage_source, limit=args.limit,
+                    )
+            except ValueError as exc:
+                # query_vector length disagrees with the stored dim (model changed
+                # out-of-band) — only fatal if the manuscript leg found nothing.
+                if not items:
+                    raise ToolExecutionError(f"memory search failed: {exc}")
+                hits = []
+            for h in hits[: args.limit]:
+                key = _one_line(h.passage.text)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                items.append({
+                    "snippet": key,
+                    "text": _truncate(h.passage.text),
+                    "source_type": h.passage.source_type,
+                    "score": round(h.raw_score, 4),
+                })
 
-    items = [
-        {
-            "text": _truncate(h.passage.text),
-            "source_type": h.passage.source_type,
-            "score": round(h.raw_score, 4),
-        }
-        for h in hits[: args.limit]
-    ]
-    return {"hits": items, "count": len(items)}
+    items = items[: args.limit]
+    projected, meta = apply_response_contract(
+        items, ref_fields=MEMORY_SEARCH_REF_FIELDS, detail=args.detail,
+    )
+    out: dict = {"hits": projected, "count": len(projected), **meta}
+    if degraded:
+        out["degraded"] = degraded
+    if not projected:
+        out["note"] = "this project has no indexed memory yet"
+    return out
 
 
 async def _handle_memory_recall_entity(
     ctx: ToolContext, args: MemoryRecallEntityArgs
 ) -> dict:
+    # @small_return: a SINGLE entity (name/kind/aliases/confidence) + its relations
+    # (already capped in-repo, with `relations_truncated`) + a ≤5 other_matches name
+    # list. This IS the get-by-id sibling the SET tools' summaries defer to — no heavy
+    # body to shed, so no `detail` lever (spec §6b small/single-object exemption).
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
     async with neo4j_session() as session:
@@ -471,7 +580,17 @@ async def _handle_memory_timeline(
         }
         for ev in events
     ]
-    return {"events": items, "count": len(items), "total_matching": total}
+    # L1/L2 reference-first (§6b): at detail="summary" drop the per-event
+    # `summary` body, keeping title/date/participants. `total_matching` is the
+    # DB-side match count (independent of the page); `meta` reports page
+    # total/returned/truncated.
+    projected, meta = apply_response_contract(
+        items, ref_fields=MEMORY_TIMELINE_REF_FIELDS, detail=args.detail,
+    )
+    return {
+        "events": projected, "count": len(projected),
+        "total_matching": total, **meta,
+    }
 
 
 async def _handle_memory_remember(

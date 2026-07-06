@@ -1,0 +1,87 @@
+{
+  "title": "Glossar-Übersetzung",
+  "subtitle": "Entitätsattribute mit KI in Stapelverarbeitung übersetzen",
+  "steps": {
+    "config": "Einstellungen",
+    "confirm": "Bestätigen",
+    "progress": "Fortschritt",
+    "results": "Ergebnisse"
+  },
+  "config": {
+    "title": "Übersetzungseinstellungen",
+    "description": "Wähle die Zielsprache und das Modell. Alle Attribute mit Quelltext werden übersetzt.",
+    "sourceLanguage": "Quellsprache",
+    "sourceUnknown": "Aus dem Buch",
+    "targetLanguage": "Zielsprache",
+    "overwriteMode": "Überschreibungs-Modus",
+    "model": "Modell",
+    "noModels": "Keine Modelle konfiguriert.",
+    "addInSettings": "In den Einstellungen hinzufügen",
+    "selectModel": "Modell auswählen...",
+    "allAttrsNote": "Jedes Attribut mit einem Originalwert wird einbezogen. Verifizierte Übersetzungen werden niemals überschrieben.",
+    "sameLanguageError": "Die Zielsprache muss sich von der Quellsprache des Buches unterscheiden.",
+    "thinkingEnabled": "Denkprozess / Reasoning aktivieren",
+    "thinkingHint": "Standardmäßig deaktiviert. Aktiviere dies für Gemma und ähnliche Modelle, wenn das Modell vor der Antwort nachdenken soll.",
+    "mode": {
+      "missing_only": {
+        "label": "Nur fehlende",
+        "hint": "Attribute, die bereits eine Übersetzung in der Zielsprache haben, werden übersprungen."
+      },
+      "refresh_machine": {
+        "label": "Maschinelle Übersetzung aktualisieren",
+        "hint": "Entwürfe und maschinelle Übersetzungen neu übersetzen. Verifizierte Übersetzungen bleiben unverändert."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "Sprachen",
+    "mode": "Modus",
+    "model": "Modell",
+    "estimateNote": "Entitätenanzahl und Token-Verbrauch werden zu Beginn des Auftrags ermittelt. Der tatsächliche Verbrauch hängt von der Anzahl der Attribute pro Entität ab.",
+    "editConfig": "Einstellungen bearbeiten",
+    "startTranslate": "Übersetzung starten",
+    "startFailed": "Übersetzungsauftrag konnte nicht gestartet werden",
+    "thinkingOn": "Denkprozess: an",
+    "thinkingOff": "Denkprozess: aus"
+  },
+  "progress": {
+    "title": "Glossar wird übersetzt",
+    "processing": "Verarbeite Entität {{current}} von {{total}}...",
+    "entityProgress": "Entitäten-Fortschritt",
+    "entitiesCount": "{{completed}} / {{total}} Entitäten",
+    "failedCount": "{{count}} fehlgeschlagen",
+    "attrsTranslated": "Übersetzte Attribute",
+    "attrsSkipped": "Übersprungene Attribute",
+    "entitiesDone": "Entitäten fertig",
+    "entitiesFailed": "Entitäten fehlgeschlagen",
+    "cancel": "Abbrechen",
+    "cancelConfirm": "Diesen Übersetzungsauftrag abbrechen? Bereits verarbeitete Entitäten behalten ihre Übersetzungen.",
+    "cancelRequested": "Abbruch angefordert",
+    "noEntities": "Für diese Sprache müssen keine Entitäten übersetzt werden."
+  },
+  "results": {
+    "title": "Übersetzung abgeschlossen",
+    "titleNoEntities": "Nichts zu übersetzen",
+    "titleWithErrors": "Übersetzung abgeschlossen (mit Fehlern)",
+    "titleFailed": "Übersetzung fehlgeschlagen",
+    "titleCancelled": "Übersetzung abgebrochen",
+    "duration": "{{count}} Entitäten in {{duration}}",
+    "attrsTranslated": "Übersetzt",
+    "attrsSkipped": "Übersprungen",
+    "entitiesDone": "Entitäten fertig",
+    "entitiesFailed": "Fehlgeschlagen",
+    "partialFailure": "{{count}} Entität(en) fehlgeschlagen",
+    "tokenUsage": "Token-Verbrauch",
+    "estimated": "Geschätzt: {{tokens}}",
+    "noEntities": "Alle Entitätsattribute haben bereits Übersetzungen in dieser Sprache oder Attribute haben keinen Quelltext.",
+    "machineNote": "Übersetzungen werden als maschinelle Konfidenz gespeichert – bitte im Entitäten-Editor überprüfen und verifizieren.",
+    "viewGlossary": "Im Glossar überprüfen",
+    "runAgain": "Erneut übersetzen",
+    "close": "Schließen"
+  },
+  "button": {
+    "next": "Weiter",
+    "back": "Zurück",
+    "cancel": "Abbrechen"
+  }
+}

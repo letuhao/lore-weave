@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -20,6 +21,10 @@ interface Props {
   /** Show the book/chapter breadcrumb row (standalone page). Off when embedded in the editor. */
   showBreadcrumb?: boolean;
   className?: string;
+  /** #16 Phase 3 DOCK-7 fix — see TranslationViewer's own doc comment. Omitted by every
+   *  existing caller (classic page, legacy editor's Translate workmode) so their `navigate()`
+   *  fallback is unchanged; only the new `translation-versions` Studio panel supplies it. */
+  onReview?: (versionId: string) => void;
 }
 
 /**
@@ -40,6 +45,7 @@ export function ChapterTranslationsPanel({
   initialVersionId = null,
   showBreadcrumb = true,
   className,
+  onReview,
 }: Props) {
   const { t } = useTranslation('translation');
   const { accessToken } = useAuth();
@@ -89,7 +95,26 @@ export function ChapterTranslationsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, bookId, chapterId]);
 
-  useEffect(() => { void loadAll(); }, [loadAll]);
+  // #16 Phase 4 (LIVE-SYNC audit, 2026-07-05) — this component's multi-source loadAll() has no
+  // direct react-query integration of its own (it's a plain useState/useEffect fetch), so the
+  // Lane B reconciler (`translationEffects.ts`) has nothing to invalidate directly after an agent
+  // cancels/pauses a translation job. This trivial sentinel query gives it a lever: its queryFn
+  // does no network work, but react-query's own invalidation → refetch → dataUpdatedAt-changes
+  // machinery is reused as a refresh signal, so loadAll() re-runs without restructuring the rest
+  // of this component's local optimistic-update state (handleSetActive et al).
+  const refreshSignal = useQuery({
+    queryKey: ['translation', 'refresh', bookId, chapterId],
+    queryFn: () => Date.now(),
+    staleTime: Infinity,
+    enabled: !!accessToken,
+  });
+  useEffect(() => {
+    if (refreshSignal.dataUpdatedAt) void loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadAll is intentionally excluded:
+    // it's recreated every render (new bookId/chapterId/accessToken identity is what matters, and
+    // those already flow into loadAll's own deps + this query's key), only dataUpdatedAt should
+    // re-trigger a fetch here.
+  }, [refreshSignal.dataUpdatedAt]);
 
   // Auto-select a version when the language changes (active version, else first).
   useEffect(() => {
@@ -229,6 +254,7 @@ export function ChapterTranslationsPanel({
             versionId={currentVersion.id}
             isActive={isActive}
             onSetActive={handleSetActive}
+            onReview={onReview}
           />
         )}
       </div>

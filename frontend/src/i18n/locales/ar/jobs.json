@@ -1,0 +1,155 @@
+{
+  "title": "المهام",
+  "status": {
+    "pending": "قيد الانتظار",
+    "running": "قيد التشغيل",
+    "paused": "متوقفة مؤقتاً",
+    "cancelling": "جاري الإلغاء",
+    "completed": "مكتملة",
+    "failed": "فشلت",
+    "cancelled": "ملغاة"
+  },
+  "kind": {
+    "extraction": "استخراج المعرفة",
+    "glossary_extraction": "استخراج المسرد",
+    "wiki_gen": "إنشاء ويكي",
+    "translation": "ترجمة",
+    "glossary_translation": "ترجمة المسرد",
+    "video_gen": "إنشاء فيديو",
+    "campaign": "حملة",
+    "enrichment_job": "إثراء المحتوى",
+    "book_import": "استيراد كتاب",
+    "composition": {
+      "generate": "تأليف"
+    }
+  },
+  "summary": {
+    "active": "نشطة",
+    "completed": "مكتملة",
+    "failed": "فاشلة",
+    "cancelled": "ملغاة"
+  },
+  "filters": {
+    "status": "الحالة",
+    "kind": "النوع",
+    "allStatuses": "جميع الحالات",
+    "allKinds": "جميع الأنواع",
+    "search": "البحث عن العنوان…",
+    "searchWide": "البحث عن العنوان، النوع، الخدمة، النموذج أو معرف المهمة…",
+    "searchHint": "البحث يشمل العنوان · النوع · الخدمة · النموذج · معرف المهمة (مع تأخير بسيط)."
+  },
+  "col": {
+    "job": "المهمة",
+    "status": "الحالة",
+    "progress": "التقدم",
+    "cost": "التكلفة · الرموز",
+    "started": "بدأت",
+    "actions": "الإجراءات"
+  },
+  "section": {
+    "active": "نشطة · مباشرة",
+    "activeHint": "غير مقسمة لصفحات — تُحدث في مكانها عبر SSE",
+    "history": "السجل",
+    "historyHint": "مرتبة حسب تاريخ الإنشاء · مقسمة لصفحات"
+  },
+  "list": {
+    "loading": "جاري التحميل…",
+    "error": "فشل تحميل المهام.",
+    "empty": "لا توجد مهام بعد.",
+    "noActive": "لا توجد مهام نشطة.",
+    "more": "تحميل المزيد",
+    "toggleChildren": "إظهار المهام الفرعية",
+    "noChildren": "لا توجد مهام فرعية."
+  },
+  "row": {
+    "ran": "رُكضت {{d}}",
+    "running": "قيد التشغيل منذ {{d}}",
+    "details": "التفاصيل ↗"
+  },
+  "pager": {
+    "range": "{{from}}–{{to}} من {{total}}",
+    "pageSize": "حجم الصفحة",
+    "perPage": "{{n}} / صفحة",
+    "page": "الصفحة {{n}}",
+    "prev": "الصفحة السابقة",
+    "next": "الصفحة التالية",
+    "outOfRange": "لا توجد صفوف في هذه الصفحة (الإجمالي {{total}}).",
+    "first": "العودة إلى الصفحة الأولى"
+  },
+  "live": {
+    "on": "● مباشر",
+    "onShort": "مباشر",
+    "reconnecting": "جاري إعادة الاتصال…",
+    "off": "غير متصل"
+  },
+  "controls": {
+    "pause": "إيقاف مؤقت",
+    "resume": "استئناف",
+    "cancel": "إلغاء",
+    "cancelConfirm": "هل تريد الإيقاف الآن؟ سيتم التخلي عن العمل الجاري؛ أما الأجزاء المكتملة فستُحفظ.",
+    "cancelYes": "نعم",
+    "cancelNo": "لا",
+    "cancelled": "تم الإلغاء.",
+    "paused": "متوقفة مؤقتاً.",
+    "resumed": "تم الاستئناف.",
+    "retry": "إعادة المحاولة",
+    "retried": "أُعيد إرسالها كمهمة جديدة.",
+    "stale": "تغيرت حالة المهمة — تم التحديث.",
+    "actionFailed": "فشل الإجراء: {{error}}"
+  },
+  "monitor": {
+    "back": "جميع المهام",
+    "error": "فشل تحميل المهمة.",
+    "pausedBanner": "متوقفة مؤقتاً — لن يتم إرسال وحدات جديدة وستكتمل المهام الجارية. استأنف من الأعلى.",
+    "children": "المهام الفرعية"
+  },
+  "detail": {
+    "progress": "التقدم",
+    "llmCalls": "استدعاءات LLM",
+    "elapsed": "الوقت المنقضي",
+    "throughput": "معدل الإنتاجية",
+    "throughputVal": "~{{n}} /ساعة",
+    "eta": "الوقت المتوقع للانتهاء",
+    "costSoFar": "التكلفة حتى الآن",
+    "tokensIn": "الرموز الواردة",
+    "tokensOut": "الرموز الصادرة",
+    "bestEffort": "أقصى جهد",
+    "models": "النماذج",
+    "parameters": "المعلمات",
+    "parametersHint": "ديناميكية، من كائن معلمات المهمة",
+    "jobId": "معرف المهمة",
+    "kind": "النوع",
+    "service": "الخدمة",
+    "parent": "الأصل",
+    "viewParent": "عرض الأصل ↗",
+    "created": "تاريخ الإنشاء",
+    "lastUpdate": "آخر تحديث",
+    "copied": "تم نسخ معرف المهمة.",
+    "copyFailed": "تعذر النسخ.",
+    "activity": "النشاط (مباشر)",
+    "errorTitle": "خطأ"
+  },
+  "activity": {
+    "created": "تم الإنشاء",
+    "pending": "في قائمة الانتظار",
+    "running": "قيد التشغيل",
+    "paused": "متوقفة مؤقتاً",
+    "cancelling": "جاري الإلغاء",
+    "completed": "مكتملة",
+    "failed": "فشلت",
+    "cancelled": "ملغاة"
+  },
+  "mobile": {
+    "children": "المهام الفرعية"
+  },
+  "fairness": {
+    "title": "جدولة عادلة",
+    "running": "{{running}}/{{cap}} قيد التشغيل",
+    "queued": "· {{queued}} في الانتظار",
+    "lane": {
+      "translation": "ترجمة",
+      "knowledge": "معرفة",
+      "loreEnrichment": "إثراء المحتوى"
+    }
+  }
+}

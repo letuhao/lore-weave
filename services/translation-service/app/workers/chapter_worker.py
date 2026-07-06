@@ -3,6 +3,7 @@ import logging
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 from loreweave_jobs import emit_job_event
 from loreweave_llm.attribution import set_public_key_attribution
 
@@ -187,11 +188,10 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     # Fetch chapter body from book-service
     log.info("chapter %s: fetching body from book-service (book %s)", chapter_id, msg["book_id"])
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=5.0)) as client:
+        async with build_internal_client(settings.book_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30, connect_timeout_s=10) as client:
             r = await client.get(
                 f"{settings.book_service_internal_url}"
                 f"/internal/books/{msg['book_id']}/chapters/{chapter_id}",
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
     except httpx.RequestError as exc:
         log.error("chapter %s: book-service request failed: %s", chapter_id, exc)
@@ -864,6 +864,19 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
                     tokens_out=_to or None,
                     cost_usd=_cost,
                 )
+                # D-C-PRODUCER-OUTBOX — emit the user notification in the SAME tx as
+                # the finalize (atomic; fires exactly once — only the winning worker is
+                # here). worker-infra's relay drains this notification-typed row to
+                # notification-service, idempotent via dedup_key. Replaces the former
+                # fire-and-forget POST that was lost if notification-service was down.
+                await _insert_outbox_event(
+                    db, "notification.requested", job_id,
+                    _translation_notification_body(
+                        user_id, msg.get("job_id", ""), msg.get("book_title", ""),
+                        row["status"], row["completed_chapters"], row["failed_chapters"],
+                    ),
+                    aggregate_type="notification",
+                )
 
     if row is None:
         return  # Job not done yet, or another worker already finalized it
@@ -878,12 +891,8 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
             "failed_chapters":    row["failed_chapters"],
         },
     })
-
-    # Fire-and-forget notification
-    await _send_translation_notification(
-        user_id, msg.get("job_id", ""), msg.get("book_title", ""),
-        row["status"], row["completed_chapters"], row["failed_chapters"],
-    )
+    # The durable user notification is emitted in the finalize tx above
+    # (D-C-PRODUCER-OUTBOX) — no fire-and-forget POST here anymore.
 
 
 async def _fail_chapter_idempotent(pool, job_id, chapter_id, reason: str) -> None:
@@ -932,7 +941,9 @@ async def _insert_outbox_event(
     await db.execute(
         """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
            VALUES ($1, $2, $3, $4::jsonb)""",
-        event_type, aggregate_type, aggregate_id, json.dumps(payload),
+        # ensure_ascii=False (ML-5): payloads carry user prose (book titles, quality
+        # source/translated text) — never \uXXXX-inflate CJK on the wire/storage.
+        event_type, aggregate_type, aggregate_id, json.dumps(payload, ensure_ascii=False),
     )
 
 
@@ -1045,47 +1056,44 @@ async def _emit_translation_quality(
     )
 
 
-async def _send_translation_notification(
+def _translation_notification_body(
     user_id, job_id: str, book_title: str, status: str,
     completed_chapters: int, failed_chapters: int,
-) -> None:
-    """Fire-and-forget notification to notification-service."""
-    try:
-        category = "translation"
-        # `title` is the English fallback; clients localize from i18n_key + params
-        # (LW-PLAN notifications i18n Phase 2).
-        if status == "completed":
-            title = f"Translation complete — {completed_chapters} chapters of \"{book_title}\""
-            i18n_key = "notif.translation.completed"
-            i18n_params = {"count": completed_chapters, "book": book_title}
-        elif status == "partial":
-            title = f"Translation partial — {completed_chapters} done, {failed_chapters} failed"
-            i18n_key = "notif.translation.partial"
-            i18n_params = {"done": completed_chapters, "failed": failed_chapters}
-        else:
-            title = f"Translation failed — \"{book_title}\""
-            i18n_key = "notif.translation.failed"
-            i18n_params = {"book": book_title}
+) -> dict:
+    """Build the notification-service ingest body for a finished translation job.
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"{settings.notification_service_internal_url}/internal/notifications",
-                json={
-                    "user_id": str(user_id),
-                    "category": category,
-                    "title": title,
-                    "metadata": {
-                        "job_id": str(job_id),
-                        "status": status,
-                        "type": f"translation_{status}",
-                        "i18n_key": i18n_key,
-                        "i18n_params": i18n_params,
-                    },
-                },
-                headers={"X-Internal-Token": settings.internal_service_token},
-            )
-    except Exception as exc:
-        log.warning("Failed to send translation notification: %s", exc)
+    D-C-PRODUCER-OUTBOX: this is emitted into the transactional outbox (not POSTed
+    fire-and-forget), so the relay delivers it durably. `title` is the English
+    fallback; a locale-aware FE renders from the canonical top-level
+    `message_key`/`message_params` (metadata.i18n_key kept for legacy clients). The
+    deterministic `dedup_key` makes the at-least-once relay delivery idempotent."""
+    if status == "completed":
+        title = f"Translation complete — {completed_chapters} chapters of \"{book_title}\""
+        message_key = "notif.translation.completed"
+        message_params = {"count": completed_chapters, "book": book_title}
+    elif status == "partial":
+        title = f"Translation partial — {completed_chapters} done, {failed_chapters} failed"
+        message_key = "notif.translation.partial"
+        message_params = {"done": completed_chapters, "failed": failed_chapters}
+    else:
+        title = f"Translation failed — \"{book_title}\""
+        message_key = "notif.translation.failed"
+        message_params = {"book": book_title}
+    return {
+        "user_id": str(user_id),
+        "category": "translation",
+        "title": title,
+        "message_key": message_key,
+        "message_params": message_params,
+        "metadata": {
+            "job_id": str(job_id),
+            "status": status,
+            "type": f"translation_{status}",
+            "i18n_key": message_key,       # legacy fallback (pre-message_key clients)
+            "i18n_params": message_params,
+        },
+        "dedup_key": f"translation:{job_id}:{status}",
+    }
 
 
 async def _load_chapter_memo(pool, book_id, chapter_index: int, target_language: str) -> dict | None:

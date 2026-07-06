@@ -50,6 +50,26 @@ def test_track_b_project_ids_column_is_guarded_additive_alter():
     ), "project_ids ALTER must be IF-NOT-EXISTS guarded with an empty-array default"
 
 
+def test_chat_ai_prefs_table_and_session_override_columns():
+    # Chat & AI settings unify — new per-user prefs table + guarded session
+    # override columns (spec docs/specs/2026-07-05-chat-ai-settings.md §4).
+    assert "CREATE TABLE IF NOT EXISTS user_chat_ai_prefs" in DDL
+    assert re.search(r"owner_user_id\s+UUID PRIMARY KEY", DDL), (
+        "user_chat_ai_prefs must be keyed by owner_user_id (Per-user tenancy tier)"
+    )
+    for col, typ in (
+        ("grounding_enabled", "BOOLEAN"),
+        ("voice_overrides", "JSONB"),
+        ("context_overrides", "JSONB"),
+    ):
+        assert re.search(
+            r"IF NOT EXISTS \(SELECT 1 FROM information_schema\.columns "
+            r"WHERE table_name='chat_sessions' AND column_name='" + col + r"'\) THEN\s*"
+            r"ALTER TABLE chat_sessions ADD COLUMN " + col + r" " + typ + r";",
+            DDL,
+        ), f"{col} ALTER must be IF-NOT-EXISTS guarded"
+
+
 def test_ddl_has_no_unguarded_alter_add_column():
     # every ALTER ... ADD COLUMN in the boot DDL must live inside a DO-block
     # guard — a bare one would crash the second boot. Cheap structural pin.

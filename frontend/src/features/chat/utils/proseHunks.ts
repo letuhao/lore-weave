@@ -49,7 +49,12 @@ export interface HunkModel {
 // but NOT when the next word is lowercase (dialogue tags `"Run!" she said`,
 // abbreviations `e.g. foo`, which aren't real boundaries); newline runs always
 // split (paragraph breaks).
-const SENTENCE_SPLIT = /(?<=[。！？])|(?<=[.!?…]["'”’」』】）)\]]*)\s+(?![a-z])|\n+/;
+// ML-3: the dialogue-guard uses `\p{Ll}` (lowercase letter, ANY script) not
+// `[a-z]`, so a Vietnamese/accented lowercase continuation — `«Chạy!» ông nói` —
+// is guarded too (ô/ô isn't `[a-z]`, so the old guard split it wrongly). Needs
+// the `u` flag. CJK has no case ⇒ `\p{Ll}` never matches an ideograph, so CJK
+// after a Latin ender still splits (correct).
+const SENTENCE_SPLIT = /(?<=[。！？])|(?<=[.!?…]["'”’」』】）)\]]*)\s+(?!\p{Ll})|\n+/u;
 // A split boundary that consumed a newline run — the unit before it ends a paragraph.
 const NEWLINE_BOUNDARY = /\n/;
 
@@ -58,7 +63,8 @@ const NEWLINE_BOUNDARY = /\n/;
 export function splitUnits(text: string): Unit[] {
   const normalized = text.replace(/\r\n?/g, '\n');
   // Capture the separators so we can tell which boundaries were paragraph breaks.
-  const parts = normalized.split(new RegExp(`(${SENTENCE_SPLIT.source})`));
+  // Preserve SENTENCE_SPLIT's flags (the `u` flag is REQUIRED for `\p{Ll}`).
+  const parts = normalized.split(new RegExp(`(${SENTENCE_SPLIT.source})`, SENTENCE_SPLIT.flags));
   const units: Unit[] = [];
   // split-with-capture yields [chunk, sep, chunk, sep, …]; a zero-width lookbehind
   // boundary produces an empty/undefined sep.

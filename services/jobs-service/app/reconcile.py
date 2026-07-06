@@ -29,7 +29,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import httpx
+from loreweave_internal_client import build_internal_client
 from loreweave_jobs import JobEvent
 
 from .config import settings
@@ -48,8 +48,6 @@ _RECONCILE: dict[str, tuple[str, str]] = {
     "translation": (settings.translation_service_internal_url, "/internal/translation/jobs"),
     "book": (settings.book_service_internal_url, "/internal/book/jobs"),
 }
-
-_TIMEOUT = httpx.Timeout(15.0)
 
 # Page size for one source fetch. Shared contract: the sweeper passes it as `?limit=`
 # and each source caps at it, so a FULL page (len == _PAGE_LIMIT) signals "more rows
@@ -126,10 +124,12 @@ class ReconcileSweeper:
 
     async def _fetch(self, base: str, path: str, since: datetime) -> list[dict[str, Any]]:
         url = f"{base}{path}"
-        headers = {"X-Internal-Token": settings.internal_service_token}
         params = {"since": since.isoformat(), "limit": _PAGE_LIMIT}
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(url, params=params, headers=headers)
+        # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON.
+        async with build_internal_client(
+            base, internal_token=settings.internal_service_token, timeout_s=15.0,
+        ) as client:
+            resp = await client.get(url, params=params)
         resp.raise_for_status()
         body = resp.json()
         return body.get("jobs", []) if isinstance(body, dict) else []

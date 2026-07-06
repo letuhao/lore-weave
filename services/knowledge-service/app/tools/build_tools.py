@@ -35,6 +35,7 @@ from app.effort import clamp_effort_to_grant
 from app.tools.argbase import ProjectScopedArgs
 from app.tools.graph_schema_tools import (
     GrantLevel,
+    _resolve_project_owner,
     _resolve_project_owner_and_level,
 )
 

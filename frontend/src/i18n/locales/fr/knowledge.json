@@ -1,0 +1,1161 @@
+{
+  "page": {
+    "title": "Connaissances",
+    "subtitle": "Projets, bio globale et contrôles de confidentialité pour ce que l'IA mémorise.",
+    "tabs": {
+      "label": "Onglets de connaissances",
+      "projects": "Projets",
+      "jobs": "Tâches",
+      "global": "Global",
+      "entities": "Entités",
+      "timeline": "Timeline",
+      "raw": "Brut",
+      "privacy": "Confidentialité",
+      "insights": "Insights"
+    }
+  },
+  "graph": {
+    "title": "Graphe de connaissances",
+    "counts": "{{nodes}} nœuds · {{edges}} relations",
+    "truncated": "affichant les {{n}} premiers — développez un nœud pour en charger plus",
+    "expanding": "expansion en cours…",
+    "hint": "Défilez pour zoomer · glissez l'espace vide pour déplacer · cliquez sur un nœud pour le détail · ⊞ pour développer",
+    "loading": "Chargement du graphe…",
+    "loadFailed": "Échec du chargement du graphe : {{error}}",
+    "empty": "Aucun graphe de connaissances pour le moment — construisez ce projet pour explorer son réseau."
+  },
+  "schemaSection": {
+    "title": "Schéma",
+    "subtitle": "Définissez le schéma du graphe de connaissances de ce projet — types de nœuds, types de liens, types de faits et vocabulaire. Les modifications s'appliquent au graphe de ce projet.",
+    "editCta": "Modifier le schéma",
+    "freeEdges": "Les relations hors vocabulaire sont autorisées (liens libres).",
+    "closedEdges": "Les relations sont limitées aux types de liens déclarés ; les autres sont envoyés en tri.",
+    "error": "Impossible de charger le schéma de ce projet.",
+    "emptyHelp": "Ce projet n'a pas encore de schéma. Partez de zéro, clonez un modèle ou adoptez-en un.",
+    "newBlank": "Nouveau schéma vide",
+    "schemaNamePlaceholder": "Nom du schéma",
+    "createBlankButton": "Créer un schéma vide",
+    "created": "Schéma créé",
+    "cloneTemplate": "Cloner un modèle",
+    "pickTemplate": "Choisir un modèle…",
+    "cloneButton": "Cloner dans mes schémas",
+    "cloned": "Modèle cloné",
+    "adoptTemplate": "Adopter un modèle",
+    "adoptHelp": "Copie un modèle dans ce projet (vérifie d'abord le glossaire).",
+    "adoptCta": "Adopter dans l'onglet Ontologie du livre",
+    "adoptBooklessHint": "L'adoption est disponible pour les projets liés à un livre.",
+    "forbidden": "Vous devez avoir l'accès « Gérer » sur ce projet pour définir le schéma.",
+    "createFailed": "Impossible de créer le schéma."
+  },
+  "shell": {
+    "backToProjects": "Tous les projets",
+    "sections": {
+      "label": "Sections du projet",
+      "overview": "Aperçu",
+      "entities": "Entités",
+      "timeline": "Timeline",
+      "evidence": "Preuves",
+      "proposals": "Propositions",
+      "gap": "Lacunes",
+      "insights": "Insights",
+      "schema": "Schéma",
+      "graph": "Construire / Explorer le graphe"
+    },
+    "notFound": "Projet introuvable.",
+    "loading": "Chargement du projet…",
+    "overview": {
+      "configHeading": "Configuration",
+      "embeddingModel": "Modèle d'embedding",
+      "rerankModel": "Modèle de rerank",
+      "extraction": "Extraction",
+      "extractionEnabled": "Activée",
+      "extractionDisabled": "Désactivée",
+      "book": "Livre",
+      "world": "Monde",
+      "none": "—"
+    },
+    "placeholder": {
+      "proposals": "Les propositions en attente arrivent ici (C11).",
+      "gap": "Le rapport de lacunes du glossaire arrive ici (C10).",
+      "graph": "La construction et l'exploration du graphe arrivent ici (C5 / C19)."
+    }
+  },
+  "gap": {
+    "heading": "Rapport de lacunes du glossaire",
+    "subtitle": "Personnages, lieux et concepts fréquemment mentionnés dans votre livre qui ne figurent pas encore dans le glossaire. Promouvez ceux qui méritent d'être conservés.",
+    "summary": {
+      "candidates": "Candidats aux lacunes",
+      "threshold": "Min. mentions",
+      "top": "Lacune principale",
+      "topLabel": "Lacune principale",
+      "topMentions": "{{count}} mentions",
+      "none": "—"
+    },
+    "controls": {
+      "minMentions": "Min. mentions",
+      "limit": "Afficher jusqu'à"
+    },
+    "selectAll": "Tout sélectionner",
+    "selectRow": "Sélectionner {{name}}",
+    "loading": "Chargement des lacunes…",
+    "empty": "Aucune lacune au-dessus de ce seuil. Baissez le nombre minimum de mentions pour en voir davantage, ou votre glossaire est déjà bien couvert.",
+    "error": "Impossible de charger le rapport de lacunes. Réessayez.",
+    "mentions": "{{count}} mentions",
+    "mentionsTitle": "Nombre de mentions dans le livre",
+    "itemFailed": "Échec",
+    "bulkPromote": {
+      "cta_one": "Promouvoir {{count}} au glossaire",
+      "cta_other": "Promouvoir {{count}} au glossaire",
+      "cta_zero": "Promouvoir au glossaire",
+      "progress": "{{done}} / {{total}} promus",
+      "failedCount": "({{count}} échecs)",
+      "allOk": "{{count}} éléments promus dans les brouillons du glossaire.",
+      "allFailed": "Toutes les {{count}} promotions ont échoué. Réessayez.",
+      "partial": "{{ok}} promus ; {{failed}} échecs."
+    }
+  },
+  "proposals": {
+    "heading": "Propositions en attente",
+    "subtitle": "Une boîte de réception unique pour tout ce qui attend votre examen — suggestions de l'IA pour le glossaire, modifications du wiki et propositions d'enrichissement du lore. Ouvrez une ligne pour l'examiner et l'accepter dans sa propre interface.",
+    "noBook": "Liez un livre à ce projet pour voir ses files d'attente de propositions.",
+    "loading": "Chargement des propositions…",
+    "error": "Impossible de charger la boîte de réception des propositions. Réessayez.",
+    "empty": "Aucune proposition en attente. Les nouvelles suggestions de l'IA apparaîtront ici au fur et à mesure.",
+    "review": "Examiner",
+    "openRow": "Examiner {{title}}",
+    "sourceError": "Impossible de charger cette file. Les autres restent affichées.",
+    "origin": {
+      "glossary": "Brouillon glossaire",
+      "wiki": "Modif. wiki",
+      "enrichment": "Prop. lore"
+    },
+    "originLabel": {
+      "glossary": "Brouillons IA glossaire",
+      "wiki": "Suggestions wiki",
+      "enrichment": "Propositions d'enrichissement lore"
+    },
+    "count": "{{count}}"
+  },
+  "mobile": {
+    "sections": {
+      "global": "Bio globale",
+      "projects": "Projets",
+      "jobs": "Tâches d'extraction"
+    },
+    "desktopOnly": {
+      "title": "Plus sur ordinateur",
+      "body": "La navigation par entités, la Timeline narrative et la recherche dans les tiroirs Raw nécessitent un écran plus large. Ouvrez Lore Weave sur un ordinateur ou une tablette pour les utiliser."
+    },
+    "privacyLink": "Confidentialité et contrôle des données",
+    "backToKnowledge": "Retour au Knowledge",
+    "global": {
+      "placeholder": "Que doit retenir chaque conversation de vous ?",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "saved": "Enregistré.",
+      "unsaved": "Non enregistré",
+      "saveFailed": "Échec de l'enregistrement. Réessayez.",
+      "conflict": "Un autre appareil a mis à jour cette bio. Examinez les dernières modifications et enregistrez à nouveau.",
+      "loadFailed": "Impossible de charger la bio globale : {{error}}"
+    },
+    "projects": {
+      "empty": "Aucun projet pour le moment. Créez-en un sur ordinateur.",
+      "loadFailed": "Impossible de charger les projets : {{error}}",
+      "noDescription": "Aucune description.",
+      "build": "Générer le graphe",
+      "status": {
+        "disabled": "Désactivé",
+        "building": "Génération en cours",
+        "paused": "En pause",
+        "ready": "Prêt",
+        "failed": "Échec"
+      },
+      "detail": {
+        "lastExtracted": "Dernière extraction",
+        "embeddingModel": "Modèle d'embedding",
+        "noEmbedding": "Non configuré"
+      }
+    },
+    "jobs": {
+      "empty": "Aucun travail d'extraction pour le moment.",
+      "loadFailed": "Impossible de charger les tâches : {{error}}",
+      "unknownProject": "Projet {{id}}",
+      "actionFailed": "{{action}} a échoué : {{error}}",
+      "status": {
+        "pending": "En attente",
+        "running": "En cours",
+        "paused": "En pause",
+        "complete": "Terminé",
+        "failed": "Échec",
+        "cancelled": "Annulé"
+      },
+      "actions": {
+        "pause": "Pause",
+        "pausing": "Pause en cours…",
+        "resume": "Reprendre",
+        "resuming": "Reprise en cours…",
+        "cancel": "Annuler",
+        "cancelling": "Annulation en cours…"
+      },
+      "detail": {
+        "items": "Éléments",
+        "created": "Créé le",
+        "completed": "Terminé le"
+      }
+    }
+  },
+  "drawers": {
+    "loading": "Recherche dans les tiroirs…",
+    "loadFailed": "Échec de la recherche : {{error}}",
+    "empty": "Aucun tiroir ne correspond à cette requête.",
+    "noProject": "Sélectionnez un projet pour rechercher dans ses tiroirs.",
+    "noQuery": "Entrez une requête pour trouver des tiroirs.",
+    "minQueryHint": "Tapez au moins {{min}} caractères pour effectuer une recherche sémantique.",
+    "notIndexed": "Ce projet n'est pas encore indexé pour la recherche sémantique.",
+    "notIndexedHint": "Lancez une extraction avec un modèle d'embedding pour activer la recherche dans les tiroirs.",
+    "refreshing": "Actualisation…",
+    "embedCost": "Requête indexée : {{tokens}} tokens · ${{cost}}",
+    "retry": "Réessayer",
+    "fixConfig": "Vérifiez la configuration du modèle d'embedding de votre projet dans les Paramètres.",
+    "unknownError": "Erreur inconnue. Veuillez réessayer.",
+    "filters": {
+      "project": "Projet",
+      "selectProject": "Sélectionner un projet",
+      "sourceType": {
+        "label": "Source",
+        "any": "Toutes",
+        "chapter": "Chapitre",
+        "chat": "Chat",
+        "glossary": "Glossaire"
+      }
+    },
+    "searchInput": {
+      "label": "Rechercher",
+      "placeholder": "ex. le duel au pont"
+    },
+    "card": {
+      "sourcePrefix": "Source",
+      "chapterLabel": "Chapitre {{index}}",
+      "chunkLabel": "Segment {{index}}",
+      "matchLabel": "Score de correspondance",
+      "openLabel": "Ouvrir le tiroir {{sourceType}} (correspondance : {{score}})",
+      "hubBadge": "Résumé",
+      "hubHint": "Ce segment est un résumé ou un extrait de bio longue ; il est pénalisé dans le classement mais peut tout de même apparaître.",
+      "langHint": "Langue source : {{lang}}"
+    },
+    "coverage": {
+      "partial": "{{count}} résultats sur {{total}} sont dans votre langue ({{lang}}) ; le reste est affiché dans la langue source.",
+      "none": "Aucun résultat dans votre langue ({{lang}}) ; affichage des résultats en langue source."
+    },
+    "detail": {
+      "title": "Tiroir",
+      "close": "Fermer",
+      "text": "Texte intégral",
+      "sourceType": "Type de source",
+      "sourceId": "ID de la source",
+      "chunkIndex": "Index du segment",
+      "chapterIndex": "Index du chapitre",
+      "matchScore": "Score de correspondance",
+      "createdAt": "Créé le",
+      "hubLabel": "Type de segment",
+      "hubValue": "Résumé / segment pivot"
+    }
+  },
+  "timeline": {
+    "loading": "Chargement de la timeline…",
+    "loadFailed": "Impossible de charger la timeline : {{error}}",
+    "empty": "Aucun événement extrait pour le moment — ils apparaîtront ici au fur et à mesure de l'extraction.",
+    "emptyForFilters": "Aucun événement ne correspond à ces filtres.",
+    "filters": {
+      "project": "Projet",
+      "anyProject": "Tous les projets",
+      "entity": "Entité",
+      "entityPlaceholder": "Rechercher par nom…",
+      "entitySearchMinHint": "Tapez au moins 2 caractères.",
+      "entityNoMatches": "Aucune entité correspondante.",
+      "clearEntity": "Effacer le filtre d'entité",
+      "chronologicalRange": "Plage chronologique",
+      "after": "Après",
+      "before": "Avant",
+      "chronoReversed": "La date 'Avant' doit être postérieure à la date 'Après'.",
+      "dateRange": "Plage de dates",
+      "dateFrom": "Du",
+      "dateTo": "Au",
+      "dateInvalid": "Utilisez AAAA, AAAA-MM ou AAAA-MM-JJ.",
+      "dateReversed": "\"Au\" doit être postérieur ou égal à \"Du\"."
+    },
+    "sort": {
+      "label": "Trier par",
+      "narrative": "Ordre narratif",
+      "chronological": "Chronologique",
+      "direction": "Sens",
+      "asc": "Du plus ancien au plus récent",
+      "desc": "Du plus récent au plus ancien"
+    },
+    "importance": {
+      "major": "Majeur",
+      "pivotal": "Crucial"
+    },
+    "row": {
+      "orderLabel": "Ordre narratif",
+      "noOrder": "—",
+      "chapterLabel": "Chapitre",
+      "chapterUnresolved": "Chapitre id {{id}} — titre non résolu",
+      "participantsMore": "+{{count}} de plus",
+      "confidenceLabel": "Confiance",
+      "timeLabel": "Temps dans l'histoire"
+    },
+    "detail": {
+      "summary": "Résumé",
+      "noSummary": "Aucun résumé extrait.",
+      "participants": "Participants",
+      "sources": "Sources"
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} sur {{total}}",
+      "refreshing": "actualisation…",
+      "prev": "Précédent",
+      "next": "Suivant",
+      "backToFirst": "Retour au premier",
+      "pageSize": "Par page"
+    },
+    "localization": {
+      "sourceMarker": "Affiché dans la langue source — traduction en attente"
+    },
+    "search": {
+      "placeholder": "Rechercher des événements…",
+      "label": "Rechercher des événements",
+      "clear": "Effacer la recherche"
+    }
+  },
+  "entities": {
+    "loading": "Chargement des entités…",
+    "loadFailed": "Impossible de charger les entités : {{error}}",
+    "empty": "Aucune entité extraite pour le moment — elles apparaîtront au fur et à mesure de l'extraction.",
+    "emptyForFilters": "Aucune entité ne correspond à ces filtres.",
+    "filters": {
+      "project": "Projet",
+      "kind": "Type",
+      "status": "Statut",
+      "search": "Rechercher",
+      "searchPlaceholder": "Nom ou alias (min. 2 caractères)",
+      "semantic": "Recherche sémantique",
+      "semanticPlaceholder": "Décrivez ce que vous cherchez (recherche vectorielle)",
+      "anyProject": "N'importe quel projet",
+      "anyKind": "N'importe quel type",
+      "anyStatus": "N'importe quel statut"
+    },
+    "status": {
+      "canonical": "Canonique",
+      "discovered": "Découvert",
+      "archived": "Archivé"
+    },
+    "legend": {
+      "title": "Statut",
+      "canonical": "dans votre glossaire",
+      "discovered": "trouvé, pas encore promu",
+      "archived": "masqué de la recherche"
+    },
+    "anchor": {
+      "badge": "⚓ {{pct}}",
+      "tooltip": "Score d'ancrage {{pct}}% — force de l'ancrage de cette entité"
+    },
+    "table": {
+      "ariaLabel": "Entités",
+      "global": "Global",
+      "col": {
+        "name": "Nom",
+        "kind": "Type",
+        "project": "Projet",
+        "mentions": "Mentions",
+        "confidence": "Confiance",
+        "updated": "Mis à jour"
+      }
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} sur {{total}}",
+      "refreshing": "actualisation…",
+      "prev": "Précédent",
+      "next": "Suivant"
+    },
+    "detail": {
+      "loading": "Chargement de l'entité…",
+      "loadFailed": "Impossible de charger l'entité : {{error}}",
+      "close": "Fermer",
+      "edit": "Modifier",
+      "merge": "Fusionner dans une autre entité",
+      "metadata": "Métadonnées",
+      "description": "Description",
+      "descriptionSource": "Depuis l'entrée du glossaire liée",
+      "aliases": "Alias",
+      "relations": "Relations ({{count}})",
+      "truncated": "Affichage de {{shown}} sur {{total}} — filtrez ou recherchez dans le tableau",
+      "noRelations": "Aucune relation pour le moment — d'autres apparaîtront lors de l'extraction.",
+      "relationArrow": "→",
+      "pendingBadge": "En attente",
+      "pendingValidation": "Quarantaine Pass-1 — en attente de validation par l'IA",
+      "unlock": "Déverrouiller (réactiver les extractions)",
+      "unlockHint": "Cette entité a été modifiée par l'utilisateur. Les extractions ne réajouteront pas les alias supprimés tant que vous n'aurez pas déverrouillé.",
+      "unlockConfirm": "Déverrouiller cette entité ? Les futures extractions pourront à nouveau ajouter des alias.",
+      "unlockSuccess": "Déverrouillé.",
+      "unlockFailed": "Impossible de déverrouiller : {{error}}",
+      "field": {
+        "project": "Projet",
+        "global": "Global",
+        "confidence": "Confiance",
+        "mentions": "Mentions",
+        "anchor": "Score d'ancrage"
+      },
+      "promote": "Promouvoir au glossaire",
+      "promoteHint": "Entité découverte. Promouvez-la pour créer un brouillon de glossaire suggéré par l'IA pour révision.",
+      "promotePending": "Promotion en cours…",
+      "promoteSuccess": "Promu — un brouillon de glossaire a été créé pour révision.",
+      "promoteFailed": "Impossible de promouvoir : {{error}}",
+      "unpin": "Retirer de l'épinglage contextuel",
+      "unpinHint": "Cette entité est épinglée dans le contexte d'extraction.",
+      "unpinSuccess": "Désépinglé du contexte.",
+      "unpinFailed": "Impossible de désépingler : {{error}}",
+      "facts": "Faits connus ({{count}})",
+      "factSource": "Chapitre {{chapter}}",
+      "factType": {
+        "decision": "Décision",
+        "preference": "Préférence",
+        "milestone": "Jalon",
+        "negation": "Négation"
+      }
+    },
+    "edit": {
+      "title": "Modifier l'entité",
+      "description": "Renommer ou ajuster cette entité. Vos modifications empêcheront les futures extractions de réajouter les alias supprimés.",
+      "conflict": "Un autre appareil a mis à jour cette entité. Vérifiez la version la plus récente et réessayez.",
+      "field": {
+        "name": "Nom d'affichage",
+        "kind": "Type",
+        "aliases": "Alias"
+      },
+      "aliasesPlaceholder": "Un alias par ligne",
+      "aliasesHint": "Un alias par ligne. L'extraction ne réajoutera pas silencieusement les variantes supprimées après l'enregistrement.",
+      "userEditedHint": "L'enregistrement marquera cette entité comme modifiée par l'utilisateur.",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "cancel": "Annuler",
+      "success": "Entité mise à jour",
+      "failed": "Impossible d'enregistrer : {{error}}"
+    },
+    "merge": {
+      "title": "Fusionner l'entité",
+      "description": "Fusionner {{name}} dans une autre entité. {{name}} sera supprimée ; ses relations et ses alias seront transférés vers la cible.",
+      "targetLabel": "Entité cible",
+      "searchPlaceholder": "Rechercher par nom (min. 2 caractères)…",
+      "searchMinHint": "Tapez au moins 2 caractères pour rechercher.",
+      "searching": "Recherche en cours…",
+      "noMatches": "Aucune entité correspondante.",
+      "warning": "Cette action est irréversible. L'entité source sera supprimée ; ses relations et ses alias seront transférés vers la cible.",
+      "mentions": "mentions",
+      "clear": "Effacer",
+      "confirm": "Fusionner",
+      "merging": "Fusion en cours…",
+      "cancel": "Annuler",
+      "success": "{{source}} fusionné(e) dans {{target}}",
+      "errSameEntity": "Impossible de fusionner une entité avec elle-même.",
+      "errNotFound": "L'une des entités est introuvable.",
+      "errArchived": "Impossible de fusionner des entités archivées. Restaurez-les d'abord.",
+      "errGlossaryConflict": "Les deux entités sont liées à des entrées de glossaire différentes. Résolvez les ancres du glossaire avant la fusion.",
+      "errUnknown": "Échec de la fusion : {{reason}}"
+    }
+  },
+  "jobs": {
+    "loading": "Chargement des tâches…",
+    "loadMore": "Charger plus",
+    "loadingMore": "Chargement en cours…",
+    "error": {
+      "active": "Impossible de charger les tâches en cours.",
+      "history": "Impossible de charger l'historique des tâches."
+    },
+    "sections": {
+      "running": {
+        "title": "En cours",
+        "empty": "Aucune tâche en cours."
+      },
+      "paused": {
+        "title": "En pause",
+        "empty": "Aucune tâche en pause."
+      },
+      "complete": {
+        "title": "Terminées",
+        "empty": "Aucune tâche terminée pour le moment."
+      },
+      "failed": {
+        "title": "Échecs",
+        "empty": "Aucun échec."
+      }
+    },
+    "row": {
+      "started": "Commencé {{when}}",
+      "completed": "Terminé {{when}}",
+      "unknownProject": "Projet {{id}}…"
+    },
+    "detail": {
+      "title": "Détails de la tâche",
+      "close": "Fermer",
+      "status": "Statut",
+      "currentChapter": "Chapitre actuel",
+      "scope": "Portée",
+      "llmModel": "Modèle de chat",
+      "embeddingModel": "Modèle d'embedding",
+      "maxSpend": "Plafond de budget",
+      "startedAt": "Débuté le",
+      "completedAt": "Terminé le",
+      "errorTitle": "Erreur",
+      "eta": "~{{duration}} restant",
+      "itemsProgress": "{{processed}} sur {{total}} éléments traités",
+      "actionFailed": "Impossible de {{label}} : {{error}}",
+      "actions": {
+        "pause": "Pause",
+        "resume": "Reprendre",
+        "cancel": "Annuler"
+      },
+      "logs": {
+        "title": "Logs",
+        "loading": "Chargement des logs…",
+        "loadingNewer": "Chargement des plus récents…",
+        "error": "Impossible de charger les logs.",
+        "empty": "Aucun log pour le moment.",
+        "loadNewer": "Charger les plus récents",
+        "levels": {
+          "info": "INFO",
+          "warning": "ATTENTION",
+          "error": "ERREUR"
+        }
+      }
+    },
+    "retry": {
+      "button": "Réessayer avec d'autres paramètres"
+    },
+    "costSummary": {
+      "title": "Dépenses IA",
+      "loading": "Chargement des dépenses…",
+      "loadFailed": "Impossible de charger le résumé des coûts.",
+      "thisMonth": "Ce mois-ci",
+      "allTime": "Total",
+      "budget": "Budget mensuel",
+      "editBudget": "Modifier le budget",
+      "remaining": "{{remaining}} restants ce mois-ci",
+      "invalid": "Entrez un nombre décimal non négatif ou laissez vide.",
+      "saveFailed": "Impossible d'enregistrer le budget : {{error}}",
+      "dialog": {
+        "title": "Modifier le budget IA mensuel",
+        "description": "Plafond inter-projets. Laissez vide pour supprimer le plafond.",
+        "label": "Budget mensuel (USD)",
+        "hint": "Jusqu'à 4 décimales. Laissez vide pour effacer le plafond.",
+        "cancel": "Annuler",
+        "save": "Enregistrer",
+        "saving": "Enregistrement…"
+      }
+    }
+  },
+  "projects": {
+    "showArchived": "Afficher les archivés",
+    "refresh": "Actualiser",
+    "newProject": "Nouveau projet",
+    "createFirst": "Créer votre premier projet",
+    "empty": {
+      "title": "Aucun projet pour le moment",
+      "description": "Les projets définissent ce que l'IA mémorise pour un travail spécifique."
+    },
+    "loadFailed": "Échec du chargement des projets : {{error}}",
+    "paginationNote": "Affichage des 100 premiers projets — la pagination complète se trouve dans Track 2.",
+    "browser": {
+      "searchPlaceholder": "Rechercher des projets…",
+      "searchLabel": "Rechercher des projets par nom",
+      "filterLabel": "Filtrer par état",
+      "sortLabel": "Trier les projets",
+      "noMatches": "Aucun projet ne correspond à la recherche et aux filtres.",
+      "loadMore": "Charger plus",
+      "loadingMore": "Chargement…",
+      "stateFilter": {
+        "all": "Tous les états",
+        "disabled": "Mémoire statique",
+        "building": "En construction",
+        "paused": "En pause",
+        "ready": "Prêt",
+        "failed": "Échec",
+        "archived": "Archivé"
+      },
+      "sortOption": {
+        "recent": "Récemment mis à jour",
+        "oldest": "Plus ancien d'abord",
+        "name_asc": "Nom (A–Z)",
+        "name_desc": "Nom (Z–A)"
+      },
+      "thisBookOnly": "Ce livre uniquement",
+      "showAllBooks": "Afficher tous les livres"
+    },
+    "card": {
+      "staticMemory": "Mémoire statique",
+      "archivedBadge": "archivé",
+      "open": "Ouvrir",
+      "edit": "Modifier",
+      "archive": "Archiver",
+      "restore": "Restaurer",
+      "delete": "Supprimer",
+      "tuneExtraction": "Ajuster l'extraction",
+      "bookId": "book_id"
+    },
+    "form": {
+      "createTitle": "Nouveau projet",
+      "editTitle": "Modifier le projet",
+      "createDescription": "Un projet définit le périmètre de ce que l'IA mémorise pour un travail spécifique.",
+      "name": "Nom",
+      "namePlaceholder": "ex. Les vents de la mer d'Orient",
+      "type": "Type",
+      "typeImmutable": "Le type de projet ne peut plus être modifié après la création.",
+      "typeOptions": {
+        "book": "Livre",
+        "translation": "Traduction",
+        "code": "Code",
+        "general": "Général"
+      },
+      "bookId": "ID du livre (optionnel)",
+      "bookIdPlaceholder": "uuid",
+      "description": "Description (optionnel)",
+      "instructions": "Instructions (optionnel)",
+      "instructionsPlaceholder": "Notes de style, voix, contraintes — injectées dans chaque chat de ce projet.",
+      "nameError": "Le nom doit comporter entre 1 et {{max}} caractères.",
+      "bookIdError": "Doit être un UUID valide.",
+      "cancel": "Annuler",
+      "create": "Créer",
+      "save": "Enregistrer",
+      "benchmark": {
+        "run": "Lancer le benchmark",
+        "running": "Benchmark en cours…",
+        "success": "Benchmark terminé pour {{model}} (recall@3 {{recall}}).",
+        "errorNoModel": "Choisissez un modèle d'embedding avant de lancer le benchmark.",
+        "errorUnknownModel": "Ce modèle d'embedding n'est pas pris en charge par le moteur de benchmark.",
+        "errorNotBenchmarkProject": "Le benchmark n'a pas pu démarrer sur son bac à sable — veuillez réessayer dans un instant.",
+        "errorAlreadyRunning": "Un benchmark est déjà en cours pour ce projet. Attendez et réessayez.",
+        "errorProviderFlake": "Le fournisseur d'embedding a échoué en cours de route. Veuillez réessayer.",
+        "errorGeneric": "Échec du benchmark : {{message}}"
+      }
+    },
+    "archiveDialog": {
+      "title": "Archiver le projet ?",
+      "description": "\"{{name}}\" sera masqué de la liste active. Vous pourrez le restaurer plus tard.",
+      "confirm": "Archiver"
+    },
+    "deleteDialog": {
+      "title": "Supprimer le projet ?",
+      "description": "\"{{name}}\" et son résumé seront définitivement supprimés. Cette action est irréversible.",
+      "confirm": "Supprimer"
+    },
+    "toast": {
+      "archived": "Projet archivé",
+      "archiveFailed": "Échec de l'archivage",
+      "restored": "Projet restauré",
+      "restoreFailed": "Échec de la restauration",
+      "deleted": "Projet supprimé",
+      "deleteFailed": "Échec de la suppression",
+      "created": "Projet créé",
+      "updated": "Projet mis à jour",
+      "conflict": "Un autre appareil a modifié ce projet. Vérifiez les dernières modifications et enregistrez à nouveau.",
+      "actionFailed": "{{label}}: {{error}}",
+      "noPriorJob": "Aucun travail précédent à rejouer — ouvrez la boîte de dialogue Build.",
+      "noPriorRebuild": "Aucun travail précédent pour la reconstruction.",
+      "rebuildNoPriorJob": "Reconstruction : aucun travail précédent"
+    },
+    "state": {
+      "labels": {
+        "disabled": "Mémoire statique",
+        "estimating": "Estimation du coût...",
+        "ready_to_build": "Prêt pour la construction",
+        "building_running": "Construction en cours...",
+        "building_paused_user": "En pause",
+        "building_paused_budget": "Budget atteint",
+        "building_paused_error": "En pause (erreur)",
+        "complete": "Prêt",
+        "stale": "Mises à jour en attente",
+        "failed": "Échec",
+        "model_change_pending": "Le changement de modèle nécessite une reconstruction",
+        "cancelling": "Annulation...",
+        "deleting": "Suppression du graphe..."
+      },
+      "actions": {
+        "buildGraph": "Construire le graphe de connaissances",
+        "start": "Démarrer",
+        "pause": "Pause",
+        "resume": "Reprendre",
+        "cancel": "Annuler",
+        "retry": "Réessayer",
+        "deleteGraph": "Supprimer le graphe",
+        "rebuild": "Reconstruire de zéro",
+        "viewError": "Voir les détails de l'erreur",
+        "disable": "Désactiver",
+        "changeModel": "Changer le modèle d'embedding",
+        "extractNew": "Extraire les nouveaux chapitres",
+        "ignore": "Ignorer",
+        "confirm": "Confirmer",
+        "confirmModelChange": "Confirmer le changement de modèle",
+        "exploreGraph": "Explorer le graphe",
+        "setConcurrency": "Régler la concurrence"
+      },
+      "cards": {
+        "disabled": {
+          "body": "Utilisation : votre bio + instructions du projet + glossaire + messages récents.",
+          "costZero": "Coût : 0 $"
+        },
+        "estimating": {
+          "body": "Récupération d'une estimation du coût pour ce périmètre..."
+        },
+        "ready_to_build": {
+          "hint": "Coût estimé : ${{low}} – ${{high}} · {{chapters}} chapitres, {{turns}} échanges, {{tokens}} tokens",
+          "durationSec": "~{{n}}s estimé",
+          "durationMin": "~{{n}} min estimé"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} éléments (chapitres + chat + glossaire)",
+          "elapsed": "Durée écoulée : {{elapsed}}",
+          "spent": "Dépensé : ${{spent}}",
+          "spentOfBudget": "Dépensé : ${{spent}} / ${{budget}}",
+          "concurrencyLabel": "Appels parallèles",
+          "concurrencyApply": "Appliquer",
+          "stagesTitle": "Étapes de construction",
+          "stages": "Entités → Relations · Événements · Faits → Résumés",
+          "stagesNote": "Les passes s'exécutent dans cet ordre. Les faits et résumés s'exécutent après la fin des entités et des relations, ils apparaissent donc plus tard lors d'une construction complète — un arrêt prématuré les ignorera."
+        },
+        "building_paused_user": {
+          "body": "Vous avez mis ce travail en pause. Reprenez quand vous le souhaitez, ou annulez pour conserver le graphe partiel."
+        },
+        "building_paused_budget": {
+          "body": "Le plafond de dépenses de ${{budget}} a été atteint. Augmentez le plafond et reprenez, ou annulez pour conserver le graphe partiel.",
+          "remaining": "Reste : ${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "Erreur pouvant être corrigée : {{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} entités · {{facts}} faits · {{events}} événements · {{passages}} passages",
+          "lastExtracted": "Dernière extraction : {{date}}"
+        },
+        "stale": {
+          "body": "{{count}} nouveaux chapitres depuis la dernière extraction. Extrayez-les maintenant ou ignorez."
+        },
+        "failed": {
+          "body": "Échec de l'extraction : {{error}}"
+        },
+        "model_change_pending": {
+          "body": "Le changement de modèle de {{oldModel}} à {{newModel}} nécessite la suppression du graphe existant et une reconstruction complète."
+        },
+        "cancelling": {
+          "body": "Arrêt du travail en cours..."
+        },
+        "deleting": {
+          "body": "Suppression du graphe de connaissances..."
+        }
+      }
+    },
+    "buildDialog": {
+      "title": "Construire le graphe de connaissances",
+      "description": "Extrayez les entités, les faits et les passages du contenu de ce projet. Choisissez une portée et des modèles, puis prévisualisez le coût avant de confirmer.",
+      "scope": {
+        "label": "Portée",
+        "chapters": "Chapitres du livre",
+        "chat": "Historique du chat",
+        "glossary_sync": "Synchronisation du glossaire",
+        "all": "Tout",
+        "noBookHint": "Ce projet n'est pas lié à un livre — les options de portée pour les chapitres et la synchronisation du glossaire sont masquées."
+      },
+      "chapterRange": {
+        "label": "Plage de chapitres (optionnel)",
+        "from": "De",
+        "to": "À",
+        "hint": "Filtrez par plage d'ordre de tri. Laissez les deux champs vides pour tous les chapitres.",
+        "invalid": "La plage doit être composée d'entiers non négatifs avec De ≤ À."
+      },
+      "llmModel": {
+        "label": "Modèle LLM",
+        "placeholder": "Choisir un modèle de chat…",
+        "loading": "Chargement des modèles…",
+        "empty": "Aucun modèle de chat configuré. Ajoutez-en un dans Modèles IA → Identifiants."
+      },
+      "maxSpend": {
+        "label": "Dépense max (USD, optionnel)",
+        "hint": "Plafond strict — le travail s'arrête quand le coût cumulé atteint ce montant. Laissez vide pour aucun plafond.",
+        "invalid": "Entrez un montant non négatif avec jusqu'à 2 décimales.",
+        "monthlyRemaining": "{{amount}} restants ce mois-ci pour tous les projets."
+      },
+      "estimate": {
+        "heading": "Aperçu du coût",
+        "pickLlmFirst": "Choisissez un modèle LLM pour voir une estimation du coût.",
+        "loading": "Estimation en cours…",
+        "failed": "Échec de l'estimation : {{error}}",
+        "cost": "Coût estimé : ${{low}} – ${{high}}",
+        "items": "{{chapters}} chapitres · {{turns}} échanges de chat · ~{{tokens}} tokens",
+        "duration": "~{{seconds}}s estimés",
+        "pinned": "Contexte épinglé : +{{tokens}} tokens ({{count}} épinglés sur toutes les fenêtres)"
+      },
+      "cancel": "Annuler",
+      "confirm": "Construire le graphe",
+      "starting": "Démarrage…",
+      "startSuccess": "Construction lancée — extraction du graphe de connaissances en cours.",
+      "startFailed": "Échec du démarrage : {{error}}",
+      "wizard": {
+        "step1": "Cibles",
+        "step2": "Épinglage",
+        "step3": "Budget",
+        "next": "Suivant",
+        "back": "Retour",
+        "step2Placeholder": "L'épinglage du glossaire arrive à l'étape suivante — pour l'instant, chaque fenêtre d'extraction utilise son propre contexte de chapitre."
+      },
+      "targets": {
+        "label": "Éléments à extraire",
+        "hint": "Choisissez les passes à exécuter. Si rien n'est coché, tout sera exécuté (par défaut).",
+        "entities": "Entités",
+        "relations": "Relations",
+        "events": "Événements · chronologie",
+        "facts": "Faits",
+        "summaries": "Résumés",
+        "autoIncluded": "inclus automatiquement",
+        "autoIncludedHint": "Les entités sont extraites automatiquement car les relations, événements ou faits s'y rattachent.",
+        "recoveryDisabledHint": "La récupération d'entités et le filtrage de précision sont ignorés car les entités n'ont pas été sélectionnées comme cible."
+      },
+      "concurrency": {
+        "label": "Appels LLM parallèles (optionnel)",
+        "hint": "Limitez le nombre d'appels d'extraction simultanés. Laissez vide pour la valeur par défaut."
+      },
+      "pinning": {
+        "intro": "Épinglez les entités du glossaire pour les injecter de force dans chaque fenêtre d'extraction — ainsi, les entités rares mais cruciales restent ancrées, même dans les chapitres qui ne les mentionnent jamais.",
+        "autopin": "{{count}} entités rares mais à portée étendue semblent mériter d'être épinglées.",
+        "autopinApply": "Épingler {{count}} suggestions",
+        "loading": "Chargement des statistiques d'entités…",
+        "unavailable": "Statistiques d'entités indisponibles — vous pouvez toujours les épingler manuellement ci-dessous.",
+        "searchPlaceholder": "Rechercher par nom…",
+        "kindAll": "Tous les types",
+        "minMentions": "Min ×",
+        "available": "Disponible ({{count}})",
+        "availableEmpty": "Aucune entité ne correspond aux filtres.",
+        "pinned": "Épinglé ({{count}})",
+        "pinnedEmpty": "Rien d'épinglé pour le moment.",
+        "pin": "Épingler",
+        "unpin": "Désépingler",
+        "budget": "+{{tokens}} tokens par fenêtre ({{count}} épinglés × ~50).",
+        "noBook": "L'épinglage nécessite un livre lié. Attachez d'abord un livre à ce projet."
+      }
+    },
+    "errorViewer": {
+      "title": "Erreur d'extraction",
+      "description": "Message d'erreur complet capturé lors de la tâche d'extraction. Utilisez-le pour les rapports de bugs ou l'analyse des causes profondes.",
+      "jobIdLabel": "ID de la tâche",
+      "startedLabel": "Débuté le",
+      "scopeLabel": "Portée",
+      "progressLabel": "Progression",
+      "progressValue": "{{processed}} / {{total}} éléments",
+      "costLabel": "Coût dépensé",
+      "errorLabel": "Erreur",
+      "copy": "Copier",
+      "copied": "Copié",
+      "close": "Fermer"
+    },
+    "changeModelDialog": {
+      "title": "Changer le modèle d'embedding",
+      "description": "Changer le modèle d'embedding nécessite la suppression du graphe de connaissances existant. Vous devrez ensuite lancer une nouvelle extraction.",
+      "warningTitle": "Modification destructive",
+      "warningBody": "Modèle actuel : {{currentModel}}. Le changement supprimera toutes les entités, faits, événements et passages extraits. L'extraction sera désactivée jusqu'à ce que vous lanciez une nouvelle construction.",
+      "sameModel": "Choisissez un modèle différent pour activer « Confirmer ».",
+      "cancel": "Annuler",
+      "confirm": "Changer le modèle et supprimer le graphe",
+      "submitting": "Changement en cours…",
+      "failed": "Échec du changement : {{error}}",
+      "alreadyAtModel": "Le modèle est déjà réglé sur {{model}} — un autre appareil l'a peut-être modifié."
+    },
+    "extractionTuning": {
+      "title": "Ajuster l'extraction",
+      "description": "Paramètres d'extraction par roman. Les modifications s'appliquent à la prochaine exécution d'extraction pour ce projet.",
+      "filterEnabled": "Filtre de précision (supprime les extractions à faible support)",
+      "category": {
+        "entity": "Entités",
+        "relation": "Relations",
+        "event": "Événements"
+      },
+      "categoriesRequired": "Sélectionnez au moins une catégorie, ou désactivez le filtre.",
+      "partialPolicy": "Correspondances partielles :",
+      "policyKeep": "Garder",
+      "policyDrop": "Supprimer",
+      "defaultModel": "Modèle d'extraction par défaut",
+      "defaultModelNone": "Utiliser mon réglage global",
+      "defaultModelHint": "Le modèle utilisé par chaque étape d'extraction, sauf indication contraire ci-dessous. Si laissé vide, les rôles reviennent à votre modèle par défaut (Paramètres), puis au modèle utilisé pour cette construction.",
+      "recoveryEnabled": "Récupération d'entités (récupérer les entités manquées)",
+      "recoveryModel": "Modèle de récupération (optionnel)",
+      "recoveryModelNone": "Utiliser le modèle d'extraction par défaut",
+      "recoveryModelHint": "LLM qui récupère les entités manquées lors de la passe principale. Si laissé par défaut, il réutilise le modèle d'extraction par défaut ci-dessus.",
+      "recoveryBatch": "Taille du lot",
+      "recoveryBatchHint": "noms par appel de classificateur (1-20 ; défaut 5)",
+      "autocreateEnabled": "Auto-création Writer (créer les entités référencées par les relations)",
+      "promptWarning": "Avancé : les prompts personnalisés remplacent les instructions d'extraction par défaut pour cette étape et peuvent dégrader la qualité. Laissez vide pour utiliser le défaut. Le format de sortie JSON est toujours imposé.",
+      "promptPlaceholder": "Laissez vide pour utiliser le prompt par défaut",
+      "prompt": {
+        "entity": "Prompt d'extraction d'entités",
+        "relation": "Prompt d'extraction de relations",
+        "event": "Prompt d'extraction d'événements",
+        "fact": "Prompt d'extraction de faits"
+      },
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "cancel": "Annuler",
+      "saved": "Paramètres d'extraction enregistrés.",
+      "failed": "Échec de l'enregistrement : {{error}}"
+    },
+    "confirmDestructive": {
+      "cancel": "Annuler",
+      "deleteGraph": {
+        "title": "Supprimer le graphe de connaissances ?",
+        "description": "Cela supprimera définitivement toutes les entités, faits, événements et passages extraits pour ce projet. Le projet restera ; vous pourrez le reconstruire plus tard."
+      },
+      "rebuildStep1": {
+        "title": "Reconstruire de zéro ?",
+        "description": "La reconstruction supprime le graphe existant et lance une nouvelle extraction avec les mêmes modèles et la même portée. Cela peut coûter de l'argent et prendre du temps.",
+        "confirmLabel": "Continuer"
+      },
+      "rebuildStep2": {
+        "title": "Dernière chance — vraiment reconstruire ?",
+        "description": "Cliquer sur Reconstruire lancera la destruction et la reconstruction. Il n'y aura pas de retour en arrière une fois que la nouvelle tâche sera lancée."
+      },
+      "disable": {
+        "title": "Désactiver l'extraction ?",
+        "description": "Arrête l'extraction de nouveaux contenus. Le graphe de connaissances existant est préservé et reste lisible. La réactivation nécessite de lancer une nouvelle extraction."
+      }
+    }
+  },
+  "global": {
+    "title": "Bio globale",
+    "description": "Une courte description de vous que l'IA peut voir dans chaque projet. Préférences de style, contexte sur votre travail, tout ce que vous souhaitez conserver d'une session à l'autre. Max {{max}} caractères.",
+    "placeholder": "ex. J'écris de la fantasy urbaine. Gardez l'ordre japonais pour les noms. Utilisez une prose sobre, sans adjectifs grandiloquents.",
+    "loadFailed": "Échec du chargement du résumé : {{error}}",
+    "unsavedChanges": "Modifications non enregistrées",
+    "saving": "Enregistrement…",
+    "save": "Enregistrer",
+    "saved": "Bio globale enregistrée",
+    "saveFailed": "Échec de l'enregistrement",
+    "version": "v{{version}}",
+    "conflict": "Un autre appareil a mis à jour cette bio. Examinez la dernière version et enregistrez à nouveau.",
+    "tokenEstimate": "~{{tokens}} tokens",
+    "reset": "Réinitialiser",
+    "resetting": "Réinitialisation…",
+    "resetConfirm": "Effacer la bio",
+    "resetCancel": "Annuler",
+    "resetConfirmTitle": "Effacer votre bio globale ?",
+    "resetConfirmBody": "Cela efface la bio sur le serveur. Une nouvelle version est enregistrée dans l'historique afin que vous puissiez revenir en arrière à tout moment.",
+    "resetConfirmNote": "Vous pouvez également revenir à une version précédente via le panneau Historique.",
+    "resetSuccess": "Bio globale effacée",
+    "resetFailed": "Échec de la réinitialisation",
+    "regenerate": {
+      "button": "Régénérer",
+      "title": "Régénérer la bio globale",
+      "description": "Reconstruit votre bio à partir des récents échanges de chat. Votre bio actuelle est sauvegardée dans l'historique pour permettre un retour en arrière à tout moment.",
+      "modelLabel": "Modèle",
+      "modelLoading": "Chargement des modèles…",
+      "modelPlaceholder": "Sélectionner un modèle de chat",
+      "noModels": "Vous n'avez aucun modèle de chat enregistré. Ajoutez-en un dans Modèles IA d'abord.",
+      "costHint": "Coût estimé : faible (<0,05 $). La sortie est limitée à 500 tokens.",
+      "editLockHint": "Une modification manuelle effectuée au cours des 30 derniers jours est protégée — la régénération sera ignorée si vous avez récemment modifié cette bio.",
+      "disabledDirty": "Enregistrez ou réinitialisez vos modifications en cours avant de régénérer — la sortie de la régénération n'apparaîtra pas dans l'éditeur tant que vous avez des modifications en attente.",
+      "editLockDefault": "Votre modification manuelle la plus récente est protégée contre la régénération pendant 30 jours.",
+      "confirm": "Régénérer",
+      "regenerating": "Régénération en cours…",
+      "cancel": "Annuler",
+      "success": "Bio globale régénérée",
+      "noOpSimilarity": "La nouvelle version était presque identique à votre bio actuelle — rien n'a été écrit.",
+      "noOpEmptySource": "Pas de contenu de chat récent pour la construction — discutez un peu d'abord.",
+      "concurrentEdit": "Une modification manuelle a eu lieu pendant la régénération. Examinez votre bio actuelle et réessayez.",
+      "guardrailFailed": "La régénération a échoué au contrôle qualité : {{reason}}",
+      "providerError": "Votre fournisseur d'IA a renvoyé une erreur : {{reason}}",
+      "unknownError": "Échec de la régénération : {{reason}}"
+    },
+    "preferences": {
+      "title": "Préférences apprises",
+      "description": "Préférences inter-projets extraites par l'IA à partir de vos discussions. Supprimez-en une pour qu'elle ne soit plus incluse dans le contexte futur.",
+      "loading": "Chargement des préférences…",
+      "loadFailed": "Impossible de charger les préférences.",
+      "empty": "Aucune préférence apprise pour l'instant — elles apparaîtront ici après quelques échanges.",
+      "delete": "Supprimer",
+      "deleting": "Suppression…",
+      "cancel": "Annuler",
+      "deleteAria": "Supprimer {{name}}",
+      "confirmTitle": "Supprimer cette préférence ?",
+      "confirmBody": "Masque {{name}} de l'assemblage du contexte futur. Vous ne pourrez pas la restaurer — l'IA pourrait la réapprendre lors de discussions ultérieures.",
+      "confirmNote": "Il s'agit d'un archivage partiel. Vos données ne sont pas supprimées.",
+      "deleteSuccess": "{{name}} supprimée des préférences",
+      "deleteFailed": "Impossible de supprimer la préférence : {{error}}"
+    },
+    "versions": {
+      "toggle": "Historique",
+      "title": "Historique des versions",
+      "close": "Fermer",
+      "loading": "Chargement de l'historique…",
+      "loadFailed": "Échec du chargement de l'historique : {{error}}",
+      "empty": "Aucune version antérieure — l'historique commence à se construire après votre prochaine sauvegarde.",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(vide)",
+      "view": "Voir",
+      "rollback": "Restaurer",
+      "rollbackFromPreview": "Restaurer cette version",
+      "rollingBack": "Restauration en cours…",
+      "confirmTitle": "Restaurer cette version ?",
+      "confirmBody": "Votre bio actuelle sera remplacée par le contenu de la v{{version}}. Une nouvelle version sera créée ; l'état actuel sera archivé dans l'historique.",
+      "confirm": "Restaurer",
+      "rollbackSuccess": "Version restaurée avec succès",
+      "rollbackFailed": "Échec de la restauration",
+      "previewTitle": "Aperçu de la version {{version}}",
+      "source": {
+        "manual": "Manuelle",
+        "rollback": "Restauration"
+      },
+      "diffToggle": "Afficher la différence avec l'actuelle",
+      "diffEmpty": "Aucune différence."
+    }
+  },
+  "indicator": {
+    "label": "Indicateur de connaissances",
+    "title": "Connaissances",
+    "modes": {
+      "global": "Globale",
+      "project": "Projet",
+      "degraded": "Dégradée"
+    },
+    "popover": {
+      "projectHeading": "Mémoire du projet",
+      "globalHeading": "Mémoire globale uniquement",
+      "loading": "chargement…",
+      "fallbackProject": "un projet",
+      "projectBody": "Cette session est liée à <strong>{{name}}</strong>. L'IA utilise votre bio globale ainsi que le résumé et le glossaire du projet à chaque tour.",
+      "globalBody": "Cette session n'a aucun projet lié. L'IA ne voit que votre bio globale. Liez un projet dans les paramètres de la session pour lui donner accès à la mémoire spécifique du livre.",
+      "degradedBody": "Le service de connaissances était injoignable lors du dernier tour. L'IA s'est rabattue sur les messages récents uniquement — la mémoire de votre projet n'est temporairement pas incluse dans le prompt. La récupération sera automatique au prochain tour une fois le service rétabli.",
+      "manage": "Gérer les connaissances"
+    }
+  },
+  "picker": {
+    "label": "Mémoire du projet",
+    "noProject": "Aucun projet — mémoire globale uniquement",
+    "archivedPlaceholder": "(projet archivé — en choisir un autre)",
+    "hint": "Lien ce chat à un projet de service de connaissances pour que l'IA voie son résumé et son glossaire à chaque tour."
+  },
+  "privacy": {
+    "export": {
+      "title": "Exporter vos données",
+      "description": "Téléchargez tous les projets et résumés que l'IA a stockés pour vous, dans un seul fichier JSON. Article 20 du RGPD.",
+      "button": "Télécharger l'export",
+      "preparing": "Préparation…",
+      "success": "Export téléchargé",
+      "failed": "Échec de l'export"
+    },
+    "delete": {
+      "title": "Supprimer toutes les données de connaissances",
+      "description": "Effacer définitivement chaque projet et résumé. Cela n'affecte pas vos livres, chapitres ou votre compte — seulement ce que le système de mémoire a stocké. Cette action est irréversible.",
+      "button": "Tout supprimer",
+      "deleting": "Suppression…",
+      "success": "{{projects}} projet(s) et {{summaries}} élément(s) de résumé supprimé(s)",
+      "failed": "Échec de la suppression"
+    },
+    "dialog": {
+      "title": "Supprimer toutes les données de connaissances ?",
+      "description": "Cela supprimera définitivement chaque projet et résumé. Tapez {{token}} ci-dessous pour confirmer.",
+      "cancel": "Annuler"
+    }
+  },
+  "relations": {
+    "edit": {
+      "cta": "Corriger la relation",
+      "title": "Corriger la relation",
+      "description": "Corrigez le prédicat de cette relation, ou marquez-la comme erronée pour la supprimer.",
+      "field": {
+        "predicate": "Prédicat"
+      },
+      "save": "Corriger",
+      "saving": "Correction en cours…",
+      "cancel": "Annuler",
+      "correctSuccess": "Relation corrigée.",
+      "invalidateSuccess": "Relation supprimée.",
+      "invalidateHint": "Si cette relation n'aurait jamais dû être extraite, marquez-la comme erronée pour la supprimer.",
+      "invalidateConfirm": "Marquer cette relation comme erronée et la supprimer ?",
+      "markWrong": "Marquer comme erronée",
+      "invalidating": "Suppression…",
+      "failed": "Impossible d'enregistrer la correction : {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "Modifier",
+      "title": "Modifier l'événement",
+      "description": "Ajustez le titre, le résumé ou la chronologie de cet événement.",
+      "field": {
+        "title": "Titre",
+        "summary": "Résumé",
+        "timeCue": "Repère temporel",
+        "dateIso": "Date (ISO)"
+      },
+      "dateIsoPlaceholder": "AAAA ou AAAA-MM-JJ",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "cancel": "Annuler",
+      "success": "Événement mis à jour.",
+      "conflict": "Un autre appareil a mis à jour cet événement. Consultez la version la plus récente et réessayez.",
+      "failed": "Impossible de mettre à jour l'événement : {{error}}",
+      "invalidDate": "La date doit être au format AAAA, AAAA-MM ou AAAA-MM-JJ."
+    },
+    "archive": {
+      "cta": "Supprimer",
+      "confirm": "Supprimer (masquer) cet événement ?",
+      "archiving": "Suppression…",
+      "success": "Événement supprimé.",
+      "failed": "Impossible de supprimer l'événement : {{error}}"
+    }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "Qualité de la config",
+        "description": "Taux de réussite par genre et configuration. Rempli après 2+ cycles d'extraction partageant le même hash de configuration.",
+        "empty": "Aucune donnée — nécessite 2+ cycles d'extraction avec le même hash de config par genre.",
+        "exploration": "Échantillon d'exploration (queue aléatoire)"
+      },
+      "modelMatrix": {
+        "title": "Matrice des modèles",
+        "description": "Score de résultat pondéré par modèle et portée de la tâche. réussi=1.0 · sauté=0.3 · échoué=0.0.",
+        "empty": "Aucune donnée — nécessite 2+ cycles d'extraction avec le même modèle et la même portée."
+      },
+      "defaultDrift": {
+        "title": "Dérive de config",
+        "description": "Quels paramètres d'extraction s'écartent des valeurs par défaut, et si les projets convergent vers la même valeur.",
+        "empty": "Aucun ajustement de paramètre enregistré pour le moment."
+      },
+      "outcomeRecompute": {
+        "title": "Recalcul des résultats",
+        "description": "Cycles d'extraction réévalués après l'application des corrections utilisateur post-exécution.",
+        "empty": "Aucune donnée de correction. Le recalcul s'active une fois que les corrections sont liées à un cycle d'extraction."
+      }
+    },
+    "columns": {
+      "genre": "Genre",
+      "configHash": "Config",
+      "runs": "Cycles",
+      "successRate": "Taux de réussite",
+      "avgEntities": "Entités moy.",
+      "model": "Modèle",
+      "scope": "Portée",
+      "filter": "Filtrer",
+      "weightedOutcome": "Score",
+      "target": "Paramètre",
+      "affectedProjects": "Projets",
+      "driftPattern": "Pattern",
+      "runsWithOutcome": "Cycles w/ résultat",
+      "runId": "Cycle",
+      "outcome": "Résultat",
+      "recomputed": "Recalculé",
+      "corrections": "Corrections"
+    },
+    "driftPattern": {
+      "convergent": "Convergent",
+      "divergent": "Divergent"
+    },
+    "totalRuns": "{{count}} cycles au total"
+  }
+}

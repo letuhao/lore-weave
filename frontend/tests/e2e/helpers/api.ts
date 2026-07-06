@@ -32,6 +32,17 @@ async function ok<T>(p: Promise<import('@playwright/test').APIResponse>): Promis
   return (await r.json()) as T;
 }
 
+/** #19 Wave 2 — `studioRole` is a server-synced ACCOUNT-level pref (not per-book, not
+ *  per-test-run), so a role picked by one E2E test sticks for every later test on this shared
+ *  account. Tests that need a deterministic tour (e.g. "the core tour specifically") reset it
+ *  to null directly via the API first — there is no UI affordance to clear a role once picked
+ *  (Skip only sets the seen-flag, it never touches studioRole, by design — see
+ *  useStudioOnboarding.ts). */
+export async function resetStudioRolePref(request: APIRequestContext, token: string): Promise<void> {
+  const r = await request.patch('/v1/me/preferences', { ...auth(token), data: { prefs: { studioRole: null } } });
+  if (!r.ok()) throw new Error(`resetStudioRolePref failed: ${r.status()} ${await r.text()}`);
+}
+
 export async function createBook(request: APIRequestContext, token: string, title: string): Promise<string> {
   const b = await ok<{ book_id: string }>(
     request.post('/v1/books', { ...auth(token), data: { title, original_language: 'en' } }),
@@ -72,6 +83,40 @@ export async function saveDraft(
 
 export async function trashBook(request: APIRequestContext, token: string, bookId: string): Promise<void> {
   await request.delete(`/v1/books/${bookId}`, auth(token));
+}
+
+// ── translation (#16 Phase 3 — real job, not a mock, per this repo's E2E convention) ──────────
+
+/** Submit a real translate job against a chat-capable model. Resolves the model dynamically
+ *  (via listChatModels) rather than a hardcoded id, so a deactivated/renamed test model doesn't
+ *  silently break this helper. */
+export async function createTranslationJob(
+  request: APIRequestContext, token: string, bookId: string, chapterId: string, targetLanguage: string,
+): Promise<string> {
+  const models = await listChatModels(request, token);
+  if (models.length === 0) throw new Error('no active chat-capable model for translation E2E — check test account BYOK models');
+  const j = await ok<{ job_id: string }>(request.post(`/v1/translation/books/${bookId}/jobs`, {
+    ...auth(token),
+    data: { chapter_ids: [chapterId], target_language: targetLanguage, model_source: 'user_model', model_ref: models[0].user_model_id },
+  }));
+  return j.job_id;
+}
+
+/** Poll a translation job to completion (or throw on failure/timeout). Local models translating
+ *  a 1-paragraph seed chapter typically finish in 5-15s. */
+export async function waitForTranslationJob(
+  request: APIRequestContext, token: string, jobId: string, timeoutMs = 60_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const job = await ok<{ status: string; error_message?: string | null }>(
+      request.get(`/v1/translation/jobs/${jobId}`, auth(token)),
+    );
+    if (job.status === 'completed') return;
+    if (job.status === 'failed') throw new Error(`translation job ${jobId} failed: ${job.error_message}`);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`translation job ${jobId} did not complete within ${timeoutMs}ms`);
 }
 
 export async function getBookApi(

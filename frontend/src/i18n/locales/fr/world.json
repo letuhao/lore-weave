@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "Mondes",
+    "subtitle": "Créez un univers à partir de son lore — personnages, lieux, factions — sans avoir besoin de manuscrit.",
+    "loading": "Chargement des mondes…"
+  },
+  "empty": {
+    "title": "Aucun monde pour le moment",
+    "description": "Créez votre premier monde pour commencer à rédiger le lore — aucun chapitre n'est requis."
+  },
+  "card": {
+    "books": "{{count}} livres"
+  },
+  "create": {
+    "cta": "Nouveau monde",
+    "title": "Nouveau monde",
+    "description": "Nommez votre monde. Vous pouvez commencer à rédiger son lore immédiatement.",
+    "nameLabel": "Nom du monde",
+    "namePlaceholder": "ex. Les Royaumes Brisés",
+    "descLabel": "Description (optionnel)",
+    "cancel": "Annuler",
+    "submit": "Créer le monde",
+    "creating": "Création…",
+    "error": "Échec de la création du monde"
+  },
+  "workspace": {
+    "back": "Tous les mondes",
+    "loading": "Chargement du monde…",
+    "error": "Monde introuvable."
+  },
+  "lore": {
+    "title": "Bible du monde",
+    "extractionOptional": "Rédigez le lore directement — personnages, lieux, factions. Aucun manuscrit n'est nécessaire. L'extraction à partir de la prose est optionnelle ; cette bible est l'élément de référence.",
+    "anchorUnavailable": "Ce monde n'a pas encore de bible de référence — la rédaction du lore est indisponible.",
+    "kindLabel": "Type",
+    "kindPlaceholder": "Choisir un type…",
+    "add": "Ajouter du lore",
+    "adding": "Ajout en cours…",
+    "added": "Lore ajouté à votre bible du monde.",
+    "error": "Échec de l'ajout du lore"
+  },
+  "graph": {
+    "title": "Graphe du monde",
+    "subtitle": "Une vue en lecture seule de la manière dont le lore de votre monde est interconnecté.",
+    "rollupSubtitle": "Une vue consolidée en lecture seule du graphe canonique de chaque livre membre, affichée sous forme d'îlots par livre.",
+    "counts": "{{nodes}} nœuds · {{edges}} relations",
+    "sources": "consolidé à partir de {{count}} livre(s)",
+    "truncated": "affichant les {{n}} principaux — un livre volumineux peut en masquer un plus petit",
+    "hint": "Défilez pour zoomer · glissez dans le vide pour déplacer · cliquez sur un nœud pour les détails",
+    "loading": "Chargement du graphe du monde…",
+    "loadFailed": "Échec du chargement du graphe du monde : {{error}}",
+    "empty": "Aucune connaissance du monde pour le moment — construisez la bible ou extrayez un livre membre pour consolider son graphe ici."
+  },
+  "timeline": {
+    "title": "Chronologie du monde",
+    "subtitle": "Une vue consolidée en lecture seule de la chronologie canonique de chaque livre membre, dans l'ordre narratif.",
+    "counts": "{{count}} événements",
+    "sources": "répartis sur {{count}} livre(s)",
+    "truncated": "affichant les {{n}} premiers",
+    "chapterLabel": "Chapitre",
+    "loading": "Chargement de la chronologie du monde…",
+    "loadFailed": "Échec du chargement de la chronologie du monde : {{error}}",
+    "empty": "Aucun événement chronologique pour le moment — extrayez un livre membre pour consolider sa chronologie ici."
+  },
+  "populate": {
+    "addBook": "Ajouter un livre",
+    "createWhatIf": "Créer un « Et si... »",
+    "whatIfHint": "Créez une branche alternative à partir d'une œuvre canonique",
+    "whatIfNeedsCanon": "Ajoutez d'abord un livre avec une œuvre canonique — un « Et si... » est une branche de la canonique.",
+    "pickCanon": "Brancher depuis…",
+    "addBookTitle": "Ajouter un livre à ce monde",
+    "addBookDesc": "Joignez un livre existant ou créez-en un nouveau — il rejoindra la chronologie et le graphe du monde.",
+    "tabAttach": "Joindre l'existant",
+    "tabCreate": "Créer un nouveau",
+    "pickBook": "Livre",
+    "bookTitle": "Titre",
+    "bookTitlePlaceholder": "Nouveau titre de livre…",
+    "bookDesc": "Description (optionnel)",
+    "attach": "Joindre le livre",
+    "createAttach": "Créer et ajouter",
+    "adding": "Ajout en cours…",
+    "cancel": "Annuler",
+    "addFailed": "Impossible d'ajouter le livre : {{error}}"
+  },
+  "living": {
+    "heading": "Monde vivant",
+    "subtitle": "Le canon de votre monde et ses branches alternatives sous forme de chronologie navigable. Cliquez sur une œuvre pour l'ouvrir.",
+    "title": "Monde vivant",
+    "counts": "{{canon}} canon · {{branches}} branches alternatives",
+    "hint": "Défilez pour zoomer · glissez dans le vide pour déplacer · cliquez sur une œuvre pour l'ouvrir",
+    "loading": "Chargement du monde vivant…",
+    "loadFailed": "Échec du chargement du monde vivant : {{error}}",
+    "empty": "Aucune œuvre dans ce monde pour le moment — commencez un livre ou un « Et si... » pour développer sa chronologie.",
+    "canonBadge": "Canon",
+    "branchBadge": "Alternative",
+    "canonAria": "Canon : {{title}}",
+    "branchAria": "Branche alternative au chapitre {{ch}} : {{title}}",
+    "branchAt": "branche au ch. {{ch}}",
+    "orphan": "· source hors de ce monde",
+    "edgeLabel": "ch. {{ch}}"
+  }
+}

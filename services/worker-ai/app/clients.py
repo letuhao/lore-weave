@@ -21,6 +21,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import is_retryable_status, resolve_model_name
 
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
@@ -331,7 +332,7 @@ class KnowledgeClient:
             source_id=source_id,
             entities_merged=0, relations_created=0,
             events_merged=0, facts_merged=0,
-            retryable=resp.status_code in (502, 503, 429),
+            retryable=is_retryable_status(resp.status_code),
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )
 
@@ -452,7 +453,7 @@ class KnowledgeClient:
 
         # 422 = validation failure — message is malformed; not retryable
         # (re-XREAD would just re-fail). Bigger transients are retryable.
-        retryable = resp.status_code in (502, 503, 429)
+        retryable = is_retryable_status(resp.status_code)
         return SummarizeMessageResult(
             level=level, node_id=node_id,
             cache_hit=False, race_winner=False,
@@ -514,7 +515,7 @@ class KnowledgeClient:
             glossary_entity_id=glossary_entity_id,
             action="",
             canonical_name="",
-            retryable=resp.status_code in (502, 503, 429),
+            retryable=is_retryable_status(resp.status_code),
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )
 
@@ -569,28 +570,24 @@ class ProviderRegistryClient:
 
     def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
         self._base_url = base_url.rstrip("/")
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s),
-            headers={"X-Internal-Token": internal_token},
-        )
+        self._internal_token = internal_token
+        self._timeout_s = timeout_s
 
     async def aclose(self) -> None:
-        await self._http.aclose()
+        # P3 SDK-first (W4): no persistent client — resolve_model_name opens a
+        # short-lived client per call (a best-effort ~once-per-job advisory).
+        return None
 
     async def get_model_name(self, model_source: str, model_ref: str | UUID) -> str | None:
-        """GET /internal/models/{model_source}/{model_ref}/info → provider_model_name.
-        None on 404 / transport / decode failure (advisory degrades to off)."""
-        url = f"{self._base_url}/internal/models/{model_source}/{model_ref}/info"
-        try:
-            resp = await self._http.get(url)
-            if resp.status_code != 200:
-                logger.debug("provider-registry model-info %d for %s", resp.status_code, model_ref)
-                return None
-            name = (resp.json().get("provider_model_name") or "").strip()
-            return name or None
-        except (httpx.HTTPError, ValueError, KeyError) as exc:
-            logger.debug("provider-registry model-info failed: %s", exc)
-            return None
+        """Resolve a model's provider_model_name (advisory; None on any failure).
+
+        P3 SDK-first (W4): delegates to loreweave_internal_client.resolve_model_name
+        — the single owner of the provider-registry model-info read — so the last
+        standalone copy of that GET is gone (was worker-ai's baselined variant)."""
+        return await resolve_model_name(
+            self._base_url, model_source, str(model_ref),
+            internal_token=self._internal_token, timeout_s=self._timeout_s,
+        )
 
 
 # ── BookClient ───────────────────────────────────────────────────────

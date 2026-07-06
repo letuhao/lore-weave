@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Descobrir Histórias",
+    "subtitle": "Navegue por romances públicos da comunidade LoreWeave. Leia, traduza e explore histórias em vários idiomas.",
+    "search_placeholder": "Buscar por título, autor ou idioma...",
+    "search_aria": "Buscar no catálogo",
+    "no_books": "Nenhum livro encontrado. Tente uma busca ou filtro diferente.",
+    "load_failed": "Falha ao carregar o catálogo"
+  },
+  "filter": {
+    "lang_all": "Todos",
+    "clear_genres": "Limpar gêneros",
+    "books_found": "{{count}} livros encontrados",
+    "sort_aria": "Ordenar livros por",
+    "sort": {
+      "recent": "Mais recentes",
+      "popular": "Mais populares",
+      "chapters": "Mais capítulos",
+      "alpha": "Alfabética"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} cap"
+  },
+  "detail": {
+    "breadcrumb_browse": "Navegar",
+    "public_badge": "Público",
+    "unlisted_badge": "Não listado",
+    "chapters_count": "{{count}} capítulos",
+    "available_languages": "Idiomas disponíveis",
+    "original": "Original",
+    "start_reading": "Começar a Ler",
+    "no_chapters_yet": "Ainda sem capítulos",
+    "share": "Compartilhar",
+    "copy_link": "Copiar Link",
+    "loading": "Carregando...",
+    "chapters_heading": "Capítulos",
+    "no_chapters_available": "Nenhum capítulo disponível.",
+    "untitled": "Sem título",
+    "words": "{{count}} palavras",
+    "showing_chapters": "Mostrando {{from}}–{{to}} de {{total}} capítulos",
+    "stat_chapters": "Capítulos",
+    "stat_languages": "Idiomas",
+    "stat_original": "Original",
+    "stat_published": "Publicado",
+    "na": "N/A",
+    "book_not_found": "Livro não encontrado",
+    "back_to_browse": "Voltar para Navegar",
+    "link_copied": "Link copiado",
+    "copy_failed": "Falha ao copiar",
+    "load_chapters_failed": "Falha ao carregar capítulos"
+  },
+  "shared": {
+    "indicator": "Você está visualizando um link compartilhado. Este livro não está listado publicamente.",
+    "invalid": "Este link compartilhado é inválido ou expirou.",
+    "not_found": "Link compartilhado não encontrado ou expirado",
+    "browse_instead": "Navegar por livros públicos em vez disso",
+    "back_to_chapters": "Voltar para os capítulos",
+    "ch_short": "Cap. {{n}}",
+    "load_chapter_failed": "Falha ao carregar o capítulo: {{error}}"
+  }
+}

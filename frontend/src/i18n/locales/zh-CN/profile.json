@@ -1,0 +1,49 @@
+{
+  "anonymous": "匿名",
+  "joined": "加入于 {{date}}",
+  "followers": "粉丝",
+  "following": "关注中",
+  "follow": "关注",
+  "unfollow": "正在关注",
+  "editProfile": "编辑个人资料",
+  "loading": "加载中...",
+  "noBooks": "尚未发布任何书籍。",
+  "noTranslations": "尚未有翻译作品。",
+  "errorLoading": "加载个人资料失败。",
+  "followError": "关注用户失败。",
+  "unfollowError": "取消关注用户失败。",
+  "userNotFound": "未找到用户。",
+  "achievements": "成就",
+  "chapters": "章节",
+  "readers": "读者",
+  "recentActivity": "近期动态",
+  "last7d": "过去 7 天",
+  "last30d": "过去 30 天",
+  "translationLanguages": "翻译语言",
+  "stats": {
+    "books": "书籍",
+    "chaptersTranslated": "已翻译章节",
+    "totalReaders": "总读者数",
+    "followers": "粉丝数",
+    "totalTranslations": "总翻译数",
+    "languages": "语言"
+  },
+  "achievement": {
+    "booksPublished": "{{count}} 本已发布",
+    "booksPublished_other": "{{count}} 本已发布",
+    "kReaders": "{{count}}K+ 读者",
+    "hundredReaders": "100+ 读者",
+    "followers": "{{count}} 位粉丝",
+    "multiLangTranslator": "{{count}} 语种翻译家",
+    "fiftyChapters": "已翻译 50+ 章节"
+  },
+  "loadError": "加载书籍失败。",
+  "noWiki": "尚未有维基贡献。",
+  "wikiError": "加载维基贡献失败。",
+  "untitled": "未命名",
+  "tabs": {
+    "books": "书籍",
+    "translations": "翻译",
+    "wiki": "维基贡献"
+  }
+}

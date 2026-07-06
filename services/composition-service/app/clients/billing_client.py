@@ -27,9 +27,10 @@ from __future__ import annotations
 
 import logging
 
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
+from app.logging_config import trace_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -67,11 +68,14 @@ class BillingClient:
             "model_source": model_source,
         }
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON + trace.
+            async with build_internal_client(
+                self._base, internal_token=self._token,
+                timeout_s=10, trace_id_provider=trace_id_var.get,
+            ) as client:
                 resp = await client.post(
                     f"{self._base}/internal/billing/guardrail/reserve",
                     json=payload,
-                    headers={"X-Internal-Token": self._token},
                 )
         except Exception as exc:  # noqa: BLE001 — any transport error fails CLOSED (MD-8)
             logger.warning("billing precheck transport error (fail-closed deny): %s", exc)

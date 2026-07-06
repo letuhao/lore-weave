@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Languages, Loader2, X, Check } from 'lucide-react';
+import { Loader2, Check } from 'lucide-react';
+import { FormDialog } from '@/components/shared';
 import { useBatchTranslate } from '../hooks/useBatchTranslate';
 import type { TranslationCandidateEntity } from '../types';
 
@@ -8,6 +9,12 @@ import type { TranslationCandidateEntity } from '../types';
 // many entities at once. Writes via apply-translations (never overwrites a verified
 // value) and shows the server's partial-failure report. The agent path
 // (glossary_propose_translation) and this human path share the same draft semantics.
+//
+// DOCK-9 migration: hand-rolled `fixed inset-0` overlay replaced with the shared
+// FormDialog (docs/standards/dockable-gui.md). `open` is a bare boolean prop —
+// the parent conditionally mounts/unmounts this component — and `onClose` is
+// called directly with no busy-guard, preserving the pre-migration behavior
+// (this component never blocked dismissal while submitting).
 
 const LANG_RE = /^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/;
 
@@ -22,104 +29,89 @@ export function BatchTranslateDialog({ bookId, onClose }: { bookId: string; onCl
   };
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-        <div
-          className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border bg-background shadow-2xl"
-          style={{ maxHeight: 'calc(100vh - 48px)' }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between border-b bg-card px-5 py-3">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Languages className="h-4 w-4 text-blue-400" />
-              {t('batch_translate.title', { defaultValue: 'Batch translate' })}
-            </span>
-            <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Language bar */}
-          <div className="flex items-center gap-2 border-b px-5 py-2.5">
-            <label className="text-xs text-muted-foreground">
-              {t('batch_translate.target_lang', { defaultValue: 'Target language' })}
-            </label>
-            <input
-              value={langInput}
-              onChange={(e) => setLangInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') loadLang(); }}
-              placeholder="en"
-              maxLength={5}
-              className="w-20 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <button
-              onClick={loadLang}
-              className="rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-secondary"
-            >
-              {t('batch_translate.load', { defaultValue: 'Load candidates' })}
-            </button>
-            {bt.targetLanguage && (
-              <span className="text-[11px] text-muted-foreground">
-                {t('batch_translate.count', { defaultValue: '{{n}} entities to translate', n: bt.total })}
+    <FormDialog
+      open
+      onOpenChange={(next) => { if (!next) onClose(); }}
+      title={t('batch_translate.title', { defaultValue: 'Batch translate' })}
+      size="3xl"
+      footer={
+        <>
+          <div className="mr-auto text-[11px] text-muted-foreground">
+            {bt.result && (
+              <span>
+                {t('batch_translate.result', {
+                  defaultValue: '{{w}} written · {{v}} kept (verified) · {{e}} empty · {{f}} failed',
+                  w: bt.result.translated,
+                  v: bt.result.skipped_verified,
+                  e: bt.result.skipped_empty,
+                  f: bt.result.failed.length,
+                })}
               </span>
             )}
           </div>
-
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto px-5 py-3">
-            {bt.loading ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                <Loader2 className="mr-1 inline h-4 w-4 animate-spin" />
-                {t('batch_translate.loading', { defaultValue: 'Loading…' })}
-              </p>
-            ) : bt.error ? (
-              <p className="py-8 text-center text-sm text-destructive">{bt.error}</p>
-            ) : !bt.targetLanguage ? (
-              <p className="py-8 text-center text-xs italic text-muted-foreground">
-                {t('batch_translate.pick_lang', { defaultValue: 'Pick a target language to begin.' })}
-              </p>
-            ) : bt.candidates.length === 0 ? (
-              <p className="py-8 text-center text-xs italic text-muted-foreground">
-                {t('batch_translate.none', { defaultValue: 'No untranslated entities for this language.' })}
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {bt.candidates.map((ent) => (
-                  <EntityRow key={ent.entity_id} ent={ent} bt={bt} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between gap-3 border-t bg-card px-5 py-3">
-            <div className="text-[11px] text-muted-foreground">
-              {bt.result && (
-                <span>
-                  {t('batch_translate.result', {
-                    defaultValue: '{{w}} written · {{v}} kept (verified) · {{e}} empty · {{f}} failed',
-                    w: bt.result.translated,
-                    v: bt.result.skipped_verified,
-                    e: bt.result.skipped_empty,
-                    f: bt.result.failed.length,
-                  })}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() => void bt.submit()}
-              disabled={bt.submitting || !bt.targetLanguage || bt.candidates.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              {bt.submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-              {t('batch_translate.apply', { defaultValue: 'Apply translations' })}
-            </button>
-          </div>
+          <button
+            onClick={() => void bt.submit()}
+            disabled={bt.submitting || !bt.targetLanguage || bt.candidates.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {bt.submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            {t('batch_translate.apply', { defaultValue: 'Apply translations' })}
+          </button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {/* Language bar */}
+        <div className="flex items-center gap-2 border-b pb-3">
+          <label className="text-xs text-muted-foreground">
+            {t('batch_translate.target_lang', { defaultValue: 'Target language' })}
+          </label>
+          <input
+            value={langInput}
+            onChange={(e) => setLangInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') loadLang(); }}
+            placeholder="en"
+            maxLength={5}
+            className="w-20 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            onClick={loadLang}
+            className="rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-secondary"
+          >
+            {t('batch_translate.load', { defaultValue: 'Load candidates' })}
+          </button>
+          {bt.targetLanguage && (
+            <span className="text-[11px] text-muted-foreground">
+              {t('batch_translate.count', { defaultValue: '{{n}} entities to translate', n: bt.total })}
+            </span>
+          )}
         </div>
+
+        {/* Body */}
+        {bt.loading ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            <Loader2 className="mr-1 inline h-4 w-4 animate-spin" />
+            {t('batch_translate.loading', { defaultValue: 'Loading…' })}
+          </p>
+        ) : bt.error ? (
+          <p className="py-8 text-center text-sm text-destructive">{bt.error}</p>
+        ) : !bt.targetLanguage ? (
+          <p className="py-8 text-center text-xs italic text-muted-foreground">
+            {t('batch_translate.pick_lang', { defaultValue: 'Pick a target language to begin.' })}
+          </p>
+        ) : bt.candidates.length === 0 ? (
+          <p className="py-8 text-center text-xs italic text-muted-foreground">
+            {t('batch_translate.none', { defaultValue: 'No untranslated entities for this language.' })}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {bt.candidates.map((ent) => (
+              <EntityRow key={ent.entity_id} ent={ent} bt={bt} />
+            ))}
+          </div>
+        )}
       </div>
-    </>
+    </FormDialog>
   );
 }
 

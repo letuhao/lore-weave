@@ -134,7 +134,7 @@ func (s *Server) internalSkills(w http.ResponseWriter, r *http.Request) {
 // setSkillEnabled toggles a skill for the caller (per-user override; System row
 // never mutated).
 func (s *Server) setSkillEnabled(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -164,7 +164,7 @@ func (s *Server) setSkillEnabled(w http.ResponseWriter, r *http.Request) {
 	if body.Enabled {
 		action = "enable"
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "skill", action, &sid, "", "", nil)
+	s.audit(r.Context(), uid, "user", "skill", action, &sid, "", "", nil)
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{"skill_id": sid, "enabled": body.Enabled})
 }

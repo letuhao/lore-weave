@@ -9,7 +9,7 @@ import { CodeBlockToolbar } from './CodeBlockToolbar';
 import { SlashMenuExtension, SlashMenuPopup, type EditorMode } from './SlashMenu';
 import { CalloutExtension } from './CalloutNode';
 import { CodeBlockExtension } from './CodeBlockNode';
-import { ImageBlockExtension } from './ImageBlockNode';
+import { ImageBlockExtension, type ImageUploadContext } from './ImageBlockNode';
 import { VideoBlockExtension } from './VideoBlockNode';
 import { AudioBlockExtension } from './AudioBlockNode';
 import { AudioAttrsExtension } from './AudioAttrsExtension';
@@ -78,6 +78,13 @@ export interface TiptapEditorHandle {
   /** #12 M-F — backfill: anchor headings to scenes by unique title match (one
    *  transaction → dirties → the user saves). Explicit action, never on open. */
   applySceneAnchors: (scenes: ReadonlyArray<{ id: string; title: string }>) => AnchorResult;
+  /** #16 Phase 2 (2.7) — set THIS editor instance's own media-upload/history-callback
+   *  context. Writes straight to `editor.storage.mediaUpload` (per-instance, mirrors the
+   *  `editor.storage.mediaGuard.editorMode` pattern a few lines up) — NOT a module singleton,
+   *  so multiple concurrently-mounted TiptapEditor instances (Writing Studio's dockview tabs)
+   *  never cross-attribute an upload or a history-open to the wrong chapter. Pass `null` to
+   *  clear (e.g. on unmount / chapter switch). */
+  setUploadContext: (ctx: ImageUploadContext | null) => void;
 }
 
 interface TiptapEditorProps {
@@ -306,6 +313,10 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       jumpToScene: (sceneId: string) => (editor ? jumpToSceneAnchor(editor, sceneId) : false),
       applySceneAnchors: (scenes) =>
         editor ? applySceneAnchors(editor, scenes) : { anchored: 0, unmatched: 0, changed: false },
+      setUploadContext: (ctx: ImageUploadContext | null) => {
+        if (!editor) return;
+        (editor.storage as any).mediaUpload = ctx;
+      },
     }), [setContentHandler, editor]);
 
     if (!editor) return null;

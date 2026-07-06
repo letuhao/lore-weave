@@ -37,6 +37,13 @@ interface Props {
     payload: ProjectUpdatePayload,
     expectedVersion: number,
   ) => Promise<Project>;
+  /** D-KG-NO-CREATE-CTA: a caller that already knows WHICH book this project is
+   *  for (e.g. a book-scoped studio panel's "no project yet" empty state) locks
+   *  the BookPicker to that book instead of leaving it open to any book — the
+   *  whole reason the caller is showing this form is "create the KG for THIS
+   *  book". Create mode only; ignored in edit mode (book_id is edited via the
+   *  normal picker there). */
+  initialBookId?: string;
 }
 
 export function ProjectFormModal({
@@ -46,6 +53,7 @@ export function ProjectFormModal({
   project,
   onCreate,
   onUpdate,
+  initialBookId,
 }: Props) {
   const { t } = useTranslation('knowledge');
   const [name, setName] = useState('');
@@ -107,9 +115,9 @@ export function ProjectFormModal({
     } else {
       setName('');
       setDescription('');
-      setProjectType('general');
+      setProjectType(initialBookId ? 'book' : 'general');
       setInstructions('');
-      setBookId('');
+      setBookId(initialBookId ?? '');
       setGenre('');
       setEmbeddingModel(null);
       setInitialEmbeddingModel(null);
@@ -119,7 +127,7 @@ export function ProjectFormModal({
       setMemoryRememberConfirm(false);
       setBaselineVersion(null);
     }
-  }, [open, mode, project]);
+  }, [open, mode, project, initialBookId]);
 
   const trimmedName = name.trim();
   const trimmedDescription = description.trim();
@@ -294,13 +302,25 @@ export function ProjectFormModal({
           <span className="text-xs font-medium text-muted-foreground">
             {t('projects.form.bookId')}
           </span>
-          {/* C4 (BL-3/G6): pick a book by title — no raw UUID. Empty stays valid
-              (book optional); the stored value is the book_id. */}
-          <BookPicker
-            value={bookId === '' ? null : bookId}
-            onChange={(id) => setBookId(id ?? '')}
-            placeholder={t('projects.form.bookIdPlaceholder', { defaultValue: 'Search your books by title…' })}
-          />
+          {mode === 'create' && initialBookId ? (
+            // D-KG-NO-CREATE-CTA: opened from that book's own "no project yet"
+            // empty state — locked, not just pre-filled, so the create action
+            // can't accidentally attach the new project to a different book.
+            <p
+              data-testid="project-form-book-locked"
+              className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+            >
+              {t('projects.form.bookIdLocked', { defaultValue: 'This book (locked)' })}
+            </p>
+          ) : (
+            // C4 (BL-3/G6): pick a book by title — no raw UUID. Empty stays valid
+            // (book optional); the stored value is the book_id.
+            <BookPicker
+              value={bookId === '' ? null : bookId}
+              onChange={(id) => setBookId(id ?? '')}
+              placeholder={t('projects.form.bookIdPlaceholder', { defaultValue: 'Search your books by title…' })}
+            />
+          )}
         </label>
 
         <label className="flex flex-col gap-1">

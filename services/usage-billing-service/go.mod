@@ -4,15 +4,21 @@ go 1.25.0
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.4
+	github.com/loreweave/foundation/contracts/adminjwt v0.0.0
+	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/observability v0.1.0
 	github.com/pashagolub/pgxmock/v4 v4.9.0
 	github.com/redis/go-redis/v9 v9.20.0
 )
 
 replace github.com/loreweave/observability => ../../sdks/go/observability
+
+replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
+
+replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

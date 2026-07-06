@@ -1,0 +1,119 @@
+{
+  "title": "Sözlük Standartları",
+  "subtitle": "Yeniden kullanılabilir türleriniz, çeşitleriniz ve nitelikleriniz. Özelleştirmek için sistem varsayılanını kendi seviyenize klonlayın veya kendi listenizi oluşturun.",
+  "tabs_aria": "Standart bölümleri",
+  "tab": {
+    "genres": "Türler",
+    "kinds": "Çeşitler",
+    "attributes": "Nitelikler"
+  },
+  "loading": "Standartlar yükleniyor…",
+  "error": "Standartlarınız yüklenemedi. Tekrar deneyin.",
+  "empty": {
+    "genres": "Henüz tür yok.",
+    "kinds": "Henüz çeşit yok."
+  },
+  "action": {
+    "clone": "Kendi seviyeme klonla",
+    "yours": "Sizin",
+    "edit": "Düzenle",
+    "delete": "Sil"
+  },
+  "genres": {
+    "new": "Yeni tür"
+  },
+  "kinds": {
+    "new": "Yeni çeşit"
+  },
+  "toast": {
+    "cloned": "“{{name}}” standartlarınıza klonlandı",
+    "cloneError": "“{{name}}” klanlanamadı",
+    "created": "“{{name}}” oluşturuldu",
+    "createError": "Oluşturulamadı",
+    "saved": "Kaydedildi",
+    "saveError": "Kaydedilemedi",
+    "deleted": "“{{name}}” geri dönüşüm kutusuna taşındı",
+    "deleteError": "“{{name}}” silinemedi",
+    "attrCreated": "“{{name}}” eklendi",
+    "attrError": "“{{name}}” eklenemedi",
+    "linksSaved": "Türler güncellendi",
+    "linksError": "Türler güncellenemedi"
+  },
+  "attributes": {
+    "no_user_kinds": "Önce bir çeşit klonlayın veya oluşturun — nitelikler kendi çeşitlerinize bağlanır.",
+    "no_user_genres": "Önce bir tür klonlayın veya oluşturun — nitelikler kendi türlerinize bağlanır.",
+    "pick_kind": "Bir çeşit seçin…",
+    "pick_genre": "Bir tür seçin…",
+    "pick_both": "Nitelikleri görmek ve eklemek için bir çeşit ve bir tür seçin.",
+    "new": "Yeni nitelik",
+    "empty": "Bu ikili için henüz nitelik yok.",
+    "system_ref": "Sistemden (salt okunur)",
+    "your_attrs": "Nitelikleriniz"
+  },
+  "attrform": {
+    "title_create": "Yeni nitelik",
+    "title_edit": "Niteliği düzenle",
+    "name": "Ad",
+    "name_placeholder": "örn. Derece",
+    "name_required": "Ad gereklidir",
+    "code": "Kod",
+    "code_hint": "İsteğe bağlı — boş bırakılırsa addan türetilir.",
+    "field_type": "Alan türü",
+    "required": "Zorunlu",
+    "options": "Seçenekler",
+    "options_hint": "Her satıra bir tane (seçim / etiketler için).",
+    "cancel": "İptal",
+    "create": "Nitelik ekle",
+    "save": "Kaydet",
+    "saving": "Kaydediliyor…",
+    "ft": {
+      "text": "Metin",
+      "textarea": "Uzun metin",
+      "select": "Seçim",
+      "number": "Sayı",
+      "date": "Tarih",
+      "tags": "Etiketler",
+      "url": "URL",
+      "boolean": "Evet / Hayır"
+    }
+  },
+  "stdform": {
+    "title_create_genre": "Yeni tür",
+    "title_edit_genre": "Türü düzenle",
+    "title_create_kind": "Yeni çeşit",
+    "title_edit_kind": "Çeşiti düzenle",
+    "name": "Ad",
+    "name_required": "Ad gereklidir",
+    "icon": "Simge",
+    "color": "Renk",
+    "code": "Kod",
+    "code_hint": "İsteğe bağlı — boş bırakılırsa addan türetilir.",
+    "description": "Açıklama",
+    "cancel": "İptal",
+    "create": "Oluştur",
+    "save": "Kaydet",
+    "saving": "Kaydediliyor…"
+  },
+  "links": {
+    "edit": "Türler",
+    "title": "{{name}} için Türler",
+    "save": "Kaydet",
+    "saving": "Kaydediliyor…",
+    "empty": "Bağlanacak kullanıcı türü yok. Önce bir tür klonlayın veya oluşturun.",
+    "cancel": "İptal"
+  },
+  "trash": {
+    "open": "Geri dönüşüm kutusu",
+    "title": "Geri dönüşüm kutusu",
+    "close": "Kapat",
+    "genres": "Türler",
+    "kinds": "Çeşitler",
+    "empty_section": "Burada bir şey yok.",
+    "restore": "Geri yükle",
+    "purge": "Sonsuza dek sil",
+    "restored": "Geri yüklendi",
+    "restoreError": "Geri yüklenemedi",
+    "purged": "Kalıcı olarak silindi",
+    "purgeError": "Silinemedi"
+  }
+}

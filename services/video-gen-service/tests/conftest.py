@@ -12,6 +12,7 @@ otherwise fail at module load with pydantic ValidationError).
 from __future__ import annotations
 
 import os
+import time
 
 # A realistic >=32-char secret (auth-service requires that length). Used
 # below to sign test JWTs.
@@ -83,8 +84,10 @@ def jwt_for_user() -> Callable[..., str]:
                   bad-signature test.
     """
     def _make(user_id: str, *, exp: Optional[int] = None, secret: Optional[str] = None) -> str:
-        payload: dict = {"sub": user_id}
-        if exp is not None:
-            payload["exp"] = exp
+        # The shared loreweave_authn verifier REQUIRES `exp` (real auth-service tokens
+        # always carry it), so default to a valid future exp; the expired-token test
+        # passes an explicit past value.
+        now = int(time.time())
+        payload: dict = {"sub": user_id, "iat": now, "exp": exp if exp is not None else now + 300}
         return pyjwt.encode(payload, secret or EFFECTIVE_JWT_SECRET, algorithm="HS256")
     return _make

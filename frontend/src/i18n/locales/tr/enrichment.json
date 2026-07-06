@@ -1,0 +1,349 @@
+{
+  "header": "Zenginleştirme İncelemesi",
+  "subtitle": "Yetersiz tanımlanmış varlıklar için yapay zeka tarafından önerilen lore'ları inceleyin ve onayladıklarınızı bu kitabın kanonuna dahil edin. Zenginleştirilmiş taslaklar, siz onları kanona dahil edene kadar özel varyantlar olarak kalır.",
+  "untitled": "Başlıksız",
+  "panel": {
+    "compose": "Oluştur",
+    "proposals": "Öneriler",
+    "gaps": "Boşluklar",
+    "sources": "Kaynaklar",
+    "jobs": "İşler",
+    "settings": "Profil"
+  },
+  "compose": {
+    "title": "Zenginleştirme oluştur",
+    "subtitle": "Zenginleştirmeyi kendi yönteminle başlat — yazdığın bir taslağı genişlet veya tespit edilen boşlukları doldur. Oluşturduğun her şey, sen onu kanona dahil edene kadar zenginleştirilmiş bir varyanttır.",
+    "soon": "yakında",
+    "mode_soon": "Daha sonraki bir sürümde gelecek.",
+    "mode": {
+      "draft": "Bir taslaktan",
+      "gap": "Boşlukları doldur",
+      "intent": "Bir fikirden",
+      "context": "Bağlam yapıştır",
+      "files": "Dosya ekle"
+    },
+    "draft": {
+      "label": "Taslağınız",
+      "placeholder": "Bu varlık için taslağınızı yapıştırın veya yazın. Kitabın boyutlarına ve kitabın üslubuna uygun şekilde genişletilecektir...",
+      "expand_mode": "Nasıl genişletilecek",
+      "rewrite": "Yeniden yaz",
+      "rewrite_hint": "Anlamınızı koruyarak kitabın üslubuyla yeniden yaz + üslup senkronizasyonu yap; tüm boyutları doldur.",
+      "add_only": "Sadece ekle",
+      "add_only_hint": "Metninizi olduğu gibi koruyun; sadece eksik boyutları ekleyin."
+    },
+    "context": {
+      "label": "Referans metni",
+      "placeholder": "Bu varlık hakkında referans metni yapıştırın. Temel bilgi olarak işlenir ve zenginleştirme bu metinden (kitabın üslubuyla) üretilir.",
+      "license_label": "Kaynak lisansı",
+      "license": {
+        "public_domain": "Kamu malı",
+        "licensed": "Bu kullanım için lisanslı",
+        "owned": "Buna ben sahibim / ben yazdım",
+        "copyrighted": "Telif hakkı var (kullanılamaz)"
+      },
+      "copyrighted_warning": "Telif hakkı olan materyaller işlenemez. Kamu malı, lisanslı veya kendi metninizi kullanın.",
+      "responsibility": "Bu metnin haklarından siz sorumlusunuz. Hukuki tavsiye değildir."
+    },
+    "files": {
+      "license_label": "Dosya lisansı",
+      "dropzone": "Dosyaları buraya bırakın veya göz atmak için tıklayın",
+      "accept": ".txt .md .pdf .docx .epub — taranmış PDF'ler OCR ile işlenir",
+      "ready": "{{chars}} karakter{{ocr}}",
+      "ocr": "OCR",
+      "processing": "ayrıştırılıyor...",
+      "failed": "başarısız",
+      "responsibility": "Bu dosyaların haklarına sahibim (sahibiyim / lisanslı / kamu malı). Hukuki tavsiye değildir."
+    },
+    "intent": {
+      "label": "Ne oluşturmak istiyorsunuz?",
+      "placeholder": "Kendi kelimelerinizle tarif edin — örn. \"kralın hanedanı kurmasına yardım eden bilge danışman\".",
+      "resolve": "Çözümle",
+      "resolving": "Çözümleniyor...",
+      "resolve_hint": "Aşağıda bir hedef önerir — inceleyin, düzenleyin ve ardından Çalıştır'a basın."
+    },
+    "target": {
+      "existing": "Mevcut varlık",
+      "new": "Yeni varlık",
+      "name": "İsim",
+      "name_placeholder": "örn. 碧遊宮",
+      "kind": "Tür",
+      "existing_hint": "Mevcut sözlük varlığını bu isimle zenginleştirir.",
+      "new_hint": "Yeni bir varlık oluşturur — öneriyi kanona dahil edene kadar sözlüğünüze hiçbir şey yazılmaz."
+    },
+    "kind": {
+      "character": "Karakter",
+      "location": "Mekan",
+      "item": "Eşya",
+      "faction": "Grup/Fraksiyon",
+      "event": "Olay",
+      "generic": "Genel"
+    },
+    "config": {
+      "gen_model": "Üretim modeli",
+      "embed_model": "Gömme (Embedding) modeli",
+      "select_model": "Seç...",
+      "max_spend": "Maksimum harcama (token)",
+      "no_cap": "sınır yok",
+      "top_k": "Top-K",
+      "technique": "Teknik",
+      "technique_opt": {
+        "retrieval": "Erişim (P1)",
+        "fabrication": "Kurgulama (P2)",
+        "recook": "Yeniden İşleme (P3)"
+      },
+      "eval_gate_warning": "P2/P3 bir değerlendirme eşiğinden geçmelidir — eşik geçilene kadar iş reddedilir.",
+      "dimensions": {
+        "auto": "Otomatik — tüm eksik boyutları zenginleştir"
+      }
+    },
+    "safety": "① lisans · ② soyutlama · ③ tekrarlama koruması · ④ siz dahil edersiniz — zenginleştirilenler siz dahil edene kadar varyant olarak kalır.",
+    "run_hint": "Arka planda bir iş olarak çalışır — hazır olduğunda Öneriler altında görünür.",
+    "save_corpus": "Kaynaklara kaydet (tut — otomatik silme)",
+    "run": "Taslak oluştur",
+    "composing": "Başlatılıyor...",
+    "enqueued": "Zenginleştirme başlatıldı — öneri Öneriler altında görünecektir."
+  },
+  "h0": {
+    "marker": "varyant",
+    "tooltip": "Zenginleştirilmiş bir varyant — siz dahil edene kadar asla kanon metin sayılmaz."
+  },
+  "technique": {
+    "template": "şablon",
+    "retrieval": "erişim",
+    "fabrication": "kurgulama",
+    "recook": "yeniden işleme"
+  },
+  "review": {
+    "proposed": "Önerildi",
+    "author_reviewing": "İnceleniyor",
+    "approved": "Onaylandı",
+    "promoted": "Kanon yapıldı",
+    "rejected": "Reddedildi"
+  },
+  "verify": {
+    "none": "Doğrulama notu yok.",
+    "clean": "Doğrulandı: Temiz — çelişki, anakronizm, enjeksiyon veya metin tekrarı bulunmadı.",
+    "degraded": "Doğrulama yetersiz — kanon metni mevcut değildi, bu nedenle çelişki tam olarak kontrol edilemedi.",
+    "status": {
+      "verified_clean": "doğrulandı",
+      "needs_review": "inceleme gerekiyor",
+      "quarantined": "karantina",
+      "degraded": "yetersiz",
+      "auto_rejected": "otomatik reddedildi"
+    },
+    "flag": {
+      "contradiction": "Kanonla çelişiyor",
+      "anachronism": "Anakronizm",
+      "injection": "Prompt enjeksiyonu",
+      "regurgitation": "Kaynak tekrarı"
+    },
+    "severity": {
+      "low": "düşük",
+      "medium": "orta",
+      "high": "yüksek"
+    }
+  },
+  "prov": {
+    "technique": "Teknik",
+    "confidence": "Güven",
+    "origin": "Köken",
+    "entity_kind": "Tür",
+    "model": "Model",
+    "recook_abstracted": "Soyutlanmış gerçeklerden yeniden pişirildi — kaynak metinden değil, nötr gerçek maddelerinden oluşturuldu (②).",
+    "grounding": "Dayanak kaynaklar",
+    "skipped": "Atlanan (lisanssız) kaynaklar"
+  },
+  "license": {
+    "public_domain": "kamu malı",
+    "public-domain": "kamu malı",
+    "licensed": "lisanslı",
+    "unlicensed": "lisanssız",
+    "copyrighted": "telif hakkı ile korunan",
+    "restricted": "kısıtlı",
+    "unknown": "bilinmiyor"
+  },
+  "detail": {
+    "h0_note": "Bu zenginleştirilmiş bir varyanttır (origin=enrichment, confidence<1.0). Yalnızca siz onayladığınızda kanon (resmi bilgi) haline gelir.",
+    "h0_banner": "Bu zenginleştirilmiş bir varyanttır — orijinal kanon değildir. Yalnızca siz onayladığınızda kanon haline gelir.",
+    "dimensions": "{{count}} boyut",
+    "show_more": "+ {{count}} tane daha göster",
+    "show_less": "Daha az göster",
+    "content": "Üretilen lore",
+    "verify": "Doğrulama",
+    "provenance": "Köken ve kaynaklar"
+  },
+  "card": {
+    "confidence": "güven {{value}}",
+    "summary": "{{dims}} boyut · {{sources}} kaynak üzerine dayalı",
+    "advisory": "⚠ {{count}} uyarı işareti",
+    "auto_rejected": "Otomatik reddedildi"
+  },
+  "proposals": {
+    "search": "Önerileri ara…",
+    "status_all": "Hepsi",
+    "technique": "Teknik",
+    "project": "Proje",
+    "all_projects": "Tüm projeler",
+    "none": "Eşleşen öneri yok.",
+    "error": "Öneriler yüklenemedi. Lütfen tekrar deneyin.",
+    "empty": {
+      "title": "Henüz öneri yok",
+      "description": "Bu kitap için öneriler oluşturmak amacıyla boşlukları tespit edin ve otomatik olarak zenginleştirin."
+    }
+  },
+  "actions": {
+    "promote": "Kanon haline getir",
+    "approve": "Onayla",
+    "edit": "Düzenle",
+    "reject": "Reddet",
+    "reject_reason": "Reddetme nedeni (isteğe bağlı)",
+    "reject_confirm": "Reddi onayla",
+    "retract": "Kanon dışı bırak",
+    "retract_confirm_title": "Kanon dışı bırakılsın mı?",
+    "retract_confirm_desc": "Bu işlem, zenginleştirilmiş eklentiyi bu kitabın kanonundan çıkarır. Orijinal varlık korunur — daha sonra tekrar kanon yapabilirsiniz.",
+    "author_only": "Zenginleştirmeyi yalnızca kitabın yazarı inceleyebilir ve kanon yapabilir.",
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "already_promoted": "Kanon haline getirildi.",
+    "rejected_note": "Bu öneri reddedildi.",
+    "approved": "Öneri onaylandı",
+    "rejected": "Öneri reddedildi",
+    "edited": "Öneri güncellendi",
+    "promoted": "Kanon haline getirildi",
+    "retracted": "Geri çekildi"
+  },
+  "promote": {
+    "title": "Kanon haline getir",
+    "h0": "Bu zenginleştirilmiş varyant, bu kitap için yazarlık kanonu haline gelecektir. Kalıcı köken işareti korunur, böylece orijinal olarak zenginleştirildiği şekilde izlenebilir kalır.",
+    "responsibility": "Kanon yaparak, bu içeriği yazar olarak benimsediğinizi ve içeriğin oluşturulduğu kaynakların haklarına sahip olduğunuzu onaylamış olursunuz. Hukuki tavsiye değildir.",
+    "confirm": "Kanon yap",
+    "promoting": "Kanon yapılıyor…"
+  },
+  "gaps": {
+    "title": "Boşluklar",
+    "subtitle": "Bu kitabın sözlüğündeki yetersiz tanımlanmış varlıklar, önem sırasına göre listelenmiştir. Önce tespit edin, ardından seçilen boşlukları arka planda otomatik olarak zenginleştirin.",
+    "detect": "Boşlukları tespit et",
+    "detect_hint": "Bu kitabın sözlük kapsamını taramak için \"Boşlukları tespit et\" seçeneğine tıklayın.",
+    "none": "Boşluk tespit edilmedi — her varlık iyi tanımlanmış.",
+    "extract_first": "Henüz varlık yok — önce bu kitabı çıkarın (Bilgi sekmesi). Zenginleştirme, platformun zaten bildiği varlıklardaki boşlukları doldurur.",
+    "extract_cta": "Varlıkları şimdi çıkar",
+    "technique": "Teknik",
+    "gen_model": "Üretim modeli",
+    "embed_model": "Gömme (embedding) modeli",
+    "select_model": "Seç…",
+    "max_gaps": "Maksimum boşluk",
+    "max_spend": "Maksimum harcama (token)",
+    "no_cap": "sınır yok",
+    "top_k": "Top-K",
+    "gate_note": "P2 üretimi / P3 yeniden pişirme işlemi için değerlendirme kapısının (çeşitli yargıçlar) geçilmesi gerekir.",
+    "auto_enrich": "Otomatik zenginleştir",
+    "enrich_one": "Zenginleştir",
+    "enrich_one_hint": "Zenginleştirmek için aşağıdan üretim + gömme modellerini seçin.",
+    "enriching": "Sıraya alınıyor…",
+    "enqueued": "{{count}} boşluk zenginleştirme için sıraya alındı",
+    "col": {
+      "entity": "Varlık",
+      "kind": "Tür",
+      "missing": "Eksik boyutlar",
+      "rank": "Sıra",
+      "action": "Eylem"
+    }
+  },
+  "sources": {
+    "title": "Kaynaklar",
+    "subtitle": "Erişim / yeniden pişirme için lisans etiketli derlem.",
+    "register": "Kaynak kaydet",
+    "name": "İsim",
+    "kind": "Tür",
+    "license": "Lisans",
+    "embed_model": "Gömme modeli",
+    "ingest": "Metin aktar",
+    "ingesting": "Aktarılıyor…",
+    "ingested": "Aktarıldı — {{count}} parça gömüldü",
+    "ingest_placeholder": "Parçalara ayırmak ve gömmek için kamu malı / lisanslı kaynak metni yapıştırın…",
+    "chunks": "{{count}} parça",
+    "embedded": "gömüldü ✓",
+    "partial": "{{done}}/{{total}} gömüldü",
+    "none": "Henüz kayıtlı kaynak yok.",
+    "recook_ok": "yeniden pişirme-TAMAM",
+    "recook_refused": "yeniden pişirme reddedildi (varsayılan-red)",
+    "default_deny": "Varsayılan red: yalnızca kamu malı / lisanslı kaynaklar yeniden pişirilebilir. Kaydettiğiniz kaynakların lisansından siz sorumlusunuz.",
+    "registered": "Kaynak kaydedildi",
+    "grounded": "Dayanak oluşturuldu — {{count}} bölüm gömüldü"
+  },
+  "ground": {
+    "title": "Bölümlerden dayanak oluştur",
+    "subtitle": "Dayanak derlemi olarak gömmek için belirli bölümler seçin — bilgi RAG + sözlük kanonunun ötesindeki ham metinler. Metin size aittir.",
+    "no_chapters": "Bu kitabın henüz bölümü yok.",
+    "showing": "{{total}} bölümden ilk {{shown}} tanesi gösteriliyor — birincil dayanak yolu (bilgi RAG) tüm bölümleri zaten kapsıyor; bu, bilinçli ekstra seçim içindir.",
+    "ingest": "{{count}} bölümden dayanak oluştur",
+    "ingesting": "Gömülüyor…"
+  },
+  "jobs": {
+    "none": "Henüz zenginleştirme işi yok.",
+    "resume": "Devam et",
+    "resumed": "İş devamı sıraya alındı",
+    "col": {
+      "technique": "Teknik",
+      "status": "Durum",
+      "proposals": "Öneriler",
+      "cost": "Maliyet",
+      "created": "Oluşturulma"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "estimating": "Tahmin ediliyor",
+      "running": "Çalışıyor",
+      "paused": "Duraklatıldı",
+      "completed": "Tamamlandı",
+      "failed": "Hata oluştu",
+      "cancelled": "İptal edildi"
+    },
+    "error": {
+      "gateLocked": "Değerlendirme kapısı tarafından kilitlendi — önce zenginleştirme değerlendirmesini çalıştırın.",
+      "internal": "Zenginleştirme başarısız oldu (dahili hata). Detaylar için üzerine gelin.",
+      "insufficientGrounding": "Bu varlıklar için kullanılabilir bir metin temeli bulunamadı — referans bağlamı yapıştırın veya Fabrication kullanın."
+    }
+  },
+  "settings": {
+    "title": "Zenginleştirme profili",
+    "subtitle": "Üretimi tarafsızlaştıran kitaba özel dünya görüşü — dil, dönem, ses ve zenginleştirmenin doldurduğu boyutlar. Düzenlemeler yeni işler için geçerlidir.",
+    "error": "Profil yüklenemedi. Lütfen tekrar deneyin.",
+    "worldview": "Dünya görüşü",
+    "language": "Çıktı dili",
+    "voice": "Ses",
+    "era_policy": "Dönem politikası",
+    "era_hint": "Bir dönem/anakronizm kısıtlaması, örn. \"Shang-Zhou sonrası teknoloji olmasın\". Boş bırakılırsa anakronizm kontrolü kapatılır.",
+    "markers": "Anakronizm işaretçileri",
+    "markers_placeholder": "terim | neden (her satıra bir tane)",
+    "markers_hint": "Her satıra \"terim | neden\" şeklinde bir tane yazın. Bunlar, anakronizm kontrolünün işaretleyeceği terimlerdir. Temizlemek kontrolü kapatır.",
+    "dimensions": "Boyut geçersiz kılmaları",
+    "kind": {
+      "character": "Karakter",
+      "location": "Mekan",
+      "item": "Eşya",
+      "faction": "Grup",
+      "event": "Olay"
+    },
+    "add_dimension": "Boyut ekle",
+    "no_extra_dims": "Bu tür için yerleşik boyutlar kullanılıyor.",
+    "dim_id": "id",
+    "dim_label": "etiket",
+    "dim_weight": "ağırlık",
+    "dim_required": "zorunlu",
+    "remove_dimension": "Boyutu kaldır",
+    "hide": "Gizle",
+    "suggest": "Kitaptan öner",
+    "suggesting": "Analiz ediliyor…",
+    "suggest_model": "Öneri modeli",
+    "select_model": "Bir model seçin…",
+    "suggest_hint": "Yapay zeka, düzenleyebileceğiniz bir taslak önermek için kitap meta verilerini + bölümleri okur. Kaydet'e basana kadar hiçbir şey kaydedilmez.",
+    "suggested": "Taslak önerildi — inceleyin, ardından Kaydet'e basın",
+    "saving": "Kaydediliyor…",
+    "saved": "Profil kaydedildi",
+    "source": "Kaynak: {{source}}",
+    "source_seed": "tohum",
+    "source_ai_suggested": "Yapay zeka önerisi",
+    "source_manual": "manuel"
+  }
+}

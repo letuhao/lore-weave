@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { StudioHostProvider } from '@/features/studio/host/StudioHostProvider';
 import { ExtractionWizard } from '../ExtractionWizard';
 import type { ExtractionJobStatus } from '../types';
 
@@ -69,6 +70,20 @@ function setup(open = true) {
   return { ...utils, onOpenChange };
 }
 
+// DOCK-7 — the wizard is reachable from inside the studio's `glossary` dock panel (via
+// GlossaryEntityList), where a bare navigate('/jobs') would tear down the whole dock layout.
+function setupInStudio() {
+  const onOpenChange = vi.fn();
+  const utils = render(
+    <MemoryRouter>
+      <StudioHostProvider bookId="b">
+        <ExtractionWizard open onOpenChange={onOpenChange} bookId="b" mode="single" />
+      </StudioHostProvider>
+    </MemoryRouter>,
+  );
+  return { ...utils, onOpenChange };
+}
+
 // Drives single-mode flow profile→confirm→progress→results.
 async function runToResults() {
   fireEvent.click(screen.getByText('stub-profile'));          // sets profile + modelRef
@@ -79,6 +94,22 @@ async function runToResults() {
 }
 
 describe('ExtractionWizard', () => {
+  // DOCK-9 adoption (docs/standards/dockable-gui.md) — swapped the hand-rolled
+  // `fixed inset-0` backdrop+dialog pair for raw @radix-ui/react-dialog primitives.
+  // Regression risk: Radix's built-in Escape/outside-click dismissal must still
+  // route through `onOpenChange`, and the dialog must be a real Radix dialog
+  // (portal-safe, `role="dialog"`) rather than a hand-rolled div pair.
+  it('renders as a real Radix dialog (role=dialog), not a hand-rolled overlay', () => {
+    setup();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('Escape closes the wizard via onOpenChange(false) (Radix default — no manual keydown listener)', async () => {
+    const { onOpenChange } = setup();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
   it('shows a Run again button on the results step', async () => {
     setup();
     await runToResults();
@@ -106,6 +137,22 @@ describe('ExtractionWizard', () => {
     expect(lastToast?.msg).toBe('progress.backgroundToast');
     lastToast?.opts?.action?.onClick();
     expect(navigateMock).toHaveBeenCalledWith('/jobs');
+  });
+
+  it('inside the studio, the "View in Jobs" handoff opens the jobs-list dock panel instead of navigating away', async () => {
+    lastToast = null;
+    navigateMock.mockClear();
+    setupInStudio();
+    fireEvent.click(screen.getByText('stub-profile'));
+    fireEvent.click(screen.getByText('button.next'));
+    fireEvent.click(await screen.findByText('stub-confirm'));
+    fireEvent.click(await screen.findByText('stub-background'));
+    expect(lastToast?.msg).toBe('progress.backgroundToast');
+    // openPanel is a no-op until a real dock api attaches (same proof shape as
+    // StepConfig.test.tsx) — the real assertion is that navigate() is NEVER reached, since
+    // that's exactly the "tear down the whole studio" bug this branch exists to prevent.
+    expect(() => lastToast?.opts?.action?.onClick()).not.toThrow();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it('reopening after a finished run is fresh — not stuck on stale results (the F5 bug)', async () => {

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -37,6 +38,14 @@ type Config struct {
 	// Unset → those endpoints fail closed (503 admin-not-configured); the rest of
 	// the service is unaffected. Distribution mirrors admin-cli: PEM via env.
 	AdminJWTPublicKeyPEM string
+
+	// P2·F — tenant-boundary audit coalescing window (seconds). A cross-tenant
+	// glossary access (a collaborator reaching a book they do NOT own) emits at
+	// most ONE audit row per (actor, book, outcome) per window — "first-access-
+	// per-window" — so a collaborator browsing entities can't flood the audit
+	// table (requireGrant fires a cross-service ResolveAccess per request).
+	// Default 1h; floored to 1s so 0 can't make every read emit.
+	TenantAuditCoalesceWindowSeconds int64
 }
 
 func Load() (*Config, error) {
@@ -56,6 +65,10 @@ func Load() (*Config, error) {
 		InternalServiceToken:  os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		RedisURL:             os.Getenv("REDIS_URL"),
 		AdminJWTPublicKeyPEM: os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
+		TenantAuditCoalesceWindowSeconds: getInt64("TENANT_AUDIT_COALESCE_WINDOW_S", 3600),
+	}
+	if c.TenantAuditCoalesceWindowSeconds < 1 {
+		c.TenantAuditCoalesceWindowSeconds = 1 // floor: 0/negative would emit every read
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -80,4 +93,16 @@ func getEnv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+func getInt64(k string, def int64) int64 {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return def
+	}
+	return n
 }

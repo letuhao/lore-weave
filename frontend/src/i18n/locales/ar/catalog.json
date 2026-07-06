@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "اكتشف القصص",
+    "subtitle": "تصفح الروايات العامة من مجتمع LoreWeave. اقرأ، وترجم، واستكشف القصص عبر مختلف اللغات.",
+    "search_placeholder": "البحث بالعنوان، أو المؤلف، أو اللغة...",
+    "search_aria": "البحث في الكتالوج",
+    "no_books": "لم يتم العثور على كتب. جرب بحثاً أو فلتراً آخر.",
+    "load_failed": "فشل تحميل الكتالوج"
+  },
+  "filter": {
+    "lang_all": "الكل",
+    "clear_genres": "مسح التصنيفات",
+    "books_found": "تم العثور على {{count}} كتب",
+    "sort_aria": "ترتيب الكتب حسب",
+    "sort": {
+      "recent": "الأحدث",
+      "popular": "الأكثر شعبية",
+      "chapters": "الأكثر فصولاً",
+      "alpha": "أبجدياً"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} فصول"
+  },
+  "detail": {
+    "breadcrumb_browse": "تصفح",
+    "public_badge": "عام",
+    "unlisted_badge": "غير مدرج",
+    "chapters_count": "{{count}} فصول",
+    "available_languages": "اللغات المتاحة",
+    "original": "الأصلية",
+    "start_reading": "ابدأ القراءة",
+    "no_chapters_yet": "لا توجد فصول بعد",
+    "share": "مشاركة",
+    "copy_link": "نسخ الرابط",
+    "loading": "جاري التحميل...",
+    "chapters_heading": "الفصول",
+    "no_chapters_available": "لا توجد فصول متاحة.",
+    "untitled": "بدون عنوان",
+    "words": "{{count}} كلمة",
+    "showing_chapters": "عرض {{from}}–{{to}} من أصل {{total}} فصول",
+    "stat_chapters": "الفصول",
+    "stat_languages": "اللغات",
+    "stat_original": "الأصلية",
+    "stat_published": "المنشورة",
+    "na": "غير متاح",
+    "book_not_found": "لم يتم العثور على الكتاب",
+    "back_to_browse": "العودة للتصفح",
+    "link_copied": "تم نسخ الرابط",
+    "copy_failed": "فشل النسخ",
+    "load_chapters_failed": "فشل تحميل الفصول"
+  },
+  "shared": {
+    "indicator": "أنت تشاهد رابطاً مشتركاً. هذا الكتاب غير مدرج بشكل عام.",
+    "invalid": "هذا الرابط المشترك غير صالح أو انتهت صلاحيته.",
+    "not_found": "الرابط المشترك غير موجود أو انتهت صلاحيته",
+    "browse_instead": "تصفح الكتب العامة بدلاً من ذلك",
+    "back_to_chapters": "العودة إلى الفصول",
+    "ch_short": "فصل {{n}}",
+    "load_chapter_failed": "فشل تحميل الفصل: {{error}}"
+  }
+}

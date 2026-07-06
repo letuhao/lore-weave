@@ -1,17 +1,19 @@
 // Server detail page (REG-P3-08) — connection, scan report with per-finding review
 // (accept-risk & activate vs keep quarantined), health, and the tool browser.
+import { useTranslation } from 'react-i18next';
 import { useMcpServerDetail } from '../hooks/useMcpServers';
 import type { McpServer } from '../types';
 import { McpStatusChip } from './McpServersView';
 
 export function McpServerDetail({ id, onBack }: { id: string; onBack: () => void }) {
+  const { t } = useTranslation('extensions');
   const d = useMcpServerDetail(id);
   const s = d.server;
-  if (!s) return <div className="p-2 text-xs text-muted-foreground" data-testid="mcp-detail-loading">Loading…</div>;
+  if (!s) return <div className="p-2 text-xs text-muted-foreground" data-testid="mcp-detail-loading">{t('common.loading')}</div>;
 
   return (
     <div className="space-y-4" data-testid="mcp-detail">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground" data-testid="mcp-detail-back">‹ Back</button>
+      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground" data-testid="mcp-detail-back">{t('mcp.detail.back')}</button>
 
       <div>
         <div className="flex items-center gap-2">
@@ -22,19 +24,19 @@ export function McpServerDetail({ id, onBack }: { id: string; onBack: () => void
       </div>
 
       {/* Connection */}
-      <Section title="Connection">
-        <Row k="Auth" v={s.auth_kind + (s.has_secret ? ' · credential stored' : '')} />
-        <Row k="Prefix" v={s.tool_name_prefix} />
-        <Row k="Egress allowlist" v={(s.egress_allowlist ?? []).join(', ') || '—'} />
-        {s.last_health && <Row k="Health" v={s.last_health.ok ? `ok · ${s.last_health.tool_count} tools · ${s.last_health.latency_ms ?? '?'}ms` : `error: ${s.last_health.error ?? 'unreachable'}`} />}
-        {s.last_scanned_at && <Row k="Last scanned" v={new Date(s.last_scanned_at).toLocaleString()} />}
+      <Section title={t('mcp.detail.connection')}>
+        <Row k={t('mcp.detail.auth')} v={s.auth_kind + (s.has_secret ? ` · ${t('mcp.detail.credentialStored')}` : '')} />
+        <Row k={t('mcp.detail.prefix')} v={s.tool_name_prefix} />
+        <Row k={t('mcp.detail.egress')} v={(s.egress_allowlist ?? []).join(', ') || '—'} />
+        {s.last_health && <Row k={t('mcp.detail.health')} v={s.last_health.ok ? t('mcp.detail.healthOk', { count: s.last_health.tool_count, latency: s.last_health.latency_ms ?? '?' }) : t('mcp.detail.healthError', { error: s.last_health.error ?? t('mcp.detail.unreachable') })} />}
+        {s.last_scanned_at && <Row k={t('mcp.detail.lastScanned')} v={new Date(s.last_scanned_at).toLocaleString()} />}
       </Section>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => void d.rescan()} disabled={d.busy} data-testid="mcp-detail-rescan" className="rounded-md border px-3 py-1.5 text-xs disabled:opacity-40">{d.busy ? 'Scanning…' : 'Rescan'}</button>
-        {s.auth_kind === 'oauth2' && <button onClick={() => void d.connectOAuth()} data-testid="mcp-detail-reconnect" className="rounded-md border px-3 py-1.5 text-xs">Reconnect OAuth</button>}
+        <button onClick={() => void d.rescan()} disabled={d.busy} data-testid="mcp-detail-rescan" className="rounded-md border px-3 py-1.5 text-xs disabled:opacity-40">{d.busy ? t('mcp.detail.scanning') : t('mcp.detail.rescan')}</button>
+        {s.auth_kind === 'oauth2' && <button onClick={() => void d.connectOAuth()} data-testid="mcp-detail-reconnect" className="rounded-md border px-3 py-1.5 text-xs">{t('mcp.detail.reconnect')}</button>}
         {s.status === 'suspended' && (
-          <button onClick={() => void d.acceptRisk()} disabled={d.busy} data-testid="mcp-detail-accept-risk" className="rounded-md border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-400">Accept risk & activate</button>
+          <button onClick={() => void d.acceptRisk()} disabled={d.busy} data-testid="mcp-detail-accept-risk" className="rounded-md border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-400">{t('mcp.detail.acceptRisk')}</button>
         )}
       </div>
 
@@ -49,13 +51,14 @@ export function McpServerDetail({ id, onBack }: { id: string; onBack: () => void
  * Renders the scan verdict, each flagged finding (with the offending description),
  * and the per-tool browser with its scan verdict. */
 export function ScanReport({ server }: { server: McpServer }) {
+  const { t } = useTranslation('extensions');
   const scan = server.scan_result;
   if (!scan || (!scan.tools?.length && !scan.findings?.length)) return null;
   return (
     <div className="space-y-3" data-testid="mcp-scan-report">
       <div className="flex items-center gap-2 text-xs">
-        <span className="font-medium">Supply-chain scan:</span>
-        {scan.clean ? <span className="text-emerald-400" data-testid="scan-clean">clean</span> : <span className="text-red-400" data-testid="scan-flagged">{scan.findings?.length ?? 0} finding(s)</span>}
+        <span className="font-medium">{t('mcp.scan.label')}</span>
+        {scan.clean ? <span className="text-emerald-400" data-testid="scan-clean">{t('mcp.scan.clean')}</span> : <span className="text-red-400" data-testid="scan-flagged">{t('mcp.scan.findings', { count: scan.findings?.length ?? 0 })}</span>}
       </div>
 
       {(scan.findings ?? []).length > 0 && (
@@ -75,13 +78,13 @@ export function ScanReport({ server }: { server: McpServer }) {
 
       {(scan.tools ?? []).length > 0 && (
         <div>
-          <div className="mb-1 text-xs font-medium text-muted-foreground">Tools ({scan.tools!.length})</div>
+          <div className="mb-1 text-xs font-medium text-muted-foreground">{t('mcp.scan.tools', { count: scan.tools!.length })}</div>
           <ul className="divide-y rounded-md border" data-testid="scan-tools">
-            {scan.tools!.map((t) => (
-              <li key={t.name} className="flex items-start gap-2 px-3 py-1.5 text-xs">
-                <span className="font-mono">{t.name}</span>
-                {t.flagged && <span className="text-[10px] font-bold uppercase text-red-400">flagged</span>}
-                <span className="ml-auto max-w-[60%] truncate text-muted-foreground">{t.description}</span>
+            {scan.tools!.map((tool) => (
+              <li key={tool.name} className="flex items-start gap-2 px-3 py-1.5 text-xs">
+                <span className="font-mono">{tool.name}</span>
+                {tool.flagged && <span className="text-[10px] font-bold uppercase text-red-400">{t('mcp.scan.flagged')}</span>}
+                <span className="ml-auto max-w-[60%] truncate text-muted-foreground">{tool.description}</span>
               </li>
             ))}
           </ul>

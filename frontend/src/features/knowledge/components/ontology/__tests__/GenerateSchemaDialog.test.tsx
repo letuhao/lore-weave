@@ -18,6 +18,27 @@ import { GenerateSchemaDialog } from '../GenerateSchemaDialog';
 beforeEach(() => proposeMock.mockReset());
 
 describe('GenerateSchemaDialog (M3b — propose→confirm)', () => {
+  // 14_kg_panels.md K8 (DOCK-9) — this dialog is mounted only while `showGenerate`
+  // is true (SchemaWorkbench), so it's always `open`; unlike VersionsPanel's
+  // closed-by-default dialogs, asserting "no fixed inset-0 in the rendered HTML"
+  // doesn't apply here (Radix's OWN Dialog.Overlay legitimately renders those
+  // literal tokens while open). Instead assert the dialog is Radix-rendered
+  // (stamped `data-state`, closable via Escape/outside-click) rather than the
+  // old hand-rolled `<div role="dialog">` that carried none of that.
+  it('renders through Radix Dialog (FormDialog), not a hand-rolled overlay div (DOCK-9)', () => {
+    render(<GenerateSchemaDialog projectId="p1" onClose={vi.fn()} onAdopt={vi.fn()} />);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('data-state', 'open');
+    expect(screen.queryByTestId('generate-schema-dialog')).not.toBeInTheDocument();
+  });
+
+  it('calls onClose when the dialog requests to close (Radix onOpenChange)', () => {
+    const onClose = vi.fn();
+    render(<GenerateSchemaDialog projectId="p1" onClose={onClose} onAdopt={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it('generates then adopts only the ticked components', async () => {
     proposeMock.mockResolvedValue({
       node_kinds: [{ code: 'character' }, { code: 'sect' }],

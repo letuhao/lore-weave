@@ -1,0 +1,146 @@
+{
+  "loading": "กำลังโหลด...",
+  "chapter_of": "บทที่ {{current}} จาก {{total}}",
+  "stop_reading": "หยุดอ่าน",
+  "read_aloud": "อ่านออกเสียง",
+  "reading_theme": "ธีมการอ่าน",
+  "edit_chapter": "แก้ไขบทนี้",
+  "back_to_book": "กลับไปที่หนังสือ",
+  "chapter_label": "บทที่ {{n}}",
+  "chars": "ตัวอักษร",
+  "words": "คำ",
+  "min_read": "อ่านประมาณ {{minutes}} นาที",
+  "loading_translation": "กำลังโหลดคำแปล...",
+  "empty_chapter": "บทว่างเปล่า — ยังไม่มีเนื้อหา",
+  "end_of_chapter": "จบตอนที่ {{n}}",
+  "next_in": "บทถัดไปใน {{seconds}} วินาที...",
+  "cancel": "ยกเลิก",
+  "progress": "บทที่ {{current}} จาก {{total}} · เสร็จสมบูรณ์ {{percent}}%",
+  "ch_short": "บทที่ {{n}}",
+  "history": {
+    "title": "ประวัติการอ่าน",
+    "subtitle": "หนังสือและบทที่คุณเพิ่งอ่าน",
+    "empty": "ยังไม่มีประวัติการอ่าน เริ่มอ่านสักบทสิ!",
+    "chapters_read": "อ่านไปแล้ว {{count}} บท",
+    "fully_read": "อ่านจบแล้ว {{percent}}%",
+    "last_read": "อ่านล่าสุดเมื่อ {{date}}",
+    "continue": "อ่านต่อ"
+  },
+  "theme": {
+    "title": "ธีมการอ่าน",
+    "presets": "ธีมสำเร็จรูป",
+    "preset": {
+      "dark": {
+        "name": "มืด",
+        "desc": "พื้นหลังสีเข้มแบบถนอมสายตา"
+      },
+      "light": {
+        "name": "สว่าง",
+        "desc": "พื้นหลังสีขาวสะอาดตา"
+      },
+      "sepia": {
+        "name": "ซีเปีย",
+        "desc": "โทนสีกระดาษเก่า"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "สีดำสนิทสำหรับหน้าจอ OLED"
+      },
+      "parchment": {
+        "name": "กระดาษหนัง",
+        "desc": "ความรู้สึกแบบกระดาษคลาสสิก"
+      },
+      "forest": {
+        "name": "ป่าไม้",
+        "desc": "สบายตาเมื่ออ่านตอนกลางคืน"
+      }
+    },
+    "font": "แบบอักษร",
+    "typography": "การจัดวางตัวอักษร",
+    "font_size": "ขนาดตัวอักษร",
+    "line_height": "ระยะห่างระหว่างบรรทัด",
+    "text_width": "ความกว้างข้อความ",
+    "spacing": "ระยะห่าง",
+    "reading_mode": "โหมดการอ่าน",
+    "show_indices": "แสดงดัชนีบล็อก (โหมดนักแปล)",
+    "auto_next": "โหลดบทถัดไปอัตโนมัติ",
+    "auto_scroll": "เลื่อนอัตโนมัติเมื่อใช้ TTS"
+  },
+  "tts": {
+    "source": {
+      "attached": "แนบมาแล้ว",
+      "ai": "AI TTS",
+      "browser": "เบราว์เซอร์",
+      "inline": "เสียงในตัว"
+    },
+    "prev_block": "บล็อกก่อนหน้า (Shift+ซ้าย)",
+    "play": "เล่น (Space)",
+    "pause": "หยุดชั่วคราว (Space)",
+    "next_block": "บล็อกถัดไป (Shift+ขวา)",
+    "cycle_speed": "วนลูปความเร็ว",
+    "autoscroll_on": "เลื่อนอัตโนมัติ: เปิด",
+    "autoscroll_off": "เลื่อนอัตโนมัติ: ปิด",
+    "settings": "ตั้งค่า TTS",
+    "stop": "หยุด (Escape)",
+    "speed": "ความเร็ว",
+    "browser_voice": "เสียงจากเบราว์เซอร์",
+    "default": "ค่าเริ่มต้น",
+    "no_voices": "ไม่มีเสียงให้ใช้งาน เบราว์เซอร์ของคุณอาจไม่รองรับ Web Speech API",
+    "ai_model": "โมเดล AI TTS",
+    "none_browser": "ไม่มี (ใช้เฉพาะ TTS ของเบราว์เซอร์)",
+    "no_models": "ยังไม่ได้ตั้งค่าโมเดล โปรดเพิ่มผู้ให้บริการใน การตั้งค่า > ผู้ให้บริการ",
+    "ai_voice": "เสียง AI",
+    "openai_voices": "เสียง OpenAI: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "พฤติกรรม",
+    "autoscroll_active": "เลื่อนอัตโนมัติไปยังบล็อกที่กำลังอ่าน",
+    "highlight_active": "ไฮไลต์บล็อกที่กำลังอ่าน",
+    "now_playing": "กำลังเล่น",
+    "block_label": "บล็อก: {{id}}",
+    "status": {
+      "playing": "กำลังเล่น",
+      "paused": "หยุดชั่วคราว",
+      "loading": "กำลังโหลด"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "แนบมาแล้ว",
+      "ai": "AI TTS",
+      "browser": "เบราว์เซอร์",
+      "inline": "บล็อกเสียง",
+      "none": "ไม่มี"
+    },
+    "coverage": "ความครอบคลุมของเสียง",
+    "summary": "{{speakable}} บล็อกที่อ่านได้ · {{missing}} ใช้เบราว์เซอร์ TTS",
+    "generate_missing": "สร้างเสียงที่ขาดหายไป",
+    "block_chars": "{{count}} บล็อก · ~{{chars}} ตัวอักษร",
+    "block_chars_other": "{{count}} บล็อก · ~{{chars}} ตัวอักษร",
+    "est_cost": "ประมาณ ${{cost}}",
+    "generating": "กำลังสร้าง... {{progress}}/{{total}}",
+    "select_model_alert": "โปรดเลือกโมเดล TTS ในการตั้งค่า TTS ก่อน",
+    "generate_all": "สร้างทั้งหมด ({{count}})",
+    "blocks": "บล็อก",
+    "audio_block_preview": "ตัวอย่างบล็อกเสียง"
+  },
+  "block": {
+    "audio_unavailable": "ไม่มีเสียงให้ใช้งาน",
+    "audio_fallback": "เบราว์เซอร์ของคุณไม่รองรับองค์ประกอบเสียง",
+    "image_unavailable": "ไม่มีรูปภาพ",
+    "video_unavailable": "ไม่มีวิดีโอ"
+  },
+  "indicator": {
+    "pause": "หยุดชั่วคราว",
+    "play": "เล่นเสียงที่แนบมา",
+    "mismatch": "คำบรรยายเสียงไม่ตรงกับข้อความในบล็อก"
+  },
+  "citation": {
+    "aria": "การอ้างอิง {{n}}",
+    "jump": "ไปที่แหล่งที่มา",
+    "relevance": "ความเกี่ยวข้อง",
+    "source": {
+      "glossary": "อภิธานศัพท์",
+      "kg": "ฐานความรู้",
+      "passage": "ข้อความต้นฉบับ"
+    }
+  }
+}

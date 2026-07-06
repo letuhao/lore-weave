@@ -20,6 +20,12 @@
     },
     "social": {
       "followed": "{{name}} 開始追蹤你"
+    },
+    "llm_job": {
+      "completed": "{{operation}} 已完成",
+      "failed": "{{operation}} 失敗",
+      "cancelled": "{{operation}} 已取消",
+      "unknown": "{{operation}}"
     }
   },
   "event": {

@@ -104,7 +104,11 @@ def _build(*, claimed=True, system_repo=None, admin_enabled=True):
 # (D-PMCP-WORKER-CARRIER dual-auth). An admin confirms from their signed-in
 # browser, so every admin confirm/preview carries a session JWT *and* the RS256
 # X-Admin-Token. The admin path ignores the caller id, so any valid sub works.
-_SESSION_JWT = jwt.encode({"sub": str(uuid4())}, settings.jwt_secret, algorithm="HS256")
+_SESSION_JWT = jwt.encode(
+    {"sub": str(uuid4()), "exp": int(time.time()) + 3600},  # SDK verifier requires exp
+    settings.jwt_secret,
+    algorithm="HS256",
+)
 
 
 async def _post(app, path, json, headers=None):

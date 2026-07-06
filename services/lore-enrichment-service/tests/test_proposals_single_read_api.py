@@ -98,7 +98,7 @@ def _api_client(repo) -> TestClient:
 def _bearer(user_id: UUID) -> str:
     """A bearer whose unverified `sub` is ``user_id`` (the principal dependency
     decodes `sub` without signature verification at this stage)."""
-    return pyjwt.encode({"sub": str(user_id)}, "irrelevant", algorithm="HS256")
+    return pyjwt.encode({"sub": str(user_id), "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
 
 
 def _get(client: TestClient, proposal_id, project_id, *, bearer: str | None):
@@ -186,7 +186,7 @@ def test_get_proposal_garbage_token_returns_401():
     p = _proposal()
     client = _api_client(FakeRepo(p))
     # a well-formed JWT with NO `sub` claim → _extract_user_id returns None.
-    no_sub = pyjwt.encode({"foo": "bar"}, "irrelevant", algorithm="HS256")
+    no_sub = pyjwt.encode({"foo": "bar"}, "test_jwt_secret", algorithm="HS256")
     resp = _get(client, p.proposal_id, PROJECT, bearer=no_sub)
     assert resp.status_code == 401, resp.text
     assert resp.json()["detail"] == "auth required"

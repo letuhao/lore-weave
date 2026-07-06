@@ -749,5 +749,120 @@
       "deceived": "Deceived",
       "gap": "Gap"
     }
+  },
+  "authoringRun": {
+    "navRuns": "Runs",
+    "navNewRun": "New run",
+    "navMission": "Mission control",
+    "list": {
+      "title": "Runs for this book",
+      "newRun": "+ New run",
+      "blockedBanner": "A run is already {{status}} for this book — only one active run per book is allowed. Open it below, or pause/close it first.",
+      "blockedTooltip": "Pause or close the active run first.",
+      "colRun": "Run",
+      "colScope": "Scope",
+      "colStatus": "Status",
+      "colSpent": "Spent",
+      "colCreated": "Created",
+      "scopeCount": "{{count}} chapters",
+      "empty": "No autonomous authoring runs yet for this book.",
+      "loading": "Loading runs…",
+      "error": "Could not load runs."
+    },
+    "newRun": {
+      "title": "New run — configure",
+      "planLabel": "Plan (required — a run drafts an already-approved plan's beats)",
+      "planEmpty": "No approved plan runs yet for this book.",
+      "planEmptyCta": "Open Planner to create one →",
+      "chaptersLabel": "Chapters to include (book TOC)",
+      "chaptersHint": "{{total}} chapters in book · {{selected}} selected",
+      "orderLabel": "Run order",
+      "budgetLabel": "Budget (USD)",
+      "levelLabel": "Level",
+      "level3": "Level 3 — revise",
+      "level4": "Level 4 — draft",
+      "allowlistLabel": "Tool allowlist",
+      "allowlistAdd": "Add tool…",
+      "runGateCheck": "Run gate check →",
+      "gating": "Checking…",
+      "cancel": "Cancel"
+    },
+    "gate": {
+      "title": "Gate check",
+      "checkPlan": "Plan exists and is approved",
+      "checkScope": "Scope chapters exist & are orderable",
+      "checkBudget": "Budget declared (> $0)",
+      "checkAllowlist": "Tool allowlist configured",
+      "startBlocked": "Fix the failing gate check(s) below first."
+    },
+    "header": {
+      "gate": "Gate →",
+      "start": "Start",
+      "pause": "Pause",
+      "resume": "Resume",
+      "close": "Close",
+      "revertAll": "Revert all",
+      "closedNote": "Run closed — terminal, no further actions.",
+      "breakerLabel": "breaker",
+      "breakerHealthy": "healthy",
+      "breakerReason": {
+        "pauseAfterEachUnit": "paused for review (after each unit)",
+        "budget": "budget exhausted",
+        "criticSevere": "critic flagged a severe issue",
+        "unitFailed": "a unit failed",
+        "driverCrashed": "driver crashed"
+      },
+      "heartbeatLabel": "heartbeat",
+      "heartbeatFresh": "fresh",
+      "heartbeatStale": "STALE — driver may have died",
+      "heartbeatNA": "n/a",
+      "budgetLabel": "Budget",
+      "budgetDanger": "near limit",
+      "pollActive": "Polling every {{secs}}s (REST — no live stream)",
+      "pollLastRefreshed": "last refreshed {{secs}}s ago",
+      "pollRefreshingNow": "refreshing…",
+      "pollSuspended": "Polling suspended — run is not active",
+      "pausePolicyLabel": "Auto-pause after each unit",
+      "errorPrefix": "error_message:"
+    },
+    "queue": {
+      "title": "Unit queue",
+      "hint": "Click a chapter to read its draft below.",
+      "unitLabel": "Unit {{index}}"
+    },
+    "diff": {
+      "title": "Draft review",
+      "prev": "← Prev",
+      "next": "Next →",
+      "openFullDiff": "Open full editor diff",
+      "notDrafted": "Not drafted yet — nothing to review.",
+      "notReached": "Run halted before reaching this chapter.",
+      "failedUnit": "This unit failed:",
+      "verdictShow": "Show detail ▾",
+      "verdictHide": "Hide detail ▴",
+      "sev": { "ok": "ok", "warn": "warn", "severe": "severe" },
+      "cascadeWarning": "{{count}} downstream unit(s) already drafted/accepted ({{chapters}}) — this is advisory only; rejecting this unit does NOT auto-revert them.",
+      "accept": "Accept",
+      "reject": "Reject",
+      "alreadyReviewed": "Already reviewed — currently {{status}}.",
+      "blockedReview": "Accept/Reject blocked while the run is {{status}} — the backend only allows review once the run has stopped (report_ready / failed / paused). Pause the run to review this chapter now.",
+      "keyboardHint": "Keyboard: a=accept · r=reject · ←/→ or p/n = prev/next unit"
+    },
+    "revert": {
+      "title": "Revert all drafted/accepted units?",
+      "body": "This rejects every drafted/accepted unit in reverse order and restores each chapter to its pre-run revision. This cannot be undone from this UI. Affected:",
+      "none": "No drafted/accepted units to revert.",
+      "confirm": "Revert all",
+      "cancel": "Cancel",
+      "reverting": "Reverting…",
+      "partialTitle": "Revert stopped partway",
+      "partialBody": "Unit {{index}} failed to restore ({{error}}). {{count}} unit(s) reverted successfully before the stop; the run is left open (same state as before) so you can retry.",
+      "successBody": "All {{count}} unit(s) reverted; the run is now closed."
+    },
+    "mission": {
+      "empty": "Open a run from the Runs list to see its mission control.",
+      "loading": "Loading run…",
+      "back": "← Back to runs list"
+    }
   }
 }

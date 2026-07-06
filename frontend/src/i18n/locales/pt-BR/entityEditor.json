@@ -1,0 +1,156 @@
+{
+  "modal": {
+    "untitled": "Sem título",
+    "status": {
+      "draft": "Rascunho",
+      "active": "Ativo",
+      "inactive": "Inativo"
+    },
+    "discard": "Descartar",
+    "save": "Salvar",
+    "save_entity": "Salvar Entidade",
+    "cancel": "Cancelar",
+    "move_to_trash": "Mover para a Lixeira",
+    "meta": {
+      "chapters": "{{count}} capítulos",
+      "translations": "{{count}} traduções",
+      "evidences": "{{count}} evidências"
+    },
+    "tab": {
+      "attributes": "Atributos",
+      "evidences": "Evidências",
+      "history": "Histórico"
+    },
+    "viewing_in_language": "Visualizando em {{lang}}",
+    "viewing_original": "Original ({{lang}})",
+    "translation_lang_aria": "Idioma de tradução",
+    "no_translation": "Sem tradução",
+    "add_language": "+ Adicionar idioma...",
+    "lang_placeholder": "ex: en",
+    "system_attrs": "Atributos do Sistema",
+    "user_attrs": "Atributos do Usuário",
+    "no_attributes": "Nenhum atributo definido para este tipo de entidade.",
+    "toast": {
+      "saved": "Entidade salva",
+      "status_changed": "Status alterado para {{status}}",
+      "invalid_lang": "Código de idioma inválido (ex: en, zh, zh-tw)"
+    }
+  },
+  "attr_card": {
+    "required": "*obrigatório",
+    "modified": "modificado",
+    "has_translations": "Possui traduções"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "Rascunho",
+      "verified": "Verificado",
+      "machine": "Máquina"
+    },
+    "confidence_aria": "Confiança da tradução",
+    "by": "por {{name}}",
+    "discard_aria": "Descartar alterações",
+    "save": "Salvar",
+    "delete_aria": "Excluir tradução",
+    "placeholder": "Tradução em {{lang}}...",
+    "tags_add": "+ Adicionar alias",
+    "delete_title": "Excluir tradução?",
+    "delete_desc": "A tradução em {{lang}} para este atributo será excluída permanentemente.",
+    "delete_confirm": "Excluir",
+    "toast": {
+      "updated": "Tradução atualizada",
+      "created": "Tradução criada",
+      "deleted": "Tradução excluída"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "Citação",
+      "summary": "Resumo",
+      "reference": "Referência"
+    },
+    "provenance": {
+      "ambiguous": "Correspondência não verificada",
+      "ambiguous_hint": "Esta citação corresponde ao texto original em mais de um lugar — a localização exata é incerta.",
+      "unmatched": "Não encontrado no original",
+      "unmatched_hint": "Esta citação não pôde ser localizada no texto do capítulo — pode ser uma paráfrase ou alucinação. Verifique antes de confiar.",
+      "unverified": "Não verificado",
+      "unverified_hint": "Esta citação não foi validada contra o texto original."
+    },
+    "filter": {
+      "all": "Todos",
+      "attr_aria": "Filtrar por atributo",
+      "all_attributes": "Todos os atributos",
+      "chapter_aria": "Filtrar por capítulo",
+      "all_chapters": "Todos os capítulos",
+      "chapter_n": "Capítulo {{n}}",
+      "lang_aria": "Idioma de exibição",
+      "original": "Original",
+      "sort_aria": "Ordenar por",
+      "sort": {
+        "created": "Criado",
+        "chapter": "Capítulo",
+        "block_line": "Bloco/Linha",
+        "attribute": "Atributo"
+      },
+      "ascending": "Ascendente",
+      "descending": "Descendente",
+      "add": "Adicionar"
+    },
+    "create": {
+      "title": "Nova Evidência",
+      "attribute": "Atributo *",
+      "attr_aria": "Atributo para nova evidência",
+      "type": "Tipo",
+      "type_aria": "Tipo de evidência",
+      "original_text": "Texto Original *",
+      "text_placeholder": "Cole o texto de origem...",
+      "block_line": "Bloco / Linha",
+      "block_placeholder": "ex: p.42",
+      "note": "Nota",
+      "note_placeholder": "Nota opcional",
+      "cancel": "Cancelar",
+      "create": "Criar"
+    },
+    "card": {
+      "edit_type_aria": "Editar tipo de evidência",
+      "cancel_title": "Cancelar",
+      "block_line": "Bloco / Linha",
+      "note": "Nota",
+      "cancel": "Cancelar",
+      "save": "Salvar",
+      "edit_title": "Editar",
+      "open_source": "Abrir o capítulo de origem",
+      "delete_title": "Excluir",
+      "translated": "Traduzido ({{lang}})",
+      "note_label": "Nota: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "Nenhuma evidência encontrada",
+      "clear_filters": "Limpar filtros",
+      "prev_page": "Página anterior",
+      "next_page": "Próxima página",
+      "first_page": "Primeira página",
+      "last_page": "Última página",
+      "jump_to_page": "Ir para a página",
+      "page_size": "Linhas por página",
+      "per_page": "{{n}} / página",
+      "delete_title": "Excluir evidência?",
+      "delete_desc": "Esta evidência de \"{{attr}}\" será excluída permanentemente.",
+      "delete_confirm": "Excluir"
+    },
+    "toast": {
+      "updated": "Evidência atualizada",
+      "deleted": "Evidência excluída",
+      "created": "Evidência criada",
+      "text_required": "O texto original é obrigatório"
+    }
+  },
+  "summarize": {
+    "canonical_label": "Resumo mesclado",
+    "pending_dirty": "Será re-resumido após a próxima extração",
+    "pending_new": "Será resumido após a próxima extração",
+    "sources": "Menções brutas ({{count}})",
+    "empty": "Nenhuma menção ainda"
+  }
+}

@@ -10,9 +10,15 @@ function makeApi(over: Record<string, unknown> = {}) {
     onDidLayoutChange: vi.fn(() => ({ dispose: vi.fn() })),
     fromJSON: vi.fn(),
     addPanel: vi.fn(),
+    getPanel: vi.fn(() => undefined),
     toJSON: vi.fn(() => ({ grid: {}, panels: { welcome: {} } })),
     ...over,
   };
+}
+
+/** A fake IDockviewPanel with just the `.api.setActive()` surface this hook calls. */
+function makePanel() {
+  return { api: { setActive: vi.fn() } };
 }
 
 const fireReady = (api: ReturnType<typeof makeApi>) => {
@@ -37,6 +43,23 @@ describe('useStudioLayout', () => {
     const api = makeApi();
     fireReady(api);
     expect(api.fromJSON).toHaveBeenCalledTimes(1);
+    expect(api.addPanel).not.toHaveBeenCalled();
+  });
+
+  it('D-STUDIO-DEFAULT-WELCOME: activates Welcome as the front tab on a restored layout that still has it', () => {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ grid: {}, panels: { welcome: {}, 'chapter-browser': {} } }));
+    const welcomePanel = makePanel();
+    const api = makeApi({ getPanel: vi.fn((id: string) => (id === 'welcome' ? welcomePanel : undefined)) });
+    fireReady(api);
+    expect(api.getPanel).toHaveBeenCalledWith('welcome');
+    expect(welcomePanel.api.setActive).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects a deliberate Welcome close: does not re-add it when restoring a layout without it', () => {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ grid: {}, panels: { 'chapter-browser': {} } }));
+    const api = makeApi({ getPanel: vi.fn(() => undefined) });
+    fireReady(api);
+    expect(api.getPanel).toHaveBeenCalledWith('welcome');
     expect(api.addPanel).not.toHaveBeenCalled();
   });
 

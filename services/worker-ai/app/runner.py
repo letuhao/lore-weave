@@ -946,11 +946,21 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
                 error_message = CASE
                   WHEN items_skipped > 0 AND items_total > 0 AND items_skipped >= items_total
                     THEN 'completed with ALL ' || items_total || ' items skipped — no work performed (see job logs)'
+                  -- D-EXTRACTION-SILENT-NOOP: a job that PROCESSED items (not skipped) but
+                  -- made ZERO LLM calls did no extraction — the LLM is what identifies
+                  -- entities/relations/facts. Reporting a bare 'complete' let a silent
+                  -- no-op (no graph schema kinds / provider unreachable) masquerade as a
+                  -- built graph. Same convention as the skip case: status stays 'complete'
+                  -- (no campaign-breaker trip) but the row says so out loud.
+                  WHEN items_processed > 0 AND COALESCE(llm_calls_made, 0) = 0
+                    THEN 'completed but made 0 LLM calls over ' || items_processed ||
+                         ' processed item(s) — no extraction performed (no usable graph schema kinds, or the extraction provider was unreachable)'
                   ELSE error_message
                 END
             WHERE user_id = $1 AND job_id = $2
               AND status NOT IN ('complete', 'cancelled', 'failed')
-            RETURNING job_id, cost_spent_usd, items_skipped, items_total
+            RETURNING job_id, cost_spent_usd, items_skipped, items_total,
+                      items_processed, COALESCE(llm_calls_made, 0) AS llm_calls_made
             """,
             user_id, job_id,
         )
@@ -960,6 +970,15 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
             logger.warning(
                 "Job %s completed but ALL %d items were skipped — no work performed",
                 job_id, _total,
+            )
+        elif row is not None and row.get("items_processed") and not row.get("llm_calls_made"):
+            # D-EXTRACTION-SILENT-NOOP — a processed-but-no-LLM completion is a silent
+            # no-op; surface it loudly (the error_message above + this warning) so an
+            # empty graph never reads as a successful build.
+            logger.warning(
+                "Job %s completed but made 0 LLM calls over %d processed item(s) — "
+                "no extraction performed (check the project's graph schema kinds / the "
+                "extraction provider)", job_id, row.get("items_processed"),
             )
         if row is not None:
             # P4 — carry the final cumulative cost on the terminal event (the changing
@@ -999,6 +1018,47 @@ async def _fail_job(
                 cost_usd=float(_cost) if _cost is not None else None,
                 error={"code": "extraction_failed", "message": error[:500]},
             )
+
+
+async def sweep_stalled_jobs(pool: asyncpg.Pool, *, stall_minutes: int) -> int:
+    """D-EXTRACTION-SILENT-NOOP gap #3 — the generic STALL backstop.
+
+    `updated_at` is bumped on every progress step (cursor advance, items_total set,
+    stage change), so a job that is still `status='running'` with `updated_at` older
+    than `stall_minutes` made NO progress that whole time — its runner/provider died or
+    hung mid-loop, and without this it would sit 'running' forever, looking healthy.
+
+    Fails such jobs via `_fail_job` (so the terminal event fires and the row stops
+    lying). Deliberately COMPLEMENTS the Wave-1b resume-sweeper (which only re-drives
+    DECOUPLED rows with resume_state, and is off by default): `stall_minutes` is
+    configured generously (> the resume timeout) so a recoverable row is re-driven
+    first and a long-but-live LLM call is never wrongly failed. `stall_minutes<=0` ⇒
+    disabled. Returns the number swept."""
+    if stall_minutes <= 0:
+        return 0
+    rows = await pool.fetch(
+        """
+        SELECT user_id, job_id
+        FROM extraction_jobs
+        WHERE status = 'running'
+          AND updated_at < now() - make_interval(mins => $1)
+        ORDER BY updated_at ASC
+        LIMIT 50
+        """,
+        stall_minutes,
+    )
+    for r in rows:
+        logger.warning(
+            "STALL sweep: extraction job %s made no progress for >%d min — failing it "
+            "(runner/provider died or hung; re-dispatch to retry)",
+            r["job_id"], stall_minutes,
+        )
+        await _fail_job(
+            pool, r["user_id"], r["job_id"],
+            f"stalled: no progress for {stall_minutes}+ min "
+            "(the runner or extraction provider died/hung mid-stage) — re-dispatch to retry",
+        )
+    return len(rows)
 
 
 async def _get_project_book_id(
@@ -2050,6 +2110,23 @@ async def process_job(
                         job.scope in ("chapters", "all")
                         and ch.chapter_id == pre_chapters[-1].chapter_id
                     )
+                elif (not job.targets) or ("summaries" in job.targets):
+                    # D-KG-SUMMARIES-TARGET-NOOP — de-silence the skip: a
+                    # requested summary pass built NO p3_hierarchy_paths, so no
+                    # chapter summary will enqueue. Book-service now synthesizes
+                    # an implicit part for undecomposed chapters, so the usual
+                    # remaining cause is a project with no embedding model
+                    # (embedding_dimension None) or a hierarchy fetch failure —
+                    # both were previously invisible ([[silent-success-is-a-bug]]).
+                    logger.warning(
+                        "summary enqueue SKIPPED chapter=%s book=%s: "
+                        "hierarchy_present=%s chapter_path_present=%s "
+                        "embedding_dimension=%s — no chapter summary generated",
+                        ch.chapter_id, book_id,
+                        hierarchy is not None,
+                        (hierarchy is not None and hierarchy.chapter_path is not None),
+                        job.embedding_dimension,
+                    )
 
                 # LLM re-arch Phase 2b WX-T3b — event-driven decouple of the chapter
                 # extraction. Submit the entity job + RELEASE (return); the
@@ -2362,16 +2439,26 @@ async def process_job(
                     return
 
                 await _mark_pending_processed(pool, job.user_id, turn["pending_id"])
+                # D-EXTRACTION-SILENT-NOOP: a chat turn whose text is gone/empty
+                # (deleted session, a tool-only turn with no prose) does NO extraction —
+                # extract_pass2 short-circuited WITHOUT an LLM call. Count it SKIPPED
+                # (mirroring the chapter D-WORKER-SKIP-FALSE-GREEN), NOT a fake
+                # 'processed', and don't charge for a no-op. This keeps items_processed
+                # honest AND stops the 0-LLM-call completion flag from false-positiving
+                # on a legitimately-empty turn (the all-skipped flag covers that case).
+                _empty_turn = not turn_text.strip()
                 await _advance_cursor(
                     pool, job.user_id, job.job_id,
                     {"last_pending_id": str(turn["pending_id"]), "scope": "chat"},
+                    items_delta=0 if _empty_turn else 1,
+                    skipped_delta=1 if _empty_turn else 0,
                 )
-                # D-K16.11-01: same per-project accounting as the chapters
-                # branch, see above.
-                await _record_spending(
-                    pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
-                )
-                items_processed += 1
+                if not _empty_turn:
+                    # D-K16.11-01: same per-project accounting as the chapters branch.
+                    await _record_spending(
+                        pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
+                    )
+                    items_processed += 1
 
         # C12c-a: glossary_sync branch. Fires for scope='glossary_sync'
         # (primary) AND the tail of scope='all'. No LLM call — each

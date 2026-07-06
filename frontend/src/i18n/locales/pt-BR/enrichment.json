@@ -1,0 +1,349 @@
+{
+  "header": "Revisão de Enriquecimento",
+  "subtitle": "Revise o lore proposto pela IA para entidades subdescritas e, em seguida, promova o que você aprovar para o cânone deste livro. Rascunhos enriquecidos são variantes privadas até que você os promova.",
+  "untitled": "Sem título",
+  "panel": {
+    "compose": "Criar",
+    "proposals": "Propostas",
+    "gaps": "Lacunas",
+    "sources": "Fontes",
+    "jobs": "Tarefas",
+    "settings": "Perfil"
+  },
+  "compose": {
+    "title": "Criar enriquecimento",
+    "subtitle": "Comece o enriquecimento do seu jeito — expanda um rascunho que você escreveu ou preencha lacunas detectadas. Tudo o que você criar é uma variante enriquecida até que você a promova.",
+    "soon": "em breve",
+    "mode_soon": "Disponível em uma atualização futura.",
+    "mode": {
+      "draft": "A partir de um rascunho",
+      "gap": "Preencher lacunas",
+      "intent": "A partir de uma ideia",
+      "context": "Colar contexto",
+      "files": "Anexar arquivos"
+    },
+    "draft": {
+      "label": "Seu rascunho",
+      "placeholder": "Cole ou escreva seu rascunho para esta entidade. Ele será expandido nas dimensões do livro, com a voz do livro...",
+      "expand_mode": "Como expandir",
+      "rewrite": "Reescrever",
+      "rewrite_hint": "Reescrever + sincronizar voz com o livro, preservando seu sentido; preencher todas as dimensões.",
+      "add_only": "Apenas adicionar",
+      "add_only_hint": "Mantenha sua prosa verbatim; adicione apenas as dimensões ausentes."
+    },
+    "context": {
+      "label": "Texto de referência",
+      "placeholder": "Cole o texto de referência sobre esta entidade. Ele será processado como base e o enriquecimento será gerado a partir dele (com a voz do livro).",
+      "license_label": "Licença da fonte",
+      "license": {
+        "public_domain": "Domínio público",
+        "licensed": "Licenciado para este uso",
+        "owned": "Eu possuo / escrevi isto",
+        "copyrighted": "Protegido por direitos autorais (não pode usar)"
+      },
+      "copyrighted_warning": "Materiais protegidos por direitos autorais não podem ser processados. Use textos de domínio público, licenciados ou de sua autoria.",
+      "responsibility": "Você é responsável pelos direitos deste texto. Não é um aconselhamento jurídico."
+    },
+    "files": {
+      "license_label": "Licença do arquivo",
+      "dropzone": "Solte os arquivos aqui ou clique para navegar",
+      "accept": ".txt .md .pdf .docx .epub — PDFs digitalizados passam por OCR",
+      "ready": "{{chars}} caracteres{{ocr}}",
+      "ocr": "OCR",
+      "processing": "extraindo...",
+      "failed": "falhou",
+      "responsibility": "Eu possuo os direitos destes arquivos (próprios / licenciados / domínio público). Não é um aconselhamento jurídico."
+    },
+    "intent": {
+      "label": "O que você deseja criar?",
+      "placeholder": "Descreva com suas próprias palavras — ex: \"o conselheiro sábio que ajuda o rei a fundar a dinastia\".",
+      "resolve": "Resolver",
+      "resolving": "Resolvendo...",
+      "resolve_hint": "Propõe um alvo abaixo — revise e edite-o, depois clique em Executar."
+    },
+    "target": {
+      "existing": "Entidade existente",
+      "new": "Nova entidade",
+      "name": "Nome",
+      "name_placeholder": "ex: 碧遊宮",
+      "kind": "Tipo",
+      "existing_hint": "Enriquece a entidade existente no glossário com este nome.",
+      "new_hint": "Cria uma nova entidade — nada é escrito no seu glossário até que você promova a proposta."
+    },
+    "kind": {
+      "character": "Personagem",
+      "location": "Localização",
+      "item": "Item",
+      "faction": "Facção",
+      "event": "Evento",
+      "generic": "Genérico"
+    },
+    "config": {
+      "gen_model": "Modelo de geração",
+      "embed_model": "Modelo de embedding",
+      "select_model": "Selecionar...",
+      "max_spend": "Gasto máx. (tokens)",
+      "no_cap": "sem limite",
+      "top_k": "Top-K",
+      "technique": "Técnica",
+      "technique_opt": {
+        "retrieval": "Recuperação (P1)",
+        "fabrication": "Fabricação (P2)",
+        "recook": "Re-cozimento (P3)"
+      },
+      "eval_gate_warning": "P2/P3 requer aprovação em etapa de avaliação — a tarefa será recusada até que passe.",
+      "dimensions": {
+        "auto": "Auto — enriquecer todas as dimensões ausentes"
+      }
+    },
+    "safety": "① licença · ② abstração · ③ guarda contra regurgitação · ④ você promove — o enriquecido permanece uma variante até que você o promova.",
+    "run_hint": "Executa como uma tarefa em segundo plano — a proposta aparecerá em Propostas quando estiver pronta.",
+    "save_corpus": "Salvar nas fontes (manter — não excluir automaticamente)",
+    "run": "Criar rascunho",
+    "composing": "Iniciando...",
+    "enqueued": "Enriquecimento iniciado — a proposta aparecerá em Propostas."
+  },
+  "h0": {
+    "marker": "variante",
+    "tooltip": "Uma variante enriquecida — nunca será cânone até que você a promova."
+  },
+  "technique": {
+    "template": "template",
+    "retrieval": "recuperação",
+    "fabrication": "fabricação",
+    "recook": "re-cozimento"
+  },
+  "review": {
+    "proposed": "Proposta",
+    "author_reviewing": "Revisando",
+    "approved": "Aprovado",
+    "promoted": "Promovido",
+    "rejected": "Rejeitado"
+  },
+  "verify": {
+    "none": "Sem anotação de verificação.",
+    "clean": "Verificação limpa — nenhuma contradição, anacronismo, injeção ou regurgitação encontrada.",
+    "degraded": "Verificação degradada — o cânone estava indisponível, portanto a contradição não pôde ser totalmente verificada.",
+    "status": {
+      "verified_clean": "verificado",
+      "needs_review": "precisa de revisão",
+      "quarantined": "quarentenado",
+      "degraded": "degradado",
+      "auto_rejected": "rejeitado automaticamente"
+    },
+    "flag": {
+      "contradiction": "Contradiz o cânone",
+      "anachronism": "Anacronismo",
+      "injection": "Injeção de prompt",
+      "regurgitation": "Regurgitação de fonte"
+    },
+    "severity": {
+      "low": "baixa",
+      "medium": "média",
+      "high": "alta"
+    }
+  },
+  "prov": {
+    "technique": "Técnica",
+    "confidence": "Confiança",
+    "origin": "Origem",
+    "entity_kind": "Tipo",
+    "model": "Modelo",
+    "recook_abstracted": "Reelaborado a partir de fatos abstraídos — gerado de tópicos neutros, não da prosa original (②).",
+    "grounding": "Fontes de fundamentação",
+    "skipped": "Fontes puladas (sem licença)"
+  },
+  "license": {
+    "public_domain": "domínio público",
+    "public-domain": "domínio público",
+    "licensed": "licenciado",
+    "unlicensed": "sem licença",
+    "copyrighted": "com direitos autorais",
+    "restricted": "restrito",
+    "unknown": "desconhecido"
+  },
+  "detail": {
+    "h0_note": "Esta é uma variante enriquecida (origin=enrichment, confidence<1.0). Ela se torna canônica apenas quando você a promove.",
+    "h0_banner": "Esta é uma variante enriquecida — não o cânone original. Ela se torna canônica apenas quando você a promove.",
+    "dimensions": "{{count}} dimensões",
+    "show_more": "+ mostrar mais {{count}}",
+    "show_less": "Mostrar menos",
+    "content": "Lore gerada",
+    "verify": "Verificação",
+    "provenance": "Proveniência e fontes"
+  },
+  "card": {
+    "confidence": "conf {{value}}",
+    "summary": "{{dims}} dimensões · fundamentado em {{sources}} fontes",
+    "advisory": "⚠ {{count}} sinalização(ões) de aviso",
+    "auto_rejected": "Rejeitado automaticamente"
+  },
+  "proposals": {
+    "search": "Buscar propostas…",
+    "status_all": "Todas",
+    "technique": "Técnica",
+    "project": "Projeto",
+    "all_projects": "Todos",
+    "none": "Nenhuma proposta encontrada.",
+    "error": "Não foi possível carregar as propostas. Tente novamente.",
+    "empty": {
+      "title": "Sem propostas ainda",
+      "description": "Detecte lacunas e use o enriquecimento automático para gerar propostas para este livro."
+    }
+  },
+  "actions": {
+    "promote": "Promover para o cânone",
+    "approve": "Aprovar",
+    "edit": "Editar",
+    "reject": "Rejeitar",
+    "reject_reason": "Motivo da rejeição (opcional)",
+    "reject_confirm": "Confirmar rejeição",
+    "retract": "Retirar do cânone",
+    "retract_confirm_title": "Retirar do cânone?",
+    "retract_confirm_desc": "Isso remove o suplemento enriquecido do cânone deste livro. A entidade original é preservada — você pode promovê-la novamente mais tarde.",
+    "author_only": "Apenas o autor do livro pode revisar e promover o enriquecimento.",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "already_promoted": "Promovido para o cânone.",
+    "rejected_note": "Esta proposta foi rejeitada.",
+    "approved": "Proposta aprovada",
+    "rejected": "Proposta rejeitada",
+    "edited": "Proposta atualizada",
+    "promoted": "Promovida para o cânone",
+    "retracted": "Retirada"
+  },
+  "promote": {
+    "title": "Promover para o cânone",
+    "h0": "Esta variante enriquecida se tornará o cânone autoral para este livro. O marcador de origem permanente é mantido, para que permaneça rastreável como enriquecida originalmente.",
+    "responsibility": "Ao promover, você adota este conteúdo como autor e confirma que possui os direitos sobre as fontes das quais ele foi construído. Não é um aconselhamento jurídico.",
+    "confirm": "Promover",
+    "promoting": "Promovendo…"
+  },
+  "gaps": {
+    "title": "Lacunas",
+    "subtitle": "Entidades subdescritas no glossário deste livro, classificadas por importância. Detecte e, em seguida, use o enriquecimento automático para preencher as lacunas escolhidas como um processo em segundo plano.",
+    "detect": "Detectar lacunas",
+    "detect_hint": "Clique em \"Detectar lacunas\" para escanear a cobertura do glossário deste livro.",
+    "none": "Nenhuma lacuna detectada — todas as entidades estão bem descritas.",
+    "extract_first": "Sem entidades ainda — extraia este livro primeiro (aba Conhecimento). O enriquecimento preenche lacunas em entidades que a plataforma já conhece.",
+    "extract_cta": "Extrair entidades agora",
+    "technique": "Técnica",
+    "gen_model": "Modelo de geração",
+    "embed_model": "Modelo de embedding",
+    "select_model": "Selecionar…",
+    "max_gaps": "Máx. lacunas",
+    "max_spend": "Gasto máx. (tokens)",
+    "no_cap": "sem limite",
+    "top_k": "Top-K",
+    "gate_note": "Fabricação P2 / Recook P3 exigem a aprovação do gate de avaliação (juízes diversos).",
+    "auto_enrich": "Enriquecimento automático",
+    "enrich_one": "Enriquecer",
+    "enrich_one_hint": "Selecione os modelos de geração + embedding abaixo para enriquecer.",
+    "enriching": "Enfileirando…",
+    "enqueued": "{{count}} lacuna(s) enfileirada(s) para enriquecimento",
+    "col": {
+      "entity": "Entidade",
+      "kind": "Tipo",
+      "missing": "Dimensões ausentes",
+      "rank": "Rank",
+      "action": "Ação"
+    }
+  },
+  "sources": {
+    "title": "Fontes",
+    "subtitle": "Corpus com tags de licença para recuperação / reelaboração.",
+    "register": "Registrar fonte",
+    "name": "Nome",
+    "kind": "Tipo",
+    "license": "Licença",
+    "embed_model": "Modelo de embedding",
+    "ingest": "Ingerir texto",
+    "ingesting": "Ingerindo…",
+    "ingested": "Ingerido — {{count}} chunk(s) incorporados",
+    "ingest_placeholder": "Cole o texto de fonte de domínio público / licenciada para fragmentar + incorporar…",
+    "chunks": "{{count}} fragmentos",
+    "embedded": "incorporado ✓",
+    "partial": "{{done}}/{{total}} incorporados",
+    "none": "Nenhuma fonte registrada ainda.",
+    "recook_ok": "recook-OK",
+    "recook_refused": "recook recusado (negação padrão)",
+    "default_deny": "Negação padrão: apenas fontes de domínio público / licenciadas podem ser reelaboradas. Você é responsável pela licença das fontes que registrar.",
+    "registered": "Fonte registrada",
+    "grounded": "Fundamentado — {{count}} capítulo(s) incorporado(s)"
+  },
+  "ground": {
+    "title": "Fundamentar por capítulos",
+    "subtitle": "Escolha capítulos específicos para incorporar como um corpus de fundamentação — prosa bruta além do que o RAG de conhecimento + cânone do glossário oferecem. O texto é de sua autoria.",
+    "no_chapters": "Este livro ainda não possui capítulos.",
+    "showing": "Mostrando os primeiros {{shown}} de {{total}} capítulos — o caminho de fundamentação primário (RAG de conhecimento) já cobre todos os capítulos; isto é para uma seleção extra deliberada.",
+    "ingest": "Fundamentar {{count}} capítulo(s)",
+    "ingesting": "Incorporando…"
+  },
+  "jobs": {
+    "none": "Nenhum trabalho de enriquecimento ainda.",
+    "resume": "Retomar",
+    "resumed": "Retomada de trabalho enfileirada",
+    "col": {
+      "technique": "Técnica",
+      "status": "Status",
+      "proposals": "Propostas",
+      "cost": "Custo",
+      "created": "Criado"
+    },
+    "status": {
+      "pending": "Pendente",
+      "estimating": "Estimando",
+      "running": "Executando",
+      "paused": "Pausado",
+      "completed": "Concluído",
+      "failed": "Falhou",
+      "cancelled": "Cancelado"
+    },
+    "error": {
+      "gateLocked": "Bloqueado pelo gate de avaliação — execute a avaliação de enriquecimento primeiro.",
+      "internal": "Falha no enriquecimento (erro interno). Passe o mouse para detalhes.",
+      "insufficientGrounding": "Sem fundamentação de corpus utilizável para estas entidades — cole o contexto de referência ou use Fabricação."
+    }
+  },
+  "settings": {
+    "title": "Perfil de enriquecimento",
+    "subtitle": "A visão de mundo por livro que remove vieses da geração — idioma, era, voz e as dimensões que o enriquecimento preenche. As edições se aplicam a novos trabalhos.",
+    "error": "Não foi possível carregar o perfil. Tente novamente.",
+    "worldview": "Visão de mundo",
+    "language": "Idioma de saída",
+    "voice": "Voz",
+    "era_policy": "Política de era",
+    "era_hint": "Uma restrição de era/anacronismo, ex: \"sem tecnologia pós-Shang-Zhou\". Vazio = verificação de anacronismo desativada.",
+    "markers": "Marcadores de anacronismo",
+    "markers_placeholder": "termo | motivo (um por linha)",
+    "markers_hint": "Um por linha no formato \"termo | motivo\". Estes são os termos que a verificação de anacronismo sinaliza. Limpá-los desativa a verificação.",
+    "dimensions": "Sobreposições de dimensão",
+    "kind": {
+      "character": "Personagem",
+      "location": "Localização",
+      "item": "Item",
+      "faction": "Facção",
+      "event": "Evento"
+    },
+    "add_dimension": "Adicionar dimensão",
+    "no_extra_dims": "Usa as dimensões integradas para este tipo.",
+    "dim_id": "id",
+    "dim_label": "rótulo",
+    "dim_weight": "peso",
+    "dim_required": "obrigatório",
+    "remove_dimension": "Remover dimensão",
+    "hide": "Ocultar",
+    "suggest": "Sugerir do livro",
+    "suggesting": "Analisando…",
+    "suggest_model": "Modelo de sugestão",
+    "select_model": "Selecione um modelo…",
+    "suggest_hint": "A IA lê os metadados do livro + capítulos para propor um rascunho que você pode editar. Nada é salvo até que você clique em Salvar.",
+    "suggested": "Rascunho sugerido — revise e depois Salve",
+    "saving": "Salvando…",
+    "saved": "Perfil salvo",
+    "source": "Fonte: {{source}}",
+    "source_seed": "semente",
+    "source_ai_suggested": "Sugerido por IA",
+    "source_manual": "manual"
+  }
+}

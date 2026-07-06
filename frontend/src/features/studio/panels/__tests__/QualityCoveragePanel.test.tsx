@@ -1,0 +1,65 @@
+// Studio Quality tab — QualityCoveragePanel: resolves the book's composition Work, offers a
+// model picker (BookPromiseCoverageSection's underlying hook needs a modelRef to enable its
+// Run button), and renders BookPromiseCoverageSection (DOCK-2 reuse) once a project resolves.
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import type { IDockviewPanelProps } from 'dockview-react';
+import { StudioHostProvider } from '../../host/StudioHostProvider';
+
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+
+const useWorkResolution = vi.fn();
+vi.mock('@/features/composition/hooks/useWork', () => ({
+  useWorkResolution: (bookId: string, token: string | null) => useWorkResolution(bookId, token),
+}));
+
+vi.mock('@/features/composition/components/BookPromiseCoverageSection', () => ({
+  BookPromiseCoverageSection: ({ projectId, token, modelRef }: { projectId: string; token: string | null; modelRef: string }) => (
+    <div data-testid="stub-coverage-section" data-project={projectId} data-token={token ?? ''} data-model={modelRef} />
+  ),
+}));
+
+vi.mock('@/components/model-picker', () => ({
+  ModelPicker: ({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) => (
+    <button data-testid="stub-model-picker" data-value={value ?? ''} onClick={() => onChange('model-1')}>pick</button>
+  ),
+}));
+
+import { QualityCoveragePanel } from '../QualityCoveragePanel';
+
+function dockProps() {
+  return { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps;
+}
+
+function withHost(bookId: string) {
+  return render(<StudioHostProvider bookId={bookId}><QualityCoveragePanel {...dockProps()} /></StudioHostProvider>);
+}
+
+beforeEach(() => { useWorkResolution.mockReset(); });
+
+describe('QualityCoveragePanel', () => {
+  it('shows a loading state while the Work is resolving', () => {
+    useWorkResolution.mockReturnValue({ isLoading: true, data: undefined });
+    withHost('b1');
+    expect(screen.getByTestId('quality-coverage-loading')).toBeInTheDocument();
+  });
+
+  it('shows a no-work empty state when the book has no composition Work', () => {
+    useWorkResolution.mockReturnValue({ isLoading: false, data: { status: 'none', work: null } });
+    withHost('b1');
+    expect(screen.getByTestId('quality-coverage-no-work')).toBeInTheDocument();
+    expect(screen.queryByTestId('stub-coverage-section')).toBeNull();
+  });
+
+  it('renders the model picker + coverage section, forwarding the picked model into the section', () => {
+    useWorkResolution.mockReturnValue({
+      isLoading: false,
+      data: { status: 'found', work: { project_id: 'proj-1' } },
+    });
+    withHost('b1');
+    expect(screen.getByTestId('stub-coverage-section')).toHaveAttribute('data-model', '');
+    fireEvent.click(screen.getByTestId('stub-model-picker'));
+    expect(screen.getByTestId('stub-coverage-section')).toHaveAttribute('data-model', 'model-1');
+    expect(screen.getByTestId('stub-coverage-section')).toHaveAttribute('data-project', 'proj-1');
+  });
+});

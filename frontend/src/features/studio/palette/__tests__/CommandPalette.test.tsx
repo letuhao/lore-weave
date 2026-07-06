@@ -9,7 +9,8 @@ const panel = (id: string): StudioPanelDef =>
 
 const setup = (over: Partial<React.ComponentProps<typeof CommandPalette>> = {}) => {
   const props: React.ComponentProps<typeof CommandPalette> = {
-    open: true, onClose: vi.fn(), chrome: chrome(), panels: [], onOpenQuickOpen: vi.fn(), onOpenPanel: vi.fn(), ...over,
+    open: true, onClose: vi.fn(), chrome: chrome(), panels: [], onOpenQuickOpen: vi.fn(), onOpenPanel: vi.fn(),
+    onChooseYourFocus: vi.fn(), onStartGuidedTour: vi.fn(), ...over,
   };
   render(<CommandPalette {...props} />);
   return props;

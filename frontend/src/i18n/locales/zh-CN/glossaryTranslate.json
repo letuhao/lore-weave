@@ -1,0 +1,87 @@
+{
+  "title": "术语表翻译",
+  "subtitle": "使用 AI 批量翻译实体属性",
+  "steps": {
+    "config": "设置",
+    "confirm": "确认",
+    "progress": "进度",
+    "results": "结果"
+  },
+  "config": {
+    "title": "翻译设置",
+    "description": "选择目标语言和模型。所有包含原文的属性都将被翻译。",
+    "sourceLanguage": "源语言",
+    "sourceUnknown": "来自书籍",
+    "targetLanguage": "目标语言",
+    "overwriteMode": "覆盖策略",
+    "model": "模型",
+    "noModels": "未配置模型。",
+    "addInSettings": "在设置中添加",
+    "selectModel": "选择模型...",
+    "allAttrsNote": "所有具有原始值的属性都会被包含在内。已验证的翻译永远不会被覆盖。",
+    "sameLanguageError": "目标语言必须与书籍源语言不同。",
+    "thinkingEnabled": "启用思考/推理",
+    "thinkingHint": "默认关闭。如果希望 Gemma 及类似模型在回答前进行推理，请开启此选项。",
+    "mode": {
+      "missing_only": {
+        "label": "仅翻译缺失项",
+        "hint": "跳过在目标语言中已有翻译的属性。"
+      },
+      "refresh_machine": {
+        "label": "刷新机器翻译",
+        "hint": "重新翻译草稿和机器翻译内容。已验证的翻译将保持不变。"
+      }
+    }
+  },
+  "confirm": {
+    "languages": "语言",
+    "mode": "模式",
+    "model": "模型",
+    "estimateNote": "实体数量和 Token 使用量在任务开始时确定。实际使用量取决于每个实体的属性数量。",
+    "editConfig": "编辑设置",
+    "startTranslate": "开始翻译",
+    "startFailed": "启动翻译任务失败",
+    "thinkingOn": "思考：开启",
+    "thinkingOff": "思考：关闭"
+  },
+  "progress": {
+    "title": "正在翻译术语表",
+    "processing": "正在处理第 {{current}} / {{total}} 个实体...",
+    "entityProgress": "实体进度",
+    "entitiesCount": "{{completed}} / {{total}} 个实体",
+    "failedCount": "{{count}} 个失败",
+    "attrsTranslated": "已翻译属性",
+    "attrsSkipped": "已跳过属性",
+    "entitiesDone": "已完成实体",
+    "entitiesFailed": "失败实体",
+    "cancel": "取消",
+    "cancelConfirm": "要取消此翻译任务吗？已处理的实体将保留其翻译。",
+    "cancelRequested": "正在请求取消",
+    "noEntities": "该语言无需翻译任何实体。"
+  },
+  "results": {
+    "title": "翻译完成",
+    "titleNoEntities": "无须翻译",
+    "titleWithErrors": "翻译完成（存在错误）",
+    "titleFailed": "翻译失败",
+    "titleCancelled": "翻译已取消",
+    "duration": "{{count}} 个实体，耗时 {{duration}}",
+    "attrsTranslated": "已翻译",
+    "attrsSkipped": "已跳过",
+    "entitiesDone": "已完成实体",
+    "entitiesFailed": "失败实体",
+    "partialFailure": "{{count}} 个实体失败",
+    "tokenUsage": "Token 使用量",
+    "estimated": "预估：{{tokens}}",
+    "noEntities": "该语言的所有实体属性均已有翻译，或者没有任何属性包含原文。",
+    "machineNote": "翻译将以机器置信度形式保存 —— 请在实体编辑器中进行检查和验证。",
+    "viewGlossary": "在术语表中查看",
+    "runAgain": "再次翻译",
+    "close": "关闭"
+  },
+  "button": {
+    "next": "下一步",
+    "back": "返回",
+    "cancel": "取消"
+  }
+}

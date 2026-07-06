@@ -31,11 +31,9 @@ func TestRequireUserID(t *testing.T) {
 	t.Parallel()
 	uid := uuid.New()
 	secret := "12345678901234567890123456789012"
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   uid.String(),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-		},
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Subject:   uid.String(),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 	})
 	signed, err := tok.SignedString([]byte(secret))
 	if err != nil {

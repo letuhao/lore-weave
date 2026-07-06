@@ -70,8 +70,9 @@
       "extraction": "擷取",
       "extractionEnabled": "已啟用",
       "extractionDisabled": "已停用",
-      "bookId": "書籍",
-      "none": "—"
+      "none": "—",
+      "book": "書籍",
+      "world": "世界觀"
     },
     "placeholder": {
       "proposals": "待處理提案將顯示於此（C11）。",
@@ -381,6 +382,8 @@
       "loading": "正在載入實體…",
       "loadFailed": "無法載入實體：{{error}}",
       "close": "關閉",
+      "edit": "編輯",
+      "merge": "合併到其他實體",
       "metadata": "中繼資料",
       "description": "描述",
       "descriptionSource": "來自連結的詞彙表項目",
@@ -403,8 +406,6 @@
         "mentions": "提及次數",
         "anchor": "錨定分數"
       },
-      "edit": "編輯",
-      "merge": "合併到其他實體",
       "promote": "提升至詞彙表",
       "promoteHint": "已發現的實體。提升後會建立一份待審的 AI 建議詞彙表草稿。",
       "promotePending": "提升中…",
@@ -586,7 +587,9 @@
         "oldest": "最舊優先",
         "name_asc": "名稱 (A–Z)",
         "name_desc": "名稱 (Z–A)"
-      }
+      },
+      "thisBookOnly": "僅此書",
+      "showAllBooks": "顯示所有書籍"
     },
     "card": {
       "staticMemory": "靜態記憶",
@@ -598,43 +601,6 @@
       "delete": "刪除",
       "tuneExtraction": "調整抽取",
       "bookId": "book_id"
-    },
-    "extractionTuning": {
-      "title": "調整抽取",
-      "description": "各小說的抽取設定。變更套用於本專案的下一次抽取執行。",
-      "filterEnabled": "精確度過濾（捨棄低支持度的抽取）",
-      "category": {
-        "entity": "實體",
-        "relation": "關係",
-        "event": "事件"
-      },
-      "categoriesRequired": "至少選擇一個類別，或關閉過濾器。",
-      "partialPolicy": "部分匹配：",
-      "policyKeep": "保留",
-      "policyDrop": "捨棄",
-      "defaultModel": "預設擷取模型",
-      "defaultModelNone": "使用我的全域預設",
-      "defaultModelHint": "除非在下方覆寫，否則每個擷取步驟都使用此模型。留空時，各角色會回退到您的全域預設模型（設定），再退到本次建置執行的模型。",
-      "recoveryEnabled": "實體復原（找回遺漏的實體）",
-      "recoveryModel": "復原模型（選填）",
-      "recoveryModelNone": "使用預設擷取模型",
-      "recoveryModelHint": "找回主流程遺漏之實體的 LLM。維持預設時，會沿用上方的預設擷取模型。",
-      "recoveryBatch": "批次大小",
-      "recoveryBatchHint": "每次分類呼叫的名稱數（1-20；預設 5）",
-      "autocreateEnabled": "撰寫自動建立（建立關係所參照的實體）",
-      "promptWarning": "進階：自訂提示會取代該步驟的預設抽取指示，可能降低品質。留空以使用預設。一律強制 JSON 輸出。",
-      "promptPlaceholder": "留空以使用預設提示",
-      "prompt": {
-        "entity": "實體抽取提示",
-        "relation": "關係抽取提示",
-        "event": "事件抽取提示",
-        "fact": "事實抽取提示"
-      },
-      "save": "儲存",
-      "saving": "儲存中…",
-      "cancel": "取消",
-      "saved": "已儲存抽取設定。",
-      "failed": "儲存失敗：{{error}}"
     },
     "form": {
       "createTitle": "新增專案",
@@ -901,6 +867,43 @@
       "failed": "變更失敗: {{error}}",
       "alreadyAtModel": "模型已設為 {{model}} — 可能被其他裝置變更。"
     },
+    "extractionTuning": {
+      "title": "調整抽取",
+      "description": "各小說的抽取設定。變更套用於本專案的下一次抽取執行。",
+      "filterEnabled": "精確度過濾（捨棄低支持度的抽取）",
+      "category": {
+        "entity": "實體",
+        "relation": "關係",
+        "event": "事件"
+      },
+      "categoriesRequired": "至少選擇一個類別，或關閉過濾器。",
+      "partialPolicy": "部分匹配：",
+      "policyKeep": "保留",
+      "policyDrop": "捨棄",
+      "defaultModel": "預設擷取模型",
+      "defaultModelNone": "使用我的全域預設",
+      "defaultModelHint": "除非在下方覆寫，否則每個擷取步驟都使用此模型。留空時，各角色會回退到您的全域預設模型（設定），再退到本次建置執行的模型。",
+      "recoveryEnabled": "實體復原（找回遺漏的實體）",
+      "recoveryModel": "復原模型（選填）",
+      "recoveryModelNone": "使用預設擷取模型",
+      "recoveryModelHint": "找回主流程遺漏之實體的 LLM。維持預設時，會沿用上方的預設擷取模型。",
+      "recoveryBatch": "批次大小",
+      "recoveryBatchHint": "每次分類呼叫的名稱數（1-20；預設 5）",
+      "autocreateEnabled": "撰寫自動建立（建立關係所參照的實體）",
+      "promptWarning": "進階：自訂提示會取代該步驟的預設抽取指示，可能降低品質。留空以使用預設。一律強制 JSON 輸出。",
+      "promptPlaceholder": "留空以使用預設提示",
+      "prompt": {
+        "entity": "實體抽取提示",
+        "relation": "關係抽取提示",
+        "event": "事件抽取提示",
+        "fact": "事實抽取提示"
+      },
+      "save": "儲存",
+      "saving": "儲存中…",
+      "cancel": "取消",
+      "saved": "已儲存抽取設定。",
+      "failed": "儲存失敗：{{error}}"
+    },
     "confirmDestructive": {
       "cancel": "取消",
       "deleteGraph": {
@@ -954,6 +957,7 @@
       "noModels": "您沒有註冊的聊天模型。請先在 AI 模型中新增一個。",
       "costHint": "預估費用：少量（<$0.05）。輸出上限為 500 個代幣。",
       "editLockHint": "最近 30 天內的手動編輯受保護——如您最近有編輯，重新生成將被略過。",
+      "disabledDirty": "請先儲存或重設未保存的編輯，再進行重新生成——當您有未保存的變更時，重新生成的結果不會出現在編輯器中。",
       "editLockDefault": "您最近的手動編輯在 30 天內受保護，不會被重新生成。",
       "confirm": "重新生成",
       "regenerating": "重新生成中…",
@@ -964,8 +968,7 @@
       "concurrentEdit": "手動編輯與重新生成發生衝突。請查看當前簡介並再試一次。",
       "guardrailFailed": "重新生成未通過品質檢查：{{reason}}",
       "providerError": "您的 AI 服務商傳回錯誤：{{reason}}",
-      "unknownError": "重新生成失敗：{{reason}}",
-      "disabledDirty": "請先儲存或重設未保存的編輯，再進行重新生成——當您有未保存的變更時，重新生成的結果不會出現在編輯器中。"
+      "unknownError": "重新生成失敗：{{reason}}"
     },
     "preferences": {
       "title": "已學到的偏好",

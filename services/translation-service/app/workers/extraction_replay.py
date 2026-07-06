@@ -24,7 +24,7 @@ import hashlib
 import json
 import logging
 
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from ..config import settings
 from .extraction_preprocessor import prepare_chapter_text
@@ -33,18 +33,18 @@ from .glossary_client import post_extracted_entities
 
 log = logging.getLogger(__name__)
 
-_CHAPTER_TIMEOUT = httpx.Timeout(connect=10, read=30, write=30, pool=5)
+_CHAPTER_READ_TIMEOUT = 30.0     # seconds
+_CHAPTER_CONNECT_TIMEOUT = 10.0  # seconds
 
 
 async def _fetch_chapter(book_id: str, chapter_id: str) -> dict | None:
     """GET the chapter from book-service (text + sort_order + original_language). None on
     any non-200 / transport failure."""
     try:
-        async with httpx.AsyncClient(timeout=_CHAPTER_TIMEOUT) as client:
+        async with build_internal_client(settings.book_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_CHAPTER_READ_TIMEOUT, connect_timeout_s=_CHAPTER_CONNECT_TIMEOUT) as client:
             r = await client.get(
                 f"{settings.book_service_internal_url}"
                 f"/internal/books/{book_id}/chapters/{chapter_id}",
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
         if r.status_code != 200:
             log.warning("replay: book-service returned %d for chapter %s", r.status_code, chapter_id)

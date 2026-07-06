@@ -749,5 +749,120 @@
       "deceived": "Deceived",
       "gap": "Gap"
     }
+  },
+  "authoringRun": {
+    "navRuns": "運行",
+    "navNewRun": "新增運行",
+    "navMission": "任務控制台",
+    "list": {
+      "title": "本書的運行紀錄",
+      "newRun": "+ 新增運行",
+      "blockedBanner": "此書籍已有一個 {{status}} 的運行 — 每本書僅允許一個進行中的運行。請在下方開啟它，或先暫停/關閉它。",
+      "blockedTooltip": "請先暫停或關閉進行中的運行。",
+      "colRun": "運行",
+      "colScope": "範圍",
+      "colStatus": "狀態",
+      "colSpent": "花費",
+      "colCreated": "建立時間",
+      "scopeCount": "{{count}} 個章節",
+      "empty": "此書籍尚無自動撰寫運行。",
+      "loading": "載入運行中…",
+      "error": "無法載入運行。"
+    },
+    "newRun": {
+      "title": "新運行 — 設定",
+      "planLabel": "規劃（必填 — 運行會依照已核准規劃的節拍進行撰寫）",
+      "planEmpty": "此書籍尚無已核准的規劃運行。",
+      "planEmptyCta": "開啟規劃工具以建立 →",
+      "chaptersLabel": "要包含的章節（書籍目錄）",
+      "chaptersHint": "書中共 {{total}} 章 · 已選 {{selected}} 章",
+      "orderLabel": "運行順序",
+      "budgetLabel": "預算（美元）",
+      "levelLabel": "等級",
+      "level3": "等級 3 — 修訂",
+      "level4": "等級 4 — 撰寫",
+      "allowlistLabel": "工具允許清單",
+      "allowlistAdd": "新增工具…",
+      "runGateCheck": "執行閘門檢查 →",
+      "gating": "檢查中…",
+      "cancel": "取消"
+    },
+    "gate": {
+      "title": "閘門檢查",
+      "checkPlan": "規劃存在且已核准",
+      "checkScope": "範圍章節存在且可排序",
+      "checkBudget": "已宣告預算（> $0）",
+      "checkAllowlist": "已設定工具允許清單",
+      "startBlocked": "請先修正下方未通過的閘門檢查。"
+    },
+    "header": {
+      "gate": "閘門 →",
+      "start": "開始",
+      "pause": "暫停",
+      "resume": "繼續",
+      "close": "關閉",
+      "revertAll": "全部還原",
+      "closedNote": "運行已關閉 — 終止狀態，無法再進行任何操作。",
+      "breakerLabel": "斷路器",
+      "breakerHealthy": "正常",
+      "breakerReason": {
+        "pauseAfterEachUnit": "為審核而暫停(每個單元後)",
+        "budget": "預算已用盡",
+        "criticSevere": "評論家標記了嚴重問題",
+        "unitFailed": "一個單元失敗",
+        "driverCrashed": "驅動程式已崩潰"
+      },
+      "heartbeatLabel": "心跳",
+      "heartbeatFresh": "新鮮",
+      "heartbeatStale": "過期 — 驅動程式可能已停止",
+      "heartbeatNA": "無",
+      "budgetLabel": "預算",
+      "budgetDanger": "接近上限",
+      "pollActive": "每 {{secs}} 秒輪詢一次(REST — 無即時串流)",
+      "pollLastRefreshed": "{{secs}} 秒前更新",
+      "pollRefreshingNow": "更新中…",
+      "pollSuspended": "輪詢已暫停 — 運行未啟用中",
+      "pausePolicyLabel": "每個單元後自動暫停",
+      "errorPrefix": "錯誤訊息："
+    },
+    "queue": {
+      "title": "單元佇列",
+      "hint": "點擊一個章節以在下方閱讀其草稿。",
+      "unitLabel": "單元 {{index}}"
+    },
+    "diff": {
+      "title": "草稿審閱",
+      "prev": "← 上一個",
+      "next": "下一個 →",
+      "openFullDiff": "開啟完整編輯器差異比較",
+      "notDrafted": "尚未草擬 — 無可審閱內容。",
+      "notReached": "運行在到達此章節前已停止。",
+      "failedUnit": "此單元失敗：",
+      "verdictShow": "顯示詳情 ▾",
+      "verdictHide": "隱藏詳情 ▴",
+      "sev": { "ok": "正常", "warn": "警告", "severe": "嚴重" },
+      "cascadeWarning": "{{count}} 個下游單元已草擬/接受（{{chapters}}）— 此為僅供參考的提示；拒絕此單元並不會自動還原它們。",
+      "accept": "接受",
+      "reject": "拒絕",
+      "alreadyReviewed": "已審閱 — 目前狀態為 {{status}}。",
+      "blockedReview": "運行狀態為 {{status}} 時無法接受/拒絕 — 後端僅允許在運行停止後（report_ready / failed / paused）進行審閱。請先暫停運行才能審閱此章節。",
+      "keyboardHint": "鍵盤快捷鍵：a=接受 · r=拒絕 · ←/→ 或 p/n = 上一個/下一個單元"
+    },
+    "revert": {
+      "title": "還原所有已草擬/已接受的單元？",
+      "body": "此操作會依相反順序拒絕每個已草擬/已接受的單元，並將每個章節還原至運行前的版本。此操作在此介面中無法復原。受影響項目：",
+      "none": "沒有已草擬/已接受的單元可還原。",
+      "confirm": "全部還原",
+      "cancel": "取消",
+      "reverting": "還原中…",
+      "partialTitle": "還原中途停止",
+      "partialBody": "單元 {{index}} 還原失敗（{{error}}）。停止前已成功還原 {{count}} 個單元；運行維持開啟狀態（與先前相同）以便你重試。",
+      "successBody": "已還原全部 {{count}} 個單元；運行現已關閉。"
+    },
+    "mission": {
+      "empty": "從運行清單開啟一個運行以檢視其任務控制台。",
+      "loading": "載入運行中…",
+      "back": "← 返回運行清單"
+    }
   }
 }

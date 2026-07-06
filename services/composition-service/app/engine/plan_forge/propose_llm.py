@@ -30,6 +30,21 @@ def _normalize_var_deltas(events: list[dict[str, Any]]) -> None:
             d["coupled_to_realm"] = False
 
 
+def _normalize_synopsis(events: list[dict[str, Any]]) -> None:
+    """The materialize prompt asks for a string but doesn't forbid a bullet
+    array — observed live (D-PLANFORGE-PA-REALM-FALSE-POSITIVE audit) the
+    model sometimes emits `synopsis` as a list of bullet strings instead of
+    one joined string, which crashes `validate.run_rules`'s `.lower()` call.
+    Coerce to the canonical string shape, same spirit as
+    `links.normalize_planner_notes`."""
+    for ev in events:
+        syn = ev.get("synopsis")
+        if isinstance(syn, list):
+            ev["synopsis"] = " ".join(str(s).strip() for s in syn if str(s).strip())
+        elif syn is None:
+            ev["synopsis"] = ""
+
+
 def _pad_traits_from_analyze(spec: dict[str, Any], analyze: dict[str, Any] | None) -> None:
     if not analyze:
         return
@@ -74,6 +89,7 @@ def normalize_spec(
     spec.setdefault("events", [])
     normalize_planner_notes(spec["events"])
     _normalize_var_deltas(spec["events"])
+    _normalize_synopsis(spec["events"])
     auto_links = build_links_from_events(spec["events"])
     spec["links"] = merge_links(spec.get("links", []), auto_links)
     return post_normalize_spec(spec)

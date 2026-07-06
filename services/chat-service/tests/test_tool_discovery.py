@@ -35,10 +35,12 @@ from tests.test_stream_tools import (
 # ── catalog builders ─────────────────────────────────────────────────────────
 
 
-def _tool(name: str, desc: str = "", *, tier: str = "R", synonyms=None) -> dict:
+def _tool(name: str, desc: str = "", *, tier: str = "R", synonyms=None, visibility: str | None = None) -> dict:
     meta: dict = {"tier": tier}
     if synonyms:
         meta["synonyms"] = synonyms
+    if visibility:
+        meta["visibility"] = visibility
     return {
         "type": "function",
         "function": {
@@ -125,6 +127,40 @@ class TestSearchCatalog:
             _CATALOG, "create a book", 8, exclude={"book_create"}
         )
         assert "book_create" not in [m["name"] for m in matches]
+
+    def test_one_incidental_shared_word_does_not_outrank_a_real_overlap(self):
+        """review-impl live-verification finding (2026-07-06): the fuzzy-rescue
+        branch's own docstring says it rescues a tool with NO token overlap, but
+        the code never checked that — an EXACT single-token overlap (ratio=1.0
+        for identical strings) always qualified as a "strong fuzzy hit," so ANY
+        incidental shared word (however generic) overrode the whole score to
+        1.0. Live-verified at the real ~190-tool federated catalog: intent "add
+        a new kind to the book" scored translation_start_job a perfect 1.0 via
+        its synonym "translate a book" sharing only the word "book," outranking
+        glossary_ontology_upsert's genuine 3-token overlap (add/a/kind)."""
+        cat = [
+            _tool("glossary_ontology_upsert",
+                  "Create or update book- or user-tier ontology rows (genre, kind, attribute).",
+                  tier="A", synonyms=["add a kind", "add a genre", "add an attribute"]),
+            # Shares ONLY the word "book" with the intent below — via a synonym,
+            # not its name/description — and is otherwise wholly unrelated.
+            _tool("translation_start_job", "Start translating a chapter into another language",
+                  tier="W", synonyms=["translate a book"]),
+        ]
+        matches, confident = td.search_catalog(cat, "add a new kind to the book", 8)
+        names = [m["name"] for m in matches]
+        assert names[0] == "glossary_ontology_upsert"
+        assert confident
+
+    def test_fuzzy_rescue_still_works_for_a_genuine_no_overlap_near_spelling(self):
+        """The overlap==0 gate must not break the rescue it was designed for —
+        a genuine near-miss spelling of the ONLY identifying word, with zero
+        exact token overlap otherwise."""
+        cat = [_tool("translation_start_job", "Start translating a book",
+                      tier="W", synonyms=["translate", "translation"])]
+        matches, confident = td.search_catalog(cat, "translit this chapter", 8)
+        assert [m["name"] for m in matches] == ["translation_start_job"]
+        assert confident
 
 
 class TestTierReaders:
@@ -534,6 +570,7 @@ _MIXED_CATALOG = [
     _tool("translation_start_job", "Start a translation", tier="W"),
     _tool("settings_list_models", "List models", tier="R"),
     _tool("memory_search", "Search conversation memory", tier="R"),
+    _tool("story_search", "Universal manuscript search", tier="R"),
 ]
 
 
@@ -541,16 +578,22 @@ class TestSurfaceHotDomains:
     def test_universal_is_pure_discovery(self):
         assert td.surface_hot_domains(editor=False, book_scoped=False) == set()
 
-    def test_book_scoped_is_glossary_only(self):
-        assert td.surface_hot_domains(editor=False, book_scoped=True) == {"glossary"}
+    def test_book_scoped_hot_is_glossary_and_story(self):
+        # story_search (the universal manuscript find) is hot on every book-bound
+        # surface — a weak model otherwise punts instead of discovering it (measured).
+        assert td.surface_hot_domains(editor=False, book_scoped=True) == {"glossary", "story"}
 
     def test_editor_matches_book_glossary_skill(self):
-        # Both surfaces inject the glossary skill (names glossary_* only); the
-        # editor's prose write-back is a FRONTEND tool, not a backend domain — so
-        # the editor's hot domains equal the book-scoped surface's.
+        # Both surfaces inject the glossary skill (names glossary_* only) + the story
+        # search; the editor's prose write-back is a FRONTEND tool, not a backend
+        # domain — so the editor's hot domains equal the book-scoped surface's.
         editor = td.surface_hot_domains(editor=True, book_scoped=True)
         book = td.surface_hot_domains(editor=False, book_scoped=True)
-        assert editor == book == {"glossary"}
+        assert editor == book == {"glossary", "story"}
+
+    def test_studio_hot_includes_story(self):
+        studio = td.surface_hot_domains(studio=True)
+        assert {"glossary", "composition", "story"} <= studio
 
 
 class TestHotToolNames:
@@ -587,6 +630,9 @@ class TestHotSetAdvertisedOnFirstPass:
         names = {t["function"]["name"] for t in adv}
         # glossary hot set present immediately
         assert {"glossary_search", "glossary_get_entity", "glossary_propose_batch"} <= names
+        # story_search (universal manuscript find) is hot on a book surface too, so the
+        # agent can search/read the manuscript without a find_tools round-trip it never makes
+        assert "story_search" in names
         # book-scoped frontend write-back tools present
         assert "glossary_propose_entity_edit" in names
         # the long tail is NOT advertised — it's discovered on demand
@@ -639,3 +685,113 @@ class TestHotSetAdvertisedOnFirstPass:
         assert kc.mcp_execute_tool.await_count == 1
         assert kc.mcp_execute_tool.await_args.kwargs["tool_name"] == "glossary_search"
         assert chunks[-1]["finish_reason"] == "stop"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CAT-4 (mcp-tool-io.md Part 4) — legacy tool visibility
+# ════════════════════════════════════════════════════════════════════════════
+
+_LEGACY_CATALOG = [
+    _tool("glossary_book_create", "Create a book-native genre, kind, or attribute.",
+          tier="A", synonyms=["add a kind", "add a genre", "create attribute"],
+          visibility="legacy"),
+    _tool("glossary_user_create", "Create a genre, kind, or attribute in your library.",
+          tier="A", synonyms=["add a kind"], visibility="legacy"),
+    _tool("glossary_ontology_upsert",
+          "Create or update book- or user-tier ontology rows (genre, kind, attribute).",
+          tier="A", synonyms=["add a kind", "add a genre", "add an attribute"]),
+    _tool("glossary_search", "Search glossary entities", tier="R"),
+]
+
+
+class TestVisibilityReaders:
+    def test_defaults_to_discoverable_without_meta(self):
+        assert td.tool_visibility({"function": {"name": "x"}}) == "discoverable"
+        assert td.is_legacy_tool({"function": {"name": "x"}}) is False
+
+    def test_reads_legacy_from_meta(self):
+        t = _tool("glossary_book_create", visibility="legacy")
+        assert td.tool_visibility(t) == "legacy"
+        assert td.is_legacy_tool(t) is True
+
+    def test_unknown_visibility_value_is_not_legacy(self):
+        t = {"function": {"name": "x", "_meta": {"visibility": "bogus"}}}
+        assert td.tool_visibility(t) == "discoverable"
+
+
+class TestSearchCatalogCAT4:
+    def test_legacy_tool_never_matches_even_on_exact_synonym(self):
+        """The regression the eval caught: without CAT-4, the legacy tool's short
+        punchy description out-scores the new tool on raw token overlap. CAT-4
+        must exclude it categorically, not rely on ranking."""
+        matches, confident = td.search_catalog(_LEGACY_CATALOG, "add a new kind to the book", 3)
+        names = [m["name"] for m in matches]
+        assert "glossary_book_create" not in names
+        assert "glossary_user_create" not in names
+        assert "glossary_ontology_upsert" in names
+        assert confident
+
+    def test_group_scopes_to_one_domain(self):
+        matches, _ = td.search_catalog(_MIXED_CATALOG, "list something", 8, group="book")
+        names = {m["name"] for m in matches}
+        assert names <= {"book_create", "book_list"}
+
+    def test_group_none_searches_everything(self):
+        matches, _ = td.search_catalog(_MIXED_CATALOG, "create a book", 8, group=None)
+        names = {m["name"] for m in matches}
+        assert "book_create" in names
+
+
+class TestHotToolNamesCAT4:
+    def test_legacy_tool_excluded_from_hot_seed_even_in_its_domain(self):
+        hot = td.hot_tool_names(_LEGACY_CATALOG, {"glossary"})
+        assert "glossary_book_create" not in hot
+        assert "glossary_user_create" not in hot
+        assert "glossary_search" in hot
+        assert "glossary_ontology_upsert" in hot
+
+
+class TestGroupDirectory:
+    def test_glossary_entry_exists(self):
+        assert "glossary" in td.GROUP_DIRECTORY
+
+    def test_text_is_deterministic_and_mentions_group_param(self):
+        text = td.group_directory_text()
+        assert "glossary" in text
+        assert "group=" in text
+
+    def test_find_tools_schema_advertises_group_enum(self):
+        props = td.FIND_TOOLS_TOOL["function"]["parameters"]["properties"]
+        assert props["group"]["enum"] == sorted(td.GROUP_DIRECTORY)
+
+
+class TestLegacyToolsCatalog:
+    """Part D — the server-sourced feed backing the `pinned_legacy_tools`
+    manual-injection setting (GET /v1/chat/tools/catalog?visibility=legacy)."""
+
+    def test_returns_only_legacy_tools_sorted_by_name(self):
+        items = td.legacy_tools_catalog(_LEGACY_CATALOG)
+        names = [i["name"] for i in items]
+        assert names == ["glossary_book_create", "glossary_user_create"]
+        assert all(i["description"] for i in items)
+
+    def test_empty_when_catalog_has_no_legacy_tools(self):
+        assert td.legacy_tools_catalog([_tool("glossary_search", tier="R")]) == []
+
+
+class TestUnknownPinnedLegacyNames:
+    """SET-6 closed-set validation for a PATCH pinned_legacy_tools write."""
+
+    def test_all_valid_returns_empty(self):
+        unknown = td.unknown_pinned_legacy_names(_LEGACY_CATALOG, ["glossary_book_create"])
+        assert unknown == []
+
+    def test_unknown_name_is_rejected(self):
+        unknown = td.unknown_pinned_legacy_names(_LEGACY_CATALOG, ["glossary_book_create", "not_a_real_tool"])
+        assert unknown == ["not_a_real_tool"]
+
+    def test_a_discoverable_tool_cannot_be_pinned_as_legacy(self):
+        """glossary_ontology_upsert is real but NOT legacy — pinning it through
+        this channel is a category error, not a valid escape-hatch use."""
+        unknown = td.unknown_pinned_legacy_names(_LEGACY_CATALOG, ["glossary_ontology_upsert"])
+        assert unknown == ["glossary_ontology_upsert"]

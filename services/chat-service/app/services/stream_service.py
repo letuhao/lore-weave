@@ -36,6 +36,10 @@ from loreweave_llm import (
 
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
+from app.client.known_entities_client import get_known_entities_client
+from app.services.context_autodetect import resolve_context_pressure
+from app.services.entity_presence import EntityPresence, detect_entity_presence
+from app.services.injection_defense import neutralize_injection
 from app.config import settings
 from app.db.suspended_runs import (
     delete_suspended_run,
@@ -43,6 +47,13 @@ from app.db.suspended_runs import (
     save_suspended_run,
 )
 from app.db.tool_approvals import approve_tool, is_tool_approved
+from app.db.conversation_search import (
+    CONVERSATION_SEARCH_NAME,
+    CONVERSATION_SEARCH_TOOL,
+    run_conversation_search,
+)
+from app.db.pool import get_pool
+from app.db.session_blocks import project_story_state
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
 from app.services.frontend_tools import (
@@ -55,6 +66,7 @@ from app.services.tool_discovery import (
     FIND_TOOLS_NAME,
     FIND_TOOLS_TOOL,
     find_tools_result,
+    group_directory_text,
     hot_tool_names,
     strip_tool_meta,
     surface_hot_domains,
@@ -72,15 +84,43 @@ from app.services.subagent_runtime import (
 )
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
-from app.services.compaction import compact_messages, summary_message
+# T0 / L3 (Context Budget Law §6a, §14a) — the single concise-wire funnel for
+# every model-facing tool-result `content` string (ensure_ascii=False + drop-None).
+from app.services.tool_result_wire import (
+    tool_result_content,
+    tool_result_content_capped,
+    tool_result_content_capped_ex,
+)
+from app.services.compaction import (
+    compact_messages,
+    inject_recovery_hint,
+    summary_message,
+)
+from loreweave_context import (
+    Planner,
+    TraceAccumulator,
+    build_system_message,
+    compute_target,
+)
+
+# T3.2 — the default Context Budget Planner (stateless policy; one shared instance). Swap
+# this (or subclass Planner) to A/B a compaction/budget optimization hypothesis.
+_PLANNER = Planner()
 # W3 — compaction tier 2 (compress instead of drop) shares its summarizer with
 # the manual /compact route; the factored impl lives in compact_service. Bound
 # to the old private name so both in-file call sites stay unchanged.
-from app.services.compact_service import summarize_for_compaction as _summarize_for_compaction
+from app.services.compact_service import (
+    persist_auto_compact,
+    summarize_for_compaction as _summarize_for_compaction,
+)
+from app.services.caching_monitor import build_caching_metrics, detect_thrashing
+from app.services.stateful_chain import decide_chain
 from app.services.token_budget import (
     ContextBreakdown,
     compute_budget,
     context_budget_event,
+    derive_intent,
+    derive_status_flags,
     estimate_messages_tokens,
     estimate_tokens,
 )
@@ -110,6 +150,11 @@ class _Usage:
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    # Prompt-cache split (Provider Context Strategy §7). Summed across a turn's
+    # tool-loop iterations, same as prompt_tokens. 0 when the provider reported no
+    # cache activity. Feeds the contextBudget `caching` monitoring section.
+    cache_creation_tok: int = 0
+    cache_read_tok: int = 0
 
 
 _INLINE_EFFORT_RE = re.compile(
@@ -312,6 +357,8 @@ async def _stream_via_gateway(
                 last_usage = _Usage(
                     prompt_tokens=ev.input_tokens,
                     completion_tokens=ev.output_tokens,
+                    cache_creation_tok=ev.cache_creation_tok or 0,
+                    cache_read_tok=ev.cache_read_tok or 0,
                 )
             elif isinstance(ev, DoneEvent):
                 finish_reason = ev.finish_reason
@@ -620,6 +667,7 @@ async def _stream_with_tools(
     activation_state: dict | None = None,
     surface_tracker=None,
     effective_limit: int | None = None,
+    compact_target: int | None = None,
     permission_mode: str = "write",
     approval_check=None,
     hooks: list[dict] | None = None,
@@ -627,6 +675,10 @@ async def _stream_with_tools(
     subagent_defs: dict[str, dict] | None = None,
     subagent_depth: int = 0,
     allowed_tool_names: set[str] | None = None,
+    trace: "TraceAccumulator | None" = None,
+    stateful: bool = False,
+    previous_response_id: str | None = None,
+    delta_messages: list[dict] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -665,11 +717,41 @@ async def _stream_with_tools(
         idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
     )
     try:
-        working: list[dict] = list(messages)
+        # Stateful CONTINUE sends the DELTA on pass 0 (the server holds the history);
+        # ESTABLISH / stateless send the full `messages`. `messages` (full) is retained
+        # for the E1 re-establish fallback below. _initial_working_len marks the end of
+        # pass-0 content so E1 can splice full-context + the tool results appended since.
+        _continuing = bool(stateful and previous_response_id and delta_messages is not None)
+        working: list[dict] = list(delta_messages) if _continuing else list(messages)
+        _initial_working_len = len(working)
         # C6: on a resume pass, seed the token totals from the suspended first
         # run so the final usage is summed across both runs (design D10).
         total_input = seed_usage[0] if seed_usage else 0
         total_output = seed_usage[1] if seed_usage else 0
+        # Prompt-cache split (§7) summed across this turn's tool-loop iterations, the
+        # same way total_input sums the re-sent prompts. Not seeded from a resume — a
+        # suspended run's cache split is transport-ephemeral, not billed state.
+        total_cache_creation = 0
+        total_cache_read = 0
+        # Stateful /v1/responses chain (P2 §5/E2). `_chain_id` starts at the head to
+        # continue from (None = establish) and advances to each iteration's returned
+        # response_id; the FINAL value is the turn's chain head to persist.
+        # `_stateful_sent` marks how much of `working` the server already holds, so each
+        # stateful iteration sends only the NEW messages (the delta) — the tool-loop
+        # re-send collapse (E2). Stateless mode ignores both (sends full `working`).
+        _chain_id = previous_response_id
+        _stateful_sent = 0
+        # P3 §9 — the true single-call context size (the accumulated server-side size in
+        # stateful mode), tracked as the LAST completion's input_tokens. Distinct from
+        # total_input, which SUMS the tool-loop's re-processing (4 iterations ≈ 4× the
+        # real context) and would make the window-boundary guard fire ~4× too early.
+        _last_call_input = 0
+        # W1/observability (context-explosion fix #5) — count provider completions
+        # this turn. `total_input` is the SUM across them (each tool-loop iteration
+        # re-sends the full prompt incl. tool schemas), so a turn's input_tokens
+        # only makes sense divided by this count. Surfacing it closes the "~103K
+        # unaccounted" gap that hid the tool-loop re-send cost.
+        llm_call_count = 0
         max_tokens = gen_params.get("max_tokens")
         if max_tokens is not None and max_tokens <= 0:
             max_tokens = None
@@ -722,11 +804,21 @@ async def _stream_with_tools(
             # results), so re-compact before every provider call or a long multi-tool
             # turn overflows the window mid-turn. Atom-grouped truncation keeps
             # tool-call/result pairs intact; guarded so it can never break the pass.
-            if effective_limit:
+            #
+            # SKIP in stateful mode (P3 review H2): the full history lives server-side in
+            # the /v1/responses chain, NOT in `working` (which holds only the delta), so
+            # compacting `working` saves nothing — and it MUTATES `working` to a different
+            # length, corrupting the absolute `_stateful_sent`/`_initial_working_len`
+            # indices (→ an empty/wrong delta slice that silently drops tool results). The
+            # chain's size is instead bounded by decide_chain rule-4 (reestablish_window).
+            if effective_limit and not stateful:
                 _rc = None
                 try:
                     working, _rc = await compact_messages(
-                        working, effective_limit=effective_limit, summarize=_loop_summarizer,
+                        working, effective_limit=effective_limit,
+                        target=compact_target, summarize=_loop_summarizer,
+                        add_breadcrumb=settings.compact_breadcrumb_enabled,
+                        collapse_duplicates=settings.compact_collapse_duplicates_enabled,
                     )
                     if _rc.triggered:
                         logger.info(
@@ -745,11 +837,34 @@ async def _stream_with_tools(
             # tool-free final pass (D7). Once the write budget is spent, the next
             # pass must answer in text.
             last_iter = write_passes >= max_iterations - 1
+            # Stateful (P2 §5): send only the messages the server does NOT already hold
+            # (working[_stateful_sent:]) chained onto the prior response id. Stateless:
+            # send the full working list (today's behavior). `_stateful_sent` is advanced
+            # to len(working) right after — before this pass's tool results are appended.
+            if stateful:
+                _messages_out = working[_stateful_sent:]
+                if _stateful_sent > 0:
+                    # Continuation pass (P3 review M4): the slice is the new tool
+                    # exchanges (non-system). The Responses API does NOT inherit
+                    # `instructions` across previous_response_id, so RE-PREPEND the
+                    # current system messages (persona/grounding/tool-use rules) or the
+                    # model loses them while interpreting tool results mid-turn.
+                    _sys = [m for m in working if m.get("role") == "system"]
+                    _messages_out = _sys + [
+                        m for m in _messages_out if m.get("role") != "system"
+                    ]
+            else:
+                _messages_out = working
             request_kwargs: dict = {
                 "model_source": model_source,
                 "model_ref": model_ref,
-                "messages": working,
+                "messages": _messages_out,
             }
+            if stateful:
+                request_kwargs["stateful"] = True
+                if _chain_id:
+                    request_kwargs["previous_response_id"] = _chain_id
+                _stateful_sent = len(working)
             if gen_params.get("temperature") is not None:
                 request_kwargs["temperature"] = gen_params["temperature"]
             if gen_params.get("top_p") is not None:
@@ -781,6 +896,17 @@ async def _stream_with_tools(
                     # discovery path already strips inside _advertise_discovery_tools).
                     if allowed_tool_names is not None:
                         advertised = [strip_tool_meta(td) for td in advertised]
+                # T6/D6 (Context Budget Law) — advertise conversation_search, the
+                # recovery net that lets the agent pull a fact back from THIS
+                # conversation's raw turns after it scrolled out / was compacted.
+                # Appended like run_subagent, but ONLY when the pass already offers
+                # tools — a tool-free turn must NOT be forced onto the tool path
+                # (test_no_tools_no_schema_chunk) — and only at depth 0 (a nested
+                # subagent runs its own scoped surface). Gated on `advertised` here
+                # (BEFORE the run_subagent append) so the guard reflects the real
+                # tool surface, not run_subagent itself.
+                if subagent_depth == 0 and advertised:
+                    advertised = list(advertised) + [CONVERSATION_SEARCH_TOOL]
                 # P5 REG-P5-01 — advertise run_subagent as an always-on tool at the
                 # top level (depth 0 only → a subagent can never spawn another).
                 # Injected AFTER the ask/plan filter so delegation stays available in
@@ -872,9 +998,29 @@ async def _stream_with_tools(
                     elif isinstance(ev, UsageEvent):
                         total_input += ev.input_tokens
                         total_output += ev.output_tokens
+                        total_cache_creation += ev.cache_creation_tok or 0
+                        total_cache_read += ev.cache_read_tok or 0
+                        _last_call_input = ev.input_tokens
+                        llm_call_count += 1
                     elif isinstance(ev, DoneEvent):
                         finish_reason = ev.finish_reason
+                        # Stateful (P2 §5/E2): advance the chain head to this pass's
+                        # response id so the next tool-loop pass / next turn continues
+                        # from it. The final value is the turn's persisted head.
+                        if ev.response_id:
+                            _chain_id = ev.response_id
             except LLMError as exc:
+                # E1 (P2 §6) — a stale previous_response_id: the provider rejected the
+                # chain. Re-establish transparently: resend the FULL working context
+                # with no chain id, from THIS pass, once. DB is truth; the id was a hint.
+                if getattr(exc, "code", "") == "LLM_RESPONSE_CHAIN_NOT_FOUND" and stateful:
+                    # Rebuild FULL context (the delta alone would still be history-less)
+                    # + any tool results appended since pass 0, then resend from scratch.
+                    working = list(messages) + working[_initial_working_len:]
+                    _initial_working_len = len(messages)
+                    _chain_id = None
+                    _stateful_sent = 0
+                    continue
                 # D8 — provider doesn't support tools: drop tools and
                 # retry. Only meaningful when this pass actually offered
                 # them; otherwise the error is real and propagates.
@@ -894,8 +1040,13 @@ async def _stream_with_tools(
                 # No tool calls — this pass IS the final text response.
                 yield {"content": "", "reasoning_content": "",
                        "finish_reason": finish_reason or "stop",
+                       "llm_call_count": llm_call_count,
+                       "response_id": _chain_id,
+                       "context_size": _last_call_input,
                        "usage": _Usage(prompt_tokens=total_input,
-                                       completion_tokens=total_output)}
+                                       completion_tokens=total_output,
+                                       cache_creation_tok=total_cache_creation,
+                                       cache_read_tok=total_cache_read)}
                 return
 
             # The model called tools — record the assistant turn, execute
@@ -944,16 +1095,20 @@ async def _stream_with_tools(
                         limit = int(limit)
                     except (TypeError, ValueError):
                         limit = FIND_TOOLS_DEFAULT_LIMIT
+                    # Part A — optional group scoping (tool-catalog-simplification spec).
+                    group = args_obj.get("group") or None
                     payload, matched = find_tools_result(
                         discovery_catalog or [], intent, limit,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
                         catalog_meta=knowledge_client.get_catalog_meta(),
+                        group=group,
                     )
                     active_tool_names.update(matched)
                     if curated and activation_state is not None:
                         from app.services.tool_surface import merge_activated_tools
                         activation_state["activated_tools"] = merge_activated_tools(
                             activation_state["activated_tools"], matched,
+                            catalog=discovery_catalog,
                         )
                         activation_state["dirty"] = True
                     if surface_tracker is not None:
@@ -967,12 +1122,39 @@ async def _stream_with_tools(
                             yield {"agent_surface": payload_as}
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
-                        "content": json.dumps(payload),
+                        "content": tool_result_content(payload),
                     })
                     yield {"tool_call": {
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": args_obj, "ok": True,
                         "result": payload, "error": None,
+                    }}
+                    continue
+
+                # T6/D6 (Context Budget Law) — conversation_search is CONSUMER-LOCAL
+                # (like find_tools): a pure READ over THIS session's raw turns in
+                # Postgres — the D6 recovery net (pull back a fact dropped from a
+                # compaction summary). It carries no write, so it does NOT decrement
+                # the write budget (H9). A DB error / empty result returns a
+                # self-correcting payload, never a silent no-op (H6/H10).
+                if c["name"] == CONVERSATION_SEARCH_NAME:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    payload = await run_conversation_search(
+                        get_pool(),
+                        session_id=session_id,
+                        owner_user_id=user_id,
+                        args=args_obj,
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(payload),
+                    })
+                    _cs_ok = not payload.get("error")
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": _cs_ok,
+                        "result": payload if _cs_ok else None,
+                        "error": payload.get("error"),
                     }}
                     continue
 
@@ -1010,7 +1192,7 @@ async def _stream_with_tools(
                     total_output += sub_out
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
-                        "content": json.dumps(payload),
+                        "content": tool_result_content(payload),
                     })
                     _sub_ok = not payload.get("error")
                     tool_chunk = {
@@ -1045,7 +1227,7 @@ async def _stream_with_tools(
                     )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
-                        "content": json.dumps({"error": scope_err}),
+                        "content": tool_result_content({"error": scope_err}),
                     })
                     yield {"tool_call": {
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1082,7 +1264,7 @@ async def _stream_with_tools(
                     total_output += c_out
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
-                        "content": json.dumps({"prose": prose}),
+                        "content": tool_result_content({"prose": prose}),
                     })
                     yield {"tool_call": {
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1120,7 +1302,7 @@ async def _stream_with_tools(
                             )
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
-                            "content": json.dumps({"error": ask_err}),
+                            "content": tool_result_content({"error": ask_err}),
                         })
                         yield {"tool_call": {
                             "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1180,7 +1362,7 @@ async def _stream_with_tools(
                             )
                             working.append({
                                 "role": "tool", "tool_call_id": c["id"],
-                                "content": json.dumps({"error": _cap_err}),
+                                "content": tool_result_content({"error": _cap_err}),
                             })
                             yield {"tool_call": {
                                 "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1213,7 +1395,7 @@ async def _stream_with_tools(
                         _denial = {"error": "blocked_by_hook", "message": _hk_msg}
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
-                            "content": json.dumps(_denial),
+                            "content": tool_result_content(_denial),
                         })
                         yield {"tool_call": {
                             "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1233,7 +1415,7 @@ async def _stream_with_tools(
                             )
                             working.append({
                                 "role": "tool", "tool_call_id": c["id"],
-                                "content": json.dumps({"error": _hk_sub_err}),
+                                "content": tool_result_content({"error": _hk_sub_err}),
                             })
                             yield {"tool_call": {
                                 "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1275,7 +1457,7 @@ async def _stream_with_tools(
                         }
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
-                            "content": json.dumps(guidance),
+                            "content": tool_result_content(guidance),
                         })
                         yield {"tool_call": {
                             "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1339,7 +1521,7 @@ async def _stream_with_tools(
                             )
                             working.append({
                                 "role": "tool", "tool_call_id": c["id"],
-                                "content": json.dumps({"error": _sub_appr_err}),
+                                "content": tool_result_content({"error": _sub_appr_err}),
                             })
                             yield {"tool_call": {
                                 "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1372,9 +1554,31 @@ async def _stream_with_tools(
                 )
                 ok = bool(envelope.get("success"))
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
+                # D7 (single-item overflow): a successful generic tool result is a
+                # re-requestable data dump — cap it so one oversized result can't blow the
+                # window; the model gets a self-correcting notice to re-call at a smaller
+                # scope. Error payloads bypass the cap (already small + the error path).
+                if ok:
+                    _tool_content, _capped_tokens = tool_result_content_capped_ex(
+                        tool_payload, tool_name=c["name"],
+                        token_cap=settings.tool_result_token_cap,
+                    )
+                    # Inspector §11 — surface the D7 trip as a trace span so the GUI
+                    # shows WHY a tool result was withheld (was log-only before).
+                    if _capped_tokens is not None and trace is not None:
+                        # is_error per the TraceSpan convention — a D7 withhold is a
+                        # reject/self-correcting-error span, not a plain savings span.
+                        trace.add(
+                            "compile", "T6", "results",
+                            f"d7_overflow:{c['name']}",
+                            delta=-(_capped_tokens),
+                            is_error=True,
+                        )
+                else:
+                    _tool_content = tool_result_content(tool_payload)
                 working.append({
                     "role": "tool", "tool_call_id": c["id"],
-                    "content": json.dumps(tool_payload),
+                    "content": _tool_content,
                 })
                 tool_chunk: dict = {
                     "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1432,8 +1636,16 @@ async def _stream_with_tools(
                 # the caller, which persists the suspended run and emits the
                 # pending tool-call events + a "suspended" finish. No further
                 # passes; the resume request continues the loop.
+                # P3 review H1 — in stateful CONTINUE mode `working` is only the DELTA
+                # (server holds the history), so persisting it would lose the full
+                # conversation the resume needs. Reconstruct the FULL context (the same
+                # splice E1 uses) so the resume runs stateless on the complete history.
+                _susp_working = (
+                    list(messages) + working[_initial_working_len:]
+                    if stateful else working
+                )
                 yield {"suspend": {
-                    "working": working,
+                    "working": _susp_working,
                     "pending_tool_call": suspended_call,
                     "input_tokens": total_input,
                     "output_tokens": total_output,
@@ -1461,8 +1673,13 @@ async def _stream_with_tools(
         # tool-free (D7) so this is unreachable in practice — defensive.
         yield {"content": "", "reasoning_content": "",
                "finish_reason": "stop",
+               "llm_call_count": llm_call_count,
+               "response_id": _chain_id,
+               "context_size": _last_call_input,
                "usage": _Usage(prompt_tokens=total_input,
-                               completion_tokens=total_output)}
+                               completion_tokens=total_output,
+                               cache_creation_tok=total_cache_creation,
+                               cache_read_tok=total_cache_read)}
     finally:
         await client.aclose()
 
@@ -1613,6 +1830,8 @@ async def stream_response(
     enabled_skills: list[str] | None = None,
     studio_context: dict | None = None,
     permission_mode: str = "write",
+    grounding_enabled: bool = True,
+    context_mode: str = "auto",
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -1697,6 +1916,72 @@ async def stream_response(
     _build_project_id, _build_project_ids = resolve_grounding_target(
         session_row, str(project_id) if project_id else None,
     )
+
+    # ── T5 (Context Budget Law D2) — entity-presence intent gate ─────────────
+    # Decide whether this turn references book lore; if not (and it isn't an
+    # anaphoric/discovery turn), skip the EXPENSIVE grounding retrieval — build_context
+    # then serves the LIGHT static path (glossary badges only, no passage vectors /
+    # semantic select / LLM). The story_state Core Block (D4) still projects every turn
+    # as the safety net, so a false-negative never strips loaded lore; the gate is
+    # biased-to-include (opens on any doubt).
+    #
+    # audit fix (2026-07-04): known-entities is BOOK-scoped, but a session carries the
+    # KNOWLEDGE project id — so we resolve the project→book_id first (cached). Passing
+    # the raw project_id was the bug that made the gate a silent no-op (it hit a
+    # book_id route → [] → always open). A no-book / unresolved project → book_id None
+    # → gate stays open (safe).
+    # D-LONG-WORK-CONTEXT-MODE — `context.mode` auto-detect (spec
+    # 2026-07-06-long-work-auto-detect.md). Resolve the book's known-entity
+    # (glossary) size UP FRONT — it's the cheap, already-cached proxy for a
+    # big-lore book, and it's the signal `mode=auto` uses to ENABLE the tiers
+    # for large books (a 4000-chapter book has a big glossary on turn 1, even
+    # with no history). Reused by the T5 gate below, so no extra fetch. The gate
+    # runs BEFORE history assembly, so long-conversation pressure is NOT decided
+    # here — it stays handled by the adaptive compaction downstream.
+    _gate_pid = _build_project_id or (_build_project_ids[0] if _build_project_ids else None)
+    _entity_tokens: frozenset[str] = frozenset()
+    if grounding_enabled and _gate_pid and context_mode != "off":
+        try:
+            _gate_book_id = await knowledge_client.resolve_book_id(
+                user_id=user_id, project_id=str(_gate_pid)
+            )
+            if _gate_book_id:
+                _entity_tokens = await get_known_entities_client().get_known_entity_tokens(
+                    _gate_book_id
+                )
+        except Exception:  # noqa: BLE001 — degrade to gate-open, never break the turn
+            _entity_tokens = frozenset()
+    _auto = resolve_context_pressure(
+        context_mode,
+        window=getattr(creds, "context_length", None),
+        history_tokens=0,  # gate is pre-history-assembly; long-chat pressure → compaction
+        glossary_size=len(_entity_tokens),
+    )
+    # Effective = AND(deploy ceiling, per-session enablement). The env flags are
+    # deploy KILL-SWITCHES (default allow) per the Settings & Config Boundary —
+    # `mode=off` force-disables, `auto` enables on the pressure signal, `on`
+    # forces on. `_auto.reason` is surfaced to the Inspector (no silent default).
+    _ctx_tiers_allowed = _auto.tiers_allowed
+    _t5_gate_on = settings.t5_intent_gate_enabled and _ctx_tiers_allowed
+    logger.info(
+        "context auto-detect: mode=%s tiers_allowed=%s reason=%s pressure=%.2f glossary=%d "
+        "(t5_ceiling=%s → t5_gate_on=%s)",
+        context_mode, _ctx_tiers_allowed, _auto.reason, _auto.pressure,
+        len(_entity_tokens), settings.t5_intent_gate_enabled, _t5_gate_on,
+    )
+    if not grounding_enabled:
+        # Chat & AI settings (spec §3/M3): the user explicitly turned grounding OFF
+        # for this turn. This SHORT-CIRCUITS the gate-disabled force-on branch that
+        # otherwise makes grounding unconditionally ON (the "always-on, no toggle"
+        # silent default). No retrieval is fetched; the T4 story-state net is also
+        # gated off below so a cached bible isn't injected behind the user's back.
+        _grounding_presence = EntityPresence(False, reason="user_disabled")
+    elif _t5_gate_on:
+        _grounding_presence = detect_entity_presence(user_message_content, _entity_tokens)
+    else:
+        # kill-switch / baseline arm: always pull grounding (pre-T5 behavior).
+        _grounding_presence = EntityPresence(True, reason="gate_disabled")
+
     kctx = await knowledge_client.build_context(
         user_id=user_id,
         session_id=session_id,
@@ -1704,7 +1989,65 @@ async def stream_response(
         project_ids=_build_project_ids,
         message=user_message_content,
         language=display_language,
+        grounding=_grounding_presence.grounding_needed,
+        # M1b — forward the editor's open chapter so knowledge's L3 ranker can
+        # boost passages near it (working-scope boost). Only editor turns carry
+        # editor_context; other surfaces send None → boost inert downstream.
+        current_chapter_id=(editor_context or {}).get("chapter_id"),
     )
+
+    # ── P0-5 (audit Area 3, SEC-4 / ML-4) — neutralize indirect prompt-injection
+    # in the retrieved book/graph/knowledge block BEFORE it is spliced into the
+    # system prompt. This text (memory, glossary, passages, facts, graph, roleplay
+    # anchor) is UNTRUSTED — LLM-generated or user-authored fiction — so it may
+    # carry injection ("ignore previous instructions", <|im_start|>system, zero-
+    # width/base64 payloads, and the zh/ja/ko/vi equivalents). The model must treat
+    # it as DATA, not instructions. Multilingual-safe (Unicode-aware); clean text is
+    # returned unchanged so legit CJK/vi content is never mangled. The user's OWN
+    # message and session persona/system_prompt are NOT sanitized (that is their
+    # input). Mirrors knowledge-service's extraction defense
+    # (app/extraction/injection_defense.py). Done here — at the single point the
+    # retrieved text enters — so BOTH assembly branches and the token breakdown use
+    # the neutralized form.
+    kctx.context = neutralize_injection(kctx.context)
+    kctx.stable_context = neutralize_injection(kctx.stable_context)
+    kctx.volatile_context = neutralize_injection(kctx.volatile_context)
+    # NB: `kctx.working_memory` is JSON that resolve_anchor parses — tagging it here
+    # would break json.loads and silently drop the anchor. The untrusted fields
+    # (goal / redirect_hint) are sanitized below on the RENDERED anchor strings,
+    # which also covers the working_memory_seed fallback path.
+
+    # ── T4 (Context Budget Law D4/D5) — story_state Core Memory Block ─────────
+    # Maintain the cached, bounded story-bible block (owner-scoped + OCC, see
+    # app/db/session_blocks.project_story_state) from the grounding prefix, and project it
+    # as a tail block ONLY when this turn has no live grounding (knowledge-service degraded
+    # / a future T5-gated-empty mode) — the D4 safety net. Default OFF (settings), so this
+    # whole path (incl. the turn-counter query) is skipped in prod. Best-effort: a block
+    # failure degrades to "no block", never breaks the turn.
+    story_state_block: str | None = None
+    if settings.story_state_block_enabled and grounding_enabled and _ctx_tiers_allowed:
+        try:
+            # The cadence clock: the session's max message sequence — a monotonic
+            # per-session counter that advances every turn (granularity is messages,
+            # ~2/turn, so the 5-"turn" cadence fires ~every 2-3 conversational turns; it
+            # is only the FALLBACK trigger — a source-hash change or lore-gate refreshes
+            # sooner). Skipped entirely when the flag is off (zero prod cost).
+            _cur_turn = await pool.fetchval(
+                "SELECT COALESCE(MAX(sequence_num), 0) FROM chat_messages WHERE session_id = $1",
+                session_id,
+            )
+            story_state_block = await project_story_state(
+                pool,
+                session_id=session_id,
+                owner_user_id=user_id,
+                stable_context=kctx.stable_context,
+                full_context=kctx.context,
+                current_turn=int(_cur_turn or 0),
+                lore_gate=settings.t5_intent_gate_enabled and _grounding_presence.grounding_needed,
+            )
+        except Exception:  # noqa: BLE001 — degrade to no-block, never break the turn
+            logger.warning("story_state block projection skipped (error)", exc_info=True)
+            story_state_block = None
 
     # ── Anchoring (interview-roleplay) — resolve the working_memory anchor ────
     # Prefer the live block from knowledge-service (kctx.working_memory); fall
@@ -1716,6 +2059,10 @@ async def stream_response(
         kctx.working_memory,
         session_row.get("working_memory_seed") if session_row else None,
     )
+    # P0-5 — the rendered anchor carries untrusted roleplay state (goal /
+    # redirect_hint, LLM-written); neutralize injection before it enters the prompt.
+    wm_pinned = neutralize_injection(wm_pinned)
+    wm_tail = neutralize_injection(wm_tail)
 
     # ── K-CLEAN-5 (D-K8-04): emit memory_mode to the FE ─────────────────────
     # knowledge-service build_context emits mode="no_project"
@@ -1737,8 +2084,34 @@ async def stream_response(
     # system-message convention the auto-compaction summarize tier uses). The
     # recent_message_count window still applies to the fetched set.
     history_limit = max(1, kctx.recent_message_count)
+    # Context Compiler trace (spec §11) — one accumulator per turn, threaded through the
+    # assembly so each tier records what it cut/kept. Its summed savings reconstruct the
+    # naive-concat `raw_tokens`; its ordered spans are the Inspector's waterfall. Created
+    # here (before C_persist) so the C_persist compaction span is recorded in-order.
+    _trace = TraceAccumulator()
     _compact_summary = session_row.get("compact_summary") if session_row else None
     _compacted_before_seq = session_row.get("compacted_before_seq") if session_row else None
+    # C_persist (T2 optimization) — before loading history, if the live history exceeds the
+    # target, PERSIST a compact so THIS turn AND every later turn load the summary (not raw),
+    # instead of re-summarizing every turn (the sweep's 62%-summarizer-overhead regression). A
+    # None return (under target / summarizer fail / concurrent compact) leaves the session
+    # unchanged — the ephemeral compaction tiers still cap this turn. Threshold =
+    # compute_target(context_length) (task_weight=1.0 → surface_max), independent of the
+    # ephemeral task-elastic flag.
+    if settings.compact_persist_enabled and creds.context_length:
+        try:
+            _pc = await persist_auto_compact(
+                pool, session_id, user_id,
+                model_source=model_source, model_ref=model_ref,
+                target=compute_target(creds.context_length) or 0,
+                keep_recent=8,
+                prev_summary=_compact_summary, prev_before_seq=_compacted_before_seq,
+                trace=_trace,
+            )
+            if _pc is not None:
+                _compact_summary, _compacted_before_seq = _pc
+        except Exception:
+            logger.warning("C_persist auto-compact skipped (error)", exc_info=True)
     if _compacted_before_seq is not None:
         rows = await pool.fetch(
             """
@@ -1851,6 +2224,13 @@ async def stream_response(
         skill_meta_block = skill_metadata_block(
             editor=_editor, book_scoped=_book_scoped, admin=_admin,
         )
+
+    # Tool-catalog-simplification Part A — the group directory replaces whole-
+    # domain hot-seeding as the model's map of what domains exist. Only worth
+    # the tokens when tool-calling is actually live on this turn.
+    group_directory_block: str | None = None
+    if stream_format == "agui" and not disable_tools and kctx.tool_calling_enabled:
+        group_directory_block = group_directory_text()
 
     surface_tracker = (
         AgentSurfaceTracker()
@@ -1967,81 +2347,39 @@ async def stream_response(
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
     )
-    if use_anthropic_cache:
-        parts: list[dict] = []
-        stable = kctx.stable_context.strip()
-        parts.append({
-            "type": "text",
-            "text": stable,
-            "cache_control": {"type": "ephemeral"},
-        })
-        volatile = kctx.volatile_context.strip()
-        if volatile:
-            parts.append({"type": "text", "text": volatile})
-        if wm_pinned:
-            # Pinned anchor (primacy). No cache_control of its own; it sits in
-            # the prefix the NEXT breakpoint (system_prompt) caches. Caching is
-            # content-addressed, so when the executive changes `state` the anchor
-            # text changes and the cache simply MISSES from here — never stale,
-            # just re-processed (the anchor is small; the cost is negligible).
-            parts.append({"type": "text", "text": wm_pinned})
-        if system_prompt and system_prompt.strip():
-            parts.append({
-                "type": "text",
-                "text": system_prompt.strip(),
-                "cache_control": {"type": "ephemeral"},
-            })
-        if steering_block:  # RAID C1 — per-book steering, right after the system prompt
-            parts.append({"type": "text", "text": steering_block, "cache_control": {"type": "ephemeral"}})
-        if glossary_skill:
-            parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
-        if knowledge_skill:
-            parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
-        if universal_skill:
-            parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
-        if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
-            parts.append({"type": "text", "text": plan_forge_skill, "cache_control": {"type": "ephemeral"}})
-        if user_skills_block:  # REG-P1-05 — user/book registry skills (L2 bodies)
-            parts.append({"type": "text", "text": user_skills_block, "cache_control": {"type": "ephemeral"}})
-        if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
-            parts.append({"type": "text", "text": plan_mode_block, "cache_control": {"type": "ephemeral"}})
-        if skill_meta_block:  # RAID C3 — L1 available-skills catalog
-            parts.append({"type": "text", "text": skill_meta_block, "cache_control": {"type": "ephemeral"}})
-        if book_context_note:
-            parts.append({"type": "text", "text": book_context_note, "cache_control": {"type": "ephemeral"}})
-        messages.insert(0, {"role": "system", "content": parts})
-    else:
-        system_parts: list[str] = []
-        if kctx.context:
-            stripped = kctx.context.strip()
-            if stripped:
-                system_parts.append(stripped)
-        if wm_pinned:
-            system_parts.append(wm_pinned)
-        if system_prompt:
-            stripped = system_prompt.strip()
-            if stripped:
-                system_parts.append(stripped)
-        if steering_block:  # RAID C1 — per-book steering, right after the system prompt
-            system_parts.append(steering_block)
-        if glossary_skill:
-            system_parts.append(glossary_skill)
-        if knowledge_skill:
-            system_parts.append(knowledge_skill)
-        if universal_skill:
-            system_parts.append(universal_skill)
-        if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
-            system_parts.append(plan_forge_skill)
-        if user_skills_block:  # REG-P1-05 — user/book registry skills (L2 bodies)
-            system_parts.append(user_skills_block)
-        if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
-            system_parts.append(plan_mode_block)
-        if skill_meta_block:  # RAID C3 — L1 available-skills catalog
-            system_parts.append(skill_meta_block)
-        if book_context_note:
-            system_parts.append(book_context_note)
-        if system_parts:
-            messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
+    # A1 / T3.1 (Context Budget kernel) — ONE ordered tail-block list, rendered either way
+    # by `loreweave_context.build_system_message` (was two lockstep `if` ladders — the A1
+    # footgun). Order is LOAD-BEARING and unchanged: steering → built-in skills (glossary/
+    # knowledge/universal/plan_forge) → user skills → plan-mode nudge → skill catalog →
+    # group directory → book note. Cache path (Anthropic) marks the cacheable prefix; plain
+    # path joins with \n\n.
+    _tail_blocks = [
+        story_state_block,   # T4 — cached story-bible safety net (only set when live grounding is empty)
+        steering_block,      # RAID C1 — per-book steering, right after the system prompt
+        glossary_skill,
+        knowledge_skill,
+        universal_skill,
+        plan_forge_skill,    # RAID B2 — PlanForge flow (pinned or plan-mode)
+        user_skills_block,   # REG-P1-05 — user/book registry skills (L2 bodies)
+        plan_mode_block,     # RAID B2 — plan-mode nudge (no prose until Write)
+        skill_meta_block,    # RAID C3 — L1 available-skills catalog
+        group_directory_block,  # tool-catalog-simplification Part A — domain map for find_tools(group=...)
+        book_context_note,
+    ]
+    _system_content = build_system_message(
+        use_cache=use_anthropic_cache,
+        kctx_context=kctx.context,
+        kctx_stable=kctx.stable_context,
+        kctx_volatile=kctx.volatile_context,
+        # Pinned anchor (primacy) — uncached in the cache path: it sits in the prefix the
+        # NEXT breakpoint (system_prompt) caches; content-addressed caching just MISSES from
+        # here when the executive changes `state` (never stale, re-processed; anchor is small).
+        wm_pinned=wm_pinned,
+        system_prompt=system_prompt,
+        tail_blocks=_tail_blocks,
+    )
+    if _system_content:
+        messages.insert(0, {"role": "system", "content": _system_content})
 
     # Inject per-message context as a system message right before the last user message
     if context:
@@ -2078,6 +2416,7 @@ async def stream_response(
                 if s
             ),
             "plan_nudge": estimate_tokens(plan_mode_block),
+            "story_state": estimate_tokens(story_state_block),  # T4 — safety-net block (0 unless projected)
             "book_note": estimate_tokens(book_context_note),
             "attached_context": (
                 estimate_tokens(
@@ -2242,6 +2581,11 @@ async def stream_response(
         hot_seed_count=len(discovery_seed_names or ()),
         permission_mode=permission_mode,
         context_breakdown=context_breakdown,
+        # T5 — the intent-gate decision, surfaced in the contextBudget frame.
+        entity_presence=_grounding_presence.as_telemetry(),
+        # Context Compiler trace (§11) — carries any C_persist span already recorded; the
+        # in-turn compaction + T0 wire spans are appended inside _emit_chat_turn.
+        trace=_trace,
     ):
         yield line
 
@@ -2285,6 +2629,9 @@ async def _emit_chat_turn(
     permission_mode: str = "write",
     pre_tool_chunks: list[dict] | None = None,
     context_breakdown: ContextBreakdown | None = None,
+    entity_presence: dict | None = None,
+    trace: "TraceAccumulator | None" = None,
+    is_resume: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -2307,6 +2654,9 @@ async def _emit_chat_turn(
     _fe_schema_tok = 0
     _mcp_schema_tok = 0
     last_usage = None
+    _llm_call_count = 1  # observability fix #5 — provider completions this turn
+    _final_response_id: str | None = None  # P2 §5 — stateful chain head to persist
+    _ctx_size: int = 0  # P3 §9 — true single-call context size (window-boundary guard)
     import time as _time
     stream_start = _time.monotonic()
     time_to_first_token: float | None = None
@@ -2357,6 +2707,23 @@ async def _emit_chat_turn(
     # Anthropic server-side overlay is A5). GUARDED — any error falls back to the
     # un-compacted messages so a bug here can never break the turn. summarize=None →
     # deterministic micro-evict of tool results + hard-truncate (no LLM in the path).
+    # T3.2 — the Context Budget **Planner** (POLICY) computes the compaction plan for THIS
+    # turn: a grounding turn (lore/continuity/discovery/anaphora) stays roomy (task_weight
+    # 1.0 → surface_max); a status-op / smalltalk turn uses the leaner
+    # `compact_light_task_weight` so it compacts sooner. grounding_needed rides in via the
+    # T5 `entity_presence` telemetry (the EntityPresence object lives in the caller
+    # stream_response); missing/None → True (roomy/safe, biased-to-include). When the flag
+    # is OFF the plan's target is None → compaction keeps the flat 0.75×window trigger
+    # (byte-identical pre-T2). Swap `_PLANNER` (or its `plan`) to A/B a compaction policy;
+    # its safety net when ON is the D6 recovery layer (breadcrumb + summary + story_state).
+    _plan = _PLANNER.plan(
+        grounding_needed=bool((entity_presence or {}).get("grounding_needed", True)),
+        context_length=creds.context_length,
+        task_elastic_enabled=settings.compact_task_elastic_enabled,
+        light_task_weight=settings.compact_light_task_weight,
+    )
+    _compact_target = _plan.compact_target
+
     _eff_limit: int | None = None
     _compaction = None
     try:
@@ -2372,14 +2739,36 @@ async def _emit_chat_turn(
                     _middle, model_source=model_source, model_ref=model_ref, user_id=user_id,
                 )
             messages, _compaction = await compact_messages(
-                messages, effective_limit=_eff_limit, summarize=_summarizer,
+                messages, effective_limit=_eff_limit,
+                target=_compact_target, summarize=_summarizer,
+                add_breadcrumb=settings.compact_breadcrumb_enabled,
+                collapse_duplicates=settings.compact_collapse_duplicates_enabled,
             )
+            # T6/D6 — when compaction summarized/dropped earlier turns THIS turn, inject
+            # the recovery hint so the model reaches for conversation_search to pull back a
+            # specific fact the lossy summary may have dropped, instead of guessing/omitting
+            # (the "net built but unused" gap the T2 light-target A/B found). Placed right
+            # after the leading pinned/system block (incl. the <summary>) so it reads as
+            # guidance about that summary.
+            if settings.compact_recovery_hint_enabled and _compaction.did_work:
+                inject_recovery_hint(messages)
             if _compaction.triggered:
                 logger.info(
                     "compaction fired session=%s steps=%s tokens %d→%d overflow=%s",
                     session_id, _compaction.steps,
                     _compaction.tokens_before, _compaction.tokens_after,
                     _compaction.overflowed,
+                )
+            # Context Compiler trace (§11) — the in-turn ephemeral compaction span.
+            # delta = tokens_after − tokens_before (negative = SAVED), folded into raw_tokens.
+            if trace is not None and _compaction.did_work:
+                trace.add(
+                    "compiler", "T6", "history",
+                    f"ephemeral compaction ({_compaction.steps} step(s)) "
+                    f"{_compaction.tokens_before}→{_compaction.tokens_after} tok"
+                    + (" · overflow" if _compaction.overflowed else ""),
+                    delta=int(_compaction.tokens_after - _compaction.tokens_before),
+                    is_error=bool(_compaction.overflowed),
                 )
     except Exception:  # never let compaction break the turn
         logger.warning("compaction skipped (error)", exc_info=True)
@@ -2440,8 +2829,64 @@ async def _emit_chat_turn(
     except Exception:  # noqa: BLE001 — a capability, never load-bearing
         logger.warning("subagent resolution failed (no delegation)", exc_info=False)
 
+    # Chain-decision defaults — read UNCONDITIONALLY later (the `_caching` frame at
+    # the bottom of this function) regardless of which branch below runs, so both
+    # must see them. The plain-gateway (`else`) branch below never had its own
+    # stateful/chain logic (no tools → nothing to decide), so without this hoisted
+    # default it left `_chain_reason` etc. unbound — an UnboundLocalError on every
+    # non-tool-calling turn (review-impl catch, 2026-07-06).
+    _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
     try:
-        if use_tools or _subagent_tool is not None:
+        # P3 review H1 — a RESUME runs STATELESS over the full saved working (the suspend
+        # reconstructed the complete context). A delta rebuild here would drop the
+        # assistant tool_call + the frontend tool result the resume appended → the model
+        # would never see the tool outcome (re-suspend loop). The resumed turn persists
+        # response_id=None, so the NEXT turn cleanly re-establishes the chain (rule-1).
+        if (use_tools or _subagent_tool is not None) and not is_resume:
+            # ── Stateful /v1/responses chain decision (P2 §5a) ──────────────────
+            # Read the latest assistant turn for this session/branch and decide:
+            # stateless / stateful-establish / stateful-continue. Degrade-safe — any
+            # error falls back to stateless (full context). Only build the delta when
+            # continuing from a valid head (system blocks carry the fresh grounding →
+            # the gateway lifts them to `instructions`; the user turn is the input).
+            try:
+                _latest_asst = await pool.fetchrow(
+                    """
+                    SELECT response_id, model_ref::text AS model_ref, input_tokens, sequence_num,
+                           (context_breakdown->'caching'->>'context_size')::int AS context_size
+                    FROM chat_messages
+                    WHERE session_id=$1 AND role='assistant' AND branch_id=0
+                    ORDER BY sequence_num DESC LIMIT 1
+                    """,
+                    session_id,
+                )
+                _comp_seq = await pool.fetchval(
+                    "SELECT compacted_before_seq FROM chat_sessions WHERE session_id=$1",
+                    session_id,
+                )
+                _eff = compute_budget(
+                    used_tokens=0,
+                    context_length=creds.context_length,
+                    max_output_tokens=int(gen_params.get("max_tokens") or 0),
+                ).effective_limit
+                _stateful, _prev_rid, _chain_reason = decide_chain(
+                    capabilities=getattr(creds, "capabilities", None),
+                    latest_assistant=dict(_latest_asst) if _latest_asst else None,
+                    current_model_ref=str(model_ref),
+                    compacted_before_seq=_comp_seq,
+                    effective_limit=_eff,
+                )
+                if _stateful and _prev_rid:
+                    _last_user = next(
+                        (m for m in reversed(messages) if m.get("role") == "user"), None
+                    )
+                    _delta_msgs = [m for m in messages if m.get("role") == "system"]
+                    if _last_user is not None:
+                        _delta_msgs.append(_last_user)
+            except Exception:
+                logger.warning("stateful chain decision skipped — stateless", exc_info=True)
+                _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
+
             chunk_stream = _stream_with_tools(
                 model_source=model_source,
                 model_ref=model_ref,
@@ -2465,11 +2910,16 @@ async def _emit_chat_turn(
                 activation_state=activation_state,
                 surface_tracker=surface_tracker,
                 effective_limit=_eff_limit,
+                compact_target=_compact_target,
                 permission_mode=permission_mode,
                 approval_check=_approval_check,
                 hooks=_turn_hooks,
                 subagent_tool=_subagent_tool,
                 subagent_defs=_subagent_defs_map,
+                trace=trace,
+                stateful=_stateful,
+                previous_response_id=_prev_rid,
+                delta_messages=_delta_msgs,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -2528,6 +2978,15 @@ async def _emit_chat_turn(
             content = chunk_data["content"]
             if chunk_data.get("usage"):
                 last_usage = chunk_data["usage"]
+            if chunk_data.get("llm_call_count") is not None:
+                _llm_call_count = chunk_data["llm_call_count"]
+            # Stateful (P2 §5) — the turn's chain head to persist on the assistant row.
+            if chunk_data.get("response_id"):
+                _final_response_id = chunk_data["response_id"]
+            # P3 §9 — the true single-call context size (accumulated server-side size),
+            # for the window-boundary guard (NOT the summed billing total).
+            if chunk_data.get("context_size"):
+                _ctx_size = chunk_data["context_size"]
 
             # Track time to first token (reasoning or content)
             if time_to_first_token is None and (reasoning or content):
@@ -2634,20 +3093,96 @@ async def _emit_chat_turn(
                 # assembly-time breakdown, then build the ONE payload that is
                 # both persisted (context_breakdown JSONB) and emitted as the
                 # contextBudget CUSTOM frame below. Old keys stay byte-identical.
+                # T0 review MED-1: meter the SAME bytes the model saw — through the
+                # tool_result_content funnel (ensure_ascii=False + prune_none), NOT the
+                # old raw json.dumps (ensure_ascii=True) which over-counts VI/CJK 2-3x +
+                # counts dropped nulls. Else the attribution meter contradicts the L3 cut.
+                # Meter the funnel (compiled) bytes AND the naive ensure_ascii=True /
+                # no-prune bytes side-by-side, so the difference is the T0 wire-hygiene
+                # saving (unicode-unescape + null-drop) — the one cut chat can measure locally.
                 _tool_results_tok = 0
+                _tool_results_raw_tok = 0
                 for _tc in tool_calls_history:
-                    if _tc.get("ok"):
-                        _tool_results_tok += estimate_tokens(
-                            json.dumps(_tc.get("result"), default=str)
-                        )
-                    else:
-                        _tool_results_tok += estimate_tokens(
-                            json.dumps({"error": _tc.get("error")}, default=str)
-                        )
+                    _payload = _tc.get("result") if _tc.get("ok") else {"error": _tc.get("error")}
+                    _tool_results_tok += estimate_tokens(tool_result_content(_payload))
+                    _tool_results_raw_tok += estimate_tokens(
+                        json.dumps(_payload, ensure_ascii=True, default=str)
+                    )
                 if context_breakdown is not None:
                     context_breakdown.categories["frontend_tool_schemas"] = _fe_schema_tok
                     context_breakdown.categories["mcp_tool_schemas"] = _mcp_schema_tok
                     context_breakdown.categories["tool_results"] = _tool_results_tok
+
+                # ── Context Compiler trace (§11) — finalize the Inspector telemetry ──
+                _tr = trace if trace is not None else TraceAccumulator()
+                _wire_saved = _tool_results_raw_tok - _tool_results_tok
+                if trace is not None and _wire_saved > 0:
+                    _tr.add(
+                        "compiler", "T0", "results",
+                        "wire hygiene: serialize ensure_ascii=false + drop nulls",
+                        delta=-_wire_saved,
+                    )
+                _trace_payload = _tr.to_payload()
+                _raw_tokens = int(input_tok or 0) + _tr.saved()
+                _status_flags = derive_status_flags(
+                    grounding_needed=(
+                        entity_presence.get("grounding_needed")
+                        if entity_presence else None
+                    ),
+                    compacted=any(s["tier"] == "T6" for s in _trace_payload),
+                    elastic=(_plan.task_weight < 1.0),
+                    overflowed=bool(_compaction is not None and _compaction.overflowed),
+                    wire=(trace is not None and _wire_saved > 0),
+                )
+                # ── Prompt-cache monitoring section (§7–§8) ─────────────────
+                # Build the per-turn caching metrics from this turn's cache split
+                # (summed across the tool-loop) + the provider's declared caching
+                # capabilities, then fold in the rolling thrashing verdict. Surfaced
+                # on the frame + persisted so caching is PROVEN-BY-EFFECT, not silent.
+                _caps = getattr(creds, "capabilities", None) or {}
+                _cache_create = getattr(last_usage, "cache_creation_tok", 0) if last_usage else 0
+                _cache_read = getattr(last_usage, "cache_read_tok", 0) if last_usage else 0
+                _caching = build_caching_metrics(
+                    cache_creation_tok=_cache_create,
+                    cache_read_tok=_cache_read,
+                    input_tok=int(input_tok or 0),
+                    capabilities=_caps,
+                )
+                # Rolling thrashing verdict — only meaningful for explicit-cache
+                # providers (auto-cache can't thrash → detect_thrashing returns None,
+                # so skip the query entirely for local/OpenAI). Read the last few
+                # persisted splits for this session and fold THIS turn in.
+                _thrashing = None
+                if _caps.get("prompt_cache_control"):
+                    try:
+                        _rows = await conn.fetch(
+                            """
+                            SELECT (context_breakdown->'caching'->>'create_tok')::int AS c,
+                                   (context_breakdown->'caching'->>'read_tok')::int AS r
+                            FROM chat_messages
+                            WHERE session_id=$1 AND role='assistant' AND branch_id=0
+                              AND context_breakdown ? 'caching'
+                            ORDER BY sequence_num DESC LIMIT 5
+                            """,
+                            session_id,
+                        )
+                        _window = [(_cache_create, _cache_read)] + [
+                            (row["c"], row["r"]) for row in _rows
+                        ]
+                        _thrashing = detect_thrashing(_window, capabilities=_caps)
+                    except Exception:  # degrade-safe: monitoring never breaks a turn
+                        _thrashing = None
+                _caching["thrashing"] = _thrashing
+                # P3 §9 — persist the true single-call context size (accumulated
+                # server-side size in stateful mode) so the next turn's head-validity
+                # window guard (§5a rule-4) reads it, NOT the summed tool-loop billing.
+                if _ctx_size:
+                    _caching["context_size"] = _ctx_size
+                # P3 §9 — the chain action this turn (continue / establish_first /
+                # reestablish_{stateless_prev,model_switch,compaction,window}), so a
+                # re-chain is visible + attributable in the Inspector.
+                _caching["chain_action"] = _chain_reason
+
                 _ctx_payload = context_budget_event(
                     compute_budget(
                         used_tokens=int(input_tok or 0),
@@ -2655,6 +3190,20 @@ async def _emit_chat_turn(
                         max_output_tokens=int(gen_params.get("max_tokens") or 0),
                     ),
                     context_breakdown,
+                    # T5 — the intent-gate decision for this turn (grounding_needed +
+                    # matched tokens + reason), threaded in from the assembly path in
+                    # stream_response. None on the resume/degraded paths that skip the gate.
+                    entity_presence=entity_presence,
+                    # Inspector telemetry (§11a): the naive-concat baseline, the ordered
+                    # compile-trace spans, the derived status chips, the sealed retrieval
+                    # mode, and the coarse turn-intent label.
+                    trace=_trace_payload,
+                    raw_tokens=_raw_tokens,
+                    status_flags=_status_flags,
+                    retrieval_mode=settings.retrieval_mode,
+                    intent=derive_intent(entity_presence),
+                    llm_call_count=_llm_call_count,
+                    caching=_caching,
                 )
 
                 await conn.execute(
@@ -2662,12 +3211,12 @@ async def _emit_chat_turn(
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb)
+                       context_breakdown, response_id)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13)
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
-                    json.dumps(_ctx_payload),
+                    json.dumps(_ctx_payload), _final_response_id,
                 )
 
                 # Extract and persist output artifacts
@@ -2926,7 +3475,7 @@ async def resume_stream_response(
         working.append({
             "role": "tool",
             "tool_call_id": tool_call_id,
-            "content": json.dumps(result_payload),
+            "content": tool_result_content(result_payload),
         })
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
@@ -3010,7 +3559,7 @@ async def resume_stream_response(
             _tool_payload = envelope.get("result") if _ok else {"error": envelope.get("error")}
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
-                "content": json.dumps(_tool_payload),
+                "content": tool_result_content(_tool_payload),
             })
             _chunk: dict = {
                 "id": tool_call_id, "iteration": 0, "tool": _tool_name,
@@ -3040,7 +3589,7 @@ async def resume_stream_response(
         else:
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
-                "content": json.dumps({"error": "denied by user"}),
+                "content": tool_result_content({"error": "denied by user"}),
             })
             pre_tool_chunks = [{
                 "id": tool_call_id, "iteration": 0, "tool": _tool_name,
@@ -3170,6 +3719,7 @@ async def resume_stream_response(
         # the approved/denied tool result (if any) is surfaced first.
         permission_mode=susp.permission_mode,
         pre_tool_chunks=pre_tool_chunks,
+        is_resume=True,  # P3 review H1 — resume runs stateless over the full saved context
     ):
         yield line
 

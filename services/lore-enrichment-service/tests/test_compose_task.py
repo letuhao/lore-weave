@@ -35,7 +35,7 @@ OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
 
 
 def _bearer(sub: str = OWNER) -> str:
-    return pyjwt.encode({"sub": sub}, "x", algorithm="HS256")
+    return pyjwt.encode({"sub": sub, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
 
 
 # ── run_compose_task orchestration (patched store + compute) ──────────────────

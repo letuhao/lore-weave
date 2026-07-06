@@ -191,6 +191,23 @@ class BookClient:
             logger.warning("book reader-language unavailable: %s", exc)
             return None
 
+    async def create_chapter(
+        self, book_id: UUID, bearer: str, *, title: str, original_language: str,
+    ) -> dict[str, Any]:
+        """Create a real Chapter row (PlanForge auto-bootstrap POC — see
+        docs/specs/2026-07-06-planforge-auto-bootstrap.md §3.1 [A]).
+        Deliberately never sends `sort_order`: book-service's handler
+        (server.go:1467-1469) auto-assigns `MAX(sort_order)+1` for the book
+        when it's omitted, so a non-empty book is safe by construction — no
+        ordinal-collision logic needed on this side. Bearer-forwarded (public
+        JWT route, same as `publish_chapter`/`patch_draft`); book-service
+        enforces ownership in SQL. Raises BookClientError on any non-2xx."""
+        resp = await self._request(
+            "POST", f"/v1/books/{book_id}/chapters", bearer,
+            json={"title": title, "original_language": original_language},
+        )
+        return self._raise_for_status(resp)
+
     async def publish_chapter(
         self, book_id: UUID, chapter_id: UUID, bearer: str,
     ) -> dict[str, Any]:

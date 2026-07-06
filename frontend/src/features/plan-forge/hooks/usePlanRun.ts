@@ -25,6 +25,12 @@ export interface UsePlanRun {
   polling: boolean;
   error: string | null;
   createRun: (body: CreatePlanRunBody) => Promise<void>;
+  /** Load an EXISTING run by id (the Runs-list click path) — same slot as createRun's
+   * result, just sourced from GET instead of POST. Never touches the server's data. */
+  loadRun: (runId: string) => Promise<void>;
+  /** Clear the current run back to the empty-propose state (the "+ New propose" path
+   * from the Runs list) — local UI state only, no server call. */
+  resetRun: () => void;
   runSelfCheck: () => Promise<void>;
   runValidate: () => Promise<void>;
   runCompile: (arcId: string, runPipeline?: boolean, modelRef?: string) => Promise<void>;
@@ -93,6 +99,34 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
     }
   }, [bookId, token]);
 
+  const loadRun = useCallback(async (runId: string) => {
+    if (!token) return;
+    const gen = ++genRef.current;
+    setBusy(true);
+    setError(null);
+    setSelfCheck(null);
+    setValidation(null);
+    setCompileResult(null);
+    try {
+      const detail = await planForgeApi.getRun(bookId, runId, token);
+      if (genRef.current !== gen) return;
+      setRun(detail);
+    } catch (e) {
+      if (genRef.current === gen) setError((e as Error).message);
+    } finally {
+      if (genRef.current === gen) setBusy(false);
+    }
+  }, [bookId, token]);
+
+  const resetRun = useCallback(() => {
+    ++genRef.current; // invalidate any in-flight poll/load so it can't resurrect the old run
+    setRun(null);
+    setSelfCheck(null);
+    setValidation(null);
+    setCompileResult(null);
+    setError(null);
+  }, []);
+
   const runSelfCheck = useCallback(async () => {
     if (!token || !run) return;
     setBusy(true);
@@ -147,6 +181,6 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
 
   return {
     run, selfCheck, validation, compileResult, busy, polling, error,
-    createRun, runSelfCheck, runValidate, runCompile,
+    createRun, loadRun, resetRun, runSelfCheck, runValidate, runCompile,
   };
 }

@@ -16,6 +16,7 @@ import logging
 from typing import Any
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 class KnowledgeClient:
     def __init__(self, *, base_url: str, internal_token: str, timeout: float = 10.0):
         self._base_url = base_url.rstrip("/")
-        self._headers = {"X-Internal-Token": internal_token}
+        self._internal_token = internal_token
         self._timeout = timeout
 
     async def fetch_run_sample(self, run_id: str) -> dict[str, Any] | None:
@@ -34,8 +35,11 @@ class KnowledgeClient:
         only drops a judging opportunity, never fails the consumer)."""
         url = f"{self._base_url}/internal/extraction/runs/{run_id}/sample"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.get(url, headers=self._headers)
+            # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON.
+            async with build_internal_client(
+                self._base_url, internal_token=self._internal_token, timeout_s=self._timeout,
+            ) as client:
+                resp = await client.get(url)
         except httpx.HTTPError:
             logger.warning(
                 "Q4b-feed: run-sample fetch failed run=%s (non-fatal — "

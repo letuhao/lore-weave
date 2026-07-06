@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  CanonIssue, DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 import type { MotifBindingsResponse } from './motif/types';
 
@@ -576,6 +576,12 @@ export const compositionApi = {
     token: string,
   ): Promise<{ threads: NarrativeThread[]; open_count: number }> {
     return apiJson(`${BASE}/works/${projectId}/narrative-threads?status=${status}`, { token });
+  },
+  // Studio Quality tab (`quality-canon`) — book-wide itemized canon contradictions
+  // (every scene whose latest completed auto-generation left a confirmed violation).
+  // Read-only; mirrors the publish-gate's canon predicate but itemized, not counted.
+  getCanonIssues(projectId: string, token: string): Promise<{ items: CanonIssue[] }> {
+    return apiJson(`${BASE}/works/${projectId}/canon-issues`, { token });
   },
 };
 

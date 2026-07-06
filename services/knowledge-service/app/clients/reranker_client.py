@@ -13,6 +13,7 @@ import logging
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
 from app.logging_config import trace_id_var
@@ -27,9 +28,11 @@ _client: "RerankerClient | None" = None
 class RerankerClient:
     def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
         self._base_url = base_url.rstrip("/")
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s, connect=5.0),
-            headers={"X-Internal-Token": internal_token},
+        # W3: shared factory bakes X-Internal-Token + JSON + per-request X-Trace-Id.
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, connect_timeout_s=5.0,
+            trace_id_provider=trace_id_var.get,
         )
 
     async def aclose(self) -> None:
@@ -80,7 +83,6 @@ class RerankerClient:
                     "query": query,
                     "documents": documents,
                 },
-                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning("rerank %s returned %d, trace_id=%s", url, resp.status_code, tid)

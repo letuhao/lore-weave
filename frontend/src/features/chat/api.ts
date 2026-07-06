@@ -9,6 +9,7 @@ import type {
   CompactSessionResult,
   ContextBudget,
   ContextHistoryPoint,
+  ContextTracePoint,
   CreateSessionPayload,
   PatchSessionPayload,
   PendingFact,
@@ -21,9 +22,10 @@ const base = apiBase;
 export const chatApi = {
   // ── Sessions ──────────────────────────────────────────────────────────────────
 
-  listSessions(token: string, status = 'active') {
+  listSessions(token: string, status = 'active', bookId?: string) {
+    const bookParam = bookId ? `&book_id=${encodeURIComponent(bookId)}` : '';
     return apiJson<{ items: ChatSession[]; next_cursor: string | null }>(
-      `/v1/chat/sessions?status=${status}`,
+      `/v1/chat/sessions?status=${status}${bookParam}`,
       { token },
     );
   },
@@ -92,6 +94,17 @@ export const chatApi = {
     const qs = limit != null ? `?limit=${limit}` : '';
     return apiJson<{ items: ContextHistoryPoint[] }>(
       `/v1/chat/sessions/${sessionId}/context-history${qs}`,
+      { token },
+    );
+  },
+
+  // Context Compiler · Trace Inspector (spec §11) — the full per-turn contextBudget
+  // frames + the user message that drove each turn (raw_tokens, reduction_pct,
+  // status_flags, trace spans, allocation breakdown). Owner-gated server-side.
+  getContextTrace(token: string, sessionId: string, limit?: number) {
+    const qs = limit != null ? `?limit=${limit}` : '';
+    return apiJson<{ items: ContextTracePoint[] }>(
+      `/v1/chat/sessions/${sessionId}/context-trace${qs}`,
       { token },
     );
   },
@@ -214,9 +227,10 @@ export const chatApi = {
     return `${base()}/v1/chat/sessions/${sessionId}/tool-results`;
   },
 
-  listToolsCatalog(token: string) {
+  listToolsCatalog(token: string, visibility?: 'discoverable' | 'legacy') {
+    const qs = visibility ? `?visibility=${visibility}` : '';
     return apiJson<{ items: import('./types').ToolCatalogItem[] }>(
-      '/v1/chat/tools/catalog',
+      `/v1/chat/tools/catalog${qs}`,
       { token },
     );
   },

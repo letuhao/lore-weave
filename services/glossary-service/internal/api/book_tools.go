@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -46,10 +47,12 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Name: "glossary_book_create",
 		Description: "Create a book-native genre, kind, or attribute (additive, takes effect immediately). " +
 			"level=genre|kind|attribute + code + name (+ for attribute: kind_code & genre_code). Use " +
-			"glossary_book_ontology_read first to avoid duplicating an existing code.",
+			"glossary_book_ontology_read first to avoid duplicating an existing code. " +
+			"NOTE: superseded by glossary_ontology_upsert — kept for existing callers only.",
 		InputSchema: closedSetSchemaFor[bookCreateToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookCreate)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -57,13 +60,15 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Description: "Edit a book genre/kind/attribute in place. level + code identify the row; pass the " +
 			"row's `base_version` EXACTLY as returned by glossary_book_ontology_read (or by a prior " +
 			"create/patch result) so a concurrent edit is detected (409 on drift) — copy it verbatim, " +
-			"never invent one. Only the fields you supply change.",
+			"never invent one. Only the fields you supply change. " +
+			"NOTE: superseded by glossary_ontology_upsert — kept for existing callers only.",
 		InputSchema: relaxAdditionalProps(
 			closedSetSchemaFor[bookPatchToolIn](map[string][]any{
 				"level": enumLevels, "field_type": enumFieldTypes,
 			}),
 			"changes[]", // the tolerance-shim diff absorbs weak-model extras (old_value, …)
 		),
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookPatch)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -71,8 +76,10 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Description: "Propose DELETING a book's genre, kind, or attribute (soft-delete with cascade). " +
 			"High-impact and destructive — it does NOT delete; it returns a confirm_token + a preview of " +
 			"everything the cascade will remove, which a human must confirm via glossary_confirm_action. " +
-			"Address by code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code).",
+			"Address by code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code). " +
+			"NOTE: superseded by glossary_ontology_delete — kept for existing callers only.",
 		InputSchema: closedSetSchemaFor[bookDeleteToolIn](map[string][]any{"level": enumLevels}),
+		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookDelete)
 
 	mcp.AddTool(srv, &mcp.Tool{

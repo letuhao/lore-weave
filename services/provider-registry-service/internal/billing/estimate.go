@@ -94,6 +94,21 @@ const (
 	// api.validateVideoGenInput — the upper bound used to estimate a
 	// video_gen job that omits an explicit duration.
 	videoMaxDurationSeconds = 60
+
+	// visionImageTokenCeiling — PDF-import vision op (docs/specs/2026-07-06-
+	// pdf-book-import.md L5). A conservative flat per-image input-token
+	// ceiling for a single-image vision-caption call, covering high-detail
+	// tiling across common OpenAI-compatible vision models (~765-1105
+	// tokens/image in practice). Deliberately NOT derived from the
+	// base64 image byte count: walkText's generic char-count approach
+	// would treat the entire base64 payload as "text" and inflate the
+	// estimate by orders of magnitude (a 200KB image ≈ 266K b64 chars →
+	// tens of thousands of phantom tokens) — over-estimating is normally
+	// the safe direction (see walkText's doc comment), but at this
+	// magnitude it would make ordinary vision calls look artificially
+	// expensive enough to spuriously blow a legitimate spend cap. A flat,
+	// named ceiling keeps the estimate realistic while still erring high.
+	visionImageTokenCeiling = 1500
 )
 
 // EstimateUSD returns a worst-case USD upper bound for one job. "Upper bound"
@@ -149,6 +164,20 @@ func (e Estimator) EstimateUSD(operation string, input map[string]any, pricing P
 	case "stt":
 		chars := getInt(input, "audio_chars", sttFallbackChars)
 		return perUnitCost(float64(chars)/1000.0, pricing.PerKChar)
+	case "vision":
+		// PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5).
+		// Deliberately does NOT call e.InputTokens/walkText on the whole
+		// input map — that would walk into image_b64 and treat the raw
+		// base64 image bytes as "text", wildly over-counting (see
+		// visionImageTokenCeiling's doc comment). Only the prompt string
+		// is char-counted; the image contributes a flat, conservative
+		// per-image ceiling instead.
+		promptChars, promptNonASCII := 0, 0
+		if p, ok := input["prompt"].(string); ok {
+			promptChars, promptNonASCII = CountScriptChars(p)
+		}
+		ti := estimateInputTokens(promptChars, promptNonASCII) + visionImageTokenCeiling
+		return textCost(ti, e.chatOutputTokens(input), pricing)
 	default:
 		return 0, fmt.Errorf("estimate: unknown operation %q", operation)
 	}

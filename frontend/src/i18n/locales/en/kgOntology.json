@@ -4,6 +4,7 @@
     "tabs": { "adopt": "Adopt", "schema": "Schema", "views": "Views", "sync": "Sync" },
     "noProject": "No knowledge project for this book",
     "noProjectHelp": "This book has no linked knowledge project yet. Run extraction or create a project to manage its graph schema.",
+    "createProject": "Create Knowledge Project",
     "noSchema": "No schema adopted yet — adopt a template to start."
   },
   "common": {

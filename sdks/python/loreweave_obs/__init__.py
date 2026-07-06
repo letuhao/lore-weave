@@ -7,7 +7,15 @@ HTTP services, or at the top of a worker's `main()`. Mirrors the Go
 
 import os
 
-__all__ = ["setup_tracing", "current_otel_trace_id"]
+__all__ = [
+    "setup_tracing",
+    "current_otel_trace_id",
+    "setup_logging",
+    "trace_id_var",
+    "new_trace_id",
+    "RedactFilter",
+    "ContextFilter",
+]
 
 
 def current_otel_trace_id() -> str:
@@ -90,3 +98,15 @@ def setup_tracing(service_name: str, app=None) -> None:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
         FastAPIInstrumentor.instrument_app(app)
+
+
+# Imported at the bottom so current_otel_trace_id / setup_tracing are already
+# defined on the package: logging_setup's ContextFilter lazy-imports
+# current_otel_trace_id at log time, so no import cycle either way.
+from loreweave_obs.logging_setup import (  # noqa: E402
+    ContextFilter,
+    RedactFilter,
+    new_trace_id,
+    setup_logging,
+    trace_id_var,
+)

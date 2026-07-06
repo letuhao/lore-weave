@@ -4,6 +4,7 @@
     "tabs_aria": "Settings tabs",
     "tab": {
       "account": "Account",
+      "chat-ai": "Chat & AI",
       "providers": "Model Providers",
       "translation": "Translation",
       "reading": "Reading",

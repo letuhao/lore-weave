@@ -1,119 +1,48 @@
-import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Plus, ChevronRight, Languages } from 'lucide-react';
-import { useAuth } from '@/auth';
-import { booksApi, type Book } from '@/features/books/api';
-import { translationApi } from '@/features/translation/api';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { FilterToolbar, Pagination, EmptyState, FormDialog, StatusBadge, SkeletonCard, LanguagePicker } from '@/components/shared';
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
-
-/** Generate a stable hue from a book ID for cover gradient */
-function hashToHue(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xfff;
-  return h % 360;
-}
+import { PageHeader } from '@/components/layout/PageHeader';
+import { useBooksList, hashToHue } from '@/features/books/hooks/useBooksList';
 
 export function BooksPage() {
   const { t } = useTranslation('books');
-  const { accessToken } = useAuth();
+  const navigate = useNavigate();
   // C22 — the Translate intent routes here with ?intent=translate so the
   // workspace lands tailored to translation (a hint pointing to the per-book
   // translation surface), NOT a generic shell. Route-only: no new translator flow.
   const [searchParams] = useSearchParams();
   const translateIntent = searchParams.get('intent') === 'translate';
-  const [books, setBooks] = useState<Book[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [offset, setOffset] = useState(0);
-  const limit = 20;
 
-  // Create dialog
-  const [createOpen, setCreateOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [newLang, setNewLang] = useState('');
-  const [langFilter, setLangFilter] = useState('');
-  const [bookLangs, setBookLangs] = useState<Record<string, string[]>>({});
-
-  const load = async () => {
-    if (!accessToken) return;
-    setLoading(true);
-    try {
-      const res = await booksApi.listBooks(accessToken);
-      setBooks(res.items);
-      setTotal(res.total || res.items.length);
-      setError('');
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { void load(); }, [accessToken]);
-
-  // Fetch translation coverage per book (batched 10 at a time, fire-and-forget)
-  const bookIds = books.map((b) => b.book_id).join(',');
-  useEffect(() => {
-    if (!accessToken || books.length === 0) return;
-    let cancelled = false;
-    const fetchCoverage = async () => {
-      const results: Record<string, string[]> = {};
-      // Batch requests in groups of 10 to avoid overwhelming the server
-      for (let i = 0; i < books.length; i += 10) {
-        if (cancelled) break;
-        const batch = books.slice(i, i + 10);
-        await Promise.allSettled(
-          batch.map(async (book) => {
-            try {
-              const cov = await translationApi.getBookCoverage(accessToken, book.book_id);
-              if (cov.known_languages?.length > 0) {
-                results[book.book_id] = cov.known_languages;
-              }
-            } catch {}
-          }),
-        );
-      }
-      if (!cancelled) setBookLangs(results);
-    };
-    void fetchCoverage();
-    return () => { cancelled = true; };
-  }, [accessToken, bookIds]);
-
-  const filteredBooks = books.filter((b) => {
-    if (search && !b.title.toLowerCase().includes(search.toLowerCase())) return false;
-    if (langFilter && b.original_language !== langFilter) return false;
-    return true;
-  });
-
-  const allLanguages = [...new Set(books.map((b) => b.original_language).filter(Boolean))] as string[];
-
-  const handleCreate = async () => {
-    if (!accessToken || !newTitle.trim()) return;
-    setCreating(true);
-    try {
-      await booksApi.createBook(accessToken, {
-        title: newTitle.trim(),
-        description: newDesc || undefined,
-        original_language: newLang || undefined,
-      });
-      setCreateOpen(false);
-      setNewTitle('');
-      setNewDesc('');
-      setNewLang('');
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setCreating(false);
-    }
-  };
+  // C1 — list/search/language-filter/create/coverage-batch logic extracted into
+  // useBooksList() (docs/specs/2026-07-01-writing-studio/14_utility_panels.md Phase C1) so
+  // this page and the studio `books` dock panel (BooksBrowserPanel) share one implementation.
+  const {
+    total,
+    loading,
+    error,
+    search,
+    setSearch,
+    offset,
+    setOffset,
+    limit,
+    createOpen,
+    setCreateOpen,
+    creating,
+    newTitle,
+    setNewTitle,
+    newDesc,
+    setNewDesc,
+    newLang,
+    setNewLang,
+    langFilter,
+    setLangFilter,
+    bookLangs,
+    filteredBooks,
+    allLanguages,
+    handleCreate,
+  } = useBooksList();
 
   return (
     <div className="space-y-6">
@@ -211,7 +140,7 @@ export function BooksPage() {
           {filteredBooks.map((book) => (
             <Link
               key={book.book_id}
-              to={`/books/${book.book_id}`}
+              to={`/books/${book.book_id}/studio`}
               data-testid="book-row"
               className="group flex items-center gap-4 rounded-lg border p-4 transition-all hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-card"
             >
@@ -302,7 +231,14 @@ export function BooksPage() {
               {t('common.cancel', { ns: 'common' })}
             </button>
             <button
-              onClick={() => void handleCreate()}
+              onClick={() => {
+                // D-BOOKS-CREATE-TO-STUDIO: land straight in the Studio for the
+                // book just created, instead of back on the list waiting for a
+                // second click on the new row.
+                void handleCreate().then((bookId) => {
+                  if (bookId) navigate(`/books/${bookId}/studio`);
+                });
+              }}
               disabled={creating || !newTitle.trim()}
               data-testid="book-create-submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"

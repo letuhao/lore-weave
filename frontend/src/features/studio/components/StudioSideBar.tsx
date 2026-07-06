@@ -5,6 +5,7 @@ import { PanelLeftClose } from 'lucide-react';
 import type { ActivityView } from '../types';
 import { ManuscriptNavigator } from '../manuscript/ManuscriptNavigator';
 import type { ManuscriptNode } from '../manuscript/types';
+import { useStudioHost } from '../host/StudioHostProvider';
 
 interface Props {
   activeView: ActivityView;
@@ -19,6 +20,7 @@ interface Props {
 
 export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedId, onSelectNode }: Props) {
   const { t } = useTranslation('studio');
+  const host = useStudioHost();
 
   return (
     <div
@@ -51,7 +53,9 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
             </button>
           </div>
 
-          {/* Per-view stub — the real navigator for each view is a later component. */}
+          {/* Per-view stub — bible/search have no navigator yet. Quality has no rail
+              navigator of its own (its 4 capabilities are dock panels, DOCK-8 hub
+              pattern) — this button is its only rail affordance. */}
           <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-6 text-center">
             <p className="text-xs font-medium text-foreground/70">
               {t(`navStub.${activeView}.title`, { defaultValue: activeView })}
@@ -59,6 +63,16 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
             <p className="max-w-[200px] text-[11px] leading-relaxed text-muted-foreground">
               {t(`navStub.${activeView}.body`, { defaultValue: 'Built next.' })}
             </p>
+            {activeView === 'quality' && (
+              <button
+                type="button"
+                data-testid="studio-sidebar-open-quality"
+                onClick={() => host.openPanel('quality')}
+                className="mt-2 rounded bg-primary px-3 py-1 text-[11px] text-primary-foreground hover:opacity-90"
+              >
+                {t('panels.quality.title', { defaultValue: 'Quality' })}
+              </button>
+            )}
           </div>
         </>
       )}

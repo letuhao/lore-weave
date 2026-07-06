@@ -333,9 +333,12 @@ class TestHistorySplice:
             ):
                 pass
 
-        # the history query was seq-scoped to the un-compacted tail
+        # the history LOAD query was seq-scoped to the un-compacted tail. (C_persist's
+        # pre-load persist check also queries chat_messages — an ASC scan — but no-ops here
+        # (1 post-boundary message ≤ keep_recent); isolate the loader by its DESC/LIMIT shape.)
         history_calls = [
-            c for c in pool.fetch.await_args_list if "FROM chat_messages" in c.args[0]
+            c for c in pool.fetch.await_args_list
+            if "FROM chat_messages" in c.args[0] and "DESC" in c.args[0]
         ]
         assert history_calls, "history fetch did not run"
         sql = history_calls[0].args[0]

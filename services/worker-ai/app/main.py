@@ -12,7 +12,7 @@ import asyncio
 import logging
 
 import asyncpg
-from loreweave_obs import setup_tracing
+from loreweave_obs import setup_logging, setup_tracing
 
 from app.clients import (
     BookClient,
@@ -28,6 +28,7 @@ from app.runner import (
     consume_filter_reload_signal,
     hydrate_precision_filter_config_from_redis,
     poll_and_run,
+    sweep_stalled_jobs,
 )
 from app.summary_consumer import SummaryConsumer
 from app.wake import WakeWaiter
@@ -36,10 +37,7 @@ logger = logging.getLogger("worker-ai")
 
 
 async def main() -> None:
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
+    setup_logging("worker-ai", level=settings.log_level)  # P2·A2a — shared JSON logging
 
     # Phase 6c-γ — OpenTelemetry: instrument httpx so the loreweave_llm SDK
     # calls emit CLIENT spans. No app — worker-ai has no HTTP server. No-op
@@ -124,6 +122,13 @@ async def main() -> None:
                 )
                 if count > 0:
                     logger.info("Poll cycle: processed %d job(s)", count)
+                # gap #3 — generic stall backstop (cheap indexed query; only acts on
+                # jobs with no progress past the generous threshold, so safe per cycle).
+                _stalled = await sweep_stalled_jobs(
+                    pool, stall_minutes=settings.extraction_stall_minutes,
+                )
+                if _stalled:
+                    logger.warning("stall sweep: failed %d stalled extraction job(s)", _stalled)
             except Exception:
                 logger.exception("Poll cycle error (will retry)")
 

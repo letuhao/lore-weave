@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -51,28 +52,34 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		Description: "Create a genre, kind, or attribute in YOUR personal standards library (additive, " +
 			"takes effect immediately). level=genre|kind|attribute + name (+ code, derived from name if " +
 			"omitted). For an attribute: kind_code & genre_code identify which of YOUR kind×genre cells it " +
-			"attaches to (both must already be your user-tier rows).",
+			"attaches to (both must already be your user-tier rows). " +
+			"NOTE: superseded by glossary_ontology_upsert — kept for existing callers only.",
 		InputSchema: closedSetSchemaFor[userCreateToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserCreate)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_user_patch",
 		Description: "Edit one of YOUR user-tier genre/kind/attributes in place. level + code identify the " +
 			"row (attribute also needs kind_code + genre_code). Pass the base_version you read from " +
-			"glossary_user_standards_read so a concurrent edit is detected (409 on drift). Only supplied fields change.",
+			"glossary_user_standards_read so a concurrent edit is detected (409 on drift). Only supplied fields change. " +
+			"NOTE: superseded by glossary_ontology_upsert — kept for existing callers only.",
 		InputSchema: closedSetSchemaFor[userPatchToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserPatch)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_user_delete",
 		Description: "Move one of YOUR user-tier genre/kind/attributes to the trash (soft-delete, REVERSIBLE " +
 			"via glossary_user_restore). level + code (attribute also needs kind_code + genre_code). A genre " +
-			"still linked to a kind or carrying attributes can't be trashed until those are removed.",
+			"still linked to a kind or carrying attributes can't be trashed until those are removed. " +
+			"NOTE: superseded by glossary_ontology_delete — kept for existing callers only.",
 		InputSchema: closedSetSchemaFor[userDeleteToolIn](map[string][]any{"level": enumLevels}),
+		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserDelete)
 
 	mcp.AddTool(srv, &mcp.Tool{

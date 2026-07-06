@@ -6,6 +6,7 @@ from uuid import UUID
 
 import asyncpg
 import httpx
+from loreweave_internal_client import build_internal_client
 from fastapi import APIRouter, Depends, HTTPException
 from loreweave_jobs import emit_job_event
 from pydantic import BaseModel, Field
@@ -79,11 +80,10 @@ async def create_glossary_translate_job(
     reasoning_effort, _ = clamp_effort_to_grant(effort_raw, int(_grant_level))
     thinking_enabled = reasoning_effort != "none"  # derived alias for the GUI/back-compat
 
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with build_internal_client(app_settings.book_service_internal_url, internal_token=app_settings.internal_service_token, timeout_s=10) as client:
         try:
             r = await client.get(
                 f"{app_settings.book_service_internal_url}/internal/books/{book_id}/projection",
-                headers={"X-Internal-Token": app_settings.internal_service_token},
             )
         except httpx.RequestError:
             raise HTTPException(

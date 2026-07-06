@@ -70,8 +70,9 @@
       "extraction": "抽出",
       "extractionEnabled": "有効",
       "extractionDisabled": "無効",
-      "bookId": "書籍",
-      "none": "—"
+      "none": "—",
+      "book": "本",
+      "world": "世界"
     },
     "placeholder": {
       "proposals": "保留中の提案はここに表示されます（C11）。",
@@ -381,6 +382,8 @@
       "loading": "エンティティを読み込み中…",
       "loadFailed": "エンティティを読み込めませんでした：{{error}}",
       "close": "閉じる",
+      "edit": "編集",
+      "merge": "別のエンティティと結合",
       "metadata": "メタデータ",
       "description": "説明",
       "descriptionSource": "リンクされた用語集エントリより",
@@ -403,8 +406,6 @@
         "mentions": "言及回数",
         "anchor": "アンカースコア"
       },
-      "edit": "編集",
-      "merge": "別のエンティティと結合",
       "promote": "用語集へ昇格",
       "promoteHint": "発見されたエンティティです。昇格するとレビュー用のAI提案下書きが作成されます。",
       "promotePending": "昇格中…",
@@ -586,7 +587,9 @@
         "oldest": "古い順",
         "name_asc": "名前 (A–Z)",
         "name_desc": "名前 (Z–A)"
-      }
+      },
+      "thisBookOnly": "この本のみ",
+      "showAllBooks": "すべての本を表示"
     },
     "card": {
       "staticMemory": "静的メモリ",
@@ -598,43 +601,6 @@
       "delete": "削除",
       "tuneExtraction": "抽出を調整",
       "bookId": "book_id"
-    },
-    "extractionTuning": {
-      "title": "抽出を調整",
-      "description": "小説ごとの抽出設定。変更はこのプロジェクトの次回の抽出実行に適用されます。",
-      "filterEnabled": "精度フィルタ（根拠の乏しい抽出を除外）",
-      "category": {
-        "entity": "エンティティ",
-        "relation": "関係",
-        "event": "イベント"
-      },
-      "categoriesRequired": "少なくとも1つのカテゴリを選択するか、フィルタをオフにしてください。",
-      "partialPolicy": "部分一致:",
-      "policyKeep": "保持",
-      "policyDrop": "破棄",
-      "defaultModel": "既定の抽出モデル",
-      "defaultModelNone": "グローバル既定を使用",
-      "defaultModelHint": "下で上書きしない限り、すべての抽出ステップで使うモデル。空欄なら各ロールはグローバル既定モデル（設定）、次にこのビルドが実行するモデルにフォールバックします。",
-      "recoveryEnabled": "エンティティ回復（見落としたエンティティを回復）",
-      "recoveryModel": "回復モデル（任意）",
-      "recoveryModelNone": "既定の抽出モデルを使用",
-      "recoveryModelHint": "メインパスが見落としたエンティティを回復するLLM。既定のままなら上の既定抽出モデルを再利用します。",
-      "recoveryBatch": "バッチサイズ",
-      "recoveryBatchHint": "分類呼び出しごとの名前数（1〜20、既定5）",
-      "autocreateEnabled": "ライター自動作成（関係から参照されるエンティティを生成）",
-      "promptWarning": "上級: カスタムプロンプトはその工程の既定の抽出指示を置き換え、品質を低下させる可能性があります。空欄で既定を使用します。JSON出力は常に強制されます。",
-      "promptPlaceholder": "空欄で既定のプロンプトを使用",
-      "prompt": {
-        "entity": "エンティティ抽出プロンプト",
-        "relation": "関係抽出プロンプト",
-        "event": "イベント抽出プロンプト",
-        "fact": "ファクト抽出プロンプト"
-      },
-      "save": "保存",
-      "saving": "保存中…",
-      "cancel": "キャンセル",
-      "saved": "抽出設定を保存しました。",
-      "failed": "保存に失敗しました: {{error}}"
     },
     "form": {
       "createTitle": "新しいプロジェクト",
@@ -901,6 +867,43 @@
       "failed": "変更失敗: {{error}}",
       "alreadyAtModel": "モデルは既に {{model}} に設定されています — 別のデバイスで変更された可能性があります。"
     },
+    "extractionTuning": {
+      "title": "抽出を調整",
+      "description": "小説ごとの抽出設定。変更はこのプロジェクトの次回の抽出実行に適用されます。",
+      "filterEnabled": "精度フィルタ（根拠の乏しい抽出を除外）",
+      "category": {
+        "entity": "エンティティ",
+        "relation": "関係",
+        "event": "イベント"
+      },
+      "categoriesRequired": "少なくとも1つのカテゴリを選択するか、フィルタをオフにしてください。",
+      "partialPolicy": "部分一致:",
+      "policyKeep": "保持",
+      "policyDrop": "破棄",
+      "defaultModel": "既定の抽出モデル",
+      "defaultModelNone": "グローバル既定を使用",
+      "defaultModelHint": "下で上書きしない限り、すべての抽出ステップで使うモデル。空欄なら各ロールはグローバル既定モデル（設定）、次にこのビルドが実行するモデルにフォールバックします。",
+      "recoveryEnabled": "エンティティ回復（見落としたエンティティを回復）",
+      "recoveryModel": "回復モデル（任意）",
+      "recoveryModelNone": "既定の抽出モデルを使用",
+      "recoveryModelHint": "メインパスが見落としたエンティティを回復するLLM。既定のままなら上の既定抽出モデルを再利用します。",
+      "recoveryBatch": "バッチサイズ",
+      "recoveryBatchHint": "分類呼び出しごとの名前数（1〜20、既定5）",
+      "autocreateEnabled": "ライター自動作成（関係から参照されるエンティティを生成）",
+      "promptWarning": "上級: カスタムプロンプトはその工程の既定の抽出指示を置き換え、品質を低下させる可能性があります。空欄で既定を使用します。JSON出力は常に強制されます。",
+      "promptPlaceholder": "空欄で既定のプロンプトを使用",
+      "prompt": {
+        "entity": "エンティティ抽出プロンプト",
+        "relation": "関係抽出プロンプト",
+        "event": "イベント抽出プロンプト",
+        "fact": "ファクト抽出プロンプト"
+      },
+      "save": "保存",
+      "saving": "保存中…",
+      "cancel": "キャンセル",
+      "saved": "抽出設定を保存しました。",
+      "failed": "保存に失敗しました: {{error}}"
+    },
     "confirmDestructive": {
       "cancel": "キャンセル",
       "deleteGraph": {
@@ -954,6 +957,7 @@
       "noModels": "登録済みのチャットモデルがありません。まず AI モデルを追加してください。",
       "costHint": "推定費用: 少額 (<$0.05)。出力は500トークンで制限されます。",
       "editLockHint": "過去30日以内に手動編集した場合、再生成はスキップされます。",
+      "disabledDirty": "再生成する前に未保存の変更を保存またはリセットしてください。未保存の変更があると、再生成結果はエディタに表示されません。",
       "editLockDefault": "直近の手動編集は30日間再生成から保護されます。",
       "confirm": "再生成",
       "regenerating": "再生成中…",
@@ -964,8 +968,7 @@
       "concurrentEdit": "手動編集が再生成と競合しました。現在のバイオを確認してもう一度お試しください。",
       "guardrailFailed": "再生成が品質チェックに失敗しました: {{reason}}",
       "providerError": "AI プロバイダーからエラーが返されました: {{reason}}",
-      "unknownError": "再生成に失敗しました: {{reason}}",
-      "disabledDirty": "再生成する前に未保存の変更を保存またはリセットしてください。未保存の変更があると、再生成結果はエディタに表示されません。"
+      "unknownError": "再生成に失敗しました: {{reason}}"
     },
     "preferences": {
       "title": "学習した好み",

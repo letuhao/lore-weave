@@ -71,6 +71,14 @@ func (s *Server) mcpHandler() http.Handler {
 	// General free-form web research (class-R read; paid outward call, not gated —
 	// returns neutralized sources for topic research before any entity exists).
 	s.RegisterWebSearchTool(srv)
+	// T-ONTO: consolidated create/update/delete tools (tool-catalog-simplification
+	// spec) — supersede the book/user create/patch/delete tools above, which stay
+	// registered (tagged _meta.visibility:"legacy") for existing callers.
+	s.RegisterOntologyTools(srv)
+	// §3.3 resolved 2026-07-06 — glossary_propose_entities supersedes this
+	// tool with a batch-capable sibling (a confirmed near-term need: a
+	// KG-extraction pipeline minting many entities per pass).
+	s.RegisterEntityBatchTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
@@ -78,7 +86,12 @@ func (s *Server) mcpHandler() http.Handler {
 			"glossary. It is created as a DRAFT suggestion in the review inbox — NOT canon — and " +
 			"must be approved by a human. If the name already exists, or was previously rejected, " +
 			"no duplicate is created. Call glossary_search first to confirm it doesn't already exist; " +
-			"call glossary_book_ontology_read to pick a valid kind.",
+			"call glossary_book_ontology_read to pick a valid kind. " +
+			"NOTE: superseded by glossary_propose_entities -- kept for existing callers only.",
+		// Tier was previously unset (defaulting to R) despite being a direct write --
+		// corrected to A (auto-commit, draft-only so low-risk) while legacy-tagging it,
+		// since both edits touch this same registration.
+		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolProposeNewEntity)
 
 	// Class-C proposals. These MINT a generalized action confirm token (no write) +
@@ -455,21 +468,23 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("attr defs: %w", err)
 	}
-	// 070: report which supplied attribute codes don't exist on the kind and will
-	// be dropped by createExtractedEntity (it silently `continue`s on unknown
-	// codes), so the LLM learns they didn't land.
-	var skipped []string
-	for code := range attrs {
-		if _, ok := attrDefMap[kindID.String()+":"+code]; !ok {
-			skipped = append(skipped, code)
-		}
-	}
 	ent := extractedEntity{Name: name, Attributes: attrs}
 	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
 	// human can correct it when reviewing the draft in the inbox.
-	entityID, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
+	//
+	// /review-impl HIGH fix: this used to pre-compute "skipped" itself (any code
+	// missing from attrDefMap) and tell the LLM it "didn't land" — true when
+	// createExtractedEntity silently dropped unmatched codes, FALSE now that it
+	// captures them into "description" (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK). Use
+	// createExtractedEntity's own returned skip list instead of duplicating
+	// (now-stale) logic about what it does with an unmatched code.
+	entityID, _, skippedAttrs, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("create draft: %w", err)
+	}
+	var skipped []string
+	for _, sa := range skippedAttrs {
+		skipped = append(skipped, sa.Code)
 	}
 	return entityID, "created", skipped, nil
 }
