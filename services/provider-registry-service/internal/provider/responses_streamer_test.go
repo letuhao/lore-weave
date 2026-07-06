@@ -152,6 +152,51 @@ func TestBuildResponsesBody_ConvertsMessagesToolsAndChain(t *testing.T) {
 	}
 }
 
+func TestBuildResponsesBody_NestedReasoningEffort(t *testing.T) {
+	// the Responses API needs NESTED reasoning.effort; the flat reasoning_effort is
+	// ignored (live-verified). "off" → {"effort":"none"} disables thinking.
+	b := buildResponsesBody("m", map[string]any{"messages": []any{}, "reasoning_effort": "off"})
+	r, ok := b["reasoning"].(map[string]any)
+	if !ok || r["effort"] != "none" {
+		t.Fatalf("off must map to nested reasoning.effort=none, got %v", b["reasoning"])
+	}
+	if _, flat := b["reasoning_effort"]; flat {
+		t.Fatal("must NOT send the flat reasoning_effort (ignored by /v1/responses)")
+	}
+	// "auto" → omit (model default), so no reasoning field forced.
+	b2 := buildResponsesBody("m", map[string]any{"messages": []any{}, "reasoning_effort": "auto"})
+	if _, has := b2["reasoning"]; has {
+		t.Fatalf("auto must omit the reasoning field, got %v", b2["reasoning"])
+	}
+}
+
+func TestMapResponsesEffort(t *testing.T) {
+	cases := map[string]string{
+		"off": "none", "none": "none", "low": "low", "fast": "low",
+		"medium": "medium", "standard": "medium", "high": "high", "deep": "high",
+		"minimal": "minimal", "auto": "", "": "", "weird": "",
+	}
+	for in, want := range cases {
+		if got := mapResponsesEffort(in); got != want {
+			t.Errorf("mapResponsesEffort(%q)=%q want %q", in, got, want)
+		}
+	}
+}
+
+func TestBuildResponsesBody_EnforcesOutputCeiling(t *testing.T) {
+	// no caller max_tokens → the safety ceiling is applied (an always-reasoning local
+	// model on /v1/responses can't be told to stop thinking, so it must be bounded).
+	b := buildResponsesBody("m", map[string]any{"messages": []any{}})
+	if b["max_output_tokens"] != 16384 {
+		t.Fatalf("expected default output ceiling 16384, got %v", b["max_output_tokens"])
+	}
+	// a caller max_tokens wins.
+	b2 := buildResponsesBody("m", map[string]any{"messages": []any{}, "max_tokens": 512})
+	if toFloat(b2["max_output_tokens"]) != 512 {
+		t.Fatalf("caller max_tokens must win, got %v", b2["max_output_tokens"])
+	}
+}
+
 func TestIsChainNotFound_MatchesProbedLmStudioBody(t *testing.T) {
 	// the EXACT body LM Studio returned for a bogus previous_response_id (probed 2026-07-06)
 	body := `{"error":{"message":"Prediction history node with id 'x' not found while attempting to build chat history chain that includes this node.","type":"invalid_request_error","param":"previous_response_id","code":"previous_response_not_found"}}`

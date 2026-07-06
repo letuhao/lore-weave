@@ -13,8 +13,45 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
+
+// mapResponsesEffort maps the platform's flat reasoning-effort vocabulary
+// (off|low|medium|high|auto + legacy fast|standard|deep) to the Responses API's
+// reasoning.effort enum (none|minimal|low|medium|high|xhigh). "off"→"none" disables
+// thinking (live-verified). "auto"/unknown ⇒ "" = omit the field, using the model
+// default (never force a value we're unsure of).
+func mapResponsesEffort(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "off", "none":
+		return "none"
+	case "minimal":
+		return "minimal"
+	case "low", "fast":
+		return "low"
+	case "medium", "standard":
+		return "medium"
+	case "high", "deep":
+		return "high"
+	default: // "auto", "", or anything unknown → model default
+		return ""
+	}
+}
+
+// responsesDefaultMaxOutput — the bounded output ceiling applied to a stateful
+// /v1/responses turn when the caller supplied no max_tokens. Prevents an always-reasoning
+// local model from looping unbounded (the thinking-off controls don't work on this API).
+// Generous enough for a long prose answer (a full scene); tune via
+// LLM_RESPONSES_MAX_OUTPUT_TOKENS. Never returns <= 0.
+func responsesDefaultMaxOutput() int {
+	if v := strings.TrimSpace(os.Getenv("LLM_RESPONSES_MAX_OUTPUT_TOKENS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 16384
+}
 
 // StatefulCacheEnabled — the deploy flag for the stateful strategy (default OFF;
 // staged rollout per spec §11). Enable with LLM_STATEFUL_CACHE=1/true/on. Independent
@@ -57,14 +94,31 @@ func buildResponsesBody(modelName string, input map[string]any) map[string]any {
 	if v, ok := input["temperature"]; ok {
 		body["temperature"] = v
 	}
+	// Output ceiling (safety): LM Studio's /v1/responses IGNORES the thinking-off
+	// controls that work on /v1/chat/completions (enable_thinking / reasoning_effort —
+	// live-verified 2026-07-06), so a local REASONING model (gemma-a4b) always reasons
+	// and, with NO cap, can spiral into a 60K+ reasoning loop that also poisons the
+	// server-held chain. A caller max_tokens wins; otherwise enforce a bounded default so
+	// a stateful turn can NEVER run away. Tunable via LLM_RESPONSES_MAX_OUTPUT_TOKENS.
 	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		body["max_output_tokens"] = v
+	} else {
+		body["max_output_tokens"] = responsesDefaultMaxOutput()
 	}
-	// Forward reasoning controls so thinking-off still works on reasoning models in
-	// stateful mode (same intent as forwardOptionalChatFields on the chat path).
-	if v, ok := input["reasoning_effort"]; ok {
-		body["reasoning_effort"] = v
+	// Reasoning control (spec §5). The Responses API uses the NESTED reasoning.effort
+	// field — NOT the flat reasoning_effort that /v1/chat/completions takes. Live-verified
+	// 2026-07-06 against LM Studio gemma-a4b: flat reasoning_effort is IGNORED here, but
+	// {"reasoning":{"effort":"none"}} DISABLES thinking (reasoning_tokens 0), while
+	// {"effort":"low"} still reasons — so the flat field was why thinking-off was a no-op
+	// in stateful mode. Map the caller's flat value to the nested field; caching + reasoning
+	// coexist by design (reasoning items are dropped between turns, not accumulated).
+	if v, ok := input["reasoning_effort"].(string); ok {
+		if eff := mapResponsesEffort(v); eff != "" {
+			body["reasoning"] = map[string]any{"effort": eff}
+		}
 	}
+	// chat_template_kwargs kept as a fallback for local models that honor it (harmless to
+	// the Responses reasoning field above).
 	if v, ok := input["chat_template_kwargs"]; ok {
 		body["chat_template_kwargs"] = v
 	}
