@@ -1089,7 +1089,12 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	}
 	var usage Usage
 	if u, ok := out["usage"].(map[string]any); ok {
-		usage.InputTokens = int(toFloat(u["input_tokens"]))
+		// D-PROMPT-CACHING — Anthropic reports input_tokens EXCLUDING cached
+		// tokens; fold cache_creation/cache_read back in so enabling caching never
+		// under-counts the input volume (see anthropic_streamer.go for the rationale).
+		usage.InputTokens = int(toFloat(u["input_tokens"]) +
+			toFloat(u["cache_creation_input_tokens"]) +
+			toFloat(u["cache_read_input_tokens"]))
 		usage.OutputTokens = int(toFloat(u["output_tokens"]))
 	}
 	return out, usage, nil

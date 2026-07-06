@@ -84,11 +84,20 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			Message struct {
 				Usage struct {
 					InputTokens int `json:"input_tokens"`
+					// D-PROMPT-CACHING — with cache_control, Anthropic reports
+					// input_tokens EXCLUDING cached tokens; the cached prefix rides
+					// these two fields. Fold them into the total so enabling caching
+					// never silently under-counts input (OpenAI, by contrast, keeps
+					// cached tokens INSIDE prompt_tokens, so its path needs no fold).
+					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+					CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 				} `json:"usage"`
 			} `json:"message"`
 			Usage struct {
-				InputTokens  int `json:"input_tokens"`
-				OutputTokens int `json:"output_tokens"`
+				InputTokens              int `json:"input_tokens"`
+				OutputTokens             int `json:"output_tokens"`
+				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 			} `json:"usage"`
 			Error struct {
 				Type    string `json:"type"`
@@ -123,8 +132,14 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 
 		switch kind {
 		case "message_start":
-			// Anthropic includes input_tokens in message_start.usage.
-			inputTokens = parsed.Message.Usage.InputTokens
+			// Anthropic includes input_tokens in message_start.usage. With prompt
+			// caching (D-PROMPT-CACHING) the cached prefix is reported separately in
+			// cache_creation/cache_read; fold both in so the total input volume is
+			// counted (bills at standard input rate as if uncached — the platform
+			// keeps the Anthropic-side cache savings, and no spend/cap under-counts).
+			inputTokens = parsed.Message.Usage.InputTokens +
+				parsed.Message.Usage.CacheCreationInputTokens +
+				parsed.Message.Usage.CacheReadInputTokens
 		case "content_block_start":
 			// text/thinking blocks: no-op — the first delta does the work.
 			// tool_use blocks: the start event is the ONLY carrier of the
