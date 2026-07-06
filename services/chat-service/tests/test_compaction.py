@@ -105,6 +105,33 @@ class TestBreadcrumb:
         assert "Oldan Vex" in bc                    # multi-word proper phrase
         assert bc.startswith("KEY DETAILS")
 
+    def test_preserves_single_word_coined_names(self):
+        # the fiction case the multi-word/quoted patterns MISSED (measured: 7/9 dropped),
+        # which made a compacted long session lose character/place/spell names → recall
+        # failure. Single-word coined names are the highest-value novel facts.
+        msgs = [
+            {"role": "user", "content": "The secret rune is VORTHANE. Remember it."},
+            {"role": "user", "content": "Kael the blacksmith forged Dawnbreaker in Emberfall."},
+            {"role": "user", "content": "Sorenth rules Rimehold. Mira is a healer."},
+        ]
+        bc = extract_breadcrumb(msgs)
+        for name in ("VORTHANE", "Kael", "Dawnbreaker", "Emberfall", "Sorenth", "Rimehold", "Mira"):
+            assert name in bc, f"{name} dropped from breadcrumb"
+
+    def test_filters_common_openers_and_allcommon_phrases(self):
+        # precision: capitalized common words (sentence openers, even after a colon) and
+        # all-common multi-word phrases must NOT pollute the breadcrumb.
+        bc = extract_breadcrumb([{"role": "user", "content":
+            "Kael forged Dawnbreaker. Reply OK. More lore: The chronicle is long."}])
+        names = ""
+        for line in bc.splitlines():
+            if line.startswith("Names"):
+                names = line.lower()
+        assert "kael" in names and "dawnbreaker" in names
+        assert "reply ok" not in names   # all-common phrase filtered
+        for junk in ("; the;", "; more;", "; reply;", "; note;", "; here;"):
+            assert junk not in names + ";"
+
     def test_empty_when_nothing_salient(self):
         assert extract_breadcrumb([{"role": "user", "content": "ok thanks"}]) == ""
         assert extract_breadcrumb([]) == ""

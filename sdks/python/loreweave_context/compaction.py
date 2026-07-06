@@ -116,6 +116,52 @@ def _has_figure(s: str) -> bool:
     return any(c.isdigit() for c in s) or bool(_NUMWORD.search(s))
 
 
+# Single-word coined names (VORTHANE, Kael, Emberfall, Dawnbreaker) are the HIGHEST-value
+# facts in fiction — a character, place, artifact, or spell — and the multi-word `_PROPER`
+# (needs 2+ capitalized words) + quote-only `_QUOTED` miss every one of them, so a
+# compaction silently drops them (measured: 7/9 novel names dropped). This extractor keeps
+# them with high precision: ALL-CAPS anywhere, a capital MID-sentence (English only
+# capitalizes proper nouns there, bar "I"), and a SENTENCE-INITIAL capital only when it is
+# not a common opener (so "The"/"Remember"/"Reply" are filtered but "Kael"/"Sorenth" kept).
+_WORD = re.compile(r"[A-Za-z][A-Za-z’'-]*")
+# common capitalized openers / function words that are NOT proper nouns.
+_COMMON_CAP = frozenset("""
+a an the this that these those there here it its i we you he she him her they them his their our my your
+and or but so if when while then as at by for from in into of on to with within without about after before
+note remember also more most some any all each every none no not now new next first second third last
+is are was were be been am do does did has have had will would can could should shall may might must
+what who whom whose which why how where whether yes ok okay please thanks let reply say tell list
+i'm i've it's we're they're you're don't can't won't
+monday tuesday wednesday thursday friday saturday sunday
+january february march april may june july august september october november december
+mr mrs ms dr sir madam king queen lord lady prince princess chapter part book section
+""".split())
+
+
+def _proper_singletons(text: str, seen: set[str]) -> list[str]:
+    """Order-preserved single-word proper nouns / coined names, deduped against `seen`
+    (which it mutates). Kept: ALL-CAPS anywhere (VORTHANE), or a capitalized word that is
+    not a common word (`_COMMON_CAP`) and not the pronoun "I" — the stoplist applies at
+    EVERY position so a capitalized "The"/"OK"/"Reply" (even mid-sentence, e.g. after a
+    colon) is filtered while coined names (never in the stoplist) are kept."""
+    out: list[str] = []
+    for w in _WORD.findall(text):
+        if len(w) < 3:
+            continue
+        if w.isupper():
+            keep = True
+        elif w[0].isupper() and w != "I" and w.lower() not in _COMMON_CAP:
+            keep = True
+        else:
+            keep = False
+        if keep:
+            k = w.lower()
+            if k not in seen:
+                seen.add(k)
+                out.append(w)
+    return out
+
+
 def extract_breadcrumb(messages: list[dict], *, max_chars: int = 900) -> str:
     """Deterministic verbatim trace of salient facts in `messages` (the turns being
     compacted away): (1) number-bearing sentences (counts, prices, dates — the facts a
@@ -144,9 +190,20 @@ def extract_breadcrumb(messages: list[dict], *, max_chars: int = 900) -> str:
         for m in pat.findall(text):
             term = m.strip()
             k = term.lower()
+            # skip an all-common-word phrase ("Reply OK", "The Next") — a _PROPER
+            # false positive that carries no fact.
+            words = _WORD.findall(term)
+            if words and all(w.lower() in _COMMON_CAP for w in words):
+                continue
             if len(term) >= 3 and k not in seen:
                 seen.add(k)
                 names.append(term)
+                # mark constituent words seen so _proper_singletons doesn't re-add
+                # "Ashen"/"River" once "Ashen River" is captured.
+                for w in _WORD.findall(term):
+                    seen.add(w.lower())
+    # single-word coined names (the fiction case the multi-word/quoted patterns miss).
+    names.extend(_proper_singletons(text, seen))
 
     blocks: list[str] = []
     if facts:
