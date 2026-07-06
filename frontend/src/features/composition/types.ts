@@ -68,6 +68,19 @@ export type WorkResolution = {
   book_project_ids: string[];
 };
 
+// Studio Quality tab (`quality-canon`) — one confirmed canon contradiction, mirrors
+// OutlineRepo.canon_issues(). chapter_title is intentionally absent (composition
+// doesn't own chapter titles — the caller resolves chapter_id via booksApi.listChapters).
+export type CanonIssue = {
+  scene_id: string;
+  scene_title: string;
+  chapter_id: string | null;
+  job_id: string;
+  created_at: string;
+  status: string | null;
+  violations: Array<{ entity_id?: string; name?: string; why?: string; span?: string; kind?: string }>;
+};
+
 // T0.1 — narrative-thread (promise/foreshadow) ledger row. Advisory (D4); the
 // `open` set is the author's unpaid-promise debt. Mirrors composition-service
 // NarrativeThread (app/db/models.py).

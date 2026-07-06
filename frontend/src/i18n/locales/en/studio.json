@@ -90,6 +90,27 @@
       "desc": "Browse and open your knowledge-graph projects",
       "guideBody": "Knowledge is your entry point into a book's knowledge graph — the entities, events, and lore your AI agents have extracted and organized. Open it to pick which project (book) to work in before diving into entities, timelines, or the graph itself."
     },
+    "quality": {
+      "title": "Quality",
+      "desc": "Open promises, critic scores, story coverage & canon issues",
+      "guideBody": "Quality is your diagnostic dashboard — advisory only, nothing here changes your prose. Pick a card to see the open-promise debt ledger, per-chapter critic scores, whole-book promise coverage, or confirmed canon contradictions."
+    },
+    "quality-promises": {
+      "title": "Promises",
+      "desc": "The open-promise debt ledger (setups not yet paid off)"
+    },
+    "quality-critic": {
+      "title": "Critic",
+      "desc": "Per-chapter coherence, voice, pacing & canon scores"
+    },
+    "quality-coverage": {
+      "title": "Story coverage",
+      "desc": "Whole-book audit of which outline promises got paid off"
+    },
+    "quality-canon": {
+      "title": "Canon issues",
+      "desc": "Confirmed contradictions from generation & knowledge extraction"
+    },
     "kg-overview": {
       "title": "Overview",
       "desc": "Project summary and quick actions",
@@ -523,6 +544,30 @@
       "title": "Quality",
       "body": "Critic scores, promise threads & canon issues. Coming soon."
     }
+  },
+  "quality": {
+    "noWork": "This book has no co-writer session yet — start composing a chapter first, then quality data will appear here.",
+    "hubNoWorkHint": "Promises, critic scores, and story coverage need a co-writer session — start composing a chapter first. Canon issues below still work either way.",
+    "pickModel": "Pick a model to analyze with…",
+    "pickChapter": "Pick a chapter",
+    "pickChapterHint": "Pick a chapter above to analyze its quality.",
+    "chaptersTruncated": "showing first {{shown}} of {{total}} chapters",
+    "canonIntro": "Advisory — confirmed contradictions with content marked gone/changed earlier in the book. Nothing here is applied automatically.",
+    "canonEmpty": "No canon issues found.",
+    "canonCompositionError": "Could not load canon issues from generation — try again.",
+    "canonExtractionError": "Could not load canon flags from knowledge extraction — try again.",
+    "canonFromGeneration": "From generation ({{n}})",
+    "canonFromExtraction": "From knowledge extraction ({{n}})",
+    "untitledScene": "Untitled scene",
+    "jumpToChapter": "Open chapter",
+    "promisesTitle": "Promises",
+    "promisesDesc": "Open-promise debt ledger",
+    "criticTitle": "Critic",
+    "criticDesc": "Per-chapter coherence, voice, pacing & canon scores",
+    "coverageTitle": "Story coverage",
+    "coverageDesc": "Whole-book promise coverage",
+    "canonTitle": "Canon issues",
+    "canonDesc": "Confirmed contradictions"
   },
   "sidebar": {
     "collapse": "Collapse"

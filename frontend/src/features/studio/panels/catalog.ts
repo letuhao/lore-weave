@@ -66,6 +66,11 @@ import { EnrichmentSettingsPanel } from './EnrichmentSettingsPanel';
 import { UserGuidePanel } from './UserGuidePanel';
 import { AgentModePanel } from './AgentModePanel';
 import { ChapterRevisionComparePanel } from './ChapterRevisionComparePanel';
+import { QualityHubPanel } from './QualityHubPanel';
+import { QualityPromisesPanel } from './QualityPromisesPanel';
+import { QualityCriticPanel } from './QualityCriticPanel';
+import { QualityCoveragePanel } from './QualityCoveragePanel';
+import { QualityCanonPanel } from './QualityCanonPanel';
 
 /** #18 — domain-area grouping for the Command Palette. Required for every non-hidden panel
  *  (enforced at runtime by panelCatalogContract.test.ts — B6, not just a convention). */
@@ -73,6 +78,7 @@ export type StudioPanelCategory =
   | 'editor'
   | 'storyBible'
   | 'knowledge'
+  | 'quality'
   | 'translation'
   | 'enrichment'
   | 'sharing'
@@ -236,6 +242,17 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // chapterId, so it stays hidden regardless, same as those panels.
   { id: 'agent-mode', component: AgentModePanel, titleKey: 'panels.agent-mode.title', descKey: 'panels.agent-mode.desc', category: 'editor' },
   { id: 'chapter-revision-compare', component: ChapterRevisionComparePanel, titleKey: 'panels.chapter-revision-compare.title', descKey: 'panels.chapter-revision-compare.desc', hiddenFromPalette: true },
+  // Quality tab (docs/plans/2026-07-06-studio-quality-tab.md) — DOCK-8 hub +
+  // sibling panels, same shape as `knowledge`/kg-*: promise ledger, per-chapter
+  // critic scores, book-wide promise coverage, and canon issues are 4 distinct
+  // data sources, not one monolithic tabbed panel. All palette + agent openable
+  // (added to chat-service's ui_open_studio_panel enum + regenerated
+  // contracts/frontend-tools.contract.json).
+  { id: 'quality', component: QualityHubPanel, titleKey: 'panels.quality.title', descKey: 'panels.quality.desc', category: 'quality', guideBodyKey: 'panels.quality.guideBody', tourAnchor: 'studio-quality-hub-panel' },
+  { id: 'quality-promises', component: QualityPromisesPanel, titleKey: 'panels.quality-promises.title', descKey: 'panels.quality-promises.desc', category: 'quality', guideBodyKey: 'panels.quality-promises.guideBody' },
+  { id: 'quality-critic', component: QualityCriticPanel, titleKey: 'panels.quality-critic.title', descKey: 'panels.quality-critic.desc', category: 'quality', guideBodyKey: 'panels.quality-critic.guideBody' },
+  { id: 'quality-coverage', component: QualityCoveragePanel, titleKey: 'panels.quality-coverage.title', descKey: 'panels.quality-coverage.desc', category: 'quality', guideBodyKey: 'panels.quality-coverage.guideBody' },
+  { id: 'quality-canon', component: QualityCanonPanel, titleKey: 'panels.quality-canon.title', descKey: 'panels.quality-canon.desc', category: 'quality', guideBodyKey: 'panels.quality-canon.guideBody' },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 
