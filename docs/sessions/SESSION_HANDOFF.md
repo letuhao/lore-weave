@@ -27,6 +27,15 @@ once [B] is correct. **Recommended POC scope: [A] ALONE** — chapter-shell crea
 3 open questions logged in the spec (mapping storage, ordinal collision on non-empty books,
 idempotency on re-compile) for the next CLARIFY checkpoint before even the POC's own BUILD.
 **Correctly classified XL — this doc is CLARIFY+DESIGN only, no code changes.**
+**Revision same day — added a propose→record→approve→apply gate** (user: LLM plans ONCE, saves a
+reviewable record, applies only after human approval, never re-runs the LLM per apply/retry).
+Mirrors Enrichment's H0 quarantine+promote shape + PlanForge's own `plan_apply_revision` honesty
+contract. [A]/[B]/ontology-kind-gaps now sit behind this gate: one propose pass → `plan_artifact`
+kind `"bootstrap_proposal"` (status pending) → human approve → deterministic apply with per-item
+status (partial-failure visible, not a bare retry). POC scope revised to prove the gate + [A]
+together, not [A] in isolation. 4 open questions now (added: record storage shape — dedicated
+table leaning, given it's a real state machine not a static blob; reject semantics — kept for
+audit like Enrichment's retract, not deleted). Commit `a2d9d6a83`.
 
 ---
 
