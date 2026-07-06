@@ -63,8 +63,31 @@ after adopting succeeds). 5 new tests, full suite green (1595 unit + 166
 integration). Live-verified: seeded a real glossary entity ("Nữ chính")
 through the gate against the real dev stack, confirmed present in
 glossary-service's own DB with correct attributes/tags. Commit `b606a70a3`.
-**Remaining milestones (M3 scene/beat+draft reachability, M4 real
-plain-language UI) not started** — continuing next.
+**M3 (scene/beat drafting context) — done + live-verified, same day.**
+Escalated twice mid-build (both reported to the user before proceeding,
+per "task is larger than classified — announce"): first found the Stage
+0-5 pipeline is a full 5-6-LLM-call orchestration (cast/motifs/beats/
+arcs/decompose/heal), not a single call; second found its own Stage 0
+`propose_cast`+`seed_entities` would double-seed glossary against M2's
+fix if invoked from inside the gate. User chose full completion both
+times. **Resolution: the gate never triggers the pipeline itself** — it
+only reads an ALREADY-COMPLETED `plan_pipeline` job's result if a
+separate, explicit `compile(run_pipeline=true)` call already produced
+one, so propose() stays zero-LLM-call regardless. Along the way, fixed a
+REAL pre-existing bug: that pipeline path had NEVER worked in production —
+`ChapterPlan(**c)` TypeError on every invocation (wrong field names +
+missing required keys). Fixed the mapping (`chapter_id=event_id` for
+correlation) + filled in missing keys; `pipeline_job_id` now persists
+onto `plan_run.checkpoint_state` (previously returned once, never
+queryable again). 9 new tests, full suite green (1595 unit + 170
+integration). **Live-verified end-to-end with a real local model**: ran
+the actual 6-stage pipeline for real, confirmed completion (previously
+guaranteed to crash) with the correct `chapter_id: "arc_2_event_1"`
+correlation, and confirmed bootstrap's `propose()` reads the completed
+job without error. Commit `8df1be958`.
+**Remaining: M4 (real plain-language UI) not started** — frontend work,
+a different domain from M1-M3's backend build; a natural checkpoint
+before starting it.
 
 ---
 
