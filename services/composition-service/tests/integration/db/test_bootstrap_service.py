@@ -57,9 +57,12 @@ class FakeBookClient:
         self.existing_chapters = existing_chapters or []
         self.created: list[dict[str, Any]] = []
         self.fail_on_title: str | None = None
+        self.fail_get_book: bool = False
         self._next_chapter_id = 0
 
     async def get_book(self, book_id, bearer):
+        if self.fail_get_book:
+            raise BookClientError(502, "BOOK_SERVICE_UNAVAILABLE", "simulated transient outage")
         return {"original_language": "vi"}
 
     async def list_chapters(self, book_id, bearer):
@@ -446,3 +449,54 @@ async def test_propose_without_a_pipeline_job_has_no_drafting_guide(pool):
     svc = _svc(pool, FakeBookClient())
     proposed = await svc.propose(user, book, run.id, bearer="tok")
     assert "drafting_guide" not in proposed.diff["new_chapters"][0]
+
+
+# ── /review-impl fixes ──────────────────────────────────────────────────────
+
+async def test_propose_with_a_malformed_pipeline_job_id_still_succeeds(pool):
+    """LOW: an optional M3 enhancement (the drafting-guide lookup) must never
+    break the REQUIRED propose() behavior. Before the fix, UUID(pipeline_job_id)
+    raised unguarded on a malformed id, aborting the whole call."""
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book,
+        chapters=[{"event_id": "e1", "title": "Chapter One", "ordinal": 1}],
+    )
+    await PlanRunsRepo(pool).update_run(
+        user, book, run.id, checkpoint_state={"pipeline_job_id": "not-a-real-uuid"},
+    )
+    svc = _svc(pool, FakeBookClient())
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    assert {c["title"] for c in proposed.diff["new_chapters"]} == {"Chapter One"}
+    assert "drafting_guide" not in proposed.diff["new_chapters"][0]
+
+
+async def test_apply_get_book_failure_marks_failed_not_stuck_applying(pool):
+    """HIGH (/review-impl): get_book() used to sit OUTSIDE apply()'s try block,
+    so a transient book-service failure there left the record stuck at
+    status='applying' forever — un-retriable, since claim_for_apply only
+    re-claims from 'approved'/'failed'. Proves the fix: the record reaches
+    'failed' (resumable), and a retry once the outage clears succeeds."""
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book,
+        chapters=[{"event_id": "e1", "title": "Chapter One", "ordinal": 1}],
+    )
+    book_client = FakeBookClient()
+    book_client.fail_get_book = True
+    svc = _svc(pool, book_client)
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    await svc.approve(user, book, proposed.id)
+
+    with pytest.raises(BookClientError):
+        await svc.apply(user, book, proposed.id, bearer="tok")
+
+    failed = await svc.get(user, book, proposed.id)
+    assert failed is not None and failed.status == "failed"
+    assert failed.error_detail and "simulated transient outage" in failed.error_detail
+
+    # The record is NOT stuck — it's resumable once the outage clears.
+    book_client.fail_get_book = False
+    resumed = await svc.apply(user, book, proposed.id, bearer="tok")
+    assert resumed.status == "applied"
+    assert resumed.applied_results["e1"]["chapter_id"] == "chapter-1"

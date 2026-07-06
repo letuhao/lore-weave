@@ -114,4 +114,21 @@ describe('BootstrapPanel', () => {
     );
     expect(screen.getByTestId('bootstrap-error').textContent).toContain('network down');
   });
+
+  // /review-impl MED: 2 real proposal rows already in production predate the
+  // new_glossary_entities diff key. TypeScript can't catch this — a real API
+  // response is never type-checked at runtime — so this simulates exactly that
+  // shape (a pre-M2 row) via an unchecked cast, the same way the actual old rows
+  // would arrive if a future "reload an existing proposal" feature fetched one.
+  it('a pre-M2 proposal missing new_glossary_entities entirely renders instead of crashing', () => {
+    const legacyProposal = {
+      ...proposal({ diff: { new_chapters: [{ event_id: 'e1', title: 'Chapter One', ordinal: 1 }] } as never }),
+    };
+    render(
+      <BootstrapPanel proposal={legacyProposal} busy={false} error={null}
+        onPropose={noop} onApprove={noop} onReject={noop} onApply={noop} />,
+    );
+    expect(screen.getByTestId('bootstrap-new-chapter').textContent).toContain('Chapter One');
+    expect(screen.queryByTestId('bootstrap-new-glossary-entity')).toBeNull();
+  });
 });

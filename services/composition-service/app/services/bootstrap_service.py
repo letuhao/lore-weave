@@ -111,12 +111,23 @@ class BootstrapService:
         # text drafting guide per event_id. Reading an ALREADY-COMPUTED job
         # result costs zero additional LLM calls — propose() stays cheap
         # regardless of whether a pipeline run happened.
+        # /review-impl LOW: this whole block is an OPTIONAL enhancement — a
+        # malformed/unreachable pipeline_job_id must never break the REQUIRED
+        # propose() behavior (the new_chapters/new_glossary_entities diff),
+        # so failures here degrade to "no drafting guide" rather than raising.
         drafting_guides: dict[str, str] = {}
         pipeline_job_id = run.checkpoint_state.get("pipeline_job_id")
         if pipeline_job_id:
-            job = await self._jobs.get(owner_user_id, UUID(pipeline_job_id))
-            if job is not None and job.status == "completed" and job.result:
-                drafting_guides = _drafting_guides_by_event_id(job.result)
+            try:
+                job = await self._jobs.get(owner_user_id, UUID(pipeline_job_id))
+                if job is not None and job.status == "completed" and job.result:
+                    drafting_guides = _drafting_guides_by_event_id(job.result)
+            except (ValueError, TypeError) as exc:
+                logger.warning(
+                    "bootstrap propose: run=%s has an unusable pipeline_job_id %r (%s) "
+                    "— continuing without a drafting guide",
+                    run_id, pipeline_job_id, exc,
+                )
 
         new_chapters = [
             {
@@ -212,18 +223,26 @@ class BootstrapService:
             )
             return existing
 
-        book = await self._book.get_book(book_id, bearer)
-        original_language = (book or {}).get("original_language") or "en"
-        new_chapters: list[dict[str, Any]] = claimed.diff.get("new_chapters", [])
-        new_glossary_entities: list[dict[str, Any]] = claimed.diff.get("new_glossary_entities", [])
-        logger.info(
-            "bootstrap apply: book=%s proposal=%s claimed, %d chapter(s) + %d glossary "
-            "entity/entities to apply (%d item(s) already applied in a prior attempt)",
-            book_id, proposal_id, len(new_chapters), len(new_glossary_entities),
-            len(claimed.applied_results),
-        )
-
         try:
+            # /review-impl HIGH: get_book() used to sit OUTSIDE this try block —
+            # any transient book-service failure here (or any other unexpected
+            # exception anywhere below, not just BookClientError/GlossaryClientError)
+            # propagated unhandled, leaving the record stuck at status='applying'
+            # forever (claim_for_apply only re-claims from 'approved'/'failed', so
+            # a retry silently no-ops on the stuck row instead of retrying). The
+            # whole post-claim body is now inside this try so ANY failure marks
+            # the record 'failed' (resumable) before propagating.
+            book = await self._book.get_book(book_id, bearer)
+            original_language = (book or {}).get("original_language") or "en"
+            new_chapters: list[dict[str, Any]] = claimed.diff.get("new_chapters", [])
+            new_glossary_entities: list[dict[str, Any]] = claimed.diff.get("new_glossary_entities", [])
+            logger.info(
+                "bootstrap apply: book=%s proposal=%s claimed, %d chapter(s) + %d glossary "
+                "entity/entities to apply (%d item(s) already applied in a prior attempt)",
+                book_id, proposal_id, len(new_chapters), len(new_glossary_entities),
+                len(claimed.applied_results),
+            )
+
             for ch in new_chapters:
                 event_id = ch["event_id"]
                 if event_id in claimed.applied_results:
@@ -281,11 +300,16 @@ class BootstrapService:
                         f"requested {len(pending_glossary)} glossary entities, "
                         f"glossary-service returned {len(created_entities)} — apply incomplete",
                     )
-        except (BookClientError, GlossaryClientError) as exc:
+        except Exception as exc:
+            # Deliberately broad (not just BookClientError/GlossaryClientError):
+            # ANY failure here must mark the record 'failed' (resumable via
+            # claim_for_apply) rather than leave it stuck at 'applying' forever.
+            # Doesn't swallow cancellation — asyncio.CancelledError is a
+            # BaseException, not an Exception, in Python 3.8+.
             error_detail = getattr(exc, "detail", None) or str(exc)
             logger.warning(
-                "bootstrap apply FAILED partway: book=%s proposal=%s error=%s",
-                book_id, proposal_id, error_detail,
+                "bootstrap apply FAILED partway: book=%s proposal=%s error=%s (%s)",
+                book_id, proposal_id, error_detail, type(exc).__name__,
             )
             await self._proposals.mark_failed(
                 owner_user_id, book_id, proposal_id, error_detail=error_detail,

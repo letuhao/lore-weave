@@ -59,7 +59,18 @@ export function BootstrapPanel({ proposal, busy, error, onPropose, onApprove, on
   }
 
   const { diff, status, applied_results: results, error_detail } = proposal;
-  const hasNothingToDo = diff.new_chapters.length === 0 && diff.new_glossary_entities.length === 0;
+  // /review-impl MED: 2 real proposal rows already in production predate the
+  // new_glossary_entities diff key (they were created before that field was
+  // added) — the backend defends this with .get(key, []), this component must
+  // too. Not reachable via this hook's OWN propose/approve/apply responses
+  // (those always construct both keys fresh), but api.bootstrapGet already
+  // exists unused — the moment a "reload an existing proposal" feature calls
+  // it, an old row would otherwise crash here exactly like the
+  // compileResult.pipeline_job_id / fidelity_score nulls this session already
+  // found and fixed elsewhere in this same panel.
+  const newChapters = diff.new_chapters ?? [];
+  const newGlossaryEntities = diff.new_glossary_entities ?? [];
+  const hasNothingToDo = newChapters.length === 0 && newGlossaryEntities.length === 0;
 
   return (
     <div data-testid="bootstrap-panel" className="space-y-2 border-t pt-3">
@@ -80,13 +91,13 @@ export function BootstrapPanel({ proposal, busy, error, onPropose, onApprove, on
         </p>
       )}
 
-      {diff.new_chapters.length > 0 && (
+      {newChapters.length > 0 && (
         <div>
           <p className="mb-1 text-[10px] uppercase text-muted-foreground">
-            {t('planner.bootstrap.newChapters', { defaultValue: 'New chapters' })} ({diff.new_chapters.length})
+            {t('planner.bootstrap.newChapters', { defaultValue: 'New chapters' })} ({newChapters.length})
           </p>
           <ul className="space-y-1">
-            {diff.new_chapters.map((c) => {
+            {newChapters.map((c) => {
               const result = results[c.event_id];
               const done = result && isChapterResult(result);
               return (
@@ -105,13 +116,13 @@ export function BootstrapPanel({ proposal, busy, error, onPropose, onApprove, on
         </div>
       )}
 
-      {diff.new_glossary_entities.length > 0 && (
+      {newGlossaryEntities.length > 0 && (
         <div>
           <p className="mb-1 text-[10px] uppercase text-muted-foreground">
-            {t('planner.bootstrap.newGlossary', { defaultValue: 'New glossary entries' })} ({diff.new_glossary_entities.length})
+            {t('planner.bootstrap.newGlossary', { defaultValue: 'New glossary entries' })} ({newGlossaryEntities.length})
           </p>
           <ul className="space-y-0.5">
-            {diff.new_glossary_entities.map((g) => {
+            {newGlossaryEntities.map((g) => {
               const key = `glossary:${g.kind_code}:${g.name}`;
               const result = results[key];
               const done = result && !isChapterResult(result);

@@ -33,7 +33,11 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   const [modelRef, setModelRef] = useState('');
 
   // A bootstrap proposal is scoped to ONE run — switching runs must not leave a stale
-  // proposal from the previous run showing under the newly-loaded/started one.
+  // proposal from the previous run showing under the newly-loaded/started one. Same
+  // reasoning applies to re-compiling the SAME run with a DIFFERENT arc (see the
+  // onCompile handler below — /review-impl caught the case where this was missing):
+  // the package artifact changes underneath the proposal, so a stale diff from the
+  // previous arc must not linger as if it described the newly-picked one.
   const openRun = (runId: string) => { void plan.loadRun(runId); bootstrap.reset(); setView('run'); };
   const startNewRun = () => { plan.resetRun(); bootstrap.reset(); setMarkdown(''); setView('run'); };
 
@@ -188,7 +192,7 @@ export function PlannerPanel(props: IDockviewPanelProps) {
                 compileResult={plan.compileResult}
                 onSelfCheck={() => void plan.runSelfCheck()}
                 onValidate={() => void plan.runValidate()}
-                onCompile={(arcId) => void plan.runCompile(arcId)}
+                onCompile={(arcId) => { bootstrap.reset(); void plan.runCompile(arcId); }}
               />
               {compiledRunId && (
                 <BootstrapPanel
