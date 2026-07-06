@@ -74,4 +74,80 @@ describe('useContextRack', () => {
     expect(toast.warning).toHaveBeenCalled();
     expect(result.current.enabledTools).toHaveLength(9);
   });
+
+  describe('pinnedLegacyTools (CAT-4 Part D)', () => {
+    it('unions a pin into pinned_legacy_tools via a SEPARATE PATCH from enabled_tools', () => {
+      const onSessionUpdate = vi.fn();
+      const { result } = renderHook(() =>
+        useContextRack({
+          session: { ...baseSession, enabled_tools: [], enabled_skills: [], pinned_legacy_tools: [] },
+          accessToken: 'tok',
+          onSessionUpdate,
+        }),
+      );
+
+      act(() => {
+        result.current.addPinnedLegacyTool('glossary_book_create');
+      });
+      expect(onSessionUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ pinned_legacy_tools: ['glossary_book_create'] }),
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(patchSessionMock).toHaveBeenCalledWith('tok', 's1', {
+        pinned_legacy_tools: ['glossary_book_create'],
+      });
+      // Must never bundle into the SAME patch as enabled_tools — a pin must not
+      // ride along with (or be mistaken for) a curated-mode enabled_tools write.
+      expect(patchSessionMock).not.toHaveBeenCalledWith(
+        'tok', 's1', expect.objectContaining({ enabled_tools: expect.anything() }),
+      );
+    });
+
+    it('removePinnedLegacyTool drops the name and re-PATCHes', () => {
+      const onSessionUpdate = vi.fn();
+      const { result } = renderHook(() =>
+        useContextRack({
+          session: { ...baseSession, pinned_legacy_tools: ['glossary_book_create', 'glossary_user_delete'] },
+          accessToken: 'tok',
+          onSessionUpdate,
+        }),
+      );
+
+      act(() => {
+        result.current.removePinnedLegacyTool('glossary_book_create');
+      });
+      expect(onSessionUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ pinned_legacy_tools: ['glossary_user_delete'] }),
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(patchSessionMock).toHaveBeenCalledWith('tok', 's1', {
+        pinned_legacy_tools: ['glossary_user_delete'],
+      });
+    });
+
+    it('warns and refuses past the pin limit', () => {
+      const session = {
+        ...baseSession,
+        pinned_legacy_tools: Array.from({ length: 16 }, (_, i) => `legacy_${i}`),
+      } as ChatSession;
+      const onSessionUpdate = vi.fn();
+      const { result } = renderHook(() =>
+        useContextRack({ session, accessToken: 'tok', onSessionUpdate }),
+      );
+
+      act(() => {
+        result.current.addPinnedLegacyTool('one_too_many');
+      });
+
+      expect(toast.warning).toHaveBeenCalled();
+      expect(onSessionUpdate).not.toHaveBeenCalled();
+      expect(patchSessionMock).not.toHaveBeenCalled();
+    });
+  });
 });

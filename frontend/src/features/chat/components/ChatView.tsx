@@ -223,6 +223,7 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
           enabledTools={rack.enabledTools}
           enabledSkills={rack.enabledSkills}
           activatedTools={rack.activatedTools}
+          pinnedLegacyTools={rack.pinnedLegacyTools}
           surface={chat.agentSurface.state}
           onOpenBreakdown={chat.contextBudget ? () => setBreakdownOpen(true) : undefined}
           token={accessToken}
@@ -230,6 +231,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
           onAddSkill={rack.addSkill}
           onRemoveTool={rack.removeTool}
           onRemoveSkill={rack.removeSkill}
+          onAddLegacyTool={rack.addPinnedLegacyTool}
+          onRemoveLegacyTool={rack.removePinnedLegacyTool}
           onClearDiscovered={rack.clearDiscovered}
           disabled={!!isArchived || chat.isStreaming}
           externalAddOpen={rackAddOpen}

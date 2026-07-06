@@ -416,6 +416,9 @@
     "more": "+{{count}} more",
     "more_tooltip": "{{count}} more discovered tools not shown",
     "remove": "Remove",
+    "advanced_tools": "Advanced tools ({{count}})",
+    "advanced_tools_hint": "Superseded tools kept for older callers. Prefer the tools above unless you specifically need one of these.",
+    "legacy_pin_tooltip": "You enabled this legacy tool for this session",
     "server": {
       "knowledge": "Knowledge",
       "glossary": "Glossary",

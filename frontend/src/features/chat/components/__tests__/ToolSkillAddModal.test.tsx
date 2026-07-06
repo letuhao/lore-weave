@@ -33,6 +33,11 @@ const SKILLS = [
   { id: 'glossary', label: 'Glossary', surfaces: ['book'] },
 ];
 
+const LEGACY_TOOLS = [
+  tool('glossary_book_create', 'glossary', 'old create'),
+  tool('glossary_user_create', 'glossary', 'old create (user)'),
+];
+
 function setup(props: Partial<React.ComponentProps<typeof ToolSkillAddModal>> = {}) {
   const onClose = vi.fn();
   const onAddTool = vi.fn();
@@ -182,5 +187,66 @@ describe('ToolSkillAddModal', () => {
     );
     await waitFor(() => expect(screen.getByTestId('tool-skill-tab-tools')).toHaveAttribute('aria-selected', 'true'));
     expect(screen.getByTestId('tool-skill-search')).toHaveValue('');
+  });
+
+  describe('Advanced tools (CAT-4 Part D)', () => {
+    function setupWithLegacy(props: Partial<React.ComponentProps<typeof ToolSkillAddModal>> = {}) {
+      listToolsCatalog.mockImplementation((_token: string, visibility?: string) =>
+        Promise.resolve({ items: visibility === 'legacy' ? LEGACY_TOOLS : TOOLS }));
+      const onClose = vi.fn();
+      const onAddTool = vi.fn();
+      const onAddSkill = vi.fn();
+      const onAddLegacyTool = vi.fn();
+      render(
+        <ToolSkillAddModal
+          open
+          onClose={onClose}
+          token="tok"
+          onAddTool={onAddTool}
+          onAddSkill={onAddSkill}
+          existingTools={[]}
+          existingSkills={[]}
+          onAddLegacyTool={onAddLegacyTool}
+          existingLegacyTools={[]}
+          {...props}
+        />,
+      );
+      return { onClose, onAddTool, onAddSkill, onAddLegacyTool };
+    }
+
+    it('is hidden entirely when onAddLegacyTool is not supplied', async () => {
+      setup(); // no onAddLegacyTool
+      await waitFor(() => expect(screen.getByTestId('tool-skill-modal')).toBeInTheDocument());
+      expect(screen.queryByTestId('tool-skill-advanced-section')).not.toBeInTheDocument();
+    });
+
+    it('renders collapsed by default; toggling reveals legacy items with a legacy badge', async () => {
+      setupWithLegacy();
+      await waitFor(() => expect(screen.getByTestId('tool-skill-advanced-section')).toBeInTheDocument());
+      expect(screen.queryByTestId('tool-skill-item-glossary_book_create')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('tool-skill-advanced-toggle'));
+      expect(await screen.findByTestId('tool-skill-item-glossary_book_create')).toBeInTheDocument();
+      expect(screen.getByTestId('tool-skill-item-glossary_book_create-legacy-badge')).toBeInTheDocument();
+      // The regular (discoverable) tools list is untouched by the legacy fetch.
+      expect(screen.getByTestId('tool-skill-item-book_create')).toBeInTheDocument();
+      expect(screen.queryByTestId('tool-skill-item-book_create-legacy-badge')).not.toBeInTheDocument();
+    });
+
+    it('picking a legacy tool calls onAddLegacyTool (not onAddTool) and closes', async () => {
+      const { onAddTool, onAddLegacyTool, onClose } = setupWithLegacy();
+      fireEvent.click(await screen.findByTestId('tool-skill-advanced-toggle'));
+      fireEvent.click(await screen.findByTestId('tool-skill-item-glossary_book_create'));
+      expect(onAddLegacyTool).toHaveBeenCalledWith('glossary_book_create');
+      expect(onAddTool).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it('excludes an already-pinned legacy tool from the list', async () => {
+      setupWithLegacy({ existingLegacyTools: ['glossary_book_create'] });
+      fireEvent.click(await screen.findByTestId('tool-skill-advanced-toggle'));
+      await waitFor(() => expect(screen.getByTestId('tool-skill-item-glossary_user_create')).toBeInTheDocument());
+      expect(screen.queryByTestId('tool-skill-item-glossary_book_create')).not.toBeInTheDocument();
+    });
   });
 });

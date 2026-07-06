@@ -729,3 +729,35 @@ class TestGroupDirectory:
     def test_find_tools_schema_advertises_group_enum(self):
         props = td.FIND_TOOLS_TOOL["function"]["parameters"]["properties"]
         assert props["group"]["enum"] == sorted(td.GROUP_DIRECTORY)
+
+
+class TestLegacyToolsCatalog:
+    """Part D — the server-sourced feed backing the `pinned_legacy_tools`
+    manual-injection setting (GET /v1/chat/tools/catalog?visibility=legacy)."""
+
+    def test_returns_only_legacy_tools_sorted_by_name(self):
+        items = td.legacy_tools_catalog(_LEGACY_CATALOG)
+        names = [i["name"] for i in items]
+        assert names == ["glossary_book_create", "glossary_user_create"]
+        assert all(i["description"] for i in items)
+
+    def test_empty_when_catalog_has_no_legacy_tools(self):
+        assert td.legacy_tools_catalog([_tool("glossary_search", tier="R")]) == []
+
+
+class TestUnknownPinnedLegacyNames:
+    """SET-6 closed-set validation for a PATCH pinned_legacy_tools write."""
+
+    def test_all_valid_returns_empty(self):
+        unknown = td.unknown_pinned_legacy_names(_LEGACY_CATALOG, ["glossary_book_create"])
+        assert unknown == []
+
+    def test_unknown_name_is_rejected(self):
+        unknown = td.unknown_pinned_legacy_names(_LEGACY_CATALOG, ["glossary_book_create", "not_a_real_tool"])
+        assert unknown == ["not_a_real_tool"]
+
+    def test_a_discoverable_tool_cannot_be_pinned_as_legacy(self):
+        """glossary_ontology_upsert is real but NOT legacy — pinning it through
+        this channel is a category error, not a valid escape-hatch use."""
+        unknown = td.unknown_pinned_legacy_names(_LEGACY_CATALOG, ["glossary_ontology_upsert"])
+        assert unknown == ["glossary_ontology_upsert"]

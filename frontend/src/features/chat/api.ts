@@ -227,9 +227,10 @@ export const chatApi = {
     return `${base()}/v1/chat/sessions/${sessionId}/tool-results`;
   },
 
-  listToolsCatalog(token: string) {
+  listToolsCatalog(token: string, visibility?: 'discoverable' | 'legacy') {
+    const qs = visibility ? `?visibility=${visibility}` : '';
     return apiJson<{ items: import('./types').ToolCatalogItem[] }>(
-      '/v1/chat/tools/catalog',
+      `/v1/chat/tools/catalog${qs}`,
       { token },
     );
   },

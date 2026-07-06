@@ -47,6 +47,7 @@ export function useToolSkillCatalog(
   token: string | null,
   existingTools: string[],
   existingSkills: string[],
+  existingLegacyTools: string[] = [],
 ) {
   const [tab, setTab] = useState<ToolSkillTab>('tools');
   const [query, setQuery] = useState('');
@@ -54,19 +55,29 @@ export function useToolSkillCatalog(
   const [page, setPage] = useState(0);
   const [tools, setTools] = useState<ToolCatalogItem[]>([]);
   const [skills, setSkills] = useState<SkillCatalogItem[]>([]);
+  // CAT-4 Part D — the small, separately-fetched legacy catalog backing the
+  // "Advanced tools" section (superseded tools, only reachable this way).
+  const [legacyTools, setLegacyTools] = useState<ToolCatalogItem[]>([]);
+  const [showLegacy, setShowLegacy] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!open || !token) return;
     setLoading(true);
-    Promise.all([chatApi.listToolsCatalog(token), chatApi.listSkillsCatalog(token)])
-      .then(([tRes, sRes]) => {
+    Promise.all([
+      chatApi.listToolsCatalog(token),
+      chatApi.listSkillsCatalog(token),
+      chatApi.listToolsCatalog(token, 'legacy'),
+    ])
+      .then(([tRes, sRes, lRes]) => {
         setTools(tRes.items);
         setSkills(sRes.items);
+        setLegacyTools(lRes.items);
       })
       .catch(() => {
         setTools([]);
         setSkills([]);
+        setLegacyTools([]);
       })
       .finally(() => setLoading(false));
   }, [open, token]);
@@ -79,6 +90,7 @@ export function useToolSkillCatalog(
       setQuery('');
       setCategory(TOOL_SKILL_ALL_CATEGORY);
       setPage(0);
+      setShowLegacy(false);
     }
   }, [open]);
 
@@ -142,6 +154,18 @@ export function useToolSkillCatalog(
     [skills, existingSkills],
   );
 
+  const availableLegacyTools = useMemo(
+    () => legacyTools.filter((item) => !existingLegacyTools.includes(item.name)),
+    [legacyTools, existingLegacyTools],
+  );
+  const filteredLegacyTools = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return availableLegacyTools;
+    return availableLegacyTools.filter(
+      (item) => item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q),
+    );
+  }, [availableLegacyTools, query]);
+
   return {
     tab, onTabChange,
     query, onQueryChange,
@@ -157,5 +181,9 @@ export function useToolSkillCatalog(
     pagedTools,
     filteredSkills,
     availableSkillsCount,
+    showLegacy,
+    setShowLegacy,
+    availableLegacyToolsCount: availableLegacyTools.length,
+    filteredLegacyTools,
   };
 }

@@ -457,6 +457,17 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Tool-catalog-simplification Part D (CAT-4) — a per-SESSION manual escape
+-- hatch back to a `_meta.visibility:"legacy"` tool that find_tools can no
+-- longer discover. Session tier (SET-1): a user wants the old tool for THIS
+-- conversation, not a standing account preference. Server-validated closed-set
+-- (SET-6) against the live catalog at write time, not free text.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='pinned_legacy_tools') THEN
+    ALTER TABLE chat_sessions ADD COLUMN pinned_legacy_tools TEXT[] NOT NULL DEFAULT '{}';
+  END IF;
+END $$;
+
 -- ══════════════════════════════════════════════════════════════════════
 -- M7 — System-tier seed templates (the admin/platform path). These are the
 -- shared defaults every tenant sees read-only; a user clones one (POST

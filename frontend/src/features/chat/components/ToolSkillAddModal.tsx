@@ -17,6 +17,11 @@ interface ToolSkillAddModalProps {
   onAddSkill: (id: string) => void;
   existingTools: string[];
   existingSkills: string[];
+  /** Tool-catalog-simplification Part D (CAT-4) — manually pin a legacy
+   *  (superseded, find_tools-invisible) tool into THIS session. Optional:
+   *  omitting it hides the "Advanced tools" section entirely. */
+  onAddLegacyTool?: (name: string) => void;
+  existingLegacyTools?: string[];
 }
 
 export function ToolSkillAddModal({
@@ -27,13 +32,16 @@ export function ToolSkillAddModal({
   onAddSkill,
   existingTools,
   existingSkills,
+  onAddLegacyTool,
+  existingLegacyTools = [],
 }: ToolSkillAddModalProps) {
   const { t } = useTranslation('chat');
   const {
     tab, onTabChange, query, onQueryChange, category, onCategoryChange, page, setPage,
     loading, availableTools, categories, filteredTools, showGroupedAllView, groupedAllView,
     groupPreviewSize, pagedTools, filteredSkills, availableSkillsCount,
-  } = useToolSkillCatalog(open, token, existingTools, existingSkills);
+    showLegacy, setShowLegacy, availableLegacyToolsCount, filteredLegacyTools,
+  } = useToolSkillCatalog(open, token, existingTools, existingSkills, existingLegacyTools);
 
   const onToolKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -115,6 +123,17 @@ export function ToolSkillAddModal({
                 className="mt-3"
               />
             </>
+          )}
+
+          {!loading && tab === 'tools' && onAddLegacyTool && availableLegacyToolsCount > 0 && (
+            <AdvancedToolsSection
+              show={showLegacy}
+              onToggle={() => setShowLegacy((v) => !v)}
+              items={filteredLegacyTools}
+              count={availableLegacyToolsCount}
+              onAdd={(name) => { onAddLegacyTool(name); onClose(); }}
+              t={t}
+            />
           )}
 
           {!loading && tab === 'skills' && filteredSkills.length === 0 && (
@@ -260,7 +279,47 @@ function GroupedToolsView({ groups, previewSize, onSeeAll, onAddTool, t }: {
   );
 }
 
-function ToolRow({ item, onAdd }: { item: ToolCatalogItem; onAdd: () => void }) {
+/** Tool-catalog-simplification Part D (CAT-4) — a legacy tool is otherwise
+ *  unreachable through any normal agent action (find_tools excludes it); this
+ *  is the ONLY GUI path back to one, and it's deliberately behind a collapsed
+ *  toggle so it doesn't compete with the primary (new-tool) discovery flow. */
+function AdvancedToolsSection({ show, onToggle, items, count, onAdd, t }: {
+  show: boolean;
+  onToggle: () => void;
+  items: ToolCatalogItem[];
+  count: number;
+  onAdd: (name: string) => void;
+  t: Translate;
+}) {
+  return (
+    <div className="mt-3 border-t pt-2" data-testid="tool-skill-advanced-section">
+      <button
+        type="button"
+        data-testid="tool-skill-advanced-toggle"
+        onClick={onToggle}
+        className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        {show ? '▾' : '▸'} {t('rack.advanced_tools', { count, defaultValue: 'Advanced tools ({{count}})' })}
+      </button>
+      {show && (
+        <>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {t('rack.advanced_tools_hint', {
+              defaultValue: 'Superseded tools kept for older callers. Prefer the tools above unless you specifically need one of these.',
+            })}
+          </p>
+          <ul className="mt-1 space-y-1">
+            {items.map((item) => (
+              <ToolRow key={item.name} item={item} onAdd={() => onAdd(item.name)} legacy />
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ToolRow({ item, onAdd, legacy }: { item: ToolCatalogItem; onAdd: () => void; legacy?: boolean }) {
   return (
     <li>
       <button
@@ -274,6 +333,14 @@ function ToolRow({ item, onAdd }: { item: ToolCatalogItem; onAdd: () => void }) 
           <span className="rounded-full border px-1.5 py-0.5 text-[9px] font-normal capitalize text-muted-foreground">
             {item.domain || 'other'}
           </span>
+          {legacy && (
+            <span
+              data-testid={`tool-skill-item-${item.name}-legacy-badge`}
+              className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-normal text-amber-600 dark:text-amber-400"
+            >
+              legacy
+            </span>
+          )}
         </div>
         <div className="text-[10px] text-muted-foreground line-clamp-2">{item.description}</div>
       </button>

@@ -249,6 +249,10 @@ class PatchSessionRequest(BaseModel):
     enabled_tools: list[str] | None = Field(default=None, max_length=32)
     enabled_skills: list[str] | None = Field(default=None, max_length=16)
     activated_tools: list[str] | None = None  # write: clear discovered tools via []
+    # Tool-catalog-simplification Part D (CAT-4): manually pin a legacy (superseded,
+    # find_tools-invisible) tool into this session. Validated server-side against
+    # the live legacy catalog — see GET /v1/chat/sessions/tools/legacy.
+    pinned_legacy_tools: list[str] | None = Field(default=None, max_length=16)
     # K5: PATCH can set or clear project_id. Use Pydantic's model_dump
     # exclude_unset semantics — explicit `null` clears, omitted leaves alone.
     project_id: UUID | None = None
@@ -299,6 +303,7 @@ class ChatSession(BaseModel):
     enabled_tools: list[str] = Field(default_factory=list)
     enabled_skills: list[str] = Field(default_factory=list)
     activated_tools: list[str] = Field(default_factory=list)
+    pinned_legacy_tools: list[str] = Field(default_factory=list)
     # W3 — manual steerable compact: messages with sequence_num < this are
     # represented by the session's stored compact_summary on every later turn.
     # NULL/None = never manually compacted. (The summary text itself is not
@@ -355,6 +360,9 @@ class ToolCatalogItem(BaseModel):
     domain: str
     tier: str
     description: str
+    # CAT-4: discoverable (default, browsable/pinnable via enabled_tools) or
+    # legacy (superseded — only reachable via pinned_legacy_tools).
+    visibility: str = "discoverable"
 
 
 class ToolCatalogResponse(BaseModel):

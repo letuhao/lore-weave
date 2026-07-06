@@ -8,7 +8,7 @@ Empty pins preserve legacy hot-set + auto-discovery behaviour.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.services.token_budget import estimate_tokens
 from app.services.tool_discovery import hot_tool_names, surface_hot_domains, tool_name
@@ -83,6 +83,11 @@ class SessionToolPins:
     effective_skills: list[str]
     curated_mode: bool
     activation_state: dict
+    # CAT-4 Part D — legacy tools the user manually pinned for THIS session
+    # (`pinned_legacy_tools`, source: user_pinned). Always unioned into the
+    # advertised set regardless of curated/auto mode — a manual pin is a
+    # deliberate per-session override, not part of the discovery heuristic.
+    pinned_legacy: list[str] = field(default_factory=list)
 
 
 def resolve_session_tool_pins(
@@ -94,6 +99,7 @@ def resolve_session_tool_pins(
     session_enabled = list(session_row.get("enabled_tools") or []) if session_row else []
     session_skills = list(session_row.get("enabled_skills") or []) if session_row else []
     session_activated = list(session_row.get("activated_tools") or []) if session_row else []
+    session_pinned_legacy = list(session_row.get("pinned_legacy_tools") or []) if session_row else []
     effective_enabled = (
         enabled_tools_override if enabled_tools_override is not None else session_enabled
     )
@@ -105,6 +111,7 @@ def resolve_session_tool_pins(
         effective_skills=effective_skills,
         curated_mode=is_curated(effective_enabled),
         activation_state={"activated_tools": list(session_activated), "dirty": False},
+        pinned_legacy=session_pinned_legacy,
     )
 
 
@@ -138,12 +145,17 @@ def discovery_seed_for_surface(
             catalog=catalog,
             hot_domains=hot_domains,
         )
-    return assemble_initial_active_names(
+    names = assemble_initial_active_names(
         curated=pins.curated_mode,
         enabled_tools=eff_pins,
         activated_tools=pins.activation_state["activated_tools"],
         hot_seed_names=raw_hot_seed,
     )
+    # CAT-4 Part D — a manually-pinned legacy tool rides every turn of THIS
+    # session regardless of curated/auto mode; it bypasses find_tools entirely
+    # (the whole point of the escape hatch is that the tool is otherwise
+    # unreachable through discovery).
+    return names | set(pins.pinned_legacy)
 
 
 def is_curated(enabled_tools: list[str] | None) -> bool:

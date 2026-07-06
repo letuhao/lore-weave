@@ -70,6 +70,7 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         enabled_tools=list(r.get("enabled_tools") or []),
         enabled_skills=list(r.get("enabled_skills") or []),
         activated_tools=list(r.get("activated_tools") or []),
+        pinned_legacy_tools=list(r.get("pinned_legacy_tools") or []),
         # W3 — the FE "compacted through message N" indicator.
         compacted_before_seq=r.get("compacted_before_seq"),
     )
@@ -250,6 +251,27 @@ async def patch_session(
     set_project_ids = "project_ids" in body.model_fields_set
     project_ids_value = [str(p) for p in body.project_ids] if body.project_ids else []
 
+    # CAT-4 Part D — pinned_legacy_tools: SET-6 closed-set validation against
+    # the LIVE catalog at write time (never trust a client-supplied name). An
+    # unknown/non-legacy name is rejected with a self-correcting message
+    # (IN-6) naming exactly which names were bad, not a generic 400.
+    set_pinned_legacy_tools = "pinned_legacy_tools" in body.model_fields_set
+    pinned_legacy_tools_value = list(body.pinned_legacy_tools or [])
+    if set_pinned_legacy_tools and pinned_legacy_tools_value:
+        from app.client.knowledge_client import get_knowledge_client
+        from app.services.tool_discovery import unknown_pinned_legacy_names
+
+        live_catalog = await get_knowledge_client().get_tool_definitions(user_id=user_id)
+        unknown = unknown_pinned_legacy_names(live_catalog, pinned_legacy_tools_value)
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"not a pinnable legacy tool: {', '.join(unknown)} — "
+                    "see GET /v1/chat/tools/catalog?visibility=legacy for the valid set"
+                ),
+            )
+
     row = await pool.fetchrow(
         """
         UPDATE chat_sessions SET
@@ -269,6 +291,7 @@ async def patch_session(
           enabled_skills        = CASE WHEN $20::boolean THEN $21::text[] ELSE enabled_skills END,
           activated_tools       = CASE WHEN $22::boolean THEN $23::text[] ELSE activated_tools END,
           project_ids           = CASE WHEN $24::boolean THEN $25::uuid[] ELSE project_ids END,
+          pinned_legacy_tools   = CASE WHEN $26::boolean THEN $27::text[] ELSE pinned_legacy_tools END,
           updated_at            = now()
         WHERE session_id=$1 AND owner_user_id=$2
         RETURNING *
@@ -284,6 +307,7 @@ async def patch_session(
         set_enabled_skills, body.enabled_skills or [],
         set_activated_tools, body.activated_tools or [],
         set_project_ids, project_ids_value,
+        set_pinned_legacy_tools, pinned_legacy_tools_value,
     )
     return _row_to_session(row)
 

@@ -1,11 +1,28 @@
 """Tests for the sessions CRUD router."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
 from tests.conftest import TEST_MODEL_REF, TEST_SESSION_ID, TEST_USER_ID, make_session_record
+
+_LEGACY_TOOL_DEF = {
+    "type": "function",
+    "function": {
+        "name": "glossary_book_create",
+        "description": "old",
+        "_meta": {"tier": "A", "visibility": "legacy"},
+    },
+}
+
+
+def _patched_catalog(catalog):
+    return patch(
+        "app.client.knowledge_client.get_knowledge_client",
+        return_value=AsyncMock(get_tool_definitions=AsyncMock(return_value=catalog)),
+    )
 
 
 class TestCreateSession:
@@ -278,6 +295,47 @@ class TestPatchSession:
         assert resp.json()["enabled_tools"] == ["book_get_chapter"]
 
     @pytest.mark.asyncio
+    async def test_patch_session_pinned_legacy_tools_accepts_a_real_legacy_name(self, client, mock_pool):
+        original = make_session_record()
+        updated = make_session_record(pinned_legacy_tools=["glossary_book_create"])
+        mock_pool.fetchrow.side_effect = [original, updated]
+
+        with _patched_catalog([_LEGACY_TOOL_DEF]):
+            resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+                "pinned_legacy_tools": ["glossary_book_create"],
+            })
+        assert resp.status_code == 200
+        assert resp.json()["pinned_legacy_tools"] == ["glossary_book_create"]
+
+    @pytest.mark.asyncio
+    async def test_patch_session_pinned_legacy_tools_rejects_unknown_name(self, client, mock_pool):
+        """SET-6 closed-set: a name that isn't a legacy tool in the LIVE catalog
+        (typo, or a discoverable tool someone tried to pin this way) is a 422,
+        not a silent drop or a generic 400 — and the write never happens."""
+        original = make_session_record()
+        mock_pool.fetchrow.side_effect = [original]
+
+        with _patched_catalog([_LEGACY_TOOL_DEF]):
+            resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+                "pinned_legacy_tools": ["not_a_real_tool"],
+            })
+        assert resp.status_code == 422
+        assert "not_a_real_tool" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_patch_session_pinned_legacy_tools_clear_skips_validation(self, client, mock_pool):
+        """Clearing back to [] must not require a catalog round-trip."""
+        original = make_session_record(pinned_legacy_tools=["glossary_book_create"])
+        updated = make_session_record(pinned_legacy_tools=[])
+        mock_pool.fetchrow.side_effect = [original, updated]
+
+        resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+            "pinned_legacy_tools": [],
+        })
+        assert resp.status_code == 200
+        assert resp.json()["pinned_legacy_tools"] == []
+
+    @pytest.mark.asyncio
     async def test_patch_session_set_project_ids(self, client, mock_pool):
         """Track B B1(2): PATCH replaces the grounding set; the write flag is
         True and the UUID[] value rides the UPDATE args."""
@@ -291,10 +349,10 @@ class TestPatchSession:
         })
         assert resp.status_code == 200
         assert resp.json()["project_ids"] == pids
-        # UPDATE args: (..., set_project_ids=True, project_ids_value=[pids])
+        # UPDATE args: (..., set_project_ids=True, project_ids_value=[pids], set_pinned_legacy_tools, pinned_legacy_tools_value)
         args = mock_pool.fetchrow.call_args.args
-        assert args[-2] is True
-        assert list(args[-1]) == pids
+        assert args[-4] is True
+        assert list(args[-3]) == pids
 
     @pytest.mark.asyncio
     async def test_patch_session_clear_project_ids(self, client, mock_pool):
@@ -310,8 +368,8 @@ class TestPatchSession:
         assert resp.status_code == 200
         assert resp.json()["project_ids"] == []
         args = mock_pool.fetchrow.call_args.args
-        assert args[-2] is True          # present in body → write
-        assert list(args[-1]) == []
+        assert args[-4] is True          # present in body → write
+        assert list(args[-3]) == []
 
     @pytest.mark.asyncio
     async def test_patch_session_omitted_project_ids_leaves_alone(self, client, mock_pool):
@@ -325,7 +383,7 @@ class TestPatchSession:
         })
         assert resp.status_code == 200
         args = mock_pool.fetchrow.call_args.args
-        assert args[-2] is False         # not in body → leave alone
+        assert args[-4] is False         # not in body → leave alone
 
 
 class TestDeleteSession:

@@ -64,6 +64,9 @@ export interface ChatSession {
   enabled_tools?: string[];
   enabled_skills?: string[];
   activated_tools?: string[];
+  // Tool-catalog-simplification Part D (CAT-4): legacy (superseded,
+  // find_tools-invisible) tools the user manually pinned for THIS session.
+  pinned_legacy_tools?: string[];
   // W3 — manual steerable compact: messages with sequence_num below this are
   // represented server-side by a stored summary on every later turn.
   // null/absent = never manually compacted. Drives the panel's
@@ -263,6 +266,9 @@ export interface ToolCatalogItem {
   domain: string;
   tier: string;
   description: string;
+  /** CAT-4: 'discoverable' (default) or 'legacy' (superseded — only pinnable
+   *  via pinned_legacy_tools, GET .../tools/catalog?visibility=legacy). */
+  visibility?: 'discoverable' | 'legacy';
 }
 
 export interface SkillCatalogItem {
@@ -417,4 +423,5 @@ export interface PatchSessionPayload {
   enabled_tools?: string[];
   enabled_skills?: string[];
   activated_tools?: string[] | null;
+  pinned_legacy_tools?: string[] | null;
 }

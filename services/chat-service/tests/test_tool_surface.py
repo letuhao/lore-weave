@@ -76,6 +76,37 @@ class TestToolSurface:
         )
         assert seed == {"book_get_chapter"}
 
+    def test_pinned_legacy_rides_every_mode(self):
+        """CAT-4 Part D — a manually-pinned legacy tool is unioned into the
+        advertised set in BOTH curated and auto mode; it's a per-session
+        override, not part of the discovery heuristic."""
+        from app.services.tool_surface import SessionToolPins, discovery_seed_for_surface
+
+        catalog = [_tool("book_get_chapter")]
+
+        auto_pins = SessionToolPins(
+            effective_enabled=[], effective_skills=[], curated_mode=False,
+            activation_state={"activated_tools": [], "dirty": False},
+            pinned_legacy=["glossary_book_create"],
+        )
+        auto_seed = discovery_seed_for_surface(catalog, pins=auto_pins, editor=False, book_scoped=False)
+        assert "glossary_book_create" in auto_seed
+
+        curated_pins = SessionToolPins(
+            effective_enabled=["book_get_chapter"], effective_skills=[], curated_mode=True,
+            activation_state={"activated_tools": [], "dirty": False},
+            pinned_legacy=["glossary_book_create"],
+        )
+        curated_seed = discovery_seed_for_surface(catalog, pins=curated_pins, editor=False, book_scoped=False)
+        assert "glossary_book_create" in curated_seed
+
+    def test_resolve_session_tool_pins_reads_pinned_legacy_from_row(self):
+        pins = resolve_session_tool_pins({"pinned_legacy_tools": ["glossary_user_delete"]})
+        assert pins.pinned_legacy == ["glossary_user_delete"]
+        # A row with no column at all (pre-migration / test fixture gap)
+        # degrades to an empty list, never a KeyError/AttributeError.
+        assert resolve_session_tool_pins({}).pinned_legacy == []
+
 
 # ── context-explosion fix: token-budgeted hot-seed + activation cap ───────────
 

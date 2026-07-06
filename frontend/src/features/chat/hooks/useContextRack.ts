@@ -5,6 +5,9 @@ import type { ChatSession } from '../types';
 
 const TOOL_SOFT_LIMIT = 8;
 const SKILL_SOFT_LIMIT = 4;
+// Matches the backend's PatchSessionRequest.pinned_legacy_tools max_length=16 —
+// a hard cap there, so this is the point past which the PATCH itself 422s.
+const PINNED_LEGACY_LIMIT = 16;
 
 export type StreamPins = {
   enabledTools?: string[];
@@ -36,12 +39,13 @@ export function useContextRack({
   const enabledTools = session?.enabled_tools ?? [];
   const enabledSkills = session?.enabled_skills ?? [];
   const activatedTools = session?.activated_tools ?? [];
+  const pinnedLegacyTools = session?.pinned_legacy_tools ?? [];
 
   /** Latest pins for POST body — updated synchronously on pin/unpin (before PATCH flush). */
   const streamPinsRef = useRef<StreamPins>(toStreamPins(enabledTools, enabledSkills));
   streamPinsRef.current = toStreamPins(enabledTools, enabledSkills);
 
-  const patchSession = useCallback(    (payload: { enabled_tools?: string[]; enabled_skills?: string[]; activated_tools?: string[] }) => {
+  const patchSession = useCallback(    (payload: { enabled_tools?: string[]; enabled_skills?: string[]; activated_tools?: string[]; pinned_legacy_tools?: string[] }) => {
       if (!accessToken || !session) return;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
@@ -112,18 +116,52 @@ export function useContextRack({
     patchSession({ activated_tools: [] });
   }, [session, onSessionUpdate, patchSession]);
 
+  // Tool-catalog-simplification Part D (CAT-4) — the manual escape hatch back
+  // to a legacy (superseded, find_tools-invisible) tool for THIS session only.
+  // Deliberately a SEPARATE list from enabledTools: pinning one here must not
+  // flip the whole session into curated mode (see catalog.py's default
+  // visibility filter) — it's additive on top of whatever mode is already active.
+  const addPinnedLegacyTool = useCallback(
+    (name: string) => {
+      if (!session || hidden) return;
+      if (pinnedLegacyTools.includes(name)) return;
+      const next = [...pinnedLegacyTools, name];
+      if (next.length > PINNED_LEGACY_LIMIT) {
+        toast.warning(`Pinned ${next.length} legacy tools (limit ${PINNED_LEGACY_LIMIT})`);
+        return;
+      }
+      onSessionUpdate({ ...session, pinned_legacy_tools: next });
+      patchSession({ pinned_legacy_tools: next });
+    },
+    [session, pinnedLegacyTools, hidden, onSessionUpdate, patchSession],
+  );
+
+  const removePinnedLegacyTool = useCallback(
+    (name: string) => {
+      if (!session) return;
+      const next = pinnedLegacyTools.filter((t) => t !== name);
+      onSessionUpdate({ ...session, pinned_legacy_tools: next });
+      patchSession({ pinned_legacy_tools: next });
+    },
+    [session, pinnedLegacyTools, onSessionUpdate, patchSession],
+  );
+
   return {
     enabledTools,
     enabledSkills,
     activatedTools,
+    pinnedLegacyTools,
     addTool,
     removeTool,
     addSkill,
     removeSkill,
+    addPinnedLegacyTool,
+    removePinnedLegacyTool,
     clearDiscovered,
     streamPins: streamPinsRef.current,
     streamPinsRef,
     toolSoftLimit: TOOL_SOFT_LIMIT,
     skillSoftLimit: SKILL_SOFT_LIMIT,
+    pinnedLegacyLimit: PINNED_LEGACY_LIMIT,
   };
 }

@@ -251,6 +251,31 @@ def is_legacy_tool(tool_def: dict) -> bool:
     return tool_visibility(tool_def) == _VISIBILITY_LEGACY
 
 
+def unknown_pinned_legacy_names(catalog: list[dict], requested: list[str]) -> list[str]:
+    """SET-6 closed-set validation for `pinned_legacy_tools`: any requested name
+    that is NOT a legacy tool in the live catalog (unknown name, or a
+    discoverable/non-legacy tool someone tried to pin this way). Empty = all
+    requested names are valid; the router rejects the write when non-empty
+    rather than silently dropping the bad names."""
+    legacy_names = {t["name"] for t in legacy_tools_catalog(catalog)}
+    return [n for n in requested if n not in legacy_names]
+
+
+def legacy_tools_catalog(catalog: list[dict]) -> list[dict]:
+    """CAT-4 Part D — the server-sourced, closed-set list of legacy tools a user
+    may manually pin for a session (`pinned_legacy_tools`, SET-6). Never
+    hand-authored: always derived from the LIVE catalog, so a future tag/untag
+    of a tool is reflected here with no separate list to keep in sync."""
+    return sorted(
+        (
+            {"name": tool_name(td), "description": _fn(td).get("description", "") or ""}
+            for td in catalog
+            if is_legacy_tool(td)
+        ),
+        key=lambda t: t["name"],
+    )
+
+
 def tool_undo_hint(result_meta: dict | None) -> dict | None:
     """C-ACTIVITY — the `_meta.undo_hint` a Tier-A tool RESULT carries
     (``{tool, args}``), or None. Read from the tool *result*, not the def."""

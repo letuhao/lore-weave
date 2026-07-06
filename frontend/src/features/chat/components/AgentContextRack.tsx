@@ -9,6 +9,9 @@ interface AgentContextRackProps {
   enabledSkills: string[];
   /** discovered (activated) tool names — grouped with the pins by server. */
   activatedTools: string[];
+  /** Tool-catalog-simplification Part D (CAT-4) — legacy tools manually
+   *  pinned into THIS session (the only way they're reachable at all). */
+  pinnedLegacyTools?: string[];
   /** W6: last agentSurface frame — drives the per-server live dots and the
    *  "N tools · M skills · X tok" summary chip. Optional: without it the rack
    *  degrades to pins-only grouping (muted dots, no token count). */
@@ -18,6 +21,8 @@ interface AgentContextRackProps {
   onAddSkill: (id: string) => void;
   onRemoveTool: (name: string) => void;
   onRemoveSkill: (id: string) => void;
+  onAddLegacyTool?: (name: string) => void;
+  onRemoveLegacyTool?: (name: string) => void;
   onClearDiscovered: () => void;
   disabled?: boolean;
   /** W2: external "open the add modal" signal (the context breakdown panel's
@@ -61,12 +66,15 @@ export function AgentContextRack({
   enabledTools,
   enabledSkills,
   activatedTools,
+  pinnedLegacyTools = [],
   surface,
   token,
   onAddTool,
   onAddSkill,
   onRemoveTool,
   onRemoveSkill,
+  onAddLegacyTool,
+  onRemoveLegacyTool,
   onClearDiscovered,
   disabled,
   externalAddOpen,
@@ -77,7 +85,7 @@ export function AgentContextRack({
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const hasPins = enabledTools.length > 0 || enabledSkills.length > 0;
+  const hasPins = enabledTools.length > 0 || enabledSkills.length > 0 || pinnedLegacyTools.length > 0;
   const measured = summarizeRack(surface, enabledTools, activatedTools, enabledSkills);
 
   // Rack-flash fix: a turn-opening frame carries the tracker defaults (see
@@ -138,6 +146,26 @@ export function AgentContextRack({
             )}
           </span>
         ))}
+        {pinnedLegacyTools.map((name) => (
+          <span
+            key={`legacy-${name}`}
+            data-testid={`agent-rack-legacy-${name}`}
+            title={t('rack.legacy_pin_tooltip', { defaultValue: 'You enabled this legacy tool for this session' })}
+            className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400"
+          >
+            {name}
+            {!disabled && onRemoveLegacyTool && (
+              <button
+                type="button"
+                onClick={() => onRemoveLegacyTool(name)}
+                className="text-amber-700/70 hover:text-amber-700 dark:text-amber-400/70 dark:hover:text-amber-400"
+                aria-label={t('rack.remove')}
+              >
+                ×
+              </button>
+            )}
+          </span>
+        ))}
         {!disabled && (
           <button
             type="button"
@@ -187,6 +215,8 @@ export function AgentContextRack({
         onAddSkill={onAddSkill}
         existingTools={enabledTools}
         existingSkills={enabledSkills}
+        onAddLegacyTool={onAddLegacyTool}
+        existingLegacyTools={pinnedLegacyTools}
       />
     </div>
   );
