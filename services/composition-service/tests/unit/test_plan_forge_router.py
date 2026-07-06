@@ -42,6 +42,7 @@ class StubPlanForge:
             "id": str(RUN), "book_id": str(BOOK), "status": "proposed", "mode": "rules",
             "model_ref": None, "source_checksum": "abc", "active_job_id": None,
             "job_status": None, "error_detail": None, "checkpoint_state": {},
+            "arcs": [{"id": "arc_2", "title": "Arc 2"}],
             "artifacts": [{"kind": "spec", "artifact_id": str(uuid.uuid4())}],
             "created_at": "2026-07-01T00:00:00+00:00",
             "updated_at": "2026-07-01T00:00:00+00:00",

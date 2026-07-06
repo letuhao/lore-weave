@@ -148,7 +148,7 @@ describe('PlannerPanel — Runs list (D-PLANFORGE-NO-RESUME)', () => {
     return {
       id: 'run-1', book_id: 'b1', status: 'proposed', mode: 'rules', model_ref: null,
       source_checksum: 'abc', active_job_id: null, job_status: null, error_detail: null,
-      checkpoint_state: null, artifacts: [], created_at: '2026-07-01T00:00:00Z', updated_at: '', ...overrides,
+      checkpoint_state: null, arcs: [], artifacts: [], created_at: '2026-07-01T00:00:00Z', updated_at: '', ...overrides,
     };
   }
 

@@ -24,7 +24,7 @@ import { usePlanRun } from '../hooks/usePlanRun';
 const detail = (over: Record<string, unknown> = {}) => ({
   id: 'r1', book_id: 'b1', status: 'proposed', mode: 'llm', model_ref: 'm1',
   source_checksum: 'abc', active_job_id: null, job_status: null, error_detail: null,
-  checkpoint_state: null, artifacts: [], created_at: '', updated_at: '', ...over,
+  checkpoint_state: null, arcs: [], artifacts: [], created_at: '', updated_at: '', ...over,
 });
 
 beforeEach(() => {

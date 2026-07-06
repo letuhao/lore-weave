@@ -24,7 +24,11 @@ export function PlanRunView({
   run, polling, busy, selfCheck, validation, compileResult,
   onSelfCheck, onValidate, onCompile,
 }: Props) {
-  const [arcId, setArcId] = useState('');
+  const [pickedArcId, setPickedArcId] = useState('');
+  // Derived default (same pattern as PlannerPanel's effectiveModelRef) — no
+  // effect needed to "sync" the picker once arcs load, since this recomputes
+  // on every render from the current props instead of chasing a prop change.
+  const arcId = pickedArcId || run.arcs[0]?.id || '';
 
   return (
     <div data-testid="plan-run-view" className="space-y-3 text-xs">
@@ -104,18 +108,27 @@ export function PlanRunView({
 
       <div className="space-y-1 border-t pt-2">
         <p className="text-[10px] uppercase text-muted-foreground">Compile</p>
-        <div className="flex gap-2">
-          <input
-            data-testid="plan-arc-input" value={arcId} onChange={(e) => setArcId(e.target.value)}
-            placeholder="arc_id"
-            className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs outline-none focus:border-ring"
-          />
-          <button
-            type="button" data-testid="plan-compile-btn" onClick={() => onCompile(arcId.trim())}
-            disabled={busy || polling || !arcId.trim()}
-            className="rounded bg-primary px-2 py-1 text-primary-foreground hover:brightness-110 disabled:opacity-40"
-          >Compile</button>
-        </div>
+        {run.arcs.length === 0 ? (
+          <p data-testid="plan-arc-none" className="text-muted-foreground">
+            No arcs found in this plan yet — run Self-check or Validate above to see what's missing.
+          </p>
+        ) : (
+          <div className="flex gap-2">
+            <select
+              data-testid="plan-arc-picker" value={arcId} onChange={(e) => setPickedArcId(e.target.value)}
+              className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs outline-none focus:border-ring"
+            >
+              {run.arcs.map((a) => (
+                <option key={a.id} value={a.id}>{a.title}</option>
+              ))}
+            </select>
+            <button
+              type="button" data-testid="plan-compile-btn" onClick={() => onCompile(arcId)}
+              disabled={busy || polling || !arcId}
+              className="rounded bg-primary px-2 py-1 text-primary-foreground hover:brightness-110 disabled:opacity-40"
+            >Compile</button>
+          </div>
+        )}
         {compileResult && (
           <p data-testid="plan-compile-result" className="text-[10px] text-muted-foreground">
             work {compileResult.work_id.slice(0, 8)}

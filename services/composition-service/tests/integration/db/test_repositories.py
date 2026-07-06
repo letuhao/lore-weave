@@ -1757,6 +1757,44 @@ async def test_plan_runs_roundtrip_and_tenancy(pool):
     assert dup is not None and dup.id == run.id
 
 
+async def test_get_run_detail_surfaces_arcs_for_a_picker(pool):
+    """D-PLANFORGE-ARC-PICKER: Compile's arc_id was a bare text input — the
+    spec already HAS a picker-worthy {id, title} list, it just was never
+    surfaced (get_run_detail only ever returned artifact REFS, not content).
+    No spec yet -> [] (not an error, not a crash)."""
+    from app.db.repositories.generation_jobs import GenerationJobsRepo
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.works import WorksRepo
+    from app.services.plan_forge_service import PlanForgeService
+
+    user, _project, book = _ids()
+    runs = PlanRunsRepo(pool)
+    svc = PlanForgeService(runs, GenerationJobsRepo(pool), WorksRepo(pool))
+
+    run = await runs.create(
+        user, book, mode="rules", source_checksum="chk-arcs",
+        source_markdown="# plan", status="pending",
+    )
+
+    empty_detail = await svc.get_run_detail(user, book, run.id)
+    assert empty_detail is not None and empty_detail["arcs"] == []
+
+    await runs.save_artifact(user, run.id, "spec", {
+        "arcs": [
+            {"id": "arc_1", "title": "Origins"},
+            {"id": "arc_2", "title": "Bước Lên Tiên Lộ"},
+            {"id": "arc_3"},  # no title -> falls back to the id itself, never blank
+        ],
+    })
+    detail = await svc.get_run_detail(user, book, run.id)
+    assert detail is not None
+    assert detail["arcs"] == [
+        {"id": "arc_1", "title": "Origins"},
+        {"id": "arc_2", "title": "Bước Lên Tiên Lộ"},
+        {"id": "arc_3", "title": "arc_3"},
+    ]
+
+
 async def test_compile_run_pipeline_shapes_chapters_and_persists_job_id(pool, monkeypatch):
     """D-PLANFORGE-PIPELINE-CHAPTERPLAN-FIX (§6 M3): before this fix,
     compile(run_pipeline=true) passed raw package.chapters[]

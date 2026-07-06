@@ -11,8 +11,10 @@ import { useAuth } from '@/auth';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { useStudioHost, useRegisterStudioTool } from '@/features/studio/host/StudioHostProvider';
 import type { StudioToolRegistration } from '@/features/studio/host/types';
+import { useBootstrap } from '../hooks/useBootstrap';
 import { usePlanRun } from '../hooks/usePlanRun';
 import type { PlanRunMode } from '../types';
+import { BootstrapPanel } from './BootstrapPanel';
 import { PlanRunView } from './PlanRunView';
 import { PlanRunsListView } from './PlanRunsListView';
 
@@ -23,14 +25,17 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   const { bookId, openPanel } = useStudioHost();
   const { accessToken } = useAuth();
   const plan = usePlanRun(bookId, accessToken ?? null);
+  const bootstrap = useBootstrap(bookId, accessToken ?? null);
 
   const [view, setView] = useState<PlannerView>('list');
   const [markdown, setMarkdown] = useState('');
   const [mode, setMode] = useState<PlanRunMode>('rules');
   const [modelRef, setModelRef] = useState('');
 
-  const openRun = (runId: string) => { void plan.loadRun(runId); setView('run'); };
-  const startNewRun = () => { plan.resetRun(); setMarkdown(''); setView('run'); };
+  // A bootstrap proposal is scoped to ONE run — switching runs must not leave a stale
+  // proposal from the previous run showing under the newly-loaded/started one.
+  const openRun = (runId: string) => { void plan.loadRun(runId); bootstrap.reset(); setView('run'); };
+  const startNewRun = () => { plan.resetRun(); bootstrap.reset(); setMarkdown(''); setView('run'); };
 
   const label = t('panels.planner.title', { defaultValue: 'Planner' });
   const registration = useMemo<StudioToolRegistration>(() => ({
@@ -62,6 +67,9 @@ export function PlannerPanel(props: IDockviewPanelProps) {
 
   const canPropose =
     !plan.busy && !plan.polling && markdown.trim().length > 0 && (mode === 'rules' || effectiveModelRef.length > 0);
+
+  // Bootstrap only makes sense once a run is compiled (it reads the run's package artifact).
+  const compiledRunId = plan.run?.status === 'compiled' ? plan.run.id : null;
 
   const onPropose = () => {
     void plan.createRun({
@@ -168,19 +176,32 @@ export function PlannerPanel(props: IDockviewPanelProps) {
           </p>
         )}
 
-        <div className="mt-3 min-h-0 flex-1">
+        <div className="mt-3 min-h-0 flex-1 overflow-auto">
           {plan.run ? (
-            <PlanRunView
-              run={plan.run}
-              polling={plan.polling}
-              busy={plan.busy}
-              selfCheck={plan.selfCheck}
-              validation={plan.validation}
-              compileResult={plan.compileResult}
-              onSelfCheck={() => void plan.runSelfCheck()}
-              onValidate={() => void plan.runValidate()}
-              onCompile={(arcId) => void plan.runCompile(arcId)}
-            />
+            <>
+              <PlanRunView
+                run={plan.run}
+                polling={plan.polling}
+                busy={plan.busy}
+                selfCheck={plan.selfCheck}
+                validation={plan.validation}
+                compileResult={plan.compileResult}
+                onSelfCheck={() => void plan.runSelfCheck()}
+                onValidate={() => void plan.runValidate()}
+                onCompile={(arcId) => void plan.runCompile(arcId)}
+              />
+              {compiledRunId && (
+                <BootstrapPanel
+                  proposal={bootstrap.proposal}
+                  busy={bootstrap.busy}
+                  error={bootstrap.error}
+                  onPropose={() => void bootstrap.propose(compiledRunId)}
+                  onApprove={() => void bootstrap.approve()}
+                  onReject={() => void bootstrap.reject()}
+                  onApply={() => void bootstrap.apply()}
+                />
+              )}
+            </>
           ) : (
             <p className="text-center text-xs text-muted-foreground">
               {t('planner.empty', { defaultValue: 'Paste your novel-system markdown and Propose to start a plan run.' })}

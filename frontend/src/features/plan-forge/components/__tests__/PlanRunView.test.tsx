@@ -20,6 +20,7 @@ const RUN: PlanRunDetail = {
   job_status: null,
   error_detail: null,
   checkpoint_state: {},
+  arcs: [],
   artifacts: [],
   created_at: null,
   updated_at: null,
@@ -102,5 +103,50 @@ describe('PlanRunView — null fidelity_score', () => {
       />,
     );
     expect(screen.getByTestId('plan-compile-result').textContent).toContain('019f356a');
+  });
+});
+
+// D-PLANFORGE-ARC-PICKER: Compile's arc_id used to be a bare text input a writer
+// had no way to fill in correctly (they don't know the spec's internal arc ids).
+describe('PlanRunView — arc picker', () => {
+  it('with no arcs yet, explains why instead of showing a blind text box', () => {
+    render(
+      <PlanRunView
+        run={RUN} polling={false} busy={false} selfCheck={null} validation={null} compileResult={null}
+        onSelfCheck={noop} onValidate={noop} onCompile={noop}
+      />,
+    );
+    expect(screen.getByTestId('plan-arc-none')).toBeTruthy();
+    expect(screen.queryByTestId('plan-arc-picker')).toBeNull();
+    expect(screen.queryByTestId('plan-compile-btn')).toBeNull();
+  });
+
+  it('with arcs, offers a picker by TITLE (never a raw arc_id text box) and compiles the selected id', () => {
+    const onCompile = vi.fn();
+    render(
+      <PlanRunView
+        run={{ ...RUN, arcs: [{ id: 'arc_1', title: 'Origins' }, { id: 'arc_2', title: 'Bước Lên Tiên Lộ' }] }}
+        polling={false} busy={false} selfCheck={null} validation={null} compileResult={null}
+        onSelfCheck={noop} onValidate={noop} onCompile={onCompile}
+      />,
+    );
+    const picker = screen.getByTestId('plan-arc-picker') as HTMLSelectElement;
+    expect(picker.textContent).toContain('Origins');
+    expect(picker.textContent).toContain('Bước Lên Tiên Lộ');
+    expect(picker.value).toBe('arc_1'); // defaults to the first arc, never blank
+
+    screen.getByTestId('plan-compile-btn').click();
+    expect(onCompile).toHaveBeenCalledWith('arc_1');
+  });
+
+  it('an arc with no title falls back to showing its id, never a blank option', () => {
+    render(
+      <PlanRunView
+        run={{ ...RUN, arcs: [{ id: 'arc_3', title: 'arc_3' }] }}
+        polling={false} busy={false} selfCheck={null} validation={null} compileResult={null}
+        onSelfCheck={noop} onValidate={noop} onCompile={noop}
+      />,
+    );
+    expect(screen.getByTestId('plan-arc-picker').textContent).toContain('arc_3');
   });
 });

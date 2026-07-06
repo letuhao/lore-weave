@@ -283,6 +283,20 @@ class PlanForgeService:
             if job is not None:
                 job_status = job.status
         artifacts = await self._runs.list_artifact_refs(owner_user_id, run.id)
+        # D-PLANFORGE-ARC-PICKER: the Compile step's `arc_id` was a bare text input —
+        # a writer has no reason to know a spec's internal arc ids ("arc_2"). The spec
+        # itself already HAS the picker data (id + a human title); it was just never
+        # surfaced to the FE (only artifact REFS — kind + id, no content — were ever
+        # returned). Cheap to add: read the already-fetched-elsewhere latest spec
+        # artifact once here. Empty list (not an error) when no spec exists yet.
+        arcs: list[dict[str, Any]] = []
+        spec_art = await self._runs.latest_artifact(owner_user_id, run.id, "spec")
+        if spec_art is not None:
+            arcs = [
+                {"id": a.get("id"), "title": a.get("title") or a.get("id")}
+                for a in spec_art.content.get("arcs", [])
+                if a.get("id")
+            ]
         return {
             "id": str(run.id),
             "book_id": str(run.book_id),
@@ -294,6 +308,7 @@ class PlanForgeService:
             "job_status": job_status,
             "error_detail": run.error_detail,
             "checkpoint_state": run.checkpoint_state,
+            "arcs": arcs,
             "artifacts": [
                 {"kind": a["kind"], "artifact_id": str(a["artifact_id"])}
                 for a in artifacts
