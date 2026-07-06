@@ -275,12 +275,27 @@ growing-context probe** exercised the boundary:
   — a separate, existing Context-Budget-Law concern, NOT the chain logic. Optional cap only for a provider
   loading a smaller n_ctx; set near that real window, never low.
 
+**▶ THREE FIXES from the long-session investigation (user-flagged: reasoning loop + fact loss), 2026-07-06:**
+- **Reasoning ⨯ caching NO tradeoff** (`84ada383d`) — user was right they coexist. `/v1/responses` IGNORES
+  the FLAT `reasoning_effort` (/chat-completions field) → thinking-off was a silent no-op in stateful mode
+  → an always-reasoning gemma-a4b could spiral. Web-researched + live-verified: the Responses API uses the
+  NESTED `reasoning:{effort:…}` (none|minimal|low|medium|high). `mapResponsesEffort` maps off→none (DISABLES:
+  reasoning_tokens 0 live) / high→on. Reasoning items are DROPPED between turns (not accumulated) — earlier
+  "poisons the chain" worry was wrong.
+- **Output ceiling** (same commit) — an uncapped /v1/responses turn + always-reasoning model looped to 60K+
+  (observed). `buildResponsesBody` enforces a bounded `max_output_tokens` default (16384, tunable via
+  `LLM_RESPONSES_MAX_OUTPUT_TOKENS`; caller max_tokens wins). A stateful turn can never run away.
+- **T6 breadcrumb single-word coined names** (`2412716f5`) — the compaction fact-preservation breadcrumb
+  dropped 7/9 single-word novel names (VORTHANE/Kael/Emberfall…) because `_PROPER` needs 2+ words. Fixed with
+  `_proper_singletons` (ALL-CAPS + non-common-opener capitals, precise stoplist). Live: a 22-turn session
+  through forced compaction cycles recalled a turn-1 secret ("VORTHANE") — was FAIL→now PASS. Benefits BOTH
+  stateless + stateful compaction. This IS the "T6 quality" lever the P3 finding pointed at.
+
 **NEXT (evidence-backed):** (1) **broader model/scenario sweep, then flip `LLM_STATEFUL_CACHE` on** for
-`responses_api` providers (staged; capability-gated + E1 degrade-safe, all live-verified). (2) If long
-novel sessions show recall loss at the compaction boundary, that's a **T6 summarizer fact-preservation**
-task (existing subsystem), not stateful-chain. (3) Deferred: the no-tools `_stream_via_gateway` path is
-stateless-only (only `_stream_with_tools` is wired) — safe (self-heals via §5a rule-1), a no-tools turn
-just forgoes the cache; wire only if a real no-tools-heavy workload appears.
+`responses_api` providers (staged; capability-gated + E1 degrade-safe, all live-verified). (2) Deferred:
+the no-tools `_stream_via_gateway` path is stateless-only (only `_stream_with_tools` is wired) — safe
+(self-heals via §5a rule-1), a no-tools turn just forgoes the cache; wire only if a real no-tools-heavy
+workload appears.
 
 ---
 
