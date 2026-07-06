@@ -1,5 +1,45 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**`D-PLANFORGE-GUI-AUDIT` — P0 crash FIXED, 4 real UX gaps found + scoped, 2026-07-06** (user: "planner
+GUI thật sự là không thể sử dụng được... đứng ở vai trò người dùng và xem lại UI/UX" — go use it as
+a real user, don't guess from code). Live-drove the Planner panel via Playwright as a real user
+would (login → open book → Planner tab → paste markdown → Propose → Validate → Compile), on an
+EXISTING book with prior runs, not a synthetic fixture.
+**P0 FOUND + FIXED: Compile white-screens the entire Studio on SUCCESS.** `compile()` legitimately
+returns `pipeline_job_id: null` when `run_pipeline` wasn't requested (the ONLY path this compact
+form offers — there's no checkbox for it) — confirmed via the real `POST .../compile` response
+body (200 OK, `pipeline_job_id: null`). `PlanRunView.tsx:121` called
+`compileResult.pipeline_job_id.slice(0, 8)` unguarded, crashing with no error boundary → full blank
+page. This is the SECOND instance of this exact bug class in this same component (a prior
+`fidelity_score` null-crash already has a regression test with a comment noting "only the live
+render caught it" — the lesson didn't generalize to the next null field). Fixed: guarded render +
+`pipeline_job_id: string | null` in `types.ts` (was lying `: string`) + 2 new regression tests.
+Frontend suite 22/22 plan-forge tests pass, tsc clean. Live-reverified on a vite :5199 dev server
+against the real gateway: compile no longer crashes, other Planner functions unaffected.
+**4 real, NOT-yet-fixed UX gaps found + confirmed live** (not guessed from reading code):
+1. **Compile's `arc_id` is a bare text input with ZERO guidance** — no dropdown/autocomplete from
+   the already-proposed spec's `arcs[]` list, no placeholder example, no default. A user has no
+   way to know what to type (confirmed: I only unblocked it because I authored the test fixture and
+   knew "arc_2" — a real user pasting their own doc has no such knowledge). Button is silently
+   disabled with zero indication WHY (looks broken, not "waiting for input").
+2. **No spec/document viewer** — after Propose, the UI shows only 3-5 unclickable "artifact" rows
+   (kind + truncated UUID). No readable rendering of what got extracted (characters, arcs, events,
+   variables) for the user to sanity-check the AI's understanding of their document.
+3. **Source markdown doesn't resume when reopening an existing run** — the textarea is empty even
+   though a `document` artifact with the original text exists server-side; a returning user can't
+   tell if that's expected or broken.
+4. **No error-recovery / fix-it affordance in the GUI** — the MCP-only tools `plan_interpret_feedback`
+   / `plan_apply_revision` / `plan_handoff_autofix` exist specifically for "gaps found → fix them"
+   but are wired to the chat agent only, not exposed as GUI buttons — a GUI-only user hitting a
+   failed validation has no in-panel path forward besides re-pasting different markdown from scratch.
+**Not fixed this pass** — these 4 are a real UX redesign (new dropdown backed by spec data, a spec
+summary view, resume-on-load wiring, surfacing existing self-check/interpret/apply tools as GUI
+affordances), correctly Large per the Task Size table, needs its own CLARIFY before BUILD. Full
+audit trail (exact clicks, exact API responses, exact error text) is in this session's transcript;
+not yet written to a standalone doc — do that first if picking this up next.
+
+---
+
 **Context-explosion fix — 4 of 5 SHIPPED 2026-07-06** (chat-service; user report: 20-turn / 8K-content
 chat burned ~1.4M input tokens on Gemma-26B-A4B local, continuous compaction). **Investigation +
 web-research** (`docs/eval/context-budget/context-explosion-investigation-2026-07-06.md`): NOT a
