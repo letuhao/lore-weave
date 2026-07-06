@@ -134,7 +134,7 @@ wiremock = { workspace = true }
 # version as crates/world-gen so the workspace stays on one criterion; the perf
 # gate's parser self-test (scripts/perf/rust-bench-gate.sh --selftest) guards
 # against output-format drift across versions (F11).
-criterion = "0.5"
+criterion = "0.8"
 
 # G3 — same-runner A/B + bite gate runs this via scripts/perf/rust-bench-gate.sh.
 [[bench]]
