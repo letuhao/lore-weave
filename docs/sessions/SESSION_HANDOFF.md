@@ -1,5 +1,38 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Tool-catalog-simplification — Part D (pinned_legacy_tools) + Part A prompt wiring shipped, 2026-07-06.**
+[`docs/specs/2026-07-06-tool-catalog-simplification.md`](../specs/2026-07-06-tool-catalog-simplification.md).
+Completes the spec's rollout (§10 items 1-3 all DONE): CAT-4 legacy-visibility filter +
+group directory (commit `8927713c7`), `glossary_ontology_upsert`/`delete` Go handlers
+(commit `0d4ec73cd`), and this pass's two remaining pieces (commit `dee43f8de`):
+`group_directory_text()` now actually rides the live system prompt (was schema-only
+before), and a new `pinned_legacy_tools` per-session setting lets a user manually
+re-pin a superseded (find_tools-invisible) tool for one session only — closed-set
+validated against the live catalog (422 on an unknown name), kept as its OWN session
+column rather than folded into `enabled_tools` (folding in would've silently flipped
+the whole session into curated mode from pinning one legacy tool). FE: a collapsed
+"Advanced tools" section in the tool-add modal + a distinct amber chip in the context
+rack. 24 new tests (12 backend + 12 FE), full chat-service + FE chat suites green,
+`tsc --noEmit` clean. Remaining (deferred, tracked in the spec §10 item 4-5): audit any
+FE surface still naming the 6 old glossary tools directly; cross-service live-smoke of
+the new ontology tools through the real chat agent + a before/after token measurement;
+composition/knowledge/translation tool unification as separate follow-on specs.
+
+**Found but NOT fixed (flag for the owning session/track):** a full chat-service suite
+run surfaced `UnboundLocalError: cannot access local variable '_chain_reason'` in
+`stream_service.py`'s `_emit_chat_turn`, in the plain-gateway (non-tool-calling) branch —
+`_chain_reason` is only initialized inside the `if use_tools or _subagent_tool is not None:`
+branch (~line 2810) but read unconditionally later (~line 3143). Traced to commit
+`dbc5c0b31` ("feat(caching): P3 stateful chain-management"), NOT this session's work —
+verified via `git diff --stat HEAD` showing zero further diff on that file before this
+session's edits landed. Breaks basic non-tool-calling turns (`test_emits_text_deltas`,
+`test_persists_assistant_message`, etc. — 14 failures). Left untouched since it's a
+different feature's actively-changing file in a shared checkout; whoever owns the
+stateful-chain track should add the missing `_chain_reason`/`_stateful`/`_prev_rid`/
+`_delta_msgs` initialization to the `else:` branch at ~line 2883.
+
+---
+
 **PlanForge auto-bootstrap POC — BUILT + live-verified end-to-end, 2026-07-06.**
 The gate (propose→record→approve→apply) + [A] chapter-shell creation, per
 [`docs/plans/2026-07-06-planforge-auto-bootstrap-poc.md`](../plans/2026-07-06-planforge-auto-bootstrap-poc.md).
