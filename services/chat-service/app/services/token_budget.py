@@ -241,6 +241,7 @@ def context_budget_event(
     status_flags: list[str] | None = None,
     retrieval_mode: str | None = None,
     intent: str | None = None,
+    llm_call_count: int | None = None,
 ) -> dict:
     """The full contextBudget frame payload — STRICTLY ADDITIVE over
     ContextBudget.to_event(): the original {used_tokens, context_length,
@@ -275,4 +276,11 @@ def context_budget_event(
         payload["retrieval_mode"] = retrieval_mode
     if intent is not None:
         payload["intent"] = intent
+    if llm_call_count is not None:
+        # Observability (context-explosion fix #5): `used_tokens` is the SUM of
+        # input over this many provider completions in the turn (each tool-loop
+        # iteration re-sends the full prompt incl. tool schemas). Per-call input
+        # ≈ used_tokens / llm_call_count — this is what makes a 137K "turn" on an
+        # 8K conversation legible instead of an unexplained gap.
+        payload["llm_call_count"] = int(llm_call_count)
     return payload

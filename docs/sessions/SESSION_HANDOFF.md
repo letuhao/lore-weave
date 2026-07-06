@@ -1,5 +1,31 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Context-explosion fix — 4 of 5 SHIPPED 2026-07-06** (chat-service; user report: 20-turn / 8K-content
+chat burned ~1.4M input tokens on Gemma-26B-A4B local, continuous compaction). **Investigation +
+web-research** (`docs/eval/context-budget/context-explosion-investigation-2026-07-06.md`): NOT a
+cross-turn history bug (history stays 14–1315 tok). Two causes: **(A) the book-scoped hot-seed
+advertised ENTIRE glossary+story domains (~64 tools / 24,388 tok) on EVERY LLM call** —
+`context_breakdown.mcp_tool_schemas` flat 24388 across all 20 turns, `enabled/activated_tools` empty →
+it's the surface hot-seed, `_BOOK_SCOPED_HOT_DOMAINS={glossary,story}`; **(B) the tool-loop re-sends
+it every iteration and `total_input` SUMS it** (`(N+1)×~30K`; seq-22/6-calls=148K). Industry-confirmed
+("bloat tax" / RAG-MCP: bloated tools also crash tool-selection accuracy 43%→14%; Anthropic shipped
+Tool Search to GA). Local-vs-Sonnet: LM Studio bug #1563 — **KV-cache reuse unsupported for A3B/A4B
+(MoE)** → full recompute every call. **Fixes shipped:** #1 `tool_surface.budget_names_by_tokens` —
+token-budget the hot-seed (24K→≤4K, read-tools-first, find_tools backstops); #2 `merge_activated_tools`
+catalog-aware TOKEN cap (was count-64); #4 verified reasoning_content already stripped (loop append
+omits it, not persisted); #5 `llm_call_count` threaded into the `contextBudget` frame so the summed
+input is legible. **VERIFY:** 241 chat-service tests green (8 new budget tests); hot-seed drop
+24,388→≤4,000 (prod-measured old + budget-bounded new). Live re-measure blocked — chat-service
+container crash-looping (env). **DEFERRED — `D-PROMPT-CACHING` (Fix #3):** cache tool+system prefix —
+gate #2 (large/structural: cross-service polyglot contract = SDK `StreamRequest` cache field + Go
+`anthropic_*`/local adapters `cache_control`/`cache_prompt` + chat-service sets it); NEITHER path
+caches today. Lower marginal value for the reported case (A4B can't KV-reuse, bug #1563) and the
+dominant win (#1+#2) is shipped. Trigger: an Anthropic/dense-local model on the agentic path, or a
+dedicated cost pass. **Container note:** rebuild chat-service image for the fix to run live (only
+`tool_surface.py` hot-copied for the measurement).
+
+---
+
 **M1a passage→graph anchor bridge SHIPPED 2026-07-06** (context-retrieval track,
 `docs/plans/2026-07-06-context-retrieval-improvements.md`). **Root finding that reframed the work:**
 the plan's "retrieval never traverses the graph" was FALSE — `select_l2_facts` already does 1-hop +

@@ -75,3 +75,77 @@ class TestToolSurface:
             catalog, pins=pins, editor=False, book_scoped=False,
         )
         assert seed == {"book_get_chapter"}
+
+
+# ── context-explosion fix: token-budgeted hot-seed + activation cap ───────────
+
+from app.services.tool_surface import (  # noqa: E402
+    HOT_SEED_TOKEN_BUDGET,
+    budget_names_by_tokens,
+    discovery_seed_for_surface,
+    resolve_session_tool_pins,
+)
+
+
+def _tool_big(name: str, desc_len: int) -> dict:
+    return {"type": "function",
+            "function": {"name": name, "description": "x" * desc_len,
+                         "parameters": {"type": "object", "properties": {}}}}
+
+
+class TestTokenBudgetedSeed:
+    def test_huge_budget_keeps_all(self):
+        cat = [_tool_big(f"glossary_w{i}", 200) for i in range(10)]
+        names = {t["function"]["name"] for t in cat}
+        out = budget_names_by_tokens(cat, names, token_budget=1_000_000)
+        assert out == names
+
+    def test_tiny_budget_trims_but_keeps_at_least_one(self):
+        cat = [_tool_big(f"glossary_w{i}", 4000) for i in range(10)]  # ~1K tok each
+        names = {t["function"]["name"] for t in cat}
+        out = budget_names_by_tokens(cat, names, token_budget=2500)
+        assert 0 < len(out) < len(names)
+
+    def test_read_tools_prioritized_over_writes(self):
+        # equal-size read + write tools; a budget that fits only some → reads win
+        cat = ([_tool_big(f"glossary_search_{i}", 3000) for i in range(3)]
+               + [_tool_big(f"glossary_propose_{i}", 3000) for i in range(3)])
+        names = {t["function"]["name"] for t in cat}
+        out = budget_names_by_tokens(cat, names, token_budget=2200)  # ~ fits ~3
+        # every kept catalog tool should be a read tool (writes deprioritized)
+        assert out and all("search" in n for n in out)
+
+    def test_non_catalog_names_pass_through_free(self):
+        cat = [_tool_big("glossary_search", 200)]
+        out = budget_names_by_tokens(cat, {"glossary_search", "find_tools", "ui_navigate"},
+                                     token_budget=1_000_000)
+        assert {"find_tools", "ui_navigate"} <= out
+
+    def test_book_scoped_seed_is_bounded(self):
+        # 60 glossary tools, each ~1K tokens = 60K → must be bounded to the budget.
+        cat = [_tool_big(f"glossary_t{i}", 4000) for i in range(60)]
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        seed = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=True)
+        seed_tokens = sum(
+            len(str(t["function"])) for t in cat if t["function"]["name"] in seed
+        )
+        # far smaller than the whole domain; count is a small hot core, not 60
+        assert len(seed) < 20
+        # and the token budget is respected (chars ≈ 4× tokens, generous ceiling)
+        assert seed_tokens <= HOT_SEED_TOKEN_BUDGET * 6
+
+
+class TestActivatedTokenCap:
+    def test_catalog_caps_by_tokens_not_count(self):
+        from app.services.tool_surface import merge_activated_tools
+        cat = [_tool_big(f"t{i}", 4000) for i in range(80)]  # ~1K tok each
+        names = [t["function"]["name"] for t in cat]
+        merged = merge_activated_tools([], set(names), catalog=cat)
+        # token budget (6K) ⇒ far fewer than the count cap of 64
+        assert 0 < len(merged) < 20
+
+    def test_no_catalog_falls_back_to_count_cap(self):
+        from app.services.tool_surface import merge_activated_tools, ACTIVATED_TOOLS_CAP
+        names = {f"t{i}" for i in range(100)}
+        merged = merge_activated_tools([], names)  # no catalog → legacy count cap
+        assert len(merged) == ACTIVATED_TOOLS_CAP

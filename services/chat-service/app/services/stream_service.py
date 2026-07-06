@@ -709,6 +709,12 @@ async def _stream_with_tools(
         # run so the final usage is summed across both runs (design D10).
         total_input = seed_usage[0] if seed_usage else 0
         total_output = seed_usage[1] if seed_usage else 0
+        # W1/observability (context-explosion fix #5) — count provider completions
+        # this turn. `total_input` is the SUM across them (each tool-loop iteration
+        # re-sends the full prompt incl. tool schemas), so a turn's input_tokens
+        # only makes sense divided by this count. Surfacing it closes the "~103K
+        # unaccounted" gap that hid the tool-loop re-send cost.
+        llm_call_count = 0
         max_tokens = gen_params.get("max_tokens")
         if max_tokens is not None and max_tokens <= 0:
             max_tokens = None
@@ -925,6 +931,7 @@ async def _stream_with_tools(
                     elif isinstance(ev, UsageEvent):
                         total_input += ev.input_tokens
                         total_output += ev.output_tokens
+                        llm_call_count += 1
                     elif isinstance(ev, DoneEvent):
                         finish_reason = ev.finish_reason
             except LLMError as exc:
@@ -947,6 +954,7 @@ async def _stream_with_tools(
                 # No tool calls — this pass IS the final text response.
                 yield {"content": "", "reasoning_content": "",
                        "finish_reason": finish_reason or "stop",
+                       "llm_call_count": llm_call_count,
                        "usage": _Usage(prompt_tokens=total_input,
                                        completion_tokens=total_output)}
                 return
@@ -1007,6 +1015,7 @@ async def _stream_with_tools(
                         from app.services.tool_surface import merge_activated_tools
                         activation_state["activated_tools"] = merge_activated_tools(
                             activation_state["activated_tools"], matched,
+                            catalog=discovery_catalog,
                         )
                         activation_state["dirty"] = True
                     if surface_tracker is not None:
@@ -1563,6 +1572,7 @@ async def _stream_with_tools(
         # tool-free (D7) so this is unreachable in practice — defensive.
         yield {"content": "", "reasoning_content": "",
                "finish_reason": "stop",
+               "llm_call_count": llm_call_count,
                "usage": _Usage(prompt_tokens=total_input,
                                completion_tokens=total_output)}
     finally:
@@ -2525,6 +2535,7 @@ async def _emit_chat_turn(
     _fe_schema_tok = 0
     _mcp_schema_tok = 0
     last_usage = None
+    _llm_call_count = 1  # observability fix #5 — provider completions this turn
     import time as _time
     stream_start = _time.monotonic()
     time_to_first_token: float | None = None
@@ -2787,6 +2798,8 @@ async def _emit_chat_turn(
             content = chunk_data["content"]
             if chunk_data.get("usage"):
                 last_usage = chunk_data["usage"]
+            if chunk_data.get("llm_call_count") is not None:
+                _llm_call_count = chunk_data["llm_call_count"]
 
             # Track time to first token (reasoning or content)
             if time_to_first_token is None and (reasoning or content):
@@ -2953,6 +2966,7 @@ async def _emit_chat_turn(
                     status_flags=_status_flags,
                     retrieval_mode=settings.retrieval_mode,
                     intent=derive_intent(entity_presence),
+                    llm_call_count=_llm_call_count,
                 )
 
                 await conn.execute(
