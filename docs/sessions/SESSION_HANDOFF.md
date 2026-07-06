@@ -365,11 +365,32 @@ growing-context probe** exercised the boundary:
   through forced compaction cycles recalled a turn-1 secret ("VORTHANE") — was FAIL→now PASS. Benefits BOTH
   stateless + stateful compaction. This IS the "T6 quality" lever the P3 finding pointed at.
 
-**NEXT (evidence-backed):** (1) **broader model/scenario sweep, then flip `LLM_STATEFUL_CACHE` on** for
-`responses_api` providers (staged; capability-gated + E1 degrade-safe, all live-verified). (2) Deferred:
-the no-tools `_stream_via_gateway` path is stateless-only (only `_stream_with_tools` is wired) — safe
-(self-heals via §5a rule-1), a no-tools turn just forgoes the cache; wire only if a real no-tools-heavy
-workload appears.
+**▶ REVIEW-IMPL + STATEFUL TURNED ON BY DEFAULT 2026-07-06** (user: "review-impl, fix bugs, clear debts,
+then turn on stateful — industry standard"). A 3-agent adversarial review found **7 real bugs**, all fixed:
+- chat-service hot-path (`4fa6f7979`): **H1** stateful+frontend-tool suspend/resume dropped the tool
+  result (resume rebuilt a delta missing the assistant tool_call + result) → fix: suspend persists the
+  reconstructed FULL context, resume runs stateless (`is_resume` guard); **H2** in-loop compaction
+  corrupted the delta indices (`working[_stateful_sent:]` went empty) → skip in-loop compaction when
+  stateful (history is server-side; rule-4 bounds it); **M4** system/grounding dropped on tool-loop
+  passes ≥1 → re-prepend system each stateful pass.
+- transport (`9974ae54e`): **H** finish_reason hardcoded "stop" (truncation/tool-stops mislabeled) →
+  capture response.status/incomplete_details + tool_calls; **H** assistant tool_calls not representable →
+  E1 replay orphaned a function_call_output (400) → map assistant tool_calls → function_call items;
+  **M** isChainNotFound only matched LM Studio → broadened for OpenAI prose.
+- breadcrumb multilingual (`b45269843`, HIGH for this platform): Vietnamese names shredded at diacritics
+  + protagonist dropped; Chinese ZERO extraction → Unicode `_WORD`, CJK sentence-split + numerals,
+  `_QUOTED_CJK`; English adverb-openers glued onto names → dropped `_PROPER`, stoplist on ALL-CAPS +
+  adverbs/scaffold. (Follow-up: non-quoted CJK NER via the multilingual NLP slice.)
+- **STATEFUL ON BY DEFAULT** (`…flip…`): both `stateful_enabled()` (chat) + `StatefulCacheEnabled()`
+  (gateway) default ON, read identically (flag-consistency), disable via `LLM_STATEFUL_CACHE=0`.
+  **Live-verified default-on**: 2-turn smoke 99.94% cache with NO override + 22-turn recall PASS.
+  Standards gate clean (transport in provider-registry; env vars are deploy ceilings; response_id
+  session-owner-scoped; no model literals).
+
+**NEXT:** return to [`docs/plans/2026-07-06-context-retrieval-improvements.md`](../plans/2026-07-06-context-retrieval-improvements.md)
+(the retrieval-quality track — M1a passage→graph bridge shipped; remaining milestones). Deferred: the
+no-tools `_stream_via_gateway` path is stateless-only (safe, self-heals via §5a rule-1); non-quoted CJK
+name extraction in the breadcrumb (needs NER). Both low-priority.
 
 ---
 
