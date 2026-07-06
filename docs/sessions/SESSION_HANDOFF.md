@@ -139,12 +139,19 @@ uncached 434` (the 99% cache_read P1 couldn't reach, now on the frame + persiste
 chains within a turn (4 passes ~99% cached each); E1 corrupt-head → transparent re-establish, still
 recalled the codeword. All isolated via a temp compose override (deleted); stack reverted to default-off.
 
-**NEXT: P3** (cache-aware Planner, spec §9) — server-side accumulated-size budget for stateful (the P2
-§5a rule-4 window guard is the safety floor; P3 makes the compaction SMART), compaction cache-write-penalty
-tuning, re-chain-at-boundary (E5) with intelligent compaction. Then: consider flipping `LLM_STATEFUL_CACHE`
-on by default after a broader eval. Deferred: the no-tools `_stream_via_gateway` path is stateless-only
-(only `_stream_with_tools` is wired) — safe (self-heals via §5a rule-1) but a no-tools turn forgoes the
-cache; wire it in P3 if worthwhile.
+**P2 EVAL DONE** (`10c33e523`, [`docs/eval/context-budget/stateful-vs-stateless-2026-07-06.md`](../eval/context-budget/stateful-vs-stateless-2026-07-06.md)):
+12-turn A/B on local gemma-4-26b — stateful cut **Σ uncached tokens 355K→29.7K (−91.6%)** with
+**IDENTICAL 4/4 fact-recall** (no quality loss). Each continue turn sends a ~27-tok delta vs a 29.5K
+full re-send; ~100% cached after establish. The tool-schema-dominated base = the original explosion case.
+
+**NEXT (evidence-backed):** (1) **broader sweep then flip `LLM_STATEFUL_CACHE` on** for `responses_api`
+providers (staged; capability-gated + E1 degrade-safe, all live-verified). (2) **P3 cache-aware Planner
+(spec §9) stays DEFERRED — gate #4, no pain observed:** the eval's context (~29.7K) never neared the 200K
+window, so the §5a rule-4 guard never fired and P3's compaction-cache-write-penalty + intelligent
+re-chain-at-boundary (E5) tuning has no evidence to tune against yet. Revisit when a LONG-session
+(window-approaching) eval shows the boundary case matters. (3) Deferred: the no-tools `_stream_via_gateway`
+path is stateless-only (only `_stream_with_tools` is wired) — safe (self-heals via §5a rule-1), a no-tools
+turn just forgoes the cache; wire only if a real no-tools-heavy workload appears.
 
 ---
 
