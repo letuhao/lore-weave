@@ -911,6 +911,11 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	if base == "" {
 		base = openaiBaseURL
 	}
+	// Provider Context Strategy §5 — stateful /v1/responses branch (gated in the
+	// handler by capability + LLM_STATEFUL_CACHE). Serves OpenAI + vLLM-behind-custom.
+	if isStatefulRequest(input) {
+		return streamViaResponses(ctx, a.client, base, secret, modelName, input, emit)
+	}
 	headers := map[string]string{}
 	if secret != "" {
 		headers["Authorization"] = "Bearer " + secret
@@ -1453,6 +1458,12 @@ func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secr
 // to strip a possible trailing /v1 (mirrors Invoke).
 func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
 	base := NormalizeLmStudioBase(endpointBaseURL)
+	// Provider Context Strategy §5 — stateful /v1/responses branch (gated in the
+	// handler). This is the transport that caches 99% on A4B where chat/completions
+	// caches 0 (LM Studio bug #1563); NormalizeLmStudioBase already yields the /v1 base.
+	if isStatefulRequest(input) {
+		return streamViaResponses(ctx, a.client, base, secret, modelName, input, emit)
+	}
 	headers := map[string]string{}
 	if secret != "" {
 		headers["Authorization"] = "Bearer " + secret

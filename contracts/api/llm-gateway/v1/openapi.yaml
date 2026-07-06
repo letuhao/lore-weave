@@ -527,6 +527,20 @@ components:
           type: string
           description: Optional caller-supplied trace identifier.
           nullable: true
+        stateful:
+          type: boolean
+          description: >-
+            Provider Context Strategy §5 — request the stateful /v1/responses
+            transport (server holds the prior context). Honored ONLY when the
+            resolved provider declares the responses_api capability AND
+            LLM_STATEFUL_CACHE is on; otherwise silently degraded to
+            chat/completions. Omit/false for today's stateless behavior.
+        previous_response_id:
+          type: string
+          nullable: true
+          description: >-
+            The prior response's chain head, to continue a stateful conversation
+            (only meaningful with stateful=true). Omit to start a fresh chain.
 
     TtsStreamRequest:
       type: object
@@ -739,6 +753,13 @@ components:
           type: string
           enum: [stop, length, content_filter, tool_calls, error]
           nullable: true
+        response_id:
+          type: string
+          nullable: true
+          description: >-
+            Stateful /v1/responses chain head (Provider Context Strategy §5). Present
+            only on a stateful turn's terminal Done; the caller persists it as
+            previous_response_id for the next turn. Absent on the chat/completions path.
 
     StreamErrorEvent:
       type: object

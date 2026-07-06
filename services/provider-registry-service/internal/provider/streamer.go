@@ -169,6 +169,11 @@ type StreamChunk struct {
 
 	// Done fields (Kind == StreamChunkDone)
 	FinishReason string `json:"finish_reason,omitempty"`
+	// ResponseID — the stateful /v1/responses chain head (Provider Context Strategy
+	// §5). Present ONLY on the terminal Done of a stateful turn; the caller persists
+	// it as `previous_response_id` for the next turn. Empty/omitted on the stateless
+	// chat/completions path.
+	ResponseID string `json:"response_id,omitempty"`
 
 	// Error fields (Kind == StreamChunkError)
 	Code    string `json:"code,omitempty"`

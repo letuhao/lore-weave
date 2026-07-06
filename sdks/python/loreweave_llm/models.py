@@ -59,6 +59,9 @@ class UsageEvent(_BaseEvent):
 class DoneEvent(_BaseEvent):
     event_type: Literal["done"] = Field("done", alias="event")
     finish_reason: str | None = None
+    # Stateful /v1/responses chain head (Provider Context Strategy §5). Present only on
+    # a stateful turn; the caller persists it as previous_response_id for the next turn.
+    response_id: str | None = None
 
 
 class ErrorEvent(_BaseEvent):
@@ -156,6 +159,15 @@ class StreamRequest(BaseModel):
     # cancellable context under this id, so the caller can abort the in-flight
     # stream via DELETE /internal/llm/jobs/{id}. None (default) → today's behavior.
     stream_job_id: str | None = None
+    # Provider Context Strategy §5 (Phase 2) — stateful /v1/responses routing.
+    # `stateful=True` asks the gateway to use the provider's Responses API (server
+    # holds the prior context); `previous_response_id` chains this call onto the prior
+    # response (None = start a fresh chain). Both are OPTIONAL and additive: unset ⇒
+    # the wire body is byte-identical to today's chat/completions request. The gateway
+    # only honors `stateful` when the credential declares the `responses_api`
+    # capability and LLM_STATEFUL_CACHE is on; otherwise it degrades to chat/completions.
+    stateful: bool = False
+    previous_response_id: str | None = None
 
     def to_request_body(self) -> dict[str, Any]:
         """Serialize to the wire JSON body. Drops `max_tokens` when it's
@@ -166,6 +178,9 @@ class StreamRequest(BaseModel):
         data = self.model_dump(mode="json", exclude_none=True)
         if data.get("max_tokens") == 0:
             data.pop("max_tokens", None)
+        # Keep the stateless path byte-identical: only emit `stateful` when True.
+        if not data.get("stateful"):
+            data.pop("stateful", None)
         return data
 
 

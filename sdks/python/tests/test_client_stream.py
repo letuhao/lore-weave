@@ -125,6 +125,37 @@ async def test_stream_usage_carries_cache_split():
     assert usage.cache_read_tok == 4000
 
 
+def test_stream_request_stateful_wire_is_additive():
+    # Provider Context Strategy §5 — the stateful markers are additive: the stateless
+    # wire stays byte-identical (no `stateful`/`previous_response_id` keys), and a
+    # stateful request carries both.
+    from uuid import uuid4
+
+    from loreweave_llm.models import StreamRequest
+
+    stateless = StreamRequest(
+        model_source="user_model", model_ref=uuid4(),
+        messages=[{"role": "user", "content": "hi"}],
+    ).to_request_body()
+    assert "stateful" not in stateless and "previous_response_id" not in stateless
+
+    stateful = StreamRequest(
+        model_source="user_model", model_ref=uuid4(), messages=[],
+        stateful=True, previous_response_id="resp_1",
+    ).to_request_body()
+    assert stateful["stateful"] is True
+    assert stateful["previous_response_id"] == "resp_1"
+
+
+def test_done_event_parses_response_id():
+    # the stateful chain head rides the terminal Done event
+    d = DoneEvent.model_validate(
+        {"event": "done", "finish_reason": "stop", "response_id": "resp_abc"})
+    assert d.response_id == "resp_abc"
+    # absent on the stateless path
+    assert DoneEvent.model_validate({"event": "done"}).response_id is None
+
+
 @pytest.mark.asyncio
 async def test_stream_tool_call_fragments_dispatched():
     # Phase 0b — the gateway re-frames tool-call deltas into `tool_call`
