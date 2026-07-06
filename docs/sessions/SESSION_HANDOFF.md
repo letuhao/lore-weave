@@ -54,11 +54,22 @@ cost_delta_ratio + write_premium via standard cache multipliers, net_negative; r
 §7 guardrail — only explicit-cache can thrash, ≥3-turn verdict so priming isn't flagged) → contextBudget
 `caching` section (additive) + §11a gate row (85 items, 0 problems). Tests: caching_monitor 12,
 token_budget 31, provider Go suite green, SDK stream green.
-**Deferred:** `D-CACHING-MONITOR-LIVE-SMOKE` — full-stack cross-service smoke (real cached turn → frame
-shows the split) blocked by chat-service container crash-looping on Windows dev; wire contract bound by
-unit tests both sides. **NEXT: P2** — `responsesAdapter` + SDK `previous_response_id`/`stateful` +
-DB column per `(session, branch_id)` + `StatefulResponses` strategy (E1 re-establish + E2 in-turn chain),
-behind `LLM_STATEFUL_CACHE` (default off, flip after live-smoke on LM Studio).
+**✅ LIVE-SMOKE CLEARED 2026-07-06** (`D-CACHING-MONITOR-LIVE-SMOKE` closed — the "crash-loop" blocker
+was STALE: both services rebuilt + came up `healthy` immediately). Evidence on the real stack:
+(1) rebuilt provider-registry + chat-service images, both healthy. (2) `/internal/credentials/user_model/…`
+returns `capabilities:{auto_prefix_cache:true, prompt_cache_control:false, responses_api:true}` for the
+lm_studio Gemma model — P1.b wire proven. (3) real gateway turn (login→session→message→SSE) persisted a
+contextBudget `caching` section: `strategy:stateless, auto_prefix:true, thrashing:null, uncached_tok:30925,
+create/read 0` — P1.b→P1.d frame wiring proven cross-service. **Nonzero cache_read live proof is
+transport-gated to P2:** LM Studio chat/completions reports NO `cached_tokens` at all (verified: dense
+Qwen2.5-7B, KV-cached prefix, field absent) — the split only surfaces on `/v1/responses` (the P2 adapter,
+= the 99% measurement). That path is unit-bound both sides now (Go streamer cached_tokens→CacheReadTokens,
+SDK round-trip, monitor math) and will be the FIRST live-smoke of P2.
+
+**NEXT: P2** — `responsesAdapter` + SDK `previous_response_id`/`stateful` + DB column per
+`(session, branch_id)` + `StatefulResponses` strategy (E1 re-establish + E2 in-turn chain), behind
+`LLM_STATEFUL_CACHE` (default off, flip after the P2 live-smoke on LM Studio /v1/responses proves the
+99% cache_read flows to the frame — the nonzero-read proof P1 couldn't reach).
 
 ---
 
