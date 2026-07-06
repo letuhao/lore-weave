@@ -198,7 +198,14 @@ func TestBulkExtract_EmitsTemporalFacts(t *testing.T) {
 		"writeback_key":   "wbk-ch7",
 		"chapter_ordinal": 7,
 		"entities": []map[string]any{
-			{"kind_code": "character", "name": "张若尘", "attributes": map[string]any{"境界": "武者"}},
+			// /review-impl HIGH: this MUST be a code actually registered on the
+			// "character" kind ("occupation") — an unregistered code like the former
+			// "境界" only ever got a fact emitted because of the exact bug
+			// D-GLOSSARY-UNMATCHED-ATTR-FALLBACK's HIGH fix closed (AttributesWritten
+			// used to list every raw key regardless of whether it matched an
+			// attr_def, so entity_facts silently disagreed with the EAV projection —
+			// this test was unknowingly exercising that drift, not real behavior).
+			{"kind_code": "character", "name": "张若尘", "attributes": map[string]any{"occupation": "武者"}},
 		},
 	}
 	resp := postExtract(t, srv, token, bookID, body)
@@ -218,7 +225,7 @@ func TestBulkExtract_EmitsTemporalFacts(t *testing.T) {
 		t.Fatalf("episode status=%q ordinal=%d, want reconciled/7", epStatus, epOrdinal)
 	}
 
-	// facts opened for name + 境界, valid_from=7, open, citing the episode
+	// facts opened for name + occupation, valid_from=7, open, citing the episode
 	rows, err := pool.Query(ctx, `
 		SELECT ef.attr_or_predicate, ef.value, ef.valid_from_ordinal, ef.valid_to_ordinal,
 		       (ef.source_episode_id IS NOT NULL) AS cited
@@ -246,8 +253,8 @@ func TestBulkExtract_EmitsTemporalFacts(t *testing.T) {
 		got[attr] = val
 	}
 	rows.Close()
-	if got["name"] != "张若尘" || got["境界"] != "武者" {
-		t.Fatalf("emitted facts = %v, want name=张若尘 & 境界=武者", got)
+	if got["name"] != "张若尘" || got["occupation"] != "武者" {
+		t.Fatalf("emitted facts = %v, want name=张若尘 & occupation=武者", got)
 	}
 
 	// idempotent re-run (same content + writeback_key) → 0 NEW fact rows
@@ -1030,6 +1037,86 @@ func TestBulkExtract_UnmatchedAttrRespectsVerifiedGuard(t *testing.T) {
 	}
 	if r := skipReasonFor(resp, "学者", "hobby"); r != "verified" {
 		t.Errorf("want skip reason 'verified' for the unmatched code, got %q", r)
+	}
+}
+
+// TestBulkExtract_UnmatchedAttrFallbackDoesNotMintPhantomFact is the /review-impl HIGH
+// regression proof: D-GLOSSARY-UNMATCHED-ATTR-FALLBACK must never report the ORIGINAL
+// unmatched code as "written", because AttributesWritten feeds emitChapterFacts (Path A),
+// which emits an entity_facts row keyed by that exact code. entity_facts is the INV-FACTS
+// SSOT — a phantom fact for "favorite_food" (no attr_def, no EAV cell) would permanently
+// disagree with the EAV projection, which actually stored the value inside "description".
+// Covers BOTH create (the phantom-fact risk pre-dates this fallback — createExtractedEntity
+// used to report EVERY raw attribute key as written, matched or not) and merge (the new
+// risk this fallback itself introduced by adding unmatched codes to `written`).
+func TestBulkExtract_UnmatchedAttrFallbackDoesNotMintPhantomFact(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+	if err := migrate.RunChain(ctx, pool); err != nil {
+		t.Fatalf("migrate chain: %v", err)
+	}
+
+	bookID := "00000000-0000-0000-0001-0000000a1033"
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	chapterID := uuid.New()
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM entity_facts WHERE book_id=$1`, bid)             //nolint:errcheck
+		pool.Exec(ctx, `DELETE FROM episodes WHERE book_id=$1`, bid)                 //nolint:errcheck
+		cleanupExtractBook(pool, bookID)
+	})
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	// CREATE, Path A active (chapter_ordinal set) — an unmatched code must not mint an
+	// entity_facts row under its own name.
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh", "chapter_id": chapterID.String(),
+		"content_hash": "hash-c1", "writeback_key": "wbk-c1", "chapter_ordinal": 1,
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "厨师二号", "attributes": map[string]any{"favorite_food": "noodles"}},
+		},
+	})
+	var phantom int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM entity_facts ef JOIN glossary_entities ge ON ge.entity_id = ef.entity_id
+		WHERE ge.book_id=$1 AND ef.attr_or_predicate='favorite_food'`, bid).Scan(&phantom); err != nil {
+		t.Fatalf("query phantom fact (create): %v", err)
+	}
+	if phantom != 0 {
+		t.Fatalf("CREATE: unmatched code minted a phantom entity_facts row (INV-FACTS drift)")
+	}
+
+	// MERGE, Path A active on a DIFFERENT chapter — same check on an existing entity.
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh", "chapter_id": uuid.NewString(),
+		"content_hash": "hash-c2", "writeback_key": "wbk-c2", "chapter_ordinal": 2,
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "厨师二号", "attributes": map[string]any{"hobby": "reading"}},
+		},
+	})
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM entity_facts ef JOIN glossary_entities ge ON ge.entity_id = ef.entity_id
+		WHERE ge.book_id=$1 AND ef.attr_or_predicate='hobby'`, bid).Scan(&phantom); err != nil {
+		t.Fatalf("query phantom fact (merge): %v", err)
+	}
+	if phantom != 0 {
+		t.Fatalf("MERGE: unmatched code minted a phantom entity_facts row (INV-FACTS drift)")
+	}
+
+	// The actual data is still safely captured in the EAV description, not lost.
+	var description string
+	if err := pool.QueryRow(ctx, `
+		SELECT eav.original_value FROM entity_attribute_values eav
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='description'`, bid).Scan(&description); err != nil {
+		t.Fatalf("query description: %v", err)
+	}
+	if !strings.Contains(description, "favorite_food") || !strings.Contains(description, "hobby") {
+		t.Errorf("want both unmatched attrs captured in description, got %q", description)
 	}
 }
 

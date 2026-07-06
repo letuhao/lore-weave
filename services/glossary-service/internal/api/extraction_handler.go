@@ -769,7 +769,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			// 2. CREATE new entity — default tags (e.g. ai-suggested) are
 			// applied on create only, so an AI writeback never re-tags a
 			// user's existing/active entity into the suggestion inbox.
-			entityID, err := s.createExtractedEntity(ctx, tx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage, req.DefaultTags)
+			entityID, written, skippedAttrs, err := s.createExtractedEntity(ctx, tx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage, req.DefaultTags)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create entity: "+err.Error())
@@ -789,13 +789,19 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			// All provided attributes are written on create
-			result.AttributesWritten = make([]string, 0, len(ent.Attributes)+1)
-			result.AttributesWritten = append(result.AttributesWritten, "name")
-			for code := range ent.Attributes {
-				result.AttributesWritten = append(result.AttributesWritten, code)
+			// /review-impl HIGH fix: report only codes that actually matched an attr_def
+			// (+ "description" when the unmatched-attr fallback fired) — NOT every raw
+			// key in ent.Attributes. AttributesWritten feeds emitChapterFacts below,
+			// which emits a fact per code; a phantom code with no attr_def would mint an
+			// entity_facts row (INV-FACTS SSOT) that can never agree with the EAV
+			// projection, since that value actually lives inside "description".
+			result.AttributesWritten = written
+			skippedCodes := make([]string, 0, len(skippedAttrs))
+			for _, sa := range skippedAttrs {
+				skippedCodes = append(skippedCodes, sa.Code)
 			}
-			result.AttributesSkipped = []string{}
+			result.AttributesSkipped = skippedCodes
+			result.AttributesSkippedReasons = skippedAttrs
 			created++
 		} else {
 			// 3. MERGE with existing entity — under mergeKindID (the matched entity's
@@ -1422,18 +1428,17 @@ func (s *Server) createExtractedEntity(
 	attrDefMap map[string]uuid.UUID,
 	sourceLang string,
 	tags []string,
-) (uuid.UUID, error) {
+) (entityID uuid.UUID, written []string, skipped []attrSkip, err error) {
 	if tags == nil {
 		tags = []string{} // tags column is NOT NULL DEFAULT '{}'
 	}
-	var entityID uuid.UUID
-	err := q.QueryRow(ctx, `
+	err = q.QueryRow(ctx, `
 		INSERT INTO glossary_entities (book_id, kind_id, status, tags)
 		VALUES ($1, $2, 'draft', $3)
 		RETURNING entity_id
 	`, bookID, kindID, tags).Scan(&entityID)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("insert entity: %w", err)
+		return uuid.Nil, nil, nil, fmt.Errorf("insert entity: %w", err)
 	}
 
 	// Insert name attribute
@@ -1445,12 +1450,13 @@ func (s *Server) createExtractedEntity(
 			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
 		`, entityID, nameDefID, sourceLang, ent.Name)
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("insert name attr: %w", err)
+			return uuid.Nil, nil, nil, fmt.Errorf("insert name attr: %w", err)
 		}
+		written = append(written, "name")
 	}
 
 	// Insert other attributes
-	var unmatchedNotes []string
+	var unmatchedCodes, unmatchedNotes []string
 	for code, val := range ent.Attributes {
 		defID, ok := attrDefMap[kindID.String()+":"+code]
 		if !ok {
@@ -1459,6 +1465,7 @@ func (s *Server) createExtractedEntity(
 			// "description" catch-all below rather than dropped — glossary content is
 			// authored prose, not a rigid schema; losing the observation is worse than
 			// filing it under a generic heading (see appendUnmatchedAttrsToFallback).
+			unmatchedCodes = append(unmatchedCodes, code)
 			unmatchedNotes = append(unmatchedNotes, fmt.Sprintf("- %s: %s", code, serializeValue(val)))
 			continue
 		}
@@ -1469,28 +1476,39 @@ func (s *Server) createExtractedEntity(
 			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
 		`, entityID, defID, sourceLang, serialized)
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("insert attr %s: %w", code, err)
+			return uuid.Nil, nil, nil, fmt.Errorf("insert attr %s: %w", code, err)
 		}
 		// D-GLOSSARY-MULTIROW slice 2 — seed per-item rows for a list value on create
 		// (scalar ⇒ no-op) so a freshly-created list attr is item-consistent for
 		// verify/tombstone without waiting for a later append.
 		if e := syncListItems(ctx, q, entityID, defID, serialized, "machine", firstChapterIDFromLinks(ent.ChapterLinks)); e != nil {
-			return uuid.Nil, fmt.Errorf("insert attr %s (items): %w", code, e)
+			return uuid.Nil, nil, nil, fmt.Errorf("insert attr %s (items): %w", code, e)
 		}
+		written = append(written, code)
 	}
 	if len(unmatchedNotes) > 0 {
-		if _, _, ferr := appendUnmatchedAttrsToFallback(ctx, q, entityID, kindID, attrDefMap, sourceLang, unmatchedNotes); ferr != nil {
-			return uuid.Nil, ferr
+		ok, reason, ferr := appendUnmatchedAttrsToFallback(ctx, q, entityID, kindID, attrDefMap, sourceLang, unmatchedNotes)
+		if ferr != nil {
+			return uuid.Nil, nil, nil, ferr
+		}
+		if ok {
+			written = markDescriptionWritten(written)
+		} else {
+			for _, code := range unmatchedCodes {
+				skipped = append(skipped, attrSkip{code, reason})
+			}
 		}
 	}
 
 	// D-GLOSSARY-ST-DEDUP M3a: stamp the app-maintained dedup key from the
 	// just-landed name (cached_name is set by the snapshot trigger on the name EAV).
 	if err := refreshEntityDedupKey(ctx, q, entityID); err != nil {
-		return uuid.Nil, fmt.Errorf("refresh dedup key: %w", err)
+		return uuid.Nil, nil, nil, fmt.Errorf("refresh dedup key: %w", err)
 	}
-
-	return entityID, nil
+	if skipped == nil {
+		skipped = []attrSkip{}
+	}
+	return entityID, written, skipped, nil
 }
 
 // appendUnmatchedAttrsToFallback captures attribute codes a kind hasn't registered
@@ -1499,14 +1517,16 @@ func (s *Server) createExtractedEntity(
 // schema, so an unrecognized-but-real observation is worth keeping even if it can't be
 // filed under its own field yet. Appends (never overwrites) so repeated extraction runs
 // accumulate rather than clobber. Respects the INV-8 verified-clobber guard: a
-// human-curated description is never machine-appended to. Returns appended=false with a
-// skipReason ("unmapped" — the kind has no "description" attr_def at all, or "verified"
-// — INV-8 blocked the write) when it declines; the caller then keeps its prior
-// silent-skip behavior for those attribute codes.
+// human-curated description is never machine-appended to. Returns appended=true (the
+// caller should report the attr code as "description", per INV-FACTS/§12 — NEVER under
+// its own original code, since no fact-worthy attr_def exists for it; see the two call
+// sites) or appended=false with a reason ("unmapped" — the kind has no "description"
+// attr_def at all, or "verified" — INV-8 blocked the write), in which case the caller
+// keeps its prior silent-skip behavior for those attribute codes.
 func appendUnmatchedAttrsToFallback(
 	ctx context.Context, q pgxRWQuerier, entityID, kindID uuid.UUID,
 	attrDefMap map[string]uuid.UUID, sourceLang string, lines []string,
-) (appended bool, skipReason string, err error) {
+) (appended bool, reason string, err error) {
 	descID, ok := attrDefMap[kindID.String()+":description"]
 	if !ok {
 		return false, "unmapped", nil
@@ -1539,6 +1559,25 @@ func appendUnmatchedAttrsToFallback(
 		return false, "", fmt.Errorf("append unmatched attrs to description: %w", err)
 	}
 	return true, "", nil
+}
+
+// markDescriptionWritten adds "description" to a written-codes list exactly once —
+// shared by create/merge so a fallback append is reported truthfully (Status/back-compat
+// AttributesWritten) WITHOUT ever adding the original unmatched code. /review-impl HIGH:
+// the original code has no attr_def, so passing it to emitChapterFacts's writtenCodes
+// (which looks up ent.Attributes[code] and emits a fact under THAT code) would mint a
+// phantom entity_facts row for an attribute that has no EAV cell — a fact SSOT (INV-FACTS)
+// that permanently disagrees with the EAV projection it's supposed to back, surviving
+// even after the description text is edited. "description" is always a real attr_def
+// here (the fallback only fires when one exists), so it's fact-emission-safe: the shared
+// emit path re-reads ent.Attributes["description"] and no-ops when that key is absent.
+func markDescriptionWritten(written []string) []string {
+	for _, c := range written {
+		if c == "description" {
+			return written
+		}
+	}
+	return append(written, "description")
 }
 
 // mergeExtractedEntity merges attributes into an existing entity. The action is the
@@ -1745,12 +1784,15 @@ func (s *Server) mergeExtractedEntity(
 	}
 
 	if len(unmatchedNotes) > 0 {
+		// /review-impl HIGH fix: report "description" (a real attr_def), never the
+		// original unmatched codes — see markDescriptionWritten's doc comment for why
+		// reporting the raw code here would mint a phantom INV-FACTS entity_facts row.
 		ok, reason, ferr := appendUnmatchedAttrsToFallback(ctx, q, entityID, kindID, attrDefMap, sourceLang, unmatchedNotes)
 		if ferr != nil {
 			return nil, nil, ferr
 		}
 		if ok {
-			written = append(written, unmatchedCodes...)
+			written = markDescriptionWritten(written)
 		} else {
 			for _, code := range unmatchedCodes {
 				skipped = append(skipped, attrSkip{code, reason})

@@ -468,21 +468,23 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("attr defs: %w", err)
 	}
-	// 070: report which supplied attribute codes don't exist on the kind and will
-	// be dropped by createExtractedEntity (it silently `continue`s on unknown
-	// codes), so the LLM learns they didn't land.
-	var skipped []string
-	for code := range attrs {
-		if _, ok := attrDefMap[kindID.String()+":"+code]; !ok {
-			skipped = append(skipped, code)
-		}
-	}
 	ent := extractedEntity{Name: name, Attributes: attrs}
 	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
 	// human can correct it when reviewing the draft in the inbox.
-	entityID, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
+	//
+	// /review-impl HIGH fix: this used to pre-compute "skipped" itself (any code
+	// missing from attrDefMap) and tell the LLM it "didn't land" — true when
+	// createExtractedEntity silently dropped unmatched codes, FALSE now that it
+	// captures them into "description" (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK). Use
+	// createExtractedEntity's own returned skip list instead of duplicating
+	// (now-stale) logic about what it does with an unmatched code.
+	entityID, _, skippedAttrs, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("create draft: %w", err)
+	}
+	var skipped []string
+	for _, sa := range skippedAttrs {
+		skipped = append(skipped, sa.Code)
 	}
 	return entityID, "created", skipped, nil
 }

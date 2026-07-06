@@ -44,7 +44,14 @@ func TestFactsHTTP(t *testing.T) {
 		"source_language": "zh", "chapter_id": chapterID.String(),
 		"content_hash": "h14f4", "writeback_key": "wbk-14f4", "chapter_ordinal": 3,
 		"entities": []map[string]any{
-			{"kind_code": "character", "name": "苏寒", "attributes": map[string]any{"境界": "练气"}},
+			// /review-impl HIGH: "occupation" is a REAL attr_def on "character" (the
+			// former "境界" isn't registered anywhere — this test's seed only ever
+			// worked because of the exact bug D-GLOSSARY-UNMATCHED-ATTR-FALLBACK's
+			// HIGH fix closed: AttributesWritten used to list every raw key
+			// regardless of a match, so Path A fact-emission "worked" for an
+			// attribute with no EAV cell at all — a real INV-FACTS/EAV disagreement
+			// this test was unknowingly encoding as expected behavior).
+			{"kind_code": "character", "name": "苏寒", "attributes": map[string]any{"occupation": "练气"}},
 		},
 	})
 	var entityID string
@@ -82,22 +89,22 @@ func TestFactsHTTP(t *testing.T) {
 		return w.Code, r
 	}
 
-	// READ: the writeback's facts come back (name + 境界, valid_from 3, open)
+	// READ: the writeback's facts come back (name + occupation, valid_from 3, open)
 	facts := get("/internal/books/" + bookID + "/entities/" + entityID + "/facts")
 	byAttr := map[string]map[string]any{}
 	for _, f := range facts {
 		byAttr[f["attr_or_predicate"].(string)] = f
 	}
-	if byAttr["name"]["value"] != "苏寒" || byAttr["境界"]["value"] != "练气" {
-		t.Fatalf("GET facts = %v, want name=苏寒 & 境界=练气", facts)
+	if byAttr["name"]["value"] != "苏寒" || byAttr["occupation"]["value"] != "练气" {
+		t.Fatalf("GET facts = %v, want name=苏寒 & occupation=练气", facts)
 	}
-	if byAttr["境界"]["valid_from_ordinal"].(float64) != 3 {
-		t.Fatalf("境界 valid_from = %v, want 3", byAttr["境界"]["valid_from_ordinal"])
+	if byAttr["occupation"]["valid_from_ordinal"].(float64) != 3 {
+		t.Fatalf("occupation valid_from = %v, want 3", byAttr["occupation"]["valid_from_ordinal"])
 	}
 
-	// WRITE: append a superseding 境界 at chapter 9 → GET reflects 突破境 as current
+	// WRITE: append a superseding occupation at chapter 9 → GET reflects 突破境 as current
 	code, ar := post("/internal/books/"+bookID+"/facts/append", map[string]any{
-		"entity_id": entityID, "fact_kind": "attribute", "attr_or_predicate": "境界",
+		"entity_id": entityID, "fact_kind": "attribute", "attr_or_predicate": "occupation",
 		"value": "突破境", "valid_from_ordinal": 9,
 	})
 	if code != http.StatusOK || ar["inserted"] != true {
@@ -106,24 +113,24 @@ func TestFactsHTTP(t *testing.T) {
 	facts = get("/internal/books/" + bookID + "/entities/" + entityID + "/facts")
 	cur := ""
 	for _, f := range facts {
-		if f["attr_or_predicate"] == "境界" {
+		if f["attr_or_predicate"] == "occupation" {
 			cur = f["value"].(string)
 		}
 	}
 	if cur != "突破境" {
-		t.Fatalf("after append, current 境界 = %q, want 突破境", cur)
+		t.Fatalf("after append, current occupation = %q, want 突破境", cur)
 	}
 
-	// timeline shows both 境界 versions (the change feed)
+	// timeline shows both occupation versions (the change feed)
 	tl := get("/internal/books/" + bookID + "/entities/" + entityID + "/timeline?limit=50")
 	jingCount := 0
 	for _, f := range tl {
-		if f["attr_or_predicate"] == "境界" {
+		if f["attr_or_predicate"] == "occupation" {
 			jingCount++
 		}
 	}
 	if jingCount < 2 {
-		t.Fatalf("timeline 境界 versions = %d, want >=2 (development history)", jingCount)
+		t.Fatalf("timeline occupation versions = %d, want >=2 (development history)", jingCount)
 	}
 
 	// RETRACT the appended fact → current reverts to 练气
@@ -137,8 +144,8 @@ func TestFactsHTTP(t *testing.T) {
 	}
 	facts = get("/internal/books/" + bookID + "/entities/" + entityID + "/facts")
 	for _, f := range facts {
-		if f["attr_or_predicate"] == "境界" && f["value"] != "练气" {
-			t.Fatalf("after retract, 境界 = %v, want 练气 (chain re-stitched)", f["value"])
+		if f["attr_or_predicate"] == "occupation" && f["value"] != "练气" {
+			t.Fatalf("after retract, occupation = %v, want 练气 (chain re-stitched)", f["value"])
 		}
 	}
 

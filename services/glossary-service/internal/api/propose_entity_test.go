@@ -72,14 +72,27 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	})
 	s := &Server{pool: pool}
 
-	// 070: a supplied attribute code that doesn't exist on the kind is reported
-	// as skipped (createExtractedEntity drops it silently).
+	// /review-impl HIGH fix (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK, was "070"): a
+	// supplied attribute code that doesn't exist on the kind is no longer dropped —
+	// it's captured into the kind's "description" catch-all, so it's NOT reported
+	// as skipped anymore (skipped is now reserved for a genuine drop: no
+	// "description" attr_def on the kind, or INV-8 verified-clobber).
 	id, status, skipped, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", map[string]any{"no_such_attr": "x"})
 	if err != nil || status != "created" {
 		t.Fatalf("want created, got status=%q err=%v", status, err)
 	}
-	if !slices.Contains(skipped, "no_such_attr") {
-		t.Errorf("want 'no_such_attr' reported in attributes_skipped, got %v", skipped)
+	if len(skipped) != 0 {
+		t.Errorf("want no skipped attrs (captured into description instead), got %v", skipped)
+	}
+	var description string
+	if err := pool.QueryRow(ctx, `
+		SELECT eav.original_value FROM entity_attribute_values eav
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE eav.entity_id=$1 AND ba.code='description'`, id).Scan(&description); err != nil {
+		t.Fatalf("query description: %v", err)
+	}
+	if !strings.Contains(description, "no_such_attr") || !strings.Contains(description, "x") {
+		t.Errorf("want the unmatched attr captured into description, got %q", description)
 	}
 	var st string
 	var tags []string

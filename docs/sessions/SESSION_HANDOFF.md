@@ -24,6 +24,30 @@ verified** against the real dev stack: rebuilt+restarted glossary-service, POSTe
 (`signature_scent`) to a real adopted book via `extract-entities`, confirmed by direct SQL it landed as
 `- signature_scent: sandalwood` inside `description` (not dropped), cleaned up the test entity.
 
+**Same feature — `/review-impl` run immediately after, 1 HIGH + 3 related findings, all fixed same session.**
+HIGH: the fallback reported the ORIGINAL unmatched code (not "description") as "written", which feeds
+`emitChapterFacts` (Path A) — minting a **phantom `entity_facts` row** for an attribute with no `attr_def`/no EAV
+cell at all, a direct **INV-FACTS** violation (`entity_facts` is the SSOT; the EAV projection is a regenerable
+cache that must agree with it). Worse: this exposed a **pre-existing, independent variant of the same bug on
+CREATE** (`createExtractedEntity`'s caller blindly listed every raw attribute key as "written", matched or not) —
+live in the codebase before this session, only surfaced because **3 existing tests
+(`TestBulkExtract_EmitsTemporalFacts`, `TestFactsHTTP`, `TestProposeNewEntity_CreatesDraftThenDedups`) were
+unknowingly asserting on the phantom fact** as if it were correct behavior (all three used an unregistered
+Chinese attribute code `境界`, coincidentally proving the bug rather than real EAV-backed emission). Also found:
+the `glossary_propose_new_entity` MCP tool's `proposeNewEntity` had its own pre-check duplicating (now-stale)
+"this code will be dropped" logic, telling the calling LLM an attribute "didn't land" when it actually landed in
+`description` — self-correcting-error accuracy defect. **Fix:** `createExtractedEntity` now returns real
+`(written, skipped)` (was `(uuid.UUID, error)` only) computed from actual attr_def matches, not raw keys; a new
+`markDescriptionWritten` helper reports "description" (a real attr_def, fact-emission-safe) instead of the
+phantom code; all 3 callers (`bulkExtractEntities` create branch, `mcp_server.go` `proposeNewEntity`, 2
+`facts_handler.go` call sites) updated for the new signature; `proposeNewEntity`'s stale duplicate pre-check
+removed in favor of the real returned skip list. 3 pre-existing tests fixed to seed with a REAL attr code
+(`occupation`) instead of the phantom `境界`; 1 new regression test
+(`TestBulkExtract_UnmatchedAttrFallbackDoesNotMintPhantomFact`) proves zero phantom fact rows on both create AND
+merge while the real EAV capture still lands. Full suite green (`-p 1`); live-verified against the real dev
+stack — a Path-A extraction with an unmatched code now shows ONLY `name`/`appearance` in `entity_facts` (no
+phantom row) while `description` correctly carries the note, cleaned up after.
+
 ---
 
 **Context-retrieval M4 — M1a passage→graph bridge RE-MEASURED on a 2nd, independent, MULTILINGUAL corpus + a fix it surfaced, 2026-07-06.**
