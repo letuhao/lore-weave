@@ -1,5 +1,31 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Studio v2 Quality tab — hub + 4 sibling panels shipped, /review-impl'd, 2026-07-06.**
+Plan [`docs/plans/2026-07-06-studio-quality-tab.md`](../plans/2026-07-06-studio-quality-tab.md). Filled the
+`ActivityView='quality'` stub (previously just "Coming soon" text) with real capabilities, full-scope per PO
+decision (including new canon-issues backend, not deferred). Backend (commit `128e82318`): NEW read-only
+endpoints — composition-service `GET /works/{id}/canon-issues` (itemized version of `chapter_scene_gate`'s
+canon join, book-wide instead of per-chapter) and knowledge-service `GET /extraction/projects/{id}/canon-flags`
+(closes the previously-deferred `D-KG-CANON-FLAG-REVIEW-UI`) — both pure new queries over existing data, no
+migrations. Frontend (commit `75360bbd7`): DOCK-8 hub (`quality`) + 4 sibling panels
+(`quality-promises`/`quality-critic`/`quality-coverage` reuse composition's `ThreadsPanel`/`QualityReportSection`/
+`BookPromiseCoverageSection` AS-IS via DOCK-2; `quality-canon` is new, merging both backend sources with
+jump-to-chapter via the existing `focusManuscriptUnit` host action). Added 5 panel_ids to
+`ui_open_studio_panel` + regenerated `contracts/frontend-tools.contract.json`. **`/review-impl` same session**
+found + fixed 2: a canon-source fetch error silently rendered as "no issues" (false-negative, now a visible
+error banner) and the critic panel's 500-chapter picker cap was silent (now shows "showing first N of M").
+9+7 new backend tests, 31 new frontend tests, full backend+frontend suites green (composition 1839/1839
+sequential — the earlier `-n auto` xdist run's 156 errors were confirmed pre-existing environmental flakiness
+via A/B, not a regression), FE 2403/2403 no regressions. Live-verified against the real dev stack with a real
+JWT: `canon-flags` surfaced an actual pre-existing "Alice marked gone but referenced active" contradiction; a
+live browser session (Playwright, logged in as the test account) confirmed the Quality hub opens from the
+sidebar and renders real data (correct "no co-writer session" hint for a book with no composition Work).
+**Deferred (documented, not silently dropped):** `canon-issues` has no pagination — accepted as-is (an advisory
+list of *currently unresolved* contradictions should stay small in practice; revisit only if a real book proves
+otherwise).
+
+---
+
 **PDF book import (text + image/chart, page-chunking) — shipped, live-verified end-to-end, 2026-07-06.**
 Spec [`docs/specs/2026-07-06-pdf-book-import.md`](../specs/2026-07-06-pdf-book-import.md). Motivated by an audit
 finding PDF was rejected outright at book import and the platform was architecturally novel-only (see memory
