@@ -942,11 +942,10 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	// (no custom base_url). Custom base_url (a local OpenAI-compatible server)
 	// keeps it — that's how translation/extraction disable thinking. (TR-4)
 	stripDefaultOpenAIUnsupportedFields(body, modelName, endpointBaseURL)
-	// D-PROMPT-CACHING — real OpenAI / vLLM / Gemini / DeepSeek all cache the
-	// stable prefix AUTOMATICALLY (nothing to send). The one opt-in case is a
-	// llama.cpp/LM-Studio local server, which honors `cache_prompt` (guarded to
-	// non-empty base_url + LOCAL_PROMPT_CACHE=1 so it never reaches OpenAI/vLLM).
-	applyLocalPromptCache(body, endpointBaseURL)
+	// D-PROMPT-CACHING — this adapter serves real OpenAI, Gemini, DeepSeek AND
+	// vLLM (custom base_url), all of which cache the stable prefix AUTOMATICALLY.
+	// We send NOTHING: OpenAI/vLLM 400 on an unknown `cache_prompt`. (LM Studio's
+	// llama.cpp cache_prompt is applied in the dedicated lmStudioAdapter instead.)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err
@@ -1480,6 +1479,10 @@ func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, m
 		body["tool_choice"] = v
 	}
 	forwardOptionalChatFields(input, body)
+	// D-PROMPT-CACHING — LM Studio (llama.cpp) honors cache_prompt for prefix KV
+	// reuse. Default ON here (kill-switch only): this adapter is reached ONLY for
+	// lm_studio credentials, so there is no vLLM/OpenAI on this path to 400.
+	applyLmStudioPromptCache(body)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err

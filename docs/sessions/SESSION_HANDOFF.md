@@ -19,10 +19,14 @@ input is legible. **VERIFY:** 241 chat-service tests green (8 new budget tests);
 container crash-looping (env). **Fix #3 `D-PROMPT-CACHING` — SHIPPED** (provider-registry, per-provider
 after web-research): Anthropic needs EXPLICIT `cache_control` (added on last tool + system, default-on
 kill-switch `LLM_PROMPT_CACHE`), while OpenAI/Gemini/DeepSeek/vLLM cache AUTOMATICALLY (nothing to
-send — already on by default); llama.cpp/LM-Studio `cache_prompt` kept OPT-IN (`LOCAL_PROMPT_CACHE=1`,
-local-base-url-only) because vLLM 400s on unknown fields and can't be told apart by base_url. New
-`provider/prompt_cache.go` + 5 Go enforcement tests (assert cache_control on tools+system, kill-switch
-off, no-tools no-op, local opt-in + never-to-real-OpenAI); full provider suite green. Note: the
+send — already on by default). `/review-impl` then corrected the local wiring: LM Studio has its OWN
+adapter (`lmStudioAdapter`, distinct from the openai/vLLM one), so `cache_prompt` lives there
+**default-ON** (kill-switch only) — the provider IDENTITY is the gate, no base_url guess, no vLLM on
+that path to 400. Also fixed by the review: **usage under-count** (Anthropic reports input_tokens
+EXCLUDING cached; now folds cache_creation/cache_read into InputTokens so spend/caps stay accurate),
+a **cache-minimum size guard** (skip marking below ~4KB so no wasted breakpoint on tiny tool sets),
+and **adapter-wiring tests** (httptest proves Stream actually applies cache_control / cache_prompt /
+never-to-openai). `provider/prompt_cache.go` + 12 Go tests; full provider suite green. Note: the
 reported A4B model still can't KV-reuse (bug #1563) — this benefits Anthropic/OpenAI/dense-local
 configs. **Container note:** rebuild chat-service + provider-registry images to run the fixes live.
 

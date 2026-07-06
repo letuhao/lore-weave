@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 )
@@ -26,11 +27,13 @@ import (
 //	                             so we must NOT send `cache_prompt` to it.
 //	llama.cpp / LM Studio       : honor `cache_prompt:true` (a llama.cpp extension).
 //
-// ⇒ Only Anthropic needs an explicit request change (default ON). Every other
-// provider caches automatically (i.e. already "on by default" — sending anything
-// would at best no-op and at worst 400 vLLM). The one exception is the llama.cpp
-// `cache_prompt` hint, kept OPT-IN precisely because base_url can't distinguish
-// llama.cpp from a strict vLLM, and vLLM 400s on the field.
+// ⇒ Anthropic needs an explicit request change (default ON). OpenAI / Gemini /
+// DeepSeek / vLLM cache automatically (already "on by default" — sending anything
+// would at best no-op and at worst 400 vLLM, so their adapter sends NOTHING).
+// LM Studio's llama.cpp `cache_prompt` is applied in its OWN dedicated adapter
+// (also default ON) — safe there because that adapter is reached only for
+// lm_studio credentials, so there is no vLLM/OpenAI on the path to 400. The
+// provider IDENTITY (which adapter) is the gate, not a fragile base_url guess.
 
 // promptCacheEnabled — deploy kill-switch for the Anthropic path (default ON).
 // Disable platform-wide with LLM_PROMPT_CACHE=0 (or false/off).
@@ -39,27 +42,23 @@ func promptCacheEnabled() bool {
 	return v != "0" && v != "false" && v != "off"
 }
 
-// localPromptCacheEnabled — OPT-IN for local OpenAI-compatible servers (default
-// OFF). Unlike Anthropic's documented `cache_control`, the `cache_prompt` body
-// field is a llama.cpp/LM-Studio extension: some strict local servers (e.g.
-// certain vLLM builds with extra=forbid) 400 on unknown fields, and vLLM
-// auto-caches prefixes anyway. So an operator running llama.cpp/LM Studio turns
-// it on explicitly with LOCAL_PROMPT_CACHE=1.
-func localPromptCacheEnabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("LOCAL_PROMPT_CACHE")))
-	return v == "1" || v == "true" || v == "on"
-}
+// anthropicCacheMinChars — a defensive lower bound on the marked prefix. Claude's
+// cache minimum is 1024 tokens (older) to 4096 (Opus/Sonnet/Haiku 4.5); a block
+// below it is silently NOT cached (no error). We only mark cache_control once the
+// tools JSON is plausibly worth caching (~1024 tok ≈ 4KB chars) so we never spend
+// a breakpoint on a trivially small tool set. (Newer 4096-min models therefore
+// only cache once the prefix is ~16KB+ — a reduced-benefit, not a break.)
+const anthropicCacheMinChars = 4096
 
 // applyAnthropicPromptCache marks the stable prefix (tools + system) with
 // cache_control:{type:ephemeral} so Anthropic caches it across the turn's
 // tool-loop and the session's turns (5-min TTL). Call AFTER tools + system are
 // set on the body.
 //
-// Only acts when tools are present: an agentic request is where the prefix is
-// actually reused, and tools alone exceed the 1024-token cache minimum, so both
-// the tools-only breakpoint (last tool) and the tools+system breakpoint (system)
-// sit on prefixes above the minimum — no wasted/invalid breakpoints. Idempotent
-// and mutation-in-place on the already-Anthropic-shaped body.
+// Only acts when tools are present AND the tools JSON clears the cache-minimum
+// guard: an agentic request is where the prefix is actually reused, and the guard
+// keeps us from spending a breakpoint on a below-minimum prefix that wouldn't
+// cache anyway. Idempotent and mutation-in-place on the Anthropic-shaped body.
 func applyAnthropicPromptCache(body map[string]any) {
 	if !promptCacheEnabled() {
 		return
@@ -67,6 +66,9 @@ func applyAnthropicPromptCache(body map[string]any) {
 	tools, ok := body["tools"].([]map[string]any)
 	if !ok || len(tools) == 0 {
 		return // no reusable tool prefix → nothing worth a cache write
+	}
+	if b, err := json.Marshal(tools); err != nil || len(b) < anthropicCacheMinChars {
+		return // below the cache minimum → marking would be a no-op breakpoint
 	}
 	cc := map[string]any{"type": "ephemeral"}
 	// Breakpoint 1: the last tool caches the ENTIRE tools array.
@@ -93,16 +95,15 @@ func applyAnthropicPromptCache(body map[string]any) {
 	}
 }
 
-// applyLocalPromptCache sets cache_prompt=true for a LOCAL OpenAI-compatible
-// server (non-empty base_url: LM Studio / Ollama / llama.cpp). It NEVER touches
-// the real OpenAI cloud path (empty base_url → OpenAI 400s on unknown fields).
-// Opt-in (LOCAL_PROMPT_CACHE=1) because server tolerance of the field varies.
-func applyLocalPromptCache(body map[string]any, endpointBaseURL string) {
-	if !localPromptCacheEnabled() {
+// applyLmStudioPromptCache sets cache_prompt=true for LM Studio, whose llama.cpp
+// backend honors the field (prefix KV reuse). Default ON via the LLM_PROMPT_CACHE
+// kill-switch. Unlike the shared openai adapter (which also serves vLLM / real
+// OpenAI — both 400 on unknown fields), this runs ONLY on the dedicated
+// lmStudioAdapter, so the provider identity is the gate: there is no vLLM/OpenAI
+// on this path to break, so it's safe to default-on with no base_url guard.
+func applyLmStudioPromptCache(body map[string]any) {
+	if !promptCacheEnabled() {
 		return
-	}
-	if strings.TrimRight(endpointBaseURL, "/") == "" {
-		return // default endpoint = real OpenAI cloud — must not send cache_prompt
 	}
 	body["cache_prompt"] = true
 }
