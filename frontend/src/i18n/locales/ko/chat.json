@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "채팅",
       "other": "기타"
-    }
+    },
+    "advanced_tools": "고급 도구 ({{count}}개)",
+    "advanced_tools_hint": "이 도구들은 이전 버전의 호출자를 위해 유지되고 있습니다. 특정 도구가 꼭 필요한 경우가 아니라면 위의 도구들을 우선적으로 사용하세요.",
+    "legacy_pin_tooltip": "이번 세션 동안 이 레거시 도구를 활성화했습니다"
   },
   "inspector": {
     "title": "에이전트 런타임",

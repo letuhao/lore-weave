@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Autre"
-    }
+    },
+    "advanced_tools": "Outils avancés ({{count}})",
+    "advanced_tools_hint": "Les outils obsolètes sont conservés pour les anciens appels. Privilégiez les outils ci-dessus, sauf si vous avez spécifiquement besoin de l'un d'entre eux.",
+    "legacy_pin_tooltip": "Vous avez activé cet outil obsolète pour cette session"
   },
   "inspector": {
     "title": "Runtime de l'agent",

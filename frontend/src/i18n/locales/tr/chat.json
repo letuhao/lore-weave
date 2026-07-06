@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "Sohbet",
       "other": "Diğer"
-    }
+    },
+    "advanced_tools": "Gelişmiş araçlar ({{count}})",
+    "advanced_tools_hint": "Eski çağrılar için geçerliliğini yitirmiş araçlar burada tutulmaktadır. Eğer bunlardan birine özel olarak ihtiyacınız yoksa, yukarıdaki araçları kullanmanız önerilir.",
+    "legacy_pin_tooltip": "Bu oturum için bu eski aracı etkinleştirdiniz"
   },
   "inspector": {
     "title": "Ajan çalışma zamanı",

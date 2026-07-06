@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Sonstiges"
-    }
+    },
+    "advanced_tools": "Erweiterte Tools ({{count}})",
+    "advanced_tools_hint": "Veraltete Tools werden für ältere Aufrufe beibehalten. Verwenden Sie vorzugsweise die Tools oben, es sei denn, Sie benötigen eines dieser spezifischen Tools.",
+    "legacy_pin_tooltip": "Sie haben dieses Legacy-Tool für diese Sitzung aktiviert"
   },
   "inspector": {
     "title": "Agenten-Laufzeit",

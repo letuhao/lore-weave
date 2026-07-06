@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Otros"
-    }
+    },
+    "advanced_tools": "Herramientas avanzadas ({{count}})",
+    "advanced_tools_hint": "Se mantienen las herramientas obsoletas para llamadas antiguas. Se recomienda usar las herramientas anteriores a menos que necesite específicamente una de estas.",
+    "legacy_pin_tooltip": "Has activado esta herramienta heredada para esta sesión"
   },
   "inspector": {
     "title": "Entorno de ejecución del agente",

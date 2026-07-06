@@ -425,10 +425,13 @@ async def test_budget_drops_lowest_score_passages_first(monkeypatch):
 
     project = _project()
     project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
-    # Budget chosen so ~2 passages fit — forces the trimmer to drop
-    # the lowest-score ones first.
+    # Budget chosen so ~2 passages fit — forces the trimmer to drop the
+    # lowest-score ones first. Must clear the fixed project+instructions
+    # overhead (~184-209 tokens as of 2026-07-06 — grown from earlier
+    # feature additions to the CoT instruction block) with room left for
+    # at least one passage (~30-40 tokens each); re-tune if this drifts.
     monkeypatch.setattr(
-        "app.context.modes.full.settings.mode3_token_budget", 200,
+        "app.context.modes.full.settings.mode3_token_budget", 320,
     )
 
     result = await build_full_mode(
@@ -468,8 +471,11 @@ async def test_budget_demotes_glossary_to_entity_refs_not_drop(monkeypatch):
 
     project = _project()
     project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
-    # Budget small enough to force glossary trimming, big enough for refs to fit.
-    monkeypatch.setattr("app.context.modes.full.settings.mode3_token_budget", 220)
+    # Budget small enough to force glossary trimming, big enough for refs to
+    # fit. Must clear the fixed project+instructions overhead (~184 tokens as
+    # of 2026-07-06 — grown from earlier feature additions to the CoT
+    # instruction block) with room for the entity_refs tier; re-tune if this drifts.
+    monkeypatch.setattr("app.context.modes.full.settings.mode3_token_budget", 320)
 
     result = await build_full_mode(
         summaries_repo=MagicMock(), glossary_client=MagicMock(),
@@ -482,7 +488,7 @@ async def test_budget_demotes_glossary_to_entity_refs_not_drop(monkeypatch):
     for i in range(8):
         assert f"Hero{i}" in result.context
     # and it still fits the budget
-    assert result.token_count <= 220
+    assert result.token_count <= 320
 
 
 @pytest.mark.asyncio
@@ -1143,10 +1149,14 @@ async def test_summaries_lowest_weighted_score_dropped_first(monkeypatch):
     project = _project()
     project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
 
-    # Each summary payload ≈ 250 tokens; two ≈ 500 tokens; base+CoT
-    # block ≈ 80 tokens. Budget 400 fits one (~330) but not both (~580).
+    # Each summary payload ≈ 195-200 tokens rendered; two together don't fit
+    # alongside the fixed project+absences+instructions overhead for this
+    # "synopsis" message (~308 tokens as of 2026-07-06 — this message's intent
+    # classification pulls in a heavier CoT/absence block than a plain "Tell
+    # me"). Budget 650 fits one summary (~503) but not both (~698); re-tune if
+    # this drifts.
     monkeypatch.setattr(
-        "app.context.modes.full.settings.mode3_token_budget", 400,
+        "app.context.modes.full.settings.mode3_token_budget", 650,
     )
 
     result = await build_full_mode(

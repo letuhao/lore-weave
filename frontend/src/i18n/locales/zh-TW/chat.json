@@ -426,7 +426,10 @@
       "ui": "介面",
       "chat": "聊天",
       "other": "其他"
-    }
+    },
+    "advanced_tools": "進階工具 ({{count}})",
+    "advanced_tools_hint": "保留舊版工具以供舊版呼叫者使用。除非您有特定需求，否則請優先使用上方的工具。",
+    "legacy_pin_tooltip": "您已在此工作階段啟用此舊版工具"
   },
   "inspector": {
     "title": "代理執行狀態",

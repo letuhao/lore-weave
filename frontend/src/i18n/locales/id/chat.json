@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Lainnya"
-    }
+    },
+    "advanced_tools": "Alat tingkat lanjut ({{count}})",
+    "advanced_tools_hint": "Alat yang sudah digantikan tetap disimpan untuk panggilan lama. Gunakan alat di atas kecuali Anda secara khusus membutuhkan salah satu dari alat ini.",
+    "legacy_pin_tooltip": "Anda mengaktifkan alat lama ini untuk sesi ini"
   },
   "inspector": {
     "title": "Runtime agen",

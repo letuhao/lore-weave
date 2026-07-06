@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "聊天",
       "other": "其他"
-    }
+    },
+    "advanced_tools": "高级工具 ({{count}})",
+    "advanced_tools_hint": "保留这些旧版工具是为了兼容旧版调用。除非您明确需要其中之一，否则请优先使用上方的工具。",
+    "legacy_pin_tooltip": "您已在此会话中启用了此旧版工具"
   },
   "inspector": {
     "title": "代理运行时",

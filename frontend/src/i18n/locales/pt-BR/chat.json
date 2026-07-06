@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "Chat",
       "other": "Outros"
-    }
+    },
+    "advanced_tools": "Ferramentas avançadas ({{count}})",
+    "advanced_tools_hint": "Ferramentas obsoletas mantidas para chamadas antigas. Prefira as ferramentas acima, a menos que precise especificamente de uma destas.",
+    "legacy_pin_tooltip": "Você ativou esta ferramenta legada para esta sessão"
   },
   "inspector": {
     "title": "Runtime do Agente",

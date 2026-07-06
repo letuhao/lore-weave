@@ -426,7 +426,10 @@
       "ui": "Giao diện",
       "chat": "Trò chuyện",
       "other": "Khác"
-    }
+    },
+    "advanced_tools": "Công cụ nâng cao ({{count}})",
+    "advanced_tools_hint": "Các công cụ cũ được giữ lại để hỗ trợ các trình gọi cũ hơn. Hãy ưu tiên sử dụng các công cụ ở trên trừ khi bạn thực sự cần một trong số các công cụ này.",
+    "legacy_pin_tooltip": "Bạn đã kích hoạt công cụ cũ này cho phiên làm việc này"
   },
   "inspector": {
     "title": "Trạng thái agent",

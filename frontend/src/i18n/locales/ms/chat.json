@@ -426,7 +426,10 @@
       "ui": "UI",
       "chat": "Sembang",
       "other": "Lain-lain"
-    }
+    },
+    "advanced_tools": "Alatan lanjutan ({{count}})",
+    "advanced_tools_hint": "Alatan lama dikekalkan untuk pemanggil lama. Gunakan alatan di atas kecuali jika anda memerlukan salah satu daripada ini secara khusus.",
+    "legacy_pin_tooltip": "Anda telah mengaktifkan alatan lama ini untuk sesi ini"
   },
   "inspector": {
     "title": "Waktu larian ejen",
