@@ -31,6 +31,20 @@ def _trigger_ratio() -> float:
     return COMPACT_TRIGGER_RATIO
 
 
+def _max_chain_tokens() -> int | None:
+    """P3 §9 — an OPTIONAL hard cap on the stateful chain's accumulated server-side size,
+    independent of the model's declared window. A provider may load a model with a
+    smaller `n_ctx` than `context_length` advertises, and the stateful chain ACCUMULATES
+    (unlike stateless, which the compaction keeps ~32K), so a conservative deploy cap
+    bounds it below the real window. `LLM_STATEFUL_MAX_CHAIN_TOKENS` (unset ⇒ no extra
+    cap, rule-4 uses only ratio×effective_limit). The re-establish it forces sends the
+    compaction-bounded history, resetting the accumulation."""
+    v = os.getenv("LLM_STATEFUL_MAX_CHAIN_TOKENS", "").strip()
+    if v.isdigit() and int(v) > 0:
+        return int(v)
+    return None
+
+
 def decide_chain(
     *,
     capabilities: dict[str, bool] | None,
@@ -38,46 +52,57 @@ def decide_chain(
     current_model_ref: str,
     compacted_before_seq: int | None,
     effective_limit: int | None,
-) -> tuple[bool, str | None]:
-    """Return ``(use_stateful, previous_response_id)``.
+) -> tuple[bool, str | None, str]:
+    """Return ``(use_stateful, previous_response_id, reason)``.
 
-    - ``(False, None)`` — stateless full context (capability absent or flag off).
-    - ``(True, None)``  — stateful ESTABLISH: full context, fresh chain (first turn, or a
-      head-validity rule failed → re-establish).
-    - ``(True, R)``     — stateful CONTINUE: send the delta chained onto head ``R``.
+    - ``(False, None, "stateless")`` — stateless full context (capability absent / flag off).
+    - ``(True, None, <reestablish reason>)`` — stateful ESTABLISH: full context, fresh chain.
+    - ``(True, R, "continue")`` — stateful CONTINUE: send the delta chained onto head ``R``.
 
-    ``latest_assistant`` is the newest assistant row for (session, branch) or None:
-    ``{response_id, model_ref, input_tokens, sequence_num}``.
+    ``reason`` is surfaced on the contextBudget frame (Inspector §9) so a re-chain is
+    visible + attributable. ``latest_assistant`` is the newest assistant row for
+    (session, branch) or None: ``{response_id, model_ref, input_tokens, sequence_num,
+    context_size}``.
     """
     caps = capabilities or {}
     if not caps.get("responses_api") or not stateful_enabled():
-        return (False, None)
+        return (False, None, "stateless")
 
     if latest_assistant is None:
-        return (True, None)  # first turn — establish
+        return (True, None, "establish_first")  # first turn
 
     head = latest_assistant.get("response_id")
     if not head:
         # §5a rule-1: the most-recent assistant turn was STATELESS (or a concurrent
         # multi-device fork left a null-head newer row) → the provider chain doesn't
         # contain it. Re-establish from DB truth rather than drop that exchange.
-        return (True, None)
+        return (True, None, "reestablish_stateless_prev")
 
     # §5a rule-2 — a chain is model-specific.
     if str(latest_assistant.get("model_ref") or "") != str(current_model_ref):
-        return (True, None)
+        return (True, None, "reestablish_model_switch")
 
     # §5a rule-3 — a compaction that swallowed the head turn invalidates the chain
     # (the server still holds the un-compacted history; re-establish applies the compact).
     head_seq = latest_assistant.get("sequence_num")
     if compacted_before_seq is not None and head_seq is not None and compacted_before_seq > head_seq:
-        return (True, None)
+        return (True, None, "reestablish_compaction")
 
-    # §5a rule-4 — the accumulated server-side size (the head turn's reported input_tokens)
-    # nears the window → re-establish with the (compaction-bounded) current history so the
-    # chain doesn't overflow. This is the P2 overflow guard.
-    it = latest_assistant.get("input_tokens")
-    if effective_limit and it and int(it) > _trigger_ratio() * int(effective_limit):
-        return (True, None)
+    # §5a rule-4 — the accumulated server-side size nears the window → re-establish with
+    # the (compaction-bounded) current history so the chain doesn't overflow. P3 §9: use
+    # the TRUE single-call context size (`context_size`), NOT the summed tool-loop
+    # `input_tokens` (which counts the chain N times for an N-iteration turn and would
+    # fire ~N× too early → re-establish thrashing). Fall back to input_tokens only if the
+    # size wasn't recorded (pre-P3 rows).
+    size = latest_assistant.get("context_size") or latest_assistant.get("input_tokens")
+    if size:
+        thresholds = []
+        if effective_limit:
+            thresholds.append(_trigger_ratio() * int(effective_limit))
+        cap = _max_chain_tokens()
+        if cap:
+            thresholds.append(cap)  # conservative deploy cap, independent of the window
+        if thresholds and int(size) > min(thresholds):
+            return (True, None, "reestablish_window")
 
-    return (True, head)  # continue from the valid head
+    return (True, head, "continue")  # continue from the valid head

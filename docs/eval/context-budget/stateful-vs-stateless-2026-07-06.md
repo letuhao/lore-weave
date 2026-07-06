@@ -56,6 +56,35 @@ The evidence supports **flipping `LLM_STATEFUL_CACHE` on** (for `responses_api` 
 after a broader model/scenario sweep. The path is capability-gated + degrade-safe (E1
 re-establish live-verified) and default-off today, so a staged rollout is low-risk.
 
+## P3 addendum — the window-boundary case (long sessions)
+
+The 12-turn A/B never neared the window, so a separate **22-turn growing-context probe**
+(~2K filler/turn) exercised the boundary + the P3 chain-management fixes:
+
+- **Correct across a long session** — recall of a turn-1 secret **passed after 21 turns**
+  of filler; no overflow, no crash. Continue turns held **~95% cache** (uncached ~2K vs a
+  50–73K accumulated context).
+- **The accumulated server-side size grows** (32K→73K) — stateful holds the full chain,
+  unlike stateless (which the compaction keeps ~32K). So the chain MUST be bounded.
+- **R1 bug fixed:** rule-4 was reading the persisted `input_tokens`, which SUMS the
+  tool-loop (an N-iteration turn ≈ N× the real context) → the window guard fired ~N× too
+  early. Now it reads the **true single-call `context_size`** (the last completion's
+  `input_tokens`), surfaced on the `caching` frame; `chain_action` (continue /
+  establish_first / reestablish_{stateless_prev,model_switch,compaction,window}) is
+  surfaced too so a re-chain is visible + attributable.
+- **Bounded re-chain verified** (via an artificial low cap `LLM_STATEFUL_MAX_CHAIN_TOKENS=45000`
+  to force the boundary at turn 9 instead of ~90): the re-establish **resets** `ctx_size`
+  (46947→39107 — it sends a *compacted* context, not the accumulation), then cycles
+  39K↔47K — **no overflow, no thrashing** (re-establish ~every 5 turns, not every turn).
+- **Key finding — keep the re-chain threshold NEAR the window.** At the 45K cap (22% of a
+  200K window) recall FAILED: forcing compaction that early summarized away the turn-1
+  fact. At the default (`0.75 × effective_limit` ≈ 143K for 200K) the chain holds the full
+  recent history far longer and recall held. **The real long-session lever is the T6
+  fact-preserving summarizer's *quality* at the boundary**, not the chain logic — a
+  separate, existing Context-Budget-Law concern. The optional `LLM_STATEFUL_MAX_CHAIN_TOKENS`
+  cap exists only for a provider that loads a smaller `n_ctx` than advertised; it should be
+  set near that real window, never low.
+
 ## Reproduce
 
 `scratchpad/eval_stateful.py <mode> <out.json>` run once per arm (toggle the flag via

@@ -66,6 +66,7 @@ from app.services.tool_discovery import (
     FIND_TOOLS_NAME,
     FIND_TOOLS_TOOL,
     find_tools_result,
+    group_directory_text,
     hot_tool_names,
     strip_tool_meta,
     surface_hot_domains,
@@ -740,6 +741,11 @@ async def _stream_with_tools(
         # re-send collapse (E2). Stateless mode ignores both (sends full `working`).
         _chain_id = previous_response_id
         _stateful_sent = 0
+        # P3 §9 — the true single-call context size (the accumulated server-side size in
+        # stateful mode), tracked as the LAST completion's input_tokens. Distinct from
+        # total_input, which SUMS the tool-loop's re-processing (4 iterations ≈ 4× the
+        # real context) and would make the window-boundary guard fire ~4× too early.
+        _last_call_input = 0
         # W1/observability (context-explosion fix #5) — count provider completions
         # this turn. `total_input` is the SUM across them (each tool-loop iteration
         # re-sends the full prompt incl. tool schemas), so a turn's input_tokens
@@ -977,6 +983,7 @@ async def _stream_with_tools(
                         total_output += ev.output_tokens
                         total_cache_creation += ev.cache_creation_tok or 0
                         total_cache_read += ev.cache_read_tok or 0
+                        _last_call_input = ev.input_tokens
                         llm_call_count += 1
                     elif isinstance(ev, DoneEvent):
                         finish_reason = ev.finish_reason
@@ -1018,6 +1025,7 @@ async def _stream_with_tools(
                        "finish_reason": finish_reason or "stop",
                        "llm_call_count": llm_call_count,
                        "response_id": _chain_id,
+                       "context_size": _last_call_input,
                        "usage": _Usage(prompt_tokens=total_input,
                                        completion_tokens=total_output,
                                        cache_creation_tok=total_cache_creation,
@@ -1642,6 +1650,7 @@ async def _stream_with_tools(
                "finish_reason": "stop",
                "llm_call_count": llm_call_count,
                "response_id": _chain_id,
+               "context_size": _last_call_input,
                "usage": _Usage(prompt_tokens=total_input,
                                completion_tokens=total_output,
                                cache_creation_tok=total_cache_creation,
@@ -2187,6 +2196,13 @@ async def stream_response(
             editor=_editor, book_scoped=_book_scoped, admin=_admin,
         )
 
+    # Tool-catalog-simplification Part A — the group directory replaces whole-
+    # domain hot-seeding as the model's map of what domains exist. Only worth
+    # the tokens when tool-calling is actually live on this turn.
+    group_directory_block: str | None = None
+    if stream_format == "agui" and not disable_tools and kctx.tool_calling_enabled:
+        group_directory_block = group_directory_text()
+
     surface_tracker = (
         AgentSurfaceTracker()
         if stream_format == "agui" and not disable_tools
@@ -2305,8 +2321,9 @@ async def stream_response(
     # A1 / T3.1 (Context Budget kernel) — ONE ordered tail-block list, rendered either way
     # by `loreweave_context.build_system_message` (was two lockstep `if` ladders — the A1
     # footgun). Order is LOAD-BEARING and unchanged: steering → built-in skills (glossary/
-    # knowledge/universal/plan_forge) → user skills → plan-mode nudge → skill catalog → book
-    # note. Cache path (Anthropic) marks the cacheable prefix; plain path joins with \n\n.
+    # knowledge/universal/plan_forge) → user skills → plan-mode nudge → skill catalog →
+    # group directory → book note. Cache path (Anthropic) marks the cacheable prefix; plain
+    # path joins with \n\n.
     _tail_blocks = [
         story_state_block,   # T4 — cached story-bible safety net (only set when live grounding is empty)
         steering_block,      # RAID C1 — per-book steering, right after the system prompt
@@ -2317,6 +2334,7 @@ async def stream_response(
         user_skills_block,   # REG-P1-05 — user/book registry skills (L2 bodies)
         plan_mode_block,     # RAID B2 — plan-mode nudge (no prose until Write)
         skill_meta_block,    # RAID C3 — L1 available-skills catalog
+        group_directory_block,  # tool-catalog-simplification Part A — domain map for find_tools(group=...)
         book_context_note,
     ]
     _system_content = build_system_message(
@@ -2608,6 +2626,7 @@ async def _emit_chat_turn(
     last_usage = None
     _llm_call_count = 1  # observability fix #5 — provider completions this turn
     _final_response_id: str | None = None  # P2 §5 — stateful chain head to persist
+    _ctx_size: int = 0  # P3 §9 — true single-call context size (window-boundary guard)
     import time as _time
     stream_start = _time.monotonic()
     time_to_first_token: float | None = None
@@ -2788,11 +2807,12 @@ async def _emit_chat_turn(
             # error falls back to stateless (full context). Only build the delta when
             # continuing from a valid head (system blocks carry the fresh grounding →
             # the gateway lifts them to `instructions`; the user turn is the input).
-            _stateful, _prev_rid, _delta_msgs = False, None, None
+            _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
             try:
                 _latest_asst = await pool.fetchrow(
                     """
-                    SELECT response_id, model_ref::text AS model_ref, input_tokens, sequence_num
+                    SELECT response_id, model_ref::text AS model_ref, input_tokens, sequence_num,
+                           (context_breakdown->'caching'->>'context_size')::int AS context_size
                     FROM chat_messages
                     WHERE session_id=$1 AND role='assistant' AND branch_id=0
                     ORDER BY sequence_num DESC LIMIT 1
@@ -2808,7 +2828,7 @@ async def _emit_chat_turn(
                     context_length=creds.context_length,
                     max_output_tokens=int(gen_params.get("max_tokens") or 0),
                 ).effective_limit
-                _stateful, _prev_rid = decide_chain(
+                _stateful, _prev_rid, _chain_reason = decide_chain(
                     capabilities=getattr(creds, "capabilities", None),
                     latest_assistant=dict(_latest_asst) if _latest_asst else None,
                     current_model_ref=str(model_ref),
@@ -2824,7 +2844,7 @@ async def _emit_chat_turn(
                         _delta_msgs.append(_last_user)
             except Exception:
                 logger.warning("stateful chain decision skipped — stateless", exc_info=True)
-                _stateful, _prev_rid, _delta_msgs = False, None, None
+                _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
 
             chunk_stream = _stream_with_tools(
                 model_source=model_source,
@@ -2922,6 +2942,10 @@ async def _emit_chat_turn(
             # Stateful (P2 §5) — the turn's chain head to persist on the assistant row.
             if chunk_data.get("response_id"):
                 _final_response_id = chunk_data["response_id"]
+            # P3 §9 — the true single-call context size (accumulated server-side size),
+            # for the window-boundary guard (NOT the summed billing total).
+            if chunk_data.get("context_size"):
+                _ctx_size = chunk_data["context_size"]
 
             # Track time to first token (reasoning or content)
             if time_to_first_token is None and (reasoning or content):
@@ -3108,6 +3132,15 @@ async def _emit_chat_turn(
                     except Exception:  # degrade-safe: monitoring never breaks a turn
                         _thrashing = None
                 _caching["thrashing"] = _thrashing
+                # P3 §9 — persist the true single-call context size (accumulated
+                # server-side size in stateful mode) so the next turn's head-validity
+                # window guard (§5a rule-4) reads it, NOT the summed tool-loop billing.
+                if _ctx_size:
+                    _caching["context_size"] = _ctx_size
+                # P3 §9 — the chain action this turn (continue / establish_first /
+                # reestablish_{stateless_prev,model_switch,compaction,window}), so a
+                # re-chain is visible + attributable in the Inspector.
+                _caching["chain_action"] = _chain_reason
 
                 _ctx_payload = context_budget_event(
                     compute_budget(
