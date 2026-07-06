@@ -59,10 +59,20 @@ func promptCacheEnabled() bool {
 // only cache once the prefix is ~16KB+ — a reduced-benefit, not a break.)
 const anthropicCacheMinChars = 4096
 
-// applyAnthropicPromptCache marks the stable prefix (tools + system) with
+// applyAnthropicPromptCache marks the stable TOOLS prefix with
 // cache_control:{type:ephemeral} so Anthropic caches it across the turn's
-// tool-loop and the session's turns (5-min TTL). Call AFTER tools + system are
-// set on the body.
+// tool-loop and the session's turns (5-min TTL). Call AFTER tools are set on the
+// body.
+//
+// TOOLS-ONLY by design (spec 2026-07-06-provider-context-strategy §10 — the
+// two-layer split). chat-service owns the SEMANTIC system boundary: it already
+// marks cache_control on the system prefix via `build_system_message(use_cache=…)`
+// (stream_service.py:2251), splitting the stable persona/steering from the volatile
+// tail, and the anthropic adapter forwards that structured `system` VERBATIM
+// (adapters.go:1137). provider-registry cannot reach the tools until it converts
+// them here, so it owns the TOOLS breakpoint — and ONLY that. Marking system here
+// too would spend a second, redundant breakpoint (Anthropic allows max 4) on a
+// range chat-service already cached. Two coordinated breakpoints, no overlap.
 //
 // Only acts when tools are present AND the tools JSON clears the cache-minimum
 // guard: an agentic request is where the prefix is actually reused, and the guard
@@ -79,28 +89,8 @@ func applyAnthropicPromptCache(body map[string]any) {
 	if b, err := json.Marshal(tools); err != nil || len(b) < anthropicCacheMinChars {
 		return // below the cache minimum → marking would be a no-op breakpoint
 	}
-	cc := map[string]any{"type": "ephemeral"}
-	// Breakpoint 1: the last tool caches the ENTIRE tools array.
-	tools[len(tools)-1]["cache_control"] = cc
-	// Breakpoint 2: system caches the tools+system prefix (cumulative). Convert a
-	// plain-string system into a single text block so cache_control has a home.
-	switch sys := body["system"].(type) {
-	case string:
-		if sys != "" {
-			body["system"] = []map[string]any{
-				{"type": "text", "text": sys, "cache_control": cc},
-			}
-		}
-	case []map[string]any:
-		if len(sys) > 0 {
-			sys[len(sys)-1]["cache_control"] = cc
-		}
-	case []any:
-		if len(sys) > 0 {
-			if last, ok := sys[len(sys)-1].(map[string]any); ok {
-				last["cache_control"] = cc
-			}
-		}
-	}
+	// The last tool caches the ENTIRE tools array (Anthropic caches the cumulative
+	// prefix up to each breakpoint). System is left to chat-service (see above).
+	tools[len(tools)-1]["cache_control"] = map[string]any{"type": "ephemeral"}
 }
 

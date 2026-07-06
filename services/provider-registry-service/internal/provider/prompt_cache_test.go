@@ -39,8 +39,9 @@ func hasCacheControl(m map[string]any) bool {
 	return ok && cc["type"] == "ephemeral"
 }
 
-func TestAnthropicCache_MarksLastToolAndSystem_ByDefault(t *testing.T) {
-	// default: LLM_PROMPT_CACHE unset ⇒ enabled
+func TestAnthropicCache_MarksLastToolOnly_ByDefault(t *testing.T) {
+	// default: LLM_PROMPT_CACHE unset ⇒ enabled. TOOLS-ONLY (§10): chat-service
+	// owns the system breakpoint; provider-registry marks only the tools prefix.
 	body := map[string]any{
 		"tools":  bigTools("glossary_search", "glossary_list", "book_get"),
 		"system": "You are a helpful writing assistant.",
@@ -54,13 +55,10 @@ func TestAnthropicCache_MarksLastToolAndSystem_ByDefault(t *testing.T) {
 	if !hasCacheControl(tools[len(tools)-1]) {
 		t.Fatal("last tool must carry cache_control (caches the whole tools array)")
 	}
-	// system string → converted to a block list with cache_control on it
-	sysBlocks, ok := body["system"].([]map[string]any)
-	if !ok || len(sysBlocks) != 1 || !hasCacheControl(sysBlocks[0]) {
-		t.Fatalf("system must become a cache_control-marked text block, got %#v", body["system"])
-	}
-	if sysBlocks[0]["text"] != "You are a helpful writing assistant." {
-		t.Fatal("system text must be preserved")
+	// system is LEFT UNTOUCHED — chat-service already marked it (build_system_message);
+	// provider-registry must not spend a second, redundant breakpoint on it.
+	if _, ok := body["system"].(string); !ok {
+		t.Fatalf("system must be left untouched (chat-service owns it), got %#v", body["system"])
 	}
 }
 
@@ -85,7 +83,9 @@ func TestAnthropicCache_KillSwitchDisables(t *testing.T) {
 	}
 }
 
-func TestAnthropicCache_SystemBlockList_MarksLast(t *testing.T) {
+func TestAnthropicCache_SystemBlockList_LeftUntouched(t *testing.T) {
+	// A structured system (as chat-service sends it, already carrying its own
+	// cache_control) must be forwarded VERBATIM — provider-registry adds no marking.
 	body := map[string]any{
 		"tools": bigTools("a"),
 		"system": []map[string]any{
@@ -95,8 +95,12 @@ func TestAnthropicCache_SystemBlockList_MarksLast(t *testing.T) {
 	}
 	applyAnthropicPromptCache(body)
 	sys := body["system"].([]map[string]any)
-	if hasCacheControl(sys[0]) || !hasCacheControl(sys[1]) {
-		t.Fatal("only the last system block should be marked")
+	if hasCacheControl(sys[0]) || hasCacheControl(sys[1]) {
+		t.Fatal("§10 tools-only: provider-registry must not mark ANY system block")
+	}
+	// tools still marked
+	if !hasCacheControl(body["tools"].([]map[string]any)[0]) {
+		t.Fatal("last tool must still carry cache_control")
 	}
 }
 
@@ -160,8 +164,10 @@ func TestAnthropicAdapter_Stream_WiresCacheControl(t *testing.T) {
 	if _, ok := last["cache_control"]; !ok {
 		t.Fatal("adapter did not wire cache_control onto the last tool")
 	}
-	if _, ok := got["system"].([]any); !ok {
-		t.Fatal("adapter did not convert system into a cache_control block list")
+	// §10 tools-only: the adapter forwards `system` verbatim (here a plain string)
+	// and does NOT convert/mark it — that is chat-service's job.
+	if _, ok := got["system"].(string); !ok {
+		t.Fatalf("adapter must forward system verbatim (tools-only caching), got %#v", got["system"])
 	}
 }
 
