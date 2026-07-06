@@ -1,5 +1,29 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**`D-PLANFORGE-GUI-AUDIT` follow-up — draft HTML mockup for a Planner panel redesign, 2026-07-06.**
+User confirmed the root diagnosis: the shipped Planner panel (see this file's earlier
+`D-PLANFORGE-GUI-AUDIT` entry — P0 crash fixed same day + 4 UX gaps found) is a **leaky
+abstraction**, not just missing buttons — it renders raw backend vocabulary (`arc_id` strings, rule
+names like `pa_not_realm`/`sg_value_shift_per_scene`, raw `var_delta` shapes) at a novel-WRITER
+audience with no reason to know any of it. Backend pipeline (propose→self-check→interpret→apply→
+autofix→checkpoint→validate→compile, 8 rules) stays as-is — only the frontend translation layer
+needs a redesign. Draft HTML mockup (same process as Agent Mode/Cursor-for-novels — CLARIFY→DESIGN
+→draft-HTML→spec→build):
+[`design-drafts/planforge/2026-07-06-planner-panel-redesign-mockup.html`](../../design-drafts/planforge/2026-07-06-planner-panel-redesign-mockup.html).
+5-step flow (Start → Understood → Check & Fix → Ready to Draft → Done), dark theme tokens copied
+verbatim from `frontend/src/index.css`'s real `:root` HSL values (shows "inside the real Studio,"
+not a generic doc). Key translations: spec.arcs/characters/variables rendered as plain-language
+cards instead of a raw artifact-ID list; validation findings split into hard-fail vs advisory tiers
+(mirroring the `tier` field shipped in `validate.py` 2026-07-06) with "Fix this for me" buttons
+wired conceptually to the existing (chat-only) `plan_apply_revision`/`plan_handoff_autofix` tools;
+the blind `arc_id` text input replaced with a card-picker sourced from the spec's own `arcs[]`.
+Live-verified rendering (local static server + Playwright screenshots, 3 states checked) before
+sharing — not wired to any real API, review artifact only. **Not yet a written spec or BUILD** —
+next step if picked up: gather any feedback on the mockup, then write the accompanying spec doc
+(`docs/specs/YYYY-MM-DD-planforge-planner-redesign.md`) before implementation.
+
+---
+
 **SPEC: Provider Context Strategy (capability-gated stateful caching) — 2026-07-06, DESIGN done, build
 pending.** [`docs/specs/2026-07-06-provider-context-strategy.md`](../specs/2026-07-06-provider-context-strategy.md).
 Live-verified the crux: on the exact A4B model (LM Studio bug #1563 = no chat/completions prefix-cache),
