@@ -1239,6 +1239,91 @@ async def test_chapter_scene_gate_surfaces_unchecked_without_blocking(pool):
     assert gate["can_publish"] is True  # surfaced, NOT blocked
 
 
+async def test_canon_issues_empty_book_returns_empty_list(pool):
+    repo = OutlineRepo(pool)
+    _, project, _ = _ids()
+    assert await repo.canon_issues(uuid.uuid4(), project) == []
+
+
+async def test_canon_issues_lists_unresolved_scenes_itemized(pool):
+    """Studio Quality tab (`quality-canon`): book-wide, itemized — not the
+    publish-gate's per-chapter COUNT. Two scenes in two different chapters each
+    with an unresolved contradiction must both appear, each carrying its own
+    violations payload and chapter_id (no title — composition doesn't own that)."""
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    ch1, ch2 = uuid.uuid4(), uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=ch1, title="Scene A")
+    s2 = await repo.create_node(user, project, kind="scene", chapter_id=ch2, title="Scene B")
+
+    j1, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j1.id, "completed",
+                             result={"text": "x", "canon": {"resolved": False, "status": "checked",
+                                                            "violations": [{"entity_id": "e1", "name": "Old Man Wu"}]}})
+    j2, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s2.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j2.id, "completed",
+                             result={"text": "y", "canon": {"resolved": False, "status": "checked",
+                                                            "violations": [{"entity_id": "e2", "name": "Su Han"}]}})
+
+    issues = await repo.canon_issues(user, project)
+    assert len(issues) == 2
+    by_scene = {i["scene_id"]: i for i in issues}
+    assert by_scene[str(s1.id)]["chapter_id"] == str(ch1)
+    assert by_scene[str(s1.id)]["scene_title"] == "Scene A"
+    assert by_scene[str(s1.id)]["violations"][0]["name"] == "Old Man Wu"
+    assert by_scene[str(s2.id)]["chapter_id"] == str(ch2)
+    assert by_scene[str(s2.id)]["violations"][0]["name"] == "Su Han"
+
+
+async def test_canon_issues_resolved_scene_absent_and_newer_job_supersedes(pool):
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+
+    # a resolved job never appears.
+    j1, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j1.id, "completed", result={"text": "x", "canon": {"resolved": True}})
+    assert await repo.canon_issues(user, project) == []
+
+    # an unresolved job appears...
+    j2, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j2.id, "completed",
+                             result={"text": "y", "canon": {"resolved": False, "violations": []}})
+    issues = await repo.canon_issues(user, project)
+    assert len(issues) == 1 and issues[0]["job_id"] == str(j2.id)
+
+    # ...until a NEWER resolved job supersedes it (DISTINCT ON latest, same as chapter_scene_gate).
+    j3, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j3.id, "completed", result={"text": "z", "canon": {"resolved": True}})
+    assert await repo.canon_issues(user, project) == []
+
+
+async def test_canon_issues_synthetic_prose_job_does_not_mask(pool):
+    """D-M3-PROSEJOB-PUBLISHGATE parity: a synthetic promoted_scene_prose job (no
+    canon verdict) must not shadow an earlier confirmed contradiction here either —
+    same exclusion as chapter_scene_gate, itemized list must stay conservative-for-canon."""
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    j1, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j1.id, "completed",
+                             result={"text": "x", "canon": {"resolved": False, "violations": [{"entity_id": "e"}]}})
+    await jobs.upsert_promoted_scene_prose(user, project, s1.id, "author's edited take prose")
+    issues = await repo.canon_issues(user, project)
+    assert len(issues) == 1 and issues[0]["job_id"] == str(j1.id)
+
+
 # ──────────────────── generation_correction (V1 flywheel slice 1) ────────────────────
 
 import json as _json  # noqa: E402
