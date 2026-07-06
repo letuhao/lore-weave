@@ -36,6 +36,32 @@ def test_latin_name_does_not_shred_diacritic_name():
     assert "Nguyễn" in LATIN_NAME_RE.findall("Nguyễn smiled")
 
 
+# ── D-BRIDGE-NAME-FRAGMENT: Sino-Vietnamese multi-syllable names ─────────────
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # single-uppercase INTERIOR connector "U" no longer splits the name
+        ("Cửu U Ma Cơ xuất hiện", ["Cửu U Ma Cơ"]),
+        # 4 real syllables — old {0,2} truncated to "Hắc Sát Lão"
+        ("Hắc Sát Lão Nhân đến", ["Hắc Sát Lão Nhân"]),
+        # English single-letter middle initial is a legit interior connector
+        ("Booker T Washington spoke", ["Booker T Washington"]),
+    ],
+)
+def test_latin_name_keeps_sino_vietnamese_multisyllable(text, expected):
+    assert LATIN_NAME_RE.findall(text) == expected
+
+
+def test_latin_name_does_not_glue_trailing_capital():
+    # A trailing stray single-capital must NOT be absorbed — the connector form
+    # is interior-only (lookahead requires a real word to follow), so the
+    # resolvable name "Paris" is preserved, not corrupted to "Paris U".
+    assert LATIN_NAME_RE.findall("Visit Paris U") == ["Visit Paris"]
+    # a lone capital before lowercase prose is not a name
+    assert LATIN_NAME_RE.findall("Cửu U ma quái") == ["Cửu"]
+
+
 # ── CJK_FAMILY_RUN_RE: Han + kana + hangul ──────────────────────────────────
 
 def test_cjk_family_run_matches_kana_and_hangul():

@@ -59,11 +59,10 @@ proper-noun extractor, over passage **prose**:
    junk candidates filled 5 of 6 anchor slots → **only 1/6 resolved to a real entity**, and in one
    query the actual answer entity was crowded out entirely.
 
-2. **Name fragmentation (deferred — `D-BRIDGE-NAME-FRAGMENT`).** The 4-token Sino-Vietnamese name
-   `Cửu U Ma Cơ` is split by `extract_candidates` at the mid-name single-char token `U` into
-   `Cửu` / `Ma Cơ`, neither of which resolves via `find_entities_by_name`. So even a perfect
-   anchor selector misses it. This lives in the **shared** extractor / `LATIN_NAME_RE` and needs a
-   glossary-path regression pass — tracked, not fixed here.
+2. **Name fragmentation (`D-BRIDGE-NAME-FRAGMENT` — now FIXED, see below).** The 4-token
+   Sino-Vietnamese name `Cửu U Ma Cơ` was split by `extract_candidates` at the mid-name single-char
+   token `U` into `Cửu` / `Ma Cơ`, neither of which resolves via `find_entities_by_name`. So even a
+   perfect anchor selector missed it. This lived in the **shared** extractor / `LATIN_NAME_RE`.
 
 Both are the **same class** as the ML-3 breadcrumb bug (a message-tuned heuristic misapplied to
 multilingual prose), now in the bridge path.
@@ -89,7 +88,43 @@ multilingual prose), now in the bridge path.
 The fix ~**doubles** the real-anchor yield and closes 3 of the 4 empty-bridge queries (the one
 remaining `+0` is correct dedup: every passage entity was already message-anchored).
 
+## Update — defect 2 (`D-BRIDGE-NAME-FRAGMENT`) fixed; combined result is a CLEAN lift
+
+`LATIN_NAME_RE` matched a capitalized phrase of *up-to-3* words where each word required
+**≥1 lowercase letter**. Sino-Vietnamese cultivation names break both bounds: they run 4-5
+syllables (`Hắc Sát Lão Nhân` — truncated to 3) and can carry a **single-uppercase interior
+syllable** (`Cửu U Ma Cơ` — the bare `U` split the name in two). Fix (`scripts.py`, the shared
+regex — so it also helps the extraction entity-detector + glossary selector):
+- a subsequent word may be a real word **or** a single uppercase letter, but the single-letter
+  form is admitted **only as an interior connector** (a lookahead requires a real word to follow),
+  so a trailing stray capital (`Paris U`) is *not* glued on and the resolvable name is preserved;
+- word cap raised 3 → 5.
+
+**Live-verified on the Vietnamese corpus:** `extract_candidates` now yields `Cửu U Ma Cơ` whole,
+and Q2's resolve-then-cap recovers the **actual answer entity** it previously missed. Combined
+with the defect-1 fix the bridge yield climbs **3.42 → 6.92 → 10.83** facts/query, and — because
+the bridge now surfaces the real answer entities (not just the omnipresent protagonist) — the
+answer-quality A/B turns **clean and decisively positive**:
+
+| Config | overall mean | bridge-class mean | better / worse |
+|---|---|---|---|
+| Shipped M1a | 1.00 → 1.10 (+10%) | 1.00 → 1.167 (+17%) | 1 / 0 |
+| + defect-1 (cap) | 1.111 → 1.222 (+10%) | 1.20 → 1.40 (+17%) | 1 / 1\* |
+| **+ both fixes** | **1.10 → 1.50 (+36%)** | **1.00 → 1.667 (+67%)** | **3 / 0** |
+
+\* spurious (judge-truncation on an identical answer, see below). With both fixes two
+`base=0 → bridge=2` rescues land (the "Nữ chính là đệ tử/vật chứa…" queries the classifier could
+only anchor on the junk word `Nữ`), controls stay flat, **zero regressions**.
+
+**Regression pass (shared-regex blast radius):** knowledge unit suite **3606 passed**; the 4 reds
+(3 `test_mode_full` budget + 1 `test_internal_dispatch`) are **pre-existing** — they fail
+identically on a stash baseline without this change. 4 new `test_scripts` cases pin the
+Sino-Vietnamese phrases + the trailing-capital guard.
+
+---
+
 ## Finding 2 (answer quality) — safe & positive, but the corpus is too small to size the lift
+> *(numbers below are the pre-name-defrag "shipped M1a" run; the fixed run is the table above.)*
 
 LLM-judged A/B (`scratchpad/viet_ab.py`, gemma-26b local answerer+judge, passages in **both**
 arms, truncated-answer rows excluded — mirroring the Dracula methodology). 12 golden questions

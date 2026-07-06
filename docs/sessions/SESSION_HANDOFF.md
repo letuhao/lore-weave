@@ -16,10 +16,13 @@ shared extractor untouched): `_looks_like_sentence` junk-filter + **resolve-THEN
 recorded: the Vietnamese passages index under a *different* bge-m3 `user_model` id (`019eeb08-8bff…`) than Dracula's —
 an eval must embed the query with the corpus's OWN index model or `find_passages_by_vector` returns 0 (cross-service
 model-ref bug class). **NEXT:** M1b/M3 stay gated on measurement (don't build speculatively). Two tracked rows below.
-- **D-BRIDGE-NAME-FRAGMENT (MED, gate #2 — shared-extractor blast radius):** a 2nd multilingual defect — a
-  multi-token Sino-Vietnamese name (`Cửu U Ma Cơ`) is split by `extract_candidates`/`LATIN_NAME_RE` at the mid-name
-  single-char token `U` into non-resolving fragments (`Cửu`/`Ma Cơ`), so even a perfect anchor selector misses the
-  answer entity. Fix lives in the SHARED extractor + needs a glossary-path regression pass. Not fixed here.
+- **D-BRIDGE-NAME-FRAGMENT ✅ CLEARED (same session):** the shared `LATIN_NAME_RE` split multi-token
+  Sino-Vietnamese names (`Cửu U Ma Cơ`→`Cửu`/`Ma Cơ`; `Hắc Sát Lão Nhân` truncated to 3 words). Fixed in
+  `scripts.py`: subsequent word may be a single-uppercase INTERIOR connector (lookahead requires a real word to
+  follow, so a trailing stray capital like `Paris U` isn't glued on) + word cap 3→5. Shared-regex regression pass:
+  knowledge unit **3606 passed** (4 reds pre-existing — fail identically on a stash baseline); 4 new `test_scripts`
+  cases. **Live-verified**: `Cửu U Ma Cơ` now resolves whole; with both bridge fixes the Vietnamese A/B is a CLEAN
+  **+36% overall / +67% bridge-class, 3 wins / 0 regressions** (bridge yield 3.42→10.83 facts/query).
 - **D-EVAL-BOOK (unchanged):** the answer-quality *magnitude* is still bounded by one small book + a local judge;
   a large-book full passage+relation extraction remains the follow-on to size the lift (buildable, not built this run).
 

@@ -59,12 +59,25 @@ LATIN_UPPER = "A-ZÀ-ÖØ-ÞĂĐĨŨƠƯ" + _LEA_UPPER
 # Latin-1 lower à-ö ø-ÿ ; Extended-A: ă đ ĩ ũ ơ ư
 LATIN_LOWER = "a-zà-öø-ÿăđĩũơư" + _LEA_LOWER
 
-# Capitalized phrase (1-3 words), Vietnamese-diacritic aware. Mirrors the old
+# Capitalized phrase (up to 5 words), Vietnamese-diacritic aware. Mirrors the old
 # ASCII-only capitalized-phrase shape but with the widened upper/lower classes.
 # Apostrophes allowed inside a token (O'Neill / d'Artagnan) but not word-initial.
+#
+# Sino-Vietnamese naming (D-BRIDGE-NAME-FRAGMENT, ML): transliterated cultivation
+# names run 4-5 syllables and can carry a SINGLE-uppercase-letter INTERIOR syllable
+# ("Cửu U Ma Cơ", "Booker T Washington"). The old shape broke on both — each word
+# demanded ≥1 lowercase (so the bare "U" split the name in two) and the {0,2} cap
+# truncated a 4-syllable name ("Hắc Sát Lão Nhân"). Fixes:
+#   - a subsequent word may be a real word OR a single uppercase letter, but the
+#     single-letter form is admitted ONLY as an INTERIOR connector — a lookahead
+#     requires a real word to follow — so a trailing stray capital ("Paris U") is
+#     NOT glued on and the resolvable name is preserved.
+#   - cap raised {0,2} → {0,4} (up to 5 syllables).
+_LN_WORD = rf"[{LATIN_UPPER}][{LATIN_LOWER}'’]+"
+_LN_CONNECTOR = rf"[{LATIN_UPPER}](?=[\s\-]{_LN_WORD})"  # interior single-upper only
 LATIN_NAME_RE = re.compile(
-    rf"\b[{LATIN_UPPER}][{LATIN_LOWER}'’]+"
-    rf"(?:[\s\-][{LATIN_UPPER}][{LATIN_LOWER}'’]+){{0,2}}\b"
+    rf"\b{_LN_WORD}"
+    rf"(?:[\s\-](?:{_LN_WORD}|{_LN_CONNECTOR})){{0,4}}\b"
 )
 
 
