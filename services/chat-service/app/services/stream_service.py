@@ -804,7 +804,14 @@ async def _stream_with_tools(
             # results), so re-compact before every provider call or a long multi-tool
             # turn overflows the window mid-turn. Atom-grouped truncation keeps
             # tool-call/result pairs intact; guarded so it can never break the pass.
-            if effective_limit:
+            #
+            # SKIP in stateful mode (P3 review H2): the full history lives server-side in
+            # the /v1/responses chain, NOT in `working` (which holds only the delta), so
+            # compacting `working` saves nothing — and it MUTATES `working` to a different
+            # length, corrupting the absolute `_stateful_sent`/`_initial_working_len`
+            # indices (→ an empty/wrong delta slice that silently drops tool results). The
+            # chain's size is instead bounded by decide_chain rule-4 (reestablish_window).
+            if effective_limit and not stateful:
                 _rc = None
                 try:
                     working, _rc = await compact_messages(
@@ -836,6 +843,16 @@ async def _stream_with_tools(
             # to len(working) right after — before this pass's tool results are appended.
             if stateful:
                 _messages_out = working[_stateful_sent:]
+                if _stateful_sent > 0:
+                    # Continuation pass (P3 review M4): the slice is the new tool
+                    # exchanges (non-system). The Responses API does NOT inherit
+                    # `instructions` across previous_response_id, so RE-PREPEND the
+                    # current system messages (persona/grounding/tool-use rules) or the
+                    # model loses them while interpreting tool results mid-turn.
+                    _sys = [m for m in working if m.get("role") == "system"]
+                    _messages_out = _sys + [
+                        m for m in _messages_out if m.get("role") != "system"
+                    ]
             else:
                 _messages_out = working
             request_kwargs: dict = {
@@ -1619,8 +1636,16 @@ async def _stream_with_tools(
                 # the caller, which persists the suspended run and emits the
                 # pending tool-call events + a "suspended" finish. No further
                 # passes; the resume request continues the loop.
+                # P3 review H1 — in stateful CONTINUE mode `working` is only the DELTA
+                # (server holds the history), so persisting it would lose the full
+                # conversation the resume needs. Reconstruct the FULL context (the same
+                # splice E1 uses) so the resume runs stateless on the complete history.
+                _susp_working = (
+                    list(messages) + working[_initial_working_len:]
+                    if stateful else working
+                )
                 yield {"suspend": {
-                    "working": working,
+                    "working": _susp_working,
                     "pending_tool_call": suspended_call,
                     "input_tokens": total_input,
                     "output_tokens": total_output,
@@ -2602,6 +2627,7 @@ async def _emit_chat_turn(
     context_breakdown: ContextBreakdown | None = None,
     entity_presence: dict | None = None,
     trace: "TraceAccumulator | None" = None,
+    is_resume: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -2807,7 +2833,12 @@ async def _emit_chat_turn(
     # non-tool-calling turn (review-impl catch, 2026-07-06).
     _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
     try:
-        if use_tools or _subagent_tool is not None:
+        # P3 review H1 — a RESUME runs STATELESS over the full saved working (the suspend
+        # reconstructed the complete context). A delta rebuild here would drop the
+        # assistant tool_call + the frontend tool result the resume appended → the model
+        # would never see the tool outcome (re-suspend loop). The resumed turn persists
+        # response_id=None, so the NEXT turn cleanly re-establishes the chain (rule-1).
+        if (use_tools or _subagent_tool is not None) and not is_resume:
             # ── Stateful /v1/responses chain decision (P2 §5a) ──────────────────
             # Read the latest assistant turn for this session/branch and decide:
             # stateless / stateful-establish / stateful-continue. Degrade-safe — any
@@ -3684,6 +3715,7 @@ async def resume_stream_response(
         # the approved/denied tool result (if any) is surfaced first.
         permission_mode=susp.permission_mode,
         pre_tool_chunks=pre_tool_chunks,
+        is_resume=True,  # P3 review H1 — resume runs stateless over the full saved context
     ):
         yield line
 
