@@ -49,6 +49,7 @@ import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampa
 import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
 import { StandardsPage } from '@/features/standards/pages/StandardsPage';
 import { JobsPage } from '@/features/jobs/pages/JobsPage';
+import { ContextInspectorPage } from '@/features/chat/inspector/ContextInspectorPage';
 import { JobDetailPage } from '@/features/jobs/pages/JobDetailPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
@@ -196,6 +197,10 @@ export function App() {
 
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />
+
+            {/* Context Budget Law §11 — the Context Compiler · Trace Inspector,
+                standalone (also a dockable studio panel). */}
+            <Route path="/context-inspector" element={<ContextInspectorPage />} />
 
             {/* Glossary standards library (per-user, tier-scoped) */}
             <Route path="/standards" element={<Navigate to="/standards/genres" replace />} />
