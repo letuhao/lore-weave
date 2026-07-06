@@ -121,10 +121,30 @@ Qwen2.5-7B, KV-cached prefix, field absent) — the split only surfaces on `/v1/
 = the 99% measurement). That path is unit-bound both sides now (Go streamer cached_tokens→CacheReadTokens,
 SDK round-trip, monitor math) and will be the FIRST live-smoke of P2.
 
-**NEXT: P2** — `responsesAdapter` + SDK `previous_response_id`/`stateful` + DB column per
-`(session, branch_id)` + `StatefulResponses` strategy (E1 re-establish + E2 in-turn chain), behind
-`LLM_STATEFUL_CACHE` (default off, flip after the P2 live-smoke on LM Studio /v1/responses proves the
-99% cache_read flows to the frame — the nonzero-read proof P1 couldn't reach).
+**▶ P2 BUILT & LIVE-VERIFIED 2026-07-06** (3 commits, `LLM_STATEFUL_CACHE` default-OFF so nothing changes
+until flipped). Design doc: [`docs/specs/2026-07-06-provider-context-strategy-p2-transport.md`](../specs/2026-07-06-provider-context-strategy-p2-transport.md)
+(resolved the "special route?" question → NO, shared `/internal/llm/stream` + capability-gated flag,
+consistent with how the gateway already abstracts per-provider wire; + 7 adversarially-found edge cases,
+esp. the §5a 4-part head-validity predicate + system→`instructions`). **P2.a** `d1f967ab2` transport:
+`responses_streamer.go`/`responses_adapter.go` (`/v1/responses` SSE parse, tool reassembly, `ResponseID`
+return, capability+flag gate); SDK `StreamRequest.stateful/previous_response_id` + `DoneEvent.response_id`.
+**P2.b+P2.c** `f5c9a874d`: DB `chat_messages.response_id` chain head (+ partial index; head = latest
+assistant row, so E7/E5 need no table); `stateful_chain.decide_chain` (§5a predicate); `_stream_with_tools`
+delta-send + tool-loop id threading (E2) + E1 re-establish; system→`instructions` (Responses doesn't
+inherit them → mid-session system change applies with no re-chain); `LLM_RESPONSE_CHAIN_NOT_FOUND`
+classifier (400 body live-probed). Also fixed a **latent P1.d bug**: the no-tools terminal yield dropped
+the summed cache split + response_id (a deeper-nested `_Usage` the P1.d replace_all missed).
+**LIVE-SMOKE (LM Studio gemma-4-26b, flag on):** 2-turn chat → turn 2 `read_tok 30921, hit_rate 99.9%,
+uncached 434` (the 99% cache_read P1 couldn't reach, now on the frame + persisted head); E2 tool-loop
+chains within a turn (4 passes ~99% cached each); E1 corrupt-head → transparent re-establish, still
+recalled the codeword. All isolated via a temp compose override (deleted); stack reverted to default-off.
+
+**NEXT: P3** (cache-aware Planner, spec §9) — server-side accumulated-size budget for stateful (the P2
+§5a rule-4 window guard is the safety floor; P3 makes the compaction SMART), compaction cache-write-penalty
+tuning, re-chain-at-boundary (E5) with intelligent compaction. Then: consider flipping `LLM_STATEFUL_CACHE`
+on by default after a broader eval. Deferred: the no-tools `_stream_via_gateway` path is stateless-only
+(only `_stream_with_tools` is wired) — safe (self-heals via §5a rule-1) but a no-tools turn forgoes the
+cache; wire it in P3 if worthwhile.
 
 ---
 
