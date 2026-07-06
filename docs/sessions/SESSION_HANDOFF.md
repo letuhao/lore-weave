@@ -39,7 +39,26 @@ context-management** (server-side budget for stateful, compaction=cache-write-pe
 = E5 resolves cost↔accuracy). Also found: shipped `applyAnthropicPromptCache` double-marks system (chat-service
 already does) → reconcile to **tools-only** (Phase 1). Build phases: **P1** capability+monitoring+Inspector+§10
 reconcile (no new transport, safe) · **P2** responsesAdapter+SDK+DB+stateful (behind `LLM_STATEFUL_CACHE`) ·
-**P3** cache-aware Planner. NEXT: start P1.
+**P3** cache-aware Planner.
+
+**▶ P1 BUILT & COMMITTED 2026-07-06** (4 risk-boundary commits): **P1.a** `594fbdf77` §10 tools-only
+reconcile (`applyAnthropicPromptCache` marks tools-only; chat-service already marks system, forwarded
+verbatim at adapters.go:1137 — freed a redundant Anthropic breakpoint). **P1.b+P1.c** `51dd5cccf`
+capability model (`provider/capabilities.go` `CapabilitiesFor(kind)` → prompt_cache_control /
+responses_api / auto_prefix_cache, surfaced on the credential-resolve response + chat-service
+`ProviderCredentials.capabilities`) + cache-token split wired end-to-end (StreamChunk
+`CacheCreationTokens`/`CacheReadTokens`, both Go streamers, openapi + SDK `UsageEvent` — provider-
+normalized: creation=written, read=served-from-cache; InputTokens keeps the billing fold). **P1.d**
+`e3847075c` `caching_monitor.py` (per-turn strategy label FROM capability, hit_rate, token-relative
+cost_delta_ratio + write_premium via standard cache multipliers, net_negative; rolling `detect_thrashing`
+§7 guardrail — only explicit-cache can thrash, ≥3-turn verdict so priming isn't flagged) → contextBudget
+`caching` section (additive) + §11a gate row (85 items, 0 problems). Tests: caching_monitor 12,
+token_budget 31, provider Go suite green, SDK stream green.
+**Deferred:** `D-CACHING-MONITOR-LIVE-SMOKE` — full-stack cross-service smoke (real cached turn → frame
+shows the split) blocked by chat-service container crash-looping on Windows dev; wire contract bound by
+unit tests both sides. **NEXT: P2** — `responsesAdapter` + SDK `previous_response_id`/`stateful` +
+DB column per `(session, branch_id)` + `StatefulResponses` strategy (E1 re-establish + E2 in-turn chain),
+behind `LLM_STATEFUL_CACHE` (default off, flip after live-smoke on LM Studio).
 
 ---
 
