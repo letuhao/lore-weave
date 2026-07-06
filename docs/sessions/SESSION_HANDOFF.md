@@ -21,6 +21,22 @@ Live-verified rendering (local static server + Playwright screenshots, 3 states 
 sharing — not wired to any real API, review artifact only. **Not yet a written spec or BUILD** —
 next step if picked up: gather any feedback on the mockup, then write the accompanying spec doc
 (`docs/specs/YYYY-MM-DD-planforge-planner-redesign.md`) before implementation.
+**v2 same day — edge-case pass** (user: "chức năng này phải đủ dễ sử dụng, tránh tình huống check
+lỗi, người dùng phải mò và sửa raw plan, họ không làm được đâu" — never let a failure path force
+the writer to touch the raw plan themselves). v1 had 5 gaps that would have done exactly that:
+"Quick check" (the fragile regex parser) was the DEFAULT mode — swapped default to AI-assisted;
+no state existed for "we couldn't understand your document" (0 arcs/0 characters) — added a
+dedicated low-extraction branch with concrete next steps; "Continue anyway" let you skip past a
+hard finding even though the REAL backend hard-blocks `compile()` on any hard-tier failure (the
+mockup was lying about what happens next) — Continue is now disabled+explained until every hard
+finding resolves, advisory findings never block; "Fix this for me" had no failure path — added a
+working state + an autofix-failed fallback that suggests a concrete plain-language edit to the
+ORIGINAL text or hands off to chat, never raw JSON; the arc picker let you select an admittedly
+incomplete arc with no guidance — made incomplete arcs genuinely non-selectable with an "Ask AI to
+help complete this arc" escape hatch. **Locked design principle added to the file: this panel
+never exposes a raw spec/JSON editor as a fallback, at any failure point.** Live-verified all new
+states (idle/fixing/resolved/failed/low-extraction/disabled-arc) via local server + Playwright
+before redeploying. Commit `e19a9d863`.
 
 ---
 
