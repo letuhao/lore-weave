@@ -85,7 +85,7 @@ export type PlanInterpretation = Record<string, unknown>;
 // POST /runs/{runId}/compile
 export interface PlanCompileResult {
   package: Record<string, unknown>;
-  pipeline_job_id: string;
+  pipeline_job_id: string | null;
   work_id: string;
 }
 

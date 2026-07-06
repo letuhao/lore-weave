@@ -118,7 +118,10 @@ export function PlanRunView({
         </div>
         {compileResult && (
           <p data-testid="plan-compile-result" className="text-[10px] text-muted-foreground">
-            work {compileResult.work_id.slice(0, 8)} · pipeline {compileResult.pipeline_job_id.slice(0, 8)}
+            work {compileResult.work_id.slice(0, 8)}
+            {compileResult.pipeline_job_id
+              ? ` · pipeline ${compileResult.pipeline_job_id.slice(0, 8)}`
+              : ' · package compiled (no pipeline run requested)'}
           </p>
         )}
       </div>

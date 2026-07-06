@@ -61,4 +61,46 @@ describe('PlanRunView — null fidelity_score', () => {
     );
     expect(screen.getByTestId('plan-selfcheck').textContent).toContain('—');
   });
+
+  // Regression: live browser smoke (D-PLANFORGE-GUI-AUDIT) found the SAME bug
+  // class again — compile() legitimately returns pipeline_job_id=null when
+  // run_pipeline wasn't requested (the only path this compact form offers),
+  // and the render called .slice(0, 8) on it unguarded, white-screening the
+  // entire Studio (no error boundary). Confirmed live: POST .../compile
+  // returned 200 with pipeline_job_id: null in the real response body.
+  it('renders a null compile pipeline_job_id without crashing', () => {
+    render(
+      <PlanRunView
+        run={RUN}
+        polling={false}
+        busy={false}
+        selfCheck={null}
+        validation={null}
+        compileResult={{ package: {}, work_id: 'w1', pipeline_job_id: null }}
+        onSelfCheck={noop}
+        onValidate={noop}
+        onCompile={noop}
+      />,
+    );
+    expect(screen.getByTestId('plan-compile-result').textContent).toContain(
+      'package compiled (no pipeline run requested)',
+    );
+  });
+
+  it('renders a real compile pipeline_job_id when a pipeline run was requested', () => {
+    render(
+      <PlanRunView
+        run={RUN}
+        polling={false}
+        busy={false}
+        selfCheck={null}
+        validation={null}
+        compileResult={{ package: {}, work_id: 'w1', pipeline_job_id: '019f356a-d2d2-77c2' }}
+        onSelfCheck={noop}
+        onValidate={noop}
+        onCompile={noop}
+      />,
+    );
+    expect(screen.getByTestId('plan-compile-result').textContent).toContain('019f356a');
+  });
 });
