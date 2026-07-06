@@ -575,10 +575,17 @@ async def start_extraction_job(
     # idempotent — never blocks or fails the extraction start.
     proj = await projects_repo.get(principals.owner, project_id)
     if proj is not None and proj.book_id and proj.embedding_model and proj.embedding_dimension:
+        # D-BACKFILL-NO-SCOPE-LIMIT — bound the passage backfill to the chapters this
+        # job actually extracts (its scope_range), so a scoped extraction of a large
+        # book ingests passages ONLY for the extracted slice, not the whole book. A
+        # whole-book / chat / glossary scope leaves chapter_range None (full book).
+        _lo, _hi = _extract_chapter_range(body.scope_range) if body.scope == "chapters" else (None, None)
+        _bf_range = (_lo, _hi) if _lo is not None and _hi is not None else None
         background_tasks.add_task(
             _auto_backfill_passages,
             project_id=project_id, user_id=principals.owner, book_id=proj.book_id,
             embedding_model=proj.embedding_model, embedding_dim=proj.embedding_dimension,
+            chapter_range=_bf_range,
         )
     return job
 
@@ -590,10 +597,12 @@ async def _auto_backfill_passages(
     book_id: UUID,
     embedding_model: str,
     embedding_dim: int,
+    chapter_range: tuple[int, int] | None = None,
 ) -> None:
     """Best-effort background passage backfill fired on extraction start
     (D-KG-PASSAGES-NOT-INGESTED). Swallows ALL errors — extraction must never be
-    affected by it. Skips cleanly in Track-1 (no Neo4j)."""
+    affected by it. Skips cleanly in Track-1 (no Neo4j). ``chapter_range`` bounds the
+    backfill to the extraction job's chapter slice (D-BACKFILL-NO-SCOPE-LIMIT)."""
     try:
         from app.clients.book_client import get_book_client as _get_bc
         from app.clients.embedding_client import get_embedding_client
@@ -606,6 +615,7 @@ async def _auto_backfill_passages(
             project_id=project_id, user_id=user_id, book_id=book_id,
             embedding_model=embedding_model, embedding_dim=embedding_dim,
             book_client=_get_bc(), embedding_client=get_embedding_client(),
+            chapter_range=chapter_range,
         )
         logger.info(
             "auto passage backfill on extraction start project=%s: %s", project_id, res,
@@ -1614,6 +1624,10 @@ async def change_embedding_model(
                     embedding_dim=new_dim,
                     # KG-ML M1 (C10) — meter the backfill re-embed spend.
                     pool=get_knowledge_pool(),
+                    # D-BACKFILL-NO-SCOPE-LIMIT — this backfill runs SYNCHRONOUSLY in the
+                    # request; cap it so a large book can't run away embedding every
+                    # published chapter inline (0 ⇒ never skip).
+                    max_chapters=(app_settings.kg_backfill_max_inline_chapters or None),
                 )
                 # KG-ML M1 (DD1) — tag-only pass for any passage NOT re-embedded
                 # above (e.g. draft-indexed chunks): stamp declared source_lang

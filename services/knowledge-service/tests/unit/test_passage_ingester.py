@@ -969,3 +969,84 @@ async def test_backfill_skips_malformed_chapter_but_processes_rest(monkeypatch):
     )
     assert res.chapters_indexed == 1
     assert res.chapters_skipped == 1
+
+
+# ── D-BACKFILL-NO-SCOPE-LIMIT: chapter_range scope + inline cap guard ─────────
+
+@pytest.mark.asyncio
+async def test_backfill_chapter_range_bounds_to_slice(monkeypatch):
+    """chapter_range=(2,3) ingests ONLY the chapters whose sort_order is in [2,3] —
+    a scoped extraction of a large book must not drag in the whole book's passages."""
+    chapters = [
+        {"chapter_id": str(uuid4()), "sort_order": i, "editorial_status": "published"}
+        for i in range(1, 6)  # sort_order 1..5
+    ]
+    book = _book_with_published(chapters)
+    emb = _dyn_embed()
+    upsert = AsyncMock()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+    res = await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+        chapter_range=(2, 3),
+    )
+    assert res.chapters_indexed == 2  # only chapters 2 and 3
+    assert upsert.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_backfill_inline_cap_skips_large_unscoped_book(monkeypatch):
+    """max_chapters guards the synchronous inline path: a book with more published
+    chapters than the cap (and NO range) is SKIPPED — never a runaway whole-book embed.
+    (This is the D-BACKFILL-NO-SCOPE-LIMIT runaway the 万古神帝 4232-ch PUT triggered.)"""
+    chapters = [
+        {"chapter_id": str(uuid4()), "sort_order": i, "editorial_status": "published"}
+        for i in range(1, 11)  # 10 published chapters
+    ]
+    book = _book_with_published(chapters)
+    emb = _dyn_embed()
+    upsert = AsyncMock()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+    res = await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+        max_chapters=5,  # 10 > 5 → skip
+    )
+    assert res == BackfillResult(0, 0, 0)
+    upsert.assert_not_awaited()  # nothing embedded
+
+
+@pytest.mark.asyncio
+async def test_backfill_cap_does_not_apply_when_range_given(monkeypatch):
+    """An explicit chapter_range bounds the work, so the max_chapters cap is moot —
+    a scoped slice always runs even on a huge book."""
+    chapters = [
+        {"chapter_id": str(uuid4()), "sort_order": i, "editorial_status": "published"}
+        for i in range(1, 51)  # 50 published chapters
+    ]
+    book = _book_with_published(chapters)
+    emb = _dyn_embed()
+    upsert = AsyncMock()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+    res = await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+        chapter_range=(1, 3), max_chapters=5,  # range wins; cap ignored
+    )
+    assert res.chapters_indexed == 3
+    assert upsert.await_count == 3

@@ -8,6 +8,12 @@ Gates plan [`docs/plans/2026-07-06-context-retrieval-improvements.md`](../../pla
 M4's carried-forward caveat: *"a larger multilingual corpus … remains the follow-on
 robustness check."* This is that check.
 
+> **D-EVAL-BOOK follow-on (2026-07-06):** building a *larger* corpus (万古神帝, Chinese,
+> 4232 published chapters) to size the lift surfaced **two pipeline issues fixed/diagnosed
+> below** before any A/B ran — see "Appendix A: D-BACKFILL-NO-SCOPE-LIMIT" and "Appendix B:
+> extraction stall diagnosis". The larger-corpus A/B itself is recorded in
+> [`M4-wangu-largecorpus-2026-07-06.md`](M4-wangu-largecorpus-2026-07-06.md).
+
 ---
 
 ## Why re-measure (the caveat the first M4 left open)
@@ -173,3 +179,52 @@ starved, resolved-anchor cap). Broader selector/mode slice green except 3 **pre-
 **Repro:** harnesses in the session scratchpad — `corpus_inventory.py`, `dump_viet_graph.py`,
 `viet_diag.py`, `viet_mech.py`, `viet_ab.py`; run in `infra-knowledge-service-1` with
 `PYTHONPATH=/app`, embed model = the corpus's own index id `019eeb08-8bff-75cb-8e86-700efd4033b5`.
+
+---
+
+## Appendix A — D-BACKFILL-NO-SCOPE-LIMIT (found + fixed building the larger corpus)
+
+Extracting a bounded slice (chapters 1–20) of 万古神帝 (4232 published chapters) triggered a
+**runaway**: setting the project's embedding model (`PUT /embedding-model`) fires a **synchronous,
+in-request** `backfill_published_passages` over **every published chapter of the book** — no scope
+limit. On a 4232-chapter book it embedded ~11.6K passages before a manual restart stopped it (a
+120s client timeout only hid it; the server kept going). A second, background copy fires the same
+unscoped backfill on `start_extraction_job`.
+
+**Root cause:** passage backfill is whole-published-book by design; nothing bounds it to the
+chapters a scoped extraction actually processes, and the embedding-PUT path runs it *synchronously*.
+
+**Fix** (`facts`-adjacent extraction pipeline):
+- `backfill_published_passages` / `backfill_project_passages` gain `chapter_range=(lo,hi)` → ingest
+  only that `sort_order` slice.
+- `start_extraction_job` threads the job's own `scope_range` into its background backfill, so a
+  scoped extraction ingests passages **only for the extracted chapters**.
+- the synchronous embedding-PUT backfill gains an inline cap
+  (`kg_backfill_max_inline_chapters`, default 200): a book with more published chapters than the cap
+  and no explicit range **skips** the inline backfill (a scoped extraction ingests instead) — so a
+  large book can never run away embedding its whole self in one request.
+
+**Verified:** 3 new `test_passage_ingester` cases (range bound / inline cap skip / range-overrides-cap);
+knowledge unit suite green (pre-existing reds only). Live: the second run's embedding-PUT returned
+*instantly* (cap skipped the 4232-chapter backfill) and the scoped extraction ingested passages only
+for chapters 1–20 (bounded — 58 passages, not 11.6K).
+
+## Appendix B — extraction "stall" diagnosis (user-caught; my first diagnoses were wrong)
+
+During the first 20-chapter run the `entity_extraction` LLM job **hard-stopped at chunk 3/7** and
+LM Studio went idle. I asserted "LM Studio queue wedge" and "reasoning-off broken" — **both wrong,
+and I cancelled the job prematurely.** Proper diagnosis:
+- **Ruled out with evidence:** governor (no `gov:conc:*` slots), circuit breaker
+  (`breaker:lm_studio:state = closed`), missing idle timeout (`LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S=300`
+  *is* set). `last_progress_at` showed 3 chunks done in the **first 5 seconds**, then a hard cliff —
+  a stall, not slowness.
+- **Reproduced** a 2-chapter run on the same book+model: it **completed cleanly** (7/7 chunks/chapter,
+  ~2s/chunk, 30 entities / 55 relations). Fast chunks ⇒ reasoning is *not* dominating (killing the
+  reasoning-off theory).
+- **Conclusion:** the original stall was a **transient LM Studio mid-stream drop** (its documented
+  model-auto-eviction behavior — a streaming connection dropped without `done`/`err`), almost
+  certainly aftermath of my own runaway-kill *restart* disrupting LM Studio's connection state.
+  **Not a systemic bug; the pipeline is healthy.**
+- **Residual robustness note (tracked, not blocking):** when LM Studio *does* drop a stream, the
+  300s idle timeout means a chunk hangs ~5 min before recovering — long for a local model. Consider
+  lowering `LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S` for local-first deployments.

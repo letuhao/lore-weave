@@ -97,6 +97,16 @@ class Settings(BaseSettings):
     # per-user setting. See docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md.
     context_passage_graph_expansion_enabled: bool = True
 
+    # D-BACKFILL-NO-SCOPE-LIMIT (2026-07-06) — the published-passage backfill embeds
+    # EVERY published chapter of a book, and on the embedding-model PUT it runs
+    # SYNCHRONOUSLY in-request. On a large book (万古神帝: 4232 published chapters) that
+    # is a runaway whole-book embed that a client timeout only hides. Cap the INLINE
+    # (embedding-PUT) backfill: when the book has more than this many published
+    # chapters and no explicit chapter_range, skip the inline backfill and let a scoped
+    # extraction job ingest passages instead. The extraction-start backfill is bounded
+    # to the job's chapter_range separately. Deploy ceiling; 0 ⇒ never skip (old behavior).
+    kg_backfill_max_inline_chapters: int = 200
+
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0

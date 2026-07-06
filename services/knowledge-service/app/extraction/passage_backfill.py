@@ -36,9 +36,14 @@ async def backfill_project_passages(
     embedding_dim: int,
     book_client,
     embedding_client,
+    chapter_range: tuple[int, int] | None = None,
 ) -> dict:
-    """(Re)ingest passages for every published chapter of ``book_id`` into
-    ``project_id``. Returns per-run counts. Callers guarantee the embedding config
+    """(Re)ingest passages for a book's published chapters into ``project_id``.
+
+    ``chapter_range=(lo, hi)`` (inclusive ``sort_order``) bounds the backfill to a slice
+    (D-BACKFILL-NO-SCOPE-LIMIT) — the extraction-start caller passes the job's own
+    chapter_range so passages are ingested ONLY for the chapters being extracted, never
+    the whole book. Returns per-run counts. Callers guarantee the embedding config
     (``embedding_model``/``embedding_dim``) + Neo4j are present before calling."""
     chapters = await book_client.list_chapters(book_id, editorial_status="published")
     if chapters is None:
@@ -46,6 +51,13 @@ async def backfill_project_passages(
             "chapters_ingested": 0, "passages_created": 0, "chapters_failed": 0,
             "error": "book_service_unavailable",
         }
+
+    if chapter_range is not None:
+        lo, hi = chapter_range
+        chapters = [
+            ch for ch in chapters
+            if isinstance(ch.get("sort_order"), int) and lo <= ch["sort_order"] <= hi
+        ]
 
     ingested = passages = failed = 0
     for ch in chapters:
