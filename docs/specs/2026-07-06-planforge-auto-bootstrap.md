@@ -1,6 +1,7 @@
 # PlanForge auto-bootstrap — CLARIFY + DESIGN (2026-07-06)
 
-> **Status:** DESIGN draft, POC scope proposed, **no BUILD started**. Follows
+> **Status:** CLARIFY closed 2026-07-06 (all 4 open questions resolved in §4,
+> with evidence — see §4.1). PLAN + BUILD for the POC starting next. Follows
 > `D-PLANFORGE-GUI-AUDIT` (P0 crash fix + leaky-abstraction UX redesign,
 > `design-drafts/planforge/2026-07-06-planner-panel-redesign-mockup.html`).
 
@@ -129,6 +130,12 @@ that same shape here, named distinctly from PlanForge's existing "propose"
   question in §4). On any partial failure, the record's per-item status
   shows exactly what succeeded vs what still needs a retry — never a bare
   "500, try again" with no visibility into what already happened.
+  **Concurrency safety:** the apply step claims the record atomically —
+  `UPDATE ... SET status='applying' WHERE id=$1 AND status='approved'
+  RETURNING *` — a zero-row result means another apply already claimed it
+  (in flight or done); the caller reads back the current status instead of
+  re-running the mutations blind. Same "claim via conditional UPDATE"
+  idiom this repo already uses for job rows, applied here to a proposal row.
 
 **[A] Create chapter shells (NEW, now behind the gate above).** The APPLY
 step walks the approved `new_chapters` list and calls book-service's
@@ -184,13 +191,17 @@ as a second proposal-item TYPE to prove the gate generalizes — not
 necessarily wired to real glossary-service calls yet.**
 - **Propose**: given a compiled `PlanningPackage` for a real arc (reuse the
   story-plan-v1 fixture / an existing `Ma Nữ Nghịch Thiên (POC)` book run),
-  compute the diff against that book's REAL current chapters — one call,
-  produces `new_chapters: [...]`. (Optionally also compute a trivial
+  compute the diff against that book's REAL current chapters via
+  `book_client.list_chapters()` (existing method) + prior applied
+  `plan_bootstrap_proposal` rows for the book (see §4.1.3) — **pure
+  deterministic diffing, zero LLM calls for this scope** — produces
+  `new_chapters: [...]`. (Optionally also compute a trivial
   `new_glossary_entities` diff to prove the record shape generalizes beyond
   one item type, WITHOUT wiring the actual glossary POST yet — that's [B]'s
   own scoped pass.)
-- **Record**: persist as a new `plan_artifact` kind `"bootstrap_proposal"`,
-  `status: pending`, human-readable structured diff.
+- **Record**: persist as a new row in the dedicated `plan_bootstrap_proposal`
+  table (see §4.1.1 for schema/scope columns), `status='pending'`,
+  human-readable structured diff.
 - **Review + approve**: minimal UI is fine for POC purposes (even a raw
   admin/debug view is acceptable to prove the mechanism — the Planner
   redesign mockup's "plain language" treatment can follow once the mechanism
@@ -213,28 +224,79 @@ necessarily wired to real glossary-service calls yet.**
   once the gate + [A] are proven, per this repo's "large effort → one
   continuous classified run, not five ad-hoc patches" guidance.
 
-**Open questions for the next CLARIFY checkpoint before BUILD even on the
-POC:**
-1. Where does the bootstrap-proposal record live — a new `plan_artifact`
-   kind (cheapest, matches existing patterns, reuses existing status-less
-   artifact storage) or a new dedicated table with a real `status` column
-   (more queryable, supports the approve/apply state machine more cleanly,
-   more migration overhead)? Leaning dedicated table given the state machine
-   (pending→approved→applying→applied/failed) is real workflow, not a static
-   blob — but worth deciding explicitly, not defaulting silently.
-2. Ordinal collisions — what happens if the book already has chapters (not
-   truly empty) when chapter-shell creation runs? Append after the highest
-   existing ordinal, or require an explicitly-empty book for POC purposes?
-3. Idempotency — if PROPOSE is re-run for the same plan run (a real flow:
-   propose → tweak → re-validate → re-compile → re-propose-bootstrap), does
-   it diff against the LATEST real book state (so already-applied items from
-   a prior approved record don't get proposed again), or against nothing
-   (risking duplicate proposals)? The APPLY side's own idempotency (skip
-   already-applied items within one record) is more straightforward; this
-   cross-record idempotency question is the subtler one.
-4. What does "reject" actually do to the record — deleted, or kept with
-   `status: rejected` for audit/history (matching Enrichment's reversible-
-   retract precedent of keeping a trail rather than deleting)?
+## 4.1 Open questions — RESOLVED (CLARIFY closed 2026-07-06)
+
+All 4 questions below were resolved with file:line evidence from a targeted
+research pass (book-service's Go handler + OpenAPI contract, Enrichment's
+`enrichment_proposal` schema, PlanForge's own `plan_artifact` schema) —
+not by default/assumption.
+
+**1. Where does the bootstrap-proposal record live? → A new dedicated
+table, `plan_bootstrap_proposal` (composition-service DB, alongside
+`plan_run`/`plan_artifact`).** Confirmed `plan_artifact`
+(`services/composition-service/app/db/migrate.py:960-972`) is structurally
+the wrong fit: it's write-once/append-only JSONB content keyed by
+`(run_id, kind, created_at)`, has **no `status` column and no UPDATE path
+anywhere in its repository** (`plan_runs.py` only exposes `create`/read).
+By contrast Enrichment's `enrichment_proposal`
+(`services/lore-enrichment-service/app/db/migrate.py:350-407,462-525`) is a
+**purpose-built dedicated table**: a `review_status` enum
+(`proposed/author_reviewing/approved/promoted/rejected`) plus a
+`BEFORE UPDATE` trigger enforcing a legal state-transition DAG and
+column-level immutability rules. `plan_bootstrap_proposal` follows this
+proven shape, scaled to this workflow's simpler DAG
+(`pending→approved/rejected`, `approved→applying→applied/failed`,
+`rejected` terminal-but-retained). **Locked scope columns (User Boundaries
+& Tenancy — not optional):** `book_id` (per-book tier) + `owner_user_id` +
+`run_id` FK → `plan_run` (traceability to the compile() that triggered it).
+Payload columns: `diff JSONB` (the proposed `new_chapters`/etc.),
+`applied_results JSONB` (populated during apply — the `event_id↔chapter_id`
+map), `status`.
+
+**2. Ordinal collisions on a non-empty book → non-issue, confirmed by
+code, not designed around.** Book-service's `createChapter` handler
+(`services/book-service/internal/api/server.go:1467-1469`) already
+auto-assigns `SELECT COALESCE(MAX(sort_order),0)+1` whenever the caller
+omits `sort_order` (or sends `0`) — documented identically in
+`contracts/api/books/v1/openapi.yaml:415-417` ("Optional ordering hint;
+default append to end"). **The new `create_chapter` client method (to be
+added to `book_client.py`) simply never passes `sort_order`.** A
+non-empty book is automatically safe — new chapters always append after
+whatever already exists. No proposal-side ordinal computation needed at
+all; this removes a whole category of planned logic from the POC.
+
+**3. Cross-record idempotency on re-propose → dedup against TWO sources,
+real chapters as primary truth.** PROPOSE calls the **already-existing**
+`book_client.list_chapters(book_id, bearer)` (`book_client.py:240-277` —
+already used by the A3 planner, no new code needed to read current state)
+to get the book's real current chapters, AND queries prior
+`plan_bootstrap_proposal` rows for this `book_id` with
+`status='applied'` to read their `applied_results` maps. The union of
+both excludes already-realized `package.chapters[]` entries from the new
+diff. **Accepted approximation for POC:** since `chapters` has no
+`event_id` column, matching a real chapter back to a `package.chapters[]`
+entry is done by **title**, not a stable id — a same-titled-chapter
+collision is the (rare) failure mode. This is named explicitly, not
+hidden; revisit only if it bites in practice (per this doc's own
+Fix-Now-vs-Defer gate — it doesn't clear the bar for a defer row today,
+it's a documented POC-scope approximation).
+
+**4. Reject semantics → kept for audit, `status='rejected'`, never
+deleted.** Mirrors `enrichment_proposal`'s DAG, where `rejected` is a
+real, terminal-but-retained state (not a delete) reachable from
+`proposed`/`author_reviewing`/`approved`. Re-proposing after a reject
+requires a fresh PROPOSE call (a new row) — consistent with §3.1's
+existing "rejecting requires a new propose pass" statement.
+
+**Bonus finding from this same research pass, folded in:** for the POC's
+specific scope (diffing `package.chapters[]` against real chapters), the
+PROPOSE step needs **zero LLM calls** — it's pure deterministic diffing
+using data compile() already produced plus one existing `list_chapters()`
+call. This further de-risks the POC: the only genuinely novel code is the
+gate's persistence/state-machine and the new `create_chapter` client
+method + book-service call, not any new LLM integration. (A `new_arcs`/
+`new_glossary_kinds` diff, if built, WOULD need an LLM pass — but per §4
+below that's explicitly out of POC scope.)
 
 ## 5. Explicit non-goals (this doc, this POC)
 
