@@ -1,5 +1,31 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Glossary unmatched-attribute fallback (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK) — shipped, live-verified, 2026-07-06.**
+Design question raised during the PlanForge auto-bootstrap follow-up: an AI proposal (bootstrap gate, extraction,
+future callers) can send a glossary attribute code a kind hasn't registered (e.g. guessing a field name). PO framed
+the philosophy explicitly: glossary/wiki content is authored prose, not a rigid code schema — losing an
+AI-observed detail entirely (the prior behavior: silent no-op, `services/glossary-service/internal/api/
+extraction_handler.go`'s `createExtractedEntity`/`mergeExtractedEntity`, `if !ok { continue }`) is worse than
+filing it under a generic heading. Considered and rejected: (a) strict validation/reject — fights the intentional
+EAV-not-JSON-schema design (`docs/standards/scope-separation.md` SCOPE-3); (b) a new `entity_facts` `fact_kind='note'`
+extension — architecturally cleaner (reuses the bi-temporal SSOT) but L-sized; PO chose the simplest option that
+still avoids a 4th parallel storage location — **route into the kind's EXISTING "description" textarea** (every
+system-seeded kind already ships one, `internal/domain/kinds.go`), not a new column/table. **Fix (S-sized, one
+shared write path — both callers of `/internal/books/{id}/extract-entities` benefit, not just PlanForge):**
+new `appendUnmatchedAttrsToFallback` helper — appends (never overwrites) unmatched `code: value` lines into the
+kind's `description` attr, honors the INV-8 verified-clobber guard (a human-verified description is never
+machine-appended to; those codes report skip-reason `verified` instead), degrades to the old silent-skip when the
+kind has no `description` attr_def at all (skip-reason `unmapped`). 7 new tests (1 pure-unit no-DB early-return
+proof + 3 DB-integration: create/merge-append/verified-guard) all pass; full glossary-service suite green
+(`-p 1`, sequential — the one flake seen under default parallel `go test ./...`, `internal/migrate`'s
+`TestSeed_Reconciles…`, reproduced IDENTICALLY with the change reverted and is a pre-existing shared-test-DB
+cross-package race unrelated to this change, per [[shared-db-parallel-test-migration-deadlock]] class). **Live-
+verified** against the real dev stack: rebuilt+restarted glossary-service, POSTed an unmatched attribute
+(`signature_scent`) to a real adopted book via `extract-entities`, confirmed by direct SQL it landed as
+`- signature_scent: sandalwood` inside `description` (not dropped), cleaned up the test entity.
+
+---
+
 **Context-retrieval M4 — M1a passage→graph bridge RE-MEASURED on a 2nd, independent, MULTILINGUAL corpus + a fix it surfaced, 2026-07-06.**
 Plan [`2026-07-06-context-retrieval-improvements.md`](../plans/2026-07-06-context-retrieval-improvements.md);
 eval [`docs/eval/context-budget/M4-multilingual-bridge-remeasure-2026-07-06.md`](../eval/context-budget/M4-multilingual-bridge-remeasure-2026-07-06.md).

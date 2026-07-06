@@ -1450,9 +1450,16 @@ func (s *Server) createExtractedEntity(
 	}
 
 	// Insert other attributes
+	var unmatchedNotes []string
 	for code, val := range ent.Attributes {
 		defID, ok := attrDefMap[kindID.String()+":"+code]
 		if !ok {
+			// D-GLOSSARY-UNMATCHED-ATTR-FALLBACK: a code the kind hasn't registered
+			// (e.g. an AI proposal guessing a field name) is captured into the kind's
+			// "description" catch-all below rather than dropped — glossary content is
+			// authored prose, not a rigid schema; losing the observation is worse than
+			// filing it under a generic heading (see appendUnmatchedAttrsToFallback).
+			unmatchedNotes = append(unmatchedNotes, fmt.Sprintf("- %s: %s", code, serializeValue(val)))
 			continue
 		}
 		serialized := serializeValue(val)
@@ -1471,6 +1478,11 @@ func (s *Server) createExtractedEntity(
 			return uuid.Nil, fmt.Errorf("insert attr %s (items): %w", code, e)
 		}
 	}
+	if len(unmatchedNotes) > 0 {
+		if _, _, ferr := appendUnmatchedAttrsToFallback(ctx, q, entityID, kindID, attrDefMap, sourceLang, unmatchedNotes); ferr != nil {
+			return uuid.Nil, ferr
+		}
+	}
 
 	// D-GLOSSARY-ST-DEDUP M3a: stamp the app-maintained dedup key from the
 	// just-landed name (cached_name is set by the snapshot trigger on the name EAV).
@@ -1479,6 +1491,54 @@ func (s *Server) createExtractedEntity(
 	}
 
 	return entityID, nil
+}
+
+// appendUnmatchedAttrsToFallback captures attribute codes a kind hasn't registered
+// into that kind's "description" textarea (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK) instead
+// of silently dropping them — a glossary/wiki entity is authored prose, not a rigid
+// schema, so an unrecognized-but-real observation is worth keeping even if it can't be
+// filed under its own field yet. Appends (never overwrites) so repeated extraction runs
+// accumulate rather than clobber. Respects the INV-8 verified-clobber guard: a
+// human-curated description is never machine-appended to. Returns appended=false with a
+// skipReason ("unmapped" — the kind has no "description" attr_def at all, or "verified"
+// — INV-8 blocked the write) when it declines; the caller then keeps its prior
+// silent-skip behavior for those attribute codes.
+func appendUnmatchedAttrsToFallback(
+	ctx context.Context, q pgxRWQuerier, entityID, kindID uuid.UUID,
+	attrDefMap map[string]uuid.UUID, sourceLang string, lines []string,
+) (appended bool, skipReason string, err error) {
+	descID, ok := attrDefMap[kindID.String()+":description"]
+	if !ok {
+		return false, "unmapped", nil
+	}
+	var existingValue, existingConfidence string
+	selErr := q.QueryRow(ctx, `
+		SELECT original_value, confidence FROM entity_attribute_values
+		WHERE entity_id = $1 AND attr_def_id = $2
+	`, entityID, descID).Scan(&existingValue, &existingConfidence)
+	exists := selErr == nil
+	if exists && existingConfidence == "verified" {
+		return false, "verified", nil
+	}
+	appendText := strings.Join(lines, "\n")
+	if exists && existingValue != "" {
+		appendText = existingValue + "\n" + appendText
+	}
+	if exists {
+		_, err = q.Exec(ctx, `
+			UPDATE entity_attribute_values SET original_value = $1
+			WHERE entity_id = $2 AND attr_def_id = $3
+		`, appendText, entityID, descID)
+	} else {
+		_, err = q.Exec(ctx, `
+			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+			VALUES ($1, $2, $3, $4)
+		`, entityID, descID, sourceLang, appendText)
+	}
+	if err != nil {
+		return false, "", fmt.Errorf("append unmatched attrs to description: %w", err)
+	}
+	return true, "", nil
 }
 
 // mergeExtractedEntity merges attributes into an existing entity. The action is the
@@ -1496,9 +1556,14 @@ func (s *Server) mergeExtractedEntity(
 	attrDefMap map[string]uuid.UUID,
 	sourceLang string,
 ) (written []string, skipped []attrSkip, err error) {
+	var unmatchedCodes []string
+	var unmatchedNotes []string
 	for code, val := range ent.Attributes {
 		defID, ok := attrDefMap[kindID.String()+":"+code]
 		if !ok {
+			// D-GLOSSARY-UNMATCHED-ATTR-FALLBACK — see appendUnmatchedAttrsToFallback.
+			unmatchedCodes = append(unmatchedCodes, code)
+			unmatchedNotes = append(unmatchedNotes, fmt.Sprintf("- %s: %s", code, serializeValue(val)))
 			continue
 		}
 		// Resolve the effective action: the profile overrides; otherwise the authored
@@ -1676,6 +1741,20 @@ func (s *Server) mergeExtractedEntity(
 				}
 			}
 			written = append(written, code)
+		}
+	}
+
+	if len(unmatchedNotes) > 0 {
+		ok, reason, ferr := appendUnmatchedAttrsToFallback(ctx, q, entityID, kindID, attrDefMap, sourceLang, unmatchedNotes)
+		if ferr != nil {
+			return nil, nil, ferr
+		}
+		if ok {
+			written = append(written, unmatchedCodes...)
+		} else {
+			for _, code := range unmatchedCodes {
+				skipped = append(skipped, attrSkip{code, reason})
+			}
 		}
 	}
 

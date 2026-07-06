@@ -864,6 +864,175 @@ func TestBulkExtract_SkipReasonTaxonomy(t *testing.T) {
 	}
 }
 
+// TestAppendUnmatchedAttrsToFallback_UnmappedKind is a pure-unit proof (no DB) that a
+// kind with no "description" attr_def in its map declines the fallback write instead of
+// panicking on a nil querier — the early return happens before any DB call, matching
+// the prior silent-skip behavior for such a kind (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK).
+func TestAppendUnmatchedAttrsToFallback_UnmappedKind(t *testing.T) {
+	appended, reason, err := appendUnmatchedAttrsToFallback(
+		context.Background(), nil, uuid.New(), uuid.New(),
+		map[string]uuid.UUID{}, "en", []string{"- favorite_food: noodles"})
+	if err != nil {
+		t.Fatalf("want no error, got %v", err)
+	}
+	if appended {
+		t.Fatalf("want appended=false for a kind with no description attr_def")
+	}
+	if reason != "unmapped" {
+		t.Fatalf("want reason=unmapped, got %q", reason)
+	}
+}
+
+// TestBulkExtract_UnmatchedAttrFallsBackToDescriptionOnCreate proves
+// D-GLOSSARY-UNMATCHED-ATTR-FALLBACK: an attribute code the character kind hasn't
+// registered (e.g. an AI-guessed field name) is captured into the kind's existing
+// "description" textarea instead of being silently dropped.
+func TestBulkExtract_UnmatchedAttrFallsBackToDescriptionOnCreate(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1030"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "厨师",
+				"attributes": map[string]any{"appearance": "tall", "favorite_food": "noodles"}},
+		},
+	})
+
+	var description string
+	if err := pool.QueryRow(ctx, `
+		SELECT eav.original_value FROM entity_attribute_values eav
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='description'`, bookID).Scan(&description); err != nil {
+		t.Fatalf("query description: %v", err)
+	}
+	if !strings.Contains(description, "favorite_food") || !strings.Contains(description, "noodles") {
+		t.Errorf("want description to carry the unmatched attribute, got %q", description)
+	}
+}
+
+// TestBulkExtract_UnmatchedAttrAppendsToExistingDescriptionOnMerge proves the fallback
+// APPENDS to a pre-existing description rather than clobbering it — a re-extraction run
+// must not destroy prior authored/machine prose just because it also observed a field
+// the kind doesn't recognize.
+func TestBulkExtract_UnmatchedAttrAppendsToExistingDescriptionOnMerge(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1031"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	chap := uuid.NewString()
+	links := []map[string]any{{"chapter_id": chap, "chapter_index": 1}}
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "旅人",
+				"attributes":    map[string]any{"description": "A quiet wanderer."},
+				"chapter_links": links},
+		},
+	})
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "旅人",
+				"attributes":    map[string]any{"hobby": "reading"},
+				"chapter_links": links},
+		},
+	})
+
+	var description string
+	if err := pool.QueryRow(ctx, `
+		SELECT eav.original_value FROM entity_attribute_values eav
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='description'`, bookID).Scan(&description); err != nil {
+		t.Fatalf("query description: %v", err)
+	}
+	if !strings.Contains(description, "A quiet wanderer.") {
+		t.Errorf("fallback append clobbered the original description, got %q", description)
+	}
+	if !strings.Contains(description, "hobby") || !strings.Contains(description, "reading") {
+		t.Errorf("want description to also carry the unmatched attribute, got %q", description)
+	}
+}
+
+// TestBulkExtract_UnmatchedAttrRespectsVerifiedGuard proves the fallback honors INV-8:
+// a human-verified description is never machine-appended to, even as a side effect of
+// an unrelated unmatched attribute — the unmatched code is skipped with reason
+// 'verified' instead, so the caller can see it was NOT silently captured either.
+func TestBulkExtract_UnmatchedAttrRespectsVerifiedGuard(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1032"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	chap := uuid.NewString()
+	links := []map[string]any{{"chapter_id": chap, "chapter_index": 1}}
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "学者",
+				"attributes":    map[string]any{"description": "A careful scholar."},
+				"chapter_links": links},
+		},
+	})
+	if _, err := pool.Exec(ctx, `
+		UPDATE entity_attribute_values SET confidence='verified'
+		WHERE attr_value_id = (
+			SELECT eav.attr_value_id FROM entity_attribute_values eav
+			JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+			JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+			WHERE ge.book_id=$1 AND ba.code='description')`, bookID); err != nil {
+		t.Fatalf("mark verified: %v", err)
+	}
+
+	resp := postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "zh",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "学者",
+				"attributes":    map[string]any{"hobby": "reading"},
+				"chapter_links": links},
+		},
+	})
+
+	var description string
+	if err := pool.QueryRow(ctx, `
+		SELECT eav.original_value FROM entity_attribute_values eav
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='description'`, bookID).Scan(&description); err != nil {
+		t.Fatalf("query description: %v", err)
+	}
+	if description != "A careful scholar." {
+		t.Errorf("INV-8 guard FAILED: verified description mutated, got %q", description)
+	}
+	if r := skipReasonFor(resp, "学者", "hobby"); r != "verified" {
+		t.Errorf("want skip reason 'verified' for the unmatched code, got %q", r)
+	}
+}
+
 // TestDedupNormalized is the pure-unit proof of the per-item append dedup
 // (D-GLOSSARY-MULTIROW-ATTR-VALUES slice 1): drop empties, dedup by normalized
 // value (NFC + case/space-insensitive), preserve first-seen order. This is the
