@@ -38,6 +38,27 @@ FIND_TOOLS_NAME = "find_tools"
 # Default number of matches returned to the agent.
 FIND_TOOLS_DEFAULT_LIMIT = 8
 
+# ── Part A: tool group directory (near-zero-cost discovery pointer) ─────────
+# Injected as PLAIN TEXT (not tool schemas) alongside ALWAYS_ON_CORE, so the model
+# has a map of what domains exist without paying a hot-seeded domain's full
+# schema tax (~15-20 one-line entries ≈ 300-500 tokens total, vs ~24K for a
+# hot-seeded domain — see docs/eval/context-budget/context-explosion-
+# investigation-2026-07-06.md). Keys are tool-name-prefixes (the same federation
+# naming convention `_provider_prefix` reads); `group` on find_tools scopes the
+# fuzzy search to one entry instead of the full ~150-tool flat catalog.
+GROUP_DIRECTORY: dict[str, str] = {
+    "glossary": "Lore entities (characters/locations/items/kinds) — CRUD + wiki + standards ontology.",
+    "story": "Manuscript search + chapter reads (story_search, book_get_chapter).",
+    "composition": "Outline/scene/canon planning — PlanForge, Story Grid rules.",
+    "knowledge": "Derived KG facts (Neo4j-backed), passage retrieval, memory_search.",
+    "translation": "Job-based chapter/book translation pipeline.",
+    "book": "Book/chapter CRUD, publishing, chapter body reads.",
+    "jobs": "Job status/cancel for any long-running operation.",
+    "catalog": "Public catalog browsing (published books, discovery).",
+    "registry": "Agent/tool registry administration.",
+    "settings": "User/account settings and provider-model configuration.",
+}
+
 FIND_TOOLS_TOOL: dict = {
     "type": "function",
     "function": {
@@ -61,6 +82,11 @@ FIND_TOOLS_TOOL: dict = {
                     "type": "integer",
                     "description": "Max tools to return (default 8).",
                     "default": FIND_TOOLS_DEFAULT_LIMIT,
+                },
+                "group": {
+                    "type": "string",
+                    "enum": sorted(GROUP_DIRECTORY),
+                    "description": "Optional — scope the search to one tool domain from your tool-domain directory. Omit to search everything.",
                 },
             },
             "required": ["intent"],
@@ -156,15 +182,25 @@ def surface_hot_domains(
 def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:
     """The catalog tool names whose domain prefix is in ``domains`` — the set to
     seed into the discovery active-set so they're advertised on the first pass.
-    Empty ``domains`` → empty set (universal surface: nothing pre-seeded)."""
+    Empty ``domains`` → empty set (universal surface: nothing pre-seeded).
+    CAT-4: a `legacy`-tagged tool is NEVER hot-seeded, even when its domain is —
+    the whole point of tagging it legacy is that it stops riding the wire by
+    default; a domain hot-seed that ignored this would silently defeat CAT-4."""
     if not domains:
         return set()
     out: set[str] = set()
     for td in catalog:
         name = tool_name(td)
-        if name and _provider_prefix(name) in domains:
+        if name and _provider_prefix(name) in domains and not is_legacy_tool(td):
             out.add(name)
     return out
+
+
+def group_directory_text() -> str:
+    """Render GROUP_DIRECTORY as the plain-text block injected into a surface's
+    system prompt alongside ALWAYS_ON_CORE. Deterministic order (sorted by key)."""
+    lines = [f"- {name}: {desc}" for name, desc in sorted(GROUP_DIRECTORY.items())]
+    return "Tool domains (use find_tools with group=<name> to search one):\n" + "\n".join(lines)
 
 
 # ── C-TOOL: tier + meta readers ──────────────────────────────────────────────
@@ -192,6 +228,27 @@ def tool_tier(tool_def: dict) -> str:
     carries no tier — a missing tier must NEVER auto-commit a write."""
     tier = tool_meta(tool_def).get("tier")
     return tier if tier in ("R", "A", "W", "S") else "R"
+
+
+# CAT-4 (mcp-tool-io.md Part 4) — a superseded tool is tagged `_meta.visibility:
+# "legacy"` rather than deleted, so any existing caller keeps working. A legacy
+# tool must never be discoverable: excluded from search_catalog() and from every
+# domain hot-seed. The ai-gateway TS twin (`find-tools.ts` `toolVisibility()`/
+# `searchCatalog()`) must carry the identical exclusion — the two engines are
+# documented to rank identically; this is the one place they must also FILTER
+# identically, or a legacy tool leaks through whichever surface forgot the check.
+_VISIBILITY_LEGACY = "legacy"
+
+
+def tool_visibility(tool_def: dict) -> str:
+    """C-TOOL `_meta.visibility` ∈ discoverable|legacy. Defaults to "discoverable"
+    when absent — every pre-CAT-4 tool is unaffected without a code change."""
+    vis = tool_meta(tool_def).get("visibility")
+    return vis if vis == _VISIBILITY_LEGACY else "discoverable"
+
+
+def is_legacy_tool(tool_def: dict) -> bool:
+    return tool_visibility(tool_def) == _VISIBILITY_LEGACY
 
 
 def tool_undo_hint(result_meta: dict | None) -> dict | None:
@@ -275,6 +332,7 @@ def search_catalog(
     limit: int = FIND_TOOLS_DEFAULT_LIMIT,
     *,
     exclude: set[str] | None = None,
+    group: str | None = None,
 ) -> tuple[list[dict], bool]:
     """C-FT — fuzzy-search the cached catalog for tools matching ``intent``.
 
@@ -288,13 +346,27 @@ def search_catalog(
 
     ``exclude`` — names already always-on (the core); they're skipped so a
     search never re-suggests a tool the agent already has.
+
+    ``group`` (Part A) — when set, scope the search to tools whose domain
+    prefix matches (see GROUP_DIRECTORY); improves precision over a fully-flat
+    search across ~150 tools.
+
+    CAT-4 — a `legacy`-tagged tool is EXCLUDED unconditionally, group filter or
+    not. This is the mechanism the tool-catalog-simplification eval
+    (docs/eval/tool-catalog-comprehension-2026-07-06.md) found is load-bearing:
+    a legacy tool's short, punchy pre-CAT-4 description out-scores a new
+    tool's more precise one on raw token overlap, so description/synonym
+    tuning alone does not make a superseded tool lose the ranking race —
+    only removing it from the search space does.
     """
     exclude = exclude or set()
     intent_tokens = _tokens(intent)
     scored: list[tuple[float, dict]] = []
     for tool_def in catalog:
         name = tool_name(tool_def)
-        if not name or name in exclude:
+        if not name or name in exclude or is_legacy_tool(tool_def):
+            continue
+        if group is not None and _provider_prefix(name) != group:
             continue
         s = _score(intent_tokens, intent, tool_def)
         if s >= INCLUSION_FLOOR:
@@ -353,6 +425,7 @@ def find_tools_result(
     *,
     exclude: set[str],
     catalog_meta: dict,
+    group: str | None = None,
 ) -> tuple[dict, list[str]]:
     """Build the ``find_tools`` tool RESULT payload + the list of matched names
     to union into the active set (C-FT loop semantics).
@@ -360,7 +433,7 @@ def find_tools_result(
     The payload distinguishes (H10): a genuinely empty result from one where the
     only plausible providers are *temporarily unavailable* — so the agent says
     "try again", never a false "I can't"."""
-    matches, confident = search_catalog(catalog, intent, limit, exclude=exclude)
+    matches, confident = search_catalog(catalog, intent, limit, exclude=exclude, group=group)
     unavailable = provider_availability(catalog_meta)
     payload: dict = {"tools": matches}
     if not matches:

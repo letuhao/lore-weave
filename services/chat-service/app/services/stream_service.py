@@ -674,6 +674,9 @@ async def _stream_with_tools(
     subagent_depth: int = 0,
     allowed_tool_names: set[str] | None = None,
     trace: "TraceAccumulator | None" = None,
+    stateful: bool = False,
+    previous_response_id: str | None = None,
+    delta_messages: list[dict] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -712,7 +715,13 @@ async def _stream_with_tools(
         idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
     )
     try:
-        working: list[dict] = list(messages)
+        # Stateful CONTINUE sends the DELTA on pass 0 (the server holds the history);
+        # ESTABLISH / stateless send the full `messages`. `messages` (full) is retained
+        # for the E1 re-establish fallback below. _initial_working_len marks the end of
+        # pass-0 content so E1 can splice full-context + the tool results appended since.
+        _continuing = bool(stateful and previous_response_id and delta_messages is not None)
+        working: list[dict] = list(delta_messages) if _continuing else list(messages)
+        _initial_working_len = len(working)
         # C6: on a resume pass, seed the token totals from the suspended first
         # run so the final usage is summed across both runs (design D10).
         total_input = seed_usage[0] if seed_usage else 0
@@ -722,6 +731,14 @@ async def _stream_with_tools(
         # suspended run's cache split is transport-ephemeral, not billed state.
         total_cache_creation = 0
         total_cache_read = 0
+        # Stateful /v1/responses chain (P2 §5/E2). `_chain_id` starts at the head to
+        # continue from (None = establish) and advances to each iteration's returned
+        # response_id; the FINAL value is the turn's chain head to persist.
+        # `_stateful_sent` marks how much of `working` the server already holds, so each
+        # stateful iteration sends only the NEW messages (the delta) — the tool-loop
+        # re-send collapse (E2). Stateless mode ignores both (sends full `working`).
+        _chain_id = previous_response_id
+        _stateful_sent = 0
         # W1/observability (context-explosion fix #5) — count provider completions
         # this turn. `total_input` is the SUM across them (each tool-loop iteration
         # re-sends the full prompt incl. tool schemas), so a turn's input_tokens
@@ -806,11 +823,24 @@ async def _stream_with_tools(
             # tool-free final pass (D7). Once the write budget is spent, the next
             # pass must answer in text.
             last_iter = write_passes >= max_iterations - 1
+            # Stateful (P2 §5): send only the messages the server does NOT already hold
+            # (working[_stateful_sent:]) chained onto the prior response id. Stateless:
+            # send the full working list (today's behavior). `_stateful_sent` is advanced
+            # to len(working) right after — before this pass's tool results are appended.
+            if stateful:
+                _messages_out = working[_stateful_sent:]
+            else:
+                _messages_out = working
             request_kwargs: dict = {
                 "model_source": model_source,
                 "model_ref": model_ref,
-                "messages": working,
+                "messages": _messages_out,
             }
+            if stateful:
+                request_kwargs["stateful"] = True
+                if _chain_id:
+                    request_kwargs["previous_response_id"] = _chain_id
+                _stateful_sent = len(working)
             if gen_params.get("temperature") is not None:
                 request_kwargs["temperature"] = gen_params["temperature"]
             if gen_params.get("top_p") is not None:
@@ -949,7 +979,23 @@ async def _stream_with_tools(
                         llm_call_count += 1
                     elif isinstance(ev, DoneEvent):
                         finish_reason = ev.finish_reason
+                        # Stateful (P2 §5/E2): advance the chain head to this pass's
+                        # response id so the next tool-loop pass / next turn continues
+                        # from it. The final value is the turn's persisted head.
+                        if ev.response_id:
+                            _chain_id = ev.response_id
             except LLMError as exc:
+                # E1 (P2 §6) — a stale previous_response_id: the provider rejected the
+                # chain. Re-establish transparently: resend the FULL working context
+                # with no chain id, from THIS pass, once. DB is truth; the id was a hint.
+                if getattr(exc, "code", "") == "LLM_RESPONSE_CHAIN_NOT_FOUND" and stateful:
+                    # Rebuild FULL context (the delta alone would still be history-less)
+                    # + any tool results appended since pass 0, then resend from scratch.
+                    working = list(messages) + working[_initial_working_len:]
+                    _initial_working_len = len(messages)
+                    _chain_id = None
+                    _stateful_sent = 0
+                    continue
                 # D8 — provider doesn't support tools: drop tools and
                 # retry. Only meaningful when this pass actually offered
                 # them; otherwise the error is real and propagates.
@@ -1020,10 +1066,13 @@ async def _stream_with_tools(
                         limit = int(limit)
                     except (TypeError, ValueError):
                         limit = FIND_TOOLS_DEFAULT_LIMIT
+                    # Part A — optional group scoping (tool-catalog-simplification spec).
+                    group = args_obj.get("group") or None
                     payload, matched = find_tools_result(
                         discovery_catalog or [], intent, limit,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
                         catalog_meta=knowledge_client.get_catalog_meta(),
+                        group=group,
                     )
                     active_tool_names.update(matched)
                     if curated and activation_state is not None:

@@ -35,10 +35,12 @@ from tests.test_stream_tools import (
 # ── catalog builders ─────────────────────────────────────────────────────────
 
 
-def _tool(name: str, desc: str = "", *, tier: str = "R", synonyms=None) -> dict:
+def _tool(name: str, desc: str = "", *, tier: str = "R", synonyms=None, visibility: str | None = None) -> dict:
     meta: dict = {"tier": tier}
     if synonyms:
         meta["synonyms"] = synonyms
+    if visibility:
+        meta["visibility"] = visibility
     return {
         "type": "function",
         "function": {
@@ -649,3 +651,81 @@ class TestHotSetAdvertisedOnFirstPass:
         assert kc.mcp_execute_tool.await_count == 1
         assert kc.mcp_execute_tool.await_args.kwargs["tool_name"] == "glossary_search"
         assert chunks[-1]["finish_reason"] == "stop"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CAT-4 (mcp-tool-io.md Part 4) — legacy tool visibility
+# ════════════════════════════════════════════════════════════════════════════
+
+_LEGACY_CATALOG = [
+    _tool("glossary_book_create", "Create a book-native genre, kind, or attribute.",
+          tier="A", synonyms=["add a kind", "add a genre", "create attribute"],
+          visibility="legacy"),
+    _tool("glossary_user_create", "Create a genre, kind, or attribute in your library.",
+          tier="A", synonyms=["add a kind"], visibility="legacy"),
+    _tool("glossary_ontology_upsert",
+          "Create or update book- or user-tier ontology rows (genre, kind, attribute).",
+          tier="A", synonyms=["add a kind", "add a genre", "add an attribute"]),
+    _tool("glossary_search", "Search glossary entities", tier="R"),
+]
+
+
+class TestVisibilityReaders:
+    def test_defaults_to_discoverable_without_meta(self):
+        assert td.tool_visibility({"function": {"name": "x"}}) == "discoverable"
+        assert td.is_legacy_tool({"function": {"name": "x"}}) is False
+
+    def test_reads_legacy_from_meta(self):
+        t = _tool("glossary_book_create", visibility="legacy")
+        assert td.tool_visibility(t) == "legacy"
+        assert td.is_legacy_tool(t) is True
+
+    def test_unknown_visibility_value_is_not_legacy(self):
+        t = {"function": {"name": "x", "_meta": {"visibility": "bogus"}}}
+        assert td.tool_visibility(t) == "discoverable"
+
+
+class TestSearchCatalogCAT4:
+    def test_legacy_tool_never_matches_even_on_exact_synonym(self):
+        """The regression the eval caught: without CAT-4, the legacy tool's short
+        punchy description out-scores the new tool on raw token overlap. CAT-4
+        must exclude it categorically, not rely on ranking."""
+        matches, confident = td.search_catalog(_LEGACY_CATALOG, "add a new kind to the book", 3)
+        names = [m["name"] for m in matches]
+        assert "glossary_book_create" not in names
+        assert "glossary_user_create" not in names
+        assert "glossary_ontology_upsert" in names
+        assert confident
+
+    def test_group_scopes_to_one_domain(self):
+        matches, _ = td.search_catalog(_MIXED_CATALOG, "list something", 8, group="book")
+        names = {m["name"] for m in matches}
+        assert names <= {"book_create", "book_list"}
+
+    def test_group_none_searches_everything(self):
+        matches, _ = td.search_catalog(_MIXED_CATALOG, "create a book", 8, group=None)
+        names = {m["name"] for m in matches}
+        assert "book_create" in names
+
+
+class TestHotToolNamesCAT4:
+    def test_legacy_tool_excluded_from_hot_seed_even_in_its_domain(self):
+        hot = td.hot_tool_names(_LEGACY_CATALOG, {"glossary"})
+        assert "glossary_book_create" not in hot
+        assert "glossary_user_create" not in hot
+        assert "glossary_search" in hot
+        assert "glossary_ontology_upsert" in hot
+
+
+class TestGroupDirectory:
+    def test_glossary_entry_exists(self):
+        assert "glossary" in td.GROUP_DIRECTORY
+
+    def test_text_is_deterministic_and_mentions_group_param(self):
+        text = td.group_directory_text()
+        assert "glossary" in text
+        assert "group=" in text
+
+    def test_find_tools_schema_advertises_group_enum(self):
+        props = td.FIND_TOOLS_TOOL["function"]["parameters"]["properties"]
+        assert props["group"]["enum"] == sorted(td.GROUP_DIRECTORY)

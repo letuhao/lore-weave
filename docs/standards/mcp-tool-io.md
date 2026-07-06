@@ -82,6 +82,24 @@ A raw-stream smoke that sees `TOOL_CALL_START` / `RUN_FINISHED{suspended}` only 
 
 ---
 
+## Part 4 — Catalog hygiene: consolidation, visibility & batch
+
+At ~150-160 federated tools, how tools are *composed and exposed as a set* matters as much as any single tool's shape. These rules govern merging/deprecating/batching tools; they don't replace Parts 1-3, they compose with them. *(Origin: `docs/specs/2026-07-06-tool-catalog-simplification.md`, grounded in a live measured bug — a book-scoped surface paying a flat ~24K-token tool-schema tax from whole-domain hot-seeding — and cross-checked against external practice: Anthropic's own "writing tools for agents" guidance, the STRAP/Six-Tool consolidation patterns, RAG-MCP's finding that tool-selection accuracy degrades as action-enum tools grow branchier.)*
+
+### CAT-1 · Merge by implicit discriminator, not by explicit action-enum, when branches diverge
+When consolidating several verb-specific tools on one resource (create/update/delete), prefer a **single implicit signal already present in the data** over an explicit `action` string/enum — e.g. an optimistic-lock field (`base_version`) **absent ⇒ create**, **present ⇒ update** (an "upsert"). An explicit `action` enum whose branches need genuinely different required fields (create needs full fields, delete needs just an id) can't be expressed as a flat required-list in JSON Schema without falling back to prose ("required only when action=X") — which violates IN-4. Where verbs share fields cleanly (create+update usually do), merge them; where they don't (delete usually doesn't), keep delete as its own tool.
+
+### CAT-2 · A merge across tools with different safety/confirm behavior must branch explicitly, never assume uniformity
+Before merging two tools, check whether they differ in whether they mint a confirm-token (human-in-the-loop write) vs. execute directly (e.g. a book-tier delete that requires confirm vs. a user-tier delete that's a direct, reversible soft-delete). If they differ, the merged tool's **description and schema must state the branching condition explicitly** (e.g. "when `scope=book`, returns a `confirm_token`; when `scope=user`, executes immediately"), and **each branch gets its own test**. Never silently normalize two different safety tiers into one code path by merging their tools.
+
+### CAT-3 · Batch is `items[]`, bounded, and returns per-item results
+An array-input tool takes **1..N** items — a single item is just a 1-element array; there is no separate "singular" arg shape to design or maintain. `items` declares `minItems`/`maxItems` in the schema (IN-4). The result is a **per-item** status list (`{code, status, error?}` per item), never an opaque all-or-nothing success — this extends OUT-5 (no silent truncation/failure) to the batch case: a batch call that fails item 7 of 10 must say so, not discard the other 9 successes or fail the whole call.
+
+### CAT-4 · Tool visibility: `_meta.visibility` gates discovery, not existence
+A consolidated or superseded tool is **not deleted** — existing callers (older FE builds, tests, other services) keep working. Instead it's tagged `_meta.visibility: "legacy"` (default, when absent: `"discoverable"`). `find_tools`/`search_catalog` (both the chat-service and ai-gateway implementations — they must stay in lockstep per their own header comment) and any domain hot-seed **exclude `legacy`-tagged tools entirely** — a legacy tool never appears in a fuzzy-search result and is never hot-seeded, no matter how well its description matches an intent. The **only** path to activating a legacy tool for a session is an explicit, user-initiated pin — a **Settings & Configuration Boundary**-governed per-session choice (SET-1: this is a user setting, not a global unlock), never a blanket "show me everything" mode.
+
+---
+
 ## Enforcement — current & required
 
 **Enforced today:**
@@ -100,6 +118,7 @@ A raw-stream smoke that sees `TOOL_CALL_START` / `RUN_FINISHED{suspended}` only 
 1. **No cross-service "MCP-tool lint"** that fails a *new* tool for: a bare-`string` arg whose description enumerates a finite set (IN-3), a set-returning tool with no `get_by_id` sibling and no `@small_return` (OUT-1), or a tool-result site bypassing `_tool_result_content` in a service the L3 lint doesn't yet cover. Today these are caught per-tool by hand-written tests, so a tool with no test slips.
 2. **OUT-1/OUT-2 have no repo-wide contract-snapshot harness yet** — the Context Budget Law §6b names it as planned (per-tool return-shape snapshot + `@small_return` honesty check). Until it lands, reference-first is convention on new tools.
 3. The IN-8 drift-lock exists for the **knowledge** MCP surface; the same discipline for glossary/composition/other domain surfaces is per-service and uneven.
+4. **CAT-4 tool visibility has no lint yet.** Nothing today checks that a `legacy`-tagged tool is actually excluded from `search_catalog`/hot-seed in *both* `tool_discovery.py` (chat-service) and `find-tools.ts` (ai-gateway) — they must stay in lockstep or one surface leaks a legacy tool the other correctly hides. Tracked as BUILD work in `docs/specs/2026-07-06-tool-catalog-simplification.md`.
 
 ---
 
@@ -116,3 +135,7 @@ A raw-stream smoke that sees `TOOL_CALL_START` / `RUN_FINISHED{suspended}` only 
 - [ ] Serialized through `_tool_result_content` (OUT-3); success = bare payload (OUT-4)
 - [ ] Bounded returns carry a partiality flag (OUT-5); frontend tools carry intent only (OUT-6)
 - [ ] Proven by **effect** — live cross-service / real-DB / browser smoke (Part 3)
+- [ ] Consolidating verbs? Prefer an implicit discriminator over an `action` enum when branches diverge (CAT-1)
+- [ ] Merging tools with different confirm/safety behavior? Branch explicitly, test each branch (CAT-2)
+- [ ] Multi-item support is `items[]` (1..N, bounded), with per-item results — no separate singular shape (CAT-3)
+- [ ] Deprecating a tool? Tag `_meta.visibility:"legacy"`, don't delete — verify it's excluded from discovery on **both** federation surfaces (CAT-4)

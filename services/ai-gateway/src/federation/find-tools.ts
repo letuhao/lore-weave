@@ -21,6 +21,22 @@ const CONFIDENCE_THRESHOLD = 0.3;
  * true "no such tool" reads as empty (anti-false-suggestion), not a bogus match. */
 const INCLUSION_FLOOR = 0.2;
 
+// Part A (tool-catalog-simplification spec) — the tool-group directory. Mirrors chat-service's
+// tool_discovery.py GROUP_DIRECTORY verbatim; keep the two in lockstep (same rule as the search
+// algorithm itself). Injected as plain text alongside a surface's core tools, not as schemas.
+export const GROUP_DIRECTORY: Readonly<Record<string, string>> = {
+  glossary: 'Lore entities (characters/locations/items/kinds) — CRUD + wiki + standards ontology.',
+  story: 'Manuscript search + chapter reads (story_search, book_get_chapter).',
+  composition: 'Outline/scene/canon planning — PlanForge, Story Grid rules.',
+  knowledge: 'Derived KG facts (Neo4j-backed), passage retrieval, memory_search.',
+  translation: 'Job-based chapter/book translation pipeline.',
+  book: 'Book/chapter CRUD, publishing, chapter body reads.',
+  jobs: 'Job status/cancel for any long-running operation.',
+  catalog: 'Public catalog browsing (published books, discovery).',
+  registry: 'Agent/tool registry administration.',
+  settings: 'User/account settings and provider-model configuration.',
+};
+
 /** The MCP tool def for find_tools, advertised on every minimal surface. */
 export const FIND_TOOLS_TOOL = {
   name: FIND_TOOLS_NAME,
@@ -34,6 +50,11 @@ export const FIND_TOOLS_TOOL = {
     properties: {
       intent: { type: 'string', description: 'What you want to do, in your own words.' },
       limit: { type: 'integer', description: 'Max tools to return (default 8).', default: FIND_TOOLS_DEFAULT_LIMIT },
+      group: {
+        type: 'string',
+        enum: Object.keys(GROUP_DIRECTORY).sort(),
+        description: 'Optional — scope the search to one tool domain from your tool-domain directory. Omit to search everything.',
+      },
     },
     required: ['intent'],
     additionalProperties: false,
@@ -63,6 +84,27 @@ function toolSynonyms(t: McpTool): string[] {
   const meta = t?._meta;
   const syn = meta && typeof meta === 'object' ? (meta as { synonyms?: unknown }).synonyms : undefined;
   return Array.isArray(syn) ? syn.filter((s): s is string => typeof s === 'string') : [];
+}
+
+const VISIBILITY_LEGACY = 'legacy';
+
+/** CAT-4 (mcp-tool-io.md Part 4) — `_meta.visibility` ∈ discoverable|legacy. Defaults to
+ * "discoverable" when absent, so every pre-CAT-4 tool is unaffected without a code change. */
+function toolVisibility(t: McpTool): string {
+  const meta = t?._meta;
+  const vis = meta && typeof meta === 'object' ? (meta as { visibility?: unknown }).visibility : undefined;
+  return vis === VISIBILITY_LEGACY ? VISIBILITY_LEGACY : 'discoverable';
+}
+
+function isLegacyTool(t: McpTool): boolean {
+  return toolVisibility(t) === VISIBILITY_LEGACY;
+}
+
+/** Domain prefix of a tool name (`glossary_book_patch` → `glossary`), the same federation
+ * naming convention chat-service's `_provider_prefix` reads. Used for Part A `group` scoping. */
+function providerPrefix(name: string): string {
+  const i = name.indexOf('_');
+  return i > 0 ? name.slice(0, i) : '';
 }
 
 const TOKEN_RE = /[a-z0-9]+/g;
@@ -151,12 +193,14 @@ export function searchCatalog(
   intent: string,
   limit: number = FIND_TOOLS_DEFAULT_LIMIT,
   exclude: ReadonlySet<string> = new Set(),
+  group?: string | null,
 ): { matches: ToolMatch[]; confident: boolean } {
   const intentTokens = tokens(intent);
   const scored: Array<{ s: number; t: McpTool }> = [];
   for (const t of catalog) {
     const name = toolName(t);
-    if (!name || exclude.has(name)) continue;
+    if (!name || exclude.has(name) || isLegacyTool(t)) continue;
+    if (group != null && providerPrefix(name) !== group) continue;
     const s = score(intentTokens, t);
     if (s >= INCLUSION_FLOOR) scored.push({ s, t });
   }
@@ -178,8 +222,9 @@ export function findToolsResult(
   limit: number,
   exclude: ReadonlySet<string>,
   unavailableProviders: string[],
+  group?: string | null,
 ): { payload: Record<string, unknown>; matchedNames: string[] } {
-  const { matches, confident } = searchCatalog(catalog, intent, limit, exclude);
+  const { matches, confident } = searchCatalog(catalog, intent, limit, exclude, group);
   const payload: Record<string, unknown> = { tools: matches };
   if (matches.length === 0) {
     if (unavailableProviders.length > 0) {
