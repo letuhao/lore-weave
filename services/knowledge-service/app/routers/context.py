@@ -92,6 +92,11 @@ class ContextBuildRequest(BaseModel):
     # semantic glossary + LLM) and serve the light static path. Default True keeps
     # every existing caller's behavior byte-identical (a versioned opt-in).
     grounding: bool = True
+    # M1b (2026-07-06): the chapter the editor `<Chat>` panel is open on. When
+    # present (editor turns only), the Mode-3 L3 ranker boosts passages near this
+    # chapter (working-scope boost). Omitted on every non-editor turn → boost inert.
+    # Additive/optional so an older chat-service that never sends it is byte-identical.
+    current_chapter_id: UUID | None = None
 
 
 class ContextBuildResponse(BaseModel):
@@ -180,6 +185,7 @@ async def build(
             entity_access_repo=entity_access_repo,
             project_ids=req.project_ids,
             grounding=req.grounding,
+            current_chapter_id=req.current_chapter_id,
         )
         _mode_label = built.mode
     except ProjectNotFound:

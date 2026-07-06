@@ -1990,6 +1990,10 @@ async def stream_response(
         message=user_message_content,
         language=display_language,
         grounding=_grounding_presence.grounding_needed,
+        # M1b — forward the editor's open chapter so knowledge's L3 ranker can
+        # boost passages near it (working-scope boost). Only editor turns carry
+        # editor_context; other surfaces send None → boost inert downstream.
+        current_chapter_id=(editor_context or {}).get("chapter_id"),
     )
 
     # ── P0-5 (audit Area 3, SEC-4 / ML-4) — neutralize indirect prompt-injection

@@ -15,10 +15,21 @@ import pytest
 
 from app.db.neo4j_repos.passages import (
     find_passages_by_vector,
+    get_chapter_index_for_source,
     upsert_passage,
 )
 
 DIM = 1024
+
+
+class _SingleRead:
+    """Mimics a run_read result whose single() returns one record (or None)."""
+
+    def __init__(self, record):
+        self._record = record
+
+    async def single(self):
+        return self._record
 
 
 class _Result:
@@ -112,3 +123,58 @@ async def test_find_wires_include_drafts_and_canon_clause(monkeypatch, include_d
     # … and the canon gate is present in the cypher (legacy null = canon).
     assert "$include_drafts" in captured["cypher"]
     assert "coalesce(node.canon, true) = true" in captured["cypher"]
+
+
+# -- M1b get_chapter_index_for_source ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_index_resolves_and_scopes(monkeypatch):
+    """Resolver returns the int index and scopes by user+project+chapter,
+    filtering to source_type='chapter'."""
+    captured: dict = {}
+
+    async def fake_read(session, cypher, **kwargs):
+        captured["cypher"] = cypher
+        captured["kwargs"] = kwargs
+        return _SingleRead({"chapter_index": 42})
+
+    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+
+    idx = await get_chapter_index_for_source(
+        MagicMock(), user_id="u", project_id="p", chapter_id="ch-1",
+    )
+    assert idx == 42
+    assert captured["kwargs"] == {"user_id": "u", "project_id": "p", "chapter_id": "ch-1"}
+    # tenancy + type scoping present in the cypher.
+    assert "p.user_id = $user_id" in captured["cypher"]
+    assert "p.project_id = $project_id" in captured["cypher"]
+    assert "p.source_type = 'chapter'" in captured["cypher"]
+    assert "p.source_id = $chapter_id" in captured["cypher"]
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_index_none_when_no_passages(monkeypatch):
+    """No ingested passages for the chapter (not extracted / stale id) → None,
+    so the caller skips the boost rather than erroring."""
+    async def fake_read(session, cypher, **kwargs):
+        return _SingleRead(None)
+
+    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    idx = await get_chapter_index_for_source(
+        MagicMock(), user_id="u", project_id="p", chapter_id="ch-x",
+    )
+    assert idx is None
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_index_none_when_index_null(monkeypatch):
+    """A passage row with a NULL chapter_index → None (never int(None))."""
+    async def fake_read(session, cypher, **kwargs):
+        return _SingleRead({"chapter_index": None})
+
+    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    idx = await get_chapter_index_for_source(
+        MagicMock(), user_id="u", project_id="p", chapter_id="ch-1",
+    )
+    assert idx is None

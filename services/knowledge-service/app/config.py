@@ -97,6 +97,20 @@ class Settings(BaseSettings):
     # per-user setting. See docs/eval/context-budget/M4-graph-anchor-bridge-2026-07-06.md.
     context_passage_graph_expansion_enabled: bool = True
 
+    # M1b (2026-07-06) — working-scope boost. When the editor `<Chat>` panel is
+    # open on a chapter, chat-service forwards that chapter_id; the L3 passage
+    # ranker resolves it to a chapter_index and multiplicatively boosts passages
+    # WITHIN `window` chapters of it (linear falloff), so "what I'm editing right
+    # now" outranks equally-relevant-but-distant lore — the Aider open-file idea
+    # (research 04 §2). Intent-INDEPENDENT (separate from the recency term, which
+    # only fires for HISTORICAL/RECENT_EVENT). Inert on every non-editor turn
+    # (reader/glossary chat send no chapter_id) and when the chapter has no
+    # ingested passages. `boost=0.0` ⇒ OFF (byte-identical). Conservative default:
+    # a same-chapter passage gets ×1.3, so a distant passage with materially higher
+    # cosine still wins — bounds the reorder-a-far-true-answer regression risk.
+    context_working_scope_boost: float = 0.30
+    context_working_scope_window: int = 2
+
     # D-BACKFILL-NO-SCOPE-LIMIT (2026-07-06) — the published-passage backfill embeds
     # EVERY published chapter of a book, and on the embedding-model PUT it runs
     # SYNCHRONOUSLY in-request. On a large book (万古神帝: 4232 published chapters) that

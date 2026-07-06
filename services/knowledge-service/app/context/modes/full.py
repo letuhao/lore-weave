@@ -166,6 +166,7 @@ async def _safe_l3_passages(
     project: Project,
     message: str,
     intent: IntentResult,
+    current_chapter_id: UUID | None = None,
     llm_client: LLMClient | None = None,
     rerank_model: str | None = None,
     reranker_client=None,
@@ -177,12 +178,18 @@ async def _safe_l3_passages(
     call fails, the vector search returns nothing, or any exception
     propagates. The selector itself handles most of these; this
     wrapper adds the timeout ceiling and the session plumbing.
+
+    M1b: when the editor forwarded the open `current_chapter_id`, resolve
+    it to a chapter_index inside the same session and pass it (plus the
+    boost knobs) to the selector so passages near the working chapter are
+    up-ranked. A missing/foreign chapter resolves to None → boost inert.
     """
     # Lazy import is deliberate — test helpers patch
     # `app.context.selectors.passages.select_l3_passages` directly, and
     # a top-level import here would bind the original reference at
     # module load time, making the monkeypatch a no-op.
     from app.context.selectors.passages import select_l3_passages
+    from app.db.neo4j_repos.passages import get_chapter_index_for_source
 
     if embedding_client is None or not project.embedding_model:
         return []
@@ -198,8 +205,22 @@ async def _safe_l3_passages(
         )
         return []
 
+    # M1b — the working-scope boost is only worth its config when the editor
+    # is open on a chapter AND the boost is enabled. `working_boost=0.0`
+    # (kill-switch) skips the resolution query entirely (byte-identical).
+    working_boost = settings.context_working_scope_boost
+    working_window = settings.context_working_scope_window
+
     try:
         async with neo4j_session() as session:
+            working_chapter_index: int | None = None
+            if working_boost > 0.0 and current_chapter_id is not None:
+                working_chapter_index = await get_chapter_index_for_source(
+                    session,
+                    user_id=str(user_id),
+                    project_id=str(project.project_id),
+                    chapter_id=str(current_chapter_id),
+                )
             return await asyncio.wait_for(
                 select_l3_passages(
                     session,
@@ -211,6 +232,9 @@ async def _safe_l3_passages(
                     embedding_model=project.embedding_model,
                     embedding_dim=embedding_dim,
                     user_uuid=user_id,
+                    current_chapter_index=working_chapter_index,
+                    working_scope_boost=working_boost,
+                    working_scope_window=working_window,
                     llm_client=llm_client,
                     rerank_model=rerank_model,
                     reranker_client=reranker_client,
@@ -659,6 +683,7 @@ async def build_full_mode(
     llm_client: LLMClient | None = None,
     language: str | None = None,
     entity_access_repo=None,
+    current_chapter_id: UUID | None = None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
@@ -757,6 +782,7 @@ async def build_full_mode(
             embedding_client,
             user_id=user_id, project=project,
             message=message, intent=intent_obj,
+            current_chapter_id=current_chapter_id,
             llm_client=llm_client,
             rerank_model=rerank_model,
             reranker_client=reranker_client,

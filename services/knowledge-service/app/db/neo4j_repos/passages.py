@@ -39,6 +39,7 @@ __all__ = [
     "count_passages_by_source_type",
     "set_source_lang_for_source",
     "get_source_ingest_state",
+    "get_chapter_index_for_source",
 ]
 
 # C8 (D-K19e-γa-01) — closed set of recognised source_type values on
@@ -382,6 +383,49 @@ RETURN p.content_hash AS content_hash,
        p.embedding_model AS embedding_model
 LIMIT 1
 """
+
+
+_GET_CHAPTER_INDEX_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.project_id = $project_id
+  AND p.source_type = 'chapter'
+  AND p.source_id = $chapter_id
+  AND p.chapter_index IS NOT NULL
+RETURN p.chapter_index AS chapter_index
+LIMIT 1
+"""
+
+
+async def get_chapter_index_for_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    chapter_id: str,
+) -> int | None:
+    """M1b — resolve the ordinal `chapter_index` of a chapter from any of its
+    ingested `:Passage` nodes (they all share `source_id=chapter_id` + the same
+    `chapter_index`; see the upsert cypher). Used by the working-scope boost to
+    turn the editor's open `chapter_id` (a UUID) into the integer position the
+    passage ranker scores against.
+
+    Returns None when the chapter has no ingested passages yet (never extracted /
+    not published) or the id is stale/foreign — the caller then simply skips the
+    boost (degrade-to-neutral, never an error). Owner + project scoped so one
+    user's open chapter can't resolve against another tenant's passages.
+    """
+    result = await run_read(
+        session,
+        _GET_CHAPTER_INDEX_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        chapter_id=chapter_id,
+    )
+    record = await result.single()
+    if record is None or record["chapter_index"] is None:
+        return None
+    return int(record["chapter_index"])
 
 
 async def get_source_ingest_state(

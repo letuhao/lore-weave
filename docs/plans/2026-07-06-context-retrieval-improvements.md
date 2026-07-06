@@ -23,6 +23,22 @@
 > recall aid — modest magnitude, decisive *safety* + cross-lingual consistency. Building the corpus
 > surfaced two pipeline fixes (`D-BACKFILL-NO-SCOPE-LIMIT`, committed) + an over-extraction cost
 > analysis ([`../plans/2026-07-06-extraction-cost-and-tiering.md`](2026-07-06-extraction-cost-and-tiering.md)).
+>
+> **UPDATE 3 — M1b SHIPPED (2026-07-06):** the D-EVAL-BOOK measurement gate lifted, so M1b (the
+> working-scope boost) was built as its own cross-service slice per edge-case #1. When the editor
+> `<Chat>` panel is open on a chapter, chat-service now forwards `current_chapter_id` on the grounding
+> request; knowledge-service resolves it to a `chapter_index` from the chapter's own `:Passage` nodes
+> (`get_chapter_index_for_source` — owner+project scoped, no extra cross-service hop) and the L3 ranker
+> multiplicatively boosts passages **within ±window chapters** of it (linear falloff, `_apply_post_filters`).
+> Config `context_working_scope_boost=0.30` / `context_working_scope_window=2` (kill-switch `0.0` skips
+> the resolution query entirely; a per-turn Mode-3 tuning constant, not a per-user setting — mirrors M1a).
+> Inert on every non-editor turn (reader/glossary chat send no chapter) and when the chapter has no
+> ingested passages. Bounded so a materially-more-relevant distant passage still wins (regression guard
+> unit-tested). **Verify:** 8 new unit tests (boost math + resolver + client field) green; **live smoke**
+> on the wangu corpus — `get_chapter_index_for_source` resolved a real chapter_id→index 11 via Neo4j
+> (stale→None), and with the open chapter set the ranking shifted from newest chapters (20/19/18) to the
+> in-scope 11/12/13. ai-gateway is a pure body pass-through, so no gateway change. **M3 (pull-mode pilot)
+> remains the next measurement.**
 
 **Date:** 2026-07-06 · **Branch:** `feat/context-budget-law` · **Status:** M4 measured + answer-quality
 A/B run (through a `/review-impl` correction) → **M1a = GO, but a measured one.** Evidence

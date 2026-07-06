@@ -234,6 +234,7 @@ class KnowledgeClient:
         message: str = "",
         language: str | None = None,
         grounding: bool = True,
+        current_chapter_id: str | None = None,
     ) -> KnowledgeContext:
         """POST /internal/context/build.
 
@@ -287,6 +288,11 @@ class KnowledgeClient:
         # ids are omitted (only the single-project / no-project path applies).
         if project_ids:
             body["project_ids"] = list(project_ids)
+        # M1b — the editor's open chapter, for the working-scope passage boost.
+        # Truthy check omits empty strings (would 422 knowledge's UUID validator).
+        # Only editor turns carry it; reader/glossary chat send nothing → no boost.
+        if current_chapter_id:
+            body["current_chapter_id"] = current_chapter_id
 
         # K7e: forward the caller's trace_id so knowledge-service (and
         # glossary-service, one hop further) can stitch their logs to

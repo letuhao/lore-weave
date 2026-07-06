@@ -57,6 +57,7 @@ async def build_context(
     entity_access_repo=None,
     project_ids: list[UUID] | None = None,
     grounding: bool = True,
+    current_chapter_id: UUID | None = None,
 ) -> BuiltContext:
     # Track B B1(2) — normalize the requested project set. `project_ids` (multi-KG)
     # takes precedence; else the single `project_id` (back-compat). Order-preserving
@@ -126,6 +127,7 @@ async def build_context(
             llm_client=llm_client,
             language=language,
             entity_access_repo=entity_access_repo,
+            current_chapter_id=current_chapter_id,
         )
 
     return await build_static_mode(

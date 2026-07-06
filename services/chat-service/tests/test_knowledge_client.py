@@ -312,6 +312,31 @@ class TestKnowledgeClientBodyNormalisation:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_current_chapter_id_forwarded_when_present(self):
+        """M1b: an editor turn's open chapter rides the body for the
+        working-scope boost."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(
+            user_id="u", message="hi",
+            current_chapter_id="00000000-0000-0000-0000-0000000000ab",
+        )
+        body = self._json_body(captured[0])
+        assert body["current_chapter_id"] == "00000000-0000-0000-0000-0000000000ab"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_current_chapter_id_omitted_when_absent(self):
+        """Non-editor turns (no chapter) never send the field → older
+        knowledge-service byte-identical, and no empty-string 422."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi", current_chapter_id=None)
+        body = self._json_body(captured[0])
+        assert "current_chapter_id" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_long_message_truncated_to_max(self):
         captured: list = []
         client = _make_client(_capture(captured))
