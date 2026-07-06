@@ -20,6 +20,7 @@ from uuid import UUID
 from app.clients.book_client import BookClient, BookClientError
 from app.clients.glossary_client import GlossaryClient, GlossaryClientError
 from app.db.models import PlanBootstrapProposal
+from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
 
@@ -30,6 +31,25 @@ def _glossary_item_key(kind_code: str | None, name: str | None) -> str:
     return f"glossary:{kind_code or 'character'}:{name}"
 
 
+def _drafting_guides_by_event_id(pipeline_result: dict[str, Any]) -> dict[str, str]:
+    """§6 M3: `plan_pipeline` job result (`dataclasses.asdict(PipelineResult)`)
+    → {event_id: guide text}, joining each chapter's scene synopses into one
+    plain-text guide. `ChapterScenes.chapter.chapter_id` IS the event_id —
+    the `plan_forge_service.compile()` fix stamps it that way precisely so
+    this correlation works (see that fix's comment for why `chapter_id` was
+    previously incompatible garbage that crashed before reaching here)."""
+    guides: dict[str, str] = {}
+    for cs in pipeline_result.get("decompose", {}).get("chapters", []):
+        chapter = cs.get("chapter") or {}
+        event_id = chapter.get("chapter_id")
+        scenes = cs.get("scenes") or []
+        if not event_id or not scenes:
+            continue
+        lines = [f"- {s.get('title', '(untitled scene)')}: {s.get('synopsis', '')}" for s in scenes]
+        guides[event_id] = "\n".join(lines)
+    return guides
+
+
 class BootstrapService:
     def __init__(
         self,
@@ -37,11 +57,13 @@ class BootstrapService:
         plan_runs: PlanRunsRepo,
         book: BookClient,
         glossary: GlossaryClient,
+        jobs: GenerationJobsRepo,
     ) -> None:
         self._proposals = proposals
         self._runs = plan_runs
         self._book = book
         self._glossary = glossary
+        self._jobs = jobs
 
     async def propose(
         self, owner_user_id: UUID, book_id: UUID, run_id: UUID, bearer: str,
@@ -82,11 +104,27 @@ class BootstrapService:
                 if isinstance(ge, dict) and ge.get("name"):
                     claimed_glossary_keys.add(_glossary_item_key(ge.get("kind_code"), ge["name"]))
 
+        # §6 M3: if compile()'s OPTIONAL run_pipeline=true already computed a
+        # per-chapter scene/beat breakdown for this run (a separate,
+        # explicit, user-initiated action — this gate never triggers that
+        # expensive multi-LLM-call pipeline itself), attach it as a plain-
+        # text drafting guide per event_id. Reading an ALREADY-COMPUTED job
+        # result costs zero additional LLM calls — propose() stays cheap
+        # regardless of whether a pipeline run happened.
+        drafting_guides: dict[str, str] = {}
+        pipeline_job_id = run.checkpoint_state.get("pipeline_job_id")
+        if pipeline_job_id:
+            job = await self._jobs.get(owner_user_id, UUID(pipeline_job_id))
+            if job is not None and job.status == "completed" and job.result:
+                drafting_guides = _drafting_guides_by_event_id(job.result)
+
         new_chapters = [
             {
                 "event_id": ch["event_id"],
                 "title": ch["title"],
                 "ordinal": ch.get("ordinal"),
+                **({"drafting_guide": drafting_guides[ch["event_id"]]}
+                   if ch["event_id"] in drafting_guides else {}),
             }
             for ch in package_chapters
             if ch.get("title") not in existing_titles and ch.get("title") not in claimed_titles
@@ -115,10 +153,13 @@ class BootstrapService:
         record = await self._proposals.create(owner_user_id, book_id, run_id, diff=diff)
         logger.info(
             "bootstrap propose: book=%s run=%s proposal=%s new_chapters=%d "
-            "new_glossary_entities=%d (skipped %d already-existing chapters, "
-            "%d chapters + %d glossary entities already claimed by another proposal)",
-            book_id, run_id, record.id, len(new_chapters), len(new_glossary_entities),
-            len(existing_titles), len(claimed_titles), len(claimed_glossary_keys),
+            "(%d with a drafting guide from job %s) new_glossary_entities=%d "
+            "(skipped %d already-existing chapters, %d chapters + %d glossary "
+            "entities already claimed by another proposal)",
+            book_id, run_id, record.id, len(new_chapters),
+            sum(1 for c in new_chapters if "drafting_guide" in c), pipeline_job_id,
+            len(new_glossary_entities), len(existing_titles),
+            len(claimed_titles), len(claimed_glossary_keys),
         )
         return record
 
@@ -191,10 +232,16 @@ class BootstrapService:
                     book_id, bearer,
                     title=ch["title"], original_language=original_language,
                 )
+                result: dict[str, Any] = {"chapter_id": created.get("chapter_id"), "title": ch["title"]}
+                if ch.get("drafting_guide"):
+                    # §6 M3 [C]/[D]: carried through verbatim from PROPOSE (computed
+                    # once, from an already-completed pipeline job — never
+                    # regenerated here) so a reviewer/GUI can surface "here's the
+                    # suggested scene/beat guide" for the chapter it just created.
+                    result["drafting_guide"] = ch["drafting_guide"]
                 await self._proposals.mark_item_applied(
                     owner_user_id, book_id, proposal_id,
-                    item_key=event_id,
-                    result={"chapter_id": created.get("chapter_id"), "title": ch["title"]},
+                    item_key=event_id, result=result,
                 )
 
             pending_glossary = [

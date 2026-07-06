@@ -667,16 +667,45 @@ class PlanForgeService:
         if model_ref is None:
             raise ValueError("model_ref required when run_pipeline=true")
         project_id = _work_project_id(work)
+        # D-PLANFORGE-PIPELINE-CHAPTERPLAN-FIX: package.chapters[] is
+        # {title, ordinal, event_id} (compile.py) — the worker's
+        # `run_plan_pipeline` needs `ChapterPlan`-shaped dicts
+        # {chapter_id, title, sort_order, beat_role, intent}. This mapping
+        # was previously ABSENT (raw package.chapters[] passed straight
+        # through), so `ChapterPlan(**c)` raised a TypeError on every real
+        # invocation — confirmed via a code audit 2026-07-06, never
+        # exercised successfully in production. `chapter_id=event_id` is
+        # the correlation key the auto-bootstrap gate (§6 M3) uses to
+        # attach each event's resulting scene/beat plan back to the real
+        # chapter it creates. `beats: []` degrades the pipeline's L1
+        # beat-map stage to a no-op (beat_role stays None) — PlanForge's
+        # `arc_kind` (e.g. "discovery"/"power") is a THEME tag, not a
+        # `structure_template.kind`, so there is no beats list to source
+        # here without inventing a new mapping; the pipeline's own
+        # degrade-safe design (planning_pipeline.py) tolerates this.
         pipe_input = {
             "worker_op": "plan_pipeline",
             "model_source": "user_model",
             "model_ref": str(model_ref),
             "premise": package.get("premise", ""),
             "beats": [],
-            "chapters": package.get("chapters", []),
+            "chapters": [
+                {
+                    "chapter_id": ch["event_id"], "title": ch["title"],
+                    "sort_order": ch.get("ordinal", i),
+                    "beat_role": None, "intent": "",
+                }
+                for i, ch in enumerate(package.get("chapters", []), start=1)
+            ],
             "genre_tags": package.get("genre_tags", []),
             "book_id": str(book_id),
             "project_id": str(project_id),
+            "k_ceiling": settings.compose_diverge_k,
+            "high_threshold": settings.plan_high_tension_threshold,
+            "min_scenes": settings.plan_min_scenes_per_chapter,
+            "max_scenes": settings.plan_max_scenes_per_chapter,
+            "source_language": "auto",
+            "self_heal": True,
             "plan_forge_package": package,
         }
         if settings.composition_worker_enabled:
@@ -690,6 +719,17 @@ class PlanForgeService:
                 user_id=str(owner_user_id), project_id=str(project_id),
             )
             body["pipeline_job_id"] = str(job.id)
+            # §6 M3: persist the job id onto the run (checkpoint_state — a
+            # scratch JSONB field already used for exactly this kind of
+            # cross-call bookkeeping) so the auto-bootstrap gate's propose()
+            # can find + consume this job's result later. Previously this
+            # id was returned in the response body ONCE and never
+            # persisted anywhere queryable — a caller that didn't capture
+            # the response had no way to find it again.
+            await self._runs.update_run(
+                owner_user_id, book_id, run_id,
+                checkpoint_state={**run.checkpoint_state, "pipeline_job_id": str(job.id)},
+            )
             return "async", body
         body["pipeline_preview"] = mock_pipeline_result(package)
         return "sync", body

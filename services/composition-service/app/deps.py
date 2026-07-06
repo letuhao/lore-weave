@@ -72,6 +72,7 @@ async def get_bootstrap_service() -> "BootstrapService":
         PlanRunsRepo(get_pool()),
         get_book_client(),
         get_glossary_client(),
+        GenerationJobsRepo(get_pool()),
     )
 
 

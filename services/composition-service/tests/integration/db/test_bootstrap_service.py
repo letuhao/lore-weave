@@ -18,6 +18,7 @@ import pytest
 from app.clients.book_client import BookClientError
 from app.clients.glossary_client import GlossaryClientError
 from app.db.migrate import run_migrations
+from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
 from app.services.bootstrap_service import BootstrapService
@@ -28,7 +29,7 @@ pytestmark = pytest.mark.skipif(
     not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
 )
 
-_TABLES = ["plan_bootstrap_proposal", "plan_artifact", "plan_run"]
+_TABLES = ["plan_bootstrap_proposal", "plan_artifact", "generation_job", "plan_run"]
 
 
 @pytest.fixture
@@ -119,7 +120,7 @@ async def _run_with_package(
 def _svc(pool, book_client, glossary_client=None) -> BootstrapService:
     return BootstrapService(
         PlanBootstrapProposalsRepo(pool), PlanRunsRepo(pool),
-        book_client, glossary_client or FakeGlossaryClient(),
+        book_client, glossary_client or FakeGlossaryClient(), GenerationJobsRepo(pool),
     )
 
 
@@ -363,3 +364,85 @@ async def test_apply_chapters_and_glossary_together_both_recorded(pool):
     applied = await svc.apply(user, book, proposed.id, bearer="tok")
     assert applied.status == "applied"
     assert set(applied.applied_results.keys()) == {"e1", "glossary:character:Lin Feng"}
+
+
+# ── M3: scene/beat drafting context (reads an ALREADY-COMPLETED plan_pipeline
+# job — this gate never triggers that pipeline itself, so propose() stays
+# zero-LLM-call regardless of whether one was run) ──────────────────────────
+
+_PIPELINE_RESULT_FIXTURE = {
+    "decompose": {
+        "arc_title": "Arc 1",
+        "chapters": [
+            {
+                "chapter": {"chapter_id": "e1", "title": "Chapter One", "sort_order": 1,
+                            "beat_role": None, "intent": ""},
+                "scenes": [
+                    {"title": "Opening", "synopsis": "Hero wakes up powerless.", "tension": 20,
+                     "present_entity_ids": [], "present_entity_names_unresolved": [], "suggested_k": 1},
+                    {"title": "The Call", "synopsis": "A mysterious letter arrives.", "tension": 40,
+                     "present_entity_ids": [], "present_entity_names_unresolved": [], "suggested_k": 1},
+                ],
+            },
+        ],
+    },
+}
+
+
+async def _completed_pipeline_job(pool, user, project_id, result=None):
+    jobs = GenerationJobsRepo(pool)
+    job, _ = await jobs.create(
+        user, project_id, operation="plan_pipeline", mode="auto", status="pending", input={},
+    )
+    await jobs.update_status(user, job.id, "completed", result=result or _PIPELINE_RESULT_FIXTURE)
+    return job
+
+
+async def test_propose_attaches_drafting_guide_from_completed_pipeline_job(pool):
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book,
+        chapters=[{"event_id": "e1", "title": "Chapter One", "ordinal": 1}],
+    )
+    job = await _completed_pipeline_job(pool, user, uuid.uuid4())
+    await PlanRunsRepo(pool).update_run(
+        user, book, run.id, checkpoint_state={"pipeline_job_id": str(job.id)},
+    )
+
+    svc = _svc(pool, FakeBookClient())
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    guide = proposed.diff["new_chapters"][0]["drafting_guide"]
+    assert "Hero wakes up powerless." in guide
+    assert "A mysterious letter arrives." in guide
+
+
+async def test_apply_carries_drafting_guide_into_applied_results(pool):
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book,
+        chapters=[{"event_id": "e1", "title": "Chapter One", "ordinal": 1}],
+    )
+    job = await _completed_pipeline_job(pool, user, uuid.uuid4())
+    await PlanRunsRepo(pool).update_run(
+        user, book, run.id, checkpoint_state={"pipeline_job_id": str(job.id)},
+    )
+    svc = _svc(pool, FakeBookClient())
+
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    await svc.approve(user, book, proposed.id)
+    applied = await svc.apply(user, book, proposed.id, bearer="tok")
+
+    assert "Hero wakes up powerless." in applied.applied_results["e1"]["drafting_guide"]
+
+
+async def test_propose_without_a_pipeline_job_has_no_drafting_guide(pool):
+    """The common case: no run_pipeline=true was ever requested — chapters
+    are proposed exactly as before M3, with no drafting_guide key at all."""
+    user, book = uuid.uuid4(), uuid.uuid4()
+    run = await _run_with_package(
+        pool, user, book,
+        chapters=[{"event_id": "e1", "title": "Chapter One", "ordinal": 1}],
+    )
+    svc = _svc(pool, FakeBookClient())
+    proposed = await svc.propose(user, book, run.id, bearer="tok")
+    assert "drafting_guide" not in proposed.diff["new_chapters"][0]

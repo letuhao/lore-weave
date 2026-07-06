@@ -1757,6 +1757,71 @@ async def test_plan_runs_roundtrip_and_tenancy(pool):
     assert dup is not None and dup.id == run.id
 
 
+async def test_compile_run_pipeline_shapes_chapters_and_persists_job_id(pool, monkeypatch):
+    """D-PLANFORGE-PIPELINE-CHAPTERPLAN-FIX (§6 M3): before this fix,
+    compile(run_pipeline=true) passed raw package.chapters[]
+    ({title, ordinal, event_id}) straight through as job input; the worker's
+    `ChapterPlan(**c)` then raised TypeError on every real invocation
+    (confirmed never exercised successfully in production). This proves the
+    fix — job input chapters are ChapterPlan-shaped with chapter_id=event_id
+    — and that pipeline_job_id is now persisted onto the run's
+    checkpoint_state (previously returned once in the response body and
+    never queryable again)."""
+    from pathlib import Path
+
+    from app.db.repositories.generation_jobs import GenerationJobsRepo
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.works import WorksRepo
+    from app.engine.plan_forge.ingest import ingest_file
+    from app.engine.plan_forge.propose import propose_spec
+    from app.services import plan_forge_service as pfs_module
+    from app.services.plan_forge_service import PlanForgeService
+
+    captured: dict[str, Any] = {}
+
+    async def _fake_enqueue_job(redis_url, *, job_id, user_id, project_id):
+        captured["job_id"] = job_id
+        return True
+
+    monkeypatch.setattr(pfs_module, "enqueue_job", _fake_enqueue_job)
+    monkeypatch.setattr(pfs_module.settings, "composition_worker_enabled", True)
+
+    fixture = Path(__file__).resolve().parents[2] / "fixtures" / "plan-forge" / "story-plan-v1.md"
+    spec = propose_spec(ingest_file(fixture))
+
+    user, _project, book = _ids()
+    runs = PlanRunsRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    svc = PlanForgeService(runs, jobs, WorksRepo(pool))
+
+    run = await runs.create(
+        user, book, mode="rules", source_checksum="chk-pipeline",
+        source_markdown="# plan", status="pending",
+    )
+    await runs.save_artifact(user, run.id, "spec", spec)
+
+    mode, body = await svc.compile(
+        user, book, run.id, arc_id="arc_2", run_pipeline=True, model_ref=uuid.uuid4(),
+    )
+    assert mode == "async"
+    assert body["pipeline_job_id"] == str(captured["job_id"])
+
+    job = await jobs.get(user, captured["job_id"])
+    assert job is not None
+    chapters_in = job.input["chapters"]
+    assert chapters_in, "compile() must produce at least one chapter for arc_2"
+    from app.engine.plan import ChapterPlan  # the exact constructor that used to TypeError
+
+    for c in chapters_in:
+        assert set(c.keys()) == {"chapter_id", "title", "sort_order", "beat_role", "intent"}
+        assert c["chapter_id"].startswith("arc_2_event_")  # correlates back to PlanForge's event_id
+        ChapterPlan(**c)  # must not raise — this is the exact call site that used to crash
+
+    updated_run = await runs.get_for_owner(user, book, run.id)
+    assert updated_run is not None
+    assert updated_run.checkpoint_state.get("pipeline_job_id") == str(captured["job_id"])
+
+
 # ─────────── plan_bootstrap_proposal (PlanForge auto-bootstrap gate POC) ───────────
 
 async def _make_run(pool, user, book):
