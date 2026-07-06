@@ -1,5 +1,65 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**PDF book import (text + image/chart, page-chunking) — shipped, live-verified end-to-end, 2026-07-06.**
+Spec [`docs/specs/2026-07-06-pdf-book-import.md`](../specs/2026-07-06-pdf-book-import.md). Motivated by an audit
+finding PDF was rejected outright at book import and the platform was architecturally novel-only (see memory
+`pdf-ingestion-novel-only-gap`); user wants lore/technical-reference books importable too. CLARIFY locked L1-L9
+(knowledge-service owns extraction; images captioned via a NEW vision LLM op, not asset-only; chunk boundary =
+chapter boundary always, no heading-regex dependency; async per-chunk worker calls — not one whole-book call, which
+an adversarial spec review found would blow the worker's 5-min HTTP timeout on any book needing >~5 captioned
+images; idempotency via `chapters.import_job_id` + `ON CONFLICT`). Shipped across 6 services, all phases
+live-verified, not just unit-tested:
+1. **provider-registry-service** — new first-class `"vision"` job operation (`CaptionImage` adapter method,
+   OpenAI multimodal `/v1/chat/completions` implementation, stubs for anthropic/ollama/lm_studio, cost estimator
+   that deliberately does NOT walk the base64 image bytes as text — a flat per-image token ceiling instead, to
+   avoid wildly over-pricing a call). Live-proven with a real gpt-4o call captioning a generated test chart before
+   anything else was built on top of it.
+2. **`sdks/python/loreweave_parse/pdf_walker.py`** (new SDK module) — PyMuPDF per-page text + embedded-image
+   extraction, OCR fallback ported from lore-enrichment-service's `extract.py` (incl. `tesseract_lang_for`), image
+   dedup-by-hash + min-dimension filter + downscale-for-vision. 21 tests against real fitz-generated PDF fixtures.
+3. **knowledge-service** — `/internal/parse/pdf-chunk` (one chunk in → one Chapter + its images out, per-image
+   caption failure degrades to `caption=None` and never fails the chunk) + `/internal/parse/pdf-peek` (page count,
+   rejects encrypted/corrupted PDFs early). 13 tests incl. a mocked-LLM captioning path + dedup-within-chunk.
+4. **book-service** — `.pdf` added to `allowedImportFormats`, routed through the existing async `import_jobs`
+   pipeline (not sync like `.txt`); new `POST .../import/pdf-peek`; migrations: `chapter_page_images` table,
+   `import_jobs.{pages_per_chunk,caption_images,vision_model_source,vision_model_ref}`,
+   `chapters.import_job_id` + partial unique index for the idempotency guard.
+5. **worker-infra** — new `processPdfImport` per-chunk loop (skips pandoc; one `/internal/parse/pdf-chunk` call
+   per N-page window; final chapter count re-queried from DB, not accumulated, since `ON CONFLICT DO NOTHING` can
+   skip chunks on redelivery). **Live smoke caught a real bug**: the partial unique index
+   `idx_chapters_unique_import_job_path` requires the `ON CONFLICT` clause's `WHERE` predicate to match exactly —
+   the first live run failed 100% with `SQLSTATE 42P10` until `WHERE import_job_id IS NOT NULL` was added to the
+   `ON CONFLICT` target itself, not just the index. Fixed, rebuilt, re-ran clean.
+6. **Frontend** — new `features/pdf-import/` wizard mirroring `features/extraction/`'s hook/component split
+   (`usePdfImportState`/`usePdfImportPolling`, NOT `components/import/ImportDialog.tsx`'s monolithic anti-pattern),
+   wired into `ChaptersTab.tsx`. `tsc --noEmit` clean, 8 new tests. **Not yet i18n'd** (hardcoded English strings) —
+   flagged, not silently skipped; this repo's 18-locale standard is a real follow-up debt for this feature.
+
+**Live E2E proof** (not just unit tests): built a 5-page test PDF (prose + one real embedded bar-chart PNG) via
+PyMuPDF, rebuilt+restarted provider-registry-service/knowledge-service/book-service/worker-infra with all changes,
+created a real book via the API, ran `pdf-peek` (correct page_count=5) then a real import
+(`pages_per_chunk=2, caption_images=true`, real gpt-4o BYOK model) through the gateway. Result: 3 chapters created
+exactly as expected (`ceil(5/2)`), titled `"Pages N-M: <best-effort heading>"`, the chart image captured on the
+right chapter/page with a REAL gpt-4o caption ("The bar chart compares three engines (A, B, and C)...") both
+stored in `chapter_page_images` AND correctly inlined into the chapter's scene text as
+`[Image (page 3): ...]` — the exact mechanism meant to make chart content visible to glossary/KG extraction.
+
+**Deferred / not done this session:**
+- **Glossary/KG extraction was NOT run against the new PDF-imported book** — the original motivating question
+  ("does glossary/KG work on a technical book") is still open; this session built+proved the IMPORT pipeline only.
+  The test book (`019f3804-7eb7-7958-8e71-f7c6c837f945`, "PDF Import Smoke Test") still exists in the dev DB with
+  its 3 real chapters — next session can run extraction against it directly (note: its `extraction-profile` came
+  back empty `kinds:[]` since it has no `genre_tags` — a manual kind list will need to be passed to the extraction
+  job request rather than relying on profile auto-resolution, consistent with the original audit's finding that
+  extraction profiles are genre-driven and technical books get nothing suggested by default).
+- **Orphaned-MinIO-blob cleanup on a failed PDF import** — consciously deferred (pre-existing gap shared by
+  docx/epub too, not introduced by this feature; gate reason: out-of-scope/pre-existing).
+- **i18n for the new wizard strings** — real follow-up, not done (English-only for v1).
+- **Anthropic/Ollama/LM-Studio vision support** — stubs only (`ErrOperationNotSupported`); v1 is OpenAI-only by
+  explicit CLARIFY scope choice.
+
+---
+
 **Glossary unmatched-attribute fallback (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK) — shipped, live-verified, 2026-07-06.**
 Design question raised during the PlanForge auto-bootstrap follow-up: an AI proposal (bootstrap gate, extraction,
 future callers) can send a glossary attribute code a kind hasn't registered (e.g. guessing a field name). PO framed
@@ -73,8 +133,28 @@ model-ref bug class). **NEXT:** M1b/M3 stay gated on measurement (don't build sp
   knowledge unit **3606 passed** (4 reds pre-existing — fail identically on a stash baseline); 4 new `test_scripts`
   cases. **Live-verified**: `Cửu U Ma Cơ` now resolves whole; with both bridge fixes the Vietnamese A/B is a CLEAN
   **+36% overall / +67% bridge-class, 3 wins / 0 regressions** (bridge yield 3.42→10.83 facts/query).
-- **D-EVAL-BOOK (unchanged):** the answer-quality *magnitude* is still bounded by one small book + a local judge;
-  a large-book full passage+relation extraction remains the follow-on to size the lift (buildable, not built this run).
+- **D-EVAL-BOOK ✅ CLOSED (same session):** built a larger **Chinese** corpus (万古神帝 `019f37f0`, 158 ent /
+  402 rel / 58 pass, extracted this session ch 1-20) and re-ran the A/B — eval
+  [`M4-wangu-largecorpus-2026-07-06.md`](../eval/context-budget/M4-wangu-largecorpus-2026-07-06.md): **+19% overall /
+  +17% bridge-class (→2.0) / 0 regressions**. M1a is now sized across **3 corpora / 3 languages** (EN +14%, VI +36%,
+  ZH +19% overall; bridge-class +50/67/17%; **0 of 31 questions regressed anywhere**) — a **safe, reliably-positive**
+  recall aid (modest magnitude, decisive safety + cross-lingual consistency). Keep ON.
+- **D-BACKFILL-NO-SCOPE-LIMIT ✅ CLEARED (found building the corpus, commit `5205e5c8c`):** setting a project's
+  embedding model (`PUT /embedding-model`) fired a SYNCHRONOUS whole-published-book passage backfill (no scope limit) —
+  on 万古神帝 (4232 ch) it ran away embedding ~11.6K passages before a restart stopped it. Fix: `chapter_range` scope on
+  both backfills + threading the extraction job's scope_range + an inline cap (`kg_backfill_max_inline_chapters`=200)
+  that skips the synchronous whole-book backfill on large books. 3 new tests; live-verified (scoped run ingested only
+  the 20-ch slice). Also diagnosed an extraction "stall" (user-caught): NOT a systemic bug — a **transient LM Studio
+  mid-stream drop** (ruled out governor/breaker/idle-timeout with evidence; a 2-ch reproduction completed cleanly).
+- **Extraction over-extraction — analysis + plan (`340de487e`):**
+  [`2026-07-06-extraction-cost-and-tiering.md`](../plans/2026-07-06-extraction-cost-and-tiering.md). Per user question
+  "are we over-extracting?": the pipeline runs **4 LLM passes over the same chunks** (entity/event/fact/relation) →
+  ~28 calls/chapter ≈ 84K tok/chapter (text paid 4×). Extract-vs-load break-even ≈ 19 uses/chapter → eager whole-book
+  extraction of a 4232-ch novel (~355M tok) is a net loss on the long tail. Plan: P1 unified prompt (4×→1×), P2
+  fewer/larger chunks, P3 lazy/selective extraction (also fixes the never-gated Knowledge-extraction defect), P4 hybrid
+  raw-in-context + KG tiering, P5 local token estimation (cost is invisible — `tokens_used=0` on local). Extends
+  `D-EXTRACTION-PROMPT-FANOUT` + new `D-EXTRACTION-EAGER-WHOLE-BOOK`. **NEXT (retrieval track): M1b/M3 still gated on
+  measurement; the extraction cost work (P1 first) is the higher-value follow-on the user surfaced.**
 
 ---
 

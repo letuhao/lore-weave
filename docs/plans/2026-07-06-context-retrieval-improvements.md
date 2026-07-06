@@ -13,6 +13,16 @@
 > answer-quality *magnitude* is still bounded by one small book + local judge; the genuine
 > `D-EVAL-BOOK` (large-book full extraction) remains the follow-on. **M1b/M3 stay gated on
 > that measurement, not built speculatively.**
+>
+> **UPDATE 2 — `D-EVAL-BOOK` CLOSED (2026-07-06):** built a larger, **Chinese** corpus
+> (万古神帝, 158 ent / 402 rel, extracted this session) and re-ran the A/B —
+> [`docs/eval/context-budget/M4-wangu-largecorpus-2026-07-06.md`](../eval/context-budget/M4-wangu-largecorpus-2026-07-06.md).
+> Result: **+19% overall / +17% bridge-class (→2.0) / 0 regressions.** M1a is now sized across
+> **three independent corpora / three languages** (EN +14%, VI +36%, ZH +19% overall; bridge-class
+> +50/67/17%; **0 of 31 questions regressed anywhere**). Verdict: a **safe, reliably-positive**
+> recall aid — modest magnitude, decisive *safety* + cross-lingual consistency. Building the corpus
+> surfaced two pipeline fixes (`D-BACKFILL-NO-SCOPE-LIMIT`, committed) + an over-extraction cost
+> analysis ([`../plans/2026-07-06-extraction-cost-and-tiering.md`](2026-07-06-extraction-cost-and-tiering.md)).
 
 **Date:** 2026-07-06 · **Branch:** `feat/context-budget-law` · **Status:** M4 measured + answer-quality
 A/B run (through a `/review-impl` correction) → **M1a = GO, but a measured one.** Evidence
