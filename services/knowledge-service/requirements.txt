@@ -11,7 +11,7 @@ PyJWT>=2.8
 # today, but pinned explicitly so a security-critical dep can't silently drop.
 cryptography>=42
 cachetools>=5.3
-prometheus-client>=0.20
+prometheus-client>=0.25.0
 
 # loreweave_llm SDK (Phase 4a-α) — installed via Dockerfile COPY of
 # sdks/python (build context is repo root). For host-side pytest:

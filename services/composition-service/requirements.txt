@@ -6,7 +6,7 @@ pydantic-settings>=2.2
 python-json-logger>=2.0
 httpx>=0.27
 PyJWT>=2.8
-prometheus-client>=0.20
+prometheus-client>=0.25.0
 # D-T2-01 — tiktoken for accurate token counting (CJK packer budget, M4).
 tiktoken>=0.7
 # Redis Streams (outbox relay consumer / ephemeral state) — used from M6.
