@@ -71,6 +71,10 @@ func (s *Server) mcpHandler() http.Handler {
 	// General free-form web research (class-R read; paid outward call, not gated —
 	// returns neutralized sources for topic research before any entity exists).
 	s.RegisterWebSearchTool(srv)
+	// T-ONTO: consolidated create/update/delete tools (tool-catalog-simplification
+	// spec) — supersede the book/user create/patch/delete tools above, which stay
+	// registered (tagged _meta.visibility:"legacy") for existing callers.
+	s.RegisterOntologyTools(srv)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",

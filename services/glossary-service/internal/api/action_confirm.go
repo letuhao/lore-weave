@@ -144,6 +144,8 @@ func (s *Server) dispatchConfirmEffect(w http.ResponseWriter, ctx context.Contex
 	switch claims.Descriptor {
 	case descBookDelete:
 		s.effectBookDelete(w, ctx, claims)
+	case descBookDeleteBatch:
+		s.effectBookDeleteBatch(w, ctx, claims)
 	case descSchemaCreateKind:
 		s.effectSchemaCreateKind(w, ctx, claims)
 	case descSchemaCreateKinds:
@@ -179,6 +181,8 @@ func (s *Server) dispatchPreviewEffect(w http.ResponseWriter, ctx context.Contex
 	switch claims.Descriptor {
 	case descBookDelete:
 		s.previewBookDelete(w, ctx, claims)
+	case descBookDeleteBatch:
+		s.previewBookDeleteBatch(w, ctx, claims)
 	case descSchemaCreateKind, descSchemaCreateAttr:
 		s.previewSchemaCreate(w, claims)
 	case descSchemaCreateKinds:
