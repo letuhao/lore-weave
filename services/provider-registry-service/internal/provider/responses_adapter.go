@@ -10,6 +10,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -36,11 +37,19 @@ func isStatefulRequest(input map[string]any) bool {
 // `/v1/responses` body. `previous_response_id` chains onto the prior turn (the server
 // holds that context, so we send only the new/delta messages the caller supplied).
 func buildResponsesBody(modelName string, input map[string]any) map[string]any {
+	// System → `instructions`, NOT a chained input item (spec §5). The Responses API
+	// does not inherit instructions across previous_response_id, so sending the CURRENT
+	// system every call makes a mid-session system change take effect with no re-chain,
+	// and keeps the `input` delta purely conversational. Split it out of the messages.
+	instructions, msgs := splitSystemInstructions(extractMessages(input))
 	body := map[string]any{
 		"model": modelName,
-		"input": messagesToResponsesInput(extractMessages(input)),
+		"input": messagesToResponsesInput(msgs),
 		// store the response server-side so previous_response_id can chain it.
 		"store": true,
+	}
+	if instructions != "" {
+		body["instructions"] = instructions
 	}
 	if v, ok := input["previous_response_id"].(string); ok && v != "" {
 		body["previous_response_id"] = v
@@ -51,6 +60,14 @@ func buildResponsesBody(modelName string, input map[string]any) map[string]any {
 	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		body["max_output_tokens"] = v
 	}
+	// Forward reasoning controls so thinking-off still works on reasoning models in
+	// stateful mode (same intent as forwardOptionalChatFields on the chat path).
+	if v, ok := input["reasoning_effort"]; ok {
+		body["reasoning_effort"] = v
+	}
+	if v, ok := input["chat_template_kwargs"]; ok {
+		body["chat_template_kwargs"] = v
+	}
 	if tools := toolsToResponsesTools(input["tools"]); len(tools) > 0 {
 		body["tools"] = tools
 		if tc, ok := input["tool_choice"]; ok {
@@ -58,6 +75,25 @@ func buildResponsesBody(modelName string, input map[string]any) map[string]any {
 		}
 	}
 	return body
+}
+
+// splitSystemInstructions pulls system message(s) out of the message list into one
+// instructions string (blank-line joined), returning the remaining non-system
+// messages. Flattens a structured (cache_control block-list) system content too —
+// the responses `instructions` is a plain string.
+func splitSystemInstructions(messages []map[string]any) (string, []map[string]any) {
+	var sys []string
+	rest := make([]map[string]any, 0, len(messages))
+	for _, m := range messages {
+		if r, _ := m["role"].(string); r == "system" {
+			if s := stringifyContent(m["content"]); s != "" {
+				sys = append(sys, s)
+			}
+			continue
+		}
+		rest = append(rest, m)
+	}
+	return strings.Join(sys, "\n\n"), rest
 }
 
 // messagesToResponsesInput maps chat `messages` to Responses `input` items. Plain
@@ -132,12 +168,40 @@ func toolsToResponsesTools(v any) []any {
 	return out
 }
 
+// chainNotFoundCode is the canonical error the caller catches to E1-re-establish
+// (spec §4/§6). chat-service maps this code to "resend full context, fresh chain".
+const chainNotFoundCode = "LLM_RESPONSE_CHAIN_NOT_FOUND"
+
+// isChainNotFound reports whether an openResponsesStream error is the provider's
+// "previous_response_id not found" rejection. Signature LIVE-PROBED against LM Studio
+// 2026-07-06: HTTP 400 with body carrying `"code":"previous_response_not_found"` (and
+// `"param":"previous_response_id"`). Matched on the stable machine code, not the prose.
+func isChainNotFound(err error) bool {
+	var perm *ErrUpstreamPermanent
+	if !errors.As(err, &perm) {
+		return false
+	}
+	b := perm.Body
+	return strings.Contains(b, "previous_response_not_found") ||
+		(strings.Contains(b, "previous_response_id") && strings.Contains(b, "not found"))
+}
+
 // streamViaResponses runs a stateful turn over `/v1/responses`. Shared by the
-// openai + lm_studio adapters' stateful branch.
+// openai + lm_studio adapters' stateful branch. On an invalid previous_response_id
+// it emits the distinct chainNotFoundCode error event (so chat-service re-establishes
+// the chain from DB truth — E1) rather than surfacing an opaque 400.
 func streamViaResponses(ctx context.Context, client *http.Client, base, secret, modelName string, input map[string]any, emit EmitFn) error {
 	body := buildResponsesBody(modelName, input)
 	resp, err := openResponsesStream(ctx, client, strings.TrimRight(base, "/"), secret, body)
 	if err != nil {
+		if isChainNotFound(err) {
+			_ = emit(StreamChunk{
+				Kind:    StreamChunkError,
+				Code:    chainNotFoundCode,
+				Message: "previous_response_id not found; re-establish the chain from history",
+			})
+			return nil // handled as a canonical error event
+		}
 		return err
 	}
 	defer resp.Body.Close()

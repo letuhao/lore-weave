@@ -193,6 +193,23 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Provider Context Strategy §5 (Phase 2) — the stateful /v1/responses CHAIN HEAD.
+-- Set on an assistant row produced by a stateful turn; the "current head" for a
+-- (session, branch) is simply the latest assistant message carrying a non-NULL
+-- response_id, so branching (E7) and re-chain (E5) fall out for free — no separate
+-- table. NULL on stateless turns and all pre-migration rows (⇒ start a fresh chain).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='response_id') THEN
+    ALTER TABLE chat_messages ADD COLUMN response_id TEXT;
+  END IF;
+END $$;
+
+-- Chain-head lookup: newest non-NULL response_id per (session, branch). Partial index
+-- keeps it tiny (only stateful rows) and the DESC matches the ORDER BY sequence_num DESC.
+CREATE INDEX IF NOT EXISTS idx_chat_messages_chain_head
+  ON chat_messages (session_id, branch_id, sequence_num DESC)
+  WHERE response_id IS NOT NULL;
+
 -- Chat Quality Wave W3 — manual steerable compact, PERSISTED on the session
 -- (PO decision #2: multi-device consistent, unlike the per-turn ephemeral
 -- auto-compaction). `compact_summary` is the LLM synopsis of every message

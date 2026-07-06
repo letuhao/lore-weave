@@ -128,12 +128,16 @@ func TestBuildResponsesBody_ConvertsMessagesToolsAndChain(t *testing.T) {
 	if body["store"] != true {
 		t.Fatal("store must be true so previous_response_id can chain")
 	}
+	// System is pulled OUT of input into instructions (§5), not a chained item.
+	if body["instructions"] != "be terse" {
+		t.Fatalf("system must become the instructions field, got %v", body["instructions"])
+	}
 	items, _ := body["input"].([]any)
-	if len(items) != 3 {
-		t.Fatalf("expected 3 input items, got %d", len(items))
+	if len(items) != 2 {
+		t.Fatalf("expected 2 input items (system moved to instructions), got %d", len(items))
 	}
 	// the tool message must become a function_call_output item
-	last, _ := items[2].(map[string]any)
+	last, _ := items[1].(map[string]any)
 	if last["type"] != "function_call_output" || last["call_id"] != "call_1" || last["output"] != "result text" {
 		t.Fatalf("tool result → function_call_output conversion wrong: %+v", last)
 	}
@@ -145,6 +149,38 @@ func TestBuildResponsesBody_ConvertsMessagesToolsAndChain(t *testing.T) {
 	}
 	if _, nested := tool0["function"]; nested {
 		t.Fatal("responses tool must be FLAT (no nested function object)")
+	}
+}
+
+func TestIsChainNotFound_MatchesProbedLmStudioBody(t *testing.T) {
+	// the EXACT body LM Studio returned for a bogus previous_response_id (probed 2026-07-06)
+	body := `{"error":{"message":"Prediction history node with id 'x' not found while attempting to build chat history chain that includes this node.","type":"invalid_request_error","param":"previous_response_id","code":"previous_response_not_found"}}`
+	if !isChainNotFound(&ErrUpstreamPermanent{StatusCode: 400, Body: body}) {
+		t.Fatal("must classify the probed LM Studio previous_response_not_found body")
+	}
+	// a DIFFERENT 400 (real error) must NOT be mistaken for chain-not-found
+	other := `{"error":{"message":"model not loaded","code":"model_not_found"}}`
+	if isChainNotFound(&ErrUpstreamPermanent{StatusCode: 400, Body: other}) {
+		t.Fatal("a non-chain 400 must NOT be classified as chain-not-found")
+	}
+	// a transient (5xx) is never chain-not-found
+	if isChainNotFound(&ErrUpstreamTransient{StatusCode: 503}) {
+		t.Fatal("5xx must not be chain-not-found")
+	}
+}
+
+func TestSplitSystemInstructions(t *testing.T) {
+	msgs := []map[string]any{
+		{"role": "system", "content": "be terse"},
+		{"role": "user", "content": "hi"},
+		{"role": "system", "content": "and kind"},
+	}
+	instr, rest := splitSystemInstructions(msgs)
+	if instr != "be terse\n\nand kind" {
+		t.Fatalf("instructions join wrong: %q", instr)
+	}
+	if len(rest) != 1 || rest[0]["role"] != "user" {
+		t.Fatalf("rest must be only non-system messages: %+v", rest)
 	}
 }
 

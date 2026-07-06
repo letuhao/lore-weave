@@ -113,6 +113,7 @@ from app.services.compact_service import (
     summarize_for_compaction as _summarize_for_compaction,
 )
 from app.services.caching_monitor import build_caching_metrics, detect_thrashing
+from app.services.stateful_chain import decide_chain
 from app.services.token_budget import (
     ContextBreakdown,
     compute_budget,
@@ -1016,8 +1017,11 @@ async def _stream_with_tools(
                 yield {"content": "", "reasoning_content": "",
                        "finish_reason": finish_reason or "stop",
                        "llm_call_count": llm_call_count,
+                       "response_id": _chain_id,
                        "usage": _Usage(prompt_tokens=total_input,
-                                       completion_tokens=total_output)}
+                                       completion_tokens=total_output,
+                                       cache_creation_tok=total_cache_creation,
+                                       cache_read_tok=total_cache_read)}
                 return
 
             # The model called tools — record the assistant turn, execute
@@ -1637,6 +1641,7 @@ async def _stream_with_tools(
         yield {"content": "", "reasoning_content": "",
                "finish_reason": "stop",
                "llm_call_count": llm_call_count,
+               "response_id": _chain_id,
                "usage": _Usage(prompt_tokens=total_input,
                                completion_tokens=total_output,
                                cache_creation_tok=total_cache_creation,
@@ -2602,6 +2607,7 @@ async def _emit_chat_turn(
     _mcp_schema_tok = 0
     last_usage = None
     _llm_call_count = 1  # observability fix #5 — provider completions this turn
+    _final_response_id: str | None = None  # P2 §5 — stateful chain head to persist
     import time as _time
     stream_start = _time.monotonic()
     time_to_first_token: float | None = None
@@ -2776,6 +2782,50 @@ async def _emit_chat_turn(
 
     try:
         if use_tools or _subagent_tool is not None:
+            # ── Stateful /v1/responses chain decision (P2 §5a) ──────────────────
+            # Read the latest assistant turn for this session/branch and decide:
+            # stateless / stateful-establish / stateful-continue. Degrade-safe — any
+            # error falls back to stateless (full context). Only build the delta when
+            # continuing from a valid head (system blocks carry the fresh grounding →
+            # the gateway lifts them to `instructions`; the user turn is the input).
+            _stateful, _prev_rid, _delta_msgs = False, None, None
+            try:
+                _latest_asst = await pool.fetchrow(
+                    """
+                    SELECT response_id, model_ref::text AS model_ref, input_tokens, sequence_num
+                    FROM chat_messages
+                    WHERE session_id=$1 AND role='assistant' AND branch_id=0
+                    ORDER BY sequence_num DESC LIMIT 1
+                    """,
+                    session_id,
+                )
+                _comp_seq = await pool.fetchval(
+                    "SELECT compacted_before_seq FROM chat_sessions WHERE session_id=$1",
+                    session_id,
+                )
+                _eff = compute_budget(
+                    used_tokens=0,
+                    context_length=creds.context_length,
+                    max_output_tokens=int(gen_params.get("max_tokens") or 0),
+                ).effective_limit
+                _stateful, _prev_rid = decide_chain(
+                    capabilities=getattr(creds, "capabilities", None),
+                    latest_assistant=dict(_latest_asst) if _latest_asst else None,
+                    current_model_ref=str(model_ref),
+                    compacted_before_seq=_comp_seq,
+                    effective_limit=_eff,
+                )
+                if _stateful and _prev_rid:
+                    _last_user = next(
+                        (m for m in reversed(messages) if m.get("role") == "user"), None
+                    )
+                    _delta_msgs = [m for m in messages if m.get("role") == "system"]
+                    if _last_user is not None:
+                        _delta_msgs.append(_last_user)
+            except Exception:
+                logger.warning("stateful chain decision skipped — stateless", exc_info=True)
+                _stateful, _prev_rid, _delta_msgs = False, None, None
+
             chunk_stream = _stream_with_tools(
                 model_source=model_source,
                 model_ref=model_ref,
@@ -2806,6 +2856,9 @@ async def _emit_chat_turn(
                 subagent_tool=_subagent_tool,
                 subagent_defs=_subagent_defs_map,
                 trace=trace,
+                stateful=_stateful,
+                previous_response_id=_prev_rid,
+                delta_messages=_delta_msgs,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -2866,6 +2919,9 @@ async def _emit_chat_turn(
                 last_usage = chunk_data["usage"]
             if chunk_data.get("llm_call_count") is not None:
                 _llm_call_count = chunk_data["llm_call_count"]
+            # Stateful (P2 §5) — the turn's chain head to persist on the assistant row.
+            if chunk_data.get("response_id"):
+                _final_response_id = chunk_data["response_id"]
 
             # Track time to first token (reasoning or content)
             if time_to_first_token is None and (reasoning or content):
@@ -3081,12 +3137,12 @@ async def _emit_chat_turn(
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb)
+                       context_breakdown, response_id)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13)
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
-                    json.dumps(_ctx_payload),
+                    json.dumps(_ctx_payload), _final_response_id,
                 )
 
                 # Extract and persist output artifacts
