@@ -1,9 +1,67 @@
 # PlanForge auto-bootstrap — CLARIFY + DESIGN (2026-07-06)
 
-> **Status:** CLARIFY closed 2026-07-06 (all 4 open questions resolved in §4,
-> with evidence — see §4.1). PLAN + BUILD for the POC starting next. Follows
+> **Status:** POC BUILT + live-verified 2026-07-06 (gate + [A] chapter-shell
+> creation — `docs/plans/2026-07-06-planforge-auto-bootstrap-poc.md`). User
+> reviewed the POC (POST-REVIEW) and decided: **complete [B]/[C]/[D] + a real
+> UI before any production exposure** — see §6 for the Phase 2 scope. Follows
 > `D-PLANFORGE-GUI-AUDIT` (P0 crash fix + leaky-abstraction UX redesign,
 > `design-drafts/planforge/2026-07-06-planner-panel-redesign-mockup.html`).
+
+## 6. Phase 2 — production completion (POST-REVIEW verdict, 2026-07-06)
+
+The POC's own POST-REVIEW (an honest self-audit, not a rubber stamp) found 6
+gaps between "POC proves the mechanism" and "ready to ship":
+
+1. **The review surface is raw JSON** — this directly violates this same
+   session's OWN locked principle for the Planner panel ("never exposes a
+   raw spec/JSON editor as a fallback, at any failure point" —
+   `design-drafts/planforge/2026-07-06-planner-panel-redesign-mockup.html`).
+   Acceptable for a developer proving a mechanism; not acceptable for an
+   end user.
+2. **Zero GUI entry point** — nothing in the real Studio can trigger
+   propose/approve/apply. A feature nobody can find doesn't ship.
+3. **Only [A] is done.** The question that started this whole doc ("can an
+   empty book bootstrap from scratch") is answered only 1/5 — chapters are
+   created EMPTY, no glossary, no drafting context, nothing draftable yet.
+4. **Title-based dedup** (§4.1.3's accepted POC approximation) is fragile
+   at real scale — a renamed chapter or a coincidentally-matching title
+   breaks the diff silently.
+5. **Cross-record race**: `claim_for_apply`'s atomic claim only guards
+   WITHIN one proposal record — two different APPROVED proposals covering
+   the same `event_id`, applied concurrently, can create two chapters.
+6. **No negative-path test coverage** (insufficient-grant 403, non-owner
+   404) and no logging in `bootstrap_service.py`.
+
+**User's decision: fix all 6 + build [B]/[C]/[D] + the real UI before
+production** (not the narrower "ship [A] alone" option). This section
+tracks that expanded scope as a continuation of the same classified effort
+(still XL overall — see Task Size Classification), broken into milestones
+so each can checkpoint independently:
+
+- **M1 — Hardening** (cheap, do first): negative-path tests, service
+  logging, a DB-level guard against the cross-record race (a
+  book-scoped uniqueness/lock on `event_id` across ALL non-rejected
+  proposals for a book, not just within one record).
+- **M2 — [B] glossary wiring**: replace `propose_cast`'s spec-blind
+  re-derivation with the already-correct `glossary_seeds` from
+  `compile_artifacts`, behind the SAME propose→approve→apply gate as a
+  second diff-item type (`new_glossary_entities`), per-book/per-user
+  ontology-kind creation where a mechanic doesn't map to an existing kind
+  (User Boundaries & Tenancy: never a System-tier write).
+- **M3 — [C]/[D] wiring**: attach the Stage 0-5 scene/beat plan as
+  per-chapter drafting context (not new DB rows — the "whole chapter is
+  the smallest unit" constraint from §2 still holds) and make
+  `run_chapter_generate` reachable against the newly-created real
+  chapter_ids.
+- **M4 — Real UI**: a plain-language review panel replacing raw JSON,
+  built on the visual language already established in
+  `design-drafts/planforge/2026-07-06-planner-panel-redesign-mockup.html`
+  (dark-theme tokens, card-based diff review, never a raw editor
+  fallback), wired to the M1-M3 endpoints.
+
+Each milestone gets its own BUILD→VERIFY→live-smoke pass and commit,
+consistent with this repo's "large effort → one continuous classified run,
+checkpoint at risk boundaries" guidance — not five separate CLARIFY cycles.
 
 ## 1. The question that triggered this
 
