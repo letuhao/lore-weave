@@ -76,4 +76,4 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"
 # tokio::Semaphore, which shuttle can't intercept; see D-W2-BULKHEAD-SHUTTLE-LITERAL).
 # Run: `RUSTFLAGS="--cfg shuttle" cargo test -p dp-kernel bulkhead_shuttle`.
 [target.'cfg(shuttle)'.dev-dependencies]
-shuttle = "0.7"
+shuttle = "0.9"
