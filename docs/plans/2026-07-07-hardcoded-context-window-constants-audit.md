@@ -143,13 +143,23 @@ call-site-local (no signature changes needed on the consuming functions).
     only asserts monotonic growth (`high > low > none`), not an exact value, so it wouldn't
     catch this. Root cause is clear but the CORRECT fix isn't purely mechanical — it's a
     product decision (which of the two multiplier tables should govern, or should the
-    planner path stop re-scaling an already-scaled input) — so this is flagged for the user's
-    decision rather than silently "fixed" against a guessed intent, per this repo's
+    planner path stop re-scaling an already-scaled input) — so this was flagged for the
+    user's decision rather than silently "fixed" against a guessed intent, per this repo's
     Debugging Protocol (no fixes without confirmed root cause AND correct target behavior).
     Blast radius: pre-job cost/call quote accuracy only (an "estimate, not quote" UI number)
     for `reasoning_effort != "none"` extraction jobs — does not affect real job execution or
     correctness, only how many LLM calls / what cost range the UI shows before the user
     confirms.
+    **FIXED 2026-07-08 (user's decision: drop the planner-path re-scaling).**
+    `extraction_prompt.py:539` no longer re-multiplies by `effort_output_multiplier` — it
+    reuses `output_per_call` (already scaled once by this file's own table) directly as
+    `out_per_call`, matching the flat-heuristic fallback path's behavior exactly. Dropped
+    the now-unused `effort_output_multiplier` import. New test
+    `test_estimate_cost_scales_effort_once_not_twice` (`test_extraction_windowing.py`) pins
+    the expected magnitude per effort level (e.g. `high` ≈ 8,000, not the ~20,000 a
+    reintroduced double-scale would produce) — the existing monotonic-growth test wouldn't
+    have caught a regression back to compounding. translation-service full suite: 1042
+    passed (up from 1041).
 
 ---
 

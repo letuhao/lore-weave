@@ -527,16 +527,19 @@ def estimate_extraction_cost(
 
     try:
         from loreweave_extraction import (
-            DEFAULT_MODEL_CONTEXT, ModelCaps, PlanRequest, Policy, Unit,
-            effort_output_multiplier, plan,
+            DEFAULT_MODEL_CONTEXT, ModelCaps, PlanRequest, Policy, Unit, plan,
         )
 
-        # D-RE-EFFORT-COST-ESTIMATE: a reasoning model spends extra OUTPUT tokens on its thinking
-        # trace, so the quote must grow with effort. The planner's per-call output RESERVATION
-        # already scales by effort (Policy.reasoning_effort), but the reported `est_output` is the
-        # sum of unit outputs — so scale the per-call output by the SAME multiplier here, and pass
-        # the effort to Policy so the split/budget math stays consistent with the larger output.
-        out_per_call = int(round(output_per_call * effort_output_multiplier(reasoning_effort)))
+        # D-RE-EFFORT-COST-ESTIMATE: a reasoning model spends extra OUTPUT tokens on its
+        # thinking trace, so the quote must grow with effort. `output_per_call` above is
+        # ALREADY scaled by this file's own _EFFORT_OUTPUT_MULTIPLIER table — reuse it
+        # as-is for the unit's est_output. (/review-impl: this used to ALSO multiply by
+        # planner.py's separate effort_output_multiplier table here, double-applying the
+        # effort scaling — e.g. "high" compounded to 2000×4.0×2.5=20,000 instead of the
+        # intended single 2000×4.0=8,000. Policy still carries reasoning_effort so the
+        # planner's own per-call OUTPUT CEILING accounting stays consistent, but the
+        # UNIT's declared output is this file's single source of truth.)
+        out_per_call = output_per_call
         units: list[Unit] = []
         for ci, ch in enumerate(chapters):
             cid = str(ch.get("chapter_id") or ch.get("id") or ci)

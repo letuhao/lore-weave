@@ -92,3 +92,29 @@ def test_estimate_cost_scales_with_reasoning_effort():
     assert estimate_extraction_cost(chapters, profile, kinds, reasoning_effort="bogus")[
         "estimated_output_tokens"
     ] == none_est["estimated_output_tokens"]
+
+
+def test_estimate_cost_scales_effort_once_not_twice():
+    """/review-impl: estimate_extraction_cost used to apply reasoning-effort output
+    scaling TWICE on the planner path — this file's own _EFFORT_OUTPUT_MULTIPLIER
+    table (none/off=1.0, low=1.5, medium=2.5, high=4.0) computed `output_per_call`,
+    then planner.py's SEPARATE table (none=1.0, low=1.3, medium=1.8, high=2.5) scaled
+    that already-scaled value AGAIN. For 'high' that compounded to 2000*4.0*2.5=20,000
+    instead of the intended single 2000*4.0=8,000. The sibling test above only asserts
+    monotonic growth (high > low > none), which a compounded value also satisfies —
+    this pins the actual expected magnitude so a re-introduced double-scale is caught."""
+    from app.workers.extraction_prompt import estimate_extraction_cost
+
+    profile = {"character": {"name": "fill", "role": "fill"}}
+    kinds = [{"code": "character", "attributes": [{"code": "name"}, {"code": "role"}]}]
+    chapters = [{"text_length": 8000}]  # one chapter, one kind batch
+
+    # Splitting (driven by the input budget here) preserves the SUM of est_output
+    # modulo small integer-rounding growth from math.ceil on each sub-unit — allow a
+    # tolerance well under the ~2.5x a reintroduced double-scale would produce.
+    for effort, base in (("none", 2000), ("low", 3000), ("medium", 5000), ("high", 8000)):
+        out = estimate_extraction_cost(chapters, profile, kinds, reasoning_effort=effort)
+        assert base <= out["estimated_output_tokens"] <= base + 10, (
+            f"{effort}: expected ~{base}, got {out['estimated_output_tokens']} "
+            "(double-scaling regression?)"
+        )
