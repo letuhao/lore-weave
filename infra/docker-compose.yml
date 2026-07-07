@@ -156,7 +156,7 @@ services:
       MINIO_ACCESS_KEY: loreweave
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_USE_SSL: "false"
-      MINIO_EXTERNAL_URL: http://localhost:9123
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       SHARING_INTERNAL_URL: http://sharing-service:8083
       # Phase 5e-β.2 — PROVIDER_REGISTRY_SERVICE_URL dropped (audio.go was
       # its last consumer; now migrated to use llmgw SDK via LLM_GATEWAY_INTERNAL_URL).
@@ -407,7 +407,7 @@ services:
       MINIO_ACCESS_KEY: loreweave
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_USE_SSL: "false"
-      MINIO_EXTERNAL_URL: http://localhost:9123
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
       # E5B rerank is now BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
       # user's rerank model from provider-registry like /internal/embed — no
@@ -894,7 +894,7 @@ services:
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_BUCKET: lw-chat
       MINIO_USE_SSL: "false"
-      MINIO_EXTERNAL_URL: http://localhost:9123
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
@@ -1648,6 +1648,11 @@ services:
         VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
     depends_on:
       api-gateway-bff:
+        condition: service_started
+      # nginx.conf also proxies /media/ to minio:9000 (browser-accessible
+      # object downloads behind the single frontend port) — same DNS-at-
+      # startup requirement as the languagetool note below.
+      minio:
         condition: service_started
       # Gate-5-I1: nginx.conf hard-references the `languagetool`
       # upstream and resolves all upstream hostnames at startup,
