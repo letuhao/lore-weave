@@ -12,6 +12,7 @@ from ..llm_client import LLMClient, set_campaign_id
 from ..metrics import record_stage
 from .. import fair_sched
 from .cost import resolve_job_cost_usd
+from .extraction_model import get_model_context_window as _get_model_context_window
 from .session_translator import translate_chapter
 from ..translation_events import emit_translation_published
 
@@ -20,9 +21,6 @@ log = logging.getLogger(__name__)
 #: Unified Job Control Plane P1 — stamped on every emitted JobEvent.
 _JOB_SERVICE = "translation"
 _JOB_KIND = "translation"
-
-# Default context window used when provider-registry cannot supply one
-_FALLBACK_CONTEXT_WINDOW = 8192
 
 # B2 (D-JOBS-P3-TRANSLATION-PAUSE) — the stale-running window for the worker's guarded
 # chapter claim. A 'running' chapter_translations row idle longer than this is treated as a
@@ -219,8 +217,11 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         chapter_id, len(chapter_text), source_lang, bool(chapter_body and isinstance(chapter_body, dict)),
     )
 
-    # Fetch model context window from provider-registry (best-effort)
-    context_window = await _get_model_context_window(msg)
+    # Fetch model context window from provider-registry (best-effort). Shared with
+    # extraction_worker.py (extraction_model.get_model_context_window) rather than a
+    # private duplicate — a duplicated fallback constant is exactly the kind of thing
+    # that silently drifts between two copies (see the css-var-duplication lesson).
+    context_window = await _get_model_context_window(msg.get("model_source"), msg.get("model_ref"))
     log.info("chapter %s: context_window=%d", chapter_id, context_window)
 
     # V2: Load previous chapter memo for cross-chapter context
@@ -753,32 +754,6 @@ async def _partial_retranslate_blocks(
         if local_i in t_texts:
             remapped_texts[src_i] = t_texts[local_i]
     return (merged, in_tok, out_tok, t_count, t_able, remapped_texts)
-
-
-async def _get_model_context_window(msg: dict) -> int:
-    """
-    Query provider-registry-service for the model's context window.
-    Returns _FALLBACK_CONTEXT_WINDOW if the endpoint is unavailable or the
-    model doesn't publish a context length (common for local Ollama/LM Studio models).
-    """
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(
-                f"{settings.provider_registry_service_url}"
-                f"/v1/model-registry/models/{msg['model_ref']}/context-window",
-                params={"model_source": msg["model_source"]},
-            )
-            if r.status_code == 200:
-                cw = int(r.json().get("context_window") or _FALLBACK_CONTEXT_WINDOW)
-                log.debug("context_window for model %s: %d", msg["model_ref"], cw)
-                return cw
-            log.debug(
-                "context_window endpoint returned %d for model %s — using fallback",
-                r.status_code, msg["model_ref"],
-            )
-    except Exception as exc:
-        log.debug("context_window fetch failed (%s) — using fallback %d", exc, _FALLBACK_CONTEXT_WINDOW)
-    return _FALLBACK_CONTEXT_WINDOW
 
 
 async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> None:

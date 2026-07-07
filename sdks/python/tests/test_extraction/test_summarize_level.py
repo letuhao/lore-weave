@@ -138,6 +138,44 @@ async def test_summarize_level_truncates_long_child_texts():
     assert len(sys_msg) < 10000
 
 
+async def test_summarize_level_context_length_scales_the_truncation_cap():
+    """/review-impl LOW: `context_length` scales `_MAX_CHILD_TEXT_CHARS` via
+    scale_by_window (summarize.py) — this SDK-level test proves the real
+    truncation cap grows, not just that the kwarg is accepted (the only prior
+    coverage was knowledge-service's caller test, which mocks summarize_level
+    entirely and never exercises the real truncation math)."""
+    llm = AsyncMock()
+    llm.submit_and_wait.return_value = _ok_response(
+        '{"summary_text": "A long book with many themes across its narrative arc."}'
+    )
+    huge = ["x" * 5000, "y" * 5000]  # 10k joined > flat 8000 cap, well under a scaled cap
+
+    await summarize_level(
+        level="book", child_texts=huge, entity_names=[],
+        user_id="u", project_id="p",
+        model_source="user_model", model_ref="m",
+        llm_client=llm,
+    )
+    flat_sys_msg = _sys_msg_from_call(llm)
+    assert "[...truncated]" in flat_sys_msg  # flat cap: still truncated
+
+    llm2 = AsyncMock()
+    llm2.submit_and_wait.return_value = _ok_response(
+        '{"summary_text": "A long book with many themes across its narrative arc."}'
+    )
+    await summarize_level(
+        level="book", child_texts=huge, entity_names=[],
+        user_id="u", project_id="p",
+        model_source="user_model", model_ref="m",
+        llm_client=llm2, context_length=1_000_000,
+    )
+    scaled_sys_msg = _sys_msg_from_call(llm2)
+    # A 1M-context session's cap (scale_by_window(8000, 1_000_000) == 40_000)
+    # comfortably fits the whole 10k joined input — no truncation needed.
+    assert "[...truncated]" not in scaled_sys_msg
+    assert len(scaled_sys_msg) > len(flat_sys_msg)
+
+
 async def test_summarize_level_raises_extraction_error_on_llm_failure():
     llm = AsyncMock()
     llm.submit_and_wait.side_effect = RuntimeError("gateway 500")

@@ -82,6 +82,7 @@ from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.import_source_repo import ImportSourceRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.engine.critic import parse_critique_json
+from loreweave_context import scale_by_window
 
 logger = logging.getLogger(__name__)
 
@@ -524,7 +525,12 @@ async def deconstruct_reference(
             "analyze_reference: no deconstruct model_ref resolved "
             "(set motif_deconstruct_model_ref or pass model_ref on the job)"
         )
-    chunks = chunk_content(source_content, chunk_chars=settings.motif_deconstruct_chunk_chars)
+    # Model-context-aware chunk sizing — a flat 12K-char chunk tuned for a mid-size
+    # model shouldn't cap a genuinely bigger model at the same number (fewer, larger
+    # chunks = fewer map-pass LLM calls per imported reference).
+    _context_length = await llm.resolve_context_length(model_source, model_ref)
+    _chunk_chars = scale_by_window(settings.motif_deconstruct_chunk_chars, _context_length)
+    chunks = chunk_content(source_content, chunk_chars=_chunk_chars)
     if not chunks:
         raise ValueError("analyze_reference: import_source content is empty")
 

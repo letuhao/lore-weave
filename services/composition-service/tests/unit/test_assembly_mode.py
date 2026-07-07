@@ -319,7 +319,10 @@ def chap_ctx(monkeypatch):
     app.dependency_overrides[get_book_client_dep] = lambda: book
     app.dependency_overrides[get_glossary_client_dep] = lambda: object()
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
-    app.dependency_overrides[get_llm_client_dep] = lambda: SimpleNamespace(sdk=object())
+    async def _resolve_context_length(model_source, model_ref):
+        return None  # unresolved in tests — the flat default budget applies
+    app.dependency_overrides[get_llm_client_dep] = lambda: SimpleNamespace(
+        sdk=object(), resolve_context_length=_resolve_context_length)
     with TestClient(app) as c:
         yield c, works, outline, jobs, book, state
     app.dependency_overrides.clear()

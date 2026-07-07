@@ -164,12 +164,14 @@ def build_run_subagent_tool(names: list[str]) -> dict | None:
     }
 
 
-def cap_result(text: str) -> tuple[str, bool]:
-    """Cap the synthesized sub-result. Over ``SUBAGENT_RESULT_CHAR_CAP`` →
-    truncate + append a one-line note. Returns ``(text, was_truncated)``."""
+def cap_result(text: str, *, char_cap: int = SUBAGENT_RESULT_CHAR_CAP) -> tuple[str, bool]:
+    """Cap the synthesized sub-result. Over ``char_cap`` (default
+    ``SUBAGENT_RESULT_CHAR_CAP``, scaled by the caller for a session model with a
+    larger real context_length) → truncate + append a one-line note. Returns
+    ``(text, was_truncated)``."""
     if text is None:
         return "", False
-    if len(text) <= SUBAGENT_RESULT_CHAR_CAP:
+    if len(text) <= char_cap:
         return text, False
     note = "\n\n[subagent result truncated — it exceeded the size cap]"
-    return text[:SUBAGENT_RESULT_CHAR_CAP] + note, True
+    return text[:char_cap] + note, True

@@ -196,6 +196,7 @@ async def _call_classifier_llm(
     system: str,
     user: str,
     n_items: int,
+    context_length: int | None = None,
 ) -> str:
     """One classifier chat call. Returns content string; raises ValueError
     on any non-usable outcome (mirrors pass2_filter._call_filter_llm)."""
@@ -205,6 +206,7 @@ async def _call_classifier_llm(
             transient_retry_budget=config.transient_retry_budget,
             **build_recovery_submit_kwargs(
                 config=config, system=system, user=user, n_items=n_items,
+                context_length=context_length,
             ),
         )
     except Exception as exc:  # noqa: BLE001
@@ -217,10 +219,19 @@ async def _call_classifier_llm(
 
 def build_recovery_submit_kwargs(
     *, config: "EntityRecoveryConfig", system: str, user: str, n_items: int,
+    context_length: int | None = None,
 ) -> dict:
     """Pure: submit_and_wait / submit_job kwargs for the recovery classifier chat
-    (user_id + transient_retry_budget stay per-call)."""
+    (user_id + transient_retry_budget stay per-call).
+
+    `max_tokens` scales with `n_items` uncapped by any real ceiling — a large batch
+    against a small-context model could request more output than the model can
+    structurally host (input + output must fit inside its window). When
+    `context_length` is known, clamp to 80% of the window (leaves headroom for the
+    system/user prompt); unknown ⇒ unclamped (today's behavior)."""
     max_tokens = 1024 + 200 * max(1, n_items)
+    if context_length and context_length > 0:
+        max_tokens = min(max_tokens, int(context_length * 0.8))
     return dict(
         operation="chat",
         model_source=config.model_source,
@@ -298,6 +309,8 @@ async def recover_missing_entities(
     llm_client: LLMClientProtocol,
     project_id: str | None = None,
     on_decision: RecoveryDecisionHandler | None = None,
+    # Model-context-aware output clamp — see build_recovery_submit_kwargs.
+    context_length: int | None = None,
 ) -> Pass2Candidates:
     """3-tier entity recovery + abstract-relation cleanup.
 
@@ -336,6 +349,7 @@ async def recover_missing_entities(
                 promoted_out=promoted,
                 name_verdict_out=name_verdict,
                 on_decision=on_decision,
+                context_length=context_length,
             )
         except Exception as exc:  # noqa: BLE001
             # Best-effort: degrade to unjudged for the rest.
@@ -434,6 +448,7 @@ async def _classify_remaining(
     promoted_out: list[LLMEntityCandidate],
     name_verdict_out: dict[str, VerdictLabel],
     on_decision: RecoveryDecisionHandler | None,
+    context_length: int | None = None,
 ) -> None:
     """Batch-call the LLM classifier on remaining unmatched names.
 
@@ -447,6 +462,7 @@ async def _classify_remaining(
             content = await _call_classifier_llm(
                 user_id=user_id, config=config, llm_client=llm_client,
                 system=_system, user=_user_msg, n_items=n_batch,
+                context_length=context_length,
             )
             decisions = _parse_decisions(content)
         except ValueError as exc:

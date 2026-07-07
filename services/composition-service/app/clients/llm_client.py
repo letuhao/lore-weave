@@ -127,6 +127,37 @@ class LLMClient:
                 llm_inflight_jobs.dec()
         raise RuntimeError("submit_and_wait loop fell through")  # pragma: no cover
 
+    async def resolve_context_length(self, model_source: str, model_ref: str) -> int | None:
+        """The model's real context window (tokens), or None when provider-registry
+        can't determine it — mirrors `resolve_planner_model`'s best-effort pattern.
+        Never fabricates a number on failure (see provider-registry-service's
+        `getModelContextWindow` docstring); callers supply their own conservative
+        default for the genuinely-unknown case."""
+        url = f"{settings.llm_gateway_internal_url}/v1/model-registry/models/{model_ref}/context-window"
+        try:
+            resp = await self._http.get(
+                url, params={"model_source": model_source},
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("resolve_context_length unreachable: %s", exc)
+            return None
+        if resp.status_code != 200:
+            logger.warning("resolve_context_length → %d", resp.status_code)
+            return None
+        try:
+            cw = resp.json().get("context_window")
+            if cw is None:
+                return None
+            cw_int = int(cw)
+        except (ValueError, AttributeError) as exc:
+            logger.warning("resolve_context_length bad JSON: %s", exc)
+            return None
+        # /review-impl HIGH: a falsy-only check let a stored 0/negative
+        # context_length pass through as "resolved" and flow into a
+        # negative max_tokens sent to the provider.
+        return cw_int if cw_int > 0 else None
+
     async def resolve_planner_model(self, user_id: str) -> str | None:
         """D-PLANFORGE-DEFAULT-MODEL — mirrors glossary-service's `resolvePlannerModel`
         (glossary-service/internal/api/providerregistry_client.go): reuses provider-

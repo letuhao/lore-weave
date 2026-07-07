@@ -14,7 +14,9 @@ redis[hiredis]>=5.0
 
 # Local SDKs installed via the Dockerfile COPY of sdks/python (build context
 # is repo root):
-#   loreweave_obs   — OTel tracing helpers (main.py)
-#   loreweave_llm   — gateway LLM client (M3 clients / M6 engine)
-#   loreweave_eval  — JudgeLLMClient for judge_prose (M6 critic)
+#   loreweave_obs     — OTel tracing helpers (main.py)
+#   loreweave_llm     — gateway LLM client (M3 clients / M6 engine)
+#   loreweave_eval    — JudgeLLMClient for judge_prose (M6 critic)
+#   loreweave_context — scale_by_window (model-context-aware budget scaling: pack,
+#                       stitch/compress, coverage window, selection, motif chunking)
 # For host-side pytest: pip install -e ../../sdks/python

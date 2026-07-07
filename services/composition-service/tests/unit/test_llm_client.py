@@ -130,3 +130,39 @@ async def test_resolve_planner_model_transport_error_returns_none():
 async def test_resolve_planner_model_bad_json_returns_none():
     c = _client_with_transport(lambda r: httpx.Response(200, content=b"not json"))
     assert await c.resolve_planner_model("u-1") is None
+
+
+# ── resolve_context_length ───────────────────────────────────────────────────
+
+
+async def test_resolve_context_length_returns_window():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"context_window": 128000, "resolved": True})
+
+    c = _client_with_transport(handler)
+    out = await c.resolve_context_length("user_model", "m-1")
+    assert out == 128000
+    assert "m-1" in seen["url"] and "context-window" in seen["url"]
+
+
+async def test_resolve_context_length_unresolved_returns_none():
+    c = _client_with_transport(
+        lambda r: httpx.Response(200, json={"context_window": None, "resolved": False}),
+    )
+    assert await c.resolve_context_length("user_model", "m-1") is None
+
+
+async def test_resolve_context_length_transport_error_returns_none():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down", request=request)
+
+    c = _client_with_transport(handler)
+    assert await c.resolve_context_length("user_model", "m-1") is None
+
+
+async def test_resolve_context_length_bad_json_returns_none():
+    c = _client_with_transport(lambda r: httpx.Response(200, content=b"not json"))
+    assert await c.resolve_context_length("user_model", "m-1") is None

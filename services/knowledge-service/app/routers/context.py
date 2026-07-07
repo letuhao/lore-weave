@@ -97,6 +97,11 @@ class ContextBuildRequest(BaseModel):
     # chapter (working-scope boost). Omitted on every non-editor turn → boost inert.
     # Additive/optional so an older chat-service that never sends it is byte-identical.
     current_chapter_id: UUID | None = None
+    # The session model's real resolved context window, so Mode 3's flat
+    # `mode3_token_budget` can scale up for a genuinely larger window instead of
+    # every model being capped at the same number. Additive/optional so an older
+    # chat-service that never sends it keeps the flat default (byte-identical).
+    context_length: int | None = None
 
 
 class ContextBuildResponse(BaseModel):
@@ -186,6 +191,7 @@ async def build(
             project_ids=req.project_ids,
             grounding=req.grounding,
             current_chapter_id=req.current_chapter_id,
+            context_length=req.context_length,
         )
         _mode_label = built.mode
     except ProjectNotFound:

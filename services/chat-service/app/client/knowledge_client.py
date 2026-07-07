@@ -235,6 +235,7 @@ class KnowledgeClient:
         language: str | None = None,
         grounding: bool = True,
         current_chapter_id: str | None = None,
+        context_length: int | None = None,
     ) -> KnowledgeContext:
         """POST /internal/context/build.
 
@@ -293,6 +294,12 @@ class KnowledgeClient:
         # Only editor turns carry it; reader/glossary chat send nothing → no boost.
         if current_chapter_id:
             body["current_chapter_id"] = current_chapter_id
+        # Model-context-aware Mode-3 budget scaling — the session model's real
+        # resolved context window, so knowledge-service can scale its flat
+        # mode3_token_budget instead of every model getting the same cap. Omitted
+        # when unknown → an older/current knowledge-service keeps its flat default.
+        if context_length and context_length > 0:
+            body["context_length"] = context_length
 
         # K7e: forward the caller's trace_id so knowledge-service (and
         # glossary-service, one hop further) can stitch their logs to

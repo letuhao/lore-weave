@@ -7,7 +7,12 @@ one shared-budget reverse-priority trim.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
+import pytest
+
+from app.context.modes import multi_project as mp
 from app.context.modes.multi_project import (
     _enforce_shared_budget,
     _merge_entities,
@@ -15,6 +20,9 @@ from app.context.modes.multi_project import (
     _merge_passages,
     _merge_summaries,
 )
+from loreweave_context import scale_by_window
+
+USER_ID = uuid4()
 
 
 def _ent(name, score):
@@ -96,3 +104,39 @@ def test_shared_budget_trims_lowest_score_passages_first():
     assert kept < 6  # over-budget → some passages dropped
     # whichever survived are the highest-scored (s0..); the lowest (s5) is gone
     assert "s5" not in ctx
+
+
+@pytest.mark.asyncio
+async def test_build_multi_project_mode_scales_shared_budget_with_context_length(monkeypatch):
+    """/review-impl LOW: build_multi_project_mode's `context_length` ->
+    `scale_by_window(mode3_token_budget, ...)` wiring (multi_project.py) had no test
+    proving it actually reaches `_enforce_shared_budget` with the SCALED value — this
+    proves the wiring end-to-end, mirroring test_mode_full.py's sibling coverage."""
+    p1, p2 = _proj("A"), _proj("B")
+    empty_l2 = SimpleNamespace(current=[], recent=[], background=[], negative=[])
+    monkeypatch.setattr(mp, "load_global_summary", AsyncMock(return_value=None))
+    monkeypatch.setattr(mp, "load_project_summary", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        mp, "_retrieve_one",
+        AsyncMock(side_effect=lambda *, project, **_kw: {
+            "project": project, "entities": [], "l2": empty_l2, "l3": [], "summaries": [],
+        }),
+    )
+    seen_budgets: list[int] = []
+    real_enforce = mp._enforce_shared_budget
+
+    def _spy_enforce(**kwargs):
+        seen_budgets.append(kwargs["budget_tokens"])
+        return real_enforce(**kwargs)
+
+    monkeypatch.setattr(mp, "_enforce_shared_budget", _spy_enforce)
+    monkeypatch.setattr(mp.settings, "mode3_token_budget", 1000)
+
+    await mp.build_multi_project_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        user_id=USER_ID, projects=[p1, p2], message="hi",
+        context_length=1_000_000,
+    )
+
+    assert seen_budgets == [scale_by_window(1000, 1_000_000)]
+    assert seen_budgets[0] > 1000  # the exact bug class: must NOT stay flat

@@ -18,6 +18,7 @@ shims.
 """
 from __future__ import annotations
 
+from ._context_length import resolve_context_length
 from ._errors import RETRYABLE_STATUSES, InternalClientError, is_retryable_status
 from ._model_name import resolve_model_name
 from ._transport import (
@@ -35,5 +36,6 @@ __all__ = [
     "build_internal_client",
     "build_timeout",
     "is_retryable_status",
+    "resolve_context_length",
     "resolve_model_name",
 ]

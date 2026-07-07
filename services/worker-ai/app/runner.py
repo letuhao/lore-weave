@@ -33,6 +33,7 @@ from opentelemetry import trace as _ot_trace
 from loreweave_jobs import JobStatus, emit_job_event_safe
 
 from loreweave_extraction import (
+    ContextBudget,
     EntityRecoveryConfig,
     PrecisionFilterConfig,
     ResolvedConfig,
@@ -1424,6 +1425,11 @@ async def _extract_and_persist(
     # in-flight extraction LLM call is aborted the moment the KG-build job is
     # cancelled. None (default) ⇒ no cancellation polling (back-compat).
     cancel_check: "Callable[[], Awaitable[bool]] | None" = None,
+    # Model-context-aware chunk sizing. None (default — chat_turn/glossary
+    # callers) keeps the legacy flat 15-paragraph chunk size. The chapter branch
+    # resolves the target model's real context window via ProviderRegistryClient
+    # and passes a ContextBudget so chunk size scales with the model in use.
+    context_budget: "ContextBudget | None" = None,
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1499,6 +1505,7 @@ async def _extract_and_persist(
             # bug #34 — immediate-cancel hook → core extraction submit_and_wait
             # calls so an in-flight LLM call aborts on job cancellation.
             cancel_check=cancel_check,
+            context_budget=context_budget,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -1588,6 +1595,12 @@ async def _start_decoupled_chunk(
     # L7 (Milestone B) — the project's ADVISORY extraction schema (None ⇒ static
     # prompt). Stashed in resume_state so the consumer rebuilds it for build_*_system.
     extraction_schema: ExtractionSchema | None = None,
+    # Model-context-aware chunk sizing — resolves the target model's real context
+    # window so the entity/trio submits (assembled later by decoupled_extract.py,
+    # possibly after a process restart) can build a ContextBudget instead of
+    # assuming a flat window. None (only in tests that don't wire a client) ⇒ the
+    # resolution is skipped and chunk size falls back to the SDK's legacy default.
+    provider_client: "ProviderRegistryClient | None" = None,
 ) -> None:
     """WX-T3b — seed resume_state for one chapter + submit its entity job, then
     return (released). The llm_extract_consumer folds the terminal events through
@@ -1599,6 +1612,13 @@ async def _start_decoupled_chunk(
     from app import decoupled_extract as dx
 
     eff_model_ref = job.billing_llm_model if job.billing_user_id else run_snapshot.model_ref
+    # Resolved ONCE here (not re-fetched on every fold) and stashed into resume_state
+    # alongside model_ref — decoupled_extract.py's assemble_* functions are pure
+    # (no I/O) and read it back to build a ContextBudget per submit.
+    context_length = (
+        await provider_client.get_context_length("user_model", str(eff_model_ref))
+        if provider_client is not None else None
+    )
     # WX Wave 4 — recovery/filter are now decoupled fan-out stages (no sync fallback).
     eff_recovery = run_snapshot.entity_recovery
     eff_filter = run_snapshot.precision_filter
@@ -1628,6 +1648,12 @@ async def _start_decoupled_chunk(
     rs.update(
         user_id=str(job.user_id), project_id=str(job.project_id),
         model_source="user_model", model_ref=str(eff_model_ref),
+        # Model-context-aware chunk sizing — stashed alongside model_ref so
+        # decoupled_extract.py's assemble_* functions build a ContextBudget on
+        # both the initial submit AND resume (a process restart never re-resolves
+        # it, matching the reasoning_effort stash pattern below). None ⇒ the SDK
+        # falls back to its legacy flat chunk size — never guessed here.
+        context_length=context_length,
         # D-KG-WORKER-GRADED-EFFORT — stash the job's graded effort in
         # resume_state alongside model_ref so the decoupled consumer rebuilds the
         # entity + trio submits with the SAME effort on resume. Missing it here
@@ -2154,6 +2180,9 @@ async def process_job(
                         p5_token=_p5_token,
                         # L7 (Milestone B) — advisory project schema (None ⇒ static prompt).
                         extraction_schema=extraction_schema,
+                        # Model-context-aware chunk sizing (resolved once, stashed in
+                        # resume_state for decoupled_extract.py's assemble_* functions).
+                        provider_client=provider_client,
                     )
                     logger.info(
                         "Job %s: chapter %s submitted via DECOUPLED extraction (released)",
@@ -2165,6 +2194,16 @@ async def process_job(
                 # stage in-process via loreweave_extraction.extract_pass2,
                 # then POSTs candidates to /persist-pass2.
                 # Q4b-feed: candidates captured for the run-sample write below.
+                _eff_model_ref = (
+                    job.billing_llm_model if job.billing_user_id
+                    else run_snapshot.model_ref
+                )
+                # Model-context-aware chunk sizing — resolve the ACTUAL model's
+                # context window (never a flat assumption) so extraction chunk
+                # size scales with the model in use. None (unresolved) keeps the
+                # SDK's legacy flat 15-paragraph chunk size — never guess here.
+                _ctx_len = await provider_client.get_context_length("user_model", _eff_model_ref)
+                _chapter_context_budget = ContextBudget(model_context=_ctx_len) if _ctx_len else None
                 result, candidates = await _extract_and_persist(
                     knowledge_client=knowledge_client,
                     llm_client=llm_client,
@@ -2181,10 +2220,8 @@ async def process_job(
                     # snapshot ref applies only on the owner path. Gated on
                     # billing_user_id (the identity), not the ref alone, to stay
                     # coherent with the submit_and_wait contextvar (MED-1).
-                    model_ref=(
-                        job.billing_llm_model if job.billing_user_id
-                        else run_snapshot.model_ref
-                    ),
+                    model_ref=_eff_model_ref,
+                    context_budget=_chapter_context_budget,
                     precision_filter=run_snapshot.precision_filter,
                     entity_recovery=run_snapshot.entity_recovery,
                     prompt_overrides=run_snapshot.prompts,

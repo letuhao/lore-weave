@@ -39,6 +39,7 @@ from app.config import settings
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
 from app.context.intent.classifier import classify
+from loreweave_context import scale_by_window
 from app.context.modes.full import (
     _safe_l2_facts,
     _safe_l3_passages,
@@ -338,8 +339,12 @@ async def build_multi_project_mode(
     llm_client: LLMClient | None = None,
     language: str | None = None,
     entity_access_repo=None,
+    context_length: int | None = None,
 ) -> BuiltContext:
-    """Union the Mode-3 retrieval of ``projects`` into one shared-budget memory block."""
+    """Union the Mode-3 retrieval of ``projects`` into one shared-budget memory block.
+
+    `context_length` (the calling chat session's real model window) scales the shared
+    `mode3_token_budget` instead of every model being capped at the same flat number."""
     try:
         l0 = await asyncio.wait_for(
             load_global_summary(summaries_repo, user_id),
@@ -380,7 +385,7 @@ async def build_multi_project_mode(
     context, token_count, sections = _enforce_shared_budget(
         projects=projects, l0=l0, entities=entities, facts=facts,
         passages=passages, summaries=summaries, project_summaries=project_summaries,
-        budget_tokens=settings.mode3_token_budget,
+        budget_tokens=scale_by_window(settings.mode3_token_budget, context_length),
     )
 
     # Track B B1(2) — keep each surfaced entity's SOURCE project (it's right here in

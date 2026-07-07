@@ -21,6 +21,7 @@ from loreweave_llm.errors import (
 from loreweave_jobs import emit_job_event_safe
 
 from ..llm_client import LLMClient
+from .extraction_model import get_model_context_window
 from .glossary_client import fetch_translation_candidates, post_apply_translations
 from .glossary_translate_prompt import (
     attr_response_format,
@@ -190,6 +191,19 @@ async def _run_job(
     # that entity (logged) — it must not abort the whole batch.
     sem = asyncio.Semaphore(concurrency)
 
+    # Resolved ONCE per job (not per-entity — same model for the whole run), same helper
+    # extraction_worker.py already uses. A flat 32768 output ceiling can exceed a small
+    # local model's ENTIRE context window (input + output together must fit inside it),
+    # so clamp the ceiling to what the model can structurally host — never request more
+    # output than physically fits, regardless of how large the flat default is. Reserves
+    # ~20% of the window for the system/user prompt; a genuinely large window (128K+)
+    # never clamps below the flat default (this only ever tightens, never widens it).
+    _model_context_window = await get_model_context_window(model_source, model_ref)
+    _effective_max_output_ceiling = (
+        min(_GLOSSARY_TRANSLATE_MAX_OUTPUT_TOKENS, int(_model_context_window * 0.8))
+        if _model_context_window else _GLOSSARY_TRANSLATE_MAX_OUTPUT_TOKENS
+    )
+
     async def _process_entity(ent: dict) -> None:
         nonlocal completed, failed, attrs_translated, attrs_skipped, total_in, total_out, llm_calls_made
         try:
@@ -217,7 +231,7 @@ async def _run_job(
                     # bug #8 — budget scales with THIS entity's attribute values (floored at
                     # the old 4096) instead of a flat cap that truncated large entities.
                     "max_tokens": entity_output_budget(
-                        attrs, ceiling=_GLOSSARY_TRANSLATE_MAX_OUTPUT_TOKENS
+                        attrs, ceiling=_effective_max_output_ceiling
                     ),
                     # reasoning_effort="none" ⇒ explicit disable (thinking:false), matching
                     # the old thinking_llm_fields(False); low/medium/high ⇒ graded.

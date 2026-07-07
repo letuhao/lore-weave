@@ -47,6 +47,7 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
 from app.clients.reranker_client import get_reranker_client
 from app.config import settings
+from loreweave_context import scale_by_window
 from app.context.formatters.dedup import (
     filter_entities_not_in_summary,
     filter_facts_not_in_summary,
@@ -694,6 +695,7 @@ async def build_full_mode(
     language: str | None = None,
     entity_access_repo=None,
     current_chapter_id: UUID | None = None,
+    context_length: int | None = None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
@@ -701,7 +703,9 @@ async def build_full_mode(
     adds the L2 fact selector, L3 semantic passages, and absence
     detection on top. Intent-aware CoT instructions close the block.
     Token budget enforcement (K18.7) trims in reverse priority when
-    the full payload exceeds `settings.mode3_token_budget`.
+    the full payload exceeds `settings.mode3_token_budget` (scaled up via
+    `context_length` — the calling chat session's real model window — instead
+    of every model being capped at the same flat number).
 
     `embedding_client` is optional — callers in Track 1 / no-Neo4j
     mode pass `None` and the L3 layer cleanly returns empty.
@@ -956,7 +960,7 @@ async def build_full_mode(
         summary_hits=summary_hits,
         absences=absences,
         intent_obj=intent_obj,
-        budget_tokens=settings.mode3_token_budget,
+        budget_tokens=scale_by_window(settings.mode3_token_budget, context_length),
     )
 
     return BuiltContext(

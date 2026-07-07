@@ -2008,6 +2008,15 @@ async def _run_subagent_call(
             effective_limit=effective_limit,
             allowed_tool_names=allowed,      # execute-time whitelist
             subagent_depth=subagent_depth + 1,
+            # /review-impl MED: the nested run's own tool-surface budgeting
+            # (HOT_SEED_TOKEN_BUDGET etc.) should scale by the MODEL THAT RUN
+            # ACTUALLY USES, not blindly by the parent's context_length — a
+            # subagent def can override model_ref (sub_model_ref above). Only
+            # forward it when the subagent is running on the SAME model as the
+            # caller; a different model without its own resolved context_length
+            # correctly falls back to the flat default rather than misapplying
+            # the parent model's window.
+            context_length=context_length if sub_model_ref == model_ref else None,
         )
         async for ch in nested:
             if ch.get("content"):
@@ -2237,6 +2246,7 @@ async def stream_response(
         # boost passages near it (working-scope boost). Only editor turns carry
         # editor_context; other surfaces send None → boost inert downstream.
         current_chapter_id=(editor_context or {}).get("chapter_id"),
+        context_length=creds.context_length,
     )
 
     # ── P0-5 (audit Area 3, SEC-4 / ML-4) — neutralize indirect prompt-injection

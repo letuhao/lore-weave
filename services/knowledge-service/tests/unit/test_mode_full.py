@@ -409,6 +409,42 @@ async def test_budget_drops_passages_first(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_context_length_scales_up_the_flat_budget(monkeypatch):
+    """A 1M-context session must NOT get the same Mode-3 budget a small/unknown
+    window would — passing context_length must scale mode3_token_budget UP,
+    surviving more passages than the flat default alone would."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text=("filler " * 40) + f"passage {i}",
+            source_type="chapter", source_id=f"ch-{i}", chunk_index=0,
+            score=0.9 - (i * 0.01), is_hub=False, chapter_index=i,
+        )
+        for i in range(10)
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    monkeypatch.setattr("app.context.modes.full.settings.mode3_token_budget", 80)
+
+    flat = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="Tell me",
+    )
+    scaled = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="Tell me", context_length=1_000_000,
+    )
+    flat_count = flat.context.count("<passage ")
+    scaled_count = scaled.context.count("<passage ")
+    assert scaled_count > flat_count
+
+
+@pytest.mark.asyncio
 async def test_budget_drops_lowest_score_passages_first(monkeypatch):
     """K18.7: when trimming passages, lowest-score ones go first."""
     from app.context.selectors.passages import L3Passage

@@ -15,15 +15,18 @@ from app.db import session_blocks
 from app.db.session_blocks import SessionBlock, project_story_state
 from app.services.story_state import (
     DEFAULT_CADENCE_TURNS,
+    STORY_STATE_TOKEN_CAP,
     distill_story_state,
     render_story_state_block,
     source_hash,
 )
+from app.services.token_budget import scale_by_window
 
 pytestmark = pytest.mark.asyncio
 
 
-async def _run(*, cached, stable, full, current_turn=5, lore_gate=False, scene_change=False):
+async def _run(*, cached, stable, full, current_turn=5, lore_gate=False, scene_change=False,
+                context_length=None):
     """Drive project_story_state with get_block→`cached` and refresh_block mocked;
     return (projected_text, refresh_mock)."""
     with patch.object(session_blocks, "get_block", AsyncMock(return_value=cached)), patch.object(
@@ -38,6 +41,7 @@ async def _run(*, cached, stable, full, current_turn=5, lore_gate=False, scene_c
             current_turn=current_turn,
             lore_gate=lore_gate,
             scene_change=scene_change,
+            context_length=context_length,
         )
     return out, rb
 
@@ -127,3 +131,25 @@ async def test_degraded_with_blank_cache_projects_nothing():
     out, rb = await _run(cached=cached, stable="", full="")
     rb.assert_not_awaited()
     assert out == ""
+
+
+async def test_context_length_scales_the_distill_cap():
+    """A 1M-context session must NOT get the same story_state cap a 200K session
+    would — a long bible that overflows the flat 1200-token cap should distill to
+    MORE surviving content once the cap scales with the real window."""
+    long_bible = "\n".join(f"Entity {i}: a load-bearing fact about them." for i in range(400))
+    _, rb = await _run(
+        cached=None, stable=long_bible, full=long_bible, context_length=1_000_000,
+    )
+    rb.assert_awaited_once()
+    scaled_value = rb.await_args.kwargs["value"]
+    flat_value = distill_story_state(long_bible)[0]
+    # /review-impl LOW: assert the ACTUAL scaled cap (scale_by_window(1200,
+    # 1_000_000, tuned_window=200_000) == 6000), not just "grew at all" — a
+    # significantly-wrong scaling factor could still satisfy a weaker assertion.
+    expected_scaled_value = distill_story_state(
+        long_bible, token_cap=scale_by_window(STORY_STATE_TOKEN_CAP, 1_000_000),
+    )[0]
+    assert scaled_value == expected_scaled_value
+    assert scaled_value != flat_value
+    assert len(scaled_value) > len(flat_value)

@@ -13,6 +13,10 @@ def _tool(name: str) -> dict:
     return {"type": "function", "function": {"name": name, "description": name}}
 
 
+def _tool_padded(i: int) -> dict:
+    return {"type": "function", "function": {"name": f"t{i}", "description": "x" * 200}}
+
+
 class TestToolSurface:
     def test_is_curated(self):
         assert not is_curated([])
@@ -54,6 +58,15 @@ class TestToolSurface:
         merged = merge_activated_tools(base, {"new_tool"})
         assert len(merged) == ACTIVATED_TOOLS_CAP
         assert merged[-1] == "new_tool"
+
+    def test_merge_activated_tools_scales_budget_with_context_length(self):
+        # A 1M-context session must NOT get the same token-budget cap a 200K
+        # session would — the exact bug class a flat/unscaled budget reintroduces.
+        catalog = [_tool_padded(i) for i in range(200)]
+        current = [f"t{i}" for i in range(200)]
+        flat = merge_activated_tools(current, set(), catalog=catalog)
+        scaled = merge_activated_tools(current, set(), catalog=catalog, context_length=1_000_000)
+        assert len(scaled) > len(flat)
 
     def test_discovery_seed_curated_ignores_hot_tail(self):
         from app.services.tool_surface import (

@@ -84,26 +84,34 @@ class TestComputeBudget:
 
 class TestComputeTarget:
     def test_band_for_large_window(self):
-        # 200K window: floor = min(6K, 20K) = 6K; surface_max = min(32K, 70K) = 32K.
+        # 200K window: floor = 0.1×200K = 20K; surface_max = 0.75×200K = 150K.
         from app.services.token_budget import compute_target
 
-        assert compute_target(200_000, task_weight=0.0) == 6_000       # floor
-        assert compute_target(200_000, task_weight=1.0) == 32_000      # surface_max
+        assert compute_target(200_000, task_weight=0.0) == 20_000      # floor
+        assert compute_target(200_000, task_weight=1.0) == 150_000     # surface_max
         mid = compute_target(200_000, task_weight=0.5)
-        assert 6_000 < mid < 32_000
+        assert 20_000 < mid < 150_000
 
     def test_band_scales_with_small_window(self):
-        # 20K window: floor = min(6K, 2K) = 2K; surface_max = min(32K, 7K) = 7K.
+        # 20K window: floor = 0.1×20K = 2K; surface_max = 0.75×20K = 15K.
         from app.services.token_budget import compute_target
 
         assert compute_target(20_000, task_weight=0.0) == 2_000
-        assert compute_target(20_000, task_weight=1.0) == 7_000
+        assert compute_target(20_000, task_weight=1.0) == 15_000
+
+    def test_band_scales_with_million_token_window(self):
+        # No absolute cap: a 1M-context model gets a proportional target, not the same
+        # flat number a 200K model would get (the exact bug class this test guards).
+        from app.services.token_budget import compute_target
+
+        assert compute_target(1_000_000, task_weight=0.0) == 100_000    # floor
+        assert compute_target(1_000_000, task_weight=1.0) == 750_000    # surface_max
 
     def test_task_weight_clamped(self):
         from app.services.token_budget import compute_target
 
-        assert compute_target(200_000, task_weight=5.0) == 32_000   # >1 clamps to max
-        assert compute_target(200_000, task_weight=-1.0) == 6_000   # <0 clamps to floor
+        assert compute_target(200_000, task_weight=5.0) == 150_000   # >1 clamps to max
+        assert compute_target(200_000, task_weight=-1.0) == 20_000   # <0 clamps to floor
 
     def test_unknown_window_is_none(self):
         from app.services.token_budget import compute_target
@@ -116,24 +124,24 @@ class TestComputeTarget:
         # never be silently masked as "lean" (floor) → over-compaction.
         from app.services.token_budget import compute_target
 
-        assert compute_target(200_000, task_weight=float("nan")) == 32_000  # surface_max
+        assert compute_target(200_000, task_weight=float("nan")) == 150_000  # surface_max
 
 
 class TestBudgetTarget:
     def test_budget_carries_target_and_pct_of_target(self):
         # default task_weight=1.0 → surface_max target.
-        b = compute_budget(used_tokens=16_000, context_length=200_000, max_output_tokens=4_000)
-        assert b.target == 32_000
-        assert b.pct_of_target == 16_000 / 32_000  # 0.5 — half the soft budget
+        b = compute_budget(used_tokens=75_000, context_length=200_000, max_output_tokens=4_000)
+        assert b.target == 150_000
+        assert b.pct_of_target == 75_000 / 150_000  # 0.5 — half the soft budget
         ev = b.to_event()
-        assert ev["target"] == 32_000
+        assert ev["target"] == 150_000
         assert 0.49 <= ev["pct_of_target"] <= 0.51
 
     def test_task_weight_shrinks_target(self):
         lean = compute_budget(
-            used_tokens=8_000, context_length=200_000, max_output_tokens=4_000, task_weight=0.0)
-        assert lean.target == 6_000
-        assert (lean.pct_of_target or 0) > 1.0  # 8K > 6K floor → over the lean target
+            used_tokens=25_000, context_length=200_000, max_output_tokens=4_000, task_weight=0.0)
+        assert lean.target == 20_000
+        assert (lean.pct_of_target or 0) > 1.0  # 25K > 20K floor → over the lean target
 
     def test_unknown_window_target_none(self):
         b = compute_budget(used_tokens=10, context_length=None, max_output_tokens=0)

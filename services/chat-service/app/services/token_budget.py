@@ -30,7 +30,7 @@ _SAFETY_TOKENS = 512
 # in T3.2 (`loreweave_context.budget`) so the Planner owns it. Re-exported here so every
 # existing caller keeps working unchanged: `compute_budget` below (the meter), the
 # token-budget tests, and any `from app.services.token_budget import compute_target`.
-from loreweave_context.budget import compute_target  # noqa: E402  (re-export)
+from loreweave_context.budget import compute_target, scale_by_window  # noqa: E402  (re-export)
 
 
 @dataclass(frozen=True)

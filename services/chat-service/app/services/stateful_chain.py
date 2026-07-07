@@ -39,10 +39,11 @@ def _max_chain_tokens() -> int | None:
     """P3 §9 — an OPTIONAL hard cap on the stateful chain's accumulated server-side size,
     independent of the model's declared window. A provider may load a model with a
     smaller `n_ctx` than `context_length` advertises, and the stateful chain ACCUMULATES
-    (unlike stateless, which the compaction keeps ~32K), so a conservative deploy cap
-    bounds it below the real window. `LLM_STATEFUL_MAX_CHAIN_TOKENS` (unset ⇒ no extra
-    cap, rule-4 uses only ratio×effective_limit). The re-establish it forces sends the
-    compaction-bounded history, resetting the accumulation."""
+    (unlike stateless, which the compaction keeps near the task-elastic soft target —
+    see `compute_target`), so a conservative deploy cap bounds it below the real window.
+    `LLM_STATEFUL_MAX_CHAIN_TOKENS` (unset ⇒ no extra cap, rule-4 uses only
+    ratio×effective_limit). The re-establish it forces sends the compaction-bounded
+    history, resetting the accumulation."""
     v = os.getenv("LLM_STATEFUL_MAX_CHAIN_TOKENS", "").strip()
     if v.isdigit() and int(v) > 0:
         return int(v)

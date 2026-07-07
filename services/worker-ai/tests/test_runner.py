@@ -306,11 +306,14 @@ def _mock_chat_client(text=""):
     return client
 
 
-def _mock_provider_client(model_name=None):
+def _mock_provider_client(model_name=None, context_length=None):
     """FD-27 — mock ProviderRegistryClient. Default get_model_name returns None
-    (advisory off); pass a name to exercise the reasoning-model advisory."""
+    (advisory off); pass a name to exercise the reasoning-model advisory. Default
+    get_context_length returns None (unresolved — the chapter branch's ContextBudget
+    stays unset); pass an int to exercise model-context-aware chunk sizing."""
     client = AsyncMock(spec=ProviderRegistryClient)
     client.get_model_name = AsyncMock(return_value=model_name)
+    client.get_context_length = AsyncMock(return_value=context_length)
     return client
 
 

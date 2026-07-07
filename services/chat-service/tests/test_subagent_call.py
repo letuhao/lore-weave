@@ -202,6 +202,18 @@ async def test_result_is_capped(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_result_cap_scales_with_context_length(monkeypatch):
+    # A 1M-context caller must NOT get the same result cap a 200K caller would —
+    # the same text that truncates by default must survive uncapped once
+    # context_length is large enough to scale the cap past its length.
+    big = "y" * (SUBAGENT_RESULT_CHAR_CAP + 1000)
+    _install_stub(monkeypatch, [{"content": big}, {"usage": _Usage(1, 1)}])
+    payload, _, _ = await _run(context_length=1_000_000)
+    assert not payload.get("truncated")
+    assert payload["result"] == big
+
+
+@pytest.mark.asyncio
 async def test_nested_suspend_ends_run_gracefully(monkeypatch):
     _install_stub(monkeypatch, [
         {"content": "partial"},

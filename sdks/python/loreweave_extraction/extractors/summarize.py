@@ -24,6 +24,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from loreweave_llm import no_thinking_fields
 
+from loreweave_context.budget import scale_by_window
+
 from loreweave_extraction._types import LLMClientProtocol
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.prompts import load_prompt
@@ -64,6 +66,12 @@ async def summarize_level(
     llm_client: LLMClientProtocol,
     # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    # Model-context-aware input sizing. None (default — every existing caller)
+    # keeps the flat _MAX_CHILD_TEXT_CHARS. A caller that resolves the target
+    # model's real context window gets a proportionally larger input budget instead
+    # of every model, including a 1M-context one, being truncated at the same flat
+    # 8000 chars (see loreweave_context.budget.scale_by_window).
+    context_length: int | None = None,
 ) -> LevelSummary:
     """Generate a 2-3 sentence summary of *level* via the BYOK LLM.
 
@@ -72,7 +80,7 @@ async def summarize_level(
         child_texts: text content from the children of this level
             (chapter -> joined scene leaf_texts; part -> chapter
             summaries; book -> part summaries). Truncated to
-            _MAX_CHILD_TEXT_CHARS before sending.
+            _MAX_CHILD_TEXT_CHARS (scaled by context_length) before sending.
         entity_names: top entities at this level (e.g. top-30 by
             mention frequency). Included in prompt for grounding.
         user_id, project_id, model_source, model_ref, llm_client:
@@ -94,8 +102,9 @@ async def summarize_level(
     joined = "\n\n".join(t.strip() for t in child_texts if t.strip())
     if not joined:
         raise ValueError("child_texts joined to empty string")
-    if len(joined) > _MAX_CHILD_TEXT_CHARS:
-        joined = joined[:_MAX_CHILD_TEXT_CHARS] + "\n[...truncated]"
+    max_child_chars = scale_by_window(_MAX_CHILD_TEXT_CHARS, context_length)
+    if len(joined) > max_child_chars:
+        joined = joined[:max_child_chars] + "\n[...truncated]"
 
     capped_entities = entity_names[:_MAX_ENTITY_NAMES]
     safe_entities = json.dumps(capped_entities, ensure_ascii=False).replace(
