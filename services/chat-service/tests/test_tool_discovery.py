@@ -575,13 +575,30 @@ _MIXED_CATALOG = [
 
 
 class TestSurfaceHotDomains:
-    def test_universal_is_pure_discovery(self):
-        assert td.surface_hot_domains(editor=False, book_scoped=False) == set()
+    """Part D (2026-07-07, docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-
+    standard.md §8b.9) — `surface_hot_domains` now DERIVES from which skills
+    auto-inject by default on a surface (unioning their declared `hot_domains`),
+    instead of three hand-authored constants. Sign-off'd behavior change: since
+    `knowledge_skill` already auto-injects on EVERY non-admin surface (including
+    universal/chat) and already honestly declared `hot_domains={"knowledge"}`
+    (2026-07-07, Part A), that declaration is now HONORED — "knowledge" is hot on
+    every surface below, including universal, which previously hot-seeded nothing.
+    This closes `D-SKILL-HOTDOMAIN-RUNTIME-WIRING`. Every other domain (glossary/
+    composition/story/plan) is UNCHANGED from the old hand-authored constants —
+    that equivalence is exactly what these tests now assert."""
 
-    def test_book_scoped_hot_is_glossary_and_story(self):
+    def test_universal_is_knowledge_only(self):
+        # Previously pure discovery (∅) — "knowledge" is the ONE new addition; no
+        # other domain becomes hot on chat (no skill besides knowledge/universal
+        # auto-injects there, and universal's own hot_domains is correctly empty).
+        assert td.surface_hot_domains(editor=False, book_scoped=False) == {"knowledge"}
+
+    def test_book_scoped_hot_is_glossary_story_and_now_knowledge(self):
         # story_search (the universal manuscript find) is hot on every book-bound
         # surface — a weak model otherwise punts instead of discovering it (measured).
-        assert td.surface_hot_domains(editor=False, book_scoped=True) == {"glossary", "story"}
+        assert td.surface_hot_domains(editor=False, book_scoped=True) == {
+            "glossary", "story", "knowledge",
+        }
 
     def test_editor_matches_book_glossary_skill(self):
         # Both surfaces inject the glossary skill (names glossary_* only) + the story
@@ -589,11 +606,19 @@ class TestSurfaceHotDomains:
         # domain — so the editor's hot domains equal the book-scoped surface's.
         editor = td.surface_hot_domains(editor=True, book_scoped=True)
         book = td.surface_hot_domains(editor=False, book_scoped=True)
-        assert editor == book == {"glossary", "story"}
+        assert editor == book == {"glossary", "story", "knowledge"}
 
-    def test_studio_hot_includes_story(self):
+    def test_studio_hot_includes_story_and_knowledge(self):
         studio = td.surface_hot_domains(studio=True)
-        assert {"glossary", "composition", "story"} <= studio
+        assert {"glossary", "composition", "story", "knowledge"} <= studio
+
+    def test_plan_mode_still_adds_plan_domain_on_top(self):
+        # The plan-mode carve-out (was PLAN_HOT_DOMAINS, now derived from
+        # SYSTEM_SKILLS["plan_forge"].hot_domains) still layers "plan" on, additive
+        # to whatever the surface would otherwise be hot for.
+        base = td.surface_hot_domains(editor=False, book_scoped=True)
+        plan = td.surface_hot_domains(editor=False, book_scoped=True, permission_mode="plan")
+        assert plan == base | {"plan"}
 
 
 class TestHotToolNames:
@@ -618,7 +643,13 @@ class TestHotSetAdvertisedOnFirstPass:
     def test_seed_advertises_hot_tools_immediately(self):
         """A book-scoped surface seeds the glossary domain into the active set, so
         its full schemas are advertised on pass 0 WITHOUT a find_tools round-trip —
-        while the non-glossary long tail stays out (lazy)."""
+        while the non-glossary long tail stays out (lazy).
+
+        Part D (2026-07-07): `memory_search` (knowledge domain) is now correctly
+        IN this set — see `TestSurfaceHotDomains`'s class docstring for why this
+        flipped from the old "stays lazy" expectation (knowledge_skill's declared
+        hot_domains is now actually honored, closing D-SKILL-HOTDOMAIN-RUNTIME-
+        WIRING)."""
         from app.services.stream_service import _advertise_discovery_tools, _catalog_index
         seed = td.hot_tool_names(
             _MIXED_CATALOG, td.surface_hot_domains(editor=False, book_scoped=True)
@@ -638,7 +669,9 @@ class TestHotSetAdvertisedOnFirstPass:
         # the long tail is NOT advertised — it's discovered on demand
         assert "translation_start_job" not in names
         assert "composition_outline_create" not in names
-        assert "memory_search" not in names
+        # Part D: knowledge is now hot too (see docstring above) — memory_search
+        # rides the seed, it does NOT stay lazy anymore.
+        assert "memory_search" in names
         # find_tools is still there so the agent can reach the tail
         assert td.FIND_TOOLS_NAME in names
 

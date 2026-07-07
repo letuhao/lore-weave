@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 from app.services.token_budget import estimate_tokens, scale_by_window
 from app.services.tool_discovery import (
-    PLAN_HOT_DOMAINS,
     hot_tool_names,
     surface_hot_domains,
     tool_name,
@@ -181,12 +180,19 @@ def discovery_seed_for_surface(
         # targets), where `eff_pins` otherwise carries no hot-seed contribution at all.
         covered_domains: set[str] = set(hot_domains) if glossary_in_skills else set()
         if permission_mode == "plan" and not glossary_in_skills:
+            # Part D (2026-07-07): derive from the plan_forge SkillDef's own
+            # declared hot_domains instead of a separate hand-authored
+            # PLAN_HOT_DOMAINS constant — one source of truth (also used by
+            # surface_hot_domains above), removing the two-constants-must-agree
+            # drift risk the standalone constant carried.
+            from app.services.skill_registry import SYSTEM_SKILLS
+            plan_domains = set(SYSTEM_SKILLS["plan_forge"].hot_domains)
             plan_hot = budget_names_by_tokens(
-                catalog, hot_tool_names(catalog, set(PLAN_HOT_DOMAINS)),
+                catalog, hot_tool_names(catalog, plan_domains),
                 token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
             )
             eff_pins = list(dict.fromkeys([*eff_pins, *sorted(plan_hot)]))
-            covered_domains |= set(PLAN_HOT_DOMAINS)
+            covered_domains |= plan_domains
 
         # Generic curated-skill hot-domain union (docs/specs/2026-07-07-skill-
         # authoring-and-mcp-exposure-standard.md Part B) — any OTHER explicitly

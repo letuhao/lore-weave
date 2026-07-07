@@ -347,13 +347,17 @@ describe('PublicMcpController', () => {
     expect(relay).toBeUndefined();
   });
 
-  it('a FRESH session lists only find_tools — lazy loading (the in-scope catalogue is hidden until discovered)', async () => {
+  it('a FRESH session on a BROAD (>=20-tool) scope lists only find_tools — lazy loading (the in-scope catalogue is hidden until discovered)', async () => {
     setEnv();
     (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
       if (String(url).includes('/internal/mcp-keys/resolve')) {
         return Promise.resolve({
           status: 200,
-          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:knowledge'] }),
+          // read+domain:knowledge (11 tools) alone is BELOW the scope-size-adaptive threshold
+          // (2026-07-07 spec §6) and would now get the direct-list path (see the dedicated
+          // small-scope test below) — add domain:composition (15 more read tools) so this key
+          // resolves to 26 tools, safely >=20, to keep testing the COLLAPSED-path regression.
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:knowledge', 'domain:composition'] }),
           headers: { get: () => 'application/json' },
         });
       }
@@ -387,6 +391,89 @@ describe('PublicMcpController', () => {
     // the two synthetic edge tools is advertised on a fresh session.
     expect(parsed.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(['find_tools', 'invoke_tool']);
     expect(r.headers['content-type']).toBe('application/json');
+  });
+
+  // ── Scope-size-adaptive exposure (2026-07-07 spec §3.3/§6/§8b.7) ────────────
+  it('a SMALL (<20-tool) scope gets the FULL scope-filtered list directly — no lazy collapse', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        // read+domain:book resolves to exactly 5 tools (book_list/get/list_chapters/
+        // get_chapter/list_revisions) — well under the 20-tool threshold.
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:book'] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            jsonrpc: '2.0',
+            result: {
+              tools: [{ name: 'find_tools' }, { name: 'book_list' }, { name: 'book_get' }, { name: 'kg_graph_query' }],
+            },
+            id: 1,
+          }),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_smallkey' },
+        body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    const parsed = JSON.parse(r.sentBody as string);
+    const names = parsed.result.tools.map((t: { name: string }) => t.name).sort();
+    // book_list/book_get are advertised DIRECTLY on a fresh session — no find_tools-then-
+    // activate round trip needed. kg_graph_query is correctly scope-filtered out (out of
+    // scope). invoke_tool stays present (unconditional today — harmless if unused; the
+    // change here is only about WHEN the collapse happens, not invoke_tool's availability).
+    expect(names).toEqual(['book_get', 'book_list', 'find_tools', 'invoke_tool']);
+    expect(r.headers['content-type']).toBe('application/json');
+  });
+
+  it('a directly-listed tool (small scope) is immediately callable via a normal tools/call — no find_tools/activation needed first', async () => {
+    setEnv();
+    const f = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:book'] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () => JSON.stringify({ jsonrpc: '2.0', id: 1, result: { structuredContent: { books: [] } } }),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_directcall' },
+        body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'book_list' }, id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    // Relayed straight through as a normal tools/call — no invoke_tool unwrap, no "not
+    // activated" denial. The security boundary is `isToolAllowed` (the scope gate), never
+    // the list-mode/activation bookkeeping — a raw tools/call was never activation-gated to
+    // begin with (only the invoke_tool facade's unwrap path checks activation), so this holds
+    // for a small-scope key exactly the same way it already did for a large-scope key.
+    const relay = f.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+    expect(relay).toBeDefined();
+    expect(JSON.parse((relay![1] as { body: string }).body).params.name).toBe('book_list');
+    const out = JSON.parse(r.sentBody as string);
+    expect(out.result.structuredContent).toEqual({ books: [] });
   });
 
   it('strips a STORED `*` wildcard from an auth-resolved key (no scope bypass)', async () => {

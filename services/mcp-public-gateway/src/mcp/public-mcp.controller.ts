@@ -10,7 +10,7 @@ import { detectProposeInItem, detectProposeResult, pendingApprovalForId, pending
 import type { ResolvedKey } from '../auth/key-resolver.js';
 import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, injectConfirmActionTool } from '../scope/confirm-action.js';
 import { detectInvokeToolCall, injectInvokeToolTool, notActivatedError, requiresActivation } from '../scope/invoke-tool.js';
-import { domainScope, WILDCARD_SCOPE, type Domain } from '../scope/tool-policy.js';
+import { domainScope, scopeToolCount, DIRECT_LIST_TOOL_THRESHOLD, WILDCARD_SCOPE, type Domain } from '../scope/tool-policy.js';
 import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
 import { Idempotency } from '../idempotency/idempotency-store.js';
@@ -397,9 +397,22 @@ export class PublicMcpController {
 
       const rewroteList = ok && hasBody && isListRequest(req.body);
       if (rewroteList) {
+        // Scope-size-adaptive exposure (2026-07-07 spec §3.3/§6/§8b.7): a small, real
+        // (non-wildcard) scope skips the lazy-hide collapse entirely and gets the plain
+        // scope-filtered list directly — the two-hop find_tools→invoke_tool dance exists to
+        // save tokens on a LARGE scope; it's pointless overhead on a 5-tool key. Wildcard is a
+        // distinct, EARLIER branch (8b.7) — its "count" would be meaningless, so `&&`
+        // short-circuits scopeToolCount away for it entirely, never folding it into the size
+        // compare. `activated: undefined` is what makes filterListResponseText skip the
+        // collapse (scope-filter.ts's filterOneListMessage only collapses when an `activated`
+        // set is supplied) — so this reuses the SAME `filterTools` scope-filter the collapsed
+        // path uses, just without the session-surface intersection on top.
+        const wildcard = resolved.scopes.includes(WILDCARD_SCOPE);
+        const directList = !wildcard && scopeToolCount(resolved.scopes) < DIRECT_LIST_TOOL_THRESHOLD;
         // The SESSION SURFACE: collapse the scope-filtered list to find_tools + the tools the
-        // agent has activated this session (lazy tool-loading). session_id = key_id.
-        const activated = await this.toolActivation.activated(resolved.keyId);
+        // agent has activated this session (lazy tool-loading). session_id = key_id. Skipped
+        // (never read from the store) on the direct-list path — nothing to intersect against.
+        const activated = directList ? undefined : await this.toolActivation.activated(resolved.keyId);
         text = filterListResponseText(text, resolved.scopes, this.log, activated);
         // H-G: advertise the optional `idempotency_key` arg on write_auto tools so the
         // agent can discover the retry-dedup path (edge-only; stripped before relay).

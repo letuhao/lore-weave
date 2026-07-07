@@ -298,3 +298,30 @@ export function filterTools<T extends { name?: unknown }>(tools: T[], scopes: re
   if (scopes.includes(WILDCARD_SCOPE)) return tools;
   return tools.filter((t) => typeof t?.name === 'string' && isToolAllowed(t.name, scopes));
 }
+
+/**
+ * Scope-size-adaptive exposure (2026-07-07 spec, §3.3/§6/§8b.7): below this many resolved
+ * TOOL_POLICY entries, `tools/list` skips the lazy-hide collapse and advertises the full
+ * scope-filtered set directly — for a narrow key (e.g. 5 book-read tools) the two-hop
+ * find_tools→invoke_tool dance saves nothing (the list was already small) and only adds
+ * round-trips. At/above this count, today's collapse+invoke_tool path is unchanged. Picked
+ * from real measured key-scope data (§3.3): 5 real keys are bimodal — 3 resolve to 5 tools,
+ * 2 resolve to the full 161-tool allowlist — so any threshold in ~6–160 classifies today's
+ * keys identically; 20 is a deliberately round, conservative pick pending more data.
+ */
+export const DIRECT_LIST_TOOL_THRESHOLD = 20;
+
+/**
+ * Count how many `TOOL_POLICY` entries `scopes` would satisfy — the input to the
+ * scope-size-adaptive `tools/list` branch (spec §6). Pure, cheap (one pass over the
+ * allowlist). NOT meaningful for the wildcard scope (`*` would trivially "count" every
+ * entry, 161 today) — callers MUST keep the wildcard check as its own distinct, earlier
+ * branch (8b.7) and never route `*` through this function's result into the size decision.
+ */
+export function scopeToolCount(scopes: readonly string[]): number {
+  let n = 0;
+  for (const name of Object.keys(TOOL_POLICY)) {
+    if (isToolAllowed(name, scopes)) n++;
+  }
+  return n;
+}

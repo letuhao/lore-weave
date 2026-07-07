@@ -1072,8 +1072,12 @@ class TestK21BToolCallingIntegration:
         adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
         assert "find_tools" in adv_names
         assert "ui_navigate" in adv_names and "confirm_action" in adv_names
-        # memory_search is in the catalog but discovered via find_tools, not core.
-        assert "memory_search" not in adv_names
+        # Part D (2026-07-07, docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-
+        # standard.md §8b.9): surface_hot_domains now derives from knowledge_skill's own
+        # declared hot_domains (honored everywhere it auto-injects, incl. universal chat)
+        # instead of the old hand-authored constants that never included it — memory_search
+        # is correctly hot-seeded here now, not left to find_tools.
+        assert "memory_search" in adv_names
 
     @pytest.mark.asyncio
     async def test_admin_surface_excludes_knowledge_skill(self):

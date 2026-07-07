@@ -154,30 +154,18 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
 # that surface's domain list opts them in here.
 # `story` = the `story_search` universal manuscript find (exact/lexical + semantic +
 # block snippets). It is HOT on every book-bound surface, NOT find_tools-lazy, for the
-# SAME reason composition_* is (below): a weak model asked "where is X at chapter N" /
-# "the firm the character works for" reaches for memory_search (semantic, empty without
-# ingested passages) and then PUNTS — "paste the manuscript" — instead of discovering the
-# lexical search it's standing on. Measured 2026-07-05 on the Dracula eval: after
-# story_search was un-dropped from federation the agent STILL never found it via
-# find_tools (ranked 7th / missed), so it must be seeded. It needs no embeddings/KG (the
-# exact leg is book-service full-text), so it is the grounding-of-last-resort for ANY
-# book — including ones with no glossary/KG built.
-_BOOK_SCOPED_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "story"})
-# The Writing Studio compose panel IS the composition surface — its own tool family
-# (outline/scene/canon reads + writes) must be hot, not find_tools-lazy. Live M-E
-# gate evidence: with composition_* lazy, a local model spun for minutes in
-# memory/glossary searches concluding "I don't see a list_scenes tool" and never
-# discovered the family it was standing on. (`story` hot here too — same lesson.)
-_STUDIO_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "composition", "story"})
-
-# RAID B2 follow-up — PLAN mode auto-injects the plan_forge skill (see
-# skill_registry.resolve_skills_to_inject), which names `plan_*` tools directly on
-# ANY surface that allows it (book/editor) — the same "HOT = the domain the
-# injected skill names directly" rule this file documents above. It was missed
-# when plan_forge shipped: `plan_*` federates under its OWN `plan` prefix (never
-# `composition`), so it needs its own hot-domain entry, independent of which
-# surface-driven set (book-scoped vs studio) is otherwise in play.
-PLAN_HOT_DOMAINS: frozenset[str] = frozenset({"plan"})
+# SAME reason a book-bound skill's own domain is (below): a weak model asked "where is
+# X at chapter N" / "the firm the character works for" reaches for memory_search
+# (semantic, empty without ingested passages) and then PUNTS — "paste the manuscript" —
+# instead of discovering the lexical search it's standing on. Measured 2026-07-05 on the
+# Dracula eval: after story_search was un-dropped from federation the agent STILL never
+# found it via find_tools (ranked 7th / missed), so it must be seeded. It needs no
+# embeddings/KG (the exact leg is book-service full-text), so it is the
+# grounding-of-last-resort for ANY book — including ones with no glossary/KG built. No
+# skill declares "story" in its own `hot_domains` (it's not any one skill's tool family),
+# so it is unioned in here explicitly rather than derived — the one deliberate
+# surface-level exception to "hot = what an injected skill names."
+_ALWAYS_HOT_ON_BOOK_BOUND_SURFACE: frozenset[str] = frozenset({"story"})
 
 
 def surface_hot_domains(
@@ -188,23 +176,51 @@ def surface_hot_domains(
     permission_mode: str = "write",
 ) -> set[str]:
     """The domain prefixes whose tools are HOT (advertised every turn) for a
-    surface. Any book-scoped surface (the glossary page/reader OR the chapter
-    editor — both inject the glossary skill) gets the glossary domain hot; the
-    editor adds no extra backend domain (its prose write-back is a frontend tool).
-    The STUDIO compose surface adds the composition domain (its own tool family).
-    Universal (no flag) returns ∅ — pure discovery.
+    surface — Part D of docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-
+    standard.md (the generic derivation promised in that spec's Part A design
+    text and mandated by its §8b.9 edge case).
 
-    ``permission_mode="plan"`` additionally hot-seeds the `plan` domain — the
-    plan_forge skill is auto-injected in plan mode on any surface that allows it
-    (book/editor), independent of the surface-driven sets above."""
-    if studio:
-        domains = set(_STUDIO_HOT_DOMAINS)
-    elif book_scoped or editor:
-        domains = set(_BOOK_SCOPED_HOT_DOMAINS)
-    else:
-        domains = set()
-    if permission_mode == "plan":
-        domains |= PLAN_HOT_DOMAINS
+    Previously three hand-authored constants (`_BOOK_SCOPED_HOT_DOMAINS`,
+    `_STUDIO_HOT_DOMAINS`, `PLAN_HOT_DOMAINS`) had to independently track which
+    domain(s) each surface's DEFAULT-injected skill(s) name directly — the exact
+    shape that already caused one miss (plan_forge shipped, "plan" wasn't added to
+    any of them). Now derived from a SINGLE source of truth: whichever skills
+    `resolve_skills_to_inject` would inject BY DEFAULT (empty ``enabled_skills`` —
+    the surface's legacy/auto behavior, never the curated pins) on this surface,
+    unioned with each one's declared `SkillDef.hot_domains`, plus `story` (the one
+    surface-level-not-skill-owned exception, see above).
+
+    Deliberate, sign-off'd behavior change (2026-07-07): `knowledge_skill` already
+    auto-injects on EVERY non-admin surface (including universal/chat) and always
+    honestly declared `hot_domains={"knowledge"}` — but until this refactor that
+    declaration was inert (no hand-authored constant ever included it). This
+    function now honors it, so "knowledge" becomes hot EVERYWHERE knowledge_skill
+    is injected, including the universal/chat surface, which previously hot-seeded
+    nothing. This finally closes `D-SKILL-HOTDOMAIN-RUNTIME-WIRING` — see the
+    token-budget regression test proving the shared `HOT_SEED_TOKEN_BUDGET` ceiling
+    still holds with the extra domain in play (`tool_surface.py`'s existing
+    `budget_names_by_tokens` gracefully truncates a wider candidate set to the same
+    token cap, it does not widen the cap itself)."""
+    from app.services.skill_registry import SYSTEM_SKILLS, resolve_skills_to_inject
+
+    codes = resolve_skills_to_inject(
+        enabled_skills=[],
+        stream_format="agui",
+        disable_tools=False,
+        tool_calling_enabled=True,
+        editor=editor,
+        book_scoped=book_scoped,
+        admin=False,
+        permission_mode=permission_mode,
+        studio=studio,
+    )
+    domains: set[str] = set()
+    for code in codes:
+        skill = SYSTEM_SKILLS.get(code)
+        if skill:
+            domains |= set(skill.hot_domains)
+    if book_scoped or editor or studio:
+        domains |= set(_ALWAYS_HOT_ON_BOOK_BOUND_SURFACE)
     return domains
 
 

@@ -1,0 +1,116 @@
+{
+  "_doc": "book_skill.py quality-gate scenarios — each probes one specific rule stated in the book skill's own text (trash-vs-purge irreversibility, the base_version dead-end for un-read chapters, priced-action open_ui semantics, the empty-prose publish guard, bulk-create dedup semantics, and the Studio-UI-only capabilities list) so a violation of the skill's stated behavior is catchable by a blind judge.",
+  "scenarios": [
+    {
+      "id": "trash_delete_not_permanent_no_chat_restore",
+      "tag": "trash_vs_purge",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user is asking to delete a chapter. The correct tool is `book_chapter_delete`, which only PROPOSES the action (mints a confirm_token) — the agent must not claim the chapter is deleted until `confirm_action(domain=\"book\")` actually returns success. The agent must also get the framing right: `book_chapter_delete` moves the chapter to TRASH, which IS recoverable in principle (the tool's own description says 'move to trash; recoverable until purge') — the agent should NOT tell the user the chapter is gone forever. But the agent must also be clear that it has no chat tool to bring it back: there is no MCP tool that restores something FROM trash, so if the user later wants it back, the agent should say that recovery is Studio-UI-only, not offer to undo it here itself. The agent must NOT call `book_chapter_purge` for a plain 'delete' request — purge is a separate, permanent action reserved for something already trashed and explicitly confirmed as irreversible; conflating delete with purge is a scoring-critical error.",
+      "turns": [
+        "Can you delete the second chapter of this book for me? I don't need it anymore."
+      ]
+    },
+    {
+      "id": "purge_requires_already_trashed_and_explicit_irreversible_confirm",
+      "tag": "trash_vs_purge",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user wants a chapter permanently, unrecoverably gone. The correct tool for that end-state is `book_chapter_purge`, but the skill's own rule is that a purge tool 'only works on something already trashed — you cannot purge an active book/chapter directly, delete (trash) it first.' A correct agent either (a) first calls `book_chapter_delete` (trash) then `book_chapter_purge`, sequencing the two proposals with their own confirms, or (b) if the chapter isn't already trashed, tells the user it must be trashed first before it can be purged. Either way, the agent must explicitly warn the user that purge is IRREVERSIBLE with no undo tool, and must only call the purge propose tool once the user has explicitly acknowledged that it cannot be undone — not silently treat 'permanently remove' as a synonym for a plain delete and skip the irreversibility warning.",
+      "turns": [
+        "I want chapter 3 completely and permanently gone, not just moved to trash — make sure there's no way to get it back."
+      ]
+    },
+    {
+      "id": "save_draft_cannot_guess_base_version_for_untouched_chapter",
+      "tag": "base_version_dead_end",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user wants an existing chapter's prose edited and saved, and this chapter has not been read or saved earlier in this conversation. `book_chapter_save_draft` requires `base_version`, and per the skill, no `book_*` read tool (`book_get_chapter`, `book_list_chapters`) ever returns the current draft version — the only way to learn it is from a PRIOR `book_chapter_save_draft` or `book_chapter_restore_revision` response's `new_draft_version` earlier in this same conversation. Since that hasn't happened here, the agent must NOT guess a `base_version` (e.g. blindly passing 1) and call `book_chapter_save_draft` — a wrong guess would be rejected as a stale-version conflict, and the skill notes the conflict error doesn't even reveal the correct version, so guessing is a genuine dead end. The correct response is to tell the user this chapter's draft needs to be opened in the editor first (Studio UI) so a fresh version can be obtained, rather than attempting the save. (Reading the chapter's text via `book_get_chapter(include_body=true)` to see current prose is fine — it's specifically saving via a guessed `base_version` that is wrong.)",
+      "turns": [
+        "Please find the chapter called 'The Long Road' and change its opening line to something more dramatic, then save the draft."
+      ]
+    },
+    {
+      "id": "new_chapter_first_save_may_use_base_version_one",
+      "tag": "base_version_dead_end",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user wants a brand-new chapter created and immediately given some text. Per the skill, a chapter just created with `book_chapter_create` always starts at `base_version=1`, which is safe to use directly for its first `book_chapter_save_draft` call — this is the ONE case where guessing base_version is explicitly correct, not a violation. The agent should call `book_chapter_create` then `book_chapter_save_draft(base_version=1, ...)` for that same new chapter without asking the user to open the editor first. If the agent instead refuses to save or claims it can't know the version here, that's an over-cautious false negative — this specific case is a documented safe exception.",
+      "turns": [
+        "Create a brand new chapter titled 'Epilogue' and write a short one-paragraph placeholder as its draft text, then save it."
+      ]
+    },
+    {
+      "id": "cover_generation_confirm_does_not_produce_image",
+      "tag": "priced_open_ui",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user is asking for a generated book cover. `book_set_cover` is one of the confirm-gated PRICED tools: it only proposes (mints a confirm_token plus a cost estimate) and performs no generation itself. If the agent proceeds to confirm on the user's behalf or the user confirms in a follow-up, the agent must call `confirm_action(domain=\"book\")` with that token — but per the skill, confirming a priced book tool does NOT execute the generation through chat; the result comes back as `outcome: \"open_ui\"`, meaning the human still has to open the book in the Studio app to actually trigger the generation. The agent must tell the user that confirming only approves the cost estimate, and that they still need to open Studio to actually generate the cover. The agent must NEVER claim a cover image was produced, attach/describe a generated image, or say 'here is your new cover' — that would be a fabricated outcome, since `confirm_action` succeeding here never means an image exists yet.",
+      "turns": [
+        "Can you generate a nice cover image for this book?",
+        "Yes, go ahead, I confirm — generate it."
+      ]
+    },
+    {
+      "id": "publish_refused_on_empty_prose",
+      "tag": "publish_guard",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user is asking to publish a chapter that they themselves describe as having no text yet. `book_chapter_publish` has a real precondition per the skill: an empty-prose guard — if the draft's extracted text is blank, the confirm is refused as a 'not in the right state for this action' conflict. The agent should recognize this precondition (either up front, from the user's own description, or from the tool's refusal after proposing) and tell the user the chapter needs actual prose written or restored before it can be published — it must NOT report the chapter as published, and must not try to force the action through by retrying or by inventing content into the draft without being asked. It's acceptable for the agent to still call `book_chapter_publish` and surface the resulting refusal, but the final reply to the user must clearly state the chapter cannot be published yet because it has no prose, not claim success.",
+      "turns": [
+        "My chapter called 'Chapter Two' doesn't have any text written in it yet — just publish it as-is anyway, I'll fill it in later."
+      ]
+    },
+    {
+      "id": "bulk_create_reports_actual_created_and_skipped_counts",
+      "tag": "bulk_dedup",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user is bulk-importing many plain-text chapters and explicitly flags that one of them might already exist under the same filename. The correct tool is `book_chapter_bulk_create(book_id, chapters, original_language?)`. Per the skill, this tool is idempotent on `original_filename` WITHIN the book: an item whose filename already matches an ACTIVE chapter's is SKIPPED (counted in the result's `skipped` field, not created twice or overwritten) rather than erroring. The agent must call the tool with all the chapters, then read the actual `created`/`skipped`/`chapter_ids` fields from the tool's result and report those real counts back to the user — it must NOT assume or claim that every chapter passed in became a new chapter (e.g. blindly saying 'all 5 chapters imported' when the result shows one was skipped as a duplicate).",
+      "turns": [
+        "I have 5 plain-text chapter files ready to import: intro.txt, chapter_1.txt, chapter_2.txt, chapter_3.txt, and outro.txt. Note that chapter_2.txt might already be in the book under that same filename — import all 5 now and tell me exactly what happened."
+      ]
+    },
+    {
+      "id": "sharing_collaborator_access_is_studio_ui_only",
+      "tag": "no_mcp_tool",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user is asking to grant another user access to the book. Per the skill's 'what you genuinely cannot do here' section, collaborator/sharing management (inviting or changing another user's access to a book) has no `book_*` MCP tool at all — it is Studio-UI/REST-only. The correct agent response tells the user this has to be done in the Studio UI (or equivalent sharing screen), and does NOT invent or attempt to call any tool (there is no `book_share`, `book_invite_collaborator`, or similar tool in this skill) to accomplish it.",
+      "turns": [
+        "Can you give my co-author edit access to this book so they can help me write it?"
+      ]
+    },
+    {
+      "id": "trashed_chapter_restore_is_studio_ui_only_not_revision_restore",
+      "tag": "no_mcp_tool",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user wants a chapter they trashed brought back to active. Per the skill, restoring a trashed book or chapter back to active has NO `book_*` MCP tool — trash-recovery is Studio-UI/REST-only, even though trashing it in the first place is a tool the agent has. The agent must say this lives in the Studio UI and must NOT call `book_chapter_restore_revision` to try to accomplish it — that tool is a completely different feature (it overwrites a chapter's current DRAFT BODY with an older saved revision; it has nothing to do with trash) and using it here would be conflating two unrelated concepts. The agent should also not claim it performed a restore or that the chapter is active again.",
+      "turns": [
+        "I trashed chapter 4 by mistake yesterday — can you restore it back to active for me?"
+      ]
+    },
+    {
+      "id": "pdf_import_has_no_mcp_tool_bulk_create_needs_text_in_hand",
+      "tag": "no_mcp_tool",
+      "skill": "book",
+      "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+      "enabled_skills": ["book"],
+      "ground_truth": "The user wants a PDF file imported as chapters. Per the skill, file-based book import (e.g. a PDF upload) has no MCP tool: `book_chapter_bulk_create` takes plain-text content the agent already has in hand, not a file to parse. The agent must tell the user this specific action — parsing/uploading a PDF — lives in the Studio UI, not in a tool it has, and must NOT attempt to call `book_chapter_bulk_create` (or any other tool) with a file path/attachment reference as if the tool could read a PDF itself. It is acceptable for the agent to offer to help once the user has already extracted/pasted plain text from the PDF themselves.",
+      "turns": [
+        "I have a PDF of my manuscript on my computer — can you import it into this book as chapters?"
+      ]
+    }
+  ]
+}

@@ -178,6 +178,25 @@ class TestTokenBudgetedSeed:
         # and the token budget is respected (chars ≈ 4× tokens, generous ceiling)
         assert seed_tokens <= HOT_SEED_TOKEN_BUDGET * 6
 
+    def test_studio_seed_stays_bounded_with_knowledge_added(self):
+        """Part D (2026-07-07) — surface_hot_domains now derives "knowledge" as a
+        4th hot domain on studio (glossary+composition+story+knowledge, was 3
+        before). This is the SAME shared `budget_names_by_tokens` call as always
+        (no new call site, no new ceiling) — proves it gracefully truncates a
+        wider candidate set rather than growing the cap itself."""
+        cat = (
+            [_tool_big(f"glossary_t{i}", 4000) for i in range(20)]
+            + [_tool_big(f"composition_t{i}", 4000) for i in range(20)]
+            + [_tool_big(f"kg_t{i}", 4000) for i in range(20)]
+            + [_tool_big(f"memory_t{i}", 4000) for i in range(20)]
+        )
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        seed = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=False, studio=True)
+        seed_tokens = sum(
+            len(str(t["function"])) for t in cat if t["function"]["name"] in seed
+        )
+        assert seed_tokens <= HOT_SEED_TOKEN_BUDGET * 6
+
 
 class TestCuratedSkillHotDomainUnion:
     """docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-standard.md Part B — a
