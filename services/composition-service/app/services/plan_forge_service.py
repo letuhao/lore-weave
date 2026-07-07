@@ -27,12 +27,11 @@ from app.engine.plan_forge.interpret import interpret_feedback, interpret_rules
 from app.engine.plan_forge.llm import ProviderPlanForgeLLM
 from app.engine.plan_forge.propose import propose_spec
 from app.engine.plan_forge.self_check import run_self_check
-from app.engine.plan_forge.validate import _deep_merge, run_rules, validate_golden
+from app.engine.plan_forge.validate import _deep_merge, run_rules
 from app.worker.events import enqueue_job
 from app.worker.operations import run_plan_forge_propose, run_plan_forge_refine
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "plan-forge"
-_GOLDEN = _FIXTURES / "story-plan-v1.expectations.yaml"
 _FIDELITY = _FIXTURES / "story-plan-v1.fidelity.yaml"
 
 
@@ -95,6 +94,24 @@ class PlanForgeService:
             )
         return (await self._runs.get_for_owner(owner_user_id, book_id, run.id)) or run
 
+    async def _resolve_model_ref(self, owner_user_id: UUID, model_ref: UUID | None) -> UUID:
+        """D-PLANFORGE-DEFAULT-MODEL — shared fallback for every PlanForge LLM step:
+        an explicit ref always wins; otherwise resolve the author's default planner
+        model (mirrors glossary_plan's own GET /internal/planner-model fallback —
+        their pinned 'planner' default, else their best active chat model) instead
+        of hard-requiring the caller to name one. The agent is never authoritative
+        for this pick (chat-service already strips any agent-guessed model_ref for
+        these tools when no session pin is set)."""
+        if model_ref is not None:
+            return model_ref
+        resolved = self._llm and await self._llm.resolve_planner_model(str(owner_user_id))
+        if resolved is None:
+            raise ValueError(
+                "model_ref required — no default chat model is set; "
+                "pick one, or add a chat model in Settings"
+            )
+        return UUID(resolved)
+
     async def create_run(
         self,
         owner_user_id: UUID,
@@ -109,15 +126,24 @@ class PlanForgeService:
         text = source_markdown.strip()
         if not text:
             raise ValueError("source_markdown required")
+        # Resolved BEFORE the dedupe check below (not after) -- two omitted-model_ref
+        # LLM proposes for the SAME text must both resolve to the caller's current
+        # default and therefore dedupe against each other. Resolving after the check
+        # would compare against the still-None sentinel, never match a prior run's
+        # already-resolved model_ref, and silently re-run the (billed) LLM propose
+        # on every retry.
+        if mode == "llm":
+            model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
         checksum = hashlib.sha256(text.encode("utf-8")).hexdigest()
         if not force:
-            existing = await self._runs.find_by_checksum(owner_user_id, book_id, checksum)
-            if existing is not None and existing.status != "failed":
+            # D-PLANFORGE-MODE-DEDUPE: identical text but a different mode/model is a
+            # DIFFERENT request, not a duplicate -- reusing the prior run here silently
+            # ignored the user's newly-picked mode/model (e.g. Rules -> LLM retry on
+            # unchanged text kept returning the stale Rules-mode result with no error).
+            existing = await self._runs.find_by_checksum(owner_user_id, book_id, checksum, mode)
+            if existing is not None and existing.status != "failed" and existing.model_ref == model_ref:
                 synced = await self.sync_from_job(owner_user_id, book_id, existing)
                 return synced, False, synced.active_job_id
-
-        if mode == "llm" and model_ref is None:
-            raise ValueError("model_ref required when mode=llm")
 
         run = await self._runs.create(
             owner_user_id,
@@ -345,10 +371,8 @@ class PlanForgeService:
         if spec_art is None:
             raise ValueError("no spec to validate")
         spec = spec_art.content
-        doc_art = await self._runs.latest_artifact(owner_user_id, run_id, "document")
         pkg_art = await self._runs.latest_artifact(owner_user_id, run_id, "package")
         package = pkg_art.content.get("planning_package") if pkg_art else None
-        graph = build_graph(spec)
         rules_out = run_rules(spec, package)
         passed_rules = _hard_rules_pass(rules_out)
         fidelity_score = None
@@ -364,14 +388,17 @@ class PlanForgeService:
                 fidelity_score = fidelity.get("score")
             except Exception:
                 pass
-        if _GOLDEN.exists() and doc_art is not None:
-            try:
-                golden = validate_golden(doc_art.content, spec, graph, _GOLDEN, package)
-                for kid, ok in golden.get("criteria", {}).items():
-                    golden_rules.append({"id": kid, "passed": ok, "message": ""})
-                all_pass = golden.get("all_pass", False) and passed_rules
-            except Exception:
-                pass
+        # D-PLANFORGE-GENERAL-VALIDATE: a `validate_golden(...)` call used to sit
+        # here, but its args were passed in the wrong order for this function's
+        # real signature (spec, package, graph, doc, golden_path) -- it threw on
+        # every single call and was silently swallowed by the bare `except`, so
+        # it NEVER actually contributed to a real user's validate() response.
+        # validate_golden is the POC's own self-test harness (see
+        # tests/unit/test_plan_forge.py + scripts/live_validate_planforge_llm.py)
+        # gating a live user's plan on the ORIGINAL fixture's golden expectations
+        # (required section kinds, arc_2 min_events, etc.) was never correct
+        # anyway -- removed rather than "fixed", since fixing the call would
+        # have re-introduced that gate for real, differently-structured stories.
         report = {
             "passed": all_pass,
             "rules": golden_rules,
@@ -392,7 +419,7 @@ class PlanForgeService:
         book_id: UUID,
         run_id: UUID,
         *,
-        model_ref: UUID,
+        model_ref: UUID | None,
         revision: dict[str, Any] | None,
         focus_paths: list[str] | None,
     ) -> tuple[str, dict[str, Any]]:
@@ -420,6 +447,10 @@ class PlanForgeService:
                 "diagnosis": None,
             }
 
+        # Resolved AFTER the no-op early-return above — a no_change refine never
+        # needs a model at all, so it must not force a resolve (or a required-model
+        # error) on a call that's about to do nothing anyway.
+        model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
         work = await self._ensure_work(owner_user_id, book_id)
         project_id = _work_project_id(work)
         pipe_input: dict[str, Any] = {
@@ -505,7 +536,7 @@ class PlanForgeService:
 
     async def handoff_autofix(
         self, owner_user_id: UUID, book_id: UUID, run_id: UUID,
-        *, model_ref: UUID, max_rounds: int = 3,
+        *, model_ref: UUID | None, max_rounds: int = 3,
     ) -> dict[str, Any] | None:
         """Batch-apply the top self-check gaps as a bounded refine loop (M4
         plan_handoff_autofix). Each round: self-check → take the ranked gaps →
@@ -514,6 +545,10 @@ class PlanForgeService:
         run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
         if run is None:
             return None
+        # Resolved ONCE up front (not per-round) — every round in this loop must use
+        # the SAME model, and resolving here also means a gap-free run (0 rounds)
+        # never pays for a resolve it doesn't need.
+        model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
         rounds = max(1, min(int(max_rounds), 5))
         applied: list[dict[str, Any]] = []
         for i in range(rounds):
@@ -541,7 +576,7 @@ class PlanForgeService:
         run_id: UUID,
         *,
         user_message: str,
-        model_ref: UUID,
+        model_ref: UUID | None,
         apply_mode_hint: str | None = None,
     ) -> dict[str, Any] | None:
         run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
@@ -550,6 +585,7 @@ class PlanForgeService:
         spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
         if spec_art is None:
             raise ValueError("no spec for interpret")
+        model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
         spec = spec_art.content
         doc_art = await self._runs.latest_artifact(owner_user_id, run_id, "document")
         section_map: list[dict[str, Any]] = []
@@ -679,8 +715,7 @@ class PlanForgeService:
         }
         if not run_pipeline:
             return "sync", body
-        if model_ref is None:
-            raise ValueError("model_ref required when run_pipeline=true")
+        model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
         project_id = _work_project_id(work)
         # D-PLANFORGE-PIPELINE-CHAPTERPLAN-FIX: package.chapters[] is
         # {title, ordinal, event_id} (compile.py) — the worker's

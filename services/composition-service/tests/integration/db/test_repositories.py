@@ -1838,8 +1838,10 @@ async def test_plan_runs_roundtrip_and_tenancy(pool):
     assert len(runs) == 1
     assert cursor is None
 
-    dup = await repo.find_by_checksum(user, book, "chk1")
+    dup = await repo.find_by_checksum(user, book, "chk1", "rules")
     assert dup is not None and dup.id == run.id
+    # D-PLANFORGE-MODE-DEDUPE: same checksum, different mode -> no reuse.
+    assert await repo.find_by_checksum(user, book, "chk1", "llm") is None
 
 
 async def test_get_run_detail_surfaces_arcs_for_a_picker(pool):

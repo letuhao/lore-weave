@@ -93,6 +93,27 @@ export function getUserModelMeta(m: UserModel): UserModelMeta {
   return { displayName, capabilities, isFree, isPriced };
 }
 
+/** Explicit non-chat capability flags that must never be auto-picked as a chat
+ * default, even when the server's `capability=chat` filter also includes the
+ * model (the legacy `_capability` fallback can contradict an explicit boolean
+ * flag — e.g. a rerank model stamped `{"_capability":"chat","rerank":true}` by
+ * a stale discovery run). D-PLANFORGE-MODEL-AUTOPICK. */
+const NON_CHAT_CAPABILITY_FLAGS = ['rerank', 'embedding', 'tts', 'stt'] as const;
+
+/** Safe to silently auto-select for a chat/LLM call — i.e. has no explicit
+ * non-chat capability flag, regardless of what `capabilities`/`_capability`
+ * also claims. Use this to filter candidates before picking a favorite/first
+ * default; never trust the raw list order or a "chat" appearing in the merged
+ * capabilities alone. */
+export function isChatSafeDefault(m: UserModel): boolean {
+  const flags = m.capability_flags ?? {};
+  // An explicit `chat: true` always wins, even on a genuinely dual-capability
+  // model (e.g. one that also embeds) -- the exclusion list below is only a
+  // fallback heuristic for models with NO explicit chat flag.
+  if (flags.chat === true) return true;
+  return !NON_CHAT_CAPABILITY_FLAGS.some((k) => flags[k] === true);
+}
+
 export const aiModelsApi = {
   listUserModels(token: string, params?: { only_favorites?: boolean; include_inactive?: boolean; provider_kind?: ProviderKind; capability?: string }) {
     const qs = new URLSearchParams();

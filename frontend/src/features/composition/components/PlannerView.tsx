@@ -5,18 +5,17 @@
 // a half-edited tree survives a tab switch (CLAUDE.md no-ternary-unmount rule).
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ModelPicker } from '@/components/model-picker';
 import { usePlanner, type PlannerError } from '../hooks/usePlanner';
 import { useGlossaryRoster } from '../hooks/useGlossaryRoster';
 import { PlannerTree } from './PlannerTree';
 import { CommittedSceneBindings } from '../motif/components/CommittedSceneBindings';
 
-type PlannerModel = { user_model_id: string; provider_model_name: string };
 type Props = {
   projectId: string;
   bookId: string;
   modelRef: string;
   modelSource?: 'user_model' | 'platform_model';
-  models?: PlannerModel[];
   token: string | null;
   /** D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — route a scene's commit→generate to the
    *  compose tab (the W2 seam: CompositionPanel wires selectTab('compose')+setSceneId).
@@ -32,7 +31,7 @@ function errorText(e: PlannerError, t: (k: string) => string): string {
   return e.message;
 }
 
-export function PlannerView({ projectId, bookId, modelRef, modelSource, models = [], token, onSelectScene }: Props) {
+export function PlannerView({ projectId, bookId, modelRef, modelSource, token, onSelectScene }: Props) {
   const { t } = useTranslation('composition');
   const p = usePlanner(projectId, token);
   const templates = p.templates.data ?? [];
@@ -57,18 +56,17 @@ export function PlannerView({ projectId, bookId, modelRef, modelSource, models =
             <option value="">{t('plan.pick_template')}</option>
             {templates.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
           </select>
-          {models.length > 0 && (
-            <select
-              data-testid="planner-model"
-              className="w-full rounded border border-border bg-background p-1 text-sm"
-              value={localModel}
-              onChange={(e) => setLocalModel(e.target.value)}
-              aria-label={t('plan.model')}
-            >
-              <option value="">{t('plan.inherit_model')}</option>
-              {models.map((m) => <option key={m.user_model_id} value={m.user_model_id}>{m.provider_model_name}</option>)}
-            </select>
-          )}
+          <div data-testid="planner-model-picker">
+            <ModelPicker
+              capability="chat"
+              compact
+              allowNone
+              value={localModel || null}
+              onChange={(id) => setLocalModel(id ?? '')}
+              placeholder={t('plan.inherit_model')}
+              ariaLabel={t('plan.model')}
+            />
+          </div>
           <textarea
             className="w-full resize-y rounded border border-border bg-background p-1 text-sm"
             rows={3}
