@@ -48,15 +48,23 @@ FIND_TOOLS_DEFAULT_LIMIT = 8
 # fuzzy search to one entry instead of the full ~150-tool flat catalog.
 GROUP_DIRECTORY: dict[str, str] = {
     "glossary": "Lore entities (characters/locations/items/kinds) — CRUD + wiki + standards ontology.",
-    "story": "Manuscript search + chapter reads (story_search, book_get_chapter).",
-    "composition": "Outline/scene/canon planning — PlanForge, Story Grid rules.",
+    # `book_get_chapter` is prefix `book_`, not `story_` — it lives in the "book" group below;
+    # the group filter is prefix-based (see `_provider_prefix`), so this entry must only claim
+    # tools this group's search can actually surface.
+    "story": "Manuscript search (story_search).",
+    "composition": "Outline/scene/canon planning — Story Grid rules, motif/arc library.",
     "knowledge": "Derived KG facts (Neo4j-backed), passage retrieval, memory_search.",
     "translation": "Job-based chapter/book translation pipeline.",
-    "book": "Book/chapter CRUD, publishing, chapter body reads.",
+    "book": "Book/chapter CRUD, publishing, chapter body reads (incl. book_get_chapter).",
     "jobs": "Job status/cancel for any long-running operation.",
     "catalog": "Public catalog browsing (published books, discovery).",
     "registry": "Agent/tool registry administration.",
     "settings": "User/account settings and provider-model configuration.",
+    # PlanForge tools federate under their own `plan_` prefix (composition-service's M4
+    # federation contract), NOT `composition_` — a separate group so group="plan" actually
+    # surfaces them (they used to be mis-claimed under "composition" above, which the
+    # prefix-based filter could never honor).
+    "plan": "Novel planning workflow — PlanForge propose/refine/validate/compile (plan_propose_spec, plan_self_check, plan_interpret_feedback, plan_apply_revision, plan_review_checkpoint, plan_handoff_autofix, plan_validate, plan_compile).",
 }
 
 FIND_TOOLS_TOOL: dict = {
@@ -162,21 +170,42 @@ _BOOK_SCOPED_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "story"})
 # discovered the family it was standing on. (`story` hot here too — same lesson.)
 _STUDIO_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "composition", "story"})
 
+# RAID B2 follow-up — PLAN mode auto-injects the plan_forge skill (see
+# skill_registry.resolve_skills_to_inject), which names `plan_*` tools directly on
+# ANY surface that allows it (book/editor) — the same "HOT = the domain the
+# injected skill names directly" rule this file documents above. It was missed
+# when plan_forge shipped: `plan_*` federates under its OWN `plan` prefix (never
+# `composition`), so it needs its own hot-domain entry, independent of which
+# surface-driven set (book-scoped vs studio) is otherwise in play.
+PLAN_HOT_DOMAINS: frozenset[str] = frozenset({"plan"})
+
 
 def surface_hot_domains(
-    *, editor: bool = False, book_scoped: bool = False, studio: bool = False
+    *,
+    editor: bool = False,
+    book_scoped: bool = False,
+    studio: bool = False,
+    permission_mode: str = "write",
 ) -> set[str]:
     """The domain prefixes whose tools are HOT (advertised every turn) for a
     surface. Any book-scoped surface (the glossary page/reader OR the chapter
     editor — both inject the glossary skill) gets the glossary domain hot; the
     editor adds no extra backend domain (its prose write-back is a frontend tool).
     The STUDIO compose surface adds the composition domain (its own tool family).
-    Universal (no flag) returns ∅ — pure discovery."""
+    Universal (no flag) returns ∅ — pure discovery.
+
+    ``permission_mode="plan"`` additionally hot-seeds the `plan` domain — the
+    plan_forge skill is auto-injected in plan mode on any surface that allows it
+    (book/editor), independent of the surface-driven sets above."""
     if studio:
-        return set(_STUDIO_HOT_DOMAINS)
-    if book_scoped or editor:
-        return set(_BOOK_SCOPED_HOT_DOMAINS)
-    return set()
+        domains = set(_STUDIO_HOT_DOMAINS)
+    elif book_scoped or editor:
+        domains = set(_BOOK_SCOPED_HOT_DOMAINS)
+    else:
+        domains = set()
+    if permission_mode == "plan":
+        domains |= PLAN_HOT_DOMAINS
+    return domains
 
 
 def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:

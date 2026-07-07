@@ -174,7 +174,7 @@ describe('GROUP_DIRECTORY (Part A, TS mirror)', () => {
     // (or a description edited on only one side) fails here.
     expect(Object.keys(GROUP_DIRECTORY).sort()).toEqual([
       'book', 'catalog', 'composition', 'glossary', 'jobs',
-      'knowledge', 'registry', 'settings', 'story', 'translation',
+      'knowledge', 'plan', 'registry', 'settings', 'story', 'translation',
     ]);
   });
 

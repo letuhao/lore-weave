@@ -1,0 +1,113 @@
+import {
+  detectInvokeToolCall,
+  injectInvokeToolTool,
+  INVOKE_TOOL_NAME,
+  INVOKE_TOOL_TOOL,
+  notActivatedError,
+  requiresActivation,
+} from '../src/scope/invoke-tool.js';
+
+describe('detectInvokeToolCall', () => {
+  it('unwraps a single invoke_tool call into a normal tools/call for the real target', () => {
+    const body = {
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      id: 7,
+      params: { name: INVOKE_TOOL_NAME, arguments: { name: 'book_list', arguments: { limit: 5 } } },
+    };
+    const out = detectInvokeToolCall(body);
+    expect(out).toEqual({
+      kind: 'rewrite',
+      targetName: 'book_list',
+      rewritten: {
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        id: 7,
+        params: { name: 'book_list', arguments: { limit: 5 } },
+      },
+    });
+  });
+
+  it('defaults missing/non-object target arguments to {}', () => {
+    const body = { method: 'tools/call', params: { name: INVOKE_TOOL_NAME, arguments: { name: 'jobs_list' } } };
+    const out = detectInvokeToolCall(body);
+    expect(out).toMatchObject({ kind: 'rewrite', targetName: 'jobs_list', rewritten: { params: { name: 'jobs_list', arguments: {} } } });
+  });
+
+  it('reports a malformed call (missing name) as an isError tool result, not a silent drop', () => {
+    const out = detectInvokeToolCall({ method: 'tools/call', id: 3, params: { name: INVOKE_TOOL_NAME, arguments: {} } });
+    expect(out?.kind).toBe('malformed');
+    const resp = (out as { response: { result: { isError: boolean }; id: unknown } }).response;
+    expect(resp.result.isError).toBe(true);
+    expect(resp.id).toBe(3);
+  });
+
+  it('returns null for a different tool, a batch, or a non-call', () => {
+    expect(detectInvokeToolCall({ method: 'tools/call', params: { name: 'book_get' } })).toBeNull();
+    expect(detectInvokeToolCall([{ method: 'tools/call', params: { name: INVOKE_TOOL_NAME, arguments: { name: 'book_get' } } }])).toBeNull();
+    expect(detectInvokeToolCall({ method: 'tools/list' })).toBeNull();
+    expect(detectInvokeToolCall(null)).toBeNull();
+  });
+
+  it('carries the confirm_action call through unwrapped-as-if-direct (no special-casing needed)', () => {
+    const body = {
+      method: 'tools/call',
+      id: 1,
+      params: { name: INVOKE_TOOL_NAME, arguments: { name: 'confirm_action', arguments: { confirm_token: 't', domain: 'd' } } },
+    };
+    const out = detectInvokeToolCall(body);
+    expect(out).toMatchObject({ kind: 'rewrite', targetName: 'confirm_action', rewritten: { params: { name: 'confirm_action', arguments: { confirm_token: 't', domain: 'd' } } } });
+  });
+});
+
+describe('requiresActivation', () => {
+  it('exempts find_tools, confirm_action, and invoke_tool itself', () => {
+    expect(requiresActivation('find_tools')).toBe(false);
+    expect(requiresActivation('confirm_action')).toBe(false);
+    expect(requiresActivation(INVOKE_TOOL_NAME)).toBe(false);
+  });
+  it('requires activation for every real domain tool', () => {
+    expect(requiresActivation('book_list')).toBe(true);
+    expect(requiresActivation('kg_graph_query')).toBe(true);
+  });
+});
+
+describe('notActivatedError', () => {
+  it('shapes an isError tool result naming find_tools as the fix, not a silent no-op', () => {
+    const out = notActivatedError(5, 'book_list') as { id: unknown; result: { isError: boolean; content: Array<{ text: string }> } };
+    expect(out.id).toBe(5);
+    expect(out.result.isError).toBe(true);
+    expect(JSON.parse(out.result.content[0].text).error).toContain('find_tools');
+  });
+});
+
+describe('injectInvokeToolTool', () => {
+  it('appends invoke_tool to a tools/list result, once', () => {
+    const text = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'find_tools' }] } });
+    const out = JSON.parse(injectInvokeToolTool(text));
+    const names = out.result.tools.map((t: { name: string }) => t.name);
+    expect(names).toEqual(['find_tools', 'invoke_tool']);
+    // idempotent
+    const again = JSON.parse(injectInvokeToolTool(injectInvokeToolTool(text)));
+    expect(again.result.tools.filter((t: { name: string }) => t.name === INVOKE_TOOL_NAME)).toHaveLength(1);
+  });
+
+  it('rewrites the find_tools description to state the edge-specific invoke_tool flow', () => {
+    const text = JSON.stringify({
+      jsonrpc: '2.0', id: 1,
+      result: { tools: [{ name: 'find_tools', description: 'generic ai-gateway description' }] },
+    });
+    const out = JSON.parse(injectInvokeToolTool(text));
+    const ft = out.result.tools.find((t: { name: string }) => t.name === 'find_tools');
+    expect(ft.description).toContain('invoke_tool');
+  });
+
+  it('passes through unparseable text unchanged', () => {
+    expect(injectInvokeToolTool('not json')).toBe('not json');
+  });
+
+  it('the injected tool requires a string name and forbids extra args', () => {
+    expect(INVOKE_TOOL_TOOL.inputSchema.required).toEqual(['name']);
+    expect(INVOKE_TOOL_TOOL.inputSchema.additionalProperties).toBe(false);
+  });
+});

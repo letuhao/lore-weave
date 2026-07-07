@@ -438,6 +438,17 @@ PLAN_MODE_NUDGE = (
     "the plan, tell them to switch to Write mode to draft."
 )
 
+# Ask mode had no equivalent nudge — a model only discovered the read-only
+# restriction reactively, from a rejected tool-call error, instead of upfront the
+# way plan mode explains itself. Mirrors PLAN_MODE_NUDGE's shape/placement.
+ASK_MODE_NUDGE = (
+    "## Ask mode\n"
+    "You are in ASK (research) mode: only read-only tools run here. Investigate "
+    "and answer freely, but do NOT attempt to create, edit, publish, delete, or "
+    "start any job — those calls will be rejected. If the user wants a change "
+    "made, tell them to switch to Write mode (or Plan mode to draft a plan first)."
+)
+
 
 def _is_plan_tool(name: str) -> bool:
     """A PlanForge planning tool (allowed in PLAN mode on top of the R surface)."""
@@ -2105,7 +2116,8 @@ async def stream_response(
     RAID C2 (DR-C2): ``permission_mode`` ('ask'|'write'|'plan', default 'write')
     — see _stream_with_tools. Compose (disable_tools) is NOT an enum value.
     RAID B2: 'plan' also auto-injects the plan_forge skill (book/editor
-    surfaces) and appends the plan-mode system nudge on both assembly paths."""
+    surfaces) and appends the plan-mode system nudge; 'ask' appends its own
+    nudge too (no auto-skill) — both on both system-part assembly paths."""
 
     # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
     # before the message reaches the model or is persisted. The inline override is
@@ -2465,10 +2477,14 @@ async def stream_response(
     knowledge_skill: str | None = _skill_prompts.get("knowledge")
     # RAID B2 — the PlanForge skill body (pinned, or auto-injected in plan mode).
     plan_forge_skill: str | None = _skill_prompts.get("plan_forge")
-    # RAID B2 — the plan-mode system nudge, appended on BOTH assembly paths
-    # below (mirrors skill_meta_block) whenever the turn runs in plan mode.
-    plan_mode_block: str | None = (
-        PLAN_MODE_NUDGE if permission_mode == "plan" else None
+    # RAID B2 (+ ask-mode follow-up) — the mode system nudge, appended on BOTH
+    # assembly paths below (mirrors skill_meta_block) whenever the turn runs
+    # restricted (plan or ask) — write mode is the unrestricted baseline and
+    # needs no explanation.
+    mode_nudge_block: str | None = (
+        PLAN_MODE_NUDGE if permission_mode == "plan"
+        else ASK_MODE_NUDGE if permission_mode == "ask"
+        else None
     )
     # RAID C3 — L1 skill metadata: a compact "available skills" list injected always
     # (cheap), so the model knows which skills exist on this surface even when only the
@@ -2616,7 +2632,7 @@ async def stream_response(
         universal_skill,
         plan_forge_skill,    # RAID B2 — PlanForge flow (pinned or plan-mode)
         user_skills_block,   # REG-P1-05 — user/book registry skills (L2 bodies)
-        plan_mode_block,     # RAID B2 — plan-mode nudge (no prose until Write)
+        mode_nudge_block,    # RAID B2 (+ask-mode) — plan/ask mode nudge
         skill_meta_block,    # RAID C3 — L1 available-skills catalog
         group_directory_block,  # tool-catalog-simplification Part A — domain map for find_tools(group=...)
         book_context_note,
@@ -2670,7 +2686,10 @@ async def stream_response(
                 )
                 if s
             ),
-            "plan_nudge": estimate_tokens(plan_mode_block),
+            # Category key stays "plan_nudge" (FE Inspector contract — see
+            # token_budget.BREAKDOWN_CATEGORIES) though it now also carries the
+            # ask-mode nudge; renaming the wire key isn't warranted for this fix.
+            "plan_nudge": estimate_tokens(mode_nudge_block),
             "story_state": estimate_tokens(story_state_block),  # T4 — safety-net block (0 unless projected)
             "book_note": estimate_tokens(book_context_note),
             "attached_context": (
@@ -2760,6 +2779,7 @@ async def stream_response(
                     book_scoped=book_scoped,
                     studio=bool(studio_context),
                     context_length=creds.context_length,
+                    permission_mode=permission_mode,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
@@ -3926,6 +3946,7 @@ async def resume_stream_response(
                 book_scoped=True,
                 studio=True,
                 context_length=creds.context_length,
+                permission_mode=susp.permission_mode,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend

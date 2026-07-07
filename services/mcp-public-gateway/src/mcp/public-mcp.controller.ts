@@ -9,7 +9,8 @@ import { makeToolActivationStoreFromEnv } from '../session/tool-activation-store
 import { detectProposeInItem, detectProposeResult, pendingApprovalForId, pendingApprovalResponse, proposeDivertError, proposeDivertErrorForId } from '../scope/propose-detect.js';
 import type { ResolvedKey } from '../auth/key-resolver.js';
 import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, injectConfirmActionTool } from '../scope/confirm-action.js';
-import { domainScope, type Domain } from '../scope/tool-policy.js';
+import { detectInvokeToolCall, injectInvokeToolTool, notActivatedError, requiresActivation } from '../scope/invoke-tool.js';
+import { domainScope, WILDCARD_SCOPE, type Domain } from '../scope/tool-policy.js';
 import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
 import { Idempotency } from '../idempotency/idempotency-store.js';
@@ -93,6 +94,28 @@ export class PublicMcpController {
       return this.deny(res, -32603, 'gateway misconfigured', 500);
     }
 
+    // LAZY TOOL-LOADING v2 — `invoke_tool` unwrap. A standard MCP client caches `tools/list`
+    // ONCE at connect and never re-polls, so a tool `find_tools` "activated" server-side can
+    // never be CALLED directly (the client refuses to send a name it never saw listed) — only
+    // `invoke_tool` (always in `tools/list`, like `find_tools`) is callable. Unwrap it into a
+    // normal `tools/call` for its REAL target here, before rate-limiting/scope-gate/idempotency
+    // read the body, so every downstream gate reads the genuine tool name — zero other changes
+    // needed anywhere else in this file. review-impl MED fix: a malformed invoke_tool call is an
+    // AUTHENTICATED request (unlike the anonymous checks above) — it must still be rate-limited
+    // like any other call from this key, so the response is deferred (`malformedInvokeTool`) and
+    // sent AFTER the rate-limit check below, not returned early here.
+    let invokeToolTarget: string | null = null;
+    let malformedInvokeTool: unknown = null;
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined) {
+      const detection = detectInvokeToolCall(req.body);
+      if (detection?.kind === 'malformed') {
+        malformedInvokeTool = detection.response;
+      } else if (detection?.kind === 'rewrite') {
+        invokeToolTarget = detection.targetName;
+        req.body = detection.rewritten;
+      }
+    }
+
     // Mint our own trace id once (never trust an inbound x-trace-id) — reused for
     // the outbound envelope AND every audit row for this request (correlation).
     const traceId = randomUUID();
@@ -115,6 +138,33 @@ export class PublicMcpController {
         id: jsonRpcId(req.body),
       });
       return;
+    }
+
+    if (malformedInvokeTool !== null) {
+      this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'tool_error');
+      res.status(200).json(malformedInvokeTool);
+      return;
+    }
+
+    // invoke_tool activation gate — runs AFTER rate-limiting (consistent with the scope gate's
+    // own timing below: a denied call still counts against the key's budget). Skipped for the
+    // wildcard (dev/smoke) key, whose find_tools calls never populate the activation store
+    // (scopeFilterFindToolsResult short-circuits for it) — it already sees the FULL catalogue
+    // directly in tools/list, so nothing is ever "unactivated" for it.
+    if (invokeToolTarget && requiresActivation(invokeToolTarget) && !resolved.scopes.includes(WILDCARD_SCOPE)) {
+      const activated = await this.toolActivation.activated(resolved.keyId);
+      if (!activated.has(invokeToolTarget)) {
+        // review-impl MED fix: this is NOT a scope violation (the key may well be
+        // in-scope for `invokeToolTarget` — it just hasn't find_tools-discovered it
+        // yet this session) — `denied_scope` would conflate a normal first-call flow
+        // with a genuine scope violation in the owner-facing audit trail. The response
+        // shape here is an MCP tool-result `isError` (not a JSON-RPC -32601 anti-oracle
+        // deny like the scope gate/confirm_action below), matching how `tool_error` is
+        // used elsewhere in this file for "a tool-level error, not a protocol denial".
+        this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'tool_error');
+        res.status(200).json(notActivatedError(jsonRpcId(req.body), invokeToolTarget));
+        return;
+      }
     }
 
     // P4 slice B: confirm_action — the headless self-confirm tool. It is a SYNTHETIC edge
@@ -359,6 +409,11 @@ export class PublicMcpController {
         if (resolved.allowSelfConfirm && resolved.scopes.includes('write_confirm')) {
           text = injectConfirmActionTool(text);
         }
+        // LAZY TOOL-LOADING v2 — every key gets invoke_tool (the execution facade that makes an
+        // activated tool actually callable) + the edge-specific find_tools description pointing
+        // at it. Unconditional, unlike confirm_action above (which is dual-flag-gated) — every
+        // public key needs a way to call whatever find_tools activates, regardless of scopes.
+        text = injectInvokeToolTool(text);
       }
 
       // P4 slice F (H17): multi-step partial-failure honesty. For a successfully-relayed

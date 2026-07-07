@@ -26,15 +26,21 @@ const INCLUSION_FLOOR = 0.2;
 // algorithm itself). Injected as plain text alongside a surface's core tools, not as schemas.
 export const GROUP_DIRECTORY: Readonly<Record<string, string>> = {
   glossary: 'Lore entities (characters/locations/items/kinds) — CRUD + wiki + standards ontology.',
-  story: 'Manuscript search + chapter reads (story_search, book_get_chapter).',
-  composition: 'Outline/scene/canon planning — PlanForge, Story Grid rules.',
+  // `book_get_chapter` is prefix `book_`, not `story_` — it lives in "book" below; the group
+  // filter is prefix-based (see `providerPrefix`), so this entry must only claim tools this
+  // group's search can actually surface.
+  story: 'Manuscript search (story_search).',
+  composition: 'Outline/scene/canon planning — Story Grid rules, motif/arc library.',
   knowledge: 'Derived KG facts (Neo4j-backed), passage retrieval, memory_search.',
   translation: 'Job-based chapter/book translation pipeline.',
-  book: 'Book/chapter CRUD, publishing, chapter body reads.',
+  book: 'Book/chapter CRUD, publishing, chapter body reads (incl. book_get_chapter).',
   jobs: 'Job status/cancel for any long-running operation.',
   catalog: 'Public catalog browsing (published books, discovery).',
   registry: 'Agent/tool registry administration.',
   settings: 'User/account settings and provider-model configuration.',
+  // PlanForge tools federate under their own `plan_` prefix (composition-service's M4
+  // federation contract), NOT `composition_` — mirrors chat-service's tool_discovery.py.
+  plan: 'Novel planning workflow — PlanForge propose/refine/validate/compile (plan_propose_spec, plan_self_check, plan_interpret_feedback, plan_apply_revision, plan_review_checkpoint, plan_handoff_autofix, plan_validate, plan_compile).',
 };
 
 /** The MCP tool def for find_tools, advertised on every minimal surface. */

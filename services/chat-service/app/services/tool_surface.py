@@ -11,7 +11,12 @@ import json
 from dataclasses import dataclass, field
 
 from app.services.token_budget import estimate_tokens, scale_by_window
-from app.services.tool_discovery import hot_tool_names, surface_hot_domains, tool_name
+from app.services.tool_discovery import (
+    PLAN_HOT_DOMAINS,
+    hot_tool_names,
+    surface_hot_domains,
+    tool_name,
+)
 
 ACTIVATED_TOOLS_CAP = 64
 
@@ -127,9 +132,12 @@ def discovery_seed_for_surface(
     book_scoped: bool,
     studio: bool = False,
     context_length: int | None = None,
+    permission_mode: str = "write",
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated)."""
-    hot_domains = surface_hot_domains(editor=editor, book_scoped=book_scoped, studio=studio)
+    hot_domains = surface_hot_domains(
+        editor=editor, book_scoped=book_scoped, studio=studio, permission_mode=permission_mode,
+    )
     # FIX (context-explosion): token-budget the hot-seed instead of seeding the
     # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
     # session model with a larger real context_length via scale_by_window).
@@ -152,6 +160,31 @@ def discovery_seed_for_surface(
             hot_domains=hot_domains,
             context_length=context_length,
         )
+        # Plan mode force-injects the plan_forge skill regardless of curated pins
+        # (skill_registry.resolve_skills_to_inject appends it unconditionally) — so
+        # its plan_* tools must ride along too, independent of whether the curated
+        # set happens to also pin "glossary" (the gate above is glossary-specific
+        # and would otherwise leave plan_* stranded in a curated plan-mode session
+        # that pinned e.g. only ["plan_forge"]).
+        #
+        # review-impl HIGH fix: when `glossary_in_skills` is True, the union above
+        # ALREADY covers plan_* — `hot_domains` (passed in) includes "plan" via
+        # surface_hot_domains, so `effective_enabled_tools` budgets glossary+story+
+        # (composition+)plan together under ONE HOT_SEED_TOKEN_BUDGET ceiling. Adding
+        # a SECOND, independently-budgeted call here unconditionally would double-seed
+        # plan_* under its own fresh ceiling on top of the shared one — up to ~2x the
+        # intended per-turn hot-seed size, the exact additive-per-domain pattern that
+        # caused the 2026-07-06 context-explosion incident this budget system exists
+        # to prevent. Only reach for a separate, independently-budgeted call in the
+        # narrow case the shared union SKIPPED entirely (a curated session whose
+        # pinned skills are non-empty and exclude "glossary" — the gap this fix
+        # targets), where `eff_pins` otherwise carries no hot-seed contribution at all.
+        if permission_mode == "plan" and not glossary_in_skills:
+            plan_hot = budget_names_by_tokens(
+                catalog, hot_tool_names(catalog, set(PLAN_HOT_DOMAINS)),
+                token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+            )
+            eff_pins = list(dict.fromkeys([*eff_pins, *sorted(plan_hot)]))
     names = assemble_initial_active_names(
         curated=pins.curated_mode,
         enabled_tools=eff_pins,
