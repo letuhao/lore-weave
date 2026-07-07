@@ -751,6 +751,36 @@ class TestHotToolNamesCAT4:
         assert "glossary_ontology_upsert" in hot
 
 
+class TestDomainAliases:
+    """2026-07-07 — group="knowledge" matched NOTHING before this fix: the domain's
+    tools carry the LITERAL prefixes `kg_`/`memory_`, never `knowledge_`, and the
+    group/hot-domain filters compared the literal prefix against the domain name
+    directly. Found while auditing GROUP_DIRECTORY for the skill-authoring lint."""
+
+    _CATALOG = [
+        _tool("kg_graph_query", "Query the knowledge graph", tier="R"),
+        _tool("memory_search", "Search conversation memory", tier="R"),
+        _tool("glossary_search", "Search glossary entities", tier="R"),
+    ]
+
+    def test_group_knowledge_finds_kg_tool(self):
+        matches, _ = td.search_catalog(self._CATALOG, "query the graph", 8, group="knowledge")
+        assert "kg_graph_query" in {m["name"] for m in matches}
+
+    def test_group_knowledge_finds_memory_tool(self):
+        matches, _ = td.search_catalog(self._CATALOG, "search memory", 8, group="knowledge")
+        assert "memory_search" in {m["name"] for m in matches}
+
+    def test_group_knowledge_excludes_other_domains(self):
+        matches, _ = td.search_catalog(self._CATALOG, "search", 8, group="knowledge")
+        names = {m["name"] for m in matches}
+        assert "glossary_search" not in names
+
+    def test_hot_tool_names_knowledge_domain_includes_kg_and_memory(self):
+        hot = td.hot_tool_names(self._CATALOG, {"knowledge"})
+        assert hot == {"kg_graph_query", "memory_search"}
+
+
 class TestGroupDirectory:
     def test_glossary_entry_exists(self):
         assert "glossary" in td.GROUP_DIRECTORY

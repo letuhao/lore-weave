@@ -179,6 +179,94 @@ class TestTokenBudgetedSeed:
         assert seed_tokens <= HOT_SEED_TOKEN_BUDGET * 6
 
 
+class TestCuratedSkillHotDomainUnion:
+    """docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-standard.md Part B — a
+    curated session that pins a skill whose domain isn't otherwise hot (translation,
+    composition on a non-studio surface) must still get that domain's tools seeded,
+    generalizing the plan-mode carve-out beyond just "plan"."""
+
+    def test_curated_pin_of_translation_skill_seeds_translation_domain(self):
+        cat = [_tool_big(f"translation_t{i}", 200) for i in range(5)] + [
+            _tool_big("glossary_search", 200)
+        ]
+        pins = resolve_session_tool_pins({
+            "enabled_tools": ["glossary_search"],
+            "enabled_skills": ["translation"],
+            "activated_tools": [],
+        })
+        seed = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=True)
+        names = {t["function"]["name"] for t in cat}
+        translation_names = {n for n in names if n.startswith("translation_")}
+        assert translation_names <= seed
+        assert "glossary_search" in seed  # the explicit pin still rides along
+
+    def test_curated_pin_of_composition_skill_on_non_studio_surface_seeds_it(self):
+        """Composition is already hot on studio via _STUDIO_HOT_DOMAINS — this proves
+        the union ALSO works on a plain book-scoped surface (studio=False) where
+        composition is NOT otherwise hot, via an explicit curated pin."""
+        cat = [_tool_big(f"composition_t{i}", 200) for i in range(5)]
+        pins = resolve_session_tool_pins({
+            "enabled_tools": ["composition_t0"],
+            "enabled_skills": ["composition"],
+            "activated_tools": [],
+        })
+        seed = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=True, studio=False,
+        )
+        names = {t["function"]["name"] for t in cat}
+        assert names <= seed
+
+    def test_two_pinned_skills_share_ONE_budget_not_two(self):
+        """review-impl fix — pinning composition AND translation together must NOT
+        seed ~2x HOT_SEED_TOKEN_BUDGET (one full ceiling per skill); both domains'
+        candidate tools compete for ONE shared ceiling, same as the auto-mode path
+        already shares one budget across a whole surface's hot_domains set."""
+        # Each tool ~1K tokens (200 chars name+desc * ~4 chars/tok ≈ 200 raw, padded
+        # big below); 10 composition + 10 translation tools far exceeds one budget.
+        cat = (
+            [_tool_big(f"composition_t{i}", 4000) for i in range(10)]
+            + [_tool_big(f"translation_t{i}", 4000) for i in range(10)]
+        )
+        pins = resolve_session_tool_pins({
+            "enabled_tools": ["composition_t0"],
+            "enabled_skills": ["composition", "translation"],
+            "activated_tools": [],
+        })
+        seed = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=True)
+        seed_tokens = sum(
+            len(str(t["function"])) for t in cat if t["function"]["name"] in seed
+        )
+        # Bounded to roughly ONE budget's worth (generous chars-per-token ceiling),
+        # not two full budgets' worth of tools from two separately-budgeted calls.
+        assert seed_tokens <= HOT_SEED_TOKEN_BUDGET * 6
+
+    def test_no_double_budget_when_skill_domain_already_covered(self):
+        """A curated session with empty effective_skills (default) already unions
+        glossary+story via the existing gate — pinning "glossary" explicitly too must
+        not trigger a SECOND, independently-budgeted call for the same domain (the
+        exact review-impl HIGH bug class from 2026-07-07, generalized-loop edition)."""
+        cat = [_tool_big(f"glossary_t{i}", 200) for i in range(5)]
+        pins = resolve_session_tool_pins({
+            "enabled_tools": ["glossary_t0"],
+            "enabled_skills": ["glossary"],
+            "activated_tools": [],
+        })
+        seed_with_pin = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=True,
+        )
+        pins_no_skill = resolve_session_tool_pins({
+            "enabled_tools": ["glossary_t0"],
+            "enabled_skills": [],
+            "activated_tools": [],
+        })
+        seed_without_pin = discovery_seed_for_surface(
+            cat, pins=pins_no_skill, editor=False, book_scoped=True,
+        )
+        # Same result whether "glossary" is explicitly pinned or left to the default
+        # empty-skills gate — the generic loop found nothing NEW to add (already covered).
+        assert seed_with_pin == seed_without_pin
+
+
 class TestActivatedTokenCap:
     def test_catalog_caps_by_tokens_not_count(self):
         from app.services.tool_surface import merge_activated_tools

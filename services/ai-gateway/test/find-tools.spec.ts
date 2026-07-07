@@ -167,6 +167,31 @@ describe('searchCatalog — CAT-4 legacy exclusion (TS mirror)', () => {
   });
 });
 
+describe('domain aliases (TS mirror, 2026-07-07)', () => {
+  // group="knowledge" matched NOTHING before this fix — its tools carry the literal
+  // prefixes kg_/memory_, never knowledge_. Mirrors chat-service's TestDomainAliases.
+  const KNOWLEDGE_CATALOG = [
+    { name: 'kg_graph_query', description: 'Query the knowledge graph' },
+    { name: 'memory_search', description: 'Search conversation memory' },
+    { name: 'glossary_search', description: 'Search glossary entities' },
+  ];
+
+  it('group=knowledge finds the kg_ tool', () => {
+    const { matches } = searchCatalog(KNOWLEDGE_CATALOG, 'query the graph', 8, new Set(), 'knowledge');
+    expect(matches.map((m) => m.name)).toContain('kg_graph_query');
+  });
+
+  it('group=knowledge finds the memory_ tool', () => {
+    const { matches } = searchCatalog(KNOWLEDGE_CATALOG, 'search memory', 8, new Set(), 'knowledge');
+    expect(matches.map((m) => m.name)).toContain('memory_search');
+  });
+
+  it('group=knowledge excludes other domains', () => {
+    const { matches } = searchCatalog(KNOWLEDGE_CATALOG, 'search', 8, new Set(), 'knowledge');
+    expect(matches.map((m) => m.name)).not.toContain('glossary_search');
+  });
+});
+
 describe('GROUP_DIRECTORY (Part A, TS mirror)', () => {
   it('mirrors chat-service GROUP_DIRECTORY verbatim (same keys)', () => {
     // Keep this list in sync BY HAND with tool_discovery.py's GROUP_DIRECTORY —

@@ -179,12 +179,44 @@ def discovery_seed_for_surface(
         # narrow case the shared union SKIPPED entirely (a curated session whose
         # pinned skills are non-empty and exclude "glossary" — the gap this fix
         # targets), where `eff_pins` otherwise carries no hot-seed contribution at all.
+        covered_domains: set[str] = set(hot_domains) if glossary_in_skills else set()
         if permission_mode == "plan" and not glossary_in_skills:
             plan_hot = budget_names_by_tokens(
                 catalog, hot_tool_names(catalog, set(PLAN_HOT_DOMAINS)),
                 token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
             )
             eff_pins = list(dict.fromkeys([*eff_pins, *sorted(plan_hot)]))
+            covered_domains |= set(PLAN_HOT_DOMAINS)
+
+        # Generic curated-skill hot-domain union (docs/specs/2026-07-07-skill-
+        # authoring-and-mcp-exposure-standard.md Part B) — any OTHER explicitly
+        # pinned skill (composition, translation, future skills) whose declared
+        # `hot_domains` isn't already covered above needs its tools seeded, so a
+        # curated session that pins e.g. "translation" doesn't strand its tools behind
+        # find_tools the way plan_forge originally did.
+        #
+        # review-impl fix: this MUST be ONE shared budgeted call across every
+        # not-yet-covered domain from every pinned skill — not one separate call PER
+        # skill. A per-skill call would let each newly-pinned skill claim its own full
+        # HOT_SEED_TOKEN_BUDGET, so pinning 2 skills could seed ~2x the intended
+        # per-turn hot-set size (3 skills ~3x, ...) — the exact "separate ceiling per
+        # domain-source" pattern the review-impl HIGH fix above already banned for the
+        # plan/glossary case; the fix here is the SAME discipline, generalized: collect
+        # every uncovered domain from every pinned skill FIRST, then budget them
+        # together under one ceiling (mirrors how the auto-mode path already shares one
+        # `budget_names_by_tokens` call across a whole surface's hot_domains SET).
+        from app.services.skill_registry import SYSTEM_SKILLS
+        extra_domains: set[str] = set()
+        for _code in pins.effective_skills:
+            _skill = SYSTEM_SKILLS.get(_code)
+            if _skill and _skill.hot_domains:
+                extra_domains |= set(_skill.hot_domains) - covered_domains
+        if extra_domains:
+            extra_hot = budget_names_by_tokens(
+                catalog, hot_tool_names(catalog, extra_domains),
+                token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+            )
+            eff_pins = list(dict.fromkeys([*eff_pins, *sorted(extra_hot)]))
     names = assemble_initial_active_names(
         curated=pins.curated_mode,
         enabled_tools=eff_pins,

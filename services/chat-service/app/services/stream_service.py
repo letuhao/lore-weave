@@ -2442,6 +2442,7 @@ async def stream_response(
     _editor = bool(editor_context)
     _book_scoped = bool(editor_context or book_context)
     _admin = bool(admin_context)
+    _studio = bool(studio_context)
     _session_enabled = list(session_row.get("enabled_tools") or []) if session_row else []
     _session_skills = list(session_row.get("enabled_skills") or []) if session_row else []
 
@@ -2468,6 +2469,7 @@ async def stream_response(
         admin=_admin,
         # RAID B2 — plan mode auto-injects plan_forge on book/editor surfaces.
         permission_mode=permission_mode,
+        studio=_studio,
     )
     _skill_prompts = skill_prompts(injected_skill_codes)
     glossary_skill: str | None = _skill_prompts.get("glossary")
@@ -2477,6 +2479,9 @@ async def stream_response(
     knowledge_skill: str | None = _skill_prompts.get("knowledge")
     # RAID B2 — the PlanForge skill body (pinned, or auto-injected in plan mode).
     plan_forge_skill: str | None = _skill_prompts.get("plan_forge")
+    # Part B (2026-07-07) — composition (pinned, or auto-injected on studio) / translation (pinned only).
+    composition_skill: str | None = _skill_prompts.get("composition")
+    translation_skill: str | None = _skill_prompts.get("translation")
     # RAID B2 (+ ask-mode follow-up) — the mode system nudge, appended on BOTH
     # assembly paths below (mirrors skill_meta_block) whenever the turn runs
     # restricted (plan or ask) — write mode is the unrestricted baseline and
@@ -2492,7 +2497,7 @@ async def stream_response(
     skill_meta_block: str | None = None
     if injected_skill_codes:  # only when skills are in play (agui + tools on)
         skill_meta_block = skill_metadata_block(
-            editor=_editor, book_scoped=_book_scoped, admin=_admin,
+            editor=_editor, book_scoped=_book_scoped, admin=_admin, studio=_studio,
         )
 
     # Tool-catalog-simplification Part A — the group directory replaces whole-
@@ -2610,6 +2615,10 @@ async def stream_response(
                 knowledge_skill = None
             if _uskills.system_disabled("plan_forge") or _uskills.shadows("plan_forge"):
                 plan_forge_skill = None
+            if _uskills.system_disabled("composition") or _uskills.shadows("composition"):
+                composition_skill = None
+            if _uskills.system_disabled("translation") or _uskills.shadows("translation"):
+                translation_skill = None
         except Exception:
             logger.warning("user skills fetch/inject failed — built-in skills only", exc_info=True)
             user_skills_block = None
@@ -2631,6 +2640,8 @@ async def stream_response(
         knowledge_skill,
         universal_skill,
         plan_forge_skill,    # RAID B2 — PlanForge flow (pinned or plan-mode)
+        composition_skill,   # Part B (2026-07-07) — pinned, or auto-injected on studio
+        translation_skill,   # Part B (2026-07-07) — pinned only
         user_skills_block,   # REG-P1-05 — user/book registry skills (L2 bodies)
         mode_nudge_block,    # RAID B2 (+ask-mode) — plan/ask mode nudge
         skill_meta_block,    # RAID C3 — L1 available-skills catalog
@@ -2682,7 +2693,8 @@ async def stream_response(
                 estimate_tokens(s)
                 for s in (
                     glossary_skill, knowledge_skill, universal_skill,
-                    plan_forge_skill, skill_meta_block, user_skills_block,
+                    plan_forge_skill, composition_skill, translation_skill,
+                    skill_meta_block, user_skills_block,
                 )
                 if s
             ),
@@ -3813,6 +3825,10 @@ async def resume_stream_response(
         admin=bool(admin_token),
         # RAID B2 — the resume continues under the suspended turn's mode.
         permission_mode=susp.permission_mode,
+        # Conservative superset, matching the resume `discovery_seed_for_surface` call
+        # below (editor=True, book_scoped=True, studio=True) — the resume doesn't know
+        # the exact original surface, so it re-seeds/re-injects the union of everything.
+        studio=True,
     )
 
     knowledge_client = get_knowledge_client()

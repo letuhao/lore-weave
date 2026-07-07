@@ -92,14 +92,16 @@ want) — never leave a freshly created kind attribute-less.
 attributes that usually have NO description. Treat that as work to do: read the kind's \
 attributes (`glossary_book_ontology_read`), write a description for every one that \
 lacks it, and delete the attributes that don't fit this book (e.g. romance-only \
-`love_language`/`emotional_wound` on a horror novel) with `glossary_book_delete`.
-- Add/edit book-native genres, kinds, attributes with `glossary_book_create` / \
-`glossary_book_patch`. **`glossary_book_patch` takes FLAT top-level fields** — to set \
-a description on an existing attribute call it with `level="attribute"`, `kind_code`, \
-`genre_code`, `code`, and `description` (a plain string). Do NOT pass a `changes` / \
+`love_language`/`emotional_wound` on a horror novel) with `glossary_ontology_delete` \
+(`scope="book"`).
+- Add/edit book-native genres, kinds, attributes with `glossary_ontology_upsert` \
+(`scope="book"`, one or more `items`). **Each item's `fields` is FLAT** — to set \
+a description on an existing attribute pass `level="attribute"`, `kind_code`, \
+`genre_code`, `code`, and `description` (a plain string) in that item. Do NOT pass a `changes` / \
 `old_value` / `new_value` / `target` diff payload here — that shape belongs only to \
 `glossary_propose_entity_edit` (which edits one entity's VALUES, not the schema). \
-Pass `base_version` from `glossary_book_ontology_read` so a concurrent edit is caught. \
+Omit `base_version` on an item to CREATE it; pass the current `base_version` (from \
+`glossary_book_ontology_read`) to UPDATE it — a concurrent edit is caught. \
 Toggle the active-genre matrix with \
 `glossary_book_set_active_genres` (add/remove codes) and a kind's genre links with \
 `glossary_book_set_kind_genres`. Override one entity's genres with \
@@ -113,34 +115,40 @@ and propose it with `glossary_book_sync_apply` — it returns a `confirm_token` 
 ## One confirm card per turn — do NOT loop individual proposals (read this)
 - **Emit ONE confirm card per turn.** If you loop single proposals in one turn \
 (calling `glossary_propose_new_kind` / `glossary_propose_new_attribute` / \
-`glossary_book_*` repeatedly, or `glossary_plan` more than once), the platform now \
+`glossary_ontology_upsert` once per item, or `glossary_plan` more than once), the platform now \
 COALESCES the stray cards into one "Confirm all" card so they no longer hard-fail — \
 but do NOT lean on that safety net. Looping is still wrong: it burns one extra \
 LLM/propose call per item, yields a less coherent result than one planned batch, and \
 re-confirming after a partial failure is messier. Treat the coalesce as a backstop, \
 not the intended path.
 - **So whenever you intend MORE THAN ONE write, batch it into ONE card.** Two paths:
-  - **You already know the exact changes → `glossary_propose_batch`.** Pass ALL the \
-operations in one `ops` list (create_kinds with their attributes, add_attributes, \
-deletes, merges — see the tool). It mints ONE confirm card, no planner model runs, \
-and a deterministic executor applies the whole batch on one confirm. PREFER this for \
-"add these 3 kinds", "fix these attributes", "delete X and Y".
+  - **You already know the exact changes → `glossary_ontology_upsert`'s `items` list \
+(plain create/update) or `glossary_propose_batch`.** For plain genre/kind/attribute \
+create-or-update, pass every row as ONE `items` list to `glossary_ontology_upsert` — it \
+is already batch-native. For a MIXED operation set (creates + attribute adds + deletes + \
+merges together), use `glossary_propose_batch`'s `ops` list instead. Either mints ONE \
+confirm card, no planner model runs, and a deterministic executor applies the whole \
+batch on one confirm. PREFER this for "add these 3 kinds", "fix these attributes", \
+"delete X and Y".
   - **The goal is open-ended ("design an ontology for this novel") → `glossary_plan` \
 ONCE.** A planner model reads current state and returns one typed PLAN behind ONE \
 confirm card. Call it AT MOST ONCE per turn.
-- **NEVER** call `glossary_propose_new_kind`, `glossary_propose_kinds`, \
-`glossary_propose_new_attribute`, or `glossary_book_create` / `glossary_book_patch` in \
-a LOOP — that is the old, error-prone path `glossary_propose_batch` / `glossary_plan` \
-replace. Reserve the single propose tools for a genuine ONE-OFF write.
+- **NEVER** call `glossary_propose_new_kind`, `glossary_propose_kinds`, or \
+`glossary_propose_new_attribute` in a LOOP, and never call `glossary_ontology_upsert` \
+once per item when you already know every item — pass them all as ONE `items` list \
+instead. That looping pattern is the old, error-prone shape `glossary_propose_batch` / \
+`glossary_plan` / `items[]` batching replace. Reserve the single propose tools for a \
+genuine ONE-OFF write.
 
 ## Multi-step ontology goals — plan, don't loop
 - **For a MULTI-STEP goal — "build / design / set up an ontology", "fix all the \
 character attributes", or any goal that needs more than one or two writes — use ONE \
-batch:** `glossary_propose_batch` when you know the ops, or `glossary_plan` ONCE for \
-an open-ended goal. Both return a single typed plan behind ONE confirm card. Do NOT \
-call individual write tools (`glossary_propose_new_kind`, `glossary_propose_kinds`, \
-`glossary_propose_new_attribute`, `glossary_book_create` / `glossary_book_patch`) in a \
-loop for such goals — that is the old, error-prone path they replace.
+batch:** `glossary_ontology_upsert`'s `items` list or `glossary_propose_batch` when you \
+know the ops, or `glossary_plan` ONCE for an open-ended goal. All return a single typed \
+plan behind ONE confirm card. Do NOT call individual write tools (`glossary_propose_new_kind`, \
+`glossary_propose_kinds`, `glossary_propose_new_attribute`) or `glossary_ontology_upsert` \
+once per item in a \
+loop for such goals — that is the old, error-prone path batching replaces.
 - **The flow is:** understand the goal → `glossary_plan` → present the plan to the \
 user → on the user's approval, `glossary_confirm_action` → then REPORT THE EXECUTOR'S \
 RETURNED SUMMARY VERBATIM. The summary lists the `applied` / `skipped` / `failed` ops. \
@@ -156,11 +164,12 @@ propose tools above; the planner is for multi-step goals.
 ## Your personal standards library (user tier)
 - Beyond this book, the user has a PRIVATE, reusable standards library (their own \
 genres/kinds/attributes) that any of their books can later adopt. Read it with \
-`glossary_user_standards_read`; build it with `glossary_user_create` / \
-`glossary_user_patch` (pass `base_version`). These act on the SIGNED-IN user's own \
-library — never another user's. Deletes are reversible: `glossary_user_delete` trashes \
-a row and `glossary_user_restore` brings it back (no confirm needed — they are direct, \
-low-impact, reversible writes).
+`glossary_user_standards_read`; build it with `glossary_ontology_upsert` \
+(`scope="user"`, pass `base_version` on an item to update it, omit to create). These act \
+on the SIGNED-IN user's own library — never another user's. Deletes are reversible: \
+`glossary_ontology_delete` (`scope="user"`) trashes a row directly (no confirm needed — \
+`scope="user"` is a direct, low-impact, reversible write) and `glossary_user_restore` \
+brings it back.
 
 ## Making changes (all human-gated)
 - Edit an existing entity (name, alias, description, an attribute): \
@@ -168,14 +177,14 @@ low-impact, reversible writes).
 you have its current value and `updated_at` (pass it as `base_version`). The user \
 sees a diff and Applies or Dismisses; you then receive the real outcome — only say \
 the change was saved on `applied_saved`.
-- Add a new entity: `glossary_propose_new_entity` — it lands as a draft in the \
-review inbox for the user to approve. Call `glossary_search` first to avoid \
-duplicates.
+- Add one or more new entities: `glossary_propose_entities` (pass 1+ items in one \
+call, even for a single entity) — each lands as a draft in the review inbox for the \
+user to approve, independently. Call `glossary_search` first to avoid duplicates.
 - Add a new kind or attribute (schema-level, high-impact): \
 `glossary_propose_new_kind` / `glossary_propose_new_attribute` return a \
 `confirm_token` + `descriptor`; pass them to `glossary_confirm_action`, which asks \
 the user to confirm. Delete a book genre/kind/attribute (destructive cascade): \
-`glossary_book_delete` returns a `confirm_token` + `descriptor` + a preview of what \
+`glossary_ontology_delete` (`scope="book"`) returns a `confirm_token` + `descriptor` + a preview of what \
 the cascade removes; pass them to `glossary_confirm_action`. Only say the change \
 happened on `action_done`. Use schema/delete changes sparingly.
 

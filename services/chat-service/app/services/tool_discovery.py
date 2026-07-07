@@ -220,7 +220,7 @@ def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:
     out: set[str] = set()
     for td in catalog:
         name = tool_name(td)
-        if name and _provider_prefix(name) in domains and not is_legacy_tool(td):
+        if name and _domain_of(name) in domains and not is_legacy_tool(td):
             out.add(name)
     return out
 
@@ -432,7 +432,7 @@ def search_catalog(
         name = tool_name(tool_def)
         if not name or name in exclude or is_legacy_tool(tool_def):
             continue
-        if group is not None and _provider_prefix(name) != group:
+        if group is not None and _domain_of(name) != group:
             continue
         s = _score(intent_tokens, intent, tool_def)
         if s >= INCLUSION_FLOOR:
@@ -454,6 +454,26 @@ def _provider_prefix(name: str) -> str:
     """The provider prefix of a tool name (`book_create` → `book`). Frontend
     + meta tools (no prefix convention) return ""."""
     return name.split("_", 1)[0] if "_" in name else ""
+
+
+# The "knowledge" GROUP_DIRECTORY entry covers TWO literal tool-name prefixes
+# (`kg_*` — the Neo4j-backed graph, and `memory_*` — conversation/passage recall) under
+# one conceptual domain, but domain/group matching elsewhere compares the LITERAL
+# prefix against the domain name directly — so `_provider_prefix("kg_graph_query")` is
+# `"kg"`, never `"knowledge"`, and `hot_tool_names(catalog, {"knowledge"})` /
+# `find_tools(group="knowledge")` silently matched NOTHING before this alias existed
+# (found 2026-07-07 while auditing GROUP_DIRECTORY for the skill-authoring lint — same
+# root cause as the "story"/"composition" GROUP_DIRECTORY text mismatches fixed the
+# same day, just at the matching-mechanism layer instead of the description-text layer).
+_DOMAIN_ALIASES: dict[str, str] = {"kg": "knowledge", "memory": "knowledge"}
+
+
+def _domain_of(name: str) -> str:
+    """The canonical GROUP_DIRECTORY domain for a tool name — `_provider_prefix`
+    resolved through `_DOMAIN_ALIASES` (a no-op for every prefix that already equals
+    its own domain name)."""
+    prefix = _provider_prefix(name)
+    return _DOMAIN_ALIASES.get(prefix, prefix)
 
 
 def provider_availability(catalog_meta: dict) -> set[str]:

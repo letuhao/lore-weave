@@ -10,6 +10,14 @@ finish. It also pins H4 scope honesty (no silent half-done bulk mutations).
 
 Composes with ``UNIVERSAL_SKILL_PROMPT`` by concatenation (no overlap). Static +
 cacheable.
+
+2026-07-07 (Part B, spec §8b.6): the translate step used to teach the propose→confirm→
+watch detail inline; trimmed to a one-clause pointer now that ``translation_skill.py``
+owns that domain's tool-use detail — this fragment keeps owning cross-domain ORDERING
+only (translate-after-chapters-exist), never duplicating what a domain skill teaches.
+Also fixed two stale tool-name references found in the same pass (``chapter_publish``/
+``chapter_save_draft`` — missing their ``book_`` prefix; the real names are
+``book_chapter_publish``/``book_chapter_save_draft``).
 """
 
 WORKFLOW_SKILL_PROMPT = """\
@@ -22,9 +30,9 @@ chain at once.
 ## Build a book end-to-end
 1. **Books & chapters first** — create or locate the book and its chapters \
 (`book_*`). Everything downstream operates on chapters that already exist.
-2. **Translate** — start translation on those chapters (`translation_*`). This is \
-a PRICED job: propose → `confirm_action` → then `ui_watch_job`. Don't translate \
-before the chapters/source text exist.
+2. **Translate** — start translation on those chapters. See the Translation skill for \
+the propose→confirm→watch flow and the version/coverage tools; don't translate before \
+the chapters/source text exist.
 3. **Glossary / lore** — extract or build glossary entities AFTER the source/ \
 translated text is in place. Running it first yields empty or wrong results.
 4. **Wiki** — generate wiki articles LAST, from the settled glossary.
@@ -33,8 +41,8 @@ Jumping ahead (glossary before chapters, wiki before glossary) is the most commo
 way to produce nonsense — keep the order.
 
 ## Publishing
-Draft → publish: `chapter_save_draft` (auto) then `chapter_publish` (confirm). \
-Publishing a chapter with no prose is rejected — write or translate it first.
+Draft → publish: `book_chapter_save_draft` (auto) then `book_chapter_publish` \
+(confirm). Publishing a chapter with no prose is rejected — write or translate it first.
 
 ## Async ordering (the big one)
 A step that STARTS a job (translate, retranslate, media) is not done when the tool \

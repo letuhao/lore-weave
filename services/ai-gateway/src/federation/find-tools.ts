@@ -113,6 +113,18 @@ function providerPrefix(name: string): string {
   return i > 0 ? name.slice(0, i) : '';
 }
 
+/** The "knowledge" GROUP_DIRECTORY entry covers two literal prefixes (`kg_*`, `memory_*`)
+ * under one conceptual domain — mirrors chat-service's `_DOMAIN_ALIASES`/`_domain_of`
+ * (tool_discovery.py), found + fixed together 2026-07-07: without this, `providerPrefix`
+ * alone made `find_tools(group="knowledge")` match nothing, since neither literal prefix
+ * equals the domain name "knowledge". Keep in lockstep with the Python side. */
+const DOMAIN_ALIASES: Readonly<Record<string, string>> = { kg: 'knowledge', memory: 'knowledge' };
+
+function domainOf(name: string): string {
+  const prefix = providerPrefix(name);
+  return DOMAIN_ALIASES[prefix] ?? prefix;
+}
+
 const TOKEN_RE = /[a-z0-9]+/g;
 
 function tokens(text: string): Set<string> {
@@ -212,7 +224,7 @@ export function searchCatalog(
   for (const t of catalog) {
     const name = toolName(t);
     if (!name || exclude.has(name) || isLegacyTool(t)) continue;
-    if (group != null && providerPrefix(name) !== group) continue;
+    if (group != null && domainOf(name) !== group) continue;
     const s = score(intentTokens, t);
     if (s >= INCLUSION_FLOOR) scored.push({ s, t });
   }
