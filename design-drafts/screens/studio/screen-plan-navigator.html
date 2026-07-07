@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Plan Navigator (#21 sidebar half)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --danger: #d95d5d; --danger-muted: #3a1f1f;
+      --motif: #b482e0; --motif-muted: #2a1f38;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    svg { display: block; }
+    ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 20px; max-width: 720px; line-height: 1.6; }
+    .stage { display: flex; gap: 28px; align-items: flex-start; }
+
+    .nav {
+      width: 288px; flex-shrink: 0; height: 640px;
+      background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .nav-head {
+      height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+      font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg);
+    }
+    .nav-head .acts { display: flex; gap: 4px; }
+    .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+    .ico:hover { background: var(--secondary); color: var(--foreground); }
+    .ico.hub { color: var(--primary); border: 1px solid var(--primary-muted); }
+
+    .jump { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .jump-box {
+      display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border-radius: 7px;
+      background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12px;
+    }
+    .jump-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12px; }
+
+    .tree { flex: 1; overflow-y: auto; position: relative; padding: 4px 0; }
+    .row { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; position: relative; }
+    .row:hover { background: var(--secondary); }
+    .row.active { background: rgba(232,168,50,.10); color: var(--primary); }
+    .row.active::before { content:''; position:absolute; left:0; width:2px; height:26px; background: var(--primary); }
+    .caret { width: 12px; height: 12px; flex-shrink: 0; color: var(--muted-fg); transition: transform 100ms; }
+    .caret.closed { transform: rotate(-90deg); }
+    .caret.leaf { visibility: hidden; }
+    .row.arc { font-weight: 700; color: var(--accent-fg); }
+    .row.arc .caret { color: var(--accent); }
+    .row.arc .rn { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--accent); flex-shrink: 0; }
+    .row.chapter { font-weight: 600; padding-left: 24px; }
+    .row.chapter .num { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--border-hover); width: 34px; flex-shrink: 0; }
+    .row.scene { padding-left: 48px; color: var(--muted-fg); font-weight: 400; }
+    .row.scene .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--border-hover); flex-shrink: 0; }
+    .row .name { overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── Plan-lens overlays (the delta vs. Manuscript Navigator) ────────── */
+    .overlays { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .cast-stack { display: flex; }
+    .cast-chip {
+      width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--background-alt);
+      font-size: 7px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+      margin-left: -5px; color: var(--primary-fg);
+    }
+    .cast-chip:first-child { margin-left: 0; }
+    .motif-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--motif); flex-shrink: 0; }
+    .beat-tag {
+      font-size: 8px; font-weight: 700; padding: 1px 4px; border-radius: 3px;
+      background: var(--accent-muted); color: var(--accent-fg); font-family: 'JetBrains Mono'; flex-shrink: 0;
+    }
+    .canon-warn { width: 13px; height: 13px; color: var(--danger); flex-shrink: 0; }
+
+    .nav-foot {
+      height: 26px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+      border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg); font-family: 'JetBrains Mono';
+    }
+
+    .notes { flex: 1; max-width: 640px; }
+    .note { display: flex; gap: 12px; margin-bottom: 18px; }
+    .note .n { width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+    .note h3 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+    .note p { font-size: 12px; line-height: 1.6; color: var(--muted-fg); }
+    .note code { font-family: 'JetBrains Mono'; font-size: 11px; background: var(--secondary); padding: 1px 5px; border-radius: 4px; color: var(--accent-fg); }
+    .why { margin-top: 20px; padding: 12px 14px; border-radius: 8px; background: var(--secondary); border-left: 3px solid var(--accent); font-size: 12px; line-height: 1.6; color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+  <h1>Plan Navigator <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— #21 Plan Hub, sidebar half</span></h1>
+  <p class="sub">
+    <strong>Same tree, same data source as Manuscript Navigator</strong> (arc → chapter → scene —
+    it's the same <code style="font-family:'JetBrains Mono';background:var(--secondary);padding:1px 5px;border-radius:4px;color:var(--accent-fg)">outline_node</code>
+    table). The delta is the lens: cast/motif/beat/canon badges instead of "am I writing here."
+    Clicking a row does <strong>not</strong> open the Editor — it focuses that node on the
+    <strong>Plan Hub</strong> graph panel (the other mockup, <code style="font-family:'JetBrains Mono';background:var(--secondary);padding:1px 5px;border-radius:4px;color:var(--accent-fg)">screen-plan-hub-panel.html</code>),
+    exactly the way Manuscript Navigator's click opens the Editor panel.
+  </p>
+
+  <div class="stage">
+    <div class="nav">
+      <div class="nav-head">
+        <span>Plan</span>
+        <div class="acts">
+          <div class="ico hub" title="Open Plan Hub (graph view)"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M6 8.5V12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8.5"/><path d="M12 14v2.5"/></svg></div>
+          <div class="ico" title="Reload"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 0 0-14-4M4 14a8 8 0 0 0 14 4"/></svg></div>
+        </div>
+      </div>
+
+      <div class="jump">
+        <div class="jump-box">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+          <input placeholder="Jump to arc / chapter / scene…" />
+        </div>
+      </div>
+
+      <div class="tree">
+        <div class="row arc">
+          <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg>
+          <span class="rn">ARC I</span><span class="name">Nghịch Thiên Lộ</span>
+        </div>
+
+        <div class="row chapter">
+          <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg>
+          <span class="num">0001</span><span class="name">Nghịch thiên</span>
+          <div class="overlays">
+            <div class="cast-stack"><span class="cast-chip" style="background:#e8a832">A</span><span class="cast-chip" style="background:#3da692">R</span></div>
+          </div>
+        </div>
+        <div class="row scene active">
+          <span class="dot"></span><span class="caret leaf"></span><span class="name">Cảnh 1 — Bị phản bội</span>
+          <div class="overlays"><span class="beat-tag">Inciting</span></div>
+        </div>
+        <div class="row scene">
+          <span class="dot"></span><span class="name">Cảnh 2 — Thức tỉnh ma khí</span>
+          <div class="overlays"><span class="motif-dot" title="Motif: Blood Oath"></span></div>
+        </div>
+
+        <div class="row chapter" style="position:relative">
+          <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg>
+          <span class="num">0002</span><span class="name">Hạ sơn</span>
+          <div class="overlays">
+            <svg class="canon-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" title="Canon issue: Alice referenced as active despite marked gone"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.3 2.6 18a1.5 1.5 0 0 0 1.3 2.2h16.2a1.5 1.5 0 0 0 1.3-2.2L13.7 4.3a1.5 1.5 0 0 0-2.6 0Z"/></svg>
+          </div>
+        </div>
+        <div class="row scene">
+          <span class="dot"></span><span class="name">Cảnh 1 — Trấn nhỏ</span>
+          <div class="overlays"><span class="cast-stack"><span class="cast-chip" style="background:#3da692">R</span></span></div>
+        </div>
+        <div class="row scene">
+          <span class="dot"></span><span class="name">Cảnh 2 — Kẻ truy đuổi</span>
+        </div>
+
+        <div class="row chapter">
+          <svg class="caret closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg>
+          <span class="num">0003</span><span class="name">Huyết chiến</span>
+          <div class="overlays"><span class="motif-dot"></span><span class="motif-dot" style="background:#e8a832"></span></div>
+        </div>
+
+        <div class="row arc">
+          <svg class="caret closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg>
+          <span class="rn">ARC II</span><span class="name">Ma Đạo Truy Sát</span>
+        </div>
+      </div>
+
+      <div class="nav-foot">
+        <span>3 cast tracked</span><span>·</span><span>2 motifs active</span><span style="margin-left:auto;color:var(--danger)">1 canon issue</span>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note">
+        <div class="n">1</div>
+        <div><h3>Same tree, different overlay lens</h3>
+        <p>This renders <code>outline_node</code> the exact same way Manuscript Navigator does — reuse the fetch/virtualization/paging, only swap the row decoration. Cast/motif/beat/canon are never tree children (the DB doesn't model them that way); they're badges hanging off the node they attach to.</p></div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div><h3>Cast chips (stacked avatars)</h3>
+        <p>From <code>pov_entity_id</code> + <code>present_entity_ids</code> — resolved against glossary-service, batched per page load (not one call per row). Letter + color placeholder here; real build resolves to the entity's actual glossary avatar/initial.</p></div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div><h3>Motif dot</h3>
+        <p>From <code>motif_application.outline_node_id</code> — one dot per motif applied at this node, colored by motif. A tooltip names it; clicking jumps the Plan Hub to that motif's full thread.</p></div>
+      </div>
+      <div class="note">
+        <div class="n">4</div>
+        <div><h3>Canon warning</h3>
+        <p>Surfaces the same signal as the Quality tab's canon-issues/canon-flags feed (shipped 2026-07-06) — but IN-CONTEXT on the node it's about, instead of a separate report you have to cross-reference back to a chapter.</p></div>
+      </div>
+      <div class="why">
+        <strong>Why a separate navigator, not a toggle on Manuscript's:</strong> Manuscript Nav's
+        row click contract is "open this in the Editor" — hard-locking that semantic into a second
+        meaning ("focus this on the graph") would make one click do two different things depending on
+        which activity tab you're in, which is confusing and couples two independent panels' state.
+        A second Activity Bar tab keeps Manuscript's contract untouched and gives Plan its own
+        click semantic, matching how VS Code's Explorer and Source Control are two navigators over
+        related-but-different views of the same repo.
+      </div>
+    </div>
+  </div>
+</body>
+</html>

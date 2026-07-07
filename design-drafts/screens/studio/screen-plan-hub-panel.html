@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Plan Hub panel (#21 dock half)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --danger: #d95d5d; --danger-muted: #3a1f1f;
+      --motif: #b482e0; --motif-muted: #2a1f38;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    svg { display: block; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 20px; max-width: 900px; line-height: 1.6; }
+
+    /* ── Dock panel shell ────────────────────────────────────────────────── */
+    .panel {
+      width: 1120px; height: 660px;
+      background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .toolbar {
+      height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+      padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--card);
+    }
+    .toolbar .title { font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+    .toolbar .search {
+      display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 6px;
+      background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 11px; width: 200px;
+    }
+    .toolbar .search input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 11px; }
+    .legend { display: flex; align-items: center; gap: 10px; margin-left: 8px; font-size: 10px; color: var(--muted-fg); }
+    .legend .item { display: flex; align-items: center; gap: 4px; }
+    .legend .sw { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .toolbar .spacer { flex: 1; }
+    .btn {
+      display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border);
+      background: var(--secondary); color: var(--foreground);
+    }
+    .btn:hover { background: var(--card-hover); }
+    .btn.primary { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+    .zoom { display: flex; align-items: center; gap: 2px; }
+    .zoom .ico { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; border: 1px solid var(--border); }
+    .zoom .ico:hover { background: var(--secondary); color: var(--foreground); }
+    .zoom .pct { font-size: 10px; color: var(--muted-fg); font-family: 'JetBrains Mono'; width: 34px; text-align: center; }
+
+    /* ── Body: canvas + detail drawer ────────────────────────────────────── */
+    .body { flex: 1; display: flex; min-height: 0; }
+    .canvas-wrap { flex: 1; position: relative; overflow: hidden; background: var(--background); }
+    .canvas-wrap::before {
+      content: ''; position: absolute; inset: 0; opacity: .5; pointer-events: none;
+      background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+      background-size: 22px 22px;
+    }
+    .canvas { position: relative; width: 1300px; height: 900px; }
+    .lanes { position: absolute; inset: 0; }
+    .lane {
+      position: absolute; left: 0; right: 0; display: flex; align-items: flex-start; padding: 10px 0 0 16px;
+      font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    }
+    .lane.arc1 { top: 0; height: 340px; background: linear-gradient(180deg, rgba(232,168,50,.05), transparent); color: var(--primary); border-bottom: 1px dashed var(--border); }
+    .lane.arc2 { top: 340px; height: 170px; background: linear-gradient(180deg, rgba(61,166,146,.04), transparent); color: var(--accent); }
+
+    /* SVG connector layer */
+    .conn { position: absolute; inset: 0; pointer-events: none; }
+    .conn path { fill: none; stroke: var(--border-hover); stroke-width: 1.6; }
+    .conn path.dashed { stroke-dasharray: 3 4; opacity: .6; }
+
+    /* Nodes */
+    .node {
+      position: absolute; border-radius: 9px; background: var(--card); border: 1px solid var(--border);
+      display: flex; flex-direction: column; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.25);
+      transition: border-color 120ms, transform 120ms;
+    }
+    .node:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+    .node.chapter { width: 150px; padding: 8px 10px; gap: 3px; }
+    .node.chapter .num { font-family: 'JetBrains Mono'; font-size: 9px; color: var(--muted-fg); }
+    .node.chapter .title { font-size: 12px; font-weight: 700; line-height: 1.25; }
+    .node.chapter .status { font-size: 9px; color: var(--muted-fg); }
+    .node.scene {
+      width: 118px; padding: 6px 8px; gap: 2px; border-radius: 20px 9px 9px 9px;
+    }
+    .node.scene .title { font-size: 10.5px; font-weight: 600; line-height: 1.25; }
+    .node.selected { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(232,168,50,.25), 0 2px 6px rgba(0,0,0,.3); }
+    .node.canon-issue { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(217,93,93,.2); }
+    .node.ai-pending { border-style: dashed; border-color: var(--primary); }
+    .node .ai-badge {
+      position: absolute; top: -8px; right: -8px; width: 17px; height: 17px; border-radius: 50%;
+      background: var(--primary); color: var(--primary-fg); display: flex; align-items: center; justify-content: center;
+      border: 2px solid var(--background-alt);
+    }
+    .node .canon-badge {
+      position: absolute; top: -8px; right: -8px; width: 17px; height: 17px; border-radius: 50%;
+      background: var(--danger); color: #fff; display: flex; align-items: center; justify-content: center;
+      border: 2px solid var(--background-alt);
+    }
+    .row-badges { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+    .cast-stack { display: flex; }
+    .cast-chip {
+      width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid var(--card);
+      font-size: 6.5px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+      margin-left: -5px; color: var(--primary-fg);
+    }
+    .cast-chip:first-child { margin-left: 0; }
+    .motif-chip {
+      font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 8px;
+      background: var(--motif-muted); color: var(--motif); border: 1px solid var(--motif);
+    }
+    .beat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); border: 1px solid var(--background); }
+
+    .collapsed-node {
+      position: absolute; width: 190px; padding: 12px; border-radius: 12px; background: var(--secondary); border: 1px dashed var(--border-hover);
+      display: flex; flex-direction: column; gap: 4px; cursor: pointer; color: var(--muted-fg);
+    }
+    .collapsed-node .t { font-size: 11px; font-weight: 700; color: var(--foreground); }
+    .collapsed-node .n { font-size: 10px; }
+    .collapsed-node .expand { margin-top: 4px; font-size: 10px; color: var(--accent); display: flex; align-items: center; gap: 3px; }
+
+    /* Node hover action rail */
+    .action-rail {
+      position: absolute; display: flex; gap: 2px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 7px; padding: 3px; box-shadow: 0 4px 10px rgba(0,0,0,.4);
+    }
+    .action-rail .a { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+    .action-rail .a:hover { background: var(--secondary); color: var(--foreground); }
+
+    /* Minimap */
+    .minimap {
+      position: absolute; bottom: 12px; right: 12px; width: 140px; height: 90px;
+      background: rgba(30,26,23,.85); border: 1px solid var(--border); border-radius: 6px;
+      backdrop-filter: blur(2px);
+    }
+    .minimap .vp { position: absolute; border: 1.5px solid var(--primary); background: rgba(232,168,50,.08); }
+
+    /* ── Detail drawer ────────────────────────────────────────────────────── */
+    .drawer {
+      width: 280px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--card);
+      display: flex; flex-direction: column; overflow-y: auto;
+    }
+    .drawer-head { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    .drawer-head .kind { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+    .drawer-head .title { font-size: 14px; font-weight: 700; margin-top: 3px; }
+    .drawer-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+    .field .label { font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); margin-bottom: 5px; }
+    .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+    .pill.draft { background: var(--secondary); color: var(--muted-fg); }
+    .synopsis { font-size: 11.5px; line-height: 1.55; color: var(--muted-fg); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+    .cast-chip-lg { display: flex; align-items: center; gap: 5px; font-size: 11px; background: var(--secondary); border-radius: 12px; padding: 3px 8px 3px 3px; }
+    .cast-chip-lg .av { width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: var(--primary-fg); }
+    .motif-chip-lg { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 12px; background: var(--motif-muted); color: var(--motif); border: 1px solid var(--motif); }
+    .canon-banner {
+      display: flex; gap: 8px; padding: 9px 10px; border-radius: 7px; background: var(--danger-muted);
+      border: 1px solid var(--danger); font-size: 11px; line-height: 1.5; color: #f0c4c4;
+    }
+    .canon-banner svg { flex-shrink: 0; color: var(--danger); margin-top: 1px; }
+    .drawer-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+    .drawer-actions .btn { width: 100%; justify-content: center; height: 30px; }
+    .future-tag { font-size: 9px; color: var(--muted-fg); font-style: italic; margin-top: 4px; text-align: center; }
+
+    /* ── Annotations ─────────────────────────────────────────────────────── */
+    .notes { max-width: 1120px; margin-top: 22px; }
+    .note-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 28px; }
+    .note { display: flex; gap: 12px; }
+    .note .n { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; }
+    .note h3 { font-size: 12.5px; font-weight: 600; margin-bottom: 3px; }
+    .note p { font-size: 11.5px; line-height: 1.55; color: var(--muted-fg); }
+    .note code { font-family: 'JetBrains Mono'; font-size: 10.5px; background: var(--secondary); padding: 1px 5px; border-radius: 4px; color: var(--accent-fg); }
+    .why { margin-top: 18px; padding: 12px 14px; border-radius: 8px; background: var(--secondary); border-left: 3px solid var(--accent); font-size: 12px; line-height: 1.6; color: var(--muted-fg); max-width: 1120px; }
+  </style>
+</head>
+<body>
+  <h1>Plan Hub <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— #21, the dock-panel half (React Flow graph canvas)</span></h1>
+  <p class="sub">
+    Same <code style="font-family:'JetBrains Mono';background:var(--secondary);padding:1px 5px;border-radius:4px;color:var(--accent-fg)">outline_node</code>
+    tree as the Plan Navigator sidebar mockup — rendered as a spatial graph instead of a list, because
+    a tech-tree needs the room a 250px rail can't give it. Opened by clicking a row in Plan Navigator,
+    the command palette, or Quick Open. <strong>v1 scope (PH6):</strong> outline structure is truly
+    editable here (reuses <code style="font-family:'JetBrains Mono';background:var(--secondary);padding:1px 5px;border-radius:4px;color:var(--accent-fg)">OutlineTree</code>'s
+    proven mutations) — deeper capabilities (motifs, cast codex, canon rules…) route out to their own
+    panel as Phase 2 ports them; until then a node's action rail deep-links to the legacy tab (PH7).
+  </p>
+
+  <div class="panel">
+    <div class="toolbar">
+      <span class="title">Plan Hub</span>
+      <div class="search">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input placeholder="Find a node…" />
+      </div>
+      <div class="legend">
+        <span class="item"><span class="sw" style="background:var(--primary)"></span>Arc</span>
+        <span class="item"><span class="sw" style="background:var(--accent);border-radius:3px"></span>Chapter</span>
+        <span class="item"><span class="sw" style="background:var(--border-hover);border-radius:20px 3px 3px 3px"></span>Scene</span>
+        <span class="item"><span class="sw" style="background:var(--motif)"></span>Motif</span>
+        <span class="item"><span class="sw" style="background:var(--danger)"></span>Canon issue</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="btn primary">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/></svg>
+        Ask AI about this plan
+      </div>
+      <div class="zoom">
+        <div class="ico">–</div>
+        <span class="pct">86%</span>
+        <div class="ico">+</div>
+        <div class="ico" title="Fit to view"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></div>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="canvas-wrap" id="canvasWrap">
+        <div class="canvas">
+          <div class="lanes">
+            <div class="lane arc1">ARC I — Nghịch Thiên Lộ · ch 1–40</div>
+            <div class="lane arc2">ARC II — Ma Đạo Truy Sát · ch 41–120</div>
+          </div>
+
+          <svg class="conn" width="1300" height="900">
+            <!-- trunk: chapter 1 -> 2 -> 3 -->
+            <path d="M 230 100 C 270 100, 270 100, 310 100" />
+            <path d="M 460 100 C 500 100, 500 100, 540 100" />
+            <path d="M 690 100 C 730 100, 730 100, 770 100" />
+            <path class="dashed" d="M 920 100 C 970 100, 970 100, 1020 100" />
+            <!-- chapter -> scene branches -->
+            <path d="M 155 132 C 155 165, 130 165, 130 195" />
+            <path d="M 165 132 C 165 165, 210 165, 210 195" />
+            <path d="M 385 132 C 385 165, 360 165, 360 195" />
+            <path d="M 395 132 C 395 165, 440 165, 440 195" />
+            <path d="M 615 132 C 615 165, 590 165, 590 195" />
+            <!-- scene -> scene beat chain (ch1) -->
+            <path d="M 190 230 C 210 230, 210 230, 230 230" />
+            <!-- down to arc II collapsed summary -->
+            <path class="dashed" d="M 500 300 C 500 330, 560 340, 560 360" />
+          </svg>
+
+          <!-- Chapter 0001 -->
+          <div class="node chapter" style="left:80px; top:70px;">
+            <span class="num">0001</span>
+            <span class="title">Nghịch thiên</span>
+            <span class="status">Drafting · 3 scenes</span>
+            <div class="row-badges">
+              <div class="cast-stack"><span class="cast-chip" style="background:#e8a832">A</span><span class="cast-chip" style="background:#3da692">R</span></div>
+            </div>
+          </div>
+          <!-- action rail (hover state, pinned visible for the mockup) -->
+          <div class="action-rail" style="left:80px; top:38px;">
+            <div class="a" title="Open Outline"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></div>
+            <div class="a" title="Open Beats"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 3"/></svg></div>
+            <div class="a" title="Open Cast Codex (legacy tab · not yet ported)"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg></div>
+            <div class="a" title="Ask AI to edit this chapter"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/></svg></div>
+          </div>
+
+          <!-- Scene 1.1 (selected) -->
+          <div class="node scene selected" style="left:100px; top:195px;">
+            <span class="title">Cảnh 1 — Bị phản bội</span>
+            <div class="row-badges"><span class="beat-dot"></span><span style="font-size:8px;color:var(--muted-fg)">Inciting</span></div>
+          </div>
+          <!-- Scene 1.2 -->
+          <div class="node scene" style="left:180px; top:195px;">
+            <span class="title">Cảnh 2 — Thức tỉnh</span>
+            <div class="row-badges"><span class="motif-chip">Blood Oath</span></div>
+          </div>
+
+          <!-- Chapter 0002 (canon issue) -->
+          <div class="node chapter canon-issue" style="left:310px; top:70px;">
+            <div class="canon-badge"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/></svg></div>
+            <span class="num">0002</span>
+            <span class="title">Hạ sơn</span>
+            <span class="status">Drafting · 2 scenes</span>
+          </div>
+          <div class="node scene" style="left:330px; top:195px;">
+            <span class="title">Cảnh 1 — Trấn nhỏ</span>
+          </div>
+          <div class="node scene" style="left:410px; top:195px;">
+            <span class="title">Cảnh 2 — Kẻ truy đuổi</span>
+          </div>
+
+          <!-- Chapter 0003 (AI pending proposal preview — Phase 4, illustrative only) -->
+          <div class="node chapter ai-pending" style="left:540px; top:70px;">
+            <div class="ai-badge"><svg width="9" height="9" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/></svg></div>
+            <span class="num">0003</span>
+            <span class="title">Huyết chiến</span>
+            <span class="status">AI proposed a rewrite</span>
+            <div class="row-badges">
+              <span class="motif-chip">Blood Oath</span>
+              <span class="motif-chip" style="background:var(--primary-muted);color:var(--primary);border-color:var(--primary)">Vengeance</span>
+            </div>
+          </div>
+          <div class="node scene" style="left:560px; top:195px;">
+            <span class="title">Cảnh 1</span>
+          </div>
+
+          <!-- Chapter 0004 -->
+          <div class="node chapter" style="left:770px; top:70px;">
+            <span class="num">0004</span>
+            <span class="title">Ma đạo hiện</span>
+            <span class="status">Planned · 300 scenes</span>
+          </div>
+
+          <!-- Collapsed run of chapters (5–40) -->
+          <div class="collapsed-node" style="left:1020px; top:60px;">
+            <span class="t">Chapters 0005–0040</span>
+            <span class="n">36 chapters · 2 canon issues</span>
+            <span class="expand">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+              Expand
+            </span>
+          </div>
+
+          <!-- Collapsed Arc II summary -->
+          <div class="collapsed-node" style="left:470px; top:360px;">
+            <span class="t">ARC II — Ma Đạo Truy Sát</span>
+            <span class="n">80 chapters · not yet visited</span>
+            <span class="expand">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+              Expand
+            </span>
+          </div>
+
+          <div class="minimap"><div class="vp" style="left:6px;top:6px;width:60px;height:38px;"></div></div>
+        </div>
+      </div>
+
+      <!-- ── Detail drawer for the selected Scene node ────────────────────── -->
+      <div class="drawer">
+        <div class="drawer-head">
+          <div class="kind">Scene · Chapter 0001</div>
+          <div class="title">Cảnh 1 — Bị phản bội</div>
+        </div>
+        <div class="drawer-body">
+          <div class="field">
+            <div class="label">Status</div>
+            <span class="pill draft">Drafting</span>
+          </div>
+          <div class="field">
+            <div class="label">Synopsis</div>
+            <p class="synopsis">Nhân vật chính bị chính đồng minh thân cận phản bội ngay trước cửa tử — cú hích mở ra toàn bộ hành trình báo thù.</p>
+          </div>
+          <div class="field">
+            <div class="label">Cast present</div>
+            <div class="chip-row">
+              <span class="cast-chip-lg"><span class="av" style="background:#e8a832">A</span>Alice</span>
+              <span class="cast-chip-lg"><span class="av" style="background:#3da692">R</span>Roran</span>
+            </div>
+          </div>
+          <div class="field">
+            <div class="label">Motifs threading here</div>
+            <div class="chip-row"><span class="motif-chip-lg">Blood Oath</span></div>
+          </div>
+          <div class="field">
+            <div class="canon-banner">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.3 2.6 18a1.5 1.5 0 0 0 1.3 2.2h16.2a1.5 1.5 0 0 0 1.3-2.2L13.7 4.3a1.5 1.5 0 0 0-2.6 0Z"/></svg>
+              <span>Roran is referenced here as present, but Chapter 0002 marks him as gone. Same signal as the Quality tab's canon check.</span>
+            </div>
+          </div>
+          <div class="drawer-actions">
+            <div class="btn primary">Open in Editor</div>
+            <div class="btn">Rename / edit status</div>
+            <div class="btn">Ask AI to fix this</div>
+            <div class="future-tag">Highlighting an in-flight AI proposal on this card is Phase 4 — not wired in v1.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note-grid">
+      <div class="note">
+        <div class="n">1</div>
+        <div><h3>Lanes = arcs, trunk = chapters, branches = scenes</h3>
+        <p>The tech-tree feel comes from treating arcs as horizontal "eras" (like Civ) and chapters as the trunk progressing left→right within an era, with scenes as short branches — not a generic force-directed graph, which would look messy at book scale and carry no story-order meaning.</p></div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div><h3>Collapsed runs, not 300 rendered nodes</h3>
+        <p>A dense run of chapters (or a whole unvisited arc) collapses to one summary node with a count + "Expand" — the graph analogue of Manuscript Navigator's virtualization, so a 10k-chapter book never tries to lay out 10k boxes at once.</p></div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div><h3>Badges are read from the SAME data as the sidebar</h3>
+        <p>Cast stack / motif chip / canon ring are the identical <code>pov_entity_id</code>/<code>present_entity_ids</code>/<code>motif_application</code>/canon-check signals as Plan Navigator — one data layer, two renderers.</p></div>
+      </div>
+      <div class="note">
+        <div class="n">4</div>
+        <div><h3>Action rail = PH7's fallback, made visible</h3>
+        <p>Hovering a node shows icon buttons to jump into that node's deeper capabilities. Today most route to the legacy tab (labeled explicitly, e.g. "Cast Codex (legacy tab · not yet ported)") — never a silent dead click — and swap to the real Studio panel as Phase 2 ports land.</p></div>
+      </div>
+      <div class="note">
+        <div class="n">5</div>
+        <div><h3>Detail drawer speaks plain language</h3>
+        <p>Same lesson as the PlanForge Planner redesign (2026-07-06): no raw <code>outline_node</code>/<code>motif_application</code> vocabulary in the UI a writer reads — status pill, named cast, named motifs, a canon banner in a sentence, not a JSON dump.</p></div>
+      </div>
+      <div class="note">
+        <div class="n" style="background:var(--accent-muted);border-color:var(--accent);color:var(--accent-fg)">6</div>
+        <div><h3>The dashed gold node previews Phase 4 only</h3>
+        <p>Chapter 0003's dashed border + sparkle badge illustrates what an in-flight AI proposal would look like on the graph — <strong>not built in v1</strong>. Shown here so the vision is legible now, per PH8's explicit sequencing (needs a locked <code>resource_ref</code> convention first).</p></div>
+      </div>
+    </div>
+
+    <div class="why">
+      <strong>Why React Flow over a plain SVG hand-roll:</strong> nodes here are meant to carry real
+      interactive chrome (status pill, badges, hover action rail, click→drawer) — React Flow gives
+      each node a real React component for free, plus pan/zoom/minimap/collapsible-group mechanics
+      that would otherwise be hand-built. The lane/collapsed-run layout above is custom positioning
+      logic on top of it, not a stock layout — React Flow's job is the canvas mechanics, not the
+      story-specific arrangement.
+    </div>
+  </div>
+</body>
+</html>
