@@ -1490,3 +1490,46 @@ async def test_english_message_skips_dict_anchoring(monkeypatch):
         message="who does the girl marry",  # pure ASCII → gate off
     )
     idx_spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_role_message_anchors_protagonist_into_l2(monkeypatch):
+    """A protagonist role-term ('主角') with no named person anchors the project's
+    most-central entity, so select_l2_facts can resolve the role."""
+    from unittest.mock import AsyncMock as _AM
+    _patch_mode3_pieces(monkeypatch)
+    l2_spy = _AM(return_value=L2FactResult())
+    monkeypatch.setattr("app.context.modes.full.select_l2_facts", l2_spy)
+    monkeypatch.setattr("app.context.modes.full.settings.context_role_anchor_enabled", True)
+    # keep dict-anchoring inert so the test isolates the role path
+    monkeypatch.setattr("app.context.modes.full.get_anchor_index", _AM(return_value=None))
+    monkeypatch.setattr("app.context.modes.full.get_project_protagonist", _AM(return_value="张若尘"))
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="主角的母亲是谁？",
+    )
+    intent_arg = l2_spy.await_args_list[0].kwargs["intent"]
+    assert "张若尘" in intent_arg.entities
+
+
+@pytest.mark.asyncio
+async def test_non_role_message_skips_protagonist(monkeypatch):
+    from unittest.mock import AsyncMock as _AM
+    _patch_mode3_pieces(monkeypatch)
+    monkeypatch.setattr("app.context.modes.full.settings.context_role_anchor_enabled", True)
+    prot_spy = _AM(return_value="张若尘")
+    monkeypatch.setattr("app.context.modes.full.get_project_protagonist", prot_spy)
+    monkeypatch.setattr("app.context.modes.full.get_anchor_index", _AM(return_value=None))
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="张若尘的父亲是谁？",  # named, no role term
+    )
+    prot_spy.assert_not_called()

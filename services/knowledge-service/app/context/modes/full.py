@@ -36,7 +36,9 @@ from uuid import UUID
 
 from app.context.anchors import (
     get_anchor_index,
+    get_project_protagonist,
     has_non_ascii_letter,
+    has_protagonist_role,
     resolve_anchors,
 )
 from app.clients.embedding_client import EmbeddingClient
@@ -799,6 +801,30 @@ async def build_full_mode(
                     "M-recall: +%d dict anchors (project=%s) — L2 anchors now %d",
                     len(_dict_anchors), project.project_id, len(_merged),
                 )
+    # M-recall role-resolution — when the message names the lead by ROLE ("主角"/
+    # "the protagonist") rather than by name, the dictionary can't match it (the role
+    # term isn't an entity name). Anchor the project's most-central entity so
+    # select_l2_facts can resolve the role. Additive + gated on a strict protagonist-
+    # term set (both languages, so not non-Latin-only); timeout-bounded, degrade-safe.
+    if settings.context_role_anchor_enabled and has_protagonist_role(message):
+        try:
+            _protagonist = await asyncio.wait_for(
+                get_project_protagonist(
+                    str(user_id), str(project.project_id),
+                    ttl_s=settings.context_dict_anchor_ttl_s,
+                ),
+                timeout=settings.context_l2_timeout_s,
+            )
+        except Exception:  # timeout or load error → no role-anchoring (degrade-safe)
+            _protagonist = None
+        if _protagonist and _protagonist not in intent_obj.entities:
+            intent_obj = replace(
+                intent_obj, entities=(*intent_obj.entities, _protagonist)
+            )
+            logger.info(
+                "M-recall: role→protagonist anchor '%s' (project=%s)",
+                _protagonist, project.project_id,
+            )
     # D-K18.3-02: opt-in generative rerank via extraction_config. Absent
     # key or empty string = skip the LLM rerank hop, MMR order stands.
     rerank_model = (project.extraction_config or {}).get("rerank_model") or None

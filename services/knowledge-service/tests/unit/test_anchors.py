@@ -16,7 +16,9 @@ ahocorasick = pytest.importorskip("ahocorasick")
 from app.context import anchors
 from app.context.anchors import (
     get_anchor_index,
+    get_project_protagonist,
     has_non_ascii_letter,
+    has_protagonist_role,
     resolve_anchors,
 )
 
@@ -156,3 +158,46 @@ async def test_load_failure_degrades_to_none(monkeypatch):
     loader = AsyncMock(side_effect=RuntimeError("neo4j down"))
     monkeypatch.setattr("app.context.anchors.list_project_entity_names", loader)
     assert await get_anchor_index("u", "p", ttl_s=300.0) is None
+
+
+# ── has_protagonist_role (role gate) ────────────────────────────────────────
+
+
+@pytest.mark.parametrize("msg", [
+    "主角的母亲是谁？", "主人公修炼什么功法", "男主是谁",
+    "who is the protagonist's mother", "the main character's weapon",
+    "mẹ của nhân vật chính là ai",
+])
+def test_protagonist_role_detected(msg):
+    assert has_protagonist_role(msg) is True
+
+
+@pytest.mark.parametrize("msg", [
+    "那位重生的少年修炼的功法",   # 少年 is generic — deliberately NOT a protagonist term
+    "张若尘的父亲是谁",           # named, no role term
+    "who does the girl marry",
+    "云武郡王有哪几个儿子",
+])
+def test_non_protagonist_message_not_detected(msg):
+    assert has_protagonist_role(msg) is False
+
+
+# ── get_project_protagonist (cache + degrade) ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_protagonist_resolves_and_caches(monkeypatch):
+    _patch_session(monkeypatch)
+    resolver = AsyncMock(return_value="张若尘")
+    monkeypatch.setattr("app.context.anchors.get_most_connected_entity", resolver)
+    assert await get_project_protagonist("u", "p", ttl_s=300.0) == "张若尘"
+    assert await get_project_protagonist("u", "p", ttl_s=300.0) == "张若尘"
+    resolver.assert_awaited_once()  # second call served from cache
+
+
+@pytest.mark.asyncio
+async def test_protagonist_degrades_to_none_on_failure(monkeypatch):
+    _patch_session(monkeypatch)
+    resolver = AsyncMock(side_effect=RuntimeError("neo4j down"))
+    monkeypatch.setattr("app.context.anchors.get_most_connected_entity", resolver)
+    assert await get_project_protagonist("u", "p", ttl_s=300.0) is None

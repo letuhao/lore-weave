@@ -67,5 +67,36 @@ a future role-resolution step, out of scope here.
 Dictionary matching can over-fire on a very common short entity name (e.g. a generic 2-char term);
 mitigated by `min_len≥2` + longest-match tiling (drops nested) + `cap` + downstream 1-hop bounding +
 budget-trim. At 10k+ entities the per-project name load + automaton build is the cost to watch
-(cached, timeout-bounded). The real *next* recall lever is role→entity coreference for the remaining
-5 role-only queries.
+(cached, timeout-bounded).
+
+---
+
+## Follow-on — role→entity coreference (protagonist resolution)
+
+The 5 queries the dictionary matcher couldn't recover all reference the lead by ROLE, not name
+("被重生的主角的母亲", "主角达到什么境界"). Diagnosis: (a) resolving the role to the project's
+**most-central entity** recovers **5/5**; (b) the M1a passage→graph bridge only recovers **2/5** even
+though the protagonist IS in the retrieved passages — its 1-hop expansion over 张若尘's **150**
+relations crowds out the specific answer. And the protagonist is unambiguous by degree: **张若尘 = 150,
+next = 46** (3× gap).
+
+**Fix:** on a message containing a strict protagonist role-term
+(`主角`/`主人公`/`男主`/`protagonist`/`main character`/`nhân vật chính`/… — deliberately NOT generic
+`少年`/`the boy`), anchor the project's most-connected entity (`get_most_connected_entity`, degree-ranked
+— a place can have high salience but not high character-degree). Additive, cached (own TTL), timeout-
+bounded, degrade-safe, kill-switch `context_role_anchor_enabled`.
+
+**Combined result (dict-anchor + role-resolution), L2 answer-recall A/B (wangu, n=12):**
+
+| | classifier-only | +dict-anchor +role |
+|---|---|---|
+| **L2 answer-recall** | **2/12** | **11/12** |
+| flipped miss→hit | — | **9** |
+| **regressions** | — | **0** |
+
+The single remaining miss ("那位重生的少年…") uses the generic noun 少年 — genuine NLP coreference
+(a minor youth vs the reborn protagonist) that a role-term list correctly refuses to guess. That's the
+honest floor here; real coref is a separate, larger track.
+
+Verify: +14 unit tests (role-gate detection · protagonist cache/degrade · 2 build_full_mode wiring
+guards), 3677 knowledge unit tests green; live A/B above against the real wangu graph.

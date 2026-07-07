@@ -125,6 +125,13 @@ class Settings(BaseSettings):
     context_dict_anchor_cap: int = 12
     context_dict_anchor_min_len: int = 2
 
+    # M-recall role-resolution — when the message names the lead by ROLE ("主角"/
+    # "the protagonist") the dictionary can't match it, so anchor the project's
+    # most-central entity (highest relation degree) instead. Recovers "主角的母亲是谁"
+    # (measured: 4/5 remaining wangu role-queries). Additive + gated on a strict
+    # protagonist-term set. Deploy kill-switch (default ON); reuses the dict-anchor TTL.
+    context_role_anchor_enabled: bool = True
+
     # D-BACKFILL-NO-SCOPE-LIMIT (2026-07-06) — the published-passage backfill embeds
     # EVERY published chapter of a book, and on the embedding-model PUT it runs
     # SYNCHRONOUSLY in-request. On a large book (万古神帝: 4232 published chapters) that

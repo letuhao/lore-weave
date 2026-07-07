@@ -773,6 +773,46 @@ async def list_project_entity_names(
     return out
 
 
+_MOST_CONNECTED_ENTITY_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
+  AND e.archived_at IS NULL
+OPTIONAL MATCH (e)-[r:RELATES_TO]-()
+WHERE r.user_id = $user_id AND r.valid_until IS NULL
+WITH e, count(r) AS degree
+RETURN e.name AS name, degree
+ORDER BY degree DESC, coalesce(e.anchor_score, 0) DESC, e.name ASC
+LIMIT 1
+"""
+
+
+async def get_most_connected_entity(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+) -> str | None:
+    """M-recall role-resolution — the project's most structurally-central entity
+    (highest live-relation degree), the reliable "protagonist" signal for a novel.
+
+    Used to resolve role-referenced anchors ("主角"/"the protagonist" → 张若尘)
+    the dictionary matcher can't (the role term isn't an entity name). Degree
+    (not anchor_score alone) because the most-connected node in a story graph is
+    almost always the lead character, whereas a high-salience node could be a
+    place. Owner+project scoped; None for an empty graph. The caller caches it."""
+    result = await run_read(
+        session,
+        _MOST_CONNECTED_ENTITY_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    if record is None or not record["name"]:
+        return None
+    return str(record["name"])
+
+
 _FIND_BY_NAME_CYPHER_ACTIVE = """
 CALL {
   WITH $user_id AS user_id, $project_id AS project_id,
