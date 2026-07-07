@@ -19,6 +19,7 @@ from app.context.anchors import (
     get_project_protagonist,
     has_non_ascii_letter,
     has_protagonist_role,
+    looks_like_question,
     resolve_anchors,
 )
 
@@ -201,3 +202,21 @@ async def test_protagonist_degrades_to_none_on_failure(monkeypatch):
     resolver = AsyncMock(side_effect=RuntimeError("neo4j down"))
     monkeypatch.setattr("app.context.anchors.get_most_connected_entity", resolver)
     assert await get_project_protagonist("u", "p", ttl_s=300.0) is None
+
+
+# ── looks_like_question (zero-anchor meter label) ───────────────────────────
+
+
+@pytest.mark.parametrize("msg", [
+    "谁是主角的母亲？", "主角修炼什么功法", "what happens next?",
+    "who is the villain", "nhân vật chính là ai",
+])
+def test_looks_like_question_true(msg):
+    assert looks_like_question(msg) is True
+
+
+@pytest.mark.parametrize("msg", [
+    "The hero is Kael, a blacksmith. Reply OK.", "记住这个设定", "hello there",
+])
+def test_looks_like_question_false(msg):
+    assert looks_like_question(msg) is False

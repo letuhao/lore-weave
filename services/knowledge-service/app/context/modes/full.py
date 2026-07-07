@@ -39,6 +39,7 @@ from app.context.anchors import (
     get_project_protagonist,
     has_non_ascii_letter,
     has_protagonist_role,
+    looks_like_question,
     resolve_anchors,
 )
 from app.clients.embedding_client import EmbeddingClient
@@ -74,6 +75,7 @@ from app.db.neo4j import neo4j_session
 from app.db.repositories.summaries import SummariesRepo
 from app.metrics import (
     layer_timeout_total,
+    mode3_grounding_zero_anchor_total,
     mode3_intent_classifier_glossary_unavailable_total,
 )
 
@@ -890,6 +892,17 @@ async def build_full_mode(
                 l2_retry.total(), project.project_id,
             )
             l2_facts = l2_retry
+
+    # M-recall — zero-anchor frequency meter. Measured HERE (after classifier + CJK
+    # dict-anchor + protagonist role-resolution + widened retry, BEFORE the passage
+    # bridge) so it reflects the ANCHOR path: a non-empty turn that grounded no L2
+    # facts couldn't resolve any entity it referenced. `question="true"` is the
+    # deferred generic-noun-coref frequency signal — production tells us how common
+    # "那位重生的少年…"-style references really are before we invest in coref.
+    if not l2_facts.total() and message.strip():
+        mode3_grounding_zero_anchor_total.labels(
+            question="true" if looks_like_question(message) else "false"
+        ).inc()
 
     # M1a — passage→graph anchor bridge. The message-anchored L2 selector above
     # only expands `intent.entities`; on natural queries that name no entity it

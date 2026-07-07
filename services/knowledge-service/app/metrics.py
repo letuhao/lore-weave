@@ -39,6 +39,7 @@ __all__ = [
     "tool_call_result_size_bytes",
     "memory_remember_rate_limited_total",
     "mode3_intent_classifier_glossary_unavailable_total",
+    "mode3_grounding_zero_anchor_total",
     "knowledge_extraction_filter_decisions_total",
     "knowledge_extraction_filter_coverage_ratio",
     "knowledge_extraction_recovery_decisions_total",
@@ -90,6 +91,26 @@ mode3_intent_classifier_glossary_unavailable_total = Counter(
 )
 # Pre-initialise to 0 so the counter is visible on first scrape.
 mode3_intent_classifier_glossary_unavailable_total.inc(0)
+
+# M-recall — a Mode-3 grounding turn resolved ZERO entity anchors after every
+# path (classifier + CJK dict-anchor + protagonist role-resolution) → the L2 facts
+# layer stayed dark. `question="true"` is the signal that matters: a turn that ASKED
+# something but anchored nothing is the candidate "referenced an entity by a form we
+# can't resolve" — generic-noun coreference ("那位重生的少年…"), an out-of-graph
+# entity, or a typo. This is the deferred generic-noun-coref FREQUENCY meter: measured
+# 0/758 on the (unrepresentative) dev corpus, so we defer the fix and let production
+# tell us how common it really is before building anything. `question="false"` is the
+# expected/uninteresting case (greetings, statements).
+mode3_grounding_zero_anchor_total = Counter(
+    "knowledge_mode3_grounding_zero_anchor_total",
+    "Mode-3 grounding turns that resolved zero entity anchors (L2 facts empty), "
+    "split by whether the message looked like a question",
+    ["question"],
+    registry=registry,
+)
+# Pre-seed both series so zeros appear before the first occurrence.
+for _q in ("true", "false"):
+    mode3_grounding_zero_anchor_total.labels(question=_q)
 
 cache_hit_total = Counter(
     "knowledge_cache_hit_total",

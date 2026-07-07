@@ -1533,3 +1533,38 @@ async def test_non_role_message_skips_protagonist(monkeypatch):
         message="张若尘的父亲是谁？",  # named, no role term
     )
     prot_spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_zero_anchor_meter_fires_on_unanchored_question(monkeypatch):
+    """A grounded question that resolves no L2 anchors bumps the zero-anchor meter
+    under question='true' (the deferred generic-noun-coref frequency signal)."""
+    from app.metrics import mode3_grounding_zero_anchor_total
+    _patch_mode3_pieces(monkeypatch)  # select_l2_facts → empty (total()==0)
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    before = mode3_grounding_zero_anchor_total.labels(question="true")._value.get()
+    # English, no role term, no CJK → dict/role anchor paths stay inert.
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="what happens next?",
+    )
+    after = mode3_grounding_zero_anchor_total.labels(question="true")._value.get()
+    assert after == before + 1
+
+
+@pytest.mark.asyncio
+async def test_zero_anchor_meter_labels_non_question_false(monkeypatch):
+    from app.metrics import mode3_grounding_zero_anchor_total
+    _patch_mode3_pieces(monkeypatch)
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    before = mode3_grounding_zero_anchor_total.labels(question="false")._value.get()
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="remember this setting please",  # statement, not a question
+    )
+    after = mode3_grounding_zero_anchor_total.labels(question="false")._value.get()
+    assert after == before + 1

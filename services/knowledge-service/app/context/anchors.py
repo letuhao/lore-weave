@@ -48,11 +48,35 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "has_non_ascii_letter",
     "has_protagonist_role",
+    "looks_like_question",
     "resolve_anchors",
     "get_anchor_index",
     "get_project_protagonist",
     "clear_anchor_cache",
 ]
+
+
+# Coarse question detector for the zero-anchor meter's `question` label — a
+# directional signal (a turn that ASKED something but anchored nothing is the
+# candidate unresolved-reference), not a parser. Multilingual markers + particles.
+_QUESTION_MARKERS = ("?", "？")
+_QUESTION_WORDS = (
+    # English
+    "who ", "what ", "which ", "whose ", "where ", "when ", "why ", "how ",
+    # Chinese (interrogatives + sentence-final particles)
+    "谁", "什么", "哪", "如何", "怎样", "怎么", "多少", "几", "吗", "呢",
+    # Vietnamese
+    " ai", " gì", " nào", " sao", " đâu",
+)
+
+
+def looks_like_question(message: str) -> bool:
+    """True when the message reads like a question (marker or interrogative). Coarse
+    by design — it only labels a telemetry counter, never gates behavior."""
+    if any(m in message for m in _QUESTION_MARKERS):
+        return True
+    low = message.lower()
+    return any(w in low for w in _QUESTION_WORDS)
 
 
 def has_non_ascii_letter(text: str) -> bool:
