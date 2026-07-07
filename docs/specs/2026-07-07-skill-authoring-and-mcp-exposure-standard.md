@@ -136,6 +136,38 @@ Per §3.4. A new `scripts/eval/skill_scenarios/<skill_code>.json` per skill (mir
 
 ---
 
+## 8b. Edge cases (self-review pass, 2026-07-07)
+
+Grouped by which Part they land on; each has a decided resolution, not left open — matches this repo's mandatory second-pass-review convention (see `docs/specs/2026-07-06-tool-catalog-simplification.md` §8 for the precedent this mirrors).
+
+**Part A — skill-claims lint**
+
+8b.1 **A false-positive risk: field names that LOOK like tool names.** The extraction regex must match against the LIVE CATALOG's actual tool-name set, not a generic snake_case pattern — otherwise field names the prose also uses (`base_version`, `confirm_token`, `kind_code`) would wrongly count as "tool references." Already specified in §4 ("a token that IS a real catalog tool name, not a heuristic guess") — restated here because it's the single easiest way to implement this lint wrong.
+
+8b.2 **The lint as specified only checks the FORWARD direction** (a real catalog name found in prose ⇒ its domain must be hot) — it does **not** catch a STALE or TYPO'D tool-name-shaped token (a renamed/removed tool, or a simple misspelling) that no longer matches anything in the live catalog, because a non-matching token is invisible to a "check every match" lint. **Resolution:** add a second, independent check — any backtick-quoted or otherwise tool-name-shaped token in a skill's prose (matches `^[a-z]+(?:_[a-z0-9]+)+$` AND its prefix is a known `GROUP_DIRECTORY` domain) that is **not** found in the live catalog at all fails the test with a "did you mean" hint (nearest catalog name by edit distance) — this is the skill-prose equivalent of CAT-4's "an orphaned domain silently degrades discovery" concern (§8.12 of the 2026-07-06 spec), applied one layer up.
+
+8b.3 **A skill referencing a `legacy`-tagged tool (CAT-4) is a distinct bug the hot-domain check alone wouldn't catch** (a legacy tool's domain might still be hot for an unrelated reason, satisfying the domain check while the specific tool reference is still wrong). **Resolution:** the lint also calls `is_legacy_tool()` on every matched catalog name and fails if any match is legacy — a fresh skill must never point the model at a superseded tool.
+
+8b.4 **This is chat-service-only; no `find-tools.ts` mirror is needed for Part A itself** — skills are a chat-service concept (ai-gateway doesn't inject skills). `find-tools.ts`'s `GROUP_DIRECTORY` stays the thing `hot_domains` values are validated against (domain names must exist there), but no new TS file/logic is required.
+
+**Part B — composition_skill / translation_skill**
+
+8b.5 **`composition_skill` must not overlap `plan_forge_skill`'s territory.** `composition_*` tools (outline nodes, scenes, canon rules, motifs, direct prose writes) and `plan_*` tools (PlanForge's propose→validate→compile spec flow) are DIFFERENT prefixes, different workflows, and can be simultaneously hot (a studio surface in Plan mode has both). `composition_skill`'s `hot_domains` must be `{"composition"}` only — never `"plan"` — and its prose should explicitly cross-reference PlanForge ("for planning the novel's overall system/arcs, that's a separate flow — see PlanForge") so the model doesn't conflate "write this scene now" with "plan the whole novel-system first."
+
+8b.6 **`translation_skill` will substantially overlap `workflow_skill.py`'s existing one-line translate step** ("Translate — start translation on those chapters... priced job: propose → confirm_action → then ui_watch_job"). Left as two independent teaching sites, they can drift (exactly this session's root-cause pattern, one level up). **Resolution:** once `translation_skill` ships, `workflow_skill.py`'s translate step is trimmed to a ONE-CLAUSE pointer ("see the Translation skill for the propose→confirm→watch flow and version/coverage tools") rather than duplicating the detail — `workflow_skill.py` keeps owning cross-domain ORDERING (translate-after-chapters-exist), `translation_skill` owns the domain's own tool-use detail. Track this trim as part of the same BUILD slice that ships `translation_skill`, not a separate follow-up (so the two never coexist in a drifted state even temporarily).
+
+**Part C — scope-size-adaptive exposure**
+
+8b.7 **The wildcard (`*`) dev/smoke key is untouched by this change** — it already gets the full unfiltered list via `filterListResponseText`'s existing early return, independent of `scopeToolCount()`. The new size-adaptive branch only applies to a real, scope-bounded key; implementation must keep the wildcard check as a distinct, earlier branch (not folded into the size comparison, where a `*` scope's "count" would be meaningless).
+
+8b.8 **A key's scope changing mid-session (edited by its owner) cannot desync the REAL security gate** — `scopeToolCount()` only decides which EXPOSURE MODE a `tools/list` response uses (direct-list vs. lazy-collapse); `isToolAllowed`/`gateRequestBody` re-check the CURRENT scope on every `tools/call` regardless of which list-mode was used to advertise it. Worst case of a stale size-classification: a shrunk-scope key still gets the "small scope, show full list" treatment for one stale `tools/list` response until its next call — cosmetic, not a security gap. State this explicitly at BUILD time so a reviewer doesn't mistake it for a scope-widening bug.
+
+**Part D — hot-domain derivation refactor**
+
+8b.9 **This refactor changes WHEN today's auto/non-curated hot-seed is computed** — today `_BOOK_SCOPED_HOT_DOMAINS`/`_STUDIO_HOT_DOMAINS` are unconditional given surface flags alone (glossary is hot on every book-scoped turn regardless of skill-injection state); after Part D, the hot set derives from which skills `resolve_skills_to_inject()` actually returns this turn. These should coincide in EVERY case that matters today (glossary auto-injects by default on book-scoped surfaces exactly when today's constant would mark it hot) — but this is a behavior-sensitive refactor, not a pure addition. **Resolution:** BUILD this behind a full before/after regression pass — enumerate every existing test asserting a specific hot-seed name set (`test_tool_discovery.py`, `test_tool_surface.py`, `test_plan_mode.py`'s new seeding tests from this session) and confirm each still passes UNCHANGED post-refactor before considering Part D done; any test that needs to change is a signal the refactor altered real behavior, not just its mechanism, and needs its own sign-off.
+
+---
+
 ## 9. Governance / contract constraints (must hold)
 
 - Every new skill still obeys `docs/standards/mcp-tool-io.md`'s existing rules (it teaches tools, doesn't redefine their contracts).
