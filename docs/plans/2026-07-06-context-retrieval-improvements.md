@@ -66,6 +66,17 @@
 > is near its 800-tok budget with load-bearing badges. The block is 3636 real tok — under the 6000 cap,
 > so no budget pressure. Cutting would risk the M1a/M4 recall gains for no gain. **The real remaining
 > lever is retrieval RECALL** (extraction/embedding gaps on the missed queries), not budget trimming.
+>
+> **UPDATE 6 — M-recall: CJK/VI anchor recall fix SHIPPED (`66c8a01d6`, 2026-07-07):**
+> [`../eval/context-budget/M-recall-cjk-anchor-2026-07-07.md`](../eval/context-budget/M-recall-cjk-anchor-2026-07-07.md).
+> Root-caused the missed queries: the answers ARE in the graph as 1-hop relations, but the intent
+> classifier can't segment scriptio-continua (Chinese has no spaces) → it emits whole clauses as
+> "entities" → `select_l2_facts` resolves nothing → 0 facts, for EVERY Chinese/Vietnamese book. Fix:
+> Aho-Corasick (`pyahocorasick`) dictionary-match the message against the project's known entity names
+> + aliases and UNION the hits into `intent.entities` (gated to non-Latin, per-project TTL cache,
+> timeout-bounded, degrade-safe, kill-switch). **L2 answer-recall 2/12 → 7/12 on wangu, 5 flipped
+> miss→hit, 0 regressions.** The 5 still-missing are role-only coreference ("主角"→张若尘) — the M1a
+> bridge's job / a future role-resolution step, the genuine next recall lever.
 
 **Date:** 2026-07-06 · **Branch:** `feat/context-budget-law` · **Status:** M4 measured + answer-quality
 A/B run (through a `/review-impl` correction) → **M1a = GO, but a measured one.** Evidence
