@@ -1,6 +1,6 @@
 # Full stack: Postgres, Mailhog, auth-service, api-gateway-bff, frontend (nginx static build).
 # From this directory: docker compose up --build
-# Browser: http://localhost:5296  |  Gateway: http://localhost:3123  |  Auth: http://localhost:8204
+# Browser: http://localhost:5174  |  Gateway: http://localhost:3123  |  Auth: http://localhost:8204
 # Optional env file: copy .env.example to .env and set JWT_SECRET (>= 32 chars) for production-like secrets.
 
 # Stale-image guard (F-LIVE-1): every first-party build target stamps the git SHA +
@@ -98,7 +98,7 @@ services:
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
       SMTP_FROM: "LoreWeave <noreply@loreweave.local>"
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5296}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5174}
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # Q-GATE (public MCP): gate mcp_api_keys creation behind this flag (kill-switch).
@@ -1001,7 +1001,7 @@ services:
       # tokens LOCALLY (RS256 via auth-service /oauth/jwks) and pins the audience.
       # MCP_RESOURCE_URL MUST equal auth-service's OAUTH_RESOURCE (defaults to
       # <PUBLIC_APP_URL>/mcp on both sides) or an audience-confused token is rejected.
-      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-http://localhost:5296/mcp}
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-http://localhost:5174/mcp}
       OAUTH_ISSUER: ${OAUTH_ISSUER:-loreweave-mcp-oauth}
       # P3 (PUB-8): per-key rate-limit counter store. Unset → limiter disabled (dev).
       REDIS_URL: redis://redis:6379
@@ -1645,7 +1645,12 @@ services:
       dockerfile: Dockerfile
       labels: *build-labels
       args:
-        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
+        # Empty = relative (browser calls same-origin /v1, which this container's
+        # nginx.conf proxies to api-gateway-bff). This is what makes the frontend
+        # reachable through a single port/domain (ngrok, LAN IP, prod domain, ...) —
+        # a non-empty absolute value here bakes a fixed host into the JS bundle,
+        # which breaks the moment the app is served from any other origin.
+        VITE_API_BASE: ${VITE_API_BASE:-}
     depends_on:
       api-gateway-bff:
         condition: service_started
@@ -1689,7 +1694,9 @@ services:
       dockerfile: Dockerfile
       labels: *build-labels
       args:
-        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
+        # Same reasoning as frontend's VITE_API_BASE above — relative, proxied
+        # by this container's own nginx.conf /v1/ block.
+        VITE_API_BASE: ${VITE_API_BASE:-}
     depends_on:
       - api-gateway-bff
     ports:
