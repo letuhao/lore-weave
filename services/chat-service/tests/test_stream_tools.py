@@ -39,8 +39,10 @@ from app.config import settings
 from app.services.stream_service import (
     MAX_TOOL_ITERATIONS,
     _Usage,
+    _extract_leaked_tool_calls,
     _parse_tool_args,
     _reassemble_tool_calls,
+    _split_safe_emit,
     _stream_via_gateway,
     _stream_with_tools,
 )
@@ -196,6 +198,7 @@ def _run(
     gen_params: dict | None = None,
     project_id: str | None = "proj-1",
     planner_model_ref: str | None = None,
+    max_iterations: int = MAX_TOOL_ITERATIONS,
 ):
     """Build a `_stream_with_tools` async generator with sane defaults."""
     return _stream_with_tools(
@@ -209,6 +212,7 @@ def _run(
         session_id=TEST_SESSION_ID,
         project_id=project_id,
         planner_model_ref=planner_model_ref,
+        max_iterations=max_iterations,
     )
 
 
@@ -242,6 +246,35 @@ class TestParseToolArgs:
 
     def test_json_null_yields_empty_dict(self):
         assert _parse_tool_args("null") == {}
+
+    def test_gemma4_native_tokens_are_repaired(self):
+        # D-TOOLCALL-GEMMA-TOKEN-LEAK — real string captured live from
+        # google/gemma-4-26b-a4b-qat via LM Studio (llama.cpp#21316/#21680):
+        # `<|"|>` stands in for a literal quote, object keys are unquoted.
+        raw = '{query:<|"|>tình hình thời sự hôm nay<|"|>}'
+        assert _parse_tool_args(raw) == {"query": "tình hình thời sự hôm nay"}
+
+    def test_gemma4_leaked_wrapper_is_stripped_and_repaired(self):
+        # The same malformation, but with the outer <|tool_call>call:NAME…
+        # <tool_call|> wrapper still attached (observed when the provider
+        # leaks the whole native token sequence instead of separating out
+        # a clean `name` + `arguments` pair).
+        raw = (
+            '<|tool_call>call:glossary_web_search{query:<|"|>tình hình '
+            'thời sự hôm nay<|"|>}<tool_call|>'
+        )
+        assert _parse_tool_args(raw) == {"query": "tình hình thời sự hôm nay"}
+
+    def test_truncated_stream_is_not_guess_repaired(self):
+        # A genuinely truncated (unbalanced-braces) string must NOT be
+        # handed to json_repair — it would happily invent a plausible-but-
+        # unverifiable closing value. Unbalanced braces stays a hard {}.
+        assert _parse_tool_args('{query:<|"|>tình hình') == {}
+
+    def test_minor_syntax_slip_still_repaired_generically(self):
+        # Not Gemma-specific — json_repair's general net catches a plain
+        # trailing-comma slip from any provider.
+        assert _parse_tool_args('{"q": "Kai", "limit": 3,}') == {"q": "Kai", "limit": 3}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -590,6 +623,217 @@ class TestStreamWithToolsOneToolCall:
 
         tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
         assert [t["tool"] for t in tool_chunks] == ["memory_search", "memory_get_entity"]
+
+
+class TestSplitSafeEmit:
+    """D-TOOLCALL-GEMMA-TOKEN-LEAK cosmetic fix — the streaming hold-back
+    splitter, pure-function."""
+
+    def test_no_marker_flushes_everything(self):
+        assert _split_safe_emit("Kai is a knight.") == ("Kai is a knight.", "")
+
+    def test_full_marker_holds_from_its_start(self):
+        buf = 'Let me try. <|tool_call>call:x{y:1}<tool_call|>'
+        flush, hold = _split_safe_emit(buf)
+        assert flush == "Let me try. "
+        assert hold == '<|tool_call>call:x{y:1}<tool_call|>'
+
+    def test_partial_marker_at_tail_is_held(self):
+        # The marker is arriving one delta at a time; only "<|tool_c" has
+        # streamed so far — must NOT flush any of it (could still become the
+        # marker OR just be a coincidental "<").
+        flush, hold = _split_safe_emit("Let me try. <|tool_c")
+        assert flush == "Let me try. "
+        assert hold == "<|tool_c"
+
+    def test_bare_angle_bracket_at_buffer_end_is_held_until_disambiguated(self):
+        # A trailing "<" (the buffer's LAST char) is indistinguishable from
+        # the marker's start yet — held back, not lost; the caller flushes it
+        # at pass-end if no leak is ever confirmed (see TestGemmaTokenLeakSalvage).
+        # A "<" NOT at the tail (more text already followed it) is unambiguous
+        # and flushes immediately — real prose is not held hostage forever.
+        assert _split_safe_emit("value is <") == ("value is ", "<")
+        assert _split_safe_emit("3 < 5") == ("3 < 5", "")
+
+    def test_accumulating_across_calls_matches_live_streaming(self):
+        # Mirrors the main loop: each delta appends to the held buffer, which
+        # is re-split every time — a marker delivered in tiny fragments is
+        # never partially flushed.
+        buf = ""
+        for delta in ["Ok. ", "<", "|", "tool_call>", "call:x{y:1}", "<tool_call|>"]:
+            buf += delta
+            flush, buf = _split_safe_emit(buf)
+            assert "<" not in flush  # nothing marker-shaped ever leaks through flush
+        assert buf == '<|tool_call>call:x{y:1}<tool_call|>'
+
+
+class TestExtractLeakedToolCalls:
+    """D-TOOLCALL-GEMMA-TOKEN-LEAK — pure-function extraction, live-captured shape."""
+
+    def test_extracts_name_and_raw_body(self):
+        text = (
+            'Let\'s try again.\n<|tool_call>call:memory_search{query:<|"|>Kai'
+            '<|"|>}<tool_call|>'
+        )
+        assert _extract_leaked_tool_calls(text) == [
+            ("memory_search", '{query:<|"|>Kai<|"|>}')
+        ]
+
+    def test_no_match_on_clean_text(self):
+        assert _extract_leaked_tool_calls("Kai is a knight.") == []
+
+    def test_multiple_leaked_calls_all_extracted(self):
+        text = (
+            '<|tool_call>call:a{x:<|"|>1<|"|>}<tool_call|> and '
+            '<|tool_call>call:b{y:<|"|>2<|"|>}<tool_call|>'
+        )
+        assert _extract_leaked_tool_calls(text) == [
+            ("a", '{x:<|"|>1<|"|>}'),
+            ("b", '{y:<|"|>2<|"|>}'),
+        ]
+
+
+class TestGemmaTokenLeakSalvage:
+    """D-TOOLCALL-GEMMA-TOKEN-LEAK — the cross-channel recovery in the main
+    loop, live-reproduced against google/gemma-4-26b-a4b-qat via LM Studio:
+    the model correctly names the intended tool but abandons the structured
+    tool_calls channel and dumps its native tokens into plain text/reasoning
+    instead. The salvage must still execute the tool the model intended."""
+
+    @pytest.mark.asyncio
+    async def test_leaked_call_with_no_structured_tool_frags_is_recovered(self):
+        """A pass with ZERO ToolCallEvent fragments — only a leaked pattern in
+        the reasoning stream — must still execute the tool and continue the
+        loop, not end the turn as if no tool was called."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        scripts = [
+            [
+                reasoning("Let me search.\n"),
+                reasoning('<|tool_call>call:memory_search{query:<|"|>Kai<|"|>}<tool_call|>'),
+                usage(10, 4),
+                done("stop"),  # note: NOT "tool_calls" — LM Studio never framed one
+            ],
+            [tok("Kai is a knight."), usage(8, 6), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        kc.mcp_execute_tool.assert_awaited_once()
+        call_kwargs = kc.mcp_execute_tool.await_args.kwargs
+        assert call_kwargs["tool_name"] == "memory_search"
+        assert call_kwargs["tool_args"] == {"query": "Kai"}
+
+        # The loop continued to a second pass instead of ending on pass 0.
+        assert len(_FakeClient.instances[0].requests) == 2
+        text = "".join(c["content"] for c in chunks if c.get("content"))
+        assert text == "Kai is a knight."
+        # D-TOOLCALL-GEMMA-TOKEN-LEAK cosmetic fix — the raw leak marker must
+        # never reach the visible content OR reasoning_content stream.
+        reasoning_text = "".join(c["reasoning_content"] for c in chunks if c.get("reasoning_content"))
+        assert "<|tool_call>" not in text
+        assert "<|tool_call>" not in reasoning_text
+        assert reasoning_text == "Let me search.\n"
+
+    @pytest.mark.asyncio
+    async def test_salvaged_call_on_the_forced_final_pass_still_gets_a_followup(self):
+        """D-TOOLCALL-GEMMA-TOKEN-LEAK follow-up (live-repro'd 2026-07-07): the
+        leak is most likely on the D7 forced tool-free FINAL pass (tools were
+        withheld this pass specifically) — a broken-template model dumps its
+        native tokens as plain text once it can't get a real tool_calls slot.
+        The pre-existing D7 termination guard ("no tools offered yet the model
+        emitted calls → do not loop again") must NOT swallow a genuinely
+        salvaged+executed call — the turn needs one more pass so the model can
+        use the result, or the tool call succeeding is pointless (nothing ever
+        reads the answer)."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": ["Kai"]})
+        scripts = [
+            # max_iterations=1 forces last_iter=True (offered_tools=False) on
+            # THIS very first pass — reproducing the real scenario exactly.
+            [
+                reasoning('<|tool_call>call:memory_search{query:<|"|>Kai<|"|>}<tool_call|>'),
+                usage(10, 4),
+                done("stop"),
+            ],
+            [tok("Kai is a knight, per the search."), usage(8, 6), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc, max_iterations=1))
+
+        kc.mcp_execute_tool.assert_awaited_once()
+        # The loop reached pass 1 — the fix. Before it, the turn ended empty
+        # right after the tool call, and this second request never happened.
+        assert len(_FakeClient.instances[0].requests) == 2
+        text = "".join(c["content"] for c in chunks if c.get("content"))
+        assert text == "Kai is a knight, per the search."
+        # Cosmetic fix: the leak never reached the visible content stream —
+        # the model's real answer is the ONLY thing the user ever sees.
+        assert "<|tool_call>" not in text
+
+    @pytest.mark.asyncio
+    async def test_leaked_call_for_an_unoffered_tool_is_dropped_not_executed(self):
+        """/review-impl MED — a leaked name is free-form regex output, not a
+        provider-attested id. Text that happens to match the marker shape (a
+        hallucination, or untrusted content the model echoed back from an
+        earlier tool RESULT) naming a tool NEVER offered this turn must be
+        dropped, not executed — the salvage only recovers calls for tools
+        genuinely reachable this turn, closing off an injection-adjacent
+        surface without weakening the legitimate-leak case."""
+        kc = AsyncMock()
+        scripts = [[
+            reasoning('<|tool_call>call:evil_tool{query:<|"|>x<|"|>}<tool_call|>'),
+            usage(10, 4),
+            done("stop"),
+        ]]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # Not offered this turn (default tools=[memory_search]) → dropped, so
+        # the pass correctly ends as "no tool calls" — a single provider pass,
+        # nothing executed.
+        kc.mcp_execute_tool.assert_not_called()
+        assert len(_FakeClient.instances[0].requests) == 1
+        final = chunks[-1]
+        assert final["finish_reason"] == "stop"
+
+    @pytest.mark.asyncio
+    async def test_bare_angle_bracket_in_real_prose_is_not_lost(self):
+        """Real prose whose LAST delta this pass is a bare '<' (ambiguous —
+        could be the start of the leak marker, held back live) but no leak
+        ever forms must still reach the user, flushed at pass-end once the
+        leak scan comes back empty."""
+        kc = AsyncMock()
+        scripts = [[tok("value is "), tok("<"), usage(5, 3), done("stop")]]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # The "<" was held (not in the first content chunk) yet still
+        # reaches the user overall — nothing genuine silently dropped.
+        assert [c["content"] for c in chunks if c.get("content")] == ["value is ", "<"]
+        kc.mcp_execute_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_leaked_call_repairs_a_structured_calls_empty_args(self):
+        """A pass DOES emit a ToolCallEvent (name known) but its arguments
+        never arrive (empty) — the same tool name leaking into plain content
+        this pass is the only place the real query survived; use it."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = [
+            [
+                tool_frag(index=0, id="call_1", name="memory_search"),
+                tok('<|tool_call>call:memory_search{query:<|"|>Kai<|"|>}<tool_call|>'),
+                usage(10, 4),
+                done("tool_calls"),
+            ],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+
+        call_kwargs = kc.mcp_execute_tool.await_args.kwargs
+        assert call_kwargs["tool_args"] == {"query": "Kai"}
 
 
 class TestToolCallFragmentReassembly:
@@ -978,6 +1222,54 @@ class TestPlannerModelRefAuthority:
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
         scripts = self._glossary_plan_script(
             '{"book_id":"b1","goal":"x","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref=None))
+        assert "model_ref" not in kc.mcp_execute_tool.await_args.kwargs["tool_args"]
+
+    # D-PLANFORGE-DEFAULT-MODEL — plan_propose_spec now gets the SAME authority
+    # treatment as glossary_plan (composition-service resolves a fallback when
+    # model_ref is absent instead of hard-erroring "model_ref required").
+    def _plan_propose_script(self, args_json: str):
+        return [
+            [
+                tool_frag(index=0, id="p1", name="plan_propose_spec"),
+                tool_frag(index=0, arguments_delta=args_json),
+                done("tool_calls"),
+            ],
+            [tok("proposed"), done("stop")],
+        ]
+
+    @pytest.mark.asyncio
+    async def test_plan_propose_spec_session_pin_injected_when_model_omits_ref(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._plan_propose_script(
+            '{"book_id":"b1","source_markdown":"x","mode":"llm"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_plan_propose_spec_session_pin_overrides_model_supplied_ref(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._plan_propose_script(
+            '{"book_id":"b1","source_markdown":"x","mode":"llm","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_plan_propose_spec_model_supplied_ref_stripped_when_no_session_pin(self):
+        """No session pin -> the model's guess is removed so composition-service's
+        resolve_planner_model fallback applies (not whatever the model invented)."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._plan_propose_script(
+            '{"book_id":"b1","source_markdown":"x","mode":"llm","model_ref":"model-hallucinated"}'
         )
         with _patch_client(scripts):
             await _drain(_run(scripts, knowledge_client=kc, planner_model_ref=None))

@@ -409,6 +409,42 @@ async def test_budget_drops_passages_first(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_context_length_scales_up_the_flat_budget(monkeypatch):
+    """A 1M-context session must NOT get the same Mode-3 budget a small/unknown
+    window would — passing context_length must scale mode3_token_budget UP,
+    surviving more passages than the flat default alone would."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text=("filler " * 40) + f"passage {i}",
+            source_type="chapter", source_id=f"ch-{i}", chunk_index=0,
+            score=0.9 - (i * 0.01), is_hub=False, chapter_index=i,
+        )
+        for i in range(10)
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    monkeypatch.setattr("app.context.modes.full.settings.mode3_token_budget", 80)
+
+    flat = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="Tell me",
+    )
+    scaled = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="Tell me", context_length=1_000_000,
+    )
+    flat_count = flat.context.count("<passage ")
+    scaled_count = scaled.context.count("<passage ")
+    assert scaled_count > flat_count
+
+
+@pytest.mark.asyncio
 async def test_budget_drops_lowest_score_passages_first(monkeypatch):
     """K18.7: when trimming passages, lowest-score ones go first."""
     from app.context.selectors.passages import L3Passage
@@ -1444,3 +1480,127 @@ async def test_safe_l3_killswitch_skips_resolution(monkeypatch):
     kw = spy.await_args.kwargs
     assert kw["current_chapter_index"] is None
     assert kw["working_scope_boost"] == 0.0
+
+
+# ── M-recall CJK dict-anchor merge wiring (build_full_mode) ──────────────────
+# Guards the seam: on a non-Latin message, dictionary anchors are UNIONed into
+# intent.entities BEFORE select_l2_facts runs. A regression dropping the merge
+# would silently revert CJK L2-recall to 0 facts (all unit mocks still green).
+
+
+@pytest.mark.asyncio
+async def test_cjk_dict_anchors_merged_into_l2(monkeypatch):
+    from unittest.mock import AsyncMock as _AM
+    _patch_mode3_pieces(monkeypatch)
+    l2_spy = _AM(return_value=L2FactResult())
+    monkeypatch.setattr("app.context.modes.full.select_l2_facts", l2_spy)
+    monkeypatch.setattr("app.context.modes.full.settings.context_dict_anchor_enabled", True)
+    monkeypatch.setattr("app.context.modes.full.get_anchor_index", _AM(return_value=MagicMock()))
+    monkeypatch.setattr("app.context.modes.full.resolve_anchors", lambda *a, **k: ["九王子"])
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="九王子修炼什么武功？",
+    )
+    # the (first) L2 call saw the merged anchor, not just the classifier's clause.
+    intent_arg = l2_spy.await_args_list[0].kwargs["intent"]
+    assert "九王子" in intent_arg.entities
+
+
+@pytest.mark.asyncio
+async def test_english_message_skips_dict_anchoring(monkeypatch):
+    from unittest.mock import AsyncMock as _AM
+    _patch_mode3_pieces(monkeypatch)
+    monkeypatch.setattr("app.context.modes.full.settings.context_dict_anchor_enabled", True)
+    idx_spy = _AM(return_value=MagicMock())
+    monkeypatch.setattr("app.context.modes.full.get_anchor_index", idx_spy)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="who does the girl marry",  # pure ASCII → gate off
+    )
+    idx_spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_role_message_anchors_protagonist_into_l2(monkeypatch):
+    """A protagonist role-term ('主角') with no named person anchors the project's
+    most-central entity, so select_l2_facts can resolve the role."""
+    from unittest.mock import AsyncMock as _AM
+    _patch_mode3_pieces(monkeypatch)
+    l2_spy = _AM(return_value=L2FactResult())
+    monkeypatch.setattr("app.context.modes.full.select_l2_facts", l2_spy)
+    monkeypatch.setattr("app.context.modes.full.settings.context_role_anchor_enabled", True)
+    # keep dict-anchoring inert so the test isolates the role path
+    monkeypatch.setattr("app.context.modes.full.get_anchor_index", _AM(return_value=None))
+    monkeypatch.setattr("app.context.modes.full.get_project_protagonist", _AM(return_value="张若尘"))
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="主角的母亲是谁？",
+    )
+    intent_arg = l2_spy.await_args_list[0].kwargs["intent"]
+    assert "张若尘" in intent_arg.entities
+
+
+@pytest.mark.asyncio
+async def test_non_role_message_skips_protagonist(monkeypatch):
+    from unittest.mock import AsyncMock as _AM
+    _patch_mode3_pieces(monkeypatch)
+    monkeypatch.setattr("app.context.modes.full.settings.context_role_anchor_enabled", True)
+    prot_spy = _AM(return_value="张若尘")
+    monkeypatch.setattr("app.context.modes.full.get_project_protagonist", prot_spy)
+    monkeypatch.setattr("app.context.modes.full.get_anchor_index", _AM(return_value=None))
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="张若尘的父亲是谁？",  # named, no role term
+    )
+    prot_spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_zero_anchor_meter_fires_on_unanchored_question(monkeypatch):
+    """A grounded question that resolves no L2 anchors bumps the zero-anchor meter
+    under question='true' (the deferred generic-noun-coref frequency signal)."""
+    from app.metrics import mode3_grounding_zero_anchor_total
+    _patch_mode3_pieces(monkeypatch)  # select_l2_facts → empty (total()==0)
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    before = mode3_grounding_zero_anchor_total.labels(question="true")._value.get()
+    # English, no role term, no CJK → dict/role anchor paths stay inert.
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="what happens next?",
+    )
+    after = mode3_grounding_zero_anchor_total.labels(question="true")._value.get()
+    assert after == before + 1
+
+
+@pytest.mark.asyncio
+async def test_zero_anchor_meter_labels_non_question_false(monkeypatch):
+    from app.metrics import mode3_grounding_zero_anchor_total
+    _patch_mode3_pieces(monkeypatch)
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    before = mode3_grounding_zero_anchor_total.labels(question="false")._value.get()
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="remember this setting please",  # statement, not a question
+    )
+    after = mode3_grounding_zero_anchor_total.labels(question="false")._value.get()
+    assert after == before + 1

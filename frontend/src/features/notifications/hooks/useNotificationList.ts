@@ -32,6 +32,10 @@ export function useNotificationList() {
   // request, so rapid category switches can't let a stale response overwrite the
   // current category's list (MED-2).
   const reqIdRef = useRef(0);
+  // Ids marked read locally whose PATCH may still be in flight — masked onto the
+  // next GET response so a refetch racing ahead of the write can't flip an item
+  // back to unread (the GET-vs-PATCH race MED-2's reqIdRef doesn't cover).
+  const pendingReadIdsRef = useRef<Set<string>>(new Set());
 
   const load = useCallback(
     async (cat: NotificationCategory, offset: number) => {
@@ -47,11 +51,17 @@ export function useNotificationList() {
         });
         if (reqId !== reqIdRef.current) return; // superseded by a newer request
         setTotal(r.total);
+        const pending = pendingReadIdsRef.current;
+        const masked =
+          pending.size === 0
+            ? r.items
+            : r.items.map((n) => (pending.has(n.id) ? { ...n, read: true } : n));
+        masked.forEach((n) => pending.delete(n.id));
         setItems((prev) => {
-          if (first) return r.items;
+          if (first) return masked;
           // Dedupe on append — offset pagination can overlap if rows shifted (LOW-2).
           const seen = new Set(prev.map((n) => n.id));
-          return [...prev, ...r.items.filter((n) => !seen.has(n.id))];
+          return [...prev, ...masked.filter((n) => !seen.has(n.id))];
         });
       } catch {
         // best-effort; leave existing items in place
@@ -92,6 +102,7 @@ export function useNotificationList() {
   const markOne = useCallback(
     (id: string) => {
       if (!accessToken) return;
+      pendingReadIdsRef.current.add(id);
       let wasUnread = false;
       setItems((prev) =>
         prev.map((n) => {
@@ -107,7 +118,10 @@ export function useNotificationList() {
 
   const markAll = useCallback(() => {
     if (!accessToken) return;
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+    setItems((prev) => {
+      prev.forEach((n) => pendingReadIdsRef.current.add(n.id));
+      return prev.map((n) => ({ ...n, read: true }));
+    });
     setUnreadCount(0);
     void markAllRead(accessToken).catch(() => {});
   }, [accessToken]);

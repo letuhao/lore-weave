@@ -2978,8 +2978,10 @@ def _opt_uuid(v: str | None) -> UUID | None:
     description=(
         "PlanForge: turn a novel-system source document into a structured "
         "NovelSystemSpec + analysis. mode='rules' proposes synchronously; mode='llm' "
-        "enqueues an async job (poll the run). model_ref is REQUIRED for mode='llm'. "
-        "EDIT on the book required."
+        "enqueues an async job (poll the run). model_ref is optional for mode='llm' — "
+        "omit it to use the author's default planner model (their pinned 'planner' "
+        "default, else their best chat model); pass one only when the author names a "
+        "specific model. EDIT on the book required."
     ),
     meta=require_meta(
         "A", "book",
@@ -2992,7 +2994,10 @@ async def plan_propose_spec(
     book_id: Annotated[str, "The book to plan (UUID)."],
     source_markdown: Annotated[str, "The novel-system source document (markdown)."],
     mode: Annotated[Literal["rules", "llm"], "rules = sync; llm = async job."] = "rules",
-    model_ref: Annotated[str | None, "user_model id — REQUIRED when mode='llm'."] = None,
+    model_ref: Annotated[
+        str | None,
+        "optional user_model id for mode='llm' — omit to use the author's default planner model.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
@@ -3054,7 +3059,8 @@ async def plan_self_check(
     description=(
         "PlanForge: interpret the user's free-text plan feedback into a structured "
         "FeedbackInterpretation (intent + focus paths + suggested revision). "
-        "model_ref required. EDIT required."
+        "model_ref is optional — omit it to use the author's default planner model. "
+        "EDIT required."
     ),
     meta=require_meta("A", "book", synonyms=["interpret feedback", "understand my note", "plan feedback"], tool_name="plan_interpret_feedback"),
 )
@@ -3063,7 +3069,9 @@ async def plan_interpret_feedback(
     book_id: Annotated[str, "The book (UUID)."],
     run_id: Annotated[str, "The plan run (UUID)."],
     user_message: Annotated[str, "The user's free-text feedback on the plan."],
-    model_ref: Annotated[str, "user_model id (required)."],
+    model_ref: Annotated[
+        str | None, "optional user_model id — omit to use the author's default planner model.",
+    ] = None,
     apply_mode_hint: Annotated[Literal["auto", "confirm", "diagnose_only"] | None, "Optional apply-mode hint."] = None,
 ) -> dict:
     tc = _ctx(ctx)
@@ -3071,7 +3079,7 @@ async def plan_interpret_feedback(
     await _gate(tc, bid, GrantLevel.EDIT)
     out = await _plan_svc().interpret(
         tc.user_id, bid, UUID(run_id),
-        user_message=user_message, model_ref=UUID(model_ref), apply_mode_hint=apply_mode_hint,
+        user_message=user_message, model_ref=_opt_uuid(model_ref), apply_mode_hint=apply_mode_hint,
     )
     if out is None:
         raise uniform_not_accessible()
@@ -3083,7 +3091,8 @@ async def plan_interpret_feedback(
     description=(
         "PlanForge: apply a draft revision to the spec (refine). Returns applied / "
         "no_change / rejected — an accepted-but-unchanged refine is `no_change`, never "
-        "`applied` (D-PF-APPLY-HONESTY). model_ref required. EDIT required."
+        "`applied` (D-PF-APPLY-HONESTY). model_ref is optional — omit it to use the "
+        "author's default planner model. EDIT required."
     ),
     meta=require_meta("A", "book", synonyms=["apply revision", "refine plan", "update spec"], tool_name="plan_apply_revision"),
 )
@@ -3091,7 +3100,9 @@ async def plan_apply_revision(
     ctx: MCPContext,
     book_id: Annotated[str, "The book (UUID)."],
     run_id: Annotated[str, "The plan run (UUID)."],
-    model_ref: Annotated[str, "user_model id (required)."],
+    model_ref: Annotated[
+        str | None, "optional user_model id — omit to use the author's default planner model.",
+    ] = None,
     draft_revision: Annotated[dict[str, Any] | None, "The revision to apply (fields/paths)."] = None,
     focus_paths: Annotated[list[str] | None, "Optional spec paths to focus the refine."] = None,
 ) -> dict:
@@ -3101,7 +3112,7 @@ async def plan_apply_revision(
     try:
         mode, payload = await _plan_svc().refine(
             tc.user_id, bid, UUID(run_id),
-            model_ref=UUID(model_ref), revision=draft_revision, focus_paths=focus_paths,
+            model_ref=_opt_uuid(model_ref), revision=draft_revision, focus_paths=focus_paths,
         )
     except LookupError:
         raise uniform_not_accessible()
@@ -3137,7 +3148,8 @@ async def plan_review_checkpoint(
     description=(
         "PlanForge: batch-apply the top self-check gaps as a bounded refine loop "
         "(max_rounds, default 3). Stops when no gaps remain or a round makes no change. "
-        "model_ref required. EDIT required."
+        "model_ref is optional — omit it to use the author's default planner model. "
+        "EDIT required."
     ),
     meta=require_meta("A", "book", synonyms=["autofix plan", "fix gaps", "handoff autofix", "auto refine"], tool_name="plan_handoff_autofix"),
 )
@@ -3145,14 +3157,16 @@ async def plan_handoff_autofix(
     ctx: MCPContext,
     book_id: Annotated[str, "The book (UUID)."],
     run_id: Annotated[str, "The plan run (UUID)."],
-    model_ref: Annotated[str, "user_model id (required)."],
+    model_ref: Annotated[
+        str | None, "optional user_model id — omit to use the author's default planner model.",
+    ] = None,
     max_rounds: Annotated[int, "Max refine rounds (1–5, default 3)."] = 3,
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
     await _gate(tc, bid, GrantLevel.EDIT)
     out = await _plan_svc().handoff_autofix(
-        tc.user_id, bid, UUID(run_id), model_ref=UUID(model_ref), max_rounds=max_rounds,
+        tc.user_id, bid, UUID(run_id), model_ref=_opt_uuid(model_ref), max_rounds=max_rounds,
     )
     if out is None:
         raise uniform_not_accessible()
@@ -3163,8 +3177,9 @@ async def plan_handoff_autofix(
     name="plan_compile",
     description=(
         "PlanForge: compile a validated spec's arc into a PlanningPackage (blocks S1–S8 "
-        "failures with 422). run_pipeline=true also kicks the planning pipeline "
-        "(model_ref then required). EDIT required."
+        "failures with 422). run_pipeline=true also kicks the planning pipeline; "
+        "model_ref is optional there too — omit it to use the author's default "
+        "planner model. EDIT required."
     ),
     meta=require_meta("A", "book", synonyms=["compile plan", "planning package", "build plan"], tool_name="plan_compile"),
 )
@@ -3174,7 +3189,10 @@ async def plan_compile(
     run_id: Annotated[str, "The plan run (UUID)."],
     arc_id: Annotated[str, "The arc to compile (e.g. 'arc_2')."],
     run_pipeline: Annotated[bool, "Also start the planning pipeline job."] = False,
-    model_ref: Annotated[str | None, "user_model id — required when run_pipeline=true."] = None,
+    model_ref: Annotated[
+        str | None,
+        "optional user_model id for run_pipeline=true — omit to use the author's default planner model.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)

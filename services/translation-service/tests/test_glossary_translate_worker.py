@@ -515,6 +515,106 @@ async def test_small_entity_keeps_4096_floor():
 
 
 @pytest.mark.asyncio
+async def test_output_ceiling_clamped_to_small_model_context_window():
+    """A flat 32768 output ceiling can exceed a small local model's ENTIRE context
+    window (input+output must fit inside it) — the ceiling must clamp to what the
+    model can structurally host, not blindly request more than the window allows."""
+    job_id = uuid4()
+    e1 = str(uuid4())
+    big = _entity(e1)
+    big["attributes"].append({
+        "attr_value_id": f"{e1}-desc",
+        "code": "description",
+        "field_type": "text",
+        "original_value": "A young cultivator from the Cloud Sect. " * 400,  # ~16k chars
+    })
+    llm_inputs: list[dict] = []
+
+    async def fake_fetch(*_a, **_kw):
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 1, "items": [big]}
+        return {"total": 0, "items": []}
+
+    async def capture_llm(**kwargs):
+        llm_inputs.append(kwargs.get("input") or {})
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=capture_llm)
+    publish = AsyncMock()
+    msg = {
+        "book_id": str(uuid4()), "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {},
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+        patch("app.workers.glossary_translate_worker.get_model_context_window",
+              new=AsyncMock(return_value=4000)),  # a genuinely tiny local model
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    # 0.8 × 4000 = 3200, below the 4096 floor — entity_output_budget's own floor wins,
+    # but the point is the request never reaches anywhere near the flat 32768 ceiling.
+    assert llm_inputs and llm_inputs[0]["max_tokens"] < 32768
+
+
+@pytest.mark.asyncio
+async def test_output_ceiling_not_reduced_below_flat_default_for_large_window():
+    """A big-window model must NOT get an artificially SMALLER ceiling than today's
+    flat default — clamping only ever tightens toward a small model's real limit,
+    never shrinks below the flat default for an already-generous window."""
+    job_id = uuid4()
+    e1 = str(uuid4())
+    big = _entity(e1)
+    big["attributes"].append({
+        "attr_value_id": f"{e1}-desc",
+        "code": "description",
+        "field_type": "text",
+        "original_value": "A young cultivator from the Cloud Sect. " * 400,
+    })
+    llm_inputs: list[dict] = []
+
+    async def fake_fetch(*_a, **_kw):
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 1, "items": [big]}
+        return {"total": 0, "items": []}
+
+    async def capture_llm(**kwargs):
+        llm_inputs.append(kwargs.get("input") or {})
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=capture_llm)
+    publish = AsyncMock()
+    msg = {
+        "book_id": str(uuid4()), "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {},
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+        patch("app.workers.glossary_translate_worker.get_model_context_window",
+              new=AsyncMock(return_value=1_000_000)),  # a huge-context model
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    assert llm_inputs and llm_inputs[0]["max_tokens"] <= 32768
+
+
+@pytest.mark.asyncio
 async def test_concurrency_runs_entities_in_parallel_bounded_by_cap():
     # bug #4: with concurrency=3, up to 3 entities translate at once (parallel), but never
     # more than the requested cap. A gated LLM mock records the peak in-flight count.

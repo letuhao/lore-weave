@@ -2,7 +2,6 @@ import { apiJson } from '../../api';
 import type {
   EntityKind,
   EntityNameEntry,
-  GenreGroup,
   GlossaryEntity,
   GlossaryEntityListResponse,
   FilterState,
@@ -432,15 +431,6 @@ export const glossaryApi = {
         ...(opts?.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
       },
     );
-  },
-
-  // ── Genre Groups ────────────────────────────────────────────────────────────
-
-  // Old-model genre-groups read — still used by SettingsTab's genre-tag picker.
-  // The write fns (createGenre/patchGenre/deleteGenre) retired with GenreGroupsPanel
-  // in G6f; the book genre tier is now managed via tieringApi + useBookOntology.
-  listGenres(bookId: string, token: string): Promise<GenreGroup[]> {
-    return apiJson<GenreGroup[]>(`${BASE}/books/${bookId}/genres`, { token });
   },
 
   // ── Attribute Translations ────────────────────────────────────────────────

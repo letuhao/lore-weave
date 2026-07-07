@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useAuth } from '@/auth';
+import { isChatSafeDefault } from '@/features/ai-models/api';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { useStudioHost, useRegisterStudioTool } from '@/features/studio/host/StudioHostProvider';
 import type { StudioToolRegistration } from '@/features/studio/host/types';
@@ -29,7 +30,11 @@ export function PlannerPanel(props: IDockviewPanelProps) {
 
   const [view, setView] = useState<PlannerView>('list');
   const [markdown, setMarkdown] = useState('');
-  const [mode, setMode] = useState<PlanRunMode>('rules');
+  // D-PLANFORGE-GENERAL-VALIDATE: 'rules' is a hardcoded fixture parser (built
+  // for one internal POC test document, not a general markdown parser — see
+  // app/engine/plan_forge/propose.py) that returns 0 arcs/characters for any
+  // real story. 'llm' is the only mode that genuinely reads the pasted text.
+  const [mode, setMode] = useState<PlanRunMode>('llm');
   const [modelRef, setModelRef] = useState('');
 
   // A bootstrap proposal is scoped to ONE run — switching runs must not leave a stale
@@ -64,8 +69,12 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   // default (no useEffect-for-events).
   const models = useUserModels({ capability: 'chat', enabled: mode === 'llm' });
   const autoModelRef = useMemo(() => {
-    if (!models.models?.length) return '';
-    return (models.models.find((m) => m.is_favorite) ?? models.models[0]).user_model_id;
+    // D-PLANFORGE-MODEL-AUTOPICK: `capability=chat` can still include a model
+    // whose OWN capability_flags explicitly declare a different job (rerank/
+    // embedding/tts) — never silently hand those to a chat call.
+    const candidates = (models.models ?? []).filter(isChatSafeDefault);
+    if (!candidates.length) return '';
+    return (candidates.find((m) => m.is_favorite) ?? candidates[0]).user_model_id;
   }, [models.models]);
   const effectiveModelRef = modelRef || autoModelRef;
 

@@ -68,6 +68,7 @@ from app.engine.critic_override import (
 )
 from app.engine.select import diverge, select_draft
 from app.reasoning import ReasoningSignals, score_effort
+from loreweave_context import scale_by_window
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer import budget as B
@@ -345,12 +346,19 @@ async def generate(
     # language; pack() calls it only when the raw story-so-far exceeds budget.
     _src_lang = from_settings(work.settings).source_language
 
+    # Model-context-aware budget scaling — a flat pack/compress budget tuned for a
+    # mid-size window must not cap a genuinely bigger model at the same number
+    # (resolved once per request; best-effort, unresolvable ⇒ the flat defaults).
+    _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
+    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
+
     async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
         return await compress(
             llm, user_id=str(user_id), model_source=body.model_source,
             model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
             plan=plan, source_language=_src_lang,
-            max_input_chars=settings.compress_max_input_chars,
+            max_input_chars=_compress_chars,
         )
 
     # C25 — dị bản two-project merge inputs (base project + branch + fresh
@@ -370,7 +378,7 @@ async def generate(
                         branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
-            budget_tokens=settings.pack_token_budget,
+            budget_tokens=_pack_budget,
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
             compress_fn=_compress_fn,  # S2 long-chapter state compression
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
@@ -392,7 +400,7 @@ async def generate(
     counter = B.default_counter()
     prompt_estimate = estimate_prompt_tokens(messages, counter)
     # Budget pre-check (local advisory): refuse if the prompt alone blows the cap.
-    prompt_ceiling = settings.pack_token_budget * 2
+    prompt_ceiling = _pack_budget * 2
     if prompt_estimate > prompt_ceiling:
         raise HTTPException(status_code=413, detail={
             "code": "PROMPT_TOO_LARGE", "estimate": prompt_estimate, "ceiling": prompt_ceiling})
@@ -697,6 +705,12 @@ async def selection_edit(
     # context-less edit or a degraded pack.
     eff_profile = profile
 
+    # Model-context-aware budget scaling — resolved once per request regardless of
+    # whether scene_context grounding runs, since prompt_ceiling below always needs it.
+    _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
+    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
+
     grounding = ""
     node = None
     if body.scene_context is not None:
@@ -709,7 +723,7 @@ async def selection_edit(
                     llm, user_id=str(user_id), model_source=body.model_source,
                     model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
                     plan=plan, source_language=_src_lang,
-                    max_input_chars=settings.compress_max_input_chars)
+                    max_input_chars=_compress_chars)
 
             try:
                 # C25 — dị bản two-project merge inputs (best-effort, like the pack).
@@ -723,7 +737,7 @@ async def selection_edit(
                                 branch_point=deriv.branch_point, overrides=deriv.overrides),
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
-                    budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
+                    budget_tokens=_pack_budget, jobs_repo=jobs,
                     compress_fn=_compress_fn, narrative_threads_repo=narrative_threads,
                     grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
                     style_profile_repo=style_profiles,  # T3.5 — density/pace
@@ -743,7 +757,7 @@ async def selection_edit(
     messages = build_selection_messages(
         body.selection, eff_profile, body.operation, body.guide, grounding)
     prompt_estimate = estimate_prompt_tokens(messages, B.default_counter())
-    prompt_ceiling = settings.pack_token_budget * 2
+    prompt_ceiling = _pack_budget * 2
     if prompt_estimate > prompt_ceiling:
         raise HTTPException(status_code=413, detail={
             "code": "PROMPT_TOO_LARGE", "estimate": prompt_estimate, "ceiling": prompt_ceiling})
@@ -890,12 +904,18 @@ async def generate_chapter(
 
     _src_lang = from_settings(work.settings).source_language
 
+    # Model-context-aware budget scaling — a flat pack/compress budget tuned for a
+    # mid-size window must not cap a genuinely bigger model at the same number.
+    _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
+    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
+
     async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
         return await compress(
             llm, user_id=str(user_id), model_source=body.model_source,
             model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
             plan=plan, source_language=_src_lang,
-            max_input_chars=settings.compress_max_input_chars)
+            max_input_chars=_compress_chars)
 
     # C25 — dị bản two-project merge inputs (base project + branch + fresh
     # overrides); empty for a non-derivative Work.
@@ -910,7 +930,7 @@ async def generate_chapter(
                         branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
-            budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
+            budget_tokens=_pack_budget, jobs_repo=jobs,
             compress_fn=_compress_fn,
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
             grounding_pins_repo=grounding_pins,  # T3.4 — generation honors per-scene pins
@@ -928,7 +948,7 @@ async def generate_chapter(
 
     messages = build_messages(pc.prompt, pc.profile, body.operation, body.guide)
     prompt_estimate = estimate_prompt_tokens(messages, B.default_counter())
-    prompt_ceiling = settings.pack_token_budget * 2
+    prompt_ceiling = _pack_budget * 2
     if prompt_estimate > prompt_ceiling:
         raise HTTPException(status_code=413, detail={
             "code": "PROMPT_TOO_LARGE", "estimate": prompt_estimate, "ceiling": prompt_ceiling})
@@ -1254,10 +1274,14 @@ async def stitch_chapter_endpoint(
                              "canon": r.get("canon"), "assembly_mode": "per_scene_stitch"})
 
     # Stitch (degrade → raw concat). The raw concat is the safe fallback artifact.
+    # Model-context-aware input sizing — a flat 24K-char cap tuned for a mid-size
+    # model shouldn't cap a genuinely bigger model at the same number.
+    _stitch_context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
+    _stitch_chars = scale_by_window(settings.stitch_max_input_chars, _stitch_context_length)
     stitched, stitch_finish = await stitch_chapter(
         llm, user_id=str(user_id), model_source=body.model_source, model_ref=str(body.model_ref),
         scene_drafts=drafts, chapter_intent=chapter_intent, profile=profile,
-        max_tokens=max_out, max_input_chars=settings.stitch_max_input_chars,
+        max_tokens=max_out, max_input_chars=_stitch_chars,
         reasoning_effort=None if reasoning.passthrough else reasoning.effort)
     degraded = not stitched
     final_text = stitched or "\n\n".join(drafts)

@@ -15,6 +15,15 @@ from app.worker import job_consumer as jc
 from app.worker.operations import run_decompose, run_plan_pipeline
 
 
+def _llm_stub():
+    """A bare `object()` used to stand in for the LLM client no longer suffices once
+    an operation resolves model-context-aware budgets — give it the one method those
+    call, returning "unresolved" so the flat default budget applies."""
+    async def _resolve_context_length(model_source, model_ref):
+        return None
+    return SimpleNamespace(resolve_context_length=_resolve_context_length)
+
+
 class _FakeRepo:
     def __init__(self, job):
         self._job = job
@@ -169,7 +178,7 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
         "reasoning_effort": None, "reflect_max_iters": 1,
         "critic_source": None, "critic_ref": None,
     }
-    out = await run_stitch(object(), object(), object(), input=inp)
+    out = await run_stitch(object(), _llm_stub(), object(), input=inp)
     assert out["text"] == "STITCHED PROSE"
     assert out["stitched"] is True
     assert out["persisted"] is False  # Option A — persist is the separate bearer step
@@ -607,13 +616,13 @@ async def test_run_promise_coverage_serializes(monkeypatch):
     from app.worker.operations import run_promise_coverage
 
     async def _fake_cov(llm, *, user_id, model_source, model_ref, premise, plan_text,
-                        book_text, source_language, cancel_check=None):
+                        book_text, source_language, window_chars=None, cancel_check=None):
         assert premise == "" and "Ch1" in plan_text and book_text
         return {"tracked_count": 2, "paid_count": 1, "abandoned_count": 1, "abandon_rate": 0.5}
 
     monkeypatch.setattr(qr, "build_promise_coverage", _fake_cov)
     out = await run_promise_coverage(
-        object(), user_id="u",
+        _llm_stub(), user_id="u",
         input={"premise": "", "plan_text": "## Ch1: a debt", "book_text": "the book prose",
                "chapters": 12, "model_source": "user_model", "model_ref": "m",
                "source_language": "vi"})

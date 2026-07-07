@@ -31,13 +31,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from uuid import UUID
 
+from app.context.anchors import (
+    get_anchor_index,
+    get_project_protagonist,
+    has_non_ascii_letter,
+    has_protagonist_role,
+    looks_like_question,
+    resolve_anchors,
+)
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
 from app.clients.reranker_client import get_reranker_client
 from app.config import settings
+from loreweave_context import scale_by_window
 from app.context.formatters.dedup import (
     filter_entities_not_in_summary,
     filter_facts_not_in_summary,
@@ -66,6 +76,7 @@ from app.db.neo4j import neo4j_session
 from app.db.repositories.summaries import SummariesRepo
 from app.metrics import (
     layer_timeout_total,
+    mode3_grounding_zero_anchor_total,
     mode3_intent_classifier_glossary_unavailable_total,
 )
 
@@ -684,6 +695,7 @@ async def build_full_mode(
     language: str | None = None,
     entity_access_repo=None,
     current_chapter_id: UUID | None = None,
+    context_length: int | None = None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
@@ -691,7 +703,9 @@ async def build_full_mode(
     adds the L2 fact selector, L3 semantic passages, and absence
     detection on top. Intent-aware CoT instructions close the block.
     Token budget enforcement (K18.7) trims in reverse priority when
-    the full payload exceeds `settings.mode3_token_budget`.
+    the full payload exceeds `settings.mode3_token_budget` (scaled up via
+    `context_length` — the calling chat session's real model window — instead
+    of every model being capped at the same flat number).
 
     `embedding_client` is optional — callers in Track 1 / no-Neo4j
     mode pass `None` and the L3 layer cleanly returns empty.
@@ -760,6 +774,63 @@ async def build_full_mode(
     # Classify once: the same IntentResult drives both the L2 selector's
     # hop-count / recency gating AND the instruction-block hint text.
     intent_obj = classify(message)
+    # M-recall — the classifier can't segment scriptio-continua (Chinese has no
+    # spaces), so on a non-Latin message it emits whole clauses as "entities" and
+    # select_l2_facts resolves nothing. Anchor instead on the project's KNOWN
+    # entity dictionary (Aho-Corasick), UNIONed into intent.entities so the L2
+    # facts + widened-retry + M1a bridge all see the real anchors. Degrade-safe:
+    # no automaton / no match → intent_obj unchanged (classifier-only).
+    if settings.context_dict_anchor_enabled and has_non_ascii_letter(message):
+        # Bound the (cache-miss) dictionary load so a slow Neo4j can't delay the
+        # whole build — degrade to classifier-only anchors on timeout/failure.
+        try:
+            _automaton = await asyncio.wait_for(
+                get_anchor_index(
+                    str(user_id), str(project.project_id),
+                    ttl_s=settings.context_dict_anchor_ttl_s,
+                    min_len=settings.context_dict_anchor_min_len,
+                ),
+                timeout=settings.context_l2_timeout_s,
+            )
+        except Exception:  # timeout or load error → classifier-only (degrade-safe)
+            _automaton = None
+        _dict_anchors = resolve_anchors(
+            _automaton, message,
+            max_anchors=settings.context_dict_anchor_cap,
+            min_len=settings.context_dict_anchor_min_len,
+        )
+        if _dict_anchors:
+            _merged = tuple(dict.fromkeys((*intent_obj.entities, *_dict_anchors)))
+            if _merged != intent_obj.entities:
+                intent_obj = replace(intent_obj, entities=_merged)
+                logger.info(
+                    "M-recall: +%d dict anchors (project=%s) — L2 anchors now %d",
+                    len(_dict_anchors), project.project_id, len(_merged),
+                )
+    # M-recall role-resolution — when the message names the lead by ROLE ("主角"/
+    # "the protagonist") rather than by name, the dictionary can't match it (the role
+    # term isn't an entity name). Anchor the project's most-central entity so
+    # select_l2_facts can resolve the role. Additive + gated on a strict protagonist-
+    # term set (both languages, so not non-Latin-only); timeout-bounded, degrade-safe.
+    if settings.context_role_anchor_enabled and has_protagonist_role(message):
+        try:
+            _protagonist = await asyncio.wait_for(
+                get_project_protagonist(
+                    str(user_id), str(project.project_id),
+                    ttl_s=settings.context_dict_anchor_ttl_s,
+                ),
+                timeout=settings.context_l2_timeout_s,
+            )
+        except Exception:  # timeout or load error → no role-anchoring (degrade-safe)
+            _protagonist = None
+        if _protagonist and _protagonist not in intent_obj.entities:
+            intent_obj = replace(
+                intent_obj, entities=(*intent_obj.entities, _protagonist)
+            )
+            logger.info(
+                "M-recall: role→protagonist anchor '%s' (project=%s)",
+                _protagonist, project.project_id,
+            )
     # D-K18.3-02: opt-in generative rerank via extraction_config. Absent
     # key or empty string = skip the LLM rerank hop, MMR order stands.
     rerank_model = (project.extraction_config or {}).get("rerank_model") or None
@@ -826,6 +897,17 @@ async def build_full_mode(
             )
             l2_facts = l2_retry
 
+    # M-recall — zero-anchor frequency meter. Measured HERE (after classifier + CJK
+    # dict-anchor + protagonist role-resolution + widened retry, BEFORE the passage
+    # bridge) so it reflects the ANCHOR path: a non-empty turn that grounded no L2
+    # facts couldn't resolve any entity it referenced. `question="true"` is the
+    # deferred generic-noun-coref frequency signal — production tells us how common
+    # "那位重生的少年…"-style references really are before we invest in coref.
+    if not l2_facts.total() and message.strip():
+        mode3_grounding_zero_anchor_total.labels(
+            question="true" if looks_like_question(message) else "false"
+        ).inc()
+
     # M1a — passage→graph anchor bridge. The message-anchored L2 selector above
     # only expands `intent.entities`; on natural queries that name no entity it
     # yields nothing (M4: 6/6 such queries). Expand 1-hop from the entities the
@@ -878,7 +960,7 @@ async def build_full_mode(
         summary_hits=summary_hits,
         absences=absences,
         intent_obj=intent_obj,
-        budget_tokens=settings.mode3_token_budget,
+        budget_tokens=scale_by_window(settings.mode3_token_budget, context_length),
     )
 
     return BuiltContext(

@@ -249,6 +249,51 @@ def test_entity_submit_no_schema_omits_vocab():
     assert "cultivator" not in system
 
 
+# ── Model-context-aware chunk sizing ────────────────────────────────────────
+
+
+def test_context_budget_from_absent_is_none():
+    """No context_length stashed (unresolved, or a legacy resume blob) → the SDK's
+    legacy flat chunk size, never a guessed window."""
+    assert d._context_budget_from(_seed_shell_rs()) is None
+
+
+def test_context_budget_from_builds_real_budget():
+    rs = _seed_shell_rs()
+    rs["context_length"] = 1_000_000
+    budget = d._context_budget_from(rs)
+    assert budget is not None
+    assert budget.model_context == 1_000_000
+
+
+def test_entity_submit_uses_stashed_context_length_not_flat_default():
+    """A 1M-context model must NOT get the same chunk size a small-window model
+    would — the exact bug class a hardcoded/omitted context_budget reintroduces."""
+    small = _seed_shell_rs()
+    small["context_length"] = 24_000
+    huge = _seed_shell_rs()
+    huge["context_length"] = 1_000_000
+
+    small_chunk = d.assemble_entity_submit(small)["chunking"].size
+    huge_chunk = d.assemble_entity_submit(huge)["chunking"].size
+    default_chunk = d.assemble_entity_submit(_seed_shell_rs())["chunking"].size
+    assert huge_chunk > small_chunk
+    assert default_chunk == 15  # unresolved context_length ⇒ legacy flat default
+
+
+def test_trio_submits_use_stashed_context_length():
+    no_budget = d.assemble_trio_submits(
+        d.fold_entity_job(_seed_shell_rs(), _job({"entities": [{"name": "Kai", "kind": "person", "confidence": 0.9}]})),
+    )
+    rs = _seed_shell_rs()
+    rs["context_length"] = 1_000_000
+    rs = d.fold_entity_job(rs, _job({"entities": [{"name": "Kai", "kind": "person", "confidence": 0.9}]}))
+    ts = d.assemble_trio_submits(rs)
+
+    assert no_budget["relation"]["chunking"].size == 15  # legacy flat default
+    assert ts["relation"]["chunking"].size > no_budget["relation"]["chunking"].size
+
+
 def test_shell_trio_serde_roundtrips_nonempty():
     """review-impl finding 5 — non-empty relation/event/fact serde: model_dump(mode='json')
     ↔ model_validate through the resume_state JSONB must round-trip (the prior shell test
@@ -314,6 +359,15 @@ def test_assemble_recovery_builds_tier3_batch_for_unmatched_name():
     assert submits["r0"]["model_ref"] == "rec-model"
     assert rs["recovery_batch_names"]["r0"] == ["Ghost"]
     assert rs["recovery_base_entities"] and rs["recovery_promoted"] == []
+
+
+def test_assemble_recovery_clamps_output_to_stashed_context_length():
+    # A window small enough that 80% of it is BELOW the flat 1024+200*n_items
+    # budget for this one-name batch (1224) — the clamp must actually bite.
+    rs = _recovery_rs()
+    rs["context_length"] = 1000
+    submits, _ = d.assemble_recovery(rs)
+    assert submits["r0"]["input"]["max_tokens"] == int(1000 * 0.8)
 
 
 def test_fold_recovery_promotes_entity_verdict():
@@ -389,6 +443,15 @@ def test_assemble_filter_builds_category_batches():
     assert submits["f:entity:0"]["model_ref"] == "flt-model"
     assert rs["filter_n_input"]["entity"] == 2
     assert rs["filter_batch_meta"]["f:entity:0"]["category"] == "entity"
+
+
+def test_assemble_filter_clamps_output_to_stashed_context_length():
+    # A window small enough that 80% of it is BELOW the flat 1536+256*n_items
+    # budget for this two-item batch (2048) — the clamp must actually bite.
+    rs = _filter_rs()
+    rs["context_length"] = 1000
+    submits, _ = d.assemble_filter(rs)
+    assert submits["f:entity:0"]["input"]["max_tokens"] == int(1000 * 0.8)
 
 
 def test_fold_filter_then_finalize_keeps_supported_only():

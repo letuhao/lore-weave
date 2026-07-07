@@ -21,7 +21,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-from loreweave_internal_client import is_retryable_status, resolve_model_name
+from loreweave_internal_client import is_retryable_status, resolve_context_length, resolve_model_name
 
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
@@ -585,6 +585,16 @@ class ProviderRegistryClient:
         — the single owner of the provider-registry model-info read — so the last
         standalone copy of that GET is gone (was worker-ai's baselined variant)."""
         return await resolve_model_name(
+            self._base_url, model_source, str(model_ref),
+            internal_token=self._internal_token, timeout_s=self._timeout_s,
+        )
+
+    async def get_context_length(self, model_source: str, model_ref: str | UUID) -> int | None:
+        """Resolve a model's real context window (tokens), or None when the registry
+        can't determine it. Delegates to loreweave_internal_client.resolve_context_length
+        — never fabricates a guessed number; the extraction pipeline's own ContextBudget
+        supplies the conservative default for the genuinely-unknown case."""
+        return await resolve_context_length(
             self._base_url, model_source, str(model_ref),
             internal_token=self._internal_token, timeout_s=self._timeout_s,
         )

@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction.context_budget import ContextBudget
 from loreweave_extraction.extractors.entity import (
     LLMEntityCandidate,
     extract_entities,
@@ -171,6 +172,13 @@ async def extract_pass2(
     # NOT applied to the recovery/precision-filter passes (cheap structural
     # passes, same carve-out as reasoning_effort).
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    # Model-context-aware chunk sizing (see loreweave_extraction.context_budget).
+    # None (default — every existing caller that doesn't pass it) keeps the legacy
+    # flat 15-paragraph chunk size, byte-identical behavior. A caller that resolves
+    # the target model's real context window should build one via
+    # `_build_budget_for_model` and pass it here so chunk size scales with the
+    # model actually in use instead of assuming a fixed window for every model.
+    context_budget: ContextBudget | None = None,
 ) -> Pass2Candidates:
     """Run the full Pass 2 extraction pipeline.
 
@@ -235,6 +243,7 @@ async def extract_pass2(
         schema=schema,
         reasoning_effort=reasoning_effort,
         cancel_check=cancel_check,
+        context_budget=context_budget,
     )
 
     # Gate: if no entities, nothing to anchor.
@@ -258,6 +267,7 @@ async def extract_pass2(
         schema=schema,
         reasoning_effort=reasoning_effort,
         cancel_check=cancel_check,
+        context_budget=context_budget,
     )
 
     # C12 — build the gather task-list CONDITIONALLY. Only the requested
@@ -306,6 +316,10 @@ async def extract_pass2(
         facts=_results["facts"],
     )
 
+    # Model-context-aware output clamp for the recovery/filter classifier calls —
+    # never request more output than the model's real window can structurally host.
+    _ctx_len = context_budget.model_context if context_budget is not None else None
+
     # Cycle 73d — optional entity recovery (runs BEFORE precision filter).
     # Promotes "real" entities the extractor missed (so writer doesn't
     # cascade-skip relations referencing them) and drops relations whose
@@ -321,6 +335,7 @@ async def extract_pass2(
             project_id=project_id,
             llm_client=llm_client,
             on_decision=on_recovery_decision,
+            context_length=_ctx_len,
         )
 
     # Cycle 72 — optional precision filter pass.
@@ -336,6 +351,7 @@ async def extract_pass2(
             user_id=user_id,
             llm_client=llm_client,
             on_decision=on_filter_decision,
+            context_length=_ctx_len,
         )
 
     return candidates

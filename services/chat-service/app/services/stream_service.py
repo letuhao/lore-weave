@@ -20,6 +20,7 @@ from typing import AsyncGenerator
 from uuid import uuid4
 
 import asyncpg
+from json_repair import repair_json
 from loreweave_llm import (
     Client,
     DoneEvent,
@@ -76,6 +77,7 @@ from app.services.tool_discovery import (
 from app.services.subagent_runtime import (
     RUN_SUBAGENT_NAME,
     SUBAGENT_MAX_ITERATIONS,
+    SUBAGENT_RESULT_CHAR_CAP,
     build_run_subagent_tool,
     cap_result,
     clamp_permission_mode,
@@ -123,6 +125,7 @@ from app.services.token_budget import (
     derive_status_flags,
     estimate_messages_tokens,
     estimate_tokens,
+    scale_by_window,
 )
 from app.services.working_memory import resolve_anchor
 
@@ -476,17 +479,117 @@ def _is_tools_unsupported(exc: LLMError) -> bool:
     return "TOOLS_NOT_SUPPORTED" in code or "TOOLS_NOT_SUPPORTED" in str(exc)
 
 
+# D-TOOLCALL-GEMMA-TOKEN-LEAK — some local models (confirmed: Gemma 4 GGUFs via
+# LM Studio/llama.cpp, e.g. google/gemma-4-26b-a4b-qat — see llama.cpp#21316/
+# #21680/#22786) emit tool-call arguments wrapped in the model's own native
+# tokens instead of standard JSON, e.g. `<|tool_call>call:NAME{query:<|"|>text
+# <|"|>}<tool_call|>` — `<|"|>` stands in for a literal `"`, and object keys are
+# left unquoted. This is a known upstream llama.cpp/LM-Studio template-parsing
+# gap (the C++ server's PEG-grammar fix, llama.cpp PR #21326, has known
+# residual cases and isn't universally deployed) — not something a system
+# prompt can override, since it's produced by grammar-constrained sampling
+# below the level a prompt can reach (confirmed by live A/B test: identical
+# malformed output at both "high" and "low" reasoning_effort, and with an
+# explicit "use standard JSON quotes" system-prompt instruction).
+_GEMMA_TOOLCALL_WRAP_RE = re.compile(r"^\s*<\|tool_call>\s*call\s*:\s*[\w.-]+\s*", re.IGNORECASE)
+_GEMMA_TOOLCALL_TAIL_RE = re.compile(r"\s*<tool_call\|>\s*$", re.IGNORECASE)
+_GEMMA_QUOTE_TOKEN_RE = re.compile(r"<\|[\"']\|>")
+_UNQUOTED_KEY_RE = re.compile(r'(?<=[{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:')
+
+
+def _degemmify_tool_args(raw: str) -> str:
+    """Strip Gemma 4's native tool-call wrapper/quote tokens, and quote bare
+    object keys, so the result is plausible JSON worth a `json.loads` retry.
+    A no-op (returns `raw` unchanged) when none of the tokens are present."""
+    text = _GEMMA_TOOLCALL_TAIL_RE.sub("", _GEMMA_TOOLCALL_WRAP_RE.sub("", raw))
+    text = _GEMMA_QUOTE_TOKEN_RE.sub('"', text)
+    return _UNQUOTED_KEY_RE.sub(r' "\1":', text)
+
+
+_LEAK_MARKER_START = "<|tool_call>"
+
+
+def _split_safe_emit(buffer: str) -> tuple[str, str]:
+    """Split `buffer` into `(flush_now, hold_back)`. `hold_back` starts at the
+    earliest position that could be the beginning of the Gemma leak marker
+    `_LEAK_MARKER_START` — an exact occurrence, or a partial match at the
+    buffer's tail (the marker may still be arriving one token at a time) — so
+    a marker split across many small deltas is never partially streamed to the
+    client before we know whether it's real prose or a leak. No such position
+    → hold nothing, flush everything."""
+    pos = buffer.find(_LEAK_MARKER_START)
+    if pos != -1:
+        return buffer[:pos], buffer[pos:]
+    for k in range(min(len(buffer), len(_LEAK_MARKER_START) - 1), 0, -1):
+        if buffer[-k:] == _LEAK_MARKER_START[:k]:
+            return buffer[:-k], buffer[-k:]
+    return buffer, ""
+
+
+_GEMMA_LEAKED_CALL_RE = re.compile(
+    r"<\|tool_call>\s*call\s*:\s*([\w.-]+)\s*(\{.*?\})\s*<tool_call\|>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _extract_leaked_tool_calls(text: str) -> list[tuple[str, str]]:
+    """D-TOOLCALL-GEMMA-TOKEN-LEAK cross-channel salvage: when this model
+    abandons the structured tool_calls channel entirely and dumps its native
+    tool-call tokens into plain content/reasoning text instead (confirmed
+    live + llama.cpp#22786 "tool call returned as content"), this recovers
+    `(name, raw_args_body)` pairs from that leaked text — `raw_args_body`
+    still has the Gemma quote-token mangling and is fed to `_parse_tool_args`
+    downstream unchanged, which already knows how to repair it."""
+    return [(m.group(1), m.group(2)) for m in _GEMMA_LEAKED_CALL_RE.finditer(text)]
+
+
+def _braces_balanced(text: str) -> bool:
+    """A cheap structural-completeness gate, NOT a JSON validator: same count
+    of `{`/`}`. Distinguishes a genuinely truncated stream (e.g. `{"q": "Ka`,
+    1 open / 0 close — must stay a hard failure, `json_repair` would happily
+    GUESS a closing value we can't verify is right) from a structurally
+    complete-but-malformed string (Gemma's token substitution — braces are
+    all there, just the quoting inside is wrong) — only the latter is safe
+    to hand to a repair library, which reconstructs plausible JSON but can't
+    know what a truncated value was actually going to say."""
+    return text.count("{") == text.count("}")
+
+
 def _parse_tool_args(raw: str) -> dict:
-    """Parse a tool call's accumulated `arguments` JSON string. A
-    malformed or empty string yields {} so `execute_tool` still receives
-    a dict (knowledge-service then surfaces an arg-validation error)."""
+    """Parse a tool call's accumulated `arguments` JSON string.
+
+    Tries, in order: (1) `json.loads` as-is — the fast path, unchanged for a
+    well-behaved provider; (2) the Gemma-token de-mangling above + retry;
+    (3) `json_repair` as a general malformed-JSON safety net (handles other
+    models' minor syntax slips: trailing commas, single quotes, etc.) — gated
+    on `_braces_balanced` so a genuinely truncated stream still degrades hard
+    rather than being "repaired" into a guessed, possibly-wrong value. A
+    still-malformed or empty string yields {} so `execute_tool` still
+    receives a dict (the MCP tool then surfaces a normal arg-validation
+    error) — but unlike before, this degrade path is now logged, so a
+    provider that's silently mangling every tool call is visible instead of
+    only showing up as a confusing downstream "missing required field"."""
     if not raw:
         return {}
     try:
         parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
     except (ValueError, TypeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+        pass
+    for candidate in (_degemmify_tool_args(raw), raw):
+        if not _braces_balanced(candidate):
+            continue
+        try:
+            parsed = json.loads(repair_json(candidate))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(parsed, dict) and parsed:
+            return parsed
+    logger.warning(
+        "tool-call arguments unparseable after repair attempts, degrading to {}: %r",
+        raw[:300],
+    )
+    return {}
 
 
 def _reassemble_tool_calls(frags: dict) -> list[dict]:
@@ -668,6 +771,11 @@ async def _stream_with_tools(
     surface_tracker=None,
     effective_limit: int | None = None,
     compact_target: int | None = None,
+    # Model-context-aware tool-surface budgeting (tool_surface.py's
+    # HOT_SEED_TOKEN_BUDGET / ACTIVATED_TOOLS_TOKEN_BUDGET scale up for a session
+    # model with a larger real context_length instead of every model getting the
+    # same flat cap). None (e.g. the sub-agent nested call) ⇒ the flat default.
+    context_length: int | None = None,
     permission_mode: str = "write",
     approval_check=None,
     hooks: list[dict] | None = None,
@@ -976,16 +1084,34 @@ async def _stream_with_tools(
 
             tool_frags: dict = {}
             text_parts: list[str] = []
+            reasoning_parts: list[str] = []  # D-TOOLCALL-GEMMA-TOKEN-LEAK salvage buffer
+            # D-TOOLCALL-GEMMA-TOKEN-LEAK cosmetic fix — a leak marker can arrive
+            # split across many small deltas; hold back from the earliest point a
+            # delta COULD be the start of `<|tool_call>` (exact or partial-at-tail)
+            # instead of forwarding every token live, so a confirmed leak never
+            # reaches the user's visible content at all. Resolved once the pass
+            # ends: dropped if `_extract_leaked_tool_calls` confirms a real leak,
+            # flushed as normal content otherwise (a bare `<` in real prose, or a
+            # marker that started but never completed, must not be silently lost).
+            content_hold = ""
+            reasoning_hold = ""
             finish_reason: str | None = None
             try:
                 async for ev in client.stream(request):
                     if isinstance(ev, TokenEvent):
                         text_parts.append(ev.delta)
-                        yield {"content": ev.delta, "reasoning_content": "",
-                               "finish_reason": None, "usage": None}
+                        content_hold += ev.delta
+                        flush, content_hold = _split_safe_emit(content_hold)
+                        if flush:
+                            yield {"content": flush, "reasoning_content": "",
+                                   "finish_reason": None, "usage": None}
                     elif isinstance(ev, ReasoningEvent):
-                        yield {"content": "", "reasoning_content": ev.delta,
-                               "finish_reason": None, "usage": None}
+                        reasoning_parts.append(ev.delta)
+                        reasoning_hold += ev.delta
+                        flush, reasoning_hold = _split_safe_emit(reasoning_hold)
+                        if flush:
+                            yield {"content": "", "reasoning_content": flush,
+                                   "finish_reason": None, "usage": None}
                     elif isinstance(ev, ToolCallEvent):
                         slot = tool_frags.setdefault(
                             ev.index, {"id": None, "name": None, "arguments": ""}
@@ -1036,7 +1162,63 @@ async def _stream_with_tools(
             # function's `finally: await client.aclose()`, and the gateway finalizes
             # this pass's row via the silent cascade (no explicit DELETE → no notify).
 
-            if not tool_frags:
+            # D-TOOLCALL-GEMMA-TOKEN-LEAK cross-channel salvage — some local
+            # models (confirmed: Gemma 4 GGUFs, llama.cpp#22786 "tool call
+            # returned as content") occasionally abandon the structured
+            # tool_calls channel entirely and dump their native tool-call
+            # tokens into plain content/reasoning text instead. Scan BOTH
+            # accumulated channels for that pattern before deciding this pass
+            # has no tool calls — deduped, since a retrying model can leak the
+            # same call twice in one pass (observed live).
+            leaked_calls = list(dict.fromkeys(
+                _extract_leaked_tool_calls("".join(text_parts) + "\n" + "".join(reasoning_parts))
+            ))
+            # /review-impl MED — a leaked name is free-form regex output, not a
+            # provider-attested tool_calls id: without this check ANY text that
+            # happens to match the marker shape (a hallucination, or untrusted
+            # content the model echoed from an earlier tool RESULT — e.g. a web-
+            # search snippet, already handled as untrusted DATA at the tool
+            # layer but now back in-context) would be treated as a genuine call.
+            # Restricting to tools genuinely reachable THIS turn — not a bypass
+            # of tier/approval gating below, which still applies uniformly to a
+            # salvaged call exactly as it would to a structured one — closes
+            # that gap: a name for a tool nobody actually offered this turn is
+            # dropped, not executed.
+            if leaked_calls:
+                _known_names = (
+                    active_tool_names if discovery
+                    else {
+                        fn.get("name") for td in (tools or [])
+                        if isinstance(td, dict) and isinstance(fn := td.get("function"), dict)
+                    }
+                )
+                _dropped = [n for n, _ in leaked_calls if n not in _known_names]
+                if _dropped:
+                    logger.warning(
+                        "D-TOOLCALL-GEMMA-TOKEN-LEAK: dropped %d leaked call(s) for a "
+                        "tool not offered this turn (model_ref=%s): %s",
+                        len(_dropped), model_ref, _dropped,
+                    )
+                leaked_calls = [(n, b) for n, b in leaked_calls if n in _known_names]
+            if leaked_calls:
+                logger.warning(
+                    "D-TOOLCALL-GEMMA-TOKEN-LEAK: recovered %d leaked tool-call(s) "
+                    "from plain content/reasoning text (model_ref=%s): %s",
+                    len(leaked_calls), model_ref, [n for n, _ in leaked_calls],
+                )
+                # Confirmed leak — the held-back text IS the leak (or trails
+                # right after it); never forward it to the visible content.
+                content_hold = reasoning_hold = ""
+            else:
+                # No leak confirmed — the hold was a false alarm (real prose
+                # that happened to start with `<`, or a marker that started
+                # but never completed this pass); flush it as normal content
+                # so nothing genuine is silently dropped.
+                if content_hold or reasoning_hold:
+                    yield {"content": content_hold, "reasoning_content": reasoning_hold,
+                           "finish_reason": None, "usage": None}
+
+            if not tool_frags and not leaked_calls:
                 # No tool calls — this pass IS the final text response.
                 yield {"content": "", "reasoning_content": "",
                        "finish_reason": finish_reason or "stop",
@@ -1049,9 +1231,45 @@ async def _stream_with_tools(
                                        cache_read_tok=total_cache_read)}
                 return
 
-            # The model called tools — record the assistant turn, execute
-            # each call, append the results, and loop.
+            # The model called tools (structured, or salvaged from leaked
+            # native tokens above) — record the assistant turn, execute each
+            # call, append the results, and loop.
             calls = _reassemble_tool_calls(tool_frags)
+            # D-TOOLCALL-GEMMA-TOKEN-LEAK — this pass's ENTIRE call set came from
+            # the leak scan (tool_frags was empty), typically because this WAS
+            # the D7 forced tool-free final pass (offered_tools False this
+            # iteration) — the exact pass where a broken-template model is most
+            # likely to dump its native tool-call tokens as plain text instead
+            # of a structured call. The D7 termination guard below normally
+            # treats "tool calls on a no-tools-offered pass" as the model
+            # defiantly ignoring the contract and bails out WITHOUT looping —
+            # correct for a hallucinated call with nothing behind it, but wrong
+            # here: we just executed a real, recovered call and need one more
+            # pass (itself force-tool-free, same as any other final pass) so
+            # the model can actually use the result instead of the turn ending
+            # empty-handed right after the tool call finally succeeded.
+            salvaged_this_pass = not calls
+            if not calls:
+                # tool_frags was empty — every recovered call came from the
+                # leak scan; synthesize the same {id, name, arguments} shape
+                # `_parse_tool_args` (with its own Gemma-token repair) will
+                # parse `arguments` normally at every downstream call site.
+                calls = [
+                    {"id": f"leaked-{uuid4()}", "name": name, "arguments": body}
+                    for name, body in leaked_calls
+                ]
+            else:
+                # Structured calls exist, but one came back with unparseable/
+                # empty arguments — if the SAME tool name also leaked into
+                # plain text this pass, that leak is the only place the
+                # model's real intent survived; prefer it.
+                for c in calls:
+                    if _parse_tool_args(c["arguments"]):
+                        continue
+                    for name, body in leaked_calls:
+                        if name == c["name"]:
+                            c["arguments"] = body
+                            break
             working.append({
                 "role": "assistant",
                 "content": "".join(text_parts),
@@ -1109,6 +1327,7 @@ async def _stream_with_tools(
                         activation_state["activated_tools"] = merge_activated_tools(
                             activation_state["activated_tools"], matched,
                             catalog=discovery_catalog,
+                            context_length=context_length,
                         )
                         activation_state["dirty"] = True
                     if surface_tracker is not None:
@@ -1187,6 +1406,7 @@ async def _stream_with_tools(
                         effective_limit=effective_limit,
                         subagent_depth=subagent_depth,
                         caller_permission_mode=permission_mode,
+                        context_length=context_length,
                     )
                     total_input += sub_in
                     total_output += sub_out
@@ -1474,7 +1694,15 @@ async def _stream_with_tools(
                 # default when in.ModelRef is empty). chat-service is therefore AUTHORITATIVE:
                 # a session pin always wins; otherwise the model's guess is STRIPPED so the
                 # downstream resolver applies the per-user Settings default → fallback.
-                if c["name"] == "glossary_plan" and isinstance(args_obj, dict):
+                # D-PLANFORGE-DEFAULT-MODEL — every PlanForge tool with a model_ref arg now
+                # mirrors glossary's own fallback (GET /internal/planner-model via
+                # composition-service's resolve_planner_model / _resolve_model_ref), so
+                # stripping here is safe for all of them: model_ref is optional at every one
+                # of these tool schemas now, never a hard-required arg.
+                if c["name"] in (
+                    "glossary_plan", "plan_propose_spec", "plan_interpret_feedback",
+                    "plan_apply_revision", "plan_handoff_autofix", "plan_compile",
+                ) and isinstance(args_obj, dict):
                     if planner_model_ref:
                         args_obj["model_ref"] = planner_model_ref
                     else:
@@ -1561,7 +1789,10 @@ async def _stream_with_tools(
                 if ok:
                     _tool_content, _capped_tokens = tool_result_content_capped_ex(
                         tool_payload, tool_name=c["name"],
-                        token_cap=settings.tool_result_token_cap,
+                        # Scales up for a session model with a larger real
+                        # context_length instead of every model — a 1M-context one
+                        # included — getting the same flat cap on one tool result.
+                        token_cap=scale_by_window(settings.tool_result_token_cap, context_length),
                     )
                     # Inspector §11 — surface the D7 trip as a trace span so the GUI
                     # shows WHY a tool result was withheld (was log-only before).
@@ -1666,7 +1897,15 @@ async def _stream_with_tools(
             # chunk below. (Mirrors the old `for … range(max_iterations)`
             # exhaustion; in the realistic path the final pass has no tool calls
             # and already returned above.)
-            if not offered_tools:
+            # D-TOOLCALL-GEMMA-TOKEN-LEAK exception: a call recovered from the
+            # leak scan (`salvaged_this_pass`) is real work we just executed —
+            # not a defiant hallucination — so it earns one more pass (itself
+            # still force-tool-free, same as any other final pass; bounded by
+            # `max_total_passes` regardless) so the model can use the result.
+            # Without this, the turn ended empty-handed the instant the tool
+            # call finally succeeded — the exact "web search that never
+            # actually gets used" gap this fix closes.
+            if not offered_tools and not salvaged_this_pass:
                 break
 
         # Write budget exhausted. The final pass is forced
@@ -1702,6 +1941,7 @@ async def _run_subagent_call(
     effective_limit: int | None,
     subagent_depth: int,
     caller_permission_mode: str,
+    context_length: int | None = None,
 ) -> tuple[dict, int, int]:
     """P5 REG-P5-01 — run ONE subagent as a nested, isolated ``_stream_with_tools``
     turn and return ``(payload, input_tokens, output_tokens)``.
@@ -1768,6 +2008,15 @@ async def _run_subagent_call(
             effective_limit=effective_limit,
             allowed_tool_names=allowed,      # execute-time whitelist
             subagent_depth=subagent_depth + 1,
+            # /review-impl MED: the nested run's own tool-surface budgeting
+            # (HOT_SEED_TOKEN_BUDGET etc.) should scale by the MODEL THAT RUN
+            # ACTUALLY USES, not blindly by the parent's context_length — a
+            # subagent def can override model_ref (sub_model_ref above). Only
+            # forward it when the subagent is running on the SAME model as the
+            # caller; a different model without its own resolved context_length
+            # correctly falls back to the flat default rather than misapplying
+            # the parent model's window.
+            context_length=context_length if sub_model_ref == model_ref else None,
         )
         async for ch in nested:
             if ch.get("content"):
@@ -1799,7 +2048,10 @@ async def _run_subagent_call(
         logger.warning("subagent '%s' run failed", name, exc_info=True)
         return ({"error": f"subagent '{name}' failed to run."}, sub_in, sub_out)
 
-    text, truncated = cap_result(final_text.strip())
+    text, truncated = cap_result(
+        final_text.strip(),
+        char_cap=scale_by_window(SUBAGENT_RESULT_CHAR_CAP, context_length),
+    )
     payload: dict = {"subagent": name, "result": text, "tools_used": tools_used}
     if truncated:
         payload["truncated"] = True
@@ -1994,6 +2246,7 @@ async def stream_response(
         # boost passages near it (working-scope boost). Only editor turns carry
         # editor_context; other surfaces send None → boost inert downstream.
         current_chapter_id=(editor_context or {}).get("chapter_id"),
+        context_length=creds.context_length,
     )
 
     # ── P0-5 (audit Area 3, SEC-4 / ML-4) — neutralize indirect prompt-injection
@@ -2044,6 +2297,7 @@ async def stream_response(
                 full_context=kctx.context,
                 current_turn=int(_cur_turn or 0),
                 lore_gate=settings.t5_intent_gate_enabled and _grounding_presence.grounding_needed,
+                context_length=creds.context_length,
             )
         except Exception:  # noqa: BLE001 — degrade to no-block, never break the turn
             logger.warning("story_state block projection skipped (error)", exc_info=True)
@@ -2294,6 +2548,7 @@ async def stream_response(
                     _steering_entries,
                     message=user_message_content,
                     active_title=_active_title,
+                    context_length=creds.context_length,
                 )
                 steering_block = render_steering_block(_steering_selected) or None
         except Exception:
@@ -2504,6 +2759,7 @@ async def stream_response(
                     editor=editor,
                     book_scoped=book_scoped,
                     studio=bool(studio_context),
+                    context_length=creds.context_length,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
@@ -2837,55 +3093,70 @@ async def _emit_chat_turn(
     # non-tool-calling turn (review-impl catch, 2026-07-06).
     _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
     try:
-        # P3 review H1 — a RESUME runs STATELESS over the full saved working (the suspend
-        # reconstructed the complete context). A delta rebuild here would drop the
-        # assistant tool_call + the frontend tool result the resume appended → the model
-        # would never see the tool outcome (re-suspend loop). The resumed turn persists
-        # response_id=None, so the NEXT turn cleanly re-establishes the chain (rule-1).
-        if (use_tools or _subagent_tool is not None) and not is_resume:
-            # ── Stateful /v1/responses chain decision (P2 §5a) ──────────────────
-            # Read the latest assistant turn for this session/branch and decide:
-            # stateless / stateful-establish / stateful-continue. Degrade-safe — any
-            # error falls back to stateless (full context). Only build the delta when
-            # continuing from a valid head (system blocks carry the fresh grounding →
-            # the gateway lifts them to `instructions`; the user turn is the input).
-            try:
-                _latest_asst = await pool.fetchrow(
-                    """
-                    SELECT response_id, model_ref::text AS model_ref, input_tokens, sequence_num,
-                           (context_breakdown->'caching'->>'context_size')::int AS context_size
-                    FROM chat_messages
-                    WHERE session_id=$1 AND role='assistant' AND branch_id=0
-                    ORDER BY sequence_num DESC LIMIT 1
-                    """,
-                    session_id,
-                )
-                _comp_seq = await pool.fetchval(
-                    "SELECT compacted_before_seq FROM chat_sessions WHERE session_id=$1",
-                    session_id,
-                )
-                _eff = compute_budget(
-                    used_tokens=0,
-                    context_length=creds.context_length,
-                    max_output_tokens=int(gen_params.get("max_tokens") or 0),
-                ).effective_limit
-                _stateful, _prev_rid, _chain_reason = decide_chain(
-                    capabilities=getattr(creds, "capabilities", None),
-                    latest_assistant=dict(_latest_asst) if _latest_asst else None,
-                    current_model_ref=str(model_ref),
-                    compacted_before_seq=_comp_seq,
-                    effective_limit=_eff,
-                )
-                if _stateful and _prev_rid:
-                    _last_user = next(
-                        (m for m in reversed(messages) if m.get("role") == "user"), None
+        # D-RESUME-TOOLS-DROPPED (found 2026-07-07, live-repro'd) — the stateful-
+        # chain decision and "does this turn use _stream_with_tools at all" are
+        # two SEPARATE questions that a single combined condition here used to
+        # conflate: `if (use_tools or ...) and not is_resume:` skipped BOTH the
+        # chain decision AND the entire _stream_with_tools call on every resume,
+        # silently falling to the plain no-tools `_stream_via_gateway` path even
+        # when a resumed turn genuinely has tools to offer (e.g. re-advertising
+        # `propose_edit` after a frontend-tool suspend, or with no project so no
+        # memory tools) — exactly the regression `resume_stream_response`'s own
+        # comment two screens up describes fixing, silently re-broken by this
+        # gate. Only the INNER chain-decision sub-block may skip on resume.
+        if use_tools or _subagent_tool is not None:
+            if not is_resume:
+                # P3 review H1 — a RESUME runs STATELESS over the full saved working
+                # (the suspend reconstructed the complete context). A delta rebuild
+                # here would drop the assistant tool_call + the frontend tool result
+                # the resume appended → the model would never see the tool outcome
+                # (re-suspend loop). The resumed turn persists response_id=None, so
+                # the NEXT turn cleanly re-establishes the chain (rule-1).
+                #
+                # ── Stateful /v1/responses chain decision (P2 §5a) ──────────────
+                # Read the latest assistant turn for this session/branch and decide:
+                # stateless / stateful-establish / stateful-continue. Degrade-safe —
+                # any error falls back to stateless (full context). Only build the
+                # delta when continuing from a valid head (system blocks carry the
+                # fresh grounding → the gateway lifts them to `instructions`; the
+                # user turn is the input).
+                try:
+                    _latest_asst = await pool.fetchrow(
+                        """
+                        SELECT response_id, model_ref::text AS model_ref, input_tokens, sequence_num,
+                               (context_breakdown->'caching'->>'context_size')::int AS context_size
+                        FROM chat_messages
+                        WHERE session_id=$1 AND role='assistant' AND branch_id=0
+                        ORDER BY sequence_num DESC LIMIT 1
+                        """,
+                        session_id,
                     )
-                    _delta_msgs = [m for m in messages if m.get("role") == "system"]
-                    if _last_user is not None:
-                        _delta_msgs.append(_last_user)
-            except Exception:
-                logger.warning("stateful chain decision skipped — stateless", exc_info=True)
-                _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
+                    _comp_seq = await pool.fetchval(
+                        "SELECT compacted_before_seq FROM chat_sessions WHERE session_id=$1",
+                        session_id,
+                    )
+                    _eff = compute_budget(
+                        used_tokens=0,
+                        context_length=creds.context_length,
+                        max_output_tokens=int(gen_params.get("max_tokens") or 0),
+                    ).effective_limit
+                    _stateful, _prev_rid, _chain_reason = decide_chain(
+                        capabilities=getattr(creds, "capabilities", None),
+                        latest_assistant=dict(_latest_asst) if _latest_asst else None,
+                        current_model_ref=str(model_ref),
+                        compacted_before_seq=_comp_seq,
+                        effective_limit=_eff,
+                    )
+                    if _stateful and _prev_rid:
+                        _last_user = next(
+                            (m for m in reversed(messages) if m.get("role") == "user"), None
+                        )
+                        _delta_msgs = [m for m in messages if m.get("role") == "system"]
+                        if _last_user is not None:
+                            _delta_msgs.append(_last_user)
+                except Exception:
+                    logger.warning("stateful chain decision skipped — stateless", exc_info=True)
+                    _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
 
             chunk_stream = _stream_with_tools(
                 model_source=model_source,
@@ -2911,6 +3182,7 @@ async def _emit_chat_turn(
                 surface_tracker=surface_tracker,
                 effective_limit=_eff_limit,
                 compact_target=_compact_target,
+                context_length=creds.context_length,
                 permission_mode=permission_mode,
                 approval_check=_approval_check,
                 hooks=_turn_hooks,
@@ -3653,6 +3925,7 @@ async def resume_stream_response(
                 editor=True,
                 book_scoped=True,
                 studio=True,
+                context_length=creds.context_length,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend

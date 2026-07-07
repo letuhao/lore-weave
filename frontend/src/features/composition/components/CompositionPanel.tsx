@@ -738,7 +738,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
           />
         </DockSlot>
         <DockSlot {...slot('planner')}>
-          <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={modelList ?? []} token={token} />
+          <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" token={token} />
         </DockSlot>
         <DockSlot {...slot('beats')}>
           <BeatSheetView bookId={bookId} projectId={work.project_id} token={token} />

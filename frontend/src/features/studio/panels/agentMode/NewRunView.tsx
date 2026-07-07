@@ -74,25 +74,45 @@ export function NewRunView({ bookId, onCreated, onCancel }: Props) {
         <label className="mb-1 block text-[10.5px] uppercase tracking-wide text-muted-foreground">
           {t('authoringRun.newRun.chaptersLabel', { defaultValue: 'Chapters to include (book TOC)' })}
         </label>
-        <div className="max-h-48 overflow-y-auto rounded-md border">
-          {f.chapters.map((c) => (
-            <label key={c.chapter_id} className="flex items-center gap-2 border-b px-2 py-1.5 text-xs last:border-b-0">
-              <input
-                type="checkbox"
-                data-testid={`agent-mode-chapter-check-${c.chapter_id}`}
-                checked={f.scopeIds.includes(c.chapter_id)}
-                onChange={() => f.toggleChapter(c.chapter_id)}
-              />
-              {c.title || c.original_filename}
-            </label>
-          ))}
-        </div>
-        <p className="mt-1 text-[10.5px] text-muted-foreground">
-          {t('authoringRun.newRun.chaptersHint', {
-            total: f.chapters.length, selected: f.scopeIds.length,
-            defaultValue: '{{total}} chapters in book · {{selected}} selected',
-          })}
-        </p>
+        {f.chapters.length === 0 ? (
+          <p data-testid="agent-mode-chapters-empty" className="text-xs text-muted-foreground">
+            {t('authoringRun.newRun.chaptersEmpty', {
+              defaultValue: 'This book has no chapters yet — a run needs existing chapters to revise/draft against.',
+            })}{' '}
+            <button
+              type="button"
+              data-testid="agent-mode-chapters-empty-cta"
+              onClick={() => host.openPanel('planner')}
+              className="text-primary underline hover:no-underline"
+            >
+              {t('authoringRun.newRun.chaptersEmptyCta', {
+                defaultValue: 'Open Planner and bootstrap chapters from your plan →',
+              })}
+            </button>
+          </p>
+        ) : (
+          <>
+            <div className="max-h-48 overflow-y-auto rounded-md border">
+              {f.chapters.map((c) => (
+                <label key={c.chapter_id} className="flex items-center gap-2 border-b px-2 py-1.5 text-xs last:border-b-0">
+                  <input
+                    type="checkbox"
+                    data-testid={`agent-mode-chapter-check-${c.chapter_id}`}
+                    checked={f.scopeIds.includes(c.chapter_id)}
+                    onChange={() => f.toggleChapter(c.chapter_id)}
+                  />
+                  {c.title || c.original_filename}
+                </label>
+              ))}
+            </div>
+            <p className="mt-1 text-[10.5px] text-muted-foreground">
+              {t('authoringRun.newRun.chaptersHint', {
+                total: f.chapters.length, selected: f.scopeIds.length,
+                defaultValue: '{{total}} chapters in book · {{selected}} selected',
+              })}
+            </p>
+          </>
+        )}
       </div>
 
       <div>

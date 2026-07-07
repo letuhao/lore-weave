@@ -38,10 +38,24 @@ def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
 
 def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
+    # D-PLANFORGE-GENERAL-VALIDATE: this whole module started as the POC's OWN
+    # golden-fixture acceptance test (validate_golden below) and its `run_rules`
+    # got reused directly as the LIVE per-user validate()/compile() gate without
+    # ever being generalized. The 4 rules below hard-require the ORIGINAL POC
+    # story's own specifics (its PA/HA/CD/THR variable framework, its arc_2
+    # discovery-kind arc, its >=6 open-questions checklist) -- for any other
+    # user's story these are usually meaningless, so they're demoted to
+    # "advisory" (reported, never blocking) rather than changing their pass/
+    # fail condition (which would break the golden negative-tests below that
+    # intentionally assert these SAME conditions on the fixture). A genuinely
+    # general validator (structural checks that apply to any novel-system
+    # spec) is real follow-up work, not a same-session rewrite.
     variables = spec.get("layers", {}).get("variables", [])
     codes = {v["code"] for v in variables}
     ok_vars = codes >= {"PA", "HA", "CD", "THR"}
-    results.append({"rule": "vars_four", "pass": ok_vars, "detail": f"codes={sorted(codes)}"})
+    results.append(
+        {"rule": "vars_four", "pass": ok_vars, "detail": f"codes={sorted(codes)}", "tier": "advisory"}
+    )
 
     pa_not_realm = True
     for ev in spec.get("events", []):
@@ -72,6 +86,7 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
             "rule": "arc2_discovery",
             "pass": arc2_ok,
             "detail": arc2.get("theme", "") if arc2 else "missing",
+            "tier": "advisory",
         }
     )
 
@@ -94,7 +109,9 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
             thr_fail = True
         if "tiền kiếp" in syn and "giải thích" in syn:
             thr_fail = True
-    results.append({"rule": "thr_no_early_explain", "pass": not thr_fail, "detail": ""})
+    results.append(
+        {"rule": "thr_no_early_explain", "pass": not thr_fail, "detail": "", "tier": "advisory"}
+    )
 
     open_q = spec.get("meta", {}).get("open_questions", [])
     results.append(
@@ -102,6 +119,7 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
             "rule": "open_questions_preserved",
             "pass": len(open_q) >= 6,
             "detail": f"count={len(open_q)}",
+            "tier": "advisory",
         }
     )
 

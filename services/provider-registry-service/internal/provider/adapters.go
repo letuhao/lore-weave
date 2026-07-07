@@ -742,7 +742,7 @@ func (a *openaiAdapter) ListModels(ctx context.Context, endpointBaseURL, secret 
 	}
 	// OpenAI-shape: {"data":[{"id":...}]}
 	if data, ok := out["data"].([]any); ok && len(data) > 0 {
-		return parseOpenAIModels(data), nil
+		return parseOpenAIModels(data, contextLengthByName(a.staticInventory)), nil
 	}
 	// A `models`-keyed payload (no top-level `data`) is one of two shapes. The
 	// local-rerank backend on :28417 (and other LM-Studio-native servers) returns
@@ -761,6 +761,22 @@ func (a *openaiAdapter) ListModels(ctx context.Context, endpointBaseURL, secret 
 		return parseCohereModels(models), nil
 	}
 	return a.staticInventory, nil
+}
+
+// contextLengthByName indexes a static preconfig inventory by provider_model_name for
+// merging into a live discovery result — a live OpenAI /v1/models call never publishes
+// context_length itself, but the preconfig already knows it for known models (e.g.
+// gpt-4o → 128000). Without this merge, every successful live sync silently reported
+// "unknown" context_length even for well-known models, needlessly widening how often
+// downstream token-budget math had to guess.
+func contextLengthByName(inventory []ModelInventory) map[string]int {
+	out := make(map[string]int, len(inventory))
+	for _, m := range inventory {
+		if m.ContextLength != nil {
+			out[m.ProviderModelName] = *m.ContextLength
+		}
+	}
+	return out
 }
 
 // isLMStudioNativeIDShape reports whether a `models` array is the LM-Studio-
@@ -866,7 +882,9 @@ func parseCohereModels(models []any) []ModelInventory {
 	return out
 }
 
-func parseOpenAIModels(data []any) []ModelInventory {
+// knownContextLength is nil-able so callers without preconfig data (e.g. the test in
+// adapters_rerank_discovery_test.go) can pass nil and get the pre-merge behavior.
+func parseOpenAIModels(data []any, knownContextLength map[string]int) []ModelInventory {
 	var models []ModelInventory
 	for _, item := range data {
 		m, ok := item.(map[string]any)
@@ -893,10 +911,18 @@ func parseOpenAIModels(data []any) []ModelInventory {
 		if strings.HasPrefix(id, "o1") || strings.HasPrefix(id, "o3") || strings.HasPrefix(id, "o4") {
 			flags["thinking"] = true
 		}
-		models = append(models, ModelInventory{
+		entry := ModelInventory{
 			ProviderModelName: id,
 			CapabilityFlags:   flags,
-		})
+		}
+		// The live /v1/models call never publishes context_length itself — merge in
+		// the preconfig's known value by name (e.g. gpt-4o → 128000) so a successful
+		// live sync doesn't report "unknown" for models we actually have data for.
+		if cl, ok := knownContextLength[id]; ok {
+			ctxLen := cl
+			entry.ContextLength = &ctxLen
+		}
+		models = append(models, entry)
 	}
 	return models
 }

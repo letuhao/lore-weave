@@ -49,6 +49,9 @@ class _FakeLLM:
                            "operation": operation, "input": input})
         return _FakeJob(self._frames.pop(0) if self._frames else "{}")
 
+    async def resolve_context_length(self, model_source, model_ref):
+        return None  # unresolved in tests — the SDK's flat default applies
+
 
 class _FakeArcRepo:
     def __init__(self):

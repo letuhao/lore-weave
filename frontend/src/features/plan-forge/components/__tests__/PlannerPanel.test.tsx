@@ -79,13 +79,43 @@ describe('PlannerPanel model picker (W5 shared ModelPicker)', () => {
     listRuns.mockResolvedValue({ items: [], next_cursor: null });
   });
 
-  it('rules mode proposes without any model', () => {
+  it('rules mode (explicitly chosen) proposes without any model', () => {
+    // D-PLANFORGE-GENERAL-VALIDATE: 'rules' is no longer the default (it's a
+    // fixture-only parser), but it must still work when the writer picks it.
     listUserModelsMock.mockResolvedValue({ items: [] });
     renderPanel();
     fireEvent.click(screen.getByTestId('plan-tab-run'));
+    fireEvent.click(screen.getByTestId('plan-mode-rules'));
     fireEvent.change(screen.getByTestId('plan-source-input'), { target: { value: '# system' } });
     fireEvent.click(screen.getByTestId('plan-propose-btn'));
     expect(createRun).toHaveBeenCalledWith({ source_markdown: '# system', mode: 'rules' });
+  });
+
+  it('defaults to llm mode on open (D-PLANFORGE-GENERAL-VALIDATE)', async () => {
+    listUserModelsMock.mockResolvedValue({ items: [model('m-first', 'First'), model('m-fav', 'Fav', true)] });
+    renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
+    // Never clicks plan-mode-llm — the model picker appearing proves llm is
+    // already the active mode by default.
+    await waitFor(() => {
+      const trigger = within(screen.getByTestId('plan-model-picker')).getByRole('combobox');
+      expect(trigger).toHaveTextContent('Fav');
+    });
+  });
+
+  it('never auto-picks a model with an explicit non-chat capability flag (D-PLANFORGE-MODEL-AUTOPICK)', async () => {
+    const reranker = {
+      ...model('m-rerank', 'bge-reranker-v2-m3'),
+      capability_flags: { _capability: 'chat', rerank: true },
+    };
+    const chatModel = model('m-chat', 'Real Chat Model');
+    listUserModelsMock.mockResolvedValue({ items: [reranker, chatModel] });
+    renderPanel();
+    fireEvent.click(screen.getByTestId('plan-tab-run'));
+    await waitFor(() => {
+      const trigger = within(screen.getByTestId('plan-model-picker')).getByRole('combobox');
+      expect(trigger).toHaveTextContent('Real Chat Model');
+    });
   });
 
   it('llm mode auto-picks the FAVORITE model as the derived default and proposes with it', async () => {

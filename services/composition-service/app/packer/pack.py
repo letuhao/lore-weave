@@ -215,7 +215,7 @@ async def pack(
     if is_derivative:
         assemble.assert_derivative_scoped(req.project_id, req.source_project_id)
     elif req.project_id is None:
-        return await _pack_null_project(req, grant=grant, need=need)
+        return await _pack_null_project(req, grant=grant, need=need, budget_tokens=budget_tokens)
     # A1: never pack unscoped (knowledge timeline/entities widen cross-project).
     assemble.assert_project_scoped(req.project_id)
     # SEC2 (E0-4c): grant-aware book chokepoint BEFORE any internal (token-trust)
@@ -503,6 +503,7 @@ async def pack(
 
 async def _pack_null_project(
     req: PackRequest, *, grant: "GrantClient | None", need: "GrantLevel | None",
+    budget_tokens: int | None = None,
 ) -> PackedContext:
     """C16 (WG-3): build an EMPTY-but-valid pack for a lazy null-project Work.
 
@@ -524,7 +525,13 @@ async def _pack_null_project(
         planned=[], recent=[], lore=[], knowledge_seen=False, open_promises=[],
     )
     segs = assemble.build_segments(bundle, guide=req.guide)
-    bres = B.enforce_budget(segs, settings.pack_token_budget, B.default_counter())
+    # /review-impl MED: this path used to read the FLAT settings.pack_token_budget
+    # directly, silently skipping the caller's already-scale_by_window'd
+    # budget_tokens — the one pack() branch that never scaled with context_length.
+    bres = B.enforce_budget(
+        segs, budget_tokens if budget_tokens is not None else settings.pack_token_budget,
+        B.default_counter(),
+    )
     blocks = assemble.segments_to_blocks(bres.kept)
     warnings = [
         "grounding_unavailable: this work has no knowledge project yet "

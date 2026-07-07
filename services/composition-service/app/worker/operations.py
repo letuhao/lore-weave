@@ -24,6 +24,7 @@ import asyncpg
 from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.worker.constants import SUPPORTED_OPERATIONS
+from loreweave_context import scale_by_window
 
 __all__ = [
     "UnsupportedOperationError",
@@ -207,13 +208,20 @@ async def run_promise_coverage(
     (the endpoint rendered the outline plan + assembled every chapter's prose — it has the
     bearer/pool). Derives the tracked-promise set from the SPEC and scores the book against
     it. Diagnostic only — read-only counts/verdicts, nothing to write back."""
-    from app.engine.quality_report import build_promise_coverage
+    from app.engine.quality_report import _COVERAGE_WINDOW_CHARS, build_promise_coverage
+
+    # Model-context-aware window sizing — a flat 12K-char window tuned for a mid-size
+    # model shouldn't cap a genuinely bigger model at the same number (fewer, larger
+    # windows = fewer score calls + more surrounding context per verdict).
+    context_length = await llm.resolve_context_length(input["model_source"], input["model_ref"])
+    window_chars = scale_by_window(_COVERAGE_WINDOW_CHARS, context_length)
 
     coverage = await build_promise_coverage(
         llm, user_id=user_id,
         model_source=input["model_source"], model_ref=input["model_ref"],
         premise=input.get("premise", ""), plan_text=input.get("plan_text", ""),
         book_text=input["book_text"], source_language=input.get("source_language", "auto"),
+        window_chars=window_chars,
         cancel_check=cancel_check,
     )
     return {"coverage": coverage, "chapters": input.get("chapters")}
@@ -255,10 +263,14 @@ async def run_stitch(
     max_out = input["max_out"]
     reasoning_effort = input.get("reasoning_effort")  # already None when passthrough
 
+    # Model-context-aware input sizing — a flat 24K-char cap tuned for a mid-size
+    # model shouldn't cap a genuinely bigger model at the same number.
+    _stitch_context_length = await llm.resolve_context_length(input["model_source"], input["model_ref"])
+    _stitch_chars = scale_by_window(settings.stitch_max_input_chars, _stitch_context_length)
     stitched, stitch_finish = await stitch_chapter(
         llm, user_id=user_id, model_source=input["model_source"], model_ref=input["model_ref"],
         scene_drafts=drafts, chapter_intent=input["chapter_intent"], profile=profile,
-        max_tokens=max_out, max_input_chars=settings.stitch_max_input_chars,
+        max_tokens=max_out, max_input_chars=_stitch_chars,
         reasoning_effort=reasoning_effort, cancel_check=cancel_check,
     )
     degraded = not stitched

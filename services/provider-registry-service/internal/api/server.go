@@ -1638,6 +1638,13 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2 AND status='active'
 		writeError(w, http.StatusBadRequest, "M03_MODEL_CONTEXT_REQUIRED", "context_length is required for ollama/lm_studio")
 		return
 	}
+	// /review-impl HIGH: the check above only fires for ollama/lm_studio (where
+	// context_length is required); any other provider could still supply an
+	// explicit 0/negative context_length with no guard at all.
+	if in.ContextLength != nil && *in.ContextLength <= 0 {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "context_length must be positive")
+		return
+	}
 	flagsBytes, _ := json.Marshal(in.CapabilityFlags)
 
 	// Phase 6a — pricing pre-fill. An explicit `pricing` from the caller
@@ -1941,6 +1948,15 @@ func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
+		return
+	}
+	// /review-impl HIGH: createUserModel rejects a non-positive context_length
+	// (for ollama/lm_studio, where it's required) but patch had no such guard at
+	// all, so an edit-after-create could write 0/negative and every downstream
+	// scale_by_window/clamp consumer would treat it as "resolved" — producing a
+	// negative max_tokens sent straight to the LLM provider.
+	if in.ContextLength != nil && *in.ContextLength <= 0 {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "context_length must be positive")
 		return
 	}
 	flagsBytes, _ := json.Marshal(in.CapabilityFlags)
@@ -2740,19 +2756,29 @@ func putLE32(b []byte, v uint32) {
 	b[3] = byte(v >> 24)
 }
 
-// getModelContextWindow returns the context window size (in tokens) for a given model.
-// Called internally by the translation-worker before chunking a chapter.
-// No auth required — this endpoint is internal only and returns a safe fallback on any error.
+// getModelContextWindow returns the context window size (in tokens) for a given model, or
+// `context_window: null` (`resolved: false`) when it genuinely cannot be determined. Called
+// internally by the translation-worker before chunking a chapter. No auth required — internal
+// only. IMPORTANT: this must never fabricate a number on failure — a guessed value (e.g. the
+// historical flat 8192) is indistinguishable from a real one to the caller and silently drives
+// real chunk-sizing math with the wrong window for any model whose real size differs (which is
+// most of them). Callers decide their own conservative fallback for the genuinely-unknown case,
+// same as chat-service's compute_target already does for context_length=None.
 func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
+	unresolved := func() {
+		writeJSON(w, http.StatusOK, map[string]any{"context_window": nil, "resolved": false})
+	}
+	resolved := func(n int) {
+		writeJSON(w, http.StatusOK, map[string]any{"context_window": n, "resolved": true})
+	}
+
 	modelRefStr := chi.URLParam(r, "model_ref")
 	modelRef, err := uuid.Parse(modelRefStr)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"context_window": 8192})
+		unresolved()
 		return
 	}
 	modelSource := r.URL.Query().Get("model_source")
-
-	const fallback = 8192
 
 	if modelSource == "platform_model" {
 		var providerKind, providerModelName string
@@ -2761,26 +2787,26 @@ func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
 			modelRef,
 		).Scan(&providerKind, &providerModelName)
 		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			unresolved()
 			return
 		}
 		adapter, err := provider.ResolveAdapter(providerKind, s.client)
 		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			unresolved()
 			return
 		}
 		models, err := adapter.ListModels(r.Context(), "", "")
 		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			unresolved()
 			return
 		}
 		for _, m := range models {
 			if m.ProviderModelName == providerModelName && m.ContextLength != nil {
-				writeJSON(w, http.StatusOK, map[string]any{"context_window": *m.ContextLength})
+				resolved(*m.ContextLength)
 				return
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+		unresolved()
 		return
 	}
 
@@ -2791,10 +2817,10 @@ func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
 		modelRef,
 	).Scan(&contextLength)
 	if err != nil || contextLength == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+		unresolved()
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"context_window": *contextLength})
+	resolved(*contextLength)
 }
 
 // getInternalModelInfo resolves a model_ref to its provider_kind +

@@ -1,5 +1,132 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Hardcoded context-window audit — Tier 0/1/2 shipped + `/review-impl` + Tier 3 closed,
+2026-07-08.** Full detail in
+[`docs/plans/2026-07-07-hardcoded-context-window-constants-audit.md`](../plans/2026-07-07-hardcoded-context-window-constants-audit.md)'s
+`/review-impl` findings section + Tier 3 correction. Summary of this pass:
+
+- **HIGH fixed:** a negative/zero `context_length` was treated as "resolved" through the
+  whole chain, producing a negative `max_tokens` sent to a provider. Root cause:
+  `patchUserModel` (provider-registry-service) had zero validation (unlike `createUserModel`),
+  and 3 resolver call sites used a falsy-only check (`if cw else None` / `cw or FALLBACK`)
+  that a negative number sails through (negative ints are truthy in Python/Go isn't the
+  issue — the check itself just didn't test the sign). Fixed at the DB-write boundary
+  (both Go handlers now reject `context_length <= 0`) + defense-in-depth at every downstream
+  falsy check (`_context_length.py`, composition-service's `llm_client.py`,
+  translation-service's `extraction_model.py`, `entity_recovery.py`/`pass2_filter.py`,
+  `knowledge_client.py`) + the FE `EditModelModal.tsx` input gained `min={1}`.
+- **MED fixed:** subagent's nested `_stream_with_tools` call (chat-service
+  `stream_service.py`) dropped `context_length` — forwarded now, but only when the subagent
+  runs the SAME model as the caller (a different `sub_model_ref` correctly keeps the flat
+  default rather than misapplying the parent's window).
+- **MED fixed:** composition-service's null-project `pack()` branch never scaled its budget
+  — `_pack_null_project` read the flat `settings.pack_token_budget` directly instead of the
+  caller's already-scaled `budget_tokens`. Fixed.
+- **LOW, all closed:** corrected an overclaiming test comment in
+  `context_window_test.go` (no docker-compose integration suite actually exists for this
+  service yet); strengthened a weak assertion in `test_context_length_scales_the_distill_cap`;
+  added the missing SDK-level scaling test for `summarize_level`; added the missing
+  effect-proving test for `build_multi_project_mode`'s shared-budget scaling; resolved the
+  plan's own flagged-open question — ai-gateway's `grounding.controller.ts` is a pure
+  JSON-body pass-through (not the MCP federation path), so `context_length` DOES survive
+  the chat→knowledge hop unmodified.
+- **Tier 3 verified + closed (not a live bug):** the plan's original claim that
+  `ModelCaps`/`planner.plan()` have "zero production instantiations" was WRONG — verified
+  they ARE used by translation-service's `estimate_extraction_cost()` (real callers:
+  `mcp/server.py`, `routers/extraction.py`). Corrected the doc. Still not an active bug: the
+  reachable fallback path is a cost-**estimate** (pre-job quote), never drives a real LLM
+  call's chunk sizing (that's `chapter_worker.py`, a separate already-fixed mechanism) — so
+  it matches the doc's own "Ruled out" cost-estimate-heuristic category, not a Tier-1/2 bug.
+  `_build_budget_for_model()` specifically still has zero callers, confirmed.
+- **New, OUT-OF-SCOPE finding flagged for the user (not fixed — needs a product decision,
+  not a mechanical patch):** while verifying Tier 3, found `estimate_extraction_cost()`
+  (`extraction_prompt.py:520-539`) appears to double-apply the reasoning-effort output
+  multiplier on the planner path — its own local table scales `output_per_call` once, then
+  `planner.py`'s separate multiplier table scales the ALREADY-scaled value again (for
+  `effort="high"`: 2000 × 4.0 × 2.5 = 20,000, not the intended single scaling). The existing
+  test only asserts monotonic growth, not an exact value, so it doesn't catch this. Root
+  cause is clear but which of the two multiplier tables should govern is a product call, not
+  something to guess-fix — flagged in the plan doc, not touched.
+- All 7 touched services re-verified green after the `/review-impl` fixes: provider-registry
+  Go (`go build` + `go test`, all pass), sdks/python (785 passed, same 6 pre-existing
+  unrelated failures), chat-service (1118), composition-service (1674, up from 1670),
+  knowledge-service (3796, up from 3795), translation-service (1041), worker-ai (308, same 1
+  pre-existing unrelated failure). Frontend `tsc --noEmit` clean.
+
+---
+
+**Hardcoded context-window audit — Tier 0 + Tier 1 + Tier 2 ALL SHIPPED, 2026-07-08.** Full
+detail in
+[`docs/plans/2026-07-07-hardcoded-context-window-constants-audit.md`](../plans/2026-07-07-hardcoded-context-window-constants-audit.md)'s
+completion logs. Summary: fixed `provider-registry-service`'s `getModelContextWindow`
+fabricating `8192` on every failure path (now returns `resolved:false`, never guesses) +
+merged preconfig `context_length` into live OpenAI discovery; deduped `chapter_worker.py`'s
+fallback with the shared helper. Unlocked model-context-aware chunk sizing for all 4 KG
+extractors (entity/relation/event/fact) AND the sync `extract_pass2` path — the bug wasn't
+scoped to the decoupled path alone as first thought. Added a new shared kernel helper
+`loreweave_context.budget.scale_by_window`, wired through chat-service (tool-surface
+budgets, steering cap, D7 tool-result cap, story_state cap, subagent result cap),
+composition-service (pack/compress/stitch/coverage/motif-chunk budgets — needed a new
+`LLMClient.resolve_context_length`), translation-service's glossary-translate worker (a
+*clamp-down* for small windows, not scale-up), and knowledge-service's Mode-3 budget (the
+one genuine **cross-service contract change**: chat-service now sends `context_length` as
+a new additive field on `POST /context/build`, matching this endpoint's own established
+optional-field pattern). `sdks/python`'s `entity_recovery.py`/`pass2_filter.py` needed the
+same clamp-down shape as translation's fix (output scales by item count, not window — the
+bug was no ceiling at all, not a wrong ceiling), threaded through both the sync `pass2.py`
+path and the decoupled `worker-ai` path. Reviewed and explicitly excluded 2 items that
+aren't the same bug class (`SELECTION_MAX_CHARS` is a Pydantic request-validation
+constraint + deliberate UX backstop; `grounding.py`'s preview endpoint has no model
+reference to scale against). All touched services' full suites green (provider-registry Go,
+sdks/python, worker-ai, translation-service, chat-service, composition-service,
+knowledge-service — new tests added in every one, including the two-services-apart
+context_length threading). **Only Tier 3 left, genuinely low-priority:** latent dead-code
+defaults in `loreweave_extraction.context_budget` (`DEFAULT_MODEL_CONTEXT`/
+`DEFAULT_MAX_OUTPUT_TOKENS`) — zero production callers today, fix only if/when
+`loreweave_extraction.planner`/`ModelCaps` gets wired up. **One thing NOT independently
+verified:** whether ai-gateway's MCP federation hop preserves the new `context_length`
+field on the chat→knowledge `/context/build` call (there's a prior precedent of a
+federation hop silently dropping a field — `[[gateway-drops-xprojectid-envelope]]`) — worth
+checking if Mode-3 budget scaling doesn't seem to take effect live.
+
+The web/deep search scoping issue flagged earlier in this conversation (session
+`chat/019f38aa-c817-78b6-a686-dc9fe13cff6f`) — user confirmed a separate agent/session
+already fixed it (2026-07-08). Not independently re-verified in THIS session; if it
+resurfaces, re-root-cause rather than assuming stale context.
+
+---
+
+**Context budget hardcoded-cap bug fixed + repo-wide audit, 2026-07-07.** User hit
+`sdks/python/loreweave_context/budget.py`'s absolute cap (`_TARGET_MAX_CAP=200_000`) clamping
+the Context Inspector's soft target for a 1M-context model to the same number a 200K model
+got. Fixed: both `floor`/`surface_max` are now pure fractions of the model's resolved
+`context_length` (`0.1×`/`0.75×window`), no absolute ceiling at all — tests updated + a new
+1M-window regression test added (both `sdks/python/tests/test_context_plan.py` and
+`services/chat-service/tests/test_token_budget.py`). User then asked for a full audit of the
+same bug class elsewhere — see
+[`docs/plans/2026-07-07-hardcoded-context-window-constants-audit.md`](../plans/2026-07-07-hardcoded-context-window-constants-audit.md):
+**12 more hits found** across chat-service, composition-service, translation-service,
+knowledge-service, and `sdks/python` extraction — ranked Tier 0 (provider-registry-service's
+`getModelContextWindow` silently fabricates an `8192` fallback on 5 failure paths, poisoning
+translation-service's chunk sizing — fix this FIRST) → Tier 1 (cheap, `context_length`
+already resolvable at the call site — includes a one-line-fix root cause in
+`services/worker-ai/app/decoupled_extract.py` that unlocks 4 extractors at once) → Tier 2
+(needs new parameter plumbing) → Tier 3 (latent/unreachable, fix before ever wired up). Audit
+only — **no fixes applied yet beyond the original `budget.py` bug**; this is next-session
+work. Also open from the same conversation: web/deep search tool is entity/glossary-scoped
+and errors when asked to search general topics outside a book (session
+`chat/019f38aa-c817-78b6-a686-dc9fe13cff6f` — exception, agent output not tracked); nav-scroll
+CSS fix (`Sidebar.tsx:129` missing `min-h-0 overflow-y-auto`); Context Inspector page layout
+(`ContextInspectorPage.tsx:14` hardcoded `h-[calc(100vh-4rem)]` wrong for its `DashboardLayout`
+ancestor); notification mark-read race (`NotificationBell.tsx:58-66` fires PATCH without
+awaiting, a concurrent GET clobbers the optimistic state); Inspector missing prompt-caching
+surfacing (data already flows to the API, FE `ContextTraceFrame` type just never declares
+it); glossary `/genres` 404 (`SettingsTab.tsx` still calls a route retired in the G4e
+migration, needs to move to `/ontology/genres`) — **none of these 6 have been fixed yet**,
+all root-caused only.
+
+---
+
 **Studio v2 Quality tab — hub + 4 sibling panels shipped, /review-impl'd, 2026-07-06.**
 Plan [`docs/plans/2026-07-06-studio-quality-tab.md`](../plans/2026-07-06-studio-quality-tab.md). Filled the
 `ActivityView='quality'` stub (previously just "Coming soon" text) with real capabilities, full-scope per PO

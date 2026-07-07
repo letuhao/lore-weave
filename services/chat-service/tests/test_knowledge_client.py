@@ -337,6 +337,29 @@ class TestKnowledgeClientBodyNormalisation:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_context_length_forwarded_when_present(self):
+        """Model-context-aware Mode-3 budget scaling: the session model's real
+        resolved window rides the body so knowledge-service can scale its flat
+        mode3_token_budget instead of every model getting the same cap."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi", context_length=1_000_000)
+        body = self._json_body(captured[0])
+        assert body["context_length"] == 1_000_000
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_context_length_omitted_when_absent(self):
+        """Unknown window → never sent → older/current knowledge-service keeps
+        its flat default (byte-identical)."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi", context_length=None)
+        body = self._json_body(captured[0])
+        assert "context_length" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_long_message_truncated_to_max(self):
         captured: list = []
         client = _make_client(_capture(captured))

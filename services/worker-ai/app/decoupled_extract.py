@@ -306,9 +306,21 @@ def _schema_from(rs: dict[str, Any]):
     return ExtractionSchema.from_resolved(raw)
 
 
+def _context_budget_from(rs: dict[str, Any]):
+    """Model-context-aware chunk sizing — `context_length` is resolved ONCE (via
+    ProviderRegistryClient) and stashed in resume_state by `_start_decoupled_chunk`,
+    alongside model_ref, so it survives a process restart the same way reasoning_effort
+    does. None (unresolved, or a legacy/pre-fix resume blob) ⇒ the SDK's legacy flat
+    chunk size — never guessed here."""
+    context_length = rs.get("context_length")
+    if not context_length:
+        return None
+    from loreweave_extraction.context_budget import ContextBudget
+    return ContextBudget(model_context=context_length)
+
+
 def assemble_entity_submit(rs: dict[str, Any]) -> dict:
-    """Submit kwargs for the entity stage (build_entity_system + build_entity_submit_kwargs).
-    context_budget=None matches worker-ai's extract_pass2 call (chunk_size=15)."""
+    """Submit kwargs for the entity stage (build_entity_system + build_entity_submit_kwargs)."""
     from loreweave_extraction.extractors.entity import (
         build_entity_submit_kwargs, build_entity_system,
     )
@@ -317,7 +329,7 @@ def assemble_entity_submit(rs: dict[str, Any]) -> dict:
     return build_entity_submit_kwargs(
         system_prompt=system, text=rs["chunk_text"],
         model_source=rs["model_source"], model_ref=rs["model_ref"],
-        project_id=rs["project_id"], context_budget=None,
+        project_id=rs["project_id"], context_budget=_context_budget_from(rs),
         # D-KG-WORKER-GRADED-EFFORT — graded effort stashed in resume_state by
         # _start_decoupled_chunk. Default "none" (legacy/pre-effort blob) ⇒ off.
         reasoning_effort=rs.get("reasoning_effort", "none"),
@@ -345,7 +357,8 @@ def assemble_trio_submits(rs: dict[str, Any]) -> dict[str, dict]:
     known = rs["all_known"]
     common = dict(
         text=rs["chunk_text"], model_source=rs["model_source"],
-        model_ref=rs["model_ref"], project_id=rs["project_id"], context_budget=None,
+        model_ref=rs["model_ref"], project_id=rs["project_id"],
+        context_budget=_context_budget_from(rs),
         # D-KG-WORKER-GRADED-EFFORT — same graded effort as the entity submit
         # (stashed in resume_state). Default "none" (legacy blob) ⇒ off.
         reasoning_effort=rs.get("reasoning_effort", "none"),
@@ -456,6 +469,7 @@ def assemble_recovery(rs: dict[str, Any]) -> tuple[dict[str, dict], dict[str, An
         out["recovery_batch_names"][key] = still_unmatched[batch_start:batch_start + n_items]
         submits[key] = build_recovery_submit_kwargs(
             config=cfg, system=system, user=user_msg, n_items=n_items,
+            context_length=rs.get("context_length"),
         )
     return submits, out
 
@@ -546,6 +560,7 @@ def assemble_filter(rs: dict[str, Any]) -> tuple[dict[str, dict], dict[str, Any]
             }
             submits[key] = build_filter_submit_kwargs(
                 config=cfg, system=system, user=user_msg, n_items=n_items,
+                context_length=rs.get("context_length"),
             )
     return submits, out
 

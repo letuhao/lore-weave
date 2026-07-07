@@ -166,7 +166,7 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium">{t('model_modal.add.context_length')}</label>
-              <input type="number" value={contextLength} onChange={(e) => setContextLength(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
+              <input type="number" min={1} step={1} value={contextLength} onChange={(e) => setContextLength(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
             </div>
           </div>
 

@@ -125,6 +125,14 @@ class TestCapResult:
         assert len(text) <= SUBAGENT_RESULT_CHAR_CAP + 100  # cap + the note
         assert "truncated" in text.lower()
 
+    def test_custom_char_cap_overrides_default(self):
+        # The caller (stream_service) scales this per the session model's real
+        # context_length instead of always using the flat SUBAGENT_RESULT_CHAR_CAP.
+        big = "x" * (SUBAGENT_RESULT_CHAR_CAP + 500)
+        text, truncated = cap_result(big, char_cap=SUBAGENT_RESULT_CHAR_CAP + 500)
+        assert truncated is False
+        assert text == big
+
 
 def test_depth_cap_is_one():
     # Depth is capped at 1 — a subagent can never spawn another subagent.

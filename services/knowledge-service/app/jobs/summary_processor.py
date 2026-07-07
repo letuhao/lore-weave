@@ -38,6 +38,7 @@ from app.db.neo4j_helpers import (
     summary_index_name,
 )
 from app.clients.book_client import get_book_client
+from app.clients.context_length import resolve_context_length
 from app.db.repositories.level_summaries import (
     Level,
     LevelSummariesRepo,
@@ -227,6 +228,10 @@ async def process_summarize_message(
     # 4. Call summarize_level extractor (LLM). E0-3 2a-2: a collaborator-
     # triggered summary resolves the LLM under the CALLER's key + LLM ref.
     project_id_str = msg.project_id or None
+    _bill_ref = _bill_llm_ref(msg)
+    # Model-context-aware input sizing — a flat 8000-char child-text cap tuned for
+    # a mid-size model shouldn't truncate a genuinely bigger model's input the same.
+    _context_length = await resolve_context_length("user_model", _bill_ref)
     summary = await summarize_level(
         level=msg.level,
         child_texts=child_texts,
@@ -234,8 +239,9 @@ async def process_summarize_message(
         user_id=_bill_user(msg),
         project_id=project_id_str,
         model_source="user_model",
-        model_ref=_bill_llm_ref(msg),
+        model_ref=_bill_ref,
         llm_client=deps.llm_client,
+        context_length=_context_length,
     )
     summary_text = summary.summary_text[:500]  # L3 fix: writer truncates
 

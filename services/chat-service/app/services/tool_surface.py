@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-from app.services.token_budget import estimate_tokens
+from app.services.token_budget import estimate_tokens, scale_by_window
 from app.services.tool_discovery import hot_tool_names, surface_hot_domains, tool_name
 
 ACTIVATED_TOOLS_CAP = 64
@@ -23,6 +23,10 @@ ACTIVATED_TOOLS_CAP = 64
 # bound the always-advertised sets by a TOKEN budget; `find_tools` pulls the long
 # tail on demand. Industry-standard "tool-RAG / lazy tool loading" (RAG-MCP,
 # Anthropic Tool Search): a small hot core + discovery beats shipping whole domains.
+# Both budgets are tuned around a mid-size (~200K) window — `scale_by_window` grows
+# them for a caller that resolves the session model's real (larger) context_length,
+# instead of every model, including a 1M-context one, being capped at the same flat
+# number (the exact bug class the Context Budget Law's `budget.py` fix addressed).
 HOT_SEED_TOKEN_BUDGET = 4000        # ~8-12 tools stay hot; rest lazy via find_tools
 ACTIVATED_TOOLS_TOKEN_BUDGET = 6000  # cap the find_tools-accumulated set by tokens
 
@@ -122,14 +126,16 @@ def discovery_seed_for_surface(
     editor: bool,
     book_scoped: bool,
     studio: bool = False,
+    context_length: int | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated)."""
     hot_domains = surface_hot_domains(editor=editor, book_scoped=book_scoped, studio=studio)
     # FIX (context-explosion): token-budget the hot-seed instead of seeding the
-    # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K.
+    # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
+    # session model with a larger real context_length via scale_by_window).
     raw_hot_seed = budget_names_by_tokens(
         catalog, hot_tool_names(catalog, hot_domains),
-        token_budget=HOT_SEED_TOKEN_BUDGET,
+        token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
     )
     eff_pins = pins.effective_enabled
     if pins.curated_mode:
@@ -144,6 +150,7 @@ def discovery_seed_for_surface(
             glossary_skill=glossary_in_skills,
             catalog=catalog,
             hot_domains=hot_domains,
+            context_length=context_length,
         )
     names = assemble_initial_active_names(
         curated=pins.curated_mode,
@@ -168,6 +175,7 @@ def effective_enabled_tools(
     glossary_skill: bool,
     catalog: list[dict],
     hot_domains: set[str],
+    context_length: int | None = None,
 ) -> list[str]:
     """When glossary skill is active in curated mode, auto-union glossary hot tools."""
     if not glossary_skill or not enabled_tools:
@@ -176,7 +184,7 @@ def effective_enabled_tools(
     # sessions with the glossary skill don't re-inflate the whole domain.
     hot = budget_names_by_tokens(
         catalog, hot_tool_names(catalog, hot_domains),
-        token_budget=HOT_SEED_TOKEN_BUDGET,
+        token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
     )
     return list(dict.fromkeys([*enabled_tools, *sorted(hot)]))
 
@@ -198,6 +206,7 @@ def merge_activated_tools(
     matched: set[str],
     *,
     catalog: list[dict] | None = None,
+    context_length: int | None = None,
 ) -> list[str]:
     """Union find_tools matches into the persisted activated set.
 
@@ -209,12 +218,13 @@ def merge_activated_tools(
     merged = list(dict.fromkeys([*current, *sorted(matched)]))
     if catalog is not None:
         tok = {tool_name(td): _tool_tokens(td) for td in catalog}
+        budget = scale_by_window(ACTIVATED_TOOLS_TOKEN_BUDGET, context_length)
         # keep newest-first until the token budget, then restore original order
         kept: list[str] = []
         used = 0
         for nm in reversed(merged):
             t = tok.get(nm, 0)
-            if used + t > ACTIVATED_TOOLS_TOKEN_BUDGET and kept:
+            if used + t > budget and kept:
                 break
             kept.append(nm)
             used += t

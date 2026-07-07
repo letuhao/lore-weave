@@ -35,7 +35,12 @@ async def get_model_context_window(model_source: str | None, model_ref: str | No
                 params={"model_source": model_source or "user_model"},
             )
             if r.status_code == 200:
-                return int(r.json().get("context_window") or FALLBACK_CONTEXT_WINDOW)
+                cw = r.json().get("context_window")
+                # /review-impl HIGH: `or FALLBACK` only guards falsy values —
+                # a negative context_window is truthy and would pass through,
+                # later driving a negative max_tokens/available-budget downstream.
+                if cw is not None and int(cw) > 0:
+                    return int(cw)
     except Exception as exc:  # noqa: BLE001 — fall back on any failure
         log.debug("extraction: context_window fetch failed (%s) — fallback %d", exc, FALLBACK_CONTEXT_WINDOW)
     return FALLBACK_CONTEXT_WINDOW

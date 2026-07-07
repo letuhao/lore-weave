@@ -24,13 +24,16 @@ from __future__ import annotations
 import logging
 import re
 
-from app.services.token_budget import estimate_tokens
+from app.services.token_budget import estimate_tokens, scale_by_window
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["select_steering", "render_steering_block", "STEERING_TOKEN_CAP"]
 
-# DR-C1 soft cap — steering is taxed every turn; keep tight.
+# DR-C1 soft cap — steering is taxed every turn; keep tight. Tuned around a mid-size
+# (~200K) window; `scale_by_window` grows the cap for a caller that resolves the
+# session model's real (larger) context_length, instead of every model being capped
+# at the same flat number.
 STEERING_TOKEN_CAP = 2000
 
 # "#name" token extraction: word chars (unicode) + hyphen, so "#tone." and
@@ -56,12 +59,15 @@ def select_steering(
     *,
     message: str,
     active_title: str | None = None,
+    context_length: int | None = None,
 ) -> list[dict]:
     """Select the entries that apply to this turn, ordered always →
     scene_match → manual/auto, soft-capped at STEERING_TOKEN_CAP (dropping
-    from the tail so `always` survives longest)."""
+    from the tail so `always` survives longest). The cap scales up for a session
+    model with a larger real context_length (None ⇒ the flat default)."""
     if not entries:
         return []
+    cap = scale_by_window(STEERING_TOKEN_CAP, context_length)
     mentioned = _mentioned_names(message)
 
     always: list[dict] = []
@@ -92,14 +98,14 @@ def select_steering(
     # Soft token cap: drop from the tail (manual first) while over budget.
     total = sum(estimate_tokens(f"## {e['name']}\n{e['body']}") for e in selected)
     dropped = 0
-    while len(selected) > 1 and total > STEERING_TOKEN_CAP:
+    while len(selected) > 1 and total > cap:
         victim = selected.pop()
         total -= estimate_tokens(f"## {victim['name']}\n{victim['body']}")
         dropped += 1
-    if dropped or total > STEERING_TOKEN_CAP:
+    if dropped or total > cap:
         logger.warning(
             "steering over the %d-token soft cap: dropped %d entr%s, ~%d tokens kept",
-            STEERING_TOKEN_CAP, dropped, "y" if dropped == 1 else "ies", total,
+            cap, dropped, "y" if dropped == 1 else "ies", total,
         )
     return selected
 

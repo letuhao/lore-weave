@@ -79,16 +79,19 @@ class PlanRunsRepo:
         return _row_run(row)
 
     async def find_by_checksum(
-        self, owner_user_id: UUID, book_id: UUID, source_checksum: str,
+        self, owner_user_id: UUID, book_id: UUID, source_checksum: str, mode: str,
     ) -> PlanRun | None:
+        # `mode` is part of the identity of a propose request, not just the text --
+        # a user re-Proposing identical markdown after switching Rules -> LLM must
+        # get a FRESH run, never the stale other-mode result (D-PLANFORGE-MODE-DEDUPE).
         query = f"""
         SELECT {_SELECT_RUN} FROM plan_run
-        WHERE owner_user_id = $1 AND book_id = $2 AND source_checksum = $3
+        WHERE owner_user_id = $1 AND book_id = $2 AND source_checksum = $3 AND mode = $4
         ORDER BY created_at DESC
         LIMIT 1
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, owner_user_id, book_id, source_checksum)
+            row = await c.fetchrow(query, owner_user_id, book_id, source_checksum, mode)
         return _row_run(row) if row else None
 
     async def get_for_owner(

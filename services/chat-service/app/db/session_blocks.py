@@ -19,6 +19,8 @@ from uuid import UUID
 
 import asyncpg
 
+from app.services.token_budget import scale_by_window
+
 
 @dataclass
 class SessionBlock:
@@ -114,6 +116,7 @@ async def project_story_state(
     current_turn: int,
     lore_gate: bool = False,
     scene_change: bool = False,
+    context_length: int | None = None,
 ) -> str:
     """T4 (D4/D5) — maintain the cached `story_state` block and return the text to
     project this turn (``""`` when nothing should be injected).
@@ -138,9 +141,14 @@ async def project_story_state(
     Best-effort by contract: the caller wraps this so any failure degrades the turn to
     "no block", never breaks it. Tenancy is enforced by `get_block`/`refresh_block`
     (session_id AND owner_user_id).
+
+    `context_length` (the session model's real resolved window, None ⇒ unknown) scales
+    the block's token cap via `scale_by_window` — a flat cap tuned for a mid-size window
+    shouldn't limit a genuinely bigger model's safety-net bible to the same size.
     """
     from app.services.story_state import (
         STORY_STATE_LABEL,
+        STORY_STATE_TOKEN_CAP,
         distill_story_state,
         render_story_state_block,
         should_refresh,
@@ -161,7 +169,10 @@ async def project_story_state(
             lore_gate=lore_gate,
             scene_change=scene_change,
         ):
-            value, est = distill_story_state(refresh_source)
+            value, est = distill_story_state(
+                refresh_source,
+                token_cap=scale_by_window(STORY_STATE_TOKEN_CAP, context_length),
+            )
             await refresh_block(
                 pool,
                 session_id=session_id,

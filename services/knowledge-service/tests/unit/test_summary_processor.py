@@ -23,6 +23,19 @@ _BOOK_ID = str(uuid4())
 _CHAPTER_ID = str(uuid4())
 
 
+@pytest.fixture(autouse=True)
+def _no_real_context_length_lookup():
+    """process_summarize_message resolves the model's real context window before
+    calling summarize_level — best-effort network I/O that must never actually hit
+    the network in a unit test (no provider-registry running here). Unresolved
+    (None) matches production's own degrade-safe behavior on a real failure."""
+    with patch(
+        "app.jobs.summary_processor.resolve_context_length",
+        new_callable=AsyncMock, return_value=None,
+    ) as m:
+        yield m
+
+
 # ── FD-3: _load_scene_leaf_texts loads REAL prose from book-service (not paths) ──
 
 def _book_client(scenes, draft=None):
@@ -192,6 +205,45 @@ async def test_retry_at_in_future_sleeps_then_processes_without_burning_budget(
     # Processing proceeded normally → upsert happened.
     assert result.re_enqueued is False
     assert result.summary_id == upsert_id
+
+
+@patch("app.jobs.summary_processor.LevelSummariesRepo")
+@patch("app.jobs.summary_processor._load_scene_leaf_texts", new_callable=AsyncMock)
+@patch("app.jobs.summary_processor._load_top_entities_for_chapter", new_callable=AsyncMock)
+@patch("app.jobs.summary_processor.summarize_level", new_callable=AsyncMock)
+async def test_resolved_context_length_threaded_into_summarize_level(
+    mock_summarize, mock_entities, mock_scenes, mock_repo_cls,
+    _no_real_context_length_lookup,
+):
+    """The model's resolved context window must reach summarize_level's
+    context_length kwarg — model-context-aware input sizing, not the flat default
+    regardless of the session model's real window."""
+    from loreweave_extraction import LevelSummary as ExtLevelSummary
+
+    mock_scenes.return_value = ["s1", "s2"]
+    mock_entities.return_value = []
+    mock_summarize.return_value = ExtLevelSummary(
+        summary_text="A summary text long enough to satisfy validation.",
+        token_usage={},
+    )
+    _no_real_context_length_lookup.return_value = 1_000_000
+    repo = MagicMock()
+    repo.find_cached = AsyncMock(return_value=None)
+    repo.upsert_summary = AsyncMock(return_value=UpsertOutcome(
+        cache_hit=False, race_winner=True, summary_id=uuid4(),
+    ))
+    mock_repo_cls.return_value = repo
+
+    msg = _msg()
+    deps = _deps()
+    deps.embedding_client = MagicMock()
+    deps.embedding_client.embed = AsyncMock(return_value=[0.1] * 1024)
+    deps.neo4j_session.run = AsyncMock()
+
+    await process_summarize_message(msg, deps)
+
+    mock_summarize.assert_awaited_once()
+    assert mock_summarize.await_args.kwargs["context_length"] == 1_000_000
 
 
 @patch("app.jobs.summary_processor.asyncio.sleep", new_callable=AsyncMock)

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
+import { tieringApi } from '@/features/glossary/tieringApi';
 import { BookWorldSection } from '@/features/world/components/BookWorldSection';
 import { LanguagePicker } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -68,10 +69,12 @@ export function SettingsTab({ bookId, book, onReload, onOpenWorld }: Props) {
     return () => { revoked = true; };
   }, [accessToken, bookId, book.has_cover]);
 
-  // Fetch genres for this book
+  // Fetch genres for this book — the tiered ontology read (G4e retired the old flat
+  // genre_groups /genres route; this book's genre CATALOG for the tag picker now
+  // comes from GET .../ontology, same source useBookOntology/Manage use).
   const { data: genres = [] } = useQuery({
-    queryKey: ['glossary-genres', bookId],
-    queryFn: () => glossaryApi.listGenres(bookId, accessToken!),
+    queryKey: ['glossary-ontology', bookId],
+    queryFn: () => tieringApi.getOntology(bookId, accessToken!).then((o) => o.genres),
     enabled: !!accessToken,
   });
 
@@ -303,7 +306,7 @@ export function SettingsTab({ bookId, book, onReload, onOpenWorld }: Props) {
                     const isSelected = genreTags.includes(g.name);
                     return (
                       <button
-                        key={g.id}
+                        key={g.genre_id}
                         onClick={() => toggleGenre(g.name)}
                         className="flex w-full items-center gap-2.5 px-3 py-2 text-xs hover:bg-secondary/50 transition-colors"
                       >
@@ -315,9 +318,6 @@ export function SettingsTab({ bookId, book, onReload, onOpenWorld }: Props) {
                         </span>
                         <span className="h-2 w-2 rounded-sm" style={{ background: g.color }} />
                         <span className="flex-1 text-left">{g.name}</span>
-                        {g.description && (
-                          <span className="truncate text-[10px] text-muted-foreground max-w-[150px]">{g.description}</span>
-                        )}
                       </button>
                     );
                   })

@@ -11,7 +11,7 @@ export function ContextInspectorPage() {
   const [params] = useSearchParams();
   const initialSessionId = params.get('session');
   return (
-    <div className="h-[calc(100vh-4rem)] min-h-0">
+    <div className="h-full min-h-0">
       <ContextInspectorView initialSessionId={initialSessionId} />
     </div>
   );

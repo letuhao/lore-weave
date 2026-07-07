@@ -114,6 +114,21 @@ class TestOrderingAndCap:
         assert "manual" not in names  # dropped first (tail)
         assert len(names) < 3
 
+    def test_cap_scales_up_with_context_length(self):
+        # Same 3-entry ~3000-token case as test_cap_drops_from_tail_manual_first, but
+        # a 1M-context session must NOT be capped at the same flat 2000 tokens a 200K
+        # session gets — all 3 survive once the cap scales with the real window.
+        big = "word " * 800  # ≈ 1000 tokens each
+        entries = [
+            _e("keep-always", body=big),
+            _e("scene", mode="scene_match", pattern="t", body=big),
+            _e("manual", mode="manual", body=big),
+        ]
+        out = select_steering(
+            entries, message="#manual", active_title="t", context_length=1_000_000,
+        )
+        assert [e["name"] for e in out] == ["keep-always", "scene", "manual"]
+
     def test_single_oversized_always_survives(self):
         """The cap never drops the LAST entry — one oversized always-rule still
         renders (logged), it is the author's explicit choice."""

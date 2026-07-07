@@ -111,6 +111,27 @@ class Settings(BaseSettings):
     context_working_scope_boost: float = 0.30
     context_working_scope_window: int = 2
 
+    # M-recall (2026-07-07) — CJK/VI dictionary anchor resolution. The intent
+    # classifier can't segment scriptio-continua, so `select_l2_facts` anchored on
+    # its tokens returns 0 facts for Chinese queries even when the answer is a 1-hop
+    # relation (measured: 3/12 wangu goldens). When the message carries a non-ASCII
+    # letter, Aho-Corasick match it against the project's known entity-name dictionary
+    # and UNION the hits into the L2/bridge anchors. Deploy kill-switch (default ON);
+    # a per-turn Mode-3 recall step, not a per-user setting. `ttl_s` bounds dictionary
+    # staleness (a new entity is anchorable within the window); `cap` bounds the
+    # 1-hop fan-out; `min_len` drops 1-char generic matches.
+    context_dict_anchor_enabled: bool = True
+    context_dict_anchor_ttl_s: float = 300.0
+    context_dict_anchor_cap: int = 12
+    context_dict_anchor_min_len: int = 2
+
+    # M-recall role-resolution — when the message names the lead by ROLE ("主角"/
+    # "the protagonist") the dictionary can't match it, so anchor the project's
+    # most-central entity (highest relation degree) instead. Recovers "主角的母亲是谁"
+    # (measured: 4/5 remaining wangu role-queries). Additive + gated on a strict
+    # protagonist-term set. Deploy kill-switch (default ON); reuses the dict-anchor TTL.
+    context_role_anchor_enabled: bool = True
+
     # D-BACKFILL-NO-SCOPE-LIMIT (2026-07-06) — the published-passage backfill embeds
     # EVERY published chapter of a book, and on the embedding-model PUT it runs
     # SYNCHRONOUSLY in-request. On a large book (万古神帝: 4232 published chapters) that
