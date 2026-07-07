@@ -438,6 +438,48 @@ describe('PublicMcpController', () => {
     expect(r.headers['content-type']).toBe('application/json');
   });
 
+  it('an EMPTY-scope key (scopeToolCount=0) also takes the direct-list path safely — no leak beyond find_tools', async () => {
+    // review-impl finding (2026-07-08, LOW): scopeToolCount([]) is 0 (< 20) so this key
+    // takes the SAME directList=true branch as a small real scope — verify at the
+    // controller/tools-list level (not just the pure-function level in tool-policy.spec.ts)
+    // that this doesn't leak anything beyond find_tools, since filterTools/isToolAllowed
+    // still gate every entry identically regardless of which list-mode advertised it.
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: [] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            jsonrpc: '2.0',
+            result: { tools: [{ name: 'find_tools' }, { name: 'book_list' }, { name: 'kg_graph_query' }] },
+            id: 1,
+          }),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_emptyscope' },
+        body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    const parsed = JSON.parse(r.sentBody as string);
+    const names = parsed.result.tools.map((t: { name: string }) => t.name).sort();
+    // No domain tool leaks through — an empty scope is allowed exactly find_tools + invoke_tool,
+    // identical to what the collapsed (large-scope) path would have shown.
+    expect(names).toEqual(['find_tools', 'invoke_tool']);
+  });
+
   it('a directly-listed tool (small scope) is immediately callable via a normal tools/call — no find_tools/activation needed first', async () => {
     setEnv();
     const f = jest.fn().mockImplementation((url: string) => {

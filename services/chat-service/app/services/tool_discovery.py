@@ -534,7 +534,34 @@ def find_tools_result(
 
     The payload distinguishes (H10): a genuinely empty result from one where the
     only plausible providers are *temporarily unavailable* — so the agent says
-    "try again", never a false "I can't"."""
+    "try again", never a false "I can't".
+
+    2026-07-07 (Part E eval finding, `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE` root
+    cause): a weak/quantized local model sometimes emits `find_tools()` with NO
+    `intent` at all despite the schema marking it `required` — the schema-level
+    requirement was never enforced server-side, so an empty intent silently
+    degraded into a genuine zero-token search (`_score()` returns 0.0 for empty
+    `intent_tokens`), landing on the SAME generic "No tool matched. Reconsider the
+    wording..." note a real no-match gets. That note gives the model no signal
+    that its OWN call was malformed, so it retried identically — live-observed
+    30+ consecutive empty-`intent` calls in one turn, ending in an empty final
+    reply. Mirrors the "model-directed validation error" pattern jobs-service's
+    kit already uses for pydantic failures (`_validation_directive`): reject a
+    missing/blank intent with a directive naming the exact fix, instead of
+    silently degrading to an uninformative empty-match note."""
+    if not intent.strip():
+        return (
+            {
+                "tools": [],
+                "note": (
+                    "`intent` is required and was missing or empty on this call — "
+                    "describe in your own words what you want to do (e.g. "
+                    "\"translate this chapter\", \"list my books\") and call "
+                    "find_tools again with a non-empty `intent`."
+                ),
+            },
+            [],
+        )
     matches, confident = search_catalog(catalog, intent, limit, exclude=exclude, group=group)
     unavailable = provider_availability(catalog_meta)
     payload: dict = {"tools": matches}

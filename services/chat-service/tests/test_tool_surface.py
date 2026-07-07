@@ -22,6 +22,17 @@ class TestToolSurface:
         assert not is_curated([])
         assert is_curated(["book_get_chapter"])
 
+    def test_is_curated_skill_only_pin(self):
+        """2026-07-07 (Part E live-eval root cause) — a skill-only pin (the REAL
+        frontend's `useContextRack.ts` pin-skill path, which never sets
+        `enabled_tools`) must also enter curated mode, or the skill's own
+        hot_domains never get seeded (the skill's PROMPT still tells the model
+        to call its tools directly — a live-observed "falsely claims a
+        documented tool doesn't exist" failure class)."""
+        assert not is_curated([], [])
+        assert is_curated([], ["translation"])
+        assert is_curated(["book_get_chapter"], [])
+
     def test_assemble_auto_mode_uses_hot_seed(self):
         hot = {"glossary_search", "glossary_list"}
         out = assemble_initial_active_names(
@@ -218,6 +229,60 @@ class TestCuratedSkillHotDomainUnion:
         translation_names = {n for n in names if n.startswith("translation_")}
         assert translation_names <= seed
         assert "glossary_search" in seed  # the explicit pin still rides along
+
+    def test_skill_only_pin_with_NO_enabled_tools_still_seeds_the_domain(self):
+        """THE real-world case (2026-07-07 live-eval root cause): the actual
+        frontend pin-skill UI (`useContextRack.ts`) sends `enabled_skills` alone
+        — `enabled_tools` is always `[]`. Every OTHER test in this class
+        co-pins a dummy `enabled_tools` entry, which accidentally exercised
+        curated_mode through that param and masked this exact path — this is
+        the one that must never regress. Covers book/settings/jobs (all
+        curated-pin-only) via translation as the representative case; the
+        mechanism is domain-agnostic (SYSTEM_SKILLS-driven), not per-skill."""
+        cat = [_tool_big(f"translation_t{i}", 200) for i in range(5)]
+        pins = resolve_session_tool_pins({
+            "enabled_tools": [],
+            "enabled_skills": ["translation"],
+            "activated_tools": [],
+        })
+        assert pins.curated_mode  # the actual bug: this used to be False here
+        seed = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=True)
+        names = {t["function"]["name"] for t in cat}
+        assert names <= seed
+
+    def test_pinned_skill_invisible_on_current_surface_does_NOT_hot_seed(self):
+        """review-impl finding (2026-07-08, MED) — a stale/cross-surface pin
+        must not hot-seed a skill's tools with no matching prompt to guide
+        them. `book_skill.surfaces = {book, editor, studio}` — NOT `chat`. A
+        session that pinned "book" earlier (e.g. on a book page) but is now on
+        the plain chat surface must not silently advertise all 21 book_* tool
+        schemas with zero explanation of how/why to use them."""
+        cat = [_tool_big(f"book_t{i}", 200) for i in range(5)]
+        pins = resolve_session_tool_pins({
+            "enabled_tools": [],
+            "enabled_skills": ["book"],
+            "activated_tools": [],
+        })
+        assert pins.curated_mode
+        seed = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=False, studio=False)
+        names = {t["function"]["name"] for t in cat}
+        assert not (names & seed)
+
+    def test_skill_only_pin_of_glossary_also_seeds_via_the_glossary_gate(self):
+        """The glossary-specific gate (`effective_enabled_tools`) had the SAME
+        `or not enabled_tools` short-circuit bug — a pure glossary-only curated
+        pin (no enabled_tools) must still hot-seed glossary, not just the
+        generic per-skill union path exercised above."""
+        cat = [_tool_big(f"glossary_t{i}", 200) for i in range(5)]
+        pins = resolve_session_tool_pins({
+            "enabled_tools": [],
+            "enabled_skills": ["glossary"],
+            "activated_tools": [],
+        })
+        assert pins.curated_mode
+        seed = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=True)
+        names = {t["function"]["name"] for t in cat}
+        assert names <= seed
 
     def test_curated_pin_of_composition_skill_on_non_studio_surface_seeds_it(self):
         """Composition is already hot on studio via _STUDIO_HOT_DOMAINS — this proves

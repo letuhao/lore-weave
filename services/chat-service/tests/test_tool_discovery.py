@@ -199,6 +199,38 @@ class TestProviderAvailability:
 # ════════════════════════════════════════════════════════════════════════════
 
 
+class TestFindToolsMissingIntent:
+    """2026-07-07 (Part E eval, `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE` root cause) —
+    a weak local model live-observed calling `find_tools()` with NO `intent` at
+    all (schema says `required`, never enforced server-side), 30+ times in one
+    turn, because the old generic "No tool matched" note gave it no signal its
+    OWN call was malformed. Now a missing/blank intent gets a directive instead
+    of a silent zero-token search."""
+
+    def test_missing_intent_returns_directive_not_generic_no_match(self):
+        payload, matched = td.find_tools_result(
+            _MIXED_CATALOG, "", 8, exclude=set(), catalog_meta={},
+        )
+        assert matched == []
+        assert payload["tools"] == []
+        assert "intent" in payload["note"] and "required" in payload["note"]
+        assert "No tool matched. Reconsider" not in payload["note"]
+
+    def test_whitespace_only_intent_also_rejected(self):
+        payload, _ = td.find_tools_result(
+            _MIXED_CATALOG, "   ", 8, exclude=set(), catalog_meta={},
+        )
+        assert "required" in payload["note"]
+
+    def test_real_intent_unaffected(self):
+        """The fix must not regress the normal case — a real intent still searches."""
+        payload, matched = td.find_tools_result(
+            _MIXED_CATALOG, "search the glossary", 8, exclude=set(), catalog_meta={},
+        )
+        assert matched
+        assert "required" not in payload.get("note", "")
+
+
 class TestFindToolsDiscovery:
     @pytest.mark.asyncio
     async def test_find_tools_then_call_across_passes(self):

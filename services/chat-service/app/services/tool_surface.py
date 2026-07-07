@@ -117,7 +117,7 @@ def resolve_session_tool_pins(
     return SessionToolPins(
         effective_enabled=effective_enabled,
         effective_skills=effective_skills,
-        curated_mode=is_curated(effective_enabled),
+        curated_mode=is_curated(effective_enabled, effective_skills),
         activation_state={"activated_tools": list(session_activated), "dirty": False},
         pinned_legacy=session_pinned_legacy,
     )
@@ -211,11 +211,21 @@ def discovery_seed_for_surface(
         # every uncovered domain from every pinned skill FIRST, then budget them
         # together under one ceiling (mirrors how the auto-mode path already shares one
         # `budget_names_by_tokens` call across a whole surface's hot_domains SET).
-        from app.services.skill_registry import SYSTEM_SKILLS
+        # review-impl fix (2026-07-08): a pinned skill only hot-seeds its tools
+        # if it's actually VISIBLE on this surface — mirrors the same
+        # `_skill_visible()` filter `resolve_skills_to_inject()` already applies
+        # when deciding which skill PROMPTS to inject. Without this, a stale
+        # pin from a different surface (e.g. "book" pinned while now on the
+        # plain chat surface, where `book_skill.surfaces` doesn't include
+        # "chat") hot-seeded the tools with no matching prompt telling the
+        # model how/why to use them — decoupled tool exposure the skill
+        # contract was specifically built to prevent (spec Part A/B).
+        from app.services.skill_registry import SYSTEM_SKILLS, _skill_visible, _surface_key
+        active_surface = _surface_key(editor=editor, book_scoped=book_scoped, admin=False, studio=studio)
         extra_domains: set[str] = set()
         for _code in pins.effective_skills:
             _skill = SYSTEM_SKILLS.get(_code)
-            if _skill and _skill.hot_domains:
+            if _skill and _skill.hot_domains and _skill_visible(_skill, active_surface):
                 extra_domains |= set(_skill.hot_domains) - covered_domains
         if extra_domains:
             extra_hot = budget_names_by_tokens(
@@ -236,8 +246,30 @@ def discovery_seed_for_surface(
     return names | set(pins.pinned_legacy)
 
 
-def is_curated(enabled_tools: list[str] | None) -> bool:
-    return bool(enabled_tools)
+def is_curated(enabled_tools: list[str] | None, enabled_skills: list[str] | None = None) -> bool:
+    """A session is curated when the user made ANY explicit tool-surface choice
+    this session — pinning a raw tool name OR pinning a skill (a skill is
+    exactly a curated tool-selection strategy, not a different concept).
+
+    2026-07-07 (Part E live-eval finding, root cause of the eval's dominant
+    failure signature — see `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE`): this used to
+    check `enabled_tools` ONLY. The real frontend's skill-pin UI
+    (`useContextRack.ts` → `patchSession({enabled_skills: next})`) pins a skill
+    WITHOUT ever setting `enabled_tools` — so a skill-only pin (translation,
+    book, settings, jobs — all curated-pin-only, spec Part B) silently never
+    entered curated mode: the skill's PROMPT was injected (naming its tools
+    directly, "call X now") but `discovery_seed_for_surface`'s entire curated
+    hot-domain union — the mechanism Part B built specifically to seed a
+    pinned skill's tools — never ran, because it's gated behind
+    `if pins.curated_mode:`. The model was left to `find_tools` its way to
+    tools the skill confidently told it existed, live-observed producing
+    exactly the "falsely claims a real, skill-documented tool doesn't exist"
+    failure class this whole spec exists to prevent. This bug ALSO explains why
+    Part B's own regression tests never caught it: every one of them (see
+    `TestCuratedSkillHotDomainUnion`) co-pinned a dummy `enabled_tools` entry
+    alongside the skill under test, accidentally exercising curated_mode
+    through the OTHER param and masking the skill-only path entirely."""
+    return bool(enabled_tools) or bool(enabled_skills)
 
 
 def effective_enabled_tools(
@@ -248,8 +280,16 @@ def effective_enabled_tools(
     hot_domains: set[str],
     context_length: int | None = None,
 ) -> list[str]:
-    """When glossary skill is active in curated mode, auto-union glossary hot tools."""
-    if not glossary_skill or not enabled_tools:
+    """When glossary skill is active in curated mode, auto-union glossary hot tools.
+
+    2026-07-07: the `or not enabled_tools` short-circuit used to be a harmless
+    no-op (curated_mode, the only way this function gets called, implied
+    `enabled_tools` was already non-empty) — now that `is_curated()` also
+    triggers on a skill-only pin (empty `enabled_tools`, see its docstring),
+    this condition would wrongly skip glossary's own hot-seed for exactly that
+    case. Union against an empty starting list is a correct no-op either way,
+    so the `enabled_tools`-emptiness check adds nothing but the bug — removed."""
+    if not glossary_skill:
         return list(enabled_tools)
     # FIX (context-explosion): budget the auto-unioned hot set too, so curated
     # sessions with the glossary skill don't re-inflate the whole domain.
