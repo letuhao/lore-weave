@@ -7,8 +7,8 @@
     "title": "Xưởng Sáng Tác",
     "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng.",
     "openUserGuide": "Mở Hướng dẫn sử dụng",
-    "paletteHint": "⌘⇧P → \"Chọn trọng tâm\" hoặc \"Bắt đầu tour hướng dẫn\" bất cứ lúc nào",
-    "startGuidedTour": "Bắt đầu Hướng dẫn"
+    "startGuidedTour": "Bắt đầu Hướng dẫn",
+    "paletteHint": "⌘⇧P → \"Chọn trọng tâm\" hoặc \"Bắt đầu tour hướng dẫn\" bất cứ lúc nào"
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "So sánh phiên bản chương",
       "desc": "Diff đầy đủ trong trình soạn thảo cho một cặp phiên bản chương",
       "empty": "Mở diff phiên bản của một chương từ panel xem xét của Chế độ Agent."
+    },
+    "quality": {
+      "title": "Chất lượng",
+      "desc": "Các lời hứa chưa thực hiện, điểm số từ chuyên gia, độ bao phủ cốt truyện & các vấn đề về chính văn",
+      "guideBody": "Chất lượng là bảng điều khiển chẩn đoán của bạn — chỉ mang tính chất tham khảo, không có gì ở đây làm thay đổi văn phong của bạn. Chọn một thẻ để xem sổ nợ các lời hứa chưa thực hiện, điểm số chuyên gia theo từng chương, độ bao phủ lời hứa của toàn bộ cuốn sách, hoặc các mâu thuẫn chính văn đã được xác nhận."
+    },
+    "quality-promises": {
+      "title": "Lời hứa",
+      "desc": "Sổ nợ các lời hứa chưa thực hiện (các tình tiết cài cắm chưa được giải quyết)"
+    },
+    "quality-critic": {
+      "title": "Chuyên gia",
+      "desc": "Điểm số về tính mạch lạc, giọng văn, nhịp độ & chính văn theo từng chương"
+    },
+    "quality-coverage": {
+      "title": "Độ bao phủ cốt truyện",
+      "desc": "Kiểm tra toàn bộ cuốn sách về việc các lời hứa trong dàn ý đã được thực hiện như thế nào"
+    },
+    "quality-canon": {
+      "title": "Vấn đề chính văn",
+      "desc": "Các mâu thuẫn đã được xác nhận từ quá trình tạo nội dung & trích xuất kiến thức"
+    },
+    "book-import": {
+      "title": "Nhập",
+      "desc": "Nhập các chương từ tệp text/.docx/.epub, hoặc toàn bộ cuốn sách từ tệp PDF",
+      "intro": "Đưa nội dung bản thảo có sẵn vào cuốn sách này.",
+      "guideBody": "Nhập các chương từ tệp văn bản thuần túy, .docx, hoặc .epub, hoặc toàn bộ cuốn sách từ tệp PDF (có tùy chọn chú thích hình ảnh bằng AI — bạn sẽ trực tiếp chọn mô hình thị giác). Hãy mở tính năng này bất cứ khi nào bạn có nội dung sẵn có cần đưa vào thay vì phải viết lại từ đầu.",
+      "text": {
+        "title": "Nhập các chương",
+        "desc": ".txt, .docx, hoặc .epub — mỗi tệp là một chương"
+      },
+      "pdf": {
+        "title": "Nhập từ PDF",
+        "desc": "Chia nhỏ tệp PDF thành các chương, có tùy chọn chú thích hình ảnh bằng AI"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "Lưu",
     "grammar": "Ngữ pháp",
     "heatmap": "Bản đồ nhiệt",
+    "glossary": "Thuật ngữ",
     "focus": "Tập trung",
-    "translate": "Dịch",
-    "glossary": "Thuật ngữ"
+    "translate": "Dịch"
   },
   "popout": {
     "invalid": "Liên kết cửa sổ bật ra này không hợp lệ.",
@@ -633,10 +668,6 @@
           "title": "Trau chuốt câu chữ",
           "body": "Khi một cảnh đã có chữ, hãy hoàn thiện nó ở đây — kiểm tra ngữ pháp, gợi ý từ điển thuật ngữ, và chế độ tập trung đều nằm trong trình soạn thảo này."
         },
-        "planner": {
-          "title": "Lên kế hoạch cho hình dạng câu chuyện",
-          "body": "Sắp xếp các arc, chương, và beat truyện trước hoặc giữa các buổi viết, để Compose và Editor có một cấu trúc để viết vào."
-        },
         "grammar": {
           "title": "Phát hiện lỗi đánh máy khi đang viết",
           "body": "Bật tính năng kiểm tra ngữ pháp và chính tả trực tiếp mà không cần rời khỏi trang."
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "Phát hiện sự sai lệch cốt truyện",
           "body": "Làm nổi bật các dòng văn bản có thể mâu thuẫn với cốt truyện đã thiết lập — nên xem qua trước khi bạn viết tiếp."
+        },
+        "planner": {
+          "title": "Lên kế hoạch cho hình dạng câu chuyện",
+          "body": "Sắp xếp các arc, chương, và beat truyện trước hoặc giữa các buổi viết, để Compose và Editor có một cấu trúc để viết vào."
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "Cửa sổ rời",
       "desc": "Tách cửa sổ Compose thành một cửa sổ hệ điều hành riêng biệt để dùng cho màn hình thứ hai."
     }
+  },
+  "quality": {
+    "noWork": "Cuốn sách này chưa có phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước, sau đó dữ liệu chất lượng sẽ xuất hiện tại đây.",
+    "hubNoWorkHint": "Các chỉ số về lời hứa, điểm số phê bình và độ bao phủ cốt truyện cần có một phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước. Các vấn đề về tính nhất quán (Canon) bên dưới vẫn hoạt động trong mọi trường hợp.",
+    "pickModel": "Chọn mô hình để phân tích với…",
+    "pickChapter": "Chọn một chương",
+    "pickChapterHint": "Chọn một chương ở trên để phân tích chất lượng của nó.",
+    "chaptersTruncated": "đang hiển thị {{shown}}/{{total}} chương đầu tiên",
+    "canonIntro": "Cảnh báo — phát hiện các mâu thuẫn đã được xác nhận với nội dung đã bị xóa/thay đổi trước đó trong sách. Các thay đổi này không được áp dụng tự động.",
+    "canonEmpty": "Không tìm thấy lỗi về tính nhất quán (canon).",
+    "canonCompositionError": "Không thể tải các lỗi nhất quán từ quá trình tạo — vui lòng thử lại.",
+    "canonExtractionError": "Không thể tải các cờ nhất quán từ quá trình trích xuất kiến thức — vui lòng thử lại.",
+    "canonFromGeneration": "Từ quá trình tạo ({{n}})",
+    "canonFromExtraction": "Từ quá trình trích xuất kiến thức ({{n}})",
+    "untitledScene": "Cảnh chưa đặt tên",
+    "jumpToChapter": "Mở chương",
+    "promisesTitle": "Lời hứa",
+    "promisesDesc": "Sổ cái theo dõi các lời hứa chưa thực hiện",
+    "criticTitle": "Nhà phê bình",
+    "criticDesc": "Điểm số về tính nhất quán, văn phong, nhịp độ & tính nguyên tác theo từng chương",
+    "coverageTitle": "Độ bao phủ cốt truyện",
+    "coverageDesc": "Mức độ đáp ứng các tình tiết hứa hẹn trong toàn bộ tác phẩm",
+    "canonTitle": "Lỗi nguyên tác",
+    "canonDesc": "Các mâu thuẫn đã được xác nhận"
   }
 }

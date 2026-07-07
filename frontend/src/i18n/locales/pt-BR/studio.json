@@ -7,8 +7,8 @@
     "title": "Writing Studio",
     "body": "Uma área de trabalho acoplável para este livro. Painéis (composição, planejador, elenco, qualidade...) serão adicionados aqui um a um. Arraste as abas para dividir, empilhar, flutuar ou destacar em sua própria janela.",
     "openUserGuide": "Abrir o Guia do Usuário",
-    "paletteHint": "⌘⇧P → \"Escolha seu Foco\" ou \"Iniciar Tour Guiado\" a qualquer momento",
-    "startGuidedTour": "Iniciar Visita Guiada"
+    "startGuidedTour": "Iniciar Visita Guiada",
+    "paletteHint": "⌘⇧P → \"Escolha seu Foco\" ou \"Iniciar Tour Guiado\" a qualquer momento"
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "Comparar Revisão de Capítulo",
       "desc": "Diff completo do editor para um par de revisões de capítulo",
       "empty": "Abra o diff de revisão de um capítulo no painel de revisão do Modo Agente."
+    },
+    "quality": {
+      "title": "Qualidade",
+      "desc": "Promessas em aberto, notas de críticos, cobertura da história e problemas de cânone",
+      "guideBody": "A Qualidade é o seu painel de diagnóstico — apenas consultivo, nada aqui altera sua prosa. Escolha um card para ver o livro de débitos de promessas em aberto, notas de críticos por capítulo, cobertura de promessas do livro completo ou contradições de cânone confirmadas."
+    },
+    "quality-promises": {
+      "title": "Promessas",
+      "desc": "O livro de débitos de promessas em aberto (preparações ainda não resolvidas)"
+    },
+    "quality-critic": {
+      "title": "Crítico",
+      "desc": "Notas de coerência, voz, ritmo e cânone por capítulo"
+    },
+    "quality-coverage": {
+      "title": "Cobertura da história",
+      "desc": "Auditoria do livro completo sobre quais promessas do esboço foram cumpridas"
+    },
+    "quality-canon": {
+      "title": "Problemas de cânone",
+      "desc": "Contradições confirmadas por geração e extração de conhecimento"
+    },
+    "book-import": {
+      "title": "Importar",
+      "desc": "Importe capítulos de arquivos de texto, .docx ou .epub, ou um livro inteiro de um PDF",
+      "intro": "Traga o conteúdo de um manuscrito existente para este livro.",
+      "guideBody": "Importe capítulos de arquivos de texto simples, .docx ou .epub, ou um livro inteiro de um PDF (com legendagem de imagens opcional por IA — você escolhe o modelo de visão explicitamente). Abra esta opção sempre que tiver conteúdo existente para importar, em vez de escrever do zero.",
+      "text": {
+        "title": "Importar capítulos",
+        "desc": ".txt, .docx ou .epub — um capítulo por arquivo"
+      },
+      "pdf": {
+        "title": "Importar de PDF",
+        "desc": "Divida um PDF em capítulos, com legendagem opcional por IA para imagens"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "Salvar",
     "grammar": "Gramática",
     "heatmap": "Mapa de calor",
+    "glossary": "Glossário",
     "focus": "Foco",
-    "translate": "Traduzir",
-    "glossary": "Glossário"
+    "translate": "Traduzir"
   },
   "popout": {
     "invalid": "Este link pop-out é inválido.",
@@ -633,10 +668,6 @@
           "title": "Polir a prosa",
           "body": "Assim que uma cena tiver palavras, refine-a aqui — verificações gramaticais, dicas de glossário e modo foco funcionam neste editor."
         },
-        "planner": {
-          "title": "Planejar a estrutura da história",
-          "body": "Organize arcos, capítulos e batidas antes ou entre sessões de escrita, para que o Compose e o Editor tenham uma estrutura para escrever."
-        },
         "grammar": {
           "title": "Corrija erros de digitação enquanto escreve",
           "body": "Ative a correção gramatical e ortográfica em tempo real sem sair da página."
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "Identifique falhas de continuidade",
           "body": "Destaca linhas que podem contradizer o cânone estabelecido — vale uma conferida antes de seguir em frente."
+        },
+        "planner": {
+          "title": "Planejar a estrutura da história",
+          "body": "Organize arcos, capítulos e batidas antes ou entre sessões de escrita, para que o Compose e o Editor tenham uma estrutura para escrever."
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "Janela Flutuante",
       "desc": "Abra o Composer em sua própria janela do sistema para usar em um segundo monitor."
     }
+  },
+  "quality": {
+    "noWork": "Este livro ainda não possui uma sessão de coescrita — comece a compor um capítulo primeiro, e os dados de qualidade aparecerão aqui.",
+    "hubNoWorkHint": "Promessas, notas da crítica e cobertura da história exigem uma sessão de coescrita — comece a compor um capítulo primeiro. Problemas de cânone listados abaixo funcionarão de qualquer maneira.",
+    "pickModel": "Escolha um modelo para analisar com...",
+    "pickChapter": "Escolha um capítulo",
+    "pickChapterHint": "Escolha um capítulo acima para analisar sua qualidade.",
+    "chaptersTruncated": "mostrando os primeiros {{shown}} de {{total}} capítulos",
+    "canonIntro": "Aviso — contradições confirmadas com conteúdos marcados como removidos/alterados anteriormente no livro. Nada aqui é aplicado automaticamente.",
+    "canonEmpty": "Nenhum problema de cânone encontrado.",
+    "canonCompositionError": "Não foi possível carregar os problemas de cânone da geração — tente novamente.",
+    "canonExtractionError": "Não foi possível carregar as flags de cânone da extração de conhecimento — tente novamente.",
+    "canonFromGeneration": "Da geração ({{n}})",
+    "canonFromExtraction": "Da extração de conhecimento ({{n}})",
+    "untitledScene": "Cena sem título",
+    "jumpToChapter": "Abrir capítulo",
+    "promisesTitle": "Promessas",
+    "promisesDesc": "Livro de débitos de promessas abertas",
+    "criticTitle": "Crítico",
+    "criticDesc": "Pontuações de coerência, voz, ritmo e cânone por capítulo",
+    "coverageTitle": "Cobertura da história",
+    "coverageDesc": "Cobertura da promessa do livro completo",
+    "canonTitle": "Problemas de cânone",
+    "canonDesc": "Contradições confirmadas"
   }
 }

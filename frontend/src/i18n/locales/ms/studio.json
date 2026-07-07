@@ -7,8 +7,8 @@
     "title": "Studio Penulisan",
     "body": "Ruang kerja yang boleh dipasang (dockable) untuk buku ini. Panel (compose, perancang, pelakon, kualiti...) akan ditambah di sini satu demi satu. Seret tab untuk membahagi, menyusun, terapung, atau keluarkan ke dalam tetingkap sendiri.",
     "openUserGuide": "Buka Panduan Pengguna",
-    "paletteHint": "⌘⇧P → \"Pilih Fokus Anda\" atau \"Mulakan Lawatan Berpandu\" pada bila-bila masa",
-    "startGuidedTour": "Mulakan Lawatan Panduan"
+    "startGuidedTour": "Mulakan Lawatan Panduan",
+    "paletteHint": "⌘⇧P → \"Pilih Fokus Anda\" atau \"Mulakan Lawatan Berpandu\" pada bila-bila masa"
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "Banding Semakan Bab",
       "desc": "Perbezaan editor penuh untuk sepasang semakan bab",
       "empty": "Buka perbezaan semakan bab daripada panel semakan Mod Ejen."
+    },
+    "quality": {
+      "title": "Kualiti",
+      "desc": "Janji terbuka, skor pengkritik, liputan cerita & isu kanon",
+      "guideBody": "Kualiti adalah papan pemuka diagnostik anda — sekadar nasihat sahaja, tiada apa yang di sini akan mengubah prosa anda. Pilih kad untuk melihat lejar hutang janji terbuka, skor pengkritik setiap bab, liputan janji keseluruhan buku, atau percanggahan kanon yang disahkan."
+    },
+    "quality-promises": {
+      "title": "Janji",
+      "desc": "Lejar hutang janji terbuka (set-up yang belum diselesaikan)"
+    },
+    "quality-critic": {
+      "title": "Pengkritik",
+      "desc": "Skor koheren, suara, rentak & kanon bagi setiap bab"
+    },
+    "quality-coverage": {
+      "title": "Liputan cerita",
+      "desc": "Audit keseluruhan buku tentang janji rangka kerja yang telah diselesaikan"
+    },
+    "quality-canon": {
+      "title": "Isu kanon",
+      "desc": "Percanggahan yang disahkan daripada penjanaan & pengekstrakan pengetahuan"
+    },
+    "book-import": {
+      "title": "Import",
+      "desc": "Import bab daripada teks/.docx/.epub, atau keseluruhan buku daripada PDF",
+      "intro": "Masukkan kandungan manuskrip sedia ada ke dalam buku ini.",
+      "guideBody": "Import bab daripada fail teks biasa, .docx, atau .epub, atau keseluruhan buku daripada PDF (dengan pilihan kapsyen imej AI — anda pilih model visi secara eksplisit). Buka bahagian ini apabila anda mempunyai kandungan sedia ada untuk dimasukkan daripada menulis dari awal.",
+      "text": {
+        "title": "Import bab",
+        "desc": ".txt, .docx, atau .epub — satu bab bagi setiap fail"
+      },
+      "pdf": {
+        "title": "Import daripada PDF",
+        "desc": "Pecahkan PDF kepada bab, dengan pilihan kapsyen AI untuk imej"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "Simpan",
     "grammar": "Tatabahasa",
     "heatmap": "Peta haba",
+    "glossary": "Glosari",
     "focus": "Fokus",
-    "translate": "Terjemah",
-    "glossary": "Glosari"
+    "translate": "Terjemah"
   },
   "popout": {
     "invalid": "Pautan pop-out ini tidak sah.",
@@ -633,10 +668,6 @@
           "title": "Haluskan prosa",
           "body": "Setelah babak mempunyai teks, perhaluskannya di sini — semakan tatabahasa, petunjuk glosari, dan mod fokus semuanya ada dalam editor ini."
         },
-        "planner": {
-          "title": "Rancang bentuk cerita",
-          "body": "Susun arka, bab, dan rentak sebelum atau di antara sesi penulisan, supaya Gubah dan Editor mempunyai struktur untuk ditulis."
-        },
         "grammar": {
           "title": "Kesan kesalahan ejaan semasa menulis",
           "body": "Aktifkan semakan tatabahasa dan ejaan secara langsung tanpa meninggalkan halaman."
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "Kesan larian kesinambungan",
           "body": "Menyerlahkan baris yang mungkin bercanggah dengan kanon yang telah ditetapkan — perlu dilihat sekilas sebelum anda beralih ke babak seterusnya."
+        },
+        "planner": {
+          "title": "Rancang bentuk cerita",
+          "body": "Susun arka, bab, dan rentak sebelum atau di antara sesi penulisan, supaya Gubah dan Editor mempunyai struktur untuk ditulis."
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "Tetingkap Popout",
       "desc": "Keluarkan Compose ke dalam tetingkap OS sendiri untuk kegunaan monitor kedua."
     }
+  },
+  "quality": {
+    "noWork": "Buku ini belum mempunyai sesi penulis bersama — mulakan penulisan bab terlebih dahulu, kemudian data kualiti akan dipaparkan di sini.",
+    "hubNoWorkHint": "Janji, skor pengkritik, dan liputan cerita memerlukan sesi penulis bersama — mulakan penulisan bab terlebih dahulu. Isu kanon di bawah tetap berfungsi dalam apa jua keadaan.",
+    "pickModel": "Pilih model untuk menganalisis dengan…",
+    "pickChapter": "Pilih bab",
+    "pickChapterHint": "Pilih bab di atas untuk menganalisis kualitinya.",
+    "chaptersTruncated": "menunjukkan {{shown}} daripada {{total}} bab pertama",
+    "canonIntro": "Nasihat — percanggahan yang disahkan dengan kandungan yang telah ditandakan hilang/berubah sebelum ini dalam buku. Tiada apa-apa yang diterapkan secara automatik di sini.",
+    "canonEmpty": "Tiada isu kanon ditemui.",
+    "canonCompositionError": "Tidak dapat memuatkan isu kanon daripada penjanaan — cuba lagi.",
+    "canonExtractionError": "Tidak dapat memuatkan flag kanon daripada pengekstrakan pengetahuan — cuba lagi.",
+    "canonFromGeneration": "Daripada penjanaan ({{n}})",
+    "canonFromExtraction": "Daripada pengekstrakan pengetahuan ({{n}})",
+    "untitledScene": "Babak tanpa tajuk",
+    "jumpToChapter": "Buka bab",
+    "promisesTitle": "Janji",
+    "promisesDesc": "Lejar hutang janji terbuka",
+    "criticTitle": "Pengkritik",
+    "criticDesc": "Skor koheren, gaya bahasa, rentak & kanon setiap bab",
+    "coverageTitle": "Liputan cerita",
+    "coverageDesc": "Liputan janji keseluruhan buku",
+    "canonTitle": "Isu kanon",
+    "canonDesc": "Percanggahan yang disahkan"
   }
 }

@@ -215,6 +215,20 @@
       "desc": "Trace what context management did per turn — budget, allocation, Planner→Compiler decisions",
       "guideBody": "Shows exactly what context was sent to the AI for a given turn — the token budget, what got included or dropped, and whether a quick pass or a fuller planning pass handled it. Open it when the AI's response seems off and you want to see what it actually \"saw\", or when you're curious how your context budget is being spent."
     },
+    "book-import": {
+      "title": "Import",
+      "desc": "Import chapters from text/.docx/.epub, or a whole book from a PDF",
+      "intro": "Bring existing manuscript content into this book.",
+      "guideBody": "Import chapters from plain text, .docx, or .epub files, or a whole book from a PDF (with optional AI image captioning — you pick the vision model explicitly). Open it whenever you have existing content to bring in rather than writing from scratch.",
+      "text": {
+        "title": "Import chapters",
+        "desc": ".txt, .docx, or .epub — one chapter per file"
+      },
+      "pdf": {
+        "title": "Import from PDF",
+        "desc": "Chunk a PDF into chapters, with optional AI captioning for images"
+      }
+    },
     "chapter-browser": {
       "title": "Chapter Browser",
       "desc": "Sort, filter, search and bulk-act across this book's chapters",

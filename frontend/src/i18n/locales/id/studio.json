@@ -7,8 +7,8 @@
     "title": "Writing Studio",
     "body": "Ruang kerja yang dapat ditempelkan untuk buku ini. Panel (compose, planner, cast, quality…) akan ditambahkan di sini satu per satu. Seret tab untuk membagi, menumpuk, mengambang, atau memisahkan ke jendela tersendiri.",
     "openUserGuide": "Buka Panduan Pengguna",
-    "paletteHint": "⌘⇧P → \"Choose Your Focus\" atau \"Start Guided Tour\" kapan saja",
-    "startGuidedTour": "Mulai Panduan Tur"
+    "startGuidedTour": "Mulai Panduan Tur",
+    "paletteHint": "⌘⇧P → \"Choose Your Focus\" atau \"Start Guided Tour\" kapan saja"
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "Perbandingan Revisi Bab",
       "desc": "Perbedaan editor lengkap untuk sepasang revisi bab",
       "empty": "Buka diff revisi bab dari panel tinjauan Agent Mode."
+    },
+    "quality": {
+      "title": "Kualitas",
+      "desc": "Janji yang belum terpenuhi, skor kritikus, cakupan cerita & masalah kanon",
+      "guideBody": "Kualitas adalah dasbor diagnostik Anda — hanya bersifat saran, tidak ada yang mengubah prosa Anda di sini. Pilih kartu untuk melihat daftar utang janji yang belum terpenuhi, skor kritikus per bab, cakupan janji seluruh buku, atau kontradiksi kanon yang terkonfirmasi."
+    },
+    "quality-promises": {
+      "title": "Janji",
+      "desc": "Daftar utang janji yang belum terpenuhi (setup yang belum diselesaikan)"
+    },
+    "quality-critic": {
+      "title": "Kritikus",
+      "desc": "Skor koherensi, gaya bahasa, tempo & kanon per bab"
+    },
+    "quality-coverage": {
+      "title": "Cakupan cerita",
+      "desc": "Audit seluruh buku mengenai janji kerangka mana yang telah terpenuhi"
+    },
+    "quality-canon": {
+      "title": "Masalah kanon",
+      "desc": "Kontradiksi terkonfirmasi dari hasil generasi & ekstraksi pengetahuan"
+    },
+    "book-import": {
+      "title": "Impor",
+      "desc": "Impor bab dari teks/.docx/.epub, atau seluruh buku dari PDF",
+      "intro": "Masukkan konten manuskrip yang sudah ada ke dalam buku ini.",
+      "guideBody": "Impor bab dari file teks biasa, .docx, atau .epub, atau seluruh buku dari PDF (dengan opsi keterangan gambar AI — Anda dapat memilih model visi secara eksplisit). Buka menu ini kapan pun Anda memiliki konten yang sudah ada untuk dimasukkan daripada menulis dari awal.",
+      "text": {
+        "title": "Impor bab",
+        "desc": ".txt, .docx, atau .epub — satu bab per file"
+      },
+      "pdf": {
+        "title": "Impor dari PDF",
+        "desc": "Pecah PDF menjadi bab, dengan opsi keterangan AI untuk gambar"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "Simpan",
     "grammar": "Tata Bahasa",
     "heatmap": "Heatmap",
+    "glossary": "Glosarium",
     "focus": "Fokus",
-    "translate": "Terjemahkan",
-    "glossary": "Glosarium"
+    "translate": "Terjemahkan"
   },
   "popout": {
     "invalid": "Tautan pop-out ini tidak valid.",
@@ -633,10 +668,6 @@
           "title": "Haluskan prosa",
           "body": "Setelah adegan memiliki kata-kata, sempurnakan di sini — pemeriksaan tata bahasa, petunjuk glosarium, dan mode fokus semuanya ada di editor ini."
         },
-        "planner": {
-          "title": "Rencanakan alur cerita",
-          "body": "Susun alur, bab, dan poin penting sebelum atau di antara sesi menulis, sehingga Compose dan Editor memiliki struktur untuk ditulis."
-        },
         "grammar": {
           "title": "Temukan salah ketik saat menulis",
           "body": "Aktifkan pemeriksaan tata bahasa dan ejaan secara langsung tanpa meninggalkan halaman."
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "Deteksi penyimpangan kontinuitas",
           "body": "Menyoroti baris yang mungkin bertentangan dengan kanon yang telah ditetapkan — perlu diperiksa sekilas sebelum Anda melanjutkan."
+        },
+        "planner": {
+          "title": "Rencanakan alur cerita",
+          "body": "Susun alur, bab, dan poin penting sebelum atau di antara sesi menulis, sehingga Compose dan Editor memiliki struktur untuk ditulis."
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "Jendela Popout",
       "desc": "Pisahkan Compose ke jendela OS tersendiri untuk penggunaan monitor kedua."
     }
+  },
+  "quality": {
+    "noWork": "Buku ini belum memiliki sesi co-writer — tulis satu bab terlebih dahulu, maka data kualitas akan muncul di sini.",
+    "hubNoWorkHint": "Janji, skor kritikus, dan cakupan cerita memerlukan sesi co-writer — tulis satu bab terlebih dahulu. Masalah kanon di bawah tetap dapat berfungsi dengan cara apa pun.",
+    "pickModel": "Pilih model untuk menganalisis dengan…",
+    "pickChapter": "Pilih bab",
+    "pickChapterHint": "Pilih bab di atas untuk menganalisis kualitasnya.",
+    "chaptersTruncated": "menampilkan {{shown}} dari {{total}} bab pertama",
+    "canonIntro": "Peringatan — ditemukan kontradiksi yang terkonfirmasi dengan konten yang ditandai hilang/berubah sebelumnya di dalam buku. Tidak ada yang diterapkan secara otomatis di sini.",
+    "canonEmpty": "Tidak ada masalah kanon yang ditemukan.",
+    "canonCompositionError": "Tidak dapat memuat masalah kanon dari pembuatan — coba lagi.",
+    "canonExtractionError": "Tidak dapat memuat bendera kanon dari ekstraksi pengetahuan — coba lagi.",
+    "canonFromGeneration": "Dari pembuatan ({{n}})",
+    "canonFromExtraction": "Dari ekstraksi pengetahuan ({{n}})",
+    "untitledScene": "Adegan tanpa judul",
+    "jumpToChapter": "Buka bab",
+    "promisesTitle": "Janji",
+    "promisesDesc": "Buku besar utang janji yang terbuka",
+    "criticTitle": "Kritikus",
+    "criticDesc": "Skor koherensi, gaya bahasa, tempo & kanon per bab",
+    "coverageTitle": "Cakupan cerita",
+    "coverageDesc": "Cakupan janji seluruh buku",
+    "canonTitle": "Masalah kanon",
+    "canonDesc": "Kontradiksi yang terkonfirmasi"
   }
 }

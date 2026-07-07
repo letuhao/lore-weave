@@ -7,8 +7,8 @@
     "title": "写作工作室",
     "body": "本书的专属可停靠工作区。面板（创作、规划、角色、质量……）将逐一添加至此。你可以通过拖动标签页来进行拆分、堆叠、悬浮或将其弹出为独立窗口。",
     "openUserGuide": "打开用户指南",
-    "paletteHint": "随时按下 ⌘⇧P → \"选择您的专注点\" 或 \"开始导览\"",
-    "startGuidedTour": "开始向导教程"
+    "startGuidedTour": "开始向导教程",
+    "paletteHint": "随时按下 ⌘⇧P → \"选择您的专注点\" 或 \"开始导览\""
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "章节修订对比",
       "desc": "单对章节修订的完整编辑器差异对比",
       "empty": "从 Agent Mode 的审查面板中打开章节修订差异。"
+    },
+    "quality": {
+      "title": "质量",
+      "desc": "未完成的伏笔、评论家评分、故事覆盖率及设定冲突",
+      "guideBody": "质量是您的诊断仪表盘 —— 仅供参考，此处内容不会更改您的正文。点击卡片查看未完成的伏笔账本、逐章评论家评分、全书伏笔覆盖率，或已确认的设定矛盾。"
+    },
+    "quality-promises": {
+      "title": "伏笔",
+      "desc": "未完成的伏笔账本（尚未兑现的铺垫）"
+    },
+    "quality-critic": {
+      "title": "评论家",
+      "desc": "逐章连贯性、语调、节奏及设定评分"
+    },
+    "quality-coverage": {
+      "title": "故事覆盖率",
+      "desc": "针对大纲伏笔兑现情况的全书审计"
+    },
+    "quality-canon": {
+      "title": "设定冲突",
+      "desc": "通过生成与知识提取确认的矛盾点"
+    },
+    "book-import": {
+      "title": "导入",
+      "desc": "从文本、.docx、.epub 导入章节，或从 PDF 导入整本书",
+      "intro": "将现有的手稿内容导入到本书中。",
+      "guideBody": "从纯文本、.docx 或 .epub 文件导入章节，或者从 PDF 导入整本书（可选择 AI 图像说明功能 —— 您可以明确指定视觉模型）。当您有现有内容需要导入而非从零开始写作时，请随时使用此功能。",
+      "text": {
+        "title": "导入章节",
+        "desc": ".txt、.docx 或 .epub —— 每个文件为一个章节"
+      },
+      "pdf": {
+        "title": "从 PDF 导入",
+        "desc": "将 PDF 拆分为章节，并可选择为图像生成 AI 说明"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "保存",
     "grammar": "语法",
     "heatmap": "热力图",
+    "glossary": "术语表",
     "focus": "专注模式",
-    "translate": "翻译",
-    "glossary": "术语表"
+    "translate": "翻译"
   },
   "popout": {
     "invalid": "此弹出链接无效。",
@@ -633,10 +668,6 @@
           "title": "润色散文",
           "body": "场景成文后，在此处进行精修 —— 语法检查、术语提示和专注模式都在此编辑器中。"
         },
-        "planner": {
-          "title": "规划故事结构",
-          "body": "在写作环节之前或期间规划情节弧、章节和节奏点，以便“创作”和“编辑器”有结构可依。"
-        },
         "grammar": {
           "title": "写作时即时纠错",
           "body": "无需离开页面，即可实时开启语法和拼写检查。"
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "发现连贯性偏差",
           "body": "高亮显示可能与既定设定冲突的文本行 —— 在继续创作前值得留意一下。"
+        },
+        "planner": {
+          "title": "规划故事结构",
+          "body": "在写作环节之前或期间规划情节弧、章节和节奏点，以便“创作”和“编辑器”有结构可依。"
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "弹出窗口",
       "desc": "将创作界面弹出为独立的操作系统窗口，以便在第二台显示器上使用。"
     }
+  },
+  "quality": {
+    "noWork": "本书尚未开启共同创作会话 —— 请先开始创作章节，随后质量数据将在此显示。",
+    "hubNoWorkHint": "承诺、评论评分和故事覆盖率需要共同创作会话 —— 请先开始创作章节。下方的设定冲突检查功能无论如何均可使用。",
+    "pickModel": "选择用于分析的模型…",
+    "pickChapter": "选择章节",
+    "pickChapterHint": "在上方选择一个章节以分析其质量。",
+    "chaptersTruncated": "显示第 {{shown}} / {{total}} 章",
+    "canonIntro": "提示 — 已确认与书中先前标记为“已删除/已更改”的内容存在矛盾。此处内容不会自动应用。",
+    "canonEmpty": "未发现设定冲突。",
+    "canonCompositionError": "无法从生成内容中加载设定问题 — 请重试。",
+    "canonExtractionError": "无法从知识提取中加载设定标记 — 请重试。",
+    "canonFromGeneration": "来自生成内容 ({{n}})",
+    "canonFromExtraction": "来自知识提取 ({{n}})",
+    "untitledScene": "未命名场景",
+    "jumpToChapter": "打开章节",
+    "promisesTitle": "伏笔",
+    "promisesDesc": "打开伏笔债务账本",
+    "criticTitle": "评论家",
+    "criticDesc": "每章连贯性、文风、节奏及设定一致性评分",
+    "coverageTitle": "故事覆盖范围",
+    "coverageDesc": "全书承诺内容的覆盖程度",
+    "canonTitle": "设定冲突",
+    "canonDesc": "已确认的矛盾点"
   }
 }

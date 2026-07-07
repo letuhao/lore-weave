@@ -7,8 +7,8 @@
     "title": "Writing Studio",
     "body": "Ein anheftbarer Arbeitsbereich für dieses Buch. Panels (Compose, Planner, Cast, Qualität…) werden hier nacheinander hinzugefügt. Ziehe Tabs, um sie zu teilen, zu stapeln, schweben zu lassen oder in einem eigenen Fenster zu öffnen.",
     "openUserGuide": "Benutzerhandbuch öffnen",
-    "paletteHint": "⌘⇧P → jederzeit \"Fokus wählen\" oder \"Geführte Tour starten\"",
-    "startGuidedTour": "Geführte Tour starten"
+    "startGuidedTour": "Geführte Tour starten",
+    "paletteHint": "⌘⇧P → jederzeit \"Fokus wählen\" oder \"Geführte Tour starten\""
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "Kapitel-Revisionen vergleichen",
       "desc": "Vollständiger Editor-Diff für ein Paar Kapitel-Revisionen",
       "empty": "Öffne den Revisions-Diff eines Kapitels aus dem Review-Panel des Agenten-Modus."
+    },
+    "quality": {
+      "title": "Qualität",
+      "desc": "Offene Versprechen, Kritiker-Scores, Story-Abdeckung & Kanon-Probleme",
+      "guideBody": "Qualität ist dein Diagnose-Dashboard – rein beratend, nichts davon verändert deinen Text. Wähle eine Karte aus, um das Register der offenen Versprechen, die Kritiker-Scores pro Kapitel, die Versprechen-Abdeckung des gesamten Buches oder bestätigte Kanon-Widersprüche einzusehen."
+    },
+    "quality-promises": {
+      "title": "Versprechen",
+      "desc": "Das Register der offenen Versprechen (Setups, die noch nicht aufgelöst wurden)"
+    },
+    "quality-critic": {
+      "title": "Kritiker",
+      "desc": "Scores für Kohärenz, Stimme, Pacing & Kanon pro Kapitel"
+    },
+    "quality-coverage": {
+      "title": "Story-Abdeckung",
+      "desc": "Vollständige Buch-Prüfung, welche Outline-Versprechen eingelöst wurden"
+    },
+    "quality-canon": {
+      "title": "Kanon-Probleme",
+      "desc": "Bestätigte Widersprüche aus der Generierung & Wissensextraktion"
+    },
+    "book-import": {
+      "title": "Import",
+      "desc": "Importiere Kapitel aus Text/.docx/.epub oder ein ganzes Buch aus einem PDF",
+      "intro": "Importiere bestehende Manuskriptinhalte in dieses Buch.",
+      "guideBody": "Importiere Kapitel aus Plain-Text-, .docx- oder .epub-Dateien oder ein ganzes Buch aus einem PDF (mit optionaler KI-Bildunterschrift – du wählst das Vision-Modell explizit aus). Öffne dieses Fenster, wann immer du bestehende Inhalte importieren möchtest, anstatt ganz neu zu schreiben.",
+      "text": {
+        "title": "Kapitel importieren",
+        "desc": ".txt, .docx oder .epub — eine Datei pro Kapitel"
+      },
+      "pdf": {
+        "title": "Aus PDF importieren",
+        "desc": "Zerlege ein PDF in Kapitel, mit optionaler KI-Bildunterschrift für Bilder"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "Speichern",
     "grammar": "Grammatik",
     "heatmap": "Heatmap",
+    "glossary": "Glossar",
     "focus": "Fokus",
-    "translate": "Übersetzen",
-    "glossary": "Glossar"
+    "translate": "Übersetzen"
   },
   "popout": {
     "invalid": "Dieser Pop-out-Link ist ungültig.",
@@ -633,10 +668,6 @@
           "title": "Den Text verfeinern",
           "body": "Sobald eine Szene Text enthält, kannst du sie hier verfeinern — Grammatikprüfung, Glossar-Hinweise und Fokus-Modus sind alle in diesem Editor integriert."
         },
-        "planner": {
-          "title": "Die Struktur der Geschichte planen",
-          "body": "Lege Handlungsbögen, Kapitel und Beats vor oder zwischen den Schreibsessions fest, damit Compose und der Editor eine Struktur zum Schreiben haben."
-        },
         "grammar": {
           "title": "Tippfehler beim Schreiben erkennen",
           "body": "Aktivieren Sie die Live-Grammatik- und Rechtschreibprüfung, ohne die Seite zu verlassen."
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "Abweichungen in der Kontinuität finden",
           "body": "Markiert Zeilen, die dem etablierten Kanon widersprechen könnten – ein kurzer Blick lohnt sich, bevor Sie weiterschreiben."
+        },
+        "planner": {
+          "title": "Die Struktur der Geschichte planen",
+          "body": "Lege Handlungsbögen, Kapitel und Beats vor oder zwischen den Schreibsessions fest, damit Compose und der Editor eine Struktur zum Schreiben haben."
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "Popout-Fenster",
       "desc": "Öffnen Sie den Editor in einem eigenen OS-Fenster für einen zweiten Monitor."
     }
+  },
+  "quality": {
+    "noWork": "Dieses Buch hat noch keine Co-Writer-Session – schreibe zuerst ein Kapitel, dann werden hier Qualitätsdaten angezeigt.",
+    "hubNoWorkHint": "Versprechen, Kritiker-Scores und Story-Abdeckung erfordern eine Co-Writer-Session – beginne zuerst mit dem Schreiben eines Kapitels. Die unten aufgeführten Kanon-Probleme funktionieren in jedem Fall.",
+    "pickModel": "Wähle ein Modell zur Analyse aus…",
+    "pickChapter": "Wähle ein Kapitel",
+    "pickChapterHint": "Wähle oben ein Kapitel aus, um dessen Qualität zu analysieren.",
+    "chaptersTruncated": "zeigt die ersten {{shown}} von {{total}} Kapiteln an",
+    "canonIntro": "Hinweis — bestätigte Widersprüche zu Inhalten, die früher im Buch als entfernt/geändert markiert wurden. Hier wird nichts automatisch angewendet.",
+    "canonEmpty": "Keine Kanon-Probleme gefunden.",
+    "canonCompositionError": "Konnte Kanon-Probleme aus der Generierung nicht laden — bitte erneut versuchen.",
+    "canonExtractionError": "Konnte Kanon-Flags aus der Wissensextraktion nicht laden — bitte erneut versuchen.",
+    "canonFromGeneration": "Aus der Generierung ({{n}})",
+    "canonFromExtraction": "Aus der Wissensextraktion ({{n}})",
+    "untitledScene": "Unbenannte Szene",
+    "jumpToChapter": "Kapitel öffnen",
+    "promisesTitle": "Versprechen",
+    "promisesDesc": "Offenes Buch der Versprechen-Schulden",
+    "criticTitle": "Kritiker",
+    "criticDesc": "Bewertungen zu Kohärenz, Erzählstimme, Pacing & Kanon pro Kapitel",
+    "coverageTitle": "Story-Abdeckung",
+    "coverageDesc": "Abdeckung des Versprechens des gesamten Buches",
+    "canonTitle": "Kanon-Probleme",
+    "canonDesc": "Bestätigte Widersprüche"
   }
 }

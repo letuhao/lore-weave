@@ -7,8 +7,8 @@
     "title": "寫作工作室",
     "body": "本書的可停靠工作區。面板（寫作、大綱、角色、品質…）將逐一加入此處。拖曳分頁即可分割、堆疊、浮動，或彈出為獨立視窗。",
     "openUserGuide": "開啟使用者指南",
-    "paletteHint": "⌘⇧P →「選擇你的重點」或「開始導覽」，隨時可用",
-    "startGuidedTour": "開始導覽"
+    "startGuidedTour": "開始導覽",
+    "paletteHint": "⌘⇧P →「選擇你的重點」或「開始導覽」，隨時可用"
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "章節版本比較",
       "desc": "單一章節版本配對的完整編輯器差異比較",
       "empty": "請從代理模式的審閱面板開啟某個章節的版本差異。"
+    },
+    "quality": {
+      "title": "品質分析",
+      "desc": "未完成伏筆、評論評分、故事覆蓋率與設定矛盾",
+      "guideBody": "品質分析是您的診斷儀表板 — 僅供參考，此處的內容不會改變您的原文。點擊卡片即可查看未完成伏筆清單、章節評論評分、全書伏筆覆蓋率，或是已確認的設定矛盾。"
+    },
+    "quality-promises": {
+      "title": "伏筆",
+      "desc": "未完成伏筆清單（尚未兌現的鋪陳）"
+    },
+    "quality-critic": {
+      "title": "評論",
+      "desc": "各章節的連貫性、語氣、節奏與設定評分"
+    },
+    "quality-coverage": {
+      "title": "故事覆蓋率",
+      "desc": "針對大綱伏筆是否已兌現的全書審核"
+    },
+    "quality-canon": {
+      "title": "設定矛盾",
+      "desc": "透過生成與知識提取所確認的矛盾點"
+    },
+    "book-import": {
+      "title": "匯入",
+      "desc": "從文字檔、.docx、.epub 匯入章節，或從 PDF 匯入整本書",
+      "intro": "將現有的原稿內容匯入此書。",
+      "guideBody": "從純文字、.docx 或 .epub 檔案匯入章節，或是從 PDF 匯入整本書（可選擇 AI 圖片說明功能 — 由您自行決定使用的視覺模型）。當您有現成內容想要匯入，而非從零開始創作時，隨時可以開啟此功能。",
+      "text": {
+        "title": "匯入章節",
+        "desc": ".txt、.docx 或 .epub — 每份檔案為一個章節"
+      },
+      "pdf": {
+        "title": "從 PDF 匯入",
+        "desc": "將 PDF 拆解為章節，並可選擇使用 AI 為圖片生成說明"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "儲存",
     "grammar": "文法",
     "heatmap": "熱度圖",
+    "glossary": "術語表",
     "focus": "專注模式",
-    "translate": "翻譯",
-    "glossary": "術語表"
+    "translate": "翻譯"
   },
   "popout": {
     "invalid": "此彈出視窗連結無效。",
@@ -633,10 +668,6 @@
           "title": "打磨文字",
           "body": "當一個場景有了文字之後，就在這裡潤飾——文法檢查、詞彙表提示與專注模式都在這個編輯器裡。"
         },
-        "planner": {
-          "title": "規劃故事的整體樣貌",
-          "body": "在寫作前後，把故事線、章節與劇情節拍整理好，讓創作與編輯器有個結構可以依循。"
-        },
         "grammar": {
           "title": "寫作時即時糾正錯字",
           "body": "無需離開頁面，即可即時開啟語法與拼字檢查。"
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "偵測連貫性偏差",
           "body": "標示可能與既定設定矛盾的內容 — 在繼續寫作前值得您留意一下。"
+        },
+        "planner": {
+          "title": "規劃故事的整體樣貌",
+          "body": "在寫作前後，把故事線、章節與劇情節拍整理好，讓創作與編輯器有個結構可以依循。"
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "彈出視窗",
       "desc": "將「創作」視窗彈出至獨立的作業系統視窗，方便在第二個螢幕使用。"
     }
+  },
+  "quality": {
+    "noWork": "此書尚未建立共同寫作對話 — 請先開始撰寫章節，之後品質數據便會顯示於此。",
+    "hubNoWorkHint": "「伏筆」、「評論評分」與「故事覆蓋率」需要透過共同寫作對話來產生 — 請先開始撰寫章節。下方的「設定衝突」問題無論如何皆可運作。",
+    "pickModel": "選擇要使用的分析模型…",
+    "pickChapter": "選擇章節",
+    "pickChapterHint": "請從上方選擇一個章節來分析其品質。",
+    "chaptersTruncated": "顯示第 {{shown}} 節，共 {{total}} 節",
+    "canonIntro": "提示 — 已確認與書中先前標記為「已刪除/已更改」的內容存在矛盾。此處內容不會自動套用。",
+    "canonEmpty": "未發現設定矛盾。",
+    "canonCompositionError": "無法從生成內容載入設定矛盾 — 請重試。",
+    "canonExtractionError": "無法從知識擷取載入設定標記 — 請重試。",
+    "canonFromGeneration": "來自生成內容 ({{n}})",
+    "canonFromExtraction": "來自知識擷取 ({{n}})",
+    "untitledScene": "未命名場景",
+    "jumpToChapter": "開啟章節",
+    "promisesTitle": "伏筆",
+    "promisesDesc": "開啟伏筆債務清單",
+    "criticTitle": "評論家",
+    "criticDesc": "章節連貫性、文風、節奏與設定一致性評分",
+    "coverageTitle": "故事覆蓋範圍",
+    "coverageDesc": "全書承諾內容覆蓋率",
+    "canonTitle": "設定矛盾",
+    "canonDesc": "已確認的矛盾點"
   }
 }

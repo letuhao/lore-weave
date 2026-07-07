@@ -49,6 +49,7 @@ import { LeaderboardAuthorsPanel } from './LeaderboardAuthorsPanel';
 import { LeaderboardTranslatorsPanel } from './LeaderboardTranslatorsPanel';
 import { LeaderboardTrendingPanel } from './LeaderboardTrendingPanel';
 import { ChapterBrowserPanel } from './ChapterBrowserPanel';
+import { BookImportPanel } from './BookImportPanel';
 import { ContextInspectorPanel } from './ContextInspectorPanel';
 import { MediaVersionHistoryPanel } from './MediaVersionHistoryPanel';
 import { OriginalSourcePanel } from './OriginalSourcePanel';
@@ -177,6 +178,10 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // multi-select bulk actions + a Title-vs-Content search-mode toggle), sibling to
   // the Manuscript Navigator (tree, for writing) not a replacement for it.
   { id: 'chapter-browser', component: ChapterBrowserPanel, titleKey: 'panels.chapter-browser.title', descKey: 'panels.chapter-browser.desc', category: 'editor', guideBodyKey: 'panels.chapter-browser.guideBody' },
+  // D-STUDIO-IMPORT-PANEL — the classic ChaptersTab's import toolbar (text/.docx/.epub +
+  // PDF-with-vision-captioning) ported into the studio dock, reusing ImportDialog/PdfImportWizard
+  // as-is (DOCK-2). Was reachable only from the pre-Studio /books/:bookId/chapters tab.
+  { id: 'book-import', component: BookImportPanel, titleKey: 'panels.book-import.title', descKey: 'panels.book-import.desc', category: 'editor', guideBodyKey: 'panels.book-import.guideBody' },
   // Context Budget Law §11 — the Context Compiler · Trace Inspector: per-turn context-build
   // observability (budget gauge · allocation map · Planner→Compiler waterfall). Palette + agent
   // openable (panelCatalogContract enforces openable-set == the ui_open_studio_panel enum);

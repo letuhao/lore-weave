@@ -7,8 +7,8 @@
     "title": "Writing Studio",
     "body": "Un espace de travail dockable pour ce livre. Les panneaux (composition, planificateur, casting, qualité…) seront ajoutés ici un par un. Faites glisser les onglets pour diviser, empiler, détacher ou les sortir dans leur propre fenêtre.",
     "openUserGuide": "Ouvrir le guide de l'utilisateur",
-    "paletteHint": "⌘⇧P → « Choisir votre focus » ou « Lancer la visite guidée » à tout moment",
-    "startGuidedTour": "Démarrer la visite guidée"
+    "startGuidedTour": "Démarrer la visite guidée",
+    "paletteHint": "⌘⇧P → « Choisir votre focus » ou « Lancer la visite guidée » à tout moment"
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "Comparaison de révision de chapitre",
       "desc": "Différence complète de l'éditeur pour une paire de révisions de chapitre",
       "empty": "Ouvrez la différence de révision d'un chapitre depuis le panneau de révision du Mode Agent."
+    },
+    "quality": {
+      "title": "Qualité",
+      "desc": "Promesses en suspens, notes des critiques, couverture de l'intrigue et problèmes de canon",
+      "guideBody": "La Qualité est votre tableau de bord de diagnostic — à titre consultatif uniquement, rien ici ne modifie votre prose. Choisissez une carte pour consulter le registre des dettes de promesses, les notes des critiques par chapitre, la couverture des promesses de l'œuvre complète ou les contradictions de canon confirmées."
+    },
+    "quality-promises": {
+      "title": "Promesses",
+      "desc": "Le registre des dettes de promesses en suspens (les éléments installés non encore résolus)"
+    },
+    "quality-critic": {
+      "title": "Critique",
+      "desc": "Scores de cohérence, de voix, de rythme et de canon par chapitre"
+    },
+    "quality-coverage": {
+      "title": "Couverture de l'intrigue",
+      "desc": "Audit complet de l'œuvre pour vérifier quelles promesses du plan ont été tenues"
+    },
+    "quality-canon": {
+      "title": "Problèmes de canon",
+      "desc": "Contradictions confirmées par la génération et l'extraction de connaissances"
+    },
+    "book-import": {
+      "title": "Importer",
+      "desc": "Importez des chapitres depuis des fichiers .txt, .docx ou .epub, ou un livre entier depuis un PDF",
+      "intro": "Importez le contenu d'un manuscrit existant dans ce livre.",
+      "guideBody": "Importez des chapitres à partir de fichiers texte brut, .docx ou .epub, ou un livre entier à partir d'un PDF (avec légendage d'images par IA en option — vous choisissez explicitement le modèle de vision). Utilisez cette option dès que vous avez du contenu existant à importer plutôt que de repartir de zéro.",
+      "text": {
+        "title": "Importer des chapitres",
+        "desc": ".txt, .docx ou .epub — un chapitre par fichier"
+      },
+      "pdf": {
+        "title": "Importer depuis un PDF",
+        "desc": "Découpez un PDF en chapitres, avec légendage IA optionnel pour les images"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "Enregistrer",
     "grammar": "Grammaire",
     "heatmap": "Carte thermique",
+    "glossary": "Glossaire",
     "focus": "Focus",
-    "translate": "Traduire",
-    "glossary": "Glossaire"
+    "translate": "Traduire"
   },
   "popout": {
     "invalid": "Ce lien de fenêtre contextuelle est invalide.",
@@ -633,10 +668,6 @@
           "title": "Peaufiner la prose",
           "body": "Une fois qu'une scène contient du texte, affinez-la ici — vérification grammaticale, indices du glossaire et mode focus sont tous dans cet éditeur."
         },
-        "planner": {
-          "title": "Planifier la structure de l'histoire",
-          "body": "Organisez les arcs, les chapitres et les battements avant ou entre vos sessions d'écriture, afin que Compose et l'Éditeur disposent d'une structure pour écrire."
-        },
         "grammar": {
           "title": "Repérez les fautes de frappe en écrivant",
           "body": "Activez la vérification grammaticale et orthographique en temps réel sans quitter la page."
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "Repérez les incohérences",
           "body": "Met en évidence les lignes qui pourraient contredire le canon établi — un coup d'œil utile avant de continuer."
+        },
+        "planner": {
+          "title": "Planifier la structure de l'histoire",
+          "body": "Organisez les arcs, les chapitres et les battements avant ou entre vos sessions d'écriture, afin que Compose et l'Éditeur disposent d'une structure pour écrire."
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "Fenêtre détachée",
       "desc": "Détachez l'interface de composition dans sa propre fenêtre système pour un second écran."
     }
+  },
+  "quality": {
+    "noWork": "Ce livre n'a pas encore de session de co-écriture — commencez d'abord à rédiger un chapitre, puis les données de qualité apparaîtront ici.",
+    "hubNoWorkHint": "Les promesses, les scores de critique et la couverture de l'histoire nécessitent une session de co-écriture — commencez d'abord à rédiger un chapitre. Les problèmes de canon ci-dessous fonctionnent dans tous les cas.",
+    "pickModel": "Choisir un modèle pour l'analyse…",
+    "pickChapter": "Choisir un chapitre",
+    "pickChapterHint": "Choisissez un chapitre ci-dessus pour analyser sa qualité.",
+    "chaptersTruncated": "affichage des {{shown}} premiers chapitres sur {{total}}",
+    "canonIntro": "Avertissement — contradictions confirmées avec du contenu marqué comme supprimé ou modifié précédemment dans le livre. Rien n'est appliqué automatiquement ici.",
+    "canonEmpty": "Aucun problème de canon détecté.",
+    "canonCompositionError": "Impossible de charger les problèmes de canon depuis la génération — réessayez.",
+    "canonExtractionError": "Impossible de charger les indicateurs de canon depuis l'extraction de connaissances — réessayez.",
+    "canonFromGeneration": "Depuis la génération ({{n}})",
+    "canonFromExtraction": "Depuis l'extraction de connaissances ({{n}})",
+    "untitledScene": "Scène sans titre",
+    "jumpToChapter": "Ouvrir le chapitre",
+    "promisesTitle": "Promesses",
+    "promisesDesc": "Registre des dettes de promesses non résolues",
+    "criticTitle": "Critique",
+    "criticDesc": "Scores de cohérence, de voix, de rythme et de respect du canon par chapitre",
+    "coverageTitle": "Couverture de l'histoire",
+    "coverageDesc": "Couverture de la promesse globale du livre",
+    "canonTitle": "Problèmes de canon",
+    "canonDesc": "Contradictions confirmées"
   }
 }

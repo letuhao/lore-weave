@@ -7,8 +7,8 @@
     "title": "Yazım Stüdyosu",
     "body": "Bu kitap için sabitlenebilir bir çalışma alanı. Paneller (compose, planner, cast, quality…) buraya tek tek eklenecektir. Sekmeleri bölmek, üst üste dizmek, serbest bırakmak veya kendi penceresinde açmak için sürükleyin.",
     "openUserGuide": "Kullanım Kılavuzunu Aç",
-    "paletteHint": "⌘⇧P → Her an \"Odak Noktanızı Seçin\" veya \"Rehberli Tura Başlayın\"",
-    "startGuidedTour": "Rehberli Tura Başla"
+    "startGuidedTour": "Rehberli Tura Başla",
+    "paletteHint": "⌘⇧P → Her an \"Odak Noktanızı Seçin\" veya \"Rehberli Tura Başlayın\""
   },
   "panels": {
     "compose": {
@@ -333,6 +333,41 @@
       "title": "Bölüm Revizyon Karşılaştırma",
       "desc": "Bir bölüm revizyon çifti için tam editör farkı",
       "empty": "Ajan Modu'nun inceleme panelinden bir bölümün revizyon farkını açın."
+    },
+    "quality": {
+      "title": "Kalite",
+      "desc": "Açık vaatler, eleştirmen puanları, hikaye kapsamı ve kanon sorunları",
+      "guideBody": "Kalite, sizin teşhis panelinizdir — yalnızca bilgilendirme amaçlıdır, buradaki hiçbir şey metninizi değiştirmez. Açık vaat borcu defterini, bölüm bazlı eleştirmen puanlarını, kitap genelindeki vaat kapsamını veya onaylanmış kanon çelişkilerini görmek için bir kart seçin."
+    },
+    "quality-promises": {
+      "title": "Vaatler",
+      "desc": "Açık vaat borcu defteri (henüz sonuçlanmamış kurgusal hazırlıklar)"
+    },
+    "quality-critic": {
+      "title": "Eleştirmen",
+      "desc": "Bölüm bazlı tutarlılık, üslup, tempo ve kanon puanları"
+    },
+    "quality-coverage": {
+      "title": "Hikaye kapsamı",
+      "desc": "Taslak vaatlerinin hangilerinin yerine getirildiğine dair kitap geneli denetim"
+    },
+    "quality-canon": {
+      "title": "Kanon sorunları",
+      "desc": "Üretim ve bilgi çıkarımından kaynaklanan onaylanmış çelişkiler"
+    },
+    "book-import": {
+      "title": "İçe Aktar",
+      "desc": "Metin, .docx veya .epub formatlarından bölümleri ya da bir PDF'den tüm kitabı içe aktarın",
+      "intro": "Mevcut taslak içeriğini bu kitaba aktarın.",
+      "guideBody": "Düz metin, .docx veya .epub dosyalarından bölümleri ya da bir PDF'den tüm kitabı içe aktarın (isteğe bağlı yapay zeka görsel altyazı desteği ile — görme modelini siz seçersiniz). Sıfırdan yazmak yerine, içeriği aktarmak istediğiniz her an bu özelliği kullanabilirsiniz.",
+      "text": {
+        "title": "Bölümleri içe aktar",
+        "desc": ".txt, .docx veya .epub — dosya başına bir bölüm"
+      },
+      "pdf": {
+        "title": "PDF'den içe aktar",
+        "desc": "Görseller için isteğe bağlı yapay zeka altyazı desteğiyle bir PDF'i bölümlere ayırın"
+      }
     }
   },
   "sceneRail": {
@@ -399,9 +434,9 @@
     "save": "Kaydet",
     "grammar": "Dil Bilgisi",
     "heatmap": "Isı Haritası",
+    "glossary": "Sözlük",
     "focus": "Odak",
-    "translate": "Çevir",
-    "glossary": "Sözlük"
+    "translate": "Çevir"
   },
   "popout": {
     "invalid": "Bu açılır pencere bağlantısı geçersiz.",
@@ -633,10 +668,6 @@
           "title": "Anlatıyı parlatın",
           "body": "Bir sahne kelimelerden oluştuğunda, burada geliştirin — dil bilgisi kontrolleri, sözlük ipuçları ve odak modu bu editörde yer alır."
         },
-        "planner": {
-          "title": "Hikayenin yapısını planlayın",
-          "body": "Yazma oturumlarından önce veya aralarında akışları, bölümleri ve vuruş noktalarını belirleyin; böylece Oluştur ve Editör yazılacak bir yapıya sahip olur."
-        },
         "grammar": {
           "title": "Yazarken yazım hatalarını yakalayın",
           "body": "Sayfadan ayrılmadan canlı dilbilgisi ve yazım denetimini açın veya kapatın."
@@ -644,6 +675,10 @@
         "heatmap": {
           "title": "Süreklilik sapmalarını fark edin",
           "body": "Yerleşik kurguyla çelişebilecek satırları vurgular — devam etmeden önce bir göz atmaya değer."
+        },
+        "planner": {
+          "title": "Hikayenin yapısını planlayın",
+          "body": "Yazma oturumlarından önce veya aralarında akışları, bölümleri ve vuruş noktalarını belirleyin; böylece Oluştur ve Editör yazılacak bir yapıya sahip olur."
         }
       },
       "worldbuilder": {
@@ -941,5 +976,29 @@
       "label": "Ayrı Pencere",
       "desc": "İkinci bir monitör için Oluşturma ekranını kendi işletim sistemi penceresi olarak açın."
     }
+  },
+  "quality": {
+    "noWork": "Bu kitabın henüz bir ortak yazar oturumu yok — önce bir bölüm yazmaya başlayın, ardından kalite verileri burada görünecektir.",
+    "hubNoWorkHint": "Vaatler, eleştirmen puanları ve hikaye kapsamı için bir ortak yazar oturumu gerekir — önce bir bölüm yazmaya başlayın. Aşağıdaki kanon sorunları her iki durumda da çalışmaya devam eder.",
+    "pickModel": "Analiz için bir model seçin…",
+    "pickChapter": "Bir bölüm seçin",
+    "pickChapterHint": "Kalitesini analiz etmek için yukarıdan bir bölüm seçin.",
+    "chaptersTruncated": "{{total}} bölümün ilk {{shown}} tanesi gösteriliyor",
+    "canonIntro": "Uyarı — Kitabın önceki kısımlarında kaldırılmış/değiştirilmiş olarak işaretlenen içeriklerle onaylanmış çelişkiler bulundu. Burada belirtilenlerin hiçbiri otomatik olarak uygulanmaz.",
+    "canonEmpty": "Hiçbir kurgu hatası bulunamadı.",
+    "canonCompositionError": "Oluşturma işleminden kurgu sorunları yüklenemedi — tekrar deneyin.",
+    "canonExtractionError": "Bilgi çıkarımından kurgu bayrakları yüklenemedi — tekrar deneyin.",
+    "canonFromGeneration": "Oluşturmadan ({{n}})",
+    "canonFromExtraction": "Bilgi çıkarımından ({{n}})",
+    "untitledScene": "Başlıksız sahne",
+    "jumpToChapter": "Bölümü aç",
+    "promisesTitle": "Vaatler",
+    "promisesDesc": "Açık vaat borç defteri",
+    "criticTitle": "Eleştirmen",
+    "criticDesc": "Bölüm başına tutarlılık, üslup, tempo ve kanon puanları",
+    "coverageTitle": "Hikaye kapsamı",
+    "coverageDesc": "Kitap genelindeki vaatlerin kapsamı",
+    "canonTitle": "Kanon sorunları",
+    "canonDesc": "Onaylanmış çelişkiler"
   }
 }
