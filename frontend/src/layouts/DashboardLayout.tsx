@@ -6,7 +6,7 @@ export function DashboardLayout() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl px-6 py-6 lg:px-10 lg:py-8">
+        <div className="mx-auto h-full max-w-6xl px-6 py-6 lg:px-10 lg:py-8">
           <Outlet />
         </div>
       </main>

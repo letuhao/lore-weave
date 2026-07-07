@@ -26,6 +26,10 @@ export function PressureGauge({ frame }: { frame: ContextTraceFrame }) {
   const raw = frame.raw_tokens ?? null;
   const reduction = turnReductionPct(frame);
   const state = gaugeState(compiled, target, ceiling);
+  const caching = frame.caching;
+  // Only worth a row when the provider actually declares a caching capability —
+  // a "stateless" strategy has no cache split to show (always 0% hit, every turn).
+  const showCaching = !!caching && caching.strategy !== 'stateless';
 
   // Gauge geometry: a semicircle scaled to 2×target for readability (so a healthy
   // compiled≈target lands mid-arc). Falls back to the ceiling, else the compiled
@@ -104,8 +108,38 @@ export function PressureGauge({ frame }: { frame: ContextTraceFrame }) {
               );
             })}
           </div>
+          {showCaching && caching && <CachingRow caching={caching} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+function CachingRow({ caching }: { caching: NonNullable<ContextTraceFrame['caching']> }) {
+  const hitPct = Math.round(caching.hit_rate * 100);
+  const savingPct = Math.round(caching.cost_delta_ratio * 100);
+  const savingLabel = savingPct >= 0 ? `saving ${savingPct}%` : `costing ${Math.abs(savingPct)}% more`;
+  return (
+    <div
+      className="col-span-3 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground"
+      data-testid="inspector-caching-row"
+    >
+      <span
+        className={cn(
+          'inline-flex items-center rounded-full border border-border bg-secondary px-2 py-0.5 font-semibold',
+          caching.thrashing ? 'text-red-400' : savingPct >= 0 ? 'text-emerald-400' : 'text-yellow-400',
+        )}
+      >
+        cache: {hitPct}% hit · {savingLabel}
+      </span>
+      {caching.thrashing && (
+        <span
+          className="inline-flex items-center rounded-full border border-border bg-secondary px-2 py-0.5 font-semibold text-red-400"
+          data-status-chip="cache-thrashing"
+        >
+          thrashing
+        </span>
+      )}
     </div>
   );
 }

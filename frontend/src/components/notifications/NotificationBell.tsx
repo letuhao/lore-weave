@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router-dom';
 import { Bell, CheckCheck } from 'lucide-react';
@@ -24,6 +24,12 @@ export function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState<NotificationCategory>('all');
   const { pathname } = useLocation();
+  // Monotonic request id (GET-vs-GET) + a mask of ids just marked read locally
+  // whose PATCH may still be in flight (GET-vs-PATCH) — without both, a refetch
+  // triggered right after mark-read can land with the pre-write snapshot and
+  // silently flip the item back to unread.
+  const reqIdRef = useRef(0);
+  const pendingReadIdsRef = useRef<Set<string>>(new Set());
 
   // Seed the badge before the first SSE event arrives, and re-sync on every
   // route change — so reading notifications on the /notifications page (which
@@ -45,19 +51,32 @@ export function NotificationBell() {
   // Load notifications when panel opens or category changes.
   useEffect(() => {
     if (!open || !accessToken) return;
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     fetchNotifications(accessToken, {
       category: category === 'all' ? undefined : category,
       limit: 30,
     })
-      .then((r) => setItems(r.items))
+      .then((r) => {
+        if (reqId !== reqIdRef.current) return; // superseded by a newer request
+        const pending = pendingReadIdsRef.current;
+        setItems(
+          pending.size === 0
+            ? r.items
+            : r.items.map((n) => (pending.has(n.id) ? { ...n, read: true } : n)),
+        );
+        pending.clear();
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (reqId === reqIdRef.current) setLoading(false);
+      });
   }, [open, category, accessToken]);
 
   const handleMarkRead = useCallback(
     async (id: string) => {
       if (!accessToken) return;
+      pendingReadIdsRef.current.add(id);
       setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
       setUnread((c) => Math.max(0, c - 1));
       await markRead(id, accessToken).catch(() => {});
@@ -67,7 +86,10 @@ export function NotificationBell() {
 
   const handleMarkAllRead = useCallback(async () => {
     if (!accessToken) return;
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+    setItems((prev) => {
+      prev.forEach((n) => pendingReadIdsRef.current.add(n.id));
+      return prev.map((n) => ({ ...n, read: true }));
+    });
     setUnread(0);
     await markAllRead(accessToken).catch(() => {});
   }, [accessToken]);

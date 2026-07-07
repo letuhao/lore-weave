@@ -126,7 +126,7 @@ export function Sidebar() {
       </div>
 
       {/* Main nav */}
-      <nav className="flex-1 space-y-1 px-2">
+      <nav className="flex-1 min-h-0 space-y-1 overflow-y-auto px-2">
         {!collapsed && (
           <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nav.main')}

@@ -190,15 +190,6 @@ export type GlossaryEntityListResponse = {
   offset: number;
 };
 
-export type GenreGroup = {
-  id: string;
-  book_id: string;
-  name: string;
-  color: string;
-  description: string;
-  sort_order: number;
-  created_at: string;
-};
 
 // ── Kind-resolution review (unknown bucket + aliases) ────────────────────────
 // When extract-entities can't resolve an incoming kind_code, the entity is parked

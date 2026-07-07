@@ -220,6 +220,23 @@ export interface EntityPresenceFrame {
   reason: string;
 }
 
+/** Prompt-caching metrics for this turn (chat-service `caching_monitor.build_caching_metrics`
+ *  + the rolling `detect_thrashing` verdict). All numeric fields are always present (0 /
+ *  "stateless" when nothing cached); `thrashing` is `null` when a verdict isn't meaningful yet
+ *  (auto-cache provider, or fewer than 3 turns of history). */
+export interface CachingFrame {
+  strategy: string;
+  auto_prefix: boolean;
+  create_tok: number;
+  read_tok: number;
+  uncached_tok: number;
+  hit_rate: number;
+  cost_delta_ratio: number;
+  write_premium_tok: number;
+  net_negative: boolean;
+  thrashing: boolean | null;
+}
+
 /** The full persisted contextBudget frame — a superset of ContextBudget with the
  *  §11a Inspector telemetry. Every Inspector-specific field is optional so an
  *  older/pre-M1 turn (no telemetry) still renders (blank chips, no waterfall). */
@@ -233,6 +250,7 @@ export interface ContextTraceFrame extends ContextBudget {
   intent?: string | null;
   entity_presence?: EntityPresenceFrame | null;
   trace?: TraceSpanFrame[];
+  caching?: CachingFrame | null;
 }
 
 /** One turn in the Inspector series (GET /v1/chat/sessions/{id}/context-trace).
