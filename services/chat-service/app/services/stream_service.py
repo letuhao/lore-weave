@@ -2482,6 +2482,10 @@ async def stream_response(
     # Part B (2026-07-07) — composition (pinned, or auto-injected on studio) / translation (pinned only).
     composition_skill: str | None = _skill_prompts.get("composition")
     translation_skill: str | None = _skill_prompts.get("translation")
+    # Part B Phase 2 (2026-07-07) — book / settings / jobs (all pinned only, never auto-injected).
+    book_skill: str | None = _skill_prompts.get("book")
+    settings_skill: str | None = _skill_prompts.get("settings")
+    jobs_skill: str | None = _skill_prompts.get("jobs")
     # RAID B2 (+ ask-mode follow-up) — the mode system nudge, appended on BOTH
     # assembly paths below (mirrors skill_meta_block) whenever the turn runs
     # restricted (plan or ask) — write mode is the unrestricted baseline and
@@ -2619,6 +2623,12 @@ async def stream_response(
                 composition_skill = None
             if _uskills.system_disabled("translation") or _uskills.shadows("translation"):
                 translation_skill = None
+            if _uskills.system_disabled("book") or _uskills.shadows("book"):
+                book_skill = None
+            if _uskills.system_disabled("settings") or _uskills.shadows("settings"):
+                settings_skill = None
+            if _uskills.system_disabled("jobs") or _uskills.shadows("jobs"):
+                jobs_skill = None
         except Exception:
             logger.warning("user skills fetch/inject failed — built-in skills only", exc_info=True)
             user_skills_block = None
@@ -2642,6 +2652,9 @@ async def stream_response(
         plan_forge_skill,    # RAID B2 — PlanForge flow (pinned or plan-mode)
         composition_skill,   # Part B (2026-07-07) — pinned, or auto-injected on studio
         translation_skill,   # Part B (2026-07-07) — pinned only
+        book_skill,          # Part B Phase 2 (2026-07-07) — pinned only
+        settings_skill,      # Part B Phase 2 (2026-07-07) — pinned only
+        jobs_skill,          # Part B Phase 2 (2026-07-07) — pinned only
         user_skills_block,   # REG-P1-05 — user/book registry skills (L2 bodies)
         mode_nudge_block,    # RAID B2 (+ask-mode) — plan/ask mode nudge
         skill_meta_block,    # RAID C3 — L1 available-skills catalog
@@ -2694,6 +2707,7 @@ async def stream_response(
                 for s in (
                     glossary_skill, knowledge_skill, universal_skill,
                     plan_forge_skill, composition_skill, translation_skill,
+                    book_skill, settings_skill, jobs_skill,
                     skill_meta_block, user_skills_block,
                 )
                 if s

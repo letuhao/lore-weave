@@ -266,6 +266,25 @@ class TestCuratedSkillHotDomainUnion:
         # empty-skills gate — the generic loop found nothing NEW to add (already covered).
         assert seed_with_pin == seed_without_pin
 
+    def test_curated_pin_of_phase2_skills_seeds_book_settings_jobs_domains(self):
+        """Part B Phase 2 (2026-07-07) — book/settings/jobs are ALL curated-pin-only
+        (never auto-injected, none in _BOOK_SCOPED_HOT_DOMAINS/_STUDIO_HOT_DOMAINS) —
+        proves the same generic union that already covers translation/composition also
+        covers these three, with no per-skill wiring needed."""
+        cat = (
+            [_tool_big(f"book_t{i}", 200) for i in range(3)]
+            + [_tool_big(f"settings_t{i}", 200) for i in range(3)]
+            + [_tool_big(f"jobs_t{i}", 200) for i in range(3)]
+        )
+        pins = resolve_session_tool_pins({
+            "enabled_tools": ["book_t0"],
+            "enabled_skills": ["book", "settings", "jobs"],
+            "activated_tools": [],
+        })
+        seed = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=True)
+        names = {t["function"]["name"] for t in cat}
+        assert names <= seed
+
 
 class TestActivatedTokenCap:
     def test_catalog_caps_by_tokens_not_count(self):

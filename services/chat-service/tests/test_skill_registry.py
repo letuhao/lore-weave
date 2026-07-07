@@ -188,9 +188,68 @@ class TestSkillMetadataL1:
         assert "`glossary`" not in block
 
     def test_metadata_is_compact(self):
-        # L1 is cheap — the whole book-surface catalog is a handful of lines.
+        # L1 is cheap — the whole book-surface catalog is a handful of lines, one per
+        # visible skill. Bound grows deliberately as Part B adds skills (5→8 lines at
+        # Phase 2: glossary/knowledge/plan_forge/composition/translation/book/settings/
+        # jobs); this asserts "still a short list", not an exact count — bump it when a
+        # real new skill lands, don't just raise it to silence a failure.
         block = skill_metadata_block(editor=True, book_scoped=True, admin=False)
-        assert block.count("\n- ") <= 6
+        assert block.count("\n- ") <= 9
+
+
+class TestPhase2Skills:
+    """docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-standard.md Part B
+    Phase 2 (2026-07-07) — book/settings/jobs: all curated-pin-only (never in any
+    auto-inject branch), registered + catalog-visible, with the surface split that
+    matters: book needs a book in context, settings/jobs are account-level and
+    reachable from plain chat too."""
+
+    def test_all_three_registered_with_correct_hot_domains(self):
+        for code, domain in (("book", "book"), ("settings", "settings"), ("jobs", "jobs")):
+            skill = SYSTEM_SKILLS[code]
+            assert skill.hot_domains == frozenset({domain})
+
+    def test_all_three_appear_in_catalog(self):
+        ids = {item["id"] for item in catalog_items()}
+        assert {"book", "settings", "jobs"} <= ids
+
+    def test_book_not_visible_on_plain_chat_surface(self):
+        codes = resolve_skills_to_inject(
+            enabled_skills=["book"],
+            stream_format="agui",
+            disable_tools=False,
+            tool_calling_enabled=True,
+            editor=False,
+            book_scoped=False,
+            admin=False,
+        )
+        assert codes == []
+
+    def test_settings_and_jobs_visible_on_plain_chat_surface(self):
+        codes = resolve_skills_to_inject(
+            enabled_skills=["settings", "jobs"],
+            stream_format="agui",
+            disable_tools=False,
+            tool_calling_enabled=True,
+            editor=False,
+            book_scoped=False,
+            admin=False,
+        )
+        assert set(codes) == {"settings", "jobs"}
+
+    def test_none_of_the_three_auto_inject_by_default(self):
+        """Curated-pin only — an empty enabled_skills (surface-default) on a
+        book-scoped turn must NOT silently include book/settings/jobs."""
+        codes = resolve_skills_to_inject(
+            enabled_skills=[],
+            stream_format="agui",
+            disable_tools=False,
+            tool_calling_enabled=True,
+            editor=True,
+            book_scoped=True,
+            admin=False,
+        )
+        assert not {"book", "settings", "jobs"} & set(codes)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -246,6 +305,18 @@ _ALLOWED_CONTRASTIVE_MENTIONS: dict[str, frozenset[str]] = {
     # right tool"); the tool becomes reachable as the conversation naturally reaches
     # that step, same as any other domain the universal skill doesn't pre-seed.
     "universal": frozenset({"book_chapter_save_draft", "book_chapter_publish"}),
+    # book_skill.py: "(e.g. after `story_search` locates it — this tool lives in the
+    # `book` GROUP_DIRECTORY entry ... look for it there, not under `story`)" — a
+    # cross-reference explaining WHERE story_search is catalogued, not a "call this
+    # directly" claim. Also moot in practice: "story" is already unconditionally hot on
+    # every surface book_skill is visible on (_BOOK_SCOPED_HOT_DOMAINS /
+    # _STUDIO_HOT_DOMAINS both include it), independent of book_skill's own hot_domains.
+    "book": frozenset({"story_search"}),
+    # jobs_skill.py: "the domain's own tool ... e.g. `translation_job_control`" — a
+    # cross-domain contrastive mention (this generic system vs. a domain's own job
+    # tools), the same shape as translation_skill's "jobs_get" entry above, just from
+    # the other side of that same boundary.
+    "jobs": frozenset({"translation_job_control", "translation_job_status"}),
 }
 
 _TOOL_TOKEN_RE = re.compile(r"\b[a-z]+(?:_[a-z0-9]+)+\b")

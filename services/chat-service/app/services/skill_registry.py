@@ -68,6 +68,21 @@ def _load_translation() -> str:
     return TRANSLATION_SKILL_PROMPT
 
 
+def _load_book() -> str:
+    from app.services.book_skill import BOOK_SKILL_PROMPT
+    return BOOK_SKILL_PROMPT
+
+
+def _load_settings() -> str:
+    from app.services.settings_skill import SETTINGS_SKILL_PROMPT
+    return SETTINGS_SKILL_PROMPT
+
+
+def _load_jobs() -> str:
+    from app.services.jobs_skill import JOBS_SKILL_PROMPT
+    return JOBS_SKILL_PROMPT
+
+
 SYSTEM_SKILLS: dict[str, SkillDef] = {
     "glossary": SkillDef(
         code="glossary",
@@ -153,6 +168,41 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         # tool_surface.py's generic curated hot-domain union safely seeds it ONLY for a
         # session that explicitly opted in.
         hot_domains=frozenset({"translation"}),
+    ),
+    "book": SkillDef(
+        code="book",
+        label="Book (chapters, revisions, publish)",
+        # Same authoring surfaces as composition — book_* tools are meaningful
+        # wherever a book is open, including the studio workbench.
+        surfaces=frozenset({"book", "editor", "studio"}),
+        prompt_loader=_load_book,
+        description="Browse/edit books and chapters, save and restore draft revisions, publish/unpublish, and propose cover/media/audio generation.",
+        # NEVER auto-injected by default (see resolve_skills_to_inject) — "book" is not
+        # hot-seeded on any surface today (unlike "glossary"/"story", which ARE in
+        # `_BOOK_SCOPED_HOT_DOMAINS`); before this skill, no skill named book_* tools
+        # directly, so there was nothing to seed for. Curated-pin only, same rollout
+        # posture as translation/composition-off-studio: tool_surface.py's generic
+        # curated hot-domain union safely seeds it ONLY for a session that pins it.
+        hot_domains=frozenset({"book"}),
+    ),
+    "settings": SkillDef(
+        code="settings",
+        label="Settings (profile, AI providers/models)",
+        # Account-level, not book-scoped — visible from the plain chat surface too,
+        # unlike book/composition/translation which need a book in context.
+        surfaces=frozenset({"book", "editor", "studio", "chat"}),
+        prompt_loader=_load_settings,
+        description="Manage the user's profile and BYOK AI provider/model registry — list, register, favorite, activate, default, delete.",
+        hot_domains=frozenset({"settings"}),
+    ),
+    "jobs": SkillDef(
+        code="jobs",
+        label="Jobs (background job monitor/control)",
+        # Account-level, cross-service — same reasoning as settings.
+        surfaces=frozenset({"book", "editor", "studio", "chat"}),
+        prompt_loader=_load_jobs,
+        description="List, inspect, cancel, or pause the user's own background jobs across every service.",
+        hot_domains=frozenset({"jobs"}),
     ),
 }
 
