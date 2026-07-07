@@ -31,8 +31,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from uuid import UUID
 
+from app.context.anchors import (
+    get_anchor_index,
+    has_non_ascii_letter,
+    resolve_anchors,
+)
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
@@ -760,6 +766,39 @@ async def build_full_mode(
     # Classify once: the same IntentResult drives both the L2 selector's
     # hop-count / recency gating AND the instruction-block hint text.
     intent_obj = classify(message)
+    # M-recall — the classifier can't segment scriptio-continua (Chinese has no
+    # spaces), so on a non-Latin message it emits whole clauses as "entities" and
+    # select_l2_facts resolves nothing. Anchor instead on the project's KNOWN
+    # entity dictionary (Aho-Corasick), UNIONed into intent.entities so the L2
+    # facts + widened-retry + M1a bridge all see the real anchors. Degrade-safe:
+    # no automaton / no match → intent_obj unchanged (classifier-only).
+    if settings.context_dict_anchor_enabled and has_non_ascii_letter(message):
+        # Bound the (cache-miss) dictionary load so a slow Neo4j can't delay the
+        # whole build — degrade to classifier-only anchors on timeout/failure.
+        try:
+            _automaton = await asyncio.wait_for(
+                get_anchor_index(
+                    str(user_id), str(project.project_id),
+                    ttl_s=settings.context_dict_anchor_ttl_s,
+                    min_len=settings.context_dict_anchor_min_len,
+                ),
+                timeout=settings.context_l2_timeout_s,
+            )
+        except Exception:  # timeout or load error → classifier-only (degrade-safe)
+            _automaton = None
+        _dict_anchors = resolve_anchors(
+            _automaton, message,
+            max_anchors=settings.context_dict_anchor_cap,
+            min_len=settings.context_dict_anchor_min_len,
+        )
+        if _dict_anchors:
+            _merged = tuple(dict.fromkeys((*intent_obj.entities, *_dict_anchors)))
+            if _merged != intent_obj.entities:
+                intent_obj = replace(intent_obj, entities=_merged)
+                logger.info(
+                    "M-recall: +%d dict anchors (project=%s) — L2 anchors now %d",
+                    len(_dict_anchors), project.project_id, len(_merged),
+                )
     # D-K18.3-02: opt-in generative rerank via extraction_config. Absent
     # key or empty string = skip the LLM rerank hop, MMR order stands.
     rerank_model = (project.extraction_config or {}).get("rerank_model") or None

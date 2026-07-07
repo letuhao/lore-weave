@@ -1444,3 +1444,49 @@ async def test_safe_l3_killswitch_skips_resolution(monkeypatch):
     kw = spy.await_args.kwargs
     assert kw["current_chapter_index"] is None
     assert kw["working_scope_boost"] == 0.0
+
+
+# ── M-recall CJK dict-anchor merge wiring (build_full_mode) ──────────────────
+# Guards the seam: on a non-Latin message, dictionary anchors are UNIONed into
+# intent.entities BEFORE select_l2_facts runs. A regression dropping the merge
+# would silently revert CJK L2-recall to 0 facts (all unit mocks still green).
+
+
+@pytest.mark.asyncio
+async def test_cjk_dict_anchors_merged_into_l2(monkeypatch):
+    from unittest.mock import AsyncMock as _AM
+    _patch_mode3_pieces(monkeypatch)
+    l2_spy = _AM(return_value=L2FactResult())
+    monkeypatch.setattr("app.context.modes.full.select_l2_facts", l2_spy)
+    monkeypatch.setattr("app.context.modes.full.settings.context_dict_anchor_enabled", True)
+    monkeypatch.setattr("app.context.modes.full.get_anchor_index", _AM(return_value=MagicMock()))
+    monkeypatch.setattr("app.context.modes.full.resolve_anchors", lambda *a, **k: ["九王子"])
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="九王子修炼什么武功？",
+    )
+    # the (first) L2 call saw the merged anchor, not just the classifier's clause.
+    intent_arg = l2_spy.await_args_list[0].kwargs["intent"]
+    assert "九王子" in intent_arg.entities
+
+
+@pytest.mark.asyncio
+async def test_english_message_skips_dict_anchoring(monkeypatch):
+    from unittest.mock import AsyncMock as _AM
+    _patch_mode3_pieces(monkeypatch)
+    monkeypatch.setattr("app.context.modes.full.settings.context_dict_anchor_enabled", True)
+    idx_spy = _AM(return_value=MagicMock())
+    monkeypatch.setattr("app.context.modes.full.get_anchor_index", idx_spy)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(), user_id=USER_ID, project=project,
+        message="who does the girl marry",  # pure ASCII → gate off
+    )
+    idx_spy.assert_not_called()

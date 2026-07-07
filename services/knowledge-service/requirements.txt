@@ -32,6 +32,13 @@ langdetect>=1.0.9
 # its dict cost is paid only when a contradiction term is needed). Same
 # version lore-enrichment pins; pure Python, no native deps.
 jieba>=0.42
+# M-recall (2026-07-07) — pyahocorasick for CJK/VI-aware entity-anchor matching.
+# The intent classifier can't segment scriptio-continua (Chinese has no spaces),
+# so `select_l2_facts` anchored on classifier tokens returns 0 facts for CJK queries
+# even when the answer is a 1-hop relation. We instead Aho-Corasick match the message
+# against the project's KNOWN entity-name dictionary (language-agnostic: zh/ja/ko/vi).
+# Prebuilt manylinux wheels (no build toolchain needed); C-ext = sub-ms at scale.
+pyahocorasick>=2.0
 # D-T2-01 — tiktoken for accurate token counting (CJK especially).
 # The len/4 heuristic undercounts CJK by ~3-7x, which over-promises
 # context budget. tiktoken.cl100k_base matches GPT-4/Claude-3.x

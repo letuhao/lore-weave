@@ -734,6 +734,45 @@ async def list_user_entities(
     return [_node_to_entity(record["e"]) async for record in result]
 
 
+_LIST_PROJECT_ENTITY_NAMES_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
+  AND e.archived_at IS NULL
+RETURN e.name AS name, e.aliases AS aliases
+"""
+
+
+async def list_project_entity_names(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+) -> list[tuple[str, list[str]]]:
+    """M-recall — every active entity's display name + aliases for a project.
+
+    Feeds the Aho-Corasick anchor dictionary (`app.context.anchors`) that lets the
+    CJK/VI grounding path resolve message anchors the whitespace-blind intent
+    classifier can't. Owner + project scoped (tenancy). Returns `(name, aliases)`
+    pairs; the automaton adds every surface form (name + aliases) as a pattern and
+    emits `name` as the canonical anchor `find_entities_by_name` then resolves.
+    """
+    result = await run_read(
+        session,
+        _LIST_PROJECT_ENTITY_NAMES_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    out: list[tuple[str, list[str]]] = []
+    async for rec in result:
+        name = rec["name"]
+        if not name:
+            continue
+        aliases = [str(a) for a in (rec["aliases"] or []) if a]
+        out.append((str(name), aliases))
+    return out
+
+
 _FIND_BY_NAME_CYPHER_ACTIVE = """
 CALL {
   WITH $user_id AS user_id, $project_id AS project_id,
