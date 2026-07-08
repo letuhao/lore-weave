@@ -11,6 +11,7 @@ import type { ResolvedKey } from '../auth/key-resolver.js';
 import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, injectConfirmActionTool } from '../scope/confirm-action.js';
 import { detectInvokeToolCall, injectInvokeToolTool, notActivatedError, requiresActivation } from '../scope/invoke-tool.js';
 import { domainScope, scopeToolCount, DIRECT_LIST_TOOL_THRESHOLD, WILDCARD_SCOPE, type Domain } from '../scope/tool-policy.js';
+import { rehydrateContentForLegacyClients } from '../scope/structured-content-rehydration.js';
 import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
 import { Idempotency } from '../idempotency/idempotency-store.js';
@@ -313,6 +314,19 @@ export class PublicMcpController {
       // PUB-3 / H-F: filter the `tools/list` RESPONSE so the agent only ever sees the
       // tools its key may call. Only rewrite a successful list; errors pass through.
       const ok = upstreamStatus >= 200 && upstreamStatus < 300;
+      // External MCP discoverability audit #9, spec-compliance follow-up — this is the
+      // ONLY layer that terminates the MCP handshake with an external client we don't
+      // control (ai-gateway's own Server is stateless/per-request and exposes no
+      // negotiated-version getter), so it's the only place that can know whether THIS
+      // caller can be trusted to read `structuredContent`. Rehydrates the compact
+      // placeholder domain services now emit back into the full JSON for a client whose
+      // negotiated `mcp-protocol-version` predates structuredContent (or sent none at
+      // all) — see structured-content-rehydration.ts for the full spec citation + the
+      // conservative-default rationale. A no-op for every request already carrying a
+      // 2025-06-18+ version, or a body with no compacted placeholder to begin with.
+      if (ok && hasBody) {
+        text = rehydrateContentForLegacyClients(text, mcpVersion);
+      }
       // H-O: record the relay outcome (per tools/call; non-call relays are not audited).
       // D-PMCP-AUDIT-DOWNSTREAM-OUTCOME: a single tools/call the edge relayed 2xx but
       // whose JSON-RPC body carried an `error` (a downstream denial / tool failure rides
