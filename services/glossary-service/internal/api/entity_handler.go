@@ -1264,6 +1264,23 @@ func (s *Server) countLiveEntitiesInBook(ctx context.Context, bookID uuid.UUID, 
 	return n, err
 }
 
+// countEntitiesNeedingStatusChange returns how many of `ids` are live entities in the
+// book whose CURRENT status differs from `status` — i.e. how many would actually change.
+// effectStatusChange's UPDATE has no `status <> $1` guard, so it reports every live id as
+// "updated" even when every one of them already has the target status (external MCP
+// discoverability audit #11: used by toolProposeStatusChange to warn on that no-op case).
+func (s *Server) countEntitiesNeedingStatusChange(ctx context.Context, bookID uuid.UUID, ids []uuid.UUID, status string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM glossary_entities
+		 WHERE book_id = $1 AND entity_id = ANY($2::uuid[]) AND deleted_at IS NULL AND status <> $3`,
+		bookID, ids, status).Scan(&n)
+	return n, err
+}
+
 // ── POST/DELETE /v1/glossary/books/{book_id}/entities/{entity_id}/pin ────────
 //
 // Idempotent toggle of the is_pinned_for_context flag used by the

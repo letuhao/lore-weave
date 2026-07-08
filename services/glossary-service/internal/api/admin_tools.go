@@ -297,8 +297,17 @@ func (s *Server) toolAdminProposePatch(ctx context.Context, _ *mcp.CallToolReque
 		PatchAutoFillPrompt: in.AutoFillPrompt, PatchTranslationHint: in.TranslationHint,
 	}
 	rows := []previewRow{{Label: "level", Value: level}, {Label: "code", Value: code}}
-	return s.mintAdminActionCard(adminSub, descSystemPatch,
+	res, out, err := s.mintAdminActionCard(adminSub, descSystemPatch,
 		fmt.Sprintf("Edit System %s %q", level, code), p, rows, false)
+	// External MCP discoverability audit #11 — every Patch* field is a pointer (nil =
+	// unchanged, per systemActionParams' doc comment). If none were supplied, the patch
+	// changes nothing (effectSystemPatch/patchSystem*Core have nothing to apply).
+	if err == nil && in.Name == nil && in.Description == nil && in.Icon == nil && in.Color == nil &&
+		in.SortOrder == nil && in.IsHidden == nil && in.FieldType == nil && in.IsRequired == nil &&
+		in.Options == nil && in.AutoFillPrompt == nil && in.TranslationHint == nil {
+		out.Warning = "no fields were given to patch — this will change nothing"
+	}
+	return res, out, err
 }
 
 type adminDeleteToolIn struct {

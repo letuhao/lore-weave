@@ -100,8 +100,18 @@ func (s *Server) toolProposeStatusChange(ctx context.Context, _ *mcp.CallToolReq
 		{Label: "new status", Value: status},
 		{Label: "entities updated", Value: fmt.Sprint(live)},
 	}
-	return s.mintGrantActionCard(userID, bookID, descStatusChange,
+	res, out, err := s.mintGrantActionCard(userID, bookID, descStatusChange,
 		fmt.Sprintf("Set %d entities to %q", live, status), params, rows, false)
+	// External MCP discoverability audit #11 — effectStatusChange's UPDATE has no
+	// `status <> target` guard, so it reports every live id as "updated" even when they
+	// ALL already have the target status. Warn up front instead of letting the caller
+	// confirm a token that changes nothing meaningful.
+	if err == nil {
+		if changing, cerr := s.countEntitiesNeedingStatusChange(ctx, bookID, ids, status); cerr == nil && changing == 0 {
+			out.Warning = fmt.Sprintf("all %d matched entities already have status %q — this will change nothing", live, status)
+		}
+	}
+	return res, out, err
 }
 
 func (s *Server) toolProposeRestoreRevision(ctx context.Context, _ *mcp.CallToolRequest, in struct {
@@ -194,6 +204,15 @@ func (s *Server) toolProposeReassignKind(ctx context.Context, _ *mcp.CallToolReq
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("unknown kind: " + kindCode)
 	}
+	// External MCP discoverability audit #11 — if the entity is ALREADY on the target
+	// kind, rekeyEntityToKind's re-key/drop UPDATEs all filter `od.kind_id <> newKindID`
+	// and match zero rows; only a timestamp bumps. Mint-time this is a clean, cheap check
+	// (one extra column off the row we already fetched via entityBelongsToBook's query).
+	var currentKindID uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`SELECT kind_id FROM glossary_entities WHERE entity_id=$1`, entityID).Scan(&currentKindID); err != nil {
+		return nil, confirmCardOut{}, errors.New("failed to resolve the entity's current kind")
+	}
 	dropped, err := s.reassignKindDroppedCodes(ctx, entityID, kindID)
 	if err != nil {
 		return nil, confirmCardOut{}, errors.New("failed to preview the reassignment")
@@ -206,8 +225,12 @@ func (s *Server) toolProposeReassignKind(ctx context.Context, _ *mcp.CallToolReq
 		rows = append(rows, previewRow{Label: "attributes dropped (DATA LOSS)", Value: fmt.Sprint(len(dropped)),
 			Note: "codes with no counterpart: " + strings.Join(dropped, ", ") + " — recoverable via revision restore"})
 	}
-	return s.mintGrantActionCard(userID, bookID, descReassignKind,
+	res, out, err := s.mintGrantActionCard(userID, bookID, descReassignKind,
 		fmt.Sprintf("Reassign entity to kind %q", kindCode), params, rows, true)
+	if err == nil && currentKindID == kindID {
+		out.Warning = fmt.Sprintf("the entity is already kind %q — this will change nothing", kindCode)
+	}
+	return res, out, err
 }
 
 func (s *Server) toolProposeMerge(ctx context.Context, _ *mcp.CallToolRequest, in struct {

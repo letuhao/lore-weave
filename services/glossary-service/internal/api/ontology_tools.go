@@ -451,6 +451,10 @@ type ontologyDeleteOut struct {
 	Preview      []previewRow               `json:"preview,omitempty"`
 	Results      []ontologyDeleteItemResult `json:"results,omitempty"`
 	Summary      *ontologyDeleteSummary     `json:"summary,omitempty"`
+	// Warning (external MCP discoverability audit #11, scope=book branch only) — set
+	// when EVERY item in the batch already resolved to "already removed" at mint time,
+	// so confirming the minted token is guaranteed to delete nothing.
+	Warning string `json:"warning,omitempty"`
 }
 
 func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest, in ontologyDeleteToolIn) (*mcp.CallToolResult, ontologyDeleteOut, error) {
@@ -496,6 +500,7 @@ func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	items := make([]bookDeleteParams, 0, len(in.Items))
 	rows := make([]previewRow, 0, len(in.Items))
+	alreadyGone := 0
 	for _, it := range in.Items {
 		p := bookDeleteParams{Level: strings.TrimSpace(it.Level), Code: strings.TrimSpace(it.Code),
 			KindCode: strings.TrimSpace(it.KindCode), GenreCode: strings.TrimSpace(it.GenreCode)}
@@ -503,6 +508,7 @@ func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest,
 		targetID, terr := s.resolveDeleteTarget(ctx, bookID, p)
 		if isNoRows(terr) {
 			rows = append(rows, previewRow{Label: p.Level, Value: p.Code, Note: "already removed — nothing to delete"})
+			alreadyGone++
 			continue
 		}
 		if terr != nil {
@@ -520,7 +526,13 @@ func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest,
 	if merr != nil {
 		return nil, ontologyDeleteOut{}, merr
 	}
-	return nil, ontologyDeleteOut{ConfirmToken: card.ConfirmToken, Preview: card.PreviewRows}, nil
+	out := ontologyDeleteOut{ConfirmToken: card.ConfirmToken, Preview: card.PreviewRows}
+	// External MCP discoverability audit #11 — every item in the batch already resolved
+	// to "not found" at mint time, so confirming changes nothing.
+	if alreadyGone == len(items) {
+		out.Warning = fmt.Sprintf("all %d item(s) are already removed — this will delete nothing", len(items))
+	}
+	return nil, out, nil
 }
 
 // deleteOneUserOntologyItem is the direct (no confirm), reversible soft-delete

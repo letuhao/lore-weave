@@ -98,11 +98,14 @@ FIND_TOOLS_TOOL: dict = {
             "tool in that domain, unranked — the fastest way to check whether a "
             "whole domain has what you need. With `intent` set, returns the "
             "best-matching tool names + descriptions; matched tools become "
-            "callable next. If a search comes back empty or only weak matches, "
-            "you may try once more with different wording or a `group` listing — "
-            "but if a second attempt on the same ask ALSO comes back empty or "
-            "weak, stop searching and tell the user this isn't supported rather "
-            "than guessing again."
+            "callable next. If `group` is set and your query scores weak or empty "
+            "against it, you automatically get the FULL domain list instead of a "
+            "poor guess — no need to retry with different wording first. Without "
+            "`group`, an empty/weak `intent` instead returns the tool-domain "
+            "directory so you can pick one and search again scoped to it. If a "
+            "second attempt on the same ask ALSO comes back empty or weak, stop "
+            "searching and tell the user this isn't supported rather than "
+            "guessing again."
         ),
         "parameters": {
             "type": "object",
@@ -887,11 +890,23 @@ def provider_availability(catalog_meta: dict) -> set[str]:
 
 
 def _enumeration_result(
-    catalog: list[dict], group: str, exclude: set[str],
+    catalog: list[dict], group: str, exclude: set[str], *, fallback_reason: str | None = None,
 ) -> tuple[dict, list[str]]:
-    """Shared ENUMERATION-mode payload assembly (`group` set + blank `intent`)
-    — used by both `find_tools_result()` and `find_tools_result_async()` so the
-    two search backends never drift on enumeration wording/shape."""
+    """Shared ENUMERATION-mode payload assembly — used by both
+    `find_tools_result()` and `find_tools_result_async()` so the two search
+    backends never drift on enumeration wording/shape. Two callers:
+    (1) `group` set + blank `intent` (the original design-item-1 case), and
+    (2) external audit #1 (2026-07-08 re-verification pass) — `group` set +
+    a NON-blank but low-signal/generic `intent` (e.g. "list everything you
+    can do in this domain") that scores below `CONFIDENCE_THRESHOLD`.
+    Real measurement from that audit: `book` returned 1/~15 tools (7% recall)
+    for exactly this shape, because a generic phrase token-overlaps poorly
+    against specific tool descriptions — the ORIGINAL blank-intent
+    enumeration fix never fired since the caller's intent wasn't literally
+    empty. ``fallback_reason``, when given (case 2), replaces the "domain
+    genuinely has no tools" note with an explanation of why a full list is
+    being returned instead of a weak top-K, so the caller understands this
+    wasn't what they explicitly asked for."""
     matches = enumerate_group(catalog, group, exclude=exclude)
     payload: dict = {"tools": matches, "enumerated": True}
     if not matches:
@@ -899,21 +914,32 @@ def _enumeration_result(
             f"The \"{group}\" domain genuinely has no tools right now — this "
             "capability isn't supported; no need to keep searching."
         )
+    elif fallback_reason:
+        payload["note"] = fallback_reason
     return payload, [m["name"] for m in matches]
 
 
 def _blank_intent_result() -> tuple[dict, list[str]]:
-    """Shared "missing/blank intent" directive payload — see the
-    `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE` root-cause note on `find_tools_result`
-    for why this is a directive, not a silent zero-token search."""
+    """Shared "missing/blank intent, NO group" directory payload. External
+    audit #5 (2026-07-08 re-verification): a caller with neither a `group`
+    nor a real `intent` had no safe path forward — the old response was just
+    a scold ("intent is required") with nothing to act on, and returning the
+    full ~200-tool federated catalog unranked would defeat the entire reason
+    `find_tools` exists (context/schema bloat). The safe middle ground is
+    `GROUP_DIRECTORY` itself (domain names + one-line descriptions, the same
+    ~300-500 token block already injected into system prompts via
+    `group_directory_text()`) — cheap, and gives the caller a concrete next
+    step: pick a domain, call again with that `group`."""
     return (
         {
             "tools": [],
+            "domains": dict(GROUP_DIRECTORY),
             "note": (
-                "`intent` is required and was missing or empty on this call — "
-                "describe in your own words what you want to do (e.g. "
-                "\"translate this chapter\", \"list my books\") and call "
-                "find_tools again with a non-empty `intent`."
+                "`intent` was missing/empty and no `group` was given either — "
+                "pick a domain from `domains` above and call find_tools again "
+                "with that `group` (leave `intent` empty to list everything in "
+                "it, unranked), or describe what you want to do in your own "
+                "words as a non-empty `intent`."
             ),
         },
         [],
@@ -1003,11 +1029,19 @@ def find_tools_result(
     blank/missing `intent` switches to ENUMERATION mode (mirrors ai-gateway's
     `findToolsResult`/`enumerateGroup`): the true fix for "a whole domain
     under-returns on generic queries" (external audit #1/#5), instead of the
-    "intent required" directive below or a zero-token fuzzy search. No `group`
-    + blank `intent` is UNCHANGED — enumeration is intentionally group-scoped
-    only; a no-group blank-intent call still gets the "intent required"
-    directive (its own dedicated test class covers this, unaffected by this
-    change).
+    "intent required" directive below or a zero-token fuzzy search.
+
+    2026-07-08 re-verification pass (external audit, same #1/#5) — the
+    original fix above only covered a LITERALLY blank `intent`; a real
+    exploratory agent instead phrases a broad ask as non-blank generic text
+    ("list everything you can do in this domain"), which token-overlaps
+    poorly and got silently filtered to near-nothing (measured: `book` →
+    7% recall). Two further fixes close that gap: (1) `group` set + a
+    NON-blank intent that scores below `CONFIDENCE_THRESHOLD` now ALSO falls
+    back to full enumeration (see `_enumeration_result`'s `fallback_reason`);
+    (2) no `group` + blank `intent` no longer returns a bare scold — see
+    `_blank_intent_result()`, now returns the `GROUP_DIRECTORY` listing too,
+    so the caller has a concrete next step instead of nothing to act on.
 
     `session_id` (optional, keyword-only, default None) feeds the module-level
     `find_tools_attempts` retry-cap tracker (`FindToolsAttemptTracker`) — a
@@ -1030,6 +1064,19 @@ def find_tools_result(
 
     is_repeat = find_tools_attempts.record(session_id, group, intent)
     matches, confident = search_catalog(catalog, intent, limit, exclude=exclude, group=group)
+    if group is not None and not confident:
+        # External audit #1 (2026-07-08 re-verification) — see _enumeration_result's
+        # docstring: a low-signal/generic non-blank intent, scoped to a known
+        # group, gets the SAME enumeration safety net as a literal blank intent
+        # instead of a mostly-empty/weak top-K silently under-returning.
+        return _enumeration_result(
+            catalog, group, exclude,
+            fallback_reason=(
+                "Your query didn't score well against anything specific in the "
+                f"\"{group}\" domain — showing the FULL domain list instead of a "
+                "weak/empty guess. Pick whichever tool(s) actually fit."
+            ),
+        )
     payload = _scored_result_payload(matches, confident, catalog_meta=catalog_meta, is_repeat=is_repeat)
     matched_names = [m["name"] for m in matches]
     return payload, matched_names
@@ -1083,6 +1130,17 @@ async def find_tools_result_async(
     matches, confident = await search_catalog_semantic(
         catalog, intent, limit, exclude=exclude, group=group, user_id=user_id,
     )
+    if group is not None and not confident:
+        # Mirrors find_tools_result()'s fallback — see _enumeration_result's
+        # docstring (external audit #1). Kept in lockstep with the sync scorer.
+        return _enumeration_result(
+            catalog, group, exclude,
+            fallback_reason=(
+                "Your query didn't score well against anything specific in the "
+                f"\"{group}\" domain — showing the FULL domain list instead of a "
+                "weak/empty guess. Pick whichever tool(s) actually fit."
+            ),
+        )
     payload = _scored_result_payload(matches, confident, catalog_meta=catalog_meta, is_repeat=is_repeat)
     matched_names = [m["name"] for m in matches]
     return payload, matched_names

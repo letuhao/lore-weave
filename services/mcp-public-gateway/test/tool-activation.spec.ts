@@ -150,6 +150,31 @@ describe('scopeFilterFindToolsResult — anti-oracle + activation harvest', () =
     expect(text).toBe('event: message\ndata: ...');
     expect(activatedNames).toEqual([]);
   });
+
+  // item #6 — entitlement-opacity: this key's OWN scope filter stripping a non-empty match set
+  // down to zero must be distinguishable from ai-gateway's own "domain genuinely has no tools".
+  it('adds a scope_note when THIS filter strips a non-empty match set down to zero', () => {
+    const { text } = scopeFilterFindToolsResult(findToolsResponse('kg_search'), SCOPES); // fully out of scope
+    const parsed = JSON.parse(text);
+    expect(parsed.result.structuredContent.tools).toEqual([]);
+    expect(parsed.result.structuredContent.scope_note).toContain('not enabled for this API key');
+    // mirrored into the text content block too, like the tools field is.
+    expect(JSON.parse(parsed.result.content[0].text).scope_note).toContain('not enabled for this API key');
+  });
+
+  it('does NOT add scope_note when the upstream match set was already empty', () => {
+    const { text } = scopeFilterFindToolsResult(findToolsResponse(), SCOPES); // no matches at all
+    const parsed = JSON.parse(text);
+    expect(parsed.result.structuredContent.tools).toEqual([]);
+    expect(parsed.result.structuredContent.scope_note).toBeUndefined();
+  });
+
+  it('does NOT add scope_note when at least one match survives the filter', () => {
+    const { text } = scopeFilterFindToolsResult(findToolsResponse('book_get', 'kg_search'), SCOPES);
+    const parsed = JSON.parse(text);
+    expect(parsed.result.structuredContent.tools.map((t: { name: string }) => t.name)).toEqual(['book_get']);
+    expect(parsed.result.structuredContent.scope_note).toBeUndefined();
+  });
 });
 
 describe('isFindToolsCall', () => {
@@ -219,6 +244,17 @@ describe('findToolsCallIdKeys + scopeFilterFindToolsBatch — batched find_tools
     const upstream = JSON.stringify([ftResponseItem(1, 'book_get', 'kg_search')]);
     expect(scopeFilterFindToolsBatch(upstream, ['*'], new Set([idKeyOf(1)]))).toEqual({ text: upstream, activatedNames: [] });
     expect(scopeFilterFindToolsBatch(upstream, SCOPES, new Set())).toEqual({ text: upstream, activatedNames: [] });
+  });
+
+  // item #6 — same entitlement-opacity fix, batch sibling (both paths share filterOneFindToolsResult).
+  it('adds scope_note to a batched find_tools result stripped fully by scope', () => {
+    const body = [call(1, 'find_tools')];
+    const ftIds = findToolsCallIdKeys(body);
+    const upstream = JSON.stringify([ftResponseItem(1, 'kg_search')]); // fully out of scope for SCOPES
+    const { text } = scopeFilterFindToolsBatch(upstream, SCOPES, ftIds);
+    const parsed = JSON.parse(text);
+    expect(parsed[0].result.structuredContent.tools).toEqual([]);
+    expect(parsed[0].result.structuredContent.scope_note).toContain('not enabled for this API key');
   });
 });
 

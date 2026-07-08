@@ -14,7 +14,13 @@
  * the agent having called the real tool directly.
  */
 
+import { buildErrorEnvelope } from './mcp-error-envelope.js';
+
 export const INVOKE_TOOL_NAME = 'invoke_tool';
+
+/** Stable short codes (item #10) for this file's two error envelopes — see mcp-error-envelope.ts. */
+const MALFORMED_INVOKE_ARGS_CODE = 'MALFORMED_INVOKE_ARGS';
+const TOOL_NOT_DISCOVERED_CODE = 'TOOL_NOT_DISCOVERED';
 
 /** The synthetic `invoke_tool` tool definition injected into every `tools/list` response
  * (mirrors `confirm-action.ts`'s `CONFIRM_ACTION_TOOL` injection pattern). */
@@ -45,19 +51,11 @@ interface JsonRpcCall {
 /** A malformed `invoke_tool` call — shaped as an MCP tool-error result (never a silent no-op),
  * so the agent sees exactly what to fix. */
 function malformedResult(id: unknown): unknown {
-  return {
-    jsonrpc: '2.0',
-    id: id ?? null,
-    result: {
-      isError: true,
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: 'invoke_tool requires a string "name" — the target tool name from a find_tools match.',
-        }),
-      }],
-    },
-  };
+  return buildErrorEnvelope(
+    id,
+    MALFORMED_INVOKE_ARGS_CODE,
+    'invoke_tool requires a string "name" — the target tool name from a find_tools match.',
+  );
 }
 
 export type InvokeToolDetection =
@@ -120,19 +118,11 @@ export function requiresActivation(name: string): boolean {
  * advisory (no access-control behavior change) — this is a message-text-only fix so the refusal
  * doesn't imply non-existence. */
 export function notActivatedError(id: unknown, name: string): unknown {
-  return {
-    jsonrpc: '2.0',
-    id: id ?? null,
-    result: {
-      isError: true,
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: `'${name}' hasn't been discovered yet this session — call find_tools with what you want to do first; it will be immediately callable once find_tools returns it.`,
-        }),
-      }],
-    },
-  };
+  return buildErrorEnvelope(
+    id,
+    TOOL_NOT_DISCOVERED_CODE,
+    `'${name}' hasn't been discovered yet this session — call find_tools with what you want to do first; it will be immediately callable once find_tools returns it.`,
+  );
 }
 
 interface ToolsListResult {
@@ -152,12 +142,33 @@ const EDGE_FIND_TOOLS_DESCRIPTION =
   '(name, arguments) to actually RUN one; calling the matched name directly will not work ' +
   'through this endpoint. If it returns nothing useful, try once more with broader wording.';
 
+/**
+ * Stale-name drift fix (bonus nit): several `glossary_*` tool descriptions are federated
+ * VERBATIM from glossary-service (book_tools.go / mcp_server.go / sync_tools.go), which tell
+ * the caller to confirm via `glossary_confirm_action`. That name is correct on the SEPARATE
+ * authenticated chat-service surface (chat-service/app/services/frontend_tools.py) — but on
+ * THIS public-gateway edge the actual confirm tool is the domain-agnostic `confirm_action`
+ * (see confirm-action.ts). Rather than a hardcoded per-tool-name list, this is a generic
+ * string replace applied to every outgoing description in the SAME pass that already visits
+ * every tool below (`augmentOneListMessage`) — so any tool (these 9 today, or a future one)
+ * whose federated description mentions the stale name gets corrected automatically.
+ */
+function rewriteStaleConfirmActionMention(description: string): string {
+  return description.includes('glossary_confirm_action')
+    ? description.replaceAll('glossary_confirm_action', 'confirm_action')
+    : description;
+}
+
 function augmentOneListMessage(msg: ToolsListResult): void {
   const tools = msg?.result?.tools;
   if (!Array.isArray(tools)) return;
   for (const t of tools) {
-    if (t && typeof t === 'object' && (t as { name?: unknown }).name === 'find_tools') {
-      (t as { description?: unknown }).description = EDGE_FIND_TOOLS_DESCRIPTION;
+    if (!t || typeof t !== 'object') continue;
+    const tool = t as { name?: unknown; description?: unknown };
+    if (tool.name === 'find_tools') {
+      tool.description = EDGE_FIND_TOOLS_DESCRIPTION;
+    } else if (typeof tool.description === 'string') {
+      tool.description = rewriteStaleConfirmActionMention(tool.description);
     }
   }
   if (!tools.some((t) => (t as { name?: unknown })?.name === INVOKE_TOOL_NAME)) {

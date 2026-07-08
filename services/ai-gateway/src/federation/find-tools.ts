@@ -61,10 +61,12 @@ export const FIND_TOOLS_TOOL = {
     'building a knowledge graph). Pass `group` (a tool domain) with `intent` omitted or empty to ' +
     'list EVERY tool in that domain, unranked — the fastest way to check whether a whole domain ' +
     'has what you need. With `intent` set, returns the best-matching tool names + descriptions; ' +
-    'matched tools become callable next. If a search comes back empty or only weak matches, you ' +
-    'may try once more with different wording or a `group` listing — but if a second attempt on ' +
-    "the same ask ALSO comes back empty or weak, stop searching and tell the user this isn't " +
-    'supported rather than guessing again.',
+    'matched tools become callable next. If `group` is set and your query scores weak or empty ' +
+    'against it, you automatically get the FULL domain list instead of a poor guess — no need to ' +
+    'retry with different wording first. Without `group`, an empty/weak `intent` instead returns ' +
+    'the tool-domain directory so you can pick one and search again scoped to it. If a second ' +
+    "attempt on the same ask ALSO comes back empty or weak, stop searching and tell the user this " +
+    "isn't supported rather than guessing again.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -413,6 +415,17 @@ export const findToolsAttempts = new FindToolsAttemptTracker();
  * instead of falling through to a zero-token fuzzy search. `isRepeatAttempt` (from
  * `FindToolsAttemptTracker`) reshapes the empty/weak-match note so a 2nd+ near-duplicate call
  * explicitly permits concluding "not supported" instead of inviting yet another guess.
+ *
+ * 2026-07-08 re-verification pass (external audit #1/#5) — two further gaps closed, mirroring
+ * chat-service's `tool_discovery.py` (kept in lockstep, same discipline as GROUP_DIRECTORY/domainOf):
+ * (1) NO `group` + blank `intent` used to fall straight through to `searchCatalog('')` (0 matches,
+ * generic "No tool matched" note) — chat-service's Python side already had a dedicated directive
+ * here that TS never mirrored; now returns the `GROUP_DIRECTORY` listing so the caller has a
+ * concrete next step instead of a bare scold. (2) `group` set + a NON-blank but low-signal/generic
+ * `intent` (e.g. "list everything you can do in this domain") scores below `CONFIDENCE_THRESHOLD`
+ * and silently under-returned (measured: `book` → 1/~15 tools, 7% recall, for exactly this shape —
+ * the ORIGINAL enumeration-mode fix never fired since the caller's intent wasn't literally blank).
+ * Now falls back to full enumeration just like a literal blank intent would.
  */
 export function findToolsResult(
   catalog: McpTool[],
@@ -423,10 +436,39 @@ export function findToolsResult(
   group?: string | null,
   isRepeatAttempt = false,
 ): { payload: Record<string, unknown>; matchedNames: string[] } {
-  const enumerationMode = typeof group === 'string' && group.length > 0 && !intent.trim();
+  const hasGroup = typeof group === 'string' && group.length > 0;
+  const blankIntent = !intent.trim();
+
+  if (!hasGroup && blankIntent) {
+    return {
+      payload: {
+        tools: [],
+        domains: { ...GROUP_DIRECTORY },
+        note:
+          '`intent` was missing/empty and no `group` was given either — pick a domain from ' +
+          '`domains` above and call find_tools again with that `group` (leave `intent` empty to ' +
+          'list everything in it, unranked), or describe what you want to do in your own words as ' +
+          'a non-empty `intent`.',
+      },
+      matchedNames: [],
+    };
+  }
+
+  const enumerationMode = hasGroup && blankIntent;
   const { matches, confident } = enumerationMode
-    ? { matches: enumerateGroup(catalog, group, exclude), confident: true }
+    ? { matches: enumerateGroup(catalog, group as string, exclude), confident: true }
     : searchCatalog(catalog, intent, limit, exclude, group);
+
+  if (hasGroup && !blankIntent && !confident) {
+    const fullList = enumerateGroup(catalog, group as string, exclude);
+    const payload: Record<string, unknown> = { tools: fullList, enumerated: true };
+    payload.note =
+      fullList.length === 0
+        ? `The "${group}" domain genuinely has no tools right now — this capability isn't supported; no need to keep searching.`
+        : `Your query didn't score well against anything specific in the "${group}" domain — ` +
+          'showing the FULL domain list instead of a weak/empty guess. Pick whichever tool(s) actually fit.';
+    return { payload, matchedNames: fullList.map((m) => m.name) };
+  }
 
   const payload: Record<string, unknown> = { tools: matches };
   if (enumerationMode) {

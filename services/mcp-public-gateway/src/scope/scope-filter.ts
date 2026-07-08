@@ -244,17 +244,36 @@ interface FindToolsMatch {
  * scoped set). Returns the in-scope matched names (to SADD into the session). Shared by the single
  * and the batch path so they enforce the identical anti-oracle contract.
  */
+/**
+ * Entitlement-opacity fix (item #6): when this key's OWN scope-filter is what strips a
+ * previously non-empty match/enumeration set down to zero, the caller otherwise gets a bare
+ * `{tools:[], enumerated:true}` indistinguishable from ai-gateway's own "domain genuinely has
+ * no tools" case (its `note` field — see find-tools.ts `findToolsResult`/`enumerateGroup` —
+ * covers THAT case correctly and must not be duplicated here). This is a DIFFERENT condition:
+ * the domain has tools, this key just isn't entitled to them. Deliberately a different field
+ * name (`scope_note`, not `note`) so the two never collide if both legs somehow both fired.
+ */
+const ENTITLEMENT_GAP_NOTE =
+  'this domain has tools, but they are not enabled for this API key — ask the key owner to grant access';
+
 function filterOneFindToolsResult(result: unknown, scopes: readonly string[]): string[] {
   if (!result || typeof result !== 'object') return [];
   const inScope = new Set<string>();
-  const sc = (result as { structuredContent?: { tools?: unknown } }).structuredContent;
+  const sc = (result as { structuredContent?: { tools?: unknown; scope_note?: unknown } }).structuredContent;
   if (sc && Array.isArray(sc.tools)) {
-    sc.tools = (sc.tools as FindToolsMatch[]).filter((m) => {
+    const hadMatches = sc.tools.length > 0;
+    const filtered = (sc.tools as FindToolsMatch[]).filter((m) => {
       const n = typeof m?.name === 'string' ? m.name : '';
       const ok = n !== '' && isToolAllowed(n, scopes);
       if (ok) inScope.add(n);
       return ok;
     });
+    sc.tools = filtered;
+    // Only fire when THIS filtering step is what caused the non-empty→empty transition —
+    // if ai-gateway already handed back an empty set, its own `note` already explains why.
+    if (hadMatches && filtered.length === 0) {
+      sc.scope_note = ENTITLEMENT_GAP_NOTE;
+    }
     const content = (result as { content?: unknown }).content;
     if (Array.isArray(content) && content[0] && typeof content[0] === 'object') {
       (content[0] as { text?: unknown }).text = JSON.stringify(sc);

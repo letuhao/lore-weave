@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -132,6 +133,95 @@ func TestSyncTool_ApplyMintValidation(t *testing.T) {
 		if _, _, err := f.srv.toolBookSyncApply(octx, nil, in); err == nil {
 			t.Errorf("bad items[%d] must be rejected at mint", i)
 		}
+	}
+}
+
+// External MCP discoverability audit #11 — applySyncRow only affects a row whose
+// recorded source is STILL LIVE; a retired source matches nothing regardless of
+// take_theirs/keep_mine. If EVERY proposed item's source has retired, sync_apply
+// must still mint (it's not an error) but must carry a warning.
+func TestSyncTool_ApplyAllRetiredWarnsOnNoOp(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	octx := ctxWithUser(f.ownerID)
+
+	gc := "synct_ret_g_" + f.bookID.String()[:8]
+	var sgID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO system_genres (code,name,content_hash) VALUES ($1,'SyncRetG','g0') RETURNING genre_id`,
+		gc).Scan(&sgID); err != nil {
+		t.Fatalf("seed system genre: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM system_genres WHERE code=$1`, gc) }) //nolint:errcheck
+
+	if err := f.srv.adoptBookOntologyCore(ctx, f.bookID, f.ownerID, []string{gc}, nil); err != nil {
+		t.Fatalf("adopt: %v", err)
+	}
+	// Retire the source AFTER adopt — the book row stays frozen, source now resolves gone.
+	if _, err := pool.Exec(ctx, `UPDATE system_genres SET deprecated_at=now() WHERE code=$1`, gc); err != nil {
+		t.Fatalf("retire source: %v", err)
+	}
+
+	var bookGenreID string
+	if err := pool.QueryRow(ctx, `SELECT genre_id::text FROM book_genres WHERE book_id=$1 AND code=$2`, f.bookID, gc).Scan(&bookGenreID); err != nil {
+		t.Fatalf("resolve book genre row: %v", err)
+	}
+
+	_, card, err := f.srv.toolBookSyncApply(octx, nil, syncApplyToolIn{
+		BookID: f.bookID.String(),
+		Items:  []syncApplyItemToolIn{{Entity: "genre", ID: bookGenreID, Choice: "keep_mine"}},
+	})
+	if err != nil {
+		t.Fatalf("propose sync_apply on a retired source: %v", err)
+	}
+	if card.ConfirmToken == "" {
+		t.Fatal("an all-retired sync_apply must still mint a valid confirm_token (it is not an error)")
+	}
+	if card.Warning == "" {
+		t.Fatalf("an all-retired sync_apply must carry a no-op warning, got card=%+v", card)
+	}
+	if !strings.Contains(card.Warning, "live source") {
+		t.Errorf("warning should mention the missing live source, got %q", card.Warning)
+	}
+}
+
+// A sync_apply whose item still has a LIVE source must NOT carry the no-op warning,
+// even for a keep_mine choice (keep_mine still bumps source_hash — a real effect).
+func TestSyncTool_ApplyWithLiveSourceCarriesNoWarning(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	ctx := context.Background()
+	octx := ctxWithUser(f.ownerID)
+
+	gc := "synct_live_g_" + f.bookID.String()[:8]
+	var sgID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO system_genres (code,name,content_hash) VALUES ($1,'SyncLiveG','g0') RETURNING genre_id`,
+		gc).Scan(&sgID); err != nil {
+		t.Fatalf("seed system genre: %v", err)
+	}
+	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM system_genres WHERE code=$1`, gc) }) //nolint:errcheck
+
+	if err := f.srv.adoptBookOntologyCore(ctx, f.bookID, f.ownerID, []string{gc}, nil); err != nil {
+		t.Fatalf("adopt: %v", err)
+	}
+	pool.Exec(ctx, `UPDATE system_genres SET name='SyncLiveG E', content_hash='g1' WHERE code=$1`, gc) //nolint:errcheck
+
+	var bookGenreID string
+	if err := pool.QueryRow(ctx, `SELECT genre_id::text FROM book_genres WHERE book_id=$1 AND code=$2`, f.bookID, gc).Scan(&bookGenreID); err != nil {
+		t.Fatalf("resolve book genre row: %v", err)
+	}
+
+	_, card, err := f.srv.toolBookSyncApply(octx, nil, syncApplyToolIn{
+		BookID: f.bookID.String(),
+		Items:  []syncApplyItemToolIn{{Entity: "genre", ID: bookGenreID, Choice: "keep_mine"}},
+	})
+	if err != nil {
+		t.Fatalf("propose sync_apply: %v", err)
+	}
+	if card.Warning != "" {
+		t.Errorf("a sync_apply with a live source must not carry the no-op warning, got %q", card.Warning)
 	}
 }
 

@@ -210,6 +210,11 @@ func TestOntologyDelete_BookScope_MintsOneTokenForBatch(t *testing.T) {
 	if len(out.Preview) == 0 {
 		t.Errorf("want a non-empty cascade preview")
 	}
+	// regression guard: a batch whose items are ALL real targets must not carry the
+	// external MCP discoverability audit #11 all-already-gone warning.
+	if out.Warning != "" {
+		t.Errorf("a batch of real targets must not carry the all-already-gone warning, got %q", out.Warning)
+	}
 
 	// confirm the SINGLE token executes BOTH deletes.
 	w := f.confirm(t, out.ConfirmToken)
@@ -262,6 +267,35 @@ func TestOntologyDelete_BookScope_BatchIsIdempotentOnPartialReplay(t *testing.T)
 	pool.QueryRow(context.Background(), `SELECT count(*) FROM book_kinds WHERE book_id=$1 AND code='t2_del_c' AND deprecated_at IS NULL`, f.bookID).Scan(&nC)
 	if nC != 0 {
 		t.Errorf("t2_del_c should be deleted despite the sibling missing target: live=%d", nC)
+	}
+}
+
+// External MCP discoverability audit #11 — if EVERY item in a scope=book delete batch
+// already resolves to "not found" at mint time, confirming the minted token is
+// guaranteed to delete nothing. Must still mint (not an error) but must carry a warning.
+func TestOntologyDelete_BookScope_AllAlreadyGoneWarnsOnNoOp(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	octx := ctxWithUser(f.ownerID)
+
+	_, out, err := f.srv.toolOntologyDelete(octx, nil, ontologyDeleteToolIn{
+		Scope: "book", BookID: f.bookID.String(),
+		Items: []ontologyDeleteItemIn{
+			{Level: "kind", Code: "t2_never_existed_a"},
+			{Level: "kind", Code: "t2_never_existed_b"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("propose an all-already-gone batch: %v", err)
+	}
+	if out.ConfirmToken == "" {
+		t.Fatal("an all-already-gone batch must still mint a valid confirm_token (it is not an error)")
+	}
+	if out.Warning == "" {
+		t.Fatalf("an all-already-gone batch must carry a no-op warning, got out=%+v", out)
+	}
+	if !strings.Contains(out.Warning, "already removed") {
+		t.Errorf("warning should state the items are already removed, got %q", out.Warning)
 	}
 }
 

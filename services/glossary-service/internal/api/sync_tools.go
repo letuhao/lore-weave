@@ -123,6 +123,28 @@ func (s *Server) toolBookSyncApply(ctx context.Context, _ *mcp.CallToolRequest, 
 		{Label: "rows to update from source", Value: fmt.Sprint(takeN), Note: "take_theirs"},
 		{Label: "rows to keep as-is", Value: fmt.Sprint(keepN), Note: "keep_mine (accept divergence)"},
 	}
-	return s.mintGrantActionCard(userID, bookID, descSyncApply, "Apply standard updates to this book",
+	res, out, err := s.mintGrantActionCard(userID, bookID, descSyncApply, "Apply standard updates to this book",
 		syncApplyParams{Items: items}, rows, true)
+	// External MCP discoverability audit #11 — applySyncRow (book_sync_handler.go) only
+	// affects a row whose recorded source is STILL LIVE (its UPDATE joins FROM the live
+	// source row); a retired/purged source matches nothing regardless of take_theirs vs
+	// keep_mine. So if EVERY proposed row's source has already retired, confirming this
+	// card is guaranteed to apply zero rows. bookSyncSourceLiveByID is the SAME liveness
+	// predicate previewSyncApply/applySyncRow use — best-effort here (a lookup failure
+	// just skips the warning rather than failing an otherwise-valid proposal).
+	if err == nil {
+		if liveMap, lerr := s.bookSyncSourceLiveByID(ctx, bookID, userID); lerr == nil {
+			liveCount := 0
+			for _, it := range items {
+				if liveMap[it.ID] {
+					liveCount++
+				}
+			}
+			if liveCount == 0 {
+				out.Warning = fmt.Sprintf(
+					"none of the %d proposed row(s) still have a live source — applying will change nothing", len(items))
+			}
+		}
+	}
+	return res, out, err
 }

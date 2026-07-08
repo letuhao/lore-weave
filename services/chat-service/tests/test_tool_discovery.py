@@ -210,19 +210,23 @@ class TestFindToolsMissingIntent:
     of a silent zero-token search."""
 
     def test_missing_intent_returns_directive_not_generic_no_match(self):
+        """External audit #5 (2026-07-08 re-verification) — no group + blank intent
+        now returns the GROUP_DIRECTORY listing (a concrete next step) alongside
+        the directive, not a bare "intent is required" scold with nothing to act on."""
         payload, matched = td.find_tools_result(
             _MIXED_CATALOG, "", 8, exclude=set(), catalog_meta={},
         )
         assert matched == []
         assert payload["tools"] == []
-        assert "intent" in payload["note"] and "required" in payload["note"]
+        assert "domains" in payload and payload["domains"]
+        assert "group" in payload["note"]
         assert "No tool matched. Reconsider" not in payload["note"]
 
     def test_whitespace_only_intent_also_rejected(self):
         payload, _ = td.find_tools_result(
             _MIXED_CATALOG, "   ", 8, exclude=set(), catalog_meta={},
         )
-        assert "required" in payload["note"]
+        assert "domains" in payload and payload["domains"]
 
     def test_real_intent_unaffected(self):
         """The fix must not regress the normal case — a real intent still searches."""
@@ -964,17 +968,47 @@ class TestFindToolsResultEnumerationMode:
         )
         assert "enumerated" not in payload
 
+    def test_group_with_weak_generic_intent_falls_back_to_enumeration(self):
+        """External audit #1 (2026-07-08 re-verification) — the ORIGINAL fix above
+        only covers a LITERALLY blank intent; a real exploratory agent instead
+        phrases a broad ask as non-blank generic text, which token-overlaps
+        poorly and used to silently under-return (measured live: `book` → 1/~15
+        tools, 7% recall, for this EXACT phrase). A `group`-scoped query that
+        scores below CONFIDENCE_THRESHOLD now ALSO falls back to full
+        enumeration, same as a literal blank intent would."""
+        payload, matched = td.find_tools_result(
+            _ENUM_CATALOG, "list everything you can do in this domain", 8,
+            exclude=set(), catalog_meta={}, group="book",
+        )
+        assert sorted(matched) == ["book_create", "book_list", "book_update_chapter"]
+        assert payload["enumerated"] is True
+        assert "didn't score well" in payload["note"]
+
+    def test_group_with_weak_intent_on_zero_tool_domain_gets_the_honest_empty_note(self):
+        """The fallback must not paper over a domain that's genuinely empty —
+        it should still get the "genuinely has no tools" note, not the
+        "didn't score well" fallback wording (which implies tools exist)."""
+        payload, matched = td.find_tools_result(
+            _ENUM_CATALOG, "list everything you can do in this domain", 8,
+            exclude=set(), catalog_meta={}, group="nonexistent_domain",
+        )
+        assert matched == []
+        assert payload["enumerated"] is True
+        assert "genuinely has no tools" in payload["note"]
+
     def test_no_group_and_empty_intent_is_unaffected_still_the_intent_directive(self):
         """This case is the ALREADY-FIXED `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE`
         blank-intent directive (commit 1a4983b7b) — enumeration is intentionally
         GROUP-SCOPED only, so a no-group blank intent must not start silently
-        enumerating the whole flat catalog."""
+        enumerating the whole flat catalog. External audit #5 (2026-07-08) adds
+        the GROUP_DIRECTORY listing to this same response (a concrete next step),
+        it doesn't switch it to full-catalog enumeration."""
         payload, matched = td.find_tools_result(
             _ENUM_CATALOG, "", 8, exclude=set(), catalog_meta={},
         )
         assert matched == []
         assert "enumerated" not in payload
-        assert "required" in payload["note"]
+        assert "domains" in payload and payload["domains"]
 
     def test_a_domain_with_zero_non_legacy_tools_gets_an_honest_not_supported_note(self):
         payload, matched = td.find_tools_result(
@@ -982,6 +1016,30 @@ class TestFindToolsResultEnumerationMode:
         )
         assert matched == []
         assert "isn't supported" in payload["note"]
+
+    @pytest.mark.asyncio
+    async def test_async_twin_falls_back_to_enumeration_on_weak_group_query_too(self):
+        """Lockstep check — `find_tools_result_async` shares `_enumeration_result`/
+        `_blank_intent_result` with the sync version, but has its own call site
+        for the group+weak-intent fallback; must not drift. `_patch_embedding_model(None)`
+        degrades the embeddings blend to identical token-overlap-only behavior."""
+        with _patch_embedding_model(None):
+            payload, matched = await td.find_tools_result_async(
+                _ENUM_CATALOG, "list everything you can do in this domain", 8,
+                exclude=set(), catalog_meta={}, group="book", user_id=TEST_USER_ID,
+            )
+        assert sorted(matched) == ["book_create", "book_list", "book_update_chapter"]
+        assert payload["enumerated"] is True
+        assert "didn't score well" in payload["note"]
+
+    @pytest.mark.asyncio
+    async def test_async_twin_no_group_blank_intent_also_returns_domain_directory(self):
+        with _patch_embedding_model(None):
+            payload, matched = await td.find_tools_result_async(
+                _ENUM_CATALOG, "", 8, exclude=set(), catalog_meta={}, user_id=TEST_USER_ID,
+            )
+        assert matched == []
+        assert "domains" in payload and payload["domains"]
 
 
 class TestEnumerationBudgetsActiveToolNames:

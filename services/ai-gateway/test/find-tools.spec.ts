@@ -318,6 +318,44 @@ describe('findToolsResult — enumeration mode (group set, intent empty/missing)
     expect(matchedNames).toEqual([]);
     expect(String(payload.note)).toMatch(/isn't supported/i);
   });
+
+  // External audit #5 (2026-07-08 re-verification) — no group + blank intent used to be a bare
+  // scold ("intent is required") with nothing to act on. Mirrors chat-service's
+  // `_blank_intent_result` (tool_discovery.py) — kept in lockstep.
+  it('no group + empty intent returns the GROUP_DIRECTORY listing as a concrete next step', () => {
+    const { payload, matchedNames } = findToolsResult(CAT, '', 8, new Set(), []);
+    expect(matchedNames).toEqual([]);
+    expect(payload.domains).toBeTruthy();
+    expect(String(payload.note)).toMatch(/group/i);
+  });
+
+  it('no group + whitespace-only intent also gets the domain directory', () => {
+    const { payload } = findToolsResult(CAT, '   ', 8, new Set(), []);
+    expect(payload.domains).toBeTruthy();
+  });
+
+  // External audit #1 (2026-07-08 re-verification) — the ORIGINAL enumeration fix above only
+  // covers a LITERALLY blank intent; a real exploratory agent instead phrases a broad ask as
+  // non-blank generic text ("list everything you can do in this domain"), which token-overlaps
+  // poorly and used to silently under-return (measured live: `book` → 1/~15 tools, 7% recall,
+  // for this EXACT phrase). A `group`-scoped query scoring below CONFIDENCE_THRESHOLD now ALSO
+  // falls back to full enumeration, same as a literal blank intent would.
+  it('group + a weak/generic non-blank intent falls back to full enumeration', () => {
+    const { payload, matchedNames } = findToolsResult(
+      CAT, 'list everything you can do in this domain', 8, new Set(), [], 'book',
+    );
+    expect(matchedNames.sort()).toEqual(['book_create', 'book_list']);
+    expect(payload.enumerated).toBe(true);
+    expect(String(payload.note)).toMatch(/didn't score well/i);
+  });
+
+  it('group + a weak intent on a zero-tool domain still gets the honest empty note, not the fallback wording', () => {
+    const { payload, matchedNames } = findToolsResult(
+      CAT, 'list everything you can do in this domain', 8, new Set(), [], 'nonexistent_domain',
+    );
+    expect(matchedNames).toEqual([]);
+    expect(String(payload.note)).toMatch(/genuinely has no tools/i);
+  });
 });
 
 describe('FindToolsAttemptTracker (design item 1 — retry-cap mechanism)', () => {
