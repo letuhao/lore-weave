@@ -30,8 +30,12 @@ an outcome ("published", "generated", "created") until a tool result confirms it
 ## project_id, not book_id — the most common mistake
 Most composition tools take `project_id` (the Work's primary key), **not** `book_id`. \
 If you only have a `book_id`, resolve the Work first: `composition_get_work(book_id=...)` \
-returns (or idempotently creates, via `composition_create_work`) the Work and its \
-`project_id`. Do this once per conversation, not before every call.
+returns the existing Work (its `project_id`), or `composition_create_work(book_id=...)` \
+— `project_id` is OPTIONAL there — idempotently creates one, auto-resolving or \
+auto-creating the book's default knowledge project for you. Do this once per \
+conversation, not before every call. Auto-creating a fresh knowledge project only \
+works for the book's OWNER — if you're acting for a collaborator, pass an existing \
+`project_id` (get one via `composition_get_work`) instead of omitting it.
 
 ## Outline structure
 - `composition_list_outline(project_id, detail="summary")` — the Arc→Chapter→Scene→Beat \

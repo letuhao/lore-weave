@@ -14,11 +14,11 @@ the server); `_SELECT_COLS` is the attribution projection only.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_vecmath import cosine_similarity as _cosine
 
 from app.db.models import ReferenceSource
 
@@ -49,21 +49,11 @@ def _row_to_ref(row: asyncpg.Record) -> ReferenceSource:
     return ReferenceSource.model_validate(dict(row))
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    """Cosine similarity of two equal-length vectors. Returns 0.0 for a zero or
-    mismatched-length vector (a degenerate row never out-ranks a real hit)."""
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = 0.0
-    na = 0.0
-    nb = 0.0
-    for x, y in zip(a, b):
-        dot += x * y
-        na += x * x
-        nb += y * y
-    if na <= 0.0 or nb <= 0.0:
-        return 0.0
-    return dot / (math.sqrt(na) * math.sqrt(nb))
+# `_cosine` is the shared loreweave_vecmath.cosine_similarity (imported above,
+# aliased to keep this module's existing call sites unchanged). D-COSINE-SDK-
+# PROMOTE: this was the origin copy that motif_retrieve.py's own `_cosine`
+# explicitly documented itself as a copy of — both now import the one shared
+# implementation.
 
 
 class ReferencesRepo:

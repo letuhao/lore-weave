@@ -28,8 +28,14 @@ Key pieces
 """
 from __future__ import annotations
 
+import logging
 import re
+import time
 from difflib import SequenceMatcher
+
+from loreweave_vecmath import cosine_similarity
+
+logger = logging.getLogger(__name__)
 
 # ── C-FT: the find_tools meta-tool ───────────────────────────────────────────
 
@@ -67,17 +73,36 @@ GROUP_DIRECTORY: dict[str, str] = {
     "plan": "Novel planning workflow — PlanForge propose/refine/validate/compile (plan_propose_spec, plan_self_check, plan_interpret_feedback, plan_apply_revision, plan_review_checkpoint, plan_handoff_autofix, plan_validate, plan_compile).",
 }
 
+# Design item 1 (2026-07-07 discovery-hardening plan) reworded this description
+# twice over, mirroring ai-gateway's find-tools.ts FIND_TOOLS_TOOL byte-for-byte
+# in intent (not necessarily literal wording — the two engines are documented to
+# rank/enumerate/cap IDENTICALLY, per the CAT-4 discipline already extended to
+# this fix): (1) it now tells the caller about the enumeration affordance
+# (`group` + no/empty `intent` lists everything in a domain — external audit #5,
+# "no list-all-tools-in-a-domain affordance"); (2) it DROPS the old unconditional
+# "if it returns nothing useful, you may try once more... before telling the user
+# you can't" invitation — that unbounded retry bias is exactly what let one real
+# session hit 40 find_tools iterations / 53.8s / a 0-length final answer (see the
+# plan's Problem section). The retry-cap machinery below (FindToolsAttemptTracker)
+# is what actually bounds it; the wording here just stops encouraging the failure
+# mode in the first place.
 FIND_TOOLS_TOOL: dict = {
     "type": "function",
     "function": {
         "name": FIND_TOOLS_NAME,
         "description": (
-            "Find tools that can perform an intent. Call this FIRST when the user "
-            "asks for something you don't already have a tool advertised for "
-            "(e.g. editing a book, starting a translation, changing settings). "
-            "Returns matching tool names + descriptions; the matched tools become "
-            "callable on your NEXT step. If it returns nothing useful, you may try "
-            "once more with broader wording before telling the user you can't."
+            "Find tools that can perform an intent. Call this FIRST when you need "
+            "a capability you don't already have a tool advertised for (e.g. "
+            "editing a book, starting a translation, changing settings). Pass "
+            "`group` (a tool domain) with `intent` omitted or empty to list EVERY "
+            "tool in that domain, unranked — the fastest way to check whether a "
+            "whole domain has what you need. With `intent` set, returns the "
+            "best-matching tool names + descriptions; matched tools become "
+            "callable next. If a search comes back empty or only weak matches, "
+            "you may try once more with different wording or a `group` listing — "
+            "but if a second attempt on the same ask ALSO comes back empty or "
+            "weak, stop searching and tell the user this isn't supported rather "
+            "than guessing again."
         ),
         "parameters": {
             "type": "object",
@@ -94,7 +119,7 @@ FIND_TOOLS_TOOL: dict = {
                 "group": {
                     "type": "string",
                     "enum": sorted(GROUP_DIRECTORY),
-                    "description": "Optional — scope the search to one tool domain from your tool-domain directory. Omit to search everything.",
+                    "description": "Optional — scope the search to one tool domain from your tool-domain directory. Omit `intent` (or leave it blank) to list EVERY tool in this domain, unranked. Omit `group` entirely to search everything.",
                 },
             },
             "required": ["intent"],
@@ -492,6 +517,347 @@ def _domain_of(name: str) -> str:
     return _DOMAIN_ALIASES.get(prefix, prefix)
 
 
+# ── Design item 1 — true per-domain enumeration (external audit #1/#5) ───────
+# `search_catalog("")` always scores 0 (empty intent_tokens), so a caller could
+# never tell "this domain truly has nothing matching" from "my wording didn't
+# overlap enough tokens." Mirrors ai-gateway's `enumerateGroup` (find-tools.ts)
+# — keep the two in lockstep, same discipline as GROUP_DIRECTORY/_domain_of.
+
+
+def enumerate_group(
+    catalog: list[dict],
+    group: str,
+    *,
+    exclude: set[str] | None = None,
+) -> list[dict]:
+    """Return EVERY non-legacy tool in ``group``, UNRANKED (catalog order — no
+    score, no sort; a sort would itself be an implicit rank) and UNFILTERED by
+    ``INCLUSION_FLOOR``/``CONFIDENCE_THRESHOLD`` — mirrors what GROUP_DIRECTORY
+    already does one level up (domain-level enumeration). CAT-4 still applies:
+    a legacy-tagged tool is excluded from enumeration exactly like it is from
+    a ranked search."""
+    exclude = exclude or set()
+    out: list[dict] = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name in exclude or is_legacy_tool(tool_def):
+            continue
+        if _domain_of(name) != group:
+            continue
+        out.append({"name": name, "description": _fn(tool_def).get("description", "") or ""})
+    return out
+
+
+# ── Design item 1 — retry-cap (bounds the unbounded-retry bias) ─────────────
+#
+# Mirrors ai-gateway's `FindToolsAttemptTracker` (find-tools.ts). The closest
+# stable per-exchange key available to `find_tools_result` is the caller's
+# `session_id` — tracked here as an in-PROCESS, TTL-bounded map (the same shape
+# as other bounded in-memory per-session state in this codebase). A caller with
+# no session id is never tracked (fail-open — a caller we can't key can't be
+# safely capped without risking cross-talk).
+_RETRY_WINDOW_S = 10 * 60.0  # bounds one exchange's worth of guessing, not a whole day
+_RETRY_REPEAT_AT = 2  # the 2nd attempt at the same (group, intent) this window is a "repeat"
+
+
+class FindToolsAttemptTracker:
+    """Per-session tracker of prior ``(group, normalized-intent)`` `find_tools`
+    attempts. A repeated or near-duplicate call — SAME group + a token-set-equal
+    intent (order/casing/punctuation-insensitive, the same ``_tokens()`` splitter
+    ``search_catalog`` scores with, so "search the web" and "web search" collide)
+    — reports ``True``, the signal ``find_tools_result`` uses to stop inviting
+    further guessing and instead permit "tell the user this isn't supported"."""
+
+    def __init__(self, ttl_s: float = _RETRY_WINDOW_S, *, now=time.monotonic) -> None:
+        self._ttl_s = ttl_s
+        self._now = now
+        self._sessions: dict[str, dict[str, tuple[int, float]]] = {}
+
+    @staticmethod
+    def _key(group: str | None, intent: str) -> str:
+        toks = " ".join(sorted(_tokens(intent)))
+        return f"{group or ''} {toks}"
+
+    def record(self, session_id: str | None, group: str | None, intent: str) -> bool:
+        """Record this attempt for ``session_id`` and report whether it is a
+        REPEAT. Blank/enumeration calls (no intent to guess with) are never
+        tracked — there is no "wording" to repeat.
+
+        review-impl fix (mirrors ai-gateway's `FindToolsAttemptTracker.record`,
+        same root cause, same fix, patched independently in each engine): the
+        previous version only pruned stale entries INSIDE the CURRENT
+        session's own bucket and never deleted the top-level ``session_id``
+        key once that bucket went empty — so every distinct session ever seen
+        leaked a dict entry for the life of the process, unbounded by however
+        many sessions the caller produces. A narrower fix that only swept the
+        current caller's own bucket is observably inert: THIS call always
+        re-populates its own bucket with the entry it's about to record before
+        returning, so the top-level key for THIS session is back immediately —
+        no net shrinkage. The actual fix sweeps EVERY tracked session on each
+        call: drop each session's expired entries, then drop that session's
+        top-level key if its bucket is now empty. O(sessions currently
+        tracked) per call, but that count is itself bounded by "sessions active
+        within the last TTL window" — the busier the tracker gets, the more
+        aggressively each call prunes it, so it can never grow unbounded the
+        way the un-swept version could. Negligible cost at this tracker's real
+        cardinality (session ids scoped to one exchange, TTL = 10 minutes)."""
+        if not session_id or not intent.strip():
+            return False
+        now = self._now()
+        for sid in list(self._sessions.keys()):
+            bucket = self._sessions[sid]
+            for k in [k for k, (_, exp) in bucket.items() if exp <= now]:
+                del bucket[k]
+            if not bucket:
+                del self._sessions[sid]
+        bucket = self._sessions.setdefault(session_id, {})
+        key = self._key(group, intent)
+        existing = bucket.get(key)
+        if existing is not None:
+            count, _ = existing
+            count += 1
+            bucket[key] = (count, now + self._ttl_s)
+            return count >= _RETRY_REPEAT_AT
+        bucket[key] = (1, now + self._ttl_s)
+        return False
+
+    @property
+    def session_count(self) -> int:
+        """Test-only accessor (mirrors the TS twin's `sessionCount` getter) —
+        lets tests assert the top-level map actually shrinks back down after
+        entries expire, not just that lookups still behave correctly. Not used
+        by production code."""
+        return len(self._sessions)
+
+
+# Process-wide singleton shared across all find_tools calls in this process —
+# mirrors ai-gateway's module-level `findToolsAttempts`.
+find_tools_attempts = FindToolsAttemptTracker()
+
+
+# ── Design item 1 (embeddings sub-item, OQ4) — embeddings-backed search ─────
+#
+# `search_catalog()`'s token-overlap/difflib scorer stays the MANDATORY fallback
+# (never removed): on any embedding-client failure/timeout, `search_catalog_semantic`
+# degrades to identical behaviour to `search_catalog()` — a find_tools call must
+# NEVER fail, block indefinitely, or rank worse than today because of this upgrade.
+#
+# Tool vectors are cached PER TOOL-CATALOG SIGNATURE (the sorted tuple of tool
+# names) with the SAME TTL `knowledge_client.py`'s `_TOOL_CATALOG_TTL_S` uses for
+# the catalog itself (60s) — so the vector cache invalidates on the same schedule
+# as the catalog it was computed from, never a separate one. `test_tool_discovery.py`
+# carries a drift-lock asserting the two constants stay equal.
+#
+# review-impl HIGH-1 fix: the cache key MUST also fold in which embedding model
+# produced the vectors (`model_source`, `model_ref`), not just the catalog
+# signature. Two callers within the same 60s TTL window using DIFFERENT
+# embedding models (different users/sessions with different BYOK embedding
+# configs) would otherwise share the FIRST caller's vectors — and
+# `cosine_similarity` between two different embedding models' vector spaces is
+# meaningless (can only inflate scores via the `max(token_score, cosine_score)`
+# blend in `search_catalog_semantic`, never deflate them — a false-positive-only
+# failure mode, silent cross-model cache poisoning).
+TOOL_VECTOR_CACHE_TTL_S = 60.0
+
+_TOOL_VECTOR_CACHE: dict[tuple[int, str, str], tuple[float, dict[str, list[float]]]] = {}
+
+
+def _embedding_text(tool_def: dict) -> str:
+    """The same name+description+synonyms haystack `_score()` token-overlaps
+    over, embedded instead of tokenized."""
+    name = tool_name(tool_def)
+    desc = _fn(tool_def).get("description", "") or ""
+    synonyms = tool_meta(tool_def).get("synonyms") or []
+    syn_text = " ".join(s for s in synonyms if isinstance(s, str))
+    return f"{name.replace('_', ' ')} {desc} {syn_text}".strip()
+
+
+def _catalog_signature(catalog: list[dict]) -> int:
+    """A cheap fingerprint of a catalog's tool-name SET (sorted, hashed) — used
+    to key the tool-vector cache. Recomputing this is O(N) string work, no
+    network call, so checking it before deciding to skip re-embedding is far
+    cheaper than the embed round trip it guards."""
+    names = tuple(sorted(n for n in (tool_name(td) for td in catalog) if n))
+    return hash(names)
+
+
+# ── review-impl HIGH-2 fix — resolve a REAL embedding-capable model ─────────
+#
+# The embeddings-blended search used to reuse the TURN's own chat
+# `model_source`/`model_ref` (the completion model the user picked, e.g.
+# gpt-4o or a local chat GGUF) for the embed call. Most chat models can't
+# embed at all, so this either failed upstream (safely caught by the
+# mandatory-fallback try/except below — but silently made the whole
+# embeddings feature INERT for real usage, since it degraded to
+# token-overlap on essentially every real call) or, worse, some backends may
+# "helpfully" return an improvised vector for a model that was never meant to
+# embed anything.
+#
+# Fix: resolve the user's own configured embedding-capable model — the
+# Account-tier default for the `embedding` capability (provider-registry,
+# same route `app/client/provider_client.py`'s `get_default_model()` already
+# exposes for exactly this "which model for which capability" question, spec
+# §3.4) — BEFORE ever attempting an embed call. `get_default_model()` is
+# already best-effort (never raises; returns None on 404/unset/any upstream
+# error), so a user with nothing configured resolves to None here — the
+# caller then skips the embed round trip ENTIRELY (no doomed network call)
+# and goes straight to the token-overlap fallback.
+#
+# Cached briefly per user (mirrors the tool-vector cache's TTL discipline) so
+# a burst of find_tools calls within one turn/session doesn't re-hit
+# provider-registry for the same answer on every single call.
+_EMBEDDING_MODEL_CACHE_TTL_S = 60.0
+
+_EMBEDDING_MODEL_CACHE: dict[str, tuple[float, tuple[str, str] | None]] = {}
+
+
+async def _resolve_embedding_model(user_id: str) -> tuple[str, str] | None:
+    """The caller's configured embedding-capable model as ``(model_source,
+    model_ref)``, or ``None`` when the user has no `embedding`-capability
+    default configured. Never raises — `get_default_model()` itself is
+    best-effort."""
+    now = time.monotonic()
+    cached = _EMBEDDING_MODEL_CACHE.get(user_id)
+    if cached is not None and now < cached[0]:
+        return cached[1]
+    from app.client.provider_client import get_provider_client  # noqa: PLC0415
+
+    ref = await get_provider_client().get_default_model("embedding", user_id)
+    _EMBEDDING_MODEL_CACHE[user_id] = (now + _EMBEDDING_MODEL_CACHE_TTL_S, ref)
+    return ref
+
+
+async def _get_tool_vectors(
+    catalog: list[dict],
+    *,
+    user_id: str,
+    model_source: str,
+    model_ref: str,
+) -> dict[str, list[float]] | None:
+    """Best-effort per-tool embedding vectors for ``catalog``, cached until the
+    catalog's own tool-name set changes or ``TOOL_VECTOR_CACHE_TTL_S`` elapses.
+
+    Returns ``None`` on ANY embedding-client failure — the caller MUST fall
+    back to the token-overlap scorer unconditionally; this never raises."""
+    names = [tool_name(td) for td in catalog if tool_name(td)]
+    if not names:
+        return {}
+    # HIGH-1: key by (catalog signature, model_source, model_ref) — NOT the
+    # catalog signature alone — so two distinct embedding models never share a
+    # cached vector set (see the constant's docstring above).
+    cache_key = (_catalog_signature(catalog), model_source, model_ref)
+    now = time.monotonic()
+    cached = _TOOL_VECTOR_CACHE.get(cache_key)
+    if cached is not None and now < cached[0]:
+        return cached[1]
+    texts = [_embedding_text(td) for td in catalog if tool_name(td)]
+    try:
+        from app.client.embedding_client import get_embedding_client  # noqa: PLC0415
+
+        result = await get_embedding_client().embed(
+            user_id=user_id, model_source=model_source, model_ref=model_ref, texts=texts,
+        )
+    except Exception:  # noqa: BLE001 — mandatory fallback, never raise into find_tools
+        logger.warning("tool-vector embedding failed; falling back to token-overlap search", exc_info=True)
+        return None
+    vectors = dict(zip(names, result.embeddings))
+    _TOOL_VECTOR_CACHE[cache_key] = (now + TOOL_VECTOR_CACHE_TTL_S, vectors)
+    return vectors
+
+
+async def search_catalog_semantic(
+    catalog: list[dict],
+    intent: str,
+    limit: int = FIND_TOOLS_DEFAULT_LIMIT,
+    *,
+    exclude: set[str] | None = None,
+    group: str | None = None,
+    user_id: str,
+) -> tuple[list[dict], bool]:
+    """Embeddings-blended twin of ``search_catalog()`` (design item 1, OQ4).
+
+    Ranks by ``max(token-overlap score, cosine similarity)`` — a BLEND, not a
+    replacement. This is a deliberate choice, not a half-measure: the
+    token-overlap floor/threshold stay the safety net (CAT-4 legacy exclusion
+    happens before either score is computed; the "no bogus suggestion" H10
+    discipline is preserved) even when embeddings succeed, while a genuinely
+    semantic match with near-zero token overlap (e.g. "look up who the king's
+    rival is" ~ glossary_search) can still surface via the embedding term. A
+    full replacement would risk regressing the already-tested precision
+    behaviour tied to token overlap (CAT-4, the "one shared word" fix) any time
+    the embedding model itself is noisy/mediocre — blending means embeddings
+    can only ADD recall, never subtract precision the token scorer already had.
+
+    review-impl HIGH-2 fix: this used to take the TURN's own chat
+    `model_source`/`model_ref` and reuse them for the embed call — removed.
+    The embedding model is now resolved independently per `user_id` via
+    `_resolve_embedding_model()` (the user's configured `embedding`-capability
+    default from provider-registry), never the chat completion model. When
+    the user has no embedding model configured, this is a FAST PRE-NETWORK
+    SKIP straight to the token-overlap score — no doomed embed round trip.
+
+    MANDATORY fallback: on ANY embedding-client failure/timeout (tool-vector
+    embedding OR intent embedding), this returns EXACTLY what ``search_catalog()``
+    would — same ranking, same tests — never raises, never blocks past the
+    embedding client's own timeout.
+    """
+    exclude = exclude or set()
+    intent_tokens = _tokens(intent)
+    candidates: list[dict] = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name in exclude or is_legacy_tool(tool_def):
+            continue
+        if group is not None and _domain_of(name) != group:
+            continue
+        candidates.append(tool_def)
+
+    tool_vectors: dict[str, list[float]] | None = None
+    intent_vector: list[float] | None = None
+    embedding_ref = await _resolve_embedding_model(user_id)
+    if embedding_ref is not None:
+        embed_source, embed_ref = embedding_ref
+        try:
+            tool_vectors = await _get_tool_vectors(
+                catalog, user_id=user_id, model_source=embed_source, model_ref=embed_ref,
+            )
+            if tool_vectors is not None:
+                from app.client.embedding_client import get_embedding_client  # noqa: PLC0415
+
+                intent_result = await get_embedding_client().embed(
+                    user_id=user_id, model_source=embed_source, model_ref=embed_ref, texts=[intent],
+                )
+                intent_vector = intent_result.embeddings[0] if intent_result.embeddings else None
+        except Exception:  # noqa: BLE001 — mandatory fallback, never raise into find_tools
+            logger.warning("intent embedding failed; falling back to token-overlap search", exc_info=True)
+            tool_vectors = None
+            intent_vector = None
+    # else: no embedding-capable model configured for this user — skip the
+    # embed round trip entirely (HIGH-2 fast pre-network skip) instead of
+    # paying a network call that would only fail against a non-embedding model.
+
+    scored: list[tuple[float, dict]] = []
+    for tool_def in candidates:
+        name = tool_name(tool_def)
+        base = _score(intent_tokens, intent, tool_def)
+        sim = 0.0
+        if tool_vectors is not None and intent_vector is not None:
+            vec = tool_vectors.get(name)
+            if vec:
+                sim = max(0.0, cosine_similarity(intent_vector, vec))
+        s = max(base, sim)
+        if s >= INCLUSION_FLOOR:
+            scored.append((s, tool_def))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[: max(1, limit)] if scored else []
+    matches = [
+        {"name": tool_name(td), "description": _fn(td).get("description", "") or ""}
+        for _, td in top
+    ]
+    confident = bool(scored) and scored[0][0] >= CONFIDENCE_THRESHOLD
+    return matches, confident
+
+
 def provider_availability(catalog_meta: dict) -> set[str]:
     """H10 — the set of provider prefixes the gateway reports as temporarily
     unavailable (partial catalog). Reads the catalog-level `_meta` from
@@ -520,6 +886,87 @@ def provider_availability(catalog_meta: dict) -> set[str]:
     return set()
 
 
+def _enumeration_result(
+    catalog: list[dict], group: str, exclude: set[str],
+) -> tuple[dict, list[str]]:
+    """Shared ENUMERATION-mode payload assembly (`group` set + blank `intent`)
+    — used by both `find_tools_result()` and `find_tools_result_async()` so the
+    two search backends never drift on enumeration wording/shape."""
+    matches = enumerate_group(catalog, group, exclude=exclude)
+    payload: dict = {"tools": matches, "enumerated": True}
+    if not matches:
+        payload["note"] = (
+            f"The \"{group}\" domain genuinely has no tools right now — this "
+            "capability isn't supported; no need to keep searching."
+        )
+    return payload, [m["name"] for m in matches]
+
+
+def _blank_intent_result() -> tuple[dict, list[str]]:
+    """Shared "missing/blank intent" directive payload — see the
+    `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE` root-cause note on `find_tools_result`
+    for why this is a directive, not a silent zero-token search."""
+    return (
+        {
+            "tools": [],
+            "note": (
+                "`intent` is required and was missing or empty on this call — "
+                "describe in your own words what you want to do (e.g. "
+                "\"translate this chapter\", \"list my books\") and call "
+                "find_tools again with a non-empty `intent`."
+            ),
+        },
+        [],
+    )
+
+
+def _scored_result_payload(
+    matches: list[dict], confident: bool, *, catalog_meta: dict, is_repeat: bool,
+) -> dict:
+    """Shared note/payload assembly for a SCORED (non-enumeration) find_tools
+    result — the H10 (provider-availability) / retry-cap note wording, used by
+    both `find_tools_result()` (token-overlap) and `find_tools_result_async()`
+    (embeddings-blended) so the two scorers' notes never drift apart."""
+    unavailable = provider_availability(catalog_meta)
+    payload: dict = {"tools": matches}
+    if not matches:
+        if unavailable:
+            # H10: capability may exist but its provider is briefly down —
+            # unaffected by repeat status, transient outages ARE worth retrying.
+            payload["unavailable_providers"] = sorted(unavailable)
+            payload["note"] = (
+                "No matching tool is currently available. One or more services are "
+                "temporarily unavailable — tell the user the capability exists but "
+                "to try again shortly; do NOT say you can't do it."
+            )
+        elif is_repeat:
+            payload["note"] = (
+                "No tool matched, and this is a repeat of a search you already "
+                "tried. Stop searching — tell the user this capability is not "
+                "supported."
+            )
+        else:
+            payload["note"] = (
+                "No tool matched. You may try once more with different wording "
+                "(or list a `group` instead), but if that also comes back empty, "
+                "tell the user this isn't supported rather than continuing to retry."
+            )
+    elif not confident:
+        payload["low_confidence"] = True
+        if is_repeat:
+            payload["note"] = (
+                "These are still only weak matches on a repeated search. Pick the "
+                "closest one if it genuinely fits, or tell the user this isn't "
+                "well supported — don't search again."
+            )
+        else:
+            payload["note"] = (
+                "These are weak matches. If none fit, you may search once more with "
+                "different wording."
+            )
+    return payload
+
+
 def find_tools_result(
     catalog: list[dict],
     intent: str,
@@ -528,9 +975,11 @@ def find_tools_result(
     exclude: set[str],
     catalog_meta: dict,
     group: str | None = None,
+    session_id: str | None = None,
 ) -> tuple[dict, list[str]]:
     """Build the ``find_tools`` tool RESULT payload + the list of matched names
-    to union into the active set (C-FT loop semantics).
+    to union into the active set (C-FT loop semantics), scored via the
+    token-overlap `search_catalog()`.
 
     The payload distinguishes (H10): a genuinely empty result from one where the
     only plausible providers are *temporarily unavailable* — so the agent says
@@ -548,42 +997,92 @@ def find_tools_result(
     reply. Mirrors the "model-directed validation error" pattern jobs-service's
     kit already uses for pydantic failures (`_validation_directive`): reject a
     missing/blank intent with a directive naming the exact fix, instead of
-    silently degrading to an uninformative empty-match note."""
+    silently degrading to an uninformative empty-match note.
+
+    Design item 1 (2026-07-07 discovery-hardening plan) — `group` set + a
+    blank/missing `intent` switches to ENUMERATION mode (mirrors ai-gateway's
+    `findToolsResult`/`enumerateGroup`): the true fix for "a whole domain
+    under-returns on generic queries" (external audit #1/#5), instead of the
+    "intent required" directive below or a zero-token fuzzy search. No `group`
+    + blank `intent` is UNCHANGED — enumeration is intentionally group-scoped
+    only; a no-group blank-intent call still gets the "intent required"
+    directive (its own dedicated test class covers this, unaffected by this
+    change).
+
+    `session_id` (optional, keyword-only, default None) feeds the module-level
+    `find_tools_attempts` retry-cap tracker (`FindToolsAttemptTracker`) — a
+    caller that omits it (or passes None) is simply never tracked (fail-open,
+    same discipline as "no session id" on the ai-gateway TS mirror), so this
+    stays fully backward-compatible for any existing caller that doesn't thread
+    a session id through yet.
+
+    Stays SYNCHRONOUS on purpose (no embeddings call) — see
+    `find_tools_result_async()` for the embeddings-blended twin the live
+    `_stream_with_tools()` call path actually uses; this sync version remains
+    for any caller (and the bulk of this module's existing tests) that only
+    needs the token-overlap scorer.
+    """
+    if bool(group) and not intent.strip():
+        return _enumeration_result(catalog, group, exclude)
+
     if not intent.strip():
-        return (
-            {
-                "tools": [],
-                "note": (
-                    "`intent` is required and was missing or empty on this call — "
-                    "describe in your own words what you want to do (e.g. "
-                    "\"translate this chapter\", \"list my books\") and call "
-                    "find_tools again with a non-empty `intent`."
-                ),
-            },
-            [],
-        )
+        return _blank_intent_result()
+
+    is_repeat = find_tools_attempts.record(session_id, group, intent)
     matches, confident = search_catalog(catalog, intent, limit, exclude=exclude, group=group)
-    unavailable = provider_availability(catalog_meta)
-    payload: dict = {"tools": matches}
-    if not matches:
-        if unavailable:
-            # H10: capability may exist but its provider is briefly down.
-            payload["unavailable_providers"] = sorted(unavailable)
-            payload["note"] = (
-                "No matching tool is currently available. One or more services are "
-                "temporarily unavailable — tell the user the capability exists but "
-                "to try again shortly; do NOT say you can't do it."
-            )
-        else:
-            payload["note"] = (
-                "No tool matched. Reconsider the wording and search once more before "
-                "telling the user this isn't supported."
-            )
-    elif not confident:
-        payload["low_confidence"] = True
-        payload["note"] = (
-            "These are weak matches. If none fit, you may search once more with "
-            "different wording."
-        )
+    payload = _scored_result_payload(matches, confident, catalog_meta=catalog_meta, is_repeat=is_repeat)
+    matched_names = [m["name"] for m in matches]
+    return payload, matched_names
+
+
+async def find_tools_result_async(
+    catalog: list[dict],
+    intent: str,
+    limit: int,
+    *,
+    exclude: set[str],
+    catalog_meta: dict,
+    group: str | None = None,
+    session_id: str | None = None,
+    user_id: str,
+) -> tuple[dict, list[str]]:
+    """Embeddings-blended twin of `find_tools_result()` — IDENTICAL enumeration /
+    blank-intent / retry-cap / H10 semantics (delegated to the same
+    `_enumeration_result` / `_blank_intent_result` / `_scored_result_payload`
+    helpers, so the two never drift), but scores a non-enumeration search via
+    `search_catalog_semantic()` (cosine-blended) instead of `search_catalog()`
+    (token-overlap only).
+
+    This is the variant the live `_stream_with_tools()` tool-loop call site
+    awaits, so a real `find_tools` invocation actually exercises the
+    embeddings path (design item 1 / OQ4) instead of leaving it built-but-
+    unwired.
+
+    review-impl HIGH-2 fix: `model_source`/`model_ref` were REMOVED from this
+    signature — they used to be the SAME turn-scoped chat-completion model
+    values threaded through `_stream_with_tools()`, reused here for the embed
+    call. Most chat models can't embed, so that either failed upstream (caught
+    by the mandatory fallback, but silently made the whole embeddings feature
+    inert for real usage) or risked an improvised vector from a model never
+    meant to embed anything. `search_catalog_semantic()` now resolves a real
+    embedding-capable model independently per `user_id` (the account's
+    `embedding`-capability default), so only `user_id` is needed here. The
+    MANDATORY fallback contract is unchanged: on ANY embed-call failure, OR
+    when the user has no embedding model configured at all, this degrades to
+    the identical token-overlap ranking `find_tools_result()` would have
+    produced — a find_tools call must never fail or rank worse because of this
+    upgrade.
+    """
+    if bool(group) and not intent.strip():
+        return _enumeration_result(catalog, group, exclude)
+
+    if not intent.strip():
+        return _blank_intent_result()
+
+    is_repeat = find_tools_attempts.record(session_id, group, intent)
+    matches, confident = await search_catalog_semantic(
+        catalog, intent, limit, exclude=exclude, group=group, user_id=user_id,
+    )
+    payload = _scored_result_payload(matches, confident, catalog_meta=catalog_meta, is_repeat=is_repeat)
     matched_names = [m["name"] for m in matches]
     return payload, matched_names

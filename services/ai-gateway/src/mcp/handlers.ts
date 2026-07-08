@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { Envelope, FederationService } from '../federation/federation.service.js';
-import { FIND_TOOLS_NAME, FIND_TOOLS_TOOL, findToolsResult } from '../federation/find-tools.js';
+import { FIND_TOOLS_NAME, FIND_TOOLS_TOOL, findToolsAttempts, findToolsResult } from '../federation/find-tools.js';
 
 const log = new Logger('McpProxy');
 
@@ -157,9 +157,13 @@ export async function handleFindTools(
     .providerAvailability()
     .filter((p) => !p.available)
     .map((p) => p.name);
+  const envelope = extractEnvelope(headers);
   // REG-P2-03 — the caller's per-user overlay tools are discoverable too, so the
   // agent can find_tools its own registered servers (not just the System catalog).
-  const overlay = await federation.overlayTools(extractEnvelope(headers));
+  const overlay = await federation.overlayTools(envelope);
+  // Retry-cap (design item 1) — key the per-session attempt tracker off the same
+  // X-Session-Id envelope every other per-call identity read comes from (SEC-1: never the LLM).
+  const isRepeatAttempt = findToolsAttempts.record(envelope.sessionId, group ?? null, intent);
   // Exclude find_tools itself so a search never re-suggests the meta-tool.
   const { payload } = findToolsResult(
     [...federation.catalog(), ...overlay],
@@ -168,6 +172,7 @@ export async function handleFindTools(
     new Set([FIND_TOOLS_NAME]),
     unavailable,
     group,
+    isRepeatAttempt,
   );
   return {
     content: [{ type: 'text', text: JSON.stringify(payload) }],

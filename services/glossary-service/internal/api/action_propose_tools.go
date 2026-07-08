@@ -44,6 +44,11 @@ type confirmCardOut struct {
 	PreviewRows  []previewRow `json:"preview_rows"`
 	Destructive  bool         `json:"destructive"`
 	ExpiresAt    string       `json:"expires_at"`
+	// Warning (external MCP discoverability audit #11) — set when the propose call is a
+	// genuine no-op (a valid, confirmable token that would change nothing). Without this,
+	// a caller that doesn't read preview_rows' counts closely could confirm a token that
+	// accomplishes nothing and believe an action succeeded.
+	Warning string `json:"warning,omitempty"`
 }
 
 // mintGrantActionCard marshals params, mints a grant-authority action token bound

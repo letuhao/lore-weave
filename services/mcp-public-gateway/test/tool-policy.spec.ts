@@ -23,7 +23,7 @@ describe('tool-policy.scopeToolCount', () => {
 
   it('counts ALL of TOOL_POLICY for a broad scope holding every tier + every domain', () => {
     const allTiers = ['read', 'paid_read', 'write_auto', 'write_confirm'];
-    const domains: Domain[] = ['book', 'glossary', 'knowledge', 'translation', 'composition', 'jobs', 'settings', 'lore_enrichment', 'catalog'];
+    const domains: Domain[] = ['book', 'glossary', 'knowledge', 'translation', 'composition', 'jobs', 'settings', 'lore_enrichment', 'catalog', 'story', 'registry'];
     const allDomains = domains.map(domainScope);
     const scopes = [...allTiers, ...allDomains];
     expect(scopeToolCount(scopes)).toBe(Object.keys(TOOL_POLICY).length);
@@ -32,6 +32,42 @@ describe('tool-policy.scopeToolCount', () => {
 
   it('returns 0 for a scope with no domain grant (fail-closed, matches isToolAllowed)', () => {
     expect(scopeToolCount(['read', 'write_auto', 'write_confirm'])).toBe(0);
+  });
+
+  // Discovery-hardening plan item 8 / external audit #6 — story_search was a real, live tool
+  // on the authenticated chat surface but had no TOOL_POLICY entry at all (the `story` domain
+  // didn't even exist in the Domain union), so no public key — however privileged — could ever
+  // reach it. Closed by adding the `story` domain + a read-tier entry.
+  it('story_search is reachable with read + domain:story, and denied without it', () => {
+    expect(isToolAllowed('story_search', ['read', domainScope('story')])).toBe(true);
+    expect(isToolAllowed('story_search', ['read'])).toBe(false);
+    expect(isToolAllowed('story_search', [domainScope('story')])).toBe(false);
+  });
+
+  // MED-1 review finding — registry_list_skills/registry_get_skill (agent-registry-service)
+  // had no TOOL_POLICY entry at all (no `registry` Domain member either), the exact same
+  // incomplete-rollout shape as the `story` gap above. Closed by adding the `registry`
+  // domain + read-tier entries for the two reads and write_auto entries for the three
+  // propose/update/toggle tools (all Tier-A/ScopeUser upstream — propose/update mint a
+  // pending human-approved proposal, never a direct write; set_skill_enabled is a
+  // reversible per-user toggle).
+  it('registry_list_skills / registry_get_skill are reachable with read + domain:registry, and denied without it', () => {
+    expect(isToolAllowed('registry_list_skills', ['read', domainScope('registry')])).toBe(true);
+    expect(isToolAllowed('registry_get_skill', ['read', domainScope('registry')])).toBe(true);
+    expect(isToolAllowed('registry_list_skills', ['read'])).toBe(false);
+    expect(isToolAllowed('registry_get_skill', [domainScope('registry')])).toBe(false);
+  });
+
+  it('registry write tools (propose/update/toggle) require write_auto + domain:registry', () => {
+    const writeScopes = ['write_auto', domainScope('registry')];
+    expect(isToolAllowed('registry_propose_skill', writeScopes)).toBe(true);
+    expect(isToolAllowed('registry_update_skill', writeScopes)).toBe(true);
+    expect(isToolAllowed('registry_set_skill_enabled', writeScopes)).toBe(true);
+    // read-only scope cannot reach the write tools
+    expect(isToolAllowed('registry_propose_skill', ['read', domainScope('registry')])).toBe(false);
+    // write_auto scope without the registry domain grant cannot reach them either
+    expect(isToolAllowed('registry_update_skill', ['write_auto'])).toBe(false);
+    expect(isToolAllowed('registry_set_skill_enabled', ['write_auto'])).toBe(false);
   });
 
   it('the wildcard scope trivially "counts" the whole allowlist — production code must never route it here', () => {

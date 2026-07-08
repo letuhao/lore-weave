@@ -49,16 +49,40 @@ func tokenHash(tok string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// decodeSettingsConfirm reads + verifies the confirm token, re-checks user==caller
-// and the descriptor. Writes the 4xx itself and returns ok=false on any failure.
-// Also returns the raw token string for the single-use ledger key.
+// resolveConfirmCaller returns the redeeming user's ID for the settings confirm
+// route, trusting EITHER a valid Bearer JWT (browser UI) or a trusted
+// internal-service envelope (X-Internal-Token, constant-time compare, +
+// X-User-Id) — the shape auth-service's public-MCP confirm-replay
+// (mcp_approvals.go::replayConfirm) sends, since it is a trusted internal
+// caller and can never present the owner's Bearer JWT. Mirrors
+// glossary-service/book-service's identical retrofit and
+// composition/translation/knowledge-service's existing Python dual-auth
+// pattern (D-PMCP-WORKER-CARRIER). Found live 2026-07-08: this route 401'd
+// every confirm-replay unconditionally (comment above said "the MCP/mint path
+// can never call them" — true for propose, but the REPLAY path is a distinct,
+// legitimate trusted-internal caller this route never accounted for). The
+// internal-token branch fails closed (never falls through to Bearer) if
+// X-User-Id is missing/malformed.
+func (s *Server) resolveConfirmCaller(r *http.Request) (uuid.UUID, bool) {
+	return lwmcp.ResolveEnvelopeOrBearerCaller(r, s.cfg.InternalServiceToken, s.auth)
+}
+
+// decodeSettingsConfirm reads + verifies the confirm token — from the `token`
+// query param (auth-service's internal confirm-replay, nil body) or the JSON
+// body `{confirm_token}` (the browser UI) — re-checks user==caller and the
+// descriptor. Writes the 4xx itself and returns ok=false on any failure. Also
+// returns the raw token string for the single-use ledger key.
 func (s *Server) decodeSettingsConfirm(w http.ResponseWriter, r *http.Request, userID uuid.UUID) (lwmcp.ConfirmClaims, string, bool) {
-	var body settingsConfirmReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ConfirmToken) == "" {
-		writeError(w, http.StatusBadRequest, "SETTINGS_VALIDATION", "confirm_token is required")
-		return lwmcp.ConfirmClaims{}, "", false
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
+		var body settingsConfirmReq
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ConfirmToken) == "" {
+			writeError(w, http.StatusBadRequest, "SETTINGS_VALIDATION", "confirm_token is required")
+			return lwmcp.ConfirmClaims{}, "", false
+		}
+		token = body.ConfirmToken
 	}
-	claims, err := lwmcp.VerifyConfirmToken(s.cfg.ConfirmTokenSigningSecret, body.ConfirmToken)
+	claims, err := lwmcp.VerifyConfirmToken(s.cfg.ConfirmTokenSigningSecret, token)
 	if errors.Is(err, lwmcp.ErrConfirmTokenExpired) {
 		writeError(w, http.StatusUnprocessableEntity, "SETTINGS_ACTION_TOKEN", "confirmation expired — propose again")
 		return lwmcp.ConfirmClaims{}, "", false
@@ -77,14 +101,14 @@ func (s *Server) decodeSettingsConfirm(w http.ResponseWriter, r *http.Request, u
 		writeError(w, http.StatusUnprocessableEntity, "SETTINGS_ACTION_TOKEN", "unknown action")
 		return lwmcp.ConfirmClaims{}, "", false
 	}
-	return claims, body.ConfirmToken, true
+	return claims, token, true
 }
 
 // confirmSettingsAction handles POST /v1/settings/actions/confirm — the token-gated,
 // single-use Tier-W write path. Currently the only descriptor is
 // settings.model_delete.
 func (s *Server) confirmSettingsAction(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.auth(r)
+	userID, ok := s.resolveConfirmCaller(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return

@@ -66,7 +66,7 @@ from app.services.tool_discovery import (
     FIND_TOOLS_DEFAULT_LIMIT,
     FIND_TOOLS_NAME,
     FIND_TOOLS_TOOL,
-    find_tools_result,
+    find_tools_result_async,
     group_directory_text,
     hot_tool_names,
     strip_tool_meta,
@@ -616,6 +616,69 @@ def _reassemble_tool_calls(frags: dict) -> list[dict]:
             "arguments": f.get("arguments", ""),
         })
     return calls
+
+
+def _drop_duplicate_empty_tool_calls(calls: list[dict]) -> list[dict]:
+    """D-TOOLCALL-DUP-EMPTY-CALL — a sibling of D-TOOLCALL-GEMMA-TOKEN-LEAK
+    (commit 873829f42), same defective-decoding model family, DIFFERENT
+    manifestation: instead of abandoning the structured `tool_calls` channel
+    for leaked plain-text tokens, the model emits a genuinely well-formed
+    structured tool call and then, in the SAME pass, a second structured call
+    to the IDENTICAL tool name with empty/missing arguments — two distinct
+    entries in the provider's own `tool_calls` array (confirmed: each arrives
+    as a separate `ToolCallEvent.index`, so `tool_frags`/`_reassemble_tool_calls`
+    is not splitting one call into two — the model itself emits two blocks).
+    Live-pulled Postgres transcripts show the model's own reasoning narrating
+    awareness of the mistake ("Ah, I made a mistake... calling
+    glossary_web_search twice, the second one without a query") without being
+    able to self-correct — a harness/decoding defect, not a prompting one.
+    Left unhandled, the malformed duplicate reaches `execute_tool` and trips a
+    `missing properties` validation error, which one real session hit 13+
+    times before giving up or hallucinating an answer.
+
+    Drops the pattern: same tool name, where the LAST WELL-FORMED call SEEN SO
+    FAR for that tool name (not necessarily the immediately preceding kept
+    call overall) had arguments that parse to a non-empty dict, and this
+    call's arguments parse to an empty dict (covers both a literal
+    `{}`/missing-args string and anything `_parse_tool_args` could not repair
+    into a non-empty dict). A later call to the same tool with its OWN
+    non-empty arguments — e.g. two genuinely distinct searches in one turn —
+    is never touched, since only an empty-after-a-well-formed-call pattern
+    matches. The dropped call never reaches `working`/execution, so no
+    validation error is ever surfaced back to the model for it.
+
+    review-impl MED fix: this used to compare a call ONLY to the immediately
+    preceding KEPT call, regardless of tool name — so `[A(good), B(good),
+    A(empty)]` never recognized the trailing empty `A` as a duplicate of the
+    earlier `A`, because `B` sat between them as the "immediately preceding
+    kept call." Now tracks the last well-formed call PER TOOL NAME (a
+    `dict[str, dict]`), so a non-adjacent duplicate for the same tool is still
+    caught regardless of what other tool calls appear in between."""
+    if len(calls) < 2:
+        return calls
+    kept: list[dict] = []
+    dropped: list[str] = []
+    last_well_formed_by_name: dict[str, dict] = {}
+    for c in calls:
+        name = c["name"]
+        prior = last_well_formed_by_name.get(name) if name else None
+        if (
+            prior is not None
+            and _parse_tool_args(prior["arguments"])
+            and not _parse_tool_args(c["arguments"])
+        ):
+            dropped.append(name)
+            continue
+        kept.append(c)
+        if name and _parse_tool_args(c["arguments"]):
+            last_well_formed_by_name[name] = c
+    if dropped:
+        logger.warning(
+            "D-TOOLCALL-DUP-EMPTY-CALL: dropped %d malformed duplicate tool-call(s) "
+            "(same tool as an earlier well-formed call this pass, empty/missing args): %s",
+            len(dropped), dropped,
+        )
+    return kept
 
 
 async def _run_composer(
@@ -1281,6 +1344,12 @@ async def _stream_with_tools(
                         if name == c["name"]:
                             c["arguments"] = body
                             break
+            # D-TOOLCALL-DUP-EMPTY-CALL — runs AFTER the leak-salvage repair
+            # above so a call that leak-salvage just filled in from plain text
+            # is no longer "empty" and is correctly kept; only a call that is
+            # STILL empty/unparseable immediately after a well-formed call to
+            # the identical tool name gets silently dropped here.
+            calls = _drop_duplicate_empty_tool_calls(calls)
             working.append({
                 "role": "assistant",
                 "content": "".join(text_parts),
@@ -1326,13 +1395,54 @@ async def _stream_with_tools(
                         limit = FIND_TOOLS_DEFAULT_LIMIT
                     # Part A — optional group scoping (tool-catalog-simplification spec).
                     group = args_obj.get("group") or None
-                    payload, matched = find_tools_result(
+                    # Design item 1 (2026-07-07 discovery-hardening plan, embeddings
+                    # sub-item / OQ4) — `session_id` feeds the retry-cap tracker
+                    # (`FindToolsAttemptTracker`) so a repeated/near-duplicate search
+                    # in THIS session gets the "stop searching, not supported" note.
+                    # review-impl HIGH-2 fix: `model_source`/`model_ref` are NO
+                    # LONGER passed here — `find_tools_result_async` used to reuse
+                    # THIS TURN's own chat-completion model for the embed call,
+                    # which most chat models can't do at all; it now resolves the
+                    # user's own configured embedding-capable model independently
+                    # (provider-registry `embedding`-capability default), keyed only
+                    # by `user_id`. Mandatory fallback inside `search_catalog_semantic()`
+                    # means this never ranks worse than the old token-overlap-only
+                    # path on an embed failure OR when no embedding model is configured.
+                    payload, matched = await find_tools_result_async(
                         discovery_catalog or [], intent, limit,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
                         catalog_meta=knowledge_client.get_catalog_meta(),
                         group=group,
+                        session_id=session_id,
+                        user_id=user_id,
                     )
-                    active_tool_names.update(matched)
+                    # review-impl HIGH-3 fix: enumeration mode (`group` set, blank
+                    # `intent`) returns EVERY non-legacy tool in a domain unranked —
+                    # up to ~56 for composition — and unioning that unbounded set
+                    # into `active_tool_names` blew past the token-budget discipline
+                    # `merge_activated_tools`/`budget_names_by_tokens` already
+                    # enforce for the NEXT-turn persisted `activated_tools` set
+                    # (curated mode only); THIS turn's `active_tool_names` (which
+                    # controls whose FULL SCHEMA `_advertise_discovery_tools` sends
+                    # on the next pass, independent of curated/non-curated mode) had
+                    # no budgeting at all. The full unranked list still reaches the
+                    # model in `payload["tools"]` (cheap — names+descriptions only);
+                    # only what gets its full schema advertised is capped here, same
+                    # ceiling the hot-seed uses (see docs/eval/context-budget/
+                    # context-explosion-investigation-2026-07-06.md — the exact
+                    # explosion class this closes off for the enumeration path too).
+                    if payload.get("enumerated"):
+                        from app.services.tool_surface import (
+                            HOT_SEED_TOKEN_BUDGET,
+                            budget_names_by_tokens,
+                        )
+                        names_to_activate = budget_names_by_tokens(
+                            discovery_catalog or [], matched,
+                            token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                    else:
+                        names_to_activate = set(matched)
+                    active_tool_names.update(names_to_activate)
                     if curated and activation_state is not None:
                         from app.services.tool_surface import merge_activated_tools
                         activation_state["activated_tools"] = merge_activated_tools(
@@ -2434,7 +2544,7 @@ async def stream_response(
     # Glossary-assistant P5 + story 04 skill registry: inject selected or
     # surface-default system skills (static + cacheable).
     from app.services.skill_registry import (
-        resolve_skills_to_inject,
+        resolve_skills_to_inject_async,
         skill_metadata_block,
         skill_prompts,
     )
@@ -2459,7 +2569,15 @@ async def stream_response(
     effective_enabled = tool_pins.effective_enabled
     effective_skills = tool_pins.effective_skills
 
-    injected_skill_codes = resolve_skills_to_inject(
+    # Part F / F2 (docs/plans/2026-07-07-intent-skill-router.md) — the async
+    # twin computes the IDENTICAL static/structural result first, then
+    # additively unions in any skill the embedding-similarity router surfaces
+    # for THIS turn's text; `user_id`/`model_source`/`model_ref` are this
+    # turn's own already-in-scope values (same reuse discipline as
+    # `find_tools_result_async`'s call site) — mandatory fallback inside
+    # `resolve_skills_to_inject_async` means this never behaves worse than the
+    # old sync-only call on an embed failure.
+    injected_skill_codes = await resolve_skills_to_inject_async(
         enabled_skills=effective_skills,
         stream_format=stream_format,
         disable_tools=disable_tools,
@@ -2470,6 +2588,10 @@ async def stream_response(
         # RAID B2 — plan mode auto-injects plan_forge on book/editor surfaces.
         permission_mode=permission_mode,
         studio=_studio,
+        intent_text=user_message_content,
+        user_id=user_id,
+        model_source=model_source,
+        model_ref=model_ref,
     )
     _skill_prompts = skill_prompts(injected_skill_codes)
     glossary_skill: str | None = _skill_prompts.get("glossary")
@@ -3821,7 +3943,7 @@ async def resume_stream_response(
     planner_resume_ref = session_row.get("planner_model_ref") if session_row else None
     planner_model_ref = str(planner_resume_ref) if planner_resume_ref else None
 
-    from app.services.skill_registry import resolve_skills_to_inject
+    from app.services.skill_registry import resolve_skills_to_inject_async
     from app.services.tool_surface import resolve_session_tool_pins, discovery_seed_for_surface
     from app.services.agent_surface import AgentSurfaceTracker
 
@@ -3829,7 +3951,10 @@ async def resume_stream_response(
     resume_surface_tracker = (
         AgentSurfaceTracker() if stream_format == "agui" else None
     )
-    resume_injected_skills = resolve_skills_to_inject(
+    # Part F / F2 — same router wiring as the fresh-turn call site
+    # (stream_response above); the resumed turn's own text/model is carried on
+    # `susp` (SuspendedRun), the same values the 2nd LLM pass itself replays.
+    resume_injected_skills = await resolve_skills_to_inject_async(
         enabled_skills=tool_pins.effective_skills,
         stream_format=stream_format,
         disable_tools=False,
@@ -3843,6 +3968,10 @@ async def resume_stream_response(
         # below (editor=True, book_scoped=True, studio=True) — the resume doesn't know
         # the exact original surface, so it re-seeds/re-injects the union of everything.
         studio=True,
+        intent_text=susp.user_message_content,
+        user_id=user_id,
+        model_source=susp.model_source,
+        model_ref=susp.model_ref,
     )
 
     knowledge_client = get_knowledge_client()

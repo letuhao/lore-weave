@@ -26,7 +26,27 @@ export type Domain =
   | 'jobs'
   | 'settings'
   | 'lore_enrichment'
-  | 'catalog';
+  | 'catalog'
+  // `story` — the universal manuscript-search surface (story_search, knowledge-service).
+  // Added 2026-07-08 (discovery-hardening plan item 8 / external audit #6): `story` was
+  // already a real, live GROUP_DIRECTORY domain on BOTH federation surfaces
+  // (chat-service's tool_discovery.py + this gateway's find-tools.ts) and `story_search`
+  // was already reachable on the authenticated chat surface — it was simply never added
+  // to this PUBLIC-key allowlist when the 2026-07-05 search-tool-unification plan
+  // promoted it to its own `story_` prefix (this file predates that plan). Confirmed an
+  // incomplete rollout, not intentional tier-gating: no key, however privileged short of
+  // the wildcard dev key, could ever reach it, since the Domain union itself had no
+  // member for it.
+  | 'story'
+  // `registry` (agent-registry-service) — the skills catalog surface (registry_list_skills,
+  // registry_get_skill, registry_propose_skill, registry_update_skill,
+  // registry_set_skill_enabled). Added 2026-07-08 (MED-1 review finding): `registry` was
+  // already a real, live federated provider (infra/docker-compose.yml
+  // AI_GATEWAY_PROVIDERS=...,registry=http://agent-registry-service:8099/mcp) with real
+  // Tier-R/Tier-A tools registered in services/agent-registry-service/internal/api/mcp_server.go,
+  // but had NO Domain member and NO TOOL_POLICY entries — the exact same incomplete-rollout
+  // shape as the `story` gap above. Confirmed an omission, not intentional gating.
+  | 'registry';
 
 export interface ToolPolicy {
   tier: Tier;
@@ -122,6 +142,15 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   // catalog (P5 OD-7 — PUBLIC discovery; owner-agnostic, returns only public books)
   catalog_list_public_books: { tier: 'read', domains: ['catalog'] },
   catalog_get_book: { tier: 'read', domains: ['catalog'] },
+  // story (knowledge-service) — the universal manuscript search. Read-only, owner-scoped
+  // (project_id), no different from any other read tool; added here (2026-07-08) to close
+  // the incomplete-rollout gap above.
+  story_search: { tier: 'read', domains: ['story'] },
+  // registry (agent-registry-service) — skills catalog reads. Owner-scoped (System ∪
+  // caller's own skills), same privilege class as other read tools; Tier-R/ScopeUser in
+  // services/agent-registry-service/internal/api/mcp_server.go lines 22-35.
+  registry_list_skills: { tier: 'read', domains: ['registry'] },
+  registry_get_skill: { tier: 'read', domains: ['registry'] },
   // settings (secrets redacted upstream)
   settings_get_profile: { tier: 'read', domains: ['settings'] },
   settings_list_providers: { tier: 'read', domains: ['settings'] },
@@ -207,6 +236,15 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   settings_model_set_favorite: { tier: 'write_auto', domains: ['settings'] },
   settings_model_set_active: { tier: 'write_auto', domains: ['settings'] },
   settings_model_set_default: { tier: 'write_auto', domains: ['settings'] },
+  // registry (agent-registry-service) — skills catalog writes are all propose→human-approve
+  // (never a direct write) or a reversible own-user toggle, matching Tier-A/ScopeUser in
+  // mcp_server.go lines 37-59: registry_propose_skill/registry_update_skill mint a pending
+  // proposal row (nothing applied until UI approval); registry_set_skill_enabled is a
+  // reversible per-user enable/disable flag (never mutates the shared skill). No-cost, no
+  // confirm-token minting — same shape as other write_auto tools in this table.
+  registry_propose_skill: { tier: 'write_auto', domains: ['registry'] },
+  registry_update_skill: { tier: 'write_auto', domains: ['registry'] },
+  registry_set_skill_enabled: { tier: 'write_auto', domains: ['registry'] },
 
   // ── write_confirm (Tier-W → human-approve by default; priced ones also P3) ──
   // Non-priced W

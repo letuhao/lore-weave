@@ -1,6 +1,6 @@
 # Spec: Skill-Authoring Contract + MCP Exposure Posture Standard
 
-**Status (2026-07-07):** Parts A, B (Phase 1+2), C, D, and E's first pass are ALL SHIPPED — every part of this spec's original scope is now built. Part A (lint), Part B Phase 1+2 (all 5 domain skills, adversarially fact-checked), Part C (scope-size-adaptive exposure, threshold=20), Part D (hot-domain generic derivation, closes `D-SKILL-HOTDOMAIN-RUNTIME-WIRING`), Part E (live judge-gate eval, first pass run + report). See build notes below for each. **Size:** XL (cross-service standard, touched every future domain skill)
+**Status (2026-07-07):** Parts A, B (Phase 1+2), C, D, and E's first pass are ALL SHIPPED — every part of this spec's original scope is now built. Part A (lint), Part B Phase 1+2 (all 5 domain skills, adversarially fact-checked), Part C (scope-size-adaptive exposure, threshold=20), Part D (hot-domain generic derivation, closes `D-SKILL-HOTDOMAIN-RUNTIME-WIRING`), Part E (live judge-gate eval, first pass run + report). See build notes below for each. **Part F (NEW, added same day, §12-15) — CLARIFY complete, decisions §13.1-13.4 all RESOLVED, ready for its own PLAN, not yet built:** an Intent→Skill Router — the deeper fix behind a same-day discussion (`docs/specs/2026-07-07-mcp-discovery-and-reliability-hardening.md` §0.5) concluding `find_tools`-style tool search is defense-in-depth, not a fix for "the agent has no procedure to follow for an ambiguous ask" — that lives one tier up, at skill selection. **Size:** XL (cross-service standard, touched every future domain skill); Part F alone is its own XL (first embedding call site in chat-service).
 
 **Part A build note (2026-07-07):** building the lint (§4) immediately found 3 more real, live instances of the bug this spec exists to prevent — evidence the problem is broader than the single plan_forge case §1 originally scoped from:
 1. **`knowledge_skill`'s audit entry in §1(B) was WRONG.** It claimed direct availability of `kg_*`/`memory_*` tools ("Use `kg_graph_query`... for Y") exactly like `plan_forge` claimed `plan_*` — not a softer "search first" pattern as originally assessed. Its `hot_domains` is now honestly declared `{"knowledge"}`; the runtime doesn't fulfill that yet (neither `_BOOK_SCOPED_HOT_DOMAINS`/`_STUDIO_HOT_DOMAINS` include it, and it can't be a small permission_mode-style patch — `knowledge` auto-injects on the universal chat surface too, which hot-seeds nothing by design) — **tracked as Part D's job, not fixed in Part A.**
@@ -46,6 +46,8 @@ Re-verified after fixes: chat-service 1150/1150 (unchanged pass count — the fi
 **Part D build note (2026-07-07):** implemented the generic hot-domain derivation `surface_hot_domains()`'s design text promised in §4 (formalized as its own edge case in §8b.9) — replaced the 3 hand-authored constants (`_BOOK_SCOPED_HOT_DOMAINS`, `_STUDIO_HOT_DOMAINS`, `PLAN_HOT_DOMAINS`) with a single derivation: union the `hot_domains` of whichever skills `resolve_skills_to_inject` would inject BY DEFAULT (empty `enabled_skills`) on a surface, plus `story` (the one surface-level, not-skill-owned exception, kept as its own explicit constant with its original Dracula-eval justification comment preserved). **Deliberate, sign-off'd behavior change**: `knowledge_skill` already auto-injects on every non-admin surface and already honestly declared `hot_domains={"knowledge"}` (Part A) — that declaration is now HONORED, so "knowledge" is hot everywhere `knowledge_skill` is injected, including the universal/chat surface, which previously hot-seeded nothing. This closes `D-SKILL-HOTDOMAIN-RUNTIME-WIRING`. `tool_surface.py`'s curated-mode plan carve-out also now derives from `SYSTEM_SKILLS["plan_forge"].hot_domains` instead of the standalone `PLAN_HOT_DOMAINS` constant (one source of truth, removing the two-constants-must-agree drift risk the standalone constant carried — `PLAN_HOT_DOMAINS` deleted). Full regression pass per §8b.9: 4 tests in `test_tool_discovery.py` + 1 in `test_stream_service.py` needed updating (all 5 are the SAME expected "knowledge now hot" flip, documented inline with a shared docstring explaining why) — every other domain (glossary/composition/story/plan) is byte-for-byte unchanged from the old hand-authored constants, confirmed by the same tests. Added a token-budget regression test (`test_studio_seed_stays_bounded_with_knowledge_added`) proving the shared `HOT_SEED_TOKEN_BUDGET` ceiling still holds with a 4th domain competing for it (same `budget_names_by_tokens` mechanism, no new call site — it truncates the wider candidate set, it doesn't grow the cap). Verified: chat-service 1152/1152.
 
 **Part E build note (2026-07-07) — first live pass, see full report [`docs/eval/skill-authoring/2026-07-07-part-e-first-pass.md`](../eval/skill-authoring/2026-07-07-part-e-first-pass.md):** built `scripts/eval/run_skill_gate.py` (a sibling of `run_quality_gate.py` — reuses its proven SSE-driving pattern, adds per-turn `book_context`/`editor_context`/`studio_context`/`enabled_skills` so a scenario can force the right surface+curated-pin, which the context-budget driver never needed). Authored 37 scenarios across 5 files (`scripts/eval/skill_scenarios/{composition,translation,book,settings,jobs}.json`, via 5 parallel fan-out agents each researching their own skill file, zero invented tool names — cross-checked). Rebuilt+ran the real chat-service stack against local `gemma-4-26b-a4b-qat`, then 5 independent judge Agents scored every scenario against its own self-contained `ground_truth` (absolute scoring, not A/B — there is no prior baseline for a brand-new capability). **Headline: zero hallucinated tool names across all 37 scenarios** — the failure mode this whole effort exists to prevent never occurred. A cross-cutting `find_tools`-loop-then-give-up pattern accounted for most of the FAIL/WEAK scores; a control run against the untouched, previously-shipped `glossary_skill` reproduced the identical signature, confirming it's a pre-existing model/infra characteristic, not a defect in this session's new skill prose — tracked as `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE` rather than chased or silently absorbed into a rushed prose edit. Two FAILs were a different, more interesting shape (the agent reached a conclusion that contradicted a rule the skill states) — flagged as suggestive, not conclusive on n=1 from a known-noisy local model, re-run tracked as `D-SKILL-EVAL-RERUN-AFTER-LOOP-FIX`.
+
+**Part E follow-up (2026-07-08) — both deferred items RESOLVED, full report [`docs/eval/skill-authoring/2026-07-08-loop-flake-rootcause-and-rerun.md`](../eval/skill-authoring/2026-07-08-loop-flake-rootcause-and-rerun.md):** root-caused the loop-flake to TWO real, fixed bugs, not model noise alone. (1) `find_tools` silently degraded a missing/blank `intent` into a genuine zero-token search instead of a directive error — fixed (`find_tools_result()`). (2) The actual dominant cause: `is_curated()` derived curated-mode ONLY from `enabled_tools`, so the REAL frontend's skill-only pin path (`useContextRack.ts` → `enabled_skills` alone, `enabled_tools` always `[]`) never entered curated mode — a pinned skill's PROMPT was injected (confidently telling the model to call its tools) but its TOOLS were never hot-seeded, live-observed causing the model to falsely deny real, skill-documented tools exist across all 5 skill files. Part B's own tests never caught this because every one of them co-pinned a dummy `enabled_tools` entry alongside the tested skill, accidentally masking the exact path production uses — fixed (`is_curated()` now OR's `enabled_skills`; a second identical short-circuit in `effective_enabled_tools()` removed too). Clean re-run (Qwen2.5 7B, both fixes live): zero hallucinated tool names (even stronger than the first pass), the dominant false-tool-denial pattern gone for 3/5 skills and much reduced for the other 2 (residual cause: composition's ~56-tool domain genuinely exceeds the hot-seed token budget by design — `find_tools` search itself verified correct, the gap is the small model not always retrying via search before giving up). Two new patterns surfaced that are NOT skill/platform defects — a "real tool call then 0 chars to the user" pattern (matches this repo's pre-existing `reasoning-model-burns-max-tokens-before-real-answer` lesson) and non-convergent retry loops on a failing lookup — both model-capability/reasoning-budget characteristics, not tracked as new spec-scoped defer rows. chat-service 1158/1158.
 
 **Origin:** `docs/plans/2026-06-29-public-mcp-lazy-tool-loading.md`'s 2026-07-07 amendment (the `invoke_tool` fix) + the same day's Plan/Ask-mode tool-seeding bugfix, both root-caused to the same underlying gap: **a skill's prose can promise a tool the seeding/exposure layer never actually delivers, and nothing catches that until a live agent (or an external bug report) hits it.** User's framing: tool count will keep growing, skills are currently "làm cho có" (built to exist, not truly invested), and skills should ship as **workflow definitions + tool-use guides**, not bare "here's MCP, go find_tools yourself."
 **Related:** `docs/specs/2026-07-06-tool-catalog-simplification.md` (Part A group-directory + CAT-4 legacy-visibility — SHIPPED, this spec builds on it, does not redo it), `docs/standards/mcp-tool-io.md`, `docs/plans/2026-06-29-public-mcp-lazy-tool-loading.md`, [[mcp-lazy-toolload-needs-invoke-facade]]
@@ -242,3 +244,176 @@ Grouped by which Part they land on; each has a decided resolution, not left open
 4. ~~§3.4~~ — **RESOLVED: deferred, not blocking.** Write the Phase-1 skills (composition, translation) first; build/run the eval loop (Part E) as a follow-up evaluation pass afterward, not a Phase-1 build-gate. `scripts/eval/run_quality_gate.py` already exists and is reusable when that pass happens — this only changes SEQUENCING (skill prose first, eval after), not whether eval happens at all.
 
 **Sequencing note (supersedes §10 step 3):** since eval is now a follow-up rather than built-in-from-the-start, Part B Phase 1 (composition_skill + translation_skill) ships as its own milestone; Part E (eval harness scenarios for these two skills) is a separate, subsequent milestone against the shipped prose — not a blocking co-requisite.
+
+---
+
+## 12. Problem — Part F: Intent→Skill Router (NEW, added 2026-07-07, DRAFT/CLARIFY)
+
+Added same-day, after Parts A-E above shipped, from a separate discussion tracked in
+[`docs/specs/2026-07-07-mcp-discovery-and-reliability-hardening.md`](2026-07-07-mcp-discovery-and-reliability-hardening.md)
+§0.5. That spec's own Layer A fix (harden `find_tools`: true enumeration + retry-cap) was reframed
+mid-discussion as **defense-in-depth, not the fix** — `find_tools`-style search can only answer "is
+there a tool that might match these words," never "given this ambiguous ask, what procedure should I
+follow." Those are different problems (existence-discovery vs. procedure-selection); the second one
+lives at the **Skill** tier this spec already owns, not the tool-search tier.
+
+**The architecture already has the right shape, just an incomplete rollout — confirmed by code, not
+assumed:**
+- `SkillDef`/`SYSTEM_SKILLS` (`skill_registry.py`) is a real Skill tier; `plan_forge_skill` is already
+  a genuine first-class **Workflow** (propose→self_check→interpret_feedback→apply_revision→
+  review_checkpoint→handoff_autofix→validate→compile), not just a tool-use guide. Parts A/B/D/E above
+  are actively closing the **coverage** gap (§1(B)'s table — most domains still thin) and the
+  **claims-drift** gap (Part A's lint). Neither closes the gap below.
+- **The routing gap, not yet addressed anywhere in Parts A-E:** `resolve_skills_to_inject()`
+  (`skill_registry.py:258-269`) takes **zero intent/query-text parameter** — its own module docstring
+  states this plainly: *"filters by session pins + **surface flags**"* (`skill_registry.py:4`). Skill
+  selection today is 100% structural (`editor`/`book_scoped`/`studio`/`admin`/`permission_mode`), never
+  a function of what the user actually typed.
+- **Concrete failure this causes, traced to a specific orphaned capability:** `glossary_web_search`/
+  `glossary_deep_research` (general-purpose web research, no book required) live only inside
+  `glossary_skill`, whose `surfaces=frozenset({"book", "editor"})` (`skill_registry.py:90`) — **not**
+  `"chat"`. On the universal surface (no book open), the ONLY skill visible is `universal_skill`
+  (`surfaces={"chat"}`, description: *"General multi-step task driver: find and use the right tools to
+  fulfil the request"* — pure generic `find_tools` delegation). A general web-research ask on that
+  surface has no skill to route to at all, even at the cheap L1 metadata tier (`skill_metadata_block()`,
+  `skill_registry.py:210-229` — itself already a working "cheap menu, model self-selects" primitive,
+  just currently gated by `surfaces` the same way the L2 body is). This is the exact, traced root
+  cause of the 4 failed sessions in the discovery-hardening spec's §1 Layer A.
+- **Independent corroboration:** Part E's eval run (`docs/eval/skill-authoring/2026-07-07-part-e-
+  first-pass.md`) found the identical `find_tools`-loop-then-silence pattern as the dominant failure
+  mode across 37 scenarios on 5 DIFFERENT skills, reproduced on a control run against the untouched
+  `glossary_skill` — tracked as `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE`. Two fully independent
+  measurements (real user sessions vs. a synthetic eval harness) converge on the same underlying gap.
+  **2026-07-08 update:** this item's harness-side root cause is now understood and fixed — see
+  [`docs/eval/skill-authoring/2026-07-08-loop-flake-rootcause-and-rerun.md`](../eval/skill-authoring/2026-07-08-loop-flake-rootcause-and-rerun.md).
+  The dominant instance was a real `curated_mode` gap (a skill-only pin, exactly how the real frontend
+  pins a skill, never hot-seeded the skill's own tools) — now fixed and live-verified. A clean re-run
+  still shows a RESIDUAL, smaller loop/give-up pattern (composition's large tool count exceeding the
+  hot-seed budget + a small model not always retrying via `find_tools`, plus a reasoning-token/
+  max-tokens-before-content pattern unrelated to routing) — this residual is exactly the shape Part F's
+  guardrail argument below still applies to; it does not invalidate the Part F rationale, it narrows and
+  sharpens what remains architectural vs. what was a fixable bug.
+- **External validation (2026-07-07, quick web check, not a full research pass):** the current
+  industry consensus 6-layer production-agent breakdown (reasoning/tool-router/planner/orchestration/
+  memory/observability) names exactly two gaps for a system at LoreWeave's maturity — a loop/give-up
+  guardrail (the discovery-hardening spec's Layer A) and an intent-routing/planning tier (this Part F)
+  — matching what was independently found from the 4 sessions + the Part E eval, not expanding it.
+  Also: Anthropic's own "Agent Skills" progressive-disclosure pattern (load a one-line description
+  always, full body on demand) is exactly `skill_metadata_block()`'s existing L1/L2 design — convergent
+  with, not behind, current industry practice.
+
+## 13. Decisions requiring PO sign-off — Part F
+
+### 13.1 Router mechanism
+
+Three candidate mechanisms, weighed:
+
+- **Option A — dedicated LLM classifier call.** A small/fast model call, before the main turn,
+  classifying user intent → skill code(s). Most robust to paraphrase/multilingual (the failed
+  sessions were Vietnamese — a keyword-only classifier would need multilingual keyword coverage,
+  fragile). Costs one extra LLM round trip's latency + tokens on EVERY turn, regardless of whether
+  routing was even ambiguous.
+- **Option B — same-turn L1-directory, no gating relaxation.** Rely entirely on the existing
+  `skill_metadata_block()` menu + the main model's own judgment, with a `load_skill(code)`-style tool
+  for on-demand full-body loading. Zero extra round trip, but does nothing for the traced failure
+  above unless the orphaned capability first gets a `surfaces` entry that includes the relevant
+  surface (a coverage fix, not a routing fix) — this option alone under-delivers on "a general Router
+  for future ambiguous asks," which is the scope the user explicitly chose (§ preceding user
+  decision) over the narrower coverage-only patch.
+- **Option C (recommended) — embedding-similarity router.** Embed the user's per-turn intent once
+  (reusing the SAME embedding call the discovery-hardening spec's Layer A item 4 already commits to
+  building — see §14 below) and score it via cosine similarity against a small, precomputed set of
+  skill-description vectors (~11-15 skills, trivially cheap once tool vectors already justify the
+  client existing). No extra LLM call; the added latency is exactly the ONE embedding round trip
+  already being paid for tool-search, amortized across two consumers. Falls back to today's
+  surface-flag-only behavior on embedding failure/timeout (never worse than today).
+
+**Recommendation: Option C**, with Option B's L1-directory kept as the always-present cheap layer
+underneath it (belt-and-suspenders — the router's job is deciding what to INJECT; the model still
+sees a menu of what's active, per today's design).
+
+### 13.2 Composition with the existing surface-flag path — additive, never override
+
+The router must be **strictly additive** to `resolve_skills_to_inject()`'s existing static defaults
+— it may add a skill the surface-flag path wouldn't have picked (e.g., a new "research" skill on the
+`chat` surface when intent scores high), but must never REMOVE a skill the static path already
+guarantees (e.g., `knowledge` auto-injecting everywhere per Part D). This mirrors the "one shared
+ceiling, not per-source budgets" discipline §9 already mandates for hot-domain token budgeting — the
+router's additions must be verified against the SAME `HOT_SEED_TOKEN_BUDGET` ceiling, not a separate
+carve-out.
+
+**RESOLVED (2026-07-07):** one global confidence-threshold constant to start, tuned empirically via
+Part E's existing eval harness (reusable here — this is exactly the kind of scenario Part E was built
+to score). Revisit per-surface tuning only if measurement shows one surface needs a different bar —
+not designed upfront on a guess.
+
+### 13.3 The orphaned-capability gap is fixed regardless of the router's timeline
+
+Independent of how long Option C's full build takes: `glossary_web_search`/`glossary_deep_research`
+need an actual skill-home visible on the `chat` surface NOW — the router has nothing correct to route
+to for that intent without it. **RESOLVED:** fold this into Part B's coverage-expansion track as a
+fast-tracked addition (extend `universal_skill`'s prompt to explicitly own general web-research and
+name the two tools directly with a calling example, OR a small new skill with `surfaces` including
+`"chat"` — decide at PLAN time which reads more coherently against `universal_skill`'s existing
+scope), sequenced to ship BEFORE or IN PARALLEL WITH the router build (§15), not gated behind it — a
+router with nothing to route ambiguous web-research asks to is no better than today for that specific
+case. This is the F0 slice (§15) — small, parallel-safe, no dependency on F1/F2.
+
+### 13.4 Sequencing vs. remaining Part B coverage
+
+A router choosing among 3 deep skills + several still-thin ones (§1(B)'s original table, now improved
+by Phase 1/2 but not exhaustive — `story`/`catalog`/`registry` remain in `universal_skill`'s generic
+bucket) doesn't help much for domains that still have no real skill. **RESOLVED: ship incrementally,
+not gated on a coverage bar.** The router's value is monotonic with coverage, not gated by it, and
+waiting for "full coverage" before any router value ships would repeat this spec's own §3.4 lesson
+(don't gate a real improvement behind an unrelated completeness bar).
+
+## 14. Design — Part F: Intent→Skill Router
+
+**New chat-service module: an embedding client.** Port `knowledge-service/app/clients/
+embedding_client.py`'s pattern (`EmbeddingClient.embed(user_id, model_source, model_ref, texts) ->
+EmbeddingResult`, one async HTTP call to `provider-registry-service`'s `/internal/embed`, BYOK,
+30s timeout for cold local models) — this is chat-service's FIRST embedding call site, confirmed by
+code audit (zero existing embedding capability there today). Shared with the discovery-hardening
+spec's Layer A item 4 (same client, same call per turn, two consumers reading the one result vector).
+
+**Skill-vector cache:** precompute one embedding per `SkillDef` (its `description` + a short synonym/
+keyword hint authors add per-skill, mirroring how tool synonyms already work in `tool_meta().synonyms`)
+at process start / on `SYSTEM_SKILLS` load — a tiny, static set (~11-15 vectors), refreshed only when
+a skill is added/changed (not per-request, not per-turn).
+
+**Per-turn routing:** embed the user's current turn text once; cosine-similarity-rank against the
+skill-vector cache, filtered to skills whose `surfaces` already include the active surface (the router
+narrows WITHIN the structurally-eligible set — it does not override `surfaces`, which correctly
+encodes "does this skill even apply given where the user is"). Skills scoring above a confidence
+threshold (tuned per §13.2) are UNIONED into `resolve_skills_to_inject()`'s output, additive to the
+existing static defaults — never replacing them.
+
+**Shared cosine helper:** per the discovery-hardening spec's Layer A item 4, this is the same
+promote-to-`sdks/python` work — one cosine-similarity function serving both the skill-router's
+small vector set and the tool-search embedding upgrade's larger one.
+
+**Fallback discipline:** an embedding-call failure, timeout, or empty result set falls back to
+EXACTLY today's `resolve_skills_to_inject()` behavior (static surface-flag defaults only) — the router
+can only make skill selection better or identical to today, never worse or blocking.
+
+**New test:** a routing-accuracy suite reusing Part E's `run_skill_gate.py` harness and existing
+scenario files — score whether the router's additions match each scenario's expected skill, as a
+DIRECT reuse of infrastructure already built for a different purpose (skill-content quality), now
+also proving router accuracy.
+
+## 15. Rollout sequencing — Part F
+
+1. **F0 (fast-tracked, folds into Part B):** give `glossary_web_search`/`glossary_deep_research` an
+   actual skill-home visible on `chat` (§13.3). Cheap, ships independently, closes the specific traced
+   bug immediately regardless of the router's timeline.
+2. **F1:** port the embedding client into chat-service + the shared cosine-helper promotion (coordinate
+   with the discovery-hardening spec's Layer A item 4 — build once, both efforts consume it).
+3. **F2:** skill-vector cache + per-turn routing, additive-only, behind the confidence threshold
+   from §13.2, with the mandatory fallback-to-static-behavior path (§14) built and tested BEFORE the
+   router is turned on for any real traffic.
+4. **F3:** re-run Part E's eval harness (`D-SKILL-EVAL-RERUN-AFTER-LOOP-FIX`, already tracked) with
+   the router live, to measure whether it actually improves the routing-accuracy signal, not just
+   assumed to.
+
+Not started. This is CLARIFY only — needs PO sign-off on §13.1-13.4 before PLAN.

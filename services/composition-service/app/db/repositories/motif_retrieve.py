@@ -29,11 +29,11 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_vecmath import cosine_similarity as _cosine
 
 from app.clients.embedding_client import EmbeddingError
 from app.config import settings
@@ -86,21 +86,10 @@ _ARC_BACKFILL_CAP = 16
 _TENSION_BAND_MID = {1: 10.0, 2: 30.0, 3: 50.0, 4: 70.0, 5: 90.0}
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    """Cosine of two equal-length vectors; 0.0 for empty/zero/mismatched-length
-    (a degenerate row never out-ranks a real hit). Copy of references.py:_cosine —
-    kept local so motif_retrieve has no cross-repo coupling (MD-4). If a 3rd cosine
-    site appears, F0 promotes this to db/repositories/_vec.py."""
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = na = nb = 0.0
-    for x, y in zip(a, b):
-        dot += x * y
-        na += x * x
-        nb += y * y
-    if na <= 0.0 or nb <= 0.0:
-        return 0.0
-    return dot / (math.sqrt(na) * math.sqrt(nb))
+# `_cosine` is the shared loreweave_vecmath.cosine_similarity (imported above,
+# aliased to keep this module's existing call sites unchanged). D-COSINE-SDK-
+# PROMOTE: this WAS a local copy of references.py:_cosine (per the prior
+# docstring here); both now import the one shared implementation.
 
 
 def _build_query_text(beat_role: str | None, prev_effects: list[str] | None) -> str:

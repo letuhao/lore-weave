@@ -410,6 +410,229 @@ async def test_get_work_without_any_id_rejected():
             await srv.composition_get_work(_Ctx())
 
 
+# ── OQ2 (2026-07-07 discovery-hardening spec) — composition_create_work with NO
+# project_id auto-resolves/auto-creates the book's default knowledge project. The
+# external audit's #7 finding: kg_project_list returns empty for a fresh book, so a
+# caller had no discoverable way to obtain a project_id at all. ────────────────
+
+
+async def test_create_work_no_project_id_auto_creates_default_project():
+    """No marked Work AND no pre-existing knowledge project for the book (§6.2
+    status='none') — composition_create_work must bootstrap a knowledge project
+    itself (via the SAME KnowledgeClient/service-bearer seam composition_get_prose
+    already uses) and persist the Work bound to it, without the caller ever
+    passing project_id."""
+    import app.mcp.server as srv
+
+    new_project_id = uuid.uuid4()
+
+    async def no_existing_work(user_id, project_id):
+        return None
+
+    knowledge = AsyncMock()
+    knowledge.list_projects_for_book = AsyncMock(return_value=[])  # no project yet
+    knowledge.create_project = AsyncMock(return_value={"project_id": str(new_project_id)})
+    book = AsyncMock()
+    book.get_book = AsyncMock(return_value={"title": "My Book"})
+
+    created_work = CompositionWork(
+        project_id=new_project_id, user_id=TEST_USER, book_id=BOOK,
+        id=new_project_id, version=1,
+    )
+
+    async with _patched(grant_level=2, works_get=no_existing_work) as s:
+        works = s.WorksRepo(None)
+        works.resolve_by_book = AsyncMock(return_value=[])  # no marked Work
+        works.create = AsyncMock(return_value=created_work)
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "get_book_client", return_value=book), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            res = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert res["project_id"] == str(new_project_id)
+    knowledge.create_project.assert_awaited_once()
+    works.create.assert_awaited_once_with(TEST_USER, new_project_id, BOOK)
+
+
+async def test_create_work_no_project_id_second_call_is_idempotent():
+    """A second composition_create_work(book_id=...) call (no project_id), once
+    the book already has a marked Work (§6.2 status='found'), reuses the SAME
+    project — it must NOT call knowledge.create_project again (no duplicate
+    project/Work)."""
+    import app.mcp.server as srv
+
+    existing_project_id = uuid.uuid4()
+    existing_work = CompositionWork(
+        project_id=existing_project_id, user_id=TEST_USER, book_id=BOOK,
+        id=existing_project_id, version=1,
+    )
+
+    async def works_get(user_id, project_id):
+        if user_id == TEST_USER and project_id == existing_project_id:
+            return existing_work
+        return None
+
+    knowledge = AsyncMock()
+    knowledge.create_project = AsyncMock(return_value={"project_id": str(uuid.uuid4())})
+
+    async with _patched(grant_level=2, works_get=works_get) as s:
+        s.WorksRepo(None).resolve_by_book = AsyncMock(return_value=[existing_work])
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            res = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert res["project_id"] == str(existing_project_id)
+    knowledge.create_project.assert_not_awaited()
+
+
+async def test_create_work_no_project_id_knowledge_outage_degrades_to_pending():
+    """A knowledge-service OUTAGE during auto-resolve (list_projects_for_book
+    returns None — transport/5xx) must NOT surface as a tool failure — it
+    degrades to a lazy null-project pending Work (mirrors the HTTP POST /work
+    C16/WG-3 path), so authoring keeps working while knowledge is down."""
+    import app.mcp.server as srv
+
+    async def no_existing_work(user_id, project_id):
+        return None
+
+    pending_work = CompositionWork(
+        project_id=None, user_id=TEST_USER, book_id=BOOK,
+        id=uuid.uuid4(), pending_project_backfill=True, version=1,
+    )
+
+    knowledge = AsyncMock()
+    knowledge.list_projects_for_book = AsyncMock(return_value=None)  # outage
+
+    async with _patched(grant_level=2, works_get=no_existing_work) as s:
+        works = s.WorksRepo(None)
+        works.resolve_by_book = AsyncMock(return_value=[])
+        works.get_pending_for_book = AsyncMock(return_value=None)
+        works.create_pending = AsyncMock(return_value=pending_work)
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            res = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert res["pending_project_backfill"] is True
+    assert res["project_id"] is None
+    works.create_pending.assert_awaited_once_with(TEST_USER, BOOK)
+
+
+async def test_create_work_no_project_id_after_prior_outage_backfills_pending_row_not_duplicate():
+    """HIGH-1 (/review-impl finding): a PRIOR knowledge-service outage left a lazy
+    pending Work (project_id=NULL, pending_project_backfill=true) for this
+    (user,book). Once knowledge recovers, a LATER composition_create_work(book_id)
+    call (still no project_id) must backfill THAT SAME row — not mint a brand-new
+    composition_work row (and a second knowledge project), which would orphan the
+    pending row forever. Uses ONE `knowledge` mock across both calls so
+    `create_project` awaited-once proves only ONE project was ever created."""
+    import app.mcp.server as srv
+
+    pending_id = uuid.uuid4()
+    new_project_id = uuid.uuid4()
+
+    pending_work = CompositionWork(
+        project_id=None, user_id=TEST_USER, book_id=BOOK,
+        id=pending_id, pending_project_backfill=True, version=1,
+    )
+    backfilled_work = CompositionWork(
+        project_id=new_project_id, user_id=TEST_USER, book_id=BOOK,
+        id=pending_id, pending_project_backfill=False, version=2,
+    )
+
+    knowledge = AsyncMock()
+    # call 1: outage (transport/5xx → None); call 2: recovered, no project yet.
+    knowledge.list_projects_for_book = AsyncMock(side_effect=[None, []])
+    knowledge.create_project = AsyncMock(return_value={"project_id": str(new_project_id)})
+    book = AsyncMock()
+    book.get_book = AsyncMock(return_value={"title": "My Book"})
+
+    async def no_existing_work(user_id, project_id):
+        return None
+
+    # ── call 1: knowledge DOWN → degrades to a lazy pending Work ──
+    async with _patched(grant_level=2, works_get=no_existing_work) as s:
+        works1 = s.WorksRepo(None)
+        works1.resolve_by_book = AsyncMock(return_value=[])
+        works1.get_pending_for_book = AsyncMock(return_value=None)
+        works1.create_pending = AsyncMock(return_value=pending_work)
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "get_book_client", return_value=book), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            first = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert first["pending_project_backfill"] is True
+    assert first["project_id"] is None
+    knowledge.create_project.assert_not_awaited()
+
+    # ── call 2: knowledge RECOVERED → resolve_work → status="none" (still no
+    # marked Work, still no book-typed knowledge project) → create_project
+    # succeeds → the PRIOR pending row must be backfilled, not duplicated. ──
+    async def existing_work_lookup(user_id, project_id):
+        # composition_create_work's idempotent-get (`works.get(user, pid)`) must
+        # find the NOW-BACKFILLED row (its project_id == new_project_id).
+        if user_id == TEST_USER and project_id == new_project_id:
+            return backfilled_work
+        return None
+
+    async with _patched(grant_level=2, works_get=existing_work_lookup) as s:
+        works2 = s.WorksRepo(None)
+        works2.resolve_by_book = AsyncMock(return_value=[])
+        works2.get_pending_for_book = AsyncMock(return_value=pending_work)
+        works2.backfill_project = AsyncMock(return_value=backfilled_work)
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "get_book_client", return_value=book), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            second = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert second["project_id"] == str(new_project_id)
+    assert second["pending_project_backfill"] is False
+    works2.backfill_project.assert_awaited_once_with(TEST_USER, pending_id, new_project_id)
+    works2.create.assert_not_awaited()  # no SECOND composition_work row inserted
+    knowledge.create_project.assert_awaited_once()  # exactly ONE project, across BOTH calls
+
+
+async def test_create_work_auto_create_404_error_names_owner_only_reason():
+    """MED-1 (/review-impl finding): a 404 from knowledge-service's project-create
+    route means the caller is a non-owner EDIT-grantee (auto-provisioning a fresh
+    knowledge project is OWNER-only) — the error must name the concrete reason +
+    a fix pointer, not just 'status 404', so an agent acting for a collaborator
+    doesn't retry a call that can never succeed."""
+    import app.mcp.server as srv
+    from app.clients.knowledge_client import KnowledgeContractError
+
+    async def no_existing_work(user_id, project_id):
+        return None
+
+    knowledge = AsyncMock()
+    knowledge.list_projects_for_book = AsyncMock(return_value=[])
+    knowledge.create_project = AsyncMock(side_effect=KnowledgeContractError(404))
+    book = AsyncMock()
+    book.get_book = AsyncMock(return_value={"title": "My Book"})
+
+    async with _patched(grant_level=2, works_get=no_existing_work) as s:
+        s.WorksRepo(None).resolve_by_book = AsyncMock(return_value=[])
+        with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
+             patch.object(srv, "get_book_client", return_value=book), \
+             patch.object(srv, "mint_service_bearer", return_value="tok"):
+            res = await srv.composition_create_work(_Ctx(), book_id=str(BOOK))
+
+    assert res["success"] is False
+    assert "only the book owner can auto-provision" in res["error"]
+    assert "project_id" in res["error"]
+    assert "composition_get_work" in res["error"]
+
+
+async def test_create_work_still_accepts_explicit_project_id():
+    """Back-compat: a caller that already knows project_id (unchanged behavior)."""
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2):
+        res = await srv.composition_create_work(
+            _Ctx(), book_id=str(BOOK), project_id=str(PROJECT),
+        )
+    assert res["project_id"] == str(PROJECT)
+
+
 async def test_get_generation_job_owner_ok():
     """A generation job that belongs to the caller's Work+project is returned."""
     import app.mcp.server as srv

@@ -8,10 +8,12 @@ universal /chat surface)."""
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
+from app.client.embedding_client import EmbeddingResult
 from app.services import tool_discovery as td
 from app.services.frontend_tools import FRONTEND_TOOL_NAMES, frontend_tool_defs
 from app.services.stream_service import (
@@ -890,3 +892,674 @@ class TestUnknownPinnedLegacyNames:
         this channel is a category error, not a valid escape-hatch use."""
         unknown = td.unknown_pinned_legacy_names(_LEGACY_CATALOG, ["glossary_ontology_upsert"])
         assert unknown == ["glossary_ontology_upsert"]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Design item 1 (2026-07-07 discovery-hardening plan) — true per-domain
+# enumeration. Python twin of ai-gateway's `enumerateGroup` (find-tools.ts).
+# ════════════════════════════════════════════════════════════════════════════
+
+_ENUM_CATALOG = [
+    _tool("book_create", "Create a new book"),
+    _tool("book_update_chapter", "Edit a chapter of a book"),
+    _tool("book_list", "List books"),
+    _tool("translation_start_job", "Start translating a book into another language"),
+    _tool("book_legacy_rename", "Old rename endpoint", visibility="legacy"),
+]
+
+
+class TestEnumerateGroup:
+    def test_returns_every_non_legacy_tool_in_the_domain(self):
+        names = sorted(m["name"] for m in td.enumerate_group(_ENUM_CATALOG, "book"))
+        assert names == ["book_create", "book_list", "book_update_chapter"]
+
+    def test_excludes_legacy_tagged_tools(self):
+        names = [m["name"] for m in td.enumerate_group(_ENUM_CATALOG, "book")]
+        assert "book_legacy_rename" not in names
+
+    def test_is_unranked_and_unfiltered_by_score_floor(self):
+        # No INCLUSION_FLOOR/CONFIDENCE_THRESHOLD gate — every non-legacy domain
+        # member returned regardless of any notion of "relevance" to anything.
+        assert len(td.enumerate_group(_ENUM_CATALOG, "book")) == 3
+
+    def test_respects_exclude_set(self):
+        names = {m["name"] for m in td.enumerate_group(_ENUM_CATALOG, "book", exclude={"book_create"})}
+        assert names == {"book_list", "book_update_chapter"}
+
+    def test_unknown_domain_returns_empty_not_an_error(self):
+        assert td.enumerate_group(_ENUM_CATALOG, "nonexistent_domain") == []
+
+
+class TestFindToolsResultEnumerationMode:
+    """`group` set + `intent` omitted/blank switches to enumeration — the true
+    fix for external audit #1/#5 ("find_tools under-returns on generic
+    queries" / "no list-all-tools-in-a-domain affordance"). Before this fix,
+    `search_catalog("")` always scored 0 (empty intent_tokens), so this
+    returned ZERO tools even though the domain plainly has some."""
+
+    def test_group_and_empty_intent_returns_full_unranked_domain_list(self):
+        payload, matched = td.find_tools_result(
+            _ENUM_CATALOG, "", 8, exclude=set(), catalog_meta={}, group="book",
+        )
+        assert sorted(matched) == ["book_create", "book_list", "book_update_chapter"]
+        assert payload["enumerated"] is True
+        assert "note" not in payload
+
+    def test_group_and_whitespace_only_intent_also_enumerates(self):
+        payload, matched = td.find_tools_result(
+            _ENUM_CATALOG, "   ", 8, exclude=set(), catalog_meta={}, group="book",
+        )
+        assert sorted(matched) == ["book_create", "book_list", "book_update_chapter"]
+        assert payload["enumerated"] is True
+
+    def test_legacy_tools_stay_excluded_from_enumeration(self):
+        _, matched = td.find_tools_result(
+            _ENUM_CATALOG, "", 8, exclude=set(), catalog_meta={}, group="book",
+        )
+        assert "book_legacy_rename" not in matched
+
+    def test_group_with_non_empty_intent_uses_ranked_search_not_enumeration(self):
+        payload, _ = td.find_tools_result(
+            _ENUM_CATALOG, "create a book", 8, exclude=set(), catalog_meta={}, group="book",
+        )
+        assert "enumerated" not in payload
+
+    def test_no_group_and_empty_intent_is_unaffected_still_the_intent_directive(self):
+        """This case is the ALREADY-FIXED `D-SKILL-EVAL-DISCOVERY-LOOP-FLAKE`
+        blank-intent directive (commit 1a4983b7b) — enumeration is intentionally
+        GROUP-SCOPED only, so a no-group blank intent must not start silently
+        enumerating the whole flat catalog."""
+        payload, matched = td.find_tools_result(
+            _ENUM_CATALOG, "", 8, exclude=set(), catalog_meta={},
+        )
+        assert matched == []
+        assert "enumerated" not in payload
+        assert "required" in payload["note"]
+
+    def test_a_domain_with_zero_non_legacy_tools_gets_an_honest_not_supported_note(self):
+        payload, matched = td.find_tools_result(
+            _ENUM_CATALOG, "", 8, exclude=set(), catalog_meta={}, group="nonexistent_domain",
+        )
+        assert matched == []
+        assert "isn't supported" in payload["note"]
+
+
+class TestEnumerationBudgetsActiveToolNames:
+    """HIGH-3 (review-impl) — enumeration mode returns EVERY non-legacy tool in
+    a domain, unranked (up to ~56 for composition); `stream_service.py`'s
+    `active_tool_names.update(matched)` used to union that UNBOUNDED set
+    unconditionally, bypassing the token-budget discipline
+    `merge_activated_tools`/`budget_names_by_tokens` already enforce for the
+    NEXT-turn persisted `activated_tools` set (curated mode only) — THIS
+    turn's `active_tool_names` (which controls whose FULL SCHEMA
+    `_advertise_discovery_tools` sends on the next pass, independent of
+    curated/non-curated mode) had no budgeting at all. This reopened the
+    context-explosion class (docs/eval/context-budget/context-explosion-
+    investigation-2026-07-06.md) for the enumeration path. The full unranked
+    list must still reach the model in the tool RESULT payload (cheap —
+    names+descriptions only); only what gets a full schema advertised next
+    pass is capped."""
+
+    @pytest.mark.asyncio
+    async def test_enumeration_of_a_large_domain_does_not_blow_past_the_hot_seed_token_budget(self):
+        from app.services.tool_surface import HOT_SEED_TOKEN_BUDGET, _tool_tokens
+
+        verbose_desc = "A moderately verbose description of this tool's behavior. " * 12
+        big_cat = [_tool(f"book_tool_{i:03d}", verbose_desc) for i in range(50)]
+        kc = _kc()
+        scripts = [
+            [tool_frag(0, id="f1", name="find_tools"),
+             tool_frag(0, arguments_delta=json.dumps({"group": "book", "intent": ""})),
+             done("tool_calls")],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id=TEST_USER_ID,
+                messages=[{"role": "user", "content": "hi"}], gen_params={}, tools=[],
+                knowledge_client=kc, session_id=str(uuid4()), project_id="proj-1",
+                discovery_catalog=big_cat,
+                discovery_extra_frontend=frontend_tool_defs(editor=False, book_scoped=False),
+            ))
+
+        # Sanity: the RESULT payload fed back to the model still lists every
+        # tool in the domain, unranked — enumeration's whole point (cheap,
+        # names+descriptions only) is unaffected by this fix.
+        find_call = next(c["tool_call"] for c in chunks if c.get("tool_call", {}).get("tool") == "find_tools")
+        assert len(find_call["result"]["tools"]) == 50
+
+        client = _FakeClient.instances[0]
+        # requests[1] is the pass AFTER the enumeration find_tools call — its
+        # `tools` is {core} ∪ {full schemas of active_tool_names}. The full
+        # 50-tool domain must NOT all have full schemas advertised there.
+        advertised_names = {t["function"]["name"] for t in (client.requests[1].tools or [])}
+        book_tool_names = {t["function"]["name"] for t in big_cat}
+        advertised_book_tools = advertised_names & book_tool_names
+        assert 0 < len(advertised_book_tools) < len(big_cat)
+        # Whatever WAS advertised fits the same ceiling the hot-seed uses.
+        total_tokens = sum(
+            _tool_tokens(td) for td in big_cat
+            if td["function"]["name"] in advertised_book_tools
+        )
+        assert total_tokens <= HOT_SEED_TOKEN_BUDGET
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Design item 1 — retry-cap (FindToolsAttemptTracker). Python twin of
+# ai-gateway's FindToolsAttemptTracker (find-tools.ts).
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestFindToolsAttemptTracker:
+    def test_first_attempt_for_a_session_is_never_a_repeat(self):
+        t = td.FindToolsAttemptTracker()
+        assert t.record("session-1", "book", "start a translation") is False
+
+    def test_second_identical_call_same_session_is_a_repeat(self):
+        t = td.FindToolsAttemptTracker()
+        t.record("session-1", "book", "search the web")
+        assert t.record("session-1", "book", "search the web") is True
+
+    def test_near_duplicate_token_set_different_order_casing_is_a_repeat(self):
+        t = td.FindToolsAttemptTracker()
+        t.record("session-1", "book", "Search The Web")
+        assert t.record("session-1", "book", "the web search") is True
+
+    def test_a_genuinely_different_intent_same_session_group_is_not_a_repeat(self):
+        t = td.FindToolsAttemptTracker()
+        t.record("session-1", "book", "search the web")
+        assert t.record("session-1", "book", "translate this chapter") is False
+
+    def test_same_group_intent_different_session_is_not_a_repeat(self):
+        t = td.FindToolsAttemptTracker()
+        t.record("session-1", "book", "search the web")
+        assert t.record("session-2", "book", "search the web") is False
+
+    def test_no_session_id_is_never_tracked_fail_open(self):
+        t = td.FindToolsAttemptTracker()
+        t.record(None, "book", "search the web")
+        assert t.record(None, "book", "search the web") is False
+
+    def test_enumeration_call_blank_intent_never_counts_as_an_attempt(self):
+        t = td.FindToolsAttemptTracker()
+        assert t.record("session-1", "book", "") is False
+        assert t.record("session-1", "book", "") is False
+
+    def test_entry_expires_after_the_ttl_window(self):
+        clock = {"t": 0.0}
+        t = td.FindToolsAttemptTracker(ttl_s=1000, now=lambda: clock["t"])
+        t.record("session-1", "book", "search the web")
+        clock["t"] = 5000  # well past the 1000s TTL
+        assert t.record("session-1", "book", "search the web") is False
+
+    # ── review-impl fix — the top-level `_sessions` map must actually shrink ─
+
+    def test_top_level_session_map_shrinks_after_a_stale_sessions_entries_expire(self):
+        """A session's bucket only ever holds stale entries once its intents
+        all pass the TTL — the top-level `session_id` key must be dropped too,
+        not just its now-empty inner bucket left behind forever. Proven by
+        touching a DIFFERENT, still-active session: that unrelated call must
+        still sweep and drop the expired session's now-stale top-level entry."""
+        clock = {"t": 0.0}
+        t = td.FindToolsAttemptTracker(ttl_s=1000, now=lambda: clock["t"])
+        t.record("stale-session", "book", "search the web")
+        assert t.session_count == 1
+        clock["t"] = 5000  # well past the 1000s TTL for stale-session's entry
+        # A record() call for an unrelated session sweeps EVERY tracked
+        # session (not just its own) — the stale session's top-level key must
+        # be gone after this, not merely its inner bucket emptied.
+        t.record("other-session", "book", "translate this chapter")
+        assert "stale-session" not in t._sessions  # noqa: SLF001 — internal state check
+        assert t.session_count == 1  # only "other-session" remains
+
+    def test_own_session_top_level_key_also_shrinks_once_touched_again_after_expiry(self):
+        """The narrower case named in the finding: a session's OWN entries all
+        expire and it gets touched again — the sweep drops the stale entry
+        before the fresh one is recorded, so the top-level map never grows
+        unbounded by re-adding a leaked ghost entry underneath the fresh one."""
+        clock = {"t": 0.0}
+        t = td.FindToolsAttemptTracker(ttl_s=1000, now=lambda: clock["t"])
+        t.record("session-1", "book", "search the web")
+        assert t.session_count == 1
+        clock["t"] = 5000
+        t.record("session-1", "book", "a brand new different intent")
+        # Exactly one session tracked (the fresh entry), not a leaked ghost
+        # plus the fresh one — the map size never grew past 1.
+        assert t.session_count == 1
+
+
+class TestFindToolsResultRepeatNoteReshaping:
+    """`find_tools_result`'s notes reshape on a REPEATED near-duplicate search
+    for the SAME session (per the module-level `find_tools_attempts` singleton)
+    — a repeat explicitly permits "tell the user not supported" instead of
+    another invitation to keep guessing."""
+
+    def test_first_no_match_search_still_invites_one_more_try(self):
+        sid = str(uuid4())
+        payload, _ = td.find_tools_result(
+            _MIXED_CATALOG, "xyzzy quux frobnicate", 8,
+            exclude=set(), catalog_meta={}, session_id=sid,
+        )
+        assert "try once more" in payload["note"].lower()
+
+    def test_repeated_no_match_search_permits_not_supported(self):
+        sid = str(uuid4())
+        td.find_tools_result(
+            _MIXED_CATALOG, "xyzzy quux frobnicate", 8,
+            exclude=set(), catalog_meta={}, session_id=sid,
+        )
+        payload, _ = td.find_tools_result(
+            _MIXED_CATALOG, "xyzzy quux frobnicate", 8,
+            exclude=set(), catalog_meta={}, session_id=sid,
+        )
+        assert "not supported" in payload["note"].lower()
+        assert "stop searching" in payload["note"].lower()
+
+    def test_near_duplicate_wording_also_counts_as_the_repeat(self):
+        sid = str(uuid4())
+        td.find_tools_result(
+            _MIXED_CATALOG, "xyzzy quux frobnicate", 8,
+            exclude=set(), catalog_meta={}, session_id=sid,
+        )
+        payload, _ = td.find_tools_result(
+            _MIXED_CATALOG, "frobnicate quux xyzzy", 8,
+            exclude=set(), catalog_meta={}, session_id=sid,
+        )
+        assert "not supported" in payload["note"].lower()
+
+    def test_no_session_id_never_flags_a_repeat_fail_open(self):
+        payload1, _ = td.find_tools_result(
+            _MIXED_CATALOG, "xyzzy quux frobnicate zzz", 8, exclude=set(), catalog_meta={},
+        )
+        payload2, _ = td.find_tools_result(
+            _MIXED_CATALOG, "xyzzy quux frobnicate zzz", 8, exclude=set(), catalog_meta={},
+        )
+        assert "try once more" in payload1["note"].lower()
+        assert "try once more" in payload2["note"].lower()
+
+    def test_a_down_provider_note_is_unaffected_by_repeat_status(self):
+        sid = str(uuid4())
+        cat = [_tool("settings_list_models", "list models", tier="R")]
+        meta = {"unavailable_providers": ["book"]}
+        td.find_tools_result(cat, "edit a chapter", 8, exclude=set(), catalog_meta=meta, session_id=sid)
+        payload, _ = td.find_tools_result(cat, "edit a chapter", 8, exclude=set(), catalog_meta=meta, session_id=sid)
+        assert "temporarily unavailable" in payload["note"].lower()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Design item 1 (embeddings sub-item, OQ4) — embeddings-backed search_catalog.
+# chat-service's FIRST embedding-provider call site. Mandatory fallback
+# discipline: on ANY embedding-client failure, behave EXACTLY like
+# search_catalog() — never fail, never block, never rank worse than today.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def _fake_embed_fixed_map(text_vectors: dict[str, list[float]], default: list[float]):
+    """Build a fake `.embed()` coroutine mapping known texts to fixed vectors —
+    any UNMAPPED text (the fresh per-call `intent` string) gets `default`."""
+
+    async def _embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[text_vectors.get(t, default) for t in texts],
+            dimension=len(default),
+            model="fake-embed-model",
+        )
+
+    return _embed
+
+
+def _patch_embedding_model(ref: tuple[str, str] | None = ("user_model", "embed-m1")):
+    """HIGH-2 fix: `search_catalog_semantic` no longer takes the turn's chat
+    `model_source`/`model_ref` — it resolves the user's configured
+    embedding-capable model via `provider_client.get_provider_client()
+    .get_default_model("embedding", user_id)` first. Tests must patch THAT
+    resolution (never the real provider-registry) — pass `ref=None` to
+    simulate "user has no embedding model configured" (the fast pre-network
+    skip path); the default `ref` simulates a configured model so the
+    pre-existing embedding-blend tests keep exercising the embed call."""
+    mock_provider = AsyncMock()
+    mock_provider.get_default_model = AsyncMock(return_value=ref)
+    return patch("app.client.provider_client.get_provider_client", return_value=mock_provider)
+
+
+class TestSearchCatalogSemantic:
+    def setup_method(self, _method):
+        td._TOOL_VECTOR_CACHE.clear()
+        td._EMBEDDING_MODEL_CACHE.clear()
+
+    @pytest.mark.asyncio
+    async def test_embedding_similarity_rescues_a_genuine_zero_token_overlap_match(self):
+        """The blend's whole point: a tool with NO token overlap with the intent
+        (excluded by search_catalog()'s INCLUSION_FLOOR) still surfaces when its
+        embedding is semantically close to the intent's embedding."""
+        cat = [
+            _tool("glossary_search", "Search glossary entities"),
+            _tool("book_create", "Create a new book"),
+        ]
+        # _embedding_text() output for each tool, mapped to orthogonal vectors.
+        text_vectors = {
+            "glossary search Search glossary entities": [1.0, 0.0],
+            "book create Create a new book": [0.0, 1.0],
+        }
+        fake_embed = _fake_embed_fixed_map(text_vectors, default=[1.0, 0.0])
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = fake_embed
+
+        intent = "who is the villain love interest"
+        # Sanity: proves this is a genuine zero-overlap case for the token scorer.
+        base_matches, _ = td.search_catalog(cat, intent, 8)
+        assert base_matches == []
+
+        with _patch_embedding_model(), \
+             patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            matches, confident = await td.search_catalog_semantic(
+                cat, intent, 8, user_id="u1",
+            )
+        assert "glossary_search" in [m["name"] for m in matches]
+        assert confident
+
+    @pytest.mark.asyncio
+    async def test_embedding_client_exception_falls_back_to_token_overlap_result(self):
+        """MANDATORY fallback: an embedding-client failure must yield the exact
+        same result search_catalog() would — never an error, never a worse rank."""
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = TimeoutError("provider-registry unreachable")
+
+        intent = "translate my book"
+        with _patch_embedding_model(), \
+             patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            matches, confident = await td.search_catalog_semantic(
+                _CATALOG, intent, 8, user_id="u1",
+            )
+        expected_matches, expected_confident = td.search_catalog(_CATALOG, intent, 8)
+        assert matches == expected_matches
+        assert confident == expected_confident
+
+    @pytest.mark.asyncio
+    async def test_intent_embedding_failure_after_tool_vectors_succeed_still_falls_back(self):
+        """The tool-vector batch embed can succeed while the PER-CALL intent
+        embed fails (e.g. a transient timeout on the 2nd call) — must still
+        degrade to the token-overlap result, not raise."""
+        cat = [_tool("glossary_search", "Search glossary entities")]
+        calls = {"n": 0}
+
+        async def flaky_embed(*, user_id, model_source, model_ref, texts):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return EmbeddingResult(embeddings=[[1.0, 0.0]], dimension=2, model="fake")
+            raise TimeoutError("intent embed timed out")
+
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = flaky_embed
+
+        intent = "search the glossary"
+        with _patch_embedding_model(), \
+             patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            matches, confident = await td.search_catalog_semantic(
+                cat, intent, 8, user_id="u1",
+            )
+        expected_matches, expected_confident = td.search_catalog(cat, intent, 8)
+        assert matches == expected_matches
+        assert confident == expected_confident
+
+    @pytest.mark.asyncio
+    async def test_tool_vectors_are_cached_only_intent_reembedded_on_a_second_call(self):
+        cat = [_tool("glossary_search", "Search glossary entities")]
+        embed_calls: list[list[str]] = []
+
+        async def fake_embed(*, user_id, model_source, model_ref, texts):
+            embed_calls.append(list(texts))
+            return EmbeddingResult(
+                embeddings=[[1.0, 0.0] for _ in texts], dimension=2, model="fake",
+            )
+
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = fake_embed
+
+        with _patch_embedding_model(), \
+             patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            await td.search_catalog_semantic(cat, "one", 8, user_id="u1")
+            await td.search_catalog_semantic(cat, "two", 8, user_id="u1")
+        # Call 1: tool-vector batch embed + intent embed = 2 calls.
+        # Call 2: tool-vector cache HIT (same catalog signature + same resolved
+        # embedding model) → only the fresh intent embed = 1 more call. Total 3,
+        # not 4.
+        assert len(embed_calls) == 3
+
+    @pytest.mark.asyncio
+    async def test_legacy_and_excluded_tools_never_appear_even_with_a_perfect_embedding_score(self):
+        """CAT-4 + the exclude set are enforced BEFORE either score is computed
+        — an embeddings-perfect legacy tool must still never surface."""
+        cat = [
+            _tool("glossary_book_create", "legacy create", visibility="legacy"),
+            _tool("glossary_search", "Search glossary entities"),
+        ]
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = _fake_embed_fixed_map({}, default=[1.0, 0.0])
+        with _patch_embedding_model(), \
+             patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            matches, _ = await td.search_catalog_semantic(
+                cat, "add a kind", 8, user_id="u1",
+                exclude={"glossary_search"},
+            )
+        names = [m["name"] for m in matches]
+        assert "glossary_book_create" not in names  # CAT-4
+        assert "glossary_search" not in names  # exclude set
+
+    # ── HIGH-2 (review-impl) — resolve a REAL embedding-capable model ───────
+
+    @pytest.mark.asyncio
+    async def test_uses_the_users_configured_embedding_model_not_the_turn_chat_model(self):
+        """`search_catalog_semantic` must resolve the embedding model via
+        provider-registry's `embedding`-capability default, not accept/reuse a
+        turn's chat model — proven by asserting the embed client actually ran
+        (only possible because `_patch_embedding_model()` resolved a model)."""
+        cat = [_tool("glossary_search", "Search glossary entities")]
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = _fake_embed_fixed_map({}, default=[1.0, 0.0])
+        with _patch_embedding_model(("user_model", "bge-m3")), \
+             patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            await td.search_catalog_semantic(cat, "search the glossary", 8, user_id="u1")
+        assert mock_client.embed.await_count > 0
+        # The resolved embedding model reached the embed client — never a
+        # turn's chat model literal (this function no longer even accepts one).
+        for call in mock_client.embed.await_args_list:
+            assert call.kwargs["model_source"] == "user_model"
+            assert call.kwargs["model_ref"] == "bge-m3"
+
+    @pytest.mark.asyncio
+    async def test_no_embedding_model_configured_skips_the_embed_call_entirely(self):
+        """HIGH-2 fast pre-network skip: a user with NO `embedding`-capability
+        default configured must never reach the embed client at all — straight
+        to the token-overlap fallback, no doomed network call."""
+        cat = [_tool("glossary_search", "Search glossary entities")]
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = AssertionError(
+            "embed() must never be called when no embedding model is configured"
+        )
+        intent = "search the glossary"
+        with _patch_embedding_model(None), \
+             patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            matches, confident = await td.search_catalog_semantic(cat, intent, 8, user_id="u1")
+        mock_client.embed.assert_not_awaited()
+        expected_matches, expected_confident = td.search_catalog(cat, intent, 8)
+        assert matches == expected_matches
+        assert confident == expected_confident
+
+
+class TestToolVectorCacheKeyIncludesModel:
+    """HIGH-1 (review-impl) — cross-model cache poisoning fix: the tool-vector
+    cache used to key by catalog signature ALONE, so two callers within the
+    same 60s TTL window using DIFFERENT embedding models (different
+    users/sessions with different BYOK embedding configs) shared the FIRST
+    caller's vectors — meaningless since `cosine_similarity` between two
+    different embedding models' vector spaces isn't comparable. The cache key
+    must now fold in `(model_source, model_ref)` too, so each distinct
+    embedding model gets its own independently-computed/cached vector set."""
+
+    def setup_method(self, _method):
+        td._TOOL_VECTOR_CACHE.clear()
+
+    @pytest.mark.asyncio
+    async def test_two_different_model_refs_against_the_same_catalog_never_share_a_cache_entry(self):
+        cat = [_tool("glossary_search", "Search glossary entities")]
+        calls: list[tuple[str, str]] = []
+
+        async def fake_embed(*, user_id, model_source, model_ref, texts):
+            calls.append((model_source, model_ref))
+            # A distinguishable vector per model so a shared/reused vector
+            # (the bug) is trivially detectable.
+            vec = [1.0, 0.0] if model_ref == "model-a" else [0.0, 1.0]
+            return EmbeddingResult(embeddings=[vec for _ in texts], dimension=2, model=model_ref)
+
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = fake_embed
+
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            vectors_a = await td._get_tool_vectors(
+                cat, user_id="u1", model_source="user_model", model_ref="model-a",
+            )
+            vectors_b = await td._get_tool_vectors(
+                cat, user_id="u2", model_source="user_model", model_ref="model-b",
+            )
+        # Two DISTINCT embed calls — model-b never hit model-a's cache entry.
+        assert len(calls) == 2
+        assert vectors_a["glossary_search"] == [1.0, 0.0]
+        assert vectors_b["glossary_search"] == [0.0, 1.0]
+
+        # A repeat call for model-a hits its OWN cache entry — no 3rd embed call.
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            vectors_a_again = await td._get_tool_vectors(
+                cat, user_id="u1", model_source="user_model", model_ref="model-a",
+            )
+        assert len(calls) == 2
+        assert vectors_a_again == vectors_a
+
+
+class TestToolVectorCacheTTLParity:
+    """The tool-vector cache MUST invalidate on the SAME schedule as the tool
+    catalog it was computed from (`knowledge_client.py`'s per-user 60s TTL,
+    `get_tool_definitions()`) — a drift-lock so a future tune of one constant
+    doesn't silently desync the other."""
+
+    def test_ttl_matches_knowledge_client_catalog_ttl(self):
+        from app.client.knowledge_client import _TOOL_CATALOG_TTL_S
+
+        assert td.TOOL_VECTOR_CACHE_TTL_S == _TOOL_CATALOG_TTL_S
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Reconciliation (2026-07-08) — B3 built the retry-cap tracker
+# (`FindToolsAttemptTracker`) and the embeddings-backed scorer
+# (`search_catalog_semantic`) but, by design (B2 owned `stream_service.py` for
+# the tool-call-dedup fix in the same pass), never wired either into the REAL
+# `_stream_with_tools()` call path — `session_id` never reached
+# `find_tools_result`, and the call site invoked the sync token-overlap
+# `find_tools_result` unawaited, so a live `find_tools` call could never
+# exercise the embeddings path no matter how well-tested in isolation. This
+# class exercises the LIVE call path end-to-end (not `find_tools_result`/
+# `search_catalog_semantic` called directly) to prove the wiring, not just the
+# underlying units.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestFindToolsLiveWiring:
+    def setup_method(self, _method):
+        td._TOOL_VECTOR_CACHE.clear()
+        td._EMBEDDING_MODEL_CACHE.clear()
+
+    @pytest.mark.asyncio
+    async def test_repeated_find_tools_call_in_the_same_live_session_gets_capped(self):
+        """A real 3-pass loop: pass 0 and pass 1 each call find_tools with a
+        near-duplicate no-match intent in the SAME session — the 2nd must
+        carry the retry-cap's "not supported, stop searching" note, proving
+        `session_id` now reaches the module-level `find_tools_attempts`
+        tracker from the live call path (previously inert in production —
+        the old call site never passed it at all).
+
+        `_patch_embedding_model(None)` — this test only cares about the
+        retry-cap note wording, not the embeddings blend, so it pins "no
+        embedding model configured" (the HIGH-2 fast pre-network skip) to keep
+        this deterministic and avoid an unmocked real network call to
+        provider-registry."""
+        sid = str(uuid4())
+        kc = _kc()
+        scripts = [
+            [tool_frag(0, id="f1", name="find_tools"),
+             tool_frag(0, arguments_delta='{"intent":"xyzzy quux frobnicate"}'),
+             done("tool_calls")],
+            [tool_frag(0, id="f2", name="find_tools"),
+             tool_frag(0, arguments_delta='{"intent":"frobnicate quux xyzzy"}'),
+             done("tool_calls")],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_embedding_model(None), _patch_client(scripts):
+            chunks = await _drain(_stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id=TEST_USER_ID,
+                messages=[{"role": "user", "content": "hi"}], gen_params={}, tools=[],
+                knowledge_client=kc, session_id=sid, project_id="proj-1",
+                discovery_catalog=_CATALOG,
+                discovery_extra_frontend=frontend_tool_defs(editor=False, book_scoped=False),
+            ))
+
+        find_calls = [
+            c["tool_call"] for c in chunks if c.get("tool_call", {}).get("tool") == "find_tools"
+        ]
+        assert len(find_calls) == 2
+        assert "try once more" in find_calls[0]["result"]["note"].lower()
+        assert "not supported" in find_calls[1]["result"]["note"].lower()
+        assert "stop searching" in find_calls[1]["result"]["note"].lower()
+
+    @pytest.mark.asyncio
+    async def test_live_find_tools_call_exercises_the_real_embeddings_path(self):
+        """Confirms the async wiring genuinely AWAITS the embeddings-backed
+        scorer for a real find_tools invocation driven through the loop — not
+        just that `find_tools_result_async` can do it when called directly.
+        The mocked embedding client proves the async call genuinely fired
+        (call count); the fixed embedding vectors (a genuine zero-token-
+        overlap case for the token scorer alone, asserted below) prove the
+        RESULT the embedding produced is what reaches the model — the
+        embeddings path is exercised, not bypassed."""
+        cat = [
+            _tool("glossary_search", "Search glossary entities"),
+            _tool("book_create", "Create a new book"),
+        ]
+        text_vectors = {
+            "glossary search Search glossary entities": [1.0, 0.0],
+            "book create Create a new book": [0.0, 1.0],
+        }
+        fake_embed = _fake_embed_fixed_map(text_vectors, default=[1.0, 0.0])
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = fake_embed
+
+        intent = "who is the villain love interest"
+        # Sanity: a genuine zero-overlap case for the token scorer alone — the
+        # rescue below can ONLY come from the embedding blend actually running.
+        base_matches, _ = td.search_catalog(cat, intent, 8)
+        assert base_matches == []
+
+        kc = _kc()
+        scripts = [
+            [tool_frag(0, id="f1", name="find_tools"),
+             tool_frag(0, arguments_delta=json.dumps({"intent": intent})),
+             done("tool_calls")],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_embedding_model(), \
+             patch("app.client.embedding_client.get_embedding_client", return_value=mock_client), \
+             _patch_client(scripts):
+            chunks = await _drain(_stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id=TEST_USER_ID,
+                messages=[{"role": "user", "content": "hi"}], gen_params={}, tools=[],
+                knowledge_client=kc, session_id=str(uuid4()), project_id="proj-1",
+                discovery_catalog=cat,
+                discovery_extra_frontend=frontend_tool_defs(editor=False, book_scoped=False),
+            ))
+
+        assert mock_client.embed.await_count >= 1  # the async embed path genuinely fired
+        find_calls = [
+            c["tool_call"] for c in chunks if c.get("tool_call", {}).get("tool") == "find_tools"
+        ]
+        assert len(find_calls) == 1
+        matched_names = [m["name"] for m in find_calls[0]["result"]["tools"]]
+        assert "glossary_search" in matched_names

@@ -60,6 +60,11 @@ from loreweave_mcp import (
 )
 
 from app.clients.book_client import BookClient, BookClientError, get_book_client
+from app.clients.knowledge_client import (
+    KnowledgeClient,
+    KnowledgeContractError,
+    get_knowledge_client,
+)
 from app.config import settings
 from app.db.pool import get_pool
 from app.db.repositories import (
@@ -78,6 +83,7 @@ from app.deps import get_authoring_run_service
 from app.grant_client import GrantLevel, get_grant_client
 from app.mcp.service_bearer import mint_service_bearer
 from app.services.authoring_run_service import ALLOWLISTABLE_TOOLS
+from app.work_resolution import resolve_work
 
 logger = logging.getLogger(__name__)
 
@@ -530,31 +536,160 @@ async def composition_get_generation_job(
 # ── Tier A — auto-write + Undo ────────────────────────────────────────────────
 
 
+async def _resolve_or_create_default_project(
+    tc: ToolContext, book_id: UUID, works: WorksRepo,
+) -> UUID | None:
+    """OQ2 (2026-07-07 discovery-hardening spec): resolve, or create idempotently,
+    the DEFAULT per-book knowledge project when composition_create_work's caller
+    omits `project_id`. Before this fix, `find_tools`/`invoke_tool` gave a caller
+    no discoverable way to obtain a project_id for a book that doesn't already
+    have one (`kg_project_list` returns empty for a fresh book) — the external
+    audit's #7 finding. This mirrors the HTTP POST /work tail
+    (`app/routers/works.py::create_work_for_book`) via the SAME §6.2 resolver
+    (`app/work_resolution.resolve_work`) and the SAME knowledge-service client
+    every other composition↔knowledge interaction already uses
+    (`app/clients/knowledge_client.py`), reached via a minted service bearer —
+    the established MCP→JWT-only-route seam (`app/mcp/service_bearer.py`, the
+    same pattern `composition_get_prose`/`composition_write_prose` already use
+    to reach book-service).
+
+    Returns the resolved/created project_id, or None on a knowledge-service
+    OUTAGE (down/timeout/5xx) so the caller can degrade to a lazy pending Work —
+    exactly like the HTTP path (C16/WG-3). `KnowledgeContractError` (a 4xx — our
+    bug, not an outage) and `BookClientError` propagate to the caller so a real
+    defect surfaces instead of silently degrading."""
+    bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
+    knowledge: KnowledgeClient = get_knowledge_client()
+    res = await resolve_work(
+        tc.user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
+    )
+    if res.status == "unavailable":
+        return None
+    if res.status == "found":
+        return res.work.project_id  # type: ignore[union-attr]
+    if res.status == "candidates":
+        return res.works[0].project_id
+    if res.status == "unmarked_single":
+        return res.book_project_id
+    if res.status == "unmarked_candidates":
+        return res.book_project_ids[0]
+    # status == "none" — no book-typed knowledge project exists yet; create one.
+    book: BookClient = get_book_client()
+    book_obj = await book.get_book(book_id, bearer)
+    name = (book_obj or {}).get("title") or f"Book {book_id}"
+    created = await knowledge.create_project(book_id, name, bearer)
+    if created is None or not created.get("project_id"):
+        return None  # knowledge OUTAGE during create → degrade like the HTTP path
+    new_project_id = UUID(str(created["project_id"]))
+
+    # HIGH-1 fix (mirrors app/routers/works.py::create_work_for_book lines
+    # ~227-234): a PRIOR knowledge-service outage may have left a lazy pending
+    # Work (project_id=NULL, pending_project_backfill=true) for this (user,book)
+    # — created by the degrade branches above / `_ensure_pending_work`. Now that
+    # knowledge has recovered and minted a fresh project, backfill THAT row
+    # instead of letting the caller mint a brand-new composition_work row (which
+    # would orphan the pending row forever + duplicate the knowledge project's
+    # Work binding). backfill_project no-ops (returns None) if the row already
+    # got backfilled concurrently or has since vanished — either way
+    # new_project_id is still the right id to bind to; the caller's own
+    # `existing = await works.get(...)` idempotent-get (below, in
+    # composition_create_work) will find the (now backfilled) row instead of
+    # creating a second one.
+    pending = await works.get_pending_for_book(tc.user_id, book_id)
+    if pending is not None and pending.id is not None:
+        await works.backfill_project(tc.user_id, pending.id, new_project_id)
+    return new_project_id
+
+
+async def _ensure_pending_work(works: WorksRepo, user_id: UUID, book_id: UUID):
+    """C16 (WG-3) greenfield degrade for the MCP path — mirrors
+    `app/routers/works.py::_ensure_pending_work`: return the (at-most-one) lazy
+    null-project Work for this user+book, creating it if absent. Idempotent +
+    race-safe (the partial-unique `(user,book) WHERE pending_project_backfill`
+    index caps it at one, so a concurrent loser re-gets the existing row)."""
+    existing = await works.get_pending_for_book(user_id, book_id)
+    if existing is not None:
+        return existing
+    try:
+        return await works.create_pending(user_id, book_id)
+    except asyncpg.UniqueViolationError:
+        racey = await works.get_pending_for_book(user_id, book_id)
+        if racey is None:
+            raise ValueError("work create conflict — retry") from None
+        return racey
+
+
 @mcp_server.tool(
     name="composition_create_work",
     description=(
         "Create (or get, idempotently) the composition Work for a book — the "
-        "authoring context you compose in. Returns the Work. EDIT on the book "
-        "required (auto-applied)."
+        "authoring context you compose in. `project_id` is OPTIONAL: pass it if "
+        "you already know the book's knowledge project id (e.g. from "
+        "composition_get_work); omit it and a default per-book knowledge project "
+        "is resolved or created for you automatically — no separate kg_* setup "
+        "step needed. Returns the Work. EDIT on the book required (auto-applied)."
     ),
     meta=require_meta(
         "A", "book",
-        synonyms=["create work", "start composing", "new writing project", "begin authoring"],
+        synonyms=[
+            "create work", "start composing", "new writing project", "begin authoring",
+            "bootstrap project",
+        ],
         tool_name="composition_create_work",
     ),
 )
 async def composition_create_work(
     ctx: MCPContext,
-    project_id: Annotated[str, "The knowledge project id to bind the Work to (its PK)."],
     book_id: Annotated[str, "The book the Work composes."],
+    project_id: Annotated[
+        str | None,
+        "The knowledge project id to bind the Work to (its PK). Optional — omit "
+        "it to auto-resolve or auto-create (idempotently) the book's default "
+        "knowledge project.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
     await _gate(tc, bid, GrantLevel.EDIT)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
-    # Idempotent get-or-create (mirrors the HTTP POST /work tail; the MCP path
-    # takes an already-resolved project_id rather than driving knowledge create).
+
+    if project_id:
+        pid = UUID(project_id)
+    else:
+        try:
+            pid = await _resolve_or_create_default_project(tc, bid, works)
+        except KnowledgeContractError as exc:
+            if exc.status_code == 404:
+                # MED-1: knowledge-service's project-create route 404s for a
+                # non-owner EDIT-grantee (auto-provisioning a fresh knowledge
+                # project is OWNER-only) — the caller can't fix this by retrying
+                # the same call, so say so concretely + point at the fix.
+                return {
+                    "success": False,
+                    "error": (
+                        "only the book owner can auto-provision the knowledge "
+                        "project — pass project_id explicitly, or ask the book "
+                        "owner to run composition_create_work once (see "
+                        "composition_get_work to check if one already exists)"
+                    ),
+                }
+            return {
+                "success": False,
+                "error": f"knowledge-service rejected the auto-create (status {exc.status_code})",
+            }
+        except BookClientError as exc:
+            return _book_error_result(exc)
+        if pid is None:
+            # Knowledge-service OUTAGE — degrade to a lazy null-project Work
+            # (mirrors the HTTP POST /work WG-3 path) so authoring keeps working;
+            # a later call (once knowledge recovers, or with a real project_id)
+            # resolves the pending marker.
+            pending = await _ensure_pending_work(works, tc.user_id, bid)
+            out = pending.model_dump(mode="json")
+            out["_meta"] = {"undo_hint": None}
+            return out
+
+    # Idempotent get-or-create (mirrors the HTTP POST /work tail).
     existing = await works.get(tc.user_id, pid)
     if existing is not None:
         out = existing.model_dump(mode="json")

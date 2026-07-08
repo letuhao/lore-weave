@@ -79,6 +79,20 @@ describe('notActivatedError', () => {
     expect(out.result.isError).toBe(true);
     expect(JSON.parse(out.result.content[0].text).error).toContain('find_tools');
   });
+
+  // 2026-07-08: docs/bugs/2026-07-07-mcp-discoverability-external-audit.md issue #4 — the prior
+  // "is not available yet" wording reads as "this tool doesn't exist", which is false (raw
+  // tools/call for the same name succeeds; invoke_tool's allowlist is advisory only, per OQ1 in
+  // docs/specs/2026-07-07-mcp-discovery-and-reliability-hardening.md §3). The fix is wording-only.
+  it('does not imply the tool is nonexistent, and names the tool by its real identifier', () => {
+    const out = notActivatedError(5, 'kg_graph_query') as { result: { content: Array<{ text: string }> } };
+    const message = JSON.parse(out.result.content[0].text).error as string;
+    expect(message).toContain("'kg_graph_query'");
+    expect(message).not.toMatch(/is not available/i);
+    expect(message).not.toMatch(/does ?n'?t exist/i);
+    expect(message).toContain("hasn't been discovered yet this session");
+    expect(message).toContain('immediately callable once find_tools returns it');
+  });
 });
 
 describe('injectInvokeToolTool', () => {

@@ -22,24 +22,14 @@ Lives under app/benchmark/ (ships in the image; eval/ does not).
 
 from __future__ import annotations
 
-import math
 from typing import Any
+
+from loreweave_vecmath import cosine_similarity as _cosine
 
 # Pull "effectively all" passages for a 40-chapter eval corpus. The vector
 # index oversamples (limit × oversample_factor) before tenant post-filter,
 # so a high limit + factor returns the full candidate set to rank exactly.
 _FETCH_ALL_LIMIT = 5000
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    return dot / (na * nb)
 
 
 async def _run(args: Any) -> int:

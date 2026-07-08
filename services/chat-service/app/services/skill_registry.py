@@ -3,11 +3,18 @@
 v1 skills are static prompt modules — no user-defined skills table.
 ``resolve_skills_to_inject`` filters by session pins + surface flags;
 empty ``enabled_skills`` preserves legacy auto-inject behaviour.
+
+``resolve_skills_to_inject_async`` (Part F / F2, docs/plans/2026-07-07-intent-
+skill-router.md) is an ADDITIVE async twin that layers the Intent→Skill Router
+on top of this exact same structural result — see its own docstring.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -97,9 +104,24 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         label="Universal driver",
         surfaces=frozenset({"chat"}),
         prompt_loader=_load_universal,
-        description="General multi-step task driver: find and use the right tools to fulfil the request.",
-        # Names no domain-specific tool directly (only the always-on core + generic
-        # find_tools-mediated discovery) — correctly empty, not an oversight.
+        description=(
+            "General multi-step task driver: find and use the right tools to fulfil "
+            "the request — including general web research on any topic via find_tools, "
+            "no book required."
+        ),
+        # Names glossary_web_search/glossary_deep_research directly (F0, docs/specs/
+        # 2026-07-07-skill-authoring-and-mcp-exposure-standard.md §13.3) but declares
+        # hot_domains EMPTY on purpose: those two tools are the only ones named, out of
+        # glossary-service's ~47-tool "glossary" domain — hot-seeding the whole domain
+        # just to cover 2 tools would blow the chat surface's token budget for zero
+        # benefit (hot_tool_names()/surface_hot_domains() only support DOMAIN-level
+        # granularity today, not a per-tool hot-seed — a real constraint, not an
+        # oversight; see the allowlist entry in test_skill_registry.py's
+        # `_ALLOWED_CONTRASTIVE_MENTIONS["universal"]` for why this is lint-exempt).
+        # Same "find_tools-mediated, not pre-seeded" reachability as universal's
+        # existing book_chapter_save_draft/book_chapter_publish mentions — one targeted
+        # find_tools call brings the tool's schema into the active set; it is never
+        # advertised up front.
         hot_domains=frozenset(),
     ),
     "knowledge": SkillDef(
@@ -305,6 +327,97 @@ def resolve_skills_to_inject(
         if pf and _skill_visible(pf, active):
             out.append("plan_forge")
     return out
+
+
+async def resolve_skills_to_inject_async(
+    *,
+    enabled_skills: list[str],
+    stream_format: str,
+    disable_tools: bool,
+    tool_calling_enabled: bool,
+    editor: bool,
+    book_scoped: bool,
+    admin: bool,
+    permission_mode: str = "write",
+    studio: bool = False,
+    intent_text: str = "",
+    user_id: str = "",
+    model_source: str = "",
+    model_ref: str = "",
+) -> list[str]:
+    """Async twin of ``resolve_skills_to_inject`` — the Intent→Skill Router
+    (Part F / F2, docs/plans/2026-07-07-intent-skill-router.md; docs/specs/
+    2026-07-07-skill-authoring-and-mcp-exposure-standard.md §13-14).
+
+    Computes the EXACT same static/structural result first (unchanged, same
+    code path, same tests) — then, when ``intent_text`` is non-blank, embeds it
+    ONCE and cosine-ranks it (``skill_router.route_additional_skills``) against
+    a small process-cached set of skill-description vectors, UNIONING in any
+    skill that clears the confidence threshold and is visible on the active
+    surface. This is strictly ADDITIVE (§13.2): it can only grow the static
+    result, never remove a skill the static path already selected (e.g.
+    ``knowledge`` auto-injecting everywhere per Part D) — mirrors the "one
+    shared ceiling, add-only" discipline the hot-domain budgeting system already
+    enforces elsewhere in this codebase.
+
+    Mirrors the ``find_tools_result`` / ``find_tools_result_async`` pattern
+    (tool_discovery.py) B3 already established: the SYNC function stays exactly
+    as-is for callers that don't need routing (``surface_hot_domains()``'s own
+    internal call with ``enabled_skills=[]`` — a deliberately static/structural
+    default derivation, unaffected by any one turn's intent — is the reason the
+    sync version must never be removed or changed here); this async twin is what
+    the live per-turn call sites (``stream_service.py``) actually await.
+
+    MANDATORY fallback discipline (§14): any embedding-call failure, timeout,
+    or router exception falls back to EXACTLY the static result — this
+    function can only make skill selection better or identical to
+    ``resolve_skills_to_inject``, never worse or blocking. A blank
+    ``intent_text`` (the default) short-circuits before any embedding work,
+    so an existing caller that doesn't pass it behaves identically to calling
+    the sync function.
+    """
+    base = resolve_skills_to_inject(
+        enabled_skills=enabled_skills,
+        stream_format=stream_format,
+        disable_tools=disable_tools,
+        tool_calling_enabled=tool_calling_enabled,
+        editor=editor,
+        book_scoped=book_scoped,
+        admin=admin,
+        permission_mode=permission_mode,
+        studio=studio,
+    )
+    # Same hard gate the sync function itself applies (stream_format/disable_tools/
+    # tool_calling_enabled) — `base` is already [] in that case; short-circuiting
+    # here too just avoids the pointless embed-attempt. Deliberately NOT gated on
+    # `not base`: a curated session whose pins matched nothing on this surface
+    # also yields an empty `base`, and the router should still be allowed to help
+    # in exactly that case.
+    if stream_format != "agui" or disable_tools or not tool_calling_enabled:
+        return base
+    if not intent_text or not intent_text.strip():
+        return base
+
+    active = _surface_key(editor=editor, book_scoped=book_scoped, admin=admin, studio=studio)
+    try:
+        from app.services.skill_router import route_additional_skills  # noqa: PLC0415
+
+        additions = await route_additional_skills(
+            intent_text=intent_text,
+            active_surface=active,
+            already_selected=base,
+            user_id=user_id,
+            model_source=model_source,
+            model_ref=model_ref,
+        )
+    except Exception:  # noqa: BLE001 — mandatory fallback, never raise into the turn
+        logger.warning(
+            "skill router failed; falling back to static skill selection", exc_info=True,
+        )
+        return base
+    if not additions:
+        return base
+    return base + [code for code in additions if code not in base]
 
 
 def skill_prompts(codes: list[str]) -> dict[str, str]:

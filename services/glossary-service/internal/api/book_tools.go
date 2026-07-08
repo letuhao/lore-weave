@@ -144,8 +144,17 @@ func (s *Server) toolAdoptStandards(ctx context.Context, _ *mcp.CallToolRequest,
 		{Label: "genres newly adopted", Value: fmt.Sprint(newGenres), Note: "+ universal (always)"},
 		{Label: "kinds newly adopted", Value: fmt.Sprint(newKinds), Note: "+ unknown (always)"},
 	}
-	return s.mintGrantActionCard(userID, bookID, descAdopt, "Adopt standards into this book",
+	res, out, err := s.mintGrantActionCard(userID, bookID, descAdopt, "Adopt standards into this book",
 		adoptParams{Genres: in.Genres, Kinds: in.Kinds}, rows, false)
+	// External MCP discoverability audit #11 — a call with no real target (no genres/kinds
+	// specified) mints a valid-looking, confirmable token whose preview counts are already
+	// honest (they'll read 0 new beyond the always-included universal/unknown), but a caller
+	// that doesn't inspect the preview closely could confirm it and believe something happened.
+	// Flag it explicitly instead of relying on the caller to notice.
+	if err == nil && len(in.Genres) == 0 && len(in.Kinds) == 0 {
+		out.Warning = "no genres or kinds specified — this will adopt nothing new"
+	}
+	return res, out, err
 }
 
 // ── create (W) ────────────────────────────────────────────────────────────────

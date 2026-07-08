@@ -25,12 +25,12 @@ service's own ``source_corpus*`` tables — never to glossary / KG / Neo4j, neve
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Sequence
 from uuid import UUID
 
 import asyncpg
+from loreweave_vecmath import cosine_similarity
 
 from app.retrieval.chunker import (
     DEFAULT_OVERLAP_SENTENCES,
@@ -90,25 +90,9 @@ class IngestResult:
 
 
 # ── pure similarity math (stdlib only — unit-testable without a DB) ───────────
-def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
-    """Cosine similarity of two equal-length vectors, in [-1.0, 1.0].
-
-    Returns 0.0 if either vector is all-zero (undefined direction) or empty, or
-    if the lengths differ (an incomparable pair — e.g. a model-ref drift) rather
-    than raising, so a degraded vector never crashes a search. Pure + stdlib.
-    """
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = 0.0
-    na = 0.0
-    nb = 0.0
-    for x, y in zip(a, b):
-        dot += x * y
-        na += x * x
-        nb += y * y
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    return dot / (math.sqrt(na) * math.sqrt(nb))
+# `cosine_similarity` is the shared loreweave_vecmath implementation (imported
+# above); re-exported here (via __all__) for backward compatibility with the
+# existing `from app.retrieval.store import cosine_similarity` call sites.
 
 
 def top_k(

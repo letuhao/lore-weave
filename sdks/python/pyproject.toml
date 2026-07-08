@@ -114,6 +114,10 @@ include = [
   # canon_check.py + knowledge-service's near-duplicate mirror). Pure pydantic +
   # stdlib, no LLM/HTTP hard dep (the caller injects its own submit_and_wait).
   "loreweave_canon_check*",
+  # D-COSINE-SDK-PROMOTE (2026-07-08) — `loreweave_vecmath` added (shared cosine-
+  # similarity math, promoted from near-duplicate copies in lore-enrichment/
+  # composition/knowledge-service). Pure stdlib (math + typing only), no deps.
+  "loreweave_vecmath*",
 ]
 exclude = ["tests*"]
 

@@ -220,13 +220,130 @@ func TestConfirmAction_CreatesKindThenRejectsReplayAndBadTokens(t *testing.T) {
 	if w := f.confirm(t, mint(f.ownerID, f.bookID, time.Now().Add(-2*actionTokenTTL))); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("expired: want 422, got %d", w.Code)
 	}
-	// tampered → 422
+	// tampered → 422, with a concrete, actionable message (IN-6 / audit #8 diagnosability —
+	// not just a bare "invalid confirmation").
 	if w := f.confirm(t, good[:len(good)-2]+"zz"); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("tampered: want 422, got %d", w.Code)
+	} else if body := w.Body.String(); !strings.Contains(body, "propose the action again") {
+		t.Errorf("tampered-token error must state a concrete fix pointer, got %q", body)
 	}
-	// minted for a DIFFERENT user → 403 (bound to proposer, checked before consume)
+	// minted for a DIFFERENT user → 403 (bound to proposer, checked before consume), with a
+	// message that says WHY (a different account proposed it) instead of a bare "forbidden".
 	if w := f.confirm(t, mint(uuid.New(), f.bookID, time.Now())); w.Code != http.StatusForbidden {
 		t.Errorf("wrong-user token: want 403, got %d", w.Code)
+	} else if body := w.Body.String(); !strings.Contains(body, "different account") {
+		t.Errorf("wrong-user error must name the concrete reason, got %q", body)
+	}
+}
+
+// ── internal confirm-replay envelope (D-PMCP-WORKER-CARRIER retrofit) ─────────
+//
+// auth-service's public-MCP confirm-replay (self-confirm AND human-approve,
+// `mcp_approvals.go::replayConfirm`) is a trusted internal caller — it can never
+// present the owner's Bearer JWT, so it sends the token as a `?token=` query param
+// with a nil body and identifies the owner via X-Internal-Token+X-User-Id. Found
+// live 2026-07-08 (MCP discoverability audit's confirm_action repro): this route
+// 401'd that shape unconditionally, meaning EVERY confirm-replay to glossary failed.
+
+func (f *actionFixture) confirmViaInternalEnvelope(t *testing.T, token, internalTok, userID string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/glossary/actions/confirm?token="+token, nil)
+	if internalTok != "" {
+		req.Header.Set("X-Internal-Token", internalTok)
+	}
+	if userID != "" {
+		req.Header.Set("X-User-Id", userID)
+	}
+	w := httptest.NewRecorder()
+	f.srv.Router().ServeHTTP(w, req)
+	return w
+}
+
+func TestConfirmAction_InternalReplayEnvelope_QueryParamTokenSucceeds(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	params, _ := json.Marshal(kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
+	tok := mintActionToken(versionTestSecret, actionClaims{
+		JTI: uuid.NewString(), Authority: authorityGrant, UserID: f.ownerID, BookID: f.bookID,
+		Descriptor: descSchemaCreateKind, Params: params,
+	}, time.Now())
+
+	// Exactly the shape auth-service's replayConfirm sends: query-param token, nil
+	// body, X-Internal-Token + X-User-Id, NO Authorization header at all.
+	w := f.confirmViaInternalEnvelope(t, tok, "tok", f.ownerID.String())
+	if w.Code != http.StatusCreated {
+		t.Fatalf("internal-envelope confirm-replay: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	var n int
+	pool.QueryRow(context.Background(), `SELECT count(*) FROM book_kinds WHERE book_id=$1 AND code='qa_new_kind'`, f.bookID).Scan(&n)
+	if n != 1 {
+		t.Fatalf("kind not created via internal-envelope replay: count=%d", n)
+	}
+}
+
+func TestConfirmAction_InternalReplayEnvelope_WrongOrMissingCredsRejected(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	params, _ := json.Marshal(kindCreateParams{Code: "qa_new_kind", Name: "Power System"})
+	mint := func(u uuid.UUID) string {
+		return mintActionToken(versionTestSecret, actionClaims{
+			JTI: uuid.NewString(), Authority: authorityGrant, UserID: u, BookID: f.bookID,
+			Descriptor: descSchemaCreateKind, Params: params,
+		}, time.Now())
+	}
+
+	// wrong internal token → 401, not silently falling through to "unauthenticated Bearer" success
+	if w := f.confirmViaInternalEnvelope(t, mint(f.ownerID), "not-the-real-token", f.ownerID.String()); w.Code != http.StatusUnauthorized {
+		t.Errorf("wrong internal token: want 401, got %d (%s)", w.Code, w.Body.String())
+	}
+	// correct internal token but NO X-User-Id → 401 (fail closed, does not fall back to Bearer)
+	if w := f.confirmViaInternalEnvelope(t, mint(f.ownerID), "tok", ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("internal token with no X-User-Id: want 401, got %d (%s)", w.Code, w.Body.String())
+	}
+	// correct internal token, syntactically invalid X-User-Id → 401
+	if w := f.confirmViaInternalEnvelope(t, mint(f.ownerID), "tok", "not-a-uuid"); w.Code != http.StatusUnauthorized {
+		t.Errorf("internal token with malformed X-User-Id: want 401, got %d (%s)", w.Code, w.Body.String())
+	}
+	// correct internal token, X-User-Id names a DIFFERENT user than the token's proposer →
+	// still 403 forbidden (authorizeAction's existing proposer-binding check applies
+	// identically regardless of which auth path resolved the caller)
+	if w := f.confirmViaInternalEnvelope(t, mint(f.ownerID), "tok", uuid.New().String()); w.Code != http.StatusForbidden {
+		t.Errorf("internal envelope naming a different user than the proposer: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// ── confirm diagnosability (audit #8 / IN-6) — no DB needed, these branches return
+// before touching the grant-service or the DB ────────────────────────────────────
+
+func TestAuthorizeAction_AdminAuthorityMessageIsActionable(t *testing.T) {
+	s := &Server{}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/glossary/actions/confirm", nil)
+	claims := actionClaims{Authority: authorityAdmin, UserID: uuid.New(), BookID: uuid.New(), Descriptor: descSystemCreate}
+	if ok := s.authorizeAction(w, req, claims.UserID, claims); ok {
+		t.Fatal("admin authority must not be authorized via the user confirm path")
+	}
+	if w.Code != http.StatusNotImplemented {
+		t.Errorf("want 501, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "admin confirm") {
+		t.Errorf("admin-authority error must point at the actual admin confirm route, got %q", body)
+	}
+}
+
+func TestAuthorizeAction_UnknownAuthorityMessageIsActionable(t *testing.T) {
+	s := &Server{}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/glossary/actions/confirm", nil)
+	claims := actionClaims{Authority: "bogus", UserID: uuid.New(), BookID: uuid.New(), Descriptor: descAdopt}
+	if ok := s.authorizeAction(w, req, claims.UserID, claims); ok {
+		t.Fatal("an unrecognized authority must never authorize")
+	}
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("want 422, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "propose the action again") {
+		t.Errorf("unknown-authority error must state a concrete fix pointer, got %q", body)
 	}
 }
 

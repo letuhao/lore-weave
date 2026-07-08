@@ -109,7 +109,16 @@ export function requiresActivation(name: string): boolean {
 /** The anti-oracle denial for an invoke_tool target that hasn't been activated this session.
  * Deliberately the SAME message shape whether the name is genuinely undiscovered-but-in-scope
  * or actually out of scope (out-of-scope names can never enter the activated set either — see
- * `requiresActivation` — so this can't leak more than find_tools already would). */
+ * `requiresActivation` — so this can't leak more than find_tools already would).
+ *
+ * Wording (2026-07-08, per docs/specs/2026-07-07-mcp-discovery-and-reliability-hardening.md §3
+ * OQ1, resolved advisory-not-a-hard-gate): an external audit
+ * (docs/bugs/2026-07-07-mcp-discoverability-external-audit.md issue #4) flagged the prior text
+ * ("is not available yet") as reading like "this tool doesn't exist" — it actually means "this
+ * gateway's allowlist hasn't seen it activated THIS SESSION yet"; raw `tools/call` for the same
+ * name succeeds today, confirming the tool is real and working. `invoke_tool`'s allowlist stays
+ * advisory (no access-control behavior change) — this is a message-text-only fix so the refusal
+ * doesn't imply non-existence. */
 export function notActivatedError(id: unknown, name: string): unknown {
   return {
     jsonrpc: '2.0',
@@ -119,7 +128,7 @@ export function notActivatedError(id: unknown, name: string): unknown {
       content: [{
         type: 'text',
         text: JSON.stringify({
-          error: `'${name}' is not available yet — call find_tools with what you want to do, then invoke_tool with a name it returns.`,
+          error: `'${name}' hasn't been discovered yet this session — call find_tools with what you want to do first; it will be immediately callable once find_tools returns it.`,
         }),
       }],
     },

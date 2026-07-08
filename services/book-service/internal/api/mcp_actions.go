@@ -306,22 +306,44 @@ func (s *Server) previewBookAction(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// confirmBookAction — POST /v1/book/actions/confirm . JWT-gated; THE only write
-// path. Order: verify token → re-check grant → re-validate + execute the bound op.
+// resolveConfirmCaller returns the redeeming user's ID for the confirm route,
+// trusting EITHER a valid Bearer JWT (browser UI) or a trusted internal-service
+// envelope (X-Internal-Token, constant-time compare, + X-User-Id) — the shape
+// auth-service's public-MCP confirm-replay (`mcp_approvals.go::replayConfirm`)
+// sends, since it is a trusted internal caller and can never present the owner's
+// Bearer JWT. Mirrors glossary-service's identical retrofit
+// (action_confirm.go::resolveConfirmCaller) and composition/translation/
+// knowledge-service's existing Python dual-auth pattern (D-PMCP-WORKER-CARRIER).
+// Found live 2026-07-08: this route 401'd every confirm-replay unconditionally.
+// The internal-token branch is checked first and fails closed (never falls
+// through to the Bearer path) if X-User-Id is missing/malformed.
+func (s *Server) resolveConfirmCaller(r *http.Request) (uuid.UUID, bool) {
+	return lwmcp.ResolveEnvelopeOrBearerCaller(r, s.cfg.InternalServiceToken, s.requireUserID)
+}
+
+// confirmBookAction — POST /v1/book/actions/confirm . JWT- or internal-envelope-
+// gated (see resolveConfirmCaller); THE only write path. Order: verify token →
+// re-check grant → re-validate + execute the bound op.
 func (s *Server) confirmBookAction(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.requireUserID(r)
+	userID, ok := s.resolveConfirmCaller(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
 		return
 	}
-	var body struct {
-		ConfirmToken string `json:"confirm_token"`
+	// Token comes from the `token` query param (auth-service's internal
+	// confirm-replay, nil body) or the JSON body (the browser UI).
+	confirmToken := strings.TrimSpace(r.URL.Query().Get("token"))
+	if confirmToken == "" {
+		var body struct {
+			ConfirmToken string `json:"confirm_token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
+			return
+		}
+		confirmToken = body.ConfirmToken
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
-		return
-	}
-	claims, ok := s.decodeActionToken(w, userID, body.ConfirmToken)
+	claims, ok := s.decodeActionToken(w, userID, confirmToken)
 	if !ok {
 		return
 	}
@@ -340,7 +362,7 @@ func (s *Server) confirmBookAction(w http.ResponseWriter, r *http.Request) {
 	// effect (HIGH /review-impl). A REPLAY of a still-valid token (within the
 	// 10-min TTL) hits the PK → 0 rows → refused, so the effect (publish revision +
 	// chapter.published outbox event, delete, etc.) runs at most once per token.
-	claimed, err := s.consumeBookActionToken(r.Context(), actionTokenHash(body.ConfirmToken), time.Unix(claims.Exp, 0))
+	claimed, err := s.consumeBookActionToken(r.Context(), actionTokenHash(confirmToken), time.Unix(claims.Exp, 0))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "confirmation failed")
 		return

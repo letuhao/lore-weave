@@ -447,6 +447,75 @@ func postConfirmAs(t *testing.T, srv *Server, bearerUser uuid.UUID, token string
 	return rec.Code
 }
 
+// postConfirmViaInternalEnvelope drives confirmSettingsAction exactly the way
+// auth-service's public-MCP confirm-replay does (mcp_approvals.go::replayConfirm):
+// query-param token, nil body, X-Internal-Token+X-User-Id, NO Authorization
+// header. Found live 2026-07-08: this route 401'd that shape unconditionally
+// before resolveConfirmCaller (D-PMCP-WORKER-CARRIER retrofit).
+func postConfirmViaInternalEnvelope(srv *Server, internalTok, userID, token string) int {
+	req := httptest.NewRequest(http.MethodPost, "/v1/settings/actions/confirm?token="+token, nil)
+	if internalTok != "" {
+		req.Header.Set("X-Internal-Token", internalTok)
+	}
+	if userID != "" {
+		req.Header.Set("X-User-Id", userID)
+	}
+	rec := httptest.NewRecorder()
+	srv.confirmSettingsAction(rec, req)
+	return rec.Code
+}
+
+// TestSettingsMCP_ModelDeleteConfirmInternalReplayEnvelope proves the retrofit:
+// auth-service's confirm-replay shape (no Bearer JWT at all) now succeeds, and
+// still fails closed on a wrong/missing/malformed internal envelope.
+func TestSettingsMCP_ModelDeleteConfirmInternalReplayEnvelope(t *testing.T) {
+	srv, pool, ts := mcpDBServer(t)
+	userID := uuid.New()
+	_, modelID := seedCredAndModel(t, srv, pool, userID, "secret-e")
+
+	out, code := callTool(t, ts, userID.String(), "settings_model_delete", map[string]any{"user_model_id": modelID.String()})
+	if code != http.StatusOK || toolIsError(out) {
+		t.Fatalf("model_delete mint failed: %v", out)
+	}
+	token := extractStructured(t, out, "confirm_token")
+	if token == "" {
+		t.Fatalf("no confirm_token in result: %v", out)
+	}
+
+	if code := postConfirmViaInternalEnvelope(srv, mcpTestInternalToken, userID.String(), token); code != http.StatusNoContent {
+		t.Fatalf("internal-envelope confirm-replay expected 204, got %d", code)
+	}
+	var n int
+	_ = pool.QueryRow(context.Background(), `SELECT count(*) FROM user_models WHERE user_model_id=$1`, modelID).Scan(&n)
+	if n != 0 {
+		t.Fatal("internal-envelope confirm must delete the model")
+	}
+
+	// resolveConfirmCaller rejects before the token is ever decoded/consumed, so
+	// the negative cases below can reuse the already-consumed token — only the
+	// envelope itself is under test here.
+	if code := postConfirmViaInternalEnvelope(srv, "wrong-token", userID.String(), token); code == http.StatusNoContent {
+		t.Fatal("wrong internal token must not be accepted")
+	}
+	if code := postConfirmViaInternalEnvelope(srv, mcpTestInternalToken, "", token); code == http.StatusNoContent {
+		t.Fatal("internal token with no X-User-Id must not be accepted")
+	}
+	if code := postConfirmViaInternalEnvelope(srv, mcpTestInternalToken, "not-a-uuid", token); code == http.StatusNoContent {
+		t.Fatal("internal token with malformed X-User-Id must not be accepted")
+	}
+	// Correct internal token, SYNTACTICALLY-valid X-User-Id naming a DIFFERENT user
+	// than the token's bound proposer → still 403: resolveConfirmCaller resolves the
+	// (wrong) caller successfully via the envelope path, but decodeSettingsConfirm's
+	// claims.UserID != userID check fires identically regardless of which auth path
+	// produced userID. That check runs BEFORE consumeSettingsToken, so the
+	// already-consumed token above is still usable here (its signature/claims are
+	// unaffected by consumption) — mirrors glossary's
+	// TestConfirmAction_InternalReplayEnvelope_WrongOrMissingCredsRejected.
+	if code := postConfirmViaInternalEnvelope(srv, mcpTestInternalToken, uuid.New().String(), token); code != http.StatusForbidden {
+		t.Errorf("internal envelope naming a different user than the proposer = %d, want 403", code)
+	}
+}
+
 // ── small helpers ──────────────────────────────────────────────────────────────
 
 func mustJSON(v any) string {

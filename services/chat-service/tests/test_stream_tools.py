@@ -39,6 +39,7 @@ from app.config import settings
 from app.services.stream_service import (
     MAX_TOOL_ITERATIONS,
     _Usage,
+    _drop_duplicate_empty_tool_calls,
     _extract_leaked_tool_calls,
     _parse_tool_args,
     _reassemble_tool_calls,
@@ -834,6 +835,170 @@ class TestGemmaTokenLeakSalvage:
 
         call_kwargs = kc.mcp_execute_tool.await_args.kwargs
         assert call_kwargs["tool_args"] == {"query": "Kai"}
+
+
+class TestDuplicateEmptyToolCallDedup:
+    """D-TOOLCALL-DUP-EMPTY-CALL — a sibling of D-TOOLCALL-GEMMA-TOKEN-LEAK
+    (same defective-decoding local-model family), different manifestation:
+    the model emits a genuinely well-formed STRUCTURED tool call, then, in
+    the SAME pass, a second structured call to the IDENTICAL tool name with
+    empty/missing arguments — two distinct entries in the provider's own
+    `tool_calls` array (confirmed via real Postgres transcripts: the model's
+    own reasoning narrates "calling glossary_web_search twice, the second one
+    without a query" but cannot self-correct). Left unhandled, the malformed
+    duplicate reaches `execute_tool` and trips a `missing properties`
+    validation error — one real session hit this 13+ times before giving up
+    or hallucinating an answer. The fix must drop ONLY this narrow pattern,
+    never a legitimate second call with its own distinct, valid arguments."""
+
+    # ── pure function ────────────────────────────────────────────────────
+
+    def test_drops_the_malformed_duplicate(self):
+        calls = [
+            {"id": "c0", "name": "glossary_web_search",
+             "arguments": '{"query":"chiến tranh Mỹ và Iran"}'},
+            {"id": "c1", "name": "glossary_web_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == [calls[0]]
+
+    def test_drops_a_duplicate_with_unparseable_arguments_too(self):
+        # Not just empty-string — anything _parse_tool_args can't repair
+        # into a non-empty dict counts as "empty" for dedup purposes.
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "glossary_web_search", "arguments": "{"},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == [calls[0]]
+
+    def test_keeps_a_legitimate_second_call_with_distinct_valid_args(self):
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "glossary_web_search", "arguments": '{"query":"b"}'},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == calls
+
+    def test_keeps_both_when_neither_is_well_formed(self):
+        # No well-formed predecessor to be "a duplicate of" — the pre-existing
+        # empty-args → validation-error path still applies normally here.
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": ""},
+            {"id": "c1", "name": "glossary_web_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == calls
+
+    def test_ignores_different_tool_names(self):
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "memory_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == calls
+
+    def test_single_call_is_untouched(self):
+        calls = [{"id": "c0", "name": "glossary_web_search", "arguments": ""}]
+        assert _drop_duplicate_empty_tool_calls(calls) == calls
+
+    def test_drops_multiple_consecutive_empty_duplicates(self):
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "glossary_web_search", "arguments": ""},
+            {"id": "c2", "name": "glossary_web_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == [calls[0]]
+
+    def test_drops_a_non_adjacent_duplicate_interleaved_with_another_tool(self):
+        """review-impl MED fix: the old dedup only compared a call to the
+        IMMEDIATELY PRECEDING kept call regardless of tool name — for
+        [A(good), B(good), A(empty)], the trailing empty A wasn't recognized
+        as a duplicate of the earlier A because B sat between them. Now tracks
+        the last well-formed call PER TOOL NAME, so this non-adjacent
+        duplicate is still caught; B(good) is untouched (a distinct tool)."""
+        calls = [
+            {"id": "c0", "name": "glossary_web_search", "arguments": '{"query":"a"}'},
+            {"id": "c1", "name": "memory_search", "arguments": '{"query":"b"}'},
+            {"id": "c2", "name": "glossary_web_search", "arguments": ""},
+        ]
+        assert _drop_duplicate_empty_tool_calls(calls) == [calls[0], calls[1]]
+
+    # ── integration: the full _stream_with_tools loop ──────────────────────
+
+    @pytest.mark.asyncio
+    async def test_malformed_duplicate_dropped_no_validation_error_surfaced(self):
+        """A pass with two ToolCallEvent fragments for the SAME tool — index 0
+        well-formed, index 1 empty — must execute ONLY the first: the empty
+        duplicate never reaches `execute_tool`, so the `missing properties`
+        validation error a real backend would return for it is never
+        surfaced back to the model at all."""
+        kc = AsyncMock()
+
+        async def _execute(*, tool_name, tool_args, **_kw):
+            if not tool_args:
+                # Mirrors the real backend's behavior on the actual bug —
+                # if dedup fails, this is what derails the model 13+ times.
+                return _envelope(success=False, error='missing properties: ["query"]')
+            return _envelope(success=True, result={"hits": ["ok"]})
+
+        kc.mcp_execute_tool.side_effect = _execute
+        scripts = [
+            [
+                tool_frag(index=0, id="c0", name="glossary_web_search"),
+                tool_frag(index=1, id="c1", name="glossary_web_search"),
+                tool_frag(index=0, arguments_delta='{"query":"chiến tranh Mỹ và Iran"}'),
+                tool_frag(index=1, arguments_delta=""),
+                done("tool_calls"),
+            ],
+            [tok("here are the results"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "glossary_web_search"}}],
+            ))
+
+        # Only the well-formed call executed.
+        assert kc.mcp_execute_tool.await_count == 1
+        call_kwargs = kc.mcp_execute_tool.await_args_list[0].kwargs
+        assert call_kwargs["tool_name"] == "glossary_web_search"
+        assert call_kwargs["tool_args"] == {"query": "chiến tranh Mỹ và Iran"}
+
+        # Exactly one tool_call chunk, and it succeeded — no validation-error
+        # chunk for a dropped second call ever reached the model/UI.
+        tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
+        assert len(tool_chunks) == 1
+        assert tool_chunks[0]["ok"] is True
+        assert tool_chunks[0]["error"] is None
+        assert not any(
+            c.get("tool_call", {}).get("error") for c in chunks if "tool_call" in c
+        )
+
+    @pytest.mark.asyncio
+    async def test_legitimate_second_call_with_distinct_valid_args_still_executes(self):
+        """Two genuinely distinct calls to the SAME tool in one pass (e.g. two
+        different searches) must both execute — dedup must never fire when the
+        second call carries its own real, non-empty arguments."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        scripts = [
+            [
+                tool_frag(index=0, id="c0", name="glossary_web_search"),
+                tool_frag(index=1, id="c1", name="glossary_web_search"),
+                tool_frag(index=0, arguments_delta='{"query":"a"}'),
+                tool_frag(index=1, arguments_delta='{"query":"b"}'),
+                done("tool_calls"),
+            ],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": "glossary_web_search"}}],
+            ))
+
+        assert kc.mcp_execute_tool.await_count == 2
+        args = [c.kwargs["tool_args"] for c in kc.mcp_execute_tool.await_args_list]
+        assert args == [{"query": "a"}, {"query": "b"}]
+        tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
+        assert len(tool_chunks) == 2
+        assert all(t["ok"] for t in tool_chunks)
 
 
 class TestToolCallFragmentReassembly:
