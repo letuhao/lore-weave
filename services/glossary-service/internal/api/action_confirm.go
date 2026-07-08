@@ -218,6 +218,8 @@ func (s *Server) dispatchConfirmEffect(w http.ResponseWriter, ctx context.Contex
 		s.effectReassignKind(w, ctx, claims)
 	case descMerge:
 		s.effectMerge(w, ctx, claims)
+	case descEntityDelete:
+		s.effectEntityDelete(w, ctx, claims)
 	case descDeepResearch:
 		s.effectDeepResearch(w, ctx, claims)
 	case descExecutePlan:
@@ -253,6 +255,8 @@ func (s *Server) dispatchPreviewEffect(w http.ResponseWriter, ctx context.Contex
 		s.previewReassignKind(w, ctx, claims)
 	case descMerge:
 		s.previewMerge(w, ctx, claims)
+	case descEntityDelete:
+		s.previewEntityDelete(w, ctx, claims)
 	case descDeepResearch:
 		s.previewDeepResearch(w, ctx, claims)
 	case descExecutePlan:

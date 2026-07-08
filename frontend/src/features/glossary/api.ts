@@ -169,7 +169,7 @@ export const glossaryApi = {
    *  actually updated (book-scoped; absent/foreign ids are ignored). */
   bulkSetStatus(
     bookId: string,
-    status: 'active' | 'inactive' | 'draft',
+    status: 'active' | 'inactive' | 'draft' | 'rejected',
     entityIds: string[],
     token: string,
   ): Promise<{ updated: number }> {

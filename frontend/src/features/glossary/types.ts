@@ -9,7 +9,7 @@ export type ActionPreview = {
   preview_rows: ActionPreviewRow[] | null;
   destructive: boolean;
 };
-export type EntityStatus = 'draft' | 'active' | 'inactive';
+export type EntityStatus = 'draft' | 'active' | 'inactive' | 'rejected';
 export type Confidence = 'verified' | 'draft' | 'machine';
 export type Relevance = 'major' | 'appears' | 'mentioned';
 export type EvidenceType = 'quote' | 'summary' | 'reference';

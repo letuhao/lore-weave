@@ -79,6 +79,10 @@ func (s *Server) mcpHandler() http.Handler {
 	// tool with a batch-capable sibling (a confirmed near-term need: a
 	// KG-extraction pipeline minting many entities per pass).
 	s.RegisterEntityBatchTools(srv)
+	// Real-usage feedback finding — glossary_entity_delete (Tier-W propose+confirm)
+	// + glossary_entity_restore (Tier-A direct): the FE's Undo allowlist already
+	// carries these exact tool names (useActivityUndo.ts); this wires them up.
+	s.RegisterEntityDeleteTools(srv)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",

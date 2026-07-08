@@ -136,6 +136,15 @@ describe('GlossaryEntityList (13_glossary_panels.md A3)', () => {
     await waitFor(() => expect(apiMocks.bulkSetStatus).toHaveBeenCalledWith(BOOK, 'active', ['e1'], 'tok'));
   });
 
+  it('bulk-rejecting the selected rows calls bulkSetStatus with "rejected" and clears the selection', async () => {
+    renderList();
+    await screen.findByText('Jiang Ziya');
+    fireEvent.click(screen.getByLabelText('glossary.bulk.select_row'));
+    apiMocks.bulkSetStatus.mockResolvedValue({ updated: 1 });
+    fireEvent.click(screen.getByText('glossary.bulk.reject'));
+    await waitFor(() => expect(apiMocks.bulkSetStatus).toHaveBeenCalledWith(BOOK, 'rejected', ['e1'], 'tok'));
+  });
+
   it('the new-entity button opens the (stubbed) create-entity modal', async () => {
     renderList();
     fireEvent.click(await screen.findByTestId('glossary-new-entity'));

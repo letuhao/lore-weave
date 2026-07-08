@@ -38,7 +38,7 @@ func parseEntityIDs(raw []string) []uuid.UUID {
 
 func validEntityStatus(s string) bool {
 	switch s {
-	case "active", "inactive", "draft":
+	case "active", "inactive", "draft", "rejected":
 		return true
 	default:
 		return false

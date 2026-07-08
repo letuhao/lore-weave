@@ -25,11 +25,12 @@ import (
 func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_status_change",
-		Description: "Propose a BATCH status change for entities (active | inactive | draft) — e.g. approve " +
-			"drafts or retire stale entities. book_id + status + entity_ids (UUIDs). Returns a confirm card; " +
-			"a human approves before anything changes. Reversible (just set the status back).",
+		Description: "Propose a BATCH status change for entities (active | inactive | draft | rejected) — e.g. " +
+			"approve drafts, retire stale entities, or reject a draft that shouldn't be kept. book_id + status + " +
+			"entity_ids (UUIDs). Returns a confirm card; a human approves before anything changes. Reversible " +
+			"(just set the status back).",
 		InputSchema: closedSetSchemaFor[proposeStatusChangeToolIn](map[string][]any{
-			"status": {"active", "inactive", "draft"},
+			"status": {"active", "inactive", "draft", "rejected"},
 		}),
 	}, s.toolProposeStatusChange)
 
@@ -77,7 +78,7 @@ func (s *Server) toolProposeStatusChange(ctx context.Context, _ *mcp.CallToolReq
 	}
 	status := strings.TrimSpace(in.Status)
 	if !validEntityStatus(status) {
-		return nil, confirmCardOut{}, errors.New("status must be active, inactive, or draft")
+		return nil, confirmCardOut{}, errors.New("status must be active, inactive, draft, or rejected")
 	}
 	ids := parseEntityIDs(in.EntityIDs)
 	if len(ids) == 0 {

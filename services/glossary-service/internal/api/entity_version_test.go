@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -154,6 +155,36 @@ func TestPatchEntity_IfMatch(t *testing.T) {
 	w = f.patch(t, base, `{"status":"draft"}`, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("no If-Match: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// TestPatchEntity_StatusValidation exercises the PATCH single-entity handler's
+// status guard (entity_handler.go, consolidated onto validEntityStatus): the new
+// "rejected" value must be accepted and persisted, and a still-invalid value must
+// keep failing with the same 422/GLOSS_INVALID_STATUS shape as before.
+func TestPatchEntity_StatusValidation(t *testing.T) {
+	pool := openTestDB(t)
+	f := newVersionFixture(t, pool)
+	base := "/v1/glossary/books/" + f.bookID.String() + "/entities/" + f.entityID.String()
+
+	w := f.patch(t, base, `{"status":"rejected"}`, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("rejected: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	if statusOf(t, pool, f.entityID) != "rejected" {
+		t.Errorf("entity must be rejected, got %s", statusOf(t, pool, f.entityID))
+	}
+
+	w = f.patch(t, base, `{"status":"bogus"}`, "")
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("bad status: want 422, got %d (%s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &body) //nolint:errcheck
+	if body.Code != "GLOSS_INVALID_STATUS" {
+		t.Errorf("want GLOSS_INVALID_STATUS, got %q", body.Code)
 	}
 }
 

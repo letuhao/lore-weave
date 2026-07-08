@@ -52,7 +52,10 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGrant(w, r.Context(), bookUUID, userID, grantclient.GrantView) {
 		return
 	}
-	out, total, err := s.queryUnknownEntities(r.Context(), bookUUID)
+	// REST callers keep the pre-existing status-blind behavior unchanged — the
+	// default-to-"draft" narrowing (2026-07-08 MCP feedback) is scoped to the
+	// glossary_list_unknown_entities MCP tool, not this REST endpoint.
+	out, total, err := s.queryUnknownEntities(r.Context(), bookUUID, "all")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to query unknown entities")
 		return

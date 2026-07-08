@@ -18,6 +18,23 @@ import (
 
 // ── mint-side validation (no DB) ──────────────────────────────────────────────
 
+// validEntityStatus is the single source of truth reused by effectStatusChange,
+// toolProposeStatusChange, and (post-consolidation) both entity_handler.go PATCH
+// and bulk-status call sites. "rejected" is a 4th valid value added so the triage
+// workflow (glossary_list_ai_suggestions' "not yet user-rejected" inbox language)
+// has a real terminal status distinct from active/inactive/draft.
+func TestValidEntityStatus(t *testing.T) {
+	cases := map[string]bool{
+		"active": true, "inactive": true, "draft": true, "rejected": true,
+		"bogus": false, "": false, "Active": false, "REJECTED": false,
+	}
+	for s, want := range cases {
+		if got := validEntityStatus(s); got != want {
+			t.Errorf("validEntityStatus(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
+
 func TestPipelinePropose_InputGuards(t *testing.T) {
 	s := &Server{}
 	book := uuid.NewString()

@@ -976,11 +976,9 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid status")
 			return
 		}
-		switch status {
-		case "active", "inactive", "draft":
-		default:
+		if !validEntityStatus(status) {
 			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_STATUS",
-				"status must be active, inactive, or draft")
+				"status must be active, inactive, draft, or rejected")
 			return
 		}
 		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argN))
@@ -1164,7 +1162,7 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 
 // ── POST /v1/glossary/books/{book_id}/entities/bulk-status ───────────────────
 
-// bulkSetEntityStatus flips status (active|inactive|draft) for many entities in
+// bulkSetEntityStatus flips status (active|inactive|draft|rejected) for many entities in
 // one transaction-free UPDATE. Primary use: bulk-activate freshly-extracted draft
 // entities so they feed the translation glossary (the translation-glossary query
 // only returns status='active'). Book-scoped + edit-grant gated.
@@ -1194,11 +1192,9 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-	switch in.Status {
-	case "active", "inactive", "draft":
-	default:
+	if !validEntityStatus(in.Status) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_STATUS",
-			"status must be active, inactive, or draft")
+			"status must be active, inactive, draft, or rejected")
 		return
 	}
 	if len(in.EntityIDs) == 0 {
@@ -1357,21 +1353,33 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE glossary_entities
-	 SET deleted_at = now(), updated_at = now()
-	 WHERE entity_id = $1 AND book_id = $2 AND deleted_at IS NULL`,
-		entityID, bookID)
+	found, err := s.softDeleteEntityCore(r.Context(), bookID, entityID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return
 	}
-	if tag.RowsAffected() == 0 {
+	if !found {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// softDeleteEntityCore soft-deletes ONE entity (deleted_at=now()). The single
+// source of truth for the REST DELETE route above AND the glossary_entity_delete
+// Tier-W confirm effect (entity_delete_tools.go) — found=false means the entity
+// doesn't exist in this book, or is already deleted (idempotent no-op at the
+// caller's discretion).
+func (s *Server) softDeleteEntityCore(ctx context.Context, bookID, entityID uuid.UUID) (found bool, err error) {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE glossary_entities
+		 SET deleted_at = now(), updated_at = now()
+		 WHERE entity_id = $1 AND book_id = $2 AND deleted_at IS NULL`,
+		entityID, bookID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // ── POST /v1/glossary/books/{book_id}/entities/bulk-delete ───────────────────

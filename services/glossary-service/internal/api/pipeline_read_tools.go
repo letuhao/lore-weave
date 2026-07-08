@@ -14,6 +14,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -51,7 +52,11 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 		Name: "glossary_list_unknown_entities",
 		Description: "List a book's UNKNOWN-kind entities — the triage bucket of extracted entities whose " +
 			"kind couldn't be determined — with the source kind code the extractor guessed. Read before " +
-			"proposing a kind reassignment.",
+			"proposing a kind reassignment. status defaults to 'draft' (pending, not yet actioned) so the " +
+			"inbox actually drains as you triage; pass 'all' to see every status regardless of triage state.",
+		InputSchema: closedSetSchemaFor[bookOnlyToolIn](map[string][]any{
+			"status": {"draft", "active", "inactive", "rejected", "all"},
+		}),
 	}, s.toolListUnknownEntities)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -65,7 +70,12 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 		Name: "glossary_list_ai_suggestions",
 		Description: "List a book's AI-SUGGESTED entities awaiting review — drafts the extractor proposed " +
 			"(tagged 'ai-suggested', not yet user-rejected). The triage inbox. Read before proposing a status " +
-			"change (approve/reject) or a merge. Returns each entity's name, status, and tags.",
+			"change (approve/reject) or a merge. Returns each entity's name, status, and tags. status defaults " +
+			"to 'draft' (pending) so already-actioned (active/inactive/rejected) entities drop out of the " +
+			"inbox once triaged; pass 'all' to see every status regardless of triage state.",
+		InputSchema: closedSetSchemaFor[bookOnlyToolIn](map[string][]any{
+			"status": {"draft", "active", "inactive", "rejected", "all"},
+		}),
 	}, s.toolListAISuggestions)
 }
 
@@ -107,15 +117,41 @@ func (s *Server) queryEntityRevisions(ctx context.Context, entityID uuid.UUID) (
 	return items, rows.Err()
 }
 
+// resolveInboxStatusFilter normalizes a bookOnlyToolIn.Status argument shared by
+// glossary_list_unknown_entities / glossary_list_ai_suggestions: blank defaults to
+// "draft" (pending), "all" is passed through as the explicit no-filter sentinel, and
+// any other value must be a real entity status (validEntityStatus, pipeline_confirm.go
+// — the single source of truth, so this list can never drift from what
+// glossary_propose_status_change itself accepts).
+func resolveInboxStatusFilter(raw string) (string, error) {
+	status := strings.TrimSpace(raw)
+	if status == "" {
+		return "draft", nil
+	}
+	if status == "all" || validEntityStatus(status) {
+		return status, nil
+	}
+	return "", errors.New("status must be draft, active, inactive, rejected, or all")
+}
+
 // queryUnknownEntities is the auth-free core of listUnknownEntities. Returns the capped
 // item list + the TRUE total (the list is LIMIT-capped, so len(items) under-reports).
-func (s *Server) queryUnknownEntities(ctx context.Context, bookID uuid.UUID) ([]unknownEntityOut, int, error) {
+// status == "" or "all" applies no status filter (the pre-fix, status-blind behavior);
+// any other value (validated by the caller via validEntityStatus) restricts to exactly
+// that status, so an actioned entity drops out of the default ("draft") view.
+func (s *Server) queryUnknownEntities(ctx context.Context, bookID uuid.UUID, status string) ([]unknownEntityOut, int, error) {
+	args := []any{bookID}
+	statusFilter := ""
+	if status != "" && status != "all" {
+		statusFilter = " AND e.status = $2"
+		args = append(args, status)
+	}
 	var total int
 	if err := s.pool.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM glossary_entities e
 		JOIN book_kinds k ON k.book_kind_id = e.kind_id AND k.code = 'unknown'
-		WHERE e.book_id = $1 AND e.deleted_at IS NULL`, bookID).Scan(&total); err != nil {
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL`+statusFilter, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := s.pool.Query(ctx, `
@@ -130,9 +166,9 @@ func (s *Server) queryUnknownEntities(ctx context.Context, bookID uuid.UUID) ([]
 				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
 				ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1
 			)
-		WHERE e.book_id = $1 AND e.deleted_at IS NULL
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL`+statusFilter+`
 		ORDER BY e.created_at DESC
-		LIMIT 500`, bookID)
+		LIMIT 500`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -247,6 +283,14 @@ func (s *Server) toolListEntityRevisions(ctx context.Context, _ *mcp.CallToolReq
 
 type bookOnlyToolIn struct {
 	BookID string `json:"book_id" jsonschema:"the book (UUID)"`
+	// External MCP feedback (2026-07-08, "the inboxes never drain") — both list tools
+	// sharing this type used to return every entity regardless of status, so
+	// approving/rejecting a triage item never removed it from the NEXT call's
+	// results — there was no way to tell "what still needs my attention" from "I
+	// already handled this." Defaults to "draft" (the pending state extraction
+	// writes) so the inbox actually drains as items are actioned; "all" restores
+	// the old status-blind behavior for a caller that explicitly wants everything.
+	Status string `json:"status,omitempty" jsonschema:"draft (default, pending) | active | inactive | rejected | all — omit for the default; do not send an empty string"`
 }
 type unknownEntitiesOut struct {
 	Items []unknownEntityOut `json:"items"`
@@ -258,7 +302,11 @@ func (s *Server) toolListUnknownEntities(ctx context.Context, _ *mcp.CallToolReq
 	if err != nil {
 		return nil, unknownEntitiesOut{}, err
 	}
-	items, total, err := s.queryUnknownEntities(ctx, bookID)
+	status, err := resolveInboxStatusFilter(in.Status)
+	if err != nil {
+		return nil, unknownEntitiesOut{}, err
+	}
+	items, total, err := s.queryUnknownEntities(ctx, bookID, status)
 	if err != nil {
 		return nil, unknownEntitiesOut{}, errors.New("failed to load unknown entities")
 	}
@@ -310,16 +358,28 @@ type aiSuggestionsOut struct {
 
 // queryAISuggestions lists a book's pending AI-suggested entities (tagged 'ai-suggested',
 // NOT the 'ai-rejected' tombstone, live), newest-first, capped. Returns the capped list +
-// the TRUE total. Auth-free core; grant is the CALLER's concern.
-func (s *Server) queryAISuggestions(ctx context.Context, bookID uuid.UUID) ([]aiSuggestionItem, int, error) {
+// the TRUE total. Auth-free core; grant is the CALLER's concern. status == "" or "all"
+// applies no status filter (the pre-fix behavior — the tag check alone let an already
+// approved/rejected entity linger forever, since nothing in this codebase ever sets the
+// 'ai-rejected' tag); any other value restricts to exactly that status on top of the tag
+// filter (additive, not a replacement — an entity could theoretically be re-tagged
+// 'ai-rejected' by a future feature and this keeps honoring that too).
+func (s *Server) queryAISuggestions(ctx context.Context, bookID uuid.UUID, status string) ([]aiSuggestionItem, int, error) {
+	args := []any{bookID}
+	statusFilter := ""
+	if status != "" && status != "all" {
+		statusFilter = " AND e.status = $2"
+		args = append(args, status)
+	}
 	var total int
 	if err := s.pool.QueryRow(ctx, `
 		SELECT count(*) FROM glossary_entities e
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL
 		  AND e.tags @> ARRAY['ai-suggested']::text[]
-		  AND NOT (e.tags @> ARRAY['ai-rejected']::text[])`, bookID).Scan(&total); err != nil {
+		  AND NOT (e.tags @> ARRAY['ai-rejected']::text[])`+statusFilter, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+	limitArgs := append(append([]any{}, args...), pipelineReadCap)
 	rows, err := s.pool.Query(ctx, `
 		SELECT e.entity_id, COALESCE(nv.original_value, ''), k.code, e.status, e.tags, e.created_at::text
 		FROM glossary_entities e
@@ -335,9 +395,9 @@ func (s *Server) queryAISuggestions(ctx context.Context, bookID uuid.UUID) ([]ai
 			)
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL
 		  AND e.tags @> ARRAY['ai-suggested']::text[]
-		  AND NOT (e.tags @> ARRAY['ai-rejected']::text[])
+		  AND NOT (e.tags @> ARRAY['ai-rejected']::text[])`+statusFilter+`
 		ORDER BY e.created_at DESC
-		LIMIT $2`, bookID, pipelineReadCap)
+		LIMIT `+fmt.Sprintf("$%d", len(limitArgs)), limitArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -358,7 +418,11 @@ func (s *Server) toolListAISuggestions(ctx context.Context, _ *mcp.CallToolReque
 	if err != nil {
 		return nil, aiSuggestionsOut{}, err
 	}
-	items, total, err := s.queryAISuggestions(ctx, bookID)
+	status, err := resolveInboxStatusFilter(in.Status)
+	if err != nil {
+		return nil, aiSuggestionsOut{}, err
+	}
+	items, total, err := s.queryAISuggestions(ctx, bookID, status)
 	if err != nil {
 		return nil, aiSuggestionsOut{}, errors.New("failed to load AI suggestions")
 	}
