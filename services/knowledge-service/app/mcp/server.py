@@ -46,6 +46,8 @@ from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
+
+from loreweave_mcp import patch_convert_result
 from pydantic import Field, ValidationError
 
 from app.clients.book_client import get_book_client
@@ -101,6 +103,20 @@ from app.tools.graph_schema_tools import (
 logger = logging.getLogger(__name__)
 
 __all__ = ["mcp_server", "build_mcp_app"]
+
+# External MCP discoverability audit #9 — every structured tool result used
+# to duplicate its full payload into content[0].text (already-JSON-parsed
+# structuredContent sitting right next to a JSON-STRINGIFIED copy of the same
+# data). knowledge-service builds its own FastMCP instance directly (unlike
+# composition/jobs/translation/lore-enrichment-service, which go through the
+# shared `loreweave_mcp.make_stateless_fastmcp` chokepoint and get this for
+# free) — this service already ships `loreweave_mcp` as a dependency (it's
+# installed via `pip install /sdk` in the Dockerfile) even though it doesn't
+# use the rest of the kit, so this is a plain function import, not a new
+# dependency. See sdks/python/loreweave_mcp/compact_content.py for the fix
+# itself (a defensive FastMCP monkeypatch — never raises even if a future mcp
+# release changes the shape it targets).
+patch_convert_result()
 
 # Module-level FastMCP instance. build_mcp_app() converts it to an ASGI
 # app for mounting in main.py. stateless_http=True + path="/" so the

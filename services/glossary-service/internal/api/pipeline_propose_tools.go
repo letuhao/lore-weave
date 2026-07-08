@@ -17,12 +17,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // RegisterPipelineProposeTools adds the M2 class-C propose tools to the user/book MCP server.
 func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_status_change",
 		Description: "Propose a BATCH status change for entities (active | inactive | draft) — e.g. approve " +
 			"drafts or retire stale entities. book_id + status + entity_ids (UUIDs). Returns a confirm card; " +
@@ -32,7 +33,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 		}),
 	}, s.toolProposeStatusChange)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_restore_revision",
 		Description: "Propose restoring an entity to one of its prior revisions (see glossary_list_entity_revisions). " +
 			"book_id + entity_id + revision_id. DESTRUCTIVE: it prunes-then-restores the entity's attributes/" +
@@ -40,7 +41,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"Returns a confirm card; itself captured as a new revision, so it is reversible.",
 	}, s.toolProposeRestoreRevision)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_reassign_kind",
 		Description: "Propose moving an entity to a different kind (triage the unknown bucket — see " +
 			"glossary_list_unknown_entities). book_id + entity_id + kind_code (the target kind's code). " +
@@ -48,7 +49,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"card previews exactly which). Recoverable via revision restore. Returns a confirm card.",
 	}, s.toolProposeReassignKind)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_merge",
 		Description: "Propose merging duplicate entities (see glossary_list_merge_candidates). book_id + winner_id " +
 			"(kept) + loser_ids (merged away). DESTRUCTIVE: each loser is soft-deleted and its non-conflicting child " +

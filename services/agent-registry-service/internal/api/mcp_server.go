@@ -63,7 +63,7 @@ func (s *Server) mcpHandler() http.Handler {
 
 func registerARTool[In, Out any](srv *mcp.Server, t *mcp.Tool, h func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error)) {
 	lwmcp.MustValidateToolMeta(t)
-	mcp.AddTool(srv, t, h)
+	lwmcp.RegisterTool(srv, t, h)
 }
 
 func arCallerID(ctx context.Context) (uuid.UUID, error) {

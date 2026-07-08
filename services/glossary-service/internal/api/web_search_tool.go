@@ -21,6 +21,7 @@ import (
 	"errors"
 	"strings"
 
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -35,7 +36,7 @@ const (
 
 // RegisterWebSearchTool adds the general web-research tool to the MCP server.
 func (s *Server) RegisterWebSearchTool(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_web_search",
 		Description: "Search the WEB for free-form research — background on a book, author, " +
 			"setting, genre, or any topic — using your configured web-search provider. Use this " +

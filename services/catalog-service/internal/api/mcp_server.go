@@ -32,7 +32,7 @@ func addTool[In, Out any](
 ) {
 	tool := &mcp.Tool{Name: name, Description: description, Meta: meta}
 	lwmcp.MustValidateToolMeta(tool)
-	mcp.AddTool(srv, tool, handler)
+	lwmcp.RegisterTool(srv, tool, handler)
 }
 
 // newMCPServer builds the catalog-service MCP server (P5 OD-7 read tools).

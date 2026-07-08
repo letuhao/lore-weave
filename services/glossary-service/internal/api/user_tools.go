@@ -40,14 +40,14 @@ const (
 
 // RegisterUserTools adds every user-tier tool to the user/book MCP server.
 func (s *Server) RegisterUserTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_standards_read",
 		Description: "Read YOUR personal standards library — your user-tier genres and kinds (reusable " +
 			"across your books). Pass kind_code + genre_code to also list your attributes for that cell. " +
 			"These are private to you; other users never see them.",
 	}, s.toolUserStandardsRead)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_create",
 		Description: "Create a genre, kind, or attribute in YOUR personal standards library (additive, " +
 			"takes effect immediately). level=genre|kind|attribute + name (+ code, derived from name if " +
@@ -60,7 +60,7 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserCreate)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_patch",
 		Description: "Edit one of YOUR user-tier genre/kind/attributes in place. level + code identify the " +
 			"row (attribute also needs kind_code + genre_code). Pass the base_version you read from " +
@@ -72,7 +72,7 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserPatch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_delete",
 		Description: "Move one of YOUR user-tier genre/kind/attributes to the trash (soft-delete, REVERSIBLE " +
 			"via glossary_user_restore). level + code (attribute also needs kind_code + genre_code). A genre " +
@@ -82,7 +82,7 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolUserDelete)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_user_restore",
 		Description: "Restore one of YOUR user-tier genre/kind/attributes from the trash (undo a " +
 			"glossary_user_delete). level + code (attribute also needs kind_code + genre_code).",

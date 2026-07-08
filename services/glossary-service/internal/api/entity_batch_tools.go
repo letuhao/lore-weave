@@ -24,7 +24,7 @@ import (
 // RegisterEntityBatchTools adds glossary_propose_entities to the user/book /mcp
 // server. Registered separately (append-only convention, matches RegisterOntologyTools).
 func (s *Server) RegisterEntityBatchTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_entities",
 		Description: "Propose one or more NEW entities (character, place, item, concept, ...) for a " +
 			"book's glossary IN ONE CALL -- prefer this over calling glossary_propose_new_entity " +

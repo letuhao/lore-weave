@@ -30,6 +30,9 @@ What is **built fresh** (no existing instance):
 
 from __future__ import annotations
 
+from .compact_content import (
+    patch_convert_result,
+)
 from .confirm_token import (
     ConfirmClaims,
     ConfirmTokenError,
@@ -113,4 +116,6 @@ __all__ = [
     "assert_or_write_shape_snapshot",
     "build_shape_map",
     "repo_root_from",
+    # external MCP discoverability audit #9 — payload-duplication fix
+    "patch_convert_result",
 ]

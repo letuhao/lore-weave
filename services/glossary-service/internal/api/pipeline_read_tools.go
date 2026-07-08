@@ -19,12 +19,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // RegisterPipelineReadTools adds the M1 read tools to the user/book MCP server.
 func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_merge_candidates",
 		Description: "List a book's proposed entity MERGE candidates (duplicate clusters the system " +
 			"detected), ranked by score — each with its member entities, suggested winner, and rationale. " +
@@ -34,33 +35,33 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 		}),
 	}, s.toolListMergeCandidates)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_chapter_links",
 		Description: "List the chapters an entity is linked to (where it appears / is relevant), with " +
 			"relevance + notes. book_id + entity_id.",
 	}, s.toolListChapterLinks)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_entity_revisions",
 		Description: "List an entity's revision history (who changed what, when) newest-first. " +
 			"book_id + entity_id. Use to find a revision to restore.",
 	}, s.toolListEntityRevisions)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_unknown_entities",
 		Description: "List a book's UNKNOWN-kind entities — the triage bucket of extracted entities whose " +
 			"kind couldn't be determined — with the source kind code the extractor guessed. Read before " +
 			"proposing a kind reassignment.",
 	}, s.toolListUnknownEntities)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_get_entity_evidence",
 		Description: "Get the evidence excerpts (quotes / summaries / references) attached to an entity's " +
 			"attributes — what supports each value. book_id + entity_id. Read before judging or editing an " +
 			"attribute, or before adding evidence with glossary_create_evidence.",
 	}, s.toolGetEntityEvidence)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_ai_suggestions",
 		Description: "List a book's AI-SUGGESTED entities awaiting review — drafts the extractor proposed " +
 			"(tagged 'ai-suggested', not yet user-rejected). The triage inbox. Read before proposing a status " +

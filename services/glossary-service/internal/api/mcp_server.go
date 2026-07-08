@@ -25,7 +25,7 @@ import (
 func (s *Server) mcpHandler() http.Handler {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "glossary", Version: "0.1.0"}, nil)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_search",
 		Description: "Search a book's glossary for entities (characters, places, items, " +
 			"concepts) by name, alias, or natural-language terms. Returns ranked entities " +
@@ -33,7 +33,7 @@ func (s *Server) mcpHandler() http.Handler {
 			"glossary already knows before answering or proposing changes.",
 	}, s.toolSearch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_get_entity",
 		Description: "Fetch one glossary entity's full detail (attributes, aliases, kind, " +
 			"counts) by id, within a book. Use after glossary_search to read an entity in depth.",
@@ -42,7 +42,7 @@ func (s *Server) mcpHandler() http.Handler {
 	// F2 (§12.3): retarget of the old glossary_list_kinds → the "what CAN I adopt"
 	// standards-browse role. Use BEFORE adopting; for the in-book schema use
 	// glossary_book_ontology_read.
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_system_standards",
 		Description: "List the SYSTEM standards catalogue (entity kinds + their attribute " +
 			"definitions) — the templates a book can adopt. Use to learn what standards exist " +
@@ -80,7 +80,7 @@ func (s *Server) mcpHandler() http.Handler {
 	// KG-extraction pipeline minting many entities per pass).
 	s.RegisterEntityBatchTools(srv)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
 		Description: "Propose a NEW entity (character, place, item, concept, …) for a book's " +
 			"glossary. It is created as a DRAFT suggestion in the review inbox — NOT canon — and " +
@@ -99,7 +99,7 @@ func (s *Server) mcpHandler() http.Handler {
 	// /v1/glossary/actions/confirm (there is deliberately NO MCP tool that writes —
 	// INV-T1/INV-T3). After calling one, pass its confirm_token to the
 	// glossary_confirm_action frontend tool so the human can review and confirm.
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_kind",
 		Description: "Propose a NEW entity KIND (a schema-level type like 'Power System' that every " +
 			"entity of that kind is described by). PASS the kind's defining `attributes` in the SAME call " +
@@ -114,7 +114,7 @@ func (s *Server) mcpHandler() http.Handler {
 		}),
 	}, s.toolProposeNewKind)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_kinds",
 		Description: "Propose MANY entity kinds AT ONCE — the whole ontology in ONE confirm. PREFER this over " +
 			"calling glossary_propose_new_kind repeatedly: the user wants to create an ONTOLOGY, not one kind at a " +
@@ -128,7 +128,7 @@ func (s *Server) mcpHandler() http.Handler {
 		}),
 	}, s.toolProposeKinds)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_plan",
 		Description: "PLAN a multi-step ontology goal in ONE shot. Given a natural-language `goal` (e.g. " +
 			"'design an ontology for this xianxia novel'), a capable PLANNER model reads the book's current " +
@@ -140,7 +140,7 @@ func (s *Server) mcpHandler() http.Handler {
 			"nothing until confirmed.",
 	}, s.toolPlan)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_batch",
 		Description: "Apply MANY ontology changes on ONE confirm — the DETERMINISTIC batch path. Pass the " +
 			"operations EXPLICITLY in `ops` and they are validated + minted into a SINGLE execute_plan confirm " +
@@ -178,7 +178,7 @@ func (s *Server) mcpHandler() http.Handler {
 		),
 	}, s.toolProposeBatch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_attribute",
 		Description: "Propose a NEW attribute on an existing kind (e.g. add 'cultivation_realm' to the " +
 			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -22,7 +23,7 @@ import (
 
 // RegisterSyncTools adds the sync-tier tools to the user/book MCP server.
 func (s *Server) RegisterSyncTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_sync_available",
 		Description: "List the standard updates AVAILABLE for a book: for each genre/kind/attribute the " +
 			"book adopted from System or your user-tier standards, whether the source has since changed " +
@@ -30,7 +31,7 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"row's current (mine) vs upstream (theirs) values so you can recommend per-row choices.",
 	}, s.toolBookSyncAvailable)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_sync_apply",
 		Description: "Propose APPLYING a set of per-row sync choices to a book (take_theirs = overwrite the " +
 			"book row from its source; keep_mine = keep the book's value but stop prompting). High-impact: it " +

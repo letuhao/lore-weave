@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -24,14 +25,14 @@ import (
 
 // RegisterAdminTools adds every System-tier admin tool to the admin MCP server.
 func (s *Server) RegisterAdminTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_standards_read",
 		Description: "Read the SYSTEM standards catalogue you administer: system genres + kinds (and, with " +
 			"kind_code + genre_code, the attributes for that cell). These are the platform-wide defaults every " +
 			"book can adopt. Read before proposing any System change.",
 	}, s.toolAdminStandardsRead)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_propose_create",
 		Description: "Propose CREATING a System-tier genre, kind, or attribute (the shared platform defaults). " +
 			"High-impact and shared across ALL users — it does NOT write; it returns a confirm_token + preview " +
@@ -41,7 +42,7 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		}),
 	}, s.toolAdminProposeCreate)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_propose_patch",
 		Description: "Propose EDITING a System-tier genre/kind/attribute in place. level + code identify the row " +
 			"(attribute also needs kind_code + genre_code). Returns a confirm_token + preview a human admin confirms. " +
@@ -51,7 +52,7 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		}),
 	}, s.toolAdminProposePatch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_propose_delete",
 		Description: "Propose DELETING a System-tier genre/kind/attribute. level + code (attribute also needs " +
 			"kind_code + genre_code). High-impact, shared — returns a confirm_token + preview a human admin confirms. " +
@@ -60,7 +61,7 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[adminDeleteToolIn](map[string][]any{"level": enumLevels}),
 	}, s.toolAdminProposeDelete)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_admin_propose_restore",
 		Description: "Propose RESTORING a soft-deleted System-tier genre/kind/attribute from the recycle bin. " +
 			"level + code (attribute also needs kind_code + genre_code). Returns a confirm_token + preview a human " +

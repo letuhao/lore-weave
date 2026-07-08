@@ -32,7 +32,7 @@ import (
 // RegisterBookTools/RegisterUserTools (append-only convention) since both tools span
 // BOTH tiers via `scope`.
 func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_ontology_upsert",
 		Description: "Create or update book- or user-tier ontology rows (genre, kind, or " +
 			"attribute) — one call may mix creates and updates freely. Omit base_version on " +
@@ -44,7 +44,7 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 		}),
 	}, s.toolOntologyUpsert)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_ontology_delete",
 		Description: "Delete book- or user-tier ontology row(s). scope=book mints a confirm " +
 			"token — a human must approve before the delete executes; returns {confirm_token, " +

@@ -25,7 +25,7 @@ import (
 
 // RegisterBookTools adds every book-tier tool to the user/book MCP server.
 func (s *Server) RegisterBookTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_ontology_read",
 		Description: "Read a BOOK's local ontology: its adopted/native genres, kinds, attribute " +
 			"definitions, and kind↔genre links. This is what entities in the book are described by. " +
@@ -34,7 +34,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"concurrent-edit detection.",
 	}, s.toolBookOntologyRead)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_adopt_standards",
 		Description: "Propose ADOPTING System standards into a book — scaffolds the book's ontology by " +
 			"copying the picked genres/kinds (+ their attributes & links) down into the book tier. " +
@@ -43,7 +43,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"always included. Args are genre/kind CODES (see glossary_list_system_standards).",
 	}, s.toolAdoptStandards)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_create",
 		Description: "Create a book-native genre, kind, or attribute (additive, takes effect immediately). " +
 			"level=genre|kind|attribute + code + name (+ for attribute: kind_code & genre_code). Use " +
@@ -55,7 +55,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookCreate)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_patch",
 		Description: "Edit a book genre/kind/attribute in place. level + code identify the row; pass the " +
 			"row's `base_version` EXACTLY as returned by glossary_book_ontology_read (or by a prior " +
@@ -71,7 +71,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookPatch)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_delete",
 		Description: "Propose DELETING a book's genre, kind, or attribute (soft-delete with cascade). " +
 			"High-impact and destructive — it does NOT delete; it returns a confirm_token + a preview of " +
@@ -82,7 +82,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
 	}, s.toolBookDelete)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_revert",
 		Description: "Propose REVERTING a book genre/kind/attribute back to the System/User standard it was " +
 			"adopted from — discards the book's local edits to this row and re-pulls the parent's CURRENT values. " +
@@ -92,25 +92,25 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[bookRevertToolIn](map[string][]any{"level": enumLevels}),
 	}, s.toolBookRevert)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_set_active_genres",
 		Description: "Turn book genres on/off as active matrix columns by DELTA — `add` and/or `remove` " +
 			"lists of genre codes. (Delta, not replace, so you never silently drop a column you didn't mention.)",
 	}, s.toolBookSetActiveGenres)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_set_kind_genres",
 		Description: "Wire a kind's genre links (matrix row) by DELTA — kind_code + `add`/`remove` lists " +
 			"of genre codes. Adds or removes which genres' attributes apply to that kind.",
 	}, s.toolBookSetKindGenres)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_entity_get_genres",
 		Description: "Read one entity's genre override (which genres' attributes apply to it). Empty ⇒ the " +
 			"entity follows the book's active genres.",
 	}, s.toolEntityGetGenres)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_entity_set_genres",
 		Description: "Set one entity's genre override by CODE list (replaces the override; `universal` is " +
 			"always included; an empty list clears back to the book default). Every code must be a live book genre.",

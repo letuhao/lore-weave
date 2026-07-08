@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -28,7 +29,7 @@ const translateBatchCap = 200
 
 // RegisterPipelineTranslateTools adds the M4 entity-translation tool to the /mcp server.
 func (s *Server) RegisterPipelineTranslateTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_translation",
 		Description: "Propose target-language NAMES for a book's entities (additive, takes effect " +
 			"immediately as DRAFT for review; Edit). book_id + language_code (BCP-47, e.g. 'en' | 'vi') + " +
@@ -38,7 +39,7 @@ func (s *Server) RegisterPipelineTranslateTools(srv *mcp.Server) {
 			"glossary_search / glossary_list_* first to get entity_ids.",
 	}, s.toolProposeTranslation)
 
-	mcp.AddTool(srv, &mcp.Tool{
+	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_aliases",
 		Description: "Propose target-language ALIASES (alternate names) for a book's entities (additive, " +
 			"takes effect immediately as DRAFT for review; Edit). book_id + language_code (BCP-47, e.g. " +
