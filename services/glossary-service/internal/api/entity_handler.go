@@ -781,7 +781,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			ek.book_kind_id, ek.code, ek.name, ek.icon, ek.color,
 			%s AS display_name,
 			%s AS display_name_translation,
-			e.short_description, e.is_pinned_for_context,
+			e.short_description, e.scope_label, e.is_pinned_for_context,
 			(SELECT COUNT(*) FROM chapter_entity_links WHERE entity_id = e.entity_id) AS chapter_link_count,
 			(SELECT COUNT(*) FROM attribute_translations tr
 				JOIN entity_attribute_values eav2 ON eav2.attr_value_id = tr.attr_value_id
@@ -815,7 +815,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			&item.Kind.KindID, &item.Kind.Code, &item.Kind.Name, &item.Kind.Icon, &item.Kind.Color,
 			&item.DisplayName,
 			&item.DisplayNameTranslation,
-			&item.ShortDescription, &item.IsPinnedForContext,
+			&item.ShortDescription, &item.ScopeLabel, &item.IsPinnedForContext,
 			&item.ChapterLinkCount, &item.TranslationCount, &item.EvidenceCount,
 			&cachedName, &cachedAliases,
 		); err != nil {

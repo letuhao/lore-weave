@@ -36,6 +36,10 @@ type unknownEntityOut struct {
 	SourceKindCode *string `json:"source_kind_code"`
 	Status         string  `json:"status"`
 	CreatedAt      string  `json:"created_at"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE) surfaces an existing disambiguator so a
+	// triaging agent/human can tell two same-named unknowns apart before deciding
+	// whether one is a duplicate of the other or a genuinely distinct entity.
+	ScopeLabel string `json:"scope_label,omitempty"`
 }
 
 // listUnknownEntities handles GET /v1/glossary/books/{book_id}/unknown-entities

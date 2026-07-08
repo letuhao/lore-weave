@@ -729,7 +729,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// duplication (#39, where the per-chapter writeback_key changes and the per-kind
 		// resolver misses the prior run's entity).
 		if existingID == uuid.Nil {
-			crossID, crossKindID, cerr := s.findEntityCrossKind(ctx, tx, bookID, ent.Name)
+			crossID, crossKindID, cerr := s.findEntityCrossKind(ctx, tx, bookID, ent.Name, "")
 			if cerr != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "cross-kind entity lookup failed")
@@ -1400,16 +1400,25 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 // now — a cross-kind ALIAS collision is rarer and left as a follow-up. Safe under the
 // per-book extraction-writeback advisory lock (the loop is serialized per book), so a
 // cross-kind check-then-merge can't race another job into a duplicate.
-func (s *Server) findEntityCrossKind(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID, name string) (entityID, kindID uuid.UUID, err error) {
+//
+// scope (D-GLOSSARY-ENTITY-SCOPE) — same discipline as findEntityByNameOrAlias: the
+// bulk extraction pipeline has no scope concept of its own (a caller here always
+// passes ""), so this only matches an UNSCOPED entity. Without this filter, a
+// human who had already disambiguated two same-named entities across worlds via
+// scope_label could have a later extraction pass silently attach new attributes to
+// WHICHEVER one is oldest, regardless of which world the chapter actually belongs
+// to — worse than making a fresh unscoped draft, which is at least visibly wrong
+// rather than silently mis-merged.
+func (s *Server) findEntityCrossKind(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID, name, scope string) (entityID, kindID uuid.UUID, err error) {
 	normalized := normalizeEntity(name)
 	if normalized == "" {
 		return uuid.Nil, uuid.Nil, nil
 	}
 	err = q.QueryRow(ctx, `
 		SELECT entity_id, kind_id FROM glossary_entities
-		WHERE book_id = $1 AND normalized_name = $2 AND deleted_at IS NULL
+		WHERE book_id = $1 AND normalized_name = $2 AND scope_label = $3 AND deleted_at IS NULL
 		ORDER BY created_at, entity_id
-		LIMIT 1`, bookID, normalized).Scan(&entityID, &kindID)
+		LIMIT 1`, bookID, normalized, scope).Scan(&entityID, &kindID)
 	if err == pgx.ErrNoRows {
 		return uuid.Nil, uuid.Nil, nil
 	}

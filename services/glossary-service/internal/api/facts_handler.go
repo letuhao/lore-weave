@@ -480,7 +480,7 @@ func (s *Server) internalResolveEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing == uuid.Nil {
-		if cross, _, cerr := s.findEntityCrossKind(r.Context(), tx, bookID, body.Name); cerr == nil {
+		if cross, _, cerr := s.findEntityCrossKind(r.Context(), tx, bookID, body.Name, ""); cerr == nil {
 			existing = cross
 		}
 	}

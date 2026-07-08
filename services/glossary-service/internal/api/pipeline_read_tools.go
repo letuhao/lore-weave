@@ -155,7 +155,7 @@ func (s *Server) queryUnknownEntities(ctx context.Context, bookID uuid.UUID, sta
 		return nil, 0, err
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT e.entity_id, COALESCE(nv.original_value, ''), e.source_kind_code, e.status, e.created_at
+		SELECT e.entity_id, COALESCE(nv.original_value, ''), e.source_kind_code, e.status, e.created_at, e.scope_label
 		FROM glossary_entities e
 		JOIN book_kinds k ON k.book_kind_id = e.kind_id AND k.code = 'unknown'
 		LEFT JOIN entity_attribute_values nv
@@ -177,7 +177,7 @@ func (s *Server) queryUnknownEntities(ctx context.Context, bookID uuid.UUID, sta
 	for rows.Next() {
 		var e unknownEntityOut
 		var ts time.Time
-		if err := rows.Scan(&e.EntityID, &e.Name, &e.SourceKindCode, &e.Status, &ts); err != nil {
+		if err := rows.Scan(&e.EntityID, &e.Name, &e.SourceKindCode, &e.Status, &ts, &e.ScopeLabel); err != nil {
 			return nil, 0, err
 		}
 		e.CreatedAt = ts.Format(time.RFC3339)
@@ -350,6 +350,10 @@ type aiSuggestionItem struct {
 	Status    string   `json:"status"`
 	Tags      []string `json:"tags"`
 	CreatedAt string   `json:"created_at"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE) surfaces an existing disambiguator so a
+	// triaging agent/human can tell two same-named suggestions apart before
+	// approving/merging/rejecting.
+	ScopeLabel string `json:"scope_label,omitempty"`
 }
 type aiSuggestionsOut struct {
 	Items []aiSuggestionItem `json:"items"`
@@ -381,7 +385,7 @@ func (s *Server) queryAISuggestions(ctx context.Context, bookID uuid.UUID, statu
 	}
 	limitArgs := append(append([]any{}, args...), pipelineReadCap)
 	rows, err := s.pool.Query(ctx, `
-		SELECT e.entity_id, COALESCE(nv.original_value, ''), k.code, e.status, e.tags, e.created_at::text
+		SELECT e.entity_id, COALESCE(nv.original_value, ''), k.code, e.status, e.tags, e.created_at::text, e.scope_label
 		FROM glossary_entities e
 		JOIN book_kinds k ON k.book_kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values nv
@@ -405,7 +409,7 @@ func (s *Server) queryAISuggestions(ctx context.Context, bookID uuid.UUID, statu
 	items := []aiSuggestionItem{}
 	for rows.Next() {
 		var it aiSuggestionItem
-		if err := rows.Scan(&it.EntityID, &it.Name, &it.KindCode, &it.Status, &it.Tags, &it.CreatedAt); err != nil {
+		if err := rows.Scan(&it.EntityID, &it.Name, &it.KindCode, &it.Status, &it.Tags, &it.CreatedAt, &it.ScopeLabel); err != nil {
 			return nil, 0, err
 		}
 		items = append(items, it)
