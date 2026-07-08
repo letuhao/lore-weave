@@ -145,7 +145,12 @@ func (s *Server) proposeOneEntity(ctx context.Context, bookID uuid.UUID, kindMap
 		res.Status, res.Error = "error", "unknown kind: "+kind
 		return res
 	}
-	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, it.Attributes, strings.TrimSpace(it.ScopeLabel))
+	scopeLabel, err := validateScopeLabel(it.ScopeLabel)
+	if err != nil {
+		res.Status, res.Error = "error", err.Error()
+		return res
+	}
+	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, it.Attributes, scopeLabel)
 	if err != nil {
 		res.Status, res.Error = "error", "propose failed"
 		return res

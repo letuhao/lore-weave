@@ -164,4 +164,20 @@ describe('EntityEditorModal (Radix Dialog adoption)', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('an entity with this name, kind, and scope already exists in this book'));
     expect(props.onClose).not.toHaveBeenCalled();
   });
+
+  // /review-impl MED fix (2026-07-09): the field is now controlled and must revert
+  // to the entity's TRUE (unchanged) scope_label after a rejected edit — previously
+  // (uncontrolled, defaultValue) it kept showing the failed value as if it stuck.
+  it('reverts the displayed scope_label to the real value after a rejected edit', async () => {
+    const props = baseProps();
+    apiMocks.patchEntity.mockRejectedValue(new Error('an entity with this name, kind, and scope already exists in this book'));
+    render(<EntityEditorModal {...props} />);
+    await screen.findAllByText('Jiang Ziya');
+    const scopeInput = screen.getByLabelText('modal.scope_label.aria') as HTMLInputElement;
+    expect(scopeInput.value).toBe('');
+    fireEvent.change(scopeInput, { target: { value: 'World B' } });
+    fireEvent.blur(scopeInput);
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() => expect(scopeInput.value).toBe(''));
+  });
 });

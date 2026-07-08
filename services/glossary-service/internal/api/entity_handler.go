@@ -1062,8 +1062,18 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "scope_label must be a string")
 			return
 		}
+		// /review-impl MED fix (2026-07-09): same bound + message as every other
+		// scope_label write path (validateScopeLabel, entity_attribute_edit_tools.go)
+		// — an oversized value used to have no path-specific check, risking a raw
+		// Postgres "index row size exceeds maximum" error from the uq_entity_dedup
+		// btree entry instead of a clean 422.
+		validated, verr := validateScopeLabel(scope)
+		if verr != nil {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_SCOPE_LABEL", verr.Error())
+			return
+		}
 		setClauses = append(setClauses, fmt.Sprintf("scope_label = $%d", argN))
-		args = append(args, strings.TrimSpace(scope))
+		args = append(args, validated)
 		argN++
 	}
 

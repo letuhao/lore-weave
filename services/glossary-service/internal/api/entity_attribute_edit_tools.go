@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
@@ -25,6 +27,26 @@ import (
 // H5-style optimistic write here + the entity's own revision history are the safety
 // net, the same tier as entity creation itself -- a propose/confirm round trip adds no
 // real safety since the entity already exists and is fully revertible.
+
+// scopeLabelMaxLen bounds D-GLOSSARY-ENTITY-SCOPE's scope_label — a short
+// disambiguator (a world/realm name), never prose, so a much tighter cap than
+// short_description's 500 runes. /review-impl MED fix (2026-07-09): every
+// write path (this tool, proposeNewEntity, patchEntity) must enforce the SAME
+// bound with the SAME clear message, or an oversized value hits whichever path
+// lacks the check with a confusing raw-ish error (e.g. Postgres "index row size
+// exceeds maximum" from the uq_entity_dedup btree entry) instead of a one-line
+// validation rejection (IN-6).
+const scopeLabelMaxLen = 200
+
+// validateScopeLabel trims and length-checks a caller-supplied scope_label,
+// shared by every write path so the bound and message can't drift between them.
+func validateScopeLabel(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if utf8.RuneCountInString(trimmed) > scopeLabelMaxLen {
+		return "", fmt.Errorf("scope_label must be at most %d characters", scopeLabelMaxLen)
+	}
+	return trimmed, nil
+}
 
 // RegisterEntityAttributeEditTools adds glossary_entity_set_attributes to the
 // user/book /mcp server. Registered separately (append-only convention, matches
@@ -84,10 +106,22 @@ func (s *Server) toolSetEntityAttributes(ctx context.Context, _ *mcp.CallToolReq
 	if len(in.Attributes) == 0 && in.ScopeLabel == nil {
 		return nil, entitySetAttributesToolOut{}, errors.New("attributes or scope_label must be provided")
 	}
+	// /review-impl MED fix (2026-07-09): trim + length-validate here — this was the
+	// one write path (of four: this, proposeNewEntity, proposeOneEntity, patchEntity)
+	// that skipped normalization, so " World A" (edit) and "World A" (create) would
+	// have been silently treated as different scopes by the exact-match dedup index.
+	var scopeLabel *string
+	if in.ScopeLabel != nil {
+		validated, err := validateScopeLabel(*in.ScopeLabel)
+		if err != nil {
+			return nil, entitySetAttributesToolOut{}, err
+		}
+		scopeLabel = &validated
+	}
 	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
 		return nil, entitySetAttributesToolOut{}, uniformOwnershipError(err)
 	}
-	out, err := s.setEntityAttributes(ctx, bookID, entityID, userID, in.Attributes, in.ScopeLabel)
+	out, err := s.setEntityAttributes(ctx, bookID, entityID, userID, in.Attributes, scopeLabel)
 	return nil, out, err
 }
 

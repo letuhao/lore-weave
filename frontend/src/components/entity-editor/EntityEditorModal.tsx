@@ -40,6 +40,16 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   const { entity, loading, saving, isDirty, pendingChanges, getValue, discard } = glossaryEntity;
   const [activeTab, setActiveTab] = useState<EditorTab>(initialTab);
   const [translationLang, setTranslationLang] = useState('');
+  // /review-impl MED fix (2026-07-09): scope_label is now a CONTROLLED input, synced
+  // to the loaded entity (mount, entity switch, or post-save reload — a genuine
+  // synchronization case, not event-handling). Previously it was uncontrolled
+  // (defaultValue), so a REJECTED edit (e.g. a scope collision) left the input
+  // showing the failed value as if it had stuck, with no re-render to correct it
+  // until the whole modal remounted.
+  const [scopeLabelDraft, setScopeLabelDraft] = useState('');
+  useEffect(() => {
+    setScopeLabelDraft(entity?.scope_label ?? '');
+  }, [entity?.scope_label, entityId]);
 
   // 13_glossary_panels.md A2 — publish the live hook instance for the
   // `loreweave.glossary-entity.v1` JSON document provider (modal-scoped, mirrors
@@ -82,12 +92,18 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   // D-GLOSSARY-ENTITY-SCOPE — commits on blur (not per-keystroke); a no-op when
   // the value is unchanged. A colliding scope surfaces the backend's specific
   // GLOSS_DUPLICATE_NAME message via the toast, same posture as save()/setStatus.
+  // /review-impl MED fix (2026-07-09): on failure, revert the draft to the entity's
+  // actual (unchanged) scope_label — the input must never keep showing a value
+  // that was never actually persisted.
   const handleScopeLabelBlur = async (value: string) => {
     if (!entity || value === (entity.scope_label ?? '')) return;
     try {
       await glossaryEntity.setScopeLabel(value);
       onSaved();
-    } catch (e) { toast.error((e as Error).message); }
+    } catch (e) {
+      toast.error((e as Error).message);
+      setScopeLabelDraft(entity.scope_label ?? '');
+    }
   };
 
   const handleDiscard = () => discard();
@@ -227,11 +243,14 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
             <span className="inline-flex items-center gap-1">
               <MapPin className="h-3 w-3" />
               <input
-                key={entity.entity_id}
                 type="text"
-                defaultValue={entity.scope_label ?? ''}
+                value={scopeLabelDraft}
+                onChange={(e) => setScopeLabelDraft(e.target.value)}
                 placeholder={t('modal.scope_label.placeholder')}
                 aria-label={t('modal.scope_label.aria')}
+                // Mirrors the backend's scopeLabelMaxLen (entity_attribute_edit_tools.go) —
+                // /review-impl MED fix: this field had no length bound anywhere before.
+                maxLength={200}
                 onBlur={(e) => void handleScopeLabelBlur(e.target.value.trim())}
                 className="w-40 rounded border-none bg-transparent px-1 py-0.5 text-[11px] text-muted-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
               />

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -145,5 +146,75 @@ func TestProposeNewEntity_SkipsTombstoned(t *testing.T) {
 	}
 	if status != "skipped_tombstoned" || id != rejectedID {
 		t.Errorf("want skipped_tombstoned with the rejected id, got status=%q id=%v (rejected=%v)", status, id, rejectedID)
+	}
+}
+
+// D-GLOSSARY-ENTITY-SCOPE — /review-impl HIGH fix (2026-07-09): entity creation +
+// the scope_label set now share ONE transaction. Before the fix, createExtractedEntity
+// ran against s.pool directly (each internal statement auto-committing) and the
+// scope_label UPDATE was a separate, later s.pool.Exec — so a racer that lost a
+// concurrent-create collision could have its entity row commit with scope_label=''
+// (wrong) while reporting "error" and discarding the id (uuid.Nil), leaving a
+// permanent, unrecoverable, wrongly-scoped orphan.
+//
+// This test asserts the NARROW guarantee the transactional wrap actually provides:
+// every "Race Entity" row left behind after concurrent identical proposals is
+// EITHER absent OR carries the correctly-requested scope — never the wrong,
+// empty-scope orphan the bug produced. It deliberately does NOT assert a single
+// surviving row: the dedup check itself still runs outside this tx with no
+// per-book lock (a separate, pre-existing, documented gap — see the "NOT fixed
+// here" comment on proposeNewEntity — a first attempt at closing THAT race with
+// pg_advisory_xact_lock caused a real connection-pool deadlock under concurrent
+// test load and needs its own dedicated fix), so duplicates are still possible;
+// only a wrongly-EMPTY-scoped one would mean this fix regressed.
+func TestProposeNewEntity_ConcurrentRaceLeavesNoWronglyScopedOrphan(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+	book := uuid.New()
+	adoptTestBook(t, pool, book)
+	kindID := bookKindID(t, pool, book, "character")
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN (SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, book)
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, book)
+	})
+	s := &Server{pool: pool}
+
+	const n = 8
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_, _, _, _ = s.proposeNewEntity(ctx, book, kindID, "Race Entity", nil, "World A")
+		}()
+	}
+	wg.Wait()
+
+	rows, err := pool.Query(ctx, `
+		SELECT ge.scope_label
+		FROM glossary_entities ge
+		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ge.kind_id=$2 AND ba.code='name' AND eav.original_value='Race Entity'
+		  AND ge.deleted_at IS NULL`,
+		book, kindID)
+	if err != nil {
+		t.Fatalf("query result: %v", err)
+	}
+	defer rows.Close()
+	found := 0
+	for rows.Next() {
+		found++
+		var scope string
+		if err := rows.Scan(&scope); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if scope != "World A" {
+			t.Errorf("row %d: want scope_label=World A, got %q (an empty/wrong-scoped orphan survived the race)", found, scope)
+		}
+	}
+	if found == 0 {
+		t.Error("want at least one live entity after the race, got none")
 	}
 }

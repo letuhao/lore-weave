@@ -437,6 +437,10 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if strings.TrimSpace(in.Kind) == "" {
 		return nil, proposeEntityToolOut{}, errors.New("kind is required")
 	}
+	scopeLabel, err := validateScopeLabel(in.ScopeLabel)
+	if err != nil {
+		return nil, proposeEntityToolOut{}, err
+	}
 	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
 		return nil, proposeEntityToolOut{}, uniformOwnershipError(err)
 	}
@@ -448,7 +452,7 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if !ok {
 		return nil, proposeEntityToolOut{}, errors.New("unknown kind: " + in.Kind)
 	}
-	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes, strings.TrimSpace(in.ScopeLabel))
+	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes, scopeLabel)
 	if err != nil {
 		return nil, proposeEntityToolOut{}, errors.New("propose failed")
 	}
@@ -487,6 +491,41 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 		return uuid.Nil, "", nil, fmt.Errorf("attr defs: %w", err)
 	}
 	ent := extractedEntity{Name: name, Attributes: attrs}
+
+	// /review-impl HIGH fix (2026-07-09): entity creation + the scope_label set now
+	// share ONE transaction, opened HERE — right before the writes, after every
+	// s.pool read above has already finished — so this tx never holds a pool
+	// connection while ALSO needing a SEPARATE one for an unrelated read. (A first
+	// version opened the tx at the top of this function, before the dedup check;
+	// under concurrent test load every "winner" ended up holding its own tx's
+	// connection while blocking on a second s.pool.Query/loadAttrDefMap call for a
+	// FRESH connection — with MaxConns=3 and enough concurrent callers, all
+	// connections end up mutually waited-on and NOTHING ever completes. Confirmed
+	// by two live reproductions, each hanging the full 600s test timeout.)
+	//
+	// Previously createExtractedEntity ran against s.pool directly (each internal
+	// statement auto-committing) and the scope_label UPDATE was a separate, LATER
+	// s.pool.Exec — so a uq_entity_dedup collision on the UPDATE (name+kind+scope)
+	// left a REAL entity already committed with scope_label='' (not what was
+	// requested) while reporting "error" and discarding its id (uuid.Nil), an
+	// unrecoverable orphan. Wrapping both in one tx makes that failure roll back
+	// the whole creation: either the entity exists correctly-scoped, or it doesn't
+	// exist at all.
+	//
+	// NOT fixed here (deliberately out of scope, tracked as D-GLOSSARY-PROPOSE-LOCK):
+	// the dedup check above still runs with no per-book advisory lock — a genuine,
+	// PRE-EXISTING TOCTOU race (confirmed live: 8 truly concurrent identical
+	// proposals created 8 duplicate rows). This predates scope_label entirely (the
+	// same race exists for plain name-only dedup) and giving this interactive path
+	// the bulk extraction pipeline's own INV-C1 per-book lock is a real fix, but a
+	// larger, separate one needing its own careful connection-budget design (see
+	// the deadlock this session already hit trying it inline).
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, "", nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful Commit
+
 	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
 	// human can correct it when reviewing the draft in the inbox.
 	//
@@ -496,17 +535,22 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 	// captures them into "description" (D-GLOSSARY-UNMATCHED-ATTR-FALLBACK). Use
 	// createExtractedEntity's own returned skip list instead of duplicating
 	// (now-stale) logic about what it does with an unmatched code.
-	entityID, _, skippedAttrs, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
+	entityID, _, skippedAttrs, err := s.createExtractedEntity(ctx, tx, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("create draft: %w", err)
 	}
 	if scopeLabel != "" {
-		if _, err := s.pool.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`UPDATE glossary_entities SET scope_label = $1 WHERE entity_id = $2`,
 			scopeLabel, entityID,
 		); err != nil {
+			// entityID is real but never committed (the deferred Rollback above
+			// undoes the whole tx) — safe to discard here, unlike before this fix.
 			return uuid.Nil, "", nil, fmt.Errorf("set scope_label: %w", err)
 		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, "", nil, fmt.Errorf("commit: %w", err)
 	}
 	var skipped []string
 	for _, sa := range skippedAttrs {

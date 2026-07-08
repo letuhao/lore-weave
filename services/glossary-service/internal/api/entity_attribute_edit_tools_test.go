@@ -2,12 +2,37 @@ package api
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 )
 
 // ── non-DB: tool wrapper validation + ownership (always run) ──────────────────
+
+// /review-impl MED fix (2026-07-09): validateScopeLabel is the ONE shared trim +
+// length check every write path (this tool, proposeNewEntity, proposeOneEntity,
+// patchEntity) now routes through — previously only patchEntity trimmed, and
+// NONE of the four bounded length, risking whitespace-variant "different" scopes
+// and a raw-ish Postgres error on an oversized value instead of a clean rejection.
+func TestValidateScopeLabel(t *testing.T) {
+	trimmed, err := validateScopeLabel("  World A  ")
+	if err != nil || trimmed != "World A" {
+		t.Errorf("want trimmed %q, nil err; got %q, %v", "World A", trimmed, err)
+	}
+	empty, err := validateScopeLabel("   ")
+	if err != nil || empty != "" {
+		t.Errorf("want whitespace-only to trim to empty with no error; got %q, %v", empty, err)
+	}
+	oversized := strings.Repeat("a", scopeLabelMaxLen+1)
+	if _, err := validateScopeLabel(oversized); err == nil {
+		t.Error("want an error for a scope_label over the length cap")
+	}
+	atCap := strings.Repeat("a", scopeLabelMaxLen)
+	if _, err := validateScopeLabel(atCap); err != nil {
+		t.Errorf("want exactly-at-cap to be accepted, got %v", err)
+	}
+}
 
 func TestToolSetEntityAttributes_MissingIdentity(t *testing.T) {
 	s := &Server{}
@@ -33,6 +58,17 @@ func TestToolSetEntityAttributes_RejectsBadInput(t *testing.T) {
 		if _, _, err := s.toolSetEntityAttributes(ctxWithUser(u), nil, c.in); err == nil {
 			t.Errorf("%s: want validation error, got nil", c.name)
 		}
+	}
+}
+
+func TestToolSetEntityAttributes_RejectsOversizedScopeLabel(t *testing.T) {
+	s := &Server{}
+	oversized := strings.Repeat("a", scopeLabelMaxLen+1)
+	_, _, err := s.toolSetEntityAttributes(ctxWithUser(uuid.New()), nil, entitySetAttributesToolIn{
+		BookID: uuid.NewString(), EntityID: uuid.NewString(), ScopeLabel: &oversized,
+	})
+	if err == nil {
+		t.Fatal("want a validation error for an oversized scope_label")
 	}
 }
 
@@ -246,7 +282,11 @@ func TestSetEntityAttributes_ScopeLabelDedupCollisionRejected(t *testing.T) {
 	// Changing b's scope to match a's would collide on (book,kind,name,scope).
 	worldA := "World A"
 	_, err := s.setEntityAttributes(ctx, book, b, uuid.New(), nil, &worldA)
-	if err == nil {
-		t.Fatal("want a duplicate-collision error when scope_label change would collide with an existing entity")
+	// /review-impl LOW fix (2026-07-09): assert the SPECIFIC friendly message, not
+	// just "some error" — otherwise a regression in isUniqueViolation's detection
+	// (e.g. a pgx error-wrapping change) would silently fall through to the generic
+	// "set scope_label failed" branch and this test would still pass.
+	if err == nil || err.Error() != "an entity with this name, kind, and scope already exists in this book" {
+		t.Fatalf("want the specific duplicate-collision message, got %v", err)
 	}
 }
