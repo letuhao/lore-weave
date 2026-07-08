@@ -83,6 +83,10 @@ func (s *Server) mcpHandler() http.Handler {
 	// + glossary_entity_restore (Tier-A direct): the FE's Undo allowlist already
 	// carries these exact tool names (useActivityUndo.ts); this wires them up.
 	s.RegisterEntityDeleteTools(srv)
+	// Real-usage feedback finding (2026-07-08) — glossary_entity_set_attributes:
+	// entities were write-once for attribute values via MCP (creation only); no
+	// reachable editor existed for an already-existing entity.
+	s.RegisterEntityAttributeEditTools(srv)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
