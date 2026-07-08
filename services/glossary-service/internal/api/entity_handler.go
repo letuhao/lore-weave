@@ -111,6 +111,11 @@ type entityListItem struct {
 	Status                 string       `json:"status"`
 	Tags                   []string     `json:"tags"`
 	ShortDescription       *string      `json:"short_description"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE) — an optional author-set disambiguator
+	// (e.g. a world/realm name); "" when unset (the common case). Surfaced so an
+	// agent/human can see whether a name collision already carries a scope before
+	// deciding whether a NEW entity of the same name needs a different one.
+	ScopeLabel             string       `json:"scope_label,omitempty"`
 	IsPinnedForContext     bool         `json:"is_pinned_for_context"`
 	ChapterLinkCount       int          `json:"chapter_link_count"`
 	TranslationCount       int          `json:"translation_count"`
@@ -161,7 +166,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name,
-			e.short_description, e.is_pinned_for_context,
+			e.short_description, e.scope_label, e.is_pinned_for_context,
 			(SELECT COUNT(*) FROM chapter_entity_links WHERE entity_id = e.entity_id) AS chapter_link_count,
 			(SELECT COUNT(*) FROM attribute_translations tr
 				JOIN entity_attribute_values eav2 ON eav2.attr_value_id = tr.attr_value_id
@@ -177,7 +182,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 		&d.EntityID, &d.BookID, &d.KindID, &d.Status, &d.Tags, &d.CreatedAt, &d.UpdatedAt,
 		&d.Kind.KindID, &d.Kind.Code, &d.Kind.Name, &d.Kind.Icon, &d.Kind.Color,
 		&d.DisplayName,
-		&d.ShortDescription, &d.IsPinnedForContext,
+		&d.ShortDescription, &d.ScopeLabel, &d.IsPinnedForContext,
 		&d.ChapterLinkCount, &d.TranslationCount, &d.EvidenceCount,
 	)
 	if err == pgx.ErrNoRows {

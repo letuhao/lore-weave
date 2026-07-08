@@ -36,8 +36,11 @@ func (s *Server) RegisterEntityAttributeEditTools(srv *mcp.Server) {
 			"the counterpart to glossary_propose_entities, which only sets values at CREATION time and " +
 			"has no way to touch an entity afterward. Pass attr_code -> new value; a code not yet on " +
 			"the entity is added, an existing one is overwritten, and an empty string \"\" clears it. " +
-			"Call glossary_get_entity first to see the entity's current attribute codes/values, and " +
-			"glossary_book_ontology_read for the kind's valid attribute codes. Writes immediately " +
+			"Also renames the entity: \"name\" is just another attr_code. Optionally set scope_label " +
+			"(a free-text world/realm disambiguator for a name that legitimately recurs across " +
+			"different in-story contexts) -- can be passed alone with no attributes. Call " +
+			"glossary_get_entity first to see the entity's current attribute codes/values/scope_label, " +
+			"and glossary_book_ontology_read for the kind's valid attribute codes. Writes immediately " +
 			"(Tier-A, like entity creation) -- the entity's own revision history covers rollback.",
 		InputSchema: entityAttributeSetSchema(),
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
@@ -54,7 +57,10 @@ func entityAttributeSetSchema() *jsonschema.Schema {
 type entitySetAttributesToolIn struct {
 	BookID     string            `json:"book_id" jsonschema:"the book the entity belongs to (UUID)"`
 	EntityID   string            `json:"entity_id" jsonschema:"the entity to edit (UUID)"`
-	Attributes map[string]string `json:"attributes" jsonschema:"attr_code -> new value; empty string clears the value; a code not yet on the entity is added"`
+	Attributes map[string]string `json:"attributes,omitempty" jsonschema:"attr_code -> new value; empty string clears the value; a code not yet on the entity is added"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE, optional): omit to leave untouched; any
+	// value (including "") sets/clears it. Can be the ONLY thing this call changes.
+	ScopeLabel *string `json:"scope_label,omitempty" jsonschema:"optional: set/clear the entity's scope_label disambiguator (e.g. a world/realm name); omit to leave untouched"`
 }
 
 type entitySetAttributesToolOut struct {
@@ -75,21 +81,22 @@ func (s *Server) toolSetEntityAttributes(ctx context.Context, _ *mcp.CallToolReq
 	if err != nil {
 		return nil, entitySetAttributesToolOut{}, errors.New("entity_id must be a UUID")
 	}
-	if len(in.Attributes) == 0 {
-		return nil, entitySetAttributesToolOut{}, errors.New("attributes must have at least one entry")
+	if len(in.Attributes) == 0 && in.ScopeLabel == nil {
+		return nil, entitySetAttributesToolOut{}, errors.New("attributes or scope_label must be provided")
 	}
 	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
 		return nil, entitySetAttributesToolOut{}, uniformOwnershipError(err)
 	}
-	out, err := s.setEntityAttributes(ctx, bookID, entityID, userID, in.Attributes)
+	out, err := s.setEntityAttributes(ctx, bookID, entityID, userID, in.Attributes, in.ScopeLabel)
 	return nil, out, err
 }
 
 // setEntityAttributes is the core DB logic, split from the tool wrapper above so
 // tests can exercise it directly without a grant-client/book-service stub (mirrors
 // the proposeNewEntity/toolProposeNewEntity split in mcp_server.go). Caller must
-// have already verified book access.
-func (s *Server) setEntityAttributes(ctx context.Context, bookID, entityID, userID uuid.UUID, attrs map[string]string) (entitySetAttributesToolOut, error) {
+// have already verified book access. scopeLabel nil = leave untouched; non-nil
+// (including a pointer to "") sets/clears glossary_entities.scope_label.
+func (s *Server) setEntityAttributes(ctx context.Context, bookID, entityID, userID uuid.UUID, attrs map[string]string, scopeLabel *string) (entitySetAttributesToolOut, error) {
 	var kindID uuid.UUID
 	err := s.pool.QueryRow(ctx,
 		`SELECT kind_id FROM glossary_entities WHERE entity_id=$1 AND book_id=$2`,
@@ -158,8 +165,25 @@ func (s *Server) setEntityAttributes(ctx context.Context, bookID, entityID, user
 		out.Updated = append(out.Updated, trimmedCode)
 	}
 
-	if len(out.Updated) == 0 {
+	if len(out.Updated) == 0 && len(attrs) > 0 {
 		return entitySetAttributesToolOut{}, errors.New("no valid attribute codes for this entity's kind")
+	}
+
+	// D-GLOSSARY-ENTITY-SCOPE: scope_label lives directly on glossary_entities (an
+	// entity-level field, not an attribute) — nil means untouched, matching
+	// applyEntityEdit's tri-state convention for short_description. Changing it can
+	// itself collide with uq_entity_dedup(book_id, kind_id, normalized_name,
+	// scope_label) if another entity already holds this exact name+kind+scope.
+	if scopeLabel != nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE glossary_entities SET scope_label = $1 WHERE entity_id = $2`,
+			*scopeLabel, entityID,
+		); err != nil {
+			if isUniqueViolation(err) {
+				return entitySetAttributesToolOut{}, errors.New("an entity with this name, kind, and scope already exists in this book")
+			}
+			return entitySetAttributesToolOut{}, errors.New("set scope_label failed")
+		}
 	}
 
 	// One updated_at bump for the whole edit (parity with applyEntityEdit's single

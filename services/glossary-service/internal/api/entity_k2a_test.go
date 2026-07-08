@@ -121,6 +121,15 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpCanonicalSummary(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpCanonicalSummary: %v", err)
 	}
+	// 0051 — D-GLOSSARY-ENTITY-SCOPE: scope_label column + widened uq_entity_dedup.
+	// Safe to run here without 0044-0050 (bitemporal facts, unrelated K3-sensitive
+	// trigger changes) — this step only touches glossary_entities.scope_label and
+	// the uq_entity_dedup index already established by 0032 above. findEntityByNameOrAlias
+	// (extraction_handler.go) now unconditionally selects ge.scope_label, so every test
+	// reaching it through this shared helper needs the column present.
+	if err := migrate.UpEntityScopeLabel(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpEntityScopeLabel: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

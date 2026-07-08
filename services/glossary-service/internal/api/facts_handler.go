@@ -474,7 +474,7 @@ func (s *Server) internalResolveEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "book lock failed")
 		return
 	}
-	existing, err := s.findEntityByNameOrAlias(r.Context(), tx, bookID, kindID, body.Name)
+	existing, err := s.findEntityByNameOrAlias(r.Context(), tx, bookID, kindID, body.Name, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "resolve failed")
 		return

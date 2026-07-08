@@ -405,6 +405,11 @@ type proposeEntityToolIn struct {
 	Kind       string         `json:"kind" jsonschema:"the entity kind code (e.g. character, place) — see glossary_book_ontology_read"`
 	Name       string         `json:"name" jsonschema:"the entity's name"`
 	Attributes map[string]any `json:"attributes,omitempty" jsonschema:"optional attribute code → value map"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE, optional) disambiguates two entities that
+	// would otherwise share the same name+kind but are genuinely different (e.g. a
+	// world/realm name in a multi-world story) — a free-text label, not a reference
+	// to any other entity. Leave empty unless disambiguation is actually needed.
+	ScopeLabel string `json:"scope_label,omitempty" jsonschema:"optional free-text disambiguator (e.g. a world/realm name) for a name that legitimately recurs across different in-story contexts"`
 }
 type proposeEntityToolOut struct {
 	EntityID string `json:"entity_id"`
@@ -443,7 +448,7 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if !ok {
 		return nil, proposeEntityToolOut{}, errors.New("unknown kind: " + in.Kind)
 	}
-	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes)
+	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes, strings.TrimSpace(in.ScopeLabel))
 	if err != nil {
 		return nil, proposeEntityToolOut{}, errors.New("propose failed")
 	}
@@ -456,8 +461,13 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 // indistinguishable from a pipeline-discovered one (INV-1: draft never reaches
 // canon). The caller must have verified book ownership. Returns the entity id +
 // a status: created | skipped_exists | skipped_tombstoned.
-func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any) (uuid.UUID, string, []string, error) {
-	existingID, err := s.findEntityByNameOrAlias(ctx, s.pool, bookID, kindID, name)
+//
+// scopeLabel (D-GLOSSARY-ENTITY-SCOPE, optional) — a plain author-set disambiguator
+// (e.g. a world/realm name) so two entities that share a name+kind but are
+// genuinely different aren't folded together by the dedup check below. "" behaves
+// exactly as before (empty only matches another empty-scope entity).
+func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any, scopeLabel string) (uuid.UUID, string, []string, error) {
+	existingID, err := s.findEntityByNameOrAlias(ctx, s.pool, bookID, kindID, name, scopeLabel)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("entity lookup: %w", err)
 	}
@@ -489,6 +499,14 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 	entityID, _, skippedAttrs, err := s.createExtractedEntity(ctx, s.pool, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("create draft: %w", err)
+	}
+	if scopeLabel != "" {
+		if _, err := s.pool.Exec(ctx,
+			`UPDATE glossary_entities SET scope_label = $1 WHERE entity_id = $2`,
+			scopeLabel, entityID,
+		); err != nil {
+			return uuid.Nil, "", nil, fmt.Errorf("set scope_label: %w", err)
+		}
 	}
 	var skipped []string
 	for _, sa := range skippedAttrs {

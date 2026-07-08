@@ -129,6 +129,11 @@ var chain = []Step{
 	// (mirror of KG-TL M3 event_text_translations); the LLM runs in translation-service via
 	// provider-registry, glossary only stores + single-flights the fill. Spec §6B/§7.6.
 	{"0050_canonical_snapshot_translations", UpCanonicalSnapshotTranslations},
+	// D-GLOSSARY-ENTITY-SCOPE — optional author-set scope_label disambiguator +
+	// widened dedup key (book_id, kind_id, normalized_name, scope_label). Real
+	// feedback, 2026-07-08: two same-named entities in different "worlds" within
+	// one multi-world book were indistinguishable to the dedup/merge resolver.
+	{"0051_entity_scope_label", UpEntityScopeLabel},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

@@ -77,7 +77,7 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	// it's captured into the kind's "description" catch-all, so it's NOT reported
 	// as skipped anymore (skipped is now reserved for a genuine drop: no
 	// "description" attr_def on the kind, or INV-8 verified-clobber).
-	id, status, skipped, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", map[string]any{"no_such_attr": "x"})
+	id, status, skipped, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", map[string]any{"no_such_attr": "x"}, "")
 	if err != nil || status != "created" {
 		t.Fatalf("want created, got status=%q err=%v", status, err)
 	}
@@ -107,7 +107,7 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	}
 
 	// H9 dedup: a second propose of the same name does not create a duplicate.
-	id2, status2, _, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", nil)
+	id2, status2, _, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestProposeNewEntity_SkipsTombstoned(t *testing.T) {
 	})
 	s := &Server{pool: pool}
 
-	id, status, _, err := s.proposeNewEntity(ctx, book, kindID, "Rejected", nil)
+	id, status, _, err := s.proposeNewEntity(ctx, book, kindID, "Rejected", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

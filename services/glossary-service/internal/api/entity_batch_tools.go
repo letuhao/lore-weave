@@ -56,6 +56,11 @@ type proposeEntityItemIn struct {
 	Kind       string         `json:"kind" jsonschema:"REQUIRED: the entity kind code (e.g. character, place) -- see glossary_book_ontology_read"`
 	Name       string         `json:"name" jsonschema:"REQUIRED: the entity's name"`
 	Attributes map[string]any `json:"attributes,omitempty" jsonschema:"optional attribute code to value map"`
+	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE, optional) disambiguates two entities that
+	// would otherwise share the same name+kind but are genuinely different (e.g. a
+	// world/realm name in a multi-world story) -- a free-text label, not a reference
+	// to any other entity. Leave empty unless disambiguation is actually needed.
+	ScopeLabel string `json:"scope_label,omitempty" jsonschema:"optional free-text disambiguator (e.g. a world/realm name) for a name that legitimately recurs across different in-story contexts"`
 }
 
 type proposeEntitiesToolIn struct {
@@ -140,7 +145,7 @@ func (s *Server) proposeOneEntity(ctx context.Context, bookID uuid.UUID, kindMap
 		res.Status, res.Error = "error", "unknown kind: "+kind
 		return res
 	}
-	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, it.Attributes)
+	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, it.Attributes, strings.TrimSpace(it.ScopeLabel))
 	if err != nil {
 		res.Status, res.Error = "error", "propose failed"
 		return res

@@ -27,12 +27,26 @@ func TestToolSetEntityAttributes_RejectsBadInput(t *testing.T) {
 	}{
 		{"bad book_id", entitySetAttributesToolIn{BookID: "nope", EntityID: uuid.NewString(), Attributes: map[string]string{"name": "X"}}},
 		{"bad entity_id", entitySetAttributesToolIn{BookID: uuid.NewString(), EntityID: "nope", Attributes: map[string]string{"name": "X"}}},
-		{"empty attributes", entitySetAttributesToolIn{BookID: uuid.NewString(), EntityID: uuid.NewString(), Attributes: map[string]string{}}},
+		{"empty attributes and no scope_label", entitySetAttributesToolIn{BookID: uuid.NewString(), EntityID: uuid.NewString(), Attributes: map[string]string{}}},
 	}
 	for _, c := range cases {
 		if _, _, err := s.toolSetEntityAttributes(ctxWithUser(u), nil, c.in); err == nil {
 			t.Errorf("%s: want validation error, got nil", c.name)
 		}
+	}
+}
+
+func TestToolSetEntityAttributes_ScopeLabelAloneIsValid(t *testing.T) {
+	// A nonexistent book_id/entity_id still fails downstream (grant/lookup), but
+	// this confirms the wrapper's "must provide something" gate accepts a
+	// scope_label-only call (empty Attributes is fine when ScopeLabel is set).
+	s := &Server{}
+	scope := "Some World"
+	_, _, err := s.toolSetEntityAttributes(ctxWithUser(uuid.New()), nil, entitySetAttributesToolIn{
+		BookID: uuid.NewString(), EntityID: uuid.NewString(), ScopeLabel: &scope,
+	})
+	if err != nil && err.Error() == "attributes or scope_label must be provided" {
+		t.Fatalf("scope_label-only call must not fail the presence gate, got %v", err)
 	}
 }
 
@@ -66,7 +80,7 @@ func TestSetEntityAttributes_AddsEditsAndClears(t *testing.T) {
 	userID := uuid.New()
 
 	// 1. ADD a value for an attribute the entity has no row for at all yet.
-	out, err := s.setEntityAttributes(ctx, book, entityID, userID, map[string]string{"description": "A newly added description"})
+	out, err := s.setEntityAttributes(ctx, book, entityID, userID, map[string]string{"description": "A newly added description"}, nil)
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -80,7 +94,7 @@ func TestSetEntityAttributes_AddsEditsAndClears(t *testing.T) {
 	}
 
 	// 2. EDIT an attribute that already has a value.
-	_, err = s.setEntityAttributes(ctx, book, entityID, userID, map[string]string{"name": "Corrected Name"})
+	_, err = s.setEntityAttributes(ctx, book, entityID, userID, map[string]string{"name": "Corrected Name"}, nil)
 	if err != nil {
 		t.Fatalf("edit: %v", err)
 	}
@@ -95,7 +109,7 @@ func TestSetEntityAttributes_AddsEditsAndClears(t *testing.T) {
 	}
 
 	// 3. CLEAR via empty string.
-	_, err = s.setEntityAttributes(ctx, book, entityID, userID, map[string]string{"description": ""})
+	_, err = s.setEntityAttributes(ctx, book, entityID, userID, map[string]string{"description": ""}, nil)
 	if err != nil {
 		t.Fatalf("clear: %v", err)
 	}
@@ -105,7 +119,7 @@ func TestSetEntityAttributes_AddsEditsAndClears(t *testing.T) {
 	}
 
 	// 4. An unknown attr code for this kind is reported skipped, not an error.
-	out4, err := s.setEntityAttributes(ctx, book, entityID, userID, map[string]string{"name": "Still Valid", "no_such_code": "x"})
+	out4, err := s.setEntityAttributes(ctx, book, entityID, userID, map[string]string{"name": "Still Valid", "no_such_code": "x"}, nil)
 	if err != nil {
 		t.Fatalf("mixed valid/invalid: %v", err)
 	}
@@ -128,7 +142,7 @@ func TestSetEntityAttributes_EntityNotFound(t *testing.T) {
 	})
 	s := &Server{pool: pool}
 
-	_, err := s.setEntityAttributes(ctx, book, uuid.New(), uuid.New(), map[string]string{"name": "X"})
+	_, err := s.setEntityAttributes(ctx, book, uuid.New(), uuid.New(), map[string]string{"name": "X"}, nil)
 	if err == nil {
 		t.Fatal("want not-found error for a nonexistent entity_id")
 	}
@@ -151,8 +165,88 @@ func TestSetEntityAttributes_AllCodesUnknown(t *testing.T) {
 		book, kindID).Scan(&entityID)
 	s := &Server{pool: pool}
 
-	_, err := s.setEntityAttributes(ctx, book, entityID, uuid.New(), map[string]string{"no_such_code": "x"})
+	_, err := s.setEntityAttributes(ctx, book, entityID, uuid.New(), map[string]string{"no_such_code": "x"}, nil)
 	if err == nil {
 		t.Fatal("want an error when every attr code is unknown for the kind")
+	}
+}
+
+// ── D-GLOSSARY-ENTITY-SCOPE: scope_label set/clear + dedup interaction ──────────
+
+func TestSetEntityAttributes_SetsScopeLabelAlone(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+	book := uuid.New()
+	adoptTestBook(t, pool, book)
+	kindID := bookKindID(t, pool, book, "character")
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, book)
+	})
+	var entityID uuid.UUID
+	pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'draft','{}') RETURNING entity_id`,
+		book, kindID).Scan(&entityID)
+	s := &Server{pool: pool}
+
+	scope := "Linh Quy Tinh He"
+	_, err := s.setEntityAttributes(ctx, book, entityID, uuid.New(), nil, &scope)
+	if err != nil {
+		t.Fatalf("scope-only call: %v", err)
+	}
+	var got string
+	pool.QueryRow(ctx, `SELECT scope_label FROM glossary_entities WHERE entity_id=$1`, entityID).Scan(&got)
+	if got != scope {
+		t.Errorf("want scope_label=%q, got %q", scope, got)
+	}
+
+	// Clear it back to empty.
+	empty := ""
+	_, err = s.setEntityAttributes(ctx, book, entityID, uuid.New(), nil, &empty)
+	if err != nil {
+		t.Fatalf("clear scope: %v", err)
+	}
+	pool.QueryRow(ctx, `SELECT scope_label FROM glossary_entities WHERE entity_id=$1`, entityID).Scan(&got)
+	if got != "" {
+		t.Errorf("want cleared scope_label, got %q", got)
+	}
+}
+
+func TestSetEntityAttributes_ScopeLabelDedupCollisionRejected(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+	book := uuid.New()
+	adoptTestBook(t, pool, book)
+	kindID := bookKindID(t, pool, book, "character")
+	nameAttrID := bookAttrID(t, pool, book, kindID, "name")
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN (SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, book)
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, book)
+	})
+
+	// Two entities, SAME name+kind, already disambiguated by DIFFERENT scope_label.
+	var a, b uuid.UUID
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags,scope_label) VALUES($1,$2,'draft','{}','World A') RETURNING entity_id`, book, kindID).Scan(&a)
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags,scope_label) VALUES($1,$2,'draft','{}','World B') RETURNING entity_id`, book, kindID).Scan(&b)
+	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','Lam Gia')`, a, nameAttrID)
+	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','Lam Gia')`, b, nameAttrID)
+	pool.Exec(ctx, `SELECT recalculate_entity_snapshot($1)`, a)
+	pool.Exec(ctx, `SELECT recalculate_entity_snapshot($1)`, b)
+	// normalized_name is APP-maintained (D-GLOSSARY-ST-DEDUP), not trigger-derived —
+	// the partial unique index excludes rows where it's still '' (the DEFAULT).
+	if err := refreshEntityDedupKey(ctx, pool, a); err != nil {
+		t.Fatalf("refresh dedup key a: %v", err)
+	}
+	if err := refreshEntityDedupKey(ctx, pool, b); err != nil {
+		t.Fatalf("refresh dedup key b: %v", err)
+	}
+
+	s := &Server{pool: pool}
+	// Changing b's scope to match a's would collide on (book,kind,name,scope).
+	worldA := "World A"
+	_, err := s.setEntityAttributes(ctx, book, b, uuid.New(), nil, &worldA)
+	if err == nil {
+		t.Fatal("want a duplicate-collision error when scope_label change would collide with an existing entity")
 	}
 }

@@ -708,7 +708,10 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 1. Find existing entity by normalized name or alias match (same kind).
-		existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, ent.Name)
+		// "" scope: the bulk extraction pipeline has no scope concept yet (out of
+		// scope for this pass — D-GLOSSARY-ENTITY-SCOPE only covers the interactive
+		// MCP creation path); this preserves its exact prior dedup behavior.
+		existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, ent.Name, "")
 		if err != nil {
 			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
@@ -1256,12 +1259,21 @@ func strategyToAction(strategy string) string {
 // merged-away loser is soft-deleted with its name/aliases folded into the WINNER, so an
 // incoming name must resolve to the live winner (whose folded alias matches), never to the
 // hidden loser. (/review-impl S6 #1 — Steps 1-2 previously omitted this; Step 3 inherited.)
-func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
+// scope is an OPTIONAL disambiguation filter (glossary_entities.scope_label —
+// a plain author-set text label, e.g. a world/realm name, added 2026-07-08 per
+// real feedback: two entities can share a name+kind but genuinely be different
+// "Lâm gia" in different worlds — the resolver used to always fold them
+// together). Empty scope matches only entities whose OWN scope_label is also
+// empty (today's default, unchanged behavior for every caller that doesn't
+// pass one); a non-empty scope matches only entities carrying that EXACT
+// label. This is an additional filter, not a relaxation — normalized name/alias
+// still must match first.
+func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bookID, kindID uuid.UUID, name, scope string) (uuid.UUID, error) {
 	normalizedName := normalizeEntity(name)
 
 	// Step 1: Try exact name match (normalized)
 	rows, err := q.Query(ctx, `
-		SELECT ge.entity_id, eav.original_value
+		SELECT ge.entity_id, eav.original_value, ge.scope_label
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
@@ -1278,14 +1290,15 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 	type nameEntry struct {
 		entityID uuid.UUID
 		name     string
+		scope    string
 	}
 	var entries []nameEntry
 	for rows.Next() {
 		var e nameEntry
-		if err := rows.Scan(&e.entityID, &e.name); err != nil {
+		if err := rows.Scan(&e.entityID, &e.name, &e.scope); err != nil {
 			return uuid.Nil, err
 		}
-		if normalizeEntity(e.name) == normalizedName {
+		if normalizeEntity(e.name) == normalizedName && e.scope == scope {
 			return e.entityID, nil
 		}
 		entries = append(entries, e)
@@ -1293,7 +1306,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 
 	// Step 2: Check aliases (app-layer JSON parsing per design C1)
 	aliasRows, err := q.Query(ctx, `
-		SELECT ge.entity_id, eav.original_value
+		SELECT ge.entity_id, eav.original_value, ge.scope_label
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
@@ -1310,9 +1323,12 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 
 	for aliasRows.Next() {
 		var entityID uuid.UUID
-		var aliasRaw string
-		if err := aliasRows.Scan(&entityID, &aliasRaw); err != nil {
+		var aliasRaw, entScope string
+		if err := aliasRows.Scan(&entityID, &aliasRaw, &entScope); err != nil {
 			return uuid.Nil, err
+		}
+		if entScope != scope {
+			continue
 		}
 		var aliases []string
 		if err := json.Unmarshal([]byte(aliasRaw), &aliases); err != nil {
@@ -1331,7 +1347,7 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 	// source-language name/aliases don't match (anti-resurrection across languages). Same
 	// book+kind scope as Steps 1-2.
 	tRows, err := q.Query(ctx, `
-		SELECT ge.entity_id, t.value
+		SELECT ge.entity_id, t.value, ge.scope_label
 		FROM glossary_entities ge
 		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
@@ -1349,9 +1365,12 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 
 	for tRows.Next() {
 		var entityID uuid.UUID
-		var aliasRaw string
-		if err := tRows.Scan(&entityID, &aliasRaw); err != nil {
+		var aliasRaw, entScope string
+		if err := tRows.Scan(&entityID, &aliasRaw, &entScope); err != nil {
 			return uuid.Nil, err
+		}
+		if entScope != scope {
+			continue
 		}
 		var aliases []string
 		if err := json.Unmarshal([]byte(aliasRaw), &aliases); err != nil {
