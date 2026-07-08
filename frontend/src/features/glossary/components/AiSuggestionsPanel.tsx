@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Sparkles, Check, X } from 'lucide-react';
+import { ArrowLeft, Sparkles, Check, X, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import type { GlossaryEntitySummary } from '../types';
 import { useAiSuggestions } from '../hooks/useAiSuggestions';
@@ -79,6 +79,12 @@ export function AiSuggestionsPanel({ bookId, onClose }: Props) {
                   <div className="truncate text-sm font-medium">{e.display_name || t('ai_suggestions.unnamed')}</div>
                   <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
                     <span className="rounded bg-secondary px-1.5 py-0.5">{e.kind?.name ?? e.kind?.code}</span>
+                    {e.scope_label && (
+                      <span className="inline-flex items-center gap-0.5 rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-400">
+                        <MapPin className="h-2.5 w-2.5" />
+                        {e.scope_label}
+                      </span>
+                    )}
                     <span>{t('ai_suggestions.mentions', { count: e.chapter_link_count })}</span>
                   </div>
                 </div>

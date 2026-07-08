@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2, History } from 'lucide-react';
+import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2, History, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGlossaryEntity } from '@/features/glossary/hooks/useGlossaryEntity';
 import { _setGlossaryEntityBinding, registerGlossaryEntityDocumentProvider } from '@/features/glossary/documents/entityDocument';
@@ -75,6 +75,17 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
     try {
       await glossaryEntity.setStatus(status);
       toast.success(t('modal.toast.status_changed', { status }));
+      onSaved();
+    } catch (e) { toast.error((e as Error).message); }
+  };
+
+  // D-GLOSSARY-ENTITY-SCOPE — commits on blur (not per-keystroke); a no-op when
+  // the value is unchanged. A colliding scope surfaces the backend's specific
+  // GLOSS_DUPLICATE_NAME message via the toast, same posture as save()/setStatus.
+  const handleScopeLabelBlur = async (value: string) => {
+    if (!entity || value === (entity.scope_label ?? '')) return;
+    try {
+      await glossaryEntity.setScopeLabel(value);
       onSaved();
     } catch (e) { toast.error((e as Error).message); }
   };
@@ -213,6 +224,18 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
             <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" />{t('modal.meta.chapters', { count: entity.chapter_link_count })}</span>
             <span className="inline-flex items-center gap-1"><Languages className="h-3 w-3" />{t('modal.meta.translations', { count: entity.translation_count })}</span>
             <button type="button" onClick={() => setActiveTab('evidences')} className="inline-flex items-center gap-1 hover:text-primary transition-colors"><FileText className="h-3 w-3" />{t('modal.meta.evidences', { count: entity.evidence_count })}</button>
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              <input
+                key={entity.entity_id}
+                type="text"
+                defaultValue={entity.scope_label ?? ''}
+                placeholder={t('modal.scope_label.placeholder')}
+                aria-label={t('modal.scope_label.aria')}
+                onBlur={(e) => void handleScopeLabelBlur(e.target.value.trim())}
+                className="w-40 rounded border-none bg-transparent px-1 py-0.5 text-[11px] text-muted-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+            </span>
             {entity.tags.length > 0 && (
               <>
                 <span className="flex-1" />

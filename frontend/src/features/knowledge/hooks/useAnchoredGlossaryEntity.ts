@@ -19,6 +19,7 @@ export function useAnchoredGlossaryEntity(
   });
   return {
     shortDescription: query.data?.short_description ?? null,
+    scopeLabel: query.data?.scope_label ?? null,
     isLoading: enabled && query.isLoading,
   };
 }

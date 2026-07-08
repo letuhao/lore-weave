@@ -72,6 +72,16 @@ export function useGlossaryEntity(bookId: string, entityId: string) {
     await reload();
   };
 
+  // D-GLOSSARY-ENTITY-SCOPE — an optional author-set disambiguator (e.g. a
+  // world/realm name) for a name that legitimately recurs across different
+  // in-story contexts. A colliding value throws (GLOSS_DUPLICATE_NAME, 409);
+  // the caller decides how to surface it (mirrors save/setStatus above).
+  const setScopeLabel = async (scopeLabel: string) => {
+    if (!accessToken || !entity) return;
+    await glossaryApi.patchEntity(bookId, entityId, { scope_label: scopeLabel }, accessToken);
+    await reload();
+  };
+
   // Pure local merge — the actual translation write already happened inside
   // AttrTranslationRow; this just folds the result into the shared entity snapshot.
   const applyTranslationChange = useCallback(
@@ -119,6 +129,7 @@ export function useGlossaryEntity(bookId: string, entityId: string) {
     discard,
     save,
     setStatus,
+    setScopeLabel,
     reload,
     applyTranslationChange,
     bumpEvidenceCount,

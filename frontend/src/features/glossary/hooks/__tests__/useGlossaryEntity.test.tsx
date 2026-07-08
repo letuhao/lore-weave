@@ -135,6 +135,19 @@ describe('useGlossaryEntity', () => {
     expect(apiMocks.getEntity).toHaveBeenCalledTimes(2);
   });
 
+  it('setScopeLabel patches the entity and reloads', async () => {
+    const result = await mountHook();
+    await act(async () => { await result.current.setScopeLabel('World A'); });
+    expect(apiMocks.patchEntity).toHaveBeenCalledWith(BOOK, ENTITY_ID, { scope_label: 'World A' }, 'tok');
+    expect(apiMocks.getEntity).toHaveBeenCalledTimes(2);
+  });
+
+  it('setScopeLabel propagates a collision failure to the caller', async () => {
+    const result = await mountHook();
+    apiMocks.patchEntity.mockRejectedValue(new Error('an entity with this name, kind, and scope already exists in this book'));
+    await expect(act(async () => { await result.current.setScopeLabel('World A'); })).rejects.toThrow('already exists');
+  });
+
   it('reload swallows its own fetch error and toasts instead of throwing', async () => {
     const result = await mountHook();
     apiMocks.getEntity.mockRejectedValueOnce(new Error('network down'));

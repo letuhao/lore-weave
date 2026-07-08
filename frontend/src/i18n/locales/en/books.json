@@ -229,6 +229,7 @@
       "description": "Create your first glossary entity — characters, places, items, and more."
     },
     "untitled": "Untitled",
+    "scope_label_title": "Scope — disambiguates this entity from others sharing the same name",
     "alive_title": "Alive — click to mark dead",
     "dead_title": "Dead — click to revive",
     "alive": "alive",

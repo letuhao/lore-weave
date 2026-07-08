@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, HelpCircle, Wand2 } from 'lucide-react';
+import { ArrowLeft, HelpCircle, MapPin, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { EntityKind, UnknownEntity } from '../types';
 import { useUnknownReview } from '../hooks/useUnknownReview';
@@ -93,6 +93,12 @@ export function UnknownEntitiesPanel({ bookId, kinds, onClose }: Props) {
                       <span className="italic">{t('unknown.no_source_code')}</span>
                     )}
                     <span className="rounded bg-secondary px-1.5 py-0.5">{t(`unknown.status_${e.status}`)}</span>
+                    {e.scope_label && (
+                      <span className="inline-flex items-center gap-0.5 rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-400">
+                        <MapPin className="h-2.5 w-2.5" />
+                        {e.scope_label}
+                      </span>
+                    )}
                     <span>{new Date(e.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>

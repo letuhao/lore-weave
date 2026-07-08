@@ -188,6 +188,71 @@ func TestPatchEntity_StatusValidation(t *testing.T) {
 	}
 }
 
+// D-GLOSSARY-ENTITY-SCOPE — the manual-edit REST PATCH path (EntityEditorModal's
+// only write path today) can set/clear scope_label, and a change that would
+// collide with another entity's (name, kind, scope_label) is rejected with a
+// specific, user-actionable code rather than a raw 500.
+func TestPatchEntity_ScopeLabel(t *testing.T) {
+	pool := openTestDB(t)
+	f := newVersionFixture(t, pool)
+	base := "/v1/glossary/books/" + f.bookID.String() + "/entities/" + f.entityID.String()
+	ctx := context.Background()
+
+	w := f.patch(t, base, `{"scope_label":"World A"}`, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("set scope_label: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var got string
+	pool.QueryRow(ctx, `SELECT scope_label FROM glossary_entities WHERE entity_id=$1`, f.entityID).Scan(&got)
+	if got != "World A" {
+		t.Errorf("want scope_label=World A, got %q", got)
+	}
+	var resp struct {
+		ScopeLabel string `json:"scope_label"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp) //nolint:errcheck
+	if resp.ScopeLabel != "World A" {
+		t.Errorf("PATCH response must echo scope_label, got %q", resp.ScopeLabel)
+	}
+
+	w = f.patch(t, base, `{"scope_label":""}`, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("clear scope_label: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	pool.QueryRow(ctx, `SELECT scope_label FROM glossary_entities WHERE entity_id=$1`, f.entityID).Scan(&got)
+	if got != "" {
+		t.Errorf("want cleared scope_label, got %q", got)
+	}
+
+	// Seed a second, same-name-same-kind entity already scoped to "World B", then
+	// try to collide f's entity onto it.
+	var kindID uuid.UUID
+	pool.QueryRow(ctx, `SELECT kind_id FROM glossary_entities WHERE entity_id=$1`, f.entityID).Scan(&kindID)
+	nameAttrDef := bookAttrID(t, pool, f.bookID, kindID, "name")
+	var other uuid.UUID
+	pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags,scope_label) VALUES($1,$2,'active','{}','World B') RETURNING entity_id`,
+		f.bookID, kindID).Scan(&other)
+	pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'en','Nezha')`, other, nameAttrDef)
+	if err := refreshEntityDedupKey(ctx, pool, f.entityID); err != nil {
+		t.Fatalf("refresh dedup key f: %v", err)
+	}
+	if err := refreshEntityDedupKey(ctx, pool, other); err != nil {
+		t.Fatalf("refresh dedup key other: %v", err)
+	}
+
+	w = f.patch(t, base, `{"scope_label":"World B"}`, "")
+	if w.Code != http.StatusConflict {
+		t.Fatalf("colliding scope_label: want 409, got %d (%s)", w.Code, w.Body.String())
+	}
+	var conflictBody struct {
+		Code string `json:"code"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &conflictBody) //nolint:errcheck
+	if conflictBody.Code != "GLOSS_DUPLICATE_NAME" {
+		t.Errorf("want GLOSS_DUPLICATE_NAME, got %q", conflictBody.Code)
+	}
+}
+
 func TestPatchAttributeValue_IfMatch(t *testing.T) {
 	pool := openTestDB(t)
 	f := newVersionFixture(t, pool)

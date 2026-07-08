@@ -196,7 +196,7 @@ export function EntityDetailPanel({
   });
   // #11 — KG entities carry no description of their own; when anchored to a
   // glossary entity, surface that entity's authored short description here.
-  const { shortDescription } = useAnchoredGlossaryEntity(
+  const { shortDescription, scopeLabel } = useAnchoredGlossaryEntity(
     bookId ?? null,
     detail?.entity.glossary_entity_id,
   );
@@ -391,6 +391,14 @@ export function EntityDetailPanel({
                     <dd className="tabular-nums">
                       {detail.entity.anchor_score?.toFixed(2) ?? '0.00'}
                     </dd>
+                    {scopeLabel && (
+                      <>
+                        <dt className="text-muted-foreground">
+                          {t('entities.detail.field.scope')}
+                        </dt>
+                        <dd className="truncate">{scopeLabel}</dd>
+                      </>
+                    )}
                   </dl>
                 </section>
 

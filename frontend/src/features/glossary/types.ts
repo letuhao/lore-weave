@@ -154,6 +154,9 @@ export type GlossaryEntitySummary = {
   // Authored short description (≤500 chars, nullable). The BE entity GET returns it;
   // the type previously omitted it (drift). Surfaced in the KG entity detail (#11).
   short_description?: string | null;
+  // Optional author-set disambiguator (e.g. a world/realm name) for a name that
+  // legitimately recurs across different in-story contexts — D-GLOSSARY-ENTITY-SCOPE.
+  scope_label?: string;
   tags: string[];
   chapter_link_count: number;
   translation_count: number;
@@ -202,6 +205,8 @@ export type UnknownEntity = {
   source_kind_code: string | null;
   status: string;
   created_at: string;
+  // D-GLOSSARY-ENTITY-SCOPE — see GlossaryEntitySummary.scope_label.
+  scope_label?: string;
 };
 
 export type EntityNameEntry = {

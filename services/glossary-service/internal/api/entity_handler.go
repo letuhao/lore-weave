@@ -1052,6 +1052,21 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		argN++
 	}
 
+	// scope_label (D-GLOSSARY-ENTITY-SCOPE) — an optional author-set disambiguator
+	// (e.g. a world/realm name) for a name that legitimately recurs across
+	// different in-story contexts. Plain string, no nullability tri-state (unlike
+	// short_description): an explicit "" clears it, same as any other value sets it.
+	if raw, ok := in["scope_label"]; ok {
+		var scope string
+		if err := json.Unmarshal(raw, &scope); err != nil {
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "scope_label must be a string")
+			return
+		}
+		setClauses = append(setClauses, fmt.Sprintf("scope_label = $%d", argN))
+		args = append(args, strings.TrimSpace(scope))
+		argN++
+	}
+
 	if raw, ok := in["is_pinned_for_context"]; ok {
 		var pinned bool
 		if err := json.Unmarshal(raw, &pinned); err != nil {
@@ -1096,6 +1111,14 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 
 		tag, err := tx.Exec(ctx, updateSQL, args...)
 		if err != nil {
+			// A scope_label change can collide with uq_entity_dedup(book_id, kind_id,
+			// normalized_name, scope_label) if another entity already holds this exact
+			// name+kind+scope — a real, user-actionable conflict, not an infra fault.
+			if isUniqueViolation(err) {
+				writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_NAME",
+					"an entity with this name, kind, and scope already exists in this book")
+				return
+			}
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
 			return
 		}

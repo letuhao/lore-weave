@@ -404,7 +404,8 @@
         "global": "Global",
         "confidence": "Confidence",
         "mentions": "Mentions",
-        "anchor": "Anchor score"
+        "anchor": "Anchor score",
+        "scope": "Scope"
       },
       "promote": "Promote to glossary",
       "promoteHint": "Discovered entity. Promote it to create an AI-suggested glossary draft for review.",

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, XCircle, PencilLine } from 'lucide-react';
+import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, XCircle, PencilLine, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '../api';
@@ -634,6 +634,15 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
                   <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-medium', STATUS_COLORS[e.status])}>
                     {t(`glossary.status.${e.status}`)}
                   </span>
+                  {e.scope_label && (
+                    <span
+                      className="inline-flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-400"
+                      title={t('glossary.scope_label_title')}
+                    >
+                      <MapPin className="h-2.5 w-2.5" />
+                      {e.scope_label}
+                    </span>
+                  )}
                   {e.alive != null && (
                     <button
                       onClick={(ev) => { ev.stopPropagation(); void handleToggleAlive(e); }}

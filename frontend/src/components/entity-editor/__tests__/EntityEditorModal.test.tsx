@@ -130,4 +130,38 @@ describe('EntityEditorModal (Radix Dialog adoption)', () => {
     await waitFor(() => expect(apiMocks.patchEntity).toHaveBeenCalledWith(BOOK, ENTITY_ID, { status: 'active' }, 'tok'));
     await waitFor(() => expect(props.onSaved).toHaveBeenCalled());
   });
+
+  it('blurring the scope_label field with a new value persists it', async () => {
+    const props = baseProps();
+    apiMocks.patchEntity.mockResolvedValue(entity());
+    render(<EntityEditorModal {...props} />);
+    await screen.findAllByText('Jiang Ziya');
+    const scopeInput = screen.getByLabelText('modal.scope_label.aria');
+    fireEvent.change(scopeInput, { target: { value: 'World A' } });
+    fireEvent.blur(scopeInput);
+    await waitFor(() => expect(apiMocks.patchEntity).toHaveBeenCalledWith(BOOK, ENTITY_ID, { scope_label: 'World A' }, 'tok'));
+    await waitFor(() => expect(props.onSaved).toHaveBeenCalled());
+  });
+
+  it('blurring the scope_label field with an UNCHANGED value does not call the API', async () => {
+    const props = baseProps();
+    render(<EntityEditorModal {...props} />);
+    await screen.findAllByText('Jiang Ziya');
+    const scopeInput = screen.getByLabelText('modal.scope_label.aria');
+    fireEvent.blur(scopeInput);
+    await waitFor(() => expect(screen.getByDisplayValue('Immortal')).toBeInTheDocument());
+    expect(apiMocks.patchEntity).not.toHaveBeenCalled();
+  });
+
+  it('a colliding scope_label toasts the backend error without closing the dialog', async () => {
+    const props = baseProps();
+    apiMocks.patchEntity.mockRejectedValue(new Error('an entity with this name, kind, and scope already exists in this book'));
+    render(<EntityEditorModal {...props} />);
+    await screen.findAllByText('Jiang Ziya');
+    const scopeInput = screen.getByLabelText('modal.scope_label.aria');
+    fireEvent.change(scopeInput, { target: { value: 'World B' } });
+    fireEvent.blur(scopeInput);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('an entity with this name, kind, and scope already exists in this book'));
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
 });

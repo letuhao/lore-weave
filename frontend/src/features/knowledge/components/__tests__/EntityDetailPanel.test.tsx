@@ -147,6 +147,20 @@ describe('EntityDetailPanel — C9 unlock CTA', () => {
     expect(screen.queryByTestId('entity-detail-description')).not.toBeInTheDocument();
   });
 
+  it('renders the anchored glossary scope_label when present (D-GLOSSARY-ENTITY-SCOPE)', () => {
+    useAnchoredGlossaryEntityMock.mockReturnValue({
+      shortDescription: null,
+      scopeLabel: 'World A',
+      isLoading: false,
+    });
+    setDetail({ glossary_entity_id: 'g-1' });
+    render(
+      <EntityDetailPanel open={true} onOpenChange={vi.fn()} entityId="ent-1" bookId="b-1" />,
+      { wrapper: Wrapper },
+    );
+    expect(screen.getByText('World A')).toBeInTheDocument();
+  });
+
   it('hides the unlock section when user_edited=false', () => {
     setDetail({ user_edited: false });
     render(

@@ -150,7 +150,13 @@ export const glossaryApi = {
   patchEntity(
     bookId: string,
     entityId: string,
-    changes: { status?: string; tags?: string[]; alive?: boolean; short_description?: string | null },
+    changes: {
+      status?: string;
+      tags?: string[];
+      alive?: boolean;
+      short_description?: string | null;
+      scope_label?: string;
+    },
     token: string,
     // Glossary-assistant P3 (H5): when set, sent as `If-Match` so the PATCH is
     // optimistic-concurrency checked — 412 if the entity changed since read.

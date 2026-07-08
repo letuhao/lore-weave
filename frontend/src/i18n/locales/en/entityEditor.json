@@ -16,6 +16,11 @@
       "translations": "{{count}} translations",
       "evidences": "{{count}} evidences"
     },
+    "scope_label": {
+      "placeholder": "Disambiguate (e.g. world/realm)...",
+      "aria": "Scope label — disambiguates same-name entities across different in-story contexts",
+      "duplicate": "An entity with this name, kind, and scope already exists in this book"
+    },
     "tab": {
       "attributes": "Attributes",
       "evidences": "Evidences",

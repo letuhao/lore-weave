@@ -93,6 +93,15 @@ describe('GlossaryEntityList (13_glossary_panels.md A3)', () => {
     expect(await screen.findByText('Jiang Ziya')).toBeInTheDocument();
   });
 
+  it('shows a scope_label badge only for entities that have one set (D-GLOSSARY-ENTITY-SCOPE)', async () => {
+    apiMocks.listEntities.mockResolvedValue({
+      items: [{ ...entitySummary('e1', 'Jiang Ziya'), scope_label: 'World A' }],
+      total: 1,
+    });
+    renderList();
+    expect(await screen.findByText('World A')).toBeInTheDocument();
+  });
+
   it('clicking a row opens the entity editor for that entity', async () => {
     renderList();
     fireEvent.click(await screen.findByTestId('glossary-entity-row'));
