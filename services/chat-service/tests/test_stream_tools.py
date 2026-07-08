@@ -485,13 +485,51 @@ class TestStreamWithToolsOneToolCall:
         assert assistant_msg["tool_calls"][0]["id"] == "call_x"
         assert assistant_msg["tool_calls"][0]["type"] == "function"
         assert assistant_msg["tool_calls"][0]["function"]["name"] == "memory_search"
-        assert assistant_msg["tool_calls"][0]["function"]["arguments"] == '{"query":"q"}'
+        # D-TOOLCALL-HISTORY-ARGS-NOT-JSON: arguments is now re-serialized via
+        # _parse_tool_args + json.dumps (always valid JSON, whitespace-normalized)
+        # rather than the raw streamed string verbatim — compare semantically.
+        assert json.loads(assistant_msg["tool_calls"][0]["function"]["arguments"]) == {"query": "q"}
 
         tool_msg = pass1_msgs[2]
         assert tool_msg["role"] == "tool"
         assert tool_msg["tool_call_id"] == "call_x"
         # tool message content is the JSON-encoded result payload.
         assert json.loads(tool_msg["content"]) == {"ok": 1}
+
+    @pytest.mark.asyncio
+    async def test_blank_tool_call_arguments_persisted_as_valid_json_not_empty_string(self):
+        """D-TOOLCALL-HISTORY-ARGS-NOT-JSON — live-found via LM Studio's own
+        console warning ("Failed to parse function call arguments JSON string
+        ''") reproducing identically across two UNRELATED models (gemma AND
+        qwen), which ruled out a per-model decoding defect and pointed at a
+        shared request-payload bug: this repo was persisting a tool call's raw,
+        possibly-EMPTY `arguments` string verbatim into `working`, which then
+        gets re-sent to the provider as conversation history on the NEXT pass.
+        Per the OpenAI tool-calling wire contract, `function.arguments` must
+        always be a JSON-parseable string (minimum `"{}"`) — a literal `""` is
+        invalid and made the provider's own history-reconstruction throw on
+        every subsequent pass, plausibly corrupting its context and
+        perpetuating the very "blank args" pattern this was mistaken for a
+        pure model defect. This test proves a call with NO arguments_delta at
+        all is persisted as valid, parseable JSON, never the empty string."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"ok": 1})
+        scripts = [
+            [
+                tool_frag(index=0, id="call_blank", name="find_tools"),
+                # deliberately no arguments_delta — the model streamed nothing.
+                done("tool_calls"),
+            ],
+            [tok("final"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+
+        pass1_msgs = _FakeClient.instances[0].requests[1].messages
+        assistant_msg = pass1_msgs[1]
+        raw_args = assistant_msg["tool_calls"][0]["function"]["arguments"]
+        assert raw_args != "", "arguments must never be persisted as a literal empty string"
+        assert json.loads(raw_args) == {}, "a blank tool call must be re-serialized as valid JSON ({})"
 
     @pytest.mark.asyncio
     async def test_d7_oversized_success_result_is_withheld_with_notice(self, monkeypatch):

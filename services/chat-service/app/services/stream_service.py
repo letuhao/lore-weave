@@ -1350,12 +1350,27 @@ async def _stream_with_tools(
             # STILL empty/unparseable immediately after a well-formed call to
             # the identical tool name gets silently dropped here.
             calls = _drop_duplicate_empty_tool_calls(calls)
+            # D-TOOLCALL-HISTORY-ARGS-NOT-JSON — a call's raw `arguments` string
+            # can be `""` (the model never streamed anything) or otherwise
+            # unparseable. Per the OpenAI tool-calling wire contract,
+            # `function.arguments` MUST always be a JSON-parseable string (at
+            # minimum `"{}"`) — persisting the raw, possibly-empty string here
+            # means the NEXT pass re-sends this malformed entry back to the
+            # provider as part of `messages` (see `working` at line ~907, sent
+            # verbatim at line ~1039/4143). LM Studio's own chat-history
+            # reconstruction then throws `JSON.parse('')` on it (confirmed live,
+            # console warning "Failed to parse function call arguments JSON
+            # string ''"), independent of which model is loaded — this is a
+            # request-payload bug on OUR side, not a per-model defect. Always
+            # re-serialize through `_parse_tool_args` (already degrades any
+            # empty/malformed string to `{}`) so history is never re-sent with
+            # invalid JSON.
             working.append({
                 "role": "assistant",
                 "content": "".join(text_parts),
                 "tool_calls": [
                     {"id": c["id"], "type": "function",
-                     "function": {"name": c["name"], "arguments": c["arguments"]}}
+                     "function": {"name": c["name"], "arguments": json.dumps(_parse_tool_args(c["arguments"]))}}
                     for c in calls
                 ],
             })
