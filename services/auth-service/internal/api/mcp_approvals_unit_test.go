@@ -6,6 +6,25 @@ import (
 	"github.com/google/uuid"
 )
 
+// Real feedback repro (2026-07-08): an agent that discovers kg_*/memory_* tools under
+// find_tools's "knowledge" GROUP naturally reuses that same string as confirm_action's
+// `domain` arg — but the real routing key (DomainConfirmServiceURLs, /v1/<domain>/actions/confirm)
+// is "kg", so the guess used to hit AUTH_CONFIRM_DOMAIN_UNROUTABLE for a perfectly valid token.
+func TestNormalizeConfirmDomain(t *testing.T) {
+	cases := map[string]string{
+		"knowledge":   "kg",
+		"kg":          "kg",
+		"glossary":    "glossary",
+		"composition": "composition",
+		"":            "",
+	}
+	for in, want := range cases {
+		if got := normalizeConfirmDomain(in); got != want {
+			t.Errorf("normalizeConfirmDomain(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // D-C-PRODUCER-OUTBOX — the mcp_approval owner notification is now written to the
 // transactional outbox (in the approval tx) and relay-delivered. This pins the ingest
 // body the relay POSTs, incl. the deterministic dedup_key that makes at-least-once

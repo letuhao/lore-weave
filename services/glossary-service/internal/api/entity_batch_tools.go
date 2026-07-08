@@ -26,16 +26,18 @@ import (
 func (s *Server) RegisterEntityBatchTools(srv *mcp.Server) {
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_entities",
-		Description: "Propose one or more NEW entities (character, place, item, concept, ...) for a " +
-			"book's glossary IN ONE CALL -- prefer this over calling glossary_propose_new_entity " +
-			"repeatedly when minting several entities at once (e.g. after extracting a chapter's " +
-			"cast). Each item is created as a DRAFT suggestion in the review inbox -- NOT canon -- " +
-			"and succeeds or fails independently (not all-or-nothing). If a name already exists, or " +
-			"was previously rejected, that item is skipped, not duplicated. Call glossary_search " +
-			"first to confirm names don't already exist; call glossary_book_ontology_read to pick " +
-			"valid kinds. Accepts 1-50 items.",
+		Description: "Create/author/add one or more NEW entities (character, place, item, concept, ...) " +
+			"with their attribute values for a book's glossary IN ONE CALL -- also the tool to use for a " +
+			"SINGLE new entity (pass items with just one item), not only for batches; prefer this over " +
+			"calling the legacy glossary_propose_new_entity. Each item is created as a DRAFT suggestion " +
+			"in the review inbox -- NOT canon -- and succeeds or fails independently (not all-or-nothing). " +
+			"If a name already exists, or was previously rejected, that item is skipped, not duplicated. " +
+			"Call glossary_search first to confirm names don't already exist; call " +
+			"glossary_book_ontology_read to pick valid kinds. Accepts 1-50 items.",
 		InputSchema: entityBatchSchema(),
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+			"create a new entity", "add a new entity", "author an entity", "manually create an entity",
+			"add an entity with attribute values", "create a character", "add a character", "add a place",
 			"add several characters", "bulk create entities", "mint many entities", "batch propose entities",
 		}),
 	}, s.toolProposeEntities)
