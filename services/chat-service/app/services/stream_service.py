@@ -420,6 +420,45 @@ TIER_A_AGGREGATE_CAP = 12
 PLANNER_TOOLS = frozenset({"glossary_plan"})
 PLANNER_CALLS_PER_TURN_CAP = 1
 
+# D-BLANK-TOOL-ARGS-LOOP — mechanical hard-stop for a repeated BLANK/missing-
+# required-args tool call within one turn, in EITHER of its two observed
+# shapes: (1) find_tools called with no `intent` (no `group`, so not the
+# legitimate enumeration path) — `FindToolsAttemptTracker` (tool_discovery.py)
+# deliberately never tracks this shape (an empty intent has no wording to
+# detect as a near-duplicate of); (2) any generic backend tool call whose
+# args fail the domain service's own required-property validation (the
+# `validating "arguments": ... required: missing properties: [...]` error
+# shape). Both are the EXACT signature of a known upstream LM Studio
+# tool-call-parser bug (confirmed 2026-07-08 for both gemma-4-26b-a4b-qat and
+# qwen3.6-35b-a3b — the model's structured tool-call channel emits
+# `arguments: ""`/`{}` while its own free-text channel still works fine) —
+# live-reproduced again post-fix on 2026-07-08 (session 019f4021-71eb...):
+# the SAME turn tried `glossary_web_search` 3 times with blank args before
+# giving up on its own. A real production session
+# (019f4000-43ee-7201-9d45-e2fafc83696d) hit shape (1): 7 then 6 consecutive
+# blank find_tools calls across two turns, each getting the identical
+# unhelpful note, never escalating, bounded only by `max_total_passes` (15)
+# — burning most of a turn's pass budget before the model finally gave up on
+# its own. ONE shared counter across both shapes (not two independent ones):
+# the real session mixed them — glossary_web_search blank x2 then find_tools
+# blank x6 in the SAME turn — so only a shared streak catches that exact
+# cross-tool flailing. This is a THIS-TURN, in-memory counter (not
+# session-keyed like FindToolsAttemptTracker — a fresh turn gets a fresh
+# budget of benign first-attempts) so it needs no new tracked state: the
+# first BLANK_TOOL_ARGS_CAP blank/invalid calls still run/get today's
+# behavior (a call or two probing the surface is normal); the next one is
+# short-circuited with a directive to stop and tell the user, the same shape
+# as the #18 planner hard-stop.
+BLANK_TOOL_ARGS_CAP = 2
+
+# The stable substring across every live-observed instance of this error
+# (from the domain service's own JSON-schema validator) — a required
+# property (e.g. `query`, `intent`) is missing from the call's arguments.
+# Deliberately narrow (not "any tool error") so a tool that fails for a
+# real, unrelated reason (auth, not-found, business-rule) never counts
+# toward this streak.
+_MISSING_REQUIRED_ARGS_MARKER = "required: missing properties"
+
 # RAID Wave B2 (07S §5b) — PLAN mode. The executable server surface is the ASK
 # surface (tier R + find_tools + frontend tools) PLUS the PlanForge planning
 # tools, identified by this name prefix (they write plan artifacts — reversible
@@ -967,6 +1006,10 @@ async def _stream_with_tools(
         tier_a_op_counts: dict[str, int] = {}
         # #18 — per-turn planner-call counter (mechanical hard-stop on the self-recheck loop).
         planner_call_counts: dict[str, int] = {}
+        # D-BLANK-TOOL-ARGS-LOOP — per-turn count of blank/missing-required-args
+        # tool calls, SHARED across find_tools-blank-intent and any generic
+        # backend tool's validation failure (see BLANK_TOOL_ARGS_CAP above).
+        blank_tool_args_streak = 0
         # Hard safety bound on TOTAL passes (reads + writes + discovery) so a
         # pathological find_tools/read loop can't spin forever even though those
         # don't count against the write budget.
@@ -1410,6 +1453,53 @@ async def _stream_with_tools(
                         limit = FIND_TOOLS_DEFAULT_LIMIT
                     # Part A — optional group scoping (tool-catalog-simplification spec).
                     group = args_obj.get("group") or None
+
+                    # D-FINDTOOLS-BLANK-INTENT-LOOP — the true failure shape is
+                    # NO group + blank intent (this is what `_blank_intent_result()`
+                    # in tool_discovery.py answers with the same note every time);
+                    # `group` set + blank intent is the legitimate enumeration
+                    # mode and returns real tools, so it never counts here.
+                    if not group and not intent.strip():
+                        if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:
+                            guidance = {
+                                "error": "blank_tool_args_capped",
+                                "message": (
+                                    "find_tools has been called with no `intent` "
+                                    f"{blank_tool_args_streak + 1} times this turn — "
+                                    "STOP calling find_tools again without a real, "
+                                    "non-empty `intent` string. If you cannot form one, "
+                                    "tell the user directly that tool discovery is not "
+                                    "working right now instead of retrying."
+                                ),
+                            }
+                            logger.warning(
+                                "D-BLANK-TOOL-ARGS-LOOP: capped session=%s "
+                                "after %d consecutive blank/invalid-args tool calls "
+                                "this turn (model_ref=%s, tool=%s)",
+                                session_id, blank_tool_args_streak + 1, model_ref, c["name"],
+                            )
+                            # Inspector — surface the trip as a trace span (same
+                            # convention as the D7 overflow span below) so the GUI
+                            # shows a degraded-tool-calling turn, not just a log line.
+                            if trace is not None:
+                                trace.add(
+                                    "compile", "T6", "tools",
+                                    f"blank_tool_args_capped:{c['name']}",
+                                    is_error=True,
+                                )
+                            working.append({
+                                "role": "tool", "tool_call_id": c["id"],
+                                "content": tool_result_content(guidance),
+                            })
+                            yield {"tool_call": {
+                                "id": c["id"], "iteration": iteration, "tool": c["name"],
+                                "args": args_obj, "ok": False,
+                                "result": None, "error": guidance["message"],
+                            }}
+                            continue
+                        blank_tool_args_streak += 1
+                    else:
+                        blank_tool_args_streak = 0
                     # Design item 1 (2026-07-07 discovery-hardening plan, embeddings
                     # sub-item / OQ4) — `session_id` feeds the retry-cap tracker
                     # (`FindToolsAttemptTracker`) so a repeated/near-duplicate search
@@ -1904,6 +1994,45 @@ async def _stream_with_tools(
                         }
                         break
 
+                # D-BLANK-TOOL-ARGS-LOOP — same cap as the find_tools breaker
+                # above, generalized to ANY backend tool: once the turn has
+                # already hit BLANK_TOOL_ARGS_CAP blank/invalid-args failures
+                # (of EITHER shape), a further one is short-circuited BEFORE
+                # the MCP round trip, not just noted after another failure.
+                if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:
+                    guidance = {
+                        "error": "blank_tool_args_capped",
+                        "message": (
+                            f"'{c['name']}' has failed with missing/blank required "
+                            f"arguments {blank_tool_args_streak + 1} times this turn "
+                            "(across one or more tools) — STOP retrying tool calls "
+                            "with empty arguments. Tell the user directly that tool "
+                            "calling is not working right now instead of retrying."
+                        ),
+                    }
+                    logger.warning(
+                        "D-BLANK-TOOL-ARGS-LOOP: capped session=%s after %d "
+                        "consecutive blank/invalid-args tool calls this turn "
+                        "(model_ref=%s, tool=%s)",
+                        session_id, blank_tool_args_streak + 1, model_ref, c["name"],
+                    )
+                    if trace is not None:
+                        trace.add(
+                            "compile", "T6", "tools",
+                            f"blank_tool_args_capped:{c['name']}",
+                            is_error=True,
+                        )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(guidance),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False,
+                        "result": None, "error": guidance["message"],
+                    }}
+                    continue
+
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
                 # "lazy man" path); Tier-W/S domain tools MINT a confirm_token and
@@ -1918,6 +2047,10 @@ async def _stream_with_tools(
                 )
                 ok = bool(envelope.get("success"))
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
+                if ok or _MISSING_REQUIRED_ARGS_MARKER not in str(envelope.get("error") or ""):
+                    blank_tool_args_streak = 0
+                else:
+                    blank_tool_args_streak += 1
                 # D7 (single-item overflow): a successful generic tool result is a
                 # re-requestable data dump — cap it so one oversized result can't blow the
                 # window; the model gets a self-correcting notice to re-call at a smaller

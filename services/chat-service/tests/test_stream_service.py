@@ -1916,6 +1916,273 @@ class TestInLoopCompactionWiring:
 
         assert seen == [], "compaction must not run when effective_limit is None"
 
+    @pytest.mark.asyncio
+    async def test_blank_intent_find_tools_capped_within_turn(self):
+        """D-FINDTOOLS-BLANK-INTENT-LOOP — reproduces the real production
+        session (019f4000-43ee-7201-9d45-e2fafc83696d, gemma-4-26b-a4b-qat)
+        where find_tools was called with blank args 7+ times in a row, each
+        getting the identical unhelpful note, never escalating. The first
+        BLANK_TOOL_ARGS_CAP blank calls still reach find_tools_result_async
+        (today's helpful note); every call after that is short-circuited
+        BEFORE find_tools_result_async runs, with a directive to stop."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+        TOTAL_BLANK_PASSES = 5
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i < TOTAL_BLANK_PASSES:
+                        yield ToolCallEvent(index=0, id=f"c{i}", name=ss.FIND_TOOLS_NAME,
+                                            arguments_delta="{}")
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="giving up")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        real_find_tools_result_async = ss.find_tools_result_async
+        call_count = {"n": 0}
+
+        async def spy_find_tools(*a, **kw):
+            call_count["n"] += 1
+            return await real_find_tools_result_async(*a, **kw)
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+
+        tool_call_events = []
+        with patch.object(ss, "Client", FakeClient), \
+             patch.object(ss, "find_tools_result_async", side_effect=spy_find_tools):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "search the web"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+            ):
+                if "tool_call" in ch:
+                    tool_call_events.append(ch["tool_call"])
+
+        # Only the first BLANK_TOOL_ARGS_CAP blank calls actually reach
+        # find_tools_result_async — the rest are short-circuited before it.
+        assert call_count["n"] == ss.BLANK_TOOL_ARGS_CAP
+
+        capped = [
+            e for e in tool_call_events
+            if e.get("ok") is False and "STOP calling find_tools" in (e.get("error") or "")
+        ]
+        assert len(capped) == TOTAL_BLANK_PASSES - ss.BLANK_TOOL_ARGS_CAP, (
+            f"expected {TOTAL_BLANK_PASSES - ss.BLANK_TOOL_ARGS_CAP} capped calls, "
+            f"got {len(capped)}: {tool_call_events}"
+        )
+        # The capped calls never reached find_tools_result_async, so they can't
+        # have produced its "intent is required" note.
+        for e in capped:
+            assert e["result"] is None
+
+    @pytest.mark.asyncio
+    async def test_non_blank_intent_find_tools_resets_blank_streak(self):
+        """A real, well-formed find_tools call between blank ones proves
+        forward progress — the blank streak must reset, not just accumulate
+        toward the cap regardless of what happens in between."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+        # blank, blank, REAL intent, blank, blank — none of these five should
+        # ever hit the cap (2), since the real call in the middle resets the
+        # streak back to 0.
+        script = ["", "", "translate this chapter", "", ""]
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i < len(script):
+                        args = json.dumps({"intent": script[i]}) if script[i] else "{}"
+                        yield ToolCallEvent(index=0, id=f"c{i}", name=ss.FIND_TOOLS_NAME,
+                                            arguments_delta=args)
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="done")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+
+        tool_call_events = []
+        with patch.object(ss, "Client", FakeClient):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "hi"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+            ):
+                if "tool_call" in ch:
+                    tool_call_events.append(ch["tool_call"])
+
+        capped = [
+            e for e in tool_call_events
+            if e.get("ok") is False and "STOP calling find_tools" in (e.get("error") or "")
+        ]
+        assert capped == [], f"blank streak should have reset on the real call, got {capped}"
+
+    @pytest.mark.asyncio
+    async def test_blank_args_generic_backend_tool_capped_within_turn(self):
+        """D-BLANK-TOOL-ARGS-LOOP — the OTHER live-reproduced shape (not
+        find_tools): a real production session and an independent live
+        re-verification both showed the model calling a REGULAR backend tool
+        (glossary_web_search) with blank args repeatedly, each attempt
+        tripping the domain service's own "required: missing properties"
+        validation error, with NO cap on how many times this can happen in
+        one turn. After BLANK_TOOL_ARGS_CAP such failures, a further call is
+        short-circuited BEFORE the MCP round trip — mcp_execute_tool must not
+        even be invoked again this turn."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+        TOTAL_BLANK_PASSES = 5
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i < TOTAL_BLANK_PASSES:
+                        yield ToolCallEvent(index=0, id=f"c{i}", name="glossary_web_search",
+                                            arguments_delta="{}")
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="giving up")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        kc.mcp_execute_tool = AsyncMock(return_value={
+            "success": False,
+            "error": 'validating "arguments": validating root: required: missing properties: ["query"]',
+        })
+
+        tool_call_events = []
+        with patch.object(ss, "Client", FakeClient):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "search the web"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+            ):
+                if "tool_call" in ch:
+                    tool_call_events.append(ch["tool_call"])
+
+        # Only the first BLANK_TOOL_ARGS_CAP calls actually reach mcp_execute_tool.
+        assert kc.mcp_execute_tool.await_count == ss.BLANK_TOOL_ARGS_CAP
+
+        capped = [
+            e for e in tool_call_events
+            if e.get("ok") is False and "STOP retrying tool calls" in (e.get("error") or "")
+        ]
+        assert len(capped) == TOTAL_BLANK_PASSES - ss.BLANK_TOOL_ARGS_CAP, (
+            f"expected {TOTAL_BLANK_PASSES - ss.BLANK_TOOL_ARGS_CAP} capped calls, "
+            f"got {len(capped)}: {tool_call_events}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_blank_args_streak_shared_across_find_tools_and_generic_tool(self):
+        """The real production session mixed BOTH shapes in one turn:
+        glossary_web_search blank x2 then find_tools blank x6. The streak
+        MUST be shared — two generic-tool blank failures followed by a
+        blank-intent find_tools call should trip the cap on that very
+        find_tools call, not reset and grant it a fresh budget."""
+        import app.services.stream_service as ss
+        from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+        # glossary_web_search(blank), glossary_web_search(blank), find_tools(blank), ...
+        script = [("glossary_web_search", "{}"), ("glossary_web_search", "{}"),
+                  (ss.FIND_TOOLS_NAME, "{}"), (ss.FIND_TOOLS_NAME, "{}")]
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i < len(script):
+                        name, args = script[i]
+                        yield ToolCallEvent(index=0, id=f"c{i}", name=name, arguments_delta=args)
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="done")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        kc.mcp_execute_tool = AsyncMock(return_value={
+            "success": False,
+            "error": 'validating "arguments": validating root: required: missing properties: ["query"]',
+        })
+
+        tool_call_events = []
+        with patch.object(ss, "Client", FakeClient):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "search the web"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+            ):
+                if "tool_call" in ch:
+                    tool_call_events.append(ch["tool_call"])
+
+        # Both find_tools calls happen AFTER the streak already hit the cap
+        # from the two glossary_web_search failures — so BOTH must be capped,
+        # and find_tools_result_async's own note must never run for them.
+        find_tools_events = [e for e in tool_call_events if e["tool"] == ss.FIND_TOOLS_NAME]
+        assert len(find_tools_events) == 2
+        assert all(e["ok"] is False for e in find_tools_events)
+        assert all("STOP calling find_tools" in e["error"] for e in find_tools_events)
+        # Only the two glossary_web_search calls ever reached the MCP transport.
+        assert kc.mcp_execute_tool.await_count == 2
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # W1 — Context-Breakdown Spine: the extended contextBudget frame + the
