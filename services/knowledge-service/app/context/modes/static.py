@@ -221,6 +221,9 @@ async def build_static_mode(
         sections=sections,
         # K21.12-BE (design D9): surface the project's tool-calling toggle.
         tool_calling_enabled=project.tool_calling_enabled,
+        # WS-4C Half A: surface the project's canon auto-capture toggle. Chat ANDs
+        # it with its own deploy ceiling before spending a model call.
+        canon_capture_enabled=project.canon_capture_enabled,
         # Track 4 P0 — glossary entities the selector judged relevant (for
         # entity_access_log salience telemetry; recorded by the router).
         surfaced_entity_ids=[

@@ -30,7 +30,7 @@ func TestParseDocExtraction_HappyPath(t *testing.T) {
   {"kind":"technique","name":"Chân Linh","attributes":{"summary":"the core life-essence"}}
 ],"notes":["nothing else"]}
 ` + "```"
-	out, err := parseDocExtraction(text, vk, ac)
+	out, err := parseDocExtraction(text, vk, ac, maxDocExtractCandidates)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestParseDocExtraction_DropsUnknownKindAndNotes(t *testing.T) {
 	  {"kind":"spaceship","name":"The Nomad"},
 	  {"kind":"spaceship","name":"The Wanderer"}
 	]}`
-	out, err := parseDocExtraction(text, vk, ac)
+	out, err := parseDocExtraction(text, vk, ac, maxDocExtractCandidates)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestParseDocExtraction_FiltersUnknownAttributesAndEmptyName(t *testing.T) {
 	  {"kind":"character","name":"  ","attributes":{"summary":"ignored, name empty"}},
 	  {"kind":"place","name":"Cloud Peak","attributes":{"summary":"a mountain","altitude":"9000m","affiliation":"not a place attr"}}
 	]}`
-	out, err := parseDocExtraction(text, vk, ac)
+	out, err := parseDocExtraction(text, vk, ac, maxDocExtractCandidates)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestParseDocExtraction_DedupWithinDoc(t *testing.T) {
 	  {"kind":"character","name":"lâm uyên"},
 	  {"kind":"place","name":"Lâm Uyên"}
 	]}`
-	out, err := parseDocExtraction(text, vk, ac)
+	out, err := parseDocExtraction(text, vk, ac, maxDocExtractCandidates)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestParseDocExtraction_DedupWithinDoc(t *testing.T) {
 func TestParseDocExtraction_StringifiesNonStringAttrValues(t *testing.T) {
 	vk, ac := extractTestMaps()
 	text := `{"candidates":[{"kind":"technique","name":"Rank","attributes":{"summary":3}}]}`
-	out, err := parseDocExtraction(text, vk, ac)
+	out, err := parseDocExtraction(text, vk, ac, maxDocExtractCandidates)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestParseDocExtraction_DropsNameAttributeFromCandidate(t *testing.T) {
 	vk := map[string]bool{"character": true}
 	ac := map[string]map[string]bool{"character": {"summary": true}} // no "name"
 	text := `{"candidates":[{"kind":"character","name":"Lâm Uyên","attributes":{"name":"WRONG","summary":"a sect heir"}}]}`
-	out, err := parseDocExtraction(text, vk, ac)
+	out, err := parseDocExtraction(text, vk, ac, maxDocExtractCandidates)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestParseDocExtraction_DropsNameAttributeFromCandidate(t *testing.T) {
 
 func TestParseDocExtraction_InvalidJSONErrorsForRepair(t *testing.T) {
 	vk, ac := extractTestMaps()
-	if _, err := parseDocExtraction("not json at all", vk, ac); err == nil {
+	if _, err := parseDocExtraction("not json at all", vk, ac, maxDocExtractCandidates); err == nil {
 		t.Fatal("expected an error on unparseable output (it is what triggers the repair round)")
 	}
 }

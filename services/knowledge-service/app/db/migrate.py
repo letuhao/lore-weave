@@ -1381,6 +1381,30 @@ CREATE INDEX IF NOT EXISTS idx_entity_access_log_last_retrieved
 ALTER TABLE entity_access_log
   ADD COLUMN IF NOT EXISTS last_session_id UUID,
   ADD COLUMN IF NOT EXISTS feedback_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+-- ═══════════════════════════════════════════════════════════════
+-- WS-4C Half A — per-project canon auto-capture toggle.
+-- Spec: docs/specs/2026-07-10-ws4c-half-a-canon-auto-capture.md
+--
+-- Whether chat-service, every Nth assistant turn, extracts the newly-named
+-- entities the exchange established and lands them in this book's glossary
+-- review inbox as `draft` + `ai-suggested` entities (never canon).
+--
+-- A USER setting, not an env flag (Settings & Config Boundary): capture spends
+-- the user's own BYOK tokens, so two users genuinely want different values. The
+-- deploy-time env ceiling lives in chat (`CHAT_CANON_CAPTURE_ENABLED`) and only
+-- NARROWS this — effective = AND(deploy_allows, project_enables) — it is never
+-- itself a per-user knob.
+--
+-- DEFAULT true mirrors tool_calling_enabled (a behaviour the user turns OFF),
+-- and lets a row predating the column read back enabled. Capture is inert anyway
+-- on a project with no book_id: there is no glossary inbox to write into.
+-- ═══════════════════════════════════════════════════════════════
+DO $$
+BEGIN
+  ALTER TABLE knowledge_projects
+    ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT true;
+END$$;
 """
 
 

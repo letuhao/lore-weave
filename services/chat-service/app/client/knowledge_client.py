@@ -115,6 +115,12 @@ class KnowledgeContext(BaseModel):
     # an older knowledge-service that omits the field, the no-project
     # path, and the degraded path all leave tool-calling enabled.
     tool_calling_enabled: bool = True
+    # WS-4C Half A — per-project canon auto-capture, surfaced from
+    # knowledge-service `projects.canon_capture_enabled`. Defaults FALSE, the
+    # opposite of tool_calling_enabled and deliberately so: capture spends the
+    # user's BYOK tokens, so an older knowledge-service that omits the field, the
+    # no-project path, and the degraded path must all leave capture OFF.
+    canon_capture_enabled: bool = False
     # Interview-roleplay — rendered working_memory anchor (charter + state).
     # Pinned into the system block AND tail-injected by stream_service. "" when
     # the session has no working_memory block or on the degraded path; chat-service

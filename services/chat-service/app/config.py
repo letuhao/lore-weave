@@ -69,6 +69,30 @@ class Settings(BaseSettings):
     # unchanged) and on a big-lore book it turns ON. Set False to force-kill globally.
     t5_intent_gate_enabled: bool = True
 
+    # ── WS-4C Half A — canon auto-capture ────────────────────────────────────────
+    # Spec: docs/specs/2026-07-10-ws4c-half-a-canon-auto-capture.md
+    # Every Nth assistant turn, POST the exchange to glossary's /capture-canon: the
+    # entities it newly NAMED land in the book's review inbox as ai-suggested drafts
+    # (never canon). This closes F4's write side — a name coined at turn 3 survives to
+    # turn 40 because the glossary is re-read every turn.
+    #
+    # `canon_capture_enabled` is a deploy CEILING / kill-switch, NOT the enablement
+    # knob (Settings & Config Boundary: env is never a per-user toggle). The per-user
+    # knob is `knowledge_projects.canon_capture_enabled`, surfaced on kctx.
+    # effective = AND(this, kctx.canon_capture_enabled). Set False to force-kill.
+    canon_capture_enabled: bool = True
+    # Cadence — capture costs one small LLM call, billed to the user's own BYOK model.
+    # 4 mirrors EXECUTIVE_EVERY_N_TURNS: often enough that a coined name survives the
+    # window, rare enough that it is a rounding error on the turn's own cost.
+    canon_capture_every_n_turns: int = 4
+    # A turn shorter than this establishes nothing worth a model call ("ok", "go on").
+    canon_capture_min_chars: int = 200
+    # Per-side cap on the exchange text sent for extraction (glossary re-clamps).
+    canon_capture_max_chars_per_side: int = 4000
+    # The capture call is a background task; this bounds it so a hung local model can't
+    # leak a task for the process's lifetime.
+    canon_capture_timeout_s: float = 90.0
+
     # ── T6/D13a (Context Budget Law) — reversible dup-read collapse ──────────────
     # When a compaction pass fires AND this is ON, collapse EXACT-duplicate tool results
     # (the model re-read an unchanged resource) to a reference, keeping the latest full copy

@@ -73,6 +73,12 @@ class Project(BaseModel):
     # reads back off (mirrors the DB `DEFAULT false`) so memory_remember
     # keeps writing directly until the user turns confirmation on.
     memory_remember_confirm: bool = False
+    # WS-4C Half A: per-project canon auto-capture. When True (and the deploy
+    # ceiling allows), chat-service captures the newly-named entities of every
+    # Nth turn into this book's glossary review inbox as ai-suggested drafts.
+    # Default True — mirrors the DB `DEFAULT true` and tool_calling_enabled's
+    # "on unless the user turns it off" posture. Inert without a book_id.
+    canon_capture_enabled: bool = True
     # P2 (D6 opt-in raw retention): when True, leaf_processor persists
     # the full LLM raw response to extraction_leaves_raw alongside the
     # postprocessed candidates. Default False — power users opt-in for
@@ -155,6 +161,11 @@ class ProjectUpdate(BaseModel):
       instead of writing them directly. NOT NULL in the DB, so
       setting it explicitly to None is treated as "skip" by the repo
       (same as tool_calling_enabled).
+    - `canon_capture_enabled` (WS-4C Half A): omit to leave unchanged.
+      Set to `true`/`false` to toggle whether chat-service auto-captures
+      the entities a conversation establishes into the book's glossary
+      review inbox. NOT NULL in the DB, so an explicit None is "skip"
+      (same as tool_calling_enabled).
     """
 
     name: ProjectName | None = None
@@ -172,6 +183,7 @@ class ProjectUpdate(BaseModel):
     rerank_model_source: str | None = None
     tool_calling_enabled: bool | None = None
     memory_remember_confirm: bool | None = None
+    canon_capture_enabled: bool | None = None
     save_raw_extraction: bool | None = None
     # E2: None = "skip" (unchanged); explicitly set to None via PATCH uses
     # _NULLABLE_UPDATE_COLUMNS so it clears (sets to SQL NULL).

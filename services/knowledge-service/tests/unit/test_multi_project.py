@@ -140,3 +140,31 @@ async def test_build_multi_project_mode_scales_shared_budget_with_context_length
 
     assert seen_budgets == [scale_by_window(1000, 1_000_000)]
     assert seen_budgets[0] > 1000  # the exact bug class: must NOT stay flat
+
+
+@pytest.mark.asyncio
+async def test_build_multi_project_mode_disables_canon_capture(monkeypatch):
+    """WS-4C Half A — capture writes into ONE book's glossary inbox, but a multi
+    turn grounds on a union of projects with no single book. `tool_calling_enabled`
+    unions permissively (`any`); capture must NOT copy that pattern, or a multi turn
+    would silently capture into whichever project happened to sort first."""
+    p1, p2 = _proj("A"), _proj("B")
+    empty_l2 = SimpleNamespace(current=[], recent=[], background=[], negative=[])
+    monkeypatch.setattr(mp, "load_global_summary", AsyncMock(return_value=None))
+    monkeypatch.setattr(mp, "load_project_summary", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        mp, "_retrieve_one",
+        AsyncMock(side_effect=lambda *, project, **_kw: {
+            "project": project, "entities": [], "l2": empty_l2, "l3": [], "summaries": [],
+        }),
+    )
+    # Both projects have capture ON — the mode must still refuse.
+    p1.canon_capture_enabled = True
+    p2.canon_capture_enabled = True
+
+    built = await mp.build_multi_project_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        user_id=USER_ID, projects=[p1, p2], message="hi",
+    )
+    assert built.canon_capture_enabled is False
+    assert built.tool_calling_enabled is True  # the permissive union still applies here

@@ -61,6 +61,7 @@ def _project(
     instructions: str = "",
     extraction_enabled: bool = True,
     tool_calling_enabled: bool = True,
+    canon_capture_enabled: bool = True,
 ) -> Project:
     now = datetime.now(timezone.utc)
     return Project(
@@ -80,6 +81,7 @@ def _project(
         actual_cost_usd=Decimal("0"),
         is_archived=False,
         tool_calling_enabled=tool_calling_enabled,
+        canon_capture_enabled=canon_capture_enabled,
         version=1,
         created_at=now,
         updated_at=now,
@@ -202,6 +204,33 @@ async def test_built_context_surfaces_tool_calling_enabled(monkeypatch):
         message="greetings",
     )
     assert disabled.tool_calling_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_built_context_surfaces_canon_capture_enabled(monkeypatch):
+    """WS-4C Half A — Mode 3 carries the project's canon_capture_enabled onto
+    BuiltContext so chat can gate its post-turn capture task. A setting that is
+    stored but never read back is a bug, not a feature: assert BOTH states
+    round-trip, so a hardcoded `True` (or a dropped field) reds this test."""
+    _patch_mode3_pieces(monkeypatch)
+
+    enabled = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(canon_capture_enabled=True),
+        message="greetings",
+    )
+    assert enabled.canon_capture_enabled is True
+
+    disabled = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(canon_capture_enabled=False),
+        message="greetings",
+    )
+    assert disabled.canon_capture_enabled is False
 
 
 @pytest.mark.asyncio

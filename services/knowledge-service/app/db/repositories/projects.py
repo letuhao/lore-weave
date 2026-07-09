@@ -26,6 +26,7 @@ _SELECT_COLS = """
   rerank_model, rerank_model_source,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
   is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
+  canon_capture_enabled,
   genre, is_derivative, world_id, version, created_at, updated_at
 """
 
@@ -43,6 +44,10 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # gate. NOT NULL, so — like tool_calling_enabled — deliberately
      # absent from _NULLABLE_UPDATE_COLUMNS; explicit None is skipped.
      "memory_remember_confirm",
+     # WS-4C Half A: per-project canon auto-capture toggle. NOT NULL
+     # DEFAULT true, so — like tool_calling_enabled — deliberately absent
+     # from _NULLABLE_UPDATE_COLUMNS; an explicit None is skipped.
+     "canon_capture_enabled",
      # P2 (D6): opt-in raw-response retention. NOT NULL DEFAULT false;
      # FE follow-up D-P2-FE-SAVE-RAW will expose a toggle. PATCH updates
      # the flag; leaf_processor reads it at extraction time.

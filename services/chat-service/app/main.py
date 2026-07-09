@@ -9,6 +9,10 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.client.book_steering_client import close_book_steering_client, init_book_steering_client
+from app.client.glossary_capture_client import (
+    close_canon_capture_client,
+    init_canon_capture_client,
+)
 from app.client.known_entities_client import (
     close_known_entities_client,
     init_known_entities_client,
@@ -70,6 +74,9 @@ async def lifespan(app: FastAPI):
     # T5 (D2): long-lived known-entities client for the intent gate (degrades to
     # an empty set → gate opens, bias-to-include).
     init_known_entities_client()
+    # WS-4C Half A: long-lived glossary canon-capture client (degrades to a skipped
+    # capture; the post-turn task swallows every failure).
+    init_canon_capture_client()
     # REG-P1-05: long-lived agent-registry user-skills client (degrades to constants).
     init_user_skills_client()
     # WS-2b: long-lived agent-registry workflows client (degrades to no curated workflows).
@@ -87,6 +94,7 @@ async def lifespan(app: FastAPI):
     await close_knowledge_client()
     await close_book_steering_client()
     await close_known_entities_client()
+    await close_canon_capture_client()
     await close_user_skills_client()
     await close_workflows_client()
     await close_commands_client()

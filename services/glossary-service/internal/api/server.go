@@ -137,6 +137,11 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
+		// WS-4C Half A — chat's post-turn canon auto-capture. UNLIKE its siblings here,
+		// this route grant-checks the supplied owner_user_id (Edit) against the book: it
+		// is driven by a chat session, so its book_id traces back to user-supplied data
+		// and the internal token alone must not authorize a write into it.
+		r.Post("/books/{book_id}/capture-canon", s.captureCanon)
 		// M7 backfill — deterministic per-chapter mention_count recount (no LLM). The
 		// producer computes counts (it holds chapter text + matcher) and POSTs a targeted,
 		// idempotent UPDATE batch here.

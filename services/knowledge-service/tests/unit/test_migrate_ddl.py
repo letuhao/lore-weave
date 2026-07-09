@@ -103,6 +103,17 @@ def test_projects_alter_adds_tool_calling_enabled():
     )
 
 
+def test_projects_alter_adds_canon_capture_enabled():
+    """WS-4C Half A — the per-project canon auto-capture toggle. NOT NULL
+    DEFAULT true, mirroring tool_calling_enabled, so a row predating the column
+    reads back enabled; the model default in models.py is the other half of that
+    contract. Idempotent ADD COLUMN IF NOT EXISTS."""
+    assert (
+        "ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT true"
+        in DDL
+    )
+
+
 def test_projects_alter_adds_world_id():
     """G4 (world-level project) — world_id binds a world's dedicated
     knowledge partition to its bible book. Additive nullable column +

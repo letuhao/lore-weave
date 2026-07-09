@@ -410,6 +410,11 @@ async def build_multi_project_mode(
         stable_context="",
         volatile_context=context,
         tool_calling_enabled=tool_calling,
+        # WS-4C Half A: capture writes into ONE book's glossary inbox, and a multi-project
+        # turn grounds on a UNION of projects with no single book. There is no correct
+        # target, so capture is OFF here — stated explicitly rather than left to inherit
+        # the dataclass default. (Chat independently requires a single resolved project.)
+        canon_capture_enabled=False,
         surfaced_entity_ids=surfaced,
         surfaced_by_project=surfaced_by_project,
         sections=sections,

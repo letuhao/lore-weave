@@ -38,6 +38,7 @@ from loreweave_llm import (
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.client.known_entities_client import get_known_entities_client
+from app.services.canon_capture import CaptureContext, maybe_capture_canon
 from app.services.context_autodetect import resolve_context_pressure
 from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.services.injection_defense import neutralize_injection
@@ -78,6 +79,7 @@ from app.services.tool_discovery import (
     tool_async,
     tool_list_result,
     tool_load_result,
+    tool_paid,
     tool_tier,
     tool_undo_hint,
 )
@@ -1013,8 +1015,13 @@ async def _stream_with_tools(
       through returns a tool-result error, never executes.
     * write — today's surface, PLUS the prompt-once gate: a Tier-A server tool
       not on the user's allowlist suspends the run with a ``tool_approval``
-      pending card. ``approval_check`` is an async ``(tool_name) -> bool``;
-      a raising check fails OPEN (a DB blip must not brick tool calling).
+      pending card. ``approval_check`` is an async ``(tool_name, kind='mutation')
+      -> bool``; the MUTATION read fails OPEN (a DB blip must not brick tool
+      calling). Track D S-SPEND adds an ORTHOGONAL, mode-independent SPEND gate on
+      the same card machinery: a PAID tool (``_meta.paid``) that is not spend-
+      allowlisted suspends regardless of tier OR mode (a paid Tier-R read prompts,
+      including in ask mode); its read fails CLOSED (spend is irreversible). A paid
+      Tier-A tool raises ONE card carrying both required consent kinds.
     * plan (RAID B2, 07S §5b) — the ask surface PLUS the PlanForge ``plan_*``
       tools. ``plan_*`` tools run WITHOUT the C2 Tier-A approval prompt (the
       gate is write-mode-only by design — planning artifacts are the mode's
@@ -2246,52 +2253,96 @@ async def _stream_with_tools(
                     }}
                     continue
 
-                if tier == "A" and permission_mode == "write" and approval_check is not None:
-                    _allowed = True
-                    try:
-                        _allowed = bool(await approval_check(c["name"]))
-                    except Exception:
-                        logger.warning(
-                            "tool-approval allowlist read failed for %s — failing open",
-                            c["name"], exc_info=True,
-                        )
-                        _allowed = True
-                    if not _allowed:
-                        # Write-delegation (D-REG-P5-SUBAGENT-WRITE-DELEGATION): a
-                        # write-mode subagent may auto-commit an ALLOWLISTED Tier-A
-                        # tool (falls through to execute below), but an UN-allowlisted
-                        # one cannot — a headless sub-run can't raise the one-time
-                        # approval card. So it returns a result.error instead of
-                        # suspending (which the parent would otherwise swallow silently).
-                        # The write stays safe regardless: tenancy is enforced at the
-                        # tool layer and the sub-run is bounded by its tool_scope.
-                        if subagent_depth > 0:
-                            _sub_appr_err = (
-                                f"'{c['name']}' is not pre-approved, and a subagent cannot "
-                                "request one-time approval — it was NOT run. Delegate only "
-                                "tools the user has already allowlisted, or have the user "
-                                f"approve '{c['name']}' first."
+                # ── Track D S-SPEND + RAID C2 (DR-C2 §4) — combined consent gate ──────
+                # Two ORTHOGONAL, separately-persisted consents can gate ONE call:
+                #   • SPEND  (kind='spend')    — the tool is PAID (_meta.paid): CALLING
+                #     it spends real money (external paid search / an LLM research loop).
+                #     Orthogonal to tier (a paid READ is tier R) and MODE-INDEPENDENT
+                #     (ask restricts mutation, not spend) — so this fires for a Tier-R
+                #     paid tool AND in ask mode, where neither the ask-tier filter above
+                #     nor the mutation gate reaches. A read failure fails CLOSED (still
+                #     prompt): spend is IRREVERSIBLE, so a DB blip must never silently
+                #     spend money — the deliberate opposite of the mutation fail-OPEN.
+                #   • MUTATE (kind='mutation') — a Tier-A tool auto-commits an undoable
+                #     write; in WRITE mode an un-allowlisted one prompts once. A read
+                #     failure fails OPEN (a reversible write must not brick tool calling).
+                # The resume path executes the approved tool DIRECTLY (no loop re-entry),
+                # so ONE call has exactly ONE suspend point: a paid Tier-A tool therefore
+                # raises ONE card enumerating BOTH required consents (strictly more
+                # informative than two prompts) and, on always-allow, persists a SEPARATE
+                # allowlist row per kind — a "may write" grant is never a "may spend" grant.
+                _required_kinds: list[str] = []
+                if approval_check is not None:
+                    _gate_def = (cat_index if discovery else plain_index).get(c["name"], {})
+                    if tool_paid(_gate_def):
+                        try:
+                            _spend_ok = bool(await approval_check(c["name"], "spend"))
+                        except Exception:
+                            logger.warning(
+                                "spend-approval read failed for %s — failing CLOSED (prompt)",
+                                c["name"], exc_info=True,
                             )
-                            working.append({
-                                "role": "tool", "tool_call_id": c["id"],
-                                "content": tool_result_content({"error": _sub_appr_err}),
-                            })
-                            yield {"tool_call": {
-                                "id": c["id"], "iteration": iteration, "tool": c["name"],
-                                "args": args_obj, "ok": False, "result": None, "error": _sub_appr_err,
-                            }}
-                            continue
-                        suspended_call = {
-                            "id": c["id"],
-                            "name": c["name"],
-                            "args": {
-                                "kind": "tool_approval",
-                                "tool": c["name"],
-                                "args": args_obj,
-                                "tier": tier,
-                            },
-                        }
-                        break
+                            _spend_ok = False  # irreversible spend → prompt on doubt
+                        if not _spend_ok:
+                            _required_kinds.append("spend")
+                    if tier == "A" and permission_mode == "write":
+                        try:
+                            _mut_ok = bool(await approval_check(c["name"]))
+                        except Exception:
+                            logger.warning(
+                                "tool-approval allowlist read failed for %s — failing open",
+                                c["name"], exc_info=True,
+                            )
+                            _mut_ok = True  # reversible write → fail open
+                        if not _mut_ok:
+                            _required_kinds.append("mutation")
+
+                if _required_kinds:
+                    # Write-delegation (D-REG-P5-SUBAGENT-WRITE-DELEGATION): a headless
+                    # sub-run (subagent_depth>0) cannot raise an approval card, so it must
+                    # NOT spend money or auto-commit an un-approved write — it returns a
+                    # result.error the sub-model can adapt to (no silent no-op) instead of
+                    # suspending (which the parent would otherwise swallow). Tenancy stays
+                    # enforced at the tool layer; the sub-run is bounded by its tool_scope.
+                    if subagent_depth > 0:
+                        _kinds_txt = " and ".join(_required_kinds)
+                        _sub_appr_err = (
+                            f"'{c['name']}' is not pre-approved for {_kinds_txt}, and a "
+                            "subagent cannot request approval — it was NOT run. Delegate "
+                            "only tools the user has already allowlisted, or have the user "
+                            f"approve '{c['name']}' first."
+                        )
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": tool_result_content({"error": _sub_appr_err}),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": False, "result": None, "error": _sub_appr_err,
+                        }}
+                        continue
+                    _card_args: dict = {
+                        "kind": "tool_approval",
+                        "tool": c["name"],
+                        "args": args_obj,
+                        "tier": tier,
+                    }
+                    if "spend" in _required_kinds:
+                        # S-SPEND wire signal so the FE can render "this costs money" vs
+                        # "this modifies data". Added ONLY when money is at stake, so a
+                        # pure-mutation card stays byte-identical to the legacy DR-C2 shape.
+                        # The existing card keys on kind=="tool_approval" (still renders);
+                        # a spend-aware FE reads `spend` / the closed-set `approval_kinds`
+                        # ({"spend","mutation"}). The resume path reads `approval_kinds` to
+                        # know which allowlist row(s) to persist on always-allow.
+                        _card_args["spend"] = True
+                        _card_args["approval_kinds"] = list(_required_kinds)
+                    suspended_call = {
+                        "id": c["id"],
+                        "name": c["name"],
+                        "args": _card_args,
+                    }
+                    break
 
                 # D-BLANK-TOOL-ARGS-LOOP — same cap as the find_tools breaker
                 # above, generalized to ANY backend tool: once the turn has
@@ -2771,14 +2822,20 @@ async def stream_response(
     # here — it stays handled by the adaptive compaction downstream.
     _gate_pid = _build_project_id or (_build_project_ids[0] if _build_project_ids else None)
     _entity_tokens: frozenset[str] = frozenset()
+    # WS-4C Half A reuses this SERVER-RESOLVED book id for post-turn canon capture.
+    # It is deliberately not `_ctx_book_id` (below), which comes from the FE's
+    # editor/book/studio context and is client-supplied: capture WRITES, so its target
+    # must be the book knowledge-service resolved from the session's own project.
+    # (glossary grant-checks it regardless — this is the belt to that suspenders.)
+    _resolved_book_id: str | None = None
     if grounding_enabled and _gate_pid and context_mode != "off":
         try:
-            _gate_book_id = await knowledge_client.resolve_book_id(
+            _resolved_book_id = await knowledge_client.resolve_book_id(
                 user_id=user_id, project_id=str(_gate_pid)
             )
-            if _gate_book_id:
+            if _resolved_book_id:
                 _entity_tokens = await get_known_entities_client().get_known_entity_tokens(
-                    _gate_book_id
+                    _resolved_book_id
                 )
         except Exception:  # noqa: BLE001 — degrade to gate-open, never break the turn
             _entity_tokens = frozenset()
@@ -3434,6 +3491,15 @@ async def stream_response(
     # The Stream/persist/finish body is shared with the C6 resume path via
     # _emit_chat_turn — both a fresh turn and a resumed (post-frontend-tool)
     # turn run the same consume→persist→finish logic.
+    # WS-4C Half A — carry the capture inputs into the post-turn block. `_build_project_id`
+    # is None on a MULTI-project turn, so `book_id` is None there: capture writes into one
+    # book's inbox and a union of projects has no single book to choose.
+    _canon_capture_ctx = CaptureContext(
+        book_id=_resolved_book_id if _build_project_id else None,
+        project_enables=kctx.canon_capture_enabled,
+        grounding_enabled=grounding_enabled,
+    )
+
     async for line in _emit_chat_turn(
         session_id=session_id,
         user_message_content=user_message_content,
@@ -3445,6 +3511,7 @@ async def stream_response(
         billing=billing,
         parent_message_id=parent_message_id,
         project_id=str(project_id) if project_id else None,
+        canon_capture_ctx=_canon_capture_ctx,
         stream_format=stream_format,
         editor_context=editor_context,
         # S02 fix — the ids resolved above from editor/book/studio context (book-scoped
@@ -3538,6 +3605,10 @@ async def _emit_chat_turn(
     entity_presence: dict | None = None,
     trace: "TraceAccumulator | None" = None,
     is_resume: bool = False,
+    # WS-4C Half A — the turn-scoped facts post-turn canon capture needs (resolved book id,
+    # the project's toggle, the turn's grounding flag). Resolved in stream_response; None on
+    # the RESUME path, which rebuilds no knowledge context — capture then fails CLOSED.
+    canon_capture_ctx: "CaptureContext | None" = None,
     # S02 fix — the session's already-resolved {book_id, chapter_id, project_id} (from
     # editor/book/studio context in stream_response). Only editor_context is otherwise
     # threaded here, so a BOOK-scoped surface's book_id would be invisible to arg-injection
@@ -3696,11 +3767,12 @@ async def _emit_chat_turn(
     turn_succeeded = False
     post_finish_state: dict | None = None
 
-    # RAID C2 (DR-C2 §4) — the per-user Tier-A allowlist read, handed to the
-    # loop as a callable so _stream_with_tools stays DB-free. The loop wraps it
-    # fail-OPEN (a read error must not brick tool calling).
-    async def _approval_check(tool_name: str) -> bool:
-        return await is_tool_approved(pool, user_id, tool_name)
+    # RAID C2 (DR-C2 §4) + Track D S-SPEND — the per-user allowlist read, handed to
+    # the loop as a callable so _stream_with_tools stays DB-free. ``kind`` selects the
+    # consent axis ("mutation" | "spend"); each is a separate row. The loop decides
+    # how to degrade on a read error (mutation fails OPEN, spend fails CLOSED).
+    async def _approval_check(tool_name: str, kind: str = "mutation") -> bool:
+        return await is_tool_approved(pool, user_id, tool_name, kind)
 
     # P4 REG-P4-03 — resolve the user's declarative hooks once per turn (degrade-safe
     # []). pre_turn inject_text hooks are folded into the system prompt now (steering
@@ -4349,6 +4421,26 @@ async def _emit_chat_turn(
                 )
             )
 
+        # WS-4C Half A — canon auto-capture. Every Nth turn, the entities this exchange
+        # newly NAMED land in the book's glossary review inbox as ai-suggested drafts
+        # (human-gated; never canon). Closes F4's write side: the glossary is re-read into
+        # the context block every turn, so a name coined at turn 3 survives to turn 40.
+        #
+        # `_capture_book_id` is the book knowledge-service resolved from the session's own
+        # project — never the FE-supplied `_ctx_book_id`. None on a multi-project turn:
+        # capture writes into ONE book's inbox and a union of projects has no single book.
+        maybe_capture_canon(
+            ctx=canon_capture_ctx,
+            user_id=str(user_id),
+            assistant_turn_count=current_count,
+            user_message=user_message_content,
+            assistant_message=post_finish_state["final_text"],
+            # The session's own live BYOK model. Passing it explicitly matters:
+            # provider-registry's planner-default resolution returns nothing for an account
+            # with no `user_default_models` row, which is the common case.
+            model_ref=model_ref if model_source == "user_model" else None,
+        )
+
         # Log usage async (non-blocking)
         if post_finish_state["last_usage"]:
             asyncio.create_task(
@@ -4507,15 +4599,27 @@ async def resume_stream_response(
         _tool_args = _appr.get("args") if isinstance(_appr.get("args"), dict) else {}
         _decision = outcome if outcome in ("approved_once", "approved_always", "denied") else "denied"
         if _decision == "approved_always":
-            try:
-                await approve_tool(pool, user_id, _tool_name)
-            except Exception:
-                # The human approved THIS call; a failed allowlist write only
-                # means they may be prompted again — still execute.
-                logger.warning(
-                    "always-allow persist failed for %s — executing anyway",
-                    _tool_name, exc_info=True,
-                )
+            # S-SPEND — persist a SEPARATE allowlist row per required consent kind
+            # (a paid Tier-A always-allow persists BOTH spend and mutation). Legacy
+            # DR-C2 cards carry no `approval_kinds` → default to ["mutation"], and the
+            # mutation kind persists via the legacy 2-arg call shape (kept identical so
+            # the existing allowlist rows/tests are unaffected).
+            _appr_kinds = _appr.get("approval_kinds")
+            if not isinstance(_appr_kinds, list) or not _appr_kinds:
+                _appr_kinds = ["mutation"]
+            for _k in _appr_kinds:
+                try:
+                    if _k == "mutation":
+                        await approve_tool(pool, user_id, _tool_name)
+                    else:
+                        await approve_tool(pool, user_id, _tool_name, _k)
+                except Exception:
+                    # The human approved THIS call; a failed allowlist write only
+                    # means they may be prompted again — still execute.
+                    logger.warning(
+                        "always-allow persist failed for %s (kind=%s) — executing anyway",
+                        _tool_name, _k, exc_info=True,
+                    )
         if _decision in ("approved_once", "approved_always"):
             envelope = await knowledge_client.mcp_execute_tool(
                 user_id=user_id, session_id=session_id,
