@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/loreweave/grantclient"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -57,24 +58,24 @@ type proposeWorkflowIn struct {
 	Inputs      map[string]string `json:"inputs,omitempty" jsonschema:"declared inputs: name -> 'required' | 'optional'"`
 	Steps       []workflowStepIn  `json:"steps" jsonschema:"ordered tool steps (C3) — at least one"`
 	NotesMD     string            `json:"notes_md,omitempty" jsonschema:"prose the agent reads (gotchas, plain-language framing) — NOT executed"`
-	SessionID   string            `json:"session_id,omitempty" jsonschema:"the chat session this came from (optional)"`
-	// NB: no book_id here. An agent-proposed workflow is ALWAYS user-tier (private to
-	// the proposer). Book-tier workflows are cross-tenant (visible to everyone with
-	// the book) and so require a book-write GRANT the agent-registry can't verify —
-	// letting a user set an arbitrary book_id here was a cross-tenant injection hole
-	// (a workflow authored for another user's book_id would surface in THEIR chat
-	// context). Book-tier workflows are admin-seeded only until a grant-checked
-	// authoring path exists (deferred: D-WF-BOOK-TIER-AUTHORING).
+	// BookID — OPTIONAL. Omit ⇒ a personal (user-tier) workflow. Set ⇒ a book-tier
+	// workflow shared with everyone who has the book — this is a CROSS-TENANT write, so
+	// it is gated on the caller holding an ≥edit grant on an ACTIVE book (checked in
+	// toolProposeWorkflow AND re-checked at approve). A caller without the grant gets a
+	// plain "book not found" (anti-oracle).
+	BookID    string `json:"book_id,omitempty" jsonschema:"optional — set to share this workflow with a book you can edit (book-tier); omit for a personal workflow"`
+	SessionID string `json:"session_id,omitempty" jsonschema:"the chat session this came from (optional)"`
 }
 
 type updateWorkflowIn struct {
-	Slug        string            `json:"slug" jsonschema:"the slug of the user's OWN workflow to update"`
+	Slug        string            `json:"slug" jsonschema:"the slug of the workflow to update (your own, or a book-tier one you can edit)"`
 	Title       string            `json:"title,omitempty" jsonschema:"new title"`
 	Description string            `json:"description,omitempty" jsonschema:"new description"`
 	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
 	Inputs      map[string]string `json:"inputs,omitempty" jsonschema:"declared inputs: name -> 'required' | 'optional'"`
 	Steps       []workflowStepIn  `json:"steps" jsonschema:"ordered tool steps (C3) — at least one"`
 	NotesMD     string            `json:"notes_md,omitempty"`
+	BookID      string            `json:"book_id,omitempty" jsonschema:"set to update a BOOK-tier workflow of that book (needs ≥edit grant); omit to update your own personal workflow"`
 	SessionID   string            `json:"session_id,omitempty"`
 }
 
@@ -239,7 +240,8 @@ func (s *Server) toolListWorkflows(ctx context.Context, _ *mcp.CallToolRequest, 
 }
 
 type getWorkflowIn struct {
-	Slug string `json:"slug" jsonschema:"the workflow slug to read"`
+	Slug   string `json:"slug" jsonschema:"the workflow slug to read"`
+	BookID string `json:"book_id,omitempty" jsonschema:"set to read a BOOK-tier workflow of that book (needs ≥view grant); omit for System/your own"`
 }
 type getWorkflowOut struct {
 	Slug        string            `json:"slug"`
@@ -260,11 +262,49 @@ func (s *Server) toolGetWorkflow(ctx context.Context, _ *mcp.CallToolRequest, in
 	if in.Slug == "" {
 		return nil, getWorkflowOut{}, errors.New("slug is required")
 	}
+	if in.BookID != "" {
+		// Book-tier read — gate on an ≥view grant (anti-oracle "not found" without it).
+		bid, perr := uuid.Parse(in.BookID)
+		if perr != nil {
+			return nil, getWorkflowOut{}, errors.New("invalid book_id")
+		}
+		if ok, _ := s.bookGrantOK(ctx, bid, uid, grantclient.GrantView); !ok {
+			return nil, getWorkflowOut{}, errors.New("workflow not found: " + in.Slug)
+		}
+		out, err := s.loadBookWorkflow(ctx, bid, in.Slug)
+		if err != nil {
+			return nil, getWorkflowOut{}, err
+		}
+		return nil, out, nil
+	}
 	out, err := s.loadVisibleWorkflow(ctx, uid, in.Slug)
 	if err != nil {
 		return nil, getWorkflowOut{}, err
 	}
 	return nil, out, nil
+}
+
+// loadBookWorkflow reads a book-tier workflow by (book_id, slug). Caller MUST have
+// grant-checked the book first (this is a raw read).
+func (s *Server) loadBookWorkflow(ctx context.Context, bookID uuid.UUID, slug string) (getWorkflowOut, error) {
+	var out getWorkflowOut
+	var inputsJSON, stepsJSON []byte
+	err := s.db.QueryRow(ctx,
+		`SELECT slug, title, description, tier, surfaces, inputs, steps, notes_md FROM workflows
+		 WHERE tier='book' AND book_id=$1 AND slug=$2 LIMIT 1`, bookID, slug).
+		Scan(&out.Slug, &out.Title, &out.Description, &out.Tier, &out.Surfaces, &inputsJSON, &stepsJSON, &out.NotesMD)
+	if err != nil {
+		return getWorkflowOut{}, errors.New("workflow not found: " + slug)
+	}
+	_ = json.Unmarshal(inputsJSON, &out.Inputs)
+	_ = json.Unmarshal(stepsJSON, &out.Steps)
+	if out.Inputs == nil {
+		out.Inputs = map[string]string{}
+	}
+	if out.Steps == nil {
+		out.Steps = []workflowStepIn{}
+	}
+	return out, nil
 }
 
 // loadVisibleWorkflow resolves a workflow (System ∪ own) by slug, preferring the
@@ -300,6 +340,13 @@ func (s *Server) toolProposeWorkflow(ctx context.Context, _ *mcp.CallToolRequest
 	if msg != "" {
 		return nil, proposeWorkflowOut{}, errors.New(msg)
 	}
+	// Book-tier is cross-tenant — gate on an ≥edit grant on an ACTIVE book BEFORE storing
+	// the proposal (fail-closed; anti-oracle "book not found" when the caller has no grant).
+	if wfIn.Tier == "book" {
+		if ok, why := s.bookGrantOK(ctx, *wfIn.BookID, uid, grantclient.GrantEdit); !ok {
+			return nil, proposeWorkflowOut{}, errors.New(why)
+		}
+	}
 	p, msg := s.doProposeWorkflow(ctx, uid, "create", nil, wfIn, in.SessionID, "")
 	if msg != "" {
 		return nil, proposeWorkflowOut{}, errors.New(msg)
@@ -316,16 +363,34 @@ func (s *Server) toolUpdateWorkflow(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, proposeWorkflowOut{}, err
 	}
-	id, tier, owner, found := s.resolveVisibleWorkflowBySlug(ctx, uid, in.Slug)
-	if !found {
-		return nil, proposeWorkflowOut{}, errors.New("workflow not found: " + in.Slug)
-	}
-	if tier != "user" || owner == nil || *owner != uid {
-		return nil, proposeWorkflowOut{}, errors.New("only your own workflows can be updated (System workflows are read-only — clone one instead)")
+	var id uuid.UUID
+	if in.BookID != "" {
+		// Book-tier update — resolve within the named book, then gate on an ≥edit grant.
+		bid, perr := uuid.Parse(in.BookID)
+		if perr != nil {
+			return nil, proposeWorkflowOut{}, errors.New("invalid book_id")
+		}
+		if ok, why := s.bookGrantOK(ctx, bid, uid, grantclient.GrantEdit); !ok {
+			return nil, proposeWorkflowOut{}, errors.New(why)
+		}
+		if err := s.db.QueryRow(ctx,
+			`SELECT workflow_id FROM workflows WHERE tier='book' AND book_id=$1 AND slug=$2`, bid, in.Slug).Scan(&id); err != nil {
+			return nil, proposeWorkflowOut{}, errors.New("workflow not found: " + in.Slug)
+		}
+	} else {
+		wid, tier, owner, found := s.resolveVisibleWorkflowBySlug(ctx, uid, in.Slug)
+		if !found {
+			return nil, proposeWorkflowOut{}, errors.New("workflow not found: " + in.Slug)
+		}
+		if tier != "user" || owner == nil || *owner != uid {
+			return nil, proposeWorkflowOut{}, errors.New("only your own workflows can be updated (System workflows are read-only — clone one instead)")
+		}
+		id = wid
 	}
 	pIn := proposeWorkflowIn{
 		Slug: in.Slug, Title: in.Title, Description: in.Description,
 		Surfaces: in.Surfaces, Inputs: in.Inputs, Steps: in.Steps, NotesMD: in.NotesMD,
+		BookID: in.BookID,
 	}
 	if pIn.Description == "" {
 		_ = s.db.QueryRow(ctx, `SELECT description FROM workflows WHERE workflow_id=$1`, id).Scan(&pIn.Description)
@@ -341,9 +406,9 @@ func (s *Server) toolUpdateWorkflow(ctx context.Context, _ *mcp.CallToolRequest,
 	return nil, proposeWorkflowOut{ProposalID: p.ProposalID.String(), Status: "pending", Message: "Proposed an update to '" + in.Slug + "'. Awaiting the user's approval."}, nil
 }
 
-// normalize validates + converts the MCP input into the internal workflowInput.
-// ALWAYS user-tier — an agent-proposed workflow is private to the proposer. Book-tier
-// (cross-tenant) authoring is intentionally not reachable here (see proposeWorkflowIn).
+// normalize validates + converts the MCP input into the internal workflowInput. A
+// book_id promotes the tier to book (STRUCTURAL only — the cross-tenant GRANT check is
+// done by the caller, toolProposeWorkflow, which has the ctx to resolve it).
 func (in *proposeWorkflowIn) normalize() (*workflowInput, string) {
 	title := in.Title
 	if strings.TrimSpace(title) == "" {
@@ -354,10 +419,42 @@ func (in *proposeWorkflowIn) normalize() (*workflowInput, string) {
 		Surfaces: in.Surfaces, Inputs: in.Inputs, Steps: in.Steps, NotesMD: in.NotesMD,
 		Tier: "user",
 	}
+	if in.BookID != "" {
+		bid, err := uuid.Parse(in.BookID)
+		if err != nil {
+			return nil, "invalid book_id"
+		}
+		wfIn.Tier = "book"
+		wfIn.BookID = &bid
+	}
 	if msg, ok := validateWorkflow(wfIn); !ok {
 		return nil, msg
 	}
 	return wfIn, ""
+}
+
+// bookGrantOK — ctx-based book grant check for the MCP path (no HTTP w/r, unlike
+// requireBookGrant). Fail-closed: no grant client OR resolve error OR insufficient
+// level OR inactive book ⇒ (false, anti-oracle reason). `need` is GrantView for reads,
+// GrantEdit for writes. Mirrors requireBookGrant's decisions exactly.
+func (s *Server) bookGrantOK(ctx context.Context, bookID, uid uuid.UUID, need grantclient.GrantLevel) (bool, string) {
+	if s.grants == nil {
+		return false, "book-scoped workflows aren't available here yet (grant wiring not configured)"
+	}
+	if bookID == uuid.Nil {
+		return false, "book_id required for a book-tier workflow"
+	}
+	acc, err := s.grants.ResolveAccess(ctx, bookID, uid)
+	if err != nil {
+		return false, "book access authority unavailable — try again shortly"
+	}
+	if !acc.Level.AtLeast(need) {
+		return false, "book not found" // anti-oracle: no grant is indistinguishable from absent
+	}
+	if !acc.Active() {
+		return false, "book is not active (trashed or pending purge)"
+	}
+	return true, ""
 }
 
 // resolveVisibleWorkflowBySlug finds a workflow (System ∪ own) by slug for the caller.
@@ -516,6 +613,14 @@ func (s *Server) approveWorkflowProposal(w http.ResponseWriter, r *http.Request)
 	if surfaces == nil {
 		surfaces = []string{}
 	}
+	// Book-tier is cross-tenant: RE-verify the ≥edit grant at approve time — a grant can
+	// be revoked (or the book trashed) between propose and approve. requireBookGrant
+	// writes its own 404/503 response, so just return on failure.
+	if p.BookID != nil {
+		if !s.requireBookGrant(w, r, *p.BookID, uid) {
+			return
+		}
+	}
 	if p.Action == "update" && p.TargetWorkflowID != nil {
 		var owner *uuid.UUID
 		var tier string
@@ -523,13 +628,19 @@ func (s *Server) approveWorkflowProposal(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusConflict, "TARGET_GONE", "target workflow not writable")
 			return
 		}
-		if tier == "system" {
+		switch tier {
+		case "system":
 			if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 				return
 			}
-		} else if owner == nil || *owner != uid {
-			writeError(w, http.StatusConflict, "TARGET_GONE", "target workflow not writable")
-			return
+		case "book":
+			// authorized by the p.BookID grant re-check above (book-tier rows have no
+			// single owner — any ≥edit grantee may update).
+		default: // user
+			if owner == nil || *owner != uid {
+				writeError(w, http.StatusConflict, "TARGET_GONE", "target workflow not writable")
+				return
+			}
 		}
 		s.snapshotWorkflowRevision(r.Context(), *p.TargetWorkflowID)
 		if _, err := s.db.Exec(r.Context(),

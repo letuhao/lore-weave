@@ -1,8 +1,12 @@
 package api
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/loreweave/grantclient"
 )
 
 func okStep() workflowStepIn {
@@ -80,8 +84,9 @@ func TestValidateWorkflow_RepeatPerItemValid(t *testing.T) {
 	}
 }
 
-// normalize maps the MCP input to the internal shape: empty title defaults to slug,
-// and an agent-proposed workflow is ALWAYS user-tier (no cross-tenant book-tier vector).
+// normalize maps the MCP input to the internal shape: empty title defaults to slug;
+// no book_id ⇒ user-tier; a book_id ⇒ book-tier STRUCTURALLY (the cross-tenant grant
+// check is enforced separately in toolProposeWorkflow, which has the ctx).
 func TestProposeWorkflowIn_Normalize(t *testing.T) {
 	in := proposeWorkflowIn{
 		Slug: "my-flow", Description: "does a thing",
@@ -94,14 +99,40 @@ func TestProposeWorkflowIn_Normalize(t *testing.T) {
 	if wf.Title != "my-flow" {
 		t.Fatalf("empty title should default to slug, got %q", wf.Title)
 	}
-	// Tenancy: an agent proposal is ALWAYS user-tier (private to the proposer) —
-	// book-tier is cross-tenant and grant-gated, never reachable from the MCP arg.
 	if wf.Tier != "user" || wf.BookID != nil {
-		t.Fatalf("agent proposal must be user-tier with no book_id, got tier=%q bookID=%v", wf.Tier, wf.BookID)
+		t.Fatalf("no book_id ⇒ user-tier, got tier=%q bookID=%v", wf.Tier, wf.BookID)
+	}
+
+	in.BookID = "019ef2cf-4317-7edb-8f33-d3b2c5845d0c"
+	wf, msg = in.normalize()
+	if msg != "" || wf.Tier != "book" || wf.BookID == nil {
+		t.Fatalf("valid book_id ⇒ book-tier (structural), got tier=%q bookID=%v msg=%q", wf.Tier, wf.BookID, msg)
+	}
+
+	in.BookID = "not-a-uuid"
+	if _, msg := in.normalize(); msg != "invalid book_id" {
+		t.Fatalf("bad book_id should fail validation, got %q", msg)
 	}
 }
 
 // stepsToJSON defaults an empty gate to "none" so the runner reads a canonical shape.
+// bookGrantOK fails CLOSED when no grant client is wired — a book-tier write must never
+// slip through unauthorized just because grant resolution is unavailable.
+func TestBookGrantOK_FailsClosedWithoutGrantClient(t *testing.T) {
+	s := &Server{} // grants == nil
+	ok, why := s.bookGrantOK(context.Background(), uuid.New(), uuid.New(), grantclient.GrantEdit)
+	if ok {
+		t.Fatal("must fail closed when grants is nil")
+	}
+	if why == "" {
+		t.Fatal("should return a reason")
+	}
+	// and a nil book id is rejected too
+	if ok, _ := s.bookGrantOK(context.Background(), uuid.Nil, uuid.New(), grantclient.GrantView); ok {
+		t.Fatal("nil book id must not pass")
+	}
+}
+
 func TestStepsToJSON_DefaultsGate(t *testing.T) {
 	b := stepsToJSON([]workflowStepIn{{ID: "s1", Tool: "t"}})
 	if !strings.Contains(string(b), `"gate":"none"`) {
