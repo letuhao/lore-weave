@@ -2336,6 +2336,10 @@ class TestW1ContextBreakdownFrame:
         frame = _custom_events(events, "contextBudget")[0]
         assert frame["used_tokens"] == 1000  # true occupancy, NOT the 3000 sum
         assert frame["llm_call_count"] == 3
+        # /review-impl LOW: raw_tokens (the Inspector's naive-baseline reduction_pct
+        # denominator) must track the same occupancy fix, not just used_tokens — no
+        # trace savings fired in this fake scenario, so raw_tokens == used_tokens.
+        assert frame["raw_tokens"] == 1000
 
         insert_calls = [c for c in conn.execute.call_args_list
                         if "INSERT INTO chat_messages" in str(c)]

@@ -73,6 +73,20 @@ describe('apiJson', () => {
     await expect(apiJson('/v1/test')).rejects.toThrow('field required');
   });
 
+  // /review-impl (2026-07-09) MED — the first cut only handled string/array
+  // `detail`, missing composition-service's `{code: "action_error"}` and
+  // campaign-service's `{code, message}` object shapes, which fell straight
+  // through to the same useless statusText this fix was meant to kill.
+  it('reads {message} off an object-shaped detail (campaign-service shape)', async () => {
+    mockFetch(404, { detail: { code: 'CAMPAIGN_NOT_FOUND', message: 'Not found' } });
+    await expect(apiJson('/v1/test')).rejects.toThrow('Not found');
+  });
+
+  it('falls back to {code} when an object-shaped detail has no message (composition-service shape)', async () => {
+    mockFetch(400, { detail: { code: 'action_error' } });
+    await expect(apiJson('/v1/test')).rejects.toThrow('action_error');
+  });
+
   it('prefers {message} over {detail} when a body somehow has both', async () => {
     mockFetch(400, { message: 'the real message', detail: 'ignored' });
     await expect(apiJson('/v1/test')).rejects.toThrow('the real message');
