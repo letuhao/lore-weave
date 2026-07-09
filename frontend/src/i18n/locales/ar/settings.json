@@ -498,7 +498,19 @@
       "request_failed": "فشل الطلب",
       "cancel": "إلغاء",
       "saving": "جاري الحفظ...",
-      "submit": "حفظ التغييرات"
+      "submit": "حفظ التغييرات",
+      "pricing_title": "الأسعار (دولار أمريكي لكل مليون رمز)",
+      "pricing_input": "المدخلات",
+      "pricing_output": "المخرجات",
+      "pricing_free_local": "مجاني — يعمل على جهازك الخاص",
+      "pricing_hint": "يتم ملؤها تلقائياً عند الإنشاء. قم بتعديلها إذا تغير السعر المعلن للمزود، أو تحقق من OpenRouter للحصول على تقدير مباشر.",
+      "pricing_check": "التحقق من OpenRouter",
+      "pricing_checking": "جاري التحقق...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} للمدخلات / ${{output}} للمخرجات",
+      "pricing_apply": "تطبيق",
+      "pricing_not_found": "لم يتم العثور على نموذج مطابق في OpenRouter — الأسعار غير متوفرة من هذا المصدر.",
+      "pricing_check_failed": "فشل التحقق من أسعار OpenRouter",
+      "pricing_negative_error": "يجب أن يكون السعر صفراً أو أكبر"
     },
     "toast": {
       "fetch_failed": "فشل جلب النماذج: {{error}}",

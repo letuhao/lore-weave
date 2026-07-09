@@ -437,6 +437,7 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/user-models/{user_model_id}/favorite", s.patchUserModelFavorite)
 		r.Put("/user-models/{user_model_id}/tags", s.putUserModelTags)
 		r.Post("/user-models/{user_model_id}/verify", s.verifyUserModel)
+		r.Get("/user-models/{user_model_id}/pricing/suggest", s.suggestUserModelPricing) // D-PRICING-REFRESH
 
 		// Per-user default model per capability (rerank/embedding). Restores the
 		// default-model UX (BYOK) — consumers resolve via /internal/default-models.
@@ -1592,6 +1593,28 @@ VALUES ($1,$2,$3,$4,now())
 	return tx.Commit(ctx)
 }
 
+// parsePricingInput validates a caller-supplied `pricing` payload, shared by
+// createUserModel and patchUserModel/D-PRICING-REFRESH so the two write paths
+// can never drift on what counts as valid pricing. Returns (nil, nil) when
+// `raw` is empty/absent/JSON-null (caller decides the fallback — a default-
+// table pre-fill on create, "leave unchanged" on patch); returns a 400-shaped
+// error on malformed JSON (would otherwise brick the model with a 500 at
+// every job — an unmarshal failure in ModelPricing) or a negative rate
+// (would otherwise silently disable the spend guardrail for that model).
+func parsePricingInput(raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var p billing.Pricing
+	if uErr := json.Unmarshal(raw, &p); uErr != nil {
+		return nil, fmt.Errorf("invalid pricing: %w", uErr)
+	}
+	if vErr := p.Validate(); vErr != nil {
+		return nil, vErr
+	}
+	return raw, nil
+}
+
 func (s *Server) createUserModel(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.auth(r)
 	if !ok {
@@ -1648,29 +1671,22 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2 AND status='active'
 	flagsBytes, _ := json.Marshal(in.CapabilityFlags)
 
 	// Phase 6a — pricing pre-fill. An explicit `pricing` from the caller
-	// wins; otherwise the default price table seeds known cloud text models.
-	// An unknown model is left empty ('{}') so the spend guardrail fails
-	// closed (402) until the user prices it (design §3.2).
-	//
-	// An explicit pricing is validated here (/review-impl MED#3): unvalidated
-	// it would either brick the model with a 500 at every job (unmarshal
-	// failure in ModelPricing) or — if negative — silently disable the
-	// guardrail for that model.
-	pricingJSON := []byte("{}")
-	if len(in.Pricing) > 0 && string(in.Pricing) != "null" {
-		var p billing.Pricing
-		if uErr := json.Unmarshal(in.Pricing, &p); uErr != nil {
-			writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid pricing: "+uErr.Error())
-			return
-		}
-		if vErr := p.Validate(); vErr != nil {
-			writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", vErr.Error())
-			return
-		}
-		pricingJSON = in.Pricing
-	} else if def, ok := billing.DefaultPricing(providerKind, in.ProviderModelName); ok {
-		if b, mErr := json.Marshal(def); mErr == nil {
-			pricingJSON = b
+	// wins (validated by parsePricingInput, shared with patchUserModel/D-PRICING-
+	// REFRESH so the two write paths can't drift on what's an acceptable rate);
+	// otherwise the default price table seeds known cloud text models. An
+	// unknown model is left empty ('{}') so the spend guardrail fails closed
+	// (402) until the user prices it (design §3.2).
+	pricingJSON, perr := parsePricingInput(in.Pricing)
+	if perr != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", perr.Error())
+		return
+	}
+	if pricingJSON == nil {
+		pricingJSON = []byte("{}")
+		if def, ok := billing.DefaultPricing(providerKind, in.ProviderModelName); ok {
+			if b, mErr := json.Marshal(def); mErr == nil {
+				pricingJSON = b
+			}
 		}
 	}
 
@@ -1941,10 +1957,11 @@ func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Alias           *string        `json:"alias"`
-		ContextLength   *int           `json:"context_length"`
-		CapabilityFlags map[string]any `json:"capability_flags"`
-		Notes           *string        `json:"notes"`
+		Alias           *string         `json:"alias"`
+		ContextLength   *int            `json:"context_length"`
+		CapabilityFlags map[string]any  `json:"capability_flags"`
+		Notes           *string         `json:"notes"`
+		Pricing         json.RawMessage `json:"pricing,omitempty"` // D-PRICING-REFRESH
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1959,6 +1976,16 @@ func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "context_length must be positive")
 		return
 	}
+	// D-PRICING-REFRESH — until this fix, `pricing` was frozen at model-creation
+	// time forever: patchUserModel had no field for it at all, so a user who
+	// registered a paid model (e.g. gpt-4o) with a stale/wrong pre-filled rate
+	// had no way to correct it. Validated by the SAME parsePricingInput as
+	// create, before the UPDATE — an invalid rate never reaches the DB.
+	pricingJSON, perr := parsePricingInput(in.Pricing)
+	if perr != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", perr.Error())
+		return
+	}
 	flagsBytes, _ := json.Marshal(in.CapabilityFlags)
 	cmd, err := s.pool.Exec(r.Context(), `
 UPDATE user_models
@@ -1966,9 +1993,10 @@ SET alias=COALESCE($3, alias),
     context_length=COALESCE($4, context_length),
     capability_flags=CASE WHEN $5::jsonb IS NULL THEN capability_flags ELSE $5 END,
     notes=COALESCE($6, notes),
+    pricing=CASE WHEN $7::jsonb IS NULL THEN pricing ELSE $7 END,
     updated_at=now()
 WHERE user_model_id=$1 AND owner_user_id=$2
-`, id, userID, in.Alias, in.ContextLength, nullJSON(flagsBytes, in.CapabilityFlags != nil), in.Notes)
+`, id, userID, in.Alias, in.ContextLength, nullJSON(flagsBytes, in.CapabilityFlags != nil), in.Notes, nullJSON(pricingJSON, pricingJSON != nil))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_UPDATE_FAILED", "failed to patch user model")
 		return
@@ -1985,6 +2013,40 @@ func nullJSON(b []byte, valid bool) any {
 		return nil
 	}
 	return b
+}
+
+// suggestUserModelPricing — D-PRICING-REFRESH: GET .../pricing/suggest returns
+// a best-effort live-pricing suggestion from OpenRouter's public catalog for
+// this model's (provider_kind, provider_model_name), for the user to review
+// and optionally apply via the existing pricing PATCH. Never writes anything
+// itself — `{"found": false}` (never an error) when the provider_kind has no
+// OpenRouter mapping, the model isn't in OpenRouter's current catalog (e.g. a
+// retired version), or OpenRouter is unreachable.
+func (s *Server) suggestUserModelPricing(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	id, ok := parseUUIDParam(w, r, "user_model_id")
+	if !ok {
+		return
+	}
+	var providerKind, modelName string
+	err := s.pool.QueryRow(r.Context(), `
+SELECT provider_kind, provider_model_name FROM user_models
+WHERE user_model_id=$1 AND owner_user_id=$2
+`, id, userID).Scan(&providerKind, &modelName)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "M03_USER_MODEL_NOT_FOUND", "user model not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_QUERY_FAILED", "failed to resolve user model")
+		return
+	}
+	suggestion := billing.FetchOpenRouterPricing(r.Context(), s.client, providerKind, modelName)
+	writeJSON(w, http.StatusOK, suggestion)
 }
 
 func (s *Server) deleteUserModel(w http.ResponseWriter, r *http.Request) {

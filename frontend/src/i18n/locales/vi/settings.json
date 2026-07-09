@@ -498,7 +498,19 @@
       "request_failed": "Yêu cầu thất bại",
       "cancel": "Hủy",
       "saving": "Đang lưu...",
-      "submit": "Lưu thay đổi"
+      "submit": "Lưu thay đổi",
+      "pricing_title": "Giá cả (USD cho mỗi 1 triệu token)",
+      "pricing_input": "Đầu vào",
+      "pricing_output": "Đầu ra",
+      "pricing_free_local": "Miễn phí — chạy trên phần cứng của bạn",
+      "pricing_hint": "Được điền sẵn khi khởi tạo. Hãy chỉnh sửa nếu giá niêm yết của nhà cung cấp thay đổi, hoặc kiểm tra OpenRouter để có ước tính trực tiếp.",
+      "pricing_check": "Kiểm tra OpenRouter",
+      "pricing_checking": "Đang kiểm tra...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} đầu vào / ${{output}} đầu ra",
+      "pricing_apply": "Áp dụng",
+      "pricing_not_found": "Không tìm thấy mô hình tương ứng trên OpenRouter — không thể lấy giá từ nguồn này.",
+      "pricing_check_failed": "Không thể kiểm tra giá trên OpenRouter",
+      "pricing_negative_error": "Giá phải lớn hơn hoặc bằng 0"
     },
     "toast": {
       "fetch_failed": "Không thể lấy danh sách mô hình: {{error}}",

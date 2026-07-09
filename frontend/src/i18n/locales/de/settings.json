@@ -498,7 +498,19 @@
       "request_failed": "Anfrage fehlgeschlagen",
       "cancel": "Abbrechen",
       "saving": "Wird gespeichert...",
-      "submit": "Änderungen speichern"
+      "submit": "Änderungen speichern",
+      "pricing_title": "Preisgestaltung (USD pro 1 Mio. Token)",
+      "pricing_input": "Input",
+      "pricing_output": "Output",
+      "pricing_free_local": "Kostenlos — läuft auf Ihrer eigenen Hardware",
+      "pricing_hint": "Wird bei der Erstellung vorausgefüllt. Falls sich der veröffentlichte Tarif des Anbieters geändert hat, bitte anpassen oder OpenRouter für eine aktuelle Schätzung prüfen.",
+      "pricing_check": "OpenRouter prüfen",
+      "pricing_checking": "Prüfung läuft...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out",
+      "pricing_apply": "Anwenden",
+      "pricing_not_found": "Kein passendes Modell auf OpenRouter gefunden — Preisangaben von dieser Quelle nicht verfügbar.",
+      "pricing_check_failed": "Fehler beim Abrufen der OpenRouter-Preise",
+      "pricing_negative_error": "Der Preis muss Null oder höher sein"
     },
     "toast": {
       "fetch_failed": "Modelle konnten nicht abgerufen werden: {{error}}",

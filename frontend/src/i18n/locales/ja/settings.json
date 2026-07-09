@@ -498,7 +498,19 @@
       "request_failed": "リクエストに失敗しました",
       "cancel": "キャンセル",
       "saving": "保存中...",
-      "submit": "変更を保存"
+      "submit": "変更を保存",
+      "pricing_title": "料金 (100万トークンあたりのUSD)",
+      "pricing_input": "入力",
+      "pricing_output": "出力",
+      "pricing_free_local": "無料 — ローカル環境で実行",
+      "pricing_hint": "作成時に自動入力されます。プロバイダーの公開料金が変更された場合は編集するか、OpenRouterで最新の推定値を確認してください。",
+      "pricing_check": "OpenRouterを確認",
+      "pricing_checking": "確認中...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): 入力 ${{input}} / 出力 ${{output}}",
+      "pricing_apply": "適用",
+      "pricing_not_found": "OpenRouterに一致するモデルが見つかりません。このソースからは料金を取得できません。",
+      "pricing_check_failed": "OpenRouterの料金確認に失敗しました",
+      "pricing_negative_error": "料金は0以上である必要があります"
     },
     "toast": {
       "fetch_failed": "モデルの取得に失敗しました: {{error}}",

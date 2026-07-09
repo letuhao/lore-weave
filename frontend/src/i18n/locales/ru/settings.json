@@ -498,7 +498,19 @@
       "request_failed": "Ошибка запроса",
       "cancel": "Отмена",
       "saving": "Сохранение...",
-      "submit": "Сохранить изменения"
+      "submit": "Сохранить изменения",
+      "pricing_title": "Цена (USD за 1 млн токенов)",
+      "pricing_input": "Вход",
+      "pricing_output": "Выход",
+      "pricing_free_local": "Бесплатно — работает на вашем оборудовании",
+      "pricing_hint": "Заполняется автоматически при создании. Отредактируйте, если тариф провайдера изменился, или проверьте актуальную оценку на OpenRouter.",
+      "pricing_check": "Проверить в OpenRouter",
+      "pricing_checking": "Проверка...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} за / ${{output}} за",
+      "pricing_apply": "Применить",
+      "pricing_not_found": "Модель не найдена в OpenRouter — данные о цене из этого источника недоступны.",
+      "pricing_check_failed": "Не удалось проверить цену в OpenRouter",
+      "pricing_negative_error": "Цена должна быть больше или равна нулю"
     },
     "toast": {
       "fetch_failed": "Не удалось получить список моделей: {{error}}",

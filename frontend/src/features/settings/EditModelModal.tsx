@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Save, Trash2, X, Loader2, Zap, CheckCircle } from 'lucide-react';
+import { Save, Trash2, X, Loader2, Zap, CheckCircle, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
-import { providerApi, type UserModel } from './api';
+import { providerApi, type UserModel, type ModelPricing } from './api';
+import { LOCAL_PROVIDER_KINDS } from '@/features/ai-models/api';
 import { KNOWN_FLAGS } from './CapabilityFlags';
 import { CapabilityFlags } from './CapabilityFlags';
 import { TagEditor } from './TagEditor';
@@ -35,6 +36,23 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // D-PRICING-REFRESH — pricing was frozen at creation with no edit path at
+  // all; local (BYOK self-hosted) kinds are always explicit-zero server-side
+  // and have no editable price here. `_free` intentionally not in useState.
+  const isLocalKind = LOCAL_PROVIDER_KINDS.has(model.provider_kind);
+  const [inputPerMTok, setInputPerMTok] = useState(
+    model.pricing?.input_per_mtok != null ? String(model.pricing.input_per_mtok) : '',
+  );
+  const [outputPerMTok, setOutputPerMTok] = useState(
+    model.pricing?.output_per_mtok != null ? String(model.pricing.output_per_mtok) : '',
+  );
+  const [checkingPrice, setCheckingPrice] = useState(false);
+  const [priceSuggestion, setPriceSuggestion] = useState<{
+    found: boolean;
+    source_model_id?: string;
+    pricing?: ModelPricing;
+  } | null>(null);
+
   // Verify
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<{
@@ -48,18 +66,33 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
 
   async function handleSave() {
     if (!accessToken) return;
+    // D-PRICING-REFRESH — mirror the backend's Validate() client-side so a
+    // negative rate never round-trips through a 400 the user has to decode.
+    const inNum = inputPerMTok.trim() === '' ? undefined : Number(inputPerMTok);
+    const outNum = outputPerMTok.trim() === '' ? undefined : Number(outputPerMTok);
+    if ((inNum != null && (Number.isNaN(inNum) || inNum < 0)) || (outNum != null && (Number.isNaN(outNum) || outNum < 0))) {
+      toast.error(t('model_modal.edit.pricing_negative_error'));
+      return;
+    }
     setSaving(true);
     try {
       // Build capability_flags
       const capFlags: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(flags)) { if (v) capFlags[k] = true; }
 
-      // 1. Patch model fields (alias, context, flags, notes)
+      // 1. Patch model fields (alias, context, flags, notes, pricing)
       await providerApi.patchUserModel(accessToken, model.user_model_id, {
         alias: alias || undefined,
         context_length: contextLength ? Number(contextLength) : null,
         capability_flags: capFlags,
         notes,
+        // pricing is a FULL replace server-side (not a per-field merge) — spread
+        // the model's existing dims first so an untouched per_image/per_second/
+        // per_kchar rate (media models) survives editing just input/output here.
+        // Omitted entirely for local kinds (always explicit-zero, not user-set).
+        ...(isLocalKind ? {} : {
+          pricing: { ...model.pricing, input_per_mtok: inNum, output_per_mtok: outNum },
+        }),
       });
 
       // 2. Save tags
@@ -87,6 +120,28 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleCheckPricing() {
+    if (!accessToken) return;
+    setCheckingPrice(true);
+    setPriceSuggestion(null);
+    try {
+      const res = await providerApi.suggestPricing(accessToken, model.user_model_id);
+      setPriceSuggestion(res);
+      if (!res.found) toast.info(t('model_modal.edit.pricing_not_found'));
+    } catch (e) {
+      toast.error((e as Error).message || t('model_modal.edit.pricing_check_failed'));
+    } finally {
+      setCheckingPrice(false);
+    }
+  }
+
+  function applyPricingSuggestion() {
+    if (!priceSuggestion?.pricing) return;
+    if (priceSuggestion.pricing.input_per_mtok != null) setInputPerMTok(String(priceSuggestion.pricing.input_per_mtok));
+    if (priceSuggestion.pricing.output_per_mtok != null) setOutputPerMTok(String(priceSuggestion.pricing.output_per_mtok));
+    setPriceSuggestion(null);
   }
 
   async function handleDelete() {
@@ -168,6 +223,62 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
               <label className="mb-1 block text-xs font-medium">{t('model_modal.add.context_length')}</label>
               <input type="number" min={1} step={1} value={contextLength} onChange={(e) => setContextLength(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
             </div>
+          </div>
+
+          {/* Pricing (D-PRICING-REFRESH) */}
+          <div>
+            <label className="mb-1 block text-xs font-medium">{t('model_modal.edit.pricing_title')}</label>
+            {isLocalKind ? (
+              <p className="rounded-md bg-secondary px-3 py-2 text-[11px] text-muted-foreground">
+                {t('model_modal.edit.pricing_free_local')}
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">{t('model_modal.edit.pricing_input')}</label>
+                    <input
+                      type="number" min={0} step="any" value={inputPerMTok}
+                      onChange={(e) => setInputPerMTok(e.target.value)}
+                      className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] text-muted-foreground">{t('model_modal.edit.pricing_output')}</label>
+                    <input
+                      type="number" min={0} step="any" value={outputPerMTok}
+                      onChange={(e) => setOutputPerMTok(e.target.value)}
+                      className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                    />
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">{t('model_modal.edit.pricing_hint')}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={handleCheckPricing}
+                    disabled={checkingPrice}
+                    className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-colors hover:bg-secondary disabled:opacity-50"
+                  >
+                    {checkingPrice ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <DollarSign className="h-2.5 w-2.5" />}
+                    {checkingPrice ? t('model_modal.edit.pricing_checking') : t('model_modal.edit.pricing_check')}
+                  </button>
+                  {priceSuggestion?.found && priceSuggestion.pricing && (
+                    <div className="flex flex-1 items-center justify-between gap-2 rounded-md border border-accent/20 bg-accent/5 px-2.5 py-1 text-[11px]">
+                      <span className="text-accent">
+                        {t('model_modal.edit.pricing_suggestion_found', {
+                          source: priceSuggestion.source_model_id,
+                          input: priceSuggestion.pricing.input_per_mtok,
+                          output: priceSuggestion.pricing.output_per_mtok,
+                        })}
+                      </span>
+                      <button onClick={applyPricingSuggestion} className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium hover:bg-secondary">
+                        {t('model_modal.edit.pricing_apply')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Status toggles */}

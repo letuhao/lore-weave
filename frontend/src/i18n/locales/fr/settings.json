@@ -498,7 +498,19 @@
       "request_failed": "La requête a échoué",
       "cancel": "Annuler",
       "saving": "Enregistrement...",
-      "submit": "Enregistrer les modifications"
+      "submit": "Enregistrer les modifications",
+      "pricing_title": "Tarification (USD pour 1M de tokens)",
+      "pricing_input": "Entrée",
+      "pricing_output": "Sortie",
+      "pricing_free_local": "Gratuit — s'exécute sur votre propre matériel",
+      "pricing_hint": "Pré-rempli lors de la création. Modifiez si le tarif publié par le fournisseur a changé, ou consultez OpenRouter pour une estimation en temps réel.",
+      "pricing_check": "Vérifier sur OpenRouter",
+      "pricing_checking": "Vérification...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}) : ${{input}} en / ${{output}} hors",
+      "pricing_apply": "Appliquer",
+      "pricing_not_found": "Aucun modèle correspondant trouvé sur OpenRouter — tarification indisponible pour cette source.",
+      "pricing_check_failed": "Échec de la vérification des tarifs sur OpenRouter",
+      "pricing_negative_error": "Le prix doit être supérieur ou égal à zéro"
     },
     "toast": {
       "fetch_failed": "Échec de la récupération des modèles : {{error}}",
