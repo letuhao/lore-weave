@@ -416,6 +416,7 @@ MATCH (f:Fact)
 WHERE f.user_id = $user_id
   AND ($project_id IS NULL OR f.project_id = $project_id)
   AND ($type IS NULL OR f.type = $type)
+  AND ($source_type IS NULL OR $source_type IN f.source_types)
   AND ($exclude_pending = false OR coalesce(f.pending_validation, false) = false)
   AND f.confidence >= $min_confidence
   AND f.valid_until IS NULL
@@ -432,6 +433,7 @@ async def list_facts_by_type(
     user_id: str,
     project_id: str | None = None,
     type: str | None = None,
+    source_type: str | None = None,
     min_confidence: float = 0.8,
     exclude_pending: bool = True,
     include_archived: bool = False,
@@ -445,7 +447,9 @@ async def list_facts_by_type(
     `min_confidence=0.0` to see Pass 1 candidates.
 
     `type=None` returns facts of all types; otherwise pass one
-    of `FACT_TYPES`.
+    of `FACT_TYPES`. `source_type` (WS-4C) filters to facts whose
+    accumulated `source_types` list contains it (e.g. "llm_tool_call"
+    for memory_remember facts) — None means any source.
     """
     if type is not None and type not in FACT_TYPES:
         raise ValueError(f"type must be one of {FACT_TYPES} or None, got {type!r}")
@@ -460,6 +464,7 @@ async def list_facts_by_type(
         user_id=user_id,
         project_id=project_id,
         type=type,
+        source_type=source_type,
         min_confidence=min_confidence,
         exclude_pending=exclude_pending,
         include_archived=include_archived,

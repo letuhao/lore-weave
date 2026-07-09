@@ -561,7 +561,8 @@ async def test_widened_retry_skipped_when_first_pass_has_facts(monkeypatch):
 
     async def fake_l2(*, user_id, project, intent):
         calls.append(intent)
-        return L2FactResult(current=["Alice is here"])
+        # entity-anchored relation found → no need to widen
+        return L2FactResult(background=["Alice — trusts — Bob"])
 
     monkeypatch.setattr("app.context.modes.full._safe_l2_facts", fake_l2)
     project = _project()
@@ -570,7 +571,29 @@ async def test_widened_retry_skipped_when_first_pass_has_facts(monkeypatch):
         embedding_client=MagicMock(),
         user_id=USER_ID, project=project, message="Tell me about Alice",
     )
-    assert len(calls) == 1  # no retry when the first pass found facts
+    assert len(calls) == 1  # no retry when the entity-anchored pass found facts
+
+
+@pytest.mark.asyncio
+async def test_widened_retry_fires_when_only_tool_facts(monkeypatch):
+    """WS-4C — project-level tool facts (in `current`) must NOT mask an empty
+    entity-relation walk: the widened retry still fires to try to recover
+    relations for the named entity."""
+    _patch_mode3_pieces(monkeypatch)
+    calls: list = []
+
+    async def fake_l2(*, user_id, project, intent):
+        calls.append(intent)
+        return L2FactResult(current=["the user wants a grimdark tone"])
+
+    monkeypatch.setattr("app.context.modes.full._safe_l2_facts", fake_l2)
+    project = _project()
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID, project=project, message="Tell me about Alice",
+    )
+    assert len(calls) == 2  # tool facts present but relations empty → still retry
 
 
 @pytest.mark.asyncio

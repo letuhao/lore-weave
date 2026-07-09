@@ -109,6 +109,10 @@ async def _safe_l2_facts(
                     user_id=str(user_id),
                     project_id=str(project.project_id),
                     intent=intent,
+                    # WS-4C — admit project-level memory_remember facts to L2.
+                    tool_facts=settings.context_l2_tool_facts,
+                    tool_fact_min_confidence=settings.context_l2_tool_fact_min_confidence,
+                    tool_facts_limit=settings.context_l2_tool_facts_limit,
                 ),
                 timeout=settings.context_l2_timeout_s,
             )
@@ -874,9 +878,13 @@ async def build_full_mode(
     # same entities before concluding "no memory". Strictly additive recall on the
     # empty path only (never re-ranks a non-empty result); one bounded extra Neo4j
     # query; kill-switch via settings.context_l2_retry_widened.
+    # WS-4C — key the miss-detection on the ENTITY-ANCHORED buckets, not total():
+    # tool facts (in `current`) are project-level and would otherwise mask an empty
+    # relation walk and suppress the widened retry that exists to recover relations.
     if (
         settings.context_l2_retry_widened
-        and l2_facts.total() == 0
+        and not l2_facts.background
+        and not l2_facts.negative
         and intent_obj.entities
         and intent_obj.hop_count < 2
     ):

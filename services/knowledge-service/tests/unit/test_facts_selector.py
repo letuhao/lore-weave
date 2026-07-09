@@ -104,13 +104,16 @@ def test_format_relation_hop():
 
 @pytest.mark.asyncio
 async def test_select_returns_empty_when_no_entities(monkeypatch):
-    """Classifier extracted no entities → nothing to anchor queries."""
+    """Classifier extracted no entities → nothing to anchor queries.
+    (tool_facts=False isolates the entity-anchored path; the WS-4C tool-fact
+    branch is covered separately below.)"""
     intent = _intent(entities=())
     result = await select_l2_facts(
         MagicMock(),
         user_id=USER_ID,
         project_id=PROJECT_ID,
         intent=intent,
+        tool_facts=False,
     )
     assert result == L2FactResult()
     assert result.total() == 0
@@ -371,6 +374,73 @@ async def test_select_returns_empty_when_name_unresolved(monkeypatch):
         user_id=USER_ID,
         project_id=PROJECT_ID,
         intent=_intent(entities=("NotInGraph",)),
+        tool_facts=False,
+    )
+    assert result.total() == 0
+
+
+def _tool_fact(content: str, fact_type: str = "decision") -> Fact:
+    """A memory_remember / llm_tool_call fact (WS-4C): source-tagged, 0.7."""
+    return Fact(
+        id=f"tool-{abs(hash(content))}",
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        type=fact_type,
+        content=content,
+        canonical_content=content.lower(),
+        confidence=0.7,
+        source_types=["llm_tool_call"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_tool_facts_admitted_to_current_without_entities(monkeypatch):
+    """WS-4C — project-level memory_remember facts are recalled even when the
+    message names NO entity, and land in `current`."""
+    list_facts = AsyncMock(return_value=[
+        _tool_fact("we decided the villain dies in chapter 10"),
+        _tool_fact("the user does NOT want a romance subplot", "negation"),
+    ])
+    monkeypatch.setattr(
+        "app.context.selectors.facts.list_facts_by_type", list_facts,
+    )
+    result = await select_l2_facts(
+        MagicMock(),
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        intent=_intent(entities=()),  # no entity anchor
+        tool_facts=True,
+    )
+    # both go to current (each sentence carries its own polarity); negative
+    # stays purely entity-anchored so the widened-retry miss-detection is intact.
+    assert result.current == [
+        "we decided the villain dies in chapter 10",
+        "the user does NOT want a romance subplot",
+    ]
+    assert result.negative == []
+    # called with the lower tool floor + the source filter.
+    kwargs = list_facts.await_args.kwargs
+    assert kwargs["source_type"] == "llm_tool_call"
+    assert kwargs["min_confidence"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_tool_facts_disabled_by_flag(monkeypatch):
+    """tool_facts=False skips the branch entirely (kill-switch)."""
+    list_facts = AsyncMock(side_effect=AssertionError("must not query tool facts"))
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.list_facts_by_type", list_facts,
+    )
+    result = await select_l2_facts(
+        MagicMock(),
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        intent=_intent(entities=()),
+        tool_facts=False,
     )
     assert result.total() == 0
 
