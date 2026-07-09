@@ -47,6 +47,14 @@ const (
 	// maxAttrsPerKindInExtract bounds how many attribute codes per kind are listed in
 	// the grounding prompt (a kind with a huge attribute set can't blow the prompt).
 	maxAttrsPerKindInExtract = 12
+	// nameAttrCode — every kind carries a required "name" attribute (kinds_crud.go
+	// force-adds it), and the K2a trigger mirrors it into glossary_entities.cached_name.
+	// A candidate's name is therefore a TOP-LEVEL field here, never an attribute: we
+	// neither advertise `name` in the grounding prompt nor accept it in a candidate's
+	// `attributes` map. Otherwise the model can emit a second, conflicting name — inert
+	// at create (ON CONFLICT DO NOTHING) but a silent RENAME if a workflow ever fed the
+	// candidate's attributes to glossary_entity_set_attributes.
+	nameAttrCode = "name"
 )
 
 // RegisterEntityDocExtractTools adds glossary_extract_entities_from_doc to the
@@ -215,6 +223,9 @@ func ontologyExtractMaps(ont *bookOntologyResp) (validKinds map[string]bool, att
 		code, ok := kindCodeByID[a.KindID]
 		if !ok {
 			continue // attribute of a hidden/unknown kind
+		}
+		if a.Code == nameAttrCode {
+			continue // the entity's name is a top-level field, never an attribute here
 		}
 		set := attrCodesByKind[code]
 		if set == nil {
@@ -402,6 +413,9 @@ func ontologyGroundingSummary(ont *bookOntologyResp) string {
 		seen := make(map[string]bool)
 		shown := 0
 		for _, a := range byKind[k.BookKindID] {
+			if a.Code == nameAttrCode {
+				continue // name is the candidate's top-level field, not an attribute
+			}
 			if seen[a.Code] {
 				continue // a code can recur across genres — list it once
 			}

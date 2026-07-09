@@ -1613,12 +1613,20 @@ async def _handle_kg_project_entities_to_nodes(
             book_id=book_id,
             entity_ids=entity_ids or None,
         )
-    return {
+    out: dict = {
         "nodes_created": res.created,
         "nodes_existing": res.existing,
         "entities_seen": res.seen,
         "skipped": res.skipped,
     }
+    if res.truncated:
+        # Never report a partial projection as a complete one (no silent caps).
+        out["truncated"] = True
+        out["note"] = (
+            "the book has more entities than one projection pass can read; "
+            "re-run with explicit entity_ids to project the remainder"
+        )
+    return out
 
 
 async def _handle_kg_view_upsert(ctx: "ToolContext", args: KgViewUpsertArgs) -> dict:

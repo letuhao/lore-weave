@@ -121,6 +121,51 @@ func TestParseDocExtraction_StringifiesNonStringAttrValues(t *testing.T) {
 	}
 }
 
+// REGRESSION (/review-impl): every kind carries a required "name" attr_def, so it
+// used to appear in the grounding prompt AND be accepted in a candidate's attributes,
+// letting the model emit a second name that conflicts with the top-level one (inert at
+// create, but a silent RENAME if fed to glossary_entity_set_attributes).
+func TestOntologyExtractMaps_ExcludesNameFromAttributes(t *testing.T) {
+	desc := "the entity's name"
+	ont := &bookOntologyResp{
+		Kinds: []bookKindResp{{BookKindID: "k1", Code: "character", Name: "Character"}},
+		Attributes: []bookAttrResp{
+			{KindID: "k1", Code: "name", Name: "Name", Description: &desc, FieldType: "text"},
+			{KindID: "k1", Code: "summary", Name: "Summary", FieldType: "textarea"},
+		},
+	}
+	_, attrCodesByKind := ontologyExtractMaps(ont)
+	if attrCodesByKind["character"]["name"] {
+		t.Error("`name` must NOT be an accepted candidate attribute code")
+	}
+	if !attrCodesByKind["character"]["summary"] {
+		t.Error("`summary` should still be accepted")
+	}
+	if s := ontologyGroundingSummary(ont); strings.Contains(s, "· name") {
+		t.Errorf("`name` must not be advertised as a settable attribute:\n%s", s)
+	}
+}
+
+func TestParseDocExtraction_DropsNameAttributeFromCandidate(t *testing.T) {
+	vk := map[string]bool{"character": true}
+	ac := map[string]map[string]bool{"character": {"summary": true}} // no "name"
+	text := `{"candidates":[{"kind":"character","name":"Lâm Uyên","attributes":{"name":"WRONG","summary":"a sect heir"}}]}`
+	out, err := parseDocExtraction(text, vk, ac)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	c := out.Candidates[0]
+	if c.Name != "Lâm Uyên" {
+		t.Errorf("top-level name must win, got %q", c.Name)
+	}
+	if _, ok := c.Attributes["name"]; ok {
+		t.Errorf("a `name` attribute must be filtered out, got %+v", c.Attributes)
+	}
+	if c.Attributes["summary"] != "a sect heir" {
+		t.Errorf("valid attr lost: %+v", c.Attributes)
+	}
+}
+
 func TestParseDocExtraction_InvalidJSONErrorsForRepair(t *testing.T) {
 	vk, ac := extractTestMaps()
 	if _, err := parseDocExtraction("not json at all", vk, ac); err == nil {

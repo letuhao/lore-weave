@@ -9,6 +9,7 @@ import pytest
 
 from app.db.neo4j_repos.entities import Entity
 from app.extraction.anchor_loader import (
+    PROJECTION_PAGE_LIMIT,
     Anchor,
     ProjectionResult,
     load_glossary_anchors,
@@ -234,6 +235,57 @@ async def test_projection_counts_created_vs_existing(monkeypatch):
     assert isinstance(res, ProjectionResult)
     assert (res.created, res.existing, res.seen, res.skipped) == (1, 2, 3, 0)
     gc.list_entities.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_projection_reads_whole_glossary_with_prose_less_params(monkeypatch):
+    """REGRESSION (/review-impl) — the whole-glossary read MUST override three
+    known-entities handler defaults, or a PROSE-LESS book (WS-4B's whole point,
+    scenario S04) projects nothing:
+      min_frequency default 2 → needs >=2 chapter links (a prose-less book has 0)
+      alive default true      → silently drops narratively-dead entities
+      limit default 50        → silently truncates a larger glossary
+    """
+    gc = MagicMock()
+    gc.list_entities = AsyncMock(return_value=[])
+
+    async def fake_upsert(session, **kw):
+        return _make_entity(kw["name"], kw["kind"], kw["glossary_entity_id"]), True
+
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.upsert_glossary_anchor_counted", fake_upsert,
+    )
+    await project_glossary_entities_to_nodes(
+        session=MagicMock(), glossary_client=gc,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+    )
+    kwargs = gc.list_entities.await_args.kwargs
+    assert kwargs["min_frequency"] == 0, "must not require chapter links"
+    assert kwargs["include_dead"] is True, "dead characters are still graph nodes"
+    assert kwargs["limit"] == PROJECTION_PAGE_LIMIT, "must not truncate at the default 50"
+
+
+@pytest.mark.asyncio
+async def test_projection_reports_truncation_never_silently(monkeypatch):
+    """REGRESSION — hitting the page cap must be REPORTED, not silently dropped."""
+    gc = MagicMock()
+    gc.list_entities = AsyncMock(return_value=[
+        {"entity_id": str(uuid4()), "name": f"E{i}", "kind_code": "person"}
+        for i in range(PROJECTION_PAGE_LIMIT)
+    ])
+
+    async def fake_upsert(session, **kw):
+        return _make_entity(kw["name"], kw["kind"], kw["glossary_entity_id"]), True
+
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.upsert_glossary_anchor_counted", fake_upsert,
+    )
+    res = await project_glossary_entities_to_nodes(
+        session=MagicMock(), glossary_client=gc,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+    )
+    assert res.truncated is True
+    assert res.seen == PROJECTION_PAGE_LIMIT
 
 
 @pytest.mark.asyncio

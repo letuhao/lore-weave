@@ -425,6 +425,67 @@ async def test_tool_facts_admitted_to_current_without_entities(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_tool_fact_failure_does_not_nuke_entity_anchored_l2(monkeypatch):
+    """REGRESSION (/review-impl) — the tool-fact branch is STRICTLY ADDITIVE and runs
+    FIRST. An unguarded failure there would propagate out of select_l2_facts, be
+    swallowed by Mode 3's _safe_l2_facts, and silently zero the ENTIRE L2 layer.
+    A tool-fact failure must degrade to entity-anchored-only."""
+    arthur = _entity("Arthur", "e-arthur")
+    r1 = _relation("r1", "Arthur", "e-arthur", "trusts", "Lancelot", "e-lan")
+
+    async def boom(*a, **kw):
+        # the negation call (type="negation") must still work; only the tool-fact
+        # call (source_type set) explodes.
+        if kw.get("source_type"):
+            raise RuntimeError("neo4j hiccup on the tool-fact query")
+        return []
+
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[arthur]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_relations_for_entity",
+        AsyncMock(return_value=[r1]),
+    )
+    monkeypatch.setattr("app.context.selectors.facts.list_facts_by_type", boom)
+
+    result = await select_l2_facts(
+        MagicMock(),
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        intent=_intent(hop_count=1),
+        tool_facts=True,
+    )
+    # the relation survived; only the tool facts were lost
+    assert result.background == ["Arthur — trusts — Lancelot"]
+    assert result.current == []
+
+
+@pytest.mark.asyncio
+async def test_tool_facts_zero_limit_is_skipped_not_fatal(monkeypatch):
+    """REGRESSION — an operator setting CONTEXT_L2_TOOL_FACTS_LIMIT=0 to 'disable'
+    the feature must not kill L2: list_facts_by_type raises on limit<=0."""
+    list_facts = AsyncMock(side_effect=AssertionError("must not query with limit<=0"))
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.list_facts_by_type", list_facts,
+    )
+    result = await select_l2_facts(
+        MagicMock(),
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        intent=_intent(entities=()),
+        tool_facts=True,
+        tool_facts_limit=0,
+    )
+    assert result.total() == 0
+
+
+@pytest.mark.asyncio
 async def test_tool_facts_disabled_by_flag(monkeypatch):
     """tool_facts=False skips the branch entirely (kill-switch)."""
     list_facts = AsyncMock(side_effect=AssertionError("must not query tool facts"))

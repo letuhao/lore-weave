@@ -142,6 +142,13 @@ async def load_glossary_anchors(
 # ── WS-4B: kg_project_entities_to_nodes ────────────────────────────────
 
 
+# The glossary known-entities handler caps `limit` at 500 (its own default is 50).
+# Ask for the cap so a whole-glossary projection isn't silently truncated at 50; if
+# we come back with exactly this many rows, more may exist and we say so (no silent
+# caps — the caller must never read "projected everything" when it didn't).
+PROJECTION_PAGE_LIMIT = 500
+
+
 @dataclass(frozen=True)
 class ProjectionResult:
     """Outcome of projecting glossary entities into graph nodes.
@@ -149,13 +156,16 @@ class ProjectionResult:
     `created` + `existing` are the nodes actually upserted (the
     `{nodes_created, nodes_existing}` the tool returns); `seen` is how many
     usable glossary rows were considered; `skipped` counts rows dropped as
-    invalid (missing id/name) or on a per-row upsert error.
+    invalid (missing id/name) or on a per-row upsert error. `truncated` is True
+    when the glossary read hit the server-side page cap, so the caller can tell
+    the user that more entities remain (rather than silently under-projecting).
     """
 
     created: int = 0
     existing: int = 0
     seen: int = 0
     skipped: int = 0
+    truncated: bool = False
 
 
 async def project_glossary_entities_to_nodes(
@@ -181,7 +191,7 @@ async def project_glossary_entities_to_nodes(
     than aborting); a per-row upsert error is logged and counted as skipped so
     one bad row can't poison the batch.
     """
-    rows = await _load_projection_rows(glossary_client, book_id, entity_ids)
+    rows, truncated = await _load_projection_rows(glossary_client, book_id, entity_ids)
     created = existing = skipped = 0
     for eid, name, kind, aliases in rows:
         try:
@@ -207,11 +217,12 @@ async def project_glossary_entities_to_nodes(
 
     logger.info(
         "WS-4B: projection complete — book=%s project=%s seen=%d created=%d "
-        "existing=%d skipped=%d",
-        book_id, project_id, len(rows), created, existing, skipped,
+        "existing=%d skipped=%d truncated=%s",
+        book_id, project_id, len(rows), created, existing, skipped, truncated,
     )
     return ProjectionResult(
         created=created, existing=existing, seen=len(rows), skipped=skipped,
+        truncated=truncated,
     )
 
 
@@ -219,11 +230,23 @@ async def _load_projection_rows(
     glossary_client: GlossaryClient,
     book_id: UUID,
     entity_ids: list[str] | None,
-) -> list[tuple[str, str, str, list[str]]]:
+) -> tuple[list[tuple[str, str, str, list[str]]], bool]:
     """Normalize the two glossary read paths into `(entity_id, name, kind,
-    aliases)` tuples. `entity_ids` given → fetch exactly those; else the whole
-    active glossary. Rows missing an id or name are dropped (unusable for a
-    node)."""
+    aliases)` tuples plus a `truncated` flag. `entity_ids` given → fetch exactly
+    those; else the whole glossary. Rows missing an id or name are dropped
+    (unusable for a node).
+
+    The whole-glossary read MUST override three `known-entities` handler defaults,
+    or a prose-less book (WS-4B's whole point — scenario S04) projects NOTHING:
+      * `min_frequency=0` — the default 2 requires ≥2 chapter-entity links; a book
+        with no prose has none, so the default returns an empty list. (Even 1 would
+        exclude an unlinked entity: the chapter join is a LEFT JOIN, COUNT=0.)
+      * `include_dead=True` — the handler defaults to `alive=true`, and `alive` is a
+        narrative dead/alive story flag, not a review status; a dead character is
+        still a node whose connections we want.
+      * `limit=PROJECTION_PAGE_LIMIT` — the handler's default limit is 50, so a
+        larger glossary was silently truncated.
+    """
     out: list[tuple[str, str, str, list[str]]] = []
     if entity_ids:
         ents = await glossary_client.fetch_entities_by_ids(
@@ -238,15 +261,21 @@ async def _load_projection_rows(
                 e.kind_code or "unknown",
                 list(e.cached_aliases or []),
             ))
-        return out
+        return out, False
 
-    raw = await glossary_client.list_entities(book_id, status_filter="active")
+    raw = await glossary_client.list_entities(
+        book_id,
+        min_frequency=0,
+        limit=PROJECTION_PAGE_LIMIT,
+        include_dead=True,
+    )
     if raw is None:
         logger.warning(
             "WS-4B: glossary list_entities failed for book=%s — nothing projected",
             book_id,
         )
-        return out
+        return out, False
+    truncated = len(raw) >= PROJECTION_PAGE_LIMIT
     for entry in raw:
         eid = entry.get("entity_id")
         name = entry.get("name")
@@ -258,4 +287,4 @@ async def _load_projection_rows(
             entry.get("kind_code") or "unknown",
             list(entry.get("aliases") or []),
         ))
-    return out
+    return out, truncated

@@ -321,7 +321,13 @@ class GlossaryClient:
     # ── K11.10 — HTTP methods for extraction pipeline ────────────────
 
     async def list_entities(
-        self, book_id: UUID, *, status_filter: str = "active", min_frequency: int = 2,
+        self,
+        book_id: UUID,
+        *,
+        status_filter: str = "active",
+        min_frequency: int = 2,
+        limit: int | None = None,
+        include_dead: bool = False,
     ) -> list[dict] | None:
         """GET /internal/books/{book_id}/known-entities.
 
@@ -329,16 +335,35 @@ class GlossaryClient:
         Returns None on failure.
 
         ``min_frequency`` gates on chapter-appearance count (the Go handler's
-        ``HAVING COUNT(chapter_entity_links) >= min_frequency``, default 2 — the
+        ``HAVING COUNT(cl.link_id) >= min_frequency``, default 2 — the
         extraction-anchor semantics). Callers that want EVERY entity regardless of
-        chapter spread (e.g. wiki generation on a low-chapter book) pass 1.
+        chapter spread (e.g. wiki generation on a low-chapter book, or the WS-4B
+        prose-less graph projection) must pass **0**: the join is a LEFT JOIN so an
+        entity with no chapter links has COUNT=0, and even `1` would exclude it.
+
+        ``limit`` maps to the handler's ``limit`` — whose default is **50** (capped
+        at 500). Pass it explicitly whenever "all entities" is meant, or the result
+        is silently truncated at 50.
+
+        ``include_dead``: the handler defaults to ``alive=true``, which filters out
+        narratively-DEAD entities (`alive` is a story flag, NOT a review status).
+        Pass True to include them — a dead character is still a graph node.
+
+        NOTE (pre-existing drift): the handler does **not** read a ``status`` query
+        param at all, so ``status_filter`` is silently ignored server-side. Kept for
+        call-site compatibility; tracked as D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM.
         """
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
+        params: dict[str, str] = {
+            "status": status_filter,
+            "min_frequency": str(min_frequency),
+        }
+        if limit is not None:
+            params["limit"] = str(limit)
+        if include_dead:
+            params["alive"] = "false"  # handler: alive != "false" ⇒ require alive
         try:
-            resp = await self._http.get(
-                url,
-                params={"status": status_filter, "min_frequency": str(min_frequency)},
-            )
+            resp = await self._http.get(url, params=params)
             if resp.status_code != 200:
                 logger.warning("glossary list-entities %d", resp.status_code)
                 return None

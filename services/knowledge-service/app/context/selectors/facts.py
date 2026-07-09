@@ -235,15 +235,32 @@ async def select_l2_facts(
     # WS-4C tool facts first — project-level, entity-independent, so they are
     # recalled even on a turn whose message names no entity (the early-return
     # below only skips the entity-ANCHORED material).
-    if tool_facts:
-        await _select_tool_facts(
-            session,
-            user_id=user_id,
-            project_id=project_id,
-            result=result,
-            min_confidence=tool_fact_min_confidence,
-            limit=tool_facts_limit,
-        )
+    #
+    # In its OWN try/except (same discipline as the 2-hop call below): this is a
+    # STRICTLY-ADDITIVE recall branch, and it runs FIRST — an unguarded failure
+    # here would propagate out of select_l2_facts, be swallowed by Mode 3's
+    # `_safe_l2_facts`, and silently zero the ENTIRE L2 layer (relations +
+    # negations) that would otherwise have succeeded. A non-positive limit is
+    # skipped rather than passed down (list_facts_by_type raises on limit<=0, so
+    # an operator setting CONTEXT_L2_TOOL_FACTS_LIMIT=0 to "disable" the feature
+    # would otherwise kill all L2 memory).
+    if tool_facts and tool_facts_limit > 0:
+        try:
+            await _select_tool_facts(
+                session,
+                user_id=user_id,
+                project_id=project_id,
+                result=result,
+                min_confidence=tool_fact_min_confidence,
+                limit=tool_facts_limit,
+            )
+        except Exception:  # noqa: BLE001 — additive branch, never nuke L2
+            logger.warning(
+                "WS-4C: tool-fact selection failed for project %s; "
+                "continuing with entity-anchored L2 only",
+                project_id,
+                exc_info=True,
+            )
 
     if not intent.entities:
         return result
