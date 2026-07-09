@@ -103,9 +103,9 @@ FIND_TOOLS_TOOL: dict = {
     "function": {
         "name": FIND_TOOLS_NAME,
         "description": (
-            "Find tools that can perform an intent. Call this FIRST when you need "
-            "a capability you don't already have a tool advertised for (e.g. "
-            "editing a book, starting a translation, changing settings). Pass "
+            "OPTIONAL (legacy) intent search for tools — PREFER `tool_list`/`tool_load`, "
+            "which are deterministic and complete. Use `find_tools` only when you don't "
+            "know which category fits and want to search by intent. Pass "
             "`group` (a tool domain) with `intent` omitted or empty to list EVERY "
             "tool in that domain, unranked — the fastest way to check whether a "
             "whole domain has what you need. With `intent` set, returns the "
@@ -353,7 +353,7 @@ def group_directory_text() -> str:
     """Render GROUP_DIRECTORY as the plain-text block injected into a surface's
     system prompt alongside ALWAYS_ON_CORE. Deterministic order (sorted by key)."""
     lines = [f"- {name}: {desc}" for name, desc in sorted(GROUP_DIRECTORY.items())]
-    return "Tool domains (use find_tools with group=<name> to search one):\n" + "\n".join(lines)
+    return "Tool domains (call tool_list with category=<name> to see every tool in one):\n" + "\n".join(lines)
 
 
 # ── C-TOOL: tier + meta readers ──────────────────────────────────────────────

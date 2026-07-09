@@ -256,7 +256,7 @@ class TestStudioSurface:
         assert system is not None
         content = system["content"] if isinstance(system["content"], str) \
             else " ".join(p["text"] for p in system["content"])
-        assert "Tool domains (use find_tools with group=<name> to search one):" in content
+        assert "Tool domains (call tool_list with category=<name> to see every tool in one):" in content
         assert "- glossary: Lore entities" in content
 
     @pytest.mark.asyncio

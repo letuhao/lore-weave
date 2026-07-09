@@ -56,8 +56,9 @@ export const GROUP_DIRECTORY: Readonly<Record<string, string>> = {
 export const FIND_TOOLS_TOOL = {
   name: FIND_TOOLS_NAME,
   description:
-    'Find tools that can perform an intent. Call this FIRST when you need a capability you ' +
-    "don't already have a tool advertised for (e.g. editing a book, starting a translation, " +
+    'OPTIONAL (legacy) intent search for tools — PREFER `tool_list`/`tool_load`, which are ' +
+    "deterministic and complete. Use `find_tools` only when you don't know which category fits and " +
+    'want to search by intent (e.g. editing a book, starting a translation, ' +
     'building a knowledge graph). Pass `group` (a tool domain) with `intent` omitted or empty to ' +
     'list EVERY tool in that domain, unranked — the fastest way to check whether a whole domain ' +
     'has what you need. With `intent` set, returns the best-matching tool names + descriptions; ' +

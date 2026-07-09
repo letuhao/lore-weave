@@ -916,7 +916,9 @@ class TestGroupDirectory:
     def test_text_is_deterministic_and_mentions_group_param(self):
         text = td.group_directory_text()
         assert "glossary" in text
-        assert "group=" in text
+        # WS-6 — the directory now points at the deterministic tool_list primary
+        # (find_tools demoted to optional legacy), so it names category=<name>.
+        assert "category=" in text
 
     def test_find_tools_schema_advertises_group_enum(self):
         props = td.FIND_TOOLS_TOOL["function"]["parameters"]["properties"]
