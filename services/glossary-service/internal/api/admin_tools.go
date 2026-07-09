@@ -30,6 +30,8 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		Description: "Read the SYSTEM standards catalogue you administer: system genres + kinds (and, with " +
 			"kind_code + genre_code, the attributes for that cell). These are the platform-wide defaults every " +
 			"book can adopt. Read before proposing any System change.",
+		// System-tier read, no scope key (addressed by code, System-wide).
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminStandardsRead)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -40,6 +42,8 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[adminCreateToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
+		// Mints an admin confirm_token (no direct write) ⇒ Tier W. System-tier ⇒ no scope key.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminProposeCreate)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -50,6 +54,7 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[adminPatchToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminProposePatch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -59,6 +64,7 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 			"`universal` genre and `unknown` kind are never deletable. Deletes are SOFT — the row moves to the recycle " +
 			"bin and can be restored with glossary_admin_propose_restore.",
 		InputSchema: closedSetSchemaFor[adminDeleteToolIn](map[string][]any{"level": enumLevels}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminProposeDelete)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -68,6 +74,7 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 			"admin confirms. Only works on a row currently in the recycle bin; restoring an attribute requires its " +
 			"parent kind & genre to be live (restore those first).",
 		InputSchema: closedSetSchemaFor[adminDeleteToolIn](map[string][]any{"level": enumLevels}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeNone, nil, nil),
 	}, s.toolAdminProposeRestore)
 }
 

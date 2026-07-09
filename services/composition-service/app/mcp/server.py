@@ -1628,6 +1628,7 @@ class _AuthoringRunStartArgs(TolerantArgs):
         "W", "book",
         synonyms=["start authoring run", "begin autonomous drafting", "run gated run",
                   "kick off agent mode"],
+        async_job=True,
         tool_name="composition_authoring_run_start",
     ),
 )
@@ -1673,6 +1674,7 @@ class _AuthoringRunResumeArgs(TolerantArgs):
         "W", "book",
         synonyms=["resume authoring run", "continue autonomous drafting",
                   "unpause agent mode", "keep drafting"],
+        async_job=True,
         tool_name="composition_authoring_run_resume",
     ),
 )
@@ -2860,6 +2862,7 @@ class _MotifMineArgs(ForbidExtra):
         "W", "book",
         synonyms=["mine motifs", "extract patterns", "discover tropes",
                   "find motifs in my books", "analyze my corpus", "套路 mining"],
+        async_job=True,
         tool_name="composition_motif_mine",
     ),
 )
@@ -2936,6 +2939,7 @@ class _ArcImportArgs(ForbidExtra):
         "W", "user",
         synonyms=["import arc", "deconstruct", "analyze a work", "拆文",
                   "reverse-engineer arc", "extract arc template", "analyze reference"],
+        async_job=True,
         tool_name="composition_arc_import_analyze",
     ),
 )
@@ -2997,6 +3001,7 @@ class _ConformanceRunArgs(ForbidExtra):
         "W", "book",
         synonyms=["check conformance", "did the AI follow the arc", "verify against plan",
                   "arc conformance", "beat realized", "drift check"],
+        async_job=True,
         tool_name="composition_conformance_run",
     ),
 )
@@ -3122,6 +3127,7 @@ def _opt_uuid(v: str | None) -> UUID | None:
     meta=require_meta(
         "A", "book",
         synonyms=["plan a novel", "propose spec", "novel system spec", "planforge", "story plan"],
+        async_job=True,
         tool_name="plan_propose_spec",
     ),
 )
@@ -3230,7 +3236,7 @@ async def plan_interpret_feedback(
         "`applied` (D-PF-APPLY-HONESTY). model_ref is optional — omit it to use the "
         "author's default planner model. EDIT required."
     ),
-    meta=require_meta("A", "book", synonyms=["apply revision", "refine plan", "update spec"], tool_name="plan_apply_revision"),
+    meta=require_meta("A", "book", synonyms=["apply revision", "refine plan", "update spec"], async_job=True, tool_name="plan_apply_revision"),
 )
 async def plan_apply_revision(
     ctx: MCPContext,
@@ -3317,7 +3323,7 @@ async def plan_handoff_autofix(
         "model_ref is optional there too — omit it to use the author's default "
         "planner model. EDIT required."
     ),
-    meta=require_meta("A", "book", synonyms=["compile plan", "planning package", "build plan"], tool_name="plan_compile"),
+    meta=require_meta("A", "book", synonyms=["compile plan", "planning package", "build plan"], async_job=True, tool_name="plan_compile"),
 )
 async def plan_compile(
     ctx: MCPContext,

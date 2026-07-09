@@ -34,18 +34,21 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[mergeCandToolIn](map[string][]any{
 			"status": {"proposed", "dismissed", "merged"},
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolListMergeCandidates)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_chapter_links",
 		Description: "List the chapters an entity is linked to (where it appears / is relevant), with " +
 			"relevance + notes. book_id + entity_id.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolListChapterLinks)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_entity_revisions",
 		Description: "List an entity's revision history (who changed what, when) newest-first. " +
 			"book_id + entity_id. Use to find a revision to restore.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolListEntityRevisions)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -57,6 +60,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[bookOnlyToolIn](map[string][]any{
 			"status": {"draft", "active", "inactive", "rejected", "all"},
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolListUnknownEntities)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -64,6 +68,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 		Description: "Get the evidence excerpts (quotes / summaries / references) attached to an entity's " +
 			"attributes — what supports each value. book_id + entity_id. Read before judging or editing an " +
 			"attribute, or before adding evidence with glossary_create_evidence.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolGetEntityEvidence)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -76,6 +81,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[bookOnlyToolIn](map[string][]any{
 			"status": {"draft", "active", "inactive", "rejected", "all"},
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolListAISuggestions)
 }
 

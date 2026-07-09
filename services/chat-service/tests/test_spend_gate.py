@@ -1,0 +1,278 @@
+"""Track D S-SPEND — the sync-tool-path spend-approval gate.
+
+A ``_meta.paid`` tool (external paid search / an LLM research loop) spends real
+money when CALLED. The background-job path already reserves spend; the SYNCHRONOUS
+MCP tool-call path (the tool loop in ``_stream_with_tools``) had NO spend gate — a
+model could loop a paid tool and burn the user's budget with zero consent. This
+slice adds a consent gate on that path.
+
+Load-bearing properties proven here:
+* fires for a Tier-R paid tool (orthogonal to tier — the test a tier-coupled
+  implementation fails),
+* fires in ``ask`` mode (mode-independent — ask restricts mutation, not spend),
+* an unpaid Tier-R tool does NOT prompt (negative control),
+* a spend-allowlisted paid tool runs without re-prompting (persisted consent is
+  CONSUMED),
+* a paid Tier-A tool raises ONE card carrying BOTH consent kinds,
+* the spend read fails CLOSED (spend is irreversible), unlike the mutation gate,
+* a subagent cannot raise the card — it errors instead of spending,
+* spend and mutation approvals are SEPARATE, independent rows.
+
+These drive ``_stream_with_tools`` / the DB helpers directly with no real Postgres
+or ports, so no ``xdist_group("pg")`` marker is needed.
+"""
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.db import tool_approvals
+from tests.conftest import TEST_MODEL_REF
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+def _paid_tool(name: str = "glossary_web_search", *, tier: str = "R", paid: bool = True) -> dict:
+    """A tool def with C-TOOL `_meta` and NO required args (so the missing-args
+    interceptor upstream of the gate never fires — the call reaches the spend gate)."""
+    meta: dict = {"tier": tier}
+    if paid:
+        meta["paid"] = True
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": "search the open web (costs money)",
+            "parameters": {"type": "object", "properties": {}},
+            "_meta": meta,
+        },
+    }
+
+
+def _fake_client(tool_name: str):
+    """A Client whose pass 0 calls ``tool_name`` with blank (but complete — no
+    required) args, and whose pass 1 answers in text (only reached if pass 0 did
+    NOT suspend)."""
+    from loreweave_llm import ToolCallEvent, DoneEvent, TokenEvent
+
+    passes = {"n": 0}
+
+    class FakeClient:
+        def __init__(self, **kw):
+            pass
+
+        async def aclose(self):
+            pass
+
+        def stream(self, request):
+            i = passes["n"]
+            passes["n"] += 1
+
+            async def gen():
+                if i == 0:
+                    yield ToolCallEvent(index=0, id="c1", name=tool_name, arguments_delta="{}")
+                    yield DoneEvent(finish_reason="tool_calls")
+                else:
+                    yield TokenEvent(delta="done")
+                    yield DoneEvent(finish_reason="stop")
+            return gen()
+
+    return FakeClient
+
+
+def _kc():
+    kc = AsyncMock()
+    kc.get_catalog_meta = MagicMock(return_value={})
+    kc.mcp_execute_tool = AsyncMock(return_value={"success": True, "result": {"hits": []}})
+    return kc
+
+
+async def _drive(tool_def, *, approval_check, permission_mode="write", subagent_depth=0):
+    """Run ONE tool-loop over ``tool_def`` (plain-index path — discovery off) and
+    collect the yielded chunks."""
+    import app.services.stream_service as ss
+
+    name = tool_def["function"]["name"]
+    kc = _kc()
+    chunks = []
+    with patch.object(ss, "Client", _fake_client(name)):
+        async for ch in ss._stream_with_tools(
+            model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+            messages=[{"role": "user", "content": "look it up on the web"}],
+            gen_params={"max_tokens": 100}, tools=[tool_def],
+            knowledge_client=kc, session_id="s", project_id=None,
+            permission_mode=permission_mode,
+            approval_check=approval_check,
+            subagent_depth=subagent_depth,
+            allowed_tool_names={name} if subagent_depth else None,
+        ):
+            chunks.append(ch)
+    return chunks, kc
+
+
+def _suspends(chunks):
+    return [c for c in chunks if "suspend" in c]
+
+
+def _tool_calls(chunks):
+    return [c["tool_call"] for c in chunks if "tool_call" in c]
+
+
+# ── the gate ─────────────────────────────────────────────────────────────────
+
+class TestSpendGate:
+    @pytest.mark.asyncio
+    async def test_paid_tier_r_tool_suspends_for_spend_approval(self):
+        """THE test: a Tier-R PAID tool must suspend for a spend card — the one a
+        tier-coupled implementation (gating only Tier-A) fails."""
+        check = AsyncMock(return_value=False)
+        chunks, kc = await _drive(_paid_tool(tier="R"), approval_check=check)
+
+        kc.mcp_execute_tool.assert_not_awaited()  # never spent
+        suspends = _suspends(chunks)
+        assert len(suspends) == 1
+        args = suspends[0]["suspend"]["pending_tool_call"]["args"]
+        assert args["kind"] == "tool_approval"
+        assert args["tool"] == "glossary_web_search"
+        assert args["tier"] == "R"          # orthogonal to tier — still R
+        assert args["spend"] is True         # wire signal for the FE
+        assert args["approval_kinds"] == ["spend"]
+        # the allowlist was consulted on the SPEND axis
+        check.assert_awaited_once_with("glossary_web_search", "spend")
+
+    @pytest.mark.asyncio
+    async def test_paid_tool_suspends_in_ask_mode(self):
+        """Mode-independent: ask restricts MUTATION, not SPEND. A read-only paid
+        research call in ask mode still costs money → still prompts."""
+        check = AsyncMock(return_value=False)
+        chunks, kc = await _drive(_paid_tool(tier="R"), approval_check=check, permission_mode="ask")
+
+        kc.mcp_execute_tool.assert_not_awaited()
+        suspends = _suspends(chunks)
+        assert len(suspends) == 1
+        assert suspends[0]["suspend"]["pending_tool_call"]["args"]["spend"] is True
+
+    @pytest.mark.asyncio
+    async def test_unpaid_tier_r_tool_does_not_suspend(self):
+        """Negative control: a NON-paid Tier-R tool never touches the spend gate."""
+        check = AsyncMock(return_value=False)
+        chunks, kc = await _drive(_paid_tool(tier="R", paid=False), approval_check=check)
+
+        assert _suspends(chunks) == []
+        kc.mcp_execute_tool.assert_awaited_once()   # it just runs
+        check.assert_not_awaited()                  # allowlist never consulted
+
+    @pytest.mark.asyncio
+    async def test_spend_approved_tool_runs_without_reprompt(self):
+        """Persisted consent is CONSUMED: once spend is allowlisted, the paid tool
+        executes with no further prompt (proves the stored approval is READ)."""
+        async def check(name, kind="mutation"):
+            return kind == "spend"  # spend already allowlisted
+
+        chunks, kc = await _drive(_paid_tool(tier="R"), approval_check=check)
+
+        assert _suspends(chunks) == []
+        kc.mcp_execute_tool.assert_awaited_once()
+        assert _tool_calls(chunks)[0]["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_paid_tier_a_tool_raises_single_card_with_both_kinds(self):
+        """A paid Tier-A tool needs BOTH consents. Because the resume path executes
+        the approved tool DIRECTLY (no loop re-entry), a call has exactly one suspend
+        point — so it raises ONE card enumerating both kinds (not two prompts)."""
+        check = AsyncMock(return_value=False)
+        chunks, kc = await _drive(_paid_tool(tier="A"), approval_check=check, permission_mode="write")
+
+        kc.mcp_execute_tool.assert_not_awaited()
+        suspends = _suspends(chunks)
+        assert len(suspends) == 1                    # ONE card, not two
+        args = suspends[0]["suspend"]["pending_tool_call"]["args"]
+        assert args["tier"] == "A"
+        assert args["spend"] is True
+        assert args["approval_kinds"] == ["spend", "mutation"]
+
+    @pytest.mark.asyncio
+    async def test_spend_read_error_fails_closed_and_prompts(self):
+        """Spend is IRREVERSIBLE: a read failure fails CLOSED (still prompt) — the
+        deliberate opposite of the mutation gate's fail-OPEN. A DB blip must never
+        silently spend money."""
+        check = AsyncMock(side_effect=RuntimeError("db down"))
+        chunks, kc = await _drive(_paid_tool(tier="R"), approval_check=check)
+
+        kc.mcp_execute_tool.assert_not_awaited()     # did NOT spend on doubt
+        assert len(_suspends(chunks)) == 1
+
+    @pytest.mark.asyncio
+    async def test_no_approval_check_does_not_gate(self):
+        """approval_check=None (a caller not wired for consent) → the paid tool is
+        not gated (matches the DR-C2 mutation-gate contract for the None case)."""
+        chunks, kc = await _drive(_paid_tool(tier="R"), approval_check=None)
+        assert _suspends(chunks) == []
+        kc.mcp_execute_tool.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_subagent_paid_tool_errors_not_suspends(self):
+        """A headless sub-run cannot raise the card — it must NOT spend. It returns
+        a result.error the sub-model can adapt to, and never dispatches the tool."""
+        check = AsyncMock(return_value=False)
+        chunks, kc = await _drive(
+            _paid_tool(tier="R"), approval_check=check,
+            permission_mode="write", subagent_depth=1,
+        )
+
+        assert _suspends(chunks) == []
+        kc.mcp_execute_tool.assert_not_awaited()
+        tc = _tool_calls(chunks)[0]
+        assert tc["ok"] is False
+        assert "not pre-approved for spend" in tc["error"]
+
+
+# ── the persistence (kind separation) ────────────────────────────────────────
+
+class _FakePool:
+    """A minimal asyncpg.Pool stand-in that records rows keyed exactly like the
+    real ``user_tool_approvals`` (user_id, tool_name)."""
+
+    def __init__(self):
+        self.rows: set[tuple] = set()
+        self.inserted_keys: list[str] = []
+
+    async def execute(self, _sql, user_id, key):
+        self.inserted_keys.append(key)
+        self.rows.add((user_id, key))
+
+    async def fetchval(self, _sql, user_id, key):
+        return 1 if (user_id, key) in self.rows else None
+
+
+class TestApprovalKindSeparation:
+    @pytest.mark.asyncio
+    async def test_spend_and_mutation_are_independent_rows(self):
+        pool = _FakePool()
+        await tool_approvals.approve_tool(pool, "u", "glossary_web_search", "spend")
+
+        # spend granted…
+        assert await tool_approvals.is_tool_approved(pool, "u", "glossary_web_search", "spend") is True
+        # …but mutation is NOT (a "may spend" grant is not a "may write" grant)
+        assert await tool_approvals.is_tool_approved(pool, "u", "glossary_web_search", "mutation") is False
+        # default kind is mutation → also not approved
+        assert await tool_approvals.is_tool_approved(pool, "u", "glossary_web_search") is False
+
+    @pytest.mark.asyncio
+    async def test_mutation_uses_legacy_unnamespaced_key_spend_is_namespaced(self):
+        pool = _FakePool()
+        await tool_approvals.approve_tool(pool, "u", "book_create")            # mutation (default)
+        await tool_approvals.approve_tool(pool, "u", "glossary_web_search", "spend")
+
+        # mutation keeps the legacy bare tool_name (backward compat with pre-S-SPEND rows)
+        assert "book_create" in pool.inserted_keys
+        # spend is a DISTINCT namespaced row
+        assert "spend::glossary_web_search" in pool.inserted_keys
+
+    @pytest.mark.asyncio
+    async def test_reverse_direction_mutation_grant_is_not_spend(self):
+        pool = _FakePool()
+        await tool_approvals.approve_tool(pool, "u", "glossary_web_search")  # mutation only
+        assert await tool_approvals.is_tool_approved(pool, "u", "glossary_web_search", "mutation") is True
+        assert await tool_approvals.is_tool_approved(pool, "u", "glossary_web_search", "spend") is False

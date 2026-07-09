@@ -29,6 +29,7 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"book adopted from System or your user-tier standards, whether the source has since changed " +
 			"(an update is available) or been retired. Read this before proposing a sync. Returns each " +
 			"row's current (mine) vs upstream (theirs) values so you can recommend per-row choices.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookSyncAvailable)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -42,6 +43,8 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"items[].entity": enumLevels,
 			"items[].choice": {"take_theirs", "keep_mine"},
 		}),
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookSyncApply)
 }
 

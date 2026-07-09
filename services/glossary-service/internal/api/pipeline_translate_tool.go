@@ -37,6 +37,9 @@ func (s *Server) RegisterPipelineTranslateTools(srv *mcp.Server) {
 			"confidence='draft' on the entity's display name. NEVER overwrites a human-'verified' " +
 			"translation (those are reported as skipped). Returns per-entity results. Use " +
 			"glossary_search / glossary_list_* first to get entity_ids.",
+		// Despite the "propose" name, this writes a draft translation DIRECTLY (confidence=
+		// 'draft', never clobbers verified) — no confirm_token — so it is Tier A, not W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeTranslation)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -47,6 +50,8 @@ func (s *Server) RegisterPipelineTranslateTools(srv *mcp.Server) {
 			"alternate names in that language. Stored as a per-language alias set on the entity (one set " +
 			"per language); NEVER overwrites a human-'verified' alias set (reported as skipped). Use this " +
 			"so an entity is findable by its name in each language. Returns per-entity results.",
+		// Direct draft write (confidence='draft', never clobbers verified), no confirm_token ⇒ Tier A.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeAliases)
 }
 

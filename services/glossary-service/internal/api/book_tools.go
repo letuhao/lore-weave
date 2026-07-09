@@ -32,6 +32,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"Use before proposing entities or shaping the book's schema. Every genre/kind/attribute " +
 			"row carries a `base_version` — copy it verbatim into glossary_book_patch to get " +
 			"concurrent-edit detection.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookOntologyRead)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -41,6 +42,8 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"High-impact: it does NOT adopt; it returns a confirm_token + a preview of how many are new, " +
 			"which a human confirms via glossary_confirm_action. `universal` genre + `unknown` kind are " +
 			"always included. Args are genre/kind CODES (see glossary_list_system_standards).",
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolAdoptStandards)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -90,30 +93,38 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"confirms via glossary_confirm_action. Only works on adopted rows (not book-native ones). Address by " +
 			"code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code).",
 		InputSchema: closedSetSchemaFor[bookRevertToolIn](map[string][]any{"level": enumLevels}),
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookRevert)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_set_active_genres",
 		Description: "Turn book genres on/off as active matrix columns by DELTA — `add` and/or `remove` " +
 			"lists of genre codes. (Delta, not replace, so you never silently drop a column you didn't mention.)",
+		// Direct, reversible delta write (INSERT/DELETE active-genre rows) ⇒ Tier A.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookSetActiveGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_book_set_kind_genres",
 		Description: "Wire a kind's genre links (matrix row) by DELTA — kind_code + `add`/`remove` lists " +
 			"of genre codes. Adds or removes which genres' attributes apply to that kind.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolBookSetKindGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_entity_get_genres",
 		Description: "Read one entity's genre override (which genres' attributes apply to it). Empty ⇒ the " +
 			"entity follows the book's active genres.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolEntityGetGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_entity_set_genres",
 		Description: "Set one entity's genre override by CODE list (replaces the override; `universal` is " +
 			"always included; an empty list clears back to the book default). Every code must be a live book genre.",
+		// Direct, reversible write (replaces the entity's genre override) ⇒ Tier A.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolEntitySetGenres)
 }
 

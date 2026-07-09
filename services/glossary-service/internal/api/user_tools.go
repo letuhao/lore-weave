@@ -45,6 +45,7 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		Description: "Read YOUR personal standards library — your user-tier genres and kinds (reusable " +
 			"across your books). Pass kind_code + genre_code to also list your attributes for that cell. " +
 			"These are private to you; other users never see them.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, nil),
 	}, s.toolUserStandardsRead)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -87,6 +88,8 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		Description: "Restore one of YOUR user-tier genre/kind/attributes from the trash (undo a " +
 			"glossary_user_delete). level + code (attribute also needs kind_code + genre_code).",
 		InputSchema: closedSetSchemaFor[userDeleteToolIn](map[string][]any{"level": enumLevels}),
+		// Direct, reversible write (undo a soft-delete) ⇒ Tier A, matching create/patch/delete.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil),
 	}, s.toolUserRestore)
 }
 

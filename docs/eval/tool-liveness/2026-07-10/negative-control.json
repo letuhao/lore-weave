@@ -1,0 +1,21 @@
+{
+  "oracle_discriminates": true,
+  "checks": [
+    {
+      "check": "phantom_description",
+      "oracle_says_present": false,
+      "expect": false
+    },
+    {
+      "check": "phantom_entity",
+      "oracle_says_present": false,
+      "expect": false
+    },
+    {
+      "check": "phantom_kind",
+      "oracle_says_present": false,
+      "expect": false
+    }
+  ],
+  "meaning": "PASS ⇒ the oracle returns False for effects that never happened (so a real G4 PASS is meaningful, not a rubber stamp)."
+}

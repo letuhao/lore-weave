@@ -28,6 +28,10 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[createChapterLinkToolIn](map[string][]any{
 			"relevance": {"major", "appears", "mentioned"},
 		}),
+		// Direct, additive, reversible write (no confirm_token) ⇒ lwmcp Tier A. (The file's
+		// "class W" is internal jargon for a direct Edit-gated write, NOT lwmcp's TierW,
+		// which means confirm_action — those are the "class C" propose tools.)
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolCreateChapterLink)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -41,6 +45,8 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[createEvidenceToolIn](map[string][]any{
 			"evidence_type": {"quote", "summary", "reference"},
 		}),
+		// Direct, additive, reversible write (no confirm_token) ⇒ lwmcp Tier A.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
 	}, s.toolCreateEvidence)
 }
 

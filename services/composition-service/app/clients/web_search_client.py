@@ -9,9 +9,11 @@ resolves the user's BYOK ``web_search`` model + key and runs the query. Composit
 never holds a search key, never imports a search SDK, never hardcodes a model.
 
 INV-6 (untrusted external text): every returned title/url/snippet is UNTRUSTED web
-DATA. The client neutralizes it (collapse control chars, cap length, drop
-non-http(s) URLs) so a search result can never smuggle instructions into the
-deconstruct prompt or a non-http scheme to a downstream consumer.
+DATA. Neutralization (collapse control chars, cap length, drop non-http(s)/SSRF-y
+URLs) lives in the PRODUCER — provider-registry's ``/internal/web-search`` returns
+already-neutralized results (Track D S-PRODUCER). This client no longer re-neutralizes;
+it faithfully relays what the single producer chokepoint returns. That is deliberate:
+a triplicated defense drifts, and the drifted copy becomes the hole.
 
 Graceful degradation (mirrors the other composition clients): a missing
 ``web_search`` credential (404) returns ``not_configured`` and any transport / non-200
@@ -23,7 +25,6 @@ A web outage must never 500 an import.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -44,29 +45,9 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-# INV-6 neutralization caps (mirror glossary_web_search's title/snippet/answer caps).
-_TITLE_CAP = 200
-_SNIPPET_CAP = 600
-_ANSWER_CAP = 1200
+# Outbound REQUEST cap only (not result neutralization — that is the producer's job).
+# Bounds the query we send so a runaway caller can't post an unbounded string.
 _QUERY_CAP = 500
-# Collapse any run of control/whitespace (incl. newlines that could fake a chat turn)
-# into a single space — an untrusted snippet must read as ONE inert line of DATA.
-_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]+|\s+")
-_HTTP_RE = re.compile(r"^https?://", re.IGNORECASE)
-
-
-def _neutralize(text: str | None, cap: int) -> str:
-    """Collapse control chars / whitespace and hard-cap — an untrusted web string
-    becomes one inert single-line fragment of bounded length."""
-    if not text:
-        return ""
-    return _CTRL_RE.sub(" ", str(text)).strip()[:cap]
-
-
-def _safe_http_url(url: str | None) -> str:
-    """Keep ONLY http(s) URLs (drop javascript:/data:/file: etc.); else ''."""
-    u = (url or "").strip()
-    return u[:500] if _HTTP_RE.match(u) else ""
 
 
 @dataclass(frozen=True)
@@ -110,8 +91,9 @@ class WebSearchClient:
         self, *, user_id: UUID, query: str, max_results: int = 5,
     ) -> WebSearchResult:
         """Run ONE BYOK web search for ``user_id`` via provider-registry. Returns a
-        neutralized ``WebSearchResult`` — NEVER raises; degrades to an ``error``
-        state so a deconstruct keeps going without the augment."""
+        ``WebSearchResult`` whose text the PRODUCER already neutralized (INV-6) — this
+        method NEVER raises; it degrades to an ``error`` state so a deconstruct keeps
+        going without the augment."""
         q = (query or "").strip()[:_QUERY_CAP]
         if not q:
             return WebSearchResult(error="unavailable")
@@ -138,21 +120,24 @@ class WebSearchClient:
             logger.warning("web-search bad JSON: %s", exc)
             return WebSearchResult(error="unavailable")
 
+        # The producer already neutralized every field + dropped unsafe/SSRF-y URLs, so
+        # we relay results as-is (mapping content→snippet). A defensive skip of a hit with
+        # no url is kept — it would be useless, and this must never index into a bad shape.
         raw = data.get("results") if isinstance(data, dict) else None
         hits: list[WebSearchHit] = []
         for r in raw or []:
             if not isinstance(r, dict):
                 continue
-            safe_url = _safe_http_url(r.get("url"))
-            if not safe_url:
-                continue  # drop non-http(s) — no javascript:/data: to the prompt.
+            url = str(r.get("url") or "")
+            if not url:
+                continue
             hits.append(WebSearchHit(
-                title=_neutralize(r.get("title"), _TITLE_CAP),
-                url=safe_url,
-                snippet=_neutralize(r.get("content"), _SNIPPET_CAP),
+                title=str(r.get("title") or ""),
+                url=url,
+                snippet=str(r.get("content") or ""),
             ))
         return WebSearchResult(
-            answer=_neutralize(data.get("answer") if isinstance(data, dict) else "", _ANSWER_CAP),
+            answer=str(data.get("answer") or "") if isinstance(data, dict) else "",
             hits=hits,
             error=None,
         )

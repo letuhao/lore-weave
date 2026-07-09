@@ -31,12 +31,14 @@ func (s *Server) mcpHandler() http.Handler {
 			"concepts) by name, alias, or natural-language terms. Returns ranked entities " +
 			"with name, aliases, kind, and a short description. Use this to find what the " +
 			"glossary already knows before answering or proposing changes.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolSearch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_get_entity",
 		Description: "Fetch one glossary entity's full detail (attributes, aliases, kind, " +
 			"counts) by id, within a book. Use after glossary_search to read an entity in depth.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
 	}, s.toolGetEntity)
 
 	// F2 (§12.3): retarget of the old glossary_list_kinds → the "what CAN I adopt"
@@ -47,6 +49,8 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "List the SYSTEM standards catalogue (entity kinds + their attribute " +
 			"definitions) — the templates a book can adopt. Use to learn what standards exist " +
 			"BEFORE scaffolding a book. For what a specific book ALREADY has, use glossary_book_ontology_read.",
+		// Global System-standards read, no scope key (not book/user scoped) ⇒ ScopeNone.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, nil),
 	}, s.toolListKinds)
 
 	// T1: book-tier ontology tools (read, adopt, create/patch/delete, set-genres,
@@ -125,6 +129,8 @@ func (s *Server) mcpHandler() http.Handler {
 		InputSchema: closedSetSchemaFor[proposeKindToolIn](map[string][]any{
 			"attributes[].field_type": enumFieldTypes,
 		}),
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeNewKind)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -139,6 +145,7 @@ func (s *Server) mcpHandler() http.Handler {
 		InputSchema: closedSetSchemaFor[proposeKindsToolIn](map[string][]any{
 			"kinds[].attributes[].field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeKinds)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -151,6 +158,9 @@ func (s *Server) mcpHandler() http.Handler {
 			"rows are skipped). PREFER this for any goal needing more than one or two writes — do NOT loop the " +
 			"individual propose tools. Optional `model_ref` overrides the user's default 'planner' model. Creates " +
 			"nothing until confirmed.",
+		// Mints a grant confirm_token ⇒ Tier W. Calls a PLANNER LLM synchronously at
+		// mint time (runPlanner → provider-registry) ⇒ Paid (spends real money on call).
+		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil)),
 	}, s.toolPlan)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -189,6 +199,8 @@ func (s *Server) mcpHandler() http.Handler {
 			// the op `type` enum stays strict, unknowns are admitted (W0 soak).
 			"", "ops[]",
 		),
+		// Mints a grant confirm_token ⇒ Tier W. NO planner LLM (deterministic) ⇒ not paid.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeBatch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -200,6 +212,7 @@ func (s *Server) mcpHandler() http.Handler {
 		InputSchema: closedSetSchemaFor[proposeAttrToolIn](map[string][]any{
 			"field_type": enumFieldTypes,
 		}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeNewAttribute)
 	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
 

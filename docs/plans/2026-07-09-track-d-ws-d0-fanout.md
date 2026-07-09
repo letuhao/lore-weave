@@ -52,7 +52,12 @@ A(draft). Add the `tools/list` wire gate.
 - **Watch:** `glossary_web_search` is *demoted in place* here only if S-WEB lands after — see Wave 2.
 
 ### S-COMPOSITION *(size M)*
-Mark the **8 audited** async omissions + fix `lore_enrichment_auto_enrich` `A`→`W`.
+Mark the **8 audited** async omissions. ~~+ fix `lore_enrichment_auto_enrich` `A`→`W`~~
+**[corrected 2026-07-10]** `lore_enrichment_auto_enrich` **stays Tier A** — the handler mints **no
+`confirm_token`, so it cannot satisfy the Tier-W contract (the consumer would await a token never
+sent), and its module docstring records Tier A as a deliberate choice: the job only produces
+**quarantined** proposals (never a canon write) and is **cost-bounded** (`max_spend_tokens` + per-job
+cap). It was already `async_job=True`. No source change; the "A→W" line was a wrong premise.
 - 5 Tier-W confirm-then-job: `motif_mine`, `arc_import_analyze`, `conformance_run`,
   `authoring_run_start`, `authoring_run_resume` *(precedent: `kg_build_graph` is W **and** async)*
 - 3 Tier-A enqueue-at-tool-time: `plan_propose_spec`, `plan_apply_revision`, `plan_compile`

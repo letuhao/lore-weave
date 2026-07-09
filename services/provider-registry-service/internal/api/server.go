@@ -3069,7 +3069,9 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 // S5 — resolves the user's BYOK web_search model (capability_flags web_search) and runs
 // a single web search via the provider adapter. The outward HTTP call lives ONLY in the
 // provider package (provider-gateway invariant); this is the user-paid, BYOK resolution
-// layer. Result `content` is UNTRUSTED external text — the CALLER neutralizes it (INV-6).
+// layer. INV-6 (Track D S-PRODUCER): provider.WebSearch already NEUTRALIZES every result
+// (control/whitespace folding + caps) and DROPS unsafe/SSRF-y URLs, so everything written
+// here is safe untrusted DATA — a consumer needs no further neutralization.
 func (s *Server) internalWebSearch(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.URL.Query().Get("user_id")
 	if userIDStr == "" {

@@ -1,0 +1,23 @@
+{
+  "date": "2026-07-10",
+  "stack": "http://localhost:3123",
+  "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+  "auth_mode": "login-edge",
+  "fixture_book_id": "019f4843-1483-7ee6-b44a-7153886ae295",
+  "confirm_resolver": {
+    "component": "confirm_resolver",
+    "token_minted": true,
+    "wrote_nothing_at_call_time": true,
+    "confirm_http": 201,
+    "confirm_ok": true,
+    "effect_after_confirm": true,
+    "PASS": true
+  },
+  "async_poller": {
+    "component": "async_poller",
+    "kg_project_id": "019f4843-16f2-7b2e-b8cb-8d5c708bc447",
+    "build_accepted": false,
+    "note": "kg_build_graph call failed: unhandled errors in a TaskGroup (1 sub-exception)",
+    "PASS": false
+  }
+}

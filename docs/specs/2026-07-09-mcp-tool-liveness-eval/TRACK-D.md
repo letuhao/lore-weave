@@ -46,9 +46,15 @@ then make that proof a precondition for shipping workflows.
 - **D0d — async audit** *(do not trust the inventory)*: for each of `composition_motif_mine`,
   `composition_arc_import_analyze`, `composition_conformance_run`, `plan_propose_spec(mode=llm)` —
   **read the handler**, confirm it enqueues, and only then mark `async`.
-- **D0e — `lore_enrichment_auto_enrich` `A` → `W`**: it is `async` **and** `paid` (verified). An
-  auto-applying paid async tool contradicts the money model; `mcp-public-gateway` already
-  reclassifies it `write_confirm`. Reconcile the internal tier, then derive the public one.
+- **D0e — `lore_enrichment_auto_enrich` tier** *(RESOLVED 2026-07-10: stays `A`, not `W`)*: on
+  reading the handler it mints **no `confirm_token`, so it cannot satisfy the Tier-W contract
+  (the consumer awaits a token that is never sent). Its docstring records `A` as deliberate: the job
+  only emits **quarantined** proposals (never a canon write) and is **cost-bounded**
+  (`max_spend_tokens` + per-job cap). It is already `async_job=True`. Its spend runs on the **job
+  path**, which already reserves — so it is **not** marked `_meta.paid` (that flag gates the *sync*
+  path; marking it would double-gate an already-reserved job — Layer-2 territory, out of WS-D0). The
+  `mcp-public-gateway`'s `write_confirm` reclassification is the **public edge's** own stricter
+  policy and is orthogonal to the internal tier — no internal change needed to keep it.
 - **D0f — universalize `web_search`** (CD5 + the C1 change). Decided 2026-07-09:
   1. **Mint C1 category `research`** — 3 lockstep declarations (`find-tools.ts GROUP_DIRECTORY`,
      `tool_discovery.py GROUP_DIRECTORY`, `tool-policy.ts Domain`) + `_DOMAIN_ALIASES: web → research`

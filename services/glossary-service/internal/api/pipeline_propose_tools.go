@@ -32,6 +32,8 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[proposeStatusChangeToolIn](map[string][]any{
 			"status": {"active", "inactive", "draft", "rejected"},
 		}),
+		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeStatusChange)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -40,6 +42,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"book_id + entity_id + revision_id. DESTRUCTIVE: it prunes-then-restores the entity's attributes/" +
 			"translations/evidence/chapter-links to that snapshot (current values not in the snapshot are removed). " +
 			"Returns a confirm card; itself captured as a new revision, so it is reversible.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeRestoreRevision)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -48,6 +51,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"glossary_list_unknown_entities). book_id + entity_id + kind_code (the target kind's code). " +
 			"DESTRUCTIVE: attribute values whose code has no counterpart in the new kind are DROPPED (the confirm " +
 			"card previews exactly which). Recoverable via revision restore. Returns a confirm card.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeReassignKind)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -56,6 +60,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"(kept) + loser_ids (merged away). DESTRUCTIVE: each loser is soft-deleted and its non-conflicting child " +
 			"rows + name/aliases fold into the winner. Losers must be the SAME kind as the winner. Returns a confirm " +
 			"card; each merge is journaled and reversible via the merge-journal revert.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
 	}, s.toolProposeMerge)
 }
 
