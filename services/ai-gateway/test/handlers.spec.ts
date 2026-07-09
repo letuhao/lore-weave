@@ -1,5 +1,6 @@
 import {
   classifyCallToolError,
+  classifyCallToolErrorCode,
   extractEnvelope,
   handleCallTool,
   handleGetPrompt,
@@ -9,7 +10,9 @@ import {
   handleListTools,
   handleReadResource,
   headerValue,
+  normalizeToolResult,
   sanitizeUpstreamErrorText,
+  TOOL_ERROR_CODES,
 } from '../src/mcp/handlers.js';
 import type { FederationService } from '../src/federation/federation.service.js';
 
@@ -518,5 +521,118 @@ describe('handleGetPrompt', () => {
     await expect(handleGetPrompt(fed, 'recap_story_so_far', {}, {})).rejects.toThrow(
       "prompt 'recap_story_so_far' get failed: provider error",
     );
+  });
+});
+
+describe('C4 — uniform tool-failure envelope + output uniformity', () => {
+  it('classifyCallToolErrorCode maps each failure class to a stable closed-set code', () => {
+    const unknown = new Error("unknown tool 'book_lst'");
+    expect(classifyCallToolErrorCode(unknown)).toBe('NOT_DISCOVERED');
+
+    const abort = new Error('aborted');
+    (abort as any).name = 'AbortError';
+    expect(classifyCallToolErrorCode(abort)).toBe('UPSTREAM_UNAVAILABLE');
+
+    const rate = new Error('Streamable HTTP error: too many');
+    (rate as any).code = 429;
+    expect(classifyCallToolErrorCode(rate)).toBe('RATE_LIMITED');
+
+    const notFound = new Error('Streamable HTTP error: nope');
+    (notFound as any).code = 404;
+    expect(classifyCallToolErrorCode(notFound)).toBe('NOT_FOUND');
+
+    const forbidden = new Error('Streamable HTTP error: nope');
+    (forbidden as any).code = 403;
+    expect(classifyCallToolErrorCode(forbidden)).toBe('NOT_PERMITTED');
+
+    const badReq = new Error('Streamable HTTP error: nope');
+    (badReq as any).code = 400;
+    expect(classifyCallToolErrorCode(badReq)).toBe('VALIDATION');
+
+    const validation = new Error('MCP error -32602: book_id must be a UUID');
+    expect(classifyCallToolErrorCode(validation)).toBe('VALIDATION');
+
+    const rejection = new Error('MCP error -32000: that genre is already adopted');
+    expect(classifyCallToolErrorCode(rejection)).toBe('BUSINESS_RULE');
+
+    const internal = new Error('MCP error -32603: boom');
+    expect(classifyCallToolErrorCode(internal)).toBe('UPSTREAM_UNAVAILABLE');
+
+    // every produced code is inside the closed set
+    for (const e of [unknown, abort, rate, notFound, forbidden, badReq, validation, rejection, internal]) {
+      expect(TOOL_ERROR_CODES).toContain(classifyCallToolErrorCode(e));
+    }
+  });
+
+  it('a thrown failure returns the {code,message} envelope in structuredContent AND the text wrapper', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        throw new Error('MCP error -32602: book_id must be a UUID');
+      },
+    });
+    const res: any = await handleCallTool(fed, 'glossary_book_patch', {}, {});
+    expect(res.isError).toBe(true);
+    expect(res.code).toBe('VALIDATION');
+    expect(res.structuredContent.code).toBe('VALIDATION');
+    expect(res.structuredContent.message).toContain('book_id must be a UUID');
+    // W0 #5 text wrapper preserved for the model that reads content
+    expect(res.content[0].text).toContain("tool 'glossary_book_patch' failed:");
+  });
+
+  it('a provider-returned isError result is re-shaped to the same envelope (keeps a stable code)', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => ({
+        isError: true,
+        structuredContent: { code: 'NOT_PERMITTED', message: 'you do not own this book' },
+        content: [{ type: 'text', text: 'you do not own this book' }],
+      }),
+    });
+    const res: any = await handleCallTool(fed, 'glossary_entity_delete', {}, {});
+    expect(res.isError).toBe(true);
+    expect(res.code).toBe('NOT_PERMITTED');
+    expect(res.structuredContent.code).toBe('NOT_PERMITTED');
+    expect(res.content[0].text).toBe('you do not own this book');
+  });
+
+  it('a provider isError with a NON-stable code is inferred into the closed set', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => ({
+        isError: true,
+        structuredContent: { code: 'KG_ENDPOINT_NOT_NODE', message: 'endpoint is not yet a node' },
+        content: [{ type: 'text', text: 'endpoint is not yet a node' }],
+      }),
+    });
+    const res: any = await handleCallTool(fed, 'kg_propose_edge', {}, {});
+    expect(TOOL_ERROR_CODES).toContain(res.code);
+    expect(res.code).toBe('BUSINESS_RULE'); // ran, refused on merits
+  });
+
+  it('output uniformity: content that merely re-serializes structuredContent collapses to a placeholder', async () => {
+    const payload = { count: 2, items: [{ a: 1 }, { b: 2 }] };
+    const fed = fakeFederation({
+      executeTool: async () => ({
+        content: [{ type: 'text', text: JSON.stringify(payload) }],
+        structuredContent: payload,
+      }),
+    });
+    const res: any = await handleCallTool(fed, 'glossary_search', {}, {});
+    expect(res.structuredContent).toEqual(payload); // real JSON lives here, once
+    expect(res.content[0].text).toBe('ok — see structuredContent'); // no double dump
+  });
+
+  it('output uniformity: NON-duplicate content (real prose) is left untouched', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => ({
+        content: [{ type: 'text', text: 'Here is a human summary of the result.' }],
+        structuredContent: { count: 1 },
+      }),
+    });
+    const res: any = await handleCallTool(fed, 'glossary_search', {}, {});
+    expect(res.content[0].text).toBe('Here is a human summary of the result.');
+  });
+
+  it('normalizeToolResult passes a plain success (no structuredContent) through unchanged', () => {
+    const r = { content: [{ type: 'text', text: 'hello' }] };
+    expect(normalizeToolResult('x', r)).toBe(r);
   });
 });
