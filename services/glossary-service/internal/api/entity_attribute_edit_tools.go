@@ -70,6 +70,80 @@ func (s *Server) RegisterEntityAttributeEditTools(srv *mcp.Server) {
 			"change an existing entity's attribute", "fix a wrong attribute value", "add a missing attribute to an entity",
 		}),
 	}, s.toolSetEntityAttributes)
+
+	// WS-4B / entity-identity (agent-discoverability spec, contract C5) —
+	// glossary_entity_rename: a first-class, discoverable rename. The general
+	// glossary_entity_set_attributes already renames ("name" is just an attr_code),
+	// but a mid-tier model looking to "rename X" won't discover that; a named tool
+	// with rename synonyms will. Tier-A (like set_attributes): a rename is reversible
+	// (revision history) and non-destructive, so — by this service's own tiering
+	// rationale (destructive⇒W, reversible⇒A; see entity_delete_tools.go) — a
+	// propose/confirm gate would add no real safety AND would be illusory, since the
+	// Tier-A set_attributes path renames without one. (C5 grouped rename with delete as
+	// "Tier-W"; refined to Tier-A here — recorded in the umbrella contract change log.)
+	lwmcp.RegisterTool(srv, &mcp.Tool{
+		Name: "glossary_entity_rename",
+		Description: "Rename a glossary entity — change its display name. The common 'rename X to Y' / " +
+			"'fix a typo in the name' case, exposed as a first-class tool (equivalent to " +
+			"glossary_entity_set_attributes with attributes={\"name\": \"…\"}, but directly discoverable). " +
+			"Writes immediately (Tier-A, like every entity edit) — the entity's revision history covers " +
+			"rollback. If another entity in this book already has this name (same kind and scope), the " +
+			"rename is refused so two entities can't silently collide.",
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+			"rename entity", "change entity name", "fix entity name typo", "correct an entity's name",
+			"rename character", "rename place", "give an entity a new name",
+		}),
+	}, s.toolEntityRename)
+}
+
+type entityRenameToolIn struct {
+	BookID   string `json:"book_id" jsonschema:"the book the entity belongs to (UUID)"`
+	EntityID string `json:"entity_id" jsonschema:"the entity to rename (UUID)"`
+	Name     string `json:"name" jsonschema:"the entity's new display name"`
+}
+
+type entityRenameToolOut struct {
+	EntityID string `json:"entity_id"`
+	Name     string `json:"name"`
+	Renamed  bool   `json:"renamed"` // false only if the name attr resolved but nothing changed
+}
+
+// toolEntityRename renames one entity by writing its "name" attribute through the
+// SAME core glossary_entity_set_attributes uses (so the two rename paths can never
+// diverge on dedup/collision/revision behavior). book_id is required (not just
+// entity_id) so the grant is checked on the NAMED book FIRST — an entity_id-only
+// signature would force a pre-grant entity lookup that leaks cross-tenant existence.
+func (s *Server) toolEntityRename(ctx context.Context, _ *mcp.CallToolRequest, in entityRenameToolIn) (*mcp.CallToolResult, entityRenameToolOut, error) {
+	userID, ok := userIDFromCtx(ctx)
+	if !ok {
+		return nil, entityRenameToolOut{}, errors.New("missing caller identity")
+	}
+	bookID, err := uuid.Parse(strings.TrimSpace(in.BookID))
+	if err != nil {
+		return nil, entityRenameToolOut{}, errors.New("book_id must be a UUID")
+	}
+	entityID, err := uuid.Parse(strings.TrimSpace(in.EntityID))
+	if err != nil {
+		return nil, entityRenameToolOut{}, errors.New("entity_id must be a UUID")
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return nil, entityRenameToolOut{}, errors.New("name is required")
+	}
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
+		return nil, entityRenameToolOut{}, uniformOwnershipError(err)
+	}
+	out, err := s.setEntityAttributes(ctx, bookID, entityID, userID, map[string]string{"name": name}, nil)
+	if err != nil {
+		return nil, entityRenameToolOut{}, err
+	}
+	renamed := false
+	for _, u := range out.Updated {
+		if u == "name" {
+			renamed = true
+		}
+	}
+	return nil, entityRenameToolOut{EntityID: entityID.String(), Name: name, Renamed: renamed}, nil
 }
 
 func entityAttributeSetSchema() *jsonschema.Schema {

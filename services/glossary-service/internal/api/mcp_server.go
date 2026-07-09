@@ -87,6 +87,11 @@ func (s *Server) mcpHandler() http.Handler {
 	// entities were write-once for attribute values via MCP (creation only); no
 	// reachable editor existed for an already-existing entity.
 	s.RegisterEntityAttributeEditTools(srv)
+	// WS-4A (agent-discoverability spec) — glossary_extract_entities_from_doc: the
+	// seed-doc → entity-candidates bridge (workflow W2 / scenario S02 Path B). Tier-R
+	// derive: turns a pasted notes doc into {kind,name,attributes} candidates the
+	// agent then feeds to glossary_propose_entities. Writes nothing itself.
+	s.RegisterEntityDocExtractTools(srv)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_entity",
