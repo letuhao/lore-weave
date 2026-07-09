@@ -738,23 +738,32 @@ class KnowledgeClient:
             return {"success": False, "result": None, "error": "mcp tool returned empty content"}
 
         first = result.content[0]
-        try:
-            import json as _json  # noqa: PLC0415
-            payload = _json.loads(first.text)
-        except Exception as exc:
-            # External federated (overlay) tools may return PLAIN TEXT (prose/markdown),
-            # which is a VALID result — e.g. a DeepWiki tool returning a repo's wiki
-            # structure. Wrap it as {"text": ...} so the model can consume it. Internal
-            # LoreWeave tools always return JSON, so a decode failure there IS an error
-            # (never mask a real internal-tool bug as success).
-            if _OVERLAY_TOOL_RE.match(tool_name):
-                text = getattr(first, "text", "") or ""
-                return {"success": True, "result": {"text": text}, "error": None}
-            logger.warning(
-                "mcp_execute_tool decode error: %s — raw: %s",
-                exc, getattr(first, "text", "?")[:200],
-            )
-            return {"success": False, "result": None, "error": "mcp tool returned unparseable content"}
+        import json as _json  # noqa: PLC0415
+        # #9B token-efficiency: heavy reads (e.g. glossary_book_ontology_read, ~42KB) now
+        # return a SHORT PLACEHOLDER in content[0].text ("ok — see structuredContent") + the
+        # real payload in `structuredContent`. Prefer structuredContent when present — otherwise
+        # json.loads() of the placeholder fails with "unparseable content" and a working tool
+        # reads as broken (the measured S02 blocker once book_id was being supplied).
+        _sc = getattr(result, "structuredContent", None)
+        if isinstance(_sc, dict) and _sc:
+            payload = _sc
+        else:
+            try:
+                payload = _json.loads(first.text)
+            except Exception as exc:
+                # External federated (overlay) tools may return PLAIN TEXT (prose/markdown),
+                # which is a VALID result — e.g. a DeepWiki tool returning a repo's wiki
+                # structure. Wrap it as {"text": ...} so the model can consume it. Internal
+                # LoreWeave tools always return JSON, so a decode failure there IS an error
+                # (never mask a real internal-tool bug as success).
+                if _OVERLAY_TOOL_RE.match(tool_name):
+                    text = getattr(first, "text", "") or ""
+                    return {"success": True, "result": {"text": text}, "error": None}
+                logger.warning(
+                    "mcp_execute_tool decode error: %s — raw: %s",
+                    exc, getattr(first, "text", "?")[:200],
+                )
+                return {"success": False, "result": None, "error": "mcp tool returned unparseable content"}
 
         if isinstance(payload, dict) and payload.get("success") is False:
             # Server-side tool error propagated as a structured dict.

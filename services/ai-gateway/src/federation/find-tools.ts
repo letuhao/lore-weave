@@ -131,6 +131,72 @@ function isLegacyTool(t: McpTool): boolean {
   return toolVisibility(t) === VISIBILITY_LEGACY;
 }
 
+// ── Track A / WS-0 · visible-set + deprecated-LABELING (contracts.md C2) ──────────────────────
+//
+// The discovery-drift class (feedback capstone): a tool tagged `_meta.visibility:"legacy"` is
+// DROPPED from `find_tools` search + enumeration (above) yet still policy-allowed at raw
+// `tools/call` — so it is invisible-but-callable, and an agent can never be redirected from it.
+// The fix (WS-0): a deterministic visible-set that LABELS deprecated tools (`deprecated` +
+// `superseded_by`) instead of hiding them, so `tool_list` can show + redirect rather than drop.
+// This is additive — `searchCatalog`/`enumerateGroup` keep dropping legacy (you don't want a
+// deprecated tool RANKED in fuzzy search); `visibleTools` is the new, separate consumer `tool_list`
+// (WS-1a) reads. The policy-allowed ∩ of the C2 visible-set is applied at the public edge
+// (mcp-public-gateway), which is the only layer that holds the key's scope.
+
+/** `_meta.tier` ∈ R|A|W|S, defaulting to R (read/inert) when absent — mirrors chat-service's
+ * tool_discovery tier default. A missing tier must NEVER read as a write. */
+function toolTier(t: McpTool): 'R' | 'A' | 'W' | 'S' {
+  const meta = t?._meta;
+  const tier = meta && typeof meta === 'object' ? (meta as { tier?: unknown }).tier : undefined;
+  return tier === 'A' || tier === 'W' || tier === 'S' ? tier : 'R';
+}
+
+/** `_meta.superseded_by` — the replacement a deprecated tool points at, so `tool_list` can name it. */
+function toolSupersededBy(t: McpTool): string | undefined {
+  const meta = t?._meta;
+  const s = meta && typeof meta === 'object' ? (meta as { superseded_by?: unknown }).superseded_by : undefined;
+  return typeof s === 'string' && s.length > 0 ? s : undefined;
+}
+
+export interface VisibleTool {
+  name: string;
+  description: string;
+  tier: 'R' | 'A' | 'W' | 'S';
+  deprecated?: boolean;
+  superseded_by?: string;
+}
+
+/**
+ * The deterministic, complete visible set for `tool_list` (contracts.md C2). Returns EVERY tool
+ * (optionally scoped to one `group`), unranked, in catalog order — legacy tools LABELED
+ * `deprecated:true` (+ `superseded_by`) rather than dropped. `includeDeprecated=false` filters
+ * them out entirely. Does NOT apply the policy-allowed intersection — that is the public edge's
+ * job (it holds the key scope); this layer contributes `catalog ∩ (non-legacy OR includeDeprecated)`.
+ */
+export function visibleTools(
+  catalog: McpTool[],
+  group?: string | null,
+  includeDeprecated = true,
+  exclude: ReadonlySet<string> = new Set(),
+): VisibleTool[] {
+  const out: VisibleTool[] = [];
+  for (const t of catalog) {
+    const name = toolName(t);
+    if (!name || exclude.has(name)) continue;
+    if (group != null && domainOf(name) !== group) continue;
+    const deprecated = isLegacyTool(t);
+    if (deprecated && !includeDeprecated) continue;
+    const entry: VisibleTool = { name, description: toolDescription(t), tier: toolTier(t) };
+    if (deprecated) {
+      entry.deprecated = true;
+      const sb = toolSupersededBy(t);
+      if (sb) entry.superseded_by = sb;
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
 /** Domain prefix of a tool name (`glossary_book_patch` → `glossary`), the same federation
  * naming convention chat-service's `_provider_prefix` reads. Used for Part A `group` scoping. */
 function providerPrefix(name: string): string {
@@ -143,7 +209,9 @@ function providerPrefix(name: string): string {
  * (tool_discovery.py), found + fixed together 2026-07-07: without this, `providerPrefix`
  * alone made `find_tools(group="knowledge")` match nothing, since neither literal prefix
  * equals the domain name "knowledge". Keep in lockstep with the Python side. */
-const DOMAIN_ALIASES: Readonly<Record<string, string>> = { kg: 'knowledge', memory: 'knowledge' };
+// WS-0 (contracts.md C1): `lore_enrichment_auto_enrich` (prefix `lore`) — the one orphan tool with no
+// GROUP_DIRECTORY home — folds into `glossary`. Keep in lockstep with tool_discovery.py `_DOMAIN_ALIASES`.
+const DOMAIN_ALIASES: Readonly<Record<string, string>> = { kg: 'knowledge', memory: 'knowledge', lore: 'glossary' };
 
 function domainOf(name: string): string {
   const prefix = providerPrefix(name);
@@ -292,6 +360,134 @@ export function enumerateGroup(
     out.push({ name, description: toolDescription(t) });
   }
   return out;
+}
+
+// ── Track A / WS-1a · tool_list + tool_load (contracts.md C2) ────────────────────────────────
+//
+// The deterministic discovery pair that replaces mandatory `find_tools` semantic search. `tool_list`
+// enumerates a category COMPLETELY (no ranking, no similarity floor) so an agent — including a
+// mid-tier model — can reliably see what it can do instead of guessing query wording. `tool_load`
+// pulls the exact input schema(s) by name/category (progressive disclosure) and, on the public edge,
+// marks them activated so a raw `tools/call` is permitted. `find_tools` stays as an OPTIONAL
+// convenience (OQ1) — never the sole gate.
+
+/** `all` sentinel + the C1 category enum, single-sourced from GROUP_DIRECTORY. */
+export const CATEGORY_ENUM: readonly string[] = [...Object.keys(GROUP_DIRECTORY).sort(), 'all'];
+
+function toolInputSchema(t: McpTool): unknown {
+  const s = (t as { inputSchema?: unknown }).inputSchema;
+  return s ?? { type: 'object', properties: {} };
+}
+
+export const TOOL_LIST_NAME = 'tool_list';
+export const TOOL_LOAD_NAME = 'tool_load';
+
+export const TOOL_LIST_TOOL = {
+  name: TOOL_LIST_NAME,
+  description:
+    'List EVERY tool in a category (or "all"), complete and deterministic — the reliable way to see ' +
+    'what you can do here. Prefer this over find_tools when you know the rough area. Returns ' +
+    '{name, description, tier} per tool; deprecated tools are labeled with their replacement. Then ' +
+    'call tool_load(name) to get a tool’s exact arguments before using it.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      category: {
+        type: 'string',
+        enum: CATEGORY_ENUM,
+        description: 'A tool domain, or "all" for the whole catalog. Omit = all.',
+      },
+      include_deprecated: {
+        type: 'boolean',
+        description: 'Include deprecated tools (shown labeled). Default true.',
+        default: true,
+      },
+    },
+    additionalProperties: false,
+  },
+} as const;
+
+export const TOOL_LOAD_TOOL = {
+  name: TOOL_LOAD_NAME,
+  description:
+    'Load the exact input schema(s) for one or more tools — by `name`, a list of `names`, or every ' +
+    'tool in a `category` — so you can call them correctly. Loading makes them callable; it does ' +
+    'NOT run anything. Use it after tool_list to pick tools by name.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'A single tool name.' },
+      names: { type: 'array', items: { type: 'string' }, description: 'Several tool names.' },
+      category: { type: 'string', enum: CATEGORY_ENUM, description: 'Load every tool in this category.' },
+    },
+    additionalProperties: false,
+  },
+} as const;
+
+/** Build the `tool_list` payload (contracts.md C2). `category` omitted or "all" → the whole visible
+ * catalog grouped by category; a specific category → its flat `tools` list (+ a `reason` when empty
+ * so a caller can tell "no tools" from a bad guess — the public edge upgrades this to
+ * "gated: requires <scope>" when policy is what emptied it). Deterministic, unranked. */
+export function toolListResult(
+  catalog: McpTool[],
+  category?: string | null,
+  includeDeprecated = true,
+  exclude: ReadonlySet<string> = new Set(),
+): { payload: Record<string, unknown> } {
+  if (category == null || category === 'all') {
+    const tools = visibleTools(catalog, null, includeDeprecated, exclude);
+    const categories: Record<string, VisibleTool[]> = {};
+    for (const t of tools) (categories[domainOf(t.name)] ??= []).push(t);
+    return { payload: { categories, count: tools.length } };
+  }
+  const tools = visibleTools(catalog, category, includeDeprecated, exclude);
+  const payload: Record<string, unknown> = { category, count: tools.length, tools };
+  if (tools.length === 0) payload.reason = 'no tools currently available in this category';
+  return { payload };
+}
+
+interface LoadedTool extends VisibleTool {
+  input_schema: unknown;
+}
+
+/** Build the `tool_load` payload + the names to activate (contracts.md C2). Pure disclosure —
+ * returns full `inputSchema`(s); executes nothing. Unknown requested names come back under
+ * `not_found` (a deterministic answer, never a silent drop). */
+export function toolLoadResult(
+  catalog: McpTool[],
+  opts: { name?: string | null; names?: string[] | null; category?: string | null },
+): { payload: Record<string, unknown>; loadedNames: string[] } {
+  const want = new Set<string>();
+  if (opts.name) want.add(opts.name);
+  for (const n of opts.names ?? []) if (n) want.add(n);
+  const wholeCatalog = opts.category === 'all';
+  const byCategory = opts.category && opts.category !== 'all' ? opts.category : null;
+
+  const loaded: LoadedTool[] = [];
+  const seen = new Set<string>();
+  for (const t of catalog) {
+    const name = toolName(t);
+    if (!name || seen.has(name)) continue;
+    const match = want.has(name) || wholeCatalog || (byCategory != null && domainOf(name) === byCategory);
+    if (!match) continue;
+    seen.add(name);
+    const entry: LoadedTool = {
+      name,
+      description: toolDescription(t),
+      tier: toolTier(t),
+      input_schema: toolInputSchema(t),
+    };
+    if (isLegacyTool(t)) {
+      entry.deprecated = true;
+      const sb = toolSupersededBy(t);
+      if (sb) entry.superseded_by = sb;
+    }
+    loaded.push(entry);
+  }
+  const payload: Record<string, unknown> = { tools: loaded };
+  const missing = [...want].filter((n) => !seen.has(n));
+  if (missing.length) payload.not_found = missing.sort();
+  return { payload, loadedNames: loaded.map((t) => t.name) };
 }
 
 // ── Retry-cap (design item 1) — bounds the unbounded-retry bias ─────────────────────────

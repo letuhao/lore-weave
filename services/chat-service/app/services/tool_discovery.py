@@ -14,7 +14,9 @@ no ownership guard (spec OD-1 / C-FT).
 Key pieces
 ----------
 * ``FIND_TOOLS_TOOL`` / ``FIND_TOOLS_NAME`` — the meta-tool schema (C-FT).
-* ``ALWAYS_ON_CORE`` — the ≤8 tools advertised every universal ``/chat`` turn.
+* ``ALWAYS_ON_CORE`` — the ≤10 tools advertised every universal ``/chat`` turn
+  (the deterministic discovery pair ``tool_list``/``tool_load`` + ``find_tools`` + the
+  generic frontend tools).
 * ``search_catalog()`` — in-memory fuzzy search over name + description +
   ``_meta.synonyms`` (stdlib token-overlap + difflib; no embeddings in v1, no
   new dependency). Returns ``(matches, confident)`` so the loop can apply the
@@ -40,6 +42,11 @@ logger = logging.getLogger(__name__)
 # ── C-FT: the find_tools meta-tool ───────────────────────────────────────────
 
 FIND_TOOLS_NAME = "find_tools"
+
+# WS-1a (contracts.md C2) — the deterministic discovery pair that replaces mandatory
+# find_tools semantic search. Advertised as core (see ALWAYS_ON_CORE_NAMES), listed FIRST.
+TOOL_LIST_NAME = "tool_list"
+TOOL_LOAD_NAME = "tool_load"
 
 # Default number of matches returned to the agent.
 FIND_TOOLS_DEFAULT_LIMIT = 8
@@ -72,6 +79,11 @@ GROUP_DIRECTORY: dict[str, str] = {
     # prefix-based filter could never honor).
     "plan": "Novel planning workflow — PlanForge propose/refine/validate/compile (plan_propose_spec, plan_self_check, plan_interpret_feedback, plan_apply_revision, plan_review_checkpoint, plan_handoff_autofix, plan_validate, plan_compile).",
 }
+
+# WS-1a (contracts.md C1) — the closed category enum for tool_list/tool_load: the
+# GROUP_DIRECTORY domains + the "all" sentinel. Single-sourced here; the tool defs
+# and the result builders both read it (no re-declaration).
+CATEGORY_ENUM: list[str] = sorted(GROUP_DIRECTORY) + ["all"]
 
 # Design item 1 (2026-07-07 discovery-hardening plan) reworded this description
 # twice over, mirroring ai-gateway's find-tools.ts FIND_TOOLS_TOOL byte-for-byte
@@ -132,7 +144,72 @@ FIND_TOOLS_TOOL: dict = {
 }
 
 
-# ── C-FT: the always-on core (advertised on every discovery turn, ≤8) ─────────
+# WS-1a (contracts.md C2) — the deterministic discovery pair, advertised as core and FIRST
+# (before find_tools). Mirror of ai-gateway's TOOL_LIST_TOOL / TOOL_LOAD_TOOL (find-tools.ts).
+TOOL_LIST_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": TOOL_LIST_NAME,
+        "description": (
+            "List EVERY tool in a category (or \"all\"), complete and deterministic — the "
+            "reliable way to see what you can do here. Prefer this over find_tools when you know "
+            "the rough area. Returns {name, description, tier} per tool; deprecated tools are "
+            "labeled with their replacement. Then call tool_load(name) to get a tool's exact "
+            "arguments before using it."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": CATEGORY_ENUM,
+                    "description": "A tool domain, or \"all\" for the whole catalog. Omit = all.",
+                },
+                "include_deprecated": {
+                    "type": "boolean",
+                    "description": "Include deprecated tools (shown labeled). Default true.",
+                    "default": True,
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+}
+
+TOOL_LOAD_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": TOOL_LOAD_NAME,
+        "description": (
+            "Load the exact input schema(s) for one or more tools — by `name`, a list of `names`, "
+            "or every tool in a `category` — so you can call them correctly. Loading makes them "
+            "callable; it does NOT run anything. Use it after tool_list to pick tools by name."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "A single tool name."},
+                "names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Several tool names.",
+                },
+                "category": {
+                    "type": "string",
+                    "enum": CATEGORY_ENUM,
+                    "description": "Load every tool in this category.",
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+# ── C-FT: the always-on core (advertised on every discovery turn, ≤10) ─────────
+# WS-1a bumped the ceiling 8→10: the deterministic discovery pair tool_list/tool_load
+# joined find_tools as core (the primary "what can I do here" path). Still small — the
+# whole point of core is a tiny always-present set; domain tools stay lazy via discovery.
 # Domain reads/writes are discovered via find_tools; only the meta-tool + the
 # truly GENERIC, surface-agnostic frontend tools are always present. The
 # frontend-tool schemas live in frontend_tools.py (S-CONSUMER sole-owns that
@@ -145,6 +222,9 @@ FIND_TOOLS_TOOL: dict = {
 # no open chapter. (`propose_record_edit` is the generic, surface-agnostic record
 # diff card and stays core.)
 ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
+    # WS-1a (OQ1): the deterministic pair FIRST, then find_tools (optional semantic convenience).
+    TOOL_LIST_NAME,
+    TOOL_LOAD_NAME,
     FIND_TOOLS_NAME,
     "ui_navigate",
     "ui_open_book",
@@ -322,6 +402,13 @@ def tool_visibility(tool_def: dict) -> str:
 
 def is_legacy_tool(tool_def: dict) -> bool:
     return tool_visibility(tool_def) == _VISIBILITY_LEGACY
+
+
+def tool_superseded_by(tool_def: dict) -> str | None:
+    """C-TOOL `_meta.superseded_by` — the replacement a deprecated tool points at,
+    so ``tool_list`` can name it instead of silently dropping the deprecated one."""
+    sb = tool_meta(tool_def).get("superseded_by")
+    return sb if isinstance(sb, str) and sb else None
 
 
 def unknown_pinned_legacy_names(catalog: list[dict], requested: list[str]) -> list[str]:
@@ -509,7 +596,10 @@ def _provider_prefix(name: str) -> str:
 # (found 2026-07-07 while auditing GROUP_DIRECTORY for the skill-authoring lint — same
 # root cause as the "story"/"composition" GROUP_DIRECTORY text mismatches fixed the
 # same day, just at the matching-mechanism layer instead of the description-text layer).
-_DOMAIN_ALIASES: dict[str, str] = {"kg": "knowledge", "memory": "knowledge"}
+# WS-0 (contracts.md C1): `lore_enrichment_auto_enrich` (prefix `lore`) is the one orphan tool with
+# no GROUP_DIRECTORY home — fold it into `glossary` (lore-enrichment is entity-enrichment, glossary's
+# derived layer) rather than mint a new category. Keep in lockstep with ai-gateway's DOMAIN_ALIASES.
+_DOMAIN_ALIASES: dict[str, str] = {"kg": "knowledge", "memory": "knowledge", "lore": "glossary"}
 
 
 def _domain_of(name: str) -> str:
@@ -549,6 +639,134 @@ def enumerate_group(
             continue
         out.append({"name": name, "description": _fn(tool_def).get("description", "") or ""})
     return out
+
+
+# ── Track A / WS-0 · visible-set + deprecated-LABELING (contracts.md C2) ─────
+# The Python twin of ai-gateway's `visibleTools` (find-tools.ts) — keep in lockstep.
+# Unlike `enumerate_group`/`search_catalog` (which DROP legacy tools — you don't want a
+# deprecated tool ranked in fuzzy search), `visible_tools` LABELS them (`deprecated` +
+# `superseded_by`) so `tool_list` can show + redirect rather than hide-but-keep-callable
+# (the invisible-but-callable drift class). The policy-allowed ∩ of the C2 visible-set is
+# applied at the public edge (mcp-public-gateway), the only layer holding the key scope.
+def visible_tools(
+    catalog: list[dict],
+    group: str | None = None,
+    *,
+    include_deprecated: bool = True,
+    exclude: set[str] | None = None,
+) -> list[dict]:
+    """The deterministic, complete visible set for ``tool_list`` (contracts.md C2):
+    EVERY tool (optionally scoped to ``group``), unranked, in catalog order — legacy
+    tools LABELED ``deprecated: True`` (+ ``superseded_by``) rather than dropped.
+    ``include_deprecated=False`` filters them out entirely."""
+    exclude = exclude or set()
+    out: list[dict] = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name in exclude:
+            continue
+        if group is not None and _domain_of(name) != group:
+            continue
+        deprecated = is_legacy_tool(tool_def)
+        if deprecated and not include_deprecated:
+            continue
+        entry: dict = {
+            "name": name,
+            "description": _fn(tool_def).get("description", "") or "",
+            "tier": tool_tier(tool_def),
+        }
+        if deprecated:
+            entry["deprecated"] = True
+            sb = tool_superseded_by(tool_def)
+            if sb:
+                entry["superseded_by"] = sb
+        out.append(entry)
+    return out
+
+
+# ── Track A / WS-1a · tool_list + tool_load result builders (contracts.md C2) ─
+# Python twin of ai-gateway's tool_list/tool_load (find-tools.ts) — the deterministic
+# discovery pair that replaces mandatory find_tools semantic search. Keep in lockstep.
+# (CATEGORY_ENUM + the tool defs live up near GROUP_DIRECTORY / FIND_TOOLS_TOOL.)
+
+
+def tool_parameters(tool_def: dict) -> dict:
+    """The tool's JSON-Schema arguments (the OpenAI `function.parameters`), or an
+    empty object schema when absent — what ``tool_load`` returns so the model can
+    call the tool correctly."""
+    params = _fn(tool_def).get("parameters")
+    return params if isinstance(params, dict) else {"type": "object", "properties": {}}
+
+
+def tool_list_result(
+    catalog: list[dict],
+    category: str | None = None,
+    *,
+    include_deprecated: bool = True,
+    exclude: set[str] | None = None,
+) -> dict:
+    """Build the ``tool_list`` payload (contracts.md C2). ``category`` omitted or
+    "all" → the whole visible catalog grouped by category; a specific category → its
+    flat ``tools`` list (+ a ``reason`` when empty). Deterministic, unranked."""
+    exclude = exclude or set()
+    if category is None or category == "all":
+        tools = visible_tools(catalog, None, include_deprecated=include_deprecated, exclude=exclude)
+        categories: dict[str, list] = {}
+        for t in tools:
+            categories.setdefault(_domain_of(t["name"]), []).append(t)
+        return {"categories": categories, "count": len(tools)}
+    tools = visible_tools(catalog, category, include_deprecated=include_deprecated, exclude=exclude)
+    payload: dict = {"category": category, "count": len(tools), "tools": tools}
+    if not tools:
+        payload["reason"] = "no tools currently available in this category"
+    return payload
+
+
+def tool_load_result(
+    catalog: list[dict],
+    *,
+    name: str | None = None,
+    names: list[str] | None = None,
+    category: str | None = None,
+) -> tuple[dict, list[str]]:
+    """Build the ``tool_load`` payload + the names to activate (contracts.md C2).
+    Pure disclosure — returns full ``input_schema``(s); executes nothing. Unknown
+    requested names come back under ``not_found`` (never a silent drop)."""
+    want: set[str] = set()
+    if name:
+        want.add(name)
+    for n in names or []:
+        if n:
+            want.add(n)
+    whole = category == "all"
+    by_category = category if category and category != "all" else None
+    loaded: list[dict] = []
+    seen: set[str] = set()
+    for tool_def in catalog:
+        nm = tool_name(tool_def)
+        if not nm or nm in seen:
+            continue
+        match = nm in want or whole or (by_category is not None and _domain_of(nm) == by_category)
+        if not match:
+            continue
+        seen.add(nm)
+        entry: dict = {
+            "name": nm,
+            "description": _fn(tool_def).get("description", "") or "",
+            "tier": tool_tier(tool_def),
+            "input_schema": tool_parameters(tool_def),
+        }
+        if is_legacy_tool(tool_def):
+            entry["deprecated"] = True
+            sb = tool_superseded_by(tool_def)
+            if sb:
+                entry["superseded_by"] = sb
+        loaded.append(entry)
+    payload: dict = {"tools": loaded}
+    missing = sorted(n for n in want if n not in seen)
+    if missing:
+        payload["not_found"] = missing
+    return payload, [t["name"] for t in loaded]
 
 
 # ── Design item 1 — retry-cap (bounds the unbounded-retry bias) ─────────────

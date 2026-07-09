@@ -64,6 +64,10 @@ export const WILDCARD_SCOPE = '*';
  * So a key may always call find_tools and always sees it in `tools/list`, regardless of scope.
  */
 export const FIND_TOOLS_NAME = 'find_tools';
+// WS-1a (contracts.md C2) — the deterministic discovery pair: always-allowed meta-tools whose
+// RESULTS are scope-filtered (a listed/loaded tool is re-checked here when actually called).
+export const TOOL_LIST_NAME = 'tool_list';
+export const TOOL_LOAD_NAME = 'tool_load';
 
 /** Build the `domain:<d>` scope string the key must carry to reach domain `d`. */
 export function domainScope(d: Domain): string {
@@ -319,9 +323,9 @@ export function knownTool(name: string): boolean {
  */
 export function isToolAllowed(name: string, scopes: readonly string[]): boolean {
   if (scopes.includes(WILDCARD_SCOPE)) return true;
-  // find_tools is the always-allowed discovery meta-tool (its results are scope-filtered; a
-  // discovered tool is re-checked here when called) — permitted for every key, any scope.
-  if (name === FIND_TOOLS_NAME) return true;
+  // The discovery meta-tools are always-allowed (their results are scope-filtered; a
+  // discovered/loaded tool is re-checked here when called) — permitted for every key, any scope.
+  if (name === FIND_TOOLS_NAME || name === TOOL_LIST_NAME || name === TOOL_LOAD_NAME) return true;
   const pol = TOOL_POLICY[name];
   if (!pol) return false;
   if (!scopes.includes(pol.tier)) return false;

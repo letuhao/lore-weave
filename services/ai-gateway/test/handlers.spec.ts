@@ -82,12 +82,13 @@ describe('headerValue / extractEnvelope', () => {
 });
 
 describe('handleListTools', () => {
-  it('prepends find_tools, then the federated catalog, with an availability _meta (H10)', async () => {
+  it('prepends the discovery meta-tools (tool_list/tool_load first, then find_tools), then the catalog (H10)', async () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
     const res = await handleListTools(fed);
-    // find_tools is advertised FIRST (the lazy-discovery meta-tool), then the catalog.
-    expect(res.tools[0].name).toBe('find_tools');
-    expect(res.tools.map((t: any) => t.name)).toEqual(['find_tools', 'memory_search']);
+    // WS-1a (OQ1): tool_list/tool_load are the deterministic PRIMARY pair, advertised FIRST;
+    // find_tools follows as the optional semantic convenience; then the catalog.
+    expect(res.tools[0].name).toBe('tool_list');
+    expect(res.tools.map((t: any) => t.name)).toEqual(['tool_list', 'tool_load', 'find_tools', 'memory_search']);
     expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
   });
 
@@ -97,7 +98,13 @@ describe('handleListTools', () => {
       overlayTools: async () => [{ name: 'u_deadbeef_search' }] as any,
     });
     const res = await handleListTools(fed, { 'x-user-id': 'u1' });
-    expect(res.tools.map((t: any) => t.name)).toEqual(['find_tools', 'memory_search', 'u_deadbeef_search']);
+    expect(res.tools.map((t: any) => t.name)).toEqual([
+      'tool_list',
+      'tool_load',
+      'find_tools',
+      'memory_search',
+      'u_deadbeef_search',
+    ]);
   });
 
   it('reports a down provider in _meta.unavailable_providers (H10)', async () => {
@@ -210,6 +217,46 @@ describe('handleCallTool', () => {
     expect(payload.tools.map((t) => t.name)).toContain('book_create');
     // It also returns the standard MCP content block (a text JSON of the payload).
     expect(res.content[0].type).toBe('text');
+  });
+
+  it('handles tool_list LOCALLY and returns the deterministic category list (WS-1a)', async () => {
+    const executeTool = jest.fn();
+    const fed = fakeFederation({
+      executeTool,
+      catalog: () =>
+        [
+          { name: 'book_create', description: 'create a new book', _meta: { tier: 'A' } },
+          { name: 'book_list', description: 'list books', _meta: { tier: 'R' } },
+        ] as any,
+    });
+    const res = await handleCallTool(fed, 'tool_list', { category: 'book' }, { 'x-user-id': 'u1' });
+    expect(executeTool).not.toHaveBeenCalled();
+    const payload = res.structuredContent as { category: string; count: number; tools: Array<{ name: string }> };
+    expect(payload.category).toBe('book');
+    expect(payload.count).toBe(2);
+    expect(payload.tools.map((t) => t.name).sort()).toEqual(['book_create', 'book_list']);
+  });
+
+  it('handles tool_load LOCALLY and returns exact schemas without executing (WS-1a)', async () => {
+    const executeTool = jest.fn();
+    const fed = fakeFederation({
+      executeTool,
+      catalog: () =>
+        [
+          {
+            name: 'book_create',
+            description: 'create a new book',
+            _meta: { tier: 'A' },
+            inputSchema: { type: 'object', properties: { title: { type: 'string' } } },
+          },
+        ] as any,
+    });
+    const res = await handleCallTool(fed, 'tool_load', { name: 'book_create' }, { 'x-user-id': 'u1' });
+    // Pure disclosure — loading must NOT execute the tool.
+    expect(executeTool).not.toHaveBeenCalled();
+    const payload = res.structuredContent as { tools: Array<{ name: string; input_schema: unknown }> };
+    expect(payload.tools[0].name).toBe('book_create');
+    expect(payload.tools[0].input_schema).toEqual({ type: 'object', properties: { title: { type: 'string' } } });
   });
 
   it('turns an unclassifiable provider failure into the generic MCP tool error (isError), not a throw', async () => {

@@ -563,6 +563,60 @@ class TestMissingVsUnavailableH10:
         assert "try again" in result["note"].lower()
 
 
+class TestToolListLoadDispatch:
+    """WS-1a — tool_list/tool_load are dispatched CONSUMER-LOCAL in the discovery loop."""
+
+    @pytest.mark.asyncio
+    async def test_tool_list_dispatched_locally(self):
+        kc = _kc(catalog_meta={})
+        scripts = [
+            [tool_frag(0, id="t", name="tool_list"),
+             tool_frag(0, arguments_delta='{"category":"book"}'),
+             done("tool_calls")],
+            [tok("ok"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run_discovery(scripts, knowledge_client=kc))
+        result = next(c["tool_call"]["result"] for c in chunks
+                      if c.get("tool_call", {}).get("tool") == "tool_list")
+        names = [t["name"] for t in result["tools"]]
+        assert result["category"] == "book"
+        assert "book_create" in names and "book_list" in names
+
+    @pytest.mark.asyncio
+    async def test_tool_load_returns_schema_locally(self):
+        kc = _kc(catalog_meta={})
+        scripts = [
+            [tool_frag(0, id="t", name="tool_load"),
+             tool_frag(0, arguments_delta='{"name":"translation_start_job"}'),
+             done("tool_calls")],
+            [tok("loaded"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run_discovery(scripts, knowledge_client=kc))
+        result = next(c["tool_call"]["result"] for c in chunks
+                      if c.get("tool_call", {}).get("tool") == "tool_load")
+        assert result["tools"][0]["name"] == "translation_start_job"
+        assert "input_schema" in result["tools"][0]
+
+    @pytest.mark.asyncio
+    async def test_tool_load_no_args_guides_instead_of_silent_empty(self):
+        # review-impl #3 — tool_load with nothing requested returns a guidance note.
+        kc = _kc(catalog_meta={})
+        scripts = [
+            [tool_frag(0, id="t", name="tool_load"),
+             tool_frag(0, arguments_delta='{}'),
+             done("tool_calls")],
+            [tok("ok"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run_discovery(scripts, knowledge_client=kc))
+        result = next(c["tool_call"]["result"] for c in chunks
+                      if c.get("tool_call", {}).get("tool") == "tool_load")
+        assert result["tools"] == []
+        assert "note" in result and "tool_list" in result["note"]
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # F2 — legacy surface advertises no frontend tools / never suspends
 # ════════════════════════════════════════════════════════════════════════════
@@ -577,7 +631,8 @@ class TestGenericFrontendTools:
 
     def test_universal_core_advertises_generic_frontend_tools(self):
         """The always-on core (advertised every universal /chat pass) carries the
-        generic ui_*/confirm/propose tools, ≤8 (C-FT)."""
+        generic ui_*/confirm/propose tools + the discovery pair, ≤10 (C-FT; WS-1a
+        bumped 8→10 for tool_list/tool_load)."""
         from app.services.stream_service import _advertise_discovery_tools, _catalog_index
         adv = _advertise_discovery_tools(
             _catalog_index(_CATALOG), set(),
@@ -587,7 +642,9 @@ class TestGenericFrontendTools:
         # core present
         for n in td.ALWAYS_ON_CORE_NAMES:
             assert n in names
-        assert len(td.ALWAYS_ON_CORE_NAMES) <= 8
+        assert len(td.ALWAYS_ON_CORE_NAMES) <= 10
+        # the deterministic discovery pair is core + advertised
+        assert "tool_list" in names and "tool_load" in names
         # no discovered domain tools yet (active set empty)
         assert "translation_start_job" not in names
 

@@ -1,6 +1,17 @@
 import { Logger } from '@nestjs/common';
 import type { Envelope, FederationService } from '../federation/federation.service.js';
-import { FIND_TOOLS_NAME, FIND_TOOLS_TOOL, findToolsAttempts, findToolsResult } from '../federation/find-tools.js';
+import {
+  FIND_TOOLS_NAME,
+  FIND_TOOLS_TOOL,
+  findToolsAttempts,
+  findToolsResult,
+  TOOL_LIST_NAME,
+  TOOL_LIST_TOOL,
+  TOOL_LOAD_NAME,
+  TOOL_LOAD_TOOL,
+  toolListResult,
+  toolLoadResult,
+} from '../federation/find-tools.js';
 
 const log = new Logger('McpProxy');
 
@@ -42,11 +53,13 @@ export async function handleListTools(
   // the static System catalog. No-op (empty) when the overlay flag is off, no
   // X-User-Id envelope, or the caller has zero registrations (fast path).
   const overlay = await federation.overlayTools(extractEnvelope(headers));
-  // Prepend the consumer-local `find_tools` meta-tool so a minimal surface (the public edge) can
-  // advertise it + relay its calls back here. chat-service already carries find_tools as core, so
-  // the duplicate is deduped by name (its active set is name-keyed) + excluded from its own search.
+  // Prepend the consumer-local discovery meta-tools so a minimal surface (the public edge) can
+  // advertise them + relay their calls back here. WS-1a (contracts.md C2): `tool_list`/`tool_load` —
+  // the DETERMINISTIC pair — go FIRST (the primary discovery path, OQ1); `find_tools` follows as the
+  // OPTIONAL semantic convenience. All three are deduped by name on the consumer's name-keyed active
+  // set + excluded from their own listing/search.
   return {
-    tools: [FIND_TOOLS_TOOL, ...(federation.catalog() as any[]), ...overlay],
+    tools: [TOOL_LIST_TOOL, TOOL_LOAD_TOOL, FIND_TOOLS_TOOL, ...(federation.catalog() as any[]), ...overlay],
     _meta: { unavailable_providers: unavailable, partial: federation.isPartial() },
   };
 }
@@ -181,6 +194,46 @@ export async function handleFindTools(
 }
 
 /**
+ * Handle a local `tool_list` call (WS-1a, contracts.md C2) — the DETERMINISTIC, complete category
+ * enumeration that replaces mandatory `find_tools` semantic search. Consumer-local (OD-1): reads only
+ * the federation catalogue (+ the caller's per-user overlay), never a provider. Returns the visible
+ * set with deprecated tools LABELED (not dropped). The public edge intersects this with the key's
+ * scope (`catalog ∩ non-legacy(labeled) ∩ isToolAllowed`) — this layer contributes the first two.
+ */
+export async function handleToolList(
+  federation: FederationService,
+  args: Record<string, unknown>,
+  headers?: Headers,
+): Promise<any> {
+  const category = typeof args?.category === 'string' ? args.category : undefined;
+  const includeDeprecated = typeof args?.include_deprecated === 'boolean' ? args.include_deprecated : true;
+  const overlay = await federation.overlayTools(extractEnvelope(headers));
+  const { payload } = toolListResult([...federation.catalog(), ...overlay], category, includeDeprecated);
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload };
+}
+
+/**
+ * Handle a local `tool_load` call (WS-1a, contracts.md C2) — progressive disclosure of exact input
+ * schemas by name/names/category. Pure disclosure: returns schemas, executes nothing. The matched
+ * names ride `structuredContent.tools[].name` so the public edge can mark them ACTIVATED (making a
+ * subsequent raw `tools/call` permitted) — the deterministic analogue of the `find_tools`→activate path.
+ */
+export async function handleToolLoad(
+  federation: FederationService,
+  args: Record<string, unknown>,
+  headers?: Headers,
+): Promise<any> {
+  const name = typeof args?.name === 'string' ? args.name : undefined;
+  const names = Array.isArray(args?.names)
+    ? (args.names as unknown[]).filter((n): n is string => typeof n === 'string')
+    : undefined;
+  const category = typeof args?.category === 'string' ? args.category : undefined;
+  const overlay = await federation.overlayTools(extractEnvelope(headers));
+  const { payload } = toolLoadResult([...federation.catalog(), ...overlay], { name, names, category });
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload };
+}
+
+/**
  * Route a CallTool to the owning provider with the per-call envelope. A provider
  * failure becomes an MCP tool error (`isError`), NOT a transport 5xx — so the
  * consumer's tool-loop reports "tool failed" to the LLM and carries on (the
@@ -197,8 +250,15 @@ export async function handleCallTool(
   // heavy in-flight tool (the ~39s glossary_plan) is cancelled, not orphaned.
   signal?: AbortSignal,
 ): Promise<any> {
-  // find_tools is consumer-local — handle it HERE without a downstream provider (no provider owns
-  // it; routing it to executeTool would throw "unknown tool"). Overlay tools ARE searched (headers).
+  // The discovery meta-tools are consumer-local — handled HERE without a downstream provider (no
+  // provider owns them; routing to executeTool would throw "unknown tool"). Overlay tools are
+  // included (headers). tool_list/tool_load are the deterministic pair (WS-1a); find_tools optional.
+  if (name === TOOL_LIST_NAME) {
+    return handleToolList(federation, args, headers);
+  }
+  if (name === TOOL_LOAD_NAME) {
+    return handleToolLoad(federation, args, headers);
+  }
   if (name === FIND_TOOLS_NAME) {
     return handleFindTools(federation, args, headers);
   }
@@ -272,7 +332,7 @@ export function classifyCallToolError(e: unknown): string {
 
   // federation.executeTool throws this BEFORE any network call: no provider owns the name.
   if (/^unknown tool /.test(msg)) {
-    return `unknown tool — it is not in the tool catalog; call find_tools to discover valid tool names`;
+    return `unknown tool — it is not in the tool catalog; call tool_list to see valid tool names (or find_tools to search by intent)`;
   }
 
   // JSON-RPC error relayed from the owning provider (the TS SDK's McpError

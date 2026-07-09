@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
-import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, findToolsCallIdKeys, gateRequestBody, idKey, isBatchBody, isFindToolsCall, isListRequest, isWriteRequest, scopeFilterFindToolsBatch, scopeFilterFindToolsResult, singleToolCallErrored, singleWriteConfirmToolName, writeConfirmCallsById } from '../scope/scope-filter.js';
+import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, findToolsCallIdKeys, gateRequestBody, idKey, isBatchBody, isFindToolsCall, isListRequest, isToolListCall, isToolLoadCall, isWriteRequest, scopeFilterFindToolsBatch, scopeFilterFindToolsResult, scopeFilterToolListResult, scopeFilterToolLoadResult, singleToolCallErrored, singleWriteConfirmToolName, writeConfirmCallsById } from '../scope/scope-filter.js';
 import { ToolActivation } from '../session/tool-activation.js';
 import { makeToolActivationStoreFromEnv } from '../session/tool-activation-store.js';
 import { detectProposeInItem, detectProposeResult, pendingApprovalForId, pendingApprovalResponse, proposeDivertError, proposeDivertErrorForId } from '../scope/propose-detect.js';
@@ -400,6 +400,16 @@ export class PublicMcpController {
         const { text: filtered, activatedNames } = scopeFilterFindToolsResult(text, resolved.scopes);
         text = filtered;
         await this.toolActivation.activate(resolved.keyId, activatedNames);
+      } else if (ok && hasBody && isToolLoadCall(req.body)) {
+        // WS-1a — tool_load: scope-filter the loaded schemas (anti-oracle) + ACTIVATE the in-scope
+        // names, the deterministic analogue of the find_tools→activate path.
+        const { text: filtered, activatedNames } = scopeFilterToolLoadResult(text, resolved.scopes);
+        text = filtered;
+        await this.toolActivation.activate(resolved.keyId, activatedNames);
+      } else if (ok && hasBody && isToolListCall(req.body)) {
+        // WS-1a — tool_list: scope-filter the enumeration (anti-oracle + entitlement-opacity note).
+        // Listing does NOT activate (only tool_load does).
+        text = scopeFilterToolListResult(text, resolved.scopes);
       } else if (ok && hasBody && isBatchBody(req.body)) {
         const ftIds = findToolsCallIdKeys(req.body);
         if (ftIds.size > 0) {

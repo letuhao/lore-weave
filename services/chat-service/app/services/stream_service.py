@@ -66,11 +66,17 @@ from app.services.tool_discovery import (
     FIND_TOOLS_DEFAULT_LIMIT,
     FIND_TOOLS_NAME,
     FIND_TOOLS_TOOL,
+    TOOL_LIST_NAME,
+    TOOL_LIST_TOOL,
+    TOOL_LOAD_NAME,
+    TOOL_LOAD_TOOL,
     find_tools_result_async,
     group_directory_text,
     hot_tool_names,
     strip_tool_meta,
     surface_hot_domains,
+    tool_list_result,
+    tool_load_result,
     tool_tier,
     tool_undo_hint,
 )
@@ -816,6 +822,14 @@ def _advertise_discovery_tools(
         if name == FIND_TOOLS_NAME:
             _add(FIND_TOOLS_TOOL)
             continue
+        # WS-1a — tool_list/tool_load are consumer-local meta-tools (not federated), like
+        # find_tools; source their schemas from the module defs.
+        if name == TOOL_LIST_NAME:
+            _add(TOOL_LIST_TOOL)
+            continue
+        if name == TOOL_LOAD_NAME:
+            _add(TOOL_LOAD_TOOL)
+            continue
         _add(catalog_index.get(name) or generic_frontend_tool_def(name))
     for td in extra_frontend:
         _add(td)
@@ -860,6 +874,54 @@ def _filter_tools_for_ask(
     return out
 
 
+def _inject_context_ids(
+    args_obj: dict,
+    tool_def: dict | None,
+    *,
+    book_id: str | None,
+    chapter_id: str | None,
+    project_id: str | None,
+) -> dict:
+    """S02 fix — fill known session context-ids into a backend tool's args when the tool's
+    schema ACCEPTS them and the model OMITTED them.
+
+    Measured live blocker (S02 baseline, gemma-4-26b): the book_id is surfaced to the model
+    only as a prose system note, so a mid-tier model calls glossary_*/kg_* with ``{}`` →
+    ``VALIDATION: missing book_id`` blind-retry loop. A strong model transcribes the UUID; a
+    weak one can't. This deterministically supplies the id the SERVER already knows.
+
+    Conservative by design: only fills a MISSING/blank arg (never overrides a value the model
+    supplied — respects a deliberate cross-book/other-id call), and ONLY for a key the tool
+    declares in its schema (so a tool with ``additionalProperties: false`` is never handed an
+    arg it would reject)."""
+    if not isinstance(args_obj, dict) or not tool_def:
+        return args_obj
+    params = tool_def.get("function", {}).get("parameters", {})
+    props = params.get("properties", {}) if isinstance(params, dict) else {}
+    if not props:
+        return args_obj
+    for key, val in (("book_id", book_id), ("chapter_id", chapter_id), ("project_id", project_id)):
+        if val and key in props and not args_obj.get(key):
+            args_obj[key] = val
+    return args_obj
+
+
+def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
+    """True iff this call is still missing a REQUIRED arg (post context-id injection).
+
+    Used to keep the blank-tool-args cap from collateral-damaging a WELL-FORMED call: a
+    mid-tier model that spams one malformed tool (e.g. glossary_search without `query`)
+    builds the streak, and the cap would then block a DIFFERENT, valid call (e.g.
+    glossary_book_ontology_read with book_id present) that would actually succeed. Only a
+    call that is ITSELF still missing required args should be short-circuited. Unknown
+    tool_def → False (can't tell → never block a call we can't classify)."""
+    if not tool_def:
+        return False
+    params = tool_def.get("function", {}).get("parameters", {})
+    required = params.get("required", []) if isinstance(params, dict) else []
+    return any(not args_obj.get(r) for r in required)
+
+
 async def _stream_with_tools(
     model_source: str,
     model_ref: str,
@@ -876,6 +938,11 @@ async def _stream_with_tools(
     planner_model_ref: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
     admin_token: str | None = None,
+    # S02 fix — the session's already-resolved {book_id, chapter_id, project_id} (from editor/
+    # book/studio context), so backend tool args that OMIT a required context-id get it filled
+    # server-side. A mid-tier model doesn't transcribe the id from the prose note (the measured
+    # VALIDATION-loop blocker); this supplies it deterministically. See _inject_context_ids.
+    context_ids: dict | None = None,
     discovery_catalog: list[dict] | None = None,
     discovery_extra_frontend: list[dict] | None = None,
     discovery_seed_names: set[str] | None = None,
@@ -1431,6 +1498,101 @@ async def _stream_with_tools(
             suspended_call: dict | None = None
             pass_did_write = False  # H9 — only a Tier-A/W write decrements budget
             for c in calls:
+                # WS-1a — tool_list is CONSUMER-LOCAL + deterministic: enumerate a
+                # category (or all) from the in-memory catalog, deprecated tools
+                # LABELED not dropped. No activation (listing ≠ loading), no write.
+                if discovery and c["name"] == TOOL_LIST_NAME:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    category = args_obj.get("category") or None
+                    include_deprecated = args_obj.get("include_deprecated")
+                    if not isinstance(include_deprecated, bool):
+                        include_deprecated = True
+                    payload = tool_list_result(
+                        discovery_catalog or [],
+                        category,
+                        include_deprecated=include_deprecated,
+                        exclude=set(ALWAYS_ON_CORE_NAMES),
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(payload),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": True, "result": payload, "error": None,
+                    }}
+                    continue
+
+                # WS-1a — tool_load is CONSUMER-LOCAL: pure schema disclosure (executes
+                # nothing), but loading MAKES a tool callable, so — like find_tools's
+                # matched names — union the loaded names into the active set (NEXT pass
+                # advertises their FULL schemas) under the same token-budget ceiling, and
+                # persist for curated sessions. No write → no write-budget hit (H9).
+                if discovery and c["name"] == TOOL_LOAD_NAME:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    _load_name = args_obj.get("name") or None
+                    _raw_names = args_obj.get("names")
+                    _load_names = _raw_names if isinstance(_raw_names, list) else None
+                    _load_category = args_obj.get("category") or None
+                    payload, loaded = tool_load_result(
+                        discovery_catalog or [],
+                        name=_load_name, names=_load_names, category=_load_category,
+                    )
+                    from app.services.tool_surface import (
+                        HOT_SEED_TOKEN_BUDGET,
+                        budget_names_by_tokens,
+                    )
+                    # review-impl #1 (WS-1a): tool_load returns FULL schemas — unlike find_tools
+                    # (names only). A tool_load(category="all"/big) would re-inject the exact
+                    # catalog bloat the discovery layer exists to prevent. Bound the RETURNED
+                    # schemas (not just activation) by the same token ceiling the hot-seed uses;
+                    # a single-/few-name load always fits, only a large category truncates.
+                    names_to_activate = budget_names_by_tokens(
+                        discovery_catalog or [], loaded,
+                        token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                    )
+                    if len(names_to_activate) < len(loaded):
+                        _keep = set(names_to_activate)
+                        payload["tools"] = [t for t in payload["tools"] if t["name"] in _keep]
+                        payload["truncated"] = True
+                        payload["note"] = (
+                            f"Loaded {len(names_to_activate)} of {len(loaded)} tools (token budget). "
+                            "Call tool_load with specific names to load the rest."
+                        )
+                    if not loaded and not payload.get("not_found"):
+                        # review-impl #3: nothing requested — guide instead of a silent empty result.
+                        payload["note"] = (
+                            "No tool was requested — pass `name`, `names`, or a `category` "
+                            "(use tool_list to see what's available)."
+                        )
+                    active_tool_names.update(names_to_activate)
+                    if curated and activation_state is not None:
+                        from app.services.tool_surface import merge_activated_tools
+                        activation_state["activated_tools"] = merge_activated_tools(
+                            activation_state["activated_tools"], loaded,
+                            catalog=discovery_catalog,
+                            context_length=context_length,
+                        )
+                        activation_state["dirty"] = True
+                    if surface_tracker is not None:
+                        act_count = (
+                            len(activation_state["activated_tools"])
+                            if activation_state is not None
+                            else len(active_tool_names)
+                        )
+                        payload_as = surface_tracker.activated(act_count)
+                        if payload_as is not None:
+                            yield {"agent_surface": payload_as}
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(payload),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": True, "result": payload, "error": None,
+                    }}
+                    continue
+
                 # MCP-fanout C-FT — find_tools is CONSUMER-LOCAL: it never goes to
                 # a domain service. Run the in-memory catalog search, union the
                 # matched names into the active set (so the NEXT pass advertises
@@ -1693,6 +1855,17 @@ async def _stream_with_tools(
                     }
                     break
                 args_obj = _parse_tool_args(c["arguments"])
+                # S02 fix — fill the session's known context-ids (book_id/chapter_id/project_id)
+                # into this backend tool's args when it declares them and the model left them
+                # blank. Done BEFORE the blank-args cap + dispatch so a would-be
+                # `VALIDATION: missing book_id` call succeeds on the first try instead of looping.
+                _inject_context_ids(
+                    args_obj,
+                    cat_index.get(c["name"]) or plain_index.get(c["name"]),
+                    book_id=(context_ids or {}).get("book_id"),
+                    chapter_id=(context_ids or {}).get("chapter_id"),
+                    project_id=(context_ids or {}).get("project_id"),
+                )
                 # A2A phase-2: compose_prose → stream the composer model inline
                 # and return its prose as the tool result. Usage is summed into
                 # the turn (design D10) so both models are billed.
@@ -1999,7 +2172,13 @@ async def _stream_with_tools(
                 # already hit BLANK_TOOL_ARGS_CAP blank/invalid-args failures
                 # (of EITHER shape), a further one is short-circuited BEFORE
                 # the MCP round trip, not just noted after another failure.
-                if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:
+                # S02 refinement — only short-circuit a call that is ITSELF still
+                # missing required args (post-injection). A well-formed call must not be
+                # collateral-blocked by a DIFFERENT tool's malformed spam (the measured
+                # case: glossary_search-without-query streak blocked a valid ontology_read).
+                if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP and _missing_required_args(
+                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
+                ):
                     guidance = {
                         "error": "blank_tool_args_capped",
                         "message": (
@@ -3121,6 +3300,13 @@ async def stream_response(
         project_id=str(project_id) if project_id else None,
         stream_format=stream_format,
         editor_context=editor_context,
+        # S02 fix — the ids resolved above from editor/book/studio context (book-scoped
+        # surfaces carry book_id in book_context, which is NOT threaded further down).
+        context_ids={
+            "book_id": _ctx_book_id,
+            "chapter_id": _ctx_chapter_id,
+            "project_id": _ctx_project_id or (str(project_id) if project_id else None),
+        },
         admin_token=admin_token,
         messages=messages,
         gen_params=gen_params,
@@ -3204,6 +3390,11 @@ async def _emit_chat_turn(
     entity_presence: dict | None = None,
     trace: "TraceAccumulator | None" = None,
     is_resume: bool = False,
+    # S02 fix — the session's already-resolved {book_id, chapter_id, project_id} (from
+    # editor/book/studio context in stream_response). Only editor_context is otherwise
+    # threaded here, so a BOOK-scoped surface's book_id would be invisible to arg-injection
+    # without this. Falls back to editor_context when absent (the resume caller).
+    context_ids: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -3490,6 +3681,14 @@ async def _emit_chat_turn(
                 planner_model_ref=planner_model_ref,
                 max_iterations=max_iterations,
                 admin_token=admin_token,
+                # S02 fix — hand the already-resolved context-ids down so backend tool args
+                # get them filled server-side. Use the dict stream_response resolved (book/
+                # studio-aware); fall back to editor_context alone (the resume caller passes none).
+                context_ids=context_ids or {
+                    "book_id": (editor_context or {}).get("book_id"),
+                    "chapter_id": (editor_context or {}).get("chapter_id"),
+                    "project_id": project_id,
+                },
                 discovery_catalog=discovery_catalog,
                 discovery_extra_frontend=discovery_extra_frontend,
                 discovery_seed_names=discovery_seed_names,
