@@ -44,10 +44,14 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
   set (`toC4Code` + top-level `result.code`); relayed downstream errors already inherit C4; anti-oracle
   denials kept as -32601.
 
-**Remaining (small follow-on):**
-- **D-KNOWLEDGE-META-ADOPTION** — knowledge-service tools (`kg_build_graph`, `kg_build_wiki`, story/memory
-  search) predate `_meta` and carry none, so the two async kg tools rely on the name heuristic instead of
-  `_meta.async`. Adopting `require_meta(...)` there (with tiers) lets them carry the durable flag. Gate #2.
+- ✅ **D-KNOWLEDGE-META-ADOPTION** — CLEARED (`f191cb858`). All 31 knowledge tools now declare
+  `_meta.tier`+`scope` (14 R / 10 A / 7 W); `kg_build_graph`+`kg_build_wiki` carry `_meta.async`.
+  **Fixed a latent hole found doing it:** untiered ⇒ default `R`, so every knowledge WRITE was
+  executable in read-only *ask* mode and skipped the Tier-A approval card. A tools/list gate now
+  fails any new untiered tool. Interim heuristic verbs removed from `workflow_runner`.
+
+**Remaining: none.** Track A is complete with an empty deferred list.
+
 - Won't-fix (recorded so they stop resurfacing): `confirm_token` is stored-but-unverified on approve
   (consistent with skills — the browser JWT authorizes); C4 unclassifiable-error default is
   UPSTREAM_UNAVAILABLE (treat unknown≈transient, bounded by the tool-loop cap).
