@@ -150,24 +150,21 @@ func TestProposeNewEntity_SkipsTombstoned(t *testing.T) {
 }
 
 // D-GLOSSARY-ENTITY-SCOPE — /review-impl HIGH fix (2026-07-09): entity creation +
-// the scope_label set now share ONE transaction. Before the fix, createExtractedEntity
-// ran against s.pool directly (each internal statement auto-committing) and the
-// scope_label UPDATE was a separate, later s.pool.Exec — so a racer that lost a
-// concurrent-create collision could have its entity row commit with scope_label=''
-// (wrong) while reporting "error" and discarding the id (uuid.Nil), leaving a
-// permanent, unrecoverable, wrongly-scoped orphan.
+// the scope_label set now share ONE transaction, so a uq_entity_dedup collision on
+// the scope_label UPDATE rolls back the whole creation instead of leaving a
+// wrongly-empty-scoped orphan.
 //
-// This test asserts the NARROW guarantee the transactional wrap actually provides:
-// every "Race Entity" row left behind after concurrent identical proposals is
-// EITHER absent OR carries the correctly-requested scope — never the wrong,
-// empty-scope orphan the bug produced. It deliberately does NOT assert a single
-// surviving row: the dedup check itself still runs outside this tx with no
-// per-book lock (a separate, pre-existing, documented gap — see the "NOT fixed
-// here" comment on proposeNewEntity — a first attempt at closing THAT race with
-// pg_advisory_xact_lock caused a real connection-pool deadlock under concurrent
-// test load and needs its own dedicated fix), so duplicates are still possible;
-// only a wrongly-EMPTY-scoped one would mean this fix regressed.
-func TestProposeNewEntity_ConcurrentRaceLeavesNoWronglyScopedOrphan(t *testing.T) {
+// D-GLOSSARY-PROPOSE-LOCK (cleared 2026-07-09): the dedup check now runs under the
+// SAME per-book advisory lock the bulk extraction pipeline uses (INV-C1), on the
+// SAME tx connection as everything else in proposeNewEntity — so this test now
+// asserts the FULL guarantee: exactly one "Race Entity" survives 8 truly
+// concurrent identical proposals, and it carries the correct scope. (Two earlier
+// attempts at this deadlocked under concurrent test load because they mixed
+// tx-bound calls with a call hitting s.pool directly for a second connection
+// while the tx's own connection was still held open — fixed by giving
+// loadAttrDefMap a querier param instead of hardcoding s.pool, so the whole
+// function now runs on exactly one connection.)
+func TestProposeNewEntity_ConcurrentRaceSerializedByBookLock(t *testing.T) {
 	pool := openTestDB(t)
 	ctx := context.Background()
 	runK2aMigrations(t, pool)
@@ -214,7 +211,7 @@ func TestProposeNewEntity_ConcurrentRaceLeavesNoWronglyScopedOrphan(t *testing.T
 			t.Errorf("row %d: want scope_label=World A, got %q (an empty/wrong-scoped orphan survived the race)", found, scope)
 		}
 	}
-	if found == 0 {
-		t.Error("want at least one live entity after the race, got none")
+	if found != 1 {
+		t.Errorf("want exactly 1 surviving entity after the race (the advisory lock serializes the dedup check), got %d", found)
 	}
 }

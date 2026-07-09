@@ -572,7 +572,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	// Pre-load attr_def map (book_kind_id+code → attr_id) for THIS book (G4 book tier).
 	// These two reads are book CONFIG — left on the pool, BEFORE the writeback tx, to
 	// keep the per-book advisory lock window tight (only the actual writes are locked).
-	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
+	attrDefMap, err := s.loadAttrDefMap(ctx, s.pool, bookID)
 	if err != nil {
 		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load attribute definitions")
@@ -1160,8 +1160,13 @@ func (s *Server) loadBookKindCodes(ctx context.Context, bookID uuid.UUID) (map[s
 // entity attributes resolve under universal. DISTINCT ON (kind_id, code) preferring
 // the universal row keeps one attr per (kind, code) even if a genre-specific row
 // shares the code.
-func (s *Server) loadAttrDefMap(ctx context.Context, bookID uuid.UUID) (map[string]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `
+// q lets a caller that already holds a tx (e.g. under the per-book advisory
+// lock, INV-C1) run this on that SAME connection instead of a second one from
+// s.pool — the fix for D-GLOSSARY-PROPOSE-LOCK's connection-pool deadlock risk
+// (a hardcoded s.pool here forced every tx-holding caller to need 2 connections
+// at once). Callers with no open tx yet just pass s.pool.
+func (s *Server) loadAttrDefMap(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID) (map[string]uuid.UUID, error) {
+	rows, err := q.Query(ctx, `
 		SELECT DISTINCT ON (ba.kind_id, ba.code) ba.attr_id, ba.kind_id, ba.code
 		FROM book_attributes ba
 		JOIN book_genres g ON g.genre_id = ba.genre_id

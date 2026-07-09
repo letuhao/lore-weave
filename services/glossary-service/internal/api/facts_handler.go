@@ -486,7 +486,10 @@ func (s *Server) internalResolveEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	created := false
 	if existing == uuid.Nil {
-		attrDefMap, aerr := s.loadAttrDefMap(r.Context(), bookID)
+		// tx, not s.pool: a second pool connection here while tx (holding the book
+		// lock above) is still open is the exact deadlock D-GLOSSARY-PROPOSE-LOCK
+		// hit under connection pressure — this call was latent-affected too.
+		attrDefMap, aerr := s.loadAttrDefMap(r.Context(), tx, bookID)
 		if aerr != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr def map failed")
 			return
@@ -563,7 +566,7 @@ func (s *Server) internalSplitEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "book lock failed")
 		return
 	}
-	attrDefMap, err := s.loadAttrDefMap(r.Context(), bookID)
+	attrDefMap, err := s.loadAttrDefMap(r.Context(), tx, bookID) // tx already open+locked above
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr def map failed")
 		return

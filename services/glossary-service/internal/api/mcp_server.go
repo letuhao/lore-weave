@@ -471,12 +471,38 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 // genuinely different aren't folded together by the dedup check below. "" behaves
 // exactly as before (empty only matches another empty-scope entity).
 func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any, scopeLabel string) (uuid.UUID, string, []string, error) {
-	existingID, err := s.findEntityByNameOrAlias(ctx, s.pool, bookID, kindID, name, scopeLabel)
+	// D-GLOSSARY-PROPOSE-LOCK (cleared 2026-07-09): dedup check, tombstone check,
+	// attr-def load, create, and the scope_label set all now run on ONE tx, held
+	// under the SAME per-book advisory lock the bulk extraction pipeline already
+	// uses (extractionWritebackLockNS, INV-C1) — this closes the TOCTOU race that
+	// let 8 truly concurrent identical proposals create 8 duplicate rows.
+	//
+	// Two earlier attempts at this deadlocked under concurrent test load (each
+	// hanging the full 600s timeout): both mixed tx-bound calls with a call that
+	// hit s.pool directly (a SEPARATE connection) while the tx's own connection
+	// was still held open — with a small pool and enough concurrent callers,
+	// every goroutine ends up holding one connection while waiting on a second,
+	// and nothing ever completes. The fix isn't "add a lock", it's "never need a
+	// 2nd connection": every call below — including loadAttrDefMap, which used to
+	// hardcode s.pool with no querier param at all — now takes tx explicitly, so
+	// this whole function runs on exactly one connection start to finish.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, "", nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful Commit
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, hashtext($2))`,
+		extractionWritebackLockNS, bookID.String()); err != nil {
+		return uuid.Nil, "", nil, fmt.Errorf("book lock: %w", err)
+	}
+
+	existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, name, scopeLabel)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("entity lookup: %w", err)
 	}
 	if existingID != uuid.Nil {
-		rejected, err := s.entityHasTag(ctx, s.pool, existingID, tagAIRejected)
+		rejected, err := s.entityHasTag(ctx, tx, existingID, tagAIRejected)
 		if err != nil {
 			return uuid.Nil, "", nil, fmt.Errorf("tombstone check: %w", err)
 		}
@@ -486,45 +512,15 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 		return existingID, "skipped_exists", nil, nil
 	}
 
-	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
+	attrDefMap, err := s.loadAttrDefMap(ctx, tx, bookID)
 	if err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("attr defs: %w", err)
 	}
 	ent := extractedEntity{Name: name, Attributes: attrs}
 
-	// /review-impl HIGH fix (2026-07-09): entity creation + the scope_label set now
-	// share ONE transaction, opened HERE — right before the writes, after every
-	// s.pool read above has already finished — so this tx never holds a pool
-	// connection while ALSO needing a SEPARATE one for an unrelated read. (A first
-	// version opened the tx at the top of this function, before the dedup check;
-	// under concurrent test load every "winner" ended up holding its own tx's
-	// connection while blocking on a second s.pool.Query/loadAttrDefMap call for a
-	// FRESH connection — with MaxConns=3 and enough concurrent callers, all
-	// connections end up mutually waited-on and NOTHING ever completes. Confirmed
-	// by two live reproductions, each hanging the full 600s test timeout.)
-	//
-	// Previously createExtractedEntity ran against s.pool directly (each internal
-	// statement auto-committing) and the scope_label UPDATE was a separate, LATER
-	// s.pool.Exec — so a uq_entity_dedup collision on the UPDATE (name+kind+scope)
-	// left a REAL entity already committed with scope_label='' (not what was
-	// requested) while reporting "error" and discarding its id (uuid.Nil), an
-	// unrecoverable orphan. Wrapping both in one tx makes that failure roll back
-	// the whole creation: either the entity exists correctly-scoped, or it doesn't
-	// exist at all.
-	//
-	// NOT fixed here (deliberately out of scope, tracked as D-GLOSSARY-PROPOSE-LOCK):
-	// the dedup check above still runs with no per-book advisory lock — a genuine,
-	// PRE-EXISTING TOCTOU race (confirmed live: 8 truly concurrent identical
-	// proposals created 8 duplicate rows). This predates scope_label entirely (the
-	// same race exists for plain name-only dedup) and giving this interactive path
-	// the bulk extraction pipeline's own INV-C1 per-book lock is a real fix, but a
-	// larger, separate one needing its own careful connection-budget design (see
-	// the deadlock this session already hit trying it inline).
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return uuid.Nil, "", nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful Commit
+	// /review-impl HIGH fix (2026-07-09): entity creation + the scope_label set
+	// share this same tx — a uq_entity_dedup collision on the scope_label UPDATE
+	// rolls back the whole creation instead of leaving a wrongly-scoped orphan.
 
 	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
 	// human can correct it when reviewing the draft in the inbox.

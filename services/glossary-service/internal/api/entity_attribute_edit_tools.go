@@ -143,7 +143,7 @@ func (s *Server) setEntityAttributes(ctx context.Context, bookID, entityID, user
 		return entitySetAttributesToolOut{}, errors.New("entity lookup failed")
 	}
 
-	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
+	attrDefMap, err := s.loadAttrDefMap(ctx, s.pool, bookID)
 	if err != nil {
 		return entitySetAttributesToolOut{}, errors.New("failed to resolve attribute definitions")
 	}
