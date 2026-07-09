@@ -467,6 +467,7 @@ async def test_k11_5b_link_to_glossary_handles_rename_across_canonical(
         looked_up = await get_entity_by_glossary_id(
             session,
             user_id=test_user,
+            project_id="p-1",
             glossary_entity_id="gloss-renamed",
         )
         assert looked_up is not None
@@ -497,6 +498,7 @@ async def test_k11_5b_get_by_glossary_id_returns_none_when_missing(
         result = await get_entity_by_glossary_id(
             session,
             user_id=test_user,
+            project_id="p-1",
             glossary_entity_id="gloss-nope",
         )
     assert result is None
@@ -656,6 +658,7 @@ async def test_k11_5b_get_by_glossary_id_validates_input():
         await get_entity_by_glossary_id(
             session=None,  # type: ignore[arg-type]
             user_id="u-1",
+            project_id="p-1",
             glossary_entity_id="",
         )
 
@@ -664,11 +667,14 @@ async def test_k11_5b_get_by_glossary_id_validates_input():
 async def test_k11_5b_glossary_id_uniqueness_enforced_by_schema(
     neo4j_driver, test_user
 ):
-    """K11.5b-R1/R1: the schema constraint
-    `entity_glossary_id_unique` must reject a second entity
-    trying to take an already-claimed glossary FK. Verify by
-    creating two entities with different canonical ids and trying
-    to link both to the same glossary FK."""
+    """K11.5b-R1/R1: the schema constraint `entity_glossary_fk_unique` must reject a
+    second entity in the SAME (user, project) trying to take an already-claimed
+    glossary FK. Verify by creating two entities with different canonical ids in one
+    project and trying to link both to the same glossary FK.
+
+    D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: the constraint is now composite
+    (user_id, project_id, glossary_entity_id) — still one node per FK *within a
+    project*, but a DIFFERENT project may claim the same FK (see the sibling test)."""
     async with neo4j_driver.session() as session:
         a = await merge_entity(
             session,
@@ -979,3 +985,42 @@ async def test_k11_5b_gap_candidates_validates_inputs(neo4j_driver, test_user):
                 project_id="p-1",
                 limit=0,
             )
+
+
+# ── D-KG-GLOSSARY-FK-GLOBAL-UNIQUE ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fk_unique_is_per_project_not_global(neo4j_driver, test_user):
+    """THE fix: two DIFFERENT knowledge projects may each anchor the same glossary
+    entity, as two distinct nodes.
+
+    Before, `entity_glossary_id_unique` made `glossary_entity_id` unique across the
+    whole database, so the second project's anchor upsert raised
+    ConstraintValidationFailed and the entity was silently left un-anchored — which
+    broke `kg_project_entities_to_nodes` and the extraction Pass-0 pre-loader for any
+    book with more than one knowledge project.
+    """
+    gid = "gloss-two-projects"
+    async with neo4j_driver.session() as session:
+        a = await upsert_glossary_anchor(
+            session, user_id=test_user, project_id="proj-A",
+            glossary_entity_id=gid, name="Shared Hero", kind="character",
+        )
+        b = await upsert_glossary_anchor(
+            session, user_id=test_user, project_id="proj-B",
+            glossary_entity_id=gid, name="Shared Hero", kind="character",
+        )
+        assert a.id != b.id, "each project gets its own node id"
+        assert a.glossary_entity_id == b.glossary_entity_id == gid
+
+        # and each project's FK lookup resolves to ITS OWN node
+        got_a = await get_entity_by_glossary_id(
+            session, user_id=test_user, project_id="proj-A", glossary_entity_id=gid,
+        )
+        got_b = await get_entity_by_glossary_id(
+            session, user_id=test_user, project_id="proj-B", glossary_entity_id=gid,
+        )
+        assert got_a is not None and got_b is not None
+        assert got_a.id == a.id and got_b.id == b.id
+        assert got_a.id != got_b.id, "FK lookup must not leak the other project's node"

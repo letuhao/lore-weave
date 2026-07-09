@@ -70,7 +70,10 @@ EXPECTED_CONSTRAINTS = {
     "extraction_source_id_unique",
     "project_id_unique",
     "session_id_unique",
-    "entity_glossary_id_unique",
+    # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: the global `entity_glossary_id_unique` was
+    # replaced by a composite (user_id, project_id, glossary_entity_id) uniqueness,
+    # so a second knowledge project over a book can anchor its own nodes.
+    "entity_glossary_fk_unique",
     "entity_status_id_unique",  # A2-S1
 }
 

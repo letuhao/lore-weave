@@ -768,17 +768,20 @@ async def handle_glossary_entity_merged(
         )
         return
 
-    project_row = await pool.fetchrow(
-        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+    # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: consolidate in EVERY knowledge project of the
+    # book, not just an arbitrary `LIMIT 1` row. The glossary FK is now unique per
+    # (user, project), so a book with two projects has one node per project for the
+    # same entity and each must be merged. This also fixes the pre-existing drift the
+    # old `LIMIT 1` caused (flagged in this function's own review-impl MED-2 comment).
+    project_rows = await pool.fetch(
+        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1",
         book_id,
     )
-    if project_row is None:
+    if not project_rows:
         logger.debug(
             "No knowledge project for book %s — skipping merge sync", book_id
         )
         return
-    project_id = project_row["project_id"]
-    user_id = project_row["user_id"]
 
     from app.config import settings
 
@@ -799,97 +802,118 @@ async def handle_glossary_entity_merged(
     )
     from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 
-    uid = str(user_id)
-    async with neo4j_session() as session:
-        loser = await get_entity_by_glossary_id(
-            session, user_id=uid, glossary_entity_id=str(loser_gid)
-        )
-        winner = await get_entity_by_glossary_id(
-            session, user_id=uid, glossary_entity_id=str(winner_gid)
-        )
-        if loser is None or winner is None:
-            # Either node not yet in the KG (extraction never ran for it) or the
-            # loser already merged (redelivery). Nothing to consolidate; the
-            # winner's own entity_updated event syncs its (folded) aliases.
-            logger.info(
-                "glossary.entity_merged: KG nodes absent (loser=%s winner=%s) "
-                "— no-op, reconverges",
-                loser is not None, winner is not None,
-            )
-            return
-
-        # Capture loser fields BEFORE surgery (the node is gone after merge).
-        loser_id = loser.id
-        loser_name = loser.name
-        loser_canon = loser.canonical_name
-        loser_aliases = list(loser.aliases)
-        loser_kind = loser.kind
-        # project_scope MUST match the read side: the extraction resolver looks
-        # up alias_map with the ENTITY's project_id (`project_id or "global"`),
-        # and the user-merge route writes with source.project_id — use the
-        # node's project (not the book→project LIMIT-1 row, which can drift when
-        # a book has >1 knowledge project). (review-impl MED-2.)
-        scope = loser.project_id or "global"
-
-        # Clear the loser's stale glossary anchor so merge_entities doesn't
-        # raise glossary_conflict, then consolidate.
-        await unlink_from_glossary(session, user_id=uid, canonical_id=loser_id)
-        try:
-            await merge_entities(
-                session, user_id=uid, source_id=loser_id, target_id=winner.id,
-            )
-        except MergeEntitiesError as exc:
-            if exc.error_code == "same_entity":
-                return  # already one node (redelivery) — idempotent no-op
-            # review-impl MED-1: the unlink already COMMITTED; if the merge
-            # failed, the loser is now un-anchored and a redelivery's
-            # glossary-id lookup would MISS it (unrecoverable orphan + broken
-            # anti-resurrection). Re-link the loser so redelivery retries
-            # cleanly. Use a fresh session (the merge's own tx is unwound).
-            try:
-                async with neo4j_session() as relink_session:
-                    await link_to_glossary(
-                        relink_session, user_id=uid, canonical_id=loser_id,
-                        glossary_entity_id=str(loser_gid), name=loser_name,
-                        kind=loser_kind, aliases=loser_aliases,
-                    )
-            except Exception:  # noqa: BLE001
-                logger.error(
-                    "glossary.entity_merged: merge FAILED and re-link FAILED for "
-                    "loser=%s — orphaned un-anchored node, recover via "
-                    "scripts/backfill_entity_alias_map.py", loser_gid,
-                    exc_info=True,
-                )
-            raise  # propagate so the consumer redelivers/DLQs
-
-    # Anti-resurrection: register loser's canonicalized names → winner. Postgres
-    # I/O, outside the neo4j session. Best-effort (the KG merge already
-    # committed); recoverable via scripts/backfill_entity_alias_map.py.
     repo = EntityAliasMapRepo(pool)
-    canonicals: set[str] = {canonicalize_entity_name(a) for a in loser_aliases}
-    if loser_canon:
-        canonicals.add(canonicalize_entity_name(loser_canon))
-    for ca in canonicals:
-        if not ca:
-            continue
-        try:
-            await repo.record_merge(
-                user_id=user_id,
-                project_scope=scope,
-                kind=loser_kind,
-                canonical_alias=ca,
-                target_entity_id=winner.id,
-                source_entity_id=loser.id,
+    consolidated = 0
+
+    # One consolidation per knowledge project of the book. Each project owns its own
+    # node for a given glossary entity (the FK is unique per (user, project)), so a
+    # merge in one project says nothing about the others. A project whose nodes are
+    # absent is a clean no-op; a project whose merge FAILS re-raises so the consumer
+    # redelivers the whole event (each project's step is individually idempotent).
+    for project_row in project_rows:
+        project_id = project_row["project_id"]
+        user_id = project_row["user_id"]
+        uid = str(user_id)
+        pid = str(project_id)
+
+        async with neo4j_session() as session:
+            loser = await get_entity_by_glossary_id(
+                session, user_id=uid, project_id=pid,
+                glossary_entity_id=str(loser_gid),
             )
-        except Exception:  # noqa: BLE001 — alias-map is best-effort
-            logger.warning(
-                "glossary.entity_merged: alias-map record_merge failed for %r "
-                "(non-fatal)", ca, exc_info=True,
+            winner = await get_entity_by_glossary_id(
+                session, user_id=uid, project_id=pid,
+                glossary_entity_id=str(winner_gid),
             )
-    logger.info(
-        "mui#1c: KG consolidated loser=%s into winner=%s (project=%s)",
-        loser_gid, winner_gid, project_id,
-    )
+            if loser is None or winner is None:
+                # Either node not yet in the KG (extraction never ran for it) or the
+                # loser already merged (redelivery). Nothing to consolidate; the
+                # winner's own entity_updated event syncs its (folded) aliases.
+                logger.info(
+                    "glossary.entity_merged: KG nodes absent in project=%s "
+                    "(loser=%s winner=%s) — no-op, reconverges",
+                    pid, loser is not None, winner is not None,
+                )
+                continue
+
+            # Capture loser fields BEFORE surgery (the node is gone after merge).
+            loser_id = loser.id
+            loser_name = loser.name
+            loser_canon = loser.canonical_name
+            loser_aliases = list(loser.aliases)
+            loser_kind = loser.kind
+            winner_id = winner.id
+            # project_scope MUST match the read side: the extraction resolver looks
+            # up alias_map with the ENTITY's project_id (`project_id or "global"`),
+            # and the user-merge route writes with source.project_id — use the
+            # node's own project. (review-impl MED-2.)
+            scope = loser.project_id or "global"
+
+            # Clear the loser's stale glossary anchor so merge_entities doesn't
+            # raise glossary_conflict, then consolidate.
+            await unlink_from_glossary(session, user_id=uid, canonical_id=loser_id)
+            try:
+                await merge_entities(
+                    session, user_id=uid, source_id=loser_id, target_id=winner_id,
+                )
+            except MergeEntitiesError as exc:
+                if exc.error_code == "same_entity":
+                    continue  # already one node (redelivery) — idempotent no-op
+                # review-impl MED-1: the unlink already COMMITTED; if the merge
+                # failed, the loser is now un-anchored and a redelivery's
+                # glossary-id lookup would MISS it (unrecoverable orphan + broken
+                # anti-resurrection). Re-link the loser so redelivery retries
+                # cleanly. Use a fresh session (the merge's own tx is unwound).
+                try:
+                    async with neo4j_session() as relink_session:
+                        await link_to_glossary(
+                            relink_session, user_id=uid, canonical_id=loser_id,
+                            glossary_entity_id=str(loser_gid), name=loser_name,
+                            kind=loser_kind, aliases=loser_aliases,
+                        )
+                except Exception:  # noqa: BLE001
+                    logger.error(
+                        "glossary.entity_merged: merge FAILED and re-link FAILED for "
+                        "loser=%s project=%s — orphaned un-anchored node, recover via "
+                        "scripts/backfill_entity_alias_map.py", loser_gid, pid,
+                        exc_info=True,
+                    )
+                raise  # propagate so the consumer redelivers/DLQs
+
+        # Anti-resurrection: register loser's canonicalized names → winner. Postgres
+        # I/O, outside the neo4j session. Best-effort (the KG merge already
+        # committed); recoverable via scripts/backfill_entity_alias_map.py.
+        canonicals: set[str] = {canonicalize_entity_name(a) for a in loser_aliases}
+        if loser_canon:
+            canonicals.add(canonicalize_entity_name(loser_canon))
+        for ca in canonicals:
+            if not ca:
+                continue
+            try:
+                await repo.record_merge(
+                    user_id=user_id,
+                    project_scope=scope,
+                    kind=loser_kind,
+                    canonical_alias=ca,
+                    target_entity_id=winner_id,
+                    source_entity_id=loser_id,
+                )
+            except Exception:  # noqa: BLE001 — alias-map is best-effort
+                logger.warning(
+                    "glossary.entity_merged: alias-map record_merge failed for %r "
+                    "(non-fatal)", ca, exc_info=True,
+                )
+        consolidated += 1
+        logger.info(
+            "mui#1c: KG consolidated loser=%s into winner=%s (project=%s)",
+            loser_gid, winner_gid, pid,
+        )
+
+    if not consolidated:
+        logger.info(
+            "glossary.entity_merged: nothing consolidated for book=%s across %d "
+            "project(s) — reconverges", book_id, len(project_rows),
+        )
 
 
 def _uuid(val: str | None) -> UUID | None:

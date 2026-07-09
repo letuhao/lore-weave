@@ -1454,9 +1454,14 @@ async def find_entities_needing_embedding(
 # rename-aware path: the canonical_id is hash-derived from the
 # CURRENT name, so if the name changed in glossary the id won't
 # match anymore — but the glossary_entity_id link still does.
+#
+# D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: scoped by `project_id` as well as `user_id`. The FK
+# is now unique per (user, project), so a user with two knowledge projects over the
+# same book has TWO nodes for the same glossary entity — one per project. Without the
+# project filter this would match both and silently return an arbitrary one.
 _FIND_BY_GLOSSARY_ID_CYPHER = """
 MATCH (e:Entity {glossary_entity_id: $glossary_entity_id})
-WHERE e.user_id = $user_id
+WHERE e.user_id = $user_id AND e.project_id = $project_id
 RETURN e
 """
 
@@ -1555,9 +1560,10 @@ async def get_entity_by_glossary_id(
     session: CypherSession,
     *,
     user_id: str,
+    project_id: str,
     glossary_entity_id: str,
 ) -> Entity | None:
-    """Look up an anchored entity by its glossary FK.
+    """Look up an anchored entity by its glossary FK, WITHIN one project.
 
     The rename-aware companion to `get_entity`. After
     `link_to_glossary` updates an entity's name across canonical
@@ -1565,8 +1571,12 @@ async def get_entity_by_glossary_id(
     even though `entity_canonical_id(new_name, kind)` no longer
     matches the stored id.
 
-    Multi-row safety: the K11.3 schema enforces uniqueness on
-    `e.glossary_entity_id` (K11.5b-R1/R1), so a properly-applied
+    `project_id` is REQUIRED (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE): the FK is unique per
+    (user, project), so the same glossary entity may have one node in each of the
+    user's projects. Omitting the scope would return an arbitrary project's node.
+
+    Multi-row safety: the schema enforces uniqueness on
+    `(user_id, project_id, glossary_entity_id)`, so a properly-applied
     schema makes multi-row results impossible. The runtime
     safety net below catches the brief window where a misuse,
     a missing schema, or a race could produce two rows — instead
@@ -1575,10 +1585,13 @@ async def get_entity_by_glossary_id(
     """
     if not glossary_entity_id:
         raise ValueError("glossary_entity_id must be a non-empty string")
+    if not project_id:
+        raise ValueError("project_id must be a non-empty string")
     result = await run_read(
         session,
         _FIND_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
+        project_id=project_id,
         glossary_entity_id=glossary_entity_id,
     )
     first: Entity | None = None
@@ -1591,12 +1604,13 @@ async def get_entity_by_glossary_id(
     if extra_count:
         logger.error(
             "K11.5b-R1/R2: get_entity_by_glossary_id found %d extra row(s) "
-            "for glossary_entity_id=%r user_id=%r — schema constraint "
-            "entity_glossary_id_unique should have prevented this. "
+            "for glossary_entity_id=%r user_id=%r project_id=%r — schema constraint "
+            "entity_glossary_fk_unique should have prevented this. "
             "Returning the first match; investigate the data.",
             extra_count,
             glossary_entity_id,
             user_id,
+            project_id,
         )
     return first
 
@@ -2146,9 +2160,19 @@ async def get_entity_with_relations(
 # wiki caller knows the glossary entity_id, not the hash-derived
 # canonical_id (which drifts on rename).
 
+# D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: `project_id` is OPTIONAL here. The only caller is
+# glossary-service's wiki renderer (POST /internal/knowledge/wiki-neighborhood), which
+# knows a BOOK, not a knowledge project — requiring the scope would be a cross-service
+# contract change for a read-only panel. When it is NULL we match the user's nodes and
+# take the first in a DETERMINISTIC order (by project_id), warning if more than one
+# matched. Today exactly one node carries a given FK per user, so behaviour is
+# unchanged; the ordering + warning make the ambiguity explicit if a second project
+# ever anchors the same entity.
 _GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER = """
 MATCH (e:Entity {glossary_entity_id: $glossary_entity_id})
 WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+WITH e ORDER BY e.project_id ASC
 CALL {
   WITH e
   OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
@@ -2178,6 +2202,7 @@ async def get_neighborhood_by_glossary_id(
     *,
     user_id: str,
     glossary_entity_id: str,
+    project_id: str | None = None,
     rel_cap: int = ENTITIES_DETAIL_REL_CAP,
 ) -> EntityDetail | None:
     """C5 (D4-03) — entity + 1-hop active RELATES_TO edges, keyed by the
@@ -2188,6 +2213,12 @@ async def get_neighborhood_by_glossary_id(
     never been synced into the KG, or a cross-user lookup). A None
     result is a VALID "empty neighborhood" signal for the wiki
     renderer — it produces a minimal body rather than failing.
+
+    `project_id` is OPTIONAL (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE): the FK is unique per
+    (user, project), so a user with two knowledge projects over the same book has one
+    node per project. The wiki caller knows a book, not a project, so when the scope
+    is omitted we take the first node in a deterministic order (by `project_id`) and
+    warn if more than one matched — rather than silently picking an arbitrary one.
 
     Relations carry `confidence` + `pending_validation`, and the
     entity carries `source_types`, so the caller can mark enriched
@@ -2200,10 +2231,26 @@ async def get_neighborhood_by_glossary_id(
         session,
         _GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
+        project_id=project_id,
         glossary_entity_id=glossary_entity_id,
         rel_cap=rel_cap,
     )
-    record = await result.single()
+    # NOT `result.single()`: without a project scope the FK can now legitimately match
+    # one node per project. Take the first (deterministically ordered) and say so.
+    record = None
+    extra = 0
+    async for row in result:
+        if record is None:
+            record = row
+        else:
+            extra += 1
+    if extra:
+        logger.warning(
+            "get_neighborhood_by_glossary_id: %d extra node(s) for "
+            "glossary_entity_id=%r user_id=%r with no project scope — returning the "
+            "lowest project_id. Pass project_id to disambiguate.",
+            extra, glossary_entity_id, user_id,
+        )
     if record is None:
         return None
     entity = _node_to_entity(record["e"])

@@ -45,16 +45,31 @@ FOR (p:Project) REQUIRE p.id IS UNIQUE;
 CREATE CONSTRAINT session_id_unique IF NOT EXISTS
 FOR (s:Session) REQUIRE s.id IS UNIQUE;
 
-// K11.5b-R1/R1: glossary FK uniqueness. Two `:Entity` nodes
-// must never share the same `glossary_entity_id` — the FK is
-// the rename-aware lookup key for `get_entity_by_glossary_id`
-// and a duplicate would crash `result.single()`. Neo4j
-// uniqueness constraints allow multiple NULLs but reject
-// duplicate non-NULL values, which is exactly the semantics we
-// want for a nullable FK. Discovered entities (FK = NULL) are
-// unaffected.
-CREATE CONSTRAINT entity_glossary_id_unique IF NOT EXISTS
-FOR (e:Entity) REQUIRE e.glossary_entity_id IS UNIQUE;
+// K11.5b-R1/R1 + D-KG-GLOSSARY-FK-GLOBAL-UNIQUE (2026-07-10): the glossary FK is
+// unique PER (user, project) — not globally.
+//
+// The old `entity_glossary_id_unique` required `e.glossary_entity_id` to be unique
+// across the WHOLE database, so exactly one :Entity node anywhere could point at a
+// given glossary entity. But `Entity.id` is hash(user_id, project_id, name, kind) —
+// a per-project identity — so a second knowledge project over the same book
+// legitimately needs its OWN node for that entity. Under the global constraint that
+// project's anchor upsert raised ConstraintValidationFailed and the entity was left
+// silently un-anchored (hit `kg_project_entities_to_nodes` AND the shipped extraction
+// Pass-0 anchor pre-loader).
+//
+// Composite uniqueness keeps what made the original constraint useful — within a
+// project a glossary entity still resolves to at most ONE node, so the FK remains a
+// valid single-row lookup key (`get_entity_by_glossary_id`). Neo4j exempts rows with
+// ANY NULL in the key, so discovered entities (FK = NULL) are unaffected, exactly as
+// before. Composite UNIQUENESS is Community-supported (only NODE KEY is Enterprise).
+//
+// Existing data satisfies the strictly-stronger global constraint, so this creates
+// cleanly with no backfill.
+// Spec: docs/specs/2026-07-10-kg-glossary-fk-project-scoped.md
+DROP CONSTRAINT entity_glossary_id_unique IF EXISTS;
+
+CREATE CONSTRAINT entity_glossary_fk_unique IF NOT EXISTS
+FOR (e:Entity) REQUIRE (e.user_id, e.project_id, e.glossary_entity_id) IS UNIQUE;
 
 // ─────────────────────────────────────────────────────────────────
 // user_id NOT NULL — enforced at the APPLICATION layer, not here.
