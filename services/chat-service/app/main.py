@@ -14,6 +14,7 @@ from app.client.known_entities_client import (
     init_known_entities_client,
 )
 from app.client.user_skills_client import close_user_skills_client, init_user_skills_client
+from app.client.registry_workflows_client import close_workflows_client, init_workflows_client
 from app.client.registry_commands_client import close_commands_client, init_commands_client
 from app.client.registry_hooks_client import close_hooks_client, init_hooks_client
 from app.client.registry_subagents_client import (
@@ -71,6 +72,8 @@ async def lifespan(app: FastAPI):
     init_known_entities_client()
     # REG-P1-05: long-lived agent-registry user-skills client (degrades to constants).
     init_user_skills_client()
+    # WS-2b: long-lived agent-registry workflows client (degrades to no curated workflows).
+    init_workflows_client()
     # REG-P4-01: long-lived agent-registry commands client (degrades to pass-through).
     init_commands_client()
     # REG-P4-03: long-lived agent-registry hooks client (degrades to unhooked turn).
@@ -85,6 +88,7 @@ async def lifespan(app: FastAPI):
     await close_book_steering_client()
     await close_known_entities_client()
     await close_user_skills_client()
+    await close_workflows_client()
     await close_commands_client()
     await close_hooks_client()
     await close_subagents_client()

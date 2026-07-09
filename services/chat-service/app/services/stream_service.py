@@ -80,6 +80,14 @@ from app.services.tool_discovery import (
     tool_tier,
     tool_undo_hint,
 )
+from app.services.workflow_runner import (
+    WORKFLOW_LIST_NAME,
+    WORKFLOW_LIST_TOOL,
+    WORKFLOW_LOAD_NAME,
+    WORKFLOW_LOAD_TOOL,
+    workflow_list_result,
+    workflow_load_result,
+)
 from app.services.subagent_runtime import (
     RUN_SUBAGENT_NAME,
     SUBAGENT_MAX_ITERATIONS,
@@ -782,6 +790,7 @@ def _advertise_discovery_tools(
     active_tool_names: set[str],
     extra_frontend: list[dict],
     permission_mode: str = "write",
+    has_workflows: bool = False,
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -831,6 +840,12 @@ def _advertise_discovery_tools(
             _add(TOOL_LOAD_TOOL)
             continue
         _add(catalog_index.get(name) or generic_frontend_tool_def(name))
+    # WS-2b — advertise the workflow meta-tools ONLY when the turn actually has
+    # curated workflows visible (keeps the default core lean when there are none).
+    # Consumer-local like tool_list/tool_load; dispatched below.
+    if has_workflows:
+        _add(WORKFLOW_LIST_TOOL)
+        _add(WORKFLOW_LOAD_TOOL)
     for td in extra_frontend:
         _add(td)
     # Discovered tools — full schemas now that find_tools matched them.
@@ -972,6 +987,9 @@ async def _stream_with_tools(
     stateful: bool = False,
     previous_response_id: str | None = None,
     delta_messages: list[dict] | None = None,
+    # WS-2b — the curated workflows visible this turn (registry-fetched, degrade-safe).
+    # Non-empty ⇒ advertise workflow_list/workflow_load and dispatch them consumer-locally.
+    turn_workflows: list[dict] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -1180,6 +1198,7 @@ async def _stream_with_tools(
                     advertised = _advertise_discovery_tools(
                         cat_index, active_tool_names, extra_fe,
                         permission_mode=permission_mode,
+                        has_workflows=bool(turn_workflows),
                     )
                 else:
                     advertised = (
@@ -1588,6 +1607,64 @@ async def _stream_with_tools(
                         payload_as = surface_tracker.activated(act_count)
                         if payload_as is not None:
                             yield {"agent_surface": payload_as}
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(payload),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": True, "result": payload, "error": None,
+                    }}
+                    continue
+
+                # WS-2b — workflow_list is CONSUMER-LOCAL + deterministic: enumerate
+                # the curated workflows visible this turn (slug/title/description).
+                # No activation, no write.
+                if c["name"] == WORKFLOW_LIST_NAME and turn_workflows:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    payload = workflow_list_result(turn_workflows)
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(payload),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": True, "result": payload, "error": None,
+                    }}
+                    continue
+
+                # WS-2b — workflow_load is CONSUMER-LOCAL: return one workflow's ordered
+                # rail (steps + gates + async annotations + guidance) AND activate its
+                # step tools so the next pass advertises their real schemas (reusing the
+                # hot-seed token budget, exactly like tool_load). Executes nothing; each
+                # step's gate is enforced later by the tool's OWN tier/approval machinery.
+                if c["name"] == WORKFLOW_LOAD_NAME and turn_workflows:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    _slug = str(args_obj.get("slug", "") or "")
+                    payload, step_tools = workflow_load_result(turn_workflows, _slug)
+                    if step_tools and discovery:
+                        from app.services.tool_surface import (
+                            HOT_SEED_TOKEN_BUDGET,
+                            budget_names_by_tokens,
+                            merge_activated_tools,
+                        )
+                        names_to_activate = budget_names_by_tokens(
+                            discovery_catalog or [], step_tools,
+                            token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        active_tool_names.update(names_to_activate)
+                        if curated and activation_state is not None:
+                            activation_state["activated_tools"] = merge_activated_tools(
+                                activation_state["activated_tools"], list(names_to_activate),
+                                catalog=discovery_catalog,
+                                context_length=context_length,
+                            )
+                            activation_state["dirty"] = True
+                        if len(names_to_activate) < len(step_tools):
+                            payload["note"] = (
+                                f"Activated {len(names_to_activate)} of {len(step_tools)} step tools "
+                                "(token budget); call tool_load for the rest as you reach those steps."
+                            )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content(payload),
@@ -3125,6 +3202,23 @@ async def stream_response(
             logger.warning("user skills fetch/inject failed — built-in skills only", exc_info=True)
             user_skills_block = None
 
+    # WS-2b — fetch the curated workflows visible this turn (System + user + book),
+    # degrade-safe: any failure leaves turn_workflows empty (no workflow_list/_load
+    # advertised, the agent still has raw tools + discovery). Same surface key as skills.
+    turn_workflows: list[dict] = []
+    if stream_format == "agui" and not disable_tools and kctx.tool_calling_enabled:
+        try:
+            from app.client.registry_workflows_client import get_workflows_client
+
+            _wf_surface = "admin" if _admin else ("editor" if _editor else ("book" if _book_scoped else "chat"))
+            _wfs = await get_workflows_client().get_workflows(
+                str(user_id), book_id=str(_ctx_book_id or ""), surface=_wf_surface,
+            )
+            turn_workflows = list(_wfs.workflows)
+        except Exception:
+            logger.warning("workflows fetch failed — no curated workflows this turn", exc_info=True)
+            turn_workflows = []
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -3387,6 +3481,7 @@ async def stream_response(
         # Context Compiler trace (§11) — carries any C_persist span already recorded; the
         # in-turn compaction + T0 wire spans are appended inside _emit_chat_turn.
         trace=_trace,
+        turn_workflows=turn_workflows,
     ):
         yield line
 
@@ -3438,6 +3533,9 @@ async def _emit_chat_turn(
     # threaded here, so a BOOK-scoped surface's book_id would be invisible to arg-injection
     # without this. Falls back to editor_context when absent (the resume caller).
     context_ids: dict | None = None,
+    # WS-2b — curated workflows visible this turn; threaded into the tool loop so
+    # workflow_list/workflow_load are advertised + dispatched. Empty on the resume caller.
+    turn_workflows: list[dict] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -3750,6 +3848,7 @@ async def _emit_chat_turn(
                 stateful=_stateful,
                 previous_response_id=_prev_rid,
                 delta_messages=_delta_msgs,
+                turn_workflows=turn_workflows,
             )
         else:
             chunk_stream = _stream_via_gateway(
