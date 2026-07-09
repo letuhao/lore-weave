@@ -33,14 +33,21 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 
 ## Track A deferred (post-review)
 
-- **D-WF-BOOK-TIER-AUTHORING** — agent-authored workflows are user-tier only; book-tier authoring
-  needs a book-write GRANT check the agent-registry can't do yet (no book-grants client). Book-tier
-  workflows are admin-seedable now; the grant-checked path (+ book read/update in
-  resolveVisibleWorkflowBySlug/toolList/loadVisible) is the buildable follow-on. Gate #2 (structural).
-- **Async-ness from catalog metadata** — the runner's async guard is now authored-flag-first with a
-  name heuristic fallback; the durable fix is a real `async` flag on the catalog tool def. Gate #2.
-- **C4 at the public MCP edge** — the uniform error envelope is applied at ai-gateway (the chat path);
-  mcp-public-gateway is a separate edge (own scope layer) and doesn't inherit it. Gate #1 (out of scope).
+**Recently cleared (2026-07-09):**
+- ✅ **D-WF-BOOK-TIER-AUTHORING** — CLEARED (`95af9cabc`). book-tier workflow authoring re-enabled,
+  now grant-gated (`bookGrantOK` ctx helper; ≥edit to write, ≥view to read; re-checked at approve;
+  anti-oracle). book_id on propose/update/get.
+- ✅ **Async-ness from catalog metadata** — CLEARED (`b1544c7b4`). `_meta.async` kit flag (Go WithAsync
+  / Py require_meta async_job) marked on 5 real async tools; runner reads catalog flag (authored →
+  catalog → heuristic). Only knowledge's kg_build_* stay on the heuristic (see below).
+- ✅ **C4 at the public MCP edge** — CLEARED (`f2de0a0a1`). edge-generated errors now use the C4 closed
+  set (`toC4Code` + top-level `result.code`); relayed downstream errors already inherit C4; anti-oracle
+  denials kept as -32601.
+
+**Remaining (small follow-on):**
+- **D-KNOWLEDGE-META-ADOPTION** — knowledge-service tools (`kg_build_graph`, `kg_build_wiki`, story/memory
+  search) predate `_meta` and carry none, so the two async kg tools rely on the name heuristic instead of
+  `_meta.async`. Adopting `require_meta(...)` there (with tiers) lets them carry the durable flag. Gate #2.
 - Won't-fix (recorded so they stop resurfacing): `confirm_token` is stored-but-unverified on approve
   (consistent with skills — the browser JWT authorizes); C4 unclassifiable-error default is
   UPSTREAM_UNAVAILABLE (treat unknown≈transient, bounded by the tool-loop cap).
