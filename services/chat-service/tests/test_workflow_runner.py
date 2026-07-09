@@ -77,6 +77,35 @@ def test_workflow_load_annotates_async_and_gate():
     assert "job" in joined
 
 
+def test_authored_async_flag_overrides_heuristic():
+    # authored async_job=True on a tool the heuristic would NOT flag → honored
+    wf = _wf(steps=[{"id": "s1", "tool": "kg_reindex", "gate": "none", "async_job": True}])
+    payload, _ = wr.workflow_load_result([wf], wf["slug"])
+    assert payload["steps"][0].get("async_job") is True
+    # authored async_job=False on a tool the heuristic WOULD flag → suppressed
+    wf2 = _wf(steps=[{"id": "s1", "tool": "book_translate", "gate": "none", "async_job": False}])
+    payload2, _ = wr.workflow_load_result([wf2], wf2["slug"])
+    assert "async_job" not in payload2["steps"][0]
+
+
+def test_media_read_tool_not_flagged_async():
+    # regression: 'media' substring was dropped so media READ tools don't strand ui_watch_job
+    wf = _wf(steps=[{"id": "s1", "tool": "media_list", "gate": "none"}])
+    payload, _ = wr.workflow_load_result([wf], wf["slug"])
+    assert "async_job" not in payload["steps"][0]
+
+
+def test_malformed_empty_tool_step_skipped():
+    wf = _wf(steps=[
+        {"id": "ok", "tool": "book_get", "gate": "none"},
+        {"id": "bad", "tool": "", "gate": "none"},
+        {"id": "bad2", "gate": "none"},  # no tool key
+    ])
+    payload, tools = wr.workflow_load_result([wf], wf["slug"])
+    assert [s["id"] for s in payload["steps"]] == ["ok"]
+    assert tools == ["book_get"]
+
+
 def test_workflow_load_bad_gate_normalized_to_none():
     wf = _wf(steps=[{"id": "s1", "tool": "book_get", "gate": "bogus"}])
     payload, _ = wr.workflow_load_result([wf], wf["slug"])

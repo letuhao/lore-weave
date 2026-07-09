@@ -42,6 +42,11 @@ type workflowStepIn struct {
 	When      string            `json:"when,omitempty" jsonschema:"optional predicate over prior step results / inputs (evaluated by the runner)"`
 	Repeat    string            `json:"repeat,omitempty" jsonschema:"none | per_item:<inputs key> — fan the step over a list input"`
 	InputsMap map[string]string `json:"inputs_map,omitempty" jsonschema:"map of tool arg -> reference to a workflow input or a prior step output"`
+	// AsyncJob — set true when this step's tool STARTS a background job (queued, not
+	// done on return). AUTHORITATIVE when present: the runner's name-heuristic is only a
+	// fallback for steps that omit it, so a new async tool the heuristic doesn't know is
+	// still honored when the author marks it. Pointer so "unset" is distinct from false.
+	AsyncJob *bool `json:"async_job,omitempty" jsonschema:"true if this step starts a background job (queued, not done on return)"`
 }
 
 type proposeWorkflowIn struct {
@@ -52,8 +57,14 @@ type proposeWorkflowIn struct {
 	Inputs      map[string]string `json:"inputs,omitempty" jsonschema:"declared inputs: name -> 'required' | 'optional'"`
 	Steps       []workflowStepIn  `json:"steps" jsonschema:"ordered tool steps (C3) — at least one"`
 	NotesMD     string            `json:"notes_md,omitempty" jsonschema:"prose the agent reads (gotchas, plain-language framing) — NOT executed"`
-	BookID      string            `json:"book_id,omitempty" jsonschema:"set to scope this workflow to a book (book-tier); omit for a personal (user-tier) workflow"`
 	SessionID   string            `json:"session_id,omitempty" jsonschema:"the chat session this came from (optional)"`
+	// NB: no book_id here. An agent-proposed workflow is ALWAYS user-tier (private to
+	// the proposer). Book-tier workflows are cross-tenant (visible to everyone with
+	// the book) and so require a book-write GRANT the agent-registry can't verify —
+	// letting a user set an arbitrary book_id here was a cross-tenant injection hole
+	// (a workflow authored for another user's book_id would surface in THEIR chat
+	// context). Book-tier workflows are admin-seeded only until a grant-checked
+	// authoring path exists (deferred: D-WF-BOOK-TIER-AUTHORING).
 }
 
 type updateWorkflowIn struct {
@@ -331,7 +342,8 @@ func (s *Server) toolUpdateWorkflow(ctx context.Context, _ *mcp.CallToolRequest,
 }
 
 // normalize validates + converts the MCP input into the internal workflowInput.
-// A book_id (book-tier) is resolved from the string arg; empty ⇒ user-tier.
+// ALWAYS user-tier — an agent-proposed workflow is private to the proposer. Book-tier
+// (cross-tenant) authoring is intentionally not reachable here (see proposeWorkflowIn).
 func (in *proposeWorkflowIn) normalize() (*workflowInput, string) {
 	title := in.Title
 	if strings.TrimSpace(title) == "" {
@@ -341,14 +353,6 @@ func (in *proposeWorkflowIn) normalize() (*workflowInput, string) {
 		Slug: in.Slug, Title: title, Description: in.Description,
 		Surfaces: in.Surfaces, Inputs: in.Inputs, Steps: in.Steps, NotesMD: in.NotesMD,
 		Tier: "user",
-	}
-	if in.BookID != "" {
-		bid, err := uuid.Parse(in.BookID)
-		if err != nil {
-			return nil, "invalid book_id"
-		}
-		wfIn.Tier = "book"
-		wfIn.BookID = &bid
 	}
 	if msg, ok := validateWorkflow(wfIn); !ok {
 		return nil, msg
@@ -654,13 +658,17 @@ func (s *Server) internalWorkflows(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&wf.Slug, &wf.Title, &wf.Description, &wf.Tier, &wf.Surfaces, &inputsJSON, &stepsJSON, &wf.NotesMD); err != nil {
 			continue
 		}
+		// Filter by surface BEFORE dedup: a higher-precedence row that does NOT match
+		// the surface must not claim the slug and shadow out a lower-tier row that
+		// WOULD match (else e.g. a user 'foo' on [compose] erases the System 'foo' on
+		// [chat] for a chat turn). Shadowing applies only among surface-matching rows.
+		if surface != "" && len(wf.Surfaces) > 0 && !contains(wf.Surfaces, surface) {
+			continue
+		}
 		if seen[wf.Slug] {
 			continue
 		}
 		seen[wf.Slug] = true
-		if surface != "" && len(wf.Surfaces) > 0 && !contains(wf.Surfaces, surface) {
-			continue
-		}
 		_ = json.Unmarshal(inputsJSON, &wf.Inputs)
 		_ = json.Unmarshal(stepsJSON, &wf.Steps)
 		if wf.Inputs == nil {

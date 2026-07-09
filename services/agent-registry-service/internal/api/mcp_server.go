@@ -78,7 +78,7 @@ func (s *Server) mcpHandler() http.Handler {
 
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_propose_workflow",
-		Description: "PROPOSE a new curated multi-step workflow for the user. Does NOT create or run it — it records a proposal the user must approve in the UI. Provide slug, title, a one-line description, and an ordered list of steps (each with a tool name and a gate: none | confirm | approval). Optionally declare inputs and set book_id to scope it to a book. Use this to save a repeatable sequence of tool calls as a reusable workflow.",
+		Description: "PROPOSE a new curated multi-step workflow for the user (saved as their own, private). Does NOT create or run it — it records a proposal the user must approve in the UI. Provide slug, title, a one-line description, and an ordered list of steps (each with a tool name and a gate: none | confirm | approval). Optionally declare inputs. Use this to save a repeatable sequence of tool calls as a reusable workflow.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save workflow", "propose workflow", "create workflow", "remember this as a workflow", "make a recipe"}),
 		InputSchema: closedSetSchemaFor[proposeWorkflowIn](map[string][]any{
 			"surfaces[]":   enumSurfaces,

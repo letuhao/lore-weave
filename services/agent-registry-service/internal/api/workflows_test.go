@@ -81,7 +81,7 @@ func TestValidateWorkflow_RepeatPerItemValid(t *testing.T) {
 }
 
 // normalize maps the MCP input to the internal shape: empty title defaults to slug,
-// a book_id promotes the tier to book, and validation still runs.
+// and an agent-proposed workflow is ALWAYS user-tier (no cross-tenant book-tier vector).
 func TestProposeWorkflowIn_Normalize(t *testing.T) {
 	in := proposeWorkflowIn{
 		Slug: "my-flow", Description: "does a thing",
@@ -94,19 +94,10 @@ func TestProposeWorkflowIn_Normalize(t *testing.T) {
 	if wf.Title != "my-flow" {
 		t.Fatalf("empty title should default to slug, got %q", wf.Title)
 	}
-	if wf.Tier != "user" {
-		t.Fatalf("no book_id ⇒ user tier, got %q", wf.Tier)
-	}
-
-	in.BookID = "not-a-uuid"
-	if _, msg := in.normalize(); msg != "invalid book_id" {
-		t.Fatalf("bad book_id should fail, got %q", msg)
-	}
-
-	in.BookID = "019ef2cf-4317-7edb-8f33-d3b2c5845d0c"
-	wf, msg = in.normalize()
-	if msg != "" || wf.Tier != "book" || wf.BookID == nil {
-		t.Fatalf("valid book_id ⇒ book tier, got tier=%q bookID=%v msg=%q", wf.Tier, wf.BookID, msg)
+	// Tenancy: an agent proposal is ALWAYS user-tier (private to the proposer) —
+	// book-tier is cross-tenant and grant-gated, never reachable from the MCP arg.
+	if wf.Tier != "user" || wf.BookID != nil {
+		t.Fatalf("agent proposal must be user-tier with no book_id, got tier=%q bookID=%v", wf.Tier, wf.BookID)
 	}
 }
 

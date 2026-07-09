@@ -102,10 +102,12 @@ class WorkflowsClient:
         wfs = data.get("workflows")
         if not isinstance(wfs, list):
             wfs = []
-        # keep only well-formed workflow dicts (slug + a list of steps)
+        # keep only well-formed workflow dicts (a NON-EMPTY slug + a list of steps). An
+        # empty-slug row would count toward has_workflows yet never list — drop it here.
         clean = [
             wf for wf in wfs
-            if isinstance(wf, dict) and isinstance(wf.get("slug"), str) and isinstance(wf.get("steps"), list)
+            if isinstance(wf, dict) and wf.get("slug") and isinstance(wf.get("slug"), str)
+            and isinstance(wf.get("steps"), list)
         ]
         return Workflows(workflows=clean)
 

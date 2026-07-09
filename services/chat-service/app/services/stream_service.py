@@ -1654,8 +1654,12 @@ async def _stream_with_tools(
                         )
                         active_tool_names.update(names_to_activate)
                         if curated and activation_state is not None:
+                            # Persist the FULL requested step-tool set (like tool_load) —
+                            # merge_activated_tools re-budgets across the cumulative union,
+                            # so passing the this-turn-capped subset would permanently drop
+                            # a step tool the cumulative budget could still hold.
                             activation_state["activated_tools"] = merge_activated_tools(
-                                activation_state["activated_tools"], list(names_to_activate),
+                                activation_state["activated_tools"], step_tools,
                                 catalog=discovery_catalog,
                                 context_length=context_length,
                             )

@@ -636,3 +636,26 @@ describe('C4 — uniform tool-failure envelope + output uniformity', () => {
     expect(normalizeToolResult('x', r)).toBe(r);
   });
 });
+
+describe('C4 — review-fix hardening', () => {
+  it('a provider isError with an ARRAY structuredContent is not mangled (envelope replaces it)', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => ({
+        isError: true,
+        structuredContent: [{ a: 1 }, { b: 2 }], // pathological, but must not corrupt
+        content: [{ type: 'text', text: 'partial failure across items' }],
+      }),
+    });
+    const res: any = await handleCallTool(fed, 'glossary_bulk', {}, {});
+    expect(res.isError).toBe(true);
+    // envelope is a proper object with code+message, NOT an index-keyed spread of the array
+    expect(Array.isArray(res.structuredContent)).toBe(false);
+    expect(res.structuredContent).toEqual({ code: res.code, message: 'partial failure across items' });
+    expect((res.structuredContent as any)['0']).toBeUndefined();
+  });
+
+  it('inferCode: permission signal wins over a co-occurring "not found"', () => {
+    const e = new Error('MCP error -32000: you are not permitted; the record was not found');
+    expect(classifyCallToolErrorCode(e)).toBe('NOT_PERMITTED');
+  });
+});

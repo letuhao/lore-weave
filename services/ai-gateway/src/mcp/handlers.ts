@@ -402,12 +402,15 @@ export type ToolErrorCode = (typeof TOOL_ERROR_CODES)[number];
  * refused on its merits, not a transport fault). */
 function inferCodeFromText(text: string): ToolErrorCode {
   const t = text.toLowerCase();
+  // Order matters — the more-specific permission/rate signals are tested before the
+  // broader "not found", so "user not permitted; record not found" resolves to
+  // NOT_PERMITTED (the actionable reason) rather than NOT_FOUND.
+  if (/permission|forbidden|not allowed|unauthorized|not permitted|access denied/.test(t)) return 'NOT_PERMITTED';
+  if (/rate.?limit|too many requests/.test(t)) return 'RATE_LIMITED';
+  if (/needs? confirmation|approval required|requires confirmation|must confirm/.test(t)) return 'CONFIRM_REQUIRED';
   if (/\bnot found\b|does not exist|no such|unknown \w+ id/.test(t)) return 'NOT_FOUND';
-  if (/permission|forbidden|not allowed|unauthorized|not permitted|denied/.test(t)) return 'NOT_PERMITTED';
-  if (/confirm|approval required|requires confirmation/.test(t)) return 'CONFIRM_REQUIRED';
   if (/must be|invalid|required|malformed|expected|badrequest|bad request|not a (uuid|number|valid)/.test(t))
     return 'VALIDATION';
-  if (/rate.?limit|too many requests/.test(t)) return 'RATE_LIMITED';
   return 'BUSINESS_RULE';
 }
 
@@ -481,7 +484,14 @@ export function normalizeToolResult(name: string, result: unknown): unknown {
   };
 
   if (r.isError === true) {
-    const sc = r.structuredContent as { code?: unknown; message?: unknown } | undefined;
+    // Only a plain object structuredContent carries a {code,message}; an array (or any
+    // non-object) must NOT be spread — `{...[...]}` would index-key it and destroy the
+    // array shape a consumer expects. Treat a non-object sc as "no envelope fields".
+    const rawSc = r.structuredContent;
+    const sc =
+      rawSc && typeof rawSc === 'object' && !Array.isArray(rawSc)
+        ? (rawSc as { code?: unknown; message?: unknown })
+        : undefined;
     const provided = typeof sc?.code === 'string' ? (sc.code as string) : '';
     const code: ToolErrorCode = (TOOL_ERROR_CODES as readonly string[]).includes(provided)
       ? (provided as ToolErrorCode)
@@ -524,8 +534,10 @@ function firstText(content: unknown): string {
   return '';
 }
 
-/** True when `text` is the JSON serialization of `obj` (order-insensitive at the top
- * by re-parsing) — the exact-duplicate case the dedup collapses. */
+/** True when `text` is the JSON serialization of `obj`. Key-order SENSITIVE
+ * (JSON.stringify preserves order) — this is intentional: a key-order difference just
+ * means "not a byte-for-byte duplicate", so the dedup declines and leaves content intact
+ * (a false negative is safe; it never wrongly collapses non-duplicate content). */
 function safeJsonEqual(text: string, obj: unknown): boolean {
   try {
     return JSON.stringify(JSON.parse(text)) === JSON.stringify(obj);

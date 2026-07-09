@@ -30,31 +30,32 @@ WORKFLOW_LOAD_NAME = "workflow_load"
 # The closed set of per-step gates (mirrors the registry's validWorkflowGates / C3).
 VALID_GATES = ("none", "confirm", "approval")
 
-# Structural async-honesty guard: a tool whose NAME contains one of these verbs
-# starts a background job (queued, not done on return). Conservative + substring-
-# based so a new async tool is caught without a registry round-trip; the annotation
-# only ADDS a "watch the job" hint, never blocks, so a false positive is harmless.
-# Kept in sync with the ordering prose in workflow_skill.py (translate / media / …).
+# Structural async-honesty guard (FALLBACK). The AUTHORITATIVE signal is a step's
+# authored `async_job` boolean (honored in _rail_step); this name-heuristic only fires
+# for steps that DON'T carry it, so a new async tool the author marked is always honored
+# even if the list below doesn't know its name. Substring-based + conservative; the
+# annotation only ADDS a "watch the job" hint, never blocks. Verbs are chosen to avoid
+# matching common READ tools ("media" was dropped — it hits media_list/get_media/…, and a
+# read has no job to watch, which would strand the agent on ui_watch_job).
 _ASYNC_JOB_VERBS = (
     "translate",
     "retranslate",
-    "media",
     "generate_wiki",
     "wiki_generate",
     "extract_entities",
     "bulk_extract",
-    "enrich",
     "import_book",
     "book_import",
-    "compose",
-    "render",
+    "generate_media",
+    "media_generate",
     "narrate",
-    "tts",
 )
 
 
 def is_async_job_tool(tool_name: str) -> bool:
-    """True if calling this tool STARTS a background job (async-honesty guard)."""
+    """True if calling this tool STARTS a background job (async-honesty HEURISTIC).
+
+    Fallback only — a step's authored ``async_job`` flag overrides this (see _rail_step)."""
     n = (tool_name or "").lower()
     return any(v in n for v in _ASYNC_JOB_VERBS)
 
@@ -126,7 +127,12 @@ def _rail_step(step: dict) -> dict:
     if gate not in VALID_GATES:
         gate = "none"
     rail: dict = {"id": step.get("id", ""), "tool": tool, "gate": gate}
-    if is_async_job_tool(tool):
+    # Async-honesty: an AUTHORED `async_job` boolean is authoritative (the workflow's
+    # author knows the tool starts a job even when the name-heuristic doesn't); fall
+    # back to the name heuristic only when the step doesn't declare it.
+    authored = step.get("async_job")
+    is_async = authored if isinstance(authored, bool) else is_async_job_tool(tool)
+    if is_async:
         rail["async_job"] = True
     if step.get("when"):
         rail["when"] = step["when"]
@@ -152,7 +158,12 @@ def workflow_load_result(workflows: list[dict], slug: str) -> tuple[dict, list[s
         }, []
 
     raw_steps = wf.get("steps") if isinstance(wf.get("steps"), list) else []
-    rail = [_rail_step(s) for s in raw_steps if isinstance(s, dict)]
+    # Skip malformed steps (non-dict, or an empty `tool` the agent couldn't act on).
+    rail = [
+        _rail_step(s)
+        for s in raw_steps
+        if isinstance(s, dict) and str(s.get("tool", "") or "").strip()
+    ]
     tool_names: list[str] = []
     for step in rail:
         t = step.get("tool")
