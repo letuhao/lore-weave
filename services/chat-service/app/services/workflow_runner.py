@@ -38,17 +38,22 @@ VALID_GATES = ("none", "confirm", "approval")
 # matching common READ tools ("media" was dropped — it hits media_list/get_media/…, and a
 # read has no job to watch, which would strand the agent on ui_watch_job).
 _ASYNC_JOB_VERBS = (
-    "translate",
-    "retranslate",
+    "translat",  # translation_* / retranslate_* (job starters)
     "generate_wiki",
     "wiki_generate",
+    "build_wiki",
+    "build_graph",  # interim: kg_build_graph/kg_build_wiki carry no _meta yet
+    "kg_build",
     "extract_entities",
+    "start_extraction",
     "bulk_extract",
     "import_book",
     "book_import",
     "generate_media",
     "media_generate",
     "narrate",
+    "auto_enrich",
+    "composition_generate",
 )
 
 
@@ -120,18 +125,23 @@ def workflow_list_result(workflows: list[dict]) -> dict:
     return out
 
 
-def _rail_step(step: dict) -> dict:
-    """Normalize one C3 step into the rail shape the agent reads."""
+def _rail_step(step: dict, async_tools: frozenset[str] = frozenset()) -> dict:
+    """Normalize one C3 step into the rail shape the agent reads.
+
+    ``async_tools`` is the set of tool names the CATALOG marks `_meta.async` — the
+    durable async-honesty signal."""
     tool = str(step.get("tool", "") or "")
     gate = step.get("gate") or "none"
     if gate not in VALID_GATES:
         gate = "none"
     rail: dict = {"id": step.get("id", ""), "tool": tool, "gate": gate}
-    # Async-honesty: an AUTHORED `async_job` boolean is authoritative (the workflow's
-    # author knows the tool starts a job even when the name-heuristic doesn't); fall
-    # back to the name heuristic only when the step doesn't declare it.
+    # Async-honesty precedence: (1) an AUTHORED `async_job` boolean on the step wins;
+    # else (2) the CATALOG `_meta.async` flag; else (3) the tool-name heuristic fallback.
     authored = step.get("async_job")
-    is_async = authored if isinstance(authored, bool) else is_async_job_tool(tool)
+    if isinstance(authored, bool):
+        is_async = authored
+    else:
+        is_async = tool in async_tools or is_async_job_tool(tool)
     if is_async:
         rail["async_job"] = True
     if step.get("when"):
@@ -143,11 +153,14 @@ def _rail_step(step: dict) -> dict:
     return rail
 
 
-def workflow_load_result(workflows: list[dict], slug: str) -> tuple[dict, list[str]]:
+def workflow_load_result(
+    workflows: list[dict], slug: str, async_tools: frozenset[str] = frozenset(),
+) -> tuple[dict, list[str]]:
     """Return (payload, step_tool_names) for one workflow.
 
     payload is the ordered rail + inputs + notes + guidance; step_tool_names is the
     de-duplicated list of tools to ACTIVATE so the next pass advertises their schemas.
+    ``async_tools`` = the catalog's `_meta.async` tool names (durable async signal).
     A missing slug returns a not_found payload and an empty activation list.
     """
     wf = next((w for w in workflows if w.get("slug") == slug), None)
@@ -160,7 +173,7 @@ def workflow_load_result(workflows: list[dict], slug: str) -> tuple[dict, list[s
     raw_steps = wf.get("steps") if isinstance(wf.get("steps"), list) else []
     # Skip malformed steps (non-dict, or an empty `tool` the agent couldn't act on).
     rail = [
-        _rail_step(s)
+        _rail_step(s, async_tools)
         for s in raw_steps
         if isinstance(s, dict) and str(s.get("tool", "") or "").strip()
     ]

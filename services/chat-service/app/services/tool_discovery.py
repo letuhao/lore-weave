@@ -383,6 +383,13 @@ def tool_tier(tool_def: dict) -> str:
     return tier if tier in ("R", "A", "W", "S") else "R"
 
 
+def tool_async(tool_def: dict) -> bool:
+    """C-TOOL `_meta.async` — True when a tool STARTS a background job (queued, not
+    done on return). The durable async-honesty signal the workflow step-runner reads
+    from the catalog (vs. the tool-name heuristic). Absent ⇒ False."""
+    return bool(tool_meta(tool_def).get("async"))
+
+
 # CAT-4 (mcp-tool-io.md Part 4) — a superseded tool is tagged `_meta.visibility:
 # "legacy"` rather than deleted, so any existing caller keeps working. A legacy
 # tool must never be discoverable: excluded from search_catalog() and from every

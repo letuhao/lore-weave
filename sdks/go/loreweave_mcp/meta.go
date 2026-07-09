@@ -20,6 +20,7 @@ const (
 	MetaKeyUndoHint   = "undo_hint"  // optional {tool, args} for C-ACTIVITY
 	MetaKeySynonyms   = "synonyms"   // optional alias terms feeding find_tools (H6)
 	MetaKeyVisibility = "visibility" // discoverable|legacy — CAT-4 (mcp-tool-io.md Part 4)
+	MetaKeyAsync      = "async"      // true ⇒ tool STARTS a background job (async-honesty)
 )
 
 // Visibility is the CAT-4 catalog-hygiene enum. Absent (zero value) reads as
@@ -45,6 +46,17 @@ const (
 //	Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy)
 func WithVisibility(m mcp.Meta, v Visibility) mcp.Meta {
 	m[MetaKeyVisibility] = string(v)
+	return m
+}
+
+// WithAsync returns a copy of m with _meta.async=true — the tool STARTS a background
+// job (queued; not done when the call returns). Chained onto NewToolMeta like
+// WithVisibility. This is the DURABLE async-honesty signal: a consumer (the workflow
+// step-runner) reads it from the catalog instead of guessing from the tool name.
+//
+//	Meta: lwmcp.WithAsync(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil))
+func WithAsync(m mcp.Meta) mcp.Meta {
+	m[MetaKeyAsync] = true
 	return m
 }
 

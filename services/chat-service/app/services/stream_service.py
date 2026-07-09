@@ -75,6 +75,7 @@ from app.services.tool_discovery import (
     hot_tool_names,
     strip_tool_meta,
     surface_hot_domains,
+    tool_async,
     tool_list_result,
     tool_load_result,
     tool_tier,
@@ -1641,7 +1642,12 @@ async def _stream_with_tools(
                 if c["name"] == WORKFLOW_LOAD_NAME and turn_workflows:
                     args_obj = _parse_tool_args(c["arguments"])
                     _slug = str(args_obj.get("slug", "") or "")
-                    payload, step_tools = workflow_load_result(turn_workflows, _slug)
+                    # Durable async-honesty: the set of step tools the CATALOG marks
+                    # _meta.async, so the rail annotates them without the name heuristic.
+                    _async_tools = frozenset(
+                        n for n, td in cat_index.items() if tool_async(td)
+                    ) if discovery else frozenset()
+                    payload, step_tools = workflow_load_result(turn_workflows, _slug, _async_tools)
                     if step_tools and discovery:
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,

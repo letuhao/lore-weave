@@ -91,6 +91,7 @@ class _AutoEnrichArgs(ForbidExtra):
         "A", "book",
         synonyms=["auto enrich", "enrich lore", "fill gaps", "enrich entities",
                   "lore enrichment", "deepen lore", "flesh out entities", "enrich"],
+        async_job=True,
         tool_name="lore_enrichment_auto_enrich",
     ),
 )

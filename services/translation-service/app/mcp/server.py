@@ -717,6 +717,7 @@ async def translation_update_settings(
         "W", "book",
         synonyms=["translate", "translate book", "start translation",
                   "translate chapters", "run translation"],
+        async_job=True,
         tool_name="translation_start_job",
     ),
 )
@@ -763,6 +764,7 @@ async def translation_start_job(
         "W", "book",
         synonyms=["retranslate dirty", "re-translate changed", "refresh translation",
                   "update stale translation", "retranslate needs"],
+        async_job=True,
         tool_name="translation_retranslate_dirty",
     ),
 )
@@ -811,6 +813,7 @@ async def translation_retranslate_dirty(
         "W", "book",
         synonyms=["extract glossary", "extract entities", "scan chapters for entities",
                   "build glossary", "extract characters"],
+        async_job=True,
         tool_name="translation_start_extraction",
     ),
 )

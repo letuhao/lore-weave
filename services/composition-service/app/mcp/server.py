@@ -1294,6 +1294,7 @@ class _GenerateArgs(ForbidExtra):
         "W", "book",
         synonyms=["generate prose", "write scene", "write chapter", "draft scene",
                   "draft chapter", "cowrite", "co-write", "ai write", "generate draft"],
+        async_job=True,
         tool_name="composition_generate",
     ),
 )

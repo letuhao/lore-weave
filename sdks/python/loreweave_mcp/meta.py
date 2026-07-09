@@ -83,16 +83,23 @@ def require_meta(
     *,
     undo_hint: dict[str, Any] | None = None,
     synonyms: list[str] | None = None,
+    async_job: bool = False,
     tool_name: str = "",
 ) -> dict[str, Any]:
     """Build a validated ``_meta`` dict, ready to pass as the ``meta=`` argument
     of ``@server.tool(...)``. Raises ``MetaValidationError`` if tier/scope are
     invalid — so a misdeclared tool fails at registration time, not at call time.
+
+    ``async_job=True`` marks a tool that STARTS a background job (queued; not done
+    when the call returns) — the durable async-honesty signal a consumer (the
+    workflow step-runner) reads from the catalog instead of guessing from the name.
     """
     meta: dict[str, Any] = {"tier": tier, "scope": scope}
     if undo_hint is not None:
         meta["undo_hint"] = undo_hint
     if synonyms is not None:
         meta["synonyms"] = synonyms
+    if async_job:
+        meta["async"] = True
     validate_tool_meta(meta, tool_name=tool_name)
     return meta

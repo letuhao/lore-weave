@@ -88,6 +88,17 @@ def test_authored_async_flag_overrides_heuristic():
     assert "async_job" not in payload2["steps"][0]
 
 
+def test_catalog_async_flag_flags_tool_over_heuristic():
+    # a tool the name heuristic does NOT know, but the CATALOG marks _meta.async
+    wf = _wf(steps=[{"id": "s1", "tool": "obscure_job_starter", "gate": "none"}])
+    payload, _ = wr.workflow_load_result([wf], wf["slug"], frozenset({"obscure_job_starter"}))
+    assert payload["steps"][0].get("async_job") is True
+    # precedence: authored False beats a catalog-async flag
+    wf2 = _wf(steps=[{"id": "s1", "tool": "obscure_job_starter", "gate": "none", "async_job": False}])
+    payload2, _ = wr.workflow_load_result([wf2], wf2["slug"], frozenset({"obscure_job_starter"}))
+    assert "async_job" not in payload2["steps"][0]
+
+
 def test_media_read_tool_not_flagged_async():
     # regression: 'media' substring was dropped so media READ tools don't strand ui_watch_job
     wf = _wf(steps=[{"id": "s1", "tool": "media_list", "gate": "none"}])
