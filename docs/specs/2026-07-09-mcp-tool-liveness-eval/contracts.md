@@ -156,8 +156,17 @@ not merely "returned 200".
    `_meta.visibility: "legacy"` (CAT-4, `mcp-tool-io.md`) — the standing project rule: deprecate,
    don't remove.
 5. Because `_domain_of()` is **prefix-derived**, a universal tool needs an explicit C1 category home
-   (see the C1 change below). Federation routing is unaffected — `providerFor()` resolves via a
-   discovered `toolToProvider` map, not a prefix.
+   (see the C1 change below).
+6. **⚠ The C-GW prefix gate is the real constraint on where a tool may live.** `catalog.ts:71` *drops
+   (with only a warn) any tool whose name does not match an allowed prefix for its provider.* So:
+   - a universal (unprefixed) tool's **host provider must allowlist its prefix**
+     (`EXTRA_PREFIX_MAP`), else it vanishes from the federated catalog;
+   - a **legacy alias keeps the old prefix and therefore cannot move services** — it is demoted
+     *in place* on its original host.
+   *(`providerFor()` is name-based, but its map is only populated by tools that survive this gate — an
+   earlier draft of this contract got that wrong.)*
+7. Retiring a name requires `_meta.superseded_by`, which today has **zero producers** — add a
+   `WithSupersededBy` kit helper (Go) alongside `WithVisibility`/`WithAsync`.
 
 **Adjudicated applications (verified, 2026-07-09):**
 

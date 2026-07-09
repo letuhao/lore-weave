@@ -197,10 +197,49 @@ The inventory alone, before a single probe runs, surfaces four real defects:
    → Rename to **`web_search`** (universal), keep `glossary_web_search` as a `visibility: legacy`
    alias (never delete). **`glossary_deep_research` is NOT universal** — it requires `book_id` +
    `entity_id` and attaches draft evidence to a glossary entity; it keeps its prefix.
-   *Blockers:* `_domain_of()` is prefix-derived, so `web_search` (prefix `web`) has **no C1 category
-   home** — needs a C1 change (Track A owns) or an alias; and hot-pathing it consumes the **last free
-   `ALWAYS_ON_CORE` slot (9/10)** and must wait on the spend gate. Federation routing is safe: it
-   resolves via a discovered `toolToProvider` map, **not** by prefix.
+
+   **Blockers (verified — two are new and load-bearing):**
+   - **⚠ CORRECTION.** An earlier draft of this doc said *"federation routing is safe — `providerFor()`
+     resolves via a discovered `toolToProvider` map, not by prefix."* **Half-right and dangerously
+     incomplete.** `providerFor()` *is* name-based, but its map is only populated by tools that survive
+     the **C-GW prefix gate**: `catalog.ts:71` *"drop + warn a tool that escapes its namespace"*. The
+     `settings` provider (= provider-registry) allows only `settings_`. A bare `web_search` hosted
+     there is **silently dropped from the federated catalog**. → must add `web_` to
+     `EXTRA_PREFIX_MAP.settings` (`config.ts:110`) or use the inline env override.
+   - **The legacy alias cannot move.** `glossary_web_search` (prefix `glossary_`) would be dropped by
+     the same gate on provider-registry. → keep it **registered on glossary-service**, demoted in place
+     to `VisibilityLegacy` + `superseded_by: "web_search"`.
+   - `_domain_of()` is prefix-derived ⇒ `web_search` (prefix `web`) has **no C1 category home** →
+     C1 += `research` (done: Track A contract amended).
+   - Hot-pathing consumes the **last free `ALWAYS_ON_CORE` slot (9→10 of 10)** and must wait on the
+     spend gate.
+   - `_meta.superseded_by` **has zero producers** today (consumers read it; only a synthetic test
+     fixture sets it) → needs a `WithSupersededBy` kit helper. A same-handler-two-names alias is also a
+     **new pattern** in this repo (no precedent).
+
+6. **Bonus bug — compaction never protected web-search results.**
+   `sdks/python/loreweave_context/compaction.py:51` declares
+   `DEFAULT_EXCLUDE_TOOLS = frozenset({"web_search"})`, commented *"results NEVER evicted (their output
+   is load-bearing / cited)"*. The real wire name is **`glossary_web_search`**, so **it has never
+   matched** — cited web results have been silently evictable this whole time. The rename **fixes this
+   by accident**; add a test pinning the exclude-set to the live wire name.
+
+7. **Async omissions are 8, not 4** (audited handler-by-handler, not from the inventory):
+   - **Tier-W confirm-then-job (5):** `composition_motif_mine`, `composition_arc_import_analyze`,
+     `composition_conformance_run`, `composition_authoring_run_start`, `composition_authoring_run_resume`.
+     Precedent settles it: **`kg_build_graph` is Tier-W *and* `async_job=True`** — the tool call enqueues
+     nothing, the job starts at confirm, and the flag exists so the agent doesn't claim "done".
+   - **Tier-A, enqueues at TOOL time (3):** `plan_propose_spec(mode=llm)` (strongest — returns
+     `{"async": true, "job_id"}`), `plan_apply_revision`, `plan_compile(run_pipeline=true)`. These are
+     **dual-mode** (sync or async by arg + `composition_worker_enabled`); `_meta.async` is a static flag
+     → mark `true` (coarse but honest; the flag only *adds* a "watch the job" hint, never blocks).
+
+> **A SECOND inventory finding was verified FALSE.** `glossary_propose_aliases` was flagged as possibly
+> writing canonical data. Traced: its only `entity_attribute_values` write is an **empty `'[]'` scaffold**
+> whose `ON CONFLICT DO UPDATE SET original_value = entity_attribute_values.original_value` is a
+> **self-assignment no-op**; the alias payload lands in `attribute_translations` at
+> `confidence='draft'`, guarded by `WHERE confidence <> 'verified'`. **Legitimate draft tool.** Two of
+> the inventory's four findings did not survive. Read the handler.
 
 2. **`propose_*` is overloaded, with no machine-checkable meaning.** It spans two *legitimate*
    patterns — **token** (tier `W`: mints a `confirm_token`, writes nothing) and **draft** (tier `A`:
@@ -246,9 +285,26 @@ generated inventory is a lead, not evidence.
 
 ---
 
-## 10. Open questions
+## 10. Resolved decisions (was: open questions)
 
-1. **Ship gate strictness** — reject an `unproven_tool` at workflow authoring, or warn only? (Recommend: warn in P1, reject from P2.)
-2. **Probe authorship** — hand-write 223 NL asks, or generate a first draft per tool from its description + synonyms and hand-review? (Recommend: generate → review; a bad probe fails G1 and looks like a tool bug.)
-3. **Frontend 12** — accept a simulated resolver (fast, P0-able) or hold them for Playwright (true, slow)? (Recommend: simulate for G3, Playwright for G4.)
-4. **Untiered 42** — fix tiers *before* the sweep (else their probes test the wrong gating), or record the current behavior as the baseline? (Recommend: fix first — it's the same one-file change as knowledge.)
+All questions closed 2026-07-09 against source. **No open questions remain** — the track is
+fan-out-ready.
+
+| # | Question | **Decision** | Basis |
+|---|---|---|---|
+| 1 | Ship-gate strictness | **Warn in WS-D3, reject from WS-D4** | a hard reject before the matrix has coverage would block all authoring |
+| 2 | Probe authorship (223 NL asks) | **Generate a draft per tool from its description + `_meta.synonyms`, then hand-review** | a bad probe fails G1 and is indistinguishable from a tool bug — review is the cheap guard |
+| 3 | Frontend 12 | **Simulated resolver for G3; Playwright for G4** | precedent `agent-gui-loop-needs-live-browser-smoke-not-raw-stream` |
+| 4 | Untiered tools: fix before sweep? | **Fix first (WS-D0)** | otherwise every glossary probe tests the wrong gating |
+| 5 | **What IS the spend gate?** | **Two layers.** *Layer 1 (MVV, chat-service):* `_meta.paid` + a `tool_paid()` reader + a gate branch **orthogonal to tier**, reusing the existing `tool_approval` suspend/resume card + `user_tool_approvals` allowlist (approve-once / always-allow / deny). *Layer 2 (provider-registry):* add a **`per_call` pricing dimension** (none exists) and wrap the sync `/internal/web-search` in `Reserve → call → Reconcile`, finally consuming the `x-mcp-spend-cap-usd` header | 3 ledgers are **LIVE** (`spend_guardrails`, `platform_balances`, `mcp_key_usage`) but `Reserve/Reconcile` is **JOB-path only**; sync outward calls are **audited at $0, never reserved** (`server.go:3151`) |
+| 6 | Gate style for `web_search` | **Approval-on-first-use, then allowlisted** — not a per-call cost card | fixed ~1-query cost; a card per call is noise. Reserve the cost-card style (à la `glossary_deep_research`) for variable/expensive tools |
+| 7 | Does a paid READ stay callable in `ask` mode? | **Yes.** The gate is mode-independent and orthogonal to tier | CD1: `paid ⊥ tier`. `_filter_tools_for_ask` keeps tier-R advertised; `tool_paid` fires regardless of mode |
+| 8 | Where does `web_search` live? | **provider-registry** (owns the capability) — **but** `web_` must be added to `EXTRA_PREFIX_MAP.settings`, or the C-GW gate silently drops it | `catalog.ts:71` |
+| 9 | Where does the **legacy alias** live? | **Stays on glossary-service**, demoted in place to `VisibilityLegacy` + `superseded_by` | the prefix gate forbids `glossary_*` on the settings provider |
+| 10 | `superseded_by` producer | **Add a `WithSupersededBy` kit helper** (Go); first production use | zero producers today — consumers read it, only a test fixture sets it |
+| 11 | Composition's duplicate client | **Keep its HTTP client; move neutralization to the PRODUCER** (`/internal/web-search`) so 3 copies collapse to 1 | it is a service-to-service call with a graceful-degrade contract; routing it through an MCP tool would lose that and gain nothing |
+| 12 | Dual-mode async (`plan_*`) | **Mark `async: true`** (coarse but honest) | `_meta.async` is a static flag; it only *adds* a "watch the job" hint, never blocks |
+| 13 | Confirm-then-job tools: async? | **Yes** — 5 composition Tier-W tools get `async` | precedent: `kg_build_graph` is Tier-W **and** `async_job=True` |
+| 14 | `domain:research` public scope | `web_search` → `domains: ['research']`; **existing public keys keep working via the `glossary_web_search` legacy row** (`domains: ['glossary']`). New scope needed only for the new name | `tool-policy.ts` `Domain` is a hand-maintained union — add `'research'` |
+| 15 | G4 oracles for 206 tools | **Generic oracle by class + per-tool override.** `A` → REST/DB read-back · `W` → confirm, then read-back · `R` → assert against the seeded fixture · `async` → poll terminal, assert artifact | avoids hand-writing 206 bespoke oracles |
+| 16 | `ALWAYS_ON_CORE` cap | `web_search` takes the **last slot (10/10)**. Raising the cap is a **separate, explicit decision** | `test_tool_discovery.py:645` pins `<= 10` |
