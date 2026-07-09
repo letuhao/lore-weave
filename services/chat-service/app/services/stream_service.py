@@ -906,6 +906,16 @@ def _inject_context_ids(
     return args_obj
 
 
+def _missing_required_names(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """The REQUIRED arg names this call is still missing (post context-id injection).
+    Unknown tool_def → [] (can't classify → never block a call we can't judge)."""
+    if not tool_def:
+        return []
+    params = tool_def.get("function", {}).get("parameters", {})
+    required = params.get("required", []) if isinstance(params, dict) else []
+    return [r for r in required if not args_obj.get(r)]
+
+
 def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
     """True iff this call is still missing a REQUIRED arg (post context-id injection).
 
@@ -913,13 +923,8 @@ def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
     mid-tier model that spams one malformed tool (e.g. glossary_search without `query`)
     builds the streak, and the cap would then block a DIFFERENT, valid call (e.g.
     glossary_book_ontology_read with book_id present) that would actually succeed. Only a
-    call that is ITSELF still missing required args should be short-circuited. Unknown
-    tool_def → False (can't tell → never block a call we can't classify)."""
-    if not tool_def:
-        return False
-    params = tool_def.get("function", {}).get("parameters", {})
-    required = params.get("required", []) if isinstance(params, dict) else []
-    return any(not args_obj.get(r) for r in required)
+    call that is ITSELF still missing required args should be short-circuited."""
+    return bool(_missing_required_names(args_obj, tool_def))
 
 
 async def _stream_with_tools(
@@ -2120,6 +2125,40 @@ async def _stream_with_tools(
                 # runs without the approval prompt (plan artifacts are reversible
                 # plan_runs rows; non-plan_* writes never reach here — the
                 # defense-in-depth block above already rejected them).
+                # S02 — intercept a call still missing REQUIRED args (post context-id injection)
+                # BEFORE it dispatches (reads → a 400) or parks an EMPTY write on the approval card
+                # (writes). Give SPECIFIC, actionable guidance naming the missing args; after the
+                # per-turn cap, tell the model to stop. The measured mid-tier failure: gemma called
+                # glossary_propose_entities with no `entities` and glossary_search with no `query`.
+                _missing_args = _missing_required_names(
+                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
+                )
+                if _missing_args:
+                    blank_tool_args_streak += 1
+                    if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:
+                        _ma_msg = (
+                            f"'{c['name']}' keeps being called with missing/blank required "
+                            "arguments this turn — STOP. Tell the user you couldn't complete this "
+                            "rather than retrying with empty arguments."
+                        )
+                    else:
+                        _ma_msg = (
+                            f"'{c['name']}' is missing required argument(s): {_missing_args}. "
+                            "These carry the actual CONTENT (not ids the system already fills) — "
+                            "e.g. a list of the items to create, or the search text. Read the "
+                            "tool's schema for their exact shape, fill them in, and call again. "
+                            "Do not call it with only ids or empty arguments."
+                        )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content({"error": "missing_required_args", "message": _ma_msg}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": _ma_msg,
+                    }}
+                    continue
+
                 if tier == "A" and permission_mode == "write" and approval_check is not None:
                     _allowed = True
                     try:
@@ -2172,12 +2211,16 @@ async def _stream_with_tools(
                 # already hit BLANK_TOOL_ARGS_CAP blank/invalid-args failures
                 # (of EITHER shape), a further one is short-circuited BEFORE
                 # the MCP round trip, not just noted after another failure.
-                # S02 refinement — only short-circuit a call that is ITSELF still
-                # missing required args (post-injection). A well-formed call must not be
-                # collateral-blocked by a DIFFERENT tool's malformed spam (the measured
-                # case: glossary_search-without-query streak blocked a valid ontology_read).
-                if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP and _missing_required_args(
-                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
+                # S02 refinement — only short-circuit a call we CANNOT confirm is well-formed:
+                # a call still missing required args, OR one whose tool has no schema in the
+                # catalog to check against (unknown → keep the original safe cap behavior). A
+                # KNOWN, well-formed call must never be collateral-blocked by a DIFFERENT tool's
+                # malformed spam (the case: glossary_search-without-query streak once blocked a
+                # valid ontology_read). Known+missing-required is already intercepted with specific
+                # guidance above, so this cap now mainly backstops unknown-schema blank spam.
+                _cap_tool_def = cat_index.get(c["name"]) or plain_index.get(c["name"])
+                if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP and (
+                    _cap_tool_def is None or _missing_required_args(args_obj, _cap_tool_def)
                 ):
                     guidance = {
                         "error": "blank_tool_args_capped",

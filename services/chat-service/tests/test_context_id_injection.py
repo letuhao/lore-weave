@@ -73,3 +73,17 @@ def test_missing_required_false_when_all_satisfied():
 
 def test_missing_required_unknown_tool_never_blocks():
     assert ss._missing_required_args({}, None) is False
+
+
+def test_missing_required_names_lists_the_absent_args():
+    td = _tool_req("glossary_search", {"book_id": {}, "query": {}}, ["book_id", "query"])
+    assert ss._missing_required_names({"book_id": "B1"}, td) == ["query"]
+
+
+def test_missing_required_names_empty_when_satisfied():
+    td = _tool_req("x", {"book_id": {}}, ["book_id"])
+    assert ss._missing_required_names({"book_id": "B1"}, td) == []
+
+
+def test_missing_required_names_unknown_tool_empty():
+    assert ss._missing_required_names({}, None) == []
