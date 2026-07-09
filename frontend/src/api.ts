@@ -125,10 +125,27 @@ export async function apiJson<T>(
       return undefined as T;
     }
     const err = body as ApiError;
+    // D-CHAT-COMPACT-ERROR-SWALLOWED (2026-07-09): Go/TS services use the
+    // {code, message} envelope ApiError expects, but every Python/FastAPI
+    // service (chat-service, knowledge-service, composition-service,
+    // lore-enrichment-service) returns FastAPI's native {detail: string |
+    // ValidationErrorItem[]} for BOTH a raised HTTPException and its own
+    // global 500 handler — `err?.message` is always undefined against that
+    // shape, so every FastAPI error silently fell back to `res.statusText`
+    // (e.g. compact's clean 409 "nothing to compact" rendered as the
+    // meaningless "Conflict"). `detail` is a plain string for a raised
+    // HTTPException, or an array of {msg, loc} for a 422 pydantic
+    // validation error — join the latter so nothing is dropped either way.
+    const detail = (body as { detail?: unknown } | null)?.detail;
+    const detailMessage = Array.isArray(detail)
+      ? detail.map((d) => (d && typeof d === 'object' && 'msg' in d ? String((d as { msg: unknown }).msg) : String(d))).join('; ')
+      : typeof detail === 'string'
+        ? detail
+        : undefined;
     // D-K8-03: attach the parsed response body to the thrown error
     // so callers handling 412 Precondition Failed can read the
     // current row out of it without a second round-trip.
-    throw Object.assign(new Error(err?.message || res.statusText), {
+    throw Object.assign(new Error(err?.message || detailMessage || res.statusText), {
       status: res.status,
       code: err?.code,
       body,

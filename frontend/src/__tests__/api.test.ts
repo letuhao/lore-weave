@@ -59,6 +59,25 @@ describe('apiJson', () => {
     await expect(apiJson('/v1/test')).rejects.toThrow('Error');
   });
 
+  // D-CHAT-COMPACT-ERROR-SWALLOWED — every Python/FastAPI service (chat-service
+  // included) returns {detail: ...}, not {code, message}; without this fallback
+  // every such error silently rendered as the useless statusText instead (e.g.
+  // compact's clean 409 "nothing to compact" showed as "Conflict").
+  it('throws with the FastAPI detail string when body has no message', async () => {
+    mockFetch(409, { detail: 'nothing to compact' });
+    await expect(apiJson('/v1/test')).rejects.toThrow('nothing to compact');
+  });
+
+  it('joins a FastAPI 422 validation-error detail array', async () => {
+    mockFetch(422, { detail: [{ loc: ['body', 'name'], msg: 'field required', type: 'missing' }] });
+    await expect(apiJson('/v1/test')).rejects.toThrow('field required');
+  });
+
+  it('prefers {message} over {detail} when a body somehow has both', async () => {
+    mockFetch(400, { message: 'the real message', detail: 'ignored' });
+    await expect(apiJson('/v1/test')).rejects.toThrow('the real message');
+  });
+
   it('handles unparseable response body', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

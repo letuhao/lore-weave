@@ -3711,7 +3711,25 @@ async def _emit_chat_turn(
                         delta=-_wire_saved,
                     )
                 _trace_payload = _tr.to_payload()
-                _raw_tokens = int(input_tok or 0) + _tr.saved()
+                # D-CHAT-CONTEXT-METER-OVERCOUNT (2026-07-09): the context-budget
+                # METER (used_tokens/raw_tokens below, what the GUI ContextMeter
+                # renders) must show TRUE current occupancy — this turn's actual
+                # context size — not input_tok, which is the SUM of input across
+                # every completion in this turn's tool-loop (each iteration
+                # re-sends the full prompt). That sum is real provider BILLING
+                # (correctly kept as-is for chat_messages.input_tokens,
+                # billing.log_usage, and the cache hit-rate math below, all of
+                # which are legitimately sum-based) but is NOT how full the
+                # context window is. Using it here made a 54-tool-call turn (30
+                # completions) render "935,676 / 200,000 (469%)" on a real
+                # single-call context size of 34K — a 27x inflation that scales
+                # with llm_call_count, not with actual context pressure.
+                # `_ctx_size` (P3 §9) is the true last-completion input size,
+                # already tracked for the stateful chain's window-boundary guard;
+                # fall back to input_tok only when it's genuinely unavailable
+                # (no UsageEvent fired this turn, e.g. an all-cached resume).
+                _occupancy_tok = _ctx_size if _ctx_size else int(input_tok or 0)
+                _raw_tokens = _occupancy_tok + _tr.saved()
                 _status_flags = derive_status_flags(
                     grounding_needed=(
                         entity_presence.get("grounding_needed")
@@ -3773,7 +3791,7 @@ async def _emit_chat_turn(
 
                 _ctx_payload = context_budget_event(
                     compute_budget(
-                        used_tokens=int(input_tok or 0),
+                        used_tokens=_occupancy_tok,
                         context_length=creds.context_length,
                         max_output_tokens=int(gen_params.get("max_tokens") or 0),
                     ),

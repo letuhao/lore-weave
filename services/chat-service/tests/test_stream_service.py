@@ -2296,6 +2296,58 @@ class TestW1ContextBreakdownFrame:
         assert persisted["used_tokens"] == frame["used_tokens"]
 
     @pytest.mark.asyncio
+    async def test_used_tokens_reflects_true_context_size_not_tool_loop_sum(self):
+        """D-CHAT-CONTEXT-METER-OVERCOUNT regression: a tool-loop turn's
+        `usage.prompt_tokens` is the SUM of input across every completion in the
+        loop (each iteration re-sends the full prompt — real provider billing),
+        but the GUI meter's `used_tokens` (persisted + emitted) must reflect
+        `context_size` — the true LAST completion's input size — not that sum.
+        A real 54-tool-call/30-completion turn once summed to ~936K on an
+        actual ~34K context; this fakes the same shape at a small scale (sum=
+        3000 across what would be several completions, true last-call size=
+        1000) at the `_stream_with_tools` seam, mirroring the real loop's
+        terminal-yield contract (see stream_service.py's `context_size` +
+        `usage` pairing at every terminal yield)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "answer", "reasoning_content": "",
+                   "finish_reason": "stop", "llm_call_count": 3,
+                   "context_size": 1000,
+                   "usage": _Usage(3000, 5)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+
+        frame = _custom_events(events, "contextBudget")[0]
+        assert frame["used_tokens"] == 1000  # true occupancy, NOT the 3000 sum
+        assert frame["llm_call_count"] == 3
+
+        insert_calls = [c for c in conn.execute.call_args_list
+                        if "INSERT INTO chat_messages" in str(c)]
+        persisted = json.loads(insert_calls[0].args[-2])
+        assert persisted["used_tokens"] == 1000
+        assert persisted["caching"]["context_size"] == 1000
+        # The billed input_tokens column is a SEPARATE positional param and must
+        # still carry the real summed cost (3000) — this fix must not touch
+        # billing, only the context-occupancy meter.
+        assert insert_calls[0].args[7] == 3000
+
+    @pytest.mark.asyncio
     async def test_legacy_turn_emits_no_custom_frames_but_persists(self):
         """Legacy wire: context_budget/compaction are Protocol no-ops (no frame,
         no AttributeError) — but the row still persists the breakdown."""
