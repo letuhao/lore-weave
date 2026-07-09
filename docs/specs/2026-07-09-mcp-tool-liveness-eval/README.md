@@ -172,13 +172,35 @@ The inventory alone, before a single probe runs, surfaces four real defects:
    *Verified directly (a conservative scan): **≥27 of 35** glossary tools matched have no `Meta:`;
    a fuller sweep puts it at ~35 of 50 `/mcp` tools + 5 admin + 2 knowledge admin ≈ 42 domain tools.*
    Confirmed individually:
-   - **`glossary_web_search` — untiered, and its own description says it is PAID.** So it advertises as
-     `R`: callable in read-only **ask** mode, no approval card, no write budget. **Highest severity —
-     this is unmetered spend exposure.**
-   - **`glossary_deep_research` — untiered, description says PAID.**
+   - **`glossary_web_search` — untiered, and its own description says it is PAID.** **Highest severity:
+     no internal spend gate exists at all** (verified — nothing in the chat tool-loop reads a spend
+     concept, and the public gateway marks its own gate "P3/pending"). Unmetered spend exposure.
+     > **The fix is NOT to force it to a write tier.** Spend ⊥ mutation (see `contracts.md` CD1,
+     > corrected). It stays a **read** — allowed in ask mode — and gets `_meta.paid` + a **spend gate**.
+   - **`glossary_deep_research` — untiered, description says PAID** (it *does* mint a confirm card
+     with cost, so its gate exists; the missing `_meta` is the defect).
    - `glossary_adopt_standards` — untiered, yet **mints a confirm token** (advertises as a read).
    → *Same fix as knowledge: adopt `_meta` + a `tools/list` regression gate. Do this before the sweep
    (open question 4), else every glossary probe tests the wrong gating.*
+
+5. **`glossary_web_search` is universal infrastructure filed under the wrong prefix** (verified four
+   ways):
+   - its own description: *"it needs no book or entity"*; args are just `query` (+`max_results`);
+   - `universal_skill.py` already teaches it as **the bookless research tool** — an entire paragraph
+     explaining how to reach it, which is a *workaround for the misleading prefix*;
+   - the capability actually lives in **provider-registry** (`POST /internal/web-search`) per the
+     provider-gateway invariant — glossary only wraps it;
+   - **composition-service has its own `web_search_client.py`** hitting that same endpoint, and its
+     comments say it *"mirror[s] `glossary_web_search`'s title/snippet/answer caps"* — a second
+     consumer duplicating safety caps across services. **Real drift risk.**
+
+   → Rename to **`web_search`** (universal), keep `glossary_web_search` as a `visibility: legacy`
+   alias (never delete). **`glossary_deep_research` is NOT universal** — it requires `book_id` +
+   `entity_id` and attaches draft evidence to a glossary entity; it keeps its prefix.
+   *Blockers:* `_domain_of()` is prefix-derived, so `web_search` (prefix `web`) has **no C1 category
+   home** — needs a C1 change (Track A owns) or an alias; and hot-pathing it consumes the **last free
+   `ALWAYS_ON_CORE` slot (9/10)** and must wait on the spend gate. Federation routing is safe: it
+   resolves via a discovered `toolToProvider` map, **not** by prefix.
 
 2. **`propose_*` is overloaded, with no machine-checkable meaning.** It spans two *legitimate*
    patterns — **token** (tier `W`: mints a `confirm_token`, writes nothing) and **draft** (tier `A`:

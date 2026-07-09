@@ -32,13 +32,35 @@ durable signal belongs on the tool. Kit additions mirror `async`:
 - Go: `lwmcp.WithPaid(m)` (alongside `WithAsync`)
 - Py: `require_meta(..., paid=True)`
 
+**`paid` is ORTHOGONAL to `tier` — corrected 2026-07-09.** `tier` governs **mutation**; `paid` governs
+**spend**. They are independent axes. `mcp-public-gateway` already models this correctly:
+
+```ts
+export type Tier = 'read' | 'paid_read' | 'write_auto' | 'write_confirm';
+// ── paid_read (Tier-R but incurs cost — needs paid_read scope; P3 spend gate) ─
+glossary_web_search: { tier: 'paid_read', domains: ['glossary'] },
+```
+
+A **paid read** is legitimate and must stay allowed in `ask` mode — a user researching in read-only
+mode legitimately wants a web search. It must pass a **spend gate**, not a *write* gate.
+
 **Derived rules (machine-checkable):**
-1. A `paid` tool **MUST NOT** be tier `R`. Money is an effect. *(Today `glossary_web_search` and
-   `glossary_deep_research` are untiered ⇒ `R` ⇒ callable in ask mode with no approval card. This is
-   live, unmetered spend exposure — the highest-severity finding in the inventory.)*
+1. A `paid` tool **MUST** pass a spend gate (approval-on-first-use + counted against the spend
+   budget), **independent of its `tier`**. `paid` does **not** imply a write, and **must not** be
+   coerced to tier `A`/`W` merely because it costs money.
+   > ⚠️ **No internal spend gate exists today.** Verified: nothing in the chat tool-loop reads a
+   > `paid`/spend concept, and the public gateway's own comment marks its spend gate as *"P3"*
+   > (pending). So `glossary_web_search` is currently **completely ungated for spend** — this is the
+   > live exposure, and building the gate is a **WS-D0 prerequisite** before any paid tool goes
+   > hot-path.
 2. A tool that enqueues a job **MUST** declare `async`.
-3. `mcp-public-gateway`'s `paid_read` classification **derives from** `_meta.paid` rather than
-   restating it.
+3. `mcp-public-gateway`'s `paid_read` **derives from** `tier == R ∧ paid == true` rather than
+   restating it in a hand-maintained table.
+
+> **Superseded rule (was wrong, kept as a warning):** the first freeze said *"a `paid` tool MUST NOT
+> be tier `R` — money is an effect."* That conflates spend with mutation and would have **blocked
+> web search in ask mode**, breaking the single most legitimate read-only research flow. The public
+> gateway's `paid_read` tier is the counter-example that disproved it.
 
 **Enforcement — per service, on the REAL `tools/list` wire:** a regression test asserting every
 advertised tool declares a valid `tier` + `scope`, that `paid ⇒ tier != R`, and that the known
