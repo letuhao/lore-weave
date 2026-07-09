@@ -1,0 +1,27 @@
+{
+  "scenario": "S03",
+  "title": "Clean up the suggestions in my book — sort the good from the junk",
+  "maps_to": "W3 (triage tail)",
+  "persona": "P2 Linh (worldbuilder, near-zero platform knowledge)",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "a book with a real pile of auto-suggestions (26 drafts incl. genuine duplicates 'Dracula'/'Count Dracula' and junk like 'Gothic Atmosphere') — SKILL_BOOK_ID",
+  "fixture_note": "The spec's §4 imagined a 6-item pile with 2 empties + 1 duplicate. This runs on the real 26-item Dracula pile, which naturally contains duplicates and junk. Turn wording is adapted to items that actually exist; the black-box job (keep / junk / merge / honest count / pile drains) is unchanged.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "entity", "inbox", "draft", "reject status", "rejected", "reassign kind",
+    "merge candidate", "confirm", "status", "kind"
+  ],
+  "movements": [
+    {"id": "A", "label": "Show me the pile"},
+    {"id": "B", "label": "Keep / junk / merge"},
+    {"id": "C", "label": "Does it actually drain?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "Clean up the suggested items in my book."},
+    {"movement": "B", "user": "Keep the real characters and places, throw out the junk ones, and combine the duplicates — 'Dracula' and 'Count Dracula' are the same person."},
+    {"movement": "B", "user": "'Gothic Atmosphere' isn't a thing in my world, it's just a mood — get rid of it."},
+    {"movement": "C", "user": "How many suggestions are left?"}
+  ]
+}

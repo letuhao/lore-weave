@@ -67,16 +67,26 @@ for it. I want to review before it's applied.
       S02 can populate into it).
 - [ ] No thrash, no "set up!" lie. Under ~90s of assistant time.
 
-## 7. Baseline — what happens TODAY when I try (fill via live test)
+## 7. Baseline — captured 2026-07-10 (gemma, HEAD `63369b2ab`, chat-service rebuilt)
 
-- **Date / stack / model_ref:** _pending_
-- **What I experienced:** _pending. Expectation: gemma searches for glossary tools, then either asks me
-  which "kinds/genres" to adopt (jargon I can't answer) or applies standards with no useful per-detail
-  content. Record whether it ever proposes a concrete, plain-language structure._
-- **Did I get my goal?** _pending_
-- **Evidence:** # discovery calls, wall-clock, stall point.
-- **Transcript saved at:** `docs/eval/discoverability/YYYY-MM-DD-S01-gemma.md`
-- **Verdict:** _pending_
+- **Verdict: ❌** — `book_kinds = 0` after BOTH a cold and a warm pass. The user said "go ahead" twice
+  and nothing exists. Full findings:
+  [`docs/eval/discoverability/2026-07-10-S01-gemma.md`](../../../eval/discoverability/2026-07-10-S01-gemma.md).
+- **What I experienced:** it does NOT search-thrash (0 discovery, 0 empty-intent — the `find_tools` loop is
+  dead). It proposes a decent-sounding structure in prose. Then it **proposes ENTITIES into a book with no
+  categories** — every item returns `unknown kind: character` — and **retries the identical call 4 more
+  times**. It never calls the adopt-categories tool at all.
+- **Three defects:** (1) wrong tool / wrong order — entities before kinds; (2) **silent success** —
+  `glossary_propose_entities` returns envelope `ok:true` while all items errored, so the agent gets no
+  failure signal and loops; (3) cold-pass only — the confirm suspends on the approval card and the agent
+  then re-emits its proposal verbatim and says *"I cannot set up until you approve"* to a user who just
+  approved twice.
+- **Jargon:** it volunteers *"we need an **ontology**…"* and presents an *"Ontology Plan"* — a §1 word.
+- **Evidence:** discovery 0 · empty-intent 0 · silent-success 1 (cold) / **5** (warm) · unresolved 1 (cold)
+  · max consecutive identical call 4 · `book_kinds` 0/0 · ~116s.
+- **Two-pass note:** cold = approval card fires (headless driver can't answer it → not a product verdict
+  past the first suspend); warm = `user_tool_approvals` pre-seeded (what "always allow" writes). **Both
+  failed for the same primary reason**, so the verdict is robust to the permission axis.
 
 ## 8. Builder hint (NON-BINDING — not part of acceptance)
 

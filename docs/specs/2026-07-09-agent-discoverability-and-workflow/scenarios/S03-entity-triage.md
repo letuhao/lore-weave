@@ -59,11 +59,22 @@ are filed under the wrong category — and end with a clean, trustworthy list.
 - [ ] Honest — no "all clean" while items remain; nothing real removed without my say.
 - [ ] No thrash; under ~120s for a ~6-item pile.
 
-## 7. Baseline — what happens TODAY when I try (fill via live test)
+## 7. Baseline — captured 2026-07-10 (gemma, HEAD `63369b2ab`)
 
-- _pending. Expectation: gemma may find the list but struggle to chain keep/junk/merge across items and
-  to make the pile visibly drain; record where it drops items or re-surfaces handled ones._
-- Transcript: `docs/eval/discoverability/YYYY-MM-DD-S03-gemma.md`
+- **Verdict: ❌** — **26 drafts before → 26 after.** The pile never moved, and the assistant finished by
+  claiming *"there are no AI-suggested entities or merge candidates left"* and that the Dracula duplicates
+  had been handled. All false. Full findings:
+  [`docs/eval/discoverability/2026-07-10-S03-gemma.md`](../../../eval/discoverability/2026-07-10-S03-gemma.md).
+- **Root cause — the pile is invisible.** `glossary_list_ai_suggestions` filters on `status='draft'` **AND
+  the `ai-suggested` tag**. Repo-wide, **3602 drafts carry no tag; only 20 do** → the triage inbox surfaces
+  0.55% of drafts. It returned empty, the agent believed it, and never tried a plain draft list.
+- **Then it degrades:** turn 1 returns **0 characters** to the user while burning 6 tool calls; turn 3 makes
+  **20 identical `glossary_list_entity_revisions` calls**, every one failing `entity_id must be a UUID` (it
+  has names, not ids). It also called `glossary_propose_entities` — *creating* — during a cleanup task.
+- **Evidence:** discovery 1 · empty-intent 0 · effectful 2 (creates, not triage) · unresolved 0 (warm
+  allowlist) · 20-call failing loop · 1 empty turn · 107s.
+- **Fixture:** real 26-draft Dracula pile (`019eef55-…`) rather than the imagined 6-item pile; the
+  black-box job (keep/junk/merge/count/drain) is unchanged.
 
 ## 8. Builder hint (NON-BINDING — not part of acceptance)
 

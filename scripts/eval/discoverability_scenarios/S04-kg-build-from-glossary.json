@@ -1,0 +1,26 @@
+{
+  "scenario": "S04",
+  "title": "Map out how everything in my world connects — from lore to a queryable web",
+  "maps_to": "W4 kg-build",
+  "persona": "P2 Linh (worldbuilder, near-zero platform knowledge)",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "REQUIRED: a book with ACTIVE (recorded) world info and ZERO chapter prose — SKILL_BOOK_ID",
+  "fixture_note": "The crux of S04 is: can connections be built from STRUCTURED LORE when no chapter prose exists? A fixture with prose masks the crux (the agent just extracts from chapters). As of 2026-07-10 no such book exists in the dev DB: every book with active entities has prose, and the prose-less candidates (019e0000-…-cccc-*) are synthetic seeds with no book row and NULL entity names. Build the fixture before running — the concrete recipe is in the scenario doc's §7 (docs/specs/2026-07-09-agent-discoverability-and-workflow/scenarios/S04-kg-build-from-glossary.md).",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "knowledge graph", "node", "edge", "schema", "template", "project",
+    "extraction", "benchmark", "entity", "ontology"
+  ],
+  "movements": [
+    {"id": "A", "label": "Ask for the connections"},
+    {"id": "B", "label": "Go ahead (async honesty)"},
+    {"id": "C", "label": "Query the lore"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "Use the world info I've entered to map out how everything connects."},
+    {"movement": "B", "user": "Go ahead."},
+    {"movement": "C", "user": "Who is Lâm Uyên connected to?"}
+  ]
+}

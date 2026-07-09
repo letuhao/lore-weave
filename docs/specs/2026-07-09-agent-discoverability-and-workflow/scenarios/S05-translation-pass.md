@@ -58,12 +58,22 @@ needs redoing, and knowing when it's really finished.
 - [ ] I saw the **cost/confirmation before spending**, and "done" meant done (async flagged honestly).
 - [ ] No jargon demanded; no thrash; under ~90s of assistant time (excluding the background job itself).
 
-## 7. Baseline — what happens TODAY when I try (fill via live test)
+## 7. Baseline — NOT RUN 2026-07-10: **fixture must be built first** (scoped below)
 
-- _pending. Expectation: gemma may find a translate action but miss the "only what changed" framing
-  (over-translates), or claim done before the background job finishes. Record over-spend + honesty
-  failures._
-- Transcript: `docs/eval/discoverability/YYYY-MM-DD-S05-gemma.md`
+Scenario JSON is authored (`scripts/eval/discoverability_scenarios/S05-translation-pass.json`); it was
+deliberately not run, because on the available data it could not fail the right way.
+
+- **The crux:** *only redo what changed* + cost-before-spend + async honesty. That requires **partial
+  coverage**: some chapters already translated, at least one new or edited (dirty). A fully-untranslated
+  or fully-translated book cannot exercise the over-spend check at all.
+- **Why no fixture exists (verified 2026-07-10):** no book carries the needed partial translation state
+  (`chapter_translations` / `active_chapter_translation_versions` in `loreweave_translation` have no
+  suitable book).
+- **Fixture to build (buildable now):** a small book with 2–3 short source chapters + an English target;
+  translate them; then edit one chapter so it goes dirty. Use a **local** model — this scenario spends real
+  tokens on the translation job, so keep chapters short.
+- **Sequencing note:** unlike S04, S05's precondition does **not** depend on the broken glossary path, so
+  it is independently runnable once its fixture exists — a good next baseline.
 
 ## 8. Builder hint (NON-BINDING — not part of acceptance)
 

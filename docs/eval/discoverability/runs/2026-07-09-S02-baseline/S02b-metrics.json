@@ -5,6 +5,8 @@
   "async_jobs": [],
   "async_jobs_without_status_read": 0,
   "effectful_tool_calls": 0,
+  "unresolved_tool_calls": [],
+  "silent_success_calls": [],
   "persist_claims_without_write": [],
   "jargon_candidates": [
     {

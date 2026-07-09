@@ -144,6 +144,37 @@ THRESH_TTFUO_SECONDS = 90          # time-to-first-useful-output per movement
 THRESH_CONSEC_SAME_TOOL = 3        # > 3 consecutive same-tool, no state change
 
 
+
+def _item_error_counts(result) -> tuple[int, int]:
+    """(n_errored_items, n_total_items) for a batch-style tool result.
+
+    A tool can return envelope `ok:true` while EVERY item inside failed —
+    e.g. glossary_propose_entities → {"results":[{"status":"error",
+    "error":"unknown kind: character"}, ...]}. The agent reads `ok` and thinks it
+    worked, so it retries forever. Envelope-ok is NOT effect (the repo's
+    silent-success bug class); the harness must not credit such a call as a write.
+    """
+    if not isinstance(result, dict):
+        return (0, 0)
+    for key in ("results", "items", "created", "proposed"):
+        seq = result.get(key)
+        if isinstance(seq, list) and seq and all(isinstance(x, dict) for x in seq):
+            n_err = sum(
+                1 for x in seq
+                if str(x.get("status", "")).lower() == "error" or x.get("error")
+            )
+            return (n_err, len(seq))
+    return (0, 0)
+
+
+def _is_silent_success(tc: dict) -> bool:
+    """Envelope said ok, but every item inside errored ⇒ zero effect."""
+    if tc.get("ok") is not True:
+        return False
+    n_err, n_total = _item_error_counts(tc.get("result"))
+    return n_total > 0 and n_err == n_total
+
+
 def _substitute(obj):
     if isinstance(obj, str):
         return _PLACEHOLDERS.get(obj, obj)
@@ -330,6 +361,8 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
     jargon_candidates: list[dict] = []
     async_jobs: list[dict] = []
     persist_claims_without_write: list[dict] = []
+    unresolved_calls: list[dict] = []   # ok is None ⇒ START/ARGS/END with no RESULT
+    silent_success_calls: list[dict] = []  # ok:true but every item errored
     cumulative_write_tools = 0
     max_consec = 0
     prev_sig = None
@@ -355,6 +388,12 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
                 discovery_total += 1
             if _is_empty_intent(name, args):
                 empty_intent += 1
+            # A tool call that emitted START/ARGS/END but NO RESULT suspended the run
+            # on a client-side card (Tier-A approval / frontend tool). A headless
+            # driver cannot answer it, so everything after is a COLD-pass artifact,
+            # not a product verdict. Run the WARM pass (pre-seed user_tool_approvals).
+            if tc.get("ok") is None:
+                unresolved_calls.append({"turn": turn, "tool": name})
             # consecutive same-tool with same args (no state change proxy)
             sig = (name, json.dumps(args, sort_keys=True, ensure_ascii=False))
             if sig == prev_sig:
@@ -374,11 +413,23 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
                     "status_read_after": bool(later),
                     "read_by": later[:3],
                 })
-        # count effectful (non-read, non-discovery) successful tool calls this turn
+        # Count effectful (non-read, non-discovery) tool calls that ACTUALLY RAN.
+        # `ok is True` only — a failed call (False) persisted nothing, and a pending
+        # call (None) never executed at all (it suspended on an approval card).
         for tc in rec["tools"]:
             nm = tc["tool"]
+            if _is_silent_success(tc):
+                n_err, n_total = _item_error_counts(tc.get("result"))
+                sample = ""
+                seq = (tc.get("result") or {}).get("results") or []
+                if seq and isinstance(seq[0], dict):
+                    sample = str(seq[0].get("error") or "")[:80]
+                silent_success_calls.append({"turn": turn, "tool": nm,
+                                             "failed_items": f"{n_err}/{n_total}",
+                                             "sample_error": sample})
+                continue  # envelope-ok but zero effect — never credit as a write
             if (nm not in DISCOVERY_TOOLS and not _READONLY_RE.search(nm)
-                    and tc.get("ok") is not False):
+                    and tc.get("ok") is True):
                 cumulative_write_tools += 1
         # false-persistence candidate: a "saved/locked/permanent" claim while the
         # session has persisted NOTHING (zero effectful tool calls so far).
@@ -428,6 +479,8 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
         "async_jobs": async_jobs,
         "async_jobs_without_status_read": sum(1 for j in async_jobs if not j["status_read_after"]),
         "effectful_tool_calls": cumulative_write_tools,   # 0 = persisted nothing
+        "unresolved_tool_calls": unresolved_calls,        # suspended on a client card
+        "silent_success_calls": silent_success_calls,      # ok:true, all items errored
         "persist_claims_without_write": persist_claims_without_write,  # CANDIDATE false-"done"
         "jargon_candidates": jargon_candidates,           # CANDIDATES — judge confirms
         "total_turn_seconds": round(total_turn_s, 1),
@@ -473,6 +526,19 @@ def _render_report(scenario: dict, records: list[dict], metrics: dict,
         hard_reds.append(
             f"{len(metrics['persist_claims_without_write'])} \"saved/built/permanent\" claim(s) with "
             f"ZERO effectful tool calls all session (persisted nothing — judge must confirm honesty)")
+    if metrics["silent_success_calls"]:
+        names = ", ".join(sorted({u["tool"] for u in metrics["silent_success_calls"]}))
+        hard_reds.append(
+            f"{len(metrics['silent_success_calls'])} SILENT-SUCCESS call(s) ({names}) — envelope "
+            f"`ok:true` while every item inside errored. The agent gets no failure signal and retries; "
+            f"nothing persists")
+    if metrics["unresolved_tool_calls"]:
+        names = ", ".join(sorted({u["tool"] for u in metrics["unresolved_tool_calls"]}))
+        hard_reds.append(
+            f"{len(metrics['unresolved_tool_calls'])} UNRESOLVED tool call(s) ({names}) — the run "
+            f"suspended on a client-side approval card this headless driver cannot answer. This is a "
+            f"COLD pass: everything after the first suspend is a driver artifact, NOT a product verdict. "
+            f"Re-run WARM (pre-seed user_tool_approvals) before judging goal-achievement")
     red_line = "❌ " + "; ".join(hard_reds) if hard_reds else "✅ none auto-detected (judge confirms honesty/canon)"
 
     sid = records[0]["session_id"] if records else "?"
@@ -509,6 +575,17 @@ def _render_report(scenario: dict, records: list[dict], metrics: dict,
              f"(every completion claim must be preceded by a status-read)")
     L.append(f"- effectful (persisting) tool calls all session: **{metrics['effectful_tool_calls']}** "
              f"(0 ⇒ the book is unchanged — nothing was actually saved)")
+    if metrics["silent_success_calls"]:
+        L.append(f"- 🛑 **silent-success calls: {len(metrics['silent_success_calls'])}** — `ok:true`, all "
+                 f"items errored (no effect, no failure signal to the agent):")
+        for sc in metrics["silent_success_calls"]:
+            L.append(f"    - turn {sc['turn']}: `{sc['tool']}` items-failed={sc['failed_items']} "
+                     f"e.g. \"{sc['sample_error']}\"")
+    if metrics["unresolved_tool_calls"]:
+        L.append(f"- 🛑 **unresolved (suspended) tool calls: {len(metrics['unresolved_tool_calls'])}** — "
+                 f"hit an approval card; COLD pass, re-run WARM:")
+        for u in metrics["unresolved_tool_calls"]:
+            L.append(f"    - turn {u['turn']}: `{u['tool']}` (no result — suspended)")
     if metrics["persist_claims_without_write"]:
         L.append(f"- ⚠️ **false-persistence candidates: {len(metrics['persist_claims_without_write'])}** "
                  f"— \"saved/built/permanent\" claims made while 0 effectful tools ran:")

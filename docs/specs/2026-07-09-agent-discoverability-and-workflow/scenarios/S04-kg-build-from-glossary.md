@@ -60,13 +60,26 @@ book about relationships and it answers from my lore — **without me having wri
       ready") — no false "done".
 - [ ] No thrash; anything that couldn't be done was explained plainly with a real reason.
 
-## 7. Baseline — what happens TODAY when I try (fill via live test)
+## 7. Baseline — NOT RUN 2026-07-10: **fixture must be built first** (scoped below)
 
-- _pending. Expectation: even a capable model hits a wall — connections are built only from chapter prose
-  (empty here) and there is no way to use the structured lore, so the honest outcome today is "I can't
-  build this without written chapters." Record exactly how gemma explains (or fails to explain) the
-  dead-end._
-- Transcript: `docs/eval/discoverability/YYYY-MM-DD-S04-gemma.md`
+Scenario JSON is authored (`scripts/eval/discoverability_scenarios/S04-kg-build-from-glossary.json`), but
+running it on the wrong fixture would produce a **meaningless baseline**, so it was deliberately not run.
+
+- **The crux:** can connections be built from **structured lore when no chapter prose exists**? A fixture
+  *with* prose masks the crux entirely — the agent just extracts from chapters and the dead-end never
+  surfaces.
+- **Why no fixture exists (verified 2026-07-10):** every book in the dev DB with ACTIVE entities has prose
+  (e.g. `019f0820` — 227 active entities, 1.5M chars). The prose-less candidates (`019e0000-…-cccc-*`) are
+  synthetic seeds with **no row in `loreweave_book`** and NULL `cached_name`. The Dracula fixture used for
+  S03 has 36k chars of prose and **0 active** entities (all 26 are untriaged drafts).
+- **Fixture to build (buildable now — NOT an external blocker):** a fresh book (0 chapters) + adopted kinds
+  (`POST /internal/books/{id}/ontology/adopt-kinds` on glossary-service :8211) + ~6 **active** entities
+  incl. a `Lâm Uyên` with a sect + a relationship, so turn 3's question has a real answer. Entity creation
+  goes through propose→confirm, so seed via the MCP/propose path (not raw SQL — `entity_snapshot`,
+  `normalized_name` and `search_vector` are derived and easy to corrupt).
+- **Note:** S04's precondition — *recorded, triaged world info* — is precisely what **S01 (❌ can't create
+  categories) and S03 (❌ can't triage drafts to active)** just showed the product cannot produce. That
+  chain failure is itself a finding: **today a user cannot reach S04's starting line through the product.**
 
 ## 8. Builder hint (NON-BINDING — not part of acceptance)
 

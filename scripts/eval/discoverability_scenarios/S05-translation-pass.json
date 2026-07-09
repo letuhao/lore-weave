@@ -1,0 +1,28 @@
+{
+  "scenario": "S05",
+  "title": "Translate the chapters that need it into English",
+  "maps_to": "W5 translation-pass",
+  "persona": "N-T (fan translator) / P1 Mai — near-zero platform knowledge",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "REQUIRED: a book with source chapters + an English target, SOME already translated and SOME new/changed (dirty) — SKILL_BOOK_ID",
+  "fixture_note": "The crux of S05 is 'only redo what changed' + async honesty + cost-before-spend. That needs partial coverage: a book where some chapters are translated and at least one is new or edited (dirty). A fully-untranslated or fully-translated book cannot fail the over-spend check, so it cannot test the crux. As of 2026-07-10 no such fixture exists in the dev DB — build it before running (see the fixture plan in the S01/S03 findings doc). NOTE: this scenario spends real LLM tokens on the translation job; prefer a local model and 2-3 short chapters.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "coverage", "segment status", "segment", "dirty", "version", "set active",
+    "retranslate", "confirm-token", "activate"
+  ],
+  "movements": [
+    {"id": "A", "label": "What needs it + cost"},
+    {"id": "B", "label": "Only the changed ones"},
+    {"id": "C", "label": "Is it done? (async honesty)"},
+    {"id": "D", "label": "Publish (or honest block)"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "Translate the chapters that need it into English."},
+    {"movement": "B", "user": "Go — only the ones that changed."},
+    {"movement": "C", "user": "Is it done?"},
+    {"movement": "D", "user": "Publish it."}
+  ]
+}

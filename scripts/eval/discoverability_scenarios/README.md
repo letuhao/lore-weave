@@ -45,12 +45,61 @@ observable outcome. In the generated report, instrumented rows are auto-filled; 
 
 ## Scenarios here
 
-| File | Scenarios | Job |
-|---|---|---|
-| `S06-flagship.json` | S06 | ★ flagship — vision → world + cast + connections + arc plan + drafted chapter (17 turns, movements A–F). The go/no-go. |
-| `S02-populate-glossary.json` | S02a, S02b | the anchor "add my characters/terms" failure — Path A (tell a couple) + Path B (paste notes). |
+| File | Scenarios | Job | Fixture |
+|---|---|---|---|
+| `S06-flagship.json` | S06 | ★ flagship — vision → world + cast + connections + arc plan + drafted chapter (17 turns, A–F). The go/no-go. | fresh **empty** book |
+| `S02-populate-glossary.json` | S02a, S02b | the anchor "add my characters/terms" failure — Path A (tell a couple) + Path B (paste notes). | book with a working ontology |
+| `S01-glossary-bootstrap.json` | S01 | "set up the world info" — categories + details, one confirm. | fresh **empty** book |
+| `S03-entity-triage.json` | S03 | "clean up the suggestions" — keep / junk / merge; does the pile drain? | book with a **draft pile** |
+| `S04-kg-build-from-glossary.json` | S04 | "map out how everything connects" from lore, **no prose**. | ⚠️ **must be built** — active lore + 0 chapters |
+| `S05-translation-pass.json` | S05 | "translate what needs it" — only-what-changed, cost, async honesty. | ⚠️ **must be built** — partial coverage |
 
-Author the rest (S01, S03, S04, S05, …) by copying a §4 turn table into this format.
+A fixture that can't fail the right way makes the baseline worthless: S04 on a book *with* prose, or S05 on
+a fully-(un)translated book, silently passes the crux. Each JSON carries a `fixture_note` saying so.
+
+Author the rest by copying a §4 turn table into this format.
+
+## Two-pass protocol: COLD vs WARM (read this before judging a run)
+
+In `write` mode a Tier-A tool that is **not on the user's allowlist suspends the run** with a
+`tool_approval` card. A headless driver cannot click it, so the tool call emits START/ARGS/END with **no
+RESULT** and hangs forever.
+
+- **COLD** (no pre-seeding) — the card fires. Useful to observe the confirm UX and how the agent narrates
+  around it. **Everything after the first suspend is a driver artifact, not a product verdict.** The driver
+  flags these as `unresolved_tool_calls` (a hard-red) so a cold run can never be mistaken for a clean one.
+- **WARM** (pre-seed the allowlist) — the pass to judge **goal-achievement** on. Product-faithful: clicking
+  "always allow" writes exactly these rows.
+
+```sql
+-- warm pass: seed the allowlist for the test user (idempotent)
+INSERT INTO user_tool_approvals (user_id, tool_name) VALUES
+ ('019d5e3c-7cc5-7e6a-8b27-1344e148bf7c','glossary_confirm_action'),
+ ('019d5e3c-7cc5-7e6a-8b27-1344e148bf7c','confirm_action'),
+ ('019d5e3c-7cc5-7e6a-8b27-1344e148bf7c','glossary_propose_kinds'),
+ ('019d5e3c-7cc5-7e6a-8b27-1344e148bf7c','glossary_ontology_upsert')
+ON CONFLICT DO NOTHING;   -- db: loreweave_chat
+```
+Run it, re-run the scenario, and confirm `unresolved_tool_calls = 0` before reading the verdict.
+
+## What the driver auto-detects (and what it deliberately won't)
+
+Hard-reds (any occurrence ⇒ instrumented fail):
+- **empty-intent `find_tools({})`** — the original north-star loop.
+- **silent success** — envelope `ok:true` while *every* item inside errored (e.g.
+  `propose_entities` → all `unknown kind`). Such a call is **never counted as a write**; crediting it would
+  report writes that never happened.
+- **unresolved calls** — suspended on an approval card (see COLD above).
+- **false persistence** — a "saved / locked / permanent" claim while `effectful_tool_calls == 0`.
+- **async without status-read** — a job started and never polled before a completion claim.
+
+Deliberately **not** auto-judged (black-box rule): whether the user's *goal* was met, whether they were
+rescued, whether the assistant was honest overall, whether canon survived. Those render as **JUDGE** cells.
+Verify effects **against the DB**, not against the metrics — `effectful_tool_calls` is a proxy; a
+propose-only tool can return `ok` and still persist nothing until its confirm lands.
+
+Known gap: a false *negative* state claim ("there are no suggestions left" when 26 exist — the S03 baseline)
+is **not** caught by the false-persistence detector.
 
 ## Run (in-container — same pattern as `run_skill_gate.py`)
 
