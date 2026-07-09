@@ -31,7 +31,9 @@ func (s *Server) RegisterEntityBatchTools(srv *mcp.Server) {
 			"SINGLE new entity (pass items with just one item), not only for batches; prefer this over " +
 			"calling the legacy glossary_propose_new_entity. Each item is created as a DRAFT suggestion " +
 			"in the review inbox -- NOT canon -- and succeeds or fails independently (not all-or-nothing). " +
-			"If a name already exists, or was previously rejected, that item is skipped, not duplicated. " +
+			"If a name already exists, or was previously rejected, that item is skipped, not duplicated -- " +
+			"this tool only CREATES new entities; to add or change attributes on an entity that already " +
+			"exists, use glossary_entity_set_attributes (or glossary_entity_rename to rename it). " +
 			"Call glossary_search first to confirm names don't already exist; call " +
 			"glossary_book_ontology_read to pick valid kinds. Accepts 1-50 items.",
 		InputSchema: entityBatchSchema(),
