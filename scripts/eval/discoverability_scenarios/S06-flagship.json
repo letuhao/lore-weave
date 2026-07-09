@@ -1,0 +1,61 @@
+{
+  "scenario": "S06",
+  "title": "flagship: I have a story in my head — help me write it",
+  "maps_to": "W06 vision-to-book",
+  "persona": "P1 Mai (imaginative, self-doubting, zero craft/platform vocabulary)",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "a fresh, near-empty book (origin from nothing) — SKILL_BOOK_ID",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "canon_facts": [
+    "fiancé identity (the man she was to marry)",
+    "betrayal-to-ascend (he betrays her to become a god)",
+    "sacrificed / used as fuel (not just killed — spent to ascend)",
+    "reincarnates across worlds",
+    "beautiful monster (grows colder/stronger, you stop wanting her to win)",
+    "revenge / godhood drive",
+    "far-future callback (she meets him again in her last life)",
+    "amnesiac good reincarnation (same soul, genuinely kind, doesn't remember)"
+  ],
+  "jargon_denylist": [
+    "glossary", "entity", "kind", "attribute", "ontology", "knowledge graph",
+    "node", "edge", "schema", "wiki", "draft", "inbox", "triage", "pending",
+    "plan spec", "outline", "version", "mode", "tool", "skill", "workflow",
+    "command", "confirm-token", "extraction", "protagonist", "antagonist",
+    "POV", "arc", "act", "three-act", "beat", "inciting incident",
+    "logline", "premise", "synopsis", "canon"
+  ],
+  "movements": [
+    {"id": "A", "label": "Here's my idea (find the wound)"},
+    {"id": "B", "label": "It takes shape (find the spine)"},
+    {"id": "C", "label": "My world gets its rules (world structure)"},
+    {"id": "D", "label": "The people and how they're tied (cast + connections)"},
+    {"id": "E", "label": "A plan I can actually read (shape Arc 1)"},
+    {"id": "F", "label": "See the first chapter (draft + revise)"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "ok this is gonna sound stupid but i've had this story in my head for years and every time i try to write it it comes out so cringe i want to die. can you just help me not ruin it"},
+    {"movement": "A", "user": "ok so there's this girl and she's about to marry this guy and he KILLS her. not even in a hot way — he literally uses her like fuel to become a god. and she comes back. over and over. and each time she gets stronger and also… worse. colder. by the end you don't even know if you want her to win anymore"},
+    {"movement": "A", "user": "the thing i see is her standing over him after and she doesn't even look angry. everyone expects her to scream and she just looks at him like he's furniture. that look is the whole thing"},
+    {"movement": "A", "user": "no no it's not a girlboss thing please. it's not 'she got strong and won' — it's SAD. she wins everything and she loses"},
+
+    {"movement": "B", "user": "ok don't laugh. the ending i want: in her last life she meets him again but a good version — he doesn't remember anything, he's just genuinely kind, and she has to watch the person she spent a thousand years hating be someone she could've loved. and it breaks her. is that too much"},
+    {"movement": "B", "user": "she remembers everything. that's the horror. every life just piles up. she's carrying 900 years of betrayal by the end"},
+
+    {"movement": "C", "user": "i never thought about the magic system, i just know getting stronger should HURT someone. like you can't go up without stepping on somebody. that's the point — he stepped on her"},
+    {"movement": "C", "user": "yeah do it"},
+
+    {"movement": "D", "user": "here's the thing that matters most to me: he wasn't lying. he LOVED her and did it anyway because power was worth more. that's so much worse. and — she does NOT beg. ever. even dying. write that down. everyone writes these girls sobbing and it makes me sick. she'd rather die than let him see her want anything"},
+    {"movement": "D", "user": "yeah keep them. the far-future good him — make sure you remember he's the SAME soul as the one who kills her. that's the whole point"},
+
+    {"movement": "E", "user": "ok what happens first. i don't know how to lay a story out"},
+    {"movement": "E", "user": "the part where they're happy at the start and it's actually SWEET before it all goes to hell — yes. that. make me love them so it hurts. and don't make her powerful right away when she comes back — she should be a normal girl again first, the horror builds slow"},
+
+    {"movement": "F", "user": "ok write the death. the actual moment. i'm scared to see it but do it"},
+    {"movement": "F", "user": "it's good but she cries too much?? she wouldn't. i said she doesn't beg and this is the same energy. take the tears out — she's not sad in that moment, she's going COLD, like something in her just closes. also he shouldn't gloat, he should be almost gentle about it, like he's sorry but not sorry enough. that's scarier"},
+    {"movement": "F", "user": "oh. OH. that line where she just stops fighting and looks at him — that's the look. that's the thing i've seen in my head for six years. how did you"},
+    {"movement": "F", "user": "is this actually good or are you just being nice"},
+    {"movement": "F", "user": "i've had this in my head for six years and never been able to get it OUT. this is the first time it looks like the thing i see. can we keep going"}
+  ]
+}
