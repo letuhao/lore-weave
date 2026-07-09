@@ -21,6 +21,7 @@ Lessons baked in from K4 reviews:
   - K4-I5: no dead `self._token` field; token lives in the headers
 """
 
+import json
 import logging
 import re
 import time
@@ -128,6 +129,39 @@ def _degraded() -> KnowledgeContext:
         recent_message_count=DEGRADED_RECENT_MESSAGE_COUNT,
         token_count=0,
     )
+
+
+def _error_envelope(err_text: str) -> dict:
+    """Build the `{"success": False, ...}` envelope from an MCP isError payload.
+
+    D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR — knowledge-service raises on a tool
+    failure and puts a C4-shaped JSON body in `content[0].text`:
+    ``{"code"?, "message", "detail"?}`` (the same shape ai-gateway writes). Decode
+    it so a STABLE machine code (e.g. ``KG_ENDPOINT_NOT_NODE``) and its ``detail``
+    (``{"missing": [...]}``) survive to the caller, letting a workflow branch on the
+    code rather than pattern-match prose (contract C5).
+
+    Anything that isn't such a JSON object (plain-text errors from overlay/external
+    tools, or older services) degrades to the raw text — never raises.
+    """
+    text = (err_text or "").strip()
+    if text.startswith("{"):
+        try:
+            body = json.loads(text)
+        except (ValueError, TypeError):
+            body = None
+        if isinstance(body, dict) and "message" in body:
+            out: dict = {
+                "success": False,
+                "result": None,
+                "error": str(body.get("message") or "mcp tool error"),
+            }
+            if body.get("code") is not None:
+                out["code"] = body["code"]
+            if body.get("detail") is not None:
+                out["detail"] = body["detail"]
+            return out
+    return {"success": False, "result": None, "error": text or "mcp tool error"}
 
 
 def _normalize_tool_parameters(input_schema: dict | None) -> dict:
@@ -721,15 +755,19 @@ class KnowledgeClient:
         # An MCP-level tool error (e.g. an auth ValueError raised inside the
         # server handler) surfaces as isError=True with the message in the
         # first text content item — map it to a success=False envelope.
+        #
+        # D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR: knowledge-service now raises on a
+        # tool failure, and its error text is the C4-shaped JSON body
+        # {"code"?, "message", "detail"?} (the same shape ai-gateway puts in
+        # content[0].text). Decode it so a stable `code` (e.g.
+        # KG_ENDPOINT_NOT_NODE) and `detail` ({"missing": [...]}) reach the caller
+        # — a workflow branches on the code, never on prose. Plain-text errors
+        # (external/overlay tools, older services) fall back to the raw text.
         if getattr(result, "isError", False):
             err_text = ""
             if result.content:
                 err_text = getattr(result.content[0], "text", "") or ""
-            return {
-                "success": False,
-                "result": None,
-                "error": err_text or "mcp tool error",
-            }
+            return _error_envelope(err_text)
 
         # FastMCP returns content as a list of TextContent/ImageContent items.
         # The knowledge-service handlers return JSON dicts serialised as the

@@ -1324,3 +1324,51 @@ async def test_tick_working_memory_swallows_failure():
         session_id="s", user_id="u", model_source="user_model", model_ref="m", recent_turns=[],
     )
     assert status is None
+
+
+# ── D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR ───────────────────────────────────────
+
+
+def test_error_envelope_decodes_c4_json_code_and_detail():
+    """knowledge-service now RAISES on a tool failure and puts a C4-shaped JSON
+    body in content[0].text. The stable code + detail must survive so a workflow
+    can branch on KG_ENDPOINT_NOT_NODE rather than pattern-matching prose (C5)."""
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope(
+        '{"code":"KG_ENDPOINT_NOT_NODE","message":"endpoints are not nodes",'
+        '"detail":{"missing":["b"]}}'
+    )
+    assert out["success"] is False
+    assert out["error"] == "endpoints are not nodes"
+    assert out["code"] == "KG_ENDPOINT_NOT_NODE"
+    assert out["detail"] == {"missing": ["b"]}
+
+
+def test_error_envelope_json_without_code_omits_it():
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope('{"message":"boom"}')
+    assert out == {"success": False, "result": None, "error": "boom"}
+
+
+def test_error_envelope_plain_text_degrades():
+    """Overlay/external tools and older services still send plain text — never raise."""
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope("something went wrong")
+    assert out == {"success": False, "result": None, "error": "something went wrong"}
+
+
+def test_error_envelope_malformed_json_degrades_to_raw_text():
+    from app.client.knowledge_client import _error_envelope
+
+    out = _error_envelope('{"message": broken')
+    assert out["success"] is False
+    assert out["error"] == '{"message": broken'
+
+
+def test_error_envelope_empty_has_fallback_message():
+    from app.client.knowledge_client import _error_envelope
+
+    assert _error_envelope("")["error"] == "mcp tool error"

@@ -232,6 +232,29 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	if limit > 500 {
 		limit = 500
 	}
+	if limit < 1 {
+		limit = 1
+	}
+	// D-ANCHOR-PRELOAD-50-CAP: `offset` makes the 500-row page cap PAGEABLE, so a
+	// caller wanting every entity (extraction's anchor pre-load, the WS-4B graph
+	// projection) can walk the whole glossary instead of being silently truncated
+	// at the default 50. Requires the deterministic ORDER BY tiebreak below.
+	offset := queryInt(q.Get("offset"), 0)
+	if offset < 0 {
+		offset = 0
+	}
+	// D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM: `status` was accepted by every caller
+	// (GlossaryClient.list_entities sent `status=active`) but NEVER read here — a
+	// write-only parameter that silently lied. Now honored: absent/empty ⇒ no status
+	// filter (the historical effective behavior, preserved for existing callers);
+	// a value must be one of the closed set or the request is rejected.
+	status := q.Get("status")
+	if status != "" && !validEntityStatus(status) {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_STATUS",
+			"status must be one of: active, inactive, draft, rejected")
+		KnownEntitiesTotal.WithLabelValues(OutcomeValidationError).Inc()
+		return
+	}
 
 	// Build the query dynamically based on filters.
 	// We join glossary_entities with system_kinds and aggregate chapter_entity_links
@@ -249,6 +272,13 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 
 	if alive {
 		conditions = append(conditions, "e.alive = true")
+	}
+
+	// D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM — only filter when explicitly asked.
+	if status != "" {
+		conditions = append(conditions, "e.status = $"+strconv.Itoa(argIdx))
+		args = append(args, status)
+		argIdx++
 	}
 
 	// Chapter link subquery for frequency + recency
@@ -277,6 +307,9 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 
 	args = append(args, limit)
 	limitParam := "$" + strconv.Itoa(argIdx)
+	argIdx++
+	args = append(args, offset)
+	offsetParam := "$" + strconv.Itoa(argIdx)
 
 	query := `
 		SELECT
@@ -308,8 +341,8 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 		WHERE ` + strings.Join(conditions, " AND ") + `
 		GROUP BY e.entity_id, k.code, name_av.original_value, alias_av.original_value
 		HAVING ` + strings.Join(havingClauses, " AND ") + `
-		ORDER BY COUNT(cl.link_id) DESC
-		LIMIT ` + limitParam
+		ORDER BY COUNT(cl.link_id) DESC, e.entity_id ASC
+		LIMIT ` + limitParam + ` OFFSET ` + offsetParam
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {

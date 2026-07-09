@@ -330,7 +330,14 @@ async def test_list_entities_forwards_status_filter(gc: GlossaryClient):
 async def test_list_entities_forwards_min_frequency(gc: GlossaryClient):
     """min_frequency must be sent as the `min_frequency` query param (the Go
     handler's chapter-appearance gate). Default is 2 (extraction-anchor semantics);
-    wiki overrides to 1 to include every entity on a low-chapter book."""
+    wiki overrides to 1 to include every entity on a low-chapter book.
+
+    This test used to assert `status=active` was always sent. That param never did
+    anything — the handler ignored it. Now that the handler honors it
+    (D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM), sending it by default would filter out
+    every DRAFT entity (both creation paths insert status='draft'), so the client
+    must send NO status unless a caller explicitly opts in.
+    """
     book_id = uuid4()
     captured: list[tuple[str, str]] = []
 
@@ -344,7 +351,7 @@ async def test_list_entities_forwards_min_frequency(gc: GlossaryClient):
         await gc.list_entities(book_id)  # default
         await gc.list_entities(book_id, min_frequency=1)  # wiki path
 
-    assert captured == [("active", "2"), ("active", "1")]
+    assert captured == [("", "2"), ("", "1")]
 
 
 @pytest.mark.asyncio
@@ -471,3 +478,98 @@ async def test_propose_merge_candidates_connection_error_returns_none(gc: Glossa
             book_id, candidates=[{"member_entity_ids": ["e1", "e2"]}]
         )
     assert out is None
+
+
+# ── D-ANCHOR-PRELOAD-50-CAP + D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM ──────────
+
+
+def _known_entities_url(book_id: str) -> str:
+    return f"http://glossary-service:8088/internal/books/{book_id}/known-entities"
+
+
+@pytest.mark.asyncio
+async def test_list_entities_omits_status_unless_asked(gc: GlossaryClient):
+    """The handler historically IGNORED `status`; now that it honors it, sending
+    `status=active` by default would filter out every draft entity (both creation
+    paths insert status='draft'). Default must send NO status param."""
+    book_id = uuid4()
+    with respx.mock() as mock:
+        route = mock.get(_known_entities_url(str(book_id))).respond(200, json=[])
+        await gc.list_entities(book_id)
+    assert "status" not in route.calls[0].request.url.params
+
+    with respx.mock() as mock:
+        route = mock.get(_known_entities_url(str(book_id))).respond(200, json=[])
+        await gc.list_entities(book_id, status_filter="active")
+    assert route.calls[0].request.url.params["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_list_entities_passes_offset_and_alive(gc: GlossaryClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        route = mock.get(_known_entities_url(str(book_id))).respond(200, json=[])
+        await gc.list_entities(
+            book_id, min_frequency=0, limit=500, offset=1000, include_dead=True,
+        )
+    params = route.calls[0].request.url.params
+    assert params["min_frequency"] == "0"
+    assert params["limit"] == "500"
+    assert params["offset"] == "1000"
+    assert params["alive"] == "false"  # handler: alive != "false" ⇒ require alive
+
+
+@pytest.mark.asyncio
+async def test_list_all_entities_pages_until_short_page(gc: GlossaryClient):
+    """Walks every page — the un-paged call silently stopped at the handler's
+    default limit of 50 (D-ANCHOR-PRELOAD-50-CAP)."""
+    book_id = uuid4()
+    page1 = [{"entity_id": f"e{i}", "name": f"N{i}"} for i in range(3)]
+    page2 = [{"entity_id": "e3", "name": "N3"}]  # short ⇒ last page
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(
+            side_effect=[
+                httpx.Response(200, json=page1),
+                httpx.Response(200, json=page2),
+            ]
+        )
+        rows, truncated = await gc.list_all_entities(book_id, page_size=3)
+    assert [r["entity_id"] for r in rows] == ["e0", "e1", "e2", "e3"]
+    assert truncated is False
+
+
+@pytest.mark.asyncio
+async def test_list_all_entities_reports_truncation_at_max_pages(gc: GlossaryClient):
+    """Hitting the runaway guard must REPORT truncation, never silently under-read."""
+    book_id = uuid4()
+    full = [{"entity_id": f"e{i}", "name": f"N{i}"} for i in range(2)]
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(
+            return_value=httpx.Response(200, json=full)
+        )
+        rows, truncated = await gc.list_all_entities(book_id, page_size=2, max_pages=2)
+    assert len(rows) == 4
+    assert truncated is True
+
+
+@pytest.mark.asyncio
+async def test_list_all_entities_first_page_failure_returns_none(gc: GlossaryClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).respond(503)
+        assert await gc.list_all_entities(book_id) is None
+
+
+@pytest.mark.asyncio
+async def test_list_all_entities_later_page_failure_is_honest_partial(gc: GlossaryClient):
+    """A mid-walk failure returns what we got with truncated=True — never a
+    silent short read presented as complete."""
+    book_id = uuid4()
+    page1 = [{"entity_id": f"e{i}", "name": f"N{i}"} for i in range(2)]
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(
+            side_effect=[httpx.Response(200, json=page1), httpx.Response(503)]
+        )
+        rows, truncated = await gc.list_all_entities(book_id, page_size=2)
+    assert len(rows) == 2
+    assert truncated is True

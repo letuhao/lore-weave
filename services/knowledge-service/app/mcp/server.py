@@ -337,14 +337,26 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
 
 
 async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
-    """Build a ToolContext, call execute_tool(), return a result dict.
+    """Build a ToolContext, call execute_tool(), return the result dict.
 
-    A tool-level failure (ToolResult.success=False) returns
-    ``{"success": False, "error": str}`` — FastMCP surfaces this as a
-    normal tool result, not an exception. An infrastructure exception
-    (Neo4j down, etc.) propagates so FastMCP reports it as a tool error
-    the client sees as a backend failure, mirroring the bespoke
-    /internal/tools/execute 503 contract.
+    A tool-level failure (ToolResult.success=False) RAISES ``ToolError`` so the
+    MCP result carries ``isError: true`` (D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR).
+    It used to return ``{"success": False, "error": ...}`` on an otherwise
+    *successful* tool result, which meant:
+      * ai-gateway's C4 normalizer (which triggers on isError / a throw) never
+        saw a knowledge tool failure, so it was never normalized; and
+      * any consumer branching on ``isError`` read a failed call as a success —
+        the silent-success bug class.
+
+    The error body is JSON — ``{"code"?, "message", "detail"?}`` — matching the
+    exact shape ai-gateway itself puts in ``content[0].text``
+    (``JSON.stringify({code, message})``), so a stable ``code`` (e.g.
+    ``KG_ENDPOINT_NOT_NODE``) and ``detail`` (``{"missing": [...]}``) survive to
+    the caller and a workflow can branch on them instead of parsing prose
+    (contract C4/C5). chat-service's ``knowledge_client.mcp_execute_tool``
+    decodes it back out of the isError branch.
+
+    An infrastructure exception (Neo4j down, etc.) still propagates as itself.
     """
     tool_ctx = _build_tool_context(ctx)
     result = await execute_tool(tool_ctx, tool_name, tool_args)
@@ -355,16 +367,13 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
         # knowledge_client.mcp_execute_tool). Coercing only on `is None`
         # (not `or`) stops silently swallowing a falsy-but-not-None payload.
         return result.result if result.result is not None else {}
-    # Structured tool error so the MCP client can inspect it without
-    # parsing free text. A stable `code` + `detail` (e.g. KG_ENDPOINT_NOT_NODE
-    # + {"missing": [...]}) ride alongside the message when the handler set them
-    # (contract C4/C5), so a workflow can branch on the code.
-    err: dict[str, Any] = {"success": False, "error": result.error}
+
+    err: dict[str, Any] = {"message": result.error or "tool error"}
     if result.code is not None:
         err["code"] = result.code
     if result.detail is not None:
         err["detail"] = result.detail
-    return err
+    raise ToolError(json.dumps(err, default=str))
 
 
 # ── Tool registrations ────────────────────────────────────────────────

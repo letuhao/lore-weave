@@ -1619,13 +1619,27 @@ async def _handle_kg_project_entities_to_nodes(
         "entities_seen": res.seen,
         "skipped": res.skipped,
     }
+    # Never report a PARTIAL projection as a complete one.
+    notes: list[str] = []
     if res.truncated:
-        # Never report a partial projection as a complete one (no silent caps).
         out["truncated"] = True
-        out["note"] = (
-            "the book has more entities than one projection pass can read; "
+        notes.append(
+            "the book has more entities than one projection pass could read; "
             "re-run with explicit entity_ids to project the remainder"
         )
+    if res.conflicted:
+        # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: Entity.glossary_entity_id carries a GLOBAL
+        # uniqueness constraint, so entities already anchored by this book's other
+        # knowledge project cannot be anchored again here. Say so plainly instead of
+        # silently returning a smaller nodes_created.
+        out["nodes_conflicted"] = res.conflicted
+        notes.append(
+            f"{res.conflicted} entit{'y' if res.conflicted == 1 else 'ies'} could not "
+            "be added because another knowledge project for this book already owns "
+            "them in the graph; query that project, or use it for this book's graph"
+        )
+    if notes:
+        out["note"] = " · ".join(notes)
     return out
 
 

@@ -24,6 +24,8 @@ import logging
 from dataclasses import dataclass, field
 from uuid import UUID
 
+from neo4j.exceptions import ConstraintError
+
 from app.clients.glossary_client import GlossaryClient
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.entities import (
@@ -63,9 +65,16 @@ async def load_glossary_anchors(
     user_id: str,
     project_id: str,
     book_id: UUID,
-    status_filter: str = "active",
+    status_filter: str | None = None,
 ) -> list[Anchor]:
-    """Upsert active glossary entries for `book_id` as canonical anchors.
+    """Upsert glossary entries for `book_id` as canonical anchors.
+
+    `status_filter` defaults to **None (no status filter)** — NOT "active". The
+    handler historically ignored the `status` query param entirely, so every caller
+    has always effectively received *all* statuses. Now that the param is honored
+    (D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM), defaulting to "active" here would have
+    silently stopped anchoring draft entities and made extraction mint duplicates
+    for them. Behavior is preserved; callers may now opt in to a real filter.
 
     Degradation model:
       - glossary_client returns None (circuit open / HTTP error) → log
@@ -80,16 +89,27 @@ async def load_glossary_anchors(
     Entries missing `entity_id` or `name` are skipped — they're
     unusable for anchoring.
     """
-    raw = await glossary_client.list_entities(
+    # D-ANCHOR-PRELOAD-50-CAP: this used to call list_entities() with no `limit`,
+    # inheriting the handler's silent default of 50 — so a book with 300 curated
+    # entities pre-loaded only 50 anchors and let the extractor mint DUPLICATE
+    # nodes for the other 250. Page the whole set instead.
+    page = await glossary_client.list_all_entities(
         book_id, status_filter=status_filter,
     )
-    if raw is None:
+    if page is None:
         logger.warning(
-            "K13.0: glossary list_entities failed for book=%s — "
+            "K13.0: glossary list_all_entities failed for book=%s — "
             "skipping anchor pre-load (extractor will mint-on-no-match)",
             book_id,
         )
         return []
+    raw, truncated = page
+    if truncated:
+        logger.warning(
+            "K13.0: anchor pre-load read was TRUNCATED for book=%s (%d rows) — "
+            "extraction may mint duplicates for the un-anchored remainder",
+            book_id, len(raw),
+        )
 
     anchors: list[Anchor] = []
     skipped_invalid = 0
@@ -142,13 +162,6 @@ async def load_glossary_anchors(
 # ── WS-4B: kg_project_entities_to_nodes ────────────────────────────────
 
 
-# The glossary known-entities handler caps `limit` at 500 (its own default is 50).
-# Ask for the cap so a whole-glossary projection isn't silently truncated at 50; if
-# we come back with exactly this many rows, more may exist and we say so (no silent
-# caps — the caller must never read "projected everything" when it didn't).
-PROJECTION_PAGE_LIMIT = 500
-
-
 @dataclass(frozen=True)
 class ProjectionResult:
     """Outcome of projecting glossary entities into graph nodes.
@@ -166,6 +179,14 @@ class ProjectionResult:
     seen: int = 0
     skipped: int = 0
     truncated: bool = False
+    # Entities that could NOT be anchored because some OTHER node already claims
+    # their `glossary_entity_id`. The Neo4j constraint `entity_glossary_id_unique`
+    # is GLOBAL (not scoped by user/project), so a second knowledge project over the
+    # same book cannot anchor entities the first one already anchored. Counted
+    # separately from `skipped` so the tool can explain the partial result instead of
+    # reporting "created N" as if it were the whole glossary
+    # (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE).
+    conflicted: int = 0
 
 
 async def project_glossary_entities_to_nodes(
@@ -192,7 +213,7 @@ async def project_glossary_entities_to_nodes(
     one bad row can't poison the batch.
     """
     rows, truncated = await _load_projection_rows(glossary_client, book_id, entity_ids)
-    created = existing = skipped = 0
+    created = existing = skipped = conflicted = 0
     for eid, name, kind, aliases in rows:
         try:
             _, was_created = await upsert_glossary_anchor_counted(
@@ -204,6 +225,19 @@ async def project_glossary_entities_to_nodes(
                 kind=kind,
                 aliases=aliases,
             )
+        except ConstraintError:
+            # `entity_glossary_id_unique` is a GLOBAL uniqueness constraint on
+            # Entity.glossary_entity_id, so another node (typically this book's
+            # FIRST knowledge project) already claims this entity's FK. Counted
+            # separately so the caller can say WHY the projection is partial rather
+            # than silently reporting a smaller `nodes_created`.
+            logger.warning(
+                "WS-4B: entity=%s already anchored by another node — cannot anchor "
+                "into project=%s (entity_glossary_id_unique is global)",
+                eid, project_id,
+            )
+            conflicted += 1
+            continue
         except Exception:
             logger.exception(
                 "WS-4B: project entity=%s failed for project=%s", eid, project_id,
@@ -217,12 +251,13 @@ async def project_glossary_entities_to_nodes(
 
     logger.info(
         "WS-4B: projection complete — book=%s project=%s seen=%d created=%d "
-        "existing=%d skipped=%d truncated=%s",
-        book_id, project_id, len(rows), created, existing, skipped, truncated,
+        "existing=%d conflicted=%d skipped=%d truncated=%s",
+        book_id, project_id, len(rows), created, existing, conflicted, skipped,
+        truncated,
     )
     return ProjectionResult(
         created=created, existing=existing, seen=len(rows), skipped=skipped,
-        truncated=truncated,
+        truncated=truncated, conflicted=conflicted,
     )
 
 
@@ -244,8 +279,8 @@ async def _load_projection_rows(
       * `include_dead=True` — the handler defaults to `alive=true`, and `alive` is a
         narrative dead/alive story flag, not a review status; a dead character is
         still a node whose connections we want.
-      * `limit=PROJECTION_PAGE_LIMIT` — the handler's default limit is 50, so a
-        larger glossary was silently truncated.
+      * paged reads (`list_all_entities`) — the handler's default limit is 50 and it
+        caps at 500, so a larger glossary was silently truncated (D-ANCHOR-PRELOAD-50-CAP).
     """
     out: list[tuple[str, str, str, list[str]]] = []
     if entity_ids:
@@ -263,19 +298,18 @@ async def _load_projection_rows(
             ))
         return out, False
 
-    raw = await glossary_client.list_entities(
+    page = await glossary_client.list_all_entities(
         book_id,
         min_frequency=0,
-        limit=PROJECTION_PAGE_LIMIT,
         include_dead=True,
     )
-    if raw is None:
+    if page is None:
         logger.warning(
-            "WS-4B: glossary list_entities failed for book=%s — nothing projected",
+            "WS-4B: glossary list_all_entities failed for book=%s — nothing projected",
             book_id,
         )
         return out, False
-    truncated = len(raw) >= PROJECTION_PAGE_LIMIT
+    raw, truncated = page
     for entry in raw:
         eid = entry.get("entity_id")
         name = entry.get("name")

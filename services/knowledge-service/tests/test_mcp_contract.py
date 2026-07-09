@@ -174,13 +174,20 @@ async def test_dispatch_success_returns_bare_payload_without_success_key(
 
 
 # ---------------------------------------------------------------------------
-# 3. Failure path returns {"success": False, "error": ...}
+# 3. Failure path RAISES ToolError (isError:true) with a C4-shaped JSON body
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_dispatch_failure_returns_success_false(
+async def test_dispatch_failure_raises_tool_error_with_c4_json(
     patched_resources: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """On failure, _dispatch returns the discriminating {"success": False} shape."""
+    """D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR — a tool failure RAISES ToolError so the
+    MCP result carries isError:true (ai-gateway's C4 normalizer only triggers on a
+    throw / isError). It used to RETURN {"success": False} on an otherwise
+    SUCCESSFUL tool result, so any consumer branching on isError read a failed call
+    as a success — the silent-success bug class."""
+    import json as _json
+
+    from mcp.server.fastmcp.exceptions import ToolError
 
     async def _fail_execute(
         context: ToolContext, tool_name: str, tool_args: dict[str, Any]
@@ -190,9 +197,38 @@ async def test_dispatch_failure_returns_success_false(
     monkeypatch.setattr(srv, "execute_tool", _fail_execute)
 
     fake_ctx = _FakeContext(_valid_headers())
-    result = await srv._dispatch(fake_ctx, "memory_search", {"query": "Kai"})
+    with pytest.raises(ToolError) as exc:
+        await srv._dispatch(fake_ctx, "memory_search", {"query": "Kai"})
+    assert _json.loads(str(exc.value)) == {"message": "boom"}
 
-    assert result == {"success": False, "error": "boom"}
+
+@pytest.mark.asyncio
+async def test_dispatch_failure_preserves_code_and_detail(
+    patched_resources: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Contract C5 — a stable domain code + detail must survive to the caller so a
+    workflow branches on KG_ENDPOINT_NOT_NODE instead of pattern-matching prose."""
+    import json as _json
+
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    async def _fail_execute(
+        context: ToolContext, tool_name: str, tool_args: dict[str, Any]
+    ) -> ToolResult:
+        return ToolResult(
+            success=False, result=None, error="endpoints are not nodes",
+            code="KG_ENDPOINT_NOT_NODE", detail={"missing": ["b"]},
+        )
+
+    monkeypatch.setattr(srv, "execute_tool", _fail_execute)
+
+    fake_ctx = _FakeContext(_valid_headers())
+    with pytest.raises(ToolError) as exc:
+        await srv._dispatch(fake_ctx, "kg_propose_edge", {})
+    body = _json.loads(str(exc.value))
+    assert body["code"] == "KG_ENDPOINT_NOT_NODE"
+    assert body["detail"] == {"missing": ["b"]}
+    assert body["message"] == "endpoints are not nodes"
 
 
 # ---------------------------------------------------------------------------
