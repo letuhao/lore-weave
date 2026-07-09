@@ -5,14 +5,24 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
+// withOpenRouterURL points the fetch at a test server AND resets the
+// in-memory catalog cache (both before the test body and after cleanup) — the
+// /review-impl MED#1 caching fix means a prior test's mock response would
+// otherwise leak into a later test via the shared package-level cache instead
+// of hitting that test's own httptest.Server.
 func withOpenRouterURL(t *testing.T, url string) {
 	t.Helper()
 	orig := OpenRouterModelsURL
 	OpenRouterModelsURL = url
-	t.Cleanup(func() { OpenRouterModelsURL = orig })
+	openRouterCache = openRouterCacheState{}
+	t.Cleanup(func() {
+		OpenRouterModelsURL = orig
+		openRouterCache = openRouterCacheState{}
+	})
 }
 
 func TestFetchOpenRouterPricing_FoundConvertsPerTokenToPerMTok(t *testing.T) {
@@ -134,6 +144,91 @@ func TestFetchOpenRouterPricing_NonNumericPriceStringDegradesSafe(t *testing.T) 
 	got := FetchOpenRouterPricing(context.Background(), ts.Client(), "openai", "gpt-4o")
 	if got.Found {
 		t.Fatalf("want Found=false when a price field can't be parsed as a number, got %+v", got)
+	}
+}
+
+// /review-impl MED#1 (2026-07-09): every "Check OpenRouter" click used to
+// re-fetch the ENTIRE catalog uncached — this proves the fix: a second call
+// within the TTL must NOT hit the network again.
+func TestFetchOpenRouterPricing_CachesAndAvoidsRepeatFetch(t *testing.T) {
+	calls := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"data":[{"id":"openai/gpt-4o","pricing":{"prompt":"0.0000025","completion":"0.00001"}}]}`))
+	}))
+	defer ts.Close()
+	withOpenRouterURL(t, ts.URL)
+
+	first := FetchOpenRouterPricing(context.Background(), ts.Client(), "openai", "gpt-4o")
+	second := FetchOpenRouterPricing(context.Background(), ts.Client(), "openai", "gpt-4o-mini")
+	if !first.Found {
+		t.Fatalf("want first call found, got %+v", first)
+	}
+	if calls != 1 {
+		t.Fatalf("want exactly 1 network call across 2 lookups within the TTL, got %d", calls)
+	}
+	// gpt-4o-mini isn't in this mock's catalog, but the cache was still reused
+	// (not a bug — just proves the SAME cached list served both lookups).
+	if second.Found {
+		t.Fatalf("want second lookup (absent from the mock catalog) to be not-found, got %+v", second)
+	}
+}
+
+// /review-impl MED#1: on a fetch failure, a previously-populated cache should
+// still serve (better than losing the feature over a transient hiccup) —
+// this must never surface as an error to the caller either way.
+func TestFetchOpenRouterPricing_ServesStaleCacheOnLaterFetchError(t *testing.T) {
+	failing := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"openai/gpt-4o","pricing":{"prompt":"0.0000025","completion":"0.00001"}}]}`))
+	}))
+	defer ts.Close()
+	withOpenRouterURL(t, ts.URL)
+
+	warm := FetchOpenRouterPricing(context.Background(), ts.Client(), "openai", "gpt-4o")
+	if !warm.Found {
+		t.Fatalf("want the warm-up call found, got %+v", warm)
+	}
+
+	failing = true
+	// Force a re-fetch attempt (bypassing the fresh-cache short-circuit) by
+	// expiring the cache directly — the TTL is 10 minutes, too long to wait in
+	// a unit test, and this test is specifically about the fetch-failure path.
+	openRouterCache.fetchedAt = openRouterCache.fetchedAt.Add(-2 * openRouterCacheTTL)
+
+	stale := FetchOpenRouterPricing(context.Background(), ts.Client(), "openai", "gpt-4o")
+	if !stale.Found {
+		t.Fatalf("want the stale cache to still serve found=true despite the upstream 500, got %+v", stale)
+	}
+}
+
+// /review-impl LOW#3 (2026-07-09): openRouterNamespace and defaultPriceTable
+// are two independently hand-maintained provider_kind lists with nothing else
+// tying them together. A future cloud provider_kind added to defaultPriceTable
+// without a matching openRouterNamespace entry would silently make "Check
+// OpenRouter" always return not-found for every model of that kind — this
+// test is the drift-catcher.
+func TestOpenRouterNamespace_CoversEveryDefaultPricingProviderKind(t *testing.T) {
+	seen := map[string]bool{}
+	for key := range defaultPriceTable {
+		kind, _, ok := strings.Cut(key, "\x00")
+		if !ok {
+			t.Fatalf("malformed defaultPriceTable key %q (expected providerKind\\x00modelName)", key)
+		}
+		seen[kind] = true
+	}
+	if len(seen) == 0 {
+		t.Fatal("defaultPriceTable is empty — this test can't prove anything; update it if the table was intentionally cleared")
+	}
+	for kind := range seen {
+		if _, ok := openRouterNamespace[kind]; !ok {
+			t.Errorf("provider_kind %q is priced in defaultPriceTable but has no openRouterNamespace mapping — "+
+				"the Check-OpenRouter suggestion button will silently always say \"not found\" for every model of this kind", kind)
+		}
 	}
 }
 
