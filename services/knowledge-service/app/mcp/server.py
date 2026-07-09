@@ -47,7 +47,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 
-from loreweave_mcp import patch_convert_result
+from loreweave_mcp import patch_convert_result, require_meta
 from pydantic import Field, ValidationError
 
 from app.clients.book_client import get_book_client
@@ -384,6 +384,10 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
         "match; granularity=block drills into the matching passages with "
         "snippets. Follow up with book_get_chapter to read."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="story_search",
+    ),
 )
 async def story_search(
     ctx: MCPContext,
@@ -423,6 +427,10 @@ async def story_search(
         "relevant snippets. (For locating/reading manuscript prose specifically, "
         "`story_search` is the primary find tool.)"
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="memory_search",
+    ),
 )
 async def memory_search(
     ctx: MCPContext,
@@ -457,6 +465,10 @@ async def memory_search(
         "to other entities. Use this when the user asks about a named thing "
         "and you need what memory holds on it."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="memory_recall_entity",
+    ),
 )
 async def memory_recall_entity(
     ctx: MCPContext,
@@ -475,6 +487,10 @@ async def memory_recall_entity(
         "Retrieve narrative events in order for the current project, "
         "optionally filtered by a date range or by an entity that took part. "
         "Use this to answer 'what happened' or 'when did' questions."
+    ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="memory_timeline",
     ),
 )
 async def memory_timeline(
@@ -521,6 +537,10 @@ async def memory_timeline(
         "confirmed. Stored facts are recorded at low confidence and tagged "
         "as assistant-created so the user can review them."
     ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="memory_remember",
+    ),
 )
 async def memory_remember(
     ctx: MCPContext,
@@ -546,6 +566,10 @@ async def memory_remember(
         "appears in memory. Only use a fact_id you have seen in an earlier "
         "tool result."
     ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="memory_forget",
+    ),
 )
 async def memory_forget(
     ctx: MCPContext,
@@ -570,6 +594,10 @@ async def memory_forget(
         "project (book_id set) can only be created by the book's owner; omit "
         "book_id for a personal project. Idempotent per book. Returns the "
         "project_id — use it as the active project for subsequent KG tools."
+    ),
+    meta=require_meta(
+        "A", "user",
+        tool_name="kg_project_create",
     ),
 )
 async def kg_project_create(
@@ -602,6 +630,10 @@ async def kg_project_create(
         "List YOUR OWN knowledge projects (id, name, type, linked book). Use this "
         "to find the `project_id` to pass to a project-scoped kg_* tool when no "
         "project is in scope. Owner-scoped: only the caller's projects are returned."
+    ),
+    meta=require_meta(
+        "R", "user",
+        tool_name="kg_project_list",
     ),
 )
 async def kg_project_list(
@@ -637,6 +669,10 @@ async def kg_project_list(
         "optionally narrowed to a named view (lens) and to a point in the "
         "story via a chapter ordinal. Use this to see who relates to whom as "
         "of a given chapter. Returns nodes, edges, and any warnings."
+    ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_graph_query",
     ),
 )
 async def kg_graph_query(
@@ -678,6 +714,10 @@ async def kg_graph_query(
         "relationships), not one project at a time. Owner-only: partitions owned by "
         "others are skipped and reported in partitions_unreadable."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_world_query",
+    ),
 )
 async def kg_world_query(
     ctx: MCPContext,
@@ -714,6 +754,10 @@ async def kg_world_query(
         "or load two unrelated books at once. Unlike kg_world_query (a whole world), "
         "you name the exact project_ids. Owner-only: ids you don't own are skipped and "
         "reported in partitions_unreadable (the result also carries partitions_read)."
+    ),
+    meta=require_meta(
+        "R", "user",
+        tool_name="kg_multi_query",
     ),
 )
 async def kg_multi_query(
@@ -752,6 +796,10 @@ async def kg_multi_query(
         "edge-type code seen in an earlier graph result. Returns the full arc, "
         "including closed (superseded) instances."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_entity_edge_timeline",
+    ),
 )
 async def kg_entity_edge_timeline(
     ctx: MCPContext,
@@ -781,6 +829,10 @@ async def kg_entity_edge_timeline(
         "kinds. Use this to learn what relationship and fact codes are valid "
         "before proposing an edge or fact."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_schema_read",
+    ),
 )
 async def kg_schema_read(
     ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
@@ -797,6 +849,10 @@ async def kg_schema_read(
         "List the graph-schema templates available to adopt — the system "
         "(built-in) templates and the caller's own user templates. Use this to "
         "discover what ontologies a project could be based on."
+    ),
+    meta=require_meta(
+        "R", "user",
+        tool_name="kg_list_templates",
     ),
 )
 async def kg_list_templates(
@@ -831,6 +887,10 @@ async def kg_list_templates(
         "template updates available to pull (a tree-granular diff). Read-only: "
         "reports what changed; it does NOT apply anything."
     ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_sync_available",
+    ),
 )
 async def kg_sync_available(
     ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
@@ -846,6 +906,10 @@ async def kg_sync_available(
     description=(
         "List the caller's saved views (named lenses of edge/node kinds) for "
         "the current project. Views are per-user — you only ever see your own."
+    ),
+    meta=require_meta(
+        "R", "user",
+        tool_name="kg_view_read",
     ),
 )
 async def kg_view_read(
@@ -863,6 +927,10 @@ async def kg_view_read(
         "List the project's triage queue — extracted graph elements that did "
         "not match the schema and are parked for human review — grouped by "
         "signature with a count and a suggested-action list."
+    ),
+    meta=require_meta(
+        "R", "project",
+        tool_name="kg_triage_list",
     ),
 )
 async def kg_triage_list(
@@ -893,6 +961,10 @@ async def kg_triage_list(
         "the graph immediately). Use for durable, important facts the user "
         "stated or confirmed."
     ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_propose_fact",
+    ),
 )
 async def kg_propose_fact(
     ctx: MCPContext,
@@ -918,6 +990,10 @@ async def kg_propose_fact(
         "triage inbox — it is NEVER written to the graph directly. If the edge "
         "type is temporal you MUST supply valid_from (the chapter ordinal it "
         "began); otherwise the proposal is rejected."
+    ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_propose_edge",
     ),
 )
 async def kg_propose_edge(
@@ -973,6 +1049,10 @@ async def kg_propose_edge(
         "proposing edges between entities (an edge needs both endpoints to be "
         "nodes first)."
     ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_project_entities_to_nodes",
+    ),
 )
 async def kg_project_entities_to_nodes(
     ctx: MCPContext,
@@ -997,6 +1077,10 @@ async def kg_project_entities_to_nodes(
         "Create or replace one of the caller's saved views (a named lens of "
         "edge-type + node-kind codes) for the current project. Owner-scoped: "
         "only ever touches your own view."
+    ),
+    meta=require_meta(
+        "A", "user",
+        tool_name="kg_view_upsert",
     ),
 )
 async def kg_view_upsert(
@@ -1030,6 +1114,10 @@ async def kg_view_upsert(
         "Delete one of the caller's saved views by code for the current "
         "project. Owner-scoped and reversible (recreate with kg_view_upsert)."
     ),
+    meta=require_meta(
+        "A", "user",
+        tool_name="kg_view_delete",
+    ),
 )
 async def kg_view_delete(
     ctx: MCPContext,
@@ -1050,6 +1138,10 @@ async def kg_view_delete(
         "Schema-changing actions (add to vocab/schema, widen, promote to "
         "glossary) are NOT available here — those need explicit human "
         "confirmation via the review surface."
+    ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_triage_resolve",
     ),
 )
 async def kg_triage_resolve(
@@ -1084,6 +1176,10 @@ async def kg_triage_resolve(
         "confirm_token and a summary; a human must confirm it on the review "
         "surface. Requires the project to have adopted its own ontology first."
     ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_schema_edit",
+    ),
 )
 async def kg_schema_edit(
     ctx: MCPContext,
@@ -1116,6 +1212,10 @@ async def kg_schema_edit(
         "confirm_token and a summary, and a human confirms on the review "
         "surface. Pick a source_schema_id from kg_list_templates."
     ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_adopt_template",
+    ),
 )
 async def kg_adopt_template(
     ctx: MCPContext,
@@ -1138,6 +1238,10 @@ async def kg_adopt_template(
         "with kg_sync_available first). High-impact (overwrites/deprecates rows "
         "+ bumps the schema version), so it returns a confirm_token and summary; "
         "a human confirms on the review surface."
+    ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_sync_apply",
     ),
 )
 async def kg_sync_apply(
@@ -1171,6 +1275,10 @@ async def kg_sync_apply(
         "real edge), so it does NOT apply immediately — it returns a "
         "confirm_token and a summary; a human confirms on the review surface."
     ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_triage_place_edge",
+    ),
 )
 async def kg_triage_place_edge(
     ctx: MCPContext,
@@ -1195,6 +1303,10 @@ async def kg_triage_place_edge(
         "changes the project ontology and bumps the schema version, so it does "
         "NOT apply immediately — it returns a confirm_token and a summary; a "
         "human confirms on the review surface."
+    ),
+    meta=require_meta(
+        "W", "project",
+        tool_name="kg_triage_schema_write",
     ),
 )
 async def kg_triage_schema_write(
@@ -1248,6 +1360,11 @@ async def kg_triage_schema_write(
         "an embedding model configured (run extraction setup once in the UI first). Pick "
         "the extraction llm_model from settings_list_models."
     ),
+    meta=require_meta(
+        "W", "project",
+        async_job=True,
+        tool_name="kg_build_graph",
+    ),
 )
 async def kg_build_graph(
     ctx: MCPContext,
@@ -1297,6 +1414,11 @@ async def kg_build_graph(
         "book's glossary entities (extract the glossary first); pick the model_ref from "
         "settings_list_models."
     ),
+    meta=require_meta(
+        "W", "project",
+        async_job=True,
+        tool_name="kg_build_wiki",
+    ),
 )
 async def kg_build_wiki(
     ctx: MCPContext,
@@ -1336,6 +1458,10 @@ async def kg_build_wiki(
         "build preview warns the benchmark is not passing, instead of sending the user to "
         "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
         "sandbox. Returns passed + gate_failures; a pass enables Build-KG for this model."
+    ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_run_benchmark",
     ),
 )
 async def kg_run_benchmark(

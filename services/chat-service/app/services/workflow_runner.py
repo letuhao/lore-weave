@@ -30,20 +30,19 @@ WORKFLOW_LOAD_NAME = "workflow_load"
 # The closed set of per-step gates (mirrors the registry's validWorkflowGates / C3).
 VALID_GATES = ("none", "confirm", "approval")
 
-# Structural async-honesty guard (FALLBACK). The AUTHORITATIVE signal is a step's
-# authored `async_job` boolean (honored in _rail_step); this name-heuristic only fires
-# for steps that DON'T carry it, so a new async tool the author marked is always honored
-# even if the list below doesn't know its name. Substring-based + conservative; the
-# annotation only ADDS a "watch the job" hint, never blocks. Verbs are chosen to avoid
-# matching common READ tools ("media" was dropped — it hits media_list/get_media/…, and a
-# read has no job to watch, which would strand the agent on ui_watch_job).
+# Structural async-honesty guard — the LAST-RESORT fallback. Precedence (see _rail_step):
+#   1. the step's authored `async_job` boolean,
+#   2. the CATALOG's `_meta.async` flag (every LoreWeave async tool now declares it),
+#   3. this name heuristic — only for a tool that carries neither.
+# Substring-based + conservative; the annotation only ADDS a "watch the job" hint, never
+# blocks. Verbs avoid matching common READ tools ("media" was dropped — it hits
+# media_list/get_media/…, and a read has no job to watch, which would strand the agent
+# on ui_watch_job). kg_build_* no longer need a verb: knowledge-service declares
+# `_meta.async` on them (D-KNOWLEDGE-META-ADOPTION cleared).
 _ASYNC_JOB_VERBS = (
     "translat",  # translation_* / retranslate_* (job starters)
     "generate_wiki",
     "wiki_generate",
-    "build_wiki",
-    "build_graph",  # interim: kg_build_graph/kg_build_wiki carry no _meta yet
-    "kg_build",
     "extract_entities",
     "start_extraction",
     "bulk_extract",

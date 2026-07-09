@@ -143,6 +143,48 @@ async def test_mcp_tools_list_each_tool_has_name_and_description(mcp_base_url):
         assert tool.description, f"tool {tool.name!r} is missing a description"
 
 
+async def test_mcp_tools_list_every_tool_declares_meta_tier_and_scope(mcp_base_url):
+    """C-TOOL / D-KNOWLEDGE-META-ADOPTION regression gate.
+
+    Every tool MUST declare `_meta.tier` + `_meta.scope`. This is load-bearing: a
+    consumer reads `_meta.tier` to gate execution, and an ABSENT tier silently
+    defaults to "R" (read/inert) — which once let every knowledge WRITE tool
+    (kg_view_delete, memory_forget, kg_schema_edit, kg_sync_apply, …) run in
+    read-only *ask* mode and skip the Tier-A approval card. A new untiered tool
+    must fail here rather than reintroduce that hole.
+    """
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    assert listing.tools, "tools/list returned an empty tool list"
+    for tool in listing.tools:
+        meta = getattr(tool, "meta", None)
+        assert isinstance(meta, dict) and meta, f"tool {tool.name!r} carries no _meta"
+        assert meta.get("tier") in ("R", "A", "W", "S"), (
+            f"tool {tool.name!r} has an invalid/absent _meta.tier {meta.get('tier')!r} — "
+            "an absent tier silently defaults to R (inert) and un-gates a write"
+        )
+        assert meta.get("scope") in ("book", "project", "user", "none"), (
+            f"tool {tool.name!r} has an invalid/absent _meta.scope {meta.get('scope')!r}"
+        )
+
+
+async def test_mcp_tools_list_async_job_tools_declare_meta_async(mcp_base_url):
+    """The two job-STARTING tools carry `_meta.async` so the workflow step-runner
+    annotates them without a tool-name heuristic (async-honesty, OQ9/F7). Both are
+    also Tier-W: they return a confirm_token and the job starts only after a human
+    confirms — so "called" never means "done"."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: (getattr(t, "meta", None) or {}) for t in listing.tools}
+    for name in ("kg_build_graph", "kg_build_wiki"):
+        assert by_name[name].get("async") is True, f"{name} must declare _meta.async"
+        assert by_name[name].get("tier") == "W", f"{name} must be Tier-W (confirm_token)"
+    # a read tool must NOT be flagged async
+    assert "async" not in by_name["memory_search"]
+
+
 async def test_mcp_tools_list_exposes_no_scope_args(mcp_base_url):
     """Design D3 / INV-K2 (H-I-amended) — user_id / session_id are NEVER tool
     parameters (identity arrives via context headers); the injected FastMCP ctx
