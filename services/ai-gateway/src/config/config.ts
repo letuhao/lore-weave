@@ -111,6 +111,12 @@ export const EXTRA_PREFIX_MAP: Record<string, string[]> = {
   knowledge: ['kg_', 'story_'],
   // PlanForge MCP tools (composition-service) — federated alongside composition_*
   composition: ['plan_'],
+  // `web_` is provider-registry's ("settings") SECOND namespace: the universal `web_search`
+  // tool (Track D CD5). provider-registry OWNS the outward web-search call
+  // (`/internal/web-search`, provider-gateway invariant), so it hosts the tool — but the
+  // tool is universal and therefore carries NO service prefix. Without `web_` here the C-GW
+  // gate would silently drop it, exactly as it once dropped `story_search` (see above).
+  settings: ['web_'],
 };
 
 /** Back-compat default registry: P0 knowledge + P1 glossary. */

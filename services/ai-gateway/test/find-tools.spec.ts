@@ -206,7 +206,7 @@ describe('GROUP_DIRECTORY (Part A, TS mirror)', () => {
     // (or a description edited on only one side) fails here.
     expect(Object.keys(GROUP_DIRECTORY).sort()).toEqual([
       'book', 'catalog', 'composition', 'glossary', 'jobs',
-      'knowledge', 'plan', 'registry', 'settings', 'story', 'translation',
+      'knowledge', 'plan', 'registry', 'research', 'settings', 'story', 'translation',
     ]);
   });
 
@@ -492,5 +492,27 @@ describe('findToolsResult — repeat-attempt note reshaping (design item 1)', ()
   it('a down-provider note is unaffected by repeat status (transient, retry IS still appropriate)', () => {
     const { payload } = findToolsResult(CAT, 'xyzzy frobnicate', 8, new Set(), ['book'], null, true);
     expect(String(payload.note)).toMatch(/temporarily unavailable/i);
+  });
+});
+
+describe('Track D Wave 0 — `research` category + the C-GW prefix gate', () => {
+  const CAT_WEB = [
+    ...CATALOG,
+    { name: 'web_search', description: 'Search the open web for background facts' },
+  ];
+
+  it('`research` is a GROUP_DIRECTORY domain (lockstep with tool_discovery.py)', () => {
+    expect(GROUP_DIRECTORY.research).toBeDefined();
+  });
+
+  it('web_search enumerates under `research`, NOT `knowledge` (external vs internal KG)', () => {
+    // domainOf() is prefix-derived: prefix `web` → alias → `research`.
+    expect(enumerateGroup(CAT_WEB, 'research').map((t) => t.name)).toContain('web_search');
+    expect(enumerateGroup(CAT_WEB, 'knowledge').map((t) => t.name)).not.toContain('web_search');
+  });
+
+  it('find_tools group enum exposes `research`', () => {
+    const props = FIND_TOOLS_TOOL.inputSchema.properties as { group: { enum: string[] } };
+    expect(props.group.enum).toContain('research');
   });
 });

@@ -73,6 +73,9 @@ GROUP_DIRECTORY: dict[str, str] = {
     "catalog": "Public catalog browsing (published books, discovery).",
     "registry": "Agent/tool registry administration.",
     "settings": "User/account settings and provider-model configuration.",
+    # Track D CD5/C1: EXTERNAL retrieval (`web_search`, prefix `web_` → alias below).
+    # Deliberately NOT folded into `knowledge`, which is the INTERNAL knowledge graph.
+    "research": "External web research — search the open web for background facts (web_search). PAID.",
     # PlanForge tools federate under their own `plan_` prefix (composition-service's M4
     # federation contract), NOT `composition_` — a separate group so group="plan" actually
     # surfaces them (they used to be mis-claimed under "composition" above, which the
@@ -390,6 +393,16 @@ def tool_async(tool_def: dict) -> bool:
     return bool(tool_meta(tool_def).get("async"))
 
 
+def tool_paid(tool_def: dict) -> bool:
+    """Track D CD1 `_meta.paid` — True when CALLING this tool spends real money.
+
+    ORTHOGONAL to `tier`: spend governs money, tier governs mutation. A paid READ
+    (e.g. `web_search`) stays tier "R" and remains callable in `ask` mode, but must
+    clear the SPEND gate. Never coerce a paid tool to tier A/W just because it costs.
+    Absent ⇒ False (a tool that doesn't declare a cost is assumed free)."""
+    return bool(tool_meta(tool_def).get("paid"))
+
+
 # CAT-4 (mcp-tool-io.md Part 4) — a superseded tool is tagged `_meta.visibility:
 # "legacy"` rather than deleted, so any existing caller keeps working. A legacy
 # tool must never be discoverable: excluded from search_catalog() and from every
@@ -606,7 +619,14 @@ def _provider_prefix(name: str) -> str:
 # WS-0 (contracts.md C1): `lore_enrichment_auto_enrich` (prefix `lore`) is the one orphan tool with
 # no GROUP_DIRECTORY home — fold it into `glossary` (lore-enrichment is entity-enrichment, glossary's
 # derived layer) rather than mint a new category. Keep in lockstep with ai-gateway's DOMAIN_ALIASES.
-_DOMAIN_ALIASES: dict[str, str] = {"kg": "knowledge", "memory": "knowledge", "lore": "glossary"}
+# Track D: `web_search` (prefix `web`) → the `research` group (EXTERNAL retrieval, not the
+# internal KG). Keep in lockstep with ai-gateway's DOMAIN_ALIASES.
+_DOMAIN_ALIASES: dict[str, str] = {
+    "kg": "knowledge",
+    "memory": "knowledge",
+    "lore": "glossary",
+    "web": "research",
+}
 
 
 def _domain_of(name: str) -> str:

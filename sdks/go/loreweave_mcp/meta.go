@@ -21,6 +21,10 @@ const (
 	MetaKeySynonyms   = "synonyms"   // optional alias terms feeding find_tools (H6)
 	MetaKeyVisibility = "visibility" // discoverable|legacy — CAT-4 (mcp-tool-io.md Part 4)
 	MetaKeyAsync      = "async"      // true ⇒ tool STARTS a background job (async-honesty)
+	MetaKeyPaid       = "paid"       // true ⇒ calling it SPENDS real money (Track D CD1)
+	// MetaKeySupersededBy — the tool that replaces a `legacy` one. Consumers already
+	// read it (`tool_list`/`tool_load` label it); until now NOTHING produced it.
+	MetaKeySupersededBy = "superseded_by"
 )
 
 // Visibility is the CAT-4 catalog-hygiene enum. Absent (zero value) reads as
@@ -57,6 +61,33 @@ func WithVisibility(m mcp.Meta, v Visibility) mcp.Meta {
 //	Meta: lwmcp.WithAsync(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil))
 func WithAsync(m mcp.Meta) mcp.Meta {
 	m[MetaKeyAsync] = true
+	return m
+}
+
+// WithPaid returns a copy of m with _meta.paid=true — calling this tool SPENDS REAL
+// MONEY (an outward paid API, or LLM/embedding tokens). Track D CD1.
+//
+// `paid` is ORTHOGONAL to `tier`: spend governs money, tier governs mutation. A PAID
+// READ (e.g. web search) is legitimate — it stays tier R and remains callable in `ask`
+// mode — but it must clear a SPEND gate, never a write gate. Do NOT coerce a tool to
+// tier A/W merely because it costs money.
+//
+//	Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, nil))
+func WithPaid(m mcp.Meta) mcp.Meta {
+	m[MetaKeyPaid] = true
+	return m
+}
+
+// WithSupersededBy returns a copy of m with _meta.superseded_by set — names the tool
+// that REPLACES this one. Pair it with WithVisibility(..., VisibilityLegacy) when a tool
+// is renamed: the old name keeps working (deprecate, never delete — CAT-4) and both
+// `tool_list` and `tool_load` label it with its replacement so an agent migrates itself.
+//
+//	Meta: lwmcp.WithSupersededBy(
+//	        lwmcp.WithVisibility(lwmcp.NewToolMeta(...), lwmcp.VisibilityLegacy),
+//	        "web_search")
+func WithSupersededBy(m mcp.Meta, tool string) mcp.Meta {
+	m[MetaKeySupersededBy] = tool
 	return m
 }
 

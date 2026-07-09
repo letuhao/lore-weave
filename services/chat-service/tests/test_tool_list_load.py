@@ -47,6 +47,40 @@ class TestLoreAlias:
         assert "lore_enrichment_auto_enrich" in names
 
 
+class TestResearchCategoryAndPaid:
+    """Track D Wave 0 (CD1 + CD5 / C1 += research)."""
+
+    _WEB = _tool("web_search", "Search the open web", tier="R")
+
+    def test_web_prefix_folds_into_research(self):
+        # `web_search` has prefix "web" — it must resolve to the `research` domain,
+        # NOT `knowledge` (that is the INTERNAL KG; web search is EXTERNAL retrieval).
+        assert td._domain_of("web_search") == "research"
+
+    def test_research_is_in_the_closed_category_enum(self):
+        assert "research" in td.CATEGORY_ENUM
+        assert "research" in td.GROUP_DIRECTORY
+
+    def test_web_search_lists_under_research_not_knowledge(self):
+        cat = [*CAT, self._WEB]
+        assert "web_search" in [t["name"] for t in td.tool_list_result(cat, "research")["tools"]]
+        assert "web_search" not in [t["name"] for t in td.tool_list_result(cat, "knowledge")["tools"]]
+
+    def test_tool_paid_reads_meta_paid(self):
+        # absent ⇒ free (a tool that doesn't declare a cost is assumed free)
+        assert td.tool_paid(self._WEB) is False
+        paid = _tool("web_search", tier="R")
+        paid["function"]["_meta"]["paid"] = True
+        assert td.tool_paid(paid) is True
+
+    def test_paid_is_orthogonal_to_tier(self):
+        # CD1: a PAID READ stays tier R — spend governs money, tier governs mutation.
+        paid = _tool("web_search", tier="R")
+        paid["function"]["_meta"]["paid"] = True
+        assert td.tool_paid(paid) is True
+        assert td.tool_tier(paid) == "R"
+
+
 class TestVisibleTools:
     def test_labels_legacy_not_drops(self):
         vt = {t["name"]: t for t in td.visible_tools(CAT, "glossary")}

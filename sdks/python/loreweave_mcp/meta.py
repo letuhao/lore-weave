@@ -84,6 +84,7 @@ def require_meta(
     undo_hint: dict[str, Any] | None = None,
     synonyms: list[str] | None = None,
     async_job: bool = False,
+    paid: bool = False,
     tool_name: str = "",
 ) -> dict[str, Any]:
     """Build a validated ``_meta`` dict, ready to pass as the ``meta=`` argument
@@ -93,6 +94,12 @@ def require_meta(
     ``async_job=True`` marks a tool that STARTS a background job (queued; not done
     when the call returns) — the durable async-honesty signal a consumer (the
     workflow step-runner) reads from the catalog instead of guessing from the name.
+
+    ``paid=True`` marks a tool whose call SPENDS REAL MONEY (Track D CD1). It is
+    ORTHOGONAL to ``tier``: spend governs money, tier governs mutation. A paid READ
+    (e.g. web search) stays tier ``R`` and remains callable in ``ask`` mode, but must
+    clear a SPEND gate — never a write gate. Do not coerce a tool to ``A``/``W``
+    merely because it costs money.
     """
     meta: dict[str, Any] = {"tier": tier, "scope": scope}
     if undo_hint is not None:
@@ -101,5 +108,7 @@ def require_meta(
         meta["synonyms"] = synonyms
     if async_job:
         meta["async"] = True
+    if paid:
+        meta["paid"] = True
     validate_tool_meta(meta, tool_name=tool_name)
     return meta

@@ -46,7 +46,13 @@ export type Domain =
   // Tier-R/Tier-A tools registered in services/agent-registry-service/internal/api/mcp_server.go,
   // but had NO Domain member and NO TOOL_POLICY entries — the exact same incomplete-rollout
   // shape as the `story` gap above. Confirmed an omission, not intentional gating.
-  | 'registry';
+  | 'registry'
+  // `research` — EXTERNAL web retrieval. Added 2026-07-09 (Track D CD5 / C1 change).
+  // Deliberately NOT `knowledge` (that is the INTERNAL knowledge graph). Home of the
+  // universal `web_search` tool, renamed out of the `glossary_` prefix. NOTE: existing
+  // public keys keep working through the retained `glossary_web_search` legacy row
+  // (domains: ['glossary']); reaching the NEW name requires a `domain:research` scope.
+  | 'research';
 
 export interface ToolPolicy {
   tier: Tier;

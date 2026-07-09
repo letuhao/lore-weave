@@ -38,6 +38,9 @@ export const GROUP_DIRECTORY: Readonly<Record<string, string>> = {
   catalog: 'Public catalog browsing (published books, discovery).',
   registry: 'Agent/tool registry administration.',
   settings: 'User/account settings and provider-model configuration.',
+  // Track D CD5/C1: EXTERNAL retrieval (`web_search`, prefix `web_` → alias below).
+  // Deliberately NOT folded into `knowledge`, which is the INTERNAL knowledge graph.
+  research: 'External web research — search the open web for background facts (web_search). PAID.',
   // PlanForge tools federate under their own `plan_` prefix (composition-service's M4
   // federation contract), NOT `composition_` — mirrors chat-service's tool_discovery.py.
   plan: 'Novel planning workflow — PlanForge propose/refine/validate/compile (plan_propose_spec, plan_self_check, plan_interpret_feedback, plan_apply_revision, plan_review_checkpoint, plan_handoff_autofix, plan_validate, plan_compile).',
@@ -212,7 +215,13 @@ function providerPrefix(name: string): string {
  * equals the domain name "knowledge". Keep in lockstep with the Python side. */
 // WS-0 (contracts.md C1): `lore_enrichment_auto_enrich` (prefix `lore`) — the one orphan tool with no
 // GROUP_DIRECTORY home — folds into `glossary`. Keep in lockstep with tool_discovery.py `_DOMAIN_ALIASES`.
-const DOMAIN_ALIASES: Readonly<Record<string, string>> = { kg: 'knowledge', memory: 'knowledge', lore: 'glossary' };
+// Track D: `web_search` (prefix `web`) → the `research` group (EXTERNAL retrieval, not the internal KG).
+const DOMAIN_ALIASES: Readonly<Record<string, string>> = {
+  kg: 'knowledge',
+  memory: 'knowledge',
+  lore: 'glossary',
+  web: 'research',
+};
 
 function domainOf(name: string): string {
   const prefix = providerPrefix(name);
