@@ -12,7 +12,7 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 
 | Track | Session/branch | Milestone in flight | Status |
 |---|---|---|---|
-| **A · Mechanism spine** ([brief](TRACK-A.md)) | *this session* | WS-0 ✅ · **WS-1a ✅ (`de464522d`)** · **WS-1b ✅ (`f11e69d6a`)** · +3 live-fixes · **ROOT-CAUSE FIX: LM Studio /v1/responses batches tool-args into `.done` (no `.delta`) → args dropped every stateful turn; fixed `e008416f0`, live-smoked** (this was the real "weak model can't add entities" cause, not discovery). **WS-2a ✅ (`e1cfbd0f2` — workflows table + C3 authoring + HITL)** · **WS-2b ✅ (`7a70a8b1a` — step-runner rail + workflow_list/load + async guard)**. **N1 + N2 met** (migration + internal reader + client→runner seam live-verified). Next: WS-2 full chat-turn E2E (needs chat-svc rebuild) + Gateway cross-cutting (C4) | 🔄 |
+| **A · Mechanism spine** ([brief](TRACK-A.md)) | *this session* | WS-0 ✅ · **WS-1a ✅ (`de464522d`)** · **WS-1b ✅ (`f11e69d6a`)** · +3 live-fixes · **ROOT-CAUSE FIX: LM Studio /v1/responses batches tool-args into `.done` (no `.delta`) → args dropped every stateful turn; fixed `e008416f0`, live-smoked** (this was the real "weak model can't add entities" cause, not discovery). **WS-2a ✅ (`e1cfbd0f2` — workflows table + C3 authoring + HITL)** · **WS-2b ✅ (`7a70a8b1a` — step-runner rail + workflow_list/load + async guard)**. **N1 + N2 met + FULL CHAT-TURN E2E PASSED** (live gemma: workflow_list→workflow_load→rail presented w/ gates+async flags). Next: Gateway cross-cutting (C4 error envelope) + WS-6 | 🔄 |
 | **B · Domain backend** ([brief](TRACK-B.md)) | *this session* | WS-4A ✅ · rename ✅ · WS-4B ✅ · WS-4C Half B ✅ (facts→L2); Half A deferred `D-WS4C-HALFA` (needs 1 spawn line in A's `stream_service.py`) · domain fixes next | 🔄 |
 | **C · User-facing/catalog** ([brief](TRACK-C.md)) | — | WS-3 / WS-5 / WS-7 | ⬜ |
 
@@ -21,7 +21,7 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 | Node | Gate (all must be true) | Status |
 |---|---|---|
 | **N1** — after A's WS-1 | `tool_list`/`tool_load` + C1 enum + activation live → B's tools discoverable, C's UI binds real enum | ✅ |
-| **N2** — after A's WS-2 | C3 `steps` schema + step-runner live → C's authored workflows run; async guard active | ✅ (migration + `/internal/workflows` + client→runner seam live-verified; full chat-turn E2E pending chat-svc rebuild) |
+| **N2** — after A's WS-2 | C3 `steps` schema + step-runner live → C's authored workflows run; async guard active | ✅ **FULL E2E** — live gemma-4-26b turn: workflow_list→workflow_load→step tools activated→presented rail w/ correct confirm/approval + async-job flags (also re-confirms the /v1/responses arg fix) |
 | **N3** — before flagship | A(mechanism) + B(features) + C(catalog+UI) present → run flagship S06 live-test (go/no-go) | ⬜ |
 
 ## Shared-file watch (chat-service — 3 tracks, disjoint files)
