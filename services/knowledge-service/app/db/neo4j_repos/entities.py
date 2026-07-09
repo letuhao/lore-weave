@@ -457,9 +457,17 @@ async def merge_entity_at_id(
 # ── upsert_glossary_anchor ────────────────────────────────────────────
 
 
+# `__was_created` is a TRANSIENT create-vs-match marker: ON CREATE sets it true,
+# it is read into the `was_created` return column, then REMOVEd in the same
+# statement so it never persists on the node. This is how the counted projection
+# (kg_project_entities_to_nodes / WS-4B) reports {nodes_created, nodes_existing}
+# without a fragile created_at==updated_at heuristic. ON MATCH never sets it, so
+# `coalesce(e.__was_created, false)` is false on an existing node. Existing callers
+# that read only `record["e"]` are unaffected by the extra return column.
 _UPSERT_ANCHOR_CYPHER = """
 MERGE (e:Entity {id: $id})
 ON CREATE SET
+  e.__was_created = true,
   e.user_id = $user_id,
   e.project_id = $project_id,
   e.name = $name,
@@ -485,9 +493,11 @@ ON MATCH SET
   e.anchor_score = 1.0,
   e.archived_at = NULL,
   e.updated_at = datetime()
-WITH e
+WITH e, coalesce(e.__was_created, false) AS was_created
+REMOVE e.__was_created
+WITH e, was_created
 WHERE e.user_id = $user_id
-RETURN e
+RETURN e, was_created
 """
 
 
@@ -526,6 +536,35 @@ async def upsert_glossary_anchor(
     path (lookup-by-glossary_entity_id, then update name in place).
     Tracked as a K11.5b acceptance criterion.
     """
+    entity, _ = await upsert_glossary_anchor_counted(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        glossary_entity_id=glossary_entity_id,
+        name=name,
+        kind=kind,
+        aliases=aliases,
+        canonical_version=canonical_version,
+    )
+    return entity
+
+
+async def upsert_glossary_anchor_counted(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    glossary_entity_id: str,
+    name: str,
+    kind: str,
+    aliases: list[str] | None = None,
+    canonical_version: int = 1,
+) -> tuple[Entity, bool]:
+    """Like `upsert_glossary_anchor`, but ALSO reports whether the node was
+    newly CREATED (`True`) or already existed and was updated (`False`) — the
+    accounting `kg_project_entities_to_nodes` (WS-4B) needs to return
+    `{nodes_created, nodes_existing}`. The MERGE stays idempotent; the flag is
+    the transient `__was_created` marker (see `_UPSERT_ANCHOR_CYPHER`)."""
     canonical_id = entity_canonical_id(
         user_id=user_id,
         project_id=project_id,
@@ -556,7 +595,41 @@ async def upsert_glossary_anchor(
         raise RuntimeError(
             f"upsert_glossary_anchor returned no row for id={canonical_id!r}"
         )
-    return _node_to_entity(record["e"])
+    return _node_to_entity(record["e"]), bool(record["was_created"])
+
+
+# ── existing_entity_node_ids (WS-4B fail-fast endpoint precheck) ───────
+
+
+_EXISTING_NODE_IDS_CYPHER = """
+UNWIND $ids AS wanted
+MATCH (e:Entity {id: wanted})
+WHERE e.user_id = $user_id
+RETURN e.id AS id
+"""
+
+
+async def existing_entity_node_ids(
+    session: CypherSession,
+    *,
+    user_id: str,
+    ids: list[str],
+) -> set[str]:
+    """Return the subset of `ids` that already exist as `:Entity` nodes for
+    `user_id`. Used by `kg_propose_edge`'s fail-fast endpoint precheck (WS-4B):
+    an edge whose endpoints aren't nodes yet would park then fail at confirm
+    (`create_relation` matches endpoints by `Entity.id`), so we reject it up
+    front with `KG_ENDPOINT_NOT_NODE`. Matching by `id` mirrors exactly how the
+    confirm-time write resolves the endpoints."""
+    if not ids:
+        return set()
+    result = await run_read(
+        session,
+        _EXISTING_NODE_IDS_CYPHER,
+        user_id=user_id,
+        ids=list(ids),
+    )
+    return {record["id"] async for record in result}
 
 
 # ── get_entity ────────────────────────────────────────────────────────

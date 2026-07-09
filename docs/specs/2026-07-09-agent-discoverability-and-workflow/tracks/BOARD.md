@@ -12,8 +12,8 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 
 | Track | Session/branch | Milestone in flight | Status |
 |---|---|---|---|
-| **A · Mechanism spine** ([brief](TRACK-A.md)) | *this session* | WS-0 done · WS-1a engine done (defs+builders+tests, TS+Py); wiring next | 🔄 |
-| **B · Domain backend** ([brief](TRACK-B.md)) | *this session* | WS-4A ✅ · entity rename ✅ · WS-4B next | 🔄 |
+| **A · Mechanism spine** ([brief](TRACK-A.md)) | *this session* | WS-0 done · **WS-1a done + wired all 3 surfaces** (ai-gateway 187✓ · mcp-public-gateway 262✓ · chat-service ✓); review-impl + the S02 context-id fix next | 🔄 |
+| **B · Domain backend** ([brief](TRACK-B.md)) | *this session* | WS-4A ✅ · entity rename ✅ · WS-4B ✅ (kg projection + edge fail-fast) · WS-4C next | 🔄 |
 | **C · User-facing/catalog** ([brief](TRACK-C.md)) | — | WS-3 / WS-5 / WS-7 | ⬜ |
 
 ## Integration nodes (the only cross-track sync points)

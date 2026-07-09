@@ -1,13 +1,19 @@
 """K13.0 — unit tests for the Pass 0 glossary anchor pre-loader."""
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.db.neo4j_repos.entities import Entity
-from app.extraction.anchor_loader import Anchor, load_glossary_anchors
+from app.extraction.anchor_loader import (
+    Anchor,
+    ProjectionResult,
+    load_glossary_anchors,
+    project_glossary_entities_to_nodes,
+)
 
 USER_ID = str(uuid4())
 PROJECT_ID = str(uuid4())
@@ -191,3 +197,124 @@ async def test_skips_entries_missing_required_fields(monkeypatch):
     assert captured == [gid_ok]
     assert len(out) == 1
     assert out[0].name == "Valid"
+
+
+# ── WS-4B: project_glossary_entities_to_nodes ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_projection_counts_created_vs_existing(monkeypatch):
+    """The whole-glossary path lists active entities and reports create-vs-exist
+    counts from the counted upsert."""
+    gid1, gid2, gid3 = str(uuid4()), str(uuid4()), str(uuid4())
+    gc = MagicMock()
+    gc.list_entities = AsyncMock(return_value=[
+        {"entity_id": gid1, "name": "Arthur", "kind_code": "person", "aliases": ["Art"]},
+        {"entity_id": gid2, "name": "Merlin", "kind_code": "person", "aliases": []},
+        {"entity_id": gid3, "name": "Camelot", "kind_code": "place", "aliases": []},
+    ])
+    # first is new, next two already exist
+    created_flags = {gid1: True, gid2: False, gid3: False}
+
+    async def fake_upsert(session, **kw):
+        gid = kw["glossary_entity_id"]
+        return _make_entity(kw["name"], kw["kind"], gid), created_flags[gid]
+
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.upsert_glossary_anchor_counted", fake_upsert,
+    )
+
+    res = await project_glossary_entities_to_nodes(
+        session=MagicMock(),
+        glossary_client=gc,
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        book_id=BOOK_ID,
+    )
+    assert isinstance(res, ProjectionResult)
+    assert (res.created, res.existing, res.seen, res.skipped) == (1, 2, 3, 0)
+    gc.list_entities.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_projection_subset_uses_fetch_by_ids(monkeypatch):
+    """When entity_ids are given, fetch exactly those (not the whole glossary)."""
+    gid1, gid2 = str(uuid4()), str(uuid4())
+    gc = MagicMock()
+    gc.list_entities = AsyncMock(side_effect=AssertionError("must not list all"))
+    gc.fetch_entities_by_ids = AsyncMock(return_value=[
+        SimpleNamespace(entity_id=gid1, cached_name="Arthur",
+                        kind_code="person", cached_aliases=["Art"]),
+        SimpleNamespace(entity_id=gid2, cached_name="Merlin",
+                        kind_code="person", cached_aliases=[]),
+    ])
+
+    async def fake_upsert(session, **kw):
+        return _make_entity(kw["name"], kw["kind"], kw["glossary_entity_id"]), True
+
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.upsert_glossary_anchor_counted", fake_upsert,
+    )
+
+    res = await project_glossary_entities_to_nodes(
+        session=MagicMock(),
+        glossary_client=gc,
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        book_id=BOOK_ID,
+        entity_ids=[gid1, gid2],
+    )
+    assert (res.created, res.existing, res.seen) == (2, 0, 2)
+    gc.fetch_entities_by_ids.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_projection_glossary_failure_is_zero_result(monkeypatch):
+    """A glossary read failure (list_entities → None) → all-zero result, no upsert."""
+    gc = MagicMock()
+    gc.list_entities = AsyncMock(return_value=None)
+
+    async def fake_upsert(*a, **kw):
+        raise AssertionError("must not upsert when the glossary read failed")
+
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.upsert_glossary_anchor_counted", fake_upsert,
+    )
+
+    res = await project_glossary_entities_to_nodes(
+        session=MagicMock(),
+        glossary_client=gc,
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        book_id=BOOK_ID,
+    )
+    assert (res.created, res.existing, res.seen, res.skipped) == (0, 0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_projection_skips_bad_row_on_upsert_error(monkeypatch):
+    """One upsert error is counted as skipped; the batch keeps going."""
+    gid_ok, gid_bad = str(uuid4()), str(uuid4())
+    gc = MagicMock()
+    gc.list_entities = AsyncMock(return_value=[
+        {"entity_id": gid_bad, "name": "Bad", "kind_code": "person"},
+        {"entity_id": gid_ok, "name": "Good", "kind_code": "person"},
+    ])
+
+    async def fake_upsert(session, **kw):
+        if kw["glossary_entity_id"] == gid_bad:
+            raise RuntimeError("neo4j hiccup")
+        return _make_entity(kw["name"], kw["kind"], kw["glossary_entity_id"]), True
+
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.upsert_glossary_anchor_counted", fake_upsert,
+    )
+
+    res = await project_glossary_entities_to_nodes(
+        session=MagicMock(),
+        glossary_client=gc,
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        book_id=BOOK_ID,
+    )
+    assert (res.created, res.existing, res.seen, res.skipped) == (1, 0, 2, 1)

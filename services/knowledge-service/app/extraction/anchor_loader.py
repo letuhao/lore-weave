@@ -26,11 +26,19 @@ from uuid import UUID
 
 from app.clients.glossary_client import GlossaryClient
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import upsert_glossary_anchor
+from app.db.neo4j_repos.entities import (
+    upsert_glossary_anchor,
+    upsert_glossary_anchor_counted,
+)
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["Anchor", "load_glossary_anchors"]
+__all__ = [
+    "Anchor",
+    "ProjectionResult",
+    "load_glossary_anchors",
+    "project_glossary_entities_to_nodes",
+]
 
 
 @dataclass(frozen=True)
@@ -129,3 +137,125 @@ async def load_glossary_anchors(
         book_id, project_id, len(anchors), skipped_invalid, skipped_error,
     )
     return anchors
+
+
+# ── WS-4B: kg_project_entities_to_nodes ────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ProjectionResult:
+    """Outcome of projecting glossary entities into graph nodes.
+
+    `created` + `existing` are the nodes actually upserted (the
+    `{nodes_created, nodes_existing}` the tool returns); `seen` is how many
+    usable glossary rows were considered; `skipped` counts rows dropped as
+    invalid (missing id/name) or on a per-row upsert error.
+    """
+
+    created: int = 0
+    existing: int = 0
+    seen: int = 0
+    skipped: int = 0
+
+
+async def project_glossary_entities_to_nodes(
+    session: CypherSession,
+    glossary_client: GlossaryClient,
+    *,
+    user_id: str,
+    project_id: str,
+    book_id: UUID,
+    entity_ids: list[str] | None = None,
+) -> ProjectionResult:
+    """Deterministically project a book's glossary entities into the KG as
+    canonical `:Entity` nodes (WS-4B / scenario S04 — "map how everything
+    connects" from recorded lore, with no chapter prose).
+
+    This is the tool-driven sibling of `load_glossary_anchors`: same
+    idempotent `upsert_glossary_anchor` primitive, but it returns
+    create-vs-existing counts and can target a SUBSET (`entity_ids`) or the
+    whole active glossary (`entity_ids=None`).
+
+    Degradation model mirrors `load_glossary_anchors`: a glossary read failure
+    → return an all-zero result (the caller reports "nothing to project" rather
+    than aborting); a per-row upsert error is logged and counted as skipped so
+    one bad row can't poison the batch.
+    """
+    rows = await _load_projection_rows(glossary_client, book_id, entity_ids)
+    created = existing = skipped = 0
+    for eid, name, kind, aliases in rows:
+        try:
+            _, was_created = await upsert_glossary_anchor_counted(
+                session,
+                user_id=user_id,
+                project_id=project_id,
+                glossary_entity_id=eid,
+                name=name,
+                kind=kind,
+                aliases=aliases,
+            )
+        except Exception:
+            logger.exception(
+                "WS-4B: project entity=%s failed for project=%s", eid, project_id,
+            )
+            skipped += 1
+            continue
+        if was_created:
+            created += 1
+        else:
+            existing += 1
+
+    logger.info(
+        "WS-4B: projection complete — book=%s project=%s seen=%d created=%d "
+        "existing=%d skipped=%d",
+        book_id, project_id, len(rows), created, existing, skipped,
+    )
+    return ProjectionResult(
+        created=created, existing=existing, seen=len(rows), skipped=skipped,
+    )
+
+
+async def _load_projection_rows(
+    glossary_client: GlossaryClient,
+    book_id: UUID,
+    entity_ids: list[str] | None,
+) -> list[tuple[str, str, str, list[str]]]:
+    """Normalize the two glossary read paths into `(entity_id, name, kind,
+    aliases)` tuples. `entity_ids` given → fetch exactly those; else the whole
+    active glossary. Rows missing an id or name are dropped (unusable for a
+    node)."""
+    out: list[tuple[str, str, str, list[str]]] = []
+    if entity_ids:
+        ents = await glossary_client.fetch_entities_by_ids(
+            book_id=book_id, entity_ids=entity_ids,
+        )
+        for e in ents:
+            if not e.entity_id or not e.cached_name:
+                continue
+            out.append((
+                str(e.entity_id),
+                e.cached_name,
+                e.kind_code or "unknown",
+                list(e.cached_aliases or []),
+            ))
+        return out
+
+    raw = await glossary_client.list_entities(book_id, status_filter="active")
+    if raw is None:
+        logger.warning(
+            "WS-4B: glossary list_entities failed for book=%s — nothing projected",
+            book_id,
+        )
+        return out
+    for entry in raw:
+        eid = entry.get("entity_id")
+        name = entry.get("name")
+        if not eid or not name:
+            continue
+        out.append((
+            str(eid),
+            name,
+            entry.get("kind_code") or "unknown",
+            list(entry.get("aliases") or []),
+        ))
+    return out

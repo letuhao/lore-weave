@@ -432,6 +432,19 @@ class KgTriageSchemaWriteArgs(ProjectScopedArgs):
     add_kinds: list[str] = Field(default_factory=list, max_length=50)
 
 
+class KgProjectEntitiesToNodesArgs(ProjectScopedArgs):
+    """`kg_project_entities_to_nodes` — deterministically project a book's
+    glossary entities into the graph as canonical `:Entity` nodes (WS-4B /
+    scenario S04). Tier-A: idempotent (re-projection is a no-op) + reversible.
+    Optional `entity_ids` limits it to a subset; omit to project the whole
+    active glossary. This is the structured, prose-less path to seed the graph
+    (no chapter extraction needed)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_ids: list[str] | None = Field(default=None, max_length=1000)
+
+
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
@@ -446,6 +459,7 @@ GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── W (low-impact, reversible, owner/grant-gated) ─────────────────
     "kg_propose_fact": KgProposeFactArgs,
     "kg_propose_edge": KgProposeEdgeArgs,
+    "kg_project_entities_to_nodes": KgProjectEntitiesToNodesArgs,  # WS-4B: A, deterministic projection
     "kg_view_upsert": KgViewUpsertArgs,
     "kg_view_delete": KgViewDeleteArgs,
     "kg_triage_resolve": KgTriageResolveArgs,
@@ -768,6 +782,28 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             "project_id": _PROJECT_ID_PROP,
         },
         ["source_entity_id", "target_entity_id", "edge_type"],
+    ),
+    _tool(
+        "kg_project_entities_to_nodes",
+        "Project this book's recorded glossary entities into the knowledge "
+        "graph as nodes — the structured way to seed the graph from lore you "
+        "already entered, WITHOUT needing any chapter prose written. "
+        "Deterministic and idempotent: re-running adds no duplicates. Returns "
+        "how many nodes were newly created vs. already existed. Do this before "
+        "proposing edges between entities (an edge needs both endpoints to be "
+        "nodes first).",
+        {
+            "entity_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional — the specific glossary entity ids to project. "
+                    "Omit to project the book's whole active glossary."
+                ),
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        [],
     ),
     _tool(
         "kg_view_upsert",
@@ -1449,9 +1485,14 @@ async def _handle_kg_propose_fact(ctx: "ToolContext", args: KgProposeFactArgs) -
 
 async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -> dict:
     # W (draft) — validate against the resolved schema, enforce temporal-
-    # required at MINT, then park to the triage inbox. NEVER writes Neo4j
+    # required at MINT, then park to the triage inbox. NEVER WRITES Neo4j
     # (INV-K1): the central write-path applies it only after human review.
+    # WS-4B ADDS a read-only endpoint-existence PRECHECK (below) so an edge
+    # whose endpoints aren't nodes yet is rejected UP FRONT (KG_ENDPOINT_NOT_NODE)
+    # instead of parking then failing two steps later at confirm — this reads
+    # Neo4j but never writes it, so the human-gated-write invariant is intact.
     from app.tools.executor import ToolExecutionError
+    from app.db.neo4j_repos.entities import existing_entity_node_ids
 
     owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
     project_str = str(ctx.project_id)
@@ -1496,6 +1537,31 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         item_type = "proposed_edge"
         signature = f"propose_edge:{args.edge_type}:{args.source_entity_id}->{args.target_entity_id}"
 
+    # Fail-fast endpoint precheck (WS-4B / contract C5) — the LAST gate before
+    # parking, so the cheap in-memory schema/temporal checks reject first. The
+    # confirm-time write (`create_relation`) matches both endpoints by
+    # `Entity.id`; an edge referencing an id that isn't a node would park then
+    # fail two steps later at confirm with a late, confusing error. Reject now
+    # with KG_ENDPOINT_NOT_NODE and tell the agent exactly what to do: project
+    # the glossary entities into the graph first (kg_project_entities_to_nodes).
+    # This READS Neo4j (INV-K1 is about not WRITING it — the write stays human-
+    # gated), the one stateful check worth a round-trip to avoid the dead-end.
+    endpoint_ids = [args.source_entity_id, args.target_entity_id]
+    async with neo4j_session() as session:
+        present = await existing_entity_node_ids(
+            session, user_id=str(owner), ids=endpoint_ids,
+        )
+    missing = [eid for eid in endpoint_ids if eid not in present]
+    if missing:
+        raise ToolExecutionError(
+            "edge endpoint(s) are not yet graph nodes: "
+            + ", ".join(missing)
+            + " — project the glossary entities into the graph first "
+            "(kg_project_entities_to_nodes), then propose the edge",
+            code="KG_ENDPOINT_NOT_NODE",
+            detail={"missing": missing},
+        )
+
     parked = await ctx.triage_repo.park(
         user_id=owner,
         project_id=project_str,
@@ -1511,6 +1577,47 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         "item_type": parked.item_type,
         "signature": parked.signature,
         "on_schema": issue is None,
+    }
+
+
+async def _handle_kg_project_entities_to_nodes(
+    ctx: "ToolContext", args: KgProjectEntitiesToNodesArgs,
+) -> dict:
+    # A (deterministic, idempotent projection). Reads the book's glossary
+    # entities (all active, or the `entity_ids` subset) and upserts each as a
+    # canonical :Entity node — the structured "seed the graph from recorded
+    # lore" path (WS-4B / S04), so a prose-less book can build a graph without
+    # chapter extraction. Runs under the project OWNER (resolve-to-owner).
+    from app.tools.executor import ToolExecutionError
+    from app.clients.glossary_client import get_glossary_client
+    from app.extraction.anchor_loader import project_glossary_entities_to_nodes
+
+    owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
+    meta = await ctx.projects_repo.project_meta(ctx.project_id)
+    if meta is None:  # the owner gate passed above; stay defensive
+        raise ToolExecutionError("project not found")
+    _, book_id = meta
+    if book_id is None:
+        raise ToolExecutionError(
+            "this project isn't linked to a book, so it has no glossary "
+            "entities to project — link a book to the project first"
+        )
+
+    entity_ids = [e.strip() for e in (args.entity_ids or []) if e and e.strip()]
+    async with neo4j_session() as session:
+        res = await project_glossary_entities_to_nodes(
+            session,
+            get_glossary_client(),
+            user_id=str(owner),
+            project_id=str(ctx.project_id),
+            book_id=book_id,
+            entity_ids=entity_ids or None,
+        )
+    return {
+        "nodes_created": res.created,
+        "nodes_existing": res.existing,
+        "entities_seen": res.seen,
+        "skipped": res.skipped,
     }
 
 
@@ -1874,6 +1981,7 @@ GRAPH_SCHEMA_HANDLERS = {
     "kg_triage_list": _handle_kg_triage_list,
     "kg_propose_fact": _handle_kg_propose_fact,
     "kg_propose_edge": _handle_kg_propose_edge,
+    "kg_project_entities_to_nodes": _handle_kg_project_entities_to_nodes,
     "kg_view_upsert": _handle_kg_view_upsert,
     "kg_view_delete": _handle_kg_view_delete,
     "kg_triage_resolve": _handle_kg_triage_resolve,

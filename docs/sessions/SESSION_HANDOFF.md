@@ -1,5 +1,17 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**Track B — WS-4B glossary→KG projection + kg_propose_edge fail-fast shipped, 2026-07-09** (branch `feat/context-budget-law`, HEAD `pending`). Second Track B milestone; all in knowledge-service (disjoint from Track A/glossary). Unblocks scenario S04 ("map how everything connects" from recorded lore, no chapter prose).
+
+- **`kg_project_entities_to_nodes(project_id, entity_ids?)` → `{nodes_created, nodes_existing, entities_seen, skipped}` (Tier-A).** Deterministic, idempotent projection of a book's glossary entities into the KG as canonical `:Entity` nodes — the structured, prose-less way to seed the graph. Orchestrator `project_glossary_entities_to_nodes` in `anchor_loader.py` (sibling of the extraction Pass-0 `load_glossary_anchors`); reuses `upsert_glossary_anchor`. `entity_ids` given → project that subset (`fetch_entities_by_ids`); omit → whole active glossary (`list_entities`). Book-less project → clear error.
+- **Created-vs-existing accounting** via a transient `__was_created` marker in `_UPSERT_ANCHOR_CYPHER` (read into a return column, then `REMOVE`d — never persists). New `upsert_glossary_anchor_counted`; base `upsert_glossary_anchor` now delegates to it (extraction path unchanged).
+- **`kg_propose_edge` fail-fast (contract C5):** a read-only endpoint-existence precheck (`existing_entity_node_ids`, matching `Entity.id` exactly as confirm-time `create_relation` does) rejects an edge whose endpoints aren't nodes yet with `{code:"KG_ENDPOINT_NOT_NODE", detail:{missing:[...]}}` — instead of parking then failing at confirm. Runs as the LAST gate (after the cheap schema/temporal checks). This READS Neo4j but never writes it (INV-K1's human-gated-write intact).
+- **Structured tool errors:** `ToolExecutionError`/`ToolResult`/`_dispatch` now carry optional `code`/`detail` (backward-compatible; contract C4/C5) so a workflow can branch on `KG_ENDPOINT_NOT_NODE`.
+- **4 MCP registration sites** updated (arg model · OpenAI def · FastMCP signature · handler map); drift-lock count 30→31.
+- **Verify:** knowledge-service unit suite **3700 passed**; drift-lock + new handler/projection/fail-fast tests green. **Cypher LIVE-VERIFIED against the running dev Neo4j** (`:7688`) via a safe unique-test-id script: create→was_created=True, re-run→False, transient marker doesn't persist, base upsert intact, tenant-isolated existence check. **Live-smoke deferred — `D-WS4B-LIVE-SMOKE`**: the full MCP round-trip (knowledge→glossary HTTP read + Neo4j write through the gateway) needs a real book+glossary+project — smoke at N3 (flagship S04/S06); glossary read reuses the shipped extraction Pass-0 client methods, so risk is low.
+- **Next in Track B:** WS-4C auto-capture (chat canon → glossary entities + admit `llm_tool_call` facts to L2).
+
+---
+
 **`/review-impl` on the chat context-meter fix — 2 findings, both fixed, 2026-07-09** (branch `feat/context-budget-law`, HEAD `pending`, commit `0ec923018`). Adversarial review of the entry below (`D-CHAT-CONTEXT-METER-OVERCOUNT` + compact fix).
 
 - **MED — `apiJson`'s `detail` fallback only handled string/422-array shapes**, missing the plain-object `{code, message}` / `{code}` shape `composition-service` (`actions.py`'s `{"code":"action_error"}`) and `campaign-service` (`grant_deps.py`'s `{code, message}`) actually raise — those errors still fell back to the meaningless `statusText`, the exact bug class the fix was meant to close. Fixed: read `detail.message ?? detail.code` when `detail` is a non-array object.

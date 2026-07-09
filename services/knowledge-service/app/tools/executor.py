@@ -143,11 +143,18 @@ def _one_line(text: str | None, limit: int = _PREVIEW_CHARS) -> str:
 @dataclass
 class ToolResult:
     """Outcome of one tool call. `success=False` ⇒ `error` is set and
-    `result` is None; `success=True` ⇒ `result` is the payload dict."""
+    `result` is None; `success=True` ⇒ `result` is the payload dict.
+
+    `code`/`detail` (optional) carry a STABLE machine-readable error code and
+    structured detail for a tool failure (e.g. `KG_ENDPOINT_NOT_NODE` +
+    `{"missing": [...]}`), so a caller/workflow can branch on the code instead
+    of parsing free text (contract C4/C5). None for a plain string error."""
 
     success: bool
     result: dict | None = None
     error: str | None = None
+    code: str | None = None
+    detail: dict | None = None
 
 
 @dataclass
@@ -192,7 +199,23 @@ class ToolContext:
 class ToolExecutionError(Exception):
     """A tool-level failure (bad input, rejection) — surfaced to the
     caller as `success=False`, NOT a 5xx. Distinct from an unexpected
-    exception, which propagates as an infra error."""
+    exception, which propagates as an infra error.
+
+    Optional `code`/`detail` attach a STABLE machine-readable error code +
+    structured detail (e.g. `KG_ENDPOINT_NOT_NODE` + `{"missing": [...]}`) so a
+    caller can branch on the code, not the message (contract C4/C5). Omitting
+    them keeps the legacy string-only behavior."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        detail: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
 
 
 # ── Redis (rate limiter) ──────────────────────────────────────────────
@@ -746,7 +769,9 @@ async def execute_tool(ctx: ToolContext, tool_name: str, tool_args: dict) -> Too
             result_payload = await _HANDLERS[tool_name](ctx, args)
         except ToolExecutionError as exc:
             outcome = "tool_error"
-            return ToolResult(success=False, error=str(exc))
+            return ToolResult(
+                success=False, error=str(exc), code=exc.code, detail=exc.detail,
+            )
 
         outcome = "ok"
         return ToolResult(success=True, result=result_payload)

@@ -13,6 +13,7 @@ Covers, mirroring `test_tool_definitions.py` / `test_tool_executor.py`:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -20,6 +21,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.extraction.anchor_loader import ProjectionResult
 from app.tools.definitions import ARG_MODELS, TOOL_DEFINITIONS, TOOL_NAMES
 from app.tools.executor import ToolContext, ToolExecutionError, execute_tool
 from app.tools.graph_schema_tools import (
@@ -51,8 +53,9 @@ _BOOK = uuid4()
 # owner gate confines it to the caller's own projects).
 _ENVELOPE_KEYS = {"user_id", "session_id"}
 
-# The 14 tools this lane builds (R + reversible W) — incl. Track-B kg_world_query +
-# kg_multi_query (B1(3): arbitrary owner-owned project set).
+# The 15 tools this lane builds (R + reversible W) — incl. Track-B kg_world_query +
+# kg_multi_query (B1(3): arbitrary owner-owned project set) and WS-4B
+# kg_project_entities_to_nodes (deterministic glossary→node projection).
 _LANE_LF_TOOLS = {
     "kg_graph_query",
     "kg_world_query",
@@ -65,6 +68,7 @@ _LANE_LF_TOOLS = {
     "kg_triage_list",
     "kg_propose_fact",
     "kg_propose_edge",
+    "kg_project_entities_to_nodes",
     "kg_view_upsert",
     "kg_view_delete",
     "kg_triage_resolve",
@@ -99,12 +103,13 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory + 1 story_search (#12 universal manuscript search) + 14 lane-LF
-    (incl. Track-B kg_world_query + kg_multi_query) + 5 live class-C + 2 project
-    lifecycle (kg_project_create + kg_project_list, the W0 #4a discovery tool) + 2
-    cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 30."""
+    """5 memory + 1 story_search (#12 universal manuscript search) + 15 lane-LF
+    (incl. Track-B kg_world_query + kg_multi_query and WS-4B
+    kg_project_entities_to_nodes) + 5 live class-C + 2 project lifecycle
+    (kg_project_create + kg_project_list, the W0 #4a discovery tool) + 2
+    cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 31."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 30
+    assert len(TOOL_DEFINITIONS) == 31
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
     assert {"kg_project_create", "kg_project_list", "kg_build_graph",
@@ -458,6 +463,24 @@ async def test_propose_fact_queues_into_pending_inbox(monkeypatch):
 # ── propose-edge: temporal-required + parks to triage (never Neo4j) ───
 
 
+def _patch_endpoints_present(monkeypatch, present=("a", "b")):
+    """Make kg_propose_edge's WS-4B endpoint precheck see both endpoints as
+    existing nodes, so the test exercises the park path (not the fail-fast).
+    Also stubs neo4j_session so no real driver is needed."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr(
+        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+    )
+    monkeypatch.setattr(
+        "app.db.neo4j_repos.entities.existing_entity_node_ids",
+        AsyncMock(return_value=set(present)),
+    )
+
+
 @pytest.mark.asyncio
 async def test_propose_edge_temporal_required_rejected_at_mint():
     temporal_edge = SimpleNamespace(code="loves", temporal=True)
@@ -479,7 +502,8 @@ async def test_propose_edge_temporal_required_rejected_at_mint():
 @pytest.mark.asyncio
 async def test_propose_edge_parks_to_triage_inbox_never_neo4j(monkeypatch):
     """INV-K1 — a proposed edge is parked into the triage inbox; the handler
-    never opens a Neo4j session / write."""
+    never WRITES Neo4j (it reads it once for the WS-4B endpoint precheck)."""
+    _patch_endpoints_present(monkeypatch)
     # validate_edge returns an off-schema issue (closed schema, unknown edge).
     issue = SimpleNamespace(item_type="unknown_edge_type", signature="edge:loves")
     monkeypatch.setattr(
@@ -513,6 +537,7 @@ async def test_propose_edge_on_schema_parks_as_proposed_edge(monkeypatch):
     # D-KG-LF-PROPOSE-EDGE-INBOX: a well-formed on-schema proposal parks as its own
     # `proposed_edge` item_type — NOT edge_cardinality_conflict (a stateful
     # condition the tool can't check, INV-K1).
+    _patch_endpoints_present(monkeypatch)
     monkeypatch.setattr(
         "app.tools.graph_schema_tools.validate_edge",
         MagicMock(return_value=None),  # on-schema, no issue
@@ -534,6 +559,91 @@ async def test_propose_edge_on_schema_parks_as_proposed_edge(monkeypatch):
     assert res.success
     assert res.result["on_schema"] is True
     assert triage_repo.park.await_args.kwargs["item_type"] == "proposed_edge"
+
+
+@pytest.mark.asyncio
+async def test_propose_edge_fails_fast_when_endpoint_not_a_node(monkeypatch):
+    """WS-4B / contract C5 — an edge whose endpoint isn't a graph node yet is
+    rejected UP FRONT with KG_ENDPOINT_NOT_NODE + the missing ids, and is NEVER
+    parked (no dead-end park→fail-at-confirm)."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr(
+        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+    )
+    # only "a" exists as a node; "b" is missing.
+    monkeypatch.setattr(
+        "app.db.neo4j_repos.entities.existing_entity_node_ids",
+        AsyncMock(return_value={"a"}),
+    )
+    monkeypatch.setattr(
+        "app.tools.graph_schema_tools.validate_edge",
+        MagicMock(return_value=None),
+    )
+    resolver = AsyncMock()
+    resolver.resolve = AsyncMock(return_value=_resolved_schema(
+        [SimpleNamespace(code="allies", temporal=False)]
+    ))
+    triage_repo = AsyncMock()
+    ctx = _ctx(ontology_resolver=resolver, triage_repo=triage_repo)
+    res = await execute_tool(
+        ctx, "kg_propose_edge",
+        {"source_entity_id": "a", "target_entity_id": "b", "edge_type": "allies"},
+    )
+    assert not res.success
+    assert res.code == "KG_ENDPOINT_NOT_NODE"
+    assert res.detail == {"missing": ["b"]}
+    assert "kg_project_entities_to_nodes" in res.error
+    # never parked — the whole point of fail-fast.
+    triage_repo.park.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_project_entities_to_nodes_returns_counts(monkeypatch):
+    """WS-4B — the projection tool returns {nodes_created, nodes_existing} from
+    the orchestrator, scoped to the project's book, under the owner."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr(
+        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+    )
+    monkeypatch.setattr(
+        "app.clients.glossary_client.get_glossary_client",
+        MagicMock(return_value=MagicMock()),
+    )
+    proj = AsyncMock(
+        return_value=ProjectionResult(created=3, existing=1, seen=4, skipped=0),
+    )
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.project_glossary_entities_to_nodes", proj,
+    )
+    ctx = _ctx()  # caller == owner, project_meta → (_OWNER, _BOOK)
+    res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
+    assert res.success
+    assert res.result == {
+        "nodes_created": 3, "nodes_existing": 1, "entities_seen": 4, "skipped": 0,
+    }
+    kw = proj.await_args.kwargs
+    assert kw["user_id"] == str(_OWNER)
+    assert kw["book_id"] == _BOOK
+    assert kw["entity_ids"] is None  # whole-glossary when none given
+
+
+@pytest.mark.asyncio
+async def test_project_entities_to_nodes_bookless_project_errors():
+    """A book-less project has no glossary to project → a clear tool error."""
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, None))
+    ctx = _ctx(projects_repo=projects_repo)
+    res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
+    assert not res.success
+    assert "isn't linked to a book" in res.error
 
 
 @pytest.mark.asyncio

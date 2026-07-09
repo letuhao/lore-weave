@@ -356,8 +356,15 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
         # (not `or`) stops silently swallowing a falsy-but-not-None payload.
         return result.result if result.result is not None else {}
     # Structured tool error so the MCP client can inspect it without
-    # parsing free text.
-    return {"success": False, "error": result.error}
+    # parsing free text. A stable `code` + `detail` (e.g. KG_ENDPOINT_NOT_NODE
+    # + {"missing": [...]}) ride alongside the message when the handler set them
+    # (contract C4/C5), so a workflow can branch on the code.
+    err: dict[str, Any] = {"success": False, "error": result.error}
+    if result.code is not None:
+        err["code"] = result.code
+    if result.detail is not None:
+        err["detail"] = result.detail
+    return err
 
 
 # ── Tool registrations ────────────────────────────────────────────────
@@ -953,6 +960,35 @@ async def kg_propose_edge(
     if valid_to is not None:
         args["valid_to"] = valid_to
     return await _dispatch(ctx, "kg_propose_edge", args)
+
+
+@mcp_server.tool(
+    name="kg_project_entities_to_nodes",
+    description=(
+        "Project this book's recorded glossary entities into the knowledge "
+        "graph as nodes — the structured way to seed the graph from lore you "
+        "already entered, WITHOUT needing any chapter prose written. "
+        "Deterministic and idempotent: re-running adds no duplicates. Returns "
+        "how many nodes were newly created vs. already existed. Do this before "
+        "proposing edges between entities (an edge needs both endpoints to be "
+        "nodes first)."
+    ),
+)
+async def kg_project_entities_to_nodes(
+    ctx: MCPContext,
+    entity_ids: Annotated[
+        list[str] | None,
+        "Optional — the specific glossary entity ids to project. Omit to "
+        "project the book's whole active glossary.",
+    ] = None,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {}
+    if entity_ids is not None:
+        args["entity_ids"] = entity_ids
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_project_entities_to_nodes", args)
 
 
 @mcp_server.tool(
