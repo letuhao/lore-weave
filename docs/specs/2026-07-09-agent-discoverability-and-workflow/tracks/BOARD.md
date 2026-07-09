@@ -31,6 +31,20 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 - **C:** `skill_registry.py` (mode→capability resolve)
 - One coordinated touch-point: `resolve_skills_to_inject()` (A reads, C extends — keep additive, per C6).
 
+## Track A deferred (post-review)
+
+- **D-WF-BOOK-TIER-AUTHORING** — agent-authored workflows are user-tier only; book-tier authoring
+  needs a book-write GRANT check the agent-registry can't do yet (no book-grants client). Book-tier
+  workflows are admin-seedable now; the grant-checked path (+ book read/update in
+  resolveVisibleWorkflowBySlug/toolList/loadVisible) is the buildable follow-on. Gate #2 (structural).
+- **Async-ness from catalog metadata** — the runner's async guard is now authored-flag-first with a
+  name heuristic fallback; the durable fix is a real `async` flag on the catalog tool def. Gate #2.
+- **C4 at the public MCP edge** — the uniform error envelope is applied at ai-gateway (the chat path);
+  mcp-public-gateway is a separate edge (own scope layer) and doesn't inherit it. Gate #1 (out of scope).
+- Won't-fix (recorded so they stop resurfacing): `confirm_token` is stored-but-unverified on approve
+  (consistent with skills — the browser JWT authorizes); C4 unclassifiable-error default is
+  UPSTREAM_UNAVAILABLE (treat unknown≈transient, bounded by the tool-loop cap).
+
 ## Contract change log
 
 - 2026-07-09 (Track B) — **C5 `glossary_entity_rename` refined**: signature `(book_id, entity_id, name)`
