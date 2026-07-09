@@ -15,6 +15,7 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 | **A · Mechanism spine** ([brief](TRACK-A.md)) | *this session* | ✅ **COMPLETE.** WS-0 · **WS-1a** (`de464522d`) · **WS-1b** (`f11e69d6a`) · **ROOT-CAUSE FIX** LM Studio /v1/responses batches tool-args into `.done` (no `.delta`) → dropped every stateful turn; fixed `e008416f0` live-smoked (the real "weak model can't add entities" cause, not discovery) · **WS-2a** (`e1cfbd0f2` workflows+C3+HITL) · **WS-2b** (`7a70a8b1a` step-runner rail+list/load+async guard) · **C4** (`85c7d2a8c` uniform error envelope + output uniformity; live-smoked VALIDATION) · **WS-6** (`1c390c6c0` find_tools→optional/legacy, tool_list primary). **N1 + N2 met + FULL CHAT-TURN E2E PASSED** (live gemma). Remaining: WS-3/5/7 belong to Track C | ✅ |
 | **B · Domain backend** ([brief](TRACK-B.md)) | *this session* | WS-4A ✅ · rename ✅ · WS-4B ✅ · WS-4C Half B ✅ (facts→L2); Half A deferred `D-WS4C-HALFA` (needs 1 spawn line in A's `stream_service.py`) · domain fixes next | 🔄 |
 | **C · User-facing/catalog** ([brief](TRACK-C.md)) | — | WS-3 / WS-5 / WS-7 | ⬜ |
+| **D · Tool liveness & metadata** ([spec](../../2026-07-09-mcp-tool-liveness-eval/README.md) · [brief](../../2026-07-09-mcp-tool-liveness-eval/TRACK-D.md)) | — | WS-D0 (tiering/spend-hole) → D1 (`propose_*` law) → D2 (harness P0) → D3 (**ship gate**) → D4/5/6 | ⬜ |
 
 ## Integration nodes (the only cross-track sync points)
 
@@ -22,7 +23,8 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 |---|---|---|
 | **N1** — after A's WS-1 | `tool_list`/`tool_load` + C1 enum + activation live → B's tools discoverable, C's UI binds real enum | ✅ |
 | **N2** — after A's WS-2 | C3 `steps` schema + step-runner live → C's authored workflows run; async guard active | ✅ **FULL E2E** — live gemma-4-26b turn: workflow_list→workflow_load→step tools activated→presented rail w/ correct confirm/approval + async-job flags (also re-confirms the /v1/responses arg fix) |
-| **N3** — before flagship | A(mechanism) + B(features) + C(catalog+UI) present → run flagship S06 live-test (go/no-go) | ⬜ |
+| **ND3** — after D's WS-D3 | **CD4 ship gate live**: no workflow may reference a tool that hasn't passed G1–G4; `tool_list` never advertises a RED-G3 tool → **Track C's curated workflows may ship** | ⬜ |
+| **N3** — before flagship | A(mechanism) + B(features) + C(catalog+UI) + **D(tools proven effectful)** present → run flagship S06 live-test (go/no-go). *Blocked on ND3: S06 baseline recorded `effectful_tool_calls: 0`.* | ⬜ |
 
 ## Shared-file watch (chat-service — 3 tracks, disjoint files)
 

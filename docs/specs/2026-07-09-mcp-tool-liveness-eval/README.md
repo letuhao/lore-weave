@@ -1,8 +1,14 @@
 # MCP Tool Liveness Eval (TLE) — every tool proven callable, correct, and *effectful*
 
-**Status:** PLAN · authored 2026-07-09 · owner: Track A follow-on
+**Status:** PLAN · authored 2026-07-09 · **Track D**
 **One-liner:** For **every** MCP tool, send a natural-language ask to a real LLM, and prove the model
 picked it, shaped its args correctly, the call actually executed, **and the system really changed**.
+
+| Doc | What it is |
+|---|---|
+| this file | the measured gap · scope · gates · phasing · findings |
+| [`contracts.md`](contracts.md) | **CD1–CD4, frozen** — the `_meta` completeness law, `propose_*` semantics, the G1–G4 gates + matrix schema, the ship gate |
+| [`TRACK-D.md`](TRACK-D.md) | the track brief — workstreams WS-D0…D6, integration nodes, DoD |
 
 ---
 
@@ -174,21 +180,33 @@ The inventory alone, before a single probe runs, surfaces four real defects:
    → *Same fix as knowledge: adopt `_meta` + a `tools/list` regression gate. Do this before the sweep
    (open question 4), else every glossary probe tests the wrong gating.*
 
-2. **Naming trap that will mis-teach every LLM:** `glossary_propose_translation` and
-   `glossary_propose_aliases` are named `propose_*` but are **direct writes** (no confirm token),
-   while the other `glossary_propose_*` mint tokens and write nothing. A model generalizes on the
-   name. → rename, or split the prefix convention.
+2. **`propose_*` is overloaded, with no machine-checkable meaning.** It spans two *legitimate*
+   patterns — **token** (tier `W`: mints a `confirm_token`, writes nothing) and **draft** (tier `A`:
+   writes a pending row a human approves). Neither the model nor a reviewer can tell which from the
+   name, so an agent cannot know whether a confirm round-trip is required. → declare the pattern in
+   each description + lint `propose ⇒ tier ∈ {A,W}` (contract **CD2**).
 
-3. **Async-honesty gaps** (the flag exists now — these don't set it): composition motif/arc W-jobs and
-   `plan_propose_spec` (`mode=llm`) start background jobs but **omit `_meta.async`**, so the runner
-   won't annotate them and the agent may claim "done" on enqueue.
+   > ⚠️ **A claimed finding here was verified FALSE and rejected.** The inventory reported
+   > `glossary_propose_translation`/`_aliases` as "direct writes despite the name". Source says
+   > otherwise: `upsertDraftTranslation` inserts with `confidence='draft'`
+   > (`pipeline_translate_tool.go:294-299`) — the legitimate *draft* pattern. **No rename needed.**
+   > `glossary_propose_aliases` also touches `entity_attribute_values` → treat as **audit**, not a
+   > proven defect.
 
-4. **`lore_enrichment_auto_enrich` is Tier-A but is async *and* costs real LLM money.** An
-   auto-applying paid async tool contradicts the money model — the public gateway already
-   reclassifies it to `write_confirm`; the **internal tier should be `W` too.**
+3. **Async-honesty gaps — candidates, not yet proven.** Composition declares `async_job=True`
+   **exactly once** (`composition_generate`), yet `composition_motif_mine`,
+   `composition_arc_import_analyze`, `composition_conformance_run`, and `plan_propose_spec(mode=llm)`
+   are described as starting background jobs. **Read each handler before marking it `async`** — do not
+   mark on the inventory's word.
 
-These four are independently actionable and don't need the harness. Findings 1 and 4 are gating/spend
-defects; 2 and 3 are correctness-of-model-behavior defects.
+4. **`lore_enrichment_auto_enrich` is Tier-`A` but is `async` *and* paid** (all three verified). An
+   auto-applying paid async tool contradicts the money model — `mcp-public-gateway` already
+   reclassifies it `write_confirm`; the **internal tier should be `W`**, and the public one should be
+   *derived* rather than restated.
+
+Findings 1 and 4 are **gating/spend defects** (act now). 2 is a **contract gap** (CD2). 3 is an
+**audit**. One of the inventory's four findings did not survive verification — a reminder that the
+generated inventory is a lead, not evidence.
 
 ---
 
