@@ -176,6 +176,21 @@ class TestTokenBudgetedSeed:
                                      token_budget=1_000_000)
         assert {"find_tools", "ui_navigate"} <= out
 
+    def test_allowlisted_write_stays_hot_despite_read_pressure(self):
+        # WS-1b — many big reads would fill the budget; the allowlisted canon-write
+        # (glossary_propose_entities) must still survive the read-first trim.
+        cat = ([_tool_big(f"glossary_search_{i}", 4000) for i in range(6)]  # ~1K tok each
+               + [_tool_big("glossary_propose_entities", 400)])            # small, allowlisted
+        names = {t["function"]["name"] for t in cat}
+        out = budget_names_by_tokens(cat, names, token_budget=2000)
+        assert "glossary_propose_entities" in out
+
+    def test_recall_and_timeline_classified_as_reads(self):
+        from app.services.tool_surface import _is_read_tool
+        assert _is_read_tool("memory_recall_entity")
+        assert _is_read_tool("memory_timeline")
+        assert not _is_read_tool("glossary_propose_entities")
+
     def test_book_scoped_seed_is_bounded(self):
         # 60 glossary tools, each ~1K tokens = 60K → must be bounded to the budget.
         cat = [_tool_big(f"glossary_t{i}", 4000) for i in range(60)]

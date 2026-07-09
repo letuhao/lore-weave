@@ -36,10 +36,33 @@ ACTIVATED_TOOLS_TOKEN_BUDGET = 6000  # cap the find_tools-accumulated set by tok
 
 # Read/query verbs → the tools safe to keep hot (writes/proposes are discovered on
 # demand and usually confirmation-gated anyway).
+# WS-1b: `recall`/`timeline` are semantically READS (memory_recall_entity, memory_timeline)
+# but contain no other read-verb substring, so they were misclassed as writes and starved.
 _READ_VERBS = (
     "search", "list", "get", "read", "find", "lookup",
-    "show", "view", "fetch", "describe", "query",
+    "show", "view", "fetch", "describe", "query", "recall", "timeline",
 )
+
+# WS-1b — the hot-path write-tool allowlist (OQ7 / contracts.md C2, §4.4). The read-first
+# token trim structurally starves WRITE tools (reads exhaust the budget first), so a mid-tier
+# model could DISCOVER a write via tool_list but never had its schema hot to CALL it — the
+# measured S02 blocker (gemma saw glossary_propose_entities in tool_list, couldn't call it).
+# These few, small CANON-write tools — the ones the co-writer scenarios most need — are kept
+# hot unconditionally when their domain is already a candidate (i.e. the surface's hot domain).
+# Deliberately tight (not "all writes") so it never re-introduces the whole-domain context
+# explosion the token budget fixed; the long tail still lazy-loads via tool_load/find_tools.
+ALWAYS_HOT_WRITES: frozenset[str] = frozenset({
+    # glossary — populate + edit + set-up ontology (S01/S02/S03)
+    "glossary_propose_entities",
+    "glossary_entity_set_attributes",
+    "glossary_adopt_standards",
+    # knowledge — continuity + KG build (S04, flagship)
+    "memory_remember",
+    "kg_propose_edge",
+    "kg_propose_fact",
+    # book — draft capture (compose)
+    "book_chapter_save_draft",
+})
 
 
 def _tool_tokens(td: dict) -> int:
@@ -69,11 +92,19 @@ def budget_names_by_tokens(
     want = set(names)
     defs = {tool_name(td): td for td in catalog if tool_name(td) in want}
     kept: set[str] = {n for n in want if n not in defs}  # non-catalog → passthrough
+    used = 0
+    # WS-1b: keep the allowlisted canon-write tools hot UNCONDITIONALLY (they were starved by
+    # the read-first ordering below). Only those already candidates for this surface, and their
+    # (small) token cost is charged against the budget so the remaining reads still fit.
+    for nm in ALWAYS_HOT_WRITES:
+        td = defs.get(nm)
+        if td is not None:
+            kept.add(nm)
+            used += _tool_tokens(td)
     ordered = sorted(
-        defs.items(),
+        ((n, td) for n, td in defs.items() if n not in kept),
         key=lambda kv: (0 if _is_read_tool(kv[0]) else 1, _tool_tokens(kv[1]), kv[0]),
     )
-    used = 0
     for nm, td in ordered:
         t = _tool_tokens(td)
         if used + t > token_budget and used > 0:
