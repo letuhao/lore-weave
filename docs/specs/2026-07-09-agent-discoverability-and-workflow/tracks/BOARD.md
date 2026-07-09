@@ -60,6 +60,15 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 
 ## Contract change log
 
+- 2026-07-09 (**Track D**) — **C1 += `research`** (a new category value). `glossary_web_search` is
+  universal infrastructure misfiled under a domain prefix → renamed **`web_search`** and moved to
+  **provider-registry** (which owns the capability per the provider-gateway invariant). Its prefix
+  `web` had no `GROUP_DIRECTORY` home; `web → knowledge` would be wrong (`knowledge` is the INTERNAL
+  KG, web search is EXTERNAL retrieval), so `research` is minted. **Tracks B/C: any `category` enum in
+  a UI/authoring surface must now include `research`.** Lockstep: `find-tools.ts` + `tool_discovery.py`
+  `GROUP_DIRECTORY`, `tool-policy.ts` `Domain`, `_DOMAIN_ALIASES: web → research`. `glossary_web_search`
+  survives as a `visibility: legacy` alias. `glossary_deep_research` is **unchanged** (verified NOT
+  universal — needs `book_id`+`entity_id`). Detail: Track D `contracts.md` CD5. Implemented in WS-D0f.
 - 2026-07-09 (Track B) — **C5 `glossary_entity_rename` refined**: signature `(book_id, entity_id, name)`
   (book_id required, anti-oracle) and **Tier-A** not Tier-W (rename is reversible; set_attributes already
   renames at Tier-A). `glossary_entity_delete` unchanged (Tier-W, already reachable). Detail + rationale in

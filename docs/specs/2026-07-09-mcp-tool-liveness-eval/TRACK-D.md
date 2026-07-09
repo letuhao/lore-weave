@@ -29,25 +29,47 @@ then make that proof a precondition for shipping workflows.
 
 ## Deliver in order
 
-### WS-D0 · Metadata correctness — **fix the spend hole first** *(size L)*
+### WS-D0 · Metadata correctness + the spend gate — **first** *(size L)*
 > Must land before any glossary probe runs, or every probe tests the wrong gating.
+> **Ordering is load-bearing:** the spend gate precedes any paid tool reaching the hot path.
 
-- **D0a — `_meta.paid`** (CD1): kit field in Go + Py; mark the ~25 money-spending tools.
-- **D0b — glossary `_meta` adoption**: assign `tier` + `scope` to all `/mcp` + `/mcp/admin` tools,
+- **D0a — `_meta.paid`** (CD1): kit field in Go + Py (`WithPaid` / `paid=True`); mark the ~25
+  money-spending tools.
+- **D0b — the internal SPEND GATE** *(new prerequisite; nothing like it exists)*. Verified: nothing in
+  the chat tool-loop reads a spend concept, and `mcp-public-gateway` marks its own gate *"P3/pending"*.
+  A `paid` tool must require approval-on-first-use and count against a spend budget — **independent of
+  `tier`** (CD1: `paid ⊥ tier`; a paid *read* stays a read and remains allowed in `ask` mode).
+  Then derive `mcp-public-gateway`'s `paid_read` from `tier == R ∧ paid == true` instead of restating it.
+- **D0c — glossary `_meta` adoption**: assign `tier` + `scope` to all `/mcp` + `/mcp/admin` tools,
   calibrating exactly as knowledge did (reversible→`A`, destructive/`confirm_token`→`W`,
-  read/derive→`R`). **Highest priority within D0b:** `glossary_web_search` and
-  `glossary_deep_research` are untiered ⇒ `R` ⇒ runnable in read-only *ask* mode with no approval
-  card, and both are **paid**. Fix these two first.
-- **D0c — async audit** *(do not trust the inventory)*: for each of `composition_motif_mine`,
+  read/derive→`R`). ≥27 of 35 scanned carry none.
+- **D0d — async audit** *(do not trust the inventory)*: for each of `composition_motif_mine`,
   `composition_arc_import_analyze`, `composition_conformance_run`, `plan_propose_spec(mode=llm)` —
   **read the handler**, confirm it enqueues, and only then mark `async`.
-- **D0d — `lore_enrichment_auto_enrich` `A` → `W`**: it is `async` **and** `paid` (verified). An
+- **D0e — `lore_enrichment_auto_enrich` `A` → `W`**: it is `async` **and** `paid` (verified). An
   auto-applying paid async tool contradicts the money model; `mcp-public-gateway` already
   reclassifies it `write_confirm`. Reconcile the internal tier, then derive the public one.
-- **D0e — per-service wire gates** (CD1 enforcement) for every domain service.
+- **D0f — universalize `web_search`** (CD5 + the C1 change). Decided 2026-07-09:
+  1. **Mint C1 category `research`** — 3 lockstep declarations (`find-tools.ts GROUP_DIRECTORY`,
+     `tool_discovery.py GROUP_DIRECTORY`, `tool-policy.ts Domain`) + `_DOMAIN_ALIASES: web → research`
+     on both engines. Guarded by `find-tools.spec.ts`'s drift-lock. *(C1 is Track A's frozen contract —
+     the change is recorded in its change log and announced on the board.)*
+  2. **Move the tool to provider-registry-service**, which owns the capability
+     (`POST /internal/web-search`, provider-gateway invariant) and already serves MCP tools
+     (`settings_*`). Carry over the INV-6 neutralization + its tests.
+  3. **Rename** `glossary_web_search` → **`web_search`**; retain the old name as a
+     `visibility: legacy` alias (never delete). `_meta`: `tier R`, `scope none`, `paid true`.
+  4. **Delete `composition-service/app/clients/web_search_client.py`** — it hand-rolls a second client
+     and *mirrors this tool's safety caps* (drift risk). Composition calls the tool.
+  5. **`glossary_deep_research` KEEPS its prefix** — verified NOT universal (requires `book_id` +
+     `entity_id`; attaches draft evidence to one entity). Only its missing `_meta` is a defect.
+  6. **After D0b lands:** add `web_search` to `ALWAYS_ON_CORE_NAMES`. ⚠️ This consumes the **last free
+     slot (9 → 10 of 10)**; the `<= 10` assertion in `test_tool_discovery.py:645` then pins the cap —
+     any further core tool requires an explicit decision to raise it.
+- **D0g — per-service wire gates** (CD1 enforcement) for every domain service.
 
-**Exit:** zero tools with absent `tier`/`scope`; `paid ⇒ tier != R` holds repo-wide; each service has
-a `tools/list` gate. → **ND1**
+**Exit:** zero tools with absent `tier`/`scope`; every `paid` tool declares it **and** passes the spend
+gate; `web_search` is universal, categorized, and hot-path; each service has a `tools/list` gate. → **ND1**
 
 ### WS-D1 · `propose_*` semantics (CD2) *(size S)*
 Declare each `propose_*` tool's pattern (token vs draft) in its description; add the

@@ -138,6 +138,53 @@ not merely "returned 200".
 
 ---
 
+## CD5 · Universal vs domain-scoped tools — naming & placement law
+
+> **A tool's name declares its scope. A tool's home declares who owns the capability.**
+
+**Definition.** A tool is **universal** iff it needs **no domain context** to be callable — i.e. its
+*required* args contain no `book_id` / `project_id` / `entity_id`.
+
+**The law:**
+1. A **universal** tool carries **no service prefix** (`web_search`, not `glossary_web_search`), and
+   declares `scope: none`.
+2. A universal tool is **registered by the service that OWNS the capability** — for an outward call,
+   that is the service holding it per the **provider-gateway invariant** (CLAUDE.md). A service that
+   merely *wraps* a capability must not own its tool.
+3. A **domain-scoped** tool keeps its `<domain>_` prefix.
+4. **A rename never deletes.** The old name is retained as an alias tagged
+   `_meta.visibility: "legacy"` (CAT-4, `mcp-tool-io.md`) — the standing project rule: deprecate,
+   don't remove.
+5. Because `_domain_of()` is **prefix-derived**, a universal tool needs an explicit C1 category home
+   (see the C1 change below). Federation routing is unaffected — `providerFor()` resolves via a
+   discovered `toolToProvider` map, not a prefix.
+
+**Adjudicated applications (verified, 2026-07-09):**
+
+| Tool | Universal? | Evidence | Action |
+|---|---|---|---|
+| `glossary_web_search` | **YES** | required args = `query` only; description says *"it needs no book or entity"*; capability lives in **provider-registry** (`/internal/web-search`); `composition-service` independently clients that endpoint and *mirrors this tool's safety caps* | → **`web_search`**, **moved to provider-registry**, category `research`, `scope: none`, `paid: true`, tier `R`; legacy alias retained |
+| `glossary_deep_research` | **NO** | requires `book_id` **and** `entity_id`; attaches draft `reference` evidence to one glossary entity; mints a cost confirm-card | **keeps its prefix**; only its missing `_meta` is a defect |
+
+**Enforcement (lint):** a tool with **no required domain-context arg** but a `<domain>_` prefix is a
+finding; a tool **with** a required `book_id`/`project_id` and **no** prefix is a finding.
+
+---
+
+## Dependency — a C1 change this track requires
+
+CD5 forces a change to **C1 (the category enum)**, which is FROZEN and owned by **Track A**
+(`../2026-07-09-agent-discoverability-and-workflow/contracts.md`). Per C1's own rule, the change is
+recorded there and announced on the board.
+
+> **C1 += `research`.** `web_search` has prefix `web`, which has no `GROUP_DIRECTORY` home. Rather
+> than alias `web → knowledge` (wrong: `knowledge` is the *internal* KG; web search is *external*
+> retrieval), mint a `research` category. Lockstep declarations: `find-tools.ts GROUP_DIRECTORY`,
+> `tool_discovery.py GROUP_DIRECTORY`, `tool-policy.ts Domain` union, plus `_DOMAIN_ALIASES: web →
+> research`. Implemented in **WS-D0f**.
+
+---
+
 ## Rejected findings (recorded so they don't resurface)
 
 - ~~"`glossary_propose_translation` / `glossary_propose_aliases` are direct writes despite the
@@ -158,3 +205,11 @@ not merely "returned 200".
 ### Change log
 - 2026-07-09 — initial freeze (CD1–CD4). CD1 adds the new `_meta.paid` field. CD2 rewritten after
   source-verification rejected the "propose = direct write" finding.
+- 2026-07-09 — **CD1 rule 1 CORRECTED.** Was *"a paid tool MUST NOT be tier R"*. Wrong: it conflates
+  spend with mutation and would block web search in `ask` mode. `mcp-public-gateway`'s existing
+  `paid_read` tier (*"Tier-R but incurs cost"*) disproved it. New rule: `paid ⊥ tier`; a paid tool
+  passes a **spend gate**, independent of tier. Also recorded: **no internal spend gate exists today**
+  — building it is a WS-D0 prerequisite before any paid tool goes hot-path.
+- 2026-07-09 — **CD5 added** (universal vs domain-scoped naming/placement). Adjudicates
+  `glossary_web_search` → `web_search` @ provider-registry, and `glossary_deep_research` stays.
+  Forces **C1 += `research`** (Track A's frozen contract — announced on the board).

@@ -17,12 +17,15 @@ The single closed set of tool categories. **Source of truth: `GROUP_DIRECTORY`**
 mcp-public-gateway `tool-policy.ts`. Everyone **imports** it; no one re-declares it.
 
 ```
-book · catalog · composition · glossary · jobs · knowledge · plan · registry · settings · story · translation
+book · catalog · composition · glossary · jobs · knowledge · plan · registry · research · settings · story · translation
 + sentinel: "all"
 ```
 - `knowledge` spans prefixes `kg_` + `memory_` (via `_DOMAIN_ALIASES`).
 - **`lore_enrichment`** (the 1 orphan tool `lore_enrichment_auto_enrich`) → **folded into `glossary`**
   (add `lore_enrichment` → `glossary` to `_DOMAIN_ALIASES` / prefix map). Not a new category.
+- **`research`** (added 2026-07-09 by Track D, see change log) — **EXTERNAL** retrieval: `web_search`
+  (prefix `web` → `_DOMAIN_ALIASES: web → research`). Deliberately *not* folded into `knowledge`,
+  which is the **internal** KG. Implemented in Track D **WS-D0f**.
 - **`admin`** (RS256-segregated catalog) is **excluded** from the user-facing enum (OQ2) — a separate scope.
 - Category resolution stays **prefix-based** (`_domain_of(name)` through the alias map), never
   service-based (`story`/`plan` live in a different service than their name suggests — keep prefix-based).
@@ -131,6 +134,17 @@ Generalizes today's hardcoded `plan→plan_forge`. Effective binding = System de
 
 ### Change log
 - 2026-07-09 — initial freeze (all of C1–C6).
+- 2026-07-09 (**Track D**) — **C1 += `research`.** `glossary_web_search` is universal infrastructure
+  misfiled under a domain prefix (required args = `query` only; the capability lives in
+  provider-registry per the provider-gateway invariant; composition already clients it directly and
+  mirrors its safety caps). It is renamed **`web_search`** and moved to **provider-registry**
+  (Track D CD5). Its prefix `web` has no `GROUP_DIRECTORY` home; aliasing `web → knowledge` would be
+  wrong (**`knowledge` is the INTERNAL KG; web search is EXTERNAL retrieval**), so a `research`
+  category is minted. **Lockstep declarations to update together:** `find-tools.ts GROUP_DIRECTORY`,
+  `tool_discovery.py GROUP_DIRECTORY`, `tool-policy.ts Domain` union, plus `_DOMAIN_ALIASES: web →
+  research` on both engines. Guarded by `find-tools.spec.ts`'s drift-lock. `glossary_web_search` is
+  retained as a `visibility: legacy` alias (never deleted). **Tracks B/C:** a new C1 value exists —
+  a `category` enum in any UI/authoring surface must include `research`. Implemented in Track D WS-D0f.
 - 2026-07-09 — **C5 refinement (Track B, owner of C5) — `glossary_entity_rename`.** Two clarifications
   vs. the frozen line, both to match code reality; **Track C: note for workflow authoring.**
   1. **Signature** is `glossary_entity_rename(book_id, entity_id, name)` (not `(entity_id, name)`) —
