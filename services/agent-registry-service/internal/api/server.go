@@ -285,6 +285,12 @@ func (s *Server) Router() http.Handler {
 		r.Put("/proposals/{proposal_id}/approve", s.approveProposal)
 		r.Post("/proposals/{proposal_id}/reject", s.rejectProposal)
 
+		// Workflow proposals (WS-2a — same propose→approve/reject HITL spine)
+		r.Get("/workflow-proposals", s.listWorkflowProposals)
+		r.Get("/workflow-proposals/{proposal_id}", s.getWorkflowProposal)
+		r.Put("/workflow-proposals/{proposal_id}/approve", s.approveWorkflowProposal)
+		r.Post("/workflow-proposals/{proposal_id}/reject", s.rejectWorkflowProposal)
+
 		r.Get("/usage", s.getUsage)
 		r.Get("/audit", s.listAudit)
 	})
@@ -299,6 +305,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireInternalToken)
 		r.Get("/effective-catalog", s.effectiveCatalog)
 		r.Get("/skills", s.internalSkills)
+		r.Get("/workflows", s.internalWorkflows) // WS-2b step-runner source (full defs)
 		r.Get("/effective-mcp-servers", s.internalEffectiveMcpServers)              // P2 federation overlay source
 		r.Get("/mcp-servers/{mcp_server_id}/credentials", s.internalMcpCredentials) // P3 vault decrypt (egress auth)
 		r.Get("/commands", s.internalCommands)                                      // P4 command-expansion resolver

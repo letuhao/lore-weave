@@ -385,6 +385,83 @@ INSERT INTO skills (tier, slug, description, source, body_md) VALUES
   ('system','admin','Admin/CMS system-tier operations (admin surface only).','system','(System skill — body served by chat-service skill_registry)'),
   ('system','plan_forge','PlanForge novel-system planning workflows.','system','(System skill — body served by chat-service skill_registry)')
 ON CONFLICT (slug) WHERE tier = 'system' DO NOTHING;
+
+-- WS-2a (agent-discoverability spec): curated multi-step WORKFLOWS — an authored,
+-- ordered list of tool steps a user/agent can run as one named capability (C3 steps
+-- schema). Same 3-tier tenancy as skills: System (admin-seeded, read-only to users),
+-- Per-user, Per-book. steps/inputs hold the C3 object; the chat-service step-runner
+-- (WS-2b) executes them, honoring each step's gate (none/confirm/approval). Slug is
+-- unique PER TIER (per-user / per-book scope keys — never a global UNIQUE(slug)).
+CREATE TABLE IF NOT EXISTS workflows (
+  workflow_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  tier TEXT NOT NULL CHECK (tier IN ('system','user','book')),
+  owner_user_id UUID,
+  book_id UUID,
+  slug TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  surfaces TEXT[] NOT NULL DEFAULT '{}',
+  inputs JSONB NOT NULL DEFAULT '{}',       -- C3 inputs: { <name>: "required"|"optional" }
+  steps JSONB NOT NULL DEFAULT '[]',        -- C3 steps: [ { id, tool, gate, when?, repeat?, inputs_map? } ]
+  notes_md TEXT NOT NULL DEFAULT '',        -- prose the agent reads; NOT executed
+  status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft','published','archived')),
+  source TEXT NOT NULL DEFAULT 'user' CHECK (source IN ('user','agent','system','import')),
+  used_count BIGINT NOT NULL DEFAULT 0,
+  last_run_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT workflows_scope_key CHECK (
+    (tier = 'system' AND owner_user_id IS NULL AND book_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL AND book_id IS NULL) OR
+    (tier = 'book'   AND book_id IS NOT NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_workflows_owner ON workflows(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_workflows_book ON workflows(book_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workflows_system ON workflows(slug) WHERE tier = 'system';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workflows_user   ON workflows(owner_user_id, slug) WHERE tier = 'user';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workflows_book   ON workflows(book_id, slug) WHERE tier = 'book';
+
+-- WS-2a HITL spine: an agent proposes a workflow via registry_propose_workflow; a
+-- human approves via the confirm route (mirrors skill_proposals exactly).
+CREATE TABLE IF NOT EXISTS workflow_proposals (
+  proposal_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id UUID NOT NULL,
+  book_id UUID,                              -- set ⇒ a book-tier proposal; NULL ⇒ user-tier
+  action TEXT NOT NULL CHECK (action IN ('create','update')),
+  target_workflow_id UUID REFERENCES workflows(workflow_id) ON DELETE CASCADE,
+  slug TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  surfaces TEXT[] NOT NULL DEFAULT '{}',
+  inputs JSONB NOT NULL DEFAULT '{}',
+  steps JSONB NOT NULL DEFAULT '[]',
+  notes_md TEXT NOT NULL DEFAULT '',
+  confirm_token TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','expired')),
+  reject_reason TEXT NOT NULL DEFAULT '',
+  from_session_id TEXT NOT NULL DEFAULT '',
+  from_session_label TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '7 days'
+);
+CREATE INDEX IF NOT EXISTS idx_workflow_proposals_owner ON workflow_proposals(owner_user_id, status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workflow_proposals_token ON workflow_proposals(confirm_token);
+
+-- WS-2a: workflow revision history (snapshot on each publish; restore = new draft).
+CREATE TABLE IF NOT EXISTS workflow_revisions (
+  revision_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  workflow_id UUID NOT NULL REFERENCES workflows(workflow_id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  surfaces TEXT[] NOT NULL DEFAULT '{}',
+  inputs JSONB NOT NULL DEFAULT '{}',
+  steps JSONB NOT NULL DEFAULT '[]',
+  notes_md TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_workflow_revisions_wf ON workflow_revisions(workflow_id, created_at DESC);
 `
 
 // Up applies the schema. Idempotent; safe to run on every boot.

@@ -58,6 +58,44 @@ func (s *Server) mcpHandler() http.Handler {
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"enable skill", "disable skill", "turn off skill", "turn on skill"}),
 	}, s.toolSetSkillEnabled)
 
+	// WS-2a — curated multi-step WORKFLOWS (C3). A workflow is an ordered list of
+	// tool steps the user runs as one named capability; authoring is propose→approve
+	// (never a direct write), same HITL spine as skills.
+	registerARTool(srv, &mcp.Tool{
+		Name:        "registry_list_workflows",
+		Description: "List the curated multi-step workflows visible to the signed-in user (System defaults + their own). Returns each workflow's slug + title + description — not the full step list. Use to see what workflows exist before proposing a new one or reading one in full.",
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"workflows", "list workflows", "my workflows", "what workflows", "recipes"}),
+		InputSchema: closedSetSchemaFor[listWorkflowsIn](map[string][]any{
+			"surface": enumSurfaces,
+		}),
+	}, s.toolListWorkflows)
+
+	registerARTool(srv, &mcp.Tool{
+		Name:        "registry_get_workflow",
+		Description: "Get the full definition of one workflow the user can see, by slug — its inputs and ordered steps. Read-only.",
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"read workflow", "workflow steps", "get workflow", "show workflow"}),
+	}, s.toolGetWorkflow)
+
+	registerARTool(srv, &mcp.Tool{
+		Name:        "registry_propose_workflow",
+		Description: "PROPOSE a new curated multi-step workflow for the user. Does NOT create or run it — it records a proposal the user must approve in the UI. Provide slug, title, a one-line description, and an ordered list of steps (each with a tool name and a gate: none | confirm | approval). Optionally declare inputs and set book_id to scope it to a book. Use this to save a repeatable sequence of tool calls as a reusable workflow.",
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save workflow", "propose workflow", "create workflow", "remember this as a workflow", "make a recipe"}),
+		InputSchema: closedSetSchemaFor[proposeWorkflowIn](map[string][]any{
+			"surfaces[]":   enumSurfaces,
+			"steps[].gate": enumWorkflowGates,
+		}),
+	}, s.toolProposeWorkflow)
+
+	registerARTool(srv, &mcp.Tool{
+		Name:        "registry_update_workflow",
+		Description: "PROPOSE an update to one of the user's OWN workflows (by slug). Does NOT apply immediately — the user approves the diff in the UI. Provide the slug and the new title/description/inputs/steps.",
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update workflow", "edit workflow", "change workflow"}),
+		InputSchema: closedSetSchemaFor[updateWorkflowIn](map[string][]any{
+			"surfaces[]":   enumSurfaces,
+			"steps[].gate": enumWorkflowGates,
+		}),
+	}, s.toolUpdateWorkflow)
+
 	return lwmcp.NewStatelessHandler(srv, s.cfg.InternalServiceToken)
 }
 
