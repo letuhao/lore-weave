@@ -70,9 +70,9 @@ describe('confirmActionResult', () => {
 
   // item #10: when auth-service DOES send its {code, message} business-error shape (writeErr —
   // e.g. AUTH_APPROVAL_EXPIRED, AUTH_CONFIRM_EXECUTE_FAILED), it is routed through the SAME
-  // buildErrorEnvelope helper invoke-tool.ts's malformedResult/notActivatedError use, reusing
-  // auth's own code/message verbatim rather than hand-rolling a 3rd envelope shape.
-  it('routes an auth {code, message} business error through the shared error envelope, verbatim', () => {
+  // buildErrorEnvelope helper invoke-tool.ts's malformedResult/notActivatedError use, which
+  // now maps the code into the C4 closed set (message preserved verbatim).
+  it('routes an auth {code, message} business error through the shared envelope, code mapped to C4', () => {
     const authBody = JSON.stringify({ code: 'AUTH_APPROVAL_EXPIRED', message: 'this confirmation has expired — propose it again' });
     const out = confirmActionResult({ id: 9 }, 410, authBody) as {
       id: unknown;
@@ -80,7 +80,8 @@ describe('confirmActionResult', () => {
     };
     expect(out.id).toBe(9);
     expect(out.result.isError).toBe(true);
-    expect(out.result.structuredContent).toEqual({ code: 'AUTH_APPROVAL_EXPIRED', message: 'this confirmation has expired — propose it again' });
+    // AUTH_APPROVAL_EXPIRED → CONFIRM_FAILED (C4); the human message is untouched.
+    expect(out.result.structuredContent).toEqual({ code: 'CONFIRM_FAILED', message: 'this confirmation has expired — propose it again' });
     expect(JSON.parse(out.result.content[0].text)).toEqual(out.result.structuredContent);
   });
 });

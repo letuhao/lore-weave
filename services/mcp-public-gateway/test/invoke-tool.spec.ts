@@ -41,7 +41,7 @@ describe('detectInvokeToolCall', () => {
     expect(resp.result.isError).toBe(true);
     expect(resp.id).toBe(3);
     // item #10: shares the same {code, message} envelope as notActivatedError/confirmActionResult.
-    expect(resp.result.structuredContent.code).toBe('MALFORMED_INVOKE_ARGS');
+    expect(resp.result.structuredContent.code).toBe('VALIDATION'); // C4-mapped from MALFORMED_INVOKE_ARGS
     expect(resp.result.structuredContent.message).toContain('invoke_tool requires a string "name"');
     expect(JSON.parse(resp.result.content[0].text)).toEqual(resp.result.structuredContent);
   });
@@ -83,7 +83,7 @@ describe('notActivatedError', () => {
     expect(out.result.isError).toBe(true);
     expect(JSON.parse(out.result.content[0].text).message).toContain('find_tools');
     // item #10: same shared envelope as malformedResult/confirmActionResult, with its own code.
-    expect(out.result.structuredContent.code).toBe('TOOL_NOT_DISCOVERED');
+    expect(out.result.structuredContent.code).toBe('NOT_DISCOVERED'); // C4-mapped
   });
 
   // 2026-07-08: docs/bugs/2026-07-07-mcp-discoverability-external-audit.md issue #4 — the prior
