@@ -63,6 +63,10 @@ DOMAIN_DB = {
     # a throwaway user's rows also land here (skills / workflows / proposals) and in auth
     "agent_registry": os.environ.get("TLE_DB_AGENT_REGISTRY", "loreweave_agent_registry"),
     "auth": os.environ.get("TLE_DB_AUTH", "loreweave_auth"),
+    # a throwaway user's seeded provider credential + model row (so the 6 credential-gated
+    # settings_model_* / settings_provider_inventory tools are reachable — a model cannot
+    # create a credential itself, OD-S1, so the fixture seeds a KEYLESS one directly).
+    "provider_registry": os.environ.get("TLE_DB_PROVIDER_REGISTRY", "loreweave_provider_registry"),
 }
 # The oracle shells into the postgres container (no host psql / creds needed).
 PG_CONTAINER = os.environ.get("TLE_PG_CONTAINER", "infra-postgres-1")

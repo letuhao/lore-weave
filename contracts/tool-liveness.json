@@ -51,8 +51,8 @@
       "proven": false
     },
     "book_chapter_update_meta": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "book_create": {
@@ -126,8 +126,8 @@
       "proven": false
     },
     "composition_arc_suggest": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_authoring_run_accept_unit": {
@@ -156,8 +156,8 @@
       "proven": false
     },
     "composition_authoring_run_list": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_authoring_run_pause": {
@@ -186,23 +186,23 @@
       "proven": false
     },
     "composition_canon_rule_create": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_canon_rule_delete": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_canon_rule_update": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_conformance_run": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_create_work": {
@@ -211,8 +211,8 @@
       "proven": false
     },
     "composition_generate": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_get_generation_job": {
@@ -226,8 +226,8 @@
       "proven": false
     },
     "composition_get_outline_node": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_get_prose": {
@@ -251,13 +251,13 @@
       "proven": false
     },
     "composition_motif_adopt": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_archive": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_bind": {
@@ -271,13 +271,13 @@
       "proven": false
     },
     "composition_motif_create": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_get": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_link_create": {
@@ -291,28 +291,28 @@
       "proven": false
     },
     "composition_motif_link_list": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_mine": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_patch": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_search": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_suggest_for_chapter": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_unbind": {
@@ -321,13 +321,13 @@
       "proven": false
     },
     "composition_outline_node_create": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_outline_node_delete": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_outline_node_restore": {
@@ -336,8 +336,8 @@
       "proven": false
     },
     "composition_outline_node_update": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_publish": {
@@ -356,8 +356,8 @@
       "proven": false
     },
     "composition_write_prose": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "find_tools": {
@@ -446,8 +446,8 @@
       "proven": false
     },
     "glossary_entity_set_attributes": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_entity_set_genres": {
@@ -751,8 +751,8 @@
       "proven": false
     },
     "lore_enrichment_auto_enrich": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "memory_forget": {
@@ -781,8 +781,8 @@
       "proven": false
     },
     "plan_apply_revision": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "plan_compile": {
@@ -791,13 +791,13 @@
       "proven": false
     },
     "plan_handoff_autofix": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "plan_interpret_feedback": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "plan_propose_spec": {
@@ -886,18 +886,18 @@
       "proven": false
     },
     "settings_model_delete": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "settings_model_register": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "settings_model_set_active": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "settings_model_set_default": {
@@ -906,18 +906,18 @@
       "proven": false
     },
     "settings_model_set_favorite": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "settings_model_update": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "settings_provider_inventory": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "settings_update_profile": {

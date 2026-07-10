@@ -130,51 +130,107 @@ def classify(ok: bool, message: str) -> tuple[bool | None, str]:
     return None, "rejected the call for a reason we cannot attribute to the tool"
 
 
-def fill_args(schema: dict, fx: dict) -> dict | None:
-    """Args for a REQUIRED-only call, from the fixture. None ⇒ cannot build, so DO NOT CALL.
+# Sentinel: this required field cannot be honestly supplied, so the whole call is unbuildable.
+_UNFILLABLE = object()
 
-    Refusing to call is the safe move. A tool handed a placeholder where it wanted a real
-    id or an existing kind-code fails on lookup, and that failure says nothing about the
-    tool. The first sweep learned this the hard way: 10 healthy tools scored "broken"
-    because they correctly rejected `"tle-sweep"` as a UUID or a kind code.
+
+def _resolve_ref(spec: dict, root: dict) -> dict:
+    """Follow a local `#/$defs/Name` (or `#/definitions/Name`) $ref to its definition.
+
+    28 composition tools wrap their real args in a single required field:
+        {"properties": {"args": {"$ref": "#/$defs/_MotifCreateArgs"}}, "$defs": {...}}
+    The `$defs` FULLY describe the structure, so a `$ref` is *buildable* — it is not a
+    reason to refuse. The earlier `fill_args` saw `type: None` on the `$ref` node and gave
+    up, leaving 28 tools permanently `executes: null`. A model resolving the schema has the
+    `$defs` in hand and can construct the object; so can we. `root` is the top-level schema
+    (it carries `$defs`), threaded through every recursion unchanged.
     """
+    seen: set[str] = set()
+    while isinstance(spec, dict) and "$ref" in spec:
+        ref = spec["$ref"]
+        if not isinstance(ref, str) or not ref.startswith("#/") or ref in seen:
+            return spec if isinstance(spec, dict) else {}
+        seen.add(ref)
+        node: Any = root
+        for part in ref[2:].split("/"):
+            if not isinstance(node, dict):
+                return {}
+            node = node.get(part, {})
+        spec = node
+    return spec if isinstance(spec, dict) else {}
+
+
+def _fill_value(key: str, spec: dict, fx: dict, root: dict, depth: int) -> Any:
+    """A value for one required field, or `_UNFILLABLE` if we cannot honestly supply it.
+
+    Refusing is the safe move: a tool handed a placeholder where it wanted a real id or an
+    existing kind-code fails on lookup, and that failure says nothing about the tool. The
+    first sweep learned this the hard way — 10 healthy tools scored "broken" because they
+    correctly rejected `"tle-sweep"` as a UUID or a kind code.
+    """
+    if key in fx and fx[key]:
+        return fx[key]
+    if key.endswith("_ids") and fx.get(key[:-4] + "_id"):
+        return [fx[key[:-4] + "_id"]]
+    if spec.get("enum"):
+        return spec["enum"][0]
+    # An id / uuid / reference-code we have no fixture value for is unguessable.
+    if _ID_KEY.search(key) or key in _REFERENCE_KEY or spec.get("format") == "uuid":
+        return _UNFILLABLE
+    t = spec.get("type")
+    # A nested object whose schema fully describes it IS buildable (the composition `args`
+    # wrapper). Recurse — but if any of ITS required fields is an unguessable id, the whole
+    # object is unbuildable, exactly as a model would find when it tried to construct it.
+    if t == "object" or (t is None and spec.get("properties")):
+        nested = _build_object(spec, fx, root, depth + 1)
+        return _UNFILLABLE if nested is None else nested
+    if t == "string":
+        return "tle-sweep"
+    if t in ("integer", "number"):
+        return spec.get("minimum", 1)
+    if t == "boolean":
+        return False
+    return _UNFILLABLE  # arrays of structured items need authored args
+
+
+def _build_object(schema: dict, fx: dict, root: dict, depth: int = 0) -> dict | None:
+    """Build a required-only object from `schema`. None ⇒ a required field is unfillable.
+
+    A schema nested more than a handful deep is not something a mechanical required-only
+    sweep should be inventing — bail to `null` (inconclusive), never guess.
+    """
+    if depth > 5:
+        return None
     props = (schema or {}).get("properties") or {}
+    required = (schema or {}).get("required") or []
     out: dict[str, Any] = {}
 
     # OPTIONAL scope keys the fixture can supply. 13 kg_* tools declare `project_id` as
     # OPTIONAL (it normally rides the X-Project-Id envelope) and then refuse with
     # "no project in scope" when neither is present. A required-args-only call therefore
-    # never exercised them at all. Supplying an optional arg we hold is free and honest —
-    # it is the same value the envelope would have carried.
+    # never exercised them. Supplying an optional arg we hold is free and honest — it is the
+    # same value the envelope would have carried. (Applied at every object level, since the
+    # composition `args` wrapper carries the scope key INSIDE the nested object.)
     for key in ("project_id", "book_id"):
-        if key in props and key not in (schema.get("required") or []) and fx.get(key):
+        if key in props and key not in required and fx.get(key):
             out[key] = fx[key]
 
-    for key in (schema or {}).get("required") or []:
-        spec = props.get(key) or {}
-        if key in fx and fx[key]:
-            out[key] = fx[key]
-            continue
-        if key.endswith("_ids") and fx.get(key[:-4] + "_id"):
-            out[key] = [fx[key[:-4] + "_id"]]
-            continue
-        enum = spec.get("enum")
-        if enum:
-            out[key] = enum[0]
-            continue
-        # An id / uuid / reference-code we have no fixture value for is unguessable.
-        if _ID_KEY.search(key) or key in _REFERENCE_KEY or spec.get("format") == "uuid":
+    for key in required:
+        spec = _resolve_ref(props.get(key) or {}, root)
+        val = _fill_value(key, spec, fx, root, depth)
+        if val is _UNFILLABLE:
             return None
-        t = spec.get("type")
-        if t == "string":
-            out[key] = "tle-sweep"
-        elif t in ("integer", "number"):
-            out[key] = spec.get("minimum", 1)
-        elif t == "boolean":
-            out[key] = False
-        else:
-            return None  # arrays/objects of structured items need authored args
+        out[key] = val
     return out
+
+
+def fill_args(schema: dict, fx: dict) -> dict | None:
+    """Args for a REQUIRED-only call, from the fixture. None ⇒ cannot build, so DO NOT CALL.
+
+    The top-level schema is also the `$ref` resolution root (it carries `$defs`), so it is
+    threaded through the recursion unchanged.
+    """
+    return _build_object(schema or {}, fx, schema or {}, 0)
 
 
 async def _list_tools() -> list[dict]:
@@ -334,14 +390,27 @@ def main() -> int:
         print(f"  (no kg project: {e}) — project-scoped tools will score inconclusive")
     print(f"fixture: {ids}")
 
+    # Order the book/project creators before their consumers so a later tool can read the
+    # id an earlier one minted (composition_create_work → project_id, plan_propose_spec →
+    # run_id, …). Anything not in the chain keeps catalog order and falls back to fill_args.
+    from .project_chain import (
+        PROJECT_SWEEP_ORDER,
+        authored_project_args,
+        teardown_composition,
+    )
+    prank = {name: i for i, name in enumerate(PROJECT_SWEEP_ORDER)}
+    targets.sort(key=lambda t: (prank.get(t["name"], len(prank)), t["name"]))
+
     try:
-        rows = asyncio.run(_sweep(targets, ids))
+        rows = asyncio.run(_sweep(
+            targets, ids,
+            authored_fn=lambda tool, _ids, state: authored_project_args(tool, ids, state)))
     finally:
-        # The kg project is created HERE, not by Fixture.build(), so Fixture.teardown()
-        # knows nothing about it and would leak one row per sweep. Clean up what we made:
-        # "no probe may touch an id it did not create" cuts both ways.
+        # Everything created HERE (outside Fixture.build) must be cleaned HERE — Fixture
+        # knows nothing about the kg project or the composition rows, and would leak one of
+        # each per sweep. "no probe may touch an id it did not create" cuts both ways.
+        from . import oracle
         if ids.get("project_id"):
-            from . import oracle
             pid = str(ids["project_id"]).replace("'", "''")
             try:
                 oracle.db_query(config.DOMAIN_DB["knowledge"],
@@ -349,6 +418,7 @@ def main() -> int:
                 print(f"teardown: kg project {ids['project_id']} deleted")
             except Exception as e:
                 print(f"teardown: FAILED to delete kg project {ids['project_id']}: {e}")
+        print(f"teardown: composition {teardown_composition(fx.book_id)}")
         print(f"teardown: {fx.teardown()}")
 
     # ── Phase 2: the user/none-scoped Tier-A writes ────────────────────────────────
@@ -363,6 +433,23 @@ def main() -> int:
                         if t["meta"].get("tier") in ("A", "S")
                         and t["meta"].get("scope") in ("user", "none")
                         and not t["meta"].get("paid")]
+        # Some tools consume state minted in PHASE 2 (the throwaway user's credential/model,
+        # or a motif) but are Tier R/W, so the A/S filter above excludes them — they would
+        # otherwise be swept in phase 1 against the real account, where that state does not
+        # exist (SKIP-NO-ARGS → null). Pulling them into phase 2 as the throwaway user is
+        # safe (a read returns the user's own rows; a Tier-W mint writes nothing) and their
+        # phase-2 result supersedes the phase-1 null in the manifest merge (null → conclusive,
+        # never the reverse — no regression).
+        by_name = {t["name"]: t for t in tools}
+        already = {t["name"] for t in user_targets}
+        _PHASE2_EXTRAS = (
+            "settings_provider_inventory", "settings_model_delete",          # credential-gated
+            "composition_motif_get", "composition_motif_link_list",          # motif reads
+            "composition_motif_adopt",                                       # motif token-mint
+        )
+        for extra in _PHASE2_EXTRAS:
+            if extra in by_name and extra not in already:
+                user_targets.append(by_name[extra])
         # Chains must run in order: create mints the code that patch/delete/restore need.
         rank = {name: i for i, name in enumerate(USER_SWEEP_ORDER)}
         user_targets.sort(key=lambda t: (rank.get(t["name"], len(rank)), t["name"]))

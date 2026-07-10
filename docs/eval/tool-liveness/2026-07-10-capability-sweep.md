@@ -255,8 +255,34 @@ must also destroy what it did.
 
 ## Where the manifest stands
 
-**199 of 204 tools** (the 5 missing are paid — never swept). **93 execute · 0 broken · 106
-inconclusive · 5 proven G1–G4.**
+**199 of 204 tools** (the 5 missing are paid — never swept). **126 execute · 0 broken · 78
+inconclusive · 5 proven G1–G4.** (Was 93 execute / 106 inconclusive before the three
+reachability passes below.)
+
+### The three passes that took 93 → 126 execute
+
+1. **`$ref`/`$defs` resolution in `fill_args`** — 28 composition tools wrap their real args in
+   a single required field, `{"args": {"$ref": "#/$defs/_XArgs"}}`. The old builder saw
+   `type: None` on the `$ref` node and refused; the `$defs` fully describe the object, so it is
+   *buildable* (a model resolving the schema constructs it too). Unblocked the composition
+   create/generate/list family.
+2. **A seeded, KEYLESS throwaway credential + model** — the 6 credential-gated tools
+   (`settings_provider_inventory` + the five `settings_model_*`) all need a
+   `provider_credential_id` / `user_model_id`. A model in the loop cannot MINT a credential — that
+   needs a secret in the Settings UI, and OD-S1 forbids a secret as an LLM-visible arg — so
+   nothing ever called them. That is missing *fixture* state, which is buildable (not "unreachable
+   by design"). The fixture seeds a keyless credential (a real production state: provider added, no
+   key yet) directly in the DB; every one of these 6 is a metadata op that never reads the secret.
+   **All 6 now execute.** (This corrected an earlier plan to WAIVE them — waiving would have
+   asserted "never executes:true", which a 2-INSERT seed disproves.)
+3. **Chained creators (`project_chain.py` + the phase-2 motif order)** — the composition and
+   planforge families mint an id a sibling consumes. `composition_create_work` mints the
+   COMPOSITION `project_id` (distinct from the kg project — a kg id fails these tools with "not
+   found"); `plan_propose_spec` in `rules` mode runs SYNCHRONOUSLY ($0, no LLM) and returns a real
+   `run_id`; `outline_node_create` (kind `beat`) and `canon_rule_create` return `{id, version}`
+   their update/delete twins consume; `composition_motif_create` mints a `motif_id` for the
+   user-scoped motif reads/writes. All threaded through the sweep's `state` dict, all torn down
+   (a leak check confirms 0 rows survive).
 
 Four tools that could never work, all found in one day, none by a test:
 
@@ -272,9 +298,21 @@ ever read `tools/list` **metadata**; not one had issued a `tools/call`.
 
 ## What `executes: null` means here
 
-102 tools are inconclusive, mostly because a required arg is an id or a reference-code the
-fixture cannot supply (`motif_id`, `world_id`, `run_id`, `kind`, `slug`). They are **not**
-blocked and **not** hidden. Closing them is the P1 grind: authored args per tool.
+78 tools remain inconclusive. They are **not** blocked and **not** hidden — `null` blocks
+nothing. The residue is now well-characterized, and it is no longer "the fixture cannot supply
+an id" (that was the pass-3 grind); what is left genuinely needs more than authored args:
+
+| residue | n | why it is left |
+|---|---|---|
+| authoring-run family (`composition_authoring_run_*`, `plan_compile`/arc) | ~14 | needs a real authoring run — `authoring_run_create` is Tier-W (mints a token, no run) and confirming it **spends** a `budget_usd`; `plan_compile` needs an `arc_id` that only a model plan run produces |
+| `job_id` consumers (`jobs_*`, `composition_get_*_job`) | 7 | needs a real async job result — enqueuing one spends |
+| kg graph-state (`kg_build_graph`, `kg_sync_apply`, `kg_triage_*`, `kg_world_query`) | ~9 | needs an adopted ontology + a built graph — a deeper fixture |
+| glossary `items`/`ops`/`kinds` batch tools | ~8 | needs authored structured payloads (a real proposal batch) |
+| registry `slug` consumers (`registry_get_skill`, …) | 5 | a *proposed* skill is not retrievable/editable — needs admin **approval** |
+| long tail: translation versions, glossary merge, kg template/edge, one-off creators | ~35 | each a bespoke creator chain or a genuinely-external dependency |
+
+The cheap grind is done; the rest clears the defer gate (blocked on spend / approval / a
+larger fixture). Closing any cluster is a scoped follow-up, not a one-liner.
 
 ## Reproduce
 

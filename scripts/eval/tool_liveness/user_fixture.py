@@ -29,7 +29,8 @@ _PASSWORD = "TleSweep@2026"
 # information_schema, not guessed. Each entry is (db, table, owner column). Deletion is
 # scoped to the created user id; never a broader predicate.
 #
-# Ordered so children die before parents (proposals before skills/workflows).
+# Ordered so children die before parents (proposals before skills/workflows;
+# user_default_models + user_models before provider_credentials — FK child first).
 _OWNED_ROWS: tuple[tuple[str, str, str], ...] = (
     ("knowledge", "knowledge_projects", "user_id"),
     ("glossary", "user_kinds", "owner_user_id"),
@@ -40,6 +41,9 @@ _OWNED_ROWS: tuple[tuple[str, str, str], ...] = (
     ("agent_registry", "skills", "owner_user_id"),
     ("agent_registry", "workflows", "owner_user_id"),
     ("composition", "motif", "owner_user_id"),
+    ("provider_registry", "user_default_models", "owner_user_id"),
+    ("provider_registry", "user_models", "owner_user_id"),
+    ("provider_registry", "provider_credentials", "owner_user_id"),
 )
 
 
@@ -50,6 +54,9 @@ class UserFixture:
         self.run_id = uuid.uuid4().hex[:8]
         self.email = f"tle-sweep-{self.run_id}@loreweave.test"
         self.user_id: str | None = None
+        # Seeded so the 6 credential-gated tools are reachable (see _seed_provider_model).
+        self.credential_id: str | None = None
+        self.user_model_id: str | None = None
 
     def build(self) -> "UserFixture":
         r = httpx.post(
@@ -59,7 +66,37 @@ class UserFixture:
         )
         r.raise_for_status()
         self.user_id = r.json()["user_id"]
+        self._seed_provider_model()
         return self
+
+    def _seed_provider_model(self) -> None:
+        """Seed a KEYLESS provider credential + one model row for the throwaway user.
+
+        The 6 credential-gated tools (`settings_provider_inventory` and the five
+        `settings_model_*` writes) all require a `provider_credential_id` or a
+        `user_model_id`. A model in the agent loop cannot MINT a credential — that needs a
+        secret entered in the Settings UI, and OD-S1 forbids a secret being an LLM-visible
+        tool arg. So nothing in the tool surface can create one, and the tools were never
+        reachable by the sweep. That is not "the tool is broken" and not "unreachable by
+        design" — it is missing *fixture* state, which is buildable (CLAUDE.md's
+        anti-laziness rule). The credential is keyless (secret_ciphertext NULL) — a real
+        production state (a provider added but no key yet); every one of these 6 tools is a
+        METADATA op that never reads the secret, so a keyless row exercises them faithfully.
+        """
+        self.credential_id = str(uuid.uuid4())
+        self.user_model_id = str(uuid.uuid4())
+        db = config.DOMAIN_DB["provider_registry"]
+        oracle.db_query(db,
+            "INSERT INTO provider_credentials"
+            "(provider_credential_id, owner_user_id, provider_kind, display_name, status) "
+            f"VALUES ('{self.credential_id}','{self.user_id}','lm_studio',"
+            "'TLE Sweep (keyless)','active')")
+        oracle.db_query(db,
+            "INSERT INTO user_models"
+            "(user_model_id, owner_user_id, provider_credential_id, provider_kind, "
+            " provider_model_name, capability_flags) "
+            f"VALUES ('{self.user_model_id}','{self.user_id}','{self.credential_id}',"
+            "'lm_studio','tle-sweep-model','{\"embedding\": true}'::jsonb)")
 
     def headers(self) -> dict:
         assert self.user_id, "build() first"
@@ -114,6 +151,21 @@ USER_SWEEP_ORDER: tuple[str, ...] = (
     "glossary_user_patch",      # ← consumes them
     "glossary_user_delete",     # ← soft-delete (reversible)
     "glossary_user_restore",    # ← undo, leaving the world as we found it
+    # credential-gated: all reference the seeded credential / model (see _seed_provider_model).
+    "settings_provider_inventory",  # R — lists the seeded credential's (empty) inventory
+    "settings_model_register",      # A — registers a 2nd model against the seeded credential
+    "settings_model_update",        # A — edits the seeded model
+    "settings_model_set_favorite",  # A — flips is_favorite on the seeded model
+    "settings_model_set_active",    # A — flips is_active on the seeded model
+    "settings_model_delete",        # W — mints a delete token (writes nothing; never redeemed)
+    # motif chain: create mints a motif_id (+ version) the rest consume; archive LAST since
+    # it changes state the reads/patch above depend on.
+    "composition_motif_create",
+    "composition_motif_get",
+    "composition_motif_link_list",
+    "composition_motif_patch",
+    "composition_motif_adopt",
+    "composition_motif_archive",
     "registry_propose_skill",
     "registry_propose_workflow",
 )
@@ -127,6 +179,9 @@ def authored_user_args(tool: str, fx: UserFixture, state: dict) -> dict | None:
     cannot invent a row the tool itself is supposed to make.
     """
     kind = state.get("glossary_user_create") or {}
+    motif = state.get("composition_motif_create") or {}
+    motif_id = motif.get("id") or motif.get("motif_id")
+    motif_ver = motif.get("version")
     match tool:
         case "settings_update_profile":
             # required=[] — a required-only call is a no-op ("no fields to update") and
@@ -167,6 +222,48 @@ def authored_user_args(tool: str, fx: UserFixture, state: dict) -> dict | None:
             # "unsupported capability (want one of: rerank, embedding, chat...)". Omitting
             # `model_ref` CLEARS the default, which the throwaway user does not have.
             return {"capability": "embedding"}
+        # ── credential-gated: use the seeded credential / model ──────────────────
+        case "settings_provider_inventory":
+            return {"provider_credential_id": fx.credential_id} if fx.credential_id else None
+        case "settings_model_register":
+            if not fx.credential_id:
+                return None
+            # context_length is optional in the SCHEMA but REQUIRED by the tool for
+            # ollama/lm_studio providers (which the seeded credential is). Supplying it is
+            # honest — a real caller registering an lm_studio model must provide it too.
+            return {"provider_credential_id": fx.credential_id,
+                    "provider_model_name": f"tle-sweep-registered-{fx.run_id}",
+                    "context_length": 8192}
+        case "settings_model_update":
+            return {"user_model_id": fx.user_model_id, "alias": f"TLE renamed {fx.run_id}"} \
+                if fx.user_model_id else None
+        case "settings_model_set_favorite":
+            return {"user_model_id": fx.user_model_id, "value": True} if fx.user_model_id else None
+        case "settings_model_set_active":
+            return {"user_model_id": fx.user_model_id, "value": True} if fx.user_model_id else None
+        case "settings_model_delete":
+            # Tier W: mints a confirm_token + preview, writes NOTHING. We never redeem it, so
+            # the seeded model survives to be cleaned up by teardown.
+            return {"user_model_id": fx.user_model_id} if fx.user_model_id else None
+        # ── motif chain: create mints the motif_id (+ version) the rest consume ───
+        case "composition_motif_create":
+            # args.required = [code, name]; both author-supplied (a motif `code` is the NEW
+            # code being minted, not a lookup — which is why fill_args, blind to intent,
+            # refused it).
+            return {"args": {"code": f"tle-motif-{fx.run_id}", "name": f"TLE Motif {fx.run_id}"}}
+        case "composition_motif_get" | "composition_motif_link_list":
+            return {"motif_id": motif_id} if motif_id else None
+        case "composition_motif_patch":
+            if not motif_id:
+                return None
+            a = {"motif_id": motif_id, "summary": "patched by TLE sweep"}
+            if motif_ver is not None:
+                a["expected_version"] = motif_ver  # required; 409 on drift
+            return {"args": a}
+        case "composition_motif_adopt":
+            return {"args": {"motif_id": motif_id}} if motif_id else None  # W: mints a token
+        case "composition_motif_archive":
+            return {"motif_id": motif_id} if motif_id else None
         case "registry_propose_skill":
             return {
                 "slug": f"tle-sweep-{fx.run_id}",

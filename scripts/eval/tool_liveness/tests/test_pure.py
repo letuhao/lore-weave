@@ -369,6 +369,72 @@ def test_fill_args_does_not_invent_a_scope_key_the_fixture_lacks():
     assert fill_args(schema, {"book_id": "b-1"}) == {}
 
 
+# ── $ref / $defs resolution (28 composition tools wrap their args in a $ref) ─────
+#
+# The composition tools declare `{"properties": {"args": {"$ref": "#/$defs/_XArgs"}},
+# "$defs": {...}}`. The $defs FULLY describe the object, so it is buildable — the old
+# fill_args saw `type: None` on the $ref node and refused, leaving 28 tools `null`.
+
+def test_fill_args_resolves_a_ref_wrapped_args_object():
+    from tool_liveness.sweep import fill_args
+
+    schema = {
+        "required": ["args"],
+        "properties": {"args": {"$ref": "#/$defs/_MotifSearchArgs"}},
+        "$defs": {"_MotifSearchArgs": {
+            "type": "object",
+            "required": ["query"],
+            "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}},
+        }},
+    }
+    assert fill_args(schema, {}) == {"args": {"query": "tle-sweep"}}
+
+
+def test_fill_args_refuses_when_the_nested_ref_needs_an_unguessable_id():
+    """A model resolving the schema would find `motif_id` inside `args` and, lacking one,
+    could not construct it either. The nested refusal must bubble up to a whole-call None."""
+    from tool_liveness.sweep import fill_args
+
+    schema = {
+        "required": ["args"],
+        "properties": {"args": {"$ref": "#/$defs/_MotifGetArgs"}},
+        "$defs": {"_MotifGetArgs": {
+            "type": "object", "required": ["motif_id"],
+            "properties": {"motif_id": {"type": "string", "format": "uuid"}},
+        }},
+    }
+    assert fill_args(schema, {"book_id": "b-1"}) is None
+
+
+def test_fill_args_supplies_a_scope_key_inside_a_nested_args_object():
+    """The composition `args` wrapper carries the scope key INSIDE the nested object, so the
+    optional-scope-key injection must apply at every level, not just the top."""
+    from tool_liveness.sweep import fill_args
+
+    schema = {
+        "required": ["args"],
+        "properties": {"args": {"$ref": "#/$defs/_A"}},
+        "$defs": {"_A": {
+            "type": "object", "required": ["name"],
+            "properties": {"name": {"type": "string"}, "project_id": {"type": "string"}},
+        }},
+    }
+    args = fill_args(schema, {"project_id": "p-1"})
+    assert args == {"args": {"project_id": "p-1", "name": "tle-sweep"}}, args
+
+
+def test_fill_args_ref_resolution_is_cycle_safe():
+    """A self-referential $ref must not hang the sweep — bail to None, never loop."""
+    from tool_liveness.sweep import fill_args
+
+    schema = {
+        "required": ["args"],
+        "properties": {"args": {"$ref": "#/$defs/_Loop"}},
+        "$defs": {"_Loop": {"$ref": "#/$defs/_Loop"}},
+    }
+    assert fill_args(schema, {}) is None
+
+
 # ── phase 2: the throwaway-USER sweep ───────────────────────────────────────────
 #
 # The 25 user/none-scoped Tier-A writes mutate THE CALLER — there is no book to hand them.
@@ -406,13 +472,46 @@ def test_authored_user_args_supplies_the_field_settings_update_profile_needs():
 
 
 def test_authored_user_args_returns_none_for_tools_needing_state_we_lack():
-    """A motif id, a job id, a provider credential — the throwaway user has none. Returning
-    None keeps the tool at `executes: null`, which blocks nothing."""
+    """A motif id, a job id — the throwaway user has none, and we do not chain a creator for
+    them. Returning None keeps the tool at `executes: null`, which blocks nothing."""
     from tool_liveness.user_fixture import UserFixture, authored_user_args
 
-    fx = UserFixture()
-    for tool in ("composition_motif_archive", "jobs_cancel", "settings_model_update"):
+    fx = UserFixture()  # unbuilt: no seeded credential / model
+    for tool in ("composition_motif_archive", "jobs_cancel", "settings_model_register"):
         assert authored_user_args(tool, fx, {}) is None, tool
+
+
+def test_credential_gated_tools_use_the_seeded_credential_and_model():
+    """The 6 credential-gated tools are reachable ONLY because the fixture seeds a keyless
+    provider credential + a model. With those ids present, each authors args that reference
+    them; without the seed (unbuilt fixture) each returns None."""
+    from tool_liveness.user_fixture import UserFixture, authored_user_args
+
+    unbuilt = UserFixture()
+    seeded = UserFixture()
+    seeded.credential_id = "cred-1"
+    seeded.user_model_id = "model-1"
+
+    cred_tools = ("settings_provider_inventory", "settings_model_register")
+    model_tools = ("settings_model_update", "settings_model_set_favorite",
+                   "settings_model_set_active", "settings_model_delete")
+    for tool in cred_tools + model_tools:
+        assert authored_user_args(tool, unbuilt, {}) is None, f"{tool} must skip without seed"
+    for tool in cred_tools:
+        assert authored_user_args(tool, seeded, {})["provider_credential_id"] == "cred-1", tool
+    for tool in model_tools:
+        assert authored_user_args(tool, seeded, {})["user_model_id"] == "model-1", tool
+
+
+def test_credential_gated_tools_are_all_in_the_sweep_order():
+    """A seeded tool absent from USER_SWEEP_ORDER would never be swept (it keeps catalog
+    order, which is fine) — but pinning them here documents the reachable set."""
+    from tool_liveness.user_fixture import USER_SWEEP_ORDER as O
+
+    for tool in ("settings_provider_inventory", "settings_model_register",
+                 "settings_model_update", "settings_model_set_favorite",
+                 "settings_model_set_active", "settings_model_delete"):
+        assert tool in O, tool
 
 
 def test_chained_tools_are_unreachable_without_the_creator_result():
@@ -449,6 +548,98 @@ def test_the_chain_order_creates_before_it_consumes():
                               ("kg_project_create", "kg_view_upsert"),
                               ("kg_view_upsert", "kg_view_delete")):
         assert O.index(creator) < O.index(consumer), f"{creator} must precede {consumer}"
+
+
+# ── phase 1: the book/project-scoped composition + planforge chain ──────────────
+#
+# composition_create_work mints the COMPOSITION project_id (distinct from the kg project),
+# plan_propose_spec mints run_id (sync, rules mode), and the node/rule creators mint ids
+# their update/delete twins consume. Ordering is load-bearing: a delete before its
+# read/update siblings starves them.
+
+def test_project_chain_orders_creators_before_consumers_and_deletes_last():
+    from tool_liveness.project_chain import PROJECT_SWEEP_ORDER as O
+
+    for creator, consumer in (
+        ("composition_create_work", "composition_outline_node_create"),
+        ("composition_create_work", "composition_canon_rule_create"),
+        ("plan_propose_spec", "plan_apply_revision"),
+        ("plan_propose_spec", "plan_interpret_feedback"),
+        ("composition_outline_node_create", "composition_outline_node_update"),
+        ("composition_canon_rule_create", "composition_canon_rule_update"),
+    ):
+        assert O.index(creator) < O.index(consumer), f"{creator} must precede {consumer}"
+    # a delete destroys the id its read/update siblings need → it must come after them
+    assert O.index("composition_outline_node_update") < O.index("composition_outline_node_delete")
+    assert O.index("composition_canon_rule_update") < O.index("composition_canon_rule_delete")
+
+
+def test_project_chain_creators_need_only_book_and_are_reachable():
+    """The two roots need nothing but the fixture book — everything else chains from them."""
+    from tool_liveness.project_chain import authored_project_args
+
+    ids = {"book_id": "b-1"}
+    assert authored_project_args("composition_create_work", ids, {})["book_id"] == "b-1"
+    assert authored_project_args("plan_propose_spec", ids, {})["book_id"] == "b-1"
+
+
+def test_project_chain_consumers_skip_without_the_creator_result():
+    """No composition project, no run, no node/rule → each consumer returns None (skip),
+    never a fabricated id."""
+    from tool_liveness.project_chain import authored_project_args
+
+    ids = {"book_id": "b-1", "project_id": "kg-1"}  # kg project is NOT the composition one
+    for tool in ("composition_outline_node_create", "composition_canon_rule_create",
+                 "plan_apply_revision", "composition_outline_node_update",
+                 "composition_canon_rule_delete", "composition_outline_node_delete"):
+        assert authored_project_args(tool, ids, {}) is None, f"{tool} must skip without state"
+
+
+def test_project_chain_consumers_consume_the_minted_ids_and_versions():
+    from tool_liveness.project_chain import authored_project_args
+
+    ids = {"book_id": "b-1"}
+    state = {
+        "composition_create_work": {"project_id": "cproj-1"},
+        "plan_propose_spec": {"run_id": "run-1"},
+        "composition_outline_node_create": {"id": "node-1", "version": 3},
+        "composition_canon_rule_create": {"id": "rule-1", "version": 2},
+    }
+    assert authored_project_args("plan_apply_revision", ids, state) == \
+        {"book_id": "b-1", "run_id": "run-1"}
+    upd = authored_project_args("composition_outline_node_update", ids, state)
+    assert upd["args"]["node_id"] == "node-1" and upd["args"]["expected_version"] == 3
+    rup = authored_project_args("composition_canon_rule_update", ids, state)
+    assert rup["args"]["rule_id"] == "rule-1" and rup["args"]["expected_version"] == 2
+    assert authored_project_args("composition_canon_rule_delete", ids, state)["rule_id"] == "rule-1"
+
+
+def test_project_chain_uses_the_composition_project_not_the_kg_one():
+    """The bug this guards: feeding the kg project_id to a composition tool fails with
+    'not found or not accessible'. The chain must read the composition project minted by
+    composition_create_work, never ids['project_id'] (which is the kg project)."""
+    from tool_liveness.project_chain import authored_project_args
+
+    ids = {"book_id": "b-1", "project_id": "kg-project"}
+    state = {"composition_create_work": {"project_id": "composition-project"}}
+    args = authored_project_args("composition_outline_node_create", ids, state)
+    assert args["args"]["project_id"] == "composition-project", args
+
+
+def test_project_chain_motif_crud_is_a_phase2_user_chain_not_here():
+    """The user-scoped motif CRUD (create/get/patch/archive/adopt/link_list) lives in
+    user_fixture (phase 2), NOT this book-scoped module — a regression that moved it here
+    would sweep it against the wrong identity. (motif_suggest_for_chapter IS book-scoped —
+    it takes project_id+node_id — so it correctly stays in the phase-1 order.)"""
+    from tool_liveness.project_chain import PROJECT_SWEEP_ORDER as O
+    from tool_liveness.user_fixture import USER_SWEEP_ORDER as U
+
+    user_motif_crud = ("composition_motif_create", "composition_motif_get",
+                       "composition_motif_patch", "composition_motif_archive",
+                       "composition_motif_adopt", "composition_motif_link_list")
+    for t in user_motif_crud:
+        assert t in U, f"{t} must be a phase-2 user chain"
+        assert t not in O, f"{t} must NOT be in the book-scoped phase-1 chain"
 
 
 def test_user_fixture_teardown_is_scoped_to_the_id_it_created():
