@@ -411,6 +411,22 @@ write-back finds the `decompile_key` rows already present and returns the same m
 idempotent per `idempotency-gate-exists-not-active-version` (the gate checks *exists*, not
 *in-flight*).
 
+**Volume-aligned arc proposals (IX-17 — the BPS-9 ✅ resolution, PO-decided 2026-07-10).** When the
+book has `parts` rows (an imported volume/folder structure), the **arc-level** decompiler
+(`composition_arc_import_analyze`) includes the volume boundaries in its analysis input and may
+**propose** arc boundaries aligned to them — each proposed arc carrying a
+`boundary_hint: 'volume' | 'content'` marker so the reviewer can see *why* the split is where it
+is. The proposal flows through the tool's **existing Tier-W propose→confirm gate**: nothing is
+written until the human approves (or redraws the boundaries in the review payload). The
+scene-level decompiler (`materialize-scenes`) is untouched — it maps parse leaves, not narrative
+structure. **DA-12 ✏️ is the law here:** the *silent* path stays forbidden — a `structure_node`
+minted from `parts` without a confirm token is a defect, not a feature; the confirm-token replay
+guard is the enforcement seam, and a test asserts that an unconfirmed analyze proposes but writes
+zero rows. Orthogonality in data is unchanged: no schema relation between `parts` and
+`structure_node` exists or is added — the hint lives only in the proposal payload, and an approved
+arc is `source='decompiled'` authored structure like any other, with no back-pointer to the volume
+that suggested it.
+
 **PlanForge's link step (27)** is the third producer of spec rows and stamps `source='planforge'`;
 its detail (pass orchestration, `event_id` idempotency) is owned entirely by 27 — IX only reserves
 the enum value so provenance is closed-set from day one.
