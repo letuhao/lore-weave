@@ -78,8 +78,11 @@ class Settings(BaseSettings):
     #
     # `canon_capture_enabled` is a deploy CEILING / kill-switch, NOT the enablement
     # knob (Settings & Config Boundary: env is never a per-user toggle). The per-user
-    # knob is `knowledge_projects.canon_capture_enabled`, surfaced on kctx.
-    # effective = AND(this, kctx.canon_capture_enabled). Set False to force-kill.
+    # knob is `knowledge_projects.canon_capture_enabled` (OPT-IN, default false),
+    # surfaced on kctx and toggled in the project settings modal.
+    # effective = AND(this, kctx.canon_capture_enabled). Default True here means
+    # "the deployment permits it"; nothing captures until a user opts their project
+    # in. Set False to force-kill capture platform-wide regardless of user choice.
     canon_capture_enabled: bool = True
     # Cadence — capture costs one small LLM call, billed to the user's own BYOK model.
     # 4 mirrors EXECUTIVE_EVERY_N_TURNS: often enough that a coined name survives the

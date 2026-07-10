@@ -77,6 +77,8 @@ export function ProjectFormModal({
   // the boolean-toggle pattern used elsewhere in the project UI.
   const [toolCallingEnabled, setToolCallingEnabled] = useState(true);
   const [memoryRememberConfirm, setMemoryRememberConfirm] = useState(false);
+  // WS-4C Half A — opt-in: each capture is an LLM call billed to the user's own model.
+  const [canonCaptureEnabled, setCanonCaptureEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   // D-K8-03: track the version at dialog open time so we can send it
   // back in If-Match on save. Updated on 412 so the user can retry
@@ -111,6 +113,7 @@ export function ProjectFormModal({
       setInitialRerankModel(project.rerank_model);
       setToolCallingEnabled(project.tool_calling_enabled);
       setMemoryRememberConfirm(project.memory_remember_confirm);
+      setCanonCaptureEnabled(project.canon_capture_enabled);
       setBaselineVersion(project.version);
     } else {
       setName('');
@@ -125,6 +128,7 @@ export function ProjectFormModal({
       setInitialRerankModel(null);
       setToolCallingEnabled(true);
       setMemoryRememberConfirm(false);
+      setCanonCaptureEnabled(false);
       setBaselineVersion(null);
     }
   }, [open, mode, project, initialBookId]);
@@ -167,6 +171,8 @@ export function ProjectFormModal({
           // edit — they're plain form fields like name/description.
           tool_calling_enabled: toolCallingEnabled,
           memory_remember_confirm: memoryRememberConfirm,
+          // WS-4C Half A — same plain-form-field treatment as the two above.
+          canon_capture_enabled: canonCaptureEnabled,
         };
         // K12.4: include embedding_model only when the user changed it.
         // Omitting the field leaves the column unchanged on the backend
@@ -425,6 +431,39 @@ export function ProjectFormModal({
                     defaultValue:
                       'Facts the AI wants to remember wait for your approval instead of saving automatically.',
                   })}
+                </span>
+              </span>
+            </label>
+
+            {/* WS-4C Half A — canon auto-capture. OPT-IN: every capture is an LLM call
+                billed to the user's own model, so the hint says so plainly rather than
+                letting the cost be a surprise. Needs a linked book (there is no glossary
+                inbox without one), which mirrors the backend's `no_book` gate. */}
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={canonCaptureEnabled}
+                onChange={(e) => setCanonCaptureEnabled(e.target.checked)}
+                disabled={saving || !bookId}
+                className="mt-0.5 h-3.5 w-3.5 rounded border"
+                data-testid="project-canon-capture-toggle"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium text-foreground">
+                  {t('projects.form.canonCapture', {
+                    defaultValue: 'Auto-capture new names from chat',
+                  })}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {bookId
+                    ? t('projects.form.canonCaptureHint', {
+                        defaultValue:
+                          'Every few turns, names your conversation introduces are added to this book’s glossary review inbox as suggestions — never as canon. Uses one extra AI call per capture, billed to your own model.',
+                      })
+                    : t('projects.form.canonCaptureNoBook', {
+                        defaultValue:
+                          'Link a book to this project to capture names into its glossary.',
+                      })}
                 </span>
               </span>
             </label>

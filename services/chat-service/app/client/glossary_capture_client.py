@@ -32,6 +32,17 @@ __all__ = [
 ]
 
 
+def _error_code(resp: httpx.Response) -> str | None:
+    """glossary's error envelope is ``{"code": ..., "message": ...}``. Return the code, or
+    None when the body is missing/undecodable — a diagnostic read must never raise into a
+    caller whose whole contract is "never raise"."""
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        return None
+    return body.get("code") if isinstance(body, dict) else None
+
+
 class CanonCaptureClient:
     """Thin async wrapper. One instance per process. No cache — every capture is a distinct
     turn, and the result is a write receipt, not a lookup."""
@@ -82,10 +93,18 @@ class CanonCaptureClient:
             logger.warning("canon capture unavailable for book %s: %s", book_id, type(exc).__name__)
             return None
         if resp.status_code == 409:
-            # GLOSS_NO_KINDS — the book has no ontology, so capture can never succeed until
-            # the user sets one up. Distinct from a transient failure, and logged as such so
-            # the recurring "capture failed" noise doesn't hide a real outage.
-            logger.info("canon capture skipped for book %s: book has no entity kinds yet", book_id)
+            # 409 is NOT one condition. glossary returns it for GLOSS_NO_KINDS (the book has
+            # no ontology, so capture can never succeed until the user sets one up) AND for
+            # GLOSS_BOOK_INVALID_LIFECYCLE (the book is trashed / purge-pending — the grant
+            # guard). Branch on the CODE: attributing a trashed book to "no entity kinds"
+            # sends the reader to fix the wrong thing.
+            code = _error_code(resp)
+            if code == "GLOSS_BOOK_INVALID_LIFECYCLE":
+                logger.info("canon capture skipped for book %s: book is not in an editable state", book_id)
+            elif code == "GLOSS_NO_KINDS":
+                logger.info("canon capture skipped for book %s: book has no entity kinds yet", book_id)
+            else:
+                logger.warning("canon capture conflict for book %s: %s", book_id, code or "unknown")
             return None
         if resp.status_code == 403:
             # The session's user has no Edit grant on the book its project points at. Not a

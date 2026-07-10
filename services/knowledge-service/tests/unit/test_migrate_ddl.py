@@ -103,15 +103,31 @@ def test_projects_alter_adds_tool_calling_enabled():
     )
 
 
-def test_projects_alter_adds_canon_capture_enabled():
-    """WS-4C Half A — the per-project canon auto-capture toggle. NOT NULL
-    DEFAULT true, mirroring tool_calling_enabled, so a row predating the column
-    reads back enabled; the model default in models.py is the other half of that
-    contract. Idempotent ADD COLUMN IF NOT EXISTS."""
+def test_projects_alter_adds_canon_capture_enabled_defaulting_off():
+    """WS-4C Half A — the per-project canon auto-capture toggle is OPT-IN.
+
+    DEFAULT **false**, deliberately NOT tool_calling_enabled's default-true:
+    capture is ambient spend on the user's own paid model, so the toggle is the
+    consent and must start un-granted. `models.py`'s `canon_capture_enabled: bool
+    = False` is the other half of that contract.
+
+    An earlier revision of this branch shipped `DEFAULT true`, which back-filled every
+    existing row to true; `ADD COLUMN IF NOT EXISTS` never revisits a column, so the
+    literal change alone would leave those projects opted IN and silently spending
+    (observed for real: 21/21 dev projects). The guarded, self-disarming block keys on
+    the column's own default as a version marker and normalizes the rows exactly once.
+    All three parts must survive, or a redeploy re-enables paid capture."""
     assert (
-        "ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT true"
+        "ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT false"
         in DDL
     )
+    assert "SELECT column_default = 'true' INTO _bad_default" in DDL, "the version marker"
+    assert "UPDATE knowledge_projects SET canon_capture_enabled = false" in DDL, "the normalization"
+    assert "ALTER COLUMN canon_capture_enabled SET DEFAULT false" in DDL, "the disarm"
+    assert (
+        "ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT true"
+        not in DDL
+    ), "capture must never default ON — that charges every project for a feature nobody asked for"
 
 
 def test_projects_alter_adds_world_id():

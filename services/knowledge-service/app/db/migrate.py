@@ -1396,14 +1396,47 @@ ALTER TABLE entity_access_log
 -- NARROWS this — effective = AND(deploy_allows, project_enables) — it is never
 -- itself a per-user knob.
 --
--- DEFAULT true mirrors tool_calling_enabled (a behaviour the user turns OFF),
--- and lets a row predating the column read back enabled. Capture is inert anyway
--- on a project with no book_id: there is no glossary inbox to write into.
+-- DEFAULT **false** — capture is OPT-IN, deliberately NOT mirroring
+-- tool_calling_enabled's default-true. Capture is AMBIENT spend: it fires on
+-- ordinary chatting, on the user's own paid model, for a turn they didn't ask it
+-- for. Turning it on by default would charge every existing project for a feature
+-- its owner never requested. That is the same consent boundary the Track-D spend
+-- gate draws (spend is irreversible ⇒ fail closed); the toggle IS the consent, so
+-- it must start un-granted. The FE toggle lives in the project settings modal
+-- beside tool_calling_enabled / memory_remember_confirm.
+--
+-- ONE-TIME NORMALIZATION, self-disarming. An earlier revision of this same
+-- (unreleased) branch shipped `ADD COLUMN ... DEFAULT true`, which back-fills every
+-- existing row to true. `ADD COLUMN IF NOT EXISTS` never revisits a column, so
+-- simply changing the literal above would leave those rows opted IN — silently
+-- spending on every project in any database that ran the bad revision. Observed for
+-- real on the dev DB (21/21 projects true).
+--
+-- The column's own `column_default` is the version marker: `true` ⇒ this database
+-- ran the bad revision, so normalize the rows and fix the default. Fixing the
+-- default disarms the block, so it can NEVER run again — a user who later opts IN
+-- is not silently opted back out by a redeploy. Nobody could have legitimately
+-- opted in while the marker is set: the toggle UI ships in the same change that
+-- removes it.
 -- ═══════════════════════════════════════════════════════════════
 DO $$
+DECLARE _bad_default boolean;
 BEGIN
   ALTER TABLE knowledge_projects
-    ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT true;
+    ADD COLUMN IF NOT EXISTS canon_capture_enabled BOOLEAN NOT NULL DEFAULT false;
+
+  SELECT column_default = 'true' INTO _bad_default
+    FROM information_schema.columns
+   WHERE table_schema = current_schema()
+     AND table_name   = 'knowledge_projects'
+     AND column_name  = 'canon_capture_enabled';
+
+  IF coalesce(_bad_default, false) THEN
+    UPDATE knowledge_projects SET canon_capture_enabled = false
+     WHERE canon_capture_enabled;
+    ALTER TABLE knowledge_projects
+      ALTER COLUMN canon_capture_enabled SET DEFAULT false;
+  END IF;
 END$$;
 """
 

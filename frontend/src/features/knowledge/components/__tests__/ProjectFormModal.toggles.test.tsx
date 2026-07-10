@@ -39,6 +39,7 @@ function projectFixture(overrides: Partial<Project> = {}): Project {
     extraction_enabled: true,
     tool_calling_enabled: true,
     memory_remember_confirm: false,
+    canon_capture_enabled: false,
     extraction_status: 'ready',
     embedding_model: null,
     embedding_dimension: null,
@@ -119,5 +120,52 @@ describe('ProjectFormModal — memory-tool toggles', () => {
   it('disables the confirm toggle while tool calling is off', () => {
     renderEdit(projectFixture({ tool_calling_enabled: false }));
     expect(screen.getByTestId('project-memory-confirm-toggle')).toBeDisabled();
+  });
+});
+
+// WS-4C Half A — canon auto-capture. This toggle IS the user's consent to spend: each
+// capture is an extra LLM call on their own model. So it must default OFF, round-trip
+// honestly, and be unreachable where it could not work.
+// The form only enables Save for an empty or genuinely UUID-shaped book_id
+// (`bookIdValid`), so the fixture must carry a real one.
+const BOOK_UUID = '019d872f-f3a3-7076-88b8-6c902054860f';
+
+describe('ProjectFormModal — canon auto-capture toggle', () => {
+  beforeEach(() => {
+    toastMocks.success.mockReset();
+    toastMocks.error.mockReset();
+  });
+
+  it('is OFF for a default project — capture is opt-in, never opt-out', () => {
+    renderEdit(projectFixture({ book_id: BOOK_UUID }));
+    expect(screen.getByTestId('project-canon-capture-toggle')).not.toBeChecked();
+  });
+
+  it('reflects an opted-in project', () => {
+    renderEdit(projectFixture({ book_id: BOOK_UUID, canon_capture_enabled: true }));
+    expect(screen.getByTestId('project-canon-capture-toggle')).toBeChecked();
+  });
+
+  it('is disabled without a linked book — there is no glossary inbox to capture into', () => {
+    renderEdit(projectFixture({ book_id: null }));
+    expect(screen.getByTestId('project-canon-capture-toggle')).toBeDisabled();
+  });
+
+  it('sends the opt-in through in the update patch', async () => {
+    const { onUpdate } = renderEdit(projectFixture({ book_id: BOOK_UUID }));
+    fireEvent.click(screen.getByTestId('project-canon-capture-toggle')); // → true
+    fireEvent.click(screen.getByText('projects.form.save'));
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
+    expect(onUpdate.mock.calls[0][1]).toMatchObject({ canon_capture_enabled: true });
+  });
+
+  it('sends the opt-OUT through too — un-checking must actually turn spend off', async () => {
+    const { onUpdate } = renderEdit(projectFixture({ book_id: BOOK_UUID, canon_capture_enabled: true }));
+    fireEvent.click(screen.getByTestId('project-canon-capture-toggle')); // → false
+    fireEvent.click(screen.getByText('projects.form.save'));
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
+    expect(onUpdate.mock.calls[0][1]).toMatchObject({ canon_capture_enabled: false });
   });
 });

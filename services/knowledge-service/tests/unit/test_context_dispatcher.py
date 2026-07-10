@@ -220,6 +220,37 @@ def test_context_build_response_carries_tool_calling_enabled():
     resp_on = ContextBuildResponse.model_validate(built_on)
     assert resp_on.tool_calling_enabled is True
 
+
+def test_context_build_response_carries_canon_capture_enabled():
+    """WS-4C Half A — the capture toggle crosses to chat-service on this same
+    `model_validate(from_attributes)` wire. If the field is ever renamed on either
+    side, from_attributes silently falls back to the response DEFAULT and capture
+    goes permanently, silently off with nothing red. Pin both states + the default.
+
+    The default is FALSE, unlike tool_calling_enabled's True: capture spends the
+    user's BYOK tokens, so an unset value must never be read as consent."""
+    from app.context.modes.no_project import BuiltContext
+    from app.routers.context import ContextBuildResponse
+
+    built_on = BuiltContext(
+        mode="full", context="<memory/>", recent_message_count=20,
+        token_count=3, canon_capture_enabled=True,
+    )
+    assert ContextBuildResponse.model_validate(built_on).canon_capture_enabled is True
+
+    built_off = BuiltContext(
+        mode="full", context="<memory/>", recent_message_count=20,
+        token_count=3, canon_capture_enabled=False,
+    )
+    assert ContextBuildResponse.model_validate(built_off).canon_capture_enabled is False
+
+    # A BuiltContext that never sets it (an older builder, or a renamed attribute)
+    # must fail CLOSED, not inherit "spend the user's money".
+    class _Legacy:
+        mode, context, recent_message_count, token_count = "full", "", 20, 3
+
+    assert ContextBuildResponse.model_validate(_Legacy()).canon_capture_enabled is False
+
     # Defaulting half: a builder result that never set the field still
     # validates, and the response defaults the flag to True.
     built_default = BuiltContext(

@@ -96,13 +96,20 @@ their BYOK tokens), so it is a **user setting**, not an env flag.
 
 | Tier | Value | Home |
 |---|---|---|
-| Deploy ceiling / kill-switch | `CHAT_CANON_CAPTURE_ENABLED` (default `true`) | chat `config.py` |
-| Per-project user setting | `knowledge_projects.canon_capture_enabled` (default `true`) | knowledge DB, `PATCH /projects/{id}` |
+| Deploy ceiling / kill-switch | `CHAT_CANON_CAPTURE_ENABLED` (default `true` = "the deployment permits it") | chat `config.py` |
+| Per-project user setting | `knowledge_projects.canon_capture_enabled` (default **`false`** — OPT-IN) | knowledge DB · `PATCH /projects/{id}` · the project settings modal |
 
-`effective = AND(deploy_allows, project_enables)` — the ceiling narrows, it is never a per-user knob. Default
-`true` mirrors the `tool_calling_enabled` precedent (a behaviour the user turns *off*), and capture is inert
-anyway unless the project has a book. The effective value + the reason it did or didn't fire is **logged every
-turn** (no silent hidden default — the "grounding always-on / reasoning silently-off" bug class).
+`effective = AND(deploy_allows, project_enables)` — the ceiling narrows, it is never a per-user knob.
+
+**Capture is OPT-IN, deliberately NOT mirroring `tool_calling_enabled`'s default-`true`.** Capture is *ambient*
+spend: it fires on ordinary chatting, on the user's own paid model, for a turn they never asked it to run.
+Defaulting it on would charge every existing project for a feature its owner never requested — the same consent
+boundary the Track-D spend gate draws (*spend is irreversible ⇒ fail closed*). **The toggle IS the consent, so it
+must start un-granted.** The FE toggle lives in the project settings modal beside `tool_calling_enabled` /
+`memory_remember_confirm`, and is disabled without a linked book (mirroring the backend's `no_book` gate).
+
+The decision + the reason it did or didn't fire is **logged every turn** (no silent hidden default — the
+"grounding always-on / reasoning silently-off" bug class).
 
 Reaches chat on the already-existing `kctx` wire (`ContextResponse.canon_capture_enabled`), the same path
 `tool_calling_enabled` takes. **Consumed, proven by effect:** a test asserts capture does not fire when the
@@ -180,9 +187,38 @@ grounding and the capture-flavour selection rule both worked on a real 26B local
    cadence-based, so a resumed turn simply defers to the next tick. Resolving a book id there would add a
    knowledge round-trip to the resume path for no continuity gain.
 2. **The deploy ceiling is invisible to the user (SET-4 gap).** If an operator sets
-   `CHAT_CANON_CAPTURE_ENABLED=false`, a user's project toggle still reads `true` while nothing happens. Today
-   the only observable is the per-turn log line (`fire=… reason=deploy_ceiling_off`). When the FE toggle lands
-   it must show the **effective** value, not the stored one. Tracked as `D-WS4C-FE-TOGGLE`.
-3. **No FE toggle yet** — `canon_capture_enabled` is PATCHable on `/projects/{id}` (it rides `response_model=Project`
-   and the `_UPDATABLE_COLUMNS` allowlist) but has no settings UI, exactly like `save_raw_extraction`
-   (`D-P2-FE-SAVE-RAW`). Same tracked row as above.
+   `CHAT_CANON_CAPTURE_ENABLED=false`, a user's project toggle still reads `true` while nothing happens. The
+   only observable is the per-turn log line (`fire=… reason=deploy_ceiling_off`). Surfacing it would need chat
+   to expose the ceiling to the FE (knowledge-service does not know chat's env), which is a new endpoint —
+   tracked as `D-WS4C-EFFECTIVE-VALUE`. Blast radius is small now that capture is opt-in: the surprising case
+   is "I turned it on and an operator had killed it", not "it silently spent my money".
+
+## 10. `/review-impl` (2026-07-10) — findings and dispositions
+
+Run after the first commit (`8bad373b4`). The two that mattered were about **money** and **process**.
+
+- **[HIGH · fixed] Capture spent the user's tokens by default.** The project toggle shipped `DEFAULT true`
+  with no settings UI, so every existing and new project began doing an LLM call every 4th turn with no way for
+  its owner to see or stop it. Flipped to opt-in (§5) and the FE toggle shipped in the same change. Guarded by
+  `test_projects_alter_adds_canon_capture_enabled_defaulting_off`, which asserts the `DEFAULT true` string is
+  **absent** from the DDL.
+- **[HIGH · process] `8bad373b4` left `HEAD` broken for two commits.** `git add stream_service.py` staged the
+  *whole file*, which at that moment carried a concurrent session's uncommitted Track-D spend-gate hunks; their
+  other half (`tool_approvals.py`) stayed behind, so HEAD called `is_tool_approved(...)` with 4 args against a
+  3-arg definition. It went unseen because **pytest runs against the working tree, not against HEAD** — a green
+  1337-test suite proved nothing about the commit. Repaired by the other session's `bbe18e73b`; verified with an
+  AST arity check across HEAD's call sites. Lesson: in a shared checkout, `git diff --cached <file>` before
+  committing a co-edited file, and treat "the suite is green" as evidence about the working tree only.
+- **[MED · fixed] A 409 was diagnosed by status, not by code.** glossary returns 409 for *both* `GLOSS_NO_KINDS`
+  and `GLOSS_BOOK_INVALID_LIFECYCLE` (a trashed book); the client attributed both to "no entity kinds", sending
+  the reader to fix the wrong thing. Now branches on the envelope's `code`.
+- **[MED · fixed] Nothing guarded the `kctx` wire.** The toggle crosses two services via
+  `model_validate(from_attributes)`; a rename on either side would silently fall back to the default and turn
+  capture permanently, silently off with no test red. The live smoke called glossary *directly* and never
+  exercised this path. Pinned on both sides, including the fail-closed default.
+- **[LOW · corrected] The board row overclaimed "domain fixes ✅".** Verified since: `glossary_entity_delete` is
+  registered and reachable (`mcp_server.go:89`); NFC/NFD + CJK dedup folding is done (`textnorm` → NFKC +
+  casefold + traditional→simplified); read-your-writes holds (`select_for_context` applies no status filter, so
+  a just-created draft is searchable); upsert-on-create was resolved *by design* as create-only +
+  `set_attributes`/`rename`. `propose_*`-writes-immediately naming actually belongs to **Track D's D1**, and the
+  `glossary_confirm_action` doc-drift item cannot be confirmed without its original feedback source.

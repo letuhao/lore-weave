@@ -162,6 +162,73 @@ async def test_capture_returns_none_on_any_non_200(status):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "code,expect_in_log",
+    [
+        ("GLOSS_NO_KINDS", "no entity kinds"),
+        ("GLOSS_BOOK_INVALID_LIFECYCLE", "not in an editable state"),
+        (None, "unknown"),
+    ],
+)
+async def test_409_is_diagnosed_by_code_not_by_status(code, expect_in_log, caplog):
+    """glossary returns 409 for TWO different conditions — no ontology, and a trashed book.
+    Reading only the status attributes a trashed book to "no entity kinds", sending whoever
+    reads the log to fix the wrong thing."""
+    body = {"code": code} if code else {"message": "something else"}
+    c = _client(lambda _r: httpx.Response(409, json=body))
+    try:
+        with caplog.at_level("INFO"):
+            assert await c.capture(book_id=BOOK, owner_user_id=USER, source_text="x") is None
+    finally:
+        await c.aclose()
+    assert expect_in_log in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_409_with_undecodable_body_does_not_raise():
+    """The diagnostic read runs inside a client whose whole contract is 'never raise'."""
+    c = _client(lambda _r: httpx.Response(409, content=b"<html>nginx</html>"))
+    try:
+        assert await c.capture(book_id=BOOK, owner_user_id=USER, source_text="x") is None
+    finally:
+        await c.aclose()
+
+
+# ── the kctx wire: BuiltContext → ContextBuildResponse → KnowledgeContext ────
+#
+# The toggle crosses two services via `model_validate(from_attributes)`. Rename the field
+# on either side and it silently falls back to the default — capture goes permanently,
+# silently OFF and no test reds. The live smoke calls glossary directly and never
+# exercises this path, so these are the only guards it has.
+
+
+def test_knowledge_context_parses_the_capture_toggle_off_the_wire():
+    from app.client.knowledge_client import KnowledgeContext
+
+    on = KnowledgeContext.model_validate(
+        {"mode": "full", "context": "", "recent_message_count": 1,
+         "token_count": 0, "canon_capture_enabled": True}
+    )
+    assert on.canon_capture_enabled is True
+
+    off = KnowledgeContext.model_validate(
+        {"mode": "full", "context": "", "recent_message_count": 1,
+         "token_count": 0, "canon_capture_enabled": False}
+    )
+    assert off.canon_capture_enabled is False
+
+
+def test_knowledge_context_fails_closed_when_the_field_is_absent():
+    """An older knowledge-service, or a renamed field, must NOT be read as consent to spend."""
+    from app.client.knowledge_client import KnowledgeContext
+
+    ctx = KnowledgeContext.model_validate(
+        {"mode": "full", "context": "", "recent_message_count": 1, "token_count": 0}
+    )
+    assert ctx.canon_capture_enabled is False
+
+
+@pytest.mark.asyncio
 async def test_capture_returns_none_on_transport_error():
     def boom(_r: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("glossary is down")

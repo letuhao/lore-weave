@@ -76,9 +76,11 @@ class Project(BaseModel):
     # WS-4C Half A: per-project canon auto-capture. When True (and the deploy
     # ceiling allows), chat-service captures the newly-named entities of every
     # Nth turn into this book's glossary review inbox as ai-suggested drafts.
-    # Default True — mirrors the DB `DEFAULT true` and tool_calling_enabled's
-    # "on unless the user turns it off" posture. Inert without a book_id.
-    canon_capture_enabled: bool = True
+    # Default **False** — mirrors the DB `DEFAULT false`. Capture is AMBIENT
+    # spend on the user's own model, so it is OPT-IN: the toggle is the consent,
+    # and it must start un-granted. (Deliberately the opposite of
+    # tool_calling_enabled, which is a behaviour the user turns OFF.)
+    canon_capture_enabled: bool = False
     # P2 (D6 opt-in raw retention): when True, leaf_processor persists
     # the full LLM raw response to extraction_leaves_raw alongside the
     # postprocessed candidates. Default False — power users opt-in for
