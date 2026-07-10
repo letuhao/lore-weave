@@ -274,13 +274,15 @@ func (s *Server) toolBookGetChapter(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, getChapterOut{}, mcpOwnershipError(err)
 	}
 	var c chapterDetail
-	var titleRaw string
 	var chIDScan, bookIDScan uuid.UUID
 	var pubRevID *uuid.UUID
+	// chapters.title is NULLABLE (a titleless chapter is valid), so scan straight
+	// into the *string field (like toolBookListChapters) — a plain-string target
+	// errors "cannot scan NULL into *string" on every titleless chapter.
 	err = s.pool.QueryRow(ctx, `
 SELECT c.id,c.book_id,c.title,c.original_language,c.sort_order,c.editorial_status,c.published_revision_id,c.draft_revision_count,c.lifecycle_state
 FROM chapters c WHERE c.id=$1 AND c.book_id=$2`, chID, bookID).
-		Scan(&chIDScan, &bookIDScan, &titleRaw, &c.OriginalLanguage, &c.SortOrder, &c.EditorialStatus, &pubRevID, &c.DraftRevisions, &c.LifecycleState)
+		Scan(&chIDScan, &bookIDScan, &c.Title, &c.OriginalLanguage, &c.SortOrder, &c.EditorialStatus, &pubRevID, &c.DraftRevisions, &c.LifecycleState)
 	if errors.Is(err, pgx.ErrNoRows) || c.LifecycleState == "purge_pending" {
 		return nil, getChapterOut{}, errBookNotAccessible
 	}
@@ -290,9 +292,6 @@ FROM chapters c WHERE c.id=$1 AND c.book_id=$2`, chID, bookID).
 	c.ChapterID = chIDScan.String()
 	c.BookID = bookIDScan.String()
 	c.PublishedRevisionID = uuidPtrToStr(pubRevID)
-	if titleRaw != "" {
-		c.Title = &titleRaw
-	}
 	out := getChapterOut{Chapter: c}
 	if in.IncludeBody {
 		// The chapter's plain-text prose from the extracted, searchable blocks

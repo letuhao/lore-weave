@@ -690,7 +690,16 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	// readers keep resolving scope via chapter_id → chapters.book_id); the marker
 	// stays unset on failure so the next startup retries.
 	if err := backfillScenesBookID(ctx, pool); err != nil {
-		slog.Error("book-service: scenes.book_id backfill failed; will retry on next startup", "err", err)
+		slog.Error("book-service: scenes.book_id backfill (v1) failed; will retry on next startup", "err", err)
+	}
+	// 22-A5: bumped-marker re-run closes the A1→A5 interim window. A1's write path
+	// did NOT set scenes.book_id, so every scene parsed after the v1 marker was
+	// stamped but before the A5 write path landed carries book_id NULL permanently,
+	// and the v1 marker blocks a rescan. A5 wires the parse writers to set book_id
+	// AND runs this one-time sweep under a bumped marker to fill those interim rows.
+	// Same best-effort degrade as v1.
+	if err := backfillScenesBookIDV2(ctx, pool); err != nil {
+		slog.Error("book-service: scenes.book_id backfill (v2) failed; will retry on next startup", "err", err)
 	}
 
 	return nil
@@ -774,21 +783,46 @@ FROM agg WHERE c.id = agg.chapter_id
 // (10k+ chapter books are real; that shape takes a full-table lock).
 const scenesBookIDBackfillBatchSize = 500
 
-// backfillScenesBookID copies chapters.book_id onto every pre-existing scenes
-// row (spec 22-A1 / SC1), in small keyset batches ordered by id (scenes.id is
-// a UUIDv7 — time-ordered, so `id > lastID ORDER BY id LIMIT N` is a total
-// order with no duplicate/skip risk). The batch query additionally filters
-// `book_id IS NULL` so a crash-interrupted run's retry skips already-copied
-// rows instead of re-writing them. Marker-gated
-// (scenes_book_id_backfill_migration) so completed installs skip the scan on
-// every later startup. Safe to re-run to completion: the assignment is a pure
-// copy of current chapters.book_id, so repeating it is wasted CPU, never a
-// correctness risk — the backfillWordCounts safety argument. A scene whose
-// chapter vanished mid-run simply doesn't match the UPDATE ... FROM join and
-// keeps NULL (the FK cascade will remove it anyway).
+// The two marker ids under which the batched book_id backfill has run. V1 (22-A1)
+// filled every scene that pre-dated the column. V2 (22-A5) re-runs the SAME copy
+// once more to catch the scenes created in the A1→A5 interim window: A1's write
+// path did NOT set book_id, so every scene parsed between the two deploys carries
+// book_id NULL permanently, and the V1 marker (already stamped) blocks a rescan.
+// A5 wires the parse writers to set book_id AND bumps the marker so this one-time
+// sweep closes that window.
+const (
+	scenesBookIDBackfillMarkerV1 = "scenes_book_id_backfill_v1"
+	scenesBookIDBackfillMarkerV2 = "scenes_book_id_backfill_v2"
+)
+
+// backfillScenesBookID runs the 22-A1 sweep under the V1 marker. Kept as a named
+// entry point (unchanged signature) so its DB-gated tests are untouched.
 func backfillScenesBookID(ctx context.Context, pool *pgxpool.Pool) error {
+	return runScenesBookIDBackfill(ctx, pool, scenesBookIDBackfillMarkerV1)
+}
+
+// backfillScenesBookIDV2 re-runs the same sweep under the V2 marker (22-A5) to
+// fill the interim-window rows the V1 marker now shadows. On a fresh install V1
+// already filled everything, so V2 finds zero NULL rows and simply stamps.
+func backfillScenesBookIDV2(ctx context.Context, pool *pgxpool.Pool) error {
+	return runScenesBookIDBackfill(ctx, pool, scenesBookIDBackfillMarkerV2)
+}
+
+// runScenesBookIDBackfill copies chapters.book_id onto every scenes row whose
+// book_id is still NULL (spec 22-A1/A5 / SC1), in small keyset batches ordered by
+// id (scenes.id is a UUIDv7 — time-ordered, so `id > lastID ORDER BY id LIMIT N`
+// is a total order with no duplicate/skip risk). The batch query additionally
+// filters `book_id IS NULL` so a crash-interrupted run's retry skips already-
+// copied rows instead of re-writing them. Marker-gated
+// (scenes_book_id_backfill_migration, keyed on `marker`) so completed installs
+// skip the scan on every later startup. Safe to re-run to completion: the
+// assignment is a pure copy of current chapters.book_id, so repeating it is
+// wasted CPU, never a correctness risk — the backfillWordCounts safety argument.
+// A scene whose chapter vanished mid-run simply doesn't match the UPDATE ... FROM
+// join and keeps NULL (the FK cascade will remove it anyway).
+func runScenesBookIDBackfill(ctx context.Context, pool *pgxpool.Pool, marker string) error {
 	var done bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM scenes_book_id_backfill_migration WHERE id='scenes_book_id_backfill_v1')`).Scan(&done); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM scenes_book_id_backfill_migration WHERE id=$1)`, marker).Scan(&done); err != nil {
 		return fmt.Errorf("check marker: %w", err)
 	}
 	if done {
@@ -833,7 +867,7 @@ WHERE c.id = s.chapter_id AND s.id = ANY($1)
 		}
 	}
 
-	if _, err := pool.Exec(ctx, `INSERT INTO scenes_book_id_backfill_migration (id) VALUES ('scenes_book_id_backfill_v1') ON CONFLICT DO NOTHING`); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO scenes_book_id_backfill_migration (id) VALUES ($1) ON CONFLICT DO NOTHING`, marker); err != nil {
 		return fmt.Errorf("mark backfill complete: %w", err)
 	}
 	return nil

@@ -41,9 +41,9 @@ from app.packer import merge as M
 from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
-    LensBundle, gather_canon, gather_lore, gather_open_promises, gather_present,
-    gather_recent, gather_references, gather_source_scene, gather_structural,
-    gather_timeline,
+    LensBundle, gather_arc, gather_canon, gather_lore, gather_open_promises,
+    gather_present, gather_recent, gather_references, gather_source_scene,
+    gather_structural, gather_timeline,
 )
 from app.db.repositories.references import reference_embed_model
 
@@ -191,6 +191,7 @@ async def pack(
     voice_profile_repo=None,  # T3.5 — per-character voice tags (gated)
     references_repo=None,  # T3.6 — author reference shelf (gated)
     embedding_client=None,  # T3.6 — provider-registry embed for reference retrieval (gated)
+    structure_repo=None,  # 23 BA12 — the arc lens (durable spec layer; gated)
     grant: "GrantClient | None" = None,
     need: "GrantLevel | None" = None,
 ) -> PackedContext:
@@ -237,6 +238,21 @@ async def pack(
     node = req.node
     story_order = node.get("story_order")
     chapter_id = _as_uuid(node.get("chapter_id"))
+    # 23 BA12 — the arc this scene's chapter is assigned to (structure_node.id). A SCENE
+    # never carries structure_node_id itself (the outline_structure_kind CHECK forbids
+    # it — only chapters may), so resolve it through the chapter: node → chapter_id →
+    # the outline chapter node's structure_node_id. If the node dict already carries one
+    # (a chapter-mode pack, or a caller that pre-resolved), that wins. None → the arc
+    # lens stays dormant (the gate below). Best-effort: a lookup failure never fails a
+    # pack. Requires structure_repo to be wired (the packer's own arc lens gate).
+    structure_node_id = _as_uuid(node.get("structure_node_id"))
+    if structure_node_id is None and structure_repo is not None and chapter_id is not None \
+            and req.project_id is not None:
+        try:
+            structure_node_id = await outline_repo.chapter_structure_node_id(
+                req.project_id, chapter_id)
+        except Exception:  # noqa: BLE001 — the arc frame is a soft steer; dormant on failure
+            logger.warning("pack: arc resolution failed", exc_info=True)
     query = " ".join(
         str(x) for x in [node.get("goal"), node.get("synopsis"), node.get("beat_role"), node.get("title")] if x
     )
@@ -310,7 +326,16 @@ async def pack(
     # authoring, never inherited). The embed model is the Work's configured one;
     # None (unset) → the lens no-ops. Gated on both the repo and client being wired.
     ref_model = reference_embed_model(req.settings)
-    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r) = (
+    # 23 BA12 — the arc lens is GATED (structure_repo wired AND the scene's chapter
+    # carries a structure_node_id) and best-effort. When dormant it costs nothing (an
+    # empty string), riding the same parallel gather as the other soft lenses.
+    arc_gated = (
+        gather_arc(structure_repo, structure_node_id, story_order=story_order,
+                   narrative_threads_repo=narrative_threads_repo,
+                   open_promises_cap=settings.pack_open_promises_cap)
+        if (structure_repo is not None and structure_node_id is not None) else _empty_str()
+    )
+    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r), arc_text = (
         await asyncio.gather(
             gather_canon(canon_repo, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
@@ -327,6 +352,7 @@ async def pack(
                                  cap=settings.pack_open_promises_cap) if nt_enabled else _empty_list(),
             gather_references(references_repo, embedding_client, user_id=req.user_id,
                               project_id=req.project_id, query=query, model=ref_model),
+            arc_gated,
         )
     )
 
@@ -484,6 +510,18 @@ async def pack(
                                    pinned_reference_ids=pinned_reference_ids)
     bres = B.enforce_budget(segs, budget_tokens, counter or B.default_counter())
     blocks = assemble.segments_to_blocks(bres.kept)
+    prompt = assemble.render(blocks)
+
+    # 23 BA12 — inject the ARC frame as a protected structural header, FIRST (it
+    # frames every other block: "this scene is ~60% through arc 'Betrayal'…"). It
+    # rides OUTSIDE the budget like the block delimiters themselves — a compact,
+    # high-value steer (chain/tracks/pacing/cast + a capped promise rollup), same
+    # protected posture as canon/present/beat. `render()` only knows _BLOCK_ORDER,
+    # so the <arc> frame is composed here rather than in assemble.py. Empty (the
+    # gate: no structure_repo / no structure_node_id / a deleted arc) → byte-unchanged.
+    if arc_text:
+        blocks["arc"] = arc_text
+        prompt = f"<arc>\n{arc_text}\n</arc>" + (f"\n{prompt}" if prompt else "")
 
     warnings: list[str] = []
     if not bundle.knowledge_seen:
@@ -494,7 +532,7 @@ async def pack(
         warnings.append("over_budget: protected context exceeds the token target")
 
     return PackedContext(
-        blocks=blocks, prompt=assemble.render(blocks), profile=profile,
+        blocks=blocks, prompt=prompt, profile=profile,
         token_count=bres.total_tokens, dropped_count=bres.dropped_count,
         l4_dropped_no_position=l4.dropped_no_position,
         grounding_available=bundle.knowledge_seen, over_budget=bres.over_budget,
@@ -556,6 +594,12 @@ async def _pack_null_project(
 async def _empty_list() -> list[Any]:
     """gather() placeholder for the L3 lens when the scene has no chapter_id."""
     return []
+
+
+async def _empty_str() -> str:
+    """gather() placeholder for the 23 BA12 arc lens when it is dormant (no
+    structure_repo wired / the scene's chapter carries no structure_node_id)."""
+    return ""
 
 
 _GROUNDING_LABEL_MAX = 160

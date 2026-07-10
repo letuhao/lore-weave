@@ -38,6 +38,7 @@ from loreweave_parse.pdf_walker import (
     walk_pdf_pages,
 )
 from loreweave_parse.plaintext_parser import detect_language, parse_plain
+from loreweave_parse.tiptap_walker import parse_tiptap
 
 __version__ = "0.1.0"
 
@@ -62,6 +63,7 @@ __all__ = [
     "parse",
     "parse_html",
     "parse_plain",
+    "parse_tiptap",
     "tesseract_lang_for",
     "walk_pdf_pages",
 ]

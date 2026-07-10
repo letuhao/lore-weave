@@ -83,6 +83,14 @@ EXPECTED_TOOLS = {
     # Tier W (motif)
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
+    # ── 23 structure layer — arc SPEC CRUD + outline reorder (SAME server) ──
+    # Tier R (arc reads)
+    "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
+    # Tier A (arc auto-writes + outline move)
+    "composition_arc_create", "composition_arc_update", "composition_arc_delete",
+    "composition_arc_restore", "composition_arc_move", "composition_arc_assign_chapters",
+    "composition_arc_apply", "composition_arc_extract_template",
+    "composition_outline_node_move",
     # ── PlanForge (M4) plan_* tools ──
     # Tier R
     "plan_validate", "plan_self_check",
@@ -97,6 +105,7 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_motif_search", "composition_motif_get",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
           "composition_get_mine_job", "composition_motif_link_list",
+          "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
           "plan_validate", "plan_self_check",
           "composition_authoring_run_list", "composition_authoring_run_get"}
 TIER_W = {"composition_publish", "composition_generate",

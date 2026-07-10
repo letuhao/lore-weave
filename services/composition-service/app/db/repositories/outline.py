@@ -30,7 +30,7 @@ from app.db.repositories.rank import rank_after, rank_between
 _SELECT_COLS = """
   id, created_by, project_id, book_id, parent_id, kind, rank, title, pov_entity_id,
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
-  story_order, synopsis, version, is_archived, created_at, updated_at
+  story_order, synopsis, structure_node_id, version, is_archived, created_at, updated_at
 """
 
 # Namespace key (arg-1) for the per-project decompose-commit advisory xact lock.
@@ -270,6 +270,27 @@ class OutlineRepo:
                 SELECT id FROM outline_node
                 WHERE project_id = $1 AND chapter_id = $2
                   AND kind = 'chapter' AND NOT is_archived
+                ORDER BY rank COLLATE "C", id
+                LIMIT 1
+                """,
+                project_id, chapter_id,
+            )
+
+    async def chapter_structure_node_id(
+        self, project_id: UUID, chapter_id: UUID,
+    ) -> UUID | None:
+        """23 BA12 — the arc (`structure_node.id`) a book chapter is assigned to, read
+        off its outline CHAPTER node. A SCENE never carries `structure_node_id` (the
+        `outline_structure_kind` CHECK forbids it — only chapters may), so the packer
+        resolves a scene's arc through its chapter here. None when the chapter is
+        unoutlined or unassigned — the arc lens then stays dormant (no <arc> frame)."""
+        async with self._pool.acquire() as c:
+            return await c.fetchval(
+                """
+                SELECT structure_node_id FROM outline_node
+                WHERE project_id = $1 AND chapter_id = $2
+                  AND kind = 'chapter' AND NOT is_archived
+                  AND structure_node_id IS NOT NULL
                 ORDER BY rank COLLATE "C", id
                 LIMIT 1
                 """,

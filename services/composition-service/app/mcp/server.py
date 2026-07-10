@@ -79,8 +79,10 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
+from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
+from app.db.repositories.structure import StructureConflictError, StructureRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import get_authoring_run_service
 from app.grant_client import GrantLevel, get_grant_client
@@ -730,25 +732,30 @@ async def composition_create_work(
 
 class _NodeCreateArgs(ForbidExtra):
     project_id: str
-    kind: str
+    # BPS-4 (F6): outline_node is now CHAPTER/SCENE only — arcs live on
+    # structure_node (composition_arc_create), beats are verified-dead. A closed
+    # Literal turns a mid-tier model's `kind:"Arc"` into a clean 422 at the schema
+    # instead of a DB CheckViolation 5xx (mcp-tool-io IN-2, the panel_id bug class).
+    kind: Literal["chapter", "scene"]
     parent_id: str | None = None
     title: str = ""
     goal: str = ""
     synopsis: str = ""
-    status: str = "empty"
+    status: Literal["empty", "outline", "drafting", "done"] = "empty"
     chapter_id: str | None = None
 
 
 @mcp_server.tool(
     name="composition_outline_node_create",
     description=(
-        "Add a node to the outline tree (an arc / chapter / scene / beat) under an "
-        "optional parent. Returns the created node. EDIT required (auto-applied; "
-        "Undo deletes the node)."
+        "Add a CHAPTER or SCENE node to the outline tree under an optional parent "
+        "(arcs are the durable spec layer — use composition_arc_create; beats are "
+        "gone). Returns the created node. EDIT required (auto-applied; Undo deletes "
+        "the node)."
     ),
     meta=require_meta(
         "A", "book",
-        synonyms=["add scene", "add chapter", "create outline node", "new beat", "add arc"],
+        synonyms=["add scene", "add chapter", "create outline node", "add outline chapter"],
         tool_name="composition_outline_node_create",
     ),
 )
@@ -781,7 +788,8 @@ class _NodeUpdateArgs(ForbidExtra):
     title: str | None = None
     goal: str | None = None
     synopsis: str | None = None
-    status: str | None = None
+    # BPS-4/F6 closed set — a bad status is a clean 422, never a DB CheckViolation.
+    status: Literal["empty", "outline", "drafting", "done"] | None = None
 
 
 @mcp_server.tool(
@@ -3027,9 +3035,13 @@ class _ConformanceRunArgs(ForbidExtra):
     project_id: str
     scope: Literal["chapter", "arc"]
     chapter_id: str | None = None
-    # arc-scope deep overlay (D-W10-ARC-CONFORMANCE-DEEP-JOB): the arc to diff + the BYOK
-    # classify model the worker tags the book's prose with. model_ref required for arc scope.
-    arc_template_id: str | None = None
+    # BA4 (23): arc-scope conformance diffs the SPEC (structure_node) against the
+    # prose — pass `arc_id` (a structure_node id), NOT a template id. "Did the prose
+    # realize MY plan" is the question; template drift is the separate
+    # composition_arc_template_drift tool. The arc-scope deep overlay
+    # (D-W10-ARC-CONFORMANCE-DEEP-JOB) also tags the book's prose with a BYOK
+    # classify model, so `model_ref` is required for arc scope.
+    arc_id: str | None = None
     model_ref: str | None = None
     model_source: str | None = None
 
@@ -3064,14 +3076,19 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
         if node is None or node.project_id != pid:
             raise uniform_not_accessible()
     else:  # scope == "arc" — the deep overlay job (D-W10-ARC-CONFORMANCE-DEEP-JOB)
-        if not args.arc_template_id:
-            return {"success": False, "error": "arc_template_id is required when scope='arc'"}
+        if not args.arc_id:
+            return {"success": False, "error": "arc_id is required when scope='arc'"}
         if not args.model_ref:
             return {"success": False,
                     "error": "model_ref is required when scope='arc' (the deep overlay tags prose)"}
-        # IDOR: the arc must be visible to the caller (H13 uniform deny on a foreign/missing arc).
-        arc = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(args.arc_template_id))
-        if arc is None:
+        # BA4: the arc is a structure_node in THIS gated book (book-scoped — no
+        # user filter; the E0 book grant above IS the access control). A foreign /
+        # missing arc is the H13 uniform deny (no existence oracle). NOTE (23 B4↔A4):
+        # the confirm-effect dispatch (routers/actions.py) + the arc-conformance
+        # worker must read this `arc_id` (a structure_node) via A4's arc_id-keyed
+        # reader, replacing the annotations->>'arc_template_id' scan.
+        arc_node = await StructureRepo(get_pool()).get(UUID(args.arc_id))
+        if arc_node is None or arc_node.book_id != meta.book_id:
             raise uniform_not_accessible()
     estimate = _mine_estimate(scope="book")
     payload = {
@@ -3079,7 +3096,7 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
         "book_id": str(meta.book_id),
         "scope": args.scope,
         "chapter_id": args.chapter_id,
-        "arc_template_id": args.arc_template_id,
+        "arc_id": args.arc_id,
         "model_ref": args.model_ref,
         "model_source": args.model_source,
         "estimate_usd": estimate["estimated_usd"],
@@ -3392,6 +3409,644 @@ async def plan_compile(
     except LookupError:
         raise uniform_not_accessible()
     return {"mode": mode, **payload}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 23 B1/B2/B3 — STRUCTURE-NODE (the durable SPEC layer) MCP SURFACE.
+#
+# `structure_node` is the saga→arc→sub-arc spec tree (spec 23, BA1..BA15) — the
+# first-class, durable, editable object that STEERS generation (pack.py reads it,
+# BA12). It is PER-BOOK (BA8): `book_id` is the scope, gated at the E0 book grant
+# BEFORE the repo (never a body-supplied book_id for a by-id MUTATION — a node's
+# own book_id IS its scope, resolved from the row via `_arc_or_deny`, the Stage-1
+# authoring-run fence pattern). The StructureRepo depth/cycle/cross-book invariant
+# lives in the DB trigger `structure_node_depth_guard`; the repo surfaces its
+# check_violation as StructureConflictError, which these tools map to a clean tool
+# refusal (never a raised 5xx). Namespaces (BA10): composition_arc_* = the SPEC;
+# composition_arc_template_* = the library; composition_character_arc_* = the
+# entity lens (elsewhere).
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+_ArcStatus = Literal["empty", "outline", "drafting", "done"]
+
+
+async def _arc_or_deny(
+    structures: StructureRepo, tc: ToolContext, node_id: UUID, level: GrantLevel,
+):
+    """By-id arc access: resolve the structure_node's book from the ROW ITSELF
+    (bare-id read — the E0 grant is what authorizes, not row ownership) and gate
+    the caller's grant on ITS `book_id` at the operation tier. Mirrors the outline
+    `_gate_node` / authoring-run fence shape (`worker-loaded-id-needs-parent-
+    scoping`): the gate can never check a different book than the row mutated. A
+    missing node raises the SAME H13 uniform deny as a denied grant (no existence
+    oracle). Returns the resolved StructureNode."""
+    node = await structures.get(node_id)
+    if node is None:
+        raise uniform_not_accessible()
+    await _gate(tc, node.book_id, level)
+    return node
+
+
+def _arc_conflict(exc: StructureConflictError) -> dict[str, Any]:
+    """Surface a structure_node depth/cycle/cross-book trigger violation
+    (`structure_node_depth_guard`) as a clean tool refusal — never a raised 5xx. A
+    saga-with-a-parent, nesting past saga→arc→sub-arc (depth>2), a cycle, or a
+    cross-book parent all land here (BA9)."""
+    return {
+        "success": False,
+        "error": (
+            "structure constraint violated — a saga cannot have a parent, nesting "
+            "is capped at saga→arc→sub-arc (depth 2), no cycles, and a parent must "
+            "be in the same book"
+        ),
+        "detail": str(exc)[:300],
+    }
+
+
+# ── Tier R — arc reads ────────────────────────────────────────────────────────
+
+
+@mcp_server.tool(
+    name="composition_arc_list",
+    description=(
+        "List a book's SPEC tree in ONE call — the saga→arc→sub-arc structure that "
+        "steers generation (parallel plot tracks, cast roster, pacing, provenance). "
+        "Returns a flat, deterministically-ordered node list (depth, then rank) the "
+        "client assembles into the tree; this is the Chapter Browser's arc group "
+        "headers without the per-arc N+1 fetch. VIEW on the book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["list arcs", "arc tree", "story structure", "sagas", "book architecture",
+                  "spec tree", "arc grouping"],
+        tool_name="composition_arc_list",
+    ),
+)
+async def composition_arc_list(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book whose spec tree to list (you need VIEW on it)."],
+    include_archived: Annotated[bool, "Include soft-archived arcs."] = False,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.VIEW)
+    structures = StructureRepo(get_pool())
+    nodes = await structures.list_tree(bid, include_archived=include_archived)
+    return {"nodes": [n.model_dump(mode="json") for n in nodes], "book_id": book_id}
+
+
+@mcp_server.tool(
+    name="composition_arc_get",
+    description=(
+        "Read ONE arc/saga by id, ENRICHED with everything the arc inspector needs: "
+        "the node's own fields + `version` (the OCC token for composition_arc_update), "
+        "the CASCADE-RESOLVED `tracks`/`roster`/`roster_bindings` (root saga → this "
+        "arc, leaf-shadowed by key), the DERIVED `span` (min/max story_order + "
+        "chapter_count + warn-only is_contiguous over member chapters), and the "
+        "`open_promises` rollup (narrative threads opened in this arc's chapter "
+        "subtree, still unpaid). VIEW on the book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["get arc", "read arc", "arc detail", "arc version", "resolved tracks",
+                  "arc span", "saga detail"],
+        tool_name="composition_arc_get",
+    ),
+)
+async def composition_arc_get(
+    ctx: MCPContext,
+    node_id: Annotated[str, "The arc/saga (structure_node) id."],
+) -> dict:
+    tc = _ctx(ctx)
+    structures = StructureRepo(get_pool())
+    node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.VIEW)
+    threads_repo = NarrativeThreadRepo(get_pool())
+    out = node.model_dump(mode="json")
+    # BA7/BA6/BA15 — the derived reads (the whole reason structure_node exists: it
+    # is READ to make decisions, not write-only). All go through StructureRepo's
+    # single cascade/derivation implementation; the tools never re-derive it.
+    out["resolved"] = {
+        "tracks": await structures.resolve_tracks(node.id),
+        "roster": await structures.resolve_roster(node.id),
+        "roster_bindings": await structures.resolve_roster_bindings(node.id),
+    }
+    out["span"] = await structures.span(node.id)
+    out["open_promises"] = [
+        t.model_dump(mode="json")
+        for t in await structures.open_promises(node.id, narrative_threads_repo=threads_repo)
+    ]
+    return out
+
+
+# ── Tier A — arc auto-write + Undo ────────────────────────────────────────────
+
+
+class _ArcCreateArgs(ForbidExtra):
+    book_id: str
+    # BA1: two kinds + nesting (a sub-arc is an arc whose parent is an arc) — no
+    # third enum. A closed Literal makes `kind:"Saga"` a clean 422, not a DB CHECK 5xx.
+    kind: Literal["saga", "arc"] = "arc"
+    # A sub-arc's parent (an arc). Omit for a root saga / top-level arc. The DB
+    # trigger rejects a cross-book parent, a cycle, and depth>2.
+    parent_arc_id: str | None = None
+    title: str = ""
+    summary: str = ""
+    goal: str = ""
+    status: _ArcStatus = "outline"
+    # BA3: the SPEC owns tracks/roster/roster_bindings. NO `pacing` arg (BPS-3): an
+    # arc's curve IS its member scenes' tension — set scene tension, never a stored
+    # second copy.
+    tracks: list[dict[str, Any]] | None = None
+    roster: list[dict[str, Any]] | None = None
+    roster_bindings: dict[str, Any] | None = None
+    # BA13: provenance is nullable — an arc authored from conversation has none.
+    arc_template_id: str | None = None
+    template_version: int | None = None
+
+
+@mcp_server.tool(
+    name="composition_arc_create",
+    description=(
+        "Create a saga or arc in a book's SPEC tree (the durable structure that "
+        "steers generation). `kind='saga'` is a root (no parent); `kind='arc'` is an "
+        "arc or — with `parent_arc_id` — a sub-arc. Owns `tracks` (parallel plot "
+        "lines), `roster` (cast slots), and `roster_bindings` (slot→glossary entity). "
+        "There is NO pacing arg — an arc's pacing curve is derived from its member "
+        "scenes' tension. EDIT on the book required (auto-applied; Undo archives it)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["create arc", "new saga", "add arc", "author an arc", "start a saga",
+                  "add sub-arc", "create story arc"],
+        tool_name="composition_arc_create",
+    ),
+)
+async def composition_arc_create(ctx: MCPContext, args: _ArcCreateArgs) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(args.book_id)
+    # Creating INTO a book is a package WRITE → EDIT on the book (the supplied
+    # book_id IS the scope; a cross-book parent_arc_id is caught by the trigger).
+    await _gate(tc, bid, GrantLevel.EDIT)
+    structures = StructureRepo(get_pool())
+    try:
+        node = await structures.create_node(
+            bid,
+            created_by=tc.user_id,
+            kind=args.kind,
+            title=args.title, summary=args.summary, goal=args.goal, status=args.status,
+            parent_id=UUID(args.parent_arc_id) if args.parent_arc_id else None,
+            tracks=args.tracks, roster=args.roster, roster_bindings=args.roster_bindings,
+            arc_template_id=UUID(args.arc_template_id) if args.arc_template_id else None,
+            template_version=args.template_version,
+        )
+    except StructureConflictError as exc:
+        return _arc_conflict(exc)
+    out = node.model_dump(mode="json")
+    out["_meta"] = {"undo_hint": _undo("composition_arc_delete", node_id=str(node.id))}
+    return out
+
+
+class _ArcUpdateArgs(ForbidExtra):
+    node_id: str
+    expected_version: int
+    title: str | None = None
+    summary: str | None = None
+    goal: str | None = None
+    status: _ArcStatus | None = None
+    tracks: list[dict[str, Any]] | None = None
+    roster: list[dict[str, Any]] | None = None
+    roster_bindings: dict[str, Any] | None = None
+    # re-pin (or set) provenance; None leaves it unchanged (kind/parent/rank are
+    # NOT patchable here — reparent+reorder go through composition_arc_move).
+    arc_template_id: str | None = None
+    template_version: int | None = None
+
+
+@mcp_server.tool(
+    name="composition_arc_update",
+    description=(
+        "Edit an arc/saga's content — title, summary, goal, status, tracks, roster, "
+        "roster_bindings, or provenance. Requires `expected_version` (optimistic "
+        "concurrency — a stale version is rejected, no blind clobber; read it via "
+        "composition_arc_get). To reparent or reorder use composition_arc_move; to "
+        "attach chapters use composition_arc_assign_chapters. EDIT required "
+        "(auto-applied; Undo restores the prior values)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["edit arc", "update arc", "rename saga", "set arc status",
+                  "edit tracks", "update roster"],
+        tool_name="composition_arc_update",
+    ),
+)
+async def composition_arc_update(ctx: MCPContext, args: _ArcUpdateArgs) -> dict:
+    tc = _ctx(ctx)
+    structures = StructureRepo(get_pool())
+    prior = await _arc_or_deny(structures, tc, UUID(args.node_id), GrantLevel.EDIT)
+    patch: dict[str, Any] = {}
+    for field, value in {
+        "title": args.title, "summary": args.summary, "goal": args.goal,
+        "status": args.status, "tracks": args.tracks, "roster": args.roster,
+        "roster_bindings": args.roster_bindings, "template_version": args.template_version,
+    }.items():
+        if value is not None:
+            patch[field] = value
+    if args.arc_template_id is not None:
+        patch["arc_template_id"] = UUID(args.arc_template_id)
+    try:
+        updated = await structures.update(
+            prior.id, patch, expected_version=args.expected_version,
+        )
+    except VersionMismatchError as exc:
+        return {
+            "success": False, "outcome": "applied_conflict",
+            "error": "stale expected_version — refetch and retry",
+            "current_version": exc.current.version,
+        }
+    except StructureConflictError as exc:
+        return _arc_conflict(exc)
+    if updated is None:
+        raise uniform_not_accessible()
+    out = updated.model_dump(mode="json")
+    # Precise Undo: replay the prior JSON-native values (model_dump normalizes
+    # UUID→str) for exactly the fields we changed, at the new version.
+    prior_dump = prior.model_dump(mode="json")
+    undo_fields = {f: prior_dump[f] for f in patch if f in prior_dump}
+    out["_meta"] = {"undo_hint": _undo(
+        "composition_arc_update", node_id=args.node_id,
+        expected_version=updated.version, **undo_fields,
+    )}
+    return out
+
+
+@mcp_server.tool(
+    name="composition_arc_delete",
+    description=(
+        "Soft-archive an arc/saga AND its sub-arc subtree (reversible via "
+        "composition_arc_restore). Member chapters are NOT deleted — their "
+        "structure_node_id simply points at an archived node. EDIT required "
+        "(auto-applied; Undo restores it)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["delete arc", "archive saga", "remove arc", "delete story arc"],
+        tool_name="composition_arc_delete",
+    ),
+)
+async def composition_arc_delete(
+    ctx: MCPContext,
+    node_id: Annotated[str, "The arc/saga to archive."],
+) -> dict:
+    tc = _ctx(ctx)
+    structures = StructureRepo(get_pool())
+    node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.EDIT)
+    await structures.archive(node.id)
+    return {
+        "node_id": str(node.id), "archived": True,
+        "_meta": {"undo_hint": _undo("composition_arc_restore", node_id=str(node.id))},
+    }
+
+
+@mcp_server.tool(
+    name="composition_arc_restore",
+    description=(
+        "Un-archive a previously deleted arc/saga (the inverse of "
+        "composition_arc_delete) — restores its archived subtree AND reconnects its "
+        "archived ancestor chain to a visible root. EDIT required (auto-applied; "
+        "Undo re-archives it)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["restore arc", "unarchive saga", "undelete arc"],
+        tool_name="composition_arc_restore",
+    ),
+)
+async def composition_arc_restore(
+    ctx: MCPContext,
+    node_id: Annotated[str, "The arc/saga to restore."],
+) -> dict:
+    tc = _ctx(ctx)
+    structures = StructureRepo(get_pool())
+    # get() returns archived rows too, so _arc_or_deny resolves + gates the archived
+    # node before the un-archive.
+    node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.EDIT)
+    await structures.restore(node.id)
+    return {
+        "node_id": str(node.id), "archived": False,
+        "_meta": {"undo_hint": _undo("composition_arc_delete", node_id=str(node.id))},
+    }
+
+
+class _ArcMoveArgs(ForbidExtra):
+    node_id: str
+    # None = make it a root (a saga, or a top-level arc). The DB trigger rejects a
+    # depth>2 result (the moved node OR any descendant), a cycle, a cross-book
+    # parent, and a saga given a parent — the whole move rolls back on any of them.
+    new_parent_arc_id: str | None = None
+    # place directly AFTER this sibling (None = first under the new parent).
+    after_id: str | None = None
+
+
+@mcp_server.tool(
+    name="composition_arc_move",
+    description=(
+        "Reparent AND reorder an arc in one atomic move — place `node_id` under "
+        "`new_parent_arc_id` (None = a root) directly after `after_id` (None = "
+        "first). Recomputes the whole moved subtree's depth; a move that would nest "
+        "past saga→arc→sub-arc, form a cycle, cross books, or give a saga a parent "
+        "is rejected cleanly and rolled back. EDIT required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["move arc", "reparent arc", "reorder arc", "nest arc", "restructure book"],
+        tool_name="composition_arc_move",
+    ),
+)
+async def composition_arc_move(ctx: MCPContext, args: _ArcMoveArgs) -> dict:
+    tc = _ctx(ctx)
+    structures = StructureRepo(get_pool())
+    node = await _arc_or_deny(structures, tc, UUID(args.node_id), GrantLevel.EDIT)
+    try:
+        moved = await structures.move(
+            node.id,
+            new_parent_id=UUID(args.new_parent_arc_id) if args.new_parent_arc_id else None,
+            after_id=UUID(args.after_id) if args.after_id else None,
+        )
+    except StructureConflictError as exc:
+        return _arc_conflict(exc)
+    if moved is None:
+        raise uniform_not_accessible()
+    out = moved.model_dump(mode="json")
+    # A reparent+reorder has no single precise inverse token (the prior rank was a
+    # fractional string between siblings that may have changed); honest None.
+    out["_meta"] = {"undo_hint": None}
+    return out
+
+
+class _ArcAssignChaptersArgs(ForbidExtra):
+    book_id: str
+    structure_node_id: str
+    chapter_node_ids: list[str]
+
+
+@mcp_server.tool(
+    name="composition_arc_assign_chapters",
+    description=(
+        "Attach CHAPTER-kind outline nodes to an arc (sets their structure_node_id) "
+        "— the membership that makes an arc's derived span and open-promise rollup "
+        "real. Book-scoped both sides: only chapters in `book_id` are touched, and "
+        "only if `structure_node_id` is itself in that book. Returns the count "
+        "assigned. EDIT on the book required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["assign chapters", "attach chapters to arc", "arc membership",
+                  "add chapters to arc", "group chapters under arc"],
+        tool_name="composition_arc_assign_chapters",
+    ),
+)
+async def composition_arc_assign_chapters(
+    ctx: MCPContext, args: _ArcAssignChaptersArgs,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(args.book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    structures = StructureRepo(get_pool())
+    count = await structures.assign_chapters(
+        bid, UUID(args.structure_node_id), [UUID(c) for c in args.chapter_node_ids],
+    )
+    return {
+        "assigned": count, "structure_node_id": args.structure_node_id,
+        "_meta": {"undo_hint": None},
+    }
+
+
+# ── B2 — template ops (composition_arc_template_* CRUD stays REST-only per BA11;
+# these three cross the SPEC ↔ LIBRARY seam). apply/extract persist and template_
+# drift reads; all three delegate their ENGINE work to 23 A5 (arc_apply/extract)
+# and A4 (template_drift split-out). Those slices build in PARALLEL with this one
+# (fanout-independent-slices — one serial VERIFY reconciles): the tool SURFACE +
+# the gate are wired here now; the engine seam is resolved by getattr so a
+# pre-integration call returns an HONEST "pending" refusal (never a silent no-op,
+# never a module-import crash of the whole MCP server). ────────────────────────
+
+
+def _pending_engine(dep: str, module: str, fn: str) -> dict[str, Any]:
+    """Honest refusal when an A4/A5 engine seam this tool wires isn't merged yet
+    (parallel-build interim state — reconciled at the serial VERIFY). NOT a silent
+    success: names the exact missing symbol so the integrator wires it."""
+    return {
+        "success": False,
+        "error": f"arc engine not yet integrated (23 {dep}) — expected {module}.{fn}",
+        "pending_dependency": dep,
+    }
+
+
+class _ArcApplyArgs(ForbidExtra):
+    project_id: str
+    arc_template_id: str
+    # bind the arc roster ONCE {role_key: cast_name|entity_id}; propagated to every
+    # placement. Unbound roster slots are surfaced, never silently half-bound.
+    roster_bindings: dict[str, Any] = {}
+    replace: bool = False
+    idempotency_key: str | None = None
+
+
+@mcp_server.tool(
+    name="composition_arc_apply",
+    description=(
+        "Apply an arc TEMPLATE onto this Work's book as durable SPEC — rescale the "
+        "template's placements onto the book's chapters, bind the roster once, write "
+        "the arc's pacing curve into scene tension, and emit the motif_application "
+        "ledger (BA3/BA5). This is the 'instantiate a library arc here' op (was POST "
+        ".../arc/materialize). Deterministic (no LLM). EDIT on the book required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["apply arc template", "instantiate arc", "materialize arc",
+                  "use arc template", "apply library arc"],
+        tool_name="composition_arc_apply",
+    ),
+)
+async def composition_arc_apply(ctx: MCPContext, args: _ArcApplyArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(args.project_id)
+    meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    # IDOR: the source template must be visible to the caller (H13 on foreign/missing).
+    arc_tmpl = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(args.arc_template_id))
+    if arc_tmpl is None:
+        raise uniform_not_accessible()
+    from app.engine import arc_apply as _engine  # 23 A5 (module exists; fn pending)
+    fn = getattr(_engine, "apply_arc_to_spec", None)
+    if fn is None:
+        return _pending_engine("A5", "app.engine.arc_apply", "apply_arc_to_spec")
+    result = await fn(
+        get_pool(),
+        book_id=meta.book_id, project_id=pid, arc_template=arc_tmpl,
+        roster_bindings=dict(args.roster_bindings),
+        replace=args.replace, idempotency_key=args.idempotency_key,
+        created_by=tc.user_id,
+    )
+    out = dict(result)
+    out.setdefault("_meta", {"undo_hint": None})
+    return out
+
+
+class _ArcExtractTemplateArgs(ForbidExtra):
+    node_id: str
+    code: str
+    name: str
+    language: str = "en"
+    # 'public' is excluded at create — publishing is the separate library flip.
+    visibility: Literal["private", "unlisted"] = "private"
+
+
+@mcp_server.tool(
+    name="composition_arc_extract_template",
+    description=(
+        "Save an authored arc (a structure_node) as a reusable arc TEMPLATE in YOUR "
+        "library — 'save my plan as a template' (BA13, the extract half of the "
+        "apply↔extract round trip). Reads the arc's tracks/roster and its realized "
+        "motif_application rows back into a template `tracks`/`layout`/`pacing`. The "
+        "template is owned by you, private by default. VIEW on the arc's book required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["extract arc template", "save arc as template", "template from arc",
+                  "publish my plan", "make arc template"],
+        tool_name="composition_arc_extract_template",
+    ),
+)
+async def composition_arc_extract_template(
+    ctx: MCPContext, args: _ArcExtractTemplateArgs,
+) -> dict:
+    tc = _ctx(ctx)
+    structures = StructureRepo(get_pool())
+    # Reading the spec to extract from it → VIEW on its book; the new template is
+    # owner-stamped to the caller (their own library, always writable).
+    node = await _arc_or_deny(structures, tc, UUID(args.node_id), GrantLevel.VIEW)
+    from app.engine import arc_apply as _engine  # 23 A5 (module exists; fn pending)
+    fn = getattr(_engine, "extract_template_from_arc", None)
+    if fn is None:
+        return _pending_engine("A5", "app.engine.arc_apply", "extract_template_from_arc")
+    try:
+        result = await fn(
+            get_pool(),
+            arc_node=node, owner_user_id=tc.user_id,
+            code=args.code, name=args.name, language=args.language,
+            visibility=args.visibility,
+        )
+    except asyncpg.UniqueViolationError:
+        return {
+            "success": False, "outcome": "applied_conflict",
+            "error": "an arc template with this code + language already exists in your library",
+        }
+    out = dict(result)
+    out.setdefault("_meta", {"undo_hint": None})
+    return out
+
+
+@mcp_server.tool(
+    name="composition_arc_template_drift",
+    description=(
+        "The OPTIONAL provenance question BA4 splits out: how far has an authored arc "
+        "(a structure_node) drifted from the TEMPLATE it came from (its pinned "
+        "arc_template_id + template_version)? Distinct from composition_conformance_run, "
+        "which diffs the arc's SPEC against the PROSE. Returns 'unknown' when the arc "
+        "has no provenance. VIEW on the arc's book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["arc template drift", "diff arc vs template", "provenance drift",
+                  "how far from the template"],
+        tool_name="composition_arc_template_drift",
+    ),
+)
+async def composition_arc_template_drift(
+    ctx: MCPContext,
+    node_id: Annotated[str, "The arc (structure_node) to compare against its source template."],
+) -> dict:
+    tc = _ctx(ctx)
+    structures = StructureRepo(get_pool())
+    node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.VIEW)
+    if node.arc_template_id is None:
+        return {"available": False, "reason": "arc has no template provenance (authored directly)"}
+    from app.engine import arc_conformance as _engine  # 23 A4 (module exists; fn pending)
+    fn = getattr(_engine, "build_template_drift", None)
+    if fn is None:
+        return _pending_engine("A4", "app.engine.arc_conformance", "build_template_drift")
+    return await fn(get_pool(), arc_node=node, user_id=tc.user_id)
+
+
+# ── B3 — the missing outline reorder (F6): a human has full drag-reorder
+# (OutlineTree), the agent could only rename. This closes the gap over the SAME
+# merged OutlineRepo.reorder_node the REST /outline/nodes/{id}/reorder uses. NOTE
+# (23 B3): the spec shorthand is `(node_id, parent_id, rank)`, but LexoRank is
+# COMPUTED from `after_id` (a raw rank risks sibling collisions); this exposes
+# `after_id`, matching reorder_node + the OutlineTree precedent. ────────────────
+
+
+class _OutlineNodeMoveArgs(ForbidExtra):
+    project_id: str
+    node_id: str
+    new_parent_id: str | None = None   # None = top level
+    after_id: str | None = None        # place AFTER this sibling; None = first child
+    expected_version: int | None = None
+
+
+@mcp_server.tool(
+    name="composition_outline_node_move",
+    description=(
+        "Drag-reorder + reparent an outline node (chapter/scene) — place `node_id` "
+        "under `new_parent_id` (None = top level) directly after `after_id` (None = "
+        "first child). Computes the fractional rank + renumbers scene story_order "
+        "server-side, atomically. Pass `expected_version` for optimistic concurrency "
+        "(a stale version is rejected). EDIT required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["move node", "reorder scene", "reparent chapter", "drag reorder",
+                  "reorder outline node"],
+        tool_name="composition_outline_node_move",
+    ),
+)
+async def composition_outline_node_move(ctx: MCPContext, args: _OutlineNodeMoveArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(args.project_id)
+    await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
+    outline = OutlineRepo(get_pool())
+    node_id = UUID(args.node_id)
+    # Project-scope the target BEFORE mutating (the gate above checked the resolved
+    # Work's book, but reorder_node targets by id only) — a node_id from another
+    # Work would otherwise be moved under THIS book's gate. See node_update note.
+    prior = await outline.get_node(node_id)
+    if prior is None or prior.project_id != pid:
+        raise uniform_not_accessible()
+    try:
+        moved = await outline.reorder_node(
+            node_id,
+            new_parent_id=UUID(args.new_parent_id) if args.new_parent_id else None,
+            after_id=UUID(args.after_id) if args.after_id else None,
+            expected_version=args.expected_version,
+        )
+    except VersionMismatchError as exc:
+        return {
+            "success": False, "outcome": "applied_conflict",
+            "error": "stale expected_version — refetch and retry",
+            "current_version": exc.current.version,
+        }
+    except ReferenceViolationError as exc:
+        # A reparent cycle / cross-scope parent / bad after_id is a clean refusal,
+        # not a not-found (the node IS the caller's; the MOVE is what's invalid).
+        return {"success": False, "error": "invalid move", "detail": exc.message}
+    if moved is None:
+        raise uniform_not_accessible()
+    out = moved.model_dump(mode="json")
+    out["_meta"] = {"undo_hint": None}   # a reorder has no single precise inverse token
+    return out
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────────────

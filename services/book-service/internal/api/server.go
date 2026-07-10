@@ -196,8 +196,9 @@ func (s *Server) Router() http.Handler {
 		// G4 (W2) — world membership for the knowledge-service world-rollup
 		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
 		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
-		r.Get("/book/jobs", s.reconcileImportJobs)                            // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
-		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal) // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
+		r.Get("/books/{book_id}/reading-position", s.getInternalReadingPosition) // W11 reader spoiler cutoff (§4.1)
+		r.Get("/book/jobs", s.reconcileImportJobs)                               // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
+		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal)    // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
 		r.Get("/books/{book_id}/chapters/{chapter_id}/blocks", s.getInternalChapterBlocks) // T2 translation segmentation — per-block rows
@@ -280,6 +281,12 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/chapters/bulk-status", s.bulkUpdateChapterStatus)
 			r.Post("/chapters/export-zip", s.bulkExportChapters)
 
+			// 22-A2/A3 — scene browser (read-only, VIEW-gated; SC5 inverted authoring
+			// to composition). Book-wide keyset-paged list + single-scene get. Static
+			// "/scenes" registers before "/scenes/{scene_id}" so chi matches it first.
+			r.Get("/scenes", s.getBookScenes)
+			r.Get("/scenes/{scene_id}", s.getBookScene)
+
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)
 				r.Patch("/", s.patchChapter)
@@ -287,6 +294,9 @@ func (s *Server) Router() http.Handler {
 				r.Post("/restore", s.restoreChapter)
 				r.Delete("/purge", s.purgeChapter)
 				r.Get("/content", s.getChapterContent)
+				// 22-A2 — chapter-scoped scene rail (read-only, VIEW-gated). Distinct from
+				// the internal P2 orchestrator route; this is the public browser surface.
+				r.Get("/scenes", s.getChapterScenes)
 				r.Get("/export", s.exportChapter)
 				r.Get("/draft", s.getDraft)
 				r.Patch("/draft", s.patchDraft)
@@ -714,6 +724,18 @@ func nullableString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// nullableStringPtr renders an optional (nullable) TEXT column for a JSON
+// response: a NULL (nil pointer) or empty string collapses to null, any other
+// value passes through. The null-safe form of nullableString for a *string scan
+// target — required for nullable columns like chapters.title, where scanning a
+// SQL NULL into a plain string errors "cannot scan NULL into *string".
+func nullableStringPtr(p *string) any {
+	if p == nil {
+		return nil
+	}
+	return nullableString(*p)
 }
 
 func (s *Server) getBook(w http.ResponseWriter, r *http.Request) {
@@ -1542,7 +1564,8 @@ func (s *Server) getChapter(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, bookID, chapterID, caller uuid.UUID, status int) {
 	_ = caller
 	var id, bid uuid.UUID
-	var title, fn, lang, ctype, state, editorialStatus string
+	var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter
+	var fn, lang, ctype, state, editorialStatus string
 	var size int64
 	var order, revCount, wordCount int
 	var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
@@ -1563,7 +1586,7 @@ WHERE c.id=$1 AND c.book_id=$2
 	writeJSON(w, status, map[string]any{
 		"chapter_id":            id,
 		"book_id":               bid,
-		"title":                 nullableString(title),
+		"title":                 nullableStringPtr(title),
 		"original_filename":     fn,
 		"original_language":     lang,
 		"content_type":          ctype,
@@ -2848,7 +2871,8 @@ LIMIT $%d OFFSET $%d
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var chapterID uuid.UUID
-		var title, lang, editorialStatus string
+		var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter (silently dropping the row)
+		var lang, editorialStatus string
 		var sortOrder int
 		var draftUpdated *time.Time
 		var publishedRevID *uuid.UUID
@@ -2856,7 +2880,7 @@ LIMIT $%d OFFSET $%d
 		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated, &editorialStatus, &publishedRevID, &wordCount); err == nil {
 			items = append(items, map[string]any{
 				"chapter_id":            chapterID,
-				"title":                 nullableString(title),
+				"title":                 nullableStringPtr(title),
 				"sort_order":            sortOrder,
 				"original_language":     lang,
 				"draft_updated_at":      draftUpdated,
@@ -2894,7 +2918,8 @@ func (s *Server) getInternalBookChapter(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
-	var title, lang, editorialStatus string
+	var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter
+	var lang, editorialStatus string
 	var body json.RawMessage
 	var sortOrder int
 	var draftUpdated *time.Time
@@ -2929,7 +2954,7 @@ FROM chapter_blocks WHERE chapter_id=$1
 	ChapterFetchTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id":            chapterID,
-		"title":                 nullableString(title),
+		"title":                 nullableStringPtr(title),
 		"sort_order":            sortOrder,
 		"original_language":     lang,
 		"draft_updated_at":      draftUpdated,
@@ -3177,7 +3202,7 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 	for rows.Next() {
 		var id uuid.UUID
 		var sortOrder int
-		var title string
+		var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter (the common case here) and drops the row before the "Chapter N" fallback
 		if err := rows.Scan(&id, &sortOrder, &title); err != nil {
 			// /review-impl L5 — surface scan errors rather than silent
 			// drop. A schema drift (title column type change) would
@@ -3187,10 +3212,10 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 			scanErrors++
 			continue
 		}
-		if strings.TrimSpace(title) == "" {
+		if title == nil || strings.TrimSpace(*title) == "" {
 			titles[id.String()] = fmt.Sprintf("Chapter %d", sortOrder)
 		} else {
-			titles[id.String()] = fmt.Sprintf("Chapter %d — %s", sortOrder, title)
+			titles[id.String()] = fmt.Sprintf("Chapter %d — %s", sortOrder, *title)
 		}
 	}
 	// /review-impl L5 — rows.Err() catches iterator-level errors

@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-SourceFormat = Literal["html", "plain"]
+SourceFormat = Literal["html", "plain", "tiptap"]  # 26 IX-6: tiptap = re-parse of the pinned draft
 WalkerPath = Literal["headings", "fallback_single"]  # M2 dropped "nav" for P1
 
 
@@ -27,6 +27,10 @@ class Scene(BaseModel):
     path: str  # e.g. "book/part-1/chapter-3/scene-2"
     leaf_text: str
     content_hash: str  # sha256(leaf_text) hex — P2 task-ID seed
+    # 26 IX-5/IX-6: the opening heading's `data-scene-id` (ProseMirror `attrs.sceneId`)
+    # carried through by the tiptap walker; the re-parser sets `scenes.source_scene_id`
+    # from it (evidence rule 1). None for anchorless leaves and every non-tiptap format.
+    anchor_scene_id: str | None = None
 
 
 class Chapter(BaseModel):

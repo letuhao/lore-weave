@@ -33,6 +33,13 @@ type parsedScene struct {
 	Path        string `json:"path"`
 	LeafText    string `json:"leaf_text"`
 	ContentHash string `json:"content_hash"`
+	// SourceSceneID (22-A5/SC7) — the composition outline_node.id the parser
+	// recovered from the drafted prose's `data-scene-id` heading anchor, when
+	// present. Fresh imports (plain text / pandoc HTML) carry no anchor, so it is
+	// absent → the index row's source_scene_id stays NULL ("not yet planned"),
+	// exactly the SC7 degrade. A soft ref (no FK): it crosses the service/DB
+	// boundary to composition.
+	SourceSceneID *string `json:"source_scene_id,omitempty"`
 }
 
 type parsedChapter struct {
@@ -278,9 +285,12 @@ RETURNING id
 			}
 
 			for _, sc := range ch.Scenes {
+				// 22-A5: set book_id (the chapter's book — the SC1 direct scope) AND
+				// source_scene_id (the SC7 `data-scene-id` anchor back-link, when the
+				// parser recovered one) at INSERT, closing the A1 write-path gap.
 				_, err := tx.Exec(r.Context(),
-					`INSERT INTO scenes(chapter_id, sort_order, path, leaf_text, content_hash, parse_version) VALUES($1, $2, $3, $4, $5, 1)`,
-					chapterID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash)
+					`INSERT INTO scenes(chapter_id, book_id, sort_order, path, leaf_text, content_hash, source_scene_id, parse_version) VALUES($1, $2, $3, $4, $5, $6, $7, 1)`,
+					chapterID, bookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, sceneSourceSceneIDArg(sc.SourceSceneID))
 				if err != nil {
 					tx.Rollback(r.Context())
 					writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
@@ -325,4 +335,20 @@ RETURNING id
 func sceneContentHashFromBytes(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
+}
+
+// sceneSourceSceneIDArg maps the parser's optional `data-scene-id` anchor (SC7)
+// to the scenes.source_scene_id INSERT bind: a valid UUID → that UUID, absent or
+// malformed → NULL. A malformed anchor is deliberately NOT an error — the scene
+// still gets its index row with a NULL back-link, which the inspector surfaces as
+// "anchor lost" (the F6 ⚓ re-anchor path), never a silent drop of the whole scene.
+func sceneSourceSceneIDArg(raw *string) any {
+	if raw == nil {
+		return nil
+	}
+	id, err := uuid.Parse(strings.TrimSpace(*raw))
+	if err != nil {
+		return nil
+	}
+	return id
 }

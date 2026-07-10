@@ -115,6 +115,21 @@ async def get_outline_repo() -> OutlineRepo:
     return OutlineRepo(get_pool())
 
 
+async def get_structure_repo() -> "StructureRepo | None":
+    """The arc lens repo (23 BA12). Tolerant of an uninitialised pool: this dep was added
+    to existing pack-calling handlers, and their many unit tests override only the deps
+    they knew about — a hard get_pool() here would 500 every such test. The packer treats
+    structure_repo=None as the DORMANT arc lens (no <arc> frame, zero extra reads), which
+    is the correct behaviour when no pool exists. Production always has a pool, so the arc
+    is injected there; the wired DB test proves that path explicitly."""
+    from app.db.pool import get_pool as _get_pool
+    from app.db.repositories.structure import StructureRepo
+    try:
+        return StructureRepo(_get_pool())
+    except RuntimeError:
+        return None  # pool not initialised (unit test) → arc lens dormant
+
+
 async def get_scene_links_repo() -> SceneLinksRepo:
     return SceneLinksRepo(get_pool())
 

@@ -22,12 +22,14 @@ from __future__ import annotations
 
 import datetime as _dt
 import decimal as _dec
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
+
+from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
 
 from app.config import settings
 from app.db.models import (
@@ -38,12 +40,18 @@ from app.db.models import (
     _ForbidExtra,
     _Key,
 )
+from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
-from app.deps import get_arc_template_repo
+from app.db.repositories.narrative_thread import NarrativeThreadRepo
+from app.db.repositories.structure import StructureConflictError, StructureRepo
+from app.deps import get_arc_template_repo, get_grant_client_dep
 from app.engine.arc_apply import build_apply_plan
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
-from pydantic import Field
+from app.packer.pack import OwnershipError
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/v1/composition")
 
@@ -291,3 +299,256 @@ def _jsonify(value: Any) -> Any:
     if isinstance(value, _dec.Decimal):
         return float(value)
     return value
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 23 B (CF-9) — structure_node (the durable SPEC layer) REST mirrors.
+#
+# MCP-first governs AGENT logic; a human GUI cannot call MCP tools, and every
+# Studio panel writes REST (OutlineTree's reorder/patch If-Match OCC is the
+# precedent — 24 PH20/OQ-3). So every composition_arc_* tool gets a REST route
+# over the SAME StructureRepo method (one repo method, two front doors: the Hub's
+# drag-drop transport here, the agent's MCP tool in app/mcp/server.py). Access is
+# the E0 book grant, gated BEFORE the repo (25 PM-8): book-scoped routes gate the
+# path book_id; by-id routes resolve the node's book from the ROW and gate on ITS
+# book_id (`worker-loaded-id-needs-parent-scoping`). `created_by` is a plain actor
+# stamp (never a scope key). Reads mirror too.
+#
+# `structure_node` is PER-BOOK (BA8), so these routes are keyed by book_id/node_id,
+# NOT project_id — distinct from the /works/{project_id}/* outline routes.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+_ArcStatusREST = Literal["empty", "outline", "drafting", "done"]
+
+
+class ArcCreate(BaseModel):
+    kind: Literal["saga", "arc"] = "arc"
+    parent_arc_id: UUID | None = None
+    title: str = ""
+    summary: str = ""
+    goal: str = ""
+    status: _ArcStatusREST = "outline"
+    tracks: list[dict[str, Any]] | None = None
+    roster: list[dict[str, Any]] | None = None
+    roster_bindings: dict[str, Any] | None = None
+    arc_template_id: UUID | None = None
+    template_version: int | None = None
+
+
+class ArcPatch(BaseModel):
+    title: str | None = None
+    summary: str | None = None
+    goal: str | None = None
+    status: _ArcStatusREST | None = None
+    tracks: list[dict[str, Any]] | None = None
+    roster: list[dict[str, Any]] | None = None
+    roster_bindings: dict[str, Any] | None = None
+    arc_template_id: UUID | None = None
+    template_version: int | None = None
+
+
+class ArcMove(BaseModel):
+    new_parent_arc_id: UUID | None = None   # None = a root
+    after_id: UUID | None = None            # place AFTER this sibling; None = first
+
+
+class ArcAssignChapters(BaseModel):
+    structure_node_id: UUID
+    chapter_node_ids: list[UUID]
+
+
+def _structures() -> StructureRepo:
+    return StructureRepo(get_pool())
+
+
+async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel) -> None:
+    """E0 book-grant chokepoint → HTTP (mirrors outline._gate_book). none→404 (the
+    uniform H13 message, no existence oracle), under-tier→403."""
+    try:
+        await authorize_book(grant, book_id, caller, need)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
+
+
+async def _gate_arc(
+    structures: StructureRepo, grant: GrantClient, caller: UUID, node_id: UUID,
+    need: GrantLevel,
+):
+    """By-id routes: resolve the arc's book from the ROW (bare-id read), then gate
+    the caller's grant on ITS book_id. A missing node returns the SAME uniform 404
+    as a denied grant (no oracle). Returns the resolved node."""
+    node = await structures.get(node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, node.book_id, caller, need)
+    return node
+
+
+def _arc_conflict_http(exc: StructureConflictError) -> HTTPException:
+    """Map a structure_node depth/cycle/cross-book trigger violation to a clean 400
+    (mirrors the outline reorder BAD_REFERENCE precedent — never a 500)."""
+    return HTTPException(status_code=400, detail={
+        "code": "STRUCTURE_CONSTRAINT",
+        "message": (
+            "a saga cannot have a parent, nesting is capped at saga→arc→sub-arc "
+            "(depth 2), no cycles, and a parent must be in the same book"
+        ),
+        "detail": str(exc)[:300],
+    })
+
+
+# ── reads ──────────────────────────────────────────────────────────────────────
+
+
+@router.get("/books/{book_id}/arcs")
+async def list_arcs(
+    book_id: UUID,
+    include_archived: bool = False,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """The book's SPEC tree in one call (BA11 — the Chapter Browser's arc group
+    headers without the N+1). VIEW on the book."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    nodes = await _structures().list_tree(book_id, include_archived=include_archived)
+    return {"nodes": [n.model_dump(mode="json") for n in nodes], "book_id": str(book_id)}
+
+
+@router.get("/arcs/{node_id}")
+async def get_arc(
+    node_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """One arc/saga, ENRICHED with the resolved cascade + derived span + open-
+    promise rollup (the arc-inspector payload — BA7/BA6/BA15). VIEW on the book."""
+    structures = _structures()
+    node = await _gate_arc(structures, grant, user_id, node_id, GrantLevel.VIEW)
+    threads_repo = NarrativeThreadRepo(get_pool())
+    out = node.model_dump(mode="json")
+    out["resolved"] = {
+        "tracks": await structures.resolve_tracks(node.id),
+        "roster": await structures.resolve_roster(node.id),
+        "roster_bindings": await structures.resolve_roster_bindings(node.id),
+    }
+    out["span"] = await structures.span(node.id)
+    out["open_promises"] = [
+        t.model_dump(mode="json")
+        for t in await structures.open_promises(node.id, narrative_threads_repo=threads_repo)
+    ]
+    return out
+
+
+# ── writes ─────────────────────────────────────────────────────────────────────
+
+
+@router.post("/books/{book_id}/arcs", status_code=201)
+async def create_arc(
+    book_id: UUID,
+    body: ArcCreate,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        node = await _structures().create_node(
+            book_id,
+            created_by=user_id,
+            kind=body.kind,
+            title=body.title, summary=body.summary, goal=body.goal, status=body.status,
+            parent_id=body.parent_arc_id,
+            tracks=body.tracks, roster=body.roster, roster_bindings=body.roster_bindings,
+            arc_template_id=body.arc_template_id, template_version=body.template_version,
+        )
+    except StructureConflictError as exc:
+        raise _arc_conflict_http(exc)
+    return node.model_dump(mode="json")
+
+
+@router.patch("/arcs/{node_id}")
+async def patch_arc(
+    node_id: UUID,
+    body: ArcPatch,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> dict[str, Any]:
+    structures = _structures()
+    node = await _gate_arc(structures, grant, user_id, node_id, GrantLevel.EDIT)
+    patch = body.model_dump(exclude_unset=True)
+    try:
+        updated = await structures.update(
+            node.id, patch, expected_version=_parse_if_match(if_match),
+        )
+    except VersionMismatchError as exc:
+        raise HTTPException(status_code=412, detail={
+            "code": "STRUCTURE_VERSION_CONFLICT",
+            "current": exc.current.model_dump(mode="json"),
+        })
+    except StructureConflictError as exc:
+        raise _arc_conflict_http(exc)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    return updated.model_dump(mode="json")
+
+
+@router.delete("/arcs/{node_id}", status_code=200)
+async def delete_arc(
+    node_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    structures = _structures()
+    node = await _gate_arc(structures, grant, user_id, node_id, GrantLevel.EDIT)
+    await structures.archive(node.id)
+    return {"id": str(node.id), "archived": True}
+
+
+@router.post("/arcs/{node_id}/restore", status_code=200)
+async def restore_arc(
+    node_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    structures = _structures()
+    node = await _gate_arc(structures, grant, user_id, node_id, GrantLevel.EDIT)
+    await structures.restore(node.id)
+    return {"id": str(node.id), "archived": False}
+
+
+@router.post("/arcs/{node_id}/move", status_code=200)
+async def move_arc(
+    node_id: UUID,
+    body: ArcMove,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    structures = _structures()
+    node = await _gate_arc(structures, grant, user_id, node_id, GrantLevel.EDIT)
+    try:
+        moved = await structures.move(
+            node.id, new_parent_id=body.new_parent_arc_id, after_id=body.after_id,
+        )
+    except StructureConflictError as exc:
+        raise _arc_conflict_http(exc)
+    if moved is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    return moved.model_dump(mode="json")
+
+
+@router.post("/books/{book_id}/arcs/assign-chapters", status_code=200)
+async def assign_arc_chapters(
+    book_id: UUID,
+    body: ArcAssignChapters,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Attach chapter-kind outline nodes to an arc (book-scoped both sides). EDIT."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    count = await _structures().assign_chapters(
+        book_id, body.structure_node_id, body.chapter_node_ids,
+    )
+    return {"assigned": count, "structure_node_id": str(body.structure_node_id)}

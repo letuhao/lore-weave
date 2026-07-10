@@ -14,6 +14,7 @@ Lens map: L0 canon (COMP DB) · L1a present = glossary bios + knowledge relation
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -27,6 +28,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
+from app.packer.sanitize import sanitize_lore
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +236,131 @@ async def gather_structural(
     except Exception:  # noqa: BLE001
         logger.warning("gather planned failed", exc_info=True)
     return beat, threads, planned
+
+
+def _arc_position(story_order: int | None, span: dict[str, Any]) -> int | None:
+    """The scene's pacing position within a node's DERIVED span (BA6/BPS-3): a
+    0..100 percentage of `story_order` across [min_story_order, max_story_order]
+    over the node's member chapters. None when unplaceable (no story_order, an
+    empty/unplaced span). A single-chapter span (max<=min) reads as 0% (the scene
+    IS the whole span — clamped, never a divide-by-zero)."""
+    lo = span.get("min_story_order")
+    hi = span.get("max_story_order")
+    if story_order is None or lo is None or hi is None:
+        return None
+    if hi <= lo:
+        return 0
+    pct = round((story_order - lo) / (hi - lo) * 100)
+    return max(0, min(100, pct))
+
+
+async def gather_arc(
+    structure_repo, structure_node_id: UUID, *,
+    story_order: int | None, narrative_threads_repo=None,
+    open_promises_cap: int = 8,
+) -> str:
+    """23 BA12 — the ARC lens: the durable spec layer (`structure_node`) reaching
+    the prompt. This is the anti-write-only proof for the whole spec — a chapter
+    assigned to an arc must STEER generation, and the D2 effect test asserts this
+    frame CHANGES when the arc's `tracks` change.
+
+    Renders (BA12) a compact structural frame the drafter reads FIRST:
+      · the resolved arc CHAIN — saga→arc→sub-arc titles, root→leaf (`ancestor_chain`)
+      · the merged `tracks` (`resolve_tracks` — the ONE cascade impl, BA7; never
+        re-derived here) shadowed by `key`
+      · the pacing POSITION of this scene within EACH ancestor's derived span
+        (`span` + this scene's `story_order`) — the coexisting curves BA7 calls out
+        ("~60% through arc 'Betrayal'; ~20% through saga 'Ascension'")
+      · the merged `roster_bindings` (`resolve_roster_bindings`, shadow by role_key)
+      · the open-promise rollup over the arc's chapter subtree (`open_promises`, BA15)
+
+    Best-effort (the packer `_safe_*` posture): any repo failure degrades to '' — the
+    arc frame THINS, never fails a pack. Every author-authored string (titles, goals,
+    track labels, binding ids, promise summaries) is neutralised (SEC3) before
+    assembly so a crafted title can't forge a block delimiter on re-injection."""
+    try:
+        chain, tracks, bindings = await asyncio.gather(
+            structure_repo.ancestor_chain(structure_node_id),
+            structure_repo.resolve_tracks(structure_node_id),
+            structure_repo.resolve_roster_bindings(structure_node_id),
+        )
+    except Exception:  # noqa: BLE001 — the arc frame degrades; never fail a pack
+        logger.warning("gather_arc resolve failed", exc_info=True)
+        return ""
+    if not chain:  # a dangling structure_node_id (deleted arc) → nothing to inject
+        return ""
+
+    def _title(n: Any) -> str:
+        return sanitize_lore((getattr(n, "title", "") or "").strip()) or "(untitled)"
+
+    lines: list[str] = []
+
+    # 1. CHAIN — the saga→arc→sub-arc frame (root→leaf).
+    lines.append("Arc chain: " + " → ".join(
+        f'{getattr(n, "kind", "arc")} "{_title(n)}"' for n in chain))
+
+    # the leaf (the arc this chapter is assigned to) intent
+    goal = sanitize_lore((getattr(chain[-1], "goal", "") or "").strip())
+    if goal:
+        lines.append(f"Arc goal: {goal}")
+
+    # 2. TRACKS — the merged parallel plotlines (BA7 cascade), shadow by key.
+    track_parts: list[str] = []
+    for t in tracks or []:
+        key = sanitize_lore(str(t.get("key", "")).strip())
+        label = sanitize_lore(str(t.get("label", "")).strip())
+        piece = f"{key}: {label}" if key and label else (key or label)
+        if piece:
+            track_parts.append(piece)
+    if track_parts:
+        lines.append("Tracks: " + "; ".join(track_parts))
+
+    # 3. PACING — this scene's position within each ancestor's derived span
+    #    (coexisting curves, BA7). One span() per chain node (depth<=2), gathered
+    #    concurrently; a per-node failure just drops that node's curve.
+    spans = await asyncio.gather(
+        *(structure_repo.span(getattr(n, "id")) for n in chain),
+        return_exceptions=True,
+    )
+    pacing_parts: list[str] = []
+    for n, sp in zip(chain, spans):
+        if isinstance(sp, BaseException):
+            continue
+        pct = _arc_position(story_order, sp)
+        if pct is not None:
+            pacing_parts.append(f'~{pct}% through {getattr(n, "kind", "arc")} "{_title(n)}"')
+    if pacing_parts:
+        lines.append("Pacing: " + "; ".join(pacing_parts))
+
+    # 4. CAST — the merged roster_bindings (role_key → glossary entity), shadow by
+    #    role_key. The concrete cast the abstract roster slots resolve to.
+    binding_parts: list[str] = []
+    for role_key, entity_id in (bindings or {}).items():
+        rk = sanitize_lore(str(role_key).strip())
+        ev = sanitize_lore(str(entity_id).strip())
+        if rk and ev:
+            binding_parts.append(f"{rk} → {ev}")
+    if binding_parts:
+        lines.append("Cast bindings: " + "; ".join(binding_parts))
+
+    # 5. OPEN PROMISES — the rollup over the arc's chapter subtree (BA15). Needs the
+    #    promise-ledger repo's pool (open_promises borrows it); skip when unwired.
+    if narrative_threads_repo is not None:
+        try:
+            promises = await structure_repo.open_promises(
+                structure_node_id, narrative_threads_repo=narrative_threads_repo)
+        except Exception:  # noqa: BLE001 — the rollup degrades; never fail a pack
+            logger.warning("gather_arc open_promises failed", exc_info=True)
+            promises = []
+        promise_parts: list[str] = []
+        for p in promises[:open_promises_cap]:
+            summary = sanitize_lore((getattr(p, "summary", "") or "").strip())
+            if summary:
+                promise_parts.append(f'{getattr(p, "kind", "promise")}: {summary}')
+        if promise_parts:
+            lines.append("Open threads: " + "; ".join(promise_parts))
+
+    return "\n".join(lines)
 
 
 async def gather_recent(

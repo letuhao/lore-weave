@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -56,6 +58,52 @@ def test_parse_plain_returns_tree(client: TestClient):
     tree = resp.json()
     assert tree["source_format"] == "plain"
     assert tree["detected_language"] == "en"
+
+
+_TIPTAP_BODY = json.dumps(
+    {
+        "type": "doc",
+        "content": [
+            {
+                "type": "heading",
+                "attrs": {"level": 2, "sceneId": "node-42"},
+                "content": [{"type": "text", "text": "The Arrival"}],
+            },
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "She stepped off the train."}],
+            },
+        ],
+    }
+)
+
+
+def test_parse_tiptap_passthrough_carries_anchor(client: TestClient):
+    """26 IX-6: source_format='tiptap' routes through the dispatcher and each
+    scene carries anchor_scene_id from the heading's sceneId — the field
+    book-service reads to back-link source_scene_id."""
+    resp = client.post(
+        "/internal/parse",
+        json={"source_format": "tiptap", "content": _TIPTAP_BODY, "language": "en"},
+        headers=_INTERNAL_TOKEN_HEADER,
+    )
+    assert resp.status_code == 200, resp.text
+    tree = resp.json()
+    assert tree["source_format"] == "tiptap"
+    scene = tree["parts"][0]["chapters"][0]["scenes"][0]
+    assert scene["anchor_scene_id"] == "node-42"
+    assert scene["leaf_text"] == "She stepped off the train."
+
+
+def test_parse_tiptap_malformed_json_returns_400(client: TestClient):
+    """A tiptap body that is not a JSON object -> ValueError in the walker ->
+    400 (dispatcher's caller-bug path; body-cap + 422 semantics unchanged)."""
+    resp = client.post(
+        "/internal/parse",
+        json={"source_format": "tiptap", "content": "not-a-json-doc{"},
+        headers=_INTERNAL_TOKEN_HEADER,
+    )
+    assert resp.status_code == 400
 
 
 def test_parse_requires_internal_token(client: TestClient):

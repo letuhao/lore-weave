@@ -61,8 +61,8 @@ async def run_conformance_run(
     via the passed ``model_ref``/``model_source``."""
     from uuid import UUID
 
-    from app.db.repositories.arc_template_repo import ArcTemplateRepo
     from app.db.repositories.motif_repo import MotifRepo
+    from app.db.repositories.structure import StructureRepo
     from app.db.repositories.works import WorksRepo
     from app.engine.arc_conformance_orchestrate import compute_arc_report
     from app.routers.conformance import ConformanceTraceReader
@@ -75,22 +75,24 @@ async def run_conformance_run(
             "(tracked D-MOTIF-CONFORMANCE-ENGINE-WIRING)"
         )
 
-    arc_template_id = input.get("arc_template_id")
-    if not arc_template_id:
-        raise ValueError("conformance_run arc scope requires arc_template_id")
+    # 23-A4/BA4: the arc scope is measured against the DURABLE spec (structure_node), not the
+    # template it came from. `arc_id` = structure_node.id; the deep report reads the realized
+    # bindings via the first-class motif_application.structure_node_id column (by_structure=True).
+    arc_id = input.get("arc_id")
+    if not arc_id:
+        raise ValueError("conformance_run arc scope requires arc_id (a structure_node id)")
 
     uid, pid = UUID(user_id), UUID(project_id)
     work = await WorksRepo(pool).get(pid)
     if work is None:
         raise ValueError("conformance_run: work not found")
-    arc_repo = ArcTemplateRepo(pool)
-    arc = await arc_repo.get_visible(uid, UUID(arc_template_id))
-    if arc is None:
-        raise ValueError("conformance_run: arc template not found / not visible")
+    node = await StructureRepo(pool).get(UUID(arc_id))
+    if node is None or node.book_id != work.book_id:
+        raise ValueError("conformance_run: arc not found / not in this book")
 
     return await compute_arc_report(
         reader=ConformanceTraceReader(pool), mrepo=MotifRepo(pool), knowledge=knowledge,
-        user_id=uid, project_id=pid, book_id=work.book_id, arc=arc,
+        user_id=uid, project_id=pid, book_id=work.book_id, arc=node, by_structure=True,
         deep=True, model_ref=input.get("model_ref"), model_source=input.get("model_source"),
         llm=llm,  # the job runs the deepest signal — the entailment judge (the GET does not)
     )

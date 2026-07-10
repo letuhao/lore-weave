@@ -22,7 +22,6 @@ otherwise destroy the shared dev DB (`kg-integration-tests-truncate-shared-dev-d
 from __future__ import annotations
 
 import os
-import subprocess
 import uuid
 
 import asyncpg
@@ -70,38 +69,44 @@ def _guard_throwaway(dsn: str) -> None:
         )
 
 
-def _legacy_schema_sql() -> tuple[str, str]:
-    """Load git HEAD's (pre-re-key) `_SCHEMA_SQL` + `_MOTIF_SCHEMA_SQL`.
+async def _build_legacy_schema(p: asyncpg.Pool) -> None:
+    """Reshape a throwaway DB into the PRE-re-key (legacy, per-user) schema.
 
-    HEAD's migrate.py imports only `logging` and `asyncpg`, so exec'ing its source in a
-    throwaway namespace runs nothing but definitions.
+    The obvious trick — `git show HEAD:migrate.py` to load the old _SCHEMA_SQL — is
+    FRAGILE: it inverts the moment the re-key commits. Once Deploy 1 is on HEAD, "HEAD's
+    schema" IS the migrated schema, and seeding with `user_id` fails. (That is exactly
+    how this suite silently broke after the Stage-1 commit.)
+
+    Instead we build the legacy shape from the CURRENT migration and then REVERT it:
+    `run_migrations` bootstraps a fresh DB straight into the final shape (marker stamped),
+    and `revert_package_rekey` (the PM-13 down-SQL) renames created_by→user_id, drops
+    book_id, restores the actor-leading PKs, and clears the marker. `test_t1_down_sql_
+    round_trips` proves that down leaves a byte-identical legacy schema. This is
+    self-maintaining — no git archaeology — and tracks the real schema as it evolves.
     """
-    root = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    src = subprocess.run(
-        ["git", "show", "HEAD:services/composition-service/app/db/migrate.py"],
-        capture_output=True, text=True, check=True, cwd=root,
-    ).stdout
-    ns: dict = {}
-    exec(compile(src, "<HEAD:migrate.py>", "exec"), ns)  # noqa: S102 — trusted, our own history
-    legacy, motif = ns["_SCHEMA_SQL"], ns["_MOTIF_SCHEMA_SQL"]
-    assert "user_id" in legacy, "HEAD's schema should still be per-user — is HEAD already migrated?"
-    return legacy, motif
+    async with p.acquire() as c:
+        await c.execute(_DROP_ALL_TABLES)
+    await run_migrations(p)                      # fresh → final shape, marker stamped
+    async with p.acquire() as c:
+        await revert_package_rekey(c)            # final → legacy (per-user), marker cleared
+        # sanity: the legacy shape is genuinely back (user_id present, book_id gone)
+        assert await c.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='composition_work' AND column_name='user_id')"
+        ), "revert did not restore the legacy per-user schema"
+        assert not await c.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='outline_node' AND column_name='book_id')"
+        ), "revert left book_id on outline_node — not a legacy schema"
 
 
 @pytest.fixture
 async def legacy_pool():
-    """A throwaway DB carrying the PREVIOUS schema, wiped on entry and exit."""
+    """A throwaway DB carrying the PREVIOUS (pre-re-key) schema, wiped on entry and exit."""
     _guard_throwaway(_DSN)
-    legacy, motif = _legacy_schema_sql()
     p = await asyncpg.create_pool(_DSN, min_size=1, max_size=4)
     try:
-        async with p.acquire() as c:
-            await c.execute(_DROP_ALL_TABLES)
-            await c.execute(legacy)
-            await c.execute(motif)
+        await _build_legacy_schema(p)
         yield p
     finally:
         async with p.acquire() as c:

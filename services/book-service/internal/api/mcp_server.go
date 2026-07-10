@@ -95,6 +95,22 @@ func (s *Server) newMCPServer() *mcp.Server {
 		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"revisions", "history", "versions"}),
 		s.toolBookListRevisions)
 
+	addTool(srv, "book_scene_list",
+		"List a book's parsed SCENES (the prose index): scene_id, chapter_id, sort "+
+			"order, heading, and source_scene_id (the spec back-link). Filter by "+
+			"chapter_id, source_scene_id (resolve a spec scene → its prose index row for "+
+			"go-to-prose), or q (heading/prose substring). Read-only: authoring writes go "+
+			"to the composition outline, not here.",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scenes", "scene index", "go to prose"}),
+		s.toolBookSceneList)
+
+	addTool(srv, "book_scene_get",
+		"Fetch one scene index row by book_id + scene_id: heading, path, prose "+
+			"(leaf_text), content hash, and source_scene_id (the composition spec "+
+			"back-link). Read-only.",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scene detail", "open scene", "read scene"}),
+		s.toolBookSceneGet)
+
 	// ── Tier A (auto-write + Undo; scope=book; Edit grant) ────────────────────
 	// Every Tier-A result carries _meta.undo_hint = {tool, args} naming the
 	// verified reverse op (book uses trash/restore; draft ops → restore_revision).

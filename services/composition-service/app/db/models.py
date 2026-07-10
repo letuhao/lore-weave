@@ -157,6 +157,10 @@ class OutlineNode(BaseModel):
     tension: int | None = None  # 0..100
     story_order: int | None = None
     synopsis: _Long = ""
+    # 23 BA2/BA12 — the arc a CHAPTER node is assigned to (structure_node.id). NULL on
+    # scenes (the outline_structure_kind CHECK forbids a scene from carrying one). The
+    # packer reads it to inject the resolved arc frame into the draft prompt (BA12).
+    structure_node_id: UUID | None = None
     version: int = 1
     is_archived: bool = False
     created_at: datetime | None = None
@@ -166,6 +170,46 @@ class OutlineNode(BaseModel):
     # count). None (not 0) on every other query, so a consumer can tell "not computed" from
     # "genuinely childless" (the field is absent from _SELECT_COLS → default None).
     child_count: int | None = None
+
+
+StructureNodeKind = Literal["saga", "arc"]
+
+
+class StructureNode(BaseModel):
+    """23 A3 — the durable spec layer (`structure_node`): the saga→arc→sub-arc
+    tree. Per-book (BA8: `book_id` is the SCOPE key, set directly — NO
+    composition_work join, NO project_id, NO user_id). `depth` (0..2) is
+    trigger-maintained; `parent_id` nesting is guarded by
+    `structure_node_depth_guard` (depth<=2 · no cycle · same book). `tracks`/
+    `roster` resolve root→leaf shadowed by `key`; `roster_bindings` by `role_key`
+    (StructureRepo.resolve_*). Provenance (`arc_template_id`/`template_version`)
+    is nullable — an arc authored from conversation has none (BA13).
+
+    `created_by` (23-A3) is the arc's author — a stored actor stamp, never a scope
+    key/filter (PM-5/DA-11), nullable (a pre-A3 arc has no recorded author). Fields
+    mirror the shipped columns exactly.
+    """
+
+    id: UUID
+    book_id: UUID
+    created_by: UUID | None = None  # 23-A3 actor stamp — stored, never a scope key (PM-5/DA-11)
+    parent_id: UUID | None = None
+    kind: StructureNodeKind
+    depth: int = 0
+    rank: Annotated[str, StringConstraints(max_length=200)]
+    title: _Title = ""
+    summary: _Long = ""
+    goal: _Short = ""
+    status: NodeStatus = "outline"
+    tracks: list[dict[str, Any]] = Field(default_factory=list)          # [{key,label}]
+    roster: list[dict[str, Any]] = Field(default_factory=list)          # [{key,actant,label,constraints[]}]
+    roster_bindings: dict[str, Any] = Field(default_factory=dict)       # {role_key: glossary_entity_id}
+    arc_template_id: UUID | None = None
+    template_version: int | None = None
+    version: int = 1
+    is_archived: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 # 22 SC12/BPS-12 — provenance of an exit_state write: 'generator' (the drafting
@@ -472,6 +516,9 @@ class MotifApplication(BaseModel):
     motif_id: UUID | None = None                   # SET NULL if the motif is archived
     motif_version: int | None = None
     outline_node_id: UUID | None = None
+    structure_node_id: UUID | None = None          # BA5: the realized layout's arc (23-A1
+    #     added the column; arc_apply writes it first-class so arc conformance can read
+    #     `WHERE structure_node_id = $arc` instead of the legacy annotations bridge)
     role_bindings: dict[str, Any] = Field(default_factory=dict)
     annotations: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None

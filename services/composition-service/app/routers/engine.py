@@ -46,9 +46,10 @@ from app.deps import (
     get_glossary_client_dep, get_grant_client_dep, get_grounding_pins_repo,
     get_knowledge_client_dep, get_llm_client_dep, get_narrative_thread_repo,
     get_outline_repo, get_references_repo, get_scene_links_repo,
-    get_style_profile_repo, get_voice_profile_repo, get_works_repo,
+    get_structure_repo, get_style_profile_repo, get_voice_profile_repo, get_works_repo,
 )
 from app.db.repositories.derivatives import DerivativesRepo
+from app.db.repositories.structure import StructureRepo
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
@@ -330,6 +331,7 @@ async def generate(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -397,6 +399,7 @@ async def generate(
                         branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
+            structure_repo=structures,  # 23 BA12 — the arc lens
             budget_tokens=_pack_budget,
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
             compress_fn=_compress_fn,  # S2 long-chapter state compression
@@ -691,6 +694,7 @@ async def selection_edit(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -755,6 +759,7 @@ async def selection_edit(
                                 branch_point=deriv.branch_point, overrides=deriv.overrides),
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
+                    structure_repo=structures,  # 23 BA12 — the arc lens
                     budget_tokens=_pack_budget, jobs_repo=jobs,
                     compress_fn=_compress_fn, narrative_threads_repo=narrative_threads,
                     grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
@@ -875,6 +880,7 @@ async def generate_chapter(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -947,6 +953,7 @@ async def generate_chapter(
                         branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
+            structure_repo=structures,  # 23 BA12 — the arc lens
             budget_tokens=_pack_budget, jobs_repo=jobs,
             compress_fn=_compress_fn,
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
@@ -1167,6 +1174,7 @@ async def stitch_chapter_endpoint(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     book: BookClient = Depends(get_book_client_dep),
@@ -1367,6 +1375,7 @@ async def suggest_cast(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
@@ -1403,6 +1412,7 @@ async def persist_job(
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    structures: StructureRepo | None = Depends(get_structure_repo),
     book: BookClient = Depends(get_book_client_dep),
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:

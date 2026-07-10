@@ -27,7 +27,7 @@ from app.db.models import MotifApplication
 
 _SELECT_COLS = (
     "id, created_by, project_id, book_id, motif_id, motif_version, outline_node_id, "
-    "role_bindings, annotations, created_at"
+    "structure_node_id, role_bindings, annotations, created_at"
 )
 _JSONB_FIELDS = ("role_bindings", "annotations")
 
@@ -62,12 +62,13 @@ class MotifApplicationRepo:
         async def _do(c: asyncpg.Connection) -> list[asyncpg.Record]:
             out: list[asyncpg.Record] = []
             for row in rows:
+                _sn = row.get("structure_node_id")
                 rec = await c.fetchrow(
                     f"""
                     INSERT INTO motif_application
                       (created_by, project_id, book_id, motif_id, motif_version,
-                       outline_node_id, role_bindings, annotations)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)
+                       outline_node_id, structure_node_id, role_bindings, annotations)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb)
                     RETURNING {_SELECT_COLS}
                     """,
                     created_by, project_id, book_id,
@@ -75,6 +76,7 @@ class MotifApplicationRepo:
                     row.get("motif_version"),
                     UUID(row["outline_node_id"]) if isinstance(row.get("outline_node_id"), str)
                     else row.get("outline_node_id"),
+                    UUID(_sn) if isinstance(_sn, str) else _sn,   # BA5: first-class arc link
                     json.dumps(row.get("role_bindings") or {}),
                     json.dumps(row.get("annotations") or {}),
                 )

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -287,9 +288,12 @@ RETURNING id
 
 			// Insert scenes for this chapter.
 			for _, sc := range ch.Scenes {
+				// 22-A5: set book_id (SC1 direct scope) AND source_scene_id (the SC7
+				// `data-scene-id` anchor back-link, when the parser recovered one) at
+				// INSERT — the same window-closing write the .txt path (parse.go) makes.
 				_, err := tx.Exec(ctx,
-					`INSERT INTO scenes(chapter_id, sort_order, path, leaf_text, content_hash, parse_version) VALUES($1, $2, $3, $4, $5, 1)`,
-					chapterID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash)
+					`INSERT INTO scenes(chapter_id, book_id, sort_order, path, leaf_text, content_hash, source_scene_id, parse_version) VALUES($1, $2, $3, $4, $5, $6, $7, 1)`,
+					chapterID, payload.BookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, sceneSourceSceneIDArg(sc.SourceSceneID))
 				if err != nil {
 					tx.Rollback(ctx)
 					return count, fmt.Errorf("insert scene: %w", err)
@@ -341,6 +345,22 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// sceneSourceSceneIDArg maps the parser's optional `data-scene-id` anchor (22-A5/
+// SC7) to the scenes.source_scene_id INSERT bind: a valid UUID → that UUID, absent
+// or malformed → NULL. A malformed anchor is deliberately NOT fatal — the scene
+// still gets its index row with a NULL back-link ("anchor lost", the F6 re-anchor
+// path), never a failed import. Mirrors book-service parse.go's helper.
+func sceneSourceSceneIDArg(raw *string) any {
+	if raw == nil {
+		return nil
+	}
+	id, err := uuid.Parse(strings.TrimSpace(*raw))
+	if err != nil {
+		return nil
+	}
+	return id
 }
 
 // callPandoc sends the file to pandoc-server and returns HTML.

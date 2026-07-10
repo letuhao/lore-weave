@@ -728,7 +728,8 @@ async def _execute_conformance_run(
             "chapter_id": payload.get("chapter_id"),
             # D-W10-ARC-CONFORMANCE-DEEP-JOB — the arc deep overlay's inputs (the tagging storm
             # the worker runs); the BYOK classify model rides through (provider-gateway invariant).
-            "arc_template_id": payload.get("arc_template_id"),
+            # 23-A4/BA4: the arc axis is a structure_node (`arc_id`), not the template it came from.
+            "arc_id": payload.get("arc_id"),
             "model_ref": payload.get("model_ref"),
             "model_source": payload.get("model_source"),
         },

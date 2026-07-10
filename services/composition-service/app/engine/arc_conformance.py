@@ -1,7 +1,13 @@
 """Coarse arc-conformance (D-W10-ARC-CONFORMANCE, §14.4 altitude 3) — a PURE structural
-diff of the realized motif bindings (the materialized ledger) against the arc TEMPLATE.
+diff of the realized motif bindings (the materialized ledger) against a planned arc.
 
-This is the COARSE tier (§R1.5): it compares what the template PLANNED to what actually
+BA4 (23_book_architecture) RETARGET: the primary arc axis is now the durable SPEC
+(`structure_node`) — "did the prose realize *my plan*". The builders are tolerant of the
+arc object (spec `structure_node` OR `arc_template`) via the `arc_threads`/`arc_layout`/
+`arc_pacing`/`arc_name` accessors, so the split-out `composition_arc_template_drift` path
+(realized-vs-the-template-it-came-from) reuses the same join-correctness surface.
+
+This is the COARSE tier (§R1.5): it compares what was PLANNED to what actually
 got BOUND, using only data that ALREADY exists — the arc `layout` placements, the
 `motif_application` rows materialize wrote (carrying `arc_template_id` + `thread` in
 annotations), the per-scene `tension`, and the `precedes` graph. It does NOT extract the
@@ -23,6 +29,52 @@ the inputs and calls this.
 from __future__ import annotations
 
 from typing import Any
+
+# BA4 retarget — the coarse builder is shared by TWO arc objects: the durable spec
+# (`structure_node`, the new `scope='arc'` axis, keyed by `structure_node_id`) and the
+# `arc_template` (the split-out `composition_arc_template_drift` path). They carry the
+# same *shape* under different names (`tracks`↔`threads`, `title`↔`name`), and the spec
+# has NO `layout`/`pacing` (BA5: `motif_application` IS the realized layout; BA3: pacing
+# is derived from member-scene tension). These tolerant accessors let ONE builder serve
+# both without a hard `isinstance` branch.
+_UNSET = object()
+
+
+def arc_threads(arc: Any) -> list[dict[str, Any]]:
+    """The arc's declared tracks/threads ([{key,label}]). An `arc_template` exposes
+    `.threads`; a `structure_node` exposes `.tracks` (BA10 vocabulary) — same shape."""
+    t = getattr(arc, "threads", None)
+    if t is None:
+        t = getattr(arc, "tracks", None)
+    return t or []
+
+
+def arc_layout(arc: Any) -> list[dict[str, Any]]:
+    """The arc's planned placements. An `arc_template` carries `layout`; a `structure_node`
+    has NONE (BA5 — `motif_application` IS the realized layout), so the spec path has no
+    separately-planned placements and coverage/unmaterialized degrade to empty (honest)."""
+    return getattr(arc, "layout", None) or []
+
+
+def arc_pacing(arc: Any) -> list[Any]:
+    """The arc's template pacing curve. A `structure_node` has none (BA3 — pacing is derived
+    from member-scene `tension`), so the spec path reports pacing realized-only."""
+    return getattr(arc, "pacing", None) or []
+
+
+def arc_name(arc: Any) -> str:
+    """`arc_template.name` or `structure_node.title`."""
+    return getattr(arc, "name", None) or getattr(arc, "title", None) or ""
+
+
+def arc_provenance_template_id(arc: Any) -> Any:
+    """The template this arc is measured *from*. An `arc_template` IS its own template
+    (its `.id`); a `structure_node` carries a nullable `.arc_template_id` (BA13 — an arc
+    authored from conversation has none)."""
+    tid = getattr(arc, "arc_template_id", _UNSET)
+    if tid is _UNSET:
+        return getattr(arc, "id", None)
+    return tid
 
 
 def _planned_pacing(pacing: list[Any]) -> list[float] | None:
@@ -212,8 +264,8 @@ def build_arc_conformance(
     ``{motif_id, motif_code, thread, chapter_index, tension}`` (``chapter_index`` a 1-based
     realized-chapter sequence; ``tension`` may be None). ``precedes_pairs`` is the set of
     ``(from_motif_id, to_motif_id)`` legal-succession edges among the realized motifs."""
-    threads = arc.threads or []
-    layout = arc.layout or []
+    threads = arc_threads(arc)
+    layout = arc_layout(arc)
     thread_labels = {
         t.get("key"): (t.get("label") or t.get("key"))
         for t in threads if isinstance(t, dict) and t.get("key")
@@ -264,7 +316,7 @@ def build_arc_conformance(
          "scenes": len(by_ch[ci])}
         for ci in sorted(by_ch)
     ]
-    planned_curve = _planned_pacing(arc.pacing or [])
+    planned_curve = _planned_pacing(arc_pacing(arc))
     comparable = planned_curve is not None and len(realized_curve) > 0
     max_drift: float | None = None
     if comparable:
@@ -307,13 +359,18 @@ def build_arc_conformance(
     ]
 
     chapter_count = len({r["chapter_index"] for r in realized})
+    tid = arc_provenance_template_id(arc)
     return {
         "scope": "arc",
         "available": True,
         "coarse": True,                 # §R1.5 — structural diff only, no prose extract
         "causal_verified": False,       # succession is precedes-structural, not prose-verified
-        "arc_template_id": str(arc.id),
-        "arc_name": arc.name,
+        # BA4: `arc_id` is the axis identity (structure_node.id on the spec path;
+        # arc_template.id on the template-drift path). `arc_template_id` is now PROVENANCE
+        # — the template the arc was measured from (nullable for a conversation-authored arc).
+        "arc_id": str(arc.id),
+        "arc_template_id": str(tid) if tid else None,
+        "arc_name": arc_name(arc),
         "chapter_count": chapter_count,
         "thread_progress": thread_progress,
         "pacing": pacing,

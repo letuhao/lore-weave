@@ -14,9 +14,13 @@ regenerate needs as inputs). It never gates anything.
 
 COARSE only (§14.2 / §R1.5): the join keys on the shared chapter_id; there is NO
 fine offset-span attribution. The realized side is the LATEST completed
-generation_job per node (the same rule stitch/publish use). `scope=arc` is accepted
-in the contract (so the FE shape is stable) but returns a clear "not available
-yet — P4" body (the §14.4 extract-diff is out of P1).
+generation_job per node (the same rule stitch/publish use).
+
+`scope=arc` (BA4 retarget) is `diff(structure_node, prose)` — the durable SPEC arc
+(`arc_id` = `structure_node.id`) vs the realized `motif_application` bindings keyed by
+`structure_node_id`. `scope=arc_template_drift` is the split-out, optional comparison
+against the `arc_template` the arc was authored from (via the node's provenance). Both
+share the coarse builder + optional deep prose overlay (D-W10-ARC-CONFORMANCE).
 
 TENANCY: access is decided BEFORE these reads, at the gate (E0 grant on the row's
 book_id — 25 PM-8). The two reads filter project_id on BOTH the application/job AND
@@ -42,6 +46,7 @@ from app.db.pool import get_pool
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.structure import StructureRepo
 from app.db.repositories.works import WorksRepo
 from app.clients.knowledge_client import KnowledgeClient
 from app.deps import (get_arc_template_repo, get_grant_client_dep,
@@ -121,6 +126,43 @@ class ConformanceTraceReader:
             out.append(d)
         return out
 
+    async def arc_bindings_by_structure(
+        self, project_id: UUID, structure_node_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """BA4 — the realized bindings for a durable SPEC arc (``structure_node.id``), keyed on
+        the ``motif_application.structure_node_id`` column Deploy 1 added (23 M1.3). This
+        REPLACES the ``annotations->>'arc_template_id'`` provenance for the primary arc axis:
+        the spec is what the prose is measured against ("did the prose realize *my plan*"), not
+        the template it came from. Rows ``{motif_id, motif_code, annotations, chapter_id,
+        tension, story_order}`` ordered by story_order — the SAME shape ``arc_bindings`` returns,
+        so ``compute_arc_report`` is provenance-agnostic downstream. JOINs the scene
+        ``outline_node`` (chapter + tension) → ``motif`` (the stable code). PM-11 double-filter:
+        ``project_id`` on BOTH the application AND the joined node (the kinds-bug rule) — a
+        node-id-only query would be a cross-tenant read. An archived/cleared binding (motif_id
+        NULL) drops out via the INNER motif JOIN — it can't be conformance-checked."""
+        rows = await self._pool.fetch(
+            """
+            SELECT a.motif_id, m.code AS motif_code, a.annotations,
+                   o.chapter_id, o.tension, o.story_order
+            FROM motif_application a
+            JOIN outline_node o ON o.id = a.outline_node_id
+            JOIN motif m ON m.id = a.motif_id
+            WHERE a.project_id = $1
+              AND o.project_id = $1
+              AND a.structure_node_id = $2
+            ORDER BY o.story_order NULLS LAST, o.id
+            """,
+            project_id, structure_node_id,
+        )
+        import json
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            ann = d.get("annotations")
+            d["annotations"] = json.loads(ann) if isinstance(ann, str) else (ann or {})
+            out.append(d)
+        return out
+
     async def latest_completed_by_nodes(
         self, project_id: UUID, node_ids: list[UUID],
     ) -> dict[UUID, dict[str, Any]]:
@@ -177,6 +219,13 @@ async def get_conformance_trace_reader() -> ConformanceTraceReader:
     """W5 — the trace-read helper (the two §4.2 joins). Read-only over W2's
     motif_application + the existing generation_job."""
     return ConformanceTraceReader(get_pool())
+
+
+async def get_structure_repo() -> StructureRepo:
+    """BA4 — the durable-spec repo (23 A3). Local dep (not app.deps) so the arc-scope
+    conformance path resolves the ``structure_node`` (book gate + tracks) without
+    coupling to the wider deps wiring; the route test overrides this."""
+    return StructureRepo(get_pool())
 
 
 def _assemble_conformance(
@@ -242,12 +291,27 @@ def _assemble_conformance(
     }
 
 
+async def _resolve_book_arc(
+    structure_repo: StructureRepo, arc_id: UUID, book_id: UUID,
+) -> Any:
+    """Resolve a durable-spec arc (``structure_node``) INTO the gated book. Returns the
+    node, or raises 422 (missing id) / 404 (foreign or absent — H13 uniform, no existence
+    oracle for a node in another book). The E0 book gate already ran on ``book_id``; a
+    ``structure_node`` is per-book so its own ``book_id`` MUST match (defense-in-depth)."""
+    if arc_id is None:
+        raise HTTPException(status_code=422, detail={"code": "ARC_ID_REQUIRED"})
+    node = await structure_repo.get(arc_id)
+    if node is None or node.book_id != book_id:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    return node
+
+
 @router.get("/works/{project_id}/conformance")
 async def read_conformance(
     project_id: UUID,
     scope: str = Query("chapter"),
     chapter_id: UUID | None = None,
-    arc_template_id: UUID | None = None,
+    arc_id: UUID | None = None,            # BA4: structure_node.id (replaces arc_template_id)
     deep: bool = Query(False),
     model_ref: str | None = Query(None),
     model_source: str | None = Query(None),
@@ -256,15 +320,19 @@ async def read_conformance(
     outline: OutlineRepo = Depends(get_outline_repo),
     reader: ConformanceTraceReader = Depends(get_conformance_trace_reader),
     arc_repo: ArcTemplateRepo = Depends(get_arc_template_repo),
+    structure_repo: StructureRepo = Depends(get_structure_repo),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """The motif-conformance trace (§4). `scope=chapter` (default) is the per-scene
-    planned│realized│conformance trace. `scope=arc` is the COARSE arc-conformance diff
-    (D-W10-ARC-CONFORMANCE, §14.4 altitude 3): the materialized bindings vs the arc
-    template across thread-progress / pacing / structural succession. The DEEP
-    prose-extract diff (effects→preconditions over written text) stays P4+ —
-    `coarse=true`, `causal_verified=false`."""
+    planned│realized│conformance trace.
+
+    `scope=arc` (BA4 RETARGET) is `diff(structure_node, prose)` — the durable SPEC arc
+    (`arc_id` = `structure_node.id`, NOT `arc_template_id`) vs the realized `motif_application`
+    bindings keyed by `structure_node_id`: "did the prose realize *my plan*". `scope=arc_template_drift`
+    is the split-out, optional question — the SAME coarse diff but against the `arc_template` the
+    arc was authored from (resolved via the node's `arc_template_id` provenance). Both accept
+    `deep` for the realized-from-PROSE overlay; `coarse=true`, `causal_verified=false` otherwise."""
     from app.config import settings
 
     work = await works.get(project_id)
@@ -278,20 +346,31 @@ async def read_conformance(
     except InsufficientGrant:
         raise HTTPException(status_code=403, detail="insufficient access")
 
+    # Shared with the Tier-W run_conformance_run worker (D-W10-ARC-CONFORMANCE-DEEP-JOB): the
+    # synchronous deep+model_ref tagging storm stays here for tests/small books; the FE uses the
+    # job (composition_conformance_run) for real books — see the deep-job plan.
     if scope == "arc":
-        if arc_template_id is None:
-            raise HTTPException(status_code=422, detail={"code": "ARC_TEMPLATE_ID_REQUIRED"})
-        arc = await arc_repo.get_visible(user_id, arc_template_id)
+        # BA4 — the durable-spec arc, measured against the PROSE (via structure_node_id).
+        node = await _resolve_book_arc(structure_repo, arc_id, work.book_id)
+        return await compute_arc_report(
+            reader=reader, mrepo=MotifRepo(get_pool()), knowledge=knowledge,
+            user_id=user_id, project_id=project_id, book_id=work.book_id, arc=node,
+            by_structure=True, deep=deep, model_ref=model_ref, model_source=model_source)
+    if scope == "arc_template_drift":
+        # BA4 — the SPLIT-OUT optional question: the spec vs the template it came from. Resolve
+        # the node's arc_template_id provenance, then run the OLD comparison (annotation-keyed).
+        node = await _resolve_book_arc(structure_repo, arc_id, work.book_id)
+        if node.arc_template_id is None:
+            # BA13 — an arc authored from conversation has no template to drift from.
+            raise HTTPException(status_code=422, detail={"code": "NO_TEMPLATE_PROVENANCE"})
+        arc = await arc_repo.get_visible(user_id, node.arc_template_id)
         if arc is None:
-            # H13 uniform — no existence oracle for a foreign/missing arc.
+            # H13 uniform — no existence oracle for a foreign/missing/deleted template.
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-        # Shared with the Tier-W run_conformance_run worker (D-W10-ARC-CONFORMANCE-DEEP-JOB).
-        # The synchronous deep+model_ref tagging storm stays here for tests/small books; the
-        # FE uses the job (composition_conformance_run) for real books — see the deep-job plan.
         return await compute_arc_report(
             reader=reader, mrepo=MotifRepo(get_pool()), knowledge=knowledge,
             user_id=user_id, project_id=project_id, book_id=work.book_id, arc=arc,
-            deep=deep, model_ref=model_ref, model_source=model_source)
+            by_structure=False, deep=deep, model_ref=model_ref, model_source=model_source)
     if scope != "chapter":
         raise HTTPException(status_code=422, detail={"code": "UNSUPPORTED_SCOPE", "scope": scope})
     if chapter_id is None:

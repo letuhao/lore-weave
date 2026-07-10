@@ -169,9 +169,11 @@ RETURNING id
 		_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
 
 		for _, sc := range ch.Scenes {
+			// 22-A5: set book_id (SC1) AND source_scene_id (SC7 anchor, when present)
+			// at INSERT — closes the A1 window for the PDF import branch too.
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO scenes(chapter_id, sort_order, path, leaf_text, content_hash, parse_version) VALUES($1, $2, $3, $4, $5, 1)`,
-				chapterID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash,
+				`INSERT INTO scenes(chapter_id, book_id, sort_order, path, leaf_text, content_hash, source_scene_id, parse_version) VALUES($1, $2, $3, $4, $5, $6, $7, 1)`,
+				chapterID, payload.BookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, sceneSourceSceneIDArg(sc.SourceSceneID),
 			); err != nil {
 				tx.Rollback(ctx)
 				return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("insert scene: %w", err)

@@ -1089,6 +1089,8 @@ END $$;
 CREATE TABLE IF NOT EXISTS structure_node (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id         UUID NOT NULL,                              -- BA8: Per-book (cross-DB id, no FK)
+  created_by      UUID,                                       -- 23-A3 actor stamp (who authored the arc);
+                                                              -- stored, never a scope key / filter (PM-5, DA-11)
   parent_id       UUID REFERENCES structure_node(id) ON DELETE CASCADE,
   kind            TEXT NOT NULL CHECK (kind IN ('saga','arc')),
   depth           SMALLINT NOT NULL DEFAULT 0 CHECK (depth BETWEEN 0 AND 2),
@@ -1120,6 +1122,10 @@ CREATE TABLE IF NOT EXISTS structure_node (
 CREATE INDEX IF NOT EXISTS idx_structure_node_book   ON structure_node(book_id) WHERE NOT is_archived;
 CREATE INDEX IF NOT EXISTS idx_structure_node_parent ON structure_node(parent_id, rank COLLATE "C", id)
   WHERE NOT is_archived;
+-- 23-A3: actor stamp for arc authorship. Additive for a DB already migrated by Deploy 1
+-- (structure_node shipped without it); the fresh CREATE above carries it. Nullable — a
+-- pre-A3 arc has no recorded author, and created_by is never a scope key (PM-5/DA-11).
+ALTER TABLE structure_node ADD COLUMN IF NOT EXISTS created_by UUID;
 
 -- BA9 · depth + cycle guard (mirrors motif_application_scope_guard). A subtree
 -- reparent recomputes descendant depth in one statement (recursive CTE) inside

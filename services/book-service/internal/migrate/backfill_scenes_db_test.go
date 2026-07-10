@@ -169,23 +169,25 @@ WHERE c.id = s.chapter_id AND s.id IN (SELECT id FROM scenes ORDER BY id LIMIT 5
 	}
 }
 
-// The marker is the whole point of the gate: a completed install must not rescan.
-func TestBackfillScenesBookID_MarkerSkipsSecondRun(t *testing.T) {
+// The v1 marker gate is honoured (a completed install must not rescan under v1),
+// and 22-A5's bumped v2 marker closes the interim window. This is the FLIP the
+// A1 marker-skip test documented: a scene that arrives with book_id NULL after
+// v1 stamped is left NULL by a second v1 run (marker gate), then FILLED by the v2
+// sweep — dropping the residual NULL count to 0. That flip is the proof A5 closed
+// the A1→A5 window.
+func TestBackfillScenesBookID_V2ClosesInterimWindow(t *testing.T) {
 	ctx := context.Background()
 	pool := scenesTestPool(t)
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM books`) })
 
 	seedScenes(t, ctx, pool, 3)
-	resetBackfill(t, ctx, pool)
+	resetBackfill(t, ctx, pool) // clears BOTH markers (DELETE FROM the marker table)
 	if err := backfillScenesBookID(ctx, pool); err != nil {
-		t.Fatalf("first run: %v", err)
+		t.Fatalf("v1 run: %v", err)
 	}
 
-	// A new scene arrives with no book_id (the 22-A5 write-path gap). With the marker
-	// stamped the backfill is a no-op, so the row stays NULL — this pins the CURRENT,
-	// deliberate A1 behavior. 22-A5 wires the parse writers AND re-runs the backfill
-	// under a bumped marker (scenes_book_id_backfill_v2); when it lands, this test's
-	// expectation flips to 0 and that flip is the proof A5 closed the window.
+	// A new scene arrives with no book_id (the A1→A5 write-path gap). A SECOND v1
+	// run is a no-op (v1 marker stamped) — the row stays NULL, proving the gate.
 	var chID uuid.UUID
 	if err := pool.QueryRow(ctx, `SELECT id FROM chapters LIMIT 1`).Scan(&chID); err != nil {
 		t.Fatalf("chapter: %v", err)
@@ -196,9 +198,62 @@ VALUES($1,99,'/late','prose','hlate',NULL)`, chID); err != nil {
 		t.Fatalf("late scene: %v", err)
 	}
 	if err := backfillScenesBookID(ctx, pool); err != nil {
-		t.Fatalf("second run: %v", err)
+		t.Fatalf("second v1 run: %v", err)
 	}
 	if got := nullBookIDCount(t, ctx, pool); got != 1 {
-		t.Fatalf("marker gate not honoured: want the late row still NULL (1), got %d", got)
+		t.Fatalf("v1 marker gate not honoured: want the late row still NULL (1), got %d", got)
+	}
+
+	// The v2 sweep (bumped marker) re-runs the copy once more and fills the late
+	// row — the window is closed.
+	if err := backfillScenesBookIDV2(ctx, pool); err != nil {
+		t.Fatalf("v2 run: %v", err)
+	}
+	if got := nullBookIDCount(t, ctx, pool); got != 0 {
+		t.Fatalf("v2 sweep did not close the interim window: want 0 NULL book_id rows, got %d", got)
+	}
+
+	var markedV2 bool
+	if err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM scenes_book_id_backfill_migration WHERE id='scenes_book_id_backfill_v2')`,
+	).Scan(&markedV2); err != nil {
+		t.Fatalf("v2 marker: %v", err)
+	}
+	if !markedV2 {
+		t.Fatal("v2 sweep completed but never stamped its marker — it would rescan every boot")
+	}
+}
+
+// After the full A5 sweep (v1 + v2), the book-wide invariant holds: no scene
+// carries book_id NULL, AND a freshly-INSERTED scene that follows the A5 write
+// path (book_id set at INSERT) keeps the invariant at 0 — the shape the book-wide
+// reads (idx_scenes_book_active, book-keyed) depend on.
+func TestBackfillScenesBookID_NoNullAfterA5(t *testing.T) {
+	ctx := context.Background()
+	pool := scenesTestPool(t)
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM books`) })
+
+	bookID := seedScenes(t, ctx, pool, 7) // interim-window rows: book_id forced NULL
+	resetBackfill(t, ctx, pool)
+	if err := backfillScenesBookID(ctx, pool); err != nil {
+		t.Fatalf("v1 run: %v", err)
+	}
+	if err := backfillScenesBookIDV2(ctx, pool); err != nil {
+		t.Fatalf("v2 run: %v", err)
+	}
+
+	var chID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM chapters WHERE book_id=$1 LIMIT 1`, bookID).Scan(&chID); err != nil {
+		t.Fatalf("chapter: %v", err)
+	}
+	// The A5 write path sets book_id at INSERT (no reliance on a later sweep).
+	if _, err := pool.Exec(ctx, `
+INSERT INTO scenes(chapter_id,book_id,sort_order,path,leaf_text,content_hash)
+VALUES($1,$2,42,'/fresh','prose','hfresh')`, chID, bookID); err != nil {
+		t.Fatalf("fresh scene: %v", err)
+	}
+
+	if got := nullBookIDCount(t, ctx, pool); got != 0 {
+		t.Fatalf("post-A5 invariant broken: want 0 scenes with NULL book_id, got %d", got)
 	}
 }
