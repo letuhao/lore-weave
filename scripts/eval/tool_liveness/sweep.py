@@ -196,24 +196,56 @@ async def _call(session: ClientSession, name: str, args: dict) -> tuple[bool, st
     return True, ""
 
 
-async def _sweep(targets: list[dict], fx: dict) -> list[dict]:
+async def _call_json(session: ClientSession, name: str, args: dict) -> tuple[bool, str, dict]:
+    res = await session.call_tool(name, args)
+    if getattr(res, "isError", False):
+        return False, (res.content[0].text if res.content else "?"), {}
+    sc = getattr(res, "structuredContent", None)
+    if isinstance(sc, dict):
+        return True, "", sc
+    if res.content:
+        try:
+            return True, "", json.loads(res.content[0].text)
+        except Exception:
+            pass
+    return True, "", {}
+
+
+async def _sweep(targets: list[dict], fx: dict, headers: dict | None = None,
+                 authored_fn=None) -> list[dict]:
+    """`authored_fn(tool, fx, state) -> dict | None` overrides fill_args per tool.
+
+    `state` accumulates the RESULT of every successful call, so a later tool can consume
+    what an earlier one created: `glossary_user_create` mints a kind `code`, and
+    `glossary_user_patch` / `_delete` / `_restore` need exactly that code. Without chaining
+    those three can never be reached — a fixture cannot invent a row the tool itself is
+    supposed to make. Targets are swept in the order given, so a chain must be ordered.
+    """
     rows: list[dict] = []
-    async with streamablehttp_client(config.AI_GATEWAY_MCP, headers=_HEADERS) as (r, w, _):
+    state: dict[str, Any] = {}
+    async with streamablehttp_client(config.AI_GATEWAY_MCP, headers=headers or _HEADERS) as (r, w, _):
         async with ClientSession(r, w) as s:
             await s.initialize()
             for t in targets:
-                args = fill_args(t["schema"], fx)
+                args = None
+                if authored_fn is not None:
+                    args = authored_fn(t["name"], fx, state)
+                if args is None:
+                    args = fill_args(t["schema"], fx)
                 if args is None:
                     rows.append({"tool": t["name"], "tier": t["meta"].get("tier") or "ABSENT",
                                  "capability": "SKIP-NO-ARGS", "executes": None,
                                  "why": "required arg needs authored/structured input"})
                     continue
+                result: dict = {}
                 try:
-                    ok, msg = await _call(s, t["name"], args)
+                    ok, msg, result = await _call_json(s, t["name"], args)
                 except BaseExceptionGroup as eg:  # transport blew up, not the tool
                     ok, msg = False, f"transport: {_flatten(eg)}"
                 except Exception as e:
                     ok, msg = False, f"transport: {type(e).__name__}: {e}"
+                if ok:
+                    state[t["name"]] = result
                 executes, why = classify(ok, msg)
                 rows.append({
                     "tool": t["name"], "tier": t["meta"].get("tier") or "ABSENT",
@@ -263,6 +295,9 @@ def main() -> int:
     ap.add_argument("--execute", action="store_true", help="actually call the tools")
     ap.add_argument("--include-writes", action="store_true",
                     help="also call Tier-A tools scoped to book/project (fixture-only writes)")
+    ap.add_argument("--include-user-writes", action="store_true",
+                    help="also call user/none-scoped Tier-A tools AS A THROWAWAY USER "
+                         "(registers one, sweeps as them, deletes them)")
     ap.add_argument("--date", default="sweep", help="output subdirectory name")
     args = ap.parse_args()
 
@@ -315,6 +350,34 @@ def main() -> int:
             except Exception as e:
                 print(f"teardown: FAILED to delete kg project {ids['project_id']}: {e}")
         print(f"teardown: {fx.teardown()}")
+
+    # ── Phase 2: the user/none-scoped Tier-A writes ────────────────────────────────
+    # These mutate THE CALLER, so there is no book to hand them — only a throwaway user.
+    # That is exactly where `settings_update_profile` hid its output-schema break: the
+    # only reason nothing called it is that calling it would have rewritten the real
+    # account. Register a user, sweep as them, delete them.
+    if args.include_user_writes:
+        from .user_fixture import USER_SWEEP_ORDER, UserFixture, authored_user_args
+
+        user_targets = [t for t in tools
+                        if t["meta"].get("tier") in ("A", "S")
+                        and t["meta"].get("scope") in ("user", "none")
+                        and not t["meta"].get("paid")]
+        # Chains must run in order: create mints the code that patch/delete/restore need.
+        rank = {name: i for i, name in enumerate(USER_SWEEP_ORDER)}
+        user_targets.sort(key=lambda t: (rank.get(t["name"], len(rank)), t["name"]))
+
+        ufx = UserFixture().build()
+        print(f"\nphase 2 — {len(user_targets)} user-scoped writes as throwaway user {ufx.user_id}")
+        try:
+            user_rows = asyncio.run(_sweep(
+                user_targets, {}, headers=ufx.headers(),
+                authored_fn=lambda tool, _fx, state: authored_user_args(tool, ufx, state)))
+        finally:
+            print(f"  teardown: {ufx.teardown()}")
+        for r in user_rows:
+            r["as_throwaway_user"] = True
+        rows.extend(user_rows)
 
     broke = [r for r in rows if r["executes"] is False]
     works = [r for r in rows if r["executes"] is True]

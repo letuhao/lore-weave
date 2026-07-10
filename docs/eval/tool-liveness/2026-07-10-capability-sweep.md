@@ -210,6 +210,66 @@ violation*, not an exception — so that pattern is now explicitly in the positi
 A test pins exactly that: an unrecognised error is `null`, and the schema violation is still
 `false`.
 
+## Round 4 — the throwaway USER, and chaining
+
+`_meta.scope` unlocked the 58 book/project-scoped writes: they can only touch the throwaway
+book we hand them. The 25 **`user`/`none`-scoped** writes have no such handle — they mutate
+*the caller*. `settings_update_profile` rewrites the profile; `glossary_user_create` adds a
+user-tier kind. Against the real test account that is vandalism, so nothing ever called them.
+
+**That is exactly where the bug lived.** `settings_update_profile` carried the same
+`json.RawMessage` output-schema break as its twin and failed 100 % of calls — fixed earlier by
+*reasoning from the root cause*, because nothing could call it. A throwaway user is how we stop
+needing to be lucky. It is now **proven**, not inferred.
+
+The fixture registers a real user (an invented UUID fails at auth-service), sweeps as them, and
+deletes every row keyed to the id it created — across `auth`, `knowledge`, `glossary`,
+`agent_registry`, `composition`. Tables enumerated from `information_schema`, not guessed.
+
+### Chaining: a fixture cannot invent a row the tool is supposed to make
+
+`glossary_user_patch` / `_delete` / `_restore` need a `code` + `base_version` that only
+`glossary_user_create` can mint. So `_sweep` now threads a `state` dict of every successful
+result forward, and `USER_SWEEP_ORDER` guarantees a creator runs before its consumers. A test
+pins the ordering — *a delete before its create silently skips forever*.
+
+That took the user-scoped set from **5 → 11 of 25 proven**:
+
+```
+glossary_user_create → _patch → _delete → _restore     (full lifecycle, ending restored)
+kg_project_create → kg_view_upsert → kg_view_delete
+settings_update_profile · settings_model_set_default
+registry_propose_skill · registry_propose_workflow
+```
+
+The remaining 14 need a motif, a job, or a provider credential. `settings_model_*` cannot be
+reached at all: creating a credential is deliberately **not** a tool (OD-S1, no secret may be an
+LLM-visible arg). Honest `null`; blocks nothing.
+
+### And the leak, again
+
+`run.py` creates a kg project via `kg_project_create` and never deleted it — the same bug I had
+just fixed in `sweep.py`. **Five orphans** had accumulated from yesterday's harness runs. Fixed
+at the source and cleaned up. *"No probe may touch an id it did not create"* cuts both ways: it
+must also destroy what it did.
+
+## Where the manifest stands
+
+**199 of 204 tools** (the 5 missing are paid — never swept). **93 execute · 0 broken · 106
+inconclusive · 5 proven G1–G4.**
+
+Four tools that could never work, all found in one day, none by a test:
+
+| tool | failure | reachable now |
+|---|---|---|
+| `settings_get_profile` | `json.RawMessage` output-schema break | ✅ executes |
+| `settings_update_profile` | same, Tier-A twin | ✅ executes |
+| `translation_list_versions` | SQL against a dropped column | ✅ executes |
+| `kg_entity_edge_timeline` | `TypeError` on every call | past the crash; needs graph state |
+
+Every one was fully tiered, correctly scoped, schema-mirrored and drift-locked. The gates only
+ever read `tools/list` **metadata**; not one had issued a `tools/call`.
+
 ## What `executes: null` means here
 
 102 tools are inconclusive, mostly because a required arg is an id or a reference-code the

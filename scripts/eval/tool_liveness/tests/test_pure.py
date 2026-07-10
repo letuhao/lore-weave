@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scripts.eval.tool_liveness import matrix
 from scripts.eval.tool_liveness.confirm import domain_of, find_confirm_token
 from scripts.eval.tool_liveness.poller import find_job_id, status_of
@@ -365,3 +367,99 @@ def test_fill_args_does_not_invent_a_scope_key_the_fixture_lacks():
 
     schema = {"required": [], "properties": {"project_id": {"type": "string"}}}
     assert fill_args(schema, {"book_id": "b-1"}) == {}
+
+
+# ── phase 2: the throwaway-USER sweep ───────────────────────────────────────────
+#
+# The 25 user/none-scoped Tier-A writes mutate THE CALLER — there is no book to hand them.
+# `settings_update_profile` rewrites the profile; `glossary_user_create` adds a user-tier
+# kind. Against the real test account that is vandalism, so nothing ever called them, and
+# that is exactly where settings_update_profile hid its output-schema break.
+
+def test_user_fixture_headers_never_carry_the_real_account():
+    """The one invariant that must never break: phase 2 talks as the throwaway user."""
+    from tool_liveness import config
+    from tool_liveness.user_fixture import UserFixture
+
+    fx = UserFixture()
+    fx.user_id = "00000000-0000-0000-0000-000000000001"
+    h = fx.headers()
+    assert h["X-User-Id"] == fx.user_id
+    assert h["X-User-Id"] != config.USER_ID, "must NOT be the real test account"
+
+
+def test_user_fixture_refuses_headers_before_build():
+    from tool_liveness.user_fixture import UserFixture
+
+    with pytest.raises(AssertionError):
+        UserFixture().headers()
+
+
+def test_authored_user_args_supplies_the_field_settings_update_profile_needs():
+    """`settings_update_profile` has required=[], so a required-args-only call returns
+    "no fields to update" and proves nothing. It is THE tool whose twin was broken; it
+    must be reached with an optional field supplied on purpose."""
+    from tool_liveness.user_fixture import UserFixture, authored_user_args
+
+    args = authored_user_args("settings_update_profile", UserFixture(), {})
+    assert args and "display_name" in args, "must supply an optional field, or learn nothing"
+
+
+def test_authored_user_args_returns_none_for_tools_needing_state_we_lack():
+    """A motif id, a job id, a provider credential — the throwaway user has none. Returning
+    None keeps the tool at `executes: null`, which blocks nothing."""
+    from tool_liveness.user_fixture import UserFixture, authored_user_args
+
+    fx = UserFixture()
+    for tool in ("composition_motif_archive", "jobs_cancel", "settings_model_update"):
+        assert authored_user_args(tool, fx, {}) is None, tool
+
+
+def test_chained_tools_are_unreachable_without_the_creator_result():
+    """glossary_user_patch/_delete/_restore need a `code` only glossary_user_create can
+    mint. With no prior state they must return None (skip), never invent one."""
+    from tool_liveness.user_fixture import UserFixture, authored_user_args
+
+    fx = UserFixture()
+    for tool in ("glossary_user_patch", "glossary_user_delete", "glossary_user_restore",
+                 "kg_view_upsert", "kg_view_delete"):
+        assert authored_user_args(tool, fx, {}) is None, f"{tool} must skip without state"
+
+
+def test_chained_tools_consume_the_creator_result():
+    from tool_liveness.user_fixture import UserFixture, authored_user_args
+
+    fx = UserFixture()
+    state = {"glossary_user_create": {"code": "tle_kind", "base_version": "v1"},
+             "kg_project_create": {"project_id": "p-1"},
+             "kg_view_upsert": {}}
+    patch = authored_user_args("glossary_user_patch", fx, state)
+    assert patch["code"] == "tle_kind" and patch["base_version"] == "v1", patch
+    assert authored_user_args("glossary_user_delete", fx, state)["code"] == "tle_kind"
+    assert authored_user_args("kg_view_delete", fx, state)["project_id"] == "p-1"
+
+
+def test_the_chain_order_creates_before_it_consumes():
+    """Sweep order is load-bearing: a delete before its create silently skips forever."""
+    from tool_liveness.user_fixture import USER_SWEEP_ORDER as O
+
+    for creator, consumer in (("glossary_user_create", "glossary_user_patch"),
+                              ("glossary_user_create", "glossary_user_delete"),
+                              ("glossary_user_delete", "glossary_user_restore"),
+                              ("kg_project_create", "kg_view_upsert"),
+                              ("kg_view_upsert", "kg_view_delete")):
+        assert O.index(creator) < O.index(consumer), f"{creator} must precede {consumer}"
+
+
+def test_user_fixture_teardown_is_scoped_to_the_id_it_created():
+    """A teardown keyed on anything broader than the created id would delete real rows."""
+    import inspect
+
+    from tool_liveness import user_fixture
+
+    src = inspect.getsource(user_fixture.UserFixture.teardown)
+    assert "WHERE {col}='{uid}'" in src or "WHERE id='{uid}'" in src
+    assert "DELETE FROM users WHERE id='{uid}'" in src
+    # every owned-row entry names an owner column — never an unscoped DELETE
+    for _db, table, col in user_fixture._OWNED_ROWS:
+        assert col in ("user_id", "owner_user_id"), f"{table}: unscoped owner column {col!r}"

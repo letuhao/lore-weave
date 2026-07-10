@@ -355,6 +355,19 @@ def main() -> int:
     negctrl = negative_control(fx)
     print(f"[tle] oracle negative-control discriminates = {negctrl['oracle_discriminates']}")
 
+    # The kg project is created by THIS module (kg_project_create above), not by
+    # Fixture.build(), so Fixture.teardown() knows nothing about it and leaked one row per
+    # run — five orphans accumulated before anyone looked. "No probe may touch an id it did
+    # not create" cuts both ways: it must also destroy what it did.
+    if harness.get("kg_project_id"):
+        pid = str(harness["kg_project_id"]).replace("'", "''")
+        try:
+            oracle.db_query(config.DOMAIN_DB["knowledge"],
+                            f"DELETE FROM knowledge_projects WHERE project_id='{pid}'")
+            print(f"[tle] teardown: kg project {harness['kg_project_id']} deleted")
+        except Exception as e:
+            print(f"[tle] teardown: FAILED to delete kg project: {e}")
+
     teardown = fx.teardown()
     print(f"[tle] teardown: {teardown}")
 
