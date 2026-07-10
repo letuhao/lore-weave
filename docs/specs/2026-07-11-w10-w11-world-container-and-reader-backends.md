@@ -125,8 +125,9 @@ The one "ask" surface missing a window (`raw_search.py:100-171` has ownership/la
 
 ### 4.4 KG read-auth unification onto grants
 
-Today KG `entities.py` facts/statuses/timeline are **owner-`user_id`-scoped** (`entities.py:562,655`) — a VIEW-granted reader can hit glossary + `raw_search` (grant-gated) but **not** KG facts. Inconsistent.
-**Design:** move these onto `resolve_grant(book_id, caller) >= VIEW` (the `grant_client` shim to `loreweave_grants`, already used by `raw_search.py:113`). Security-sensitive (widens readership): keep **anti-oracle** — no grant ⇒ 404/empty, no existence leak; and preserve the "resolve-to-owner" search identity `raw_search` uses. Needs its own red-first tenancy tests.
+Today KG `entities.py` facts/statuses/timeline are **owner-`user_id`-scoped** (`entities.py:552,655`) — a VIEW-granted reader can hit glossary + `raw_search` (grant-gated) but **not** KG facts. Inconsistent.
+
+**Design [refined at build 2026-07-11 — moved to M2].** `list_entity_facts`/`get_entity_detail` are keyed by `entity_id` with **no book context**, so a per-endpoint grant check has nothing to check `book_id` against without a new param. Rather than widen every author endpoint (and complicate `entity_id → book` resolution), reader KG access is delivered **inside the M2 facade**: it grant-checks `book_id ≥ VIEW` once (the `grant_client` shim to `loreweave_grants`, as `raw_search.py:117`), resolves the project **owner**, and calls the KG **repos** (`list_entities_filtered`/`list_facts_for_entity`/`statuses_detail_at_order`) as owner with the server-enforced `before_order` — the same resolve-to-owner identity `raw_search` uses. `entities.py`'s HTTP endpoints **stay owner-scoped** (the author/composition inspector is the owner); readers never hit them directly. Anti-oracle: no grant ⇒ the facade 404s uniformly. Red-first tenancy tests live with M2.
 
 ### 4.5 Public / anonymous spoiler-windowed lore route (user chose IN scope)
 
@@ -152,8 +153,8 @@ Today KG `entities.py` facts/statuses/timeline are **owner-`user_id`-scoped** (`
 ## 6. Proposed build milestones (order decided at sign-off)
 
 **W11 (smaller — mostly wiring):**
-- **W11-M1** — reading-position resolver (§4.1) + RAG cutoff (§4.3) + KG-auth→grants unification (§4.4). *Pure wiring over existing engines; red-first tenancy + spoiler tests.*
-- **W11-M2** — reader ask-the-lore facade + MCP tools, cutoff server-enforced (§4.2). Grant-holders.
+- **W11-M1** — reading-position resolver (§4.1) + RAG cutoff (§4.3). *The two genuinely-standalone pieces; pure wiring over existing engines; red-first spoiler + fail-closed tests.*
+- **W11-M2** — reader ask-the-lore facade + MCP tools, cutoff server-enforced (§4.2), **INCLUDING the KG grant-access (§4.4).** *[build refinement 2026-07-11]* `list_entity_facts`/`get_entity_detail` are keyed by `entity_id` with no book context, so they can't grant-check the way `raw_search` (which has `book_id`) does. So reader KG access is not a per-endpoint widening of `entities.py` (which stays owner-scoped for the author/composition inspector); it is **resolve-to-owner inside the facade after one `book_id` grant check** — the facade grant-checks `book_id ≥ VIEW`, resolves the project owner, and calls the KG repos (`list_entities_filtered`/`list_facts_for_entity`/`statuses_detail_at_order`) as owner with the server-enforced `before_order`. A reader "browse the cast/timeline" view (structured, not chat) is served the same way through the facade. Author endpoints are unchanged.
 - **W11-M3** — public/anonymous canon-only windowed lore route (§4.5). *Public data surface ⇒ mandatory `/review-impl`.*
 
 **W10 (write surface small; maps large):**

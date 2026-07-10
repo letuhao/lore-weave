@@ -180,6 +180,49 @@ async def apply_rerank(
     return reranked
 
 
+def _visible_within_window(hit: dict[str, Any], before_sort_order: int) -> bool:
+    """W11-M1 reader spoiler predicate for a book-service LEXICAL hit dict, whose
+    ``sortOrder`` is None-preserving (a hit without a real chapter index has no /
+    None ``sortOrder`` and is dropped). A cutoff < 0 (the fail-closed sentinel —
+    reading position unresolvable) admits NOTHING.
+
+    NOTE: do NOT use this on a ``passage_to_hit`` dict — that path coerces an
+    unknown ``chapter_index`` (None) to ``sortOrder`` 0, which would FAIL OPEN
+    (an un-ordered canon passage read as chapter 0). Passage legs are windowed on
+    the raw ``chapter_index`` via ``_window_raw_passages`` BEFORE ``passage_to_hit``."""
+    if before_sort_order < 0:
+        return False
+    so = hit.get("sortOrder")
+    return isinstance(so, int) and so <= before_sort_order
+
+
+def _window_dict_hits(
+    hits: list[dict[str, Any]], before_sort_order: int | None
+) -> list[dict[str, Any]]:
+    """Filter book-service lexical hit dicts to the reader's window (no-op when the
+    caller supplies no cutoff — the author/wiki path)."""
+    if before_sort_order is None:
+        return hits
+    return [h for h in hits if _visible_within_window(h, before_sort_order)]
+
+
+def _window_raw_passages(raw_hits: list, before_sort_order: int | None) -> list:
+    """Filter raw ``PassageSearchHit``s to the reader's window on the passage's OWN
+    ``chapter_index`` — the None-preserving source, BEFORE ``passage_to_hit``'s
+    None→0 coercion can fail open. A passage with an unknown ``chapter_index`` is
+    DROPPED (fail-closed), matching spec §4.3. No cutoff (None) → no-op; an
+    unresolvable position (< 0) → nothing passes."""
+    if before_sort_order is None:
+        return raw_hits
+    if before_sort_order < 0:
+        return []
+    return [
+        h for h in raw_hits
+        if h.passage.chapter_index is not None
+        and h.passage.chapter_index <= before_sort_order
+    ]
+
+
 async def run_hybrid_search(
     *,
     user_id: UUID,
@@ -197,6 +240,7 @@ async def run_hybrid_search(
     min_rerank_score: float | None = None,
     surface: Surface = "canon",
     pref_lang: str | None = None,
+    before_sort_order: int | None = None,
 ) -> RetrievalResult:
     """Run the hybrid lexical+semantic search for one already-resolved project.
 
@@ -218,7 +262,8 @@ async def run_hybrid_search(
         if hits is None:
             degraded["lexical"] = "book_service_unavailable"
             return []
-        return hits
+        # W11 reader spoiler cutoff — lexical hits carry a None-preserving sortOrder.
+        return _window_dict_hits(hits, before_sort_order)
 
     async def _cjk_lexical() -> list[dict[str, Any]]:
         # KG-ML M6 (D12) — the CJK-tokenized lexical leg. Only for hybrid/lexical
@@ -244,6 +289,9 @@ async def run_hybrid_search(
         except Exception:
             degraded["cjk_lexical"] = "unavailable"
             return []
+        # W11 reader spoiler cutoff — window on the raw chapter_index (None-preserving)
+        # BEFORE passage_to_hit coerces an unknown chapter to sortOrder 0 (fail-open).
+        raw_hits = _window_raw_passages(raw_hits, before_sort_order)
         hits = [passage_to_hit(h, match_type="lexical") for h in raw_hits]
         await enrich_titles(hits, book_client)  # passage hits lack titles
         return hits
@@ -285,6 +333,9 @@ async def run_hybrid_search(
         except ValueError:
             degraded["semantic"] = "embedding_dim_mismatch"
             return []
+        # W11 reader spoiler cutoff — window on the raw chapter_index (None-preserving)
+        # BEFORE passage_to_hit coerces an unknown chapter to sortOrder 0 (fail-open).
+        raw_hits = _window_raw_passages(raw_hits, before_sort_order)
         hits = [passage_to_hit(h) for h in raw_hits]
         await enrich_titles(hits, book_client)  # semantic hits lack titles
         return hits
@@ -294,6 +345,11 @@ async def run_hybrid_search(
     )
     # KG-ML M6: the CJK leg fuses as a third RRF input — additive (empty for
     # non-CJK queries, so Latin-script retrieval is byte-identical to pre-M6).
+    # W11-M1 (spec §4.3) — the reader spoiler cutoff is applied per-LEG above, on
+    # each leg's None-preserving chapter source (raw chapter_index for the passage
+    # legs, sortOrder for the lexical leg), so a future/unknown-chapter hit never
+    # enters fusion — it can't skew RRF, consume a rerank/limit slot, or hide a
+    # visible chapter. Author/wiki callers pass before_sort_order=None → no-op.
     fused = rrf_fuse([lexical_hits, cjk_hits, semantic_hits])
     # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
     # mode is already clean (exact substring) so it skips rerank + stays fast.

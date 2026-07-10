@@ -37,6 +37,7 @@ from app.clients.grant_client import GrantClient, GrantLevel
 from app.extraction.patterns import detect_primary_language
 from app.middleware.jwt_auth import get_current_user
 from app.search.hybrid_fusion import language_coverage
+from app.spoiler_window import resolve_before_sort_order
 from app.search.retriever import (
     MIN_RELEVANCE_DEFAULT,
     Granularity,
@@ -99,6 +100,13 @@ async def search_book(
         "not a filter. Omit to use the caller's stored reader-language for this book, "
         "else the detected query language.",
     ),
+    before_chapter_id: UUID | None = Query(
+        None,
+        description="W11 reader spoiler cutoff — restrict hits to passages from "
+        "chapters at or before this one (by the chapter's sort_order). Omitted → no "
+        "cutoff (author behavior). Unresolvable → fail-closed (no hits). The reader "
+        "facade passes the reader's furthest-read chapter here (server-enforced).",
+    ),
     caller: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     grant_client: GrantClient = Depends(get_grant_client),
@@ -145,6 +153,13 @@ async def search_book(
         detected = detect_primary_language(q)
         pref_lang = detected if detected and detected != "mixed" else None
 
+    # W11 reader spoiler cutoff — resolve the caller-supplied chapter to its
+    # sort_order (fail-closed to -1 if unresolvable → no passages pass). None when
+    # no cutoff was supplied, so the author/wiki path is unchanged.
+    before_sort_order: int | None = None
+    if before_chapter_id is not None:
+        before_sort_order, _ = await resolve_before_sort_order(book_client, before_chapter_id)
+
     result = await run_hybrid_search(
         user_id=project.user_id,
         book_id=book_id,
@@ -161,6 +176,7 @@ async def search_book(
         min_rerank_score=min_rerank_score,
         surface=effective_surface,
         pref_lang=pref_lang,
+        before_sort_order=before_sort_order,
     )
     coverage = language_coverage(
         [h.get("sourceLang") for h in result.hits], pref_lang

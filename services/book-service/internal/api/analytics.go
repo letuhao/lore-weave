@@ -2,12 +2,15 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // ── Reading Progress ────────────────────────────────────────────────────────
@@ -144,6 +147,70 @@ func (s *Server) listReadingProgress(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// ── Reading Position (internal — W11 reader spoiler cutoff) ──────────────────
+
+// getInternalReadingPosition returns a reader's FURTHEST-read surviving chapter
+// for a book, so the knowledge reader facade can turn it into a spoiler
+// `before_chapter_id` cutoff (W11-M1, spec §4.1). Internal-only (service token):
+// the facade passes the authenticated reader's own `user_id`, and the row is the
+// reader's OWN `reading_progress` data — no cross-user read, so no grant check
+// here (the facade grant-checks book access for the LORE reads it then runs).
+//
+// "Furthest" = MAX(chapters.sort_order) over the reader's rows, restricted to
+// ACTIVE chapters. Chapters use SOFT delete (`lifecycle_state`), so the JOIN must
+// filter `lifecycle_state = 'active'` — an INNER JOIN alone doesn't drop a
+// soft-deleted chapter (its row survives), and returning a soft-deleted chapter as
+// the cutoff would either over-window or hand the spoiler resolver a chapter it
+// filters out (denying the reader lore they earned). This matches the sort-order
+// resolver's own `lifecycle_state='active'` filter. If the reader has no active
+// read chapter, both fields are null → the facade fails closed (nothing passes),
+// so a fresh reader never sees the whole book.
+func (s *Server) getInternalReadingPosition(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	userIDStr := r.URL.Query().Get("user_id")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "user_id query param required")
+		return
+	}
+
+	var chapterID uuid.UUID
+	var sortOrder int
+	err = s.pool.QueryRow(r.Context(), `
+		SELECT rp.chapter_id, ch.sort_order
+		FROM reading_progress rp
+		JOIN chapters ch ON ch.id = rp.chapter_id
+		WHERE rp.user_id = $1 AND rp.book_id = $2 AND ch.lifecycle_state = 'active'
+		ORDER BY ch.sort_order DESC
+		LIMIT 1
+	`, userID, bookID).Scan(&chapterID, &sortOrder)
+	if err != nil {
+		// No active read chapter → null position; the facade reads this as
+		// fail-closed (nothing passes), so a fresh reader never sees the whole book.
+		// ErrNoRows is the ONLY expected/silent case; a real DB fault must be
+		// observable (else every reader on this book silently degrades to zero
+		// results behind a healthy-looking 200) — so we log it, then still return
+		// the fail-closed null (never leak on error).
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("book-service: reading-position query failed; returning fail-closed null",
+				"book_id", bookID.String(), "error", err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"furthest_chapter_id": nil,
+			"furthest_sort_order": nil,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"furthest_chapter_id": chapterID,
+		"furthest_sort_order": sortOrder,
+	})
 }
 
 // ── Book Views ──────────────────────────────────────────────────────────────
