@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Scene Browser + Scene Inspector (studio dock panels, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     SCENE BROWSER (`scene-browser`) + SCENE INSPECTOR (`scene-inspector`)
+     Spec: docs/specs/2026-07-01-writing-studio/22_scene_model_and_crud.md
+
+     WHY THESE EXIST
+     "Scene" today names TWO disjoint entities that share a chapter_id and
+     never join:
+       ① book-service.scenes        — the parse leaf. Per-BOOK. Holds the
+          real leaf_text. Reachable ONLY through two /internal routes behind
+          requireInternalToken — i.e. NO public route, at any layer.
+       ② composition.outline_node   — the AUTHORED scene (kind='scene').
+          Per-(user,book) Work. 12 authoring columns.
+     So: import a book → the parser fills ①, the Scene Rail reads ② → the
+     rail renders "No scenes for this chapter." The parse result exists and
+     is invisible. That empty rail is why the scene "looks like only text to
+     store a description."
+
+     And the model is NOT thin — the EXPOSURE is:
+       • SceneRail edits exactly 2 fields (status, synopsis). `title` renders
+         as a JUMP BUTTON — settable only at create, never editable.
+       • MCP writes 4 of 12 (title/goal/synopsis/status).
+       • `goal` is agent-writable and human-INVISIBLE (absent from the FE type).
+       • `pov_entity_id` / `present_entity_ids` / `tension` are READ-ONLY TO
+         EVERYONE — no tool, no GUI writes them — yet `tension >= 70` gates
+         adaptive_k's reasoning policy and `present_entity_ids` gates whether
+         the packer injects a character's voice_profile tags. Generation
+         behavior driven by state nobody can inspect or set.
+
+     THE ARCHITECTURE THIS MOCK RENDERS (spec decision A′)
+     Split identity from intent along the seam already in the data:
+       book-service.scenes  = SSOT for IDENTITY (Per-book, grant-gated, new
+                              /v1 CRUD). What a browser browses; what
+                              knowledge-service extracts.
+       outline_node         = INTENT, anchored by a new `scene_id` column.
+                              Keeps all 5 in-DB dependents (generation_job,
+                              motif_application, scene_link FK,
+                              scene_grounding_pins FK) — ZERO FK breakage.
+     Same SSOT↔derived shape as glossary-service ↔ knowledge-service.
+
+     ► THE MOCK COLOR-CODES PROVENANCE. Every field carries a left tick:
+         teal  = identity   (book-service, shared with every E0 grantee)
+         amber = intent     (composition, private to the user's Work)
+       This is not decoration. It is the one thing a reviewer must be able
+       to check at a glance, because putting a field on the wrong side is
+       the failure mode this whole spec exists to prevent.
+
+     BACKEND WORK THESE SCREENS IMPLY (flagged up front, not silently)
+       • book-service: `book_id` + `title` + `origin` columns on `scenes`
+         (+ BATCHED backfill — 10k-chapter books), `idx_scenes_book_active`.
+       • book-service: 8 new public /v1 routes (VIEW read / EDIT write, same
+         tier split as the existing `steering` routes) + 6 book_scene_* MCP
+         tools. Today there is NO public scene route at all.
+       • composition: `scene_id` anchor with UNIQUE(project_id, scene_id) —
+         SCOPED, never global (the KG↔glossary anchor shipped globally-unique
+         and two writers silently arbitrated one identity: 6ab383f34).
+       • composition: 8 new intent columns (setting/time · conflict/outcome/
+         value_shift · stakes/target_words · typed exit_state).
+       • composition: widen MCP node_create/_update to the full field set,
+         enums on closed sets.
+       • knowledge-service + worker-infra: UNTOUCHED, by design.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① Work-less book — identity columns render, intent columns GREY OUT.
+          The browser must not depend on a composition Work existing.
+       ② origin=parsed vs origin=authored (greenfield scene, empty leaf_text).
+       ③ unanchored scene (no data-scene-id heading in the prose yet).
+       ④ empty state, and the OLD empty-rail bug this replaces.
+
+     SCALE — same hard requirement as the Chapter Browser (#15): this repo
+     explicitly targets 10k+ chapter books, so a book-wide scene list is
+     easily 50k+ rows. Keyset paging + row virtualization above a few
+     hundred. `status` / `pov` filters are CLIENT-side in v1 (they live in
+     composition; server-side would need a cross-service join) — the footer
+     says so out loud rather than pretending the filter is authoritative.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Provenance legend ────────────────────────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .swatch { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+  .swatch.i { background: var(--accent); } .swatch.p { background: var(--primary); }
+
+  /* provenance tick applied to any labelled field/column */
+  .prov { position: relative; padding-left: 8px; }
+  .prov::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 2px; height: 11px; border-radius: 1px; }
+  .prov-i::before { background: var(--accent); } .prov-p::before { background: var(--primary); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+
+  .browser { width: 1180px; max-width: 100%; height: 620px; }
+  .inspector { width: 470px; height: 720px; flex-shrink: 0; }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────────── */
+  .toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .row1 { display: flex; align-items: center; gap: 8px; }
+  .search-box { flex: 1; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 7px;
+    background: var(--background); border: 1px solid var(--border); color: var(--muted-fg); font-size: 12.5px; }
+  .search-box svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 12.5px; }
+  .search-box .kbd { font-family: 'JetBrains Mono'; font-size: 9px; border: 1px solid var(--border-hover); border-radius: 3px; padding: 1px 4px; }
+
+  .select-wrap { position: relative; flex-shrink: 0; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 7px; cursor: pointer; }
+  select:hover { border-color: var(--border-hover); }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .lbl { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-fg); flex-shrink: 0; }
+
+  .row2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .chip { display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid transparent; color: var(--muted-fg); font-size: 11px; font-weight: 500; cursor: pointer; }
+  .chip.active { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+  .chip.active.plan { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+  .chip:hover:not(.active) { border-color: var(--border-hover); color: var(--foreground); }
+  .chip .x { opacity: .6; }
+  .chip.disabled { opacity: .38; cursor: not-allowed; }
+  .chip-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+  .range-chip { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 100px; background: var(--secondary); font-size: 11px; color: var(--muted-fg); }
+  .range-chip input { width: 34px; background: transparent; border: none; border-bottom: 1px dashed var(--border-hover); color: var(--foreground); font-size: 11px; text-align: center; outline: none; }
+
+  /* ── Bulk bar ─────────────────────────────────────────────────────────── */
+  .bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 7px 12px; background: var(--primary-muted); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .bulk-bar .count { font-size: 12px; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+  .bulk-bar .count button { background: none; border: none; color: var(--muted-fg); font-size: 11px; text-decoration: underline; cursor: pointer; }
+  .bulk-actions { display: flex; align-items: center; gap: 6px; }
+  .bulk-actions button { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 6px;
+    background: var(--background); border: 1px solid var(--border); color: var(--foreground); font-size: 11.5px; font-weight: 500; cursor: pointer; }
+  .bulk-actions button:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .bulk-actions button.danger { color: var(--destructive); }
+  .bulk-actions svg { width: 13px; height: 13px; }
+
+  /* ── Table ────────────────────────────────────────────────────────────── */
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }
+  .cols { display: grid; grid-template-columns: 28px 34px 1fr 92px 106px 96px 92px 88px 84px; gap: 9px; align-items: center; }
+  .thead { position: sticky; top: 0; z-index: 2; background: var(--background-alt); border-bottom: 1px solid var(--border);
+    padding: 7px 12px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .thead .sortable { display: flex; align-items: center; gap: 3px; cursor: pointer; }
+  .thead .sortable:hover { color: var(--foreground); }
+  .thead .sortable.active { color: var(--primary); }
+  .thead .sortable svg { width: 10px; height: 10px; }
+
+  /* `.thead` lives OUTSIDE `.body` (it is a sibling, not a child), so the scrollport
+     top IS 0 here — a non-zero sticky offset would shove the group header down over
+     the first row of its own group and hide it behind z-index:1. */
+  .group-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; background: var(--background);
+    border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--muted-fg); position: sticky; top: 0; z-index: 1; }
+  .group-head .chev { width: 11px; height: 11px; color: var(--muted-fg); }
+  .group-head b { color: var(--foreground); font-weight: 600; }
+  .group-head .n { margin-left: auto; font-size: 10px; color: var(--muted-fg); }
+
+  .trow { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12.5px; }
+  .trow:hover { background: var(--card-hover); }
+  .trow.sel { background: var(--primary-muted); }
+  .trow.active { background: var(--accent-muted); box-shadow: inset 2px 0 0 var(--accent); }
+  .cb { width: 14px; height: 14px; border: 1px solid var(--border-hover); border-radius: 3px; display: flex; align-items: center; justify-content: center; }
+  .cb.on { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .cb svg { width: 10px; height: 10px; }
+  .idx { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); }
+  .title-cell { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  /* The title is the identity; the synopsis is the garnish. flex-basis 0 on `.syn`
+     makes IT absorb the shrink, so a long title never ellipsises before its synopsis does. */
+  .title-cell .t { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .title-cell .syn { flex: 1 1 0; min-width: 0; color: var(--muted-fg); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chapter-cell { font-size: 11.5px; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .b-empty    { background: var(--secondary); color: var(--muted-fg); }
+  .b-outline  { background: #23303f; color: #8ab6e8; }
+  .b-drafting { background: var(--primary-muted); color: var(--primary); }
+  .b-done     { background: #16301f; color: var(--success); }
+  .b-parsed   { background: var(--accent-muted); color: var(--accent-fg); }
+  .b-authored { background: #2e2440; color: #c0a8e8; }
+
+  .pov { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .av { width: 17px; height: 17px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 8.5px; font-weight: 700; color: #141010; }
+  .pov span { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .tension { display: flex; align-items: center; gap: 6px; }
+  .tbar { flex: 1; height: 4px; border-radius: 2px; background: var(--secondary); overflow: hidden; }
+  .tbar i { display: block; height: 100%; border-radius: 2px; }
+  .tnum { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); width: 18px; text-align: right; }
+  .tnum.hot { color: var(--destructive); font-weight: 500; }
+
+  .beat { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .words { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); }
+  .words b { color: var(--foreground); font-weight: 500; }
+  .words.over b { color: var(--warning); }
+
+  /* the Work-less state: intent columns unavailable */
+  .noplan { color: var(--border-hover); font-size: 11px; user-select: none; }
+  .trow.dim .prov-p, .thead.dim .prov-p { opacity: .45; }
+
+  .anchor-warn { color: var(--warning); flex-shrink: 0; }
+  .anchor-warn svg { width: 12px; height: 12px; }
+
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+  .load-more { background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+
+  /* ── Inspector ────────────────────────────────────────────────────────── */
+  .insp-body { flex: 1; min-height: 0; overflow-y: auto; }
+  .sect { border-bottom: 1px solid var(--border); }
+  .sect-head { display: flex; align-items: center; gap: 7px; padding: 9px 12px 7px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .sect-head .swatch { width: 3px; height: 11px; }
+  .sect-head .src { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9px; opacity: .7; text-transform: none; letter-spacing: 0; }
+  .sect-body { padding: 0 12px 11px; display: flex; flex-direction: column; gap: 9px; }
+
+  .field { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: center; }
+  .field > label { font-size: 11px; color: var(--muted-fg); }
+  .inp { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 12px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  .inp.ro { background: transparent; border-color: transparent; color: var(--muted-fg); padding-left: 0; }
+  textarea.inp { resize: vertical; min-height: 46px; line-height: 1.45; }
+  .inline { display: flex; align-items: center; gap: 6px; }
+
+  .tokens { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .token { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 4px 0 3px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid var(--border); font-size: 11px; }
+  .token .x { color: var(--muted-fg); cursor: pointer; padding: 0 2px; }
+  .token .x:hover { color: var(--destructive); }
+  .token-add { height: 22px; padding: 0 8px; border-radius: 100px; background: transparent; border: 1px dashed var(--border-hover);
+    color: var(--muted-fg); font-size: 11px; cursor: pointer; }
+  .token-add:hover { color: var(--foreground); border-color: var(--foreground); }
+
+  .slider { position: relative; height: 22px; display: flex; align-items: center; }
+  .slider .track { width: 100%; height: 4px; border-radius: 2px; background: var(--secondary); }
+  .slider .fill { position: absolute; height: 4px; border-radius: 2px; }
+  .slider .knob { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: var(--foreground); border: 2px solid var(--background-alt); }
+  .slider-row { display: grid; grid-template-columns: 1fr 40px; gap: 10px; align-items: center; }
+  .slider-val { font-family: 'JetBrains Mono'; font-size: 11px; text-align: right; }
+
+  /* diverging value_shift bar */
+  .shift { height: 22px; position: relative; display: flex; align-items: center; }
+  .shift .zero { position: absolute; left: 50%; top: 3px; bottom: 3px; width: 1px; background: var(--border-hover); }
+  .shift .bar { position: absolute; height: 5px; border-radius: 2px; }
+  .shift-legend { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono'; margin-top: -3px; }
+
+  .link-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 11.5px; }
+  .link-row .kind { font-family: 'JetBrains Mono'; font-size: 9.5px; padding: 1px 5px; border-radius: 3px; background: var(--secondary); color: var(--muted-fg); }
+  .link-row .to { color: var(--foreground); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .link-row .arrow { color: var(--muted-fg); }
+
+  .pin-row { display: flex; align-items: center; gap: 7px; padding: 5px 0; font-size: 11.5px; }
+  .pin-row .act { font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; }
+  .pin-row .act.pin { background: var(--accent-muted); color: var(--accent); }
+  .pin-row .act.exclude { background: var(--destructive-muted); color: var(--destructive); }
+  .pin-row .nm { flex: 1; }
+  .pin-row .ty { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+
+  .json { font-family: 'JetBrains Mono'; font-size: 10.5px; line-height: 1.6; background: var(--background);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--muted-fg); white-space: pre; overflow-x: auto; }
+  .json .k { color: var(--accent-fg); } .json .s { color: var(--primary); } .json .n { color: #8ab6e8; }
+
+  .insp-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 8px; }
+  .insp-foot .ver { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--muted-fg); margin-right: auto; }
+  .btn { height: 27px; padding: 0 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--background); color: var(--foreground); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn:hover { border-color: var(--border-hover); }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+
+  .mini { width: 258px; height: 320px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .rail-row { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .rail-row .top { display: flex; align-items: center; gap: 5px; }
+  .rail-row .t { flex: 1; font-size: 11px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rail-row .syn { margin-top: 4px; font-size: 10.5px; color: var(--muted-fg); line-height: 1.4;
+    border: 1px solid var(--border); border-radius: 4px; padding: 4px 5px; background: var(--background); }
+  .rail-empty { padding: 24px 14px; text-align: center; font-size: 10.5px; color: var(--muted-fg); line-height: 1.6; }
+  .strike { text-decoration: line-through; opacity: .5; }
+</style>
+</head>
+<body>
+
+<h1>Scene Browser &amp; Scene Inspector <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panels, draft</span></h1>
+<p class="sub">
+  Spec: <b>22_scene_model_and_crud.md</b>. Two panels over a scene model that is split across two services on purpose:
+  <b>book-service</b> owns scene <b>identity</b> (Per-book, shared with every collaborator, holds the parsed <code>leaf_text</code>),
+  <b>composition-service</b> owns <b>authoring intent</b> (Per-Work, anchored by a new <code>scene_id</code>).
+  Today identity has <b>no public HTTP route at all</b> and intent exposes 2 editable fields — which is why an imported book's Scene Rail renders empty.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="swatch i"></span><b>Identity</b> · book-service.scenes · Per-book, E0-shared · SSOT</div>
+  <div class="item"><span class="swatch p"></span><b>Intent</b> · composition.outline_node · Per-(user,book) Work · anchored</div>
+  <div class="item" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    Every field below carries its provenance tick. A field on the wrong side is the bug this spec prevents.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     PANEL 1 + 2 — Browser lists, Inspector edits (the conventional pair)
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Scene Browser <span class="tag">scene-browser</span> <span class="tag">book-wide</span> — with a Work attached</h2>
+
+<div class="stack">
+<div class="panel browser">
+  <div class="panel-head">
+    <span>Scenes — Thiên Kiếm Lục</span>
+    <div class="acts">
+      <div class="ico" title="Group by"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+      <div class="ico" title="Columns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input placeholder="Search scene titles and synopses…" value="" />
+        <span class="kbd">⌘F</span>
+      </div>
+      <span class="lbl">Group</span>
+      <div class="select-wrap">
+        <select><option>Chapter</option><option>Arc</option><option>POV</option><option>Beat role</option><option>None</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <span class="lbl">Sort</span>
+      <div class="select-wrap">
+        <select><option>Story order</option><option>Tension</option><option>Words (gap)</option><option>Updated</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="chip active plan">Status: drafting <svg class="x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+      <div class="chip">POV</div>
+      <div class="chip">Beat role</div>
+      <div class="range-chip">Tension <input value="0" /> – <input value="100" /></div>
+      <div class="chip-sep"></div>
+      <div class="chip active">Origin: parsed <svg class="x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+      <div class="chip">Unanchored only</div>
+      <div class="chip">Missing POV</div>
+      <div class="chip">Over target</div>
+    </div>
+  </div>
+
+  <div class="bulk-bar">
+    <div class="count">2 scenes selected <button>Select all 148 matching</button><button>Clear</button></div>
+    <div class="bulk-actions">
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Set status</button>
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg> Set POV</button>
+      <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg> Retarget words</button>
+      <button class="danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg> Trash</button>
+    </div>
+  </div>
+
+  <div class="thead cols">
+    <div><div class="cb"></div></div>
+    <div class="prov prov-i">#</div>
+    <div class="prov prov-i">Scene</div>
+    <div class="prov prov-i">Chapter</div>
+    <div class="prov prov-p sortable">Status</div>
+    <div class="prov prov-p">POV</div>
+    <div class="prov prov-p sortable active">Tension
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 15 6-6 6 6"/></svg></div>
+    <div class="prov prov-p">Beat</div>
+    <div class="prov prov-p">Words</div>
+  </div>
+
+  <div class="body">
+    <div class="group-head">
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+      Ch. 12 · <b>The Ash Gate</b><span class="n">3 scenes · 3,640 / 4,100 words</span>
+    </div>
+
+    <div class="trow cols">
+      <div><div class="cb"></div></div>
+      <div class="idx">12.1</div>
+      <div class="title-cell">
+        <span class="badge b-parsed">parsed</span>
+        <span class="t">Wei Lan reaches the gate</span>
+        <span class="syn">— the ash has not settled in nine years.</span>
+      </div>
+      <div class="chapter-cell">The Ash Gate</div>
+      <div><span class="badge b-outline">outline</span></div>
+      <div class="pov"><span class="av" style="background:#e8a832">WL</span><span>Wei Lan</span></div>
+      <div class="tension"><div class="tbar"><i style="width:35%;background:var(--info)"></i></div><span class="tnum">35</span></div>
+      <div class="beat">setup</div>
+      <div class="words"><b>1,240</b>/1,500</div>
+    </div>
+
+    <div class="trow cols sel">
+      <div><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></div></div>
+      <div class="idx">12.2</div>
+      <div class="title-cell">
+        <span class="badge b-parsed">parsed</span>
+        <span class="t">The gatekeeper's price</span>
+        <span class="syn">— he names a debt she does not remember owing.</span>
+      </div>
+      <div class="chapter-cell">The Ash Gate</div>
+      <div><span class="badge b-drafting">drafting</span></div>
+      <div class="pov"><span class="av" style="background:#e8a832">WL</span><span>Wei Lan</span></div>
+      <div class="tension"><div class="tbar"><i style="width:62%;background:var(--warning)"></i></div><span class="tnum">62</span></div>
+      <div class="beat">debate</div>
+      <div class="words"><b>890</b>/1,200</div>
+    </div>
+
+    <div class="trow cols active">
+      <div><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M20 6 9 17l-5-5"/></svg></div></div>
+      <div class="idx">12.3</div>
+      <div class="title-cell">
+        <span class="badge b-parsed">parsed</span>
+        <span class="t">Crossing</span>
+        <span class="syn">— she pays it, and the gate remembers her name.</span>
+      </div>
+      <div class="chapter-cell">The Ash Gate</div>
+      <div><span class="badge b-done">done</span></div>
+      <div class="pov"><span class="av" style="background:#e8a832">WL</span><span>Wei Lan</span></div>
+      <div class="tension"><div class="tbar"><i style="width:84%;background:var(--destructive)"></i></div><span class="tnum hot">84</span></div>
+      <div class="beat">break_into_two</div>
+      <div class="words over"><b>1,510</b>/1,400</div>
+    </div>
+
+    <div class="group-head">
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+      Ch. 13 · <b>Salt and Iron</b><span class="n">2 scenes · 0 / 2,600 words</span>
+    </div>
+
+    <div class="trow cols">
+      <div><div class="cb"></div></div>
+      <div class="idx">13.1</div>
+      <div class="title-cell">
+        <span class="badge b-parsed">parsed</span>
+        <span class="t">Market of small gods</span>
+        <span class="syn">— every stall sells a different version of the war.</span>
+      </div>
+      <div class="chapter-cell">Salt and Iron</div>
+      <div><span class="badge b-empty">empty</span></div>
+      <div class="pov"><span class="av" style="background:#3da692">RM</span><span>Ren Mu</span></div>
+      <div class="tension"><div class="tbar"><i style="width:28%;background:var(--info)"></i></div><span class="tnum">28</span></div>
+      <div class="beat">fun_and_games</div>
+      <div class="words"><b>0</b>/1,200</div>
+    </div>
+
+    <div class="trow cols">
+      <div><div class="cb"></div></div>
+      <div class="idx">13.2</div>
+      <div class="title-cell">
+        <span class="badge b-authored">authored</span>
+        <span class="anchor-warn" title="Not anchored to a heading in the prose yet — use ⚓ in the Scene Rail">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8M5 12a7 7 0 0 0 14 0"/><circle cx="12" cy="5" r="3"/></svg></span>
+        <span class="t">A name he shouldn't know</span>
+        <span class="syn">— planned, no prose yet.</span>
+      </div>
+      <div class="chapter-cell">Salt and Iron</div>
+      <div><span class="badge b-empty">empty</span></div>
+      <div class="pov"><span class="noplan">— set POV —</span></div>
+      <div class="tension"><div class="tbar"><i style="width:71%;background:var(--destructive)"></i></div><span class="tnum hot">71</span></div>
+      <div class="beat">midpoint</div>
+      <div class="words"><b>0</b>/1,400</div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Showing 5 of 148 · <b style="color:var(--muted-fg);font-weight:400">Status / POV filters apply to the loaded page only</b> (they live in composition — server-side would need a cross-service join)
+    </div>
+    <button class="load-more">Load more</button>
+  </div>
+</div>
+
+<!-- ── PANEL 2 — Inspector ─────────────────────────────────────────────── -->
+<div class="panel inspector">
+  <div class="panel-head">
+    <span>Scene — Crossing</span>
+    <div class="acts">
+      <div class="ico" title="Jump to prose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="insp-body">
+    <!-- Identity -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch i"></span>Identity <span class="src mono">book-service.scenes</span></div>
+      <div class="sect-body">
+        <div class="field"><label>Title</label><input class="inp" value="Crossing" /></div>
+        <div class="field"><label>Chapter</label><div class="inline"><span style="font-size:12px">Ch. 12 · The Ash Gate</span></div></div>
+        <div class="field"><label>Order</label><div class="inline"><input class="inp" style="width:52px" value="3" /><span style="font-size:11px;color:var(--muted-fg)">of 3 in chapter</span></div></div>
+        <div class="field"><label>Origin</label><div><span class="badge b-parsed">parsed</span> <span style="font-size:10.5px;color:var(--muted-fg)" class="mono">parse_version 1</span></div></div>
+        <div class="field"><label>Anchor</label><div class="inline" style="color:var(--success);font-size:11.5px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M20 6 9 17l-5-5"/></svg> anchored to heading “Crossing”</div></div>
+        <div class="field"><label>Leaf text</label><div class="inline" style="font-size:11px;color:var(--muted-fg)">
+          1,510 words · <span style="text-decoration:underline;cursor:pointer">view</span>
+          <span style="opacity:.7">— read-only projection of <code class="mono">chapter.body</code></span></div></div>
+      </div>
+    </div>
+
+    <!-- Intent -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch p"></span>Intent <span class="src mono">outline_node</span></div>
+      <div class="sect-body">
+        <div class="field"><label>Status</label><div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>done</option><option>empty</option><option>outline</option><option>drafting</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        <div class="field"><label>POV</label><div class="token" style="width:fit-content"><span class="av" style="background:#e8a832;width:15px;height:15px;font-size:8px">WL</span>Wei Lan <span class="x">✕</span></div></div>
+        <div class="field" style="align-items:start"><label style="padding-top:3px">Present</label>
+          <div class="tokens">
+            <span class="token"><span class="av" style="background:#e8a832;width:15px;height:15px;font-size:8px">WL</span>Wei Lan<span class="x">✕</span></span>
+            <span class="token"><span class="av" style="background:#5496e8;width:15px;height:15px;font-size:8px">GK</span>Gatekeeper<span class="x">✕</span></span>
+            <button class="token-add">+ entity</button>
+          </div></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Goal</label>
+          <textarea class="inp" style="min-height:34px">Get through the gate without naming what she owes.</textarea></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Synopsis</label>
+          <textarea class="inp">She pays it, and the gate remembers her name.</textarea></div>
+        <div class="field"><label>Beat role</label><div class="select-wrap" style="width:100%">
+          <select style="width:100%"><option>break_into_two</option><option>setup</option><option>debate</option><option>midpoint</option></select>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        <div class="field"><label>Tension</label>
+          <div class="slider-row">
+            <div class="slider"><div class="track"></div><div class="fill" style="width:84%;background:var(--destructive)"></div><div class="knob" style="left:calc(84% - 6px)"></div></div>
+            <span class="slider-val" style="color:var(--destructive)">84</span>
+          </div></div>
+        <div style="font-size:10px;color:var(--muted-fg);margin-top:-4px;padding-left:106px;line-height:1.5">
+          ≥ 70 flips <code class="mono" style="font-size:9.5px">adaptive_k</code> to the high-tension reasoning policy.</div>
+      </div>
+    </div>
+
+    <!-- Craft (new columns) -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch p"></span>Craft <span class="src mono">outline_node · new</span></div>
+      <div class="sect-body">
+        <div class="field"><label>Setting</label><div class="token" style="width:fit-content"><span class="av" style="background:#3dba6a;width:15px;height:15px;font-size:8px">AG</span>The Ash Gate <span class="x">✕</span></div></div>
+        <div class="field"><label>Story time</label><input class="inp" value="Day 3, before dawn" /></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Conflict</label>
+          <textarea class="inp" style="min-height:34px">She cannot pay without admitting the debt is hers.</textarea></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Outcome</label>
+          <textarea class="inp" style="min-height:34px">She pays. The gate speaks her true name aloud.</textarea></div>
+        <div class="field"><label>Value shift</label>
+          <div>
+            <div class="shift">
+              <div class="zero"></div>
+              <div class="bar" style="left:26%;width:24%;background:var(--destructive)"></div>
+            </div>
+            <div class="shift-legend"><span>−100</span><span style="color:var(--destructive)">−48 · safety → exposure</span><span>+100</span></div>
+          </div></div>
+        <div style="font-size:10px;color:var(--muted-fg);margin-top:-2px;padding-left:106px;line-height:1.5">
+          <b style="color:var(--foreground);font-weight:600">tension</b> is the scene's charge; <b style="color:var(--foreground);font-weight:600">value_shift</b> is its net change.
+          A scene can be maximally tense and end where it began.</div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Stakes</label>
+          <textarea class="inp" style="min-height:34px">If the gate names her, the Salt Court learns she lived.</textarea></div>
+        <div class="field"><label>Target words</label><div class="inline">
+          <input class="inp" style="width:64px" value="1400" />
+          <span style="font-size:11px;color:var(--warning)">actual 1,510 (+110)</span></div></div>
+      </div>
+    </div>
+
+    <!-- Exit state -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch p"></span>Exit state <span class="src mono">jsonb · v1 · generator-written</span></div>
+      <div class="sect-body">
+        <div class="json"><span class="k">"v"</span>: <span class="n">1</span>,
+<span class="k">"knows"</span>:    [<span class="s">"gate:true_name"</span>],
+<span class="k">"location"</span>: <span class="s">"beyond_ash_gate"</span>,
+<span class="k">"injured"</span>:  [<span class="s">"wei_lan:left_hand"</span>],
+<span class="k">"time"</span>:     <span class="s">"day3_dawn"</span></div>
+        <div style="font-size:10px;color:var(--muted-fg);line-height:1.5">
+          Threads scene→scene inside a chapter, mirroring the existing cross-chapter <code class="mono" style="font-size:9.5px">ChapterExitState</code> delta.
+          Read-mostly: the generator writes it, the author may override. <b style="color:var(--foreground)">OQ-4</b>.</div>
+      </div>
+    </div>
+
+    <!-- Links (reuse scene_link) -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch p"></span>Links <span class="src mono">scene_link · exists today</span></div>
+      <div class="sect-body" style="gap:0">
+        <div class="link-row"><span class="kind">setup_payoff</span><span class="arrow">→</span><span class="to">18.2 · What the gate said</span>
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+        <div class="link-row"><span class="kind">custom</span><span class="arrow">←</span><span class="to">9.4 · The debt she forgot</span>
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+        <button class="token-add" style="align-self:start;margin-top:6px">+ link scene</button>
+      </div>
+    </div>
+
+    <!-- Grounding (reuse scene_grounding_pins) -->
+    <div class="sect">
+      <div class="sect-head"><span class="swatch p"></span>Grounding <span class="src mono">scene_grounding_pins · exists today</span></div>
+      <div class="sect-body" style="gap:0">
+        <div class="pin-row"><span class="act pin">pin</span><span class="nm">Gatekeeper — the nine-year silence</span><span class="ty">lore</span></div>
+        <div class="pin-row"><span class="act pin">pin</span><span class="nm">A gate never forgets a name</span><span class="ty">canon</span></div>
+        <div class="pin-row"><span class="act exclude">exclude</span><span class="nm">Ren Mu</span><span class="ty">present</span></div>
+        <button class="token-add" style="align-self:start;margin-top:6px">+ pin</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="insp-foot">
+    <span class="ver">v7 · saved 2m ago</span>
+    <button class="btn">Revert</button>
+    <button class="btn primary">Save</button>
+  </div>
+</div>
+</div>
+
+<div class="callout">
+  <b>Why the pair, and not one panel.</b> Same reasoning as the Chapter Browser (#15): a table cannot edit 20 fields well and a
+  detail pane cannot triage 148 rows well. <b>SceneRail stays</b> — it is the chapter-local strip beside the editor, a third job again.
+  Selecting a row here drives the inspector; the inspector's ↗ jumps the prose via <code>data-scene-id</code>.
+</div>
+
+<div class="callout warn">
+  <b>Every write here is OCC'd.</b> The inspector sends <code>expected_version</code> (v7 above); a stale write returns <b>412</b> and the panel
+  reloads with the "changed elsewhere — reloaded" notice <code>SceneRail</code> already implements. Identity writes and intent writes hit
+  <b>different services</b> and therefore carry <b>two independent versions</b> — the footer shows the intent version because that is what a human edits most.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     STATE ② — the Work-less book. The browser MUST still work.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② Work-less book <span class="tag">no composition Work</span> — identity renders, intent greys out</h2>
+<p class="sub">
+  This is the state that proves the architecture. A freshly-imported book has parsed scenes and <b>no plan</b>.
+  The browser reads <b>book-service</b>, so it lists them anyway. Under the rejected designs (where the browser read <code>outline_node</code>)
+  this screen is the empty rail — the original bug.
+</p>
+
+<div class="panel browser" style="height:280px">
+  <div class="panel-head"><span>Scenes — 山海遺聞 (imported 4 min ago)</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="toolbar" style="padding:8px 12px">
+    <div class="row2">
+      <div class="chip disabled" title="Needs a composition Work">Status</div>
+      <div class="chip disabled" title="Needs a composition Work">POV</div>
+      <div class="chip disabled" title="Needs a composition Work">Beat role</div>
+      <div class="chip-sep"></div>
+      <div class="chip active">Origin: parsed</div>
+      <button class="load-more" style="margin-left:auto">Create a plan for this book →</button>
+    </div>
+  </div>
+  <div class="thead cols dim">
+    <div><div class="cb"></div></div>
+    <div class="prov prov-i">#</div><div class="prov prov-i">Scene</div><div class="prov prov-i">Chapter</div>
+    <div class="prov prov-p">Status</div><div class="prov prov-p">POV</div><div class="prov prov-p">Tension</div>
+    <div class="prov prov-p">Beat</div><div class="prov prov-p">Words</div>
+  </div>
+  <div class="body">
+    <div class="trow cols dim">
+      <div><div class="cb"></div></div><div class="idx">1.1</div>
+      <div class="title-cell"><span class="badge b-parsed">parsed</span><span class="t">開篇</span><span class="syn">— 海上生明月，天涯共此時。</span></div>
+      <div class="chapter-cell">第一章 · 潮生</div>
+      <div><span class="noplan">—</span></div><div><span class="noplan">—</span></div>
+      <div><span class="noplan">—</span></div><div><span class="noplan">—</span></div>
+      <div class="words"><b>2,104</b><span class="noplan"> /—</span></div>
+    </div>
+    <div class="trow cols dim">
+      <div><div class="cb"></div></div><div class="idx">1.2</div>
+      <div class="title-cell"><span class="badge b-parsed">parsed</span><span class="t">舟中人</span><span class="syn">— 他不記得自己是誰。</span></div>
+      <div class="chapter-cell">第一章 · 潮生</div>
+      <div><span class="noplan">—</span></div><div><span class="noplan">—</span></div>
+      <div><span class="noplan">—</span></div><div><span class="noplan">—</span></div>
+      <div class="words"><b>1,877</b><span class="noplan"> /—</span></div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      1,204 scenes parsed · no plan yet — intent columns activate once a Work exists
+    </div>
+    <button class="load-more">Load more</button>
+  </div>
+</div>
+
+<div class="callout">
+  <b>Import materializes intent, but the browser never depends on it (SC6/SC11).</b> After parse, a composition internal route upserts one
+  <code>outline_node</code> per parsed scene <i>if a Work exists</i>. If none does, nothing happens and this screen still works.
+  The upsert is idempotent on <code>(project_id, scene_id)</code> — the scoped-unique index <i>is</i> the retry guard.
+  A 200 that upserted <b>0</b> rows on a book with parsed scenes is a <b>bug</b>, not a no-op.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ SceneRail — the delta
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ Scene Rail <span class="tag">exists today</span> — reconciled, not replaced</h2>
+<p class="sub">
+  The rail keeps its job (chapter-local strip beside the editor). Two changes: it reads <b>identity from book-service</b>, so an imported
+  book's rail is no longer empty; and its <b>title becomes editable inline</b> — today the title renders as a jump <i>button</i> and can only
+  ever be set at create.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--destructive)">Before — today</span></div>
+    <div class="rail-empty">
+      No scenes for this chapter<br />(outline it in the composer).
+      <div style="margin-top:14px;font-size:10px;color:var(--destructive);line-height:1.6">
+        ← the bug.<br />1,204 parsed scenes exist in<br /><code class="mono">book-service.scenes</code>.<br />
+        The rail reads <code class="mono">outline_node</code>.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Before — with a plan</span></div>
+    <div style="flex:1;overflow:auto">
+      <div class="rail-row">
+        <div class="top"><span class="t" style="color:var(--info);text-decoration:underline">Crossing</span>
+          <span class="badge b-done" style="height:16px;font-size:9px">done</span></div>
+        <div class="syn">She pays it, and the gate remembers her name.</div>
+      </div>
+      <div style="padding:10px 8px;font-size:10px;color:var(--muted-fg);line-height:1.7">
+        Editable: <b style="color:var(--foreground)">status</b>, <b style="color:var(--foreground)">synopsis</b>.<br />
+        <span class="strike">title</span> — a jump button, not an input.<br />
+        <span class="strike">goal</span> — agent-writable, absent from the FE type.<br />
+        <span class="strike">pov</span> · <span class="strike">present</span> · <span class="strike">tension</span> — read-only to everyone.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span style="color:var(--success)">After</span></div>
+    <div style="flex:1;overflow:auto">
+      <div class="rail-row">
+        <div class="top">
+          <input class="inp" style="flex:1;padding:2px 5px;font-size:11px;font-weight:500" value="Crossing" />
+          <span class="badge b-done" style="height:16px;font-size:9px">done</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;margin-top:5px">
+          <span class="av" style="background:#e8a832;width:14px;height:14px;font-size:7.5px">WL</span>
+          <span style="font-size:10px;color:var(--muted-fg)">Wei Lan</span>
+          <div class="tbar" style="flex:1;margin:0 4px"><i style="width:84%;background:var(--destructive)"></i></div>
+          <span class="mono" style="font-size:9.5px;color:var(--destructive)">84</span>
+        </div>
+        <div class="syn">She pays it, and the gate remembers her name.</div>
+      </div>
+      <div class="rail-row">
+        <div class="top">
+          <input class="inp" style="flex:1;padding:2px 5px;font-size:11px;font-weight:500" value="Market of small gods" />
+          <span class="badge b-empty" style="height:16px;font-size:9px">empty</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;margin-top:5px">
+          <span class="av" style="background:#3da692;width:14px;height:14px;font-size:7.5px">RM</span>
+          <span style="font-size:10px;color:var(--muted-fg)">Ren Mu</span>
+          <div class="tbar" style="flex:1;margin:0 4px"><i style="width:28%;background:var(--info)"></i></div>
+          <span class="mono" style="font-size:9.5px;color:var(--muted-fg)">28</span>
+        </div>
+      </div>
+      <div style="padding:10px 8px;font-size:10px;color:var(--muted-fg);line-height:1.7">
+        Rail stays <b style="color:var(--foreground)">deliberately compact</b> — POV + tension only.<br />
+        The other 15 fields live in the <b style="color:var(--foreground)">Inspector</b>, one click away.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b> <code>leaf_text</code> is never editable here. It is a <b>read-only parse projection</b> of
+  <code>chapter.body</code>, rebuilt by the parser. Studio decision <b>D17</b> — <i>"scene prose stays in chapter.body; scenes[] is outline
+  metadata only"</i> — still holds, and a derived projection is not a second prose store. Prose edits go through <code>chapter_drafts</code>,
+  exactly as today. Stated here because the next agent to open this file will otherwise "fix" the browser by making it editable.
+</div>
+
+<div class="callout">
+  <b>MCP parity is not optional (MCP-first invariant).</b> Everything above is agent-reachable:
+  <code>book_scene_list / get / create / update / delete / reorder</code> on book-service (VIEW read, EDIT write), and
+  <code>composition_outline_node_create/_update</code> widened from 4 writable fields to the full intent set.
+  Closed sets (<code>status</code>, <code>beat_role</code>, <code>origin</code>, pin <code>action</code>) ship as <code>enum</code>, registered in
+  <code>CLOSED_SET_ARGS</code> — the free-string <code>panel_id</code> bug is the reason that rule exists.
+</div>
+
+</body>
+</html>

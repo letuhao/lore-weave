@@ -3,6 +3,21 @@
 > **Status:** 📐 CLARIFY roadmap locked, 2026-07-07 · build not started.
 > **Type:** FS (new Studio panel + a real capability-porting backlog it depends on).
 
+## ⚠ Amendment 2026-07-10 — wiring superseded by [`24_plan_hub_v2.md`](24_plan_hub_v2.md)
+
+The package model ([`00A_BOOK_PACKAGE_STRUCTURE.md`](00A_BOOK_PACKAGE_STRUCTURE.md) BPS-1..21) and the
+`structure_node` spec layer ([`23_book_architecture.md`](23_book_architecture.md) BA1–BA15) landed after
+this file. **All Hub wiring — data contracts, render sources, drawer, interactions, phases — now lives
+in [`24`](24_plan_hub_v2.md) (decisions PH9–PH26).** This file's 26-item audit and six-category
+classification remain valid history and are consumed by `24`'s re-map table, not restated. Specific
+supersessions: **PH3** (OutlineTree's arc→chapter→scene(+beat) hierarchy is a dead ontology after
+BA2/BPS-4 — its CRUD plumbing is reused, its type contract is not); **PH5** (closed by BPS-4: beats are
+attributes, verified dead as tree nodes — no design pass needed); Phase 1's render source
+(`composition_list_outline` supplies only chapter/scene layers; lanes come from `composition_arc_list`
+over `structure_node`); and every `project_id`/Work-gated assumption (per-book re-key, BPS-1).
+PH1, PH2, PH4, PH6, PH7, PH8 stand. G1/G2 (generation-exploitation) remain owned here and are untouched
+by `24`.
+
 ## Why this exists
 
 The "Cursor-for-novels" register already closed gaps #1 ([`16_chapter_editor_parity_and_retirement.md`](16_chapter_editor_parity_and_retirement.md)) and #4
