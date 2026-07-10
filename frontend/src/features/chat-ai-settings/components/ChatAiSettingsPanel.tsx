@@ -5,6 +5,7 @@
 import { DefaultModelsCard } from '@/features/settings/DefaultModelsCard';
 import { ModelPicker } from '@/components/model-picker';
 import { useAiPrefsEditor } from '../hooks/useAiPrefsEditor';
+import { TierChip } from './TierChip';
 import type { EffectiveSettings, FieldResolution } from '../types';
 
 const MODEL_ROLES: { key: string; label: string }[] = [
@@ -15,28 +16,9 @@ const MODEL_ROLES: { key: string; label: string }[] = [
   { key: 'rerank', label: 'Rerank' },
 ];
 
-/** A small chip naming the tier a value was resolved from — the anti-silent
- *  affordance. Colour-codes the "system default" (a value the user never set,
- *  surfaced instead of hidden) distinctly from an explicit account override. */
-function SourceChip({ tier }: { tier: string | null | undefined }) {
-  if (!tier) return null;
-  const label =
-    tier === 'system' ? 'default'
-    : tier === 'account' ? 'your default'
-    : tier === 'no_model_configured' ? 'not set'
-    : tier === 'unavailable' ? 'unavailable'
-    : tier;
-  const cls =
-    tier === 'system' ? 'bg-amber-50 text-amber-700 border-amber-200'
-    : tier === 'account' ? 'bg-teal-50 text-teal-700 border-teal-200'
-    : tier === 'no_model_configured' ? 'bg-muted text-muted-foreground border-border'
-    : 'bg-muted text-muted-foreground border-border';
-  return (
-    <span className={`ml-2 rounded border px-1.5 py-0.5 text-[10px] font-medium ${cls}`}>
-      {label}
-    </span>
-  );
-}
+/** The tier chip is shared with the SESSION panel (`./TierChip`) — one chip, one
+ *  vocabulary. A second local copy is how "account" and "your default" drift apart. */
+const SourceChip = TierChip;
 
 function effField(eff: EffectiveSettings | null, cat: 'behavior', field: string): FieldResolution | undefined {
   return eff?.[cat]?.[field];
@@ -246,7 +228,9 @@ export function ChatAiSettingsPanel() {
           <ModelPicker
             capability="tts"
             value={voiceChat.tts_model_ref ?? null}
-            onChange={(id) => void ed.patch({ voice: { chat: { tts_model_ref: id, tts_source: 'user_model' } } })}
+            // 'ai_model' (not 'user_model') — the audio SOURCE axis, not the model-source axis.
+            // The voice store has always used this word; the bridge normalizes the old one.
+            onChange={(id) => void ed.patch({ voice: { chat: { tts_model_ref: id, tts_source: 'ai_model' } } })}
             allowNone
             ariaLabel="Speech-out model"
           />
@@ -272,7 +256,7 @@ export function ChatAiSettingsPanel() {
           <ModelPicker
             capability="stt"
             value={voiceStt.model_ref ?? null}
-            onChange={(id) => void ed.patch({ voice: { stt: { model_ref: id, source: 'user_model' } } })}
+            onChange={(id) => void ed.patch({ voice: { stt: { model_ref: id, source: 'ai_model' } } })}
             allowNone
             ariaLabel="Speech-in model"
           />

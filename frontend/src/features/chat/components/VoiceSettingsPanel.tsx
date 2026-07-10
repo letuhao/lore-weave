@@ -4,8 +4,16 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
+import { aiSettingsApi } from '@/features/chat-ai-settings/api';
+import { accountVoiceFromPrefs } from '@/features/chat-ai-settings/voiceBridge';
 import { type VoicePrefs, loadVoicePrefs, saveVoicePrefs, DEFAULT_VOICE_PREFS } from '../voicePrefs';
 import { cn } from '@/lib/utils';
+
+/** The VoicePrefs leaves that also live in the account home (`user_chat_ai_prefs.voice`).
+ *  Editing one of these mirrors up; everything else is voice-panel-only and stays local. */
+const SHARED_VOICE_LEAVES = new Set<string>([
+  'ttsModelRef', 'ttsVoiceId', 'ttsSource', 'sttModelRef', 'sttSource',
+]);
 
 /** Voice entry from GET /v1/voices (via provider-registry proxy) */
 type ProviderVoice = {
@@ -37,9 +45,14 @@ const SILENCE_STEP = 100;
 interface VoiceSettingsPanelProps {
   open: boolean;
   onClose: () => void;
+  /** Render the controls INLINE, without the fixed slide-over + backdrop. Used by the
+   *  unified session settings panel, which owns the edge and the close affordance
+   *  (spec §8: "VoiceSettingsPanel → Voice sub-panel"). Two stacked `fixed` overlays
+   *  would fight for the same edge and trap the click-outside handler. */
+  embedded?: boolean;
 }
 
-export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
+export function VoiceSettingsPanel({ open, onClose, embedded = false }: VoiceSettingsPanelProps) {
   const { t } = useTranslation('common');
   const { accessToken } = useAuth();
   const [prefs, setPrefs] = useState<VoicePrefs>(loadVoicePrefs);
@@ -127,33 +140,57 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
     setPreviewPlaying(voiceId);
   };
 
+  // D-CHATAI-VOICE-TWO-STORES — `user_chat_ai_prefs.voice` is voice's declared home
+  // (spec §3.5) and the account Chat & AI panel reads it. Mirror the leaves the two
+  // stores SHARE (tts/stt model + voice + source) so the two surfaces can never disagree
+  // about the same setting. Only the shared leaves, and only when one of them changed —
+  // a slider drag must never fire an account PATCH. Best-effort: the runtime store is
+  // already written, so a failed mirror costs a stale chip, never the user's setting.
   const update = <K extends keyof VoicePrefs>(key: K, value: VoicePrefs[K]) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
       saveVoicePrefs(next, accessToken);
+      if (accessToken && SHARED_VOICE_LEAVES.has(key as string)) {
+        void aiSettingsApi
+          .patchPrefs(accessToken, { voice: accountVoiceFromPrefs(next) })
+          .catch(() => { /* the authoritative runtime store is written; mirror self-heals */ });
+      }
       return next;
     });
   };
 
   if (!open) return null;
 
-  return (
-    <>
-    {/* Backdrop — click to close */}
-    <div className="fixed inset-0 z-[39]" onClick={onClose} />
-    <div className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-card shadow-xl sm:w-72">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <Settings2 className="h-4 w-4" />
-          {t('voice.settingsTitle', 'Voice Settings')}
-        </div>
-        <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+  // Embedded: the host panel owns the edge, the scroll container and the close button.
+  // Rendering our own `fixed` overlay inside it would stack two slide-overs and steal the
+  // host's click-outside handler (the dockview `fixed`-positioning class of bug).
+  const Shell = embedded
+    ? ({ children }: { children: React.ReactNode }) => (
+        <div className="space-y-5" data-testid="voice-settings-embedded">{children}</div>
+      )
+    : ({ children }: { children: React.ReactNode }) => (
+        <>
+          {/* Backdrop — click to close */}
+          <div className="fixed inset-0 z-[39]" onClick={onClose} />
+          <div className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-card shadow-xl sm:w-72">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Settings2 className="h-4 w-4" />
+                {t('voice.settingsTitle', 'Voice Settings')}
+              </div>
+              <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">{children}</div>
+          </div>
+        </>
+      );
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+  return (
+    <Shell>
+      <>
+        {/* body */}
         {/* ── Speech Recognition Section ── */}
         <SectionHeader icon={<Mic className="h-3.5 w-3.5" />} label={t('voice.sttSection', 'Speech Recognition')} />
 
@@ -507,9 +544,8 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         >
           {t('voice.resetDefaults', 'Reset to defaults')}
         </button>
-      </div>
-    </div>
-    </>
+      </>
+    </Shell>
   );
 }
 

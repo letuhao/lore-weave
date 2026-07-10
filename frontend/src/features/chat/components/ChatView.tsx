@@ -12,7 +12,6 @@ import { MessageList } from './MessageList';
 import { PendingFactsCard } from './PendingFactsCard';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
 import { VoiceChatOverlay } from './VoiceChatOverlay';
-import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { useAutoTTS } from '../hooks/useAutoTTS';
 import { useUiToolExecutor } from '../hooks/useUiToolExecutor';
@@ -272,11 +271,15 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         onClearContext={clearContext}
       />
 
-      {settingsOpen && (
+      {/* ONE session settings surface (spec §8). Voice is a section inside it, not a
+          rival slide-over: the mic button deep-links to that section instead of opening
+          a second panel that fought this one for the right edge. */}
+      {(settingsOpen || voiceSettingsOpen) && (
         <SessionSettingsPanel
           session={activeSession}
           onSessionUpdate={updateActiveSession}
-          onClose={() => setSettingsOpen(false)}
+          initialSection={voiceSettingsOpen ? 'voice' : undefined}
+          onClose={() => { setSettingsOpen(false); setVoiceSettingsOpen(false); }}
         />
       )}
 
@@ -317,10 +320,6 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         </div>
       )}
 
-      <VoiceSettingsPanel
-        open={voiceSettingsOpen}
-        onClose={() => setVoiceSettingsOpen(false)}
-      />
     </div>
   );
 }

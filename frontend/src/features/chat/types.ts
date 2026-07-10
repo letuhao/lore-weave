@@ -49,6 +49,13 @@ export interface ChatSession {
   // D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session planner model.
   planner_model_source?: string | null;
   planner_model_ref?: string | null;
+  // Chat & AI settings, SESSION tier — the RAW override stored on this session, not
+  // the resolved cascade. `null`/`{}` means "no override here → inherited". The tier
+  // chip needs this to tell "set HERE" from "inherited"; value-equality with the
+  // parent tier is NOT the same thing (spec §3.1, finding UX-5).
+  grounding_enabled?: boolean | null;
+  voice_overrides?: Record<string, unknown>;
+  context_overrides?: Record<string, unknown>;
   // K-CLEAN-5 (D-K8-04): memory mode for the chat header
   // MemoryIndicator.
   //   no_project — no project linked, AI sees only the global bio
@@ -442,4 +449,11 @@ export interface PatchSessionPayload {
   enabled_skills?: string[];
   activated_tools?: string[] | null;
   pinned_legacy_tools?: string[] | null;
+  // Chat & AI settings, SESSION tier (spec 2026-07-05 §3.5). Same 3-state contract as
+  // project_id: omit to leave alone, explicit `null` to CLEAR the override (inherit from
+  // Book/Account/System), a value to override for this session. `undefined` is dropped by
+  // JSON.stringify — which is exactly "omitted" — so a clear MUST be an explicit null.
+  grounding_enabled?: boolean | null;
+  voice_overrides?: Record<string, unknown> | null;
+  context_overrides?: Record<string, unknown> | null;
 }

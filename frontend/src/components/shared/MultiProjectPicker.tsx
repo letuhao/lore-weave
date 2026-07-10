@@ -26,7 +26,9 @@ interface Props {
   onChange: (projectIds: string[]) => void;
   disabled?: boolean;
   placeholder?: string;
-  /** Cap on projects fetched for the picker. */
+  /** Cap on projects fetched for the picker. MUST be ≤ 100: the route declares
+   *  `Query(default=50, ge=1, le=100)`, so a larger value is a 422 and the picker
+   *  lists NOTHING. It defaulted to 200 and had been silently empty. */
   limit?: number;
   /** Max projects selectable (multi-KG union cap). */
   max?: number;
@@ -39,7 +41,7 @@ export function MultiProjectPicker({
   onChange,
   disabled,
   placeholder,
-  limit = 200,
+  limit = 100, // the route's own ceiling (le=100); 200 was a silent 422
   max = 16,
   onCreateNew,
 }: Props) {
