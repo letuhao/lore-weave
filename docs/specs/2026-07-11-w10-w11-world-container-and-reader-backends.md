@@ -158,9 +158,11 @@ Today KG `entities.py` facts/statuses/timeline are **owner-`user_id`-scoped** (`
 
 ---
 
-## 7. Open questions for sign-off
+## 7. Resolved decisions (signed off 2026-07-11)
 
-1. **Map fidelity (§3.3).** Confirm "image + pins/regions linked to `location` entities" is the right first cut (vs. coordinate-free region graph, or deferring regions to a follow-on and shipping image+pins only).
-2. **Public reader answer-composition (§4.2/4.5).** Should `lore_ask` return an **evidence bundle** for the caller's agent to compose (keeps LLM spend on the caller's BYOK), or compose the answer server-side? Evidence-bundle is the provider-gateway-clean, cheaper default — confirm.
-3. **Anonymous rate/abuse (§4.5).** Public lore is an unauthenticated data surface. Confirm gateway rate-limit + canon-only filter are sufficient, or whether public lore should require at least an unlisted token (like today's public chapter reads) rather than being fully open.
-4. **Milestone order.** Recommend **W11-M1→M2→M3 first** (smallest, whole new persona end-to-end), then **W10-M1→M2**. Confirm or reorder.
+1. **Map fidelity — FULL.** Ship all three tables in W10-M2: `world_maps` + `map_markers` + `map_regions` (polygon overlays), markers/regions optionally bound to `location` entities. No region deferral.
+2. **`lore_ask` composition — evidence-bundle default, BYOK-only compose.** `lore_ask` returns a spoiler-windowed **evidence bundle** (entities/facts/passages); the caller's agent composes the answer on **its own BYOK model** (provider-gateway-clean, no platform spend). An *optional* server-side compose mode is allowed **only** when it resolves a **BYOK model through provider-registry** (the reader's own) — never a platform/hardcoded model. **The anonymous/public path is evidence-bundle-ONLY** (no server LLM): an unlisted-token reader has no BYOK, and the book owner must not be billed for strangers' queries. So server-compose is a logged-in-reader-only convenience over their own model.
+3. **Public reader — unlisted-token gated.** Public lore is reached via a shareable **unlisted token** (mirrors sharing-service's public chapter reads, `server.go:108-110`), not fully open by `book_id`. Canon-only + self-declared spoiler cutoff + gateway rate-limit. Non-public / bad token ⇒ 404 (anti-oracle).
+4. **Build order — W11 first.** W11-M1 → M2 → M3, then W10-M1 → M2. (§6 milestones.)
+
+**One decision propagates into §4.2/§4.5:** the reader facade's return shape is the evidence bundle; server-compose is a logged-in-only flag gated on a provider-registry BYOK resolve; the public route (§4.5) never composes server-side.
