@@ -164,3 +164,45 @@ describe('SessionSettingsPanel — the new sections exist at all', () => {
     expect(screen.getByTestId('session-models-section')).toBeInTheDocument();
   });
 });
+
+describe('SessionSettingsPanel — a pending edit belongs to the session it was made on', () => {
+  it('never flushes session A\'s edit onto session B after a session switch', async () => {
+    // The panel stays mounted across a session switch (ChatView keeps `settingsOpen`).
+    // `send()` used to PATCH `latest.current.session_id`, and `latest.current` is
+    // reassigned during render — so the debounced edit for A landed on B. A cross-session
+    // write: the user's prompt for one chat silently overwrites another's.
+    const onSessionUpdate = vi.fn();
+    const A = { ...SESSION, session_id: 'A' } as ChatSession;
+    const B = { ...SESSION, session_id: 'B' } as ChatSession;
+
+    const { rerender } = render(
+      <SessionSettingsPanel session={A} onSessionUpdate={onSessionUpdate} onClose={vi.fn()} />,
+    );
+    fireEvent.change(await screen.findByTestId('session-system-prompt'), {
+      target: { value: 'A-only prompt' },
+    });
+
+    rerender(<SessionSettingsPanel session={B} onSessionUpdate={onSessionUpdate} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(patchSession).toHaveBeenCalled());
+    const [, sessionId, body] = patchSession.mock.calls[0];
+    expect(body).toMatchObject({ system_prompt: 'A-only prompt' });
+    expect(sessionId).toBe('A');
+  });
+
+  it('does not push the flushed session\'s row into the now-active session', async () => {
+    const onSessionUpdate = vi.fn();
+    const A = { ...SESSION, session_id: 'A' } as ChatSession;
+    const B = { ...SESSION, session_id: 'B' } as ChatSession;
+    const { rerender } = render(
+      <SessionSettingsPanel session={A} onSessionUpdate={onSessionUpdate} onClose={vi.fn()} />,
+    );
+    fireEvent.change(await screen.findByTestId('session-system-prompt'), { target: { value: 'x' } });
+    rerender(<SessionSettingsPanel session={B} onSessionUpdate={onSessionUpdate} onClose={vi.fn()} />);
+    await waitFor(() => expect(patchSession).toHaveBeenCalled());
+    // A's updated row must NOT be handed to the provider while B is active.
+    for (const [row] of onSessionUpdate.mock.calls) {
+      expect((row as ChatSession).session_id).not.toBe('A');
+    }
+  });
+});

@@ -86,9 +86,18 @@ export function useSessionSettingsEditor(
   // whose bodies deep-merge, rather than two that race and lose a leaf.
   const pending = useRef<PatchSessionPayload>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The latest session, so a flush-on-unmount doesn't PATCH against a stale row.
-  const latest = useRef(session);
-  latest.current = session;
+  // The session a pending patch BELONGS TO, captured when the first leaf is enqueued.
+  //
+  // This must NOT be "whatever session is current when the timer fires". The panel stays
+  // mounted across a session switch (ChatView keeps `settingsOpen`), and the switch itself
+  // flushes the debounce — so a `latest.current` read at send time delivered session A's
+  // half-typed system prompt to session B. A cross-session write: one chat silently
+  // overwriting another's settings.
+  const pendingFor = useRef<string | null>(null);
+  /** The session currently on screen — read only to decide whether a completed PATCH's
+   *  row is still the one the user is looking at. Never used as a PATCH target. */
+  const sessionIdRef = useRef(session.session_id);
+  sessionIdRef.current = session.session_id;
 
   const reload = useCallback(async () => {
     if (!accessToken) return;
@@ -114,16 +123,22 @@ export function useSessionSettingsEditor(
 
   const send = useCallback(async () => {
     const body = pending.current;
+    const targetId = pendingFor.current;
     pending.current = {};
-    if (!accessToken || Object.keys(body).length === 0) return;
+    pendingFor.current = null;
+    if (!accessToken || !targetId || Object.keys(body).length === 0) return;
     setSaving(true);
     setError(null);
     try {
-      const updated = await chatApi.patchSession(accessToken, latest.current.session_id, body);
-      onSessionUpdate(updated);
-      // Re-resolve so the tier chips reflect the write. Without this a cleared override
-      // still shows "session" until the panel remounts — a lying chip.
-      await reload();
+      const updated = await chatApi.patchSession(accessToken, targetId, body);
+      // Only hand the row back if it is still the session on screen. Pushing session A's
+      // row into the provider while B is active would swap the user's open chat.
+      if (targetId === sessionIdRef.current) {
+        onSessionUpdate(updated);
+        // Re-resolve so the tier chips reflect the write. Without this a cleared override
+        // still shows "session" until the panel remounts — a lying chip.
+        await reload();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save');
     } finally {
@@ -132,6 +147,15 @@ export function useSessionSettingsEditor(
   }, [accessToken, onSessionUpdate, reload]);
 
   const patch = useCallback((p: PatchSessionPayload) => {
+    // Bind the pending body to the session it was authored on. If a switch somehow lands
+    // between two leaves of one window, the earlier body is flushed to ITS session first
+    // rather than merged into a stranger's.
+    if (pendingFor.current && pendingFor.current !== sessionIdRef.current) {
+      if (timer.current) clearTimeout(timer.current);
+      void send();
+    }
+    pendingFor.current = sessionIdRef.current;
+
     // Deep-merge into the pending body for the two JSONB categories, so patching
     // `context_overrides.mode` then `context_overrides.trigger_ratio` inside one window
     // sends both — a shallow spread would drop the first.

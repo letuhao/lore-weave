@@ -127,12 +127,6 @@
     "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)"
   },
   "new": {
-    "preset": {
-      "novel": "Trợ lý tiểu thuyết",
-      "translator": "Phiên dịch",
-      "worldbuilder": "Kiến tạo thế giới",
-      "editor": "Biên tập"
-    },
     "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
     "title": "Bắt đầu trò chuyện mới",
     "model": "Mô hình",
@@ -345,14 +339,6 @@
     "title": "Cài đặt phiên",
     "model": "Mô hình",
     "system_prompt": "System Prompt",
-    "preset": {
-      "Custom": "Tùy chỉnh",
-      "Novelist": "Tiểu thuyết gia",
-      "Translator": "Phiên dịch",
-      "Worldbuilder": "Kiến tạo thế giới",
-      "Editor": "Biên tập",
-      "Analyst": "Phân tích"
-    },
     "prompt_placeholder": "Cho AI một vai trò, tính cách hoặc chỉ dẫn cụ thể...",
     "gen_params": "Tham số tạo sinh",
     "max_tokens": "Token tối đa",
@@ -449,5 +435,13 @@
       "activated": "Đã kích hoạt",
       "tool_running": "Đang chạy công cụ"
     }
+  },
+  "presets": {
+    "custom": "Tùy chỉnh",
+    "novelist": "Tiểu thuyết gia",
+    "translator": "Phiên dịch",
+    "worldbuilder": "Kiến tạo thế giới",
+    "editor": "Biên tập",
+    "analyst": "Phân tích"
   }
 }

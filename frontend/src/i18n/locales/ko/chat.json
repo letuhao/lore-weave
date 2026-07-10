@@ -127,12 +127,6 @@
     "mode_write_hint": "쓰기 모드 — 에이전트가 되돌릴 수 없는 변경을 수행할 수 있습니다 (새 도구 사용 시 한 번씩 확인 요청)"
   },
   "new": {
-    "preset": {
-      "novel": "소설 어시스턴트",
-      "translator": "번역가",
-      "worldbuilder": "세계관 구축가",
-      "editor": "편집자"
-    },
     "create_failed": "채팅 생성 실패: {{error}}",
     "title": "새 채팅 시작",
     "model": "모델",
@@ -345,14 +339,6 @@
     "title": "세션 설정",
     "model": "모델",
     "system_prompt": "시스템 프롬프트",
-    "preset": {
-      "Custom": "사용자 정의",
-      "Novelist": "소설가",
-      "Translator": "번역가",
-      "Worldbuilder": "세계관 구축가",
-      "Editor": "에디터",
-      "Analyst": "분석가"
-    },
     "prompt_placeholder": "AI에게 역할, 성격 또는 특정 지침을 부여하세요...",
     "gen_params": "생성 파라미터",
     "max_tokens": "최대 토큰",
@@ -449,5 +435,13 @@
       "activated": "활성화됨",
       "tool_running": "도구 실행 중"
     }
+  },
+  "presets": {
+    "custom": "사용자 정의",
+    "novelist": "소설가",
+    "translator": "번역가",
+    "worldbuilder": "세계관 구축가",
+    "editor": "에디터",
+    "analyst": "분석가"
   }
 }

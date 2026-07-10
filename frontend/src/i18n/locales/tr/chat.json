@@ -127,12 +127,6 @@
     "mode_write_hint": "Yazma modu — ajan geri alınamaz değişiklikler yapabilir (her yeni araç için bir kez sorar)"
   },
   "new": {
-    "preset": {
-      "novel": "Roman Asistanı",
-      "translator": "Çevirmen",
-      "worldbuilder": "Dünya Kurucu",
-      "editor": "Editör"
-    },
     "create_failed": "Sohbet oluşturulamadı: {{error}}",
     "title": "Yeni Sohbet Başlat",
     "model": "Model",
@@ -345,14 +339,6 @@
     "title": "Oturum Ayarları",
     "model": "Model",
     "system_prompt": "Sistem Komutu",
-    "preset": {
-      "Custom": "Özel",
-      "Novelist": "Roman Yazarı",
-      "Translator": "Çevirmen",
-      "Worldbuilder": "Dünya Kurucu",
-      "Editor": "Editör",
-      "Analyst": "Analist"
-    },
     "prompt_placeholder": "Yapay zekaya bir rol, kişilik veya özel talimatlar verin...",
     "gen_params": "Üretim Parametreleri",
     "max_tokens": "Maksimum Token",
@@ -449,5 +435,13 @@
       "activated": "Aktif",
       "tool_running": "Araç çalışıyor"
     }
+  },
+  "presets": {
+    "custom": "Özel",
+    "novelist": "Roman Yazarı",
+    "translator": "Çevirmen",
+    "worldbuilder": "Dünya Kurucu",
+    "editor": "Editör",
+    "analyst": "Analist"
   }
 }

@@ -127,12 +127,6 @@
     "mode_write_hint": "Modo de escrita — o agente pode fazer alterações irreversíveis (pergunta uma vez por nova ferramenta)"
   },
   "new": {
-    "preset": {
-      "novel": "Assistente de Romance",
-      "translator": "Tradutor",
-      "worldbuilder": "Construtor de Mundo",
-      "editor": "Editor"
-    },
     "create_failed": "Falha ao criar chat: {{error}}",
     "title": "Iniciar Novo Chat",
     "model": "Modelo",
@@ -345,14 +339,6 @@
     "title": "Configurações da Sessão",
     "model": "Modelo",
     "system_prompt": "Prompt do Sistema",
-    "preset": {
-      "Custom": "Personalizado",
-      "Novelist": "Romancista",
-      "Translator": "Tradutor",
-      "Worldbuilder": "Criador de Mundo",
-      "Editor": "Editor",
-      "Analyst": "Analista"
-    },
     "prompt_placeholder": "Dê ao IA um papel, personalidade ou instruções específicas...",
     "gen_params": "Parâmetros de Geração",
     "max_tokens": "Máx. Tokens",
@@ -449,5 +435,13 @@
       "activated": "Ativado",
       "tool_running": "Executando ferramenta"
     }
+  },
+  "presets": {
+    "custom": "Personalizado",
+    "novelist": "Romancista",
+    "translator": "Tradutor",
+    "worldbuilder": "Criador de Mundo",
+    "editor": "Editor",
+    "analyst": "Analista"
   }
 }

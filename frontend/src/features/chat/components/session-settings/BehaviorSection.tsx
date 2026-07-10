@@ -2,6 +2,7 @@
 // and the sampling params — each showing which tier supplied it and offering "clear ·
 // inherit X" when this chat overrides it.
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TierChip, ClearOverride } from '@/features/chat-ai-settings/components/TierChip';
 import type { SessionSettingsEditor } from '@/features/chat-ai-settings/hooks/useSessionSettingsEditor';
 import { PROMPT_PRESETS, CUSTOM_PRESET_KEY, presetForPrompt, promptForPreset } from '../../prompts/presets';
@@ -14,6 +15,7 @@ const SEG_ON = 'border-primary bg-primary text-primary-foreground';
 const SEG_OFF = 'border-border bg-background text-muted-foreground hover:text-foreground';
 
 export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
+  const { t } = useTranslation('chat');
   const { session } = ed;
   const [prompt, setPrompt] = useState(session.system_prompt ?? '');
   useEffect(() => { setPrompt(session.system_prompt ?? ''); }, [session.session_id]);
@@ -33,7 +35,16 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
         <div className="mb-1.5 flex items-center justify-between">
           <label className="flex items-center text-xs font-medium text-muted-foreground">
             System prompt
-            <TierChip tier={session.system_prompt ? 'session' : ed.field('behavior', 'system_prompt')?.source_tier} />
+            {/* The chip reads the SAME override predicate as every other row — a hand-rolled
+                `session.system_prompt ? 'session' : …` here would drift from `isOverridden`
+                the moment either definition changed. */}
+            <TierChip tier={ed.field('behavior', 'system_prompt')?.source_tier} />
+            <ClearOverride
+              show={ed.isOverridden('behavior', 'system_prompt')}
+              inherited={ed.inheritedValue('behavior', 'system_prompt')}
+              onClear={() => { setPrompt(''); ed.patch({ system_prompt: '' }); }}
+              testId="session-system-prompt-clear"
+            />
           </label>
           <select
             value={presetKey}
@@ -47,9 +58,13 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
             }}
             className="rounded border border-border bg-background px-2 py-1 text-[11px]"
           >
-            <option value={CUSTOM_PRESET_KEY}>Custom</option>
+            <option value={CUSTOM_PRESET_KEY}>
+              {t(`presets.${CUSTOM_PRESET_KEY}`, { defaultValue: 'Custom' })}
+            </option>
             {PROMPT_PRESETS.map((p) => (
-              <option key={p.key} value={p.key}>{p.icon} {p.label}</option>
+              <option key={p.key} value={p.key}>
+                {p.icon} {t(`presets.${p.key}`, { defaultValue: p.label })}
+              </option>
             ))}
           </select>
         </div>

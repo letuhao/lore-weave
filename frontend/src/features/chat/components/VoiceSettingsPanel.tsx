@@ -150,7 +150,10 @@ export function VoiceSettingsPanel({ open, onClose, embedded = false }: VoiceSet
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
       saveVoicePrefs(next, accessToken);
-      if (accessToken && SHARED_VOICE_LEAVES.has(key as string)) {
+      // Mirror ONLY when a shared leaf actually changed value. Re-selecting the same model
+      // fires onChange in some browsers, and each mirror is a network PATCH.
+      const changed = prev[key] !== value;
+      if (accessToken && changed && SHARED_VOICE_LEAVES.has(key as string)) {
         void aiSettingsApi
           .patchPrefs(accessToken, { voice: accountVoiceFromPrefs(next) })
           .catch(() => { /* the authoritative runtime store is written; mirror self-heals */ });
@@ -164,31 +167,15 @@ export function VoiceSettingsPanel({ open, onClose, embedded = false }: VoiceSet
   // Embedded: the host panel owns the edge, the scroll container and the close button.
   // Rendering our own `fixed` overlay inside it would stack two slide-overs and steal the
   // host's click-outside handler (the dockview `fixed`-positioning class of bug).
-  const Shell = embedded
-    ? ({ children }: { children: React.ReactNode }) => (
-        <div className="space-y-5" data-testid="voice-settings-embedded">{children}</div>
-      )
-    : ({ children }: { children: React.ReactNode }) => (
-        <>
-          {/* Backdrop — click to close */}
-          <div className="fixed inset-0 z-[39]" onClick={onClose} />
-          <div className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-card shadow-xl sm:w-72">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Settings2 className="h-4 w-4" />
-                {t('voice.settingsTitle', 'Voice Settings')}
-              </div>
-              <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-5">{children}</div>
-          </div>
-        </>
-      );
-
+  //
+  // `VoiceShell` is defined at MODULE scope, not here. A component declared inside the
+  // render body gets a new function identity on every render, so React sees a different
+  // element TYPE and unmounts + remounts the entire subtree: focus is lost mid-typing, a
+  // range-slider drag drops its pointer capture, and every child re-runs its mount effects
+  // (here: re-fetching the provider voice list on each keystroke). Pinned by
+  // `VoiceSettingsPanel.embedded.test.tsx`.
   return (
-    <Shell>
+    <VoiceShell embedded={embedded} onClose={onClose} title={t('voice.settingsTitle', 'Voice Settings')}>
       <>
         {/* body */}
         {/* ── Speech Recognition Section ── */}
@@ -545,7 +532,42 @@ export function VoiceSettingsPanel({ open, onClose, embedded = false }: VoiceSet
           {t('voice.resetDefaults', 'Reset to defaults')}
         </button>
       </>
-    </Shell>
+    </VoiceShell>
+  );
+}
+
+/** Module-scope so its identity is stable across renders (see the note at the call site). */
+function VoiceShell({
+  embedded,
+  onClose,
+  title,
+  children,
+}: {
+  embedded: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  if (embedded) {
+    return <div className="space-y-5" data-testid="voice-settings-embedded">{children}</div>;
+  }
+  return (
+    <>
+      {/* Backdrop — click to close */}
+      <div className="fixed inset-0 z-[39]" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-card shadow-xl sm:w-72">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Settings2 className="h-4 w-4" />
+            {title}
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">{children}</div>
+      </div>
+    </>
   );
 }
 

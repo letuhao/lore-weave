@@ -127,12 +127,6 @@
     "mode_write_hint": "寫入模式 — 代理可以進行可復原的變更（每個新工具只詢問一次）"
   },
   "new": {
-    "preset": {
-      "novel": "小說助手",
-      "translator": "翻譯",
-      "worldbuilder": "世界建構",
-      "editor": "編輯"
-    },
     "create_failed": "無法建立聊天：{{error}}",
     "title": "開始新聊天",
     "model": "模型",
@@ -345,14 +339,6 @@
     "title": "工作階段設定",
     "model": "模型",
     "system_prompt": "系統提示",
-    "preset": {
-      "Custom": "自訂",
-      "Novelist": "小說家",
-      "Translator": "翻譯",
-      "Worldbuilder": "世界建構",
-      "Editor": "編輯",
-      "Analyst": "分析師"
-    },
     "prompt_placeholder": "給 AI 一個角色、個性或具體指示...",
     "gen_params": "生成參數",
     "max_tokens": "最大 Token",
@@ -449,5 +435,13 @@
       "activated": "已啟用",
       "tool_running": "執行工具中"
     }
+  },
+  "presets": {
+    "custom": "自訂",
+    "novelist": "小說家",
+    "translator": "翻譯",
+    "worldbuilder": "世界建構",
+    "editor": "編輯",
+    "analyst": "分析師"
   }
 }

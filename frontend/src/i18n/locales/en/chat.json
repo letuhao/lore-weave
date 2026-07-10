@@ -127,12 +127,6 @@
     "mode_write_hint": "Write mode — the agent can make undoable changes (asks once per new tool)"
   },
   "new": {
-    "preset": {
-      "novel": "Novel Assistant",
-      "translator": "Translator",
-      "worldbuilder": "Worldbuilder",
-      "editor": "Editor"
-    },
     "create_failed": "Failed to create chat: {{error}}",
     "title": "Start New Chat",
     "model": "Model",
@@ -345,14 +339,6 @@
     "title": "Session Settings",
     "model": "Model",
     "system_prompt": "System Prompt",
-    "preset": {
-      "Custom": "Custom",
-      "Novelist": "Novelist",
-      "Translator": "Translator",
-      "Worldbuilder": "Worldbuilder",
-      "Editor": "Editor",
-      "Analyst": "Analyst"
-    },
     "prompt_placeholder": "Give the AI a role, personality, or specific instructions...",
     "gen_params": "Generation Parameters",
     "max_tokens": "Max Tokens",
@@ -449,5 +435,13 @@
       "activated": "Activated",
       "tool_running": "Running tool"
     }
+  },
+  "presets": {
+    "custom": "Custom",
+    "novelist": "Novelist",
+    "translator": "Translator",
+    "worldbuilder": "Worldbuilder",
+    "editor": "Editor",
+    "analyst": "Analyst"
   }
 }

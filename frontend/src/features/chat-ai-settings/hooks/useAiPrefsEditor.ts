@@ -9,7 +9,7 @@ import { useAuth } from '@/auth';
 import { invalidateUserModelsCache } from '@/components/model-picker';
 import { loadVoicePrefs, saveVoicePrefs } from '@/features/chat/voicePrefs';
 import { aiSettingsApi } from '../api';
-import { mergeAccountVoiceIntoPrefs, type AccountVoiceBlob } from '../voiceBridge';
+import { accountVoiceDiffers, mergeAccountVoiceIntoPrefs, type AccountVoiceBlob } from '../voiceBridge';
 import type { AiPrefs, AiPrefsPatch, EffectiveSettings } from '../types';
 
 export type AiPrefsEditor = {
@@ -68,10 +68,15 @@ export function useAiPrefsEditor(): AiPrefsEditor {
       // because the legacy mirror did.
       if (p.voice) {
         try {
-          saveVoicePrefs(
-            mergeAccountVoiceIntoPrefs(updated.voice as AccountVoiceBlob, loadVoicePrefs()),
-            accessToken,
-          );
+          const blob = updated.voice as AccountVoiceBlob;
+          const current = loadVoicePrefs();
+          // Skip a no-op mirror: `saveVoicePrefs` also POSTs to auth-service, so writing an
+          // identical blob costs a request per edit. `accountVoiceDiffers` compares only the
+          // SHARED leaves, and treats the `user_model`/`ai_model` split as equal — so a
+          // legacy-worded blob doesn't look like a change forever.
+          if (accountVoiceDiffers(blob, current)) {
+            saveVoicePrefs(mergeAccountVoiceIntoPrefs(blob, current), accessToken);
+          }
         } catch {
           /* the authoritative write already succeeded; the mirror self-heals on next save */
         }

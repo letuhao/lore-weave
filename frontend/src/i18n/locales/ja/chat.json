@@ -127,12 +127,6 @@
     "mode_write_hint": "書き込みモード — エージェントは取り消し可能な変更を実行できます（新しいツールごとに一度確認）"
   },
   "new": {
-    "preset": {
-      "novel": "小説アシスタント",
-      "translator": "翻訳者",
-      "worldbuilder": "世界構築",
-      "editor": "編集者"
-    },
     "create_failed": "チャットの作成に失敗しました: {{error}}",
     "title": "新しいチャットを開始",
     "model": "モデル",
@@ -345,14 +339,6 @@
     "title": "セッション設定",
     "model": "モデル",
     "system_prompt": "システムプロンプト",
-    "preset": {
-      "Custom": "カスタム",
-      "Novelist": "小説家",
-      "Translator": "翻訳者",
-      "Worldbuilder": "世界構築",
-      "Editor": "編集者",
-      "Analyst": "分析者"
-    },
     "prompt_placeholder": "AIに役割、性格、または具体的な指示を与えます...",
     "gen_params": "生成パラメータ",
     "max_tokens": "最大トークン",
@@ -449,5 +435,13 @@
       "activated": "アクティブ化",
       "tool_running": "ツール実行中"
     }
+  },
+  "presets": {
+    "custom": "カスタム",
+    "novelist": "小説家",
+    "translator": "翻訳者",
+    "worldbuilder": "世界構築",
+    "editor": "編集者",
+    "analyst": "分析者"
   }
 }

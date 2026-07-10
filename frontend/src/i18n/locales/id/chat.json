@@ -127,12 +127,6 @@
     "mode_write_hint": "Mode tulis — agen dapat membuat perubahan yang tidak dapat dibatalkan (bertanya sekali per alat baru)"
   },
   "new": {
-    "preset": {
-      "novel": "Asisten Novel",
-      "translator": "Penerjemah",
-      "worldbuilder": "Pembangun Dunia",
-      "editor": "Editor"
-    },
     "create_failed": "Gagal membuat obrolan: {{error}}",
     "title": "Mulai Obrolan Baru",
     "model": "Model",
@@ -345,14 +339,6 @@
     "title": "Pengaturan Sesi",
     "model": "Model",
     "system_prompt": "Prompt Sistem",
-    "preset": {
-      "Custom": "Kustom",
-      "Novelist": "Novelis",
-      "Translator": "Penerjemah",
-      "Worldbuilder": "Pembangun Dunia",
-      "Editor": "Editor",
-      "Analyst": "Analis"
-    },
     "prompt_placeholder": "Berikan peran, kepribadian, atau instruksi khusus kepada AI...",
     "gen_params": "Parameter Generasi",
     "max_tokens": "Token Maksimum",
@@ -449,5 +435,13 @@
       "activated": "Diaktifkan",
       "tool_running": "Menjalankan alat"
     }
+  },
+  "presets": {
+    "custom": "Kustom",
+    "novelist": "Novelis",
+    "translator": "Penerjemah",
+    "worldbuilder": "Pembangun Dunia",
+    "editor": "Editor",
+    "analyst": "Analis"
   }
 }

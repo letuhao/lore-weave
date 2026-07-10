@@ -127,12 +127,6 @@
     "mode_write_hint": "写作模式 — Agent 可以进行不可撤销的更改 (每个新工具请求一次)"
   },
   "new": {
-    "preset": {
-      "novel": "小说助手",
-      "translator": "翻译官",
-      "worldbuilder": "世界构建者",
-      "editor": "编辑"
-    },
     "create_failed": "创建对话失败：{{error}}",
     "title": "开始新对话",
     "model": "模型",
@@ -345,14 +339,6 @@
     "title": "会话设置",
     "model": "模型",
     "system_prompt": "系统提示词",
-    "preset": {
-      "Custom": "自定义",
-      "Novelist": "小说家",
-      "Translator": "翻译官",
-      "Worldbuilder": "世界构建者",
-      "Editor": "编辑",
-      "Analyst": "分析师"
-    },
     "prompt_placeholder": "为 AI 设定角色、性格或具体指令...",
     "gen_params": "生成参数",
     "max_tokens": "最大 Token 数",
@@ -449,5 +435,13 @@
       "activated": "已激活",
       "tool_running": "正在运行工具"
     }
+  },
+  "presets": {
+    "custom": "自定义",
+    "novelist": "小说家",
+    "translator": "翻译官",
+    "worldbuilder": "世界构建者",
+    "editor": "编辑",
+    "analyst": "分析师"
   }
 }

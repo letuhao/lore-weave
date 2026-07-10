@@ -165,7 +165,7 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
                       that predates it has no key — fall back to the registry's English label
                       rather than rendering the raw key at the user. */}
                   <p className="mt-0.5 text-[11px] font-medium text-foreground">
-                    {t(`new.preset.${p.key}`, { defaultValue: p.label })}
+                    {t(`presets.${p.key}`, { defaultValue: p.label })}
                   </p>
                 </button>
               ))}

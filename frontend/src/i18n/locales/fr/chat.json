@@ -127,12 +127,6 @@
     "mode_write_hint": "Mode écriture — l'agent peut effectuer des changements irréversibles (demande une confirmation par nouvel outil)"
   },
   "new": {
-    "preset": {
-      "novel": "Assistant Roman",
-      "translator": "Traducteur",
-      "worldbuilder": "Créateur d'univers",
-      "editor": "Éditeur"
-    },
     "create_failed": "Échec de la création du chat : {{error}}",
     "title": "Démarrer un nouveau chat",
     "model": "Modèle",
@@ -345,14 +339,6 @@
     "title": "Paramètres de session",
     "model": "Modèle",
     "system_prompt": "Prompt système",
-    "preset": {
-      "Custom": "Personnalisé",
-      "Novelist": "Romancier",
-      "Translator": "Traducteur",
-      "Worldbuilder": "Créateur d'univers",
-      "Editor": "Éditeur",
-      "Analyst": "Analyste"
-    },
     "prompt_placeholder": "Donnez un rôle, une personnalité ou des instructions spécifiques à l'IA...",
     "gen_params": "Paramètres de génération",
     "max_tokens": "Max Tokens",
@@ -449,5 +435,13 @@
       "activated": "Activé",
       "tool_running": "Exécution de l'outil"
     }
+  },
+  "presets": {
+    "custom": "Personnalisé",
+    "novelist": "Romancier",
+    "translator": "Traducteur",
+    "worldbuilder": "Créateur d'univers",
+    "editor": "Éditeur",
+    "analyst": "Analyste"
   }
 }

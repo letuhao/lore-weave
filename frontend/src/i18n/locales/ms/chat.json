@@ -127,12 +127,6 @@
     "mode_write_hint": "Mod tulis — ejen boleh membuat perubahan yang tidak boleh dibatalkan (bertanya sekali bagi setiap alatan baru)"
   },
   "new": {
-    "preset": {
-      "novel": "Pembantu Novel",
-      "translator": "Penterjemah",
-      "worldbuilder": "Pembina Dunia",
-      "editor": "Editor"
-    },
     "create_failed": "Gagal mencipta sembang: {{error}}",
     "title": "Mulakan Sembang Baru",
     "model": "Model",
@@ -345,14 +339,6 @@
     "title": "Tetapan Sesi",
     "model": "Model",
     "system_prompt": "Prompt Sistem",
-    "preset": {
-      "Custom": "Custom",
-      "Novelist": "Novelis",
-      "Translator": "Penterjemah",
-      "Worldbuilder": "Pembina Dunia",
-      "Editor": "Editor",
-      "Analyst": "Penganalisis"
-    },
     "prompt_placeholder": "Berikan AI peranan, personaliti, atau arahan khusus...",
     "gen_params": "Parameter Penjanaan",
     "max_tokens": "Maksimum Token",
@@ -449,5 +435,13 @@
       "activated": "Diaktifkan",
       "tool_running": "Menjalankan alat"
     }
+  },
+  "presets": {
+    "custom": "Custom",
+    "novelist": "Novelis",
+    "translator": "Penterjemah",
+    "worldbuilder": "Pembina Dunia",
+    "editor": "Editor",
+    "analyst": "Penganalisis"
   }
 }
