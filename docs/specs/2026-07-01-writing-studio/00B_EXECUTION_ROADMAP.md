@@ -1,7 +1,7 @@
 # 00B · Execution Roadmap — one build sequence for the package model (22–28)
 
-> **Status:** 📐 INTEGRATED v2 (rewritten 2026-07-10 after the adjudication pass; supersedes the
-> 2026-07-10 draft that predated `28` and the CF-1..15 adjudications) — for PO review
+> **Status:** 📐 INTEGRATED v2 · **§6 RATIFIED IN FULL (PO 2026-07-10)** — buildable from Stage 1 (rewritten 2026-07-10 after the adjudication pass; supersedes the
+> 2026-07-10 draft that predated `28` and the CF-1..15 adjudications)
 > **Scope:** the single dependency-ordered build sequence across every phase of
 > [`22`](22_scene_model_and_crud.md) · [`23`](23_book_architecture.md) · [`24_plan_hub_v2.md`](24_plan_hub_v2.md) ·
 > [`25`](25_package_migration_master.md) · [`26`](26_structure_prose_indexing.md) ·
@@ -40,7 +40,7 @@ genuinely the PO's. That is this file.
 | **23-E3 (dead payloads `planner_state_init` / `working_memory_charter` deleted) is DONE**, folded into E5 per 23's own Phase-E table. | Same commit family; `compile.py` no longer emits them. |
 | **The S06 acceptance anchor exists.** | [`scripts/eval/discoverability_scenarios/S06-flagship.json`](../../../scripts/eval/discoverability_scenarios/S06-flagship.json) + committed baseline [`docs/eval/discoverability/runs/2026-07-09-S06-baseline`](../../eval/discoverability/runs/2026-07-09-S06-baseline) — 27-H4, 28-AN-D3, and 23-D7 have a real comparison target. |
 | **`28_agent_native_studio.md` now EXISTS** (CF-13 closed): authored + adversarially verified 2026-07-10 (2 HIGH / 3 MED / 4 LOW findings, all 9 fixed). Zero new tables; 7 tools + 1 arg extension; the ownership boundary "new agent-experience tools → 28" is now enforceable. | File on disk; AN-1's closed capability matrix. |
-| **The adjudication stamps are on disk** — 23 carries two ⚠ supersession blocks (migration → 25, Phase E → 27) and the "MCP-first *for agents*" reword; 22 carries the SC5 publish-only and D5 read-time-null amendments; 00A carries the PM-3/PM-4/PM-10 ✏️ refinements, the DA-8 role reword, the BPS-15/BPS-18 corrections, and the `import_source` move; 25 carries OQ-8 (MOOT) + OQ-11 (M-train rule); 27 carries V2-E2b. | §5 ledger, per-row anchors. Four residual items remain (NC-1..4). |
+| **The adjudication stamps are on disk** — 23 carries two ⚠ supersession blocks (migration → 25, Phase E → 27) and the "MCP-first *for agents*" reword; 22 carries the SC5 publish-only and D5 read-time-null amendments; 00A carries the PM-3/PM-4/PM-10 ✏️ refinements, the DA-8 role reword, the BPS-15/BPS-18 corrections, and the `import_source` move; 25 carries OQ-8 (MOOT) + OQ-11 (M-train rule); 27 carries V2-E2b. | §5 ledger, per-row anchors. The four residual items (NC-1..4) were closed the same day. |
 | **`29_translation_repair.md` exists; no `24_` collision remains** (CF-14 closed). | Rename on disk (`24_translation_repair.md → 29_translation_repair.md`), links swept; 00A §10 row ✅. |
 | **Everything else in 22–28 is unbuilt.** `structure_node`, `scenes.source_scene_id`, `pass_state`, `arc_conformance_state`, `book_steering` MCP tools, the re-key — all absent from code (each spec's own Investigation sections verified this; spot-checked). | Grep evidence cited inside each spec. |
 
@@ -67,7 +67,7 @@ sub-task counts. Within a stage, waves (§4) fan out on disjoint files with one 
 | 1.1 | **25-M0** | pre-flight assertions + `package_migration` marker + quarantine protocol. **Includes the 25-task-1b residue**: the 22 A1/B0 sequencing pointers → 25 (the 23/00A stamps already landed — §5 CF-1/CF-2/CF-6) **plus the NC-2 one-liners** (22 B4 `/v1` mirror note, 22 A4 `source_scene_id` arg note, 22's "one writer" sentence → DA-8 role wording) and the NC-3 stale-narration sweeps | — |
 | 1.2 | **25-M1** | additive DDL: 13× `book_id` + indexes; **carries 23-A1** (`structure_node` + trigger + `outline_node.structure_node_id` + `motif_application.structure_node_id`) and **22-B1** (8 SC4 columns + `exit_state` model) | 1.1 |
 | 1.3 | **25-M2** | backfills (keyset-batched for `outline_node`/`generation_job`) + NOT NULL flips + assertions | 1.2 |
-| 1.4 | **25-M3** | cutover DDL (partial manifest unique PM-4, `decompose_commit` re-scope PM-10, actor renames PM-5, style/voice PK swap M3.4) **atomically with** the code sweep (25 tasks 5–7: repos, `_book_or_deny`, PlanForge `_ensure_work`, sweeper, `pack.py`, PM-14 docstring). Carries **25-OQ-3's `.runs/` VIEW widening** if P-3 is accepted (predicate-only — also the gate for 28-AN-2's `runs` block) | 1.3 |
+| 1.4 | **25-M3** | cutover DDL (partial manifest unique PM-4, `decompose_commit` re-scope PM-10, actor renames PM-5, style/voice PK swap M3.4) **atomically with** the code sweep (25 tasks 5–7: repos, `_book_or_deny`, PlanForge `_ensure_work`, sweeper, `pack.py`, PM-14 docstring). Carries **25-OQ-3's `.runs/` VIEW widening per P-3 ✅** (predicate-only — also unblocks 28-AN-2's `runs` block) | 1.3 |
 | 1.5 | **25-T1..T5** | snapshot migration test, M0 refusal tests, grantee-widening, derivative-separation, spend attribution | 1.4 |
 | 1.∥ | **22-A1** *(parallel lane, book-service)* | `scenes.book_id`/`title`/`source_scene_id` + batched backfill (`migrate.go`, CB3 shape) — owned by 22, sequenced here per 25's own note | — |
 
@@ -153,7 +153,7 @@ deltas (present-cast %, named-introduction %, linked-node counts) against the on
 | 7.2 | **24-H2** | panel shell, window loader, React Flow components, two-truths join, bus wiring (H2.2 already done in the Stage-4 wave) | 7.1 |
 | 7.3 | **24-H3 ∥ H4 ∥ H5** | drawer ∥ decorations ∥ interactions (per-row OCC/undo tests) — disjoint files | 7.2 |
 | 7.4 | **24-H6** | Plan navigator rail | 7.2 |
-| 7.5 | **24-H7** | view modes — **after PO-DECIDE P-10**; timeline then worldmap, each its own cycle | 7.3 |
+| 7.5 | **24-H7** | view modes — **deferred per P-10 ✅ (v1 narrative-only)**; timeline then worldmap, each its own cycle | 7.3 |
 | 7.6 | **24-H8** | 10k-fixture perf pass (cold-open budget **≤5 requests** per NC-1 ✅, EXPLAIN keyset assertion) + **H8.2 live browser smoke** (the pillar-24 DoD) + amendment check | 7.3–7.4 |
 
 **RB-7 — commit + PO checkpoint.** The Hub is the user-visible face of the whole package model —
@@ -236,12 +236,16 @@ Every row was re-checked against the file content, not the handoff notes
 
 ---
 
-## 6. Consolidated PO-DECIDE list (deduplicated; every row has a recommended default)
+## 6. Product decisions — ✅ RATIFIED IN FULL by the PO, 2026-07-10
 
-These are the only genuinely-open product decisions across all six new specs. Everything else in
-their Open Questions tables is already decided in place.
+The PO approved **all 15 recommended defaults as decisions** ("let's seal layer 1, I approve your
+suggestion"). Each owning spec's OQ row carries the ✅ RATIFIED stamp; the table below is the
+consolidated record. **P-2 additionally ratifies 25 OQ-2** (canonical-Work reads) **and P-8
+ratifies BPS-19b's checkpoint policy** — their register/spec homes are stamped. BPS-9 (parts/saga
+→ explicit proposal, 26 IX-17) was ratified separately the same day. **No open product decisions
+remain anywhere in the 22–28 cluster.**
 
-| # | Owner | Question | Recommended default |
+| # | Owner | Question | ✅ Decision (= the recommended default, ratified) |
 |---|---|---|---|
 | P-1 | 25-OQ-1 | May an EDIT-grantee auto-provision the book's knowledge project? | **No — stays OWNER-only.** Owner-identity minting on a grantee's action is privilege escalation with billing surface; the MED-1 message already gives an actionable path. |
 | P-2 | 25-OQ-2 | With derivatives (dị bản), do book-scoped reads return the canonical Work's spec only, or all Works'? | **Canonical only** (`source_work_id IS NULL`); derivative surfaces pass `project_id` explicitly. (28's three composition tools are hard-wired to this resolution — §Canonical-Work scoping.) |
