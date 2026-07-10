@@ -55,6 +55,26 @@ def prove_async_poller(fx: Fixture, mcp: MCPDirect, kg_project_id: str | None,
         out["PASS"] = False
         out["note"] = "no kg project (setup failed)"
         return out
+
+    # F6: kg_build_graph requires the project to have an embedding model. A freshly
+    # created project has none, and until `kg_project_set_embedding_model` existed this
+    # step was reachable ONLY through the REST route behind the Build-KG dialog — so the
+    # async poller could never be live-proven. Configure it the way an agent now would.
+    if config.EMBEDDING_MODEL_REF:
+        try:
+            r = mcp.call("kg_project_set_embedding_model", {
+                "project_id": kg_project_id,
+                "embedding_model": config.EMBEDDING_MODEL_REF})
+            out["embedding_model_configured"] = r.get("embedding_dimension")
+        except Exception as e:
+            out["embedding_model_configured"] = False
+            out["note"] = f"kg_project_set_embedding_model failed: {e}"
+            out["PASS"] = False
+            return out
+    else:
+        out["note"] = ("set TLE_EMBEDDING_MODEL_REF to an embedding user_model uuid — "
+                       "kg_build_graph cannot run without a configured embedding model")
+
     try:
         r = mcp.call("kg_build_graph", {
             "llm_model": config.MODEL_REF, "project_id": kg_project_id,
@@ -63,6 +83,8 @@ def prove_async_poller(fx: Fixture, mcp: MCPDirect, kg_project_id: str | None,
         out["build_result"] = json.dumps(r)[:200]
     except Exception as e:
         out["build_accepted"] = False
+        # MCPToolError now carries the SERVER's message; it used to be swallowed into
+        # "unhandled errors in a TaskGroup (1 sub-exception)" by anyio's group wrapper.
         out["note"] = f"kg_build_graph call failed: {e}"
         out["PASS"] = False
         return out

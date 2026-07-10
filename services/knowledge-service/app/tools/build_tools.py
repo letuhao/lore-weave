@@ -77,9 +77,14 @@ async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> 
     if project is None:
         raise ToolExecutionError("project not found")
     if not project.embedding_model:
+        # An agent cannot open a dialog. This error string is the ONLY instruction a
+        # tool-calling model gets here, so it must name the tools that unblock it, in
+        # order (F6 — Track D liveness eval; same discipline as kg_run_benchmark's
+        # "call this ... instead of sending the user to the UI").
         raise ToolExecutionError(
-            "this project has no embedding model configured — run extraction setup once "
-            "in the Build Knowledge Graph dialog (it also runs the required benchmark)"
+            "this project has no embedding model configured — call "
+            "kg_project_set_embedding_model first (pick one of your embedding models "
+            "with settings_list_models), then kg_run_benchmark, then retry this build"
         )
 
     # D-RE-OTHER-AGENTIC-EFFORT: clamp the requested effort to the caller's grant at MINT

@@ -659,6 +659,35 @@ async def kg_project_list(
     )
 
 
+@mcp_server.tool(
+    name="kg_project_set_embedding_model",
+    description=(
+        "Configure the project's EMBEDDING MODEL — the one-time setup that "
+        "kg_run_benchmark and kg_build_graph both require. Call this when a build "
+        "reports the project has no embedding model configured, instead of sending "
+        "the user to the UI. Pass a provider-registry user_model UUID for one of your "
+        "own embedding models (find one with settings_list_models). The vector "
+        "dimension is probed automatically. Free, reversible, owner-only. Then call "
+        "kg_run_benchmark, then kg_build_graph."
+    ),
+    meta=require_meta(
+        "A", "project",
+        tool_name="kg_project_set_embedding_model",
+    ),
+)
+async def kg_project_set_embedding_model(
+    ctx: MCPContext,
+    embedding_model: Annotated[
+        str, "provider-registry user_model UUID of an embedding model you own."
+    ],
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"embedding_model": embedding_model}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_project_set_embedding_model", args)
+
+
 # ── KG ontology tools (lane LF; KM1/KM2 + R-class KM3/KM4) ─────────────
 # Descriptions mirror app/tools/graph_schema_tools.py verbatim. R (read) +
 # reversible W tiers below; the class-C ontology tools (adopt / schema-edit /
@@ -1366,7 +1395,8 @@ async def kg_triage_schema_write(
         "the book's chapters. EXPENSIVE (LLM cost) so it does NOT run immediately — it "
         "returns a confirm_token + summary; a human confirms on the review surface (which "
         "shows the estimated cost) and the job starts then. Requires the project to have "
-        "an embedding model configured (run extraction setup once in the UI first). Pick "
+        "an embedding model configured — if it does not, call kg_project_set_embedding_model "
+        "then kg_run_benchmark first, rather than sending the user to the UI. Pick "
         "the extraction llm_model from settings_list_models."
     ),
     meta=require_meta(

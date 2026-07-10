@@ -441,6 +441,33 @@ TOOL_DEFINITIONS: list[dict] = [
         },
         [],
     ),
+    # Project setup — the step BETWEEN kg_project_create and kg_run_benchmark that
+    # used to exist only as a REST route behind the Build-KG dialog, dead-ending
+    # every agent-created project (F6, Track D liveness eval).
+    _tool(
+        "kg_project_set_embedding_model",
+        "Configure the project's EMBEDDING MODEL — the one-time setup that "
+        "kg_run_benchmark and kg_build_graph both require. Call this when a build "
+        "reports the project has no embedding model configured, instead of sending "
+        "the user to the UI. Pass a provider-registry user_model UUID for one of your "
+        "own embedding models (find one with settings_list_models). The vector "
+        "dimension is probed automatically. Free, reversible, owner-only. Then call "
+        "kg_run_benchmark, then kg_build_graph.",
+        {
+            "embedding_model": {
+                "type": "string",
+                "minLength": 1,
+                "description": (
+                    "provider-registry user_model UUID of an embedding model you own."
+                ),
+            },
+            "project_id": {
+                "type": "string",
+                "description": "Project to configure. Omit to use the project in scope.",
+            },
+        },
+        ["embedding_model"],
+    ),
     # Cost-gated job trigger — build the knowledge graph (propose→confirm).
     _tool(
         "kg_build_graph",
@@ -448,7 +475,8 @@ TOOL_DEFINITIONS: list[dict] = [
         "the book's chapters. EXPENSIVE (LLM cost) so it does NOT run immediately — it "
         "returns a confirm_token + summary; a human confirms on the review surface, which "
         "shows the estimated cost, and the job starts then. Requires the project to have "
-        "an embedding model configured (run extraction setup once in the UI first). Pick "
+        "an embedding model configured — if it does not, call kg_project_set_embedding_model "
+        "then kg_run_benchmark first, rather than sending the user to the UI. Pick "
         "the extraction llm_model from settings_list_models.",
         {
             "llm_model": {

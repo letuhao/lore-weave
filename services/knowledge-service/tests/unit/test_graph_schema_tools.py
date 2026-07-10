@@ -105,15 +105,39 @@ def _defn(name: str) -> dict:
 def test_total_tool_count_is_memory_plus_lane_lf():
     """5 memory + 1 story_search (#12 universal manuscript search) + 15 lane-LF
     (incl. Track-B kg_world_query + kg_multi_query and WS-4B
-    kg_project_entities_to_nodes) + 5 live class-C + 2 project lifecycle
-    (kg_project_create + kg_project_list, the W0 #4a discovery tool) + 2
-    cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 31."""
+    kg_project_entities_to_nodes) + 5 live class-C + 3 project lifecycle
+    (kg_project_create + kg_project_list, the W0 #4a discovery tool, +
+    kg_project_set_embedding_model — the F6 setup step that used to exist only as a
+    REST route behind the Build-KG dialog, which left kg_build_graph unreachable by an
+    agent) + 2 cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 32."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 31
+    assert len(TOOL_DEFINITIONS) == 32
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
-    assert {"kg_project_create", "kg_project_list", "kg_build_graph",
-            "kg_build_wiki", "kg_run_benchmark", "story_search"}.issubset(schema_names)
+    assert {"kg_project_create", "kg_project_list", "kg_project_set_embedding_model",
+            "kg_build_graph", "kg_build_wiki", "kg_run_benchmark",
+            "story_search"}.issubset(schema_names)
+
+
+def test_agent_can_reach_kg_build_graph_without_leaving_the_tool_surface():
+    """F6 (Track D liveness eval). kg_build_graph's precondition — a configured embedding
+    model — must be satisfiable BY A TOOL. Before this the chain was:
+
+        kg_project_create ✅ → [configure embedding model ❌ REST + GUI only]
+                             → kg_run_benchmark ✅ → kg_build_graph ✅
+
+    so every agent-created project dead-ended, and the precondition error told the model
+    to open a dialog it cannot open. Assert every link exists on the tool surface, and
+    that the prose never sends a tool-caller to the UI."""
+    schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
+    chain = ["kg_project_create", "kg_project_set_embedding_model",
+             "kg_run_benchmark", "kg_build_graph"]
+    missing = [n for n in chain if n not in schema_names]
+    assert not missing, f"kg_build_graph is unreachable by an agent — missing: {missing}"
+
+    build = _defn("kg_build_graph")["function"]["description"]
+    assert "kg_project_set_embedding_model" in build
+    assert "dialog" not in build.lower()
 
 
 def test_lane_lf_tools_all_registered():

@@ -27,6 +27,17 @@ USER_ID = os.environ.get("TLE_USER", "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c")
 # Agent model — REQUIRED (no default-model resolution for this account).
 MODEL_REF = os.environ.get("TLE_MODEL_REF", "019ebb72-27a2-72f3-a42d-d2d0e0ded179")
 
+# EMBEDDING model — a fresh knowledge project has none, and kg_build_graph refuses to
+# mint its confirm_token without one (F6). Resolve live, per CLAUDE.md's caveat that
+# `user_default_models` is EMPTY for the test account:
+#   SELECT um.user_model_id FROM user_models um
+#   JOIN provider_credentials pc USING (provider_credential_id)
+#   WHERE um.owner_user_id='<test-user>' AND um.is_active AND pc.status='active'
+#     AND um.capability_flags @> '{"embedding": true}'::jsonb;
+EMBEDDING_MODEL_REF = os.environ.get(
+    "TLE_EMBEDDING_MODEL_REF", "019e7f71-0271-722f-9c9c-3f049c0b26f4"  # bge-m3 (local, $0)
+)
+
 # Secrets (present in the containers; only needed for the self-mint JWT fallback
 # + internal-token DB/inventory calls). Never hardcode in committed code.
 JWT_SECRET = os.environ.get("TLE_JWT_SECRET", "")
