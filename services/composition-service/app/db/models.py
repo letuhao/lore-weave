@@ -161,6 +161,19 @@ class OutlineNode(BaseModel):
     # scenes (the outline_structure_kind CHECK forbids a scene from carrying one). The
     # packer reads it to inject the resolved arc frame into the draft prompt (BA12).
     structure_node_id: UUID | None = None
+    # 22 SC4 — authored scene intent (the eight fields). Written via the MCP create/update
+    # args (B3) + _UPDATABLE_COLUMNS (B2); read back here so create/get/list ECHO the intent
+    # and the scene-inspector (22-C) can render it (else the fields are write-only). conflict/
+    # outcome/stakes are NOT NULL DEFAULT ''; the rest are nullable. exit_state is the SC12
+    # {v:1,…} envelope (stored JSONB; surfaced as a dict).
+    location_entity_id: UUID | None = None
+    story_time: str | None = None
+    conflict: str = ""
+    outcome: str = ""
+    value_shift: int | None = None      # -100..100
+    stakes: str = ""
+    target_words: int | None = None     # > 0
+    exit_state: dict[str, Any] | None = None
     version: int = 1
     is_archived: bool = False
     created_at: datetime | None = None

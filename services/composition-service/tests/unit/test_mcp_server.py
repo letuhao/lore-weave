@@ -800,6 +800,48 @@ async def test_scene_link_create_returns_undo_hint():
     assert res["_meta"]["undo_hint"]["tool"] == "composition_scene_link_delete"
 
 
+async def test_outline_node_update_undo_none_when_prior_was_null():
+    """SC4-UNDO regression: setting a NULLABLE SC4 field (value_shift) from NULL→value has
+    no faithful single-op reverse — the sparse update patch treats None as leave-unchanged
+    (no clear verb), so an `undo_hint` listing value_shift=null would silently no-op. The
+    handler must emit undo_hint=None (honest) rather than a lying hint."""
+    import app.mcp.server as srv
+
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=_node(version=5))          # value_shift defaults None
+    outline.update_node = AsyncMock(return_value=_node(version=6))
+    async with _patched(OutlineRepo=outline):
+        res = await srv.composition_outline_node_update(
+            _Ctx(),
+            srv._NodeUpdateArgs(
+                project_id=str(PROJECT), node_id=str(_node().id),
+                expected_version=5, value_shift=50,
+            ),
+        )
+    assert res["_meta"]["undo_hint"] is None, "a null-prior SC4 edit must not emit a lying undo"
+
+
+async def test_outline_node_update_undo_present_for_notnull_field():
+    """The common case stays reversible: a NOT NULL field (title) has a non-None prior, so
+    the undo_hint restores it."""
+    import app.mcp.server as srv
+
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=_node(version=5, title="old"))
+    outline.update_node = AsyncMock(return_value=_node(version=6, title="new"))
+    async with _patched(OutlineRepo=outline):
+        res = await srv.composition_outline_node_update(
+            _Ctx(),
+            srv._NodeUpdateArgs(
+                project_id=str(PROJECT), node_id=str(_node().id),
+                expected_version=5, title="new",
+            ),
+        )
+    undo = res["_meta"]["undo_hint"]
+    assert undo is not None and undo["tool"] == "composition_outline_node_update"
+    assert undo["args"]["title"] == "old"
+
+
 async def test_outline_node_update_stale_version_is_conflict():
     """A stale expected_version → applied_conflict outcome (no blind clobber)."""
     import app.mcp.server as srv

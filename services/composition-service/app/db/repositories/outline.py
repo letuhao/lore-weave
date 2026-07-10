@@ -30,7 +30,10 @@ from app.db.repositories.rank import rank_after, rank_between
 _SELECT_COLS = """
   id, created_by, project_id, book_id, parent_id, kind, rank, title, pov_entity_id,
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
-  story_order, synopsis, structure_node_id, version, is_archived, created_at, updated_at
+  story_order, synopsis, structure_node_id,
+  location_entity_id, story_time, conflict, outcome, value_shift, stakes,
+  target_words, exit_state,
+  version, is_archived, created_at, updated_at
 """
 
 # Namespace key (arg-1) for the per-project decompose-commit advisory xact lock.
@@ -39,17 +42,29 @@ _DECOMPOSE_COMMIT_LOCK_NS = 0x10AF
 
 _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
     {"parent_id", "rank", "title", "pov_entity_id", "present_entity_ids", "goal",
-     "beat_role", "status", "chapter_id", "tension", "story_order", "synopsis"}
+     "beat_role", "status", "chapter_id", "tension", "story_order", "synopsis",
+     # 22 SC4/B2 — authored scene intent (the eight fields). conflict/outcome/stakes
+     # are NOT NULL DEFAULT '' (not clearable); the rest accept an explicit NULL.
+     "location_entity_id", "story_time", "conflict", "outcome", "value_shift",
+     "stakes", "target_words", "exit_state"}
 )
 # Columns that accept an explicit NULL (clear). The others are NOT NULL, so a
 # None on them is skipped (treated as no-op for that field).
 _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
-    {"parent_id", "pov_entity_id", "beat_role", "chapter_id", "tension", "story_order"}
+    {"parent_id", "pov_entity_id", "beat_role", "chapter_id", "tension", "story_order",
+     # 22 SC4/B2 — the nullable-clearable authored-intent fields
+     "location_entity_id", "story_time", "value_shift", "target_words", "exit_state"}
 )
 
 
 def _row_to_node(row: asyncpg.Record) -> OutlineNode:
-    return OutlineNode.model_validate(dict(row))
+    data = dict(row)
+    # 22 SC12 — exit_state is JSONB; this pool sets no jsonb codec, so asyncpg returns it
+    # as a JSON string. Deserialize to a dict for the model (mirrors structure.py's pattern).
+    ev = data.get("exit_state")
+    if isinstance(ev, str):
+        data["exit_state"] = json.loads(ev)
+    return OutlineNode.model_validate(data)
 
 
 def _is_scene_commit(old: OutlineNode | None, new: OutlineNode | None) -> bool:
@@ -174,12 +189,30 @@ class OutlineRepo:
         tension: int | None = None,
         story_order: int | None = None,
         synopsis: str = "",
+        # 22 SC4/SC8 (B3) — authored scene intent. conflict/outcome/stakes are
+        # NOT NULL DEFAULT '' (default to ''); the rest are nullable. exit_state is
+        # the SC12 {v:1,…} envelope as a plain dict (::jsonb serialized below,
+        # mirroring update_node's B2 handling). Range/enum are validated upstream
+        # at the MCP schema (_NodeCreateArgs) so a bad value 422s before this INSERT.
+        location_entity_id: UUID | None = None,
+        story_time: str | None = None,
+        conflict: str = "",
+        outcome: str = "",
+        value_shift: int | None = None,
+        stakes: str = "",
+        target_words: int | None = None,
+        exit_state: dict[str, Any] | None = None,
         conn: asyncpg.Connection | None = None,
     ) -> OutlineNode:
         """Insert an outline node. When `rank` is omitted it is auto-computed to
         append after the last sibling under `parent_id` (single-row touch).
         `created_by` is a plain actor stamp (never a filter); `book_id` is derived
-        from `composition_work` INSIDE the statement so it can never be NULL."""
+        from `composition_work` INSIDE the statement so it can never be NULL.
+
+        The eight SC4 authored-intent fields (location_entity_id/story_time/
+        conflict/outcome/value_shift/stakes/target_words/exit_state) are inserted
+        here too; `exit_state` is serialized + cast ::jsonb (asyncpg does not
+        auto-encode a dict — same shape as update_node's SC12 path)."""
         async def _do(c: asyncpg.Connection) -> asyncpg.Record:
             if parent_id is not None:
                 await self._validate_parent(c, project_id, parent_id)
@@ -191,10 +224,14 @@ class OutlineRepo:
                 INSERT INTO outline_node
                   (created_by, project_id, book_id, parent_id, kind, rank, title,
                    pov_entity_id, present_entity_ids, goal, beat_role, status,
-                   chapter_id, tension, story_order, synopsis)
+                   chapter_id, tension, story_order, synopsis,
+                   location_entity_id, story_time, conflict, outcome, value_shift,
+                   stakes, target_words, exit_state)
                 SELECT $1, $2, w.book_id, $3, $4, $5, $6,
                        $7, $8, $9, $10, $11,
-                       $12, $13, $14, $15
+                       $12, $13, $14, $15,
+                       $16, $17, $18, $19, $20,
+                       $21, $22, $23::jsonb
                 FROM composition_work w
                 WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
                 RETURNING {_SELECT_COLS}
@@ -202,6 +239,9 @@ class OutlineRepo:
                 created_by, project_id, parent_id, kind, node_rank, title,
                 pov_entity_id, present_entity_ids or [], goal, beat_role, status,
                 chapter_id, tension, story_order, synopsis,
+                location_entity_id, story_time, conflict, outcome, value_shift,
+                stakes, target_words,
+                json.dumps(exit_state) if exit_state is not None else None,
             )
             if row is None:
                 # The INSERT … SELECT found no composition_work to derive book_id
@@ -672,8 +712,15 @@ class OutlineRepo:
         set_clauses: list[str] = []
         params: list[Any] = [node_id]
         for field, value in updates.items():
-            params.append(value)
-            set_clauses.append(f"{field} = ${len(params)}")
+            # 22 SC12/B2 — exit_state is JSONB; asyncpg does not auto-encode a dict, so
+            # serialize + cast (mirrors the ::jsonb inserts elsewhere in this repo). A
+            # clear (None, allowed since it is nullable) passes through as SQL NULL.
+            if field == "exit_state" and value is not None:
+                params.append(json.dumps(value))
+                set_clauses.append(f"{field} = ${len(params)}::jsonb")
+            else:
+                params.append(value)
+                set_clauses.append(f"{field} = ${len(params)}")
         set_clauses.append("updated_at = now()")
 
         version_clause = ""

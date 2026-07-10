@@ -111,6 +111,24 @@ func (s *Server) newMCPServer() *mcp.Server {
 		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scene detail", "open scene", "read scene"}),
 		s.toolBookSceneGet)
 
+	addTool(srv, "book_steering_list",
+		"List this book's steering rules — the per-book story-bible / .cursorrules "+
+			"that are injected into every matching chat turn: id, name, body, "+
+			"inclusion_mode, match_pattern, enabled, updated_at. Read these before "+
+			"authoring so you don't clobber an existing rule (max 20 per book).",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"rules", "style guide", "story bible", "steering", "writing rules"}),
+		s.toolBookSteeringList)
+
+	addTool(srv, "book_search",
+		"Literal, exact-substring search over the book's manuscript (grep). Args: q "+
+			"(the verbatim text; LIKE metacharacters are escaped), surface "+
+			"(draft|canon|all, default draft), granularity (chapter|block, default "+
+			"chapter), limit/offset. Returns matching chapters/blocks with highlighted "+
+			"snippets + has_more. For meaning-alike / semantic passages use story_search "+
+			"instead — this one only finds the exact characters you pass.",
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"grep", "find text", "exact phrase", "literal search", "where does it say"}),
+		s.toolBookSearch)
+
 	// ── Tier A (auto-write + Undo; scope=book; Edit grant) ────────────────────
 	// Every Tier-A result carries _meta.undo_hint = {tool, args} naming the
 	// verified reverse op (book uses trash/restore; draft ops → restore_revision).
@@ -158,6 +176,25 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"stops — no overwrite. Reverse: book_chapter_restore_revision.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter"}),
 		s.toolChapterSaveDraft)
+
+	addTool(srv, "book_steering_set",
+		"Author or replace a book steering rule (the .cursorrules / story-bible the "+
+			"agent obeys). Upsert keyed on name: a new name CREATES, an existing name "+
+			"FULLY replaces the rule (PUT semantics). The body is injected into every "+
+			"matching turn — keep it tight (max 8000 chars, max 20 rules per book). "+
+			"inclusion_mode: always|scene_match|manual|auto. Use this for 'write that "+
+			"down / always / never' instructions so they survive compaction + sessions. "+
+			"Returns the prior row when one was replaced; reverse is in the result's "+
+			"undo_hint.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"add rule", "remember this rule", "always do", "never do", "write that down"}),
+		s.toolBookSteeringSet)
+
+	addTool(srv, "book_steering_delete",
+		"Delete a book steering rule by name (or id). Returns the deleted row; the "+
+			"result's undo_hint restores it. An unknown name/id is an error, never a "+
+			"silent no-op.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"remove rule", "forget rule", "delete steering"}),
+		s.toolBookSteeringDelete)
 
 	// ── Tier W (confirm via token; scope=book; the propose tool MINTS only) ────
 	// The propose tools below MINT a confirm token (no write) + return a confirm

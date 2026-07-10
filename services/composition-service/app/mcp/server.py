@@ -69,6 +69,7 @@ from app.clients.knowledge_client import (
     get_knowledge_client,
 )
 from app.config import settings
+from app.db.models import SceneExitState
 from app.db.pool import get_pool
 from app.db.repositories import (
     ReferenceViolationError,
@@ -743,6 +744,19 @@ class _NodeCreateArgs(ForbidExtra):
     synopsis: str = ""
     status: Literal["empty", "outline", "drafting", "done"] = "empty"
     chapter_id: str | None = None
+    # 22 SC4/SC8 (B3) — the authored scene INTENT (the eight fields), validated AT
+    # THE SCHEMA so a bad range/enum is a clean 422 here, never a DB CHECK 5xx
+    # (mcp-tool-io IN-2). value_shift is the scene's net charge (-100..100, distinct
+    # from `tension`); target_words must be >0; exit_state is the SC12 {v:1,…}
+    # envelope (SceneExitState, extra='forbid' — an unversioned key 422s too).
+    location_entity_id: str | None = None
+    story_time: str | None = None
+    conflict: str = ""
+    outcome: str = ""
+    value_shift: int | None = Field(default=None, ge=-100, le=100)
+    stakes: str = ""
+    target_words: int | None = Field(default=None, gt=0)
+    exit_state: SceneExitState | None = None
 
 
 @mcp_server.tool(
@@ -770,6 +784,11 @@ async def composition_outline_node_create(ctx: MCPContext, args: _NodeCreateArgs
             pid, kind=args.kind, parent_id=UUID(args.parent_id) if args.parent_id else None,
             title=args.title, goal=args.goal, synopsis=args.synopsis, status=args.status,
             chapter_id=UUID(args.chapter_id) if args.chapter_id else None,
+            # 22 SC4/SC8 — the authored intent (schema-validated above).
+            location_entity_id=UUID(args.location_entity_id) if args.location_entity_id else None,
+            story_time=args.story_time, conflict=args.conflict, outcome=args.outcome,
+            value_shift=args.value_shift, stakes=args.stakes, target_words=args.target_words,
+            exit_state=args.exit_state.model_dump(mode="json") if args.exit_state is not None else None,
             created_by=tc.user_id,
         )
     except ReferenceViolationError as exc:
@@ -790,6 +809,18 @@ class _NodeUpdateArgs(ForbidExtra):
     synopsis: str | None = None
     # BPS-4/F6 closed set — a bad status is a clean 422, never a DB CheckViolation.
     status: Literal["empty", "outline", "drafting", "done"] | None = None
+    # 22 SC4/SC8 (B3) — the same authored-intent fields, editable. None = leave
+    # unchanged (the tool's sparse-patch convention — clearing a nullable field to
+    # NULL is not expressible here, matching the existing status/title fields).
+    # Ranges + the exit_state envelope are validated AT THE SCHEMA (see create).
+    location_entity_id: str | None = None
+    story_time: str | None = None
+    conflict: str | None = None
+    outcome: str | None = None
+    value_shift: int | None = Field(default=None, ge=-100, le=100)
+    stakes: str | None = None
+    target_words: int | None = Field(default=None, gt=0)
+    exit_state: SceneExitState | None = None
 
 
 @mcp_server.tool(
@@ -826,8 +857,18 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
         k: v for k, v in {
             "title": args.title, "goal": args.goal,
             "synopsis": args.synopsis, "status": args.status,
+            # 22 SC4/SC8 — authored intent (schema-validated). None = leave unchanged.
+            "story_time": args.story_time, "conflict": args.conflict,
+            "outcome": args.outcome, "value_shift": args.value_shift,
+            "stakes": args.stakes, "target_words": args.target_words,
         }.items() if v is not None
     }
+    # location_entity_id is a UUID column (str arg → UUID); exit_state is the SC12
+    # envelope (model → plain dict, ::jsonb serialized by update_node's B2 path).
+    if args.location_entity_id is not None:
+        patch["location_entity_id"] = UUID(args.location_entity_id)
+    if args.exit_state is not None:
+        patch["exit_state"] = args.exit_state.model_dump(mode="json")
     try:
         if patch.get("status") == "done":
             node = await outline.update_node_commit_aware(
@@ -848,12 +889,23 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
     if node is None:
         raise uniform_not_accessible()
     out = node.model_dump(mode="json")
+    # The undo hint restores the changed fields to their PRIOR values via a reverse
+    # composition_outline_node_update. That tool's patch is sparse — None means "leave
+    # unchanged" (there is no clear verb) — so a field whose PRIOR was None (only the
+    # nullable SC4 fields: value_shift, target_words, location_entity_id, story_time,
+    # exit_state) cannot be faithfully reversed: emitting `field: null` would silently
+    # no-op while the strip claims the undo applied. When any changed field is in that
+    # state there is no faithful single-op reverse, so emit NO undo_hint rather than a
+    # lying one (no-silent-no-op). The pre-SC4 fields are all NOT NULL — their prior is
+    # never None — so the common edit stays fully reversible.
     undo_fields = {f: getattr(prior, f) for f in patch}
-    out["_meta"] = {"undo_hint": _undo(
+    unrestorable = any(v is None for v in undo_fields.values())
+    undo_hint = None if unrestorable else _undo(
         "composition_outline_node_update",
         project_id=args.project_id, node_id=args.node_id,
         expected_version=node.version, **undo_fields,
-    )}
+    )
+    out["_meta"] = {"undo_hint": undo_hint}
     return out
 
 

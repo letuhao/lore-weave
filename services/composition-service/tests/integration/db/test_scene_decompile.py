@@ -1,0 +1,236 @@
+"""22 SC6 / B4 — the scene DECOMPILER, driven against real Postgres.
+
+Pins the four properties SC6 promises, by EFFECT on `outline_node`:
+  1. one kind='scene' spec node per parse leaf, carrying the leaf's chapter_id +
+     sort_order (as story_order) and the Work's book_id;
+  2. IDEMPOTENT — a second run over the same index mints 0 (natural-key match on
+     (project_id, chapter_id, story_order), since 26 D1's decompile_key column does
+     not exist yet);
+  3. a leaf already carrying `source_scene_id` (the index owner back-linked it —
+     SC2) is MATCHED, never duplicated;
+  4. a book with no canonical Work is guarded GRACEFULLY — reported, never a silent
+     200-with-zero (`silent-success-is-a-bug-not-environment`).
+
+The book client's scene list is "mocked" by driving `materialize_scenes` with a
+seeded `ParsedScene[]` directly — no book-service round-trip, the pure core.
+
+Gated on TEST_COMPOSITION_DB_URL (a throwaway DB — this drops tables).
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+
+import asyncpg
+import pytest
+
+from app.db.migrate import run_migrations
+from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.works import WorksRepo
+from app.engine.scene_decompile import ParsedScene, materialize_scenes
+
+_DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
+
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    pytest.mark.xdist_group("pg"),
+]
+
+_TABLES = (
+    "generation_correction", "generation_job", "decompose_commit", "scene_grounding_pins",
+    "scene_link", "narrative_thread", "canon_rule", "style_profile", "voice_profile",
+    "reference_source", "entity_override", "divergence_spec", "outline_node",
+    "composition_work",
+)
+
+
+@pytest.fixture
+async def pool():
+    p = await asyncpg.create_pool(_DSN, min_size=1, max_size=4)
+    try:
+        async with p.acquire() as c:
+            for t in _TABLES:
+                await c.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
+        await run_migrations(p)
+        yield p
+    finally:
+        async with p.acquire() as c:
+            for t in _TABLES:
+                await c.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
+        await p.close()
+
+
+async def _canonical_work(pool) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """A BACKED canonical Work (project_id set, source_work_id NULL) — the shape the
+    decompiler resolves to host spec nodes. Returns (project_id, book_id, actor)."""
+    actor, book, project = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO composition_work (project_id, created_by, book_id) VALUES ($1,$2,$3)",
+            project, actor, book,
+        )
+    return project, book, actor
+
+
+async def _scene_count(pool, project: uuid.UUID) -> int:
+    async with pool.acquire() as c:
+        return await c.fetchval(
+            "SELECT count(*) FROM outline_node WHERE project_id=$1 AND kind='scene' AND NOT is_archived",
+            project,
+        )
+
+
+async def test_one_spec_node_per_leaf_and_idempotent(pool):
+    project, book, actor = await _canonical_work(pool)
+    ch1, ch2 = uuid.uuid4(), uuid.uuid4()
+    scenes = [
+        ParsedScene(chapter_id=ch1, sort_order=0, title="Opening"),
+        ParsedScene(chapter_id=ch1, sort_order=1, title="Rising"),
+        ParsedScene(chapter_id=ch2, sort_order=0, title="Turn"),
+    ]
+    works, outline = WorksRepo(pool), OutlineRepo(pool)
+
+    r1 = await materialize_scenes(
+        pool, works, outline, book_id=book, scenes=scenes, created_by=actor,
+    )
+    assert r1.work_resolved is True
+    assert (r1.created, r1.matched) == (3, 0)
+    assert (r1.scenes_total, r1.chapters) == (3, 2)
+    assert r1.project_id == project
+    assert await _scene_count(pool, project) == 3
+
+    # each minted node carries the leaf identity + the Work's book_id
+    async with pool.acquire() as c:
+        wrong_book = await c.fetchval(
+            "SELECT count(*) FROM outline_node WHERE project_id=$1 AND book_id IS DISTINCT FROM $2",
+            project, book,
+        )
+        assert wrong_book == 0
+        rows = await c.fetch(
+            "SELECT chapter_id, story_order, title FROM outline_node "
+            "WHERE project_id=$1 AND kind='scene' ORDER BY chapter_id, story_order",
+            project,
+        )
+    mapped = {(r["chapter_id"], r["story_order"]): r["title"] for r in rows}
+    assert mapped[(ch1, 0)] == "Opening"
+    assert mapped[(ch1, 1)] == "Rising"
+    assert mapped[(ch2, 0)] == "Turn"
+
+    # SC6 idempotency — a second run over the SAME index mints nothing, matches all
+    r2 = await materialize_scenes(
+        pool, works, outline, book_id=book, scenes=scenes, created_by=actor,
+    )
+    assert (r2.created, r2.matched) == (0, 3)
+    assert await _scene_count(pool, project) == 3  # never duplicated
+
+
+async def test_leaf_with_source_scene_id_is_matched_not_duplicated(pool):
+    project, book, actor = await _canonical_work(pool)
+    ch = uuid.uuid4()
+    scenes = [
+        # already back-linked by the index owner (SC2) → matched, no node minted
+        ParsedScene(chapter_id=ch, sort_order=0, title="Anchored",
+                    source_scene_id=uuid.uuid4()),
+        ParsedScene(chapter_id=ch, sort_order=1, title="Fresh"),
+    ]
+    r = await materialize_scenes(
+        pool, WorksRepo(pool), OutlineRepo(pool),
+        book_id=book, scenes=scenes, created_by=actor,
+    )
+    assert (r.created, r.matched) == (1, 1)
+    assert await _scene_count(pool, project) == 1
+    # only the un-anchored leaf minted a node
+    async with pool.acquire() as c:
+        so = await c.fetchval(
+            "SELECT story_order FROM outline_node WHERE project_id=$1 AND kind='scene'",
+            project,
+        )
+    assert so == 1
+
+
+async def test_scene_parents_under_existing_chapter_node(pool):
+    project, book, actor = await _canonical_work(pool)
+    ch = uuid.uuid4()
+    outline = OutlineRepo(pool)
+    chap_node = await outline.create_node(
+        project, created_by=actor, kind="chapter", chapter_id=ch, title="Ch1",
+    )
+    r = await materialize_scenes(
+        pool, WorksRepo(pool), outline,
+        book_id=book, scenes=[ParsedScene(chapter_id=ch, sort_order=0, title="s")],
+        created_by=actor,
+    )
+    assert r.created == 1
+    async with pool.acquire() as c:
+        parent = await c.fetchval(
+            "SELECT parent_id FROM outline_node WHERE project_id=$1 AND kind='scene'",
+            project,
+        )
+    assert parent == chap_node.id  # coherent lazy-tree: scene under its chapter
+
+
+async def test_existing_authored_scene_at_key_is_matched_not_double_minted(pool):
+    """A chapter that already has an authored scene at (chapter_id, story_order)
+    must not gain a duplicate when the same leaf decompiles — the natural-key
+    idempotency also protects hand-authored nodes (26 D1 will refine this into a
+    distinct `skipped_authored` count once `source` lands)."""
+    project, book, actor = await _canonical_work(pool)
+    ch = uuid.uuid4()
+    outline = OutlineRepo(pool)
+    await outline.create_node(
+        project, created_by=actor, kind="scene", chapter_id=ch, title="authored",
+        story_order=0, status="drafting",
+    )
+    r = await materialize_scenes(
+        pool, WorksRepo(pool), outline,
+        book_id=book, scenes=[ParsedScene(chapter_id=ch, sort_order=0, title="leaf")],
+        created_by=actor,
+    )
+    assert (r.created, r.matched) == (0, 1)
+    assert await _scene_count(pool, project) == 1  # the authored node, untouched
+
+
+async def test_no_canonical_work_is_guarded_gracefully(pool):
+    book, actor = uuid.uuid4(), uuid.uuid4()  # NO composition_work for this book
+    scenes = [ParsedScene(chapter_id=uuid.uuid4(), sort_order=0, title="orphan")]
+    r = await materialize_scenes(
+        pool, WorksRepo(pool), OutlineRepo(pool),
+        book_id=book, scenes=scenes, created_by=actor,
+    )
+    assert r.work_resolved is False
+    assert (r.created, r.matched) == (0, 0)
+    assert r.scenes_total == 1
+    assert r.detail  # non-silent: a reason is surfaced, not a bare 200-with-zero
+    async with pool.acquire() as c:
+        assert await c.fetchval("SELECT count(*) FROM outline_node") == 0
+
+
+async def test_pending_work_is_refused_not_stranded(pool):
+    """DECOMP-2 — a knowledge outage leaves a lazy Work (project_id NULL) with only a
+    surrogate-id partition. `backfill_project` re-keys composition_work but NOT
+    outline_node, so minting scene nodes on the surrogate would STRAND them off the real
+    partition after backfill (empty rail + orphan rows + re-mint). The decompiler must
+    therefore REFUSE to mint onto a pending Work — an honest work_resolved=False with a
+    pending reason, minting nothing — never silently strand rows. The import tail re-runs
+    after the Work is backed, and that run lands the scenes on the real partition."""
+    actor, book = uuid.uuid4(), uuid.uuid4()
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO composition_work (project_id, created_by, book_id, "
+            "pending_project_backfill) VALUES (NULL,$1,$2,true)",
+            actor, book,
+        )
+    r = await materialize_scenes(
+        pool, WorksRepo(pool), OutlineRepo(pool),
+        book_id=book, scenes=[ParsedScene(chapter_id=uuid.uuid4(), sort_order=0, title="s")],
+        created_by=actor,
+    )
+    assert r.work_resolved is False, "a pending Work must be refused, not minted onto"
+    assert r.created == 0
+    assert "pending" in (r.detail or "").lower()
+    async with pool.acquire() as c:
+        # nothing was stranded on any partition
+        assert await c.fetchval("SELECT count(*) FROM outline_node WHERE book_id = $1", book) == 0

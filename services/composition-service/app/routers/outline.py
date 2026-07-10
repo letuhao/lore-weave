@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
 
+from app.config import settings
 from app.db.models import LinkKind, NodeKind, NodeStatus
 from app.db.pool import get_pool
 from app.db.repositories import ReferenceViolationError, VersionMismatchError
@@ -28,12 +29,25 @@ from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (get_grant_client_dep, get_outline_repo,
                       get_scene_links_repo, get_works_repo)
+from app.engine.scene_decompile import (BookSceneFetchError, fetch_book_scenes,
+                                        materialize_scenes)
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
-from app.middleware.jwt_auth import get_current_user
+from app.mcp.service_bearer import mint_service_bearer
+from app.middleware.internal_auth import require_internal_token
+from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError
 
 router = APIRouter(prefix="/v1/composition")
+
+# SC6/B4 — the decompiler's internal-token surface. A separate router (its path is
+# `/internal/...`, not the `/v1/composition` public prefix); wired in main.py
+# alongside the public `router`.
+internal_router = APIRouter(
+    prefix="/internal/books",
+    tags=["internal"],
+    dependencies=[Depends(require_internal_token)],
+)
 
 
 class NodeCreate(BaseModel):
@@ -477,3 +491,98 @@ async def delete_scene_link(
         # Post-authorization (the caller cleared the EDIT grant above): a benign
         # race where the row vanished — keep the specific, non-leaking message.
         raise HTTPException(status_code=404, detail="scene-link not found")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 22 SC6 / B4 — the SCENE DECOMPILER (materialize-scenes).
+#
+# After a book is parsed, `book-service.scenes` is the INDEX (parse leaves) and the
+# durable SPEC is `outline_node`. This upserts one kind='scene' spec node per parse
+# leaf, keyed on the BOOK (23 BA8 — Per-book, no Work required conceptually; in the
+# current schema it resolves the book's canonical Work to host the nodes and guards
+# a Work-less book gracefully). Idempotent per `scene_decompile.materialize_scenes`.
+#
+# Two transports over ONE core:
+#   • POST /internal/books/{book_id}/materialize-scenes — the import tail / worker-
+#     infra (internal token). Mints a short-lived service bearer for the asserted
+#     owner to read book-service's VIEW-gated scene list (the service_bearer seam).
+#   • POST /v1/composition/books/{book_id}/materialize-scenes — the Hub's "Extract
+#     the plan" CTA (24 OQ-9): a human GUI can call neither an internal-token route
+#     nor an MCP tool. EDIT-gated; the caller's own bearer reads the scene list.
+#     Plain scene materialization is DETERMINISTIC ($0, no LLM) — so this /v1 mirror
+#     is a direct EDIT-gated call, NOT a propose→confirm priced endpoint (the LLM
+#     arc-analysis decompiler is the separate Tier-W tool that reuses that pattern).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class MaterializeScenesRequest(BaseModel):
+    # The asserted acting principal (the book owner the import tail verified) — used
+    # BOTH as the actor stamp on minted nodes AND as the `sub` of the short-lived
+    # service bearer that reads book-service's VIEW-gated scene list. book-service
+    # re-enforces the grant on that sub, so a wrong id can only ever reach that
+    # user's OWN books (service_bearer.py rationale).
+    owner_user_id: UUID
+
+
+def _map_scene_fetch_error(exc: BookSceneFetchError) -> HTTPException:
+    """book-service scene-read failure → HTTP. A partial read would understate the
+    scene count and mask the silent-success guard, so this fails loud (never a
+    best-effort empty)."""
+    return HTTPException(
+        status_code=502,
+        detail={"code": "BOOK_SCENE_READ_FAILED",
+                "detail": f"could not read book scenes ({exc.status})"},
+    )
+
+
+@internal_router.post("/{book_id}/materialize-scenes")
+async def materialize_scenes_internal(
+    book_id: UUID,
+    body: MaterializeScenesRequest,
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """SC6 decompiler — the import-tail entry point (internal token). Reads the
+    book's parsed scenes via a minted service bearer for `owner_user_id`, then
+    upserts one spec node per leaf. Returns per-scene outcome counts."""
+    # The internal token authenticates the caller (worker-infra) but does NOT
+    # authorize the action: `book_id` is client-traceable (it flows from a
+    # user-initiated import job), so gate the asserted owner's EDIT grant on the
+    # book before writing spec nodes (`internal-route-driven-by-a-session-must-
+    # grant-check`). Fail-closed: a book-service outage → OwnershipError → 404.
+    await _gate_book(grant, book_id, body.owner_user_id, GrantLevel.EDIT)
+    bearer = mint_service_bearer(body.owner_user_id, settings.jwt_secret)
+    try:
+        scenes = await fetch_book_scenes(settings.book_internal_url, book_id, bearer)
+    except BookSceneFetchError as exc:
+        raise _map_scene_fetch_error(exc)
+    result = await materialize_scenes(
+        get_pool(), works, outline,
+        book_id=book_id, scenes=scenes, created_by=body.owner_user_id,
+    )
+    return result.to_dict()
+
+
+@router.post("/books/{book_id}/materialize-scenes")
+async def materialize_scenes_v1(
+    book_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """SC6 decompiler — the Hub CTA mirror (EDIT-gated). Same core as the internal
+    route; the caller's own bearer reads the scene list (EDIT ⊇ VIEW, so the
+    downstream read is always authorized)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        scenes = await fetch_book_scenes(settings.book_internal_url, book_id, bearer)
+    except BookSceneFetchError as exc:
+        raise _map_scene_fetch_error(exc)
+    result = await materialize_scenes(
+        get_pool(), works, outline,
+        book_id=book_id, scenes=scenes, created_by=user_id,
+    )
+    return result.to_dict()

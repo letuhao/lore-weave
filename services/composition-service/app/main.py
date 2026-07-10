@@ -228,6 +228,7 @@ app.include_router(arc.router)  # W10 — arc-template CRUD/adopt/catalog + appl
 app.include_router(import_source.router)  # W9 — import_source CRUD (per-user deconstruct input)
 app.include_router(engine.router)
 app.include_router(outline.router)
+app.include_router(outline.internal_router)  # 22 SC6/B4 — scene decompiler (internal token)
 app.include_router(plan.router)
 app.include_router(plan_forge.router)
 app.include_router(plan_bootstrap.router)  # PlanForge auto-bootstrap gate POC
