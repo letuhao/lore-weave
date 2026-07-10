@@ -1182,6 +1182,30 @@ BEGIN
   END IF;
 END $$;
 
+-- 26 IX-11 (D1) · provenance on the spec. `source` distinguishes human authoring from
+-- the decompiler's mints and PlanForge's; `decompile_key = '<chapter_id>:<sort_order>'`
+-- is 22 SC6's idempotency key. CONSUMED (not a write-only blob): the decompiler's upsert
+-- may update only source='decompiled' rows and NEVER overwrites an authored node
+-- (skipped_authored). Also lands on structure_node for the arc decompiler (D3).
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'authored';
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS decompile_key TEXT;
+ALTER TABLE structure_node ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'authored';
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'outline_node_source_check') THEN
+    ALTER TABLE outline_node ADD CONSTRAINT outline_node_source_check
+      CHECK (source IN ('authored','decompiled','planforge'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'structure_node_source_check') THEN
+    ALTER TABLE structure_node ADD CONSTRAINT structure_node_source_check
+      CHECK (source IN ('authored','decompiled','planforge'));
+  END IF;
+END $$;
+-- IX-11 idempotency: one decompiled node per (book, decompile_key). Partial so authored
+-- nodes (decompile_key NULL) are exempt.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_outline_node_decompile_key
+  ON outline_node(book_id, decompile_key) WHERE decompile_key IS NOT NULL;
+
 -- 23 (M1.3) · bound-arc provenance: replaces annotations->>'arc_template_id'
 -- (backfilled + annotation key dropped in 25 M4, deploy 2).
 ALTER TABLE motif_application ADD COLUMN IF NOT EXISTS structure_node_id UUID

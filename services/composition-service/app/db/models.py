@@ -174,6 +174,9 @@ class OutlineNode(BaseModel):
     stakes: str = ""
     target_words: int | None = None     # > 0
     exit_state: dict[str, Any] | None = None
+    # 26 IX-11 — provenance: 'authored' (human) · 'decompiled' (import) · 'planforge'.
+    # The inspector/Hub render a "mined" badge; the decompiler never overwrites 'authored'.
+    source: str = "authored"
     version: int = 1
     is_archived: bool = False
     created_at: datetime | None = None

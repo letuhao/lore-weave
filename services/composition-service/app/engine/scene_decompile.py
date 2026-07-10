@@ -79,6 +79,7 @@ class MaterializeResult:
     created: int
     matched: int
     chapters: int
+    skipped_authored: int = 0  # 26 IX-11 — leaves whose spec node a human authored (left alone)
     detail: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -89,6 +90,7 @@ class MaterializeResult:
             "scenes_total": self.scenes_total,
             "created": self.created,
             "matched": self.matched,
+            "skipped_authored": self.skipped_authored,
             "chapters": self.chapters,
             "detail": self.detail,
         }
@@ -232,6 +234,7 @@ async def materialize_scenes(
 
     created = 0
     matched = 0
+    skipped_authored = 0
     chapter_node_cache: dict[UUID, UUID | None] = {}
     async with pool.acquire() as c:
         async with c.transaction():
@@ -248,14 +251,15 @@ async def materialize_scenes(
                 if sc.source_scene_id is not None:
                     matched += 1
                     continue
-                # Natural-key idempotency (26 D1's decompile_key column does not
-                # exist yet): a kind='scene' node already at (chapter_id,
-                # story_order=sort_order) IS this leaf's spec node. An authored
-                # node here is left alone and counted matched — 26 D1 refines this
-                # into skipped_authored once `source` lands.
-                existing = await c.fetchval(
+                # 26 IX-11 idempotency + never-overwrite-authored: a kind='scene' node
+                # already at (chapter_id, story_order=sort_order) IS this leaf's spec
+                # node. If it was AUTHORED by a human, it is left alone and reported as
+                # skipped_authored (a decompiler re-run must never clobber authoring — the
+                # provenance-transposed tenancy bug class); a prior 'decompiled' mint is a
+                # plain match. Either way the node is never overwritten.
+                existing = await c.fetchrow(
                     """
-                    SELECT id FROM outline_node
+                    SELECT id, source FROM outline_node
                     WHERE project_id = $1 AND kind = 'scene' AND NOT is_archived
                       AND chapter_id = $2 AND story_order = $3
                     LIMIT 1
@@ -263,7 +267,10 @@ async def materialize_scenes(
                     partition, sc.chapter_id, sc.sort_order,
                 )
                 if existing is not None:
-                    matched += 1
+                    if existing["source"] == "authored":
+                        skipped_authored += 1
+                    else:
+                        matched += 1
                     continue
                 # Parent the scene under its chapter's outline node when one exists
                 # (coherent lazy-tree); else a top-level scene (chapter_id still
@@ -283,11 +290,16 @@ async def materialize_scenes(
                     partition, created_by=created_by, kind="scene",
                     parent_id=chapter_node_cache[sc.chapter_id],
                     chapter_id=sc.chapter_id, title=sc.title,
-                    story_order=sc.sort_order, status="outline", conn=c,
+                    story_order=sc.sort_order, status="outline",
+                    # 26 IX-11 — stamp provenance + the idempotency key.
+                    source="decompiled",
+                    decompile_key=f"{sc.chapter_id}:{sc.sort_order}",
+                    conn=c,
                 )
                 created += 1
 
     return MaterializeResult(
         book_id=book_id, work_resolved=True, project_id=partition,
-        scenes_total=scenes_total, created=created, matched=matched, chapters=chapters,
+        scenes_total=scenes_total, created=created, matched=matched,
+        skipped_authored=skipped_authored, chapters=chapters,
     )

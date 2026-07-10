@@ -172,25 +172,52 @@ async def test_scene_parents_under_existing_chapter_node(pool):
     assert parent == chap_node.id  # coherent lazy-tree: scene under its chapter
 
 
-async def test_existing_authored_scene_at_key_is_matched_not_double_minted(pool):
-    """A chapter that already has an authored scene at (chapter_id, story_order)
-    must not gain a duplicate when the same leaf decompiles — the natural-key
-    idempotency also protects hand-authored nodes (26 D1 will refine this into a
-    distinct `skipped_authored` count once `source` lands)."""
+async def test_authored_scene_at_key_is_skipped_not_overwritten(pool):
+    """26 IX-11 (D1): an authored scene at (chapter_id, story_order) is NEVER overwritten
+    by a decompile of the same leaf, and it is reported DISTINCTLY as skipped_authored
+    (not matched — matched is for a prior decompiled mint). This is the never-overwrite-
+    authored safety the import-retry path depends on (a clobber would silently destroy
+    hand authoring — the provenance-transposed tenancy bug class)."""
     project, book, actor = await _canonical_work(pool)
     ch = uuid.uuid4()
     outline = OutlineRepo(pool)
-    await outline.create_node(
+    authored = await outline.create_node(
         project, created_by=actor, kind="scene", chapter_id=ch, title="authored",
         story_order=0, status="drafting",
     )
+    assert authored.source == "authored"  # provenance readable (the "mined" badge input)
     r = await materialize_scenes(
         pool, WorksRepo(pool), outline,
         book_id=book, scenes=[ParsedScene(chapter_id=ch, sort_order=0, title="leaf")],
         created_by=actor,
     )
-    assert (r.created, r.matched) == (0, 1)
+    assert (r.created, r.matched, r.skipped_authored) == (0, 0, 1)
     assert await _scene_count(pool, project) == 1  # the authored node, untouched
+    async with pool.acquire() as c:
+        # unchanged: still authored, still the human's title (never clobbered to "leaf")
+        row = await c.fetchrow(
+            "SELECT source, title FROM outline_node WHERE id = $1", authored.id)
+    assert row["source"] == "authored" and row["title"] == "authored"
+
+
+async def test_decompiled_scene_re_run_matches_and_stamps_provenance(pool):
+    """A decompiler mint stamps source='decompiled' + decompile_key; a re-run finds it
+    and MATCHES (idempotent, not a duplicate, not skipped_authored)."""
+    project, book, actor = await _canonical_work(pool)
+    ch = uuid.uuid4()
+    outline = OutlineRepo(pool)
+    scenes = [ParsedScene(chapter_id=ch, sort_order=0, title="leaf")]
+    r1 = await materialize_scenes(pool, WorksRepo(pool), outline, book_id=book,
+                                  scenes=scenes, created_by=actor)
+    assert (r1.created, r1.skipped_authored) == (1, 0)
+    async with pool.acquire() as c:
+        row = await c.fetchrow(
+            "SELECT source, decompile_key FROM outline_node "
+            "WHERE project_id = $1 AND kind = 'scene'", project)
+    assert row["source"] == "decompiled" and row["decompile_key"] == f"{ch}:0"
+    r2 = await materialize_scenes(pool, WorksRepo(pool), outline, book_id=book,
+                                  scenes=scenes, created_by=actor)
+    assert (r2.created, r2.matched, r2.skipped_authored) == (0, 1, 0)
 
 
 async def test_no_canonical_work_is_guarded_gracefully(pool):

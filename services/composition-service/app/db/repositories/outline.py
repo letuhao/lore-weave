@@ -32,7 +32,7 @@ _SELECT_COLS = """
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
   story_order, synopsis, structure_node_id,
   location_entity_id, story_time, conflict, outcome, value_shift, stakes,
-  target_words, exit_state,
+  target_words, exit_state, source,
   version, is_archived, created_at, updated_at
 """
 
@@ -202,6 +202,10 @@ class OutlineRepo:
         stakes: str = "",
         target_words: int | None = None,
         exit_state: dict[str, Any] | None = None,
+        # 26 IX-11 (D1) — provenance. Human authoring defaults 'authored'; the
+        # decompiler passes source='decompiled' + decompile_key='<chapter>:<sort>'.
+        source: str = "authored",
+        decompile_key: str | None = None,
         conn: asyncpg.Connection | None = None,
     ) -> OutlineNode:
         """Insert an outline node. When `rank` is omitted it is auto-computed to
@@ -226,12 +230,12 @@ class OutlineRepo:
                    pov_entity_id, present_entity_ids, goal, beat_role, status,
                    chapter_id, tension, story_order, synopsis,
                    location_entity_id, story_time, conflict, outcome, value_shift,
-                   stakes, target_words, exit_state)
+                   stakes, target_words, exit_state, source, decompile_key)
                 SELECT $1, $2, w.book_id, $3, $4, $5, $6,
                        $7, $8, $9, $10, $11,
                        $12, $13, $14, $15,
                        $16, $17, $18, $19, $20,
-                       $21, $22, $23::jsonb
+                       $21, $22, $23::jsonb, $24, $25
                 FROM composition_work w
                 WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
                 RETURNING {_SELECT_COLS}
@@ -242,6 +246,7 @@ class OutlineRepo:
                 location_entity_id, story_time, conflict, outcome, value_shift,
                 stakes, target_words,
                 json.dumps(exit_state) if exit_state is not None else None,
+                source, decompile_key,
             )
             if row is None:
                 # The INSERT … SELECT found no composition_work to derive book_id
