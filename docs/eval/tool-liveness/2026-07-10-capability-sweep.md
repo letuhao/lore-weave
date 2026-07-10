@@ -98,12 +98,53 @@ exact silent-default hole the per-service wire gates exist to close. They are
 `tier: R, scope: none` in lockstep (ai-gateway `find-tools.ts` + chat-service
 `tool_discovery.py`). The federated catalog is now **100 % tiered**.
 
+## Round 2 — Tier-A writes, and `_meta.scope` finally earns its keep
+
+The first sweep skipped all 83 Tier-A tools because they auto-commit. But the *twin* of the
+bug it found — `settings_update_profile` — is itself Tier A. Tier-A tools **write**, nothing
+had ever called them, and that is exactly where the next output-schema break hides.
+
+`_meta.scope` is what makes them reachable. Until now it was a validated declaration nobody
+consumed; here it becomes the **safety predicate**:
+
+| scope | n | swept? |
+|---|---|---|
+| `book` / `project` | **58** | ✅ can only touch the throwaway fixture we hand it, deleted afterwards |
+| `user` / `none` | 25 | ❌ `settings_update_profile` rewrites the real profile; `memory_forget` deletes real rows |
+
+Writes are opt-in (`--include-writes`), and four tests pin the filter — a bug there mutates
+real user data. **174 of 204 tools swept. 72 execute. 0 broken.**
+
+### And the false-positive class bit again
+
+Round 2 reported two "broken" tools:
+
+```
+book_update_meta          no fields to update
+book_chapter_update_meta  no fields to update
+```
+
+We called with **only the required args**, so there was nothing to change. The tool is right
+to refuse. `book_chapter_update_meta` is sweep-only, so scoring it broken would have
+**blocked it from every workflow**. Reclassified from the recorded error text — no re-run —
+and asserted that reclassification only ever *relaxes*: **0 rows flipped toward broken**.
+
+That is the third time this class has appeared. The lesson generalises: **a capability probe
+that supplies only required args is not a meaningful call for a tool whose whole purpose is
+an optional patch.** The classifier is a backstop, not the design.
+
+### Cleanup bug in the sweeper itself
+
+The sweep creates its own kg project (`Fixture.build()` doesn't), so `Fixture.teardown()`
+knew nothing about it and leaked one row per run — three orphans before I noticed. *"No probe
+may touch an id it did not create"* cuts both ways: it must also **destroy** what it did.
+Fixed, and the orphans removed.
+
 ## What `executes: null` means here
 
-62 tools are inconclusive, mostly because a required arg is an id or a reference-code the
+102 tools are inconclusive, mostly because a required arg is an id or a reference-code the
 fixture cannot supply (`motif_id`, `world_id`, `run_id`, `kind`, `slug`). They are **not**
-blocked and **not** hidden. Closing them is the P1 grind: authored args per tool, which is
-also what unlocks Tier-A capability probing.
+blocked and **not** hidden. Closing them is the P1 grind: authored args per tool.
 
 ## Reproduce
 

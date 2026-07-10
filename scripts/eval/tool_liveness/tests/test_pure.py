@@ -178,6 +178,10 @@ def test_sweep_classifier_scores_our_own_bad_args_as_inconclusive():
         "Error executing tool plan_validate: badly formed hexadecimal UUID string",
         "book_id is required",
         "only the project's owner can set its embedding model",
+        # observed in the Tier-A write sweep: we called with ONLY the required args, so
+        # there was nothing to change. The tool is right to refuse. Scoring this broken
+        # would have blocked book_chapter_update_meta from every workflow.
+        "no fields to update",
     ]
     for msg in caller_fault:
         executes, why = classify(False, msg)
@@ -221,3 +225,54 @@ def test_sweep_refuses_to_call_a_tool_whose_ids_it_cannot_supply():
     assert fill_args({"required": ["mode"], "properties": {"mode": {"enum": ["a", "b"]}}}, fx) == {"mode": "a"}
     # free text -> a placeholder is harmless
     assert fill_args({"required": ["query"], "properties": {"query": {"type": "string"}}}, fx) == {"query": "tle-sweep"}
+
+
+# ── the sweep's SAFETY filter (a bug here mutates real user data) ───────────────
+#
+# `_meta.scope` is the safety predicate. A Tier-A tool scoped book/project can only touch
+# the throwaway fixture we hand it; one scoped user/none rewrites the real account
+# (settings_update_profile) or deletes real rows (memory_forget). Paid tools must never be
+# called to score a matrix cell.
+
+def _t(name, tier, scope, paid=False):
+    return {"name": name, "schema": {}, "meta": {"tier": tier, "scope": scope, **({"paid": True} if paid else {})}}
+
+
+def test_sweep_never_calls_a_user_scoped_write():
+    from tool_liveness.sweep import plan
+
+    catalog = [
+        _t("settings_update_profile", "A", "user"),   # would rewrite the real profile
+        _t("memory_forget", "A", "user"),             # would delete real rows
+        _t("glossary_propose_entities", "A", "book"), # fixture-scoped: safe
+    ]
+    for include_writes in (False, True):
+        targets, _ = plan(catalog, include_writes=include_writes)
+        names = {t["name"] for t in targets}
+        assert "settings_update_profile" not in names, "a user-scoped write must NEVER be swept"
+        assert "memory_forget" not in names, "a user-scoped write must NEVER be swept"
+
+
+def test_sweep_calls_fixture_scoped_writes_only_when_asked():
+    from tool_liveness.sweep import plan
+
+    catalog = [_t("glossary_propose_entities", "A", "book"), _t("kg_propose_edge", "A", "project")]
+    assert plan(catalog, include_writes=False)[0] == [], "writes are opt-in"
+    assert len(plan(catalog, include_writes=True)[0]) == 2
+
+
+def test_sweep_never_calls_a_paid_tool_even_if_it_is_a_read():
+    from tool_liveness.sweep import plan
+
+    catalog = [_t("web_search", "R", "user", paid=True), _t("glossary_deep_research", "W", "book", paid=True)]
+    for include_writes in (False, True):
+        assert plan(catalog, include_writes=include_writes)[0] == [], \
+            "a capability probe must never spend the user's money"
+
+
+def test_sweep_always_calls_reads_and_token_minting_writes():
+    from tool_liveness.sweep import plan
+
+    # Tier-W mints a confirm_token and writes nothing at call time; we never redeem it.
+    catalog = [_t("book_list", "R", "user"), _t("glossary_entity_delete", "W", "book")]
+    assert len(plan(catalog, include_writes=False)[0]) == 2

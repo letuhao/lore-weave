@@ -65,7 +65,12 @@ _CALLER_FAULT = re.compile(
     r"not configured|forbidden|permission|denied|unauthor|no project in scope|"
     r"only the .* owner|grant|expected|malformed|cannot be empty|at least one|"
     r"badly formed|is not a valid|unknown |no live |pass .* or |not a valid id|"
-    r"must provide|provide (a|an|one)|out of range|too (long|short|many)",
+    r"must provide|provide (a|an|one)|out of range|too (long|short|many)|"
+    # "no fields to update" — we called with ONLY the required args, so there was nothing
+    # to change. The tool is right to refuse. Observed on book_update_meta +
+    # book_chapter_update_meta in the Tier-A write sweep; scoring them broken would have
+    # blocked book_chapter_update_meta from every workflow.
+    r"no fields|nothing to (update|change|do)|at least one field|no changes",
     re.I,
 )
 
@@ -171,34 +176,58 @@ async def _sweep(targets: list[dict], fx: dict) -> list[dict]:
     return rows
 
 
-def plan(tools: list[dict]) -> tuple[list[dict], dict[str, int]]:
-    """Split the catalog into sweepable / skipped, with the reason for each skip."""
-    targets, skipped = [], {"tier_A": 0, "paid": 0}
+def plan(tools: list[dict], include_writes: bool = False) -> tuple[list[dict], dict[str, int]]:
+    """Split the catalog into sweepable / skipped, with the reason for each skip.
+
+    `_meta.scope` is what makes Tier-A probing possible at all, and it is the first time
+    that field earns its keep — until now it was a validated declaration nobody consumed.
+
+      scope book|project  the tool can only touch the THROWAWAY FIXTURE we hand it, which
+                          is deleted afterwards. Safe to call, with --include-writes.
+      scope user|none     the tool mutates the real account or global state
+                          (settings_update_profile rewrites the profile; memory_forget
+                          deletes rows). NEVER swept.
+
+    This matters because the twin of the one bug this sweep found — settings_update_profile
+    — is itself Tier A. Tier-A tools WRITE, they were never called by anything, and that is
+    exactly where the next output-schema break hides.
+    """
+    targets, skipped = [], {"tier_A_unsafe_scope": 0, "tier_A_writes": 0, "paid": 0}
     for t in tools:
         m = t["meta"]
         if m.get("paid"):
             skipped["paid"] += 1
             continue
-        tier = m.get("tier")
+        tier, scope = m.get("tier"), m.get("scope")
         if tier in ("A", "S"):
-            skipped["tier_A"] += 1
-            continue
-        targets.append(t)  # R, W, or ABSENT (swept as R, and reported)
+            if scope not in ("book", "project"):
+                skipped["tier_A_unsafe_scope"] += 1
+                continue
+            if not include_writes:
+                skipped["tier_A_writes"] += 1
+                continue
+        targets.append(t)  # R, W, ABSENT (swept as R + reported), or fixture-scoped A
     return targets, skipped
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--execute", action="store_true", help="actually call the R+W tools")
+    ap.add_argument("--execute", action="store_true", help="actually call the tools")
+    ap.add_argument("--include-writes", action="store_true",
+                    help="also call Tier-A tools scoped to book/project (fixture-only writes)")
     ap.add_argument("--date", default="sweep", help="output subdirectory name")
     args = ap.parse_args()
 
     tools = asyncio.run(_list_tools())
-    targets, skipped = plan(tools)
+    targets, skipped = plan(tools, include_writes=args.include_writes)
     untiered = [t["name"] for t in tools if not t["meta"].get("tier")]
 
-    print(f"catalog {len(tools)} tools · sweeping {len(targets)} (R+W) · "
-          f"skipping {skipped['tier_A']} Tier-A/S (auto-commit) + {skipped['paid']} paid")
+    kinds = "R+W+fixture-scoped A" if args.include_writes else "R+W"
+    print(f"catalog {len(tools)} tools · sweeping {len(targets)} ({kinds}) · skipping "
+          f"{skipped['tier_A_unsafe_scope']} Tier-A user/global-scoped (would mutate real data)"
+          + (f" + {skipped['tier_A_writes']} Tier-A writes (pass --include-writes)"
+             if skipped["tier_A_writes"] else "")
+          + f" + {skipped['paid']} paid")
     if untiered:
         print(f"CD1 VIOLATION — untiered on the wire (silently default to R): {untiered}")
     if not args.execute:
@@ -225,6 +254,18 @@ def main() -> int:
     try:
         rows = asyncio.run(_sweep(targets, ids))
     finally:
+        # The kg project is created HERE, not by Fixture.build(), so Fixture.teardown()
+        # knows nothing about it and would leak one row per sweep. Clean up what we made:
+        # "no probe may touch an id it did not create" cuts both ways.
+        if ids.get("project_id"):
+            from . import oracle
+            pid = str(ids["project_id"]).replace("'", "''")
+            try:
+                oracle.db_query(config.DOMAIN_DB["knowledge"],
+                                f"DELETE FROM knowledge_projects WHERE project_id='{pid}'")
+                print(f"teardown: kg project {ids['project_id']} deleted")
+            except Exception as e:
+                print(f"teardown: FAILED to delete kg project {ids['project_id']}: {e}")
         print(f"teardown: {fx.teardown()}")
 
     broke = [r for r in rows if r["executes"] is False]
