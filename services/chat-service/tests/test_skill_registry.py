@@ -221,12 +221,28 @@ class TestF0OrphanedWebResearchCoverage:
 
     def test_universal_prompt_names_web_search_tool_with_call_shape(self):
         prompt = skill_prompts(["universal"])["universal"]
-        assert "glossary_web_search" in prompt
-        # The exact call shape (verified against services/glossary-service/internal/
-        # api/web_search_tool.go): a `query` string, optional `max_results` (1-10,
-        # default 5), no book/entity required.
+        # Track D CD5 — the universal tool, not the glossary-prefixed one.
+        assert "web_search" in prompt
+        # The exact call shape (verified against services/provider-registry-service/
+        # internal/api/mcp_web_search_tool.go): a `query` string, optional `max_results`
+        # (1-10, default 5), no book/entity required.
         assert "`query`" in prompt
         assert "max_results" in prompt
+
+    def test_universal_prompt_does_not_name_the_superseded_glossary_alias(self):
+        # `glossary_web_search` is `visibility: legacy` + `superseded_by: web_search`.
+        # The model must never be pointed at it — not even to explain it's deprecated
+        # (that only teaches it a name it should never emit).
+        prompt = skill_prompts(["universal"])["universal"]
+        assert "glossary_web_search" not in prompt
+
+    def test_universal_prompt_says_web_search_needs_no_discovery_roundtrip(self):
+        # web_search is ALWAYS-ON CORE. If the prompt still told the model to tool_load it
+        # from a category, every research turn would burn a needless discovery round-trip
+        # (and `research` isn't even the category it used to name).
+        prompt = skill_prompts(["universal"])["universal"]
+        assert 'tool_load` `glossary_web_search' not in prompt
+        assert 'tool_list(category="glossary")' not in prompt
 
     def test_universal_prompt_distinguishes_deep_research_as_book_scoped(self):
         # glossary_deep_research needs book_id + entity_id + human confirm — it is
@@ -326,12 +342,16 @@ _KNOWN_NON_TOOL_TOKENS: frozenset[str] = frozenset({
 # CAT-4 legacy-tagged tools (docs/specs/2026-07-06-tool-catalog-simplification.md) — a
 # skill must never point the model at a superseded tool. Source of truth is
 # glossary-service's Go registrations (`WithVisibility(..., VisibilityLegacy)` in
-# book_tools.go/user_tools.go/mcp_server.go); hand-synced here since chat-service has
-# no offline access to the live catalog's `_meta.visibility` (§8b.2, deferred).
+# book_tools.go/user_tools.go/mcp_server.go/web_search_tool.go); hand-synced here since
+# chat-service has no offline access to the live catalog's `_meta.visibility` (§8b.2,
+# deferred).
 _KNOWN_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({
     "glossary_book_create", "glossary_book_patch", "glossary_book_delete",
     "glossary_user_create", "glossary_user_patch", "glossary_user_delete",
     "glossary_propose_new_entity",
+    # Track D CD5 — superseded by the universal `web_search` (provider-registry). Demoted
+    # in place, not renamed: the C-GW prefix gate binds a name to its provider.
+    "glossary_web_search",
 })
 
 # Skills exempt from the domain-hot-seed check entirely: `admin` advertises its OWN
@@ -357,21 +377,21 @@ _ALLOWED_CONTRASTIVE_MENTIONS: dict[str, frozenset[str]] = {
     # pure find_tools discovery by design (its own description: "find and use the
     # right tool"); the tool becomes reachable as the conversation naturally reaches
     # that step, same as any other domain the universal skill doesn't pre-seed.
-    # F0 (docs/specs/2026-07-07-skill-authoring-and-mcp-exposure-standard.md §13.3 /
-    # docs/plans/2026-07-07-intent-skill-router.md): universal_skill.py now names
-    # `glossary_web_search`/`glossary_deep_research` directly so the universal/chat
-    # surface — previously the only surface with NO skill teaching general web
-    # research exists at all — has a real skill-home for it. Same shape as the
-    # book_chapter_* entries above: find_tools-MEDIATED reachability ("call find_tools
-    # first, it surfaces this tool, THEN call it"), never a claim the tool is
-    # pre-seeded. hot_domains stays empty deliberately — the "glossary" domain is
-    # ~47 tools; hot-seeding it wholesale just to cover these 2 would blow the chat
-    # surface's token budget (hot_tool_names()/surface_hot_domains() only support
-    # domain-level granularity today, not a per-tool hot-seed — see skill_registry.py's
-    # comment on "universal"'s hot_domains for the full constraint writeup).
+    # universal_skill.py names `glossary_deep_research` as a CONTRAST to `web_search`
+    # ("don't confuse the two — deep_research needs a book_id AND entity_id and a human
+    # confirm"). That is a boundary warning, not a "call this now" claim, so it needs no
+    # hot-seed: the "glossary" domain is ~47 tools and seeding it wholesale to cover one
+    # contrastive mention would blow the chat surface's token budget (hot_tool_names()/
+    # surface_hot_domains() are domain-level only, not per-tool — see skill_registry.py's
+    # "universal" hot_domains comment).
+    #
+    # Track D CD5: `web_search` itself is NOT listed here — it is ALWAYS-ON CORE, so
+    # `_named_tool_domains` exempts it outright. And `glossary_web_search` is gone from
+    # the prompt entirely: it is now `visibility: legacy`, and a skill must never point
+    # the model at a superseded name (test_no_skill_references_a_legacy_tool).
     "universal": frozenset({
         "book_chapter_save_draft", "book_chapter_publish",
-        "glossary_web_search", "glossary_deep_research",
+        "glossary_deep_research",
     }),
     # book_skill.py: "(e.g. after `story_search` locates it — this tool lives in the
     # `book` GROUP_DIRECTORY entry ... look for it there, not under `story`)" — a
@@ -398,6 +418,14 @@ def _named_tool_domains(prompt_text: str) -> set[tuple[str, str]]:
     out: set[tuple[str, str]] = set()
     for token in _TOOL_TOKEN_RE.findall(prompt_text):
         if token in _KNOWN_NON_TOOL_TOKENS:
+            continue
+        # An ALWAYS-ON CORE tool is advertised on every surface, every turn, so naming it
+        # can never be an unreachable claim — the thing this lint exists to catch. Exempt
+        # it regardless of hot_domains. (Before Track D CD5 the core tools escaped only by
+        # accident: `tool_list`/`tool_load`/`find_tools` have prefixes that aren't
+        # GROUP_DIRECTORY domains. `web_search` resolves to the real `research` domain, so
+        # the accident stopped covering the set and the exemption had to become explicit.)
+        if token in td.ALWAYS_ON_CORE_NAMES:
             continue
         domain = td._domain_of(token)
         if domain in td.GROUP_DIRECTORY:
@@ -660,5 +688,8 @@ class TestF2TracedWebResearchBugRemainsFixed:
             )
         assert codes == ["universal", "knowledge"]
         prompt = skill_prompts(codes)["universal"]
-        assert "glossary_web_search" in prompt
+        # Track D CD5 — the capability is now taught as the universal `web_search`
+        # (always-on core), not the superseded glossary alias.
+        assert "web_search" in prompt
+        assert "glossary_web_search" not in prompt
         assert "find_tools" in prompt

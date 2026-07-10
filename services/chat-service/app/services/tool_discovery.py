@@ -235,6 +235,14 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
     "ui_watch_job",
     "propose_record_edit",
     "confirm_action",
+    # Track D CD5 — `web_search` is fundamental: grounding an answer in the open web is a
+    # base capability, not a glossary errand, so it must not cost a find_tools round-trip.
+    # It is the ONLY backend (federated) tool in this set, so it resolves from the CATALOG
+    # def, not `generic_frontend_tool_def` — which returns None for it, meaning a degraded
+    # gateway simply omits it rather than advertising a fabricated schema.
+    # It is PAID: advertising it is safe because chat's spend gate asks for consent at CALL
+    # time, independently of tier and of permission mode.
+    "web_search",
 )
 
 

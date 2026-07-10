@@ -80,6 +80,12 @@ def _catalog() -> list[dict]:
         _tiered("chapter_update", "A", "Update a chapter (undoable)"),
         _tiered("translation_start_job", "W", "Start a priced translation job"),
         _tiered("settings_update", "S", "Change account settings"),
+        # Track D CD5 — `web_search` is ALWAYS-ON CORE *and* federated, the only core tool
+        # sourced from the catalog rather than from a generic frontend def. It must be in
+        # this fixture or the core loop resolves nothing for it (`_add(None)`) and every
+        # EXPECTED_*_SURFACE below — each of which unions ALWAYS_ON_CORE_NAMES — under-matches.
+        # Tier R + paid: it is advertised in ask/plan mode too (spend ⊥ mutation).
+        _tiered("web_search", "R", "Search the open web (paid)"),
         # legacy/untiered — defaults to tier R (inert) per the C-TOOL convention
         {"type": "function", "function": {
             "name": "legacy_tool", "description": "pre-_meta tool",
@@ -90,9 +96,11 @@ def _catalog() -> list[dict]:
 
 ALL_CATALOG_NAMES = {
     "glossary_search", "glossary_get_entity", "book_create", "chapter_update",
-    "translation_start_job", "settings_update", "legacy_tool",
+    "translation_start_job", "settings_update", "legacy_tool", "web_search",
 }
-R_CATALOG_NAMES = {"glossary_search", "glossary_get_entity", "legacy_tool"}
+# web_search is Tier R, so it survives the ask/plan filter on its own merits — and it is
+# ALSO always-on core, so it would be advertised either way. Both paths must agree.
+R_CATALOG_NAMES = {"glossary_search", "glossary_get_entity", "legacy_tool", "web_search"}
 
 # RAID Wave B2 — the PlanForge `plan_*` tools (M4 federation) as they appear in
 # the discovery catalog: tiered A/W, yet part of the PLAN-mode surface.

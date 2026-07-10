@@ -89,6 +89,12 @@ func (s *Server) mcpHandler() http.Handler {
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"inventory", "available models", "provider models", "what models"}),
 	}, s.toolProviderInventory)
 
+	// ── Tier R, PAID (universal web research — Track D CD5) ────────────────────
+	// Not `settings_`-prefixed: `web_search` is this server's SECOND namespace, so
+	// ai-gateway's EXTRA_PREFIX_MAP.settings must list `web_` or the C-GW prefix gate
+	// silently drops it. See mcp_web_search_tool.go.
+	s.registerWebSearchTool(srv)
+
 	// ── Tier A (auto-commit + Undo; all free/reversible) ───────────────────────
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_update_profile",

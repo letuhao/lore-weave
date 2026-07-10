@@ -169,6 +169,13 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   settings_provider_inventory: { tier: 'read', domains: ['settings'] },
 
   // ── paid_read (Tier-R but incurs cost — needs paid_read scope; P3 spend gate) ─
+  // The universal web-research tool (Track D CD5). Lives on provider-registry.
+  web_search: { tier: 'paid_read', domains: ['research'] },
+  // LEGACY, retained: `glossary_web_search` is the same handler, demoted in place
+  // (visibility: legacy, superseded_by: web_search). Its row MUST stay — existing public
+  // keys are scoped to `domain:glossary`, and dropping it here would 403 them. A key
+  // scoped only to `glossary` cannot reach `web_search` (domain `research`), which is
+  // precisely why the old name keeps working instead of being renamed.
   glossary_web_search: { tier: 'paid_read', domains: ['glossary'] },
 
   // ── write_auto (Tier-A, no cost) ──────────────────────────────────────────

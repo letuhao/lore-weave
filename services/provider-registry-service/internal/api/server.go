@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -3097,66 +3098,33 @@ func (s *Server) internalWebSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve the user's preferred active web_search model (BYOK). owner_user_id=$1
-	// guarantees tenant isolation. The web_search capability is STRICT: the model must be
-	// explicitly flagged (boolean {"web_search":true} or legacy _capability), never
-	// defaulted from '{}' the way chat is.
-	var providerModelName, endpointBaseURL, secretCipher string
-	var modelRef uuid.UUID // resolved model id — carried into the usage audit row (P0-2 B4)
-	err = s.pool.QueryRow(r.Context(), `
-SELECT um.user_model_id, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
-FROM user_models um
-JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
-WHERE um.owner_user_id=$1 AND um.is_active=true AND pc.status='active'
-  AND (um.capability_flags @> '{"web_search": true}'::jsonb
-       OR um.capability_flags->>'_capability' = 'web_search')
-ORDER BY um.is_favorite DESC, um.created_at ASC
-LIMIT 1
-`, userID).Scan(&modelRef, &providerModelName, &endpointBaseURL, &secretCipher)
-	if err == pgx.ErrNoRows {
+	// The resolve → decrypt → search → audit pipeline lives in runWebSearch
+	// (web_search_core.go), shared with the universal `web_search` MCP tool. This handler
+	// is only the HTTP transport: map the sentinel errors onto status codes.
+	out, err := s.runWebSearch(r.Context(), userID, in.Query, in.MaxResults, in.SearchDepth)
+	switch {
+	case errors.Is(err, errWebSearchNoModel):
 		writeError(w, http.StatusNotFound, "WEBSEARCH_MODEL_NOT_FOUND",
 			"no active web_search model configured — add a web-search provider credential in Settings")
 		return
-	}
-	if err != nil {
+	case errors.Is(err, errWebSearchModelQuery):
 		writeError(w, http.StatusInternalServerError, "WEBSEARCH_MODEL_QUERY_FAILED", "failed to resolve model")
 		return
-	}
-	// A KEYLESS local web-search backend (e.g. self-hosted SearXNG) legitimately has NO
-	// secret — the §8 contract explicitly supports an empty credential ("Authorization
-	// ignored"). So unlike rerank/embed (platform services that require a token), an empty
-	// ciphertext is valid here: pass an empty secret (the adapter omits the Authorization
-	// header). Decrypt only when a secret is actually set.
-	secret := ""
-	if secretCipher != "" {
-		decrypted, err := s.decryptSecret(secretCipher)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "WEBSEARCH_SECRET_FAILED", "failed to decrypt secret")
-			return
-		}
-		secret = decrypted
-	}
-
-	results, answer, err := provider.WebSearch(r.Context(), s.invokeClient, endpointBaseURL, secret, in.Query,
-		provider.WebSearchOptions{MaxResults: in.MaxResults, SearchDepth: in.SearchDepth})
-	if err != nil {
+	case errors.Is(err, errWebSearchSecret):
+		writeError(w, http.StatusInternalServerError, "WEBSEARCH_SECRET_FAILED", "failed to decrypt secret")
+		return
+	case errors.Is(err, errWebSearchUpstream):
 		// Upstream provider failure ⇒ 502 so the caller degrades (not a client bug).
-		// MED-1: audit the failed call too (see internalRerank).
-		s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", "provider_error", 0, 0, nil,
-			map[string]any{"query": in.Query, "max_results": in.MaxResults, "search_depth": in.SearchDepth},
-			map[string]any{"error": err.Error()})
 		writeError(w, http.StatusBadGateway, "WEBSEARCH_UPSTREAM_ERROR", "web search provider error")
 		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "WEBSEARCH_FAILED", "web search failed")
+		return
 	}
-	// P0-2 (B4) — audit the web-search call: query + options in, answer + results out.
-	// Web search carries no token usage → tokens 0.
-	s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", "success", 0, 0, nil,
-		map[string]any{"query": in.Query, "max_results": in.MaxResults, "search_depth": in.SearchDepth},
-		map[string]any{"answer": answer, "results": results})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"provider_model": providerModelName,
-		"answer":         answer,
-		"results":        results,
+		"provider_model": out.ProviderModel,
+		"answer":         out.Answer,
+		"results":        out.Results,
 	})
 }
 

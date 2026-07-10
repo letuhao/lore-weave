@@ -21,13 +21,34 @@ describe('tool-policy.scopeToolCount', () => {
     expect(scopeToolCount(scopes)).toBeLessThan(DIRECT_LIST_TOOL_THRESHOLD);
   });
 
+  // DRIFT-LOCK: this array mirrors the `Domain` union. Adding a domain to the union without
+  // adding it here goes red — deliberately. A new domain is a public ENTITLEMENT decision
+  // (which keys may reach its tools), not a typing detail. `research` was added by Track D
+  // CD5 for the universal `web_search`.
   it('counts ALL of TOOL_POLICY for a broad scope holding every tier + every domain', () => {
     const allTiers = ['read', 'paid_read', 'write_auto', 'write_confirm'];
-    const domains: Domain[] = ['book', 'glossary', 'knowledge', 'translation', 'composition', 'jobs', 'settings', 'lore_enrichment', 'catalog', 'story', 'registry'];
+    const domains: Domain[] = ['book', 'glossary', 'knowledge', 'translation', 'composition', 'jobs', 'settings', 'lore_enrichment', 'catalog', 'story', 'registry', 'research'];
     const allDomains = domains.map(domainScope);
     const scopes = [...allTiers, ...allDomains];
     expect(scopeToolCount(scopes)).toBe(Object.keys(TOOL_POLICY).length);
     expect(scopeToolCount(scopes)).toBeGreaterThanOrEqual(DIRECT_LIST_TOOL_THRESHOLD);
+  });
+
+  it('reaches web_search only with domain:research — a glossary-scoped key keeps the legacy alias', () => {
+    // The rename is deliberately NOT transparent at the public edge: `web_search` lives in
+    // the `research` domain, so a key already issued for `domain:glossary` cannot reach it.
+    // That is precisely why `glossary_web_search` is demoted-in-place rather than deleted —
+    // dropping its TOOL_POLICY row would 403 every key already in the wild.
+    const glossaryKey = ['paid_read', domainScope('glossary')];
+    expect(isToolAllowed('glossary_web_search', glossaryKey)).toBe(true);
+    expect(isToolAllowed('web_search', glossaryKey)).toBe(false);
+
+    const researchKey = ['paid_read', domainScope('research')];
+    expect(isToolAllowed('web_search', researchKey)).toBe(true);
+    expect(isToolAllowed('glossary_web_search', researchKey)).toBe(false);
+
+    // paid_read is required — a plain `read` key must never be able to spend money.
+    expect(isToolAllowed('web_search', ['read', domainScope('research')])).toBe(false);
   });
 
   it('returns 0 for a scope with no domain grant (fail-closed, matches isToolAllowed)', () => {

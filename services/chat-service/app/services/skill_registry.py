@@ -106,22 +106,23 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         prompt_loader=_load_universal,
         description=(
             "General multi-step task driver: find and use the right tools to fulfil "
-            "the request — including general web research on any topic via find_tools, "
+            "the request — including general web research on any topic via web_search, "
             "no book required."
         ),
-        # Names glossary_web_search/glossary_deep_research directly (F0, docs/specs/
-        # 2026-07-07-skill-authoring-and-mcp-exposure-standard.md §13.3) but declares
-        # hot_domains EMPTY on purpose: those two tools are the only ones named, out of
-        # glossary-service's ~47-tool "glossary" domain — hot-seeding the whole domain
-        # just to cover 2 tools would blow the chat surface's token budget for zero
-        # benefit (hot_tool_names()/surface_hot_domains() only support DOMAIN-level
-        # granularity today, not a per-tool hot-seed — a real constraint, not an
-        # oversight; see the allowlist entry in test_skill_registry.py's
-        # `_ALLOWED_CONTRASTIVE_MENTIONS["universal"]` for why this is lint-exempt).
-        # Same "find_tools-mediated, not pre-seeded" reachability as universal's
-        # existing book_chapter_save_draft/book_chapter_publish mentions — one targeted
-        # find_tools call brings the tool's schema into the active set; it is never
-        # advertised up front.
+        # hot_domains stays EMPTY, and after Track D CD5 that is no longer a compromise.
+        # The prompt's one actionable tool, `web_search`, is ALWAYS-ON CORE (advertised
+        # every turn, on every surface), so it needs no hot-seed at all — which is exactly
+        # why it was promoted: general web research is this surface's core capability, yet
+        # it used to cost a tool_list+tool_load round-trip through the `glossary` domain it
+        # never belonged to.
+        # `glossary_deep_research` is named only as a CONTRAST (don't confuse it with
+        # web_search — it needs a book_id AND entity_id and a human confirm); it stays
+        # find_tools-mediated, as do the book_chapter_save_draft/book_chapter_publish
+        # sequencing mentions. Hot-seeding glossary's ~47-tool domain to cover one
+        # contrastive mention would blow the chat surface's token budget (hot_tool_names()/
+        # surface_hot_domains() are DOMAIN-level only, not per-tool — a real constraint,
+        # not an oversight; see test_skill_registry.py's
+        # `_ALLOWED_CONTRASTIVE_MENTIONS["universal"]`).
         hot_domains=frozenset(),
     ),
     "knowledge": SkillDef(

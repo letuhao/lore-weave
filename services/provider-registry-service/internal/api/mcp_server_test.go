@@ -92,22 +92,41 @@ func listTools(t *testing.T, ts *httptest.Server) []map[string]any {
 	return tools
 }
 
-// Every settings tool MUST carry C-TOOL _meta.tier + _meta.scope, and its name
-// MUST start with the settings_ prefix (C-GW — the gateway drops non-matching
-// names). This is the contract the consumer + gateway read without hardcoding.
+// allowedSettingsPrefixes MIRRORS ai-gateway's `EXTRA_PREFIX_MAP.settings` (+ the base
+// `settings_` from PROVIDER_PREFIX). The C-GW gate drops-and-WARNS any federated tool whose
+// name matches none of its provider's prefixes — it does not error — so a drift here is
+// silent: the tool simply vanishes from the catalog (exactly how `story_search` was once
+// lost). A Go test cannot import the TS map, so this is a hand-synced mirror. Adding a tool
+// under a NEW namespace on this server means updating BOTH this slice and
+// services/ai-gateway/src/config/config.ts.
+var allowedSettingsPrefixes = []string{
+	"settings_", // the provider's base namespace
+	"web_",      // Track D CD5 — the universal `web_search` lives on provider-registry
+}
+
+// Every tool on the settings server MUST carry C-TOOL _meta.tier + _meta.scope, and its
+// name MUST start with one of the prefixes the gateway allows for this provider (C-GW).
 func TestSettingsMCP_EveryToolHasTierScopeAndPrefix(t *testing.T) {
 	ts := httptest.NewServer(mcpUnitServer().mcpHandler())
 	defer ts.Close()
 	tools := listTools(t, ts)
-	// 5 Tier-R reads + 6 Tier-A + 1 Tier-W = 12. provider_create/update_secret are
-	// deliberately NOT tools (OD-S1).
-	if len(tools) != 12 {
-		t.Errorf("expected 12 settings tools, got %d", len(tools))
+	// 5 Tier-R reads + 6 Tier-A + 1 Tier-W + 1 Tier-R paid (web_search) = 13.
+	// provider_create/update_secret are deliberately NOT tools (OD-S1).
+	if len(tools) != 13 {
+		t.Errorf("expected 13 settings tools, got %d", len(tools))
 	}
 	for _, tool := range tools {
 		name, _ := tool["name"].(string)
-		if !strings.HasPrefix(name, "settings_") {
-			t.Errorf("tool %q does not carry the mandatory settings_ prefix (gateway would drop it)", name)
+		matched := false
+		for _, p := range allowedSettingsPrefixes {
+			if strings.HasPrefix(name, p) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Errorf("tool %q matches none of the gateway's allowed prefixes %v — the C-GW gate "+
+				"would silently DROP it from the federated catalog", name, allowedSettingsPrefixes)
 		}
 		meta, _ := tool["_meta"].(map[string]any)
 		if meta == nil {
@@ -124,6 +143,38 @@ func TestSettingsMCP_EveryToolHasTierScopeAndPrefix(t *testing.T) {
 		if lwmcp.Scope(scope) != lwmcp.ScopeUser {
 			t.Errorf("tool %q _meta.scope must be user (settings is user-scoped), got %q", name, scope)
 		}
+	}
+}
+
+// web_search is the platform's only PAID tool on this server. The two properties below are
+// the ones consumers actually branch on, and they are ORTHOGONAL: `paid` governs money
+// (chat's spend gate), `tier` governs mutation (ask-mode + the approval card). A paid READ
+// stays Tier R — promoting it to A/W would wrongly block it in ask mode, and dropping
+// `paid` would let a model spend the user's money with no consent prompt.
+func TestSettingsMCP_WebSearchIsPaidTierR(t *testing.T) {
+	ts := httptest.NewServer(mcpUnitServer().mcpHandler())
+	defer ts.Close()
+
+	var found map[string]any
+	for _, tool := range listTools(t, ts) {
+		if name, _ := tool["name"].(string); name == "web_search" {
+			found = tool
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("web_search is not registered on the settings MCP server")
+	}
+	meta, _ := found["_meta"].(map[string]any)
+	if meta == nil {
+		t.Fatal("web_search has no _meta")
+	}
+	if tier, _ := meta[lwmcp.MetaKeyTier].(string); lwmcp.Tier(tier) != lwmcp.TierR {
+		t.Errorf("web_search _meta.tier = %q, want R (it writes nothing; paid ⊥ tier)", tier)
+	}
+	if paid, _ := meta[lwmcp.MetaKeyPaid].(bool); !paid {
+		t.Error("web_search _meta.paid is not true — chat's spend gate would never prompt, " +
+			"letting a model spend the user's money without consent")
 	}
 }
 

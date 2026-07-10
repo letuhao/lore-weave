@@ -62,6 +62,10 @@ _CATALOG = [
     _tool("translation_start_job", "Start translating a book", tier="W",
           synonyms=["translate", "translation"]),
     _tool("settings_list_models", "List the user's models", tier="R"),
+    # Track D CD5 — `web_search` is the one ALWAYS-ON CORE tool that is FEDERATED
+    # (backend), not a generic frontend tool. It therefore resolves from the catalog;
+    # a catalog that lacks it advertises nothing for it (see the degrade test below).
+    _tool("web_search", "Search the open web", tier="R", synonyms=["web", "research"]),
 ]
 
 
@@ -631,8 +635,9 @@ class TestGenericFrontendTools:
 
     def test_universal_core_advertises_generic_frontend_tools(self):
         """The always-on core (advertised every universal /chat pass) carries the
-        generic ui_*/confirm/propose tools + the discovery pair, ≤10 (C-FT; WS-1a
-        bumped 8→10 for tool_list/tool_load)."""
+        generic ui_*/confirm/propose tools, the discovery pair, and the federated
+        `web_search` — ≤10 (C-FT; WS-1a bumped 8→10 for tool_list/tool_load, Track D
+        CD5 filled the 10th slot with web_search)."""
         from app.services.stream_service import _advertise_discovery_tools, _catalog_index
         adv = _advertise_discovery_tools(
             _catalog_index(_CATALOG), set(),
@@ -645,8 +650,27 @@ class TestGenericFrontendTools:
         assert len(td.ALWAYS_ON_CORE_NAMES) <= 10
         # the deterministic discovery pair is core + advertised
         assert "tool_list" in names and "tool_load" in names
+        # web_search is core: reachable with NO tool_list/tool_load round-trip
+        assert "web_search" in names
         # no discovered domain tools yet (active set empty)
         assert "translation_start_job" not in names
+
+    def test_core_web_search_is_omitted_not_fabricated_when_catalog_lacks_it(self):
+        """`web_search` is the only always-on core tool that is FEDERATED, so unlike the
+        ui_*/propose/confirm core it has no `generic_frontend_tool_def` fallback. If the
+        gateway is degraded and the catalog omits it, it must be silently ABSENT — never
+        advertised with a fabricated (paramless) frontend schema, which the model would
+        call and get an error from. `_add(None)` is what guarantees this."""
+        from app.services.stream_service import _advertise_discovery_tools, _catalog_index
+        catalog_without_web = [t for t in _CATALOG if t["function"]["name"] != "web_search"]
+        adv = _advertise_discovery_tools(
+            _catalog_index(catalog_without_web), set(),
+            frontend_tool_defs(editor=False, book_scoped=False),
+        )
+        names = [t["function"]["name"] for t in adv]
+        assert "web_search" not in names
+        # the rest of the core still lands — one missing federated tool degrades alone
+        assert "tool_list" in names and "confirm_action" in names and "ui_navigate" in names
 
 
 # ════════════════════════════════════════════════════════════════════════════
