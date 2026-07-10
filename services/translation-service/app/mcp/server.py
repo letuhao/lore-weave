@@ -1067,14 +1067,21 @@ def _coverage_payload(rows, book_id: UUID) -> dict:
     }
 
 
+# `model_source` / `model_ref` live on translation_jobs, NOT on chapter_translations — the
+# model is a property of the JOB that produced a version. Selecting them off `ct` made
+# Postgres reject the whole statement (`column ct.model_source does not exist`), so
+# translation_list_versions failed on EVERY real chapter, always. Nothing caught it: this
+# service's tests assert the tool's NAME and TIER, never run its SQL.
+# LEFT JOIN, not INNER: a hand-edited version has a NULL job_id and hence no model.
 _VERSIONS_SQL = """
 SELECT ct.id, ct.version_num, ct.job_id, ct.status, ct.target_language,
-       ct.model_source, ct.model_ref, ct.input_tokens, ct.output_tokens,
+       tj.model_source, tj.model_ref, ct.input_tokens, ct.output_tokens,
        ct.created_at, ct.authored_by,
        (actv.chapter_translation_id = ct.id) AS is_active
 FROM chapter_translations ct
 LEFT JOIN active_chapter_translation_versions actv
   ON actv.chapter_id=ct.chapter_id AND actv.target_language=ct.target_language
+LEFT JOIN translation_jobs tj ON tj.job_id = ct.job_id
 WHERE ct.chapter_id=$1
 ORDER BY ct.target_language, ct.version_num DESC
 """

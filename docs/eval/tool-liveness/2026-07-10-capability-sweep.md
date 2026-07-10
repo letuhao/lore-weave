@@ -140,6 +140,76 @@ knew nothing about it and leaked one row per run — three orphans before I noti
 may touch an id it did not create"* cuts both ways: it must also **destroy** what it did.
 Fixed, and the orphans removed.
 
+## Round 3 — the authored-args pass, and two more tools that never worked
+
+Supplying **optional scope keys** the fixture already holds (`project_id`, `book_id`) unlocked
+13 `kg_*` tools that had been refusing with *"no project in scope"* — they declare `project_id`
+optional because it normally rides the `X-Project-Id` envelope, so a required-args-only call
+never exercised them. `executes: true` went **71 → 81**.
+
+Reading the *verbatim* errors of the tools that were merely "inconclusive" surfaced two more
+tools that could never work — both **laundered by my own classifier**.
+
+### `kg_entity_edge_timeline` — `TypeError` on every call
+
+```
+run_read() missing 1 required positional argument: 'user_id'
+```
+
+`get_entity_by_id_any_owner` legitimately needs an **unfiltered** lookup (`Entity.id` is
+globally unique, and its caller grant-checks the returned project before exposing anything).
+But it called `run_read`, whose `user_id` is a *required* parameter and whose
+`assert_user_id_param` demands the cypher reference `$user_id`. Its cypher does neither — so
+the call raised `TypeError`, twice over, on every invocation. Nothing else ever called it.
+
+Fixed with a loudly-named `run_read_any_owner`, whose assertion is **inverted on purpose**: a
+cypher that *does* carry `$user_id` meant to be filtered and must go through `run_read`, where
+the filter is *enforced* rather than merely present. That stops the unfiltered path from
+silently absorbing a query that wanted tenancy.
+
+### `translation_list_versions` — SQL against a column that doesn't exist
+
+```
+column ct.model_source does not exist
+```
+
+`model_source` / `model_ref` live on `translation_jobs` — the model is a property of the *job*
+that produced a version, not of the version. Postgres rejects the statement at parse time, so
+the tool failed on **every real chapter, always**. (`LEFT JOIN`, not `INNER`: a hand-edited
+version has a `NULL job_id` and hence no model.)
+
+Its service's tests assert the tool's **name and tier**; nothing ever ran its SQL. New gate:
+`PREPARE` every `_*_SQL` constant against the live schema — parse + plan, no rows, no side
+effects, and a wrong column is a hard error. Negative-controlled.
+
+## The classifier was wrong in *shape*, not content
+
+I widened the caller-fault regex **four times**:
+
+```
+badly formed hexadecimal UUID string            ← our placeholder where a UUID was wanted
+unknown kind: tle-sweep                         ← our placeholder kind-code
+no fields to update                             ← our required-args-only call is a no-op
+this project has no embedding model configured  ← our fixture lacks setup
+```
+
+Each widening killed a false positive and edged closer to swallowing a true one — **and twice
+it did**, laundering both bugs above into "inconclusive".
+
+The asymmetry is the point. **Caller-fault prose is unbounded**: every domain invents its own
+vocabulary for *"you didn't set this up"*. **Tool-fault has a small, recognisable,
+language-level vocabulary**: exceptions, SQL errors, panics, output-schema violations.
+
+So the design inverted: **broken only on positive evidence, never by exclusion.** An
+unrecognised failure is `null`, which blocks nothing; a missed detection costs nothing, while
+a false positive blocks a healthy tool from every workflow. The costs are wildly asymmetric,
+so the default must be `null`. The `_CALLER_FAULT` regex is deleted.
+
+The inversion had to keep `settings_get_profile` — whose failure is an *output-schema
+violation*, not an exception — so that pattern is now explicitly in the positive-evidence set.
+A test pins exactly that: an unrecognised error is `null`, and the schema violation is still
+`false`.
+
 ## What `executes: null` means here
 
 102 tools are inconclusive, mostly because a required arg is an id or a reference-code the

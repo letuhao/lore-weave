@@ -236,8 +236,8 @@
       "proven": false
     },
     "composition_get_work": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_list_canon_rules": {
@@ -576,8 +576,8 @@
       "proven": false
     },
     "kg_build_wiki": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_entity_edge_timeline": {
@@ -586,8 +586,8 @@
       "proven": false
     },
     "kg_graph_query": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_list_templates": {
@@ -601,8 +601,8 @@
       "proven": false
     },
     "kg_project_entities_to_nodes": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_project_list": {
@@ -621,8 +621,8 @@
       "proven": false
     },
     "kg_propose_fact": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_run_benchmark": {
@@ -636,8 +636,8 @@
       "proven": false
     },
     "kg_schema_read": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_sync_apply": {
@@ -646,13 +646,13 @@
       "proven": false
     },
     "kg_sync_available": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_triage_list": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_triage_place_edge": {
@@ -671,8 +671,8 @@
       "proven": false
     },
     "kg_view_read": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_world_query": {
@@ -831,8 +831,8 @@
       "proven": false
     },
     "translation_list_versions": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "translation_patch_block": {

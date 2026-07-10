@@ -27,7 +27,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
-from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.neo4j_helpers import CypherSession, run_read, run_read_any_owner, run_write
 from app.db.repositories import VersionMismatchError
 from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
@@ -688,7 +688,10 @@ async def get_entity_by_id_any_owner(
     its data is exposed to the caller. Used by
     `_resolve_entity_project_grant` to resolve-to-owner for the grant-gated
     edge timeline (D-KG-LD-GRANTEE-TIMELINE)."""
-    result = await run_read(
+    # run_read() REQUIRES a user_id and asserts the cypher references $user_id — this
+    # query intentionally does neither, so it raised TypeError on every call and
+    # kg_entity_edge_timeline (its only consumer) could never work.
+    result = await run_read_any_owner(
         session,
         _GET_ENTITY_ANY_OWNER_CYPHER,
         id=canonical_id,

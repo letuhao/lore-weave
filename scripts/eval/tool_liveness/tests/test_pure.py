@@ -276,3 +276,92 @@ def test_sweep_always_calls_reads_and_token_minting_writes():
     # Tier-W mints a confirm_token and writes nothing at call time; we never redeem it.
     catalog = [_t("book_list", "R", "user"), _t("glossary_entity_delete", "W", "book")]
     assert len(plan(catalog, include_writes=False)[0]) == 2
+
+
+# ── the classifier's ORDERING, which is the whole design ────────────────────────
+#
+# `_CALLER_FAULT` is deliberately permissive — every false positive it kills widens it,
+# and a wide regex eventually swallows a true positive. These two real bugs were laundered
+# into `null` for exactly that reason: the first matched on `missing`/`required`, the
+# second on `does not exist`. An explicit "the tool leaked its own internals" signal must
+# be checked FIRST and must win.
+
+def test_a_python_typeerror_is_the_tools_fault_not_ours():
+    """kg_entity_edge_timeline: run_read() missing 1 required positional argument: 'user_id'.
+    Reproduces unconditionally — the tool can never work. It must NOT be laundered by the
+    `missing`/`required` alternatives in the caller-fault regex."""
+    from tool_liveness.sweep import classify
+
+    msg = ("Error executing tool kg_entity_edge_timeline: run_read() missing 1 required "
+           "positional argument: 'user_id'")
+    executes, why = classify(False, msg)
+    assert executes is False, f"a Python TypeError is a product bug, got {executes} ({why})"
+    assert "internal" in why
+
+
+def test_a_sql_schema_error_is_the_tools_fault_not_ours():
+    """translation_list_versions: column ct.model_source does not exist. Must not be
+    laundered by the `does not exist` alternative (which exists to absorb 'entity does not
+    exist')."""
+    from tool_liveness.sweep import classify
+
+    msg = "Error executing tool translation_list_versions: column ct.model_source does not exist"
+    executes, why = classify(False, msg)
+    assert executes is False, f"a SQL schema error is a product bug, got {executes} ({why})"
+
+
+def test_broken_requires_positive_evidence_never_exclusion():
+    """The design, in one test. An unrecognised failure is `null`, never `false`.
+
+    The old design scored broken-by-exclusion (anything not matching a caller-fault regex).
+    That regex needed widening four times and twice swallowed a real bug. `executes: false`
+    blocks a tool from every workflow; a missed detection blocks nothing. So: enumerate the
+    bounded vocabulary of TOOL failure, attribute everything else to ourselves."""
+    from tool_liveness.sweep import classify
+
+    # an error we have never seen before, in nobody's vocabulary
+    assert classify(False, "the flux capacitor declined")[0] is None
+    # and the settings_get_profile break must STILL be caught, or the inversion cost us it
+    assert classify(False, 'validating tool output: want one of "null, array"')[0] is False
+
+
+def test_a_missing_row_is_still_inconclusive_not_broken():
+    """`does not exist` must keep absorbing genuine not-found errors — the internal regex
+    is anchored on `column`/`relation`, not the bare phrase."""
+    from tool_liveness.sweep import classify
+
+    for msg in ("entity does not exist", "that book does not exist", "no such chapter"):
+        assert classify(False, msg)[0] is None, msg
+
+
+def test_go_panics_and_nil_derefs_are_the_tools_fault():
+    from tool_liveness.sweep import classify
+
+    for msg in ("panic: runtime error: invalid memory address",
+                "runtime error: nil pointer dereference",
+                "index out of range [3] with length 2"):
+        assert classify(False, msg)[0] is False, msg
+
+
+def test_fill_args_supplies_optional_scope_keys_the_fixture_holds():
+    """13 kg_* tools declare `project_id` OPTIONAL (it normally rides the X-Project-Id
+    envelope) and then refuse with "no project in scope". A required-args-only call never
+    exercised them. Supplying an optional scope key we hold is the same value the envelope
+    would have carried."""
+    from tool_liveness.sweep import fill_args
+
+    schema = {"required": ["entity_id"],
+              "properties": {"entity_id": {"type": "string"},
+                             "project_id": {"type": "string"},
+                             "limit": {"type": "integer"}}}
+    fx = {"entity_id": "e-1", "project_id": "p-1"}
+    args = fill_args(schema, fx)
+    assert args == {"entity_id": "e-1", "project_id": "p-1"}, args
+    assert "limit" not in args, "only SCOPE keys are auto-supplied, not every optional"
+
+
+def test_fill_args_does_not_invent_a_scope_key_the_fixture_lacks():
+    from tool_liveness.sweep import fill_args
+
+    schema = {"required": [], "properties": {"project_id": {"type": "string"}}}
+    assert fill_args(schema, {"book_id": "b-1"}) == {}

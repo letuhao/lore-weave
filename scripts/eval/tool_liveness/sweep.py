@@ -8,25 +8,31 @@ whole catalog, deterministically, with zero LLM turns and zero spend.
     NL probes  → `proven`   (expensive; one model turn each; F5 selection signal)
     THIS sweep → `executes` (cheap; MCP-direct; finds BROKEN tools)
 
-── Safety (why this is allowed to call ~113 real tools) ─────────────────────────────
-  Tier R  reads. Safe.
+── Safety: `_meta.scope` decides what may be called ─────────────────────────────────
+  Tier R  reads. Always swept.
   Tier W  mints a `confirm_token` and writes NOTHING at call time. We never redeem it.
-  Tier A  AUTO-COMMITS a write. NOT swept: `settings_update_profile` would mutate the
-          real test account, `memory_forget` would delete real rows. Tier-A capability
-          needs authored, fixture-scoped args — the P1 grind, not a heuristic.
+  Tier A  AUTO-COMMITS. Swept only with --include-writes, and only when scoped
+          book/project — those can touch nothing but the throwaway fixture we hand them.
+          A user/none-scoped write (`settings_update_profile`, `memory_forget`) is NEVER
+          swept: it would rewrite the real account or delete real rows.
   paid    never swept. A capability probe must not spend the user's money.
   ABSENT  swept as R, and reported: an untiered tool is a CD1 violation.
 
-── Classification (conservative, and that is the point) ─────────────────────────────
-A wrong verdict here is worse than no verdict: `executes: false` BLOCKS the tool from
-every workflow and hides it from `tool_list`. So a call that fails for a reason that is
-plausibly OUR fault — bad args, missing fixture, no permission, not found — is scored
-`null` (unknown), never `false`. Only a failure the caller cannot have caused counts as
-broken. `null` never blocks, by construction (see manifest.py / liveness.go).
+── Classification: broken only on POSITIVE evidence ─────────────────────────────────
+`executes: false` BLOCKS the tool from every workflow and hides it from `tool_list`; a
+missed detection merely leaves it `null`, which blocks nothing. The costs are wildly
+asymmetric, so the default is `null`.
+
+We therefore enumerate the bounded, language-level vocabulary of *tool* failure —
+exceptions, SQL errors, panics, output-schema violations — and attribute everything else
+to ourselves. The inverse (a regex for *caller* fault, defaulting to broken) was tried and
+is unbounded: it needed widening four times, and twice laundered a real bug. See
+`classify`.
 
 Usage:
-    python -m scripts.eval.tool_liveness.sweep            # dry-run: plan only, no calls
-    python -m scripts.eval.tool_liveness.sweep --execute  # call the R+W tools
+    python -m scripts.eval.tool_liveness.sweep                        # dry run: the plan
+    python -m scripts.eval.tool_liveness.sweep --execute              # R + W
+    python -m scripts.eval.tool_liveness.sweep --execute --include-writes  # + fixture-scoped A
 """
 from __future__ import annotations
 
@@ -52,25 +58,32 @@ _HEADERS = {
     "X-Session-Id": "tle-sweep",
 }
 
-# Failures that are plausibly the PROBE's fault, not the tool's. Scored `null`, never
-# `false` — an `executes: false` BLOCKS the tool from every workflow and hides it from
-# `tool_list`, so a wrong verdict here is far worse than no verdict.
+# POSITIVE evidence that the TOOL is broken — the only thing that scores `executes: false`.
 #
-# Every alternative below was OBSERVED in the first sweep, where a narrower regex scored
-# 10 healthy tools as broken: we handed `code="tle-sweep"` to a tool expecting a real kind
-# code, and a placeholder string to a tool expecting a UUID. Those are our bugs, not
-# theirs. Widen this list rather than let a false positive through.
-_CALLER_FAULT = re.compile(
-    r"required|must be|invalid|validation|missing|not found|no such|does not exist|"
-    r"not configured|forbidden|permission|denied|unauthor|no project in scope|"
-    r"only the .* owner|grant|expected|malformed|cannot be empty|at least one|"
-    r"badly formed|is not a valid|unknown |no live |pass .* or |not a valid id|"
-    r"must provide|provide (a|an|one)|out of range|too (long|short|many)|"
-    # "no fields to update" — we called with ONLY the required args, so there was nothing
-    # to change. The tool is right to refuse. Observed on book_update_meta +
-    # book_chapter_update_meta in the Tier-A write sweep; scoring them broken would have
-    # blocked book_chapter_update_meta from every workflow.
-    r"no fields|nothing to (update|change|do)|at least one field|no changes",
+# This is a bounded, language-level vocabulary: a tool that raises a Python TypeError, runs
+# SQL against a column that does not exist, panics, or emits output its own declared schema
+# rejects, is broken on ANY input. Contrast caller-fault prose ("no adopted ontology", "no
+# fields to update", "unknown kind"), which is unbounded — every domain invents its own —
+# and which no regex can enumerate. Enumerate the small set; default the rest to `null`.
+#
+# Every entry below is a real failure this sweep found:
+#   run_read() missing 1 required positional argument: 'user_id'   Python TypeError
+#   column ct.model_source does not exist                          SQL schema drift
+#   validating tool output: ... want one of "null, array"          declared-schema violation
+_INTERNAL_FAULT = re.compile(
+    # Python
+    r"missing \d+ required positional argument|"
+    r"\b(TypeError|AttributeError|KeyError|IndexError|NameError)\b|ValueError: |"
+    r"'NoneType' object|Traceback \(most recent call last\)|"
+    # SQL / schema drift
+    r"column .* does not exist|relation .* does not exist|"
+    r"syntax error at or near|undefined column|"
+    # Go
+    r"panic:|nil pointer dereference|index out of range \[|"
+    # the tool's own output violates the schema it advertises (settings_get_profile)
+    r"validating tool output|validating root: validating|"
+    # unhandled server-side failure
+    r"internal server error|unhandled exception",
     re.I,
 )
 
@@ -84,12 +97,37 @@ _REFERENCE_KEY = frozenset({
 
 
 def classify(ok: bool, message: str) -> tuple[bool | None, str]:
-    """(executes, why). Conservative: only an unambiguous tool failure returns False."""
+    """(executes, why). **Broken only on POSITIVE evidence. Never by exclusion.**
+
+    The earlier design was "broken unless the message matches a caller-fault regex", and it
+    was wrong in *shape*, not merely in content. I widened that regex four times:
+
+      badly formed hexadecimal UUID string      ← our placeholder where a UUID was wanted
+      unknown kind: tle-sweep                   ← our placeholder kind-code
+      no fields to update                       ← our required-args-only call is a no-op
+      this project has no embedding model configured   ← our fixture lacks setup
+
+    Each widening killed a false positive and edged closer to swallowing a true one — and
+    twice it did, laundering two real bugs into "inconclusive":
+
+      run_read() missing 1 required positional argument: 'user_id'   (Python TypeError)
+      column ct.model_source does not exist                          (SQL schema drift)
+
+    The asymmetry is the point. *Caller*-fault prose is unbounded — every domain invents its
+    own vocabulary for "you didn't set this up". *Tool*-fault has a small, recognizable,
+    language-level vocabulary: exceptions, SQL errors, panics, output-schema violations. So
+    enumerate the bounded set and default the rest to `null`.
+
+    An `executes: false` BLOCKS the tool from every workflow and hides it from `tool_list`.
+    A missed detection merely leaves it `null`, which blocks nothing. The costs are wildly
+    asymmetric, so the default must be `null`.
+    """
     if ok:
         return True, "returned successfully"
-    if _CALLER_FAULT.search(message or ""):
-        return None, "rejected our arguments/context — inconclusive, not a tool failure"
-    return False, "failed with an error we did not cause"
+    msg = message or ""
+    if _INTERNAL_FAULT.search(msg):
+        return False, "leaked an internal error (exception / SQL / panic / bad output schema)"
+    return None, "rejected the call for a reason we cannot attribute to the tool"
 
 
 def fill_args(schema: dict, fx: dict) -> dict | None:
@@ -102,6 +140,16 @@ def fill_args(schema: dict, fx: dict) -> dict | None:
     """
     props = (schema or {}).get("properties") or {}
     out: dict[str, Any] = {}
+
+    # OPTIONAL scope keys the fixture can supply. 13 kg_* tools declare `project_id` as
+    # OPTIONAL (it normally rides the X-Project-Id envelope) and then refuse with
+    # "no project in scope" when neither is present. A required-args-only call therefore
+    # never exercised them at all. Supplying an optional arg we hold is free and honest —
+    # it is the same value the envelope would have carried.
+    for key in ("project_id", "book_id"):
+        if key in props and key not in (schema.get("required") or []) and fx.get(key):
+            out[key] = fx[key]
+
     for key in (schema or {}).get("required") or []:
         spec = props.get(key) or {}
         if key in fx and fx[key]:

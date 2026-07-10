@@ -36,8 +36,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -55,7 +55,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
       "original_language": "tle-sweep"
     }
   },
@@ -67,8 +67,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -79,8 +79,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -91,8 +91,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -117,8 +117,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -129,8 +129,8 @@
     "why": "rejected our arguments/context — inconclusive, not a tool failure",
     "error": "no fields to update",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -152,7 +152,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -163,7 +163,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -174,8 +174,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -195,7 +195,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -206,8 +206,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -218,8 +218,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -230,7 +230,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -241,7 +241,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -252,7 +252,7 @@
     "why": "rejected our arguments/context — inconclusive, not a tool failure",
     "error": "no fields to update",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -263,7 +263,7 @@
     "why": "rejected our arguments/context — inconclusive, not a tool failure",
     "error": "book not found",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -290,7 +290,7 @@
     "why": "rejected our arguments/context — inconclusive, not a tool failure",
     "error": "Error executing tool composition_arc_suggest: not found or not accessible",
     "args": {
-      "project_id": "019f4ae1-1f8c-775a-be22-3b880c68b0b3"
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
     }
   },
   {
@@ -406,7 +406,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -445,18 +446,21 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4ae1-1f8c-775a-be22-3b880c68b0b3",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
     "tool": "composition_get_work",
     "tier": "R",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool composition_get_work: pass project_id or book_id",
-    "args": {}
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
+    }
   },
   {
     "tool": "composition_list_canon_rules",
@@ -466,7 +470,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4ae1-1f8c-775a-be22-3b880c68b0b3"
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
     }
   },
   {
@@ -477,7 +481,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4ae1-1f8c-775a-be22-3b880c68b0b3"
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
     }
   },
   {
@@ -502,7 +506,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -583,8 +587,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4ae1-1f8c-775a-be22-3b880c68b0b3",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -616,7 +620,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -627,7 +631,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
       "level": "genre",
       "name": "tle-sweep"
     }
@@ -647,7 +651,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -672,7 +676,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -697,7 +701,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -708,9 +712,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -728,8 +732,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -740,8 +744,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -752,8 +756,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225",
       "name": "tle-sweep"
     }
   },
@@ -765,8 +769,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -777,8 +781,8 @@
     "why": "rejected our arguments/context — inconclusive, not a tool failure",
     "error": "attributes or scope_label must be provided",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -789,8 +793,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -801,8 +805,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -813,8 +817,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -825,7 +829,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -836,8 +840,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -848,8 +852,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225"
     }
   },
   {
@@ -860,7 +864,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -880,7 +884,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -975,10 +979,10 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
       "status": "active",
       "entity_ids": [
-        "019f4ae1-1e8f-7427-8a5f-f896905cbf0c"
+        "019f4b1f-619c-790c-99dc-80c7a1b8f225"
       ]
     }
   },
@@ -997,7 +1001,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
       "query": "tle-sweep"
     }
   },
@@ -1047,20 +1051,22 @@
     "tier": "W",
     "capability": "SKIP-INCONCLUSIVE",
     "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_build_graph: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_build_graph: {\"message\": \"this project has no embedding model configured \\u2014 call kg_project_set_embedding_model first (pick one of your embedding models with settings_list_models), then kg_run_benchmark, then retry this build\"}",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "llm_model": "tle-sweep"
     }
   },
   {
     "tool": "kg_build_wiki",
     "tier": "W",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_build_wiki: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "model_ref": "tle-sweep"
     }
   },
@@ -1070,20 +1076,22 @@
     "capability": "SKIP-INCONCLUSIVE",
     "executes": null,
     "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_entity_edge_timeline: run_read() missing 1 required positional argument: 'user_id'",
+    "error": "Error executing tool kg_entity_edge_timeline: {\"message\": \"entity not found\"}",
     "args": {
-      "entity_id": "019f4ae1-1e8f-7427-8a5f-f896905cbf0c",
+      "entity_id": "019f4b1f-619c-790c-99dc-80c7a1b8f225",
       "edge_type": "tle-sweep"
     }
   },
   {
     "tool": "kg_graph_query",
     "tier": "R",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_graph_query: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
-    "args": {}
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
   },
   {
     "tool": "kg_list_templates",
@@ -1103,18 +1111,20 @@
     "error": "",
     "args": {
       "project_ids": [
-        "019f4ae1-1f8c-775a-be22-3b880c68b0b3"
+        "019f4b1f-6293-7765-98b9-fb6719c808b7"
       ]
     }
   },
   {
     "tool": "kg_project_entities_to_nodes",
     "tier": "A",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_project_entities_to_nodes: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
-    "args": {}
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
   },
   {
     "tool": "kg_project_list",
@@ -1131,8 +1141,9 @@
     "capability": "SKIP-INCONCLUSIVE",
     "executes": null,
     "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_project_set_embedding_model: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
+    "error": "Error executing tool kg_project_set_embedding_model: {\"message\": \"embedding model probe failed: embedding failed (400): {\\\"code\\\":\\\"EMBED_VALIDATION\\\",\\\"message\\\":\\\"invalid model_ref\\\"}\\n \\u2014 check the model_ref is one of your own embedding models (settings_list_models)\"}",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "embedding_model": "tle-sweep"
     }
   },
@@ -1146,11 +1157,12 @@
   {
     "tool": "kg_propose_fact",
     "tier": "A",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_propose_fact: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "fact_text": "tle-sweep",
       "fact_type": "decision"
     }
@@ -1160,9 +1172,11 @@
     "tier": "A",
     "capability": "SKIP-INCONCLUSIVE",
     "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_run_benchmark: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
-    "args": {}
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_run_benchmark: {\"message\": \"this project has no embedding model configured \\u2014 set one first\"}",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
   },
   {
     "tool": "kg_schema_edit",
@@ -1174,40 +1188,47 @@
   {
     "tool": "kg_schema_read",
     "tier": "R",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_schema_read: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
-    "args": {}
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
   },
   {
     "tool": "kg_sync_apply",
     "tier": "W",
     "capability": "SKIP-INCONCLUSIVE",
     "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_sync_apply: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_sync_apply: {\"message\": \"this project has no adopted ontology to sync \\u2014 adopt a template first\"}",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "base_source_hash": "tle-sweep"
     }
   },
   {
     "tool": "kg_sync_available",
     "tier": "R",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_sync_available: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
-    "args": {}
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
   },
   {
     "tool": "kg_triage_list",
     "tier": "R",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_triage_list: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
-    "args": {}
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
   },
   {
     "tool": "kg_triage_place_edge",
@@ -1221,9 +1242,10 @@
     "tier": "A",
     "capability": "SKIP-INCONCLUSIVE",
     "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_triage_resolve: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_triage_resolve: {\"message\": \"no pending triage items for this signature\"}",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "signature": "tle-sweep",
       "action": "map"
     }
@@ -1233,9 +1255,10 @@
     "tier": "W",
     "capability": "SKIP-INCONCLUSIVE",
     "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_triage_schema_write: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "Error executing tool kg_triage_schema_write: {\"message\": \"this project has no adopted ontology to edit \\u2014 adopt a project schema first (the System template is read-only and admin-managed)\"}",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "signature": "tle-sweep",
       "action": "add_to_vocab"
     }
@@ -1243,11 +1266,13 @@
   {
     "tool": "kg_view_read",
     "tier": "R",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool kg_view_read: {\"message\": \"no project in scope \\u2014 pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project\"}",
-    "args": {}
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
   },
   {
     "tool": "kg_world_query",
@@ -1278,6 +1303,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "entity_name": "tle-sweep"
     }
   },
@@ -1289,6 +1315,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "fact_text": "tle-sweep",
       "fact_type": "decision"
     }
@@ -1301,6 +1328,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "query": "tle-sweep"
     }
   },
@@ -1311,7 +1339,9 @@
     "executes": true,
     "why": "returned successfully",
     "error": "",
-    "args": {}
+    "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7"
+    }
   },
   {
     "tool": "plan_apply_revision",
@@ -1349,7 +1379,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
       "source_markdown": "tle-sweep"
     }
   },
@@ -1464,6 +1494,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
+      "project_id": "019f4b1f-6293-7765-98b9-fb6719c808b7",
       "query": "tle-sweep"
     }
   },
@@ -1475,7 +1506,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   },
   {
@@ -1495,13 +1526,13 @@
   {
     "tool": "translation_list_versions",
     "tier": "R",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected our arguments/context — inconclusive, not a tool failure",
-    "error": "Error executing tool translation_list_versions: column ct.model_source does not exist",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152"
     }
   },
   {
@@ -1519,8 +1550,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152",
       "target_language": "tle-sweep"
     }
   },
@@ -1539,8 +1570,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
-      "chapter_id": "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
+      "chapter_id": "019f4b1f-610e-767c-a7cd-07714ddc1152",
       "target_language": "tle-sweep"
     }
   },
@@ -1559,9 +1590,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
       "chapter_ids": [
-        "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+        "019f4b1f-610e-767c-a7cd-07714ddc1152"
       ]
     }
   },
@@ -1573,9 +1604,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b",
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07",
       "chapter_ids": [
-        "019f4ae1-1dfa-74ac-9eb9-04fdd23e3c80"
+        "019f4b1f-610e-767c-a7cd-07714ddc1152"
       ]
     }
   },
@@ -1587,7 +1618,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4ae1-1d16-7e16-815d-d7d019a7764b"
+      "book_id": "019f4b1f-6026-77a2-89e7-6fe5999bfc07"
     }
   }
 ]
