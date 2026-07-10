@@ -893,13 +893,13 @@
       "proven": false
     },
     "registry_get_skill": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "registry_get_workflow": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "registry_list_skills": {
@@ -923,13 +923,13 @@
       "proven": false
     },
     "registry_set_skill_enabled": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "registry_update_skill": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "registry_update_workflow": {

@@ -456,6 +456,7 @@ def main() -> int:
             "settings_provider_inventory", "settings_model_delete",          # credential-gated
             "composition_motif_get", "composition_motif_link_list",          # motif reads
             "composition_motif_adopt",                                       # motif token-mint
+            "registry_get_skill", "registry_get_workflow",                   # seeded-slug reads
         )
         for extra in _PHASE2_EXTRAS:
             if extra in by_name and extra not in already:

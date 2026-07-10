@@ -503,6 +503,26 @@ def test_credential_gated_tools_use_the_seeded_credential_and_model():
         assert authored_user_args(tool, seeded, {})["user_model_id"] == "model-1", tool
 
 
+def test_registry_slug_tools_use_the_seeded_skill_and_workflow():
+    """registry_get/update/set_skill_enabled + get_workflow operate on an APPROVED row by
+    slug — a proposal is not retrievable that way. With the seeded slugs present each authors
+    args; without the seed (unbuilt fixture) each returns None."""
+    from tool_liveness.user_fixture import UserFixture, authored_user_args
+
+    unbuilt = UserFixture()
+    seeded = UserFixture()
+    seeded.skill_slug = "sk-1"
+    seeded.workflow_slug = "wf-1"
+
+    for tool in ("registry_get_skill", "registry_update_skill",
+                 "registry_set_skill_enabled", "registry_get_workflow"):
+        assert authored_user_args(tool, unbuilt, {}) is None, f"{tool} must skip without seed"
+    assert authored_user_args("registry_get_skill", seeded, {})["slug"] == "sk-1"
+    assert authored_user_args("registry_update_skill", seeded, {})["body_md"]
+    assert authored_user_args("registry_set_skill_enabled", seeded, {})["enabled"] is True
+    assert authored_user_args("registry_get_workflow", seeded, {})["slug"] == "wf-1"
+
+
 def test_credential_gated_tools_are_all_in_the_sweep_order():
     """A seeded tool absent from USER_SWEEP_ORDER would never be swept (it keeps catalog
     order, which is fine) — but pinning them here documents the reachable set."""

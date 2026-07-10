@@ -57,6 +57,9 @@ class UserFixture:
         # Seeded so the 6 credential-gated tools are reachable (see _seed_provider_model).
         self.credential_id: str | None = None
         self.user_model_id: str | None = None
+        # Seeded so the registry read/edit tools are reachable (see _seed_registry).
+        self.skill_slug: str | None = None
+        self.workflow_slug: str | None = None
 
     def build(self) -> "UserFixture":
         r = httpx.post(
@@ -67,7 +70,28 @@ class UserFixture:
         r.raise_for_status()
         self.user_id = r.json()["user_id"]
         self._seed_provider_model()
+        self._seed_registry()
         return self
+
+    def _seed_registry(self) -> None:
+        """Seed one PUBLISHED skill + workflow so the registry read/edit tools are reachable.
+
+        `registry_get_skill` / `_update_skill` / `_set_skill_enabled` / `registry_get_workflow`
+        operate on an APPROVED (`skills`/`workflows`) row by slug — a *proposal*
+        (`registry_propose_skill`, which the throwaway user CAN call) is not retrievable that
+        way, so nothing ever reached these four. Seeding a published row (a real state — the
+        `status` column defaults `published`) directly is the same buildable-fixture move as
+        the keyless credential above; the rows are torn down by `_OWNED_ROWS`.
+        """
+        self.skill_slug = f"tle-skill-{self.run_id}"
+        self.workflow_slug = f"tle-wf-seed-{self.run_id}"
+        db = config.DOMAIN_DB["agent_registry"]
+        oracle.db_query(db,
+            "INSERT INTO skills(owner_user_id, tier, slug, description, status) "
+            f"VALUES ('{self.user_id}','user','{self.skill_slug}','TLE seeded skill','published')")
+        oracle.db_query(db,
+            "INSERT INTO workflows(owner_user_id, tier, slug) "
+            f"VALUES ('{self.user_id}','user','{self.workflow_slug}')")
 
     def _seed_provider_model(self) -> None:
         """Seed a KEYLESS provider credential + one model row for the throwaway user.
@@ -168,6 +192,11 @@ USER_SWEEP_ORDER: tuple[str, ...] = (
     "composition_motif_archive",
     "registry_propose_skill",
     "registry_propose_workflow",
+    # registry read/edit against the seeded published skill/workflow (see _seed_registry)
+    "registry_get_skill",
+    "registry_update_skill",
+    "registry_set_skill_enabled",
+    "registry_get_workflow",
 )
 
 
@@ -264,6 +293,16 @@ def authored_user_args(tool: str, fx: UserFixture, state: dict) -> dict | None:
             return {"args": {"motif_id": motif_id}} if motif_id else None  # W: mints a token
         case "composition_motif_archive":
             return {"motif_id": motif_id} if motif_id else None
+        # ── registry read/edit: use the seeded published skill / workflow ────────
+        case "registry_get_skill":
+            return {"slug": fx.skill_slug} if fx.skill_slug else None
+        case "registry_update_skill":
+            return {"slug": fx.skill_slug, "body_md": "# TLE\nupdated by the sweep"} \
+                if fx.skill_slug else None
+        case "registry_set_skill_enabled":
+            return {"slug": fx.skill_slug, "enabled": True} if fx.skill_slug else None
+        case "registry_get_workflow":
+            return {"slug": fx.workflow_slug} if fx.workflow_slug else None
         case "registry_propose_skill":
             return {
                 "slug": f"tle-sweep-{fx.run_id}",
