@@ -256,6 +256,15 @@ recorded there and announced on the board.
 - 2026-07-09 — **CD5 added** (universal vs domain-scoped naming/placement). Adjudicates
   `glossary_web_search` → `web_search` @ provider-registry, and `glossary_deep_research` stays.
   Forces **C1 += `research`** (Track A's frozen contract — announced on the board).
+- 2026-07-11 — **WS-D4 partial: `executes ∧ effect` for the workflow-critical set.** The
+  deterministic sweep proves `executes` (returned ok); the *workflow-critical* tools (derived
+  live from `agent_registry.workflows` — today `glossary-bootstrap`'s 4 steps) are additionally
+  held to an INDEPENDENT effect read-back (CD3 anti-oracle). A silent success (ok, no effect)
+  folds to `executes: false` → rejected. Manifest gains an informational `effect_verified` flag
+  (`proven ⊆ effect_verified`; the gate still keys on `executes`). 3/4 critical tools pass;
+  `glossary_extract_entities_from_doc` is `paid` (LLM) so unverifiable at $0 — an honest gap in
+  the sole curated workflow. The **hard reject → full `proven`** tightening (needs the NL probes)
+  remains the open WS-D4 decision.
 - 2026-07-11 — **CD4 implementation corrected to match the frozen table (no contract change).**
   `agent-registry`'s `livenessWarnings` fired the `unproven_tool` warning on `!proven`, which
   contradicts the CD4 verdict table: `executes: true` tools (incl. `RED-SELECT`) are "admit, **no

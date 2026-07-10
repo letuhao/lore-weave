@@ -296,6 +296,34 @@ Four tools that could never work, all found in one day, none by a test:
 Every one was fully tiered, correctly scoped, schema-mirrored and drift-locked. The gates only
 ever read `tools/list` **metadata**; not one had issued a `tools/call`.
 
+## WS-D4 — `executes ∧ effect` for the workflow-critical set
+
+`executes` from the sweep means *"the tool returned success."* But a tool can return
+`{"ok": true}` and write nothing — the silent-success bug this whole eval exists to catch.
+For most tools that gap is tolerable (they are on no shipped path). For the tools a
+**curated workflow** references, it is not. So those — and only those — are held to the
+stronger bar `executes ∧ effect`, where `effect` is an INDEPENDENT read-back (CD3's
+anti-oracle rule: the domain's Postgres directly, or the tool's own returned id re-read
+from the DB — never the tool's read API).
+
+The critical set is **derived live** from `agent_registry.workflows` (anti-drift — a
+workflow that starts referencing a new tool pulls it in automatically). Today it is the
+four steps of `glossary-bootstrap`:
+
+| critical tool | effect check | result |
+|---|---|---|
+| `book_get` (R) | returned `book.book_id` == the fixture book | ✅ effect verified |
+| `glossary_adopt_standards` (W) | a real `confirm_token` was minted (not an empty ok) | ✅ effect verified |
+| `glossary_propose_entities` (A) | the claimed `entity_id` actually exists in `glossary_entities` | ✅ effect verified |
+| `glossary_extract_entities_from_doc` (R, **paid**) | an LLM extraction — cannot verify at $0 | ⚠️ honest gap |
+
+A critical tool that returns ok but whose effect does NOT land is scored **`executes:
+false`** (a silent success lies — worse than a crash), which the CD4 gate already rejects.
+The manifest records `effect_verified: true` for tools that cleared the bar (matrix-proven
+tools inherit it — a matrix PASS is G1–G4; `proven ⊆ effect_verified`). One honest
+finding: the sole curated workflow depends on a **paid** tool the $0 sweep cannot prove
+end-to-end.
+
 ## What `executes: null` means here
 
 78 tools remain inconclusive. They are **not** blocked and **not** hidden — `null` blocks

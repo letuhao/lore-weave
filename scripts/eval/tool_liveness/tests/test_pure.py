@@ -678,6 +678,64 @@ def test_manifest_null_executes_never_read_as_false_by_blocked():
     assert blocked(m, "absent-tool") is False
 
 
+# ── WS-D4: executes ∧ effect for the workflow-critical set (critical.py) ─────────
+#
+# The critical tools (what a curated workflow references) are held to a stronger bar than
+# `executes`: their EFFECT is verified via an independent read-back. A tool that returns ok
+# but whose effect does not land is a silent success — scored executes:false, so the gate
+# rejects any workflow referencing it.
+
+def test_critical_authored_refuses_the_paid_tool_and_missing_book():
+    from tool_liveness.critical import _authored
+
+    # glossary_extract_entities_from_doc is paid (an LLM extraction) — never call it at $0
+    assert _authored("glossary_extract_entities_from_doc", {"book_id": "b"}) is None
+    assert _authored("some_unknown_tool", {"book_id": "b"}) is None
+    assert _authored("book_get", {}) is None, "no book → cannot exercise"
+    assert _authored("book_get", {"book_id": "b"}) == {"book_id": "b"}
+    items = _authored("glossary_propose_entities", {"book_id": "b"})
+    assert items["items"] and items["items"][0]["kind"] == "character"
+
+
+def test_critical_effect_detects_a_landed_effect_and_a_silent_success():
+    from tool_liveness.critical import _effect
+
+    ids = {"book_id": "b-1"}
+    # book_get: the returned book must be the fixture book
+    assert _effect("book_get", ids, {"book": {"book_id": "b-1"}})[0] is True
+    assert _effect("book_get", ids, {"book": {"book_id": "other"}})[0] is False
+    # adopt_standards (Tier W): a real confirm_token is the verifiable call-time effect
+    assert _effect("glossary_adopt_standards", ids, {"confirm_token": "TOK"})[0] is True
+    assert _effect("glossary_adopt_standards", ids, {"ok": True})[0] is False, \
+        "ok with NO confirm_token is a silent success"
+    # propose_entities: a result claiming creation but carrying no entity_id never landed
+    assert _effect("glossary_propose_entities", ids, {"results": [{}]})[0] is False
+    # a tool with no oracle is inconclusive, never a false pass
+    assert _effect("mystery_tool", ids, {})[0] is None
+
+
+def test_manifest_carries_effect_verified_and_folds_silent_success():
+    """A critical row with executes:false (silent success) must REJECT via the manifest, and
+    a verified effect surfaces as effect_verified:true."""
+    from tool_liveness.manifest import blocked, build
+
+    sweep = [
+        {"tool": "book_get", "executes": True},  # plain sweep: executes only
+        {"tool": "book_get", "executes": True, "effect_verified": True},  # critical: stronger
+        {"tool": "liar", "executes": False, "effect_verified": False},    # silent success
+    ]
+    m = build([], {}, sweep)
+    assert m["tools"]["book_get"]["effect_verified"] is True
+    assert blocked(m, "liar") is True, "a silent-success critical tool must be blocked"
+
+
+def test_manifest_omits_effect_verified_when_not_earned():
+    from tool_liveness.manifest import build
+
+    m = build([], {}, [{"tool": "plain", "executes": True}])
+    assert "effect_verified" not in m["tools"]["plain"], "lean: only annotate what was verified"
+
+
 def test_teardown_composition_is_book_scoped_and_verifies_completeness():
     """A teardown keyed on anything broader than the created book id would delete another
     user's composition rows. And it must VERIFY nothing survives — an earlier version listed

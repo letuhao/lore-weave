@@ -6,11 +6,19 @@ Consumers (agent-registry Go, chat-service Python) must not re-derive the verdic
 two languages — that is the schema-drift trap this repo keeps stepping in. So the manifest
 carries two DERIVED booleans and the consumers only read them:
 
-    executes : true  — the tool ran successfully when called correctly (G3 PASS, or the
-                       capability re-probe passed after a G1 miss)
-               false — the tool FAILED when called correctly. Proven broken.
-               null  — never checked (paid, no authored args, or no probe at all).
-    proven   : true  — every gate G1..G4 passed under a real model.
+    executes        : true  — the tool ran successfully when called correctly (G3 PASS, or
+                              the capability re-probe passed after a G1 miss). For a
+                              WORKFLOW-CRITICAL tool this also means its effect landed (a
+                              silent success — ok but no effect — folds to false here).
+                      false — the tool FAILED when called correctly. Proven broken.
+                      null  — never checked (paid, no authored args, or no probe at all).
+    proven          : true  — every gate G1..G4 passed under a real model.
+    effect_verified : true  — WS-D4: the tool's effect was confirmed via an INDEPENDENT
+                              read-back (the domain DB directly, per CD3), not just a 200-OK.
+                              Present only when earned (matrix PASS, or the critical-set
+                              effect pass); absent otherwise. Informational — the gate keys
+                              on `executes`, into which a failed critical effect already
+                              folds. `proven ⊆ effect_verified`.
 
 The three-valued `executes` is load-bearing. `null` must NEVER be treated as `false`:
 "we didn't check" is not "it's broken", and a gate that blocks on unknown would refuse
@@ -80,22 +88,35 @@ def build(rows: list[dict], meta: dict[str, Any], sweep: list[dict] | None = Non
         prior = tools.get(r["tool"])
         if prior is not None and r["executes"] is None and prior.get("executes") is not None:
             continue
-        tools[r["tool"]] = {
+        entry = {
             "status": "SWEEP-" + ("PASS" if r["executes"] else
                                   "BROKEN" if r["executes"] is False else "INCONCLUSIVE"),
             "executes": r["executes"],
             "proven": False,  # a deterministic call is not a model selecting it
         }
+        # WS-D4: the workflow-critical set carries a stronger claim — its effect was verified
+        # via an independent read-back, not just a 200-OK. Carry the flag only when earned
+        # (kept lean; a null-effect row omits it), and never let a later null erase a True.
+        ev = r.get("effect_verified")
+        ev = ev if ev is not None else (prior or {}).get("effect_verified")
+        if ev is not None:
+            entry["effect_verified"] = ev
+        tools[r["tool"]] = entry
     for r in rows:
         status = r.get("status", "?")
         prior = tools.get(r["tool"], {})
         ex = _executes(r)
-        tools[r["tool"]] = {
+        entry = {
             "status": status,
             # the matrix wins when it has an opinion; otherwise keep the sweep's
             "executes": ex if ex is not None else prior.get("executes"),
             "proven": status == "PASS",
         }
+        # a matrix PASS is G1–G4 (effect included); otherwise keep any effect the sweep proved
+        ev = True if status == "PASS" else prior.get("effect_verified")
+        if ev is not None:
+            entry["effect_verified"] = ev
+        tools[r["tool"]] = entry
     return {
         "schema_version": SCHEMA_VERSION,
         "source": meta.get("source", "?"),

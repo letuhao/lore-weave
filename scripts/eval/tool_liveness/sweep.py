@@ -405,6 +405,16 @@ def main() -> int:
         rows = asyncio.run(_sweep(
             targets, ids,
             authored_fn=lambda tool, _ids, state: authored_project_args(tool, ids, state)))
+        # Phase 3 (WS-D4): hold the WORKFLOW-CRITICAL set to executes ∧ effect on the SAME
+        # fixture, before teardown. A critical tool that returns ok but whose effect does
+        # not land is scored executes:false (silent success) — the CD4 gate then rejects any
+        # workflow referencing it. Appended last so the merge prefers this stronger verdict.
+        from .critical import verify as verify_critical
+        crit_rows = asyncio.run(verify_critical(ids))
+        if crit_rows:
+            print("workflow-critical (executes ∧ effect): " + ", ".join(
+                f"{r['tool']}={'PASS' if r['effect_verified'] else r['executes']}" for r in crit_rows))
+            rows.extend(crit_rows)
     finally:
         # Everything created HERE (outside Fixture.build) must be cleaned HERE — Fixture
         # knows nothing about the kg project or the composition rows, and would leak one of

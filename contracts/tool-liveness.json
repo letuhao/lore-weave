@@ -58,7 +58,8 @@
     "book_create": {
       "status": "PASS",
       "executes": true,
-      "proven": true
+      "proven": true,
+      "effect_verified": true
     },
     "book_delete": {
       "status": "SWEEP-PASS",
@@ -68,7 +69,8 @@
     "book_get": {
       "status": "PASS",
       "executes": true,
-      "proven": true
+      "proven": true,
+      "effect_verified": true
     },
     "book_get_chapter": {
       "status": "SWEEP-PASS",
@@ -78,7 +80,8 @@
     "book_list": {
       "status": "PASS",
       "executes": true,
-      "proven": true
+      "proven": true,
+      "effect_verified": true
     },
     "book_list_chapters": {
       "status": "SWEEP-PASS",
@@ -108,7 +111,8 @@
     "book_update_meta": {
       "status": "PASS",
       "executes": true,
-      "proven": true
+      "proven": true,
+      "effect_verified": true
     },
     "catalog_get_book": {
       "status": "SWEEP-INCONCLUSIVE",
@@ -120,7 +124,52 @@
       "executes": true,
       "proven": false
     },
+    "composition_arc_apply": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "composition_arc_assign_chapters": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "composition_arc_create": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "composition_arc_delete": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "composition_arc_extract_template": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "composition_arc_get": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
     "composition_arc_import_analyze": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "composition_arc_list": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "composition_arc_move": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "composition_arc_restore": {
       "status": "SWEEP-INCONCLUSIVE",
       "executes": null,
       "proven": false
@@ -128,6 +177,16 @@
     "composition_arc_suggest": {
       "status": "SWEEP-PASS",
       "executes": true,
+      "proven": false
+    },
+    "composition_arc_template_drift": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "composition_arc_update": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
       "proven": false
     },
     "composition_authoring_run_accept_unit": {
@@ -226,8 +285,8 @@
       "proven": false
     },
     "composition_get_outline_node": {
-      "status": "SWEEP-PASS",
-      "executes": true,
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
       "proven": false
     },
     "composition_get_prose": {
@@ -311,8 +370,8 @@
       "proven": false
     },
     "composition_motif_suggest_for_chapter": {
-      "status": "SWEEP-PASS",
-      "executes": true,
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
       "proven": false
     },
     "composition_motif_unbind": {
@@ -321,13 +380,18 @@
       "proven": false
     },
     "composition_outline_node_create": {
-      "status": "SWEEP-PASS",
-      "executes": true,
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
       "proven": false
     },
     "composition_outline_node_delete": {
-      "status": "SWEEP-PASS",
-      "executes": true,
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "composition_outline_node_move": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
       "proven": false
     },
     "composition_outline_node_restore": {
@@ -336,8 +400,8 @@
       "proven": false
     },
     "composition_outline_node_update": {
-      "status": "SWEEP-PASS",
-      "executes": true,
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
       "proven": false
     },
     "composition_publish": {
@@ -368,7 +432,8 @@
     "glossary_adopt_standards": {
       "status": "SWEEP-PASS",
       "executes": true,
-      "proven": false
+      "proven": false,
+      "effect_verified": true
     },
     "glossary_book_create": {
       "status": "SWEEP-PASS",
@@ -383,7 +448,8 @@
     "glossary_book_ontology_read": {
       "status": "PASS",
       "executes": true,
-      "proven": true
+      "proven": true,
+      "effect_verified": true
     },
     "glossary_book_patch": {
       "status": "SWEEP-INCONCLUSIVE",
@@ -455,6 +521,11 @@
       "executes": true,
       "proven": false
     },
+    "glossary_extract_entities_from_doc": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
     "glossary_get_entity": {
       "status": "SWEEP-PASS",
       "executes": true,
@@ -517,8 +588,9 @@
     },
     "glossary_propose_entities": {
       "status": "RED",
-      "executes": null,
-      "proven": false
+      "executes": true,
+      "proven": false,
+      "effect_verified": true
     },
     "glossary_propose_kinds": {
       "status": "SWEEP-INCONCLUSIVE",
