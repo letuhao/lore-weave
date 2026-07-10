@@ -5,6 +5,8 @@ edge-case decisions from the adversarial review (EC-1 liveness-per-tier, EC-3
 shared-book slot, partial field inheritance, deep-merge null-clears)."""
 from __future__ import annotations
 
+import pytest
+
 from app.services import settings_resolution as sr
 
 
@@ -136,3 +138,58 @@ def test_collect_candidate_refs_dedupes():
         account_refs={"chat": ("user_model", "y")},
     )
     assert refs == {("user_model", "x"), ("user_model", "y")}
+
+
+# ── the shared closed-set registry (spec §8.1) ───────────────────────────────
+#
+# The enum registry used to live INSIDE the account router. The session row is a
+# SECOND write door onto the same settings — so a registry only one door can see
+# cannot defend the other. These tests pin the registry as shared, and that both
+# doors reach for it rather than re-declaring their own copy (the drift class that
+# lets a bad `context.mode` land and be read as 'auto' by every consumer).
+
+def test_validate_setting_enums_rejects_out_of_set_values():
+    with pytest.raises(ValueError, match="context.mode"):
+        sr.validate_setting_enums("context", {"mode": "sometimes"})
+    with pytest.raises(ValueError, match="behavior.permission_mode"):
+        sr.validate_setting_enums("behavior", {"permission_mode": "root"})
+    with pytest.raises(ValueError, match="behavior.reasoning_effort"):
+        sr.validate_setting_enums("behavior", {"reasoning_effort": "extreme"})
+
+
+def test_validate_setting_enums_names_the_allowed_set():
+    """IN-6 self-correcting error: the message must say what IS allowed, so the
+    caller (often an LLM) can fix itself without a second round-trip."""
+    with pytest.raises(ValueError) as exc:
+        sr.validate_setting_enums("context", {"mode": "nope"})
+    msg = str(exc.value)
+    assert "'auto'" in msg and "'on'" in msg and "'off'" in msg
+    assert "'nope'" in msg
+
+
+def test_validate_setting_enums_allows_none_absent_and_unknown_keys():
+    sr.validate_setting_enums("context", {"mode": None})       # null = clear to inherit
+    sr.validate_setting_enums("context", {})                    # absent = untouched
+    sr.validate_setting_enums("context", None)                  # whole category cleared
+    sr.validate_setting_enums("context", {"trigger_ratio": 0.8})  # not an enum key
+    sr.validate_setting_enums("voice", {"anything": "goes"})     # category has no enums
+
+
+def test_both_write_doors_use_the_one_registry():
+    """A private copy in either router is the drift this consolidation removes."""
+    from app.routers import ai_settings
+
+    assert not hasattr(ai_settings, "_ENUMS"), "the account router must not re-declare the enums"
+    assert set(sr.SETTING_ENUMS) == {"behavior", "context"}
+    assert sr.SETTING_ENUMS["context"]["mode"] == {"auto", "on", "off"}
+    assert sr.SETTING_ENUMS["behavior"]["permission_mode"] == {"ask", "write", "plan"}
+    assert sr.SETTING_ENUMS["behavior"]["reasoning_effort"] == {"off", "low", "medium", "high"}
+
+
+def test_voice_source_vocabularies_are_deliberately_unvalidated():
+    """`tts_source` is NOT in the registry on purpose: the shipped account panel writes
+    'user_model' while the chat voice store writes 'ai_model' for the same concept.
+    Validating either today would 422 a live client. This test is the tripwire — when
+    voice gets its single home, add the enum here and this assertion must be updated,
+    not silently deleted. (D-CHATAI-VOICE-TWO-STORES)"""
+    assert "voice" not in sr.SETTING_ENUMS

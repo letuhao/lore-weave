@@ -53,6 +53,42 @@ TIER_UNAVAILABLE = "unavailable"          # a tier's source service was unreacha
 TIER_NONE = "no_model_configured"         # every tier resolved dead/unset
 
 
+# ── closed-set values (spec §8.1) ────────────────────────────────────────────
+# A setting resolves through TWO write paths — the account blob
+# (`PATCH /v1/chat/ai-prefs`) and the session row (`PATCH /v1/chat/sessions/{id}`).
+# The enum registry lived inside the account router, so the session tier could have
+# stored an out-of-set `context.mode` that every reader would then silently treat as
+# `auto` — a value-shaped silent no-op. One registry, both writers (SET-6 + the
+# one-name-one-concept rule); a bad value is a 422 at whichever door it arrives.
+#
+# `stt_source`/`tts_source` are deliberately ABSENT for now: the shipped account panel
+# writes `tts_source: 'user_model'` while the chat voice store uses `'ai_model'` for the
+# same concept. Validating either vocabulary today would 422 a live client. Reconciled
+# when voice gets its single home (D-CHATAI-VOICE-TWO-STORES).
+SETTING_ENUMS: dict[str, dict[str, set[str]]] = {
+    "behavior": {
+        "permission_mode": {"ask", "write", "plan"},
+        "reasoning_effort": {"off", "low", "medium", "high"},
+    },
+    "context": {"mode": {"auto", "on", "off"}},
+}
+
+
+def validate_setting_enums(category: str, blob: dict | None) -> None:
+    """Raise ValueError on any out-of-set value in `blob` for `category`.
+
+    Only keys KNOWN to be enums are checked — a patch is a field-merge, so an
+    unknown key is a caller's own extension, not an error. `None` means "clear to
+    inherit" and is always allowed.
+    """
+    for field, allowed in SETTING_ENUMS.get(category, {}).items():
+        val = (blob or {}).get(field)
+        if val is not None and val not in allowed:
+            raise ValueError(
+                f"{category}.{field} must be one of {sorted(allowed)}, got {val!r}"
+            )
+
+
 # ── deep field-merge (PATCH semantics) ──────────────────────────────────────
 def apply_patch(current: dict, patch: dict) -> dict:
     """Return a new dict = `current` with `patch` deep-merged in.

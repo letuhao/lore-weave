@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ── Interview-roleplay: working_memory (charter + state) ─────────────────────
@@ -266,6 +266,34 @@ class PatchSessionRequest(BaseModel):
     # D-PLAN-PLANNER-DEFAULT-FE phase 2: set/clear the per-session planner model.
     planner_model_source: str | None = None
     planner_model_ref: UUID | None = None
+    # ── Chat & AI settings, SESSION tier (spec 2026-07-05 §3.5) ──────────────
+    # These three columns already existed and were READ by the effective-settings
+    # resolver (and `grounding_enabled` by the turn itself, messages.py), but had no
+    # write path anywhere — so the Session tier of the cascade was permanently NULL.
+    # A tier that is read and never written is the mirror of a write-only setting.
+    #
+    # All three carry 3-state semantics, like `project_id`: omitted ⇒ untouched;
+    # explicit `null` ⇒ CLEAR the override (inherit from Book/Account/System);
+    # a value ⇒ override for this session. Presence is detected via
+    # `model_fields_set`, never `is not None` (which cannot see a clear).
+    grounding_enabled: bool | None = None
+    voice_overrides: dict[str, Any] | None = None
+    context_overrides: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _check_session_enums(self) -> "PatchSessionRequest":
+        """The session row is the SECOND write door onto settings the turn consumes,
+        so it validates against the SAME closed sets the account patch uses. Without
+        this, a bad `context_overrides.mode` stores fine and every reader silently
+        treats it as 'auto' — a value-shaped silent no-op."""
+        from app.services import settings_resolution as sr
+
+        sr.validate_setting_enums("context", self.context_overrides)
+        if self.generation_params is not None:
+            sr.validate_setting_enums(
+                "behavior", self.generation_params.model_dump(exclude_unset=True)
+            )
+        return self
 
 
 class ChatSession(BaseModel):
@@ -292,6 +320,13 @@ class ChatSession(BaseModel):
     composer_model_ref: UUID | None = None
     planner_model_source: str | None = None  # D-PLAN-PLANNER-DEFAULT-FE phase 2
     planner_model_ref: UUID | None = None
+    # Chat & AI settings, SESSION tier. `None` = no session override (inherit).
+    # Surfaced on read so the session settings panel can distinguish "set HERE"
+    # from "inherited" without a second request — the tier chip needs the raw
+    # session value, not just the resolved cascade.
+    grounding_enabled: bool | None = None
+    voice_overrides: dict[str, Any] = Field(default_factory=dict)
+    context_overrides: dict[str, Any] = Field(default_factory=dict)
     # K-CLEAN-5 (D-K8-04): client-derived initial memory mode for the
     # session header indicator. The router computes this from
     # `project_id` alone (no_project / static) on GET — `degraded` only

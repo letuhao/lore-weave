@@ -25,6 +25,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/chat/sessions", tags=["sessions"])
 
 
+def _jsonb(value: object) -> dict:
+    """asyncpg hands JSONB back as a str on some codecs and a dict on others."""
+    if isinstance(value, str):
+        return json.loads(value)
+    return dict(value) if value else {}
+
+
+def _merged_override(existing: object, patch: dict | None) -> str | None:
+    """Deep-merge a session override blob, or None to CLEAR the whole category.
+
+    Delegates to `settings_resolution.apply_patch` — the exact merge the account blob
+    uses, so a null leaf clears that leaf and nested dicts recurse. Returns the JSON
+    string to store (the caller decides whether to write it at all, via fields_set)."""
+    if patch is None:
+        return None
+    from app.services.settings_resolution import apply_patch
+
+    return json.dumps(apply_patch(_jsonb(existing), patch))
+
+
 def _row_to_session(r: asyncpg.Record) -> ChatSession:
     gp = r["generation_params"]
     if isinstance(gp, str):
@@ -71,6 +91,12 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         enabled_skills=list(r.get("enabled_skills") or []),
         activated_tools=list(r.get("activated_tools") or []),
         pinned_legacy_tools=list(r.get("pinned_legacy_tools") or []),
+        # Chat & AI settings, SESSION tier — the RAW session override, not the
+        # resolved cascade. `None`/`{}` means "no override here → inherited", which
+        # is exactly what the panel's tier chip needs to distinguish.
+        grounding_enabled=r.get("grounding_enabled"),
+        voice_overrides=_jsonb(r.get("voice_overrides")),
+        context_overrides=_jsonb(r.get("context_overrides")),
         # W3 — the FE "compacted through message N" indicator.
         compacted_before_seq=r.get("compacted_before_seq"),
     )
@@ -255,6 +281,23 @@ async def patch_session(
     # the LIVE catalog at write time (never trust a client-supplied name). An
     # unknown/non-legacy name is rejected with a self-correcting message
     # (IN-6) naming exactly which names were bad, not a generic 400.
+    # Chat & AI settings, SESSION tier (spec 2026-07-05 §3.5). Same 3-state contract
+    # as project_id: omitted ⇒ untouched, explicit null ⇒ CLEAR the override (inherit),
+    # value ⇒ override. Until now these columns were read by the effective-settings
+    # resolver and by the turn, but nothing could write them — the tier was dead.
+    set_grounding_enabled = "grounding_enabled" in body.model_fields_set
+    grounding_enabled_value = body.grounding_enabled
+
+    # The two JSONB overrides deep-merge through the SAME `apply_patch` the account
+    # blob uses (null leaf = clear that leaf, nested dicts recurse). One merge rule for
+    # both write doors — a second, subtly-different rule here is how tiers drift.
+    # Read-modify-write: a session is edited by one user through one debounced panel,
+    # so concurrent patches to the same category are last-writer-wins by design.
+    set_voice_overrides = "voice_overrides" in body.model_fields_set
+    voice_overrides_value = _merged_override(row["voice_overrides"], body.voice_overrides)
+    set_context_overrides = "context_overrides" in body.model_fields_set
+    context_overrides_value = _merged_override(row["context_overrides"], body.context_overrides)
+
     set_pinned_legacy_tools = "pinned_legacy_tools" in body.model_fields_set
     pinned_legacy_tools_value = list(body.pinned_legacy_tools or [])
     if set_pinned_legacy_tools and pinned_legacy_tools_value:
@@ -292,6 +335,9 @@ async def patch_session(
           activated_tools       = CASE WHEN $22::boolean THEN $23::text[] ELSE activated_tools END,
           project_ids           = CASE WHEN $24::boolean THEN $25::uuid[] ELSE project_ids END,
           pinned_legacy_tools   = CASE WHEN $26::boolean THEN $27::text[] ELSE pinned_legacy_tools END,
+          grounding_enabled     = CASE WHEN $28::boolean THEN $29::boolean ELSE grounding_enabled END,
+          voice_overrides       = CASE WHEN $30::boolean THEN $31::jsonb ELSE voice_overrides END,
+          context_overrides     = CASE WHEN $32::boolean THEN $33::jsonb ELSE context_overrides END,
           updated_at            = now()
         WHERE session_id=$1 AND owner_user_id=$2
         RETURNING *
@@ -308,6 +354,9 @@ async def patch_session(
         set_activated_tools, body.activated_tools or [],
         set_project_ids, project_ids_value,
         set_pinned_legacy_tools, pinned_legacy_tools_value,
+        set_grounding_enabled, grounding_enabled_value,
+        set_voice_overrides, voice_overrides_value,
+        set_context_overrides, context_overrides_value,
     )
     return _row_to_session(row)
 
