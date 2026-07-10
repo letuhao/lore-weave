@@ -697,6 +697,12 @@ class PlanForgeService:
         if not _hard_rules_pass(rules_out):
             raise ValueError("validation failed — compile blocked")
 
+        # `genre_tags` is deliberately NOT passed: `NovelSystemSpec` has nowhere to declare a
+        # genre (`Meta` is `additionalProperties: false`), and compile.py used to fabricate the
+        # POC fixture's ["xianxia","cultivation","psychological"] for every book — which reached
+        # `propose_cast` through pipe_input below. An empty list is honest; a wrong genre is not.
+        # Sourcing it (spec.meta, a per-book setting, or an explicit field) is BPS-20's open
+        # sub-question. Do not re-add a default here.
         compiled = compile_artifacts(spec, arc_id=arc_id)
         package = compiled["planning_package"]
         await self._runs.save_artifact(
