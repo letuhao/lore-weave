@@ -31,10 +31,12 @@
 | Domain feedback: `glossary_confirm_action` doc-drift | ⬜ cannot confirm without its original feedback item |
 | **W8/W10/W11 product-journey backends** (world-container graph/map authoring; reader spoiler-cutoff) | ⬜ **NOT STARTED** — P2, structurally large, needs its own design pass (defer gate #2) |
 
-**Track-B defers still open:** `D-WS4C-EFFECTIVE-VALUE` (LOW) only — see below.
+**Track-B defers still open:** `D-WS4C-EFFECTIVE-VALUE` (LOW) only — and it is an **orphan**: Track B is closed and it belongs to no other track's brief. See its row below for the two ways to land it.
 **Bugs found and fixed while closing Track B** (each with a spec + live proof): `D-KG-GLOSSARY-FK-GLOBAL-UNIQUE` (Neo4j FK was globally unique; a 2nd project could anchor nothing) · `D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM` · `D-ANCHOR-PRELOAD-50-CAP` · `D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR` · capture defaulting to ON (spent users' BYOK tokens) · `ADD COLUMN IF NOT EXISTS` never revisiting a bad default (21/21 dev projects opted in).
 
-**▶ NEXT (whoever picks this up):** Track B's only remaining scope is **W8/W10/W11**. Start with a design pass, not code — it spans world-container graph/map authoring and the reader spoiler-cutoff, and touches new surfaces.
+**▶ NEXT (whoever picks this up):** Track B's only remaining scope is the **W10 + W11 backends** — world-container graph/map authoring, and the reader reading-progress spoiler-cutoff. Start with a **design pass, not code**.
+
+Ownership, since this is easy to get wrong: **W8/W10/W11 are product *journeys*, not tracks.** They are split — **Track B** owns the W10/W11 *backends*; **Track C** owns all three *surfaces* + the W1–W12 workflow objects (WS-5). Track C's W10/W11 surfaces are **blocked on Track B's backends** (TRACK-C.md "Consumes: B's backing tools for W2/W4/W10/W11"). **W8 needs no Track-B backend** — it is an onboarding routing fork, a Track-C surface change; B's brief names it in a heading but scopes only W10/W11 work, and C's consumes-line omits it. Track D is unrelated (tool liveness + `_meta`).
 
 **Track D — WS-D1 SHIPPED + F6 root-caused and fixed, 2026-07-10** (branch `feat/context-budget-law`, `713e6ba65` · `a1fa023a5`). Evidence: [`docs/eval/tool-liveness/2026-07-10-f6-kg-build-graph-unreachable-by-agent.md`](../eval/tool-liveness/2026-07-10-f6-kg-build-graph-unreachable-by-agent.md).
 
@@ -111,7 +113,8 @@
 - **Verify:** knowledge targeted **125 passed**; chat `test_canon_capture` **37 passed**; FE `ProjectFormModal.toggles` **10 passed**; `tsc --noEmit` clean.
 
 **New deferred item:**
-- **`D-WS4C-EFFECTIVE-VALUE`** (LOW, gate #2 — needs a new endpoint) — the deploy ceiling is invisible to the FE. If an operator sets `CHAT_CANON_CAPTURE_ENABLED=false`, a user's project toggle reads `true` while nothing happens (SET-4). Surfacing it needs chat to expose the ceiling, since knowledge-service doesn't know chat's env. Blast radius is small now that capture is opt-in: the surprising case is "I turned it on and an operator had killed it", not a silent charge.
+- **`D-WS4C-EFFECTIVE-VALUE`** (LOW, gate #2 — needs a new endpoint) — the deploy ceiling is invisible to the FE. If an operator sets `CHAT_CANON_CAPTURE_ENABLED=false`, a user's project toggle reads `true` while nothing happens (SET-4). **The two halves live in different services and nothing joins them:** the ceiling is `chat-service/app/config.py` `canon_capture_enabled` (env), the user knob is `knowledge_projects.canon_capture_enabled` (DB). Knowledge-service cannot see chat's env, so `effective = AND(deploy, project)` can only be computed where chat can be asked. Blast radius is small now that capture is opt-in: the surprising case is "I turned it on and an operator had killed it", not a silent charge.
+  - **⚠ OWNERSHIP: this defer is an ORPHAN.** It originated in Track B's WS-4C, but Track B is closed and it appears in **no track's brief** (grep: absent from TRACK-A/B/C/D). It is not Track C (that's discovery UI / workflow catalog / scenario baselines) and not Track D (tool liveness + `_meta`). Whoever picks it up should either (a) fold the ceiling into `GET /v1/chat/effective-settings` as a `system`-tier field — the machinery for `{effective_value, source_tier}` now exists there — or (b) add a small `GET /v1/chat/capabilities`. Do **not** let it sit unassigned.
 
 **`D-KG-GLOSSARY-FK-GLOBAL-UNIQUE` — CLEARED (schema + event path), 2026-07-10** (branch `feat/context-budget-law`, HEAD `pending`). Spec: [`docs/specs/2026-07-10-kg-glossary-fk-project-scoped.md`](../specs/2026-07-10-kg-glossary-fk-project-scoped.md). Track B's deferred list is now **empty**.
 
