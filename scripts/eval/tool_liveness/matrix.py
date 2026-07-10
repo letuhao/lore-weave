@@ -14,14 +14,37 @@ GATE_ORDER = ("G1", "G2", "G3", "G4")
 
 
 def status_for(row: dict) -> str:
+    """A bare "RED" is not actionable — it conflates two failures with opposite owners.
+
+    RED-SELECT      the tool WORKS (capability re-probe passed) but the model never chose
+                    it. Owner: the tool's description / discovery. CD4 should WARN.
+    RED-CAPABILITY  the tool FAILS when called correctly with valid args. Owner: the
+                    product. CD4 must BLOCK — shipping a workflow that references it
+                    guarantees a broken run.
+
+    Before this split, `kg_build_graph` read "RED — model did not call it", which was
+    true and which hid the fact that the tool was unreachable by any agent at all (F6).
+    """
     if row.get("status") in ("UNTESTED-PAID", "WAIVED"):
         return row["status"]
     gates = [row.get(g) for g in GATE_ORDER]
     if all(g == "PASS" for g in gates):
         return "PASS"
+    if row.get("G1") == "RED":
+        cap = row.get("capability")
+        if cap == "RED":
+            return "RED-CAPABILITY"
+        if cap == "PASS":
+            return "RED-SELECT"
+        return "RED"  # capability unknown (paid / no authored args)
     if any(g == "SKIP" for g in gates) and not any(g == "RED" for g in gates):
         return "PARTIAL"
     return "RED"
+
+
+def is_red(status: str) -> bool:
+    """Any RED flavor. Use `status == 'RED-CAPABILITY'` for the CD4 ship-gate block."""
+    return status.startswith("RED")
 
 
 def write_matrix_json(rows: list[dict], path: Path) -> None:
@@ -47,20 +70,31 @@ def render_md(rows: list[dict], meta: dict) -> str:
     L.append(f"- **Auth:** {meta.get('auth_mode','?')} · **Fixture book:** "
              f"`{meta.get('fixture_book_id','?')}`")
     npass = sum(1 for r in rows if r["status"] == "PASS")
+    ncap = sum(1 for r in rows if r["status"] == "RED-CAPABILITY")
+    nsel = sum(1 for r in rows if r["status"] == "RED-SELECT")
     nred = sum(1 for r in rows if r["status"] == "RED")
-    L.append(f"- **Result:** {npass}/{len(rows)} PASS · {nred} RED · "
-             f"{sum(1 for r in rows if r['status'] not in ('PASS','RED'))} other")
+    L.append(f"- **Result:** {npass}/{len(rows)} PASS · **{ncap} RED-CAPABILITY** (the tool is "
+             f"broken — CD4 blocks) · {nsel} RED-SELECT (the tool works; the model didn't pick "
+             f"it — CD4 warns) · {nred} RED (capability unknown) · "
+             f"{sum(1 for r in rows if not is_red(r['status']) and r['status'] != 'PASS')} other")
     L.append("")
-    # RED rows first
-    rows_sorted = sorted(rows, key=lambda r: (r["status"] != "RED", r.get("id", "")))
-    L.append("| # | tool | service | tier | async | G1 sel | G2 shape | G3 exec | G4 effect | status |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|")
+    L.append("> A G1 miss no longer ends the probe. The tool is re-called **deterministically** "
+             "(MCP-direct, authored fixture-scoped args) to separate a *selection* failure from a "
+             "*capability* failure. Before this split, `kg_build_graph` read `RED — model did not "
+             "call it`, which was true and which hid that no agent could have run it at all (F6). "
+             "Paid tools are never re-probed.")
+    L.append("")
+    # worst first: RED-CAPABILITY, then RED, then RED-SELECT, then the rest
+    _rank = {"RED-CAPABILITY": 0, "RED": 1, "RED-SELECT": 2}
+    rows_sorted = sorted(rows, key=lambda r: (_rank.get(r["status"], 3), r.get("id", "")))
+    L.append("| # | tool | service | tier | async | G1 sel | G2 shape | G3 exec | G4 effect | capability | status |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for r in rows_sorted:
         L.append(
             f"| {r.get('id','')} | `{r['tool']}` | {r.get('service','')} | "
             f"{r.get('tier','?')} | {'yes' if r.get('async') else '-'} | "
             f"{_cell(r.get('G1'))} | {_cell(r.get('G2'))} | {_cell(r.get('G3'))} | "
-            f"{_cell(r.get('G4'))} | **{r['status']}** |")
+            f"{_cell(r.get('G4'))} | {_cell(r.get('capability'))} | **{r['status']}** |")
     L.append("")
     L.append("## Per-probe detail")
     L.append("")

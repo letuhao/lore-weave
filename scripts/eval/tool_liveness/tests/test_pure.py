@@ -85,3 +85,73 @@ def test_matrix_render_smoke():
              "status": "PASS", "evidence": {"readback": {"created_book_id": "b"}}}]
     md = matrix.render_md(rows, {"date": "2026-07-10", "gateway": "x", "model_ref": "m"})
     assert "book_create" in md and "G4 effect" in md and "1/1 PASS" in md
+
+
+# ── RED-SELECT vs RED-CAPABILITY (the F6 lesson) ────────────────────────────────
+#
+# A G1 miss used to short-circuit the probe, so the tool was never exercised and a
+# *selection* failure was indistinguishable from a *capability* failure. kg_build_graph
+# was scored "RED — model did not call it" while it ALSO could not have succeeded: the
+# embedding-model setup step existed only as a REST route behind a GUI dialog. One label
+# hid a product bug behind a model excuse.
+
+def test_g1_miss_with_working_tool_is_red_select_not_bare_red():
+    row = {"G1": "RED", "G2": None, "G3": None, "G4": None, "capability": "PASS"}
+    assert matrix.status_for(row) == "RED-SELECT"
+
+
+def test_g1_miss_with_broken_tool_is_red_capability():
+    """This is the cell the CD4 ship gate must BLOCK on."""
+    row = {"G1": "RED", "G2": None, "G3": None, "G4": None, "capability": "RED"}
+    assert matrix.status_for(row) == "RED-CAPABILITY"
+
+
+def test_g1_miss_with_unknown_capability_stays_bare_red():
+    """A paid tool (never re-probed) or one with no authored args must NOT be laundered
+    into RED-SELECT — 'we didn't check' is not 'the tool works'."""
+    for cap in ("SKIP-PAID", "SKIP-NO-ARGS", None):
+        row = {"G1": "RED", "G2": None, "G3": None, "G4": None, "capability": cap}
+        assert matrix.status_for(row) == "RED", cap
+
+
+def test_capability_never_masks_a_downstream_gate_failure():
+    """If the model DID select the tool and a later gate failed, capability is irrelevant —
+    the row is a plain RED. A passing capability re-probe must not turn a real G3/G4
+    failure into RED-SELECT."""
+    row = {"G1": "PASS", "G2": "PASS", "G3": "RED", "G4": None, "capability": "PASS"}
+    assert matrix.status_for(row) == "RED"
+
+
+def test_all_pass_is_unaffected_by_capability_field():
+    row = {"G1": "PASS", "G2": "PASS", "G3": "PASS", "G4": "PASS"}
+    assert matrix.status_for(row) == "PASS"
+
+
+def test_is_red_covers_every_red_flavor():
+    for s in ("RED", "RED-SELECT", "RED-CAPABILITY"):
+        assert matrix.is_red(s)
+    for s in ("PASS", "PARTIAL", "UNTESTED-PAID", "WAIVED"):
+        assert not matrix.is_red(s)
+
+
+def test_every_probe_has_a_direct_arg_builder_or_is_paid():
+    """A probe with no `direct` builder can never be capability-scored, so its G1 miss is
+    permanently ambiguous. Adding a probe without one is a silent coverage hole."""
+    from tool_liveness import probes as probes_mod
+
+    missing = [p["id"] for p in probes_mod.build_probes() if "direct" not in p]
+    assert not missing, f"probes with no deterministic `direct` args: {missing}"
+
+
+def test_direct_builders_are_uniform_arity_and_fixture_scoped():
+    """All builders take (fx, harness). A mismatched signature only explodes at runtime,
+    after a live model turn has already been spent."""
+    import inspect
+
+    from tool_liveness import probes as probes_mod
+
+    for p in probes_mod.build_probes():
+        sig = inspect.signature(p["direct"])
+        assert len(sig.parameters) == 2, f"{p['id']}: direct{sig} must take (fx, harness)"
+        if "setup" in p:
+            assert len(inspect.signature(p["setup"]).parameters) == 2, p["id"]

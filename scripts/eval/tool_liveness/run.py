@@ -86,6 +86,56 @@ def _match_calls(tools: list[dict], tool: str) -> list[dict]:
     return out
 
 
+def probe_capability(fx: Fixture, probe: dict, harness: dict, row: dict) -> str:
+    """After a G1 miss, call the tool DETERMINISTICALLY (MCP-direct, authored args) to
+    answer the question the NL probe could not: *can this tool work at all?*
+
+    Returns one of:
+      "PASS"        — the tool works; the model simply didn't pick it (F5, a description
+                      / discovery problem). The ship gate WARNS.
+      "RED"         — the tool fails even when called correctly (F6, a product bug).
+                      The ship gate BLOCKS. `capability_error` carries the server's
+                      own message (mcp_direct now unwraps anyio's ExceptionGroup).
+      "SKIP-PAID"   — never spend the user's money to score a matrix cell.
+      "SKIP-NO-ARGS" — no authored `direct` builder, or its fixture inputs are missing.
+
+    Safety: a Tier-W tool MINTS a confirm_token and writes nothing at call time — we
+    never redeem it. A Tier-A tool writes only into the throwaway fixture. Nothing here
+    addresses an id the fixture did not create.
+    """
+    if row.get("paid"):
+        return "SKIP-PAID"
+    builder = probe.get("direct")
+    if builder is None:
+        return "SKIP-NO-ARGS"
+    try:
+        args = builder(fx, harness)
+    except Exception as e:  # a fixture field the build never populated
+        row["capability_error"] = f"direct-args build failed: {type(e).__name__}: {e}"
+        return "SKIP-NO-ARGS"
+    if args is None:
+        return "SKIP-NO-ARGS"
+
+    mcp = MCPDirect()
+    # Some tools have a precondition an agent would satisfy first (F6: kg_build_graph
+    # needs a configured embedding model). Run it, and report a setup failure AS a
+    # capability failure — an unreachable precondition IS the tool being unreachable.
+    for setup_tool, setup_args in (probe.get("setup") or (lambda *_: []))(fx, harness):
+        try:
+            mcp.call(setup_tool, setup_args)
+        except Exception as e:
+            row["capability_error"] = f"setup {setup_tool} failed: {e}"
+            return "RED"
+
+    try:
+        result = mcp.call(probe["tool"], args)
+    except Exception as e:
+        row["capability_error"] = str(e)[:400]
+        return "RED"
+    row["evidence"]["capability_call"] = {"args": args, "result": json.dumps(result)[:200]}
+    return "PASS"
+
+
 def run_probe(client: httpx.Client, auth: Auth, fx: Fixture, inv: dict,
               probe: dict, harness: dict, transcript: list) -> dict:
     tool = probe["tool"]
@@ -122,6 +172,12 @@ def run_probe(client: httpx.Client, auth: Auth, fx: Fixture, inv: dict,
     if not calls:
         called = sorted({tc["tool"] for tc in res["tools"]})
         row["notes"] = f"model did not call {tool}; called instead: {called}"
+        # A G1 miss used to return here — so the tool was NEVER exercised, and a
+        # *selection* failure looked identical to a *capability* failure. That collapse
+        # hid F6 for a full cycle: kg_build_graph was scored "model did not call it"
+        # while it also could not have succeeded. Re-probe deterministically to tell the
+        # two apart; the ship gate (CD4) must block on the second, not the first.
+        row["capability"] = probe_capability(fx, probe, harness, row)
         return row
     call = calls[-1]
     row["evidence"]["call"] = {"args": call.get("args"), "ok": call.get("ok"),
