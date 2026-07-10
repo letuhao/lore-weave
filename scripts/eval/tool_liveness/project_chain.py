@@ -139,29 +139,41 @@ def authored_project_args(tool: str, ids: dict, state: dict) -> dict | None:
             return None  # not in a chain → fill_args
 
 
-# Book-scoped composition tables this chain writes to, child→parent so FKs don't block the
-# delete. Enumerated from information_schema, scoped to the throwaway book id.
-_COMPOSITION_OWNED: tuple[str, ...] = (
-    "outline_node",
-    "canon_rule",
-    "authoring_runs",
-    "plan_run",
-    "composition_work",
-)
-
-
 def teardown_composition(book_id: str) -> dict:
-    """Delete every composition row under the throwaway book. Best-effort per table so one
-    schema drift cannot leak the rest; scoped strictly to the created book id."""
+    """Delete EVERY composition row under the throwaway book, and verify none survive.
+
+    A hardcoded table list is the wrong tool here: the sweep calls Tier-W tools that write
+    rows I did not anticipate (the first version listed 5 tables and leaked a `generation_job`
+    row per run — the exact trap this cleanup exists to prevent). So discover every
+    book-scoped table at runtime from information_schema, and delete from all of them.
+
+    Order-agnostic by RETRY: an FK-child row can block a parent delete, so pass over the
+    tables a few times — once a child is gone, the next pass clears its parent. Converges
+    without hardcoding dependency order. Scoped strictly to the created book id.
+    """
     if not book_id or config.KEEP_FIXTURES:
         return {"kept": True}
     bid = str(book_id).replace("'", "''")
-    out: dict[str, str] = {}
-    for table in _COMPOSITION_OWNED:
+    db = config.DOMAIN_DB["composition"]
+    try:
+        tables = [r[0] for r in oracle.db_query(
+            db, "SELECT table_name FROM information_schema.columns "
+                "WHERE column_name='book_id' AND table_schema='public'")]
+    except Exception as e:
+        return {"discover": f"FAILED ({type(e).__name__})"}
+    for _ in range(3):  # FK depth in composition is shallow; 3 passes clears it
+        for table in tables:
+            try:
+                oracle.db_query(db, f"DELETE FROM {table} WHERE book_id='{bid}'")
+            except Exception:  # FK-blocked this pass — a later pass clears it
+                pass
+    # Verify completeness — a surviving row is a leak, and silence would hide it.
+    leaked = {}
+    for table in tables:
         try:
-            oracle.db_query(config.DOMAIN_DB["composition"],
-                            f"DELETE FROM {table} WHERE book_id='{bid}'")
-            out[table] = "ok"
-        except Exception as e:
-            out[table] = f"skip ({type(e).__name__})"
-    return out
+            n = int(oracle.scalar(db, f"SELECT count(*) FROM {table} WHERE book_id='{bid}'") or 0)
+            if n:
+                leaked[table] = n
+        except Exception:
+            pass
+    return {"tables": len(tables), "leaked": leaked} if leaked else {"tables": len(tables), "clean": True}

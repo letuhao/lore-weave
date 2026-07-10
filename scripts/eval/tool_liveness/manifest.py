@@ -72,6 +72,14 @@ def build(rows: list[dict], meta: dict[str, Any], sweep: list[dict] | None = Non
     """
     tools: dict[str, dict] = {}
     for r in sweep or []:
+        # A tool can appear in the sweep more than once — it runs in >1 phase (a motif read
+        # is `null` in phase 1 against the real account, then PASS in phase 2 as the seeded
+        # throwaway user). A CONCLUSIVE result must never be clobbered by a later `null`:
+        # "we didn't check this phase" must not erase "it executed last phase". This makes
+        # the merge independent of phase order, instead of relying on phase 2 running last.
+        prior = tools.get(r["tool"])
+        if prior is not None and r["executes"] is None and prior.get("executes") is not None:
+            continue
         tools[r["tool"]] = {
             "status": "SWEEP-" + ("PASS" if r["executes"] else
                                   "BROKEN" if r["executes"] is False else "INCONCLUSIVE"),

@@ -626,6 +626,74 @@ def test_project_chain_uses_the_composition_project_not_the_kg_one():
     assert args["args"]["project_id"] == "composition-project", args
 
 
+# ── the manifest MERGE (sweep + matrix → contracts/tool-liveness.json) ──────────
+#
+# A tool runs in more than one sweep phase, so build() sees duplicate rows. The three-valued
+# `executes` must be preserved across the merge: a conclusive result must never be erased by
+# a later `null`, and the matrix (a real model turn) outranks the deterministic sweep.
+
+def test_manifest_merge_conclusive_survives_a_later_null():
+    from tool_liveness.manifest import build
+
+    # same tool: phase 1 could not reach it (null), phase 2 executed it (true). Order in the
+    # list mimics phase order; the PASS must win regardless of which comes last.
+    sweep_pass_last = [
+        {"tool": "composition_motif_get", "executes": None},
+        {"tool": "composition_motif_get", "executes": True},
+    ]
+    sweep_null_last = [
+        {"tool": "composition_motif_get", "executes": True},
+        {"tool": "composition_motif_get", "executes": None},
+    ]
+    for sweep in (sweep_pass_last, sweep_null_last):
+        m = build([], {}, sweep)
+        assert m["tools"]["composition_motif_get"]["executes"] is True, sweep
+
+
+def test_manifest_merge_a_broken_result_is_never_erased_by_a_null():
+    from tool_liveness.manifest import build
+
+    m = build([], {}, [
+        {"tool": "settings_get_profile", "executes": False},
+        {"tool": "settings_get_profile", "executes": None},
+    ])
+    assert m["tools"]["settings_get_profile"]["executes"] is False
+
+
+def test_manifest_matrix_outranks_the_sweep_and_sets_proven():
+    from tool_liveness.manifest import build
+
+    rows = [{"tool": "book_create", "status": "PASS", "G3": "PASS", "G4": "PASS"}]
+    sweep = [{"tool": "book_create", "executes": None}]
+    m = build(rows, {}, sweep)["tools"]["book_create"]
+    assert m["executes"] is True and m["proven"] is True
+
+
+def test_manifest_null_executes_never_read_as_false_by_blocked():
+    """The load-bearing consumer predicate: `blocked` fires ONLY on explicit false."""
+    from tool_liveness.manifest import blocked, build
+
+    m = build([], {}, [{"tool": "x", "executes": None}, {"tool": "y", "executes": False}])
+    assert blocked(m, "x") is False and blocked(m, "y") is True
+    assert blocked(m, "absent-tool") is False
+
+
+def test_teardown_composition_is_book_scoped_and_verifies_completeness():
+    """A teardown keyed on anything broader than the created book id would delete another
+    user's composition rows. And it must VERIFY nothing survives — an earlier version listed
+    5 tables and silently leaked a generation_job row per run."""
+    import inspect
+
+    from tool_liveness import project_chain
+
+    src = inspect.getsource(project_chain.teardown_composition)
+    # every DELETE is book-scoped; there is no unscoped `DELETE FROM x` anywhere
+    assert "DELETE FROM {table} WHERE book_id='{bid}'" in src
+    assert "DELETE FROM composition" not in src, "no hardcoded/unscoped table delete"
+    # discovers tables at runtime (no hardcoded list to drift) and verifies no leak remains
+    assert "information_schema" in src and "leaked" in src
+
+
 def test_project_chain_motif_crud_is_a_phase2_user_chain_not_here():
     """The user-scoped motif CRUD (create/get/patch/archive/adopt/link_list) lives in
     user_fixture (phase 2), NOT this book-scoped module — a regression that moved it here
