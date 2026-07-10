@@ -8,7 +8,33 @@
 - **Also:** `VoiceSettingsPanel` folded in as the panel's Voice **section** (`embedded` prop — two stacked `fixed` slide-overs would fight for the right edge and steal the click-outside handler); the mic button deep-links to it. The "6-vs-4 preset lists" became one `PROMPT_PRESETS` — they had diverged in keys, capitalisation *and* prompt text, so the prompt a new chat was seeded with was not the prompt the settings panel showed under that name.
 - **Found by the live smoke, fixed:** `MultiProjectPicker` defaulted to `limit=200` against a route that caps at `le=100` → a silent **422**, so the knowledge-graph picker had been listing **nothing**.
 - **Verify:** chat-service **1377 passed**; FE **117 files / 902 tests**, `tsc --noEmit` + eslint clean. **Live smoke (BE)**: baseline `grounding=True/system`, `context.mode=auto/account` → PATCH → both `source_tier=session` → deep-merge keeps siblings → bad enum 422 and does not leak into storage → explicit null clears back to exactly the baseline tiers. **Live smoke (browser, real gateway)**: temperature shows "Not set" with no slider; grounding chip `system` → toggle → `session` + "clear · inherit on" → full reload → **still** `session` → clear → back to `system`. Zero console errors.
+- **`/review-impl` (`8d19aaa73`) — 2 HIGH + 3 MED/LOW, all introduced by the work above, all red-first then fixed:**
+  - **HIGH-1, cross-session write.** `useSessionSettingsEditor.send()` PATCHed `latest.current.session_id`, and `latest.current` is reassigned *during render*. The panel stays mounted across a session switch, and the switch itself invalidates `send`'s identity → fires the cleanup that flushes the debounce. A half-typed prompt for chat **A** was written to chat **B**. Fixed: bind the pending body to the session it was *authored* on (`pendingFor`), flush the old body first, and only hand the resulting row back to the provider if it is still the session on screen. Test: `expected 'B' to be 'A'`.
+  - **HIGH-2, full subtree remount.** `VoiceShell` was a component declared *inside* `VoiceSettingsPanel`'s render body → new component TYPE every render → React unmounts+remounts everything (focus lost mid-typing, slider drag drops pointer capture, voice list re-fetched per keystroke). Hoisted to module scope. Test counts **mounts**, not renders: 4 → 8 before the fix.
+  - **MED** — `accountVoiceDiffers` was exported, tested and **never called** while the mirror's comment claimed it only wrote on real changes. Given its job (each mirror is an auth-service POST); the voice panel now also guards on `prev[key] !== value`.
+  - **MED** — the 6-vs-4 preset split was **mirrored in i18n** and survived the code fix (`new.preset.*` 4 keys vs `settings.preset.*` 6 keys). One `presets.<key>` block now across **19 locales**, reusing existing translations (vi keeps *Tiểu thuyết gia*). Verified mechanically: the only key changes anywhere are the two retired blocks + the one added block; every other value byte-identical.
+  - **LOW** — `BehaviorSection`'s system-prompt chip was hand-rolled instead of using the shared `isOverridden` predicate (the exact drift it exists to prevent), and had no clear affordance.
+  - Re-verified live after the fixes: chip `system → session → system`, voice embedded with 0 rival overlays, one unified preset list, 0 console errors. FE **122 files / 951 tests**.
 - **Deferred:** `D-CHATAI-VOICE-TWO-STORES-ENUM` (LOW) — `tts_source`/`stt_source` are deliberately left OUT of `SETTING_ENUMS`: validating either vocabulary today would 422 a live client that still sends the old word. A tripwire test asserts their absence, so whoever finishes the voice migration must reconcile the vocabulary rather than silently delete the assertion.
+
+**▶ TRACK B — CLOSED (this session).** Everything in [`tracks/TRACK-B.md`](../specs/2026-07-09-agent-discoverability-and-workflow/tracks/TRACK-B.md) is delivered **except one item, deliberately not started**:
+
+| Deliverable | State |
+|---|---|
+| WS-4A `glossary_extract_entities_from_doc` | ✅ live-smoked (real BYOK gemma) |
+| WS-4B `kg_project_entities_to_nodes` + `KG_ENDPOINT_NOT_NODE` fail-fast | ✅ live-smoked (real Neo4j) |
+| WS-4C Half B (`llm_tool_call` facts → L2) | ✅ |
+| WS-4C Half A (canon auto-capture → `ai-suggested` inbox) | ✅ live-smoked (3 services); **opt-in** after `/review-impl` |
+| Entity identity: `scope_label`, `glossary_entity_rename`, reachable `glossary_entity_delete` | ✅ (`mcp_server.go:89`) |
+| Domain feedback: NFC/NFD+CJK dedup · read-your-writes · upsert-on-create | ✅ (verified against code, not self-reported) |
+| Domain feedback: `propose_*`-writes-immediately naming | → **Track D's D1**, not Track B |
+| Domain feedback: `glossary_confirm_action` doc-drift | ⬜ cannot confirm without its original feedback item |
+| **W8/W10/W11 product-journey backends** (world-container graph/map authoring; reader spoiler-cutoff) | ⬜ **NOT STARTED** — P2, structurally large, needs its own design pass (defer gate #2) |
+
+**Track-B defers still open:** `D-WS4C-EFFECTIVE-VALUE` (LOW) only — see below.
+**Bugs found and fixed while closing Track B** (each with a spec + live proof): `D-KG-GLOSSARY-FK-GLOBAL-UNIQUE` (Neo4j FK was globally unique; a 2nd project could anchor nothing) · `D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM` · `D-ANCHOR-PRELOAD-50-CAP` · `D-KNOWLEDGE-TOOL-ERRORS-NOT-ISERROR` · capture defaulting to ON (spent users' BYOK tokens) · `ADD COLUMN IF NOT EXISTS` never revisiting a bad default (21/21 dev projects opted in).
+
+**▶ NEXT (whoever picks this up):** Track B's only remaining scope is **W8/W10/W11**. Start with a design pass, not code — it spans world-container graph/map authoring and the reader spoiler-cutoff, and touches new surfaces.
 
 **Track D — WS-D1 SHIPPED + F6 root-caused and fixed, 2026-07-10** (branch `feat/context-budget-law`, `713e6ba65` · `a1fa023a5`). Evidence: [`docs/eval/tool-liveness/2026-07-10-f6-kg-build-graph-unreachable-by-agent.md`](../eval/tool-liveness/2026-07-10-f6-kg-build-graph-unreachable-by-agent.md).
 
