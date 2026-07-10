@@ -39,3 +39,12 @@ export type AiPrefs = {
 export type AiPrefsPatch = Partial<Pick<AiPrefs, 'behavior' | 'grounding' | 'voice' | 'context'>>;
 
 export type ModelRole = 'chat' | 'composer' | 'planner' | 'embedding' | 'rerank' | 'critic';
+
+/** A deploy-tier capability ceiling (D-WS4C-EFFECTIVE-VALUE). `deploy_allows` is the
+ *  process-global kill-switch; a consumer computes `effective = deploy_allows && knob`
+ *  where `knob` is its own user/project opt-in. `source_tier` is always 'system'. */
+export type CapabilityCeiling = { deploy_allows: boolean; source_tier: string };
+
+export type ChatCapabilities = {
+  canon_capture: CapabilityCeiling;
+};

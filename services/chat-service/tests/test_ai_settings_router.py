@@ -185,3 +185,36 @@ async def test_effective_settings_no_book_id_skips_book_tier(client, mock_pool, 
     fake_provider._live = True
     resp = await client.get("/v1/chat/effective-settings")
     assert resp.json()["models"]["chat"]["source_tier"] == "account"
+
+
+# ── deploy capability ceilings (D-WS4C-EFFECTIVE-VALUE) ──────────────────────
+async def test_capabilities_reports_canon_capture_ceiling_on(client, monkeypatch):
+    # Default deploy ceiling permits capture → deploy_allows True, tier=system.
+    monkeypatch.setattr(ai_settings.settings, "canon_capture_enabled", True)
+    resp = await client.get("/v1/chat/capabilities")
+    assert resp.status_code == 200
+    cap = resp.json()["canon_capture"]
+    assert cap == {"deploy_allows": True, "source_tier": "system"}
+
+
+async def test_capabilities_reports_canon_capture_ceiling_off(client, monkeypatch):
+    # A deployment kill-switches capture off → deploy_allows False. The consumer
+    # ANDs this with its user knob, so a user who toggled ON still sees effective OFF
+    # (the "silently-off" bug the boundary rule prevents).
+    monkeypatch.setattr(ai_settings.settings, "canon_capture_enabled", False)
+    resp = await client.get("/v1/chat/capabilities")
+    assert resp.status_code == 200
+    assert resp.json()["canon_capture"]["deploy_allows"] is False
+
+
+async def test_capabilities_requires_auth(monkeypatch):
+    # No get_current_user override → the route rejects an unauthenticated caller
+    # (it rides the same JWT edge as every /v1/chat route).
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/v1/chat/capabilities")
+    assert resp.status_code in (401, 403)

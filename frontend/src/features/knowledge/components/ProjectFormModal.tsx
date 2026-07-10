@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
 import { BookPicker } from '@/components/shared/BookPicker';
+import { useChatCapabilities } from '@/features/chat-ai-settings/hooks/useChatCapabilities';
 import { isVersionConflict } from '../api';
 import type {
   Project,
@@ -56,6 +57,14 @@ export function ProjectFormModal({
   initialBookId,
 }: Props) {
   const { t } = useTranslation('knowledge');
+  // D-WS4C-EFFECTIVE-VALUE — the deploy-tier ceiling on canon capture. The user
+  // knob below is only HALF the story: `effective = deploy_allows && knob`. A
+  // deployment can kill-switch capture platform-wide, so we surface that here
+  // instead of letting the toggle silently do nothing. Unknown (null / fetch
+  // failed) ⇒ assume allowed — the ceiling defaults on, so a transient outage
+  // must not fabricate a "disabled by deployment" warning.
+  const { capabilities } = useChatCapabilities();
+  const canonCaptureDeployAllows = capabilities?.canon_capture?.deploy_allows !== false;
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [projectType, setProjectType] = useState<ProjectType>('general');
@@ -465,6 +474,22 @@ export function ProjectFormModal({
                           'Link a book to this project to capture names into its glossary.',
                       })}
                 </span>
+                {/* D-WS4C-EFFECTIVE-VALUE — the honest effective value + source. When
+                    the deployment kill-switches capture off, the knob above CAN'T take
+                    effect (effective = deploy_allows && knob). We say so plainly and
+                    keep the user's choice saved for when it's re-enabled, rather than
+                    letting the toggle read "on" while nothing captures. */}
+                {bookId && !canonCaptureDeployAllows && (
+                  <span
+                    className="text-[11px] font-medium text-amber-600 dark:text-amber-500"
+                    data-testid="project-canon-capture-ceiling-off"
+                  >
+                    {t('projects.form.canonCaptureCeilingOff', {
+                      defaultValue:
+                        'Turned off for this deployment — your choice is saved, but capture won’t run until an administrator re-enables it.',
+                    })}
+                  </span>
+                )}
               </span>
             </label>
           </div>

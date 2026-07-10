@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 
 from app.client.provider_client import get_provider_client
+from app.config import settings
 from app.db.user_chat_ai_prefs import VersionConflict, get_prefs, patch_prefs
 from app.deps import get_current_user, get_db
 from app.services import settings_resolution as sr
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 prefs_router = APIRouter(prefix="/v1/chat/ai-prefs", tags=["ai-settings"])
 effective_router = APIRouter(prefix="/v1/chat/effective-settings", tags=["ai-settings"])
+capabilities_router = APIRouter(prefix="/v1/chat/capabilities", tags=["ai-settings"])
 
 # System-tier defaults — the ONLY place a literal default lives (spec §3.3). These
 # surface today's silent behaviors as explicit, visible values.
@@ -229,4 +231,30 @@ async def read_effective_settings(
         "grounding": _cat("grounding", _SYSTEM_GROUNDING),
         "voice": _cat("voice", _SYSTEM_VOICE),
         "context": _cat("context", _SYSTEM_CONTEXT),
+    }
+
+
+# ── deploy capability ceilings ───────────────────────────────────────────────
+# D-WS4C-EFFECTIVE-VALUE. A capability like canon auto-capture is `effective =
+# AND(deploy_allows, user_enables)` (Settings & Config Boundary: env is a CEILING,
+# never a per-user knob). The two halves live in different services — the ceiling
+# is chat-service env (`settings.canon_capture_enabled`), the user knob is
+# `knowledge_projects.canon_capture_enabled` — so the join can only be computed
+# where the ceiling is visible. This route publishes the deploy-tier ceiling so a
+# consumer that already holds the user knob (the knowledge project settings modal)
+# can render the HONEST effective value + source, instead of the toggle silently
+# doing nothing when a deployment kill-switches capture off (the "silently-off" bug
+# class the boundary rule exists to prevent). `source_tier` uses the shared cascade
+# vocabulary (TIER_SYSTEM) so a ceiling reads the same as any other system default.
+@capabilities_router.get("")
+async def read_capabilities(
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    """Deploy-tier capability ceilings. A consumer ANDs `deploy_allows` with its own
+    user/project opt-in to get the effective value: `effective = AND(ceiling, knob)`."""
+    return {
+        "canon_capture": {
+            "deploy_allows": settings.canon_capture_enabled,
+            "source_tier": sr.TIER_SYSTEM,
+        },
     }

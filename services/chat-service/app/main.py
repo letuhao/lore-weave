@@ -163,6 +163,7 @@ app.include_router(internal.router)  # FD-2: chat-turn text fetch for KG extract
 app.include_router(internal.telemetry_router)  # W1: /internal/tool-health telemetry
 app.include_router(ai_settings.prefs_router)  # Chat & AI settings — per-user prefs blob
 app.include_router(ai_settings.effective_router)  # Chat & AI settings — resolved cascade
+app.include_router(ai_settings.capabilities_router)  # Deploy-tier capability ceilings (D-WS4C-EFFECTIVE-VALUE)
 
 
 @app.get("/health", response_class=PlainTextResponse)
