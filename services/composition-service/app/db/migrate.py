@@ -9,19 +9,31 @@ Cross-DB ids (project_id→knowledge, book_id/chapter_id/*_revision_id→book,
 entity ids→glossary, llm_job_id→gateway) carry NO DB FK (§1.4 — validated in
 app code). In-DB FKs (outline_node.parent_id, scene_link, generation_job→
 outline_node) are fine — same database.
+
+Book-package re-key (spec 25 M0-M3, marker `pkg_rekey_v1`): `book_id` is the
+TENANCY scope key on the 13 package tables (`project_id` = the Work PARTITION
+key — PM-3); the actor column is `created_by` — STORED, never filtered on
+(PM-5; access is the E0 book gate, PM-8). The CREATE TABLE texts below are the
+FINAL post-M3 shape, so a fresh DB bootstraps straight into it; an existing DB
+converges through app.db.package_rekey (M0 pre-flight BEFORE this DDL — PM-7 —
+then the M2 backfill + M3 cutover after it), wired in run_migrations.
 """
 
 import logging
 
 import asyncpg
 
+from app.db.package_rekey import run_package_rekey
+
 logger = logging.getLogger(__name__)
 
 _SCHEMA_SQL = """
 -- ── composition_work: Work marker + work-level settings (1:1 with a book project)
+-- created_by (25 M3/BPS-1) = the ACTOR stamp — stored, never filtered on; the
+-- scope keys are project_id (Work partition) + book_id (tenancy, E0 book gate).
 CREATE TABLE IF NOT EXISTS composition_work (
   project_id          UUID PRIMARY KEY,
-  user_id             UUID NOT NULL,
+  created_by          UUID NOT NULL,
   book_id             UUID NOT NULL,
   active_template_id  UUID,
   status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
@@ -30,7 +42,17 @@ CREATE TABLE IF NOT EXISTS composition_work (
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_composition_work_user ON composition_work(user_id);
+-- 25 M3.3: the actor index under its FINAL name. Guarded on the column: on a
+-- legacy boot this DDL runs BEFORE the package_rekey M3 rename, so the column
+-- may still be user_id here — the rekey creates this index itself right after
+-- renaming; this block covers the fresh-DB path and converges every later boot.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'composition_work' AND column_name = 'created_by') THEN
+    CREATE INDEX IF NOT EXISTS idx_composition_work_created_by ON composition_work(created_by);
+  END IF;
+END $$;
 
 -- C16 (WG-3) Work-setup resilience: when knowledge-service is down/5xx during
 -- greenfield setup, the Work is created with a LAZY (null) project_id + a backfill
@@ -41,8 +63,9 @@ CREATE INDEX IF NOT EXISTS idx_composition_work_user ON composition_work(user_id
 --   • keep the 1:1 (work ⇄ knowledge project) invariant via a PARTIAL unique index
 --     over only the BACKED rows (project_id IS NOT NULL) — null rows are exempt;
 --   • `pending_project_backfill` marks a greenfield Work awaiting its knowledge
---     project, and a partial-unique index caps it at one pending Work per (user,book)
---     so a setup retry backfills the SAME row rather than spawning duplicates.
+--     project, and a partial-unique index caps it at one pending Work per (book)
+--     (25 PM-4 re-key: was per (user,book) — two users' outage-forks must collide,
+--     not fork) so a setup retry backfills the SAME row rather than duplicating.
 -- All steps are idempotent (IF NOT EXISTS / guarded DO-blocks) so re-boot is safe.
 -- GUARD (C23): a DERIVATIVE Work keeps project_id NOT NULL — enforced in app code
 -- (routers), NOT relaxed here; this null state is greenfield-only.
@@ -71,10 +94,12 @@ ALTER TABLE composition_work ALTER COLUMN project_id DROP NOT NULL;
 -- 1:1 work⇄project for BACKED works only (a null project_id is a lazy/greenfield Work).
 CREATE UNIQUE INDEX IF NOT EXISTS uq_composition_work_project
   ON composition_work(project_id) WHERE project_id IS NOT NULL;
--- At most one pending-backfill (greenfield, null-project) Work per (user,book) so a
--- setup retry backfills the same row instead of duplicating.
+-- At most one pending-backfill (greenfield, null-project) Work per BOOK (25 PM-4)
+-- so a setup retry backfills the same row instead of duplicating. On a legacy DB
+-- the old (user_id, book_id) index no-ops this create; package_rekey M3.1 drops +
+-- recreates it in this shape.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_composition_work_pending
-  ON composition_work(user_id, book_id) WHERE pending_project_backfill;
+  ON composition_work(book_id) WHERE pending_project_backfill;
 
 -- ── C23 (dị bản M0): derivative copy-on-write substrate. A DERIVATIVE Work points
 -- at the SOURCE Work it diverges from (`source_work_id`, in-DB self-ref FK on the
@@ -87,6 +112,12 @@ ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS source_work_id UUID
 ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS branch_point INT;
 CREATE INDEX IF NOT EXISTS idx_composition_work_source
   ON composition_work(source_work_id) WHERE source_work_id IS NOT NULL;
+-- 25 PM-4/M3.1: ONE CANONICAL manifest per book — derivatives (source_work_id set)
+-- and archived Works are exempt BY DESIGN (dị bản stay N-per-book; archive-and-
+-- recreate stays possible). Placed after the C23 ALTERs so source_work_id exists
+-- on a fresh bootstrap.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_composition_work_book
+  ON composition_work(book_id) WHERE source_work_id IS NULL AND status = 'active';
 -- ARCH-REVIEW GUARD (C23, reconciled with C16): a DERIVATIVE Work MUST carry a
 -- NOT-NULL project_id — a null project_id widens the knowledge timeline endpoint to
 -- ALL of a user's projects (cross-project grounding leak). This is a CONDITIONAL
@@ -113,8 +144,9 @@ END $$;
 -- derivative Work (in-DB FK on the surrogate id).
 CREATE TABLE IF NOT EXISTS divergence_spec (
   id          UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id     UUID NOT NULL,
+  created_by  UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
   project_id  UUID NOT NULL,
+  book_id     UUID NOT NULL,   -- tenancy scope key (25 M1/M2; derived via work_id)
   work_id     UUID NOT NULL REFERENCES composition_work(id) ON DELETE CASCADE,
   taxonomy    TEXT NOT NULL DEFAULT 'au' CHECK (taxonomy IN ('pov_shift','character_transform','au')),
   pov_anchor  UUID,
@@ -130,8 +162,9 @@ CREATE INDEX IF NOT EXISTS idx_divergence_spec_work ON divergence_spec(work_id);
 -- C25 (this cycle does NOT apply overrides — COW persist-only).
 CREATE TABLE IF NOT EXISTS entity_override (
   id                UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id           UUID NOT NULL,
+  created_by        UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
   project_id        UUID NOT NULL,
+  book_id           UUID NOT NULL,   -- tenancy scope key (25 M1/M2; derived via work_id)
   work_id           UUID NOT NULL REFERENCES composition_work(id) ON DELETE CASCADE,
   target_entity_id  UUID NOT NULL,
   overridden_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -155,8 +188,9 @@ CREATE INDEX IF NOT EXISTS idx_structure_template_owner ON structure_template(ow
 -- ── outline_node: Arc→Chapter→Scene→Beat tree (also = Scene-Graph nodes)
 CREATE TABLE IF NOT EXISTS outline_node (
   id                 UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id            UUID NOT NULL,
+  created_by         UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
   project_id         UUID NOT NULL,
+  book_id            UUID NOT NULL,   -- tenancy scope key (25 M1/M2, backfilled via the Work)
   parent_id          UUID REFERENCES outline_node(id) ON DELETE CASCADE,
   kind               TEXT NOT NULL CHECK (kind IN ('arc','chapter','scene','beat')),
   rank               TEXT NOT NULL,
@@ -191,8 +225,9 @@ CREATE INDEX IF NOT EXISTS idx_outline_node_children_keyset
 -- ── scene_link: ONLY non-derivable edges
 CREATE TABLE IF NOT EXISTS scene_link (
   id           UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id      UUID NOT NULL,
+  created_by   UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
   project_id   UUID NOT NULL,
+  book_id      UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   from_node_id UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
   to_node_id   UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
   kind         TEXT NOT NULL DEFAULT 'setup_payoff' CHECK (kind IN ('setup_payoff','custom')),
@@ -207,8 +242,9 @@ CREATE INDEX IF NOT EXISTS idx_scene_link_from    ON scene_link(from_node_id);
 -- ── canon_rule: author-declared invariants (from/until on the knowledge timeline axis)
 CREATE TABLE IF NOT EXISTS canon_rule (
   id          UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id     UUID NOT NULL,
+  created_by  UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
   project_id  UUID NOT NULL,
+  book_id     UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   text        TEXT NOT NULL,
   scope       TEXT NOT NULL DEFAULT 'world' CHECK (scope IN ('world','entity','reveal_gate')),
   entity_id   UUID,
@@ -227,8 +263,9 @@ CREATE INDEX IF NOT EXISTS idx_canon_rule_entity  ON canon_rule(entity_id) WHERE
 -- ── generation_job: AI generation + critic tracking (base_revision_id = OI-2 staleness guard)
 CREATE TABLE IF NOT EXISTS generation_job (
   id                 UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id            UUID NOT NULL,
+  created_by         UUID NOT NULL,   -- actor stamp (25 M3) — spend stays keyed to the acting caller (BYOK)
   project_id         UUID NOT NULL,
+  book_id            UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   outline_node_id    UUID REFERENCES outline_node(id) ON DELETE SET NULL,
   operation          TEXT NOT NULL,
   mode               TEXT NOT NULL DEFAULT 'cowrite' CHECK (mode IN ('cowrite','auto')),
@@ -274,8 +311,9 @@ CREATE INDEX IF NOT EXISTS idx_generation_job_updated_at ON generation_job(updat
 -- with LIFO `nesting_depth` (innermost closes first).
 CREATE TABLE IF NOT EXISTS narrative_thread (
   id             UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id        UUID NOT NULL,
+  created_by     UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
   project_id     UUID NOT NULL,
+  book_id        UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   kind           TEXT NOT NULL CHECK (kind IN ('promise','foreshadow','question','mice_thread')),
   status         TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','progressing','paid','dropped')),
   -- in-DB FKs to outline_node (same DB) — the codebase convention for node refs
@@ -323,8 +361,9 @@ END $$;
 -- job_id FK is in-DB (same database, §1.4 OK); project_id is cross-DB (no FK).
 CREATE TABLE IF NOT EXISTS generation_correction (
   id                     UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id                UUID NOT NULL,
+  created_by             UUID NOT NULL,   -- actor stamp (25 M3) — the corrector, stored never filtered
   project_id             UUID NOT NULL,
+  book_id                UUID NOT NULL,   -- tenancy scope key (25 M1/M2; derived via job_id)
   job_id                 UUID NOT NULL REFERENCES generation_job(id) ON DELETE CASCADE,
   kind                   TEXT NOT NULL CHECK (kind IN ('edit','pick_different','regenerate','reject')),
   chosen_candidate_index INT,
@@ -338,7 +377,17 @@ CREATE TABLE IF NOT EXISTS generation_correction (
   CONSTRAINT correction_pick_needs_index CHECK (kind <> 'pick_different' OR chosen_candidate_index IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS idx_generation_correction_job  ON generation_correction(job_id);
-CREATE INDEX IF NOT EXISTS idx_generation_correction_user ON generation_correction(user_id, created_at DESC);
+-- Name predates the 25 M3 rename (kept so migrated + fresh DBs converge — a RENAME
+-- COLUMN cascades an index's definition but not its name). Guarded: on a legacy
+-- boot this runs BEFORE the rename, where the column is still user_id and the
+-- old-shape index already exists.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'generation_correction' AND column_name = 'created_by') THEN
+    CREATE INDEX IF NOT EXISTS idx_generation_correction_user ON generation_correction(created_by, created_at DESC);
+  END IF;
+END $$;
 
 -- ── outbox_events: standard (matches knowledge-service); relayed → loreweave:events:composition
 CREATE TABLE IF NOT EXISTS outbox_events (
@@ -359,18 +408,22 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox_events(created_at) WHERE
 -- arc→chapter→scene tree is never persisted twice (D-A3-COMMIT-IDEMPOTENCY). The
 -- stored `result` lets a replay return the original ids without re-inserting.
 -- project_id is cross-DB (no FK); the unique index is the exactly-once guard.
--- Scope = (user, PROJECT, key): the commit endpoint is per-project, so a key
--- reused across projects must NOT replay another project's result (/review-impl).
+-- Scope = (PROJECT, key) — 25 PM-10: the per-user leg dropped with the re-key,
+-- but the discriminator stays the PROJECT (not the book): a derivative replaying
+-- a client key must NOT be handed the SOURCE Work's stored result.
 CREATE TABLE IF NOT EXISTS decompose_commit (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id         UUID NOT NULL,
+  created_by      UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
   project_id      UUID NOT NULL,
+  book_id         UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   idempotency_key TEXT NOT NULL,
   arc_id          UUID NOT NULL,
   result          JSONB NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_decompose_commit_idem ON decompose_commit(user_id, project_id, idempotency_key);
+-- Final (PM-10) shape; on a legacy DB the old (user_id, project_id, key) index
+-- no-ops this create and package_rekey M3.2 drops + recreates it in this shape.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_decompose_commit_idem ON decompose_commit(project_id, idempotency_key);
 
 -- ── scene_grounding_pins: LOOM T3.4 — per-scene author steering of the injected
 -- grounding context. One row per addressed item (present-entity / canon-rule /
@@ -383,8 +436,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_decompose_commit_idem ON decompose_commit(
 -- in place (upsert); a CASCADE drop with the scene leaves no orphan.
 CREATE TABLE IF NOT EXISTS scene_grounding_pins (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id         UUID NOT NULL,
+  created_by      UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
   project_id      UUID NOT NULL,
+  book_id         UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   outline_node_id UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
   item_type       TEXT NOT NULL CHECK (item_type IN ('present','canon','lore')),
   item_id         TEXT NOT NULL,
@@ -393,8 +447,17 @@ CREATE TABLE IF NOT EXISTS scene_grounding_pins (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scene_grounding_pins_item
   ON scene_grounding_pins(project_id, outline_node_id, item_type, item_id);
-CREATE INDEX IF NOT EXISTS idx_scene_grounding_pins_scene
-  ON scene_grounding_pins(user_id, project_id, outline_node_id);
+-- Definition converges with the 25 M3 rename-cascade (created_by leading — the
+-- project-scoped reads are served by idx_scene_grounding_pins_item above).
+-- Guarded for the legacy pre-rename boot, same as idx_generation_correction_user.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'scene_grounding_pins' AND column_name = 'created_by') THEN
+    CREATE INDEX IF NOT EXISTS idx_scene_grounding_pins_scene
+      ON scene_grounding_pins(created_by, project_id, outline_node_id);
+  END IF;
+END $$;
 
 -- ── composition_daily_progress: LOOM T4.2 — server-SSOT writing progress stats.
 -- One row per (work, chapter, local-date): `words` is the chapter's TOTAL word
@@ -441,31 +504,36 @@ CREATE TABLE IF NOT EXISTS composition_progress_baseline (
 -- overrides the book default; the packer resolves the MOST SPECIFIC row for the
 -- target scene (scene > chapter > work) and threads density/pace into the draft
 -- prompts. `scope_id` is the project_id (work), chapter_id (chapter) or outline
--- node_id (scene) — never null, so the PK is clean. Per-user (own authoring config).
+-- node_id (scene) — never null, so the PK is clean. SHARED package row (25 M3.4):
+-- the PK is package-scoped so a grantee edit UPDATES the shared row in place;
+-- created_by is a plain actor stamp OUTSIDE row identity (DA-11).
 CREATE TABLE IF NOT EXISTS style_profile (
-  user_id     UUID NOT NULL,
+  created_by  UUID NOT NULL,
   project_id  UUID NOT NULL,
+  book_id     UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   scope_type  TEXT NOT NULL CHECK (scope_type IN ('work','chapter','scene')),
   scope_id    UUID NOT NULL,
   density     INT  NOT NULL CHECK (density BETWEEN 0 AND 100),
   pace        INT  NOT NULL CHECK (pace BETWEEN 0 AND 100),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, project_id, scope_type, scope_id)
+  PRIMARY KEY (project_id, scope_type, scope_id)
 );
 
 -- ── voice_profile: LOOM T3.5 — per-character voice tags (e.g. terse, understatement,
 -- no purple prose). Keyed by entity_id (the glossary/knowledge entity); `entity_name`
 -- is denormalized so the packer renders the directive without a name lookup. The
 -- packer injects a character's tags ONLY when that entity is PRESENT in the scene.
--- `tags` is a JSON array of short strings. Per-user (own authoring config).
+-- `tags` is a JSON array of short strings. SHARED package row (25 M3.4): package-
+-- scoped PK, created_by = plain actor stamp outside row identity (DA-11).
 CREATE TABLE IF NOT EXISTS voice_profile (
-  user_id      UUID NOT NULL,
+  created_by   UUID NOT NULL,
   project_id   UUID NOT NULL,
+  book_id      UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   entity_id    UUID NOT NULL,
   entity_name  TEXT NOT NULL,
   tags         JSONB NOT NULL DEFAULT '[]'::jsonb,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, project_id, entity_id)
+  PRIMARY KEY (project_id, entity_id)
 );
 
 -- ── reference_source: LOOM T3.6 — the author's per-Work reference shelf (external
@@ -477,12 +545,14 @@ CREATE TABLE IF NOT EXISTS voice_profile (
 -- column needed). All rows of a Work share ONE embedding model (work.settings.
 -- reference_embed_model_ref, set write-through on first add) so the vectors live in
 -- one space. `embedding` is NULL only transiently if an embed failed at insert (the
--- router rejects that path; a null-vector row is simply never a search hit). Per-user
--- + per-book tier — every query filters user_id + project_id (tenancy).
+-- router rejects that path; a null-vector row is simply never a search hit).
+-- Package-visible (25 OQ-5): the shelf steers shared generation, so reads key on
+-- project_id/book_id behind the E0 book gate; created_by is the actor stamp.
 CREATE TABLE IF NOT EXISTS reference_source (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id         UUID NOT NULL,
+  created_by      UUID NOT NULL,
   project_id      UUID NOT NULL,
+  book_id         UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   title           TEXT NOT NULL DEFAULT '',
   author          TEXT NOT NULL DEFAULT '',
   source_url      TEXT NOT NULL DEFAULT '',
@@ -492,8 +562,27 @@ CREATE TABLE IF NOT EXISTS reference_source (
   embedding_dim   INT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_reference_source_project
-  ON reference_source(user_id, project_id, created_at DESC);
+-- Definition converges with the 25 M3 rename-cascade (created_by leading; the
+-- book-scoped reads are served by idx_reference_source_book above, the
+-- project-scoped reads by idx_reference_source_project_read below).
+-- Guarded for the legacy pre-rename boot.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'reference_source' AND column_name = 'created_by') THEN
+    CREATE INDEX IF NOT EXISTS idx_reference_source_project
+      ON reference_source(created_by, project_id, created_at DESC);
+  END IF;
+END $$;
+-- 25 M3.3 rename-cascade perf fix: the actor RENAME cascaded the old
+-- idx_reference_source_project to a created_by-LEADING definition (above), so the
+-- project-scoped reads that replaced the per-user ones — ReferencesRepo.list(project_id)
+-- and search(project_id, …), the latter on pack()'s generation HOT PATH — lost their
+-- covering index and now seq-scan. Restore a project-leading read index. Additive +
+-- IF NOT EXISTS (project_id is never renamed) so it rides both the fresh and migrated
+-- boots, without the created_by column-existence guard the cascade index needs.
+CREATE INDEX IF NOT EXISTS idx_reference_source_project_read
+  ON reference_source(project_id, created_at DESC);
 
 -- T3.6 — let a scene pin/exclude a reference too. Extend the T3.4 item_type CHECK
 -- from ('present','canon','lore') to include 'reference'. Idempotent: the DO-block
@@ -513,6 +602,62 @@ BEGIN
       CHECK (item_type IN ('present','canon','lore','reference'));
   END IF;
 END $$;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 25 M1 — EXPAND (additive DDL for the book-package re-key; spec 25 lines 190-219).
+-- On a LEGACY DB these ALTERs add the columns NULLABLE; package_rekey's M2 backfills
+-- them from composition_work and flips NOT NULL. On a FRESH DB the CREATE TABLE
+-- texts above already declare book_id NOT NULL, so every statement here no-ops.
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- M1.1 · book_id on the 12 BPS-1 tables + generation_correction (nullable until M2)
+ALTER TABLE outline_node          ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE scene_link            ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE narrative_thread      ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE canon_rule            ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE style_profile         ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE voice_profile         ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE scene_grounding_pins  ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE divergence_spec       ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE entity_override       ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE reference_source      ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE generation_job        ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE decompose_commit      ADD COLUMN IF NOT EXISTS book_id UUID;
+ALTER TABLE generation_correction ADD COLUMN IF NOT EXISTS book_id UUID;
+
+-- M1.2 · book-scoped read indexes (partials mirror the existing project ones)
+CREATE INDEX IF NOT EXISTS idx_outline_node_book      ON outline_node(book_id)      WHERE NOT is_archived;
+CREATE INDEX IF NOT EXISTS idx_generation_job_book    ON generation_job(book_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_canon_rule_book        ON canon_rule(book_id)        WHERE active AND NOT is_archived;
+CREATE INDEX IF NOT EXISTS idx_narrative_thread_book  ON narrative_thread(book_id)  WHERE NOT is_archived;
+CREATE INDEX IF NOT EXISTS idx_scene_link_book        ON scene_link(book_id);
+CREATE INDEX IF NOT EXISTS idx_reference_source_book  ON reference_source(book_id, created_at DESC);
+-- plain (book_id) indexes for the rest, same IF NOT EXISTS shape:
+CREATE INDEX IF NOT EXISTS idx_style_profile_book         ON style_profile(book_id);
+CREATE INDEX IF NOT EXISTS idx_voice_profile_book         ON voice_profile(book_id);
+CREATE INDEX IF NOT EXISTS idx_scene_grounding_pins_book  ON scene_grounding_pins(book_id);
+CREATE INDEX IF NOT EXISTS idx_divergence_spec_book       ON divergence_spec(book_id);
+CREATE INDEX IF NOT EXISTS idx_entity_override_book       ON entity_override(book_id);
+CREATE INDEX IF NOT EXISTS idx_decompose_commit_book      ON decompose_commit(book_id);
+CREATE INDEX IF NOT EXISTS idx_generation_correction_book ON generation_correction(book_id);
+
+-- (M1.3 — the structure_node spec tree + the outline_node/motif_application
+-- attachment columns — lives in _MOTIF_SCHEMA_SQL below: structure_node FKs
+-- arc_template, which is created there, after this block.)
+
+-- 22 SC4 · authored intent, all four field groups (column list owned by 22;
+-- exit_state is the SC12 versioned {v:1,…} envelope, validated by the Pydantic
+-- model on write — see app/db/models.py SceneExitState).
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS location_entity_id UUID;
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS story_time   TEXT;
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS conflict     TEXT NOT NULL DEFAULT '';
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS outcome      TEXT NOT NULL DEFAULT '';
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS value_shift  SMALLINT
+  CHECK (value_shift IS NULL OR value_shift BETWEEN -100 AND 100);
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS stakes       TEXT NOT NULL DEFAULT '';
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS target_words INT
+  CHECK (target_words IS NULL OR target_words > 0);
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS exit_state   JSONB;     -- SC12, {v:1,…}
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward
@@ -520,6 +665,9 @@ END $$;
 # dependency order: the two child tables first, then the GUARD constraint, then the
 # two columns + their index. Leaves the C16 re-key + the rest of the schema intact so
 # up→down→up restores exactly (no residue). Mirrors book-service C20's WorldsDownSQL.
+# NOTE (25 PM-4): dropping source_work_id implicitly drops uq_composition_work_book
+# (its partial predicate references the column); the forward re-run recreates it —
+# the round-trip still restores exactly.
 C23_DOWN_SQL = """
 DROP TABLE IF EXISTS entity_override;
 DROP TABLE IF EXISTS divergence_spec;
@@ -717,7 +865,7 @@ END $$;
 -- (data-R3). motif_version pins what was bound (edge-F3).
 CREATE TABLE IF NOT EXISTS motif_application (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id         UUID NOT NULL,
+  created_by      UUID NOT NULL,                          -- actor stamp (25 M3/DA-11) — stored, never filtered on
   project_id      UUID NOT NULL,
   book_id         UUID NOT NULL,                          -- R1.1.4 per-book scope
   motif_id        UUID REFERENCES motif(id) ON DELETE SET NULL,
@@ -930,11 +1078,117 @@ BEGIN
   END IF;
 END $$;
 
--- ── plan_run / plan_artifact (PlanForge M3): per-user/per-book planning runs.
--- Tenancy: every query filters owner_user_id + book_id; E0 grants gate HTTP.
+-- ════════════════════════════════════════════════════════════════════════════
+-- 25 M1.3 · structure_node (23 A1 "Target data model", DDL text owned by 23 —
+-- executed at boot so 25 M4's lift has a target). The saga→arc→sub-arc spec
+-- tree, Per-book (BA8: cross-DB id, no FK). Lives HERE (not _SCHEMA_SQL): it
+-- FKs arc_template, created above. NO `pacing` column (BPS-3): an arc's curve
+-- IS its member scenes' outline_node.tension — a stored second copy is the
+-- drift bug in miniature (arc_template keeps `pacing`: a template has no scenes).
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS structure_node (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id         UUID NOT NULL,                              -- BA8: Per-book (cross-DB id, no FK)
+  parent_id       UUID REFERENCES structure_node(id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL CHECK (kind IN ('saga','arc')),
+  depth           SMALLINT NOT NULL DEFAULT 0 CHECK (depth BETWEEN 0 AND 2),
+  rank            TEXT NOT NULL,                              -- LexoRank, same scheme as outline_node
+
+  title           TEXT NOT NULL DEFAULT '',
+  summary         TEXT NOT NULL DEFAULT '',
+  goal            TEXT NOT NULL DEFAULT '',
+  status          TEXT NOT NULL DEFAULT 'outline'
+                    CHECK (status IN ('empty','outline','drafting','done')),
+
+  -- STRUCTURE (BA3) — the thing that was missing
+  tracks          JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{key,label}]  (was arc_template.threads)
+  roster          JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{key, actant, label, constraints[]}]
+  roster_bindings JSONB NOT NULL DEFAULT '{}'::jsonb,   -- {role_key: glossary_entity_id}
+
+  -- PROVENANCE (BA13) — nullable; an arc need not come from a template
+  arc_template_id  UUID REFERENCES arc_template(id) ON DELETE SET NULL,
+  template_version INT,
+
+  version         INT NOT NULL DEFAULT 1,
+  is_archived     BOOLEAN NOT NULL DEFAULT false,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT structure_saga_is_root CHECK (kind <> 'saga' OR parent_id IS NULL)   -- BA1
+);
+
+CREATE INDEX IF NOT EXISTS idx_structure_node_book   ON structure_node(book_id) WHERE NOT is_archived;
+CREATE INDEX IF NOT EXISTS idx_structure_node_parent ON structure_node(parent_id, rank COLLATE "C", id)
+  WHERE NOT is_archived;
+
+-- BA9 · depth + cycle guard (mirrors motif_application_scope_guard). A subtree
+-- reparent recomputes descendant depth in one statement (recursive CTE) inside
+-- the same transaction; the trigger validates each row.
+CREATE OR REPLACE FUNCTION structure_node_depth_guard() RETURNS trigger AS $$
+DECLARE parent_depth SMALLINT; parent_book UUID; walker UUID;
+BEGIN
+  IF NEW.parent_id IS NULL THEN
+    NEW.depth := 0;
+  ELSE
+    SELECT depth, book_id INTO parent_depth, parent_book FROM structure_node WHERE id = NEW.parent_id;
+    IF parent_depth IS NULL THEN
+      RAISE EXCEPTION 'structure_node parent % not found', NEW.parent_id USING ERRCODE = 'check_violation';
+    END IF;
+    IF parent_book <> NEW.book_id THEN            -- cross-book reparent (the H-5 scope-guard lesson)
+      RAISE EXCEPTION 'structure_node parent % not in book %', NEW.parent_id, NEW.book_id
+        USING ERRCODE = 'check_violation';
+    END IF;
+    NEW.depth := parent_depth + 1;
+    IF NEW.depth > 2 THEN
+      RAISE EXCEPTION 'structure_node depth % exceeds saga→arc→sub-arc', NEW.depth
+        USING ERRCODE = 'check_violation';
+    END IF;
+    -- cycle guard: walk ancestors, refuse to find NEW.id
+    walker := NEW.parent_id;
+    WHILE walker IS NOT NULL LOOP
+      IF walker = NEW.id THEN
+        RAISE EXCEPTION 'structure_node cycle via %', NEW.id USING ERRCODE = 'check_violation';
+      END IF;
+      SELECT parent_id INTO walker FROM structure_node WHERE id = walker;
+    END LOOP;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'structure_node_depth_guard_trg') THEN
+    CREATE TRIGGER structure_node_depth_guard_trg
+      BEFORE INSERT OR UPDATE ON structure_node
+      FOR EACH ROW EXECUTE FUNCTION structure_node_depth_guard();
+  END IF;
+END $$;
+
+-- BA2 · chapter-kind outline nodes attach to the spec (the 25 M4 lift populates it)
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS structure_node_id UUID
+  REFERENCES structure_node(id) ON DELETE SET NULL;
+-- ADD CONSTRAINT has no IF NOT EXISTS — guarded DO-block (house style).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'outline_structure_kind') THEN
+    ALTER TABLE outline_node ADD CONSTRAINT outline_structure_kind
+      CHECK (structure_node_id IS NULL OR kind = 'chapter');
+  END IF;
+END $$;
+
+-- 23 (M1.3) · bound-arc provenance: replaces annotations->>'arc_template_id'
+-- (backfilled + annotation key dropped in 25 M4, deploy 2).
+ALTER TABLE motif_application ADD COLUMN IF NOT EXISTS structure_node_id UUID
+  REFERENCES structure_node(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_motif_application_structure ON motif_application(structure_node_id);
+
+-- ── plan_run / plan_artifact (PlanForge M3): per-book planning runs. Tenancy
+-- (25 OQ-3): reads are book-grant gated (E0 VIEW via book_id; plan_artifact
+-- joins through its run); created_by = the acting caller — an actor stamp,
+-- stored never filtered on (25 M3/PM-5).
 CREATE TABLE IF NOT EXISTS plan_run (
   id                UUID PRIMARY KEY DEFAULT uuidv7(),
-  owner_user_id     UUID NOT NULL,
+  created_by        UUID NOT NULL,
   book_id           UUID NOT NULL,
   work_id           UUID,
   status            TEXT NOT NULL DEFAULT 'pending',
@@ -952,15 +1206,18 @@ CREATE TABLE IF NOT EXISTS plan_run (
   ),
   CONSTRAINT plan_run_mode_chk CHECK (mode IN ('rules', 'llm'))
 );
+-- Names predate the 25 M3 rename (a RENAME COLUMN cascades an index's definition
+-- but not its name — fresh + migrated DBs converge on these). Safe unguarded:
+-- this SQL runs AFTER package_rekey's M3, so created_by exists on every path.
 CREATE INDEX IF NOT EXISTS idx_plan_run_owner_book
-  ON plan_run(owner_user_id, book_id, created_at DESC);
+  ON plan_run(created_by, book_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_plan_run_checksum
-  ON plan_run(owner_user_id, book_id, source_checksum);
+  ON plan_run(created_by, book_id, source_checksum);
 
 CREATE TABLE IF NOT EXISTS plan_artifact (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
   run_id          UUID NOT NULL REFERENCES plan_run(id) ON DELETE CASCADE,
-  owner_user_id   UUID NOT NULL,
+  created_by      UUID NOT NULL,
   kind            TEXT NOT NULL,
   content         JSONB NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -973,8 +1230,9 @@ CREATE INDEX IF NOT EXISTS idx_plan_artifact_run_kind
 
 -- ── authoring_runs (RAID Wave D2, DR-D): the autonomous authoring-run entity —
 -- the §10 dial's level-3/4 run row. One row per gated autonomous drafting run
--- over an approved PlanForge plan. Tenancy: owner_user_id on every query (E0
--- EDIT grant gated at the HTTP layer, plan_forge house style). `scope` is the
+-- over an approved PlanForge plan. Tenancy (25 OQ-3): book-grant gated (E0 via
+-- book_id at the HTTP layer); created_by = the acting caller (plain actor
+-- stamp — pause/close cross-user keeps its OWNER escalation). `scope` is the
 -- ORDERED chapter-id list (jsonb array of uuid strings — cross-DB book ids, no
 -- FK per §1.4); `tool_allowlist` is the C2-allowlist SNAPSHOT declared by the
 -- caller at gate time (edge #5 — provenance is the caller's; chat DB is not
@@ -987,7 +1245,7 @@ CREATE INDEX IF NOT EXISTS idx_plan_artifact_run_kind
 -- FSM: draft→gated→running→(paused⇄running)→report_ready→closed, running→failed.
 CREATE TABLE IF NOT EXISTS authoring_runs (
   run_id          UUID PRIMARY KEY DEFAULT uuidv7(),
-  owner_user_id   UUID NOT NULL,
+  created_by      UUID NOT NULL,
   book_id         UUID NOT NULL,
   plan_run_id     UUID NOT NULL REFERENCES plan_run(id),
   level           SMALLINT NOT NULL CHECK (level IN (3, 4)),
@@ -1030,8 +1288,9 @@ CREATE TABLE IF NOT EXISTS authoring_runs (
 -- draft→gated transition maps a violation to 409.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_authoring_runs_active_book
   ON authoring_runs(book_id) WHERE status IN ('gated','running','paused');
+-- Name predates the 25 M3 rename (fresh + migrated DBs converge; runs after M3).
 CREATE INDEX IF NOT EXISTS idx_authoring_runs_owner_book
-  ON authoring_runs(owner_user_id, book_id, created_at DESC);
+  ON authoring_runs(created_by, book_id, created_at DESC);
 -- D4 additive columns for DBs that created authoring_runs before D4 (the
 -- CREATE TABLE above is IF NOT EXISTS — it does not evolve an existing table).
 ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_id TEXT;
@@ -1058,8 +1317,8 @@ CREATE INDEX IF NOT EXISTS idx_authoring_runs_running_heartbeat
 -- authoring_runs.spent_usd (seam-metered, or the estimate fallback — per-unit
 -- costs sum to the run's spend). Review FSM: pending→drafted→(accepted|rejected),
 -- pending→failed; accept/reject are guarded OCC updates. Tenancy: no owner
--- column — every read/write JOINs authoring_runs on owner_user_id (the parent
--- run's tenancy is the units' tenancy).
+-- column — every read/write JOINs authoring_runs (the parent run's book grant
+-- is the units' tenancy; 25 OQ-3).
 CREATE TABLE IF NOT EXISTS authoring_run_units (
   run_id           UUID NOT NULL REFERENCES authoring_runs(run_id) ON DELETE CASCADE,
   unit_index       INT NOT NULL,
@@ -1098,13 +1357,13 @@ ALTER TABLE authoring_run_units ADD COLUMN IF NOT EXISTS critic_verdict JSONB;
 -- `UPDATE ... WHERE status='approved'` claim (no DB trigger for this POC's
 -- small 5-state DAG — contrast lore-enrichment-service's `enrichment_proposal`,
 -- which has a full trigger-guarded DAG; revisit if this generalizes beyond
--- one consumer). Tenancy: book_id + owner_user_id + run_id, per User
--- Boundaries & Tenancy (a per-book resource, never a shared/global row).
+-- one consumer). Tenancy: per-book resource, book-grant gated on book_id (25
+-- OQ-3); created_by = the acting caller (plain actor stamp — 25 M3/PM-5).
 CREATE TABLE IF NOT EXISTS plan_bootstrap_proposal (
   id                UUID PRIMARY KEY DEFAULT uuidv7(),
   run_id            UUID NOT NULL REFERENCES plan_run(id) ON DELETE CASCADE,
   book_id           UUID NOT NULL,
-  owner_user_id     UUID NOT NULL,
+  created_by        UUID NOT NULL,
   status            TEXT NOT NULL DEFAULT 'pending',
   diff              JSONB NOT NULL,
   applied_results   JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -1207,10 +1466,25 @@ BUILTIN_TEMPLATES: list[tuple[str, str, str, list[dict]]] = [
 ]
 
 
+async def _apply_base_schema(conn: asyncpg.Connection) -> None:
+    """The base idempotent DDL — injected into the package re-key so its M0
+    pre-flight runs BEFORE any DDL (25 PM-7) and its M2/M3 after (one unit)."""
+    await conn.execute(_SCHEMA_SQL)
+
+
 async def run_migrations(pool: asyncpg.Pool) -> None:
-    """Apply the idempotent schema + seed built-in templates. Safe on every start."""
+    """Apply the idempotent schema + seed built-in templates. Safe on every start.
+
+    Order (25 PM-7): run_package_rekey gates the whole boot — M0 pre-flight
+    (aborts LOUDLY before any DDL on a violation) → _SCHEMA_SQL (M1 additive
+    DDL rides inline) → the marker-gated M2 backfill + M3 cutover — then the
+    motif/plan DDL + seeds as before (their CREATE texts are already the final
+    post-M3 shape, and the M3 renames precede them on the migration boot).
+    """
     async with pool.acquire() as conn:
-        await conn.execute(_SCHEMA_SQL)
+        rekeyed = await run_package_rekey(conn, _apply_base_schema)
+        if rekeyed:
+            logger.info("composition migrate: package re-key pkg_rekey_v1 applied this boot")
         await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL
         await _seed_builtin_templates(conn)
         await _seed_motif_packs(conn)                  # F0 adds the CALL; W7 fills the body

@@ -55,7 +55,7 @@ class _StubRepo:
         self.hits = hits
         self.searched = False
 
-    async def search(self, user_id, project_id, vector, *, limit=6):
+    async def search(self, project_id, vector, *, limit=6):
         self.searched = True
         return self.hits
 
@@ -168,7 +168,7 @@ class _PinRepo:
     def __init__(self, rows):
         self.rows = rows
 
-    async def list_for_scene(self, user_id, project_id, node_id):
+    async def list_for_scene(self, project_id, node_id):
         return self.rows
 
 
@@ -182,7 +182,7 @@ async def test_pins_exclude_drops_reference_pin_protects_it():
             {"id": "r2", "title": "B", "content": "beta"}]
     repo = _PinRepo([_Pin("reference", "r1", "exclude"), _Pin("reference", "r2", "pin")])
     (items, _c, _p, _l, kept_refs, _pl, pinned_refs) = await _apply_grounding_pins(
-        repo, USER, PROJECT, NODE, canon=[], present=[], lore_hits=[], references=refs)
+        repo, PROJECT, NODE, canon=[], present=[], lore_hits=[], references=refs)
     kept_ids = {r["id"] for r in kept_refs}
     assert kept_ids == {"r2"}              # r1 excluded → dropped from the pack
     assert pinned_refs == {"r2"}           # r2 pinned → protected id
@@ -193,5 +193,5 @@ async def test_pins_exclude_drops_reference_pin_protects_it():
 async def test_pins_unwired_repo_keeps_all_references():
     refs = [{"id": "r1", "content": "x"}]
     (items, _c, _p, _l, kept_refs, _pl, pinned_refs) = await _apply_grounding_pins(
-        None, USER, PROJECT, NODE, canon=[], present=[], lore_hits=[], references=refs)
+        None, PROJECT, NODE, canon=[], present=[], lore_hits=[], references=refs)
     assert kept_refs == refs and pinned_refs == set() and items == []

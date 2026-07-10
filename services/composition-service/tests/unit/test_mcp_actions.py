@@ -41,7 +41,8 @@ GOOD_TOKEN = "test_token"  # tests/conftest.py INTERNAL_SERVICE_TOKEN
 
 
 def _work() -> CompositionWork:
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, id=PROJECT, version=1)
+    # spec 25: CompositionWork renamed user_id -> created_by (a plain actor stamp).
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, id=PROJECT)
 
 
 def _publish_token(user=USER, *, ttl=600, now=None) -> str:
@@ -108,7 +109,9 @@ def client():
 
         # Stub the repos + book client the confirm route depends on.
         works = AsyncMock()
-        works.get = AsyncMock(side_effect=lambda u, p: _work() if u == USER else None)
+        # spec 25: WorksRepo.get is bare project-id (get(project_id), no owner arg);
+        # access is decided at the confirm route's grant gate, not by an owner filter.
+        works.get = AsyncMock(side_effect=lambda p: _work() if p == PROJECT else None)
 
         outline = AsyncMock()
         outline.chapter_scene_gate = AsyncMock(
@@ -417,7 +420,22 @@ def _authoring_svc(svc):
 
 @pytest.fixture
 def authoring_svc():
+    from decimal import Decimal
+
+    from app.db.models import AuthoringRun
+
     svc = AsyncMock()
+    # spec 25: the run-scoped confirm effects (gate/start/resume/revert_all) now
+    # re-resolve the run BARE-ID and fence it against the confirm-gated book +
+    # creator (`_authoring_run_in_book` → `svc.get`). Default `get` to the
+    # caller's OWN run in BOOK so those effects proceed; the cross-book/foreign-
+    # creator IDOR refusals are covered in test_authoring_run_tenancy.py. (create
+    # has no run_id, so it never calls `get`.)
+    svc.get = AsyncMock(return_value=AuthoringRun(
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN, level=3,
+        scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
+        tool_allowlist=["composition_write_prose"], status="gated",
+    ))
     yield svc
 
 
@@ -426,7 +444,7 @@ def test_confirm_executes_authoring_run_create(client, authoring_svc):
     from decimal import Decimal
 
     run = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
         tool_allowlist=["composition_write_prose"], pause_after_each_unit=True,
     )
@@ -470,7 +488,7 @@ def test_confirm_authoring_run_create_does_not_itself_validate_tool_allowlist(cl
     from decimal import Decimal
 
     run = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
         tool_allowlist=["not_a_real_tool"], pause_after_each_unit=True,
     )
@@ -510,7 +528,7 @@ def test_confirm_executes_authoring_run_gate(client, authoring_svc):
     from decimal import Decimal
 
     gated = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
         tool_allowlist=["composition_write_prose"], status="gated",
     )
@@ -549,7 +567,7 @@ def test_confirm_executes_authoring_run_start_with_pause_override(client, author
     from decimal import Decimal
 
     running = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"),
         tool_allowlist=["composition_write_prose"], status="running",
     )
@@ -564,8 +582,8 @@ def test_confirm_executes_authoring_run_start_with_pause_override(client, author
         resp = _confirm(client, token)
     assert resp.status_code == 200, resp.text
     assert resp.json()["run"]["status"] == "running"
-    authoring_svc.set_pause_policy.assert_awaited_once_with(USER, RUN, False)
-    authoring_svc.start.assert_awaited_once_with(USER, RUN)
+    authoring_svc.set_pause_policy.assert_awaited_once_with(RUN, False)  # spec 25: bare-id
+    authoring_svc.start.assert_awaited_once_with(RUN)
 
 
 def test_confirm_executes_authoring_run_start_without_override_skips_policy_call(client, authoring_svc):
@@ -573,7 +591,7 @@ def test_confirm_executes_authoring_run_start_without_override_skips_policy_call
     from decimal import Decimal
 
     running = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["composition_write_prose"],
         status="running",
     )
@@ -585,7 +603,7 @@ def test_confirm_executes_authoring_run_start_without_override_skips_policy_call
         resp = _confirm(client, token)
     assert resp.status_code == 200, resp.text
     authoring_svc.set_pause_policy.assert_not_awaited()
-    authoring_svc.start.assert_awaited_once_with(USER, RUN)
+    authoring_svc.start.assert_awaited_once_with(RUN)
 
 
 def test_confirm_executes_authoring_run_resume(client, authoring_svc):
@@ -593,7 +611,7 @@ def test_confirm_executes_authoring_run_resume(client, authoring_svc):
     from decimal import Decimal
 
     running = AuthoringRun(
-        run_id=RUN, owner_user_id=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
+        run_id=RUN, created_by=USER, book_id=BOOK, plan_run_id=PLAN_RUN,
         level=3, scope=[str(CHAPTER)], budget_usd=Decimal("2.00"), tool_allowlist=["composition_write_prose"],
         status="running",
     )
@@ -604,7 +622,7 @@ def test_confirm_executes_authoring_run_resume(client, authoring_svc):
     with _authoring_svc(authoring_svc):
         resp = _confirm(client, token)
     assert resp.status_code == 200, resp.text
-    authoring_svc.resume.assert_awaited_once_with(USER, RUN)
+    authoring_svc.resume.assert_awaited_once_with(RUN)
 
 
 def test_confirm_executes_authoring_run_revert_all_full_success(client, authoring_svc):

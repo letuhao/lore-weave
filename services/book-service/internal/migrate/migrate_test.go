@@ -468,3 +468,104 @@ func TestSchemaWordCountAdditionsAreIdempotent(t *testing.T) {
 		}
 	}
 }
+
+// ── Scene model 22-A1 (scenes book scope + source map) - 2026-07-10 ──────────
+// Regression lock for the three scenes columns (book_id/title/source_scene_id),
+// the two indexes, and the batched-backfill marker table (spec 22 §SC1/SC2/SC5).
+// The scenes ALTERs + indexes had ZERO coverage. Pure string checks (no DB) in the
+// P1/CB3 house style; real-PG backfill behavior is covered by the api package's
+// DB-gated scenes tests.
+
+func TestSchemaScene22A1Columns(t *testing.T) {
+	for _, frag := range []string{
+		"ALTER TABLE scenes ADD COLUMN IF NOT EXISTS book_id UUID",
+		"ALTER TABLE scenes ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE scenes ADD COLUMN IF NOT EXISTS source_scene_id UUID",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("scenes 22-A1 column ALTER missing: %q", frag)
+		}
+	}
+	// SC1: book_id is a direct book-scope FK, cascade-deleted with the book.
+	if !strings.Contains(schemaSQL,
+		"ALTER TABLE scenes ADD COLUMN IF NOT EXISTS book_id UUID\n  REFERENCES books(id) ON DELETE CASCADE") {
+		t.Fatal("scenes.book_id must be a REFERENCES books(id) ON DELETE CASCADE FK (SC1)")
+	}
+	// SC1: the added book_id must be NULLABLE (backfilled from chapters.book_id by
+	// the batched marker-gated backfill) — a NOT NULL add would break existing rows.
+	if strings.Contains(schemaSQL, "ADD COLUMN IF NOT EXISTS book_id UUID NOT NULL") {
+		t.Fatal("scenes.book_id must be added NULLABLE (backfilled), never NOT NULL")
+	}
+}
+
+func TestSchemaScene22A1Indexes(t *testing.T) {
+	for _, frag := range []string{
+		"CREATE INDEX IF NOT EXISTS idx_scenes_book_active",
+		"ON scenes(book_id, chapter_id, sort_order) WHERE lifecycle_state = 'active'",
+		"CREATE INDEX IF NOT EXISTS idx_scenes_source",
+		"ON scenes(source_scene_id) WHERE source_scene_id IS NOT NULL",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("scenes 22-A1 index missing: %q", frag)
+		}
+	}
+}
+
+func TestSchemaScenesBackfillMarkerTable(t *testing.T) {
+	for _, frag := range []string{
+		"CREATE TABLE IF NOT EXISTS scenes_book_id_backfill_migration",
+		"id         TEXT PRIMARY KEY",
+		"applied_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("scenes backfill marker table missing: %q", frag)
+		}
+	}
+}
+
+// SC5 inversion dropped the 'origin' column (every scenes row is parser output, so
+// the column would be a constant). A future agent must not re-add it. "origin"
+// appears legitimately in the 22-A1 COMMENT ("NO 'origin' column"), so scope the
+// check to the scenes CREATE TABLE body + the scenes ALTERs, not the whole schema.
+func TestSchemaScenesHasNoOriginColumn(t *testing.T) {
+	start := strings.Index(schemaSQL, "CREATE TABLE IF NOT EXISTS scenes (")
+	if start == -1 {
+		t.Fatal("scenes CREATE TABLE not found in schemaSQL")
+	}
+	body := schemaSQL[start:]
+	if end := strings.Index(body, ");"); end != -1 {
+		body = body[:end]
+	}
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "origin") {
+			t.Fatalf("scenes must NOT have an 'origin' column (dropped by the SC5 inversion): %q", line)
+		}
+	}
+	if strings.Contains(schemaSQL, "ALTER TABLE scenes ADD COLUMN IF NOT EXISTS origin") {
+		t.Fatal("scenes 'origin' column must not be re-added via ALTER (SC5 inversion)")
+	}
+}
+
+// Idempotency: every 22-A1 CREATE/ALTER uses IF NOT EXISTS so an Up() re-run is a
+// no-op (book-service has no migration ledger). The region runs from the sentinel
+// to the end of schemaSQL (22-A1 is the last block in it).
+func TestSchemaScene22A1AdditionsAreIdempotent(t *testing.T) {
+	const sentinel = "Scene model 22-A1 - 2026-07-10"
+	idx := strings.Index(schemaSQL, sentinel)
+	if idx == -1 {
+		t.Fatal("22-A1 sentinel not found in schemaSQL")
+	}
+	region := schemaSQL[idx:]
+	for _, line := range strings.Split(region, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "CREATE TABLE") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("22-A1 region has non-idempotent CREATE TABLE: %q", trimmed)
+		}
+		if strings.HasPrefix(trimmed, "ALTER TABLE") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("22-A1 region has non-idempotent ALTER TABLE: %q", trimmed)
+		}
+		if strings.HasPrefix(trimmed, "CREATE INDEX") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("22-A1 region has non-idempotent CREATE INDEX: %q", trimmed)
+		}
+	}
+}

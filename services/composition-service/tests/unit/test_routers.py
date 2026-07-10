@@ -25,7 +25,7 @@ CHAPTER = uuid.uuid4()
 
 
 def _work(**kw) -> CompositionWork:
-    return CompositionWork(project_id=kw.get("project_id", PROJECT), user_id=USER,
+    return CompositionWork(project_id=kw.get("project_id", PROJECT), created_by=USER,
                            book_id=BOOK, id=kw.get("id", uuid.uuid4()),
                            version=kw.get("version", 1),
                            status=kw.get("status", "active"))
@@ -33,7 +33,7 @@ def _work(**kw) -> CompositionWork:
 
 def _pending_work(**kw) -> CompositionWork:
     """C16: a lazy greenfield Work — null project_id, backfill marker set."""
-    return CompositionWork(project_id=None, user_id=USER,
+    return CompositionWork(project_id=None, created_by=USER,
                            book_id=kw.get("book_id", BOOK),
                            id=kw.get("id", uuid.uuid4()),
                            pending_project_backfill=True)
@@ -58,32 +58,42 @@ class StubWorks:
         self.by_id_result = None
         self.by_id_results = None      # if a list, pop per get_by_id call
 
-    async def get_by_id(self, user_id, work_id):
+    async def get_by_id(self, work_id):
         if self.by_id_results is not None:
             return self.by_id_results.pop(0) if self.by_id_results else None
         return self.by_id_result
 
-    async def get(self, user_id, project_id):
+    async def get(self, project_id):
         if self.get_results is not None:
             return self.get_results.pop(0) if self.get_results else None
         return self.work
 
-    async def resolve_by_book(self, user_id, book_id):
+    async def resolve_by_book(self, book_id):
         return self.marked
 
-    async def update(self, user_id, project_id, patch, *, expected_version=None):
+    async def scope_meta(self, project_id):
+        # PM-8 ids-only scope row for the E0 book gate (book_id_for_project).
+        # Derived from the stubbed work: None → uniform 404 at the gate.
+        from app.db.repositories.works import WorkScopeMeta
+        if self.work is None:
+            return None
+        return WorkScopeMeta(
+            book_id=self.work.book_id, work_id=self.work.id, project_id=project_id,
+        )
+
+    async def update(self, project_id, patch, *, created_by=None, expected_version=None):
         if self.update_raises:
             raise self.update_raises
         return self.update_result
 
-    async def create(self, user_id, project_id, book_id, **kw):
+    async def create(self, created_by, project_id, book_id, **kw):
         if self.create_raises:
             raise self.create_raises
         self.created_with = (project_id, book_id)
         return _work(project_id=project_id)
 
     # C23 (dị bản) derivative create
-    async def create_derivative(self, user_id, project_id, book_id, source_work_id,
+    async def create_derivative(self, created_by, project_id, book_id, source_work_id,
                                 *, branch_point=None, settings=None, conn=None):
         self.derived_with = {"project_id": project_id, "book_id": book_id,
                              "source_work_id": source_work_id, "branch_point": branch_point}
@@ -93,16 +103,16 @@ class StubWorks:
         return w
 
     # C16 (WG-3) lazy null-project + backfill
-    async def create_pending(self, user_id, book_id, **kw):
+    async def create_pending(self, created_by, book_id, **kw):
         if self.create_pending_raises:
             raise self.create_pending_raises
         self.created_pending = True
         return _pending_work(book_id=book_id)
 
-    async def get_pending_for_book(self, user_id, book_id):
+    async def get_pending_for_book(self, book_id):
         return self.pending
 
-    async def backfill_project(self, user_id, work_id, project_id):
+    async def backfill_project(self, work_id, project_id, *, created_by=None):
         self.backfilled_with = (work_id, project_id)
         if self.backfill_raises:
             raise self.backfill_raises
@@ -125,10 +135,10 @@ class StubDerivatives:
         self.overrides.append(override)
         return override
 
-    async def get_spec_for_work(self, user_id, work_id):
+    async def get_spec_for_work(self, work_id):
         return self.spec_for_work
 
-    async def list_overrides_for_work(self, user_id, work_id):
+    async def list_overrides_for_work(self, work_id):
         return self.overrides_for_work
 
 
@@ -652,11 +662,11 @@ def test_get_derivative_context_returns_persisted_spec(ctx):
     target = uuid.uuid4()
     pov = uuid.uuid4()
     derivatives.spec_for_work = DivergenceSpec(
-        user_id=USER, project_id=PROJECT, work_id=deriv_work.id,
+        created_by=USER, project_id=PROJECT, work_id=deriv_work.id,
         taxonomy="pov_shift", pov_anchor=pov, canon_rule=["The hero dies"],
     )
     derivatives.overrides_for_work = [
-        EntityOverride(user_id=USER, project_id=PROJECT, work_id=deriv_work.id,
+        EntityOverride(created_by=USER, project_id=PROJECT, work_id=deriv_work.id,
                        target_entity_id=target, overridden_fields={"description": "now a woman"}),
     ]
     r = c.get(f"/v1/composition/works/{PROJECT}/derivative-context")

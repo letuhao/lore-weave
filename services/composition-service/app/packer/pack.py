@@ -57,6 +57,10 @@ class OwnershipError(Exception):
 
 @dataclass
 class PackRequest:
+    # The ACTING CALLER (25 signature law): the E0 gate's subject (authorize_book)
+    # + the cross-service identity (knowledge/glossary/book reads) + the BYOK
+    # spend attribution for the reference-embed (OQ-9). NEVER a row filter — the
+    # composition repos are project-keyed; access is decided at the gate.
     user_id: UUID
     project_id: UUID
     book_id: UUID
@@ -134,7 +138,7 @@ class DerivativeContext:
 
 
 async def build_derivative_context(
-    work: Any, *, user_id: UUID, works_repo: Any, derivatives_repo: Any | None,
+    work: Any, *, works_repo: Any, derivatives_repo: Any | None,
 ) -> DerivativeContext:
     """C25 — resolve the two-project merge inputs for a Work at a pack call site.
 
@@ -156,7 +160,7 @@ async def build_derivative_context(
         return DerivativeContext()
     base_project_id: UUID | None = None
     try:
-        source = await works_repo.get_by_id(user_id, src)
+        source = await works_repo.get_by_id(src)
         if source is not None:
             base_project_id = source.project_id
     except Exception:  # noqa: BLE001 — source lookup degrades to a refused derivative pack
@@ -164,7 +168,7 @@ async def build_derivative_context(
     overrides: list[Any] = []
     if derivatives_repo is not None and getattr(work, "id", None) is not None:
         try:
-            overrides = await derivatives_repo.list_overrides_for_work(user_id, work.id)
+            overrides = await derivatives_repo.list_overrides_for_work(work.id)
         except Exception:  # noqa: BLE001 — override read degrades (pack never 500s on it)
             logger.warning("build_derivative_context: override read failed", exc_info=True)
             overrides = []
@@ -249,7 +253,7 @@ async def pack(
     if style_profile_repo is not None:
         try:
             sp = await style_profile_repo.resolve(
-                req.user_id, req.project_id, _as_uuid(node.get("id")), chapter_id)
+                req.project_id, _as_uuid(node.get("id")), chapter_id)
             if sp is not None:
                 profile = _replace(profile, density_level=sp.density, pace_level=sp.pace)
         except Exception:  # noqa: BLE001 — style is a soft steer; neutral on failure
@@ -257,7 +261,7 @@ async def pack(
     if voice_profile_repo is not None and present_ids:
         try:
             vps = await voice_profile_repo.list_for_entities(
-                req.user_id, req.project_id, present_ids)
+                req.project_id, present_ids)
             cv = tuple((vp.entity_name, tuple(vp.tags)) for vp in vps if vp.tags)
             if cv:
                 profile = _replace(profile, character_voices=cv)
@@ -308,18 +312,18 @@ async def pack(
     ref_model = reference_embed_model(req.settings)
     canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r) = (
         await asyncio.gather(
-            gather_canon(canon_repo, req.user_id, req.project_id, story_order),
+            gather_canon(canon_repo, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
                            project_id=req.project_id, bearer=req.bearer, query=query,
                            present_entity_ids=present_ids, language=reader_lang),
             gather_timeline(knowledge, req.bearer, req.project_id, at_order, after_order=timeline_after),
-            gather_structural(outline_repo, scene_links_repo, user_id=req.user_id,
+            gather_structural(outline_repo, scene_links_repo,
                               project_id=req.project_id, node=node),
             gather_recent(book, req.book_id, chapter_id, req.bearer,
-                          jobs_repo=jobs_repo, user_id=req.user_id, project_id=req.project_id,
+                          jobs_repo=jobs_repo, project_id=req.project_id,
                           story_order=story_order) if chapter_id else _empty_list(),
             gather_lore(knowledge, req.bearer, req.project_id, query, language=reader_lang),
-            gather_open_promises(narrative_threads_repo, req.user_id, req.project_id,
+            gather_open_promises(narrative_threads_repo, req.project_id,
                                  cap=settings.pack_open_promises_cap) if nt_enabled else _empty_list(),
             gather_references(references_repo, embedding_client, user_id=req.user_id,
                               project_id=req.project_id, query=query, model=ref_model),
@@ -431,7 +435,7 @@ async def pack(
     # through the budget (protected in build_segments below).
     grounding_items, canon, present, lore_kept, references_kept, pinned_lore_ids, pinned_reference_ids = (
         await _apply_grounding_pins(
-            grounding_pins_repo, req.user_id, req.project_id, node.get("id"),
+            grounding_pins_repo, req.project_id, node.get("id"),
             canon=canon, present=present, lore_hits=l4.kept, references=references,
         )
     )
@@ -565,7 +569,7 @@ def _trim_label(text: str) -> str:
 
 
 async def _apply_grounding_pins(
-    repo, user_id: UUID, project_id: UUID, node_id: Any, *,
+    repo, project_id: UUID, node_id: Any, *,
     canon: list[Any], present: list[dict[str, Any]], lore_hits: list[dict[str, Any]],
     references: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], set[str], set[str]]:
@@ -579,7 +583,7 @@ async def _apply_grounding_pins(
     if repo is None or node_uuid is None:
         return [], canon, present, lore_hits, references, set(), set()
     try:
-        rows = await repo.list_for_scene(user_id, project_id, node_uuid)
+        rows = await repo.list_for_scene(project_id, node_uuid)
     except Exception:  # noqa: BLE001 — steering is advisory; never fail a pack
         logger.warning("grounding pins read failed", exc_info=True)
         return [], canon, present, lore_hits, references, set(), set()

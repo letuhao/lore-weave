@@ -40,12 +40,12 @@ class _Grant:
 
 def _derivative_work():
     # A derivative carries source_work_id (+ a non-null project_id, the DB CHECK).
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK,
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK,
                            source_work_id=SOURCE_WORK, branch_point=3, version=1)
 
 
 def _canon_work():
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, version=1)
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, version=1)
 
 
 def _client(level, *, work=None, upsert=None):
@@ -82,11 +82,13 @@ def test_happy_path_persists_and_returns_version():
         assert r.status_code == 200
         body = r.json()
         assert body == {"node_id": str(NODE), "persisted": True, "version": 1}
-        # wrote to the synthetic-job store with the right scope/text
+        # wrote to the synthetic-job store with the right scope/text. Post 25 re-key
+        # the write signature is (project_id, node_id, text, *, created_by=<actor>).
         jobs.upsert_promoted_scene_prose.assert_awaited_once()
         args, kwargs = jobs.upsert_promoted_scene_prose.call_args
-        assert args[0] == USER and args[1] == PROJECT and args[2] == NODE
-        assert args[3] == "the chosen take's prose"
+        assert args[0] == PROJECT and args[1] == NODE
+        assert args[2] == "the chosen take's prose"
+        assert kwargs["created_by"] == USER
     finally:
         _teardown()
 

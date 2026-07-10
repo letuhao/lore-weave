@@ -17,7 +17,7 @@ BOOK = uuid.uuid4()
 def _work(project_id: uuid.UUID | None = None) -> CompositionWork:
     return CompositionWork(
         project_id=project_id or uuid.uuid4(),
-        user_id=USER,
+        created_by=USER,
         book_id=BOOK,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
@@ -27,10 +27,11 @@ def _work(project_id: uuid.UUID | None = None) -> CompositionWork:
 class _WorksRepoStub:
     def __init__(self, marked: list[CompositionWork]) -> None:
         self._marked = marked
-        self.calls: list[tuple] = []
+        self.calls: list = []
 
-    async def resolve_by_book(self, user_id, book_id):
-        self.calls.append((user_id, book_id))
+    async def resolve_by_book(self, book_id):
+        # 25 PM-9: BOOK-driven, caller-independent — no user id.
+        self.calls.append(book_id)
         return self._marked
 
 
@@ -55,7 +56,7 @@ async def _resolve(marked, projects):
     works = _WorksRepoStub(marked)
     kn = _KnowledgeStub(projects)
     res = await resolve_work(
-        USER, BOOK, bearer="jwt", works_repo=works, knowledge_client=kn,
+        BOOK, bearer="jwt", works_repo=works, knowledge_client=kn,
     )
     return res, works, kn
 

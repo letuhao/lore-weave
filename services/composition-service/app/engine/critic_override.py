@@ -334,7 +334,7 @@ async def critique_overrides(
     """
     try:
         deriv = await build_derivative_context(
-            work, user_id=user_id, works_repo=works_repo,
+            work, works_repo=works_repo,
             derivatives_repo=derivatives_repo,
         )
     except Exception:  # noqa: BLE001 — context resolution degrades the dimension

@@ -80,7 +80,7 @@ async def run_conformance_run(
         raise ValueError("conformance_run arc scope requires arc_template_id")
 
     uid, pid = UUID(user_id), UUID(project_id)
-    work = await WorksRepo(pool).get(uid, pid)
+    work = await WorksRepo(pool).get(pid)
     if work is None:
         raise ValueError("conformance_run: work not found")
     arc_repo = ArcTemplateRepo(pool)

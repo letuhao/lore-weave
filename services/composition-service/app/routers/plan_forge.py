@@ -66,6 +66,10 @@ async def create_plan_run(
     svc: PlanForgeService = Depends(get_plan_forge_service),
 ):
     await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    # PM-9 (spec 25, F5): `user_id` flows into the service as the plain ACTOR
+    # (created_by stamp + spend attribution), never as scope — _ensure_work
+    # resolves the book's canonical Work caller-independently, so an EDIT
+    # grantee no longer forks a private pending Work.
     try:
         run, is_async, job_id = await svc.create_run(
             user_id, book_id,

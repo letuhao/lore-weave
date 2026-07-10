@@ -51,7 +51,7 @@ class _Ctx:
 
 def _run(status="draft", **over) -> AuthoringRun:
     base = dict(
-        run_id=RUN, owner_user_id=TEST_USER, book_id=BOOK, plan_run_id=PLAN,
+        run_id=RUN, created_by=TEST_USER, book_id=BOOK, plan_run_id=PLAN,
         level=3, scope=[str(CH1), str(CH2)], budget_usd=Decimal("5.00"),
         spent_usd=Decimal("0"), tool_allowlist=["composition_write_prose"], params={},
         breaker_state={}, status=status, current_unit=0,
@@ -75,14 +75,21 @@ def _unit(unit_index=0, status="drafted", **over) -> AuthoringRunUnit:
 async def _patched(*, grant_level=2, svc=None):
     """Patch the server's `_ctx` (skip header parsing), the grant resolver
     (returns `grant_level`: 0=none, 1=VIEW, 2=EDIT, 4=OWNER — loreweave_grants
-    ints), and `get_authoring_run_service` to return `svc` (default: a bare
-    AsyncMock — sufficient for the confirm-gated tools, which never touch it)."""
+    ints), and `get_authoring_run_service` to return `svc`.
+
+    Default stub (svc=None): a bare AsyncMock whose `get` returns the caller's
+    OWN run in this book — spec 25 made every run mutation (incl. the PROPOSE
+    tools' `_require_own_run` creator fence) resolve the run BARE-ID, so a
+    confirm-gated tool must reconcile it before minting. Tests that need a
+    foreign/None run override `svc.get` explicitly."""
     import app.mcp.server as srv
 
     async def _resolve(book_id, user_id):
         return grant_level
 
     stub = svc if svc is not None else AsyncMock()
+    if svc is None:
+        stub.get = AsyncMock(return_value=_run())  # own run in BOOK
     with patch.object(srv, "_ctx", side_effect=lambda ctx: ctx), \
          patch.object(srv, "_grant_resolver", return_value=_resolve), \
          patch.object(srv, "get_authoring_run_service", new=AsyncMock(return_value=stub)):
@@ -106,7 +113,8 @@ async def test_list_returns_items():
     assert res["items"][0]["pause_after_each_unit"] is True
     assert res["has_more"] is False
     # OUT-5 (mcp-tool-io.md): over-fetches by one to detect a capped result honestly.
-    svc.list.assert_awaited_once_with(TEST_USER, BOOK, limit=21)
+    # spec 25: the list is book-scoped (no owner arg).
+    svc.list.assert_awaited_once_with(BOOK, limit=21)
 
 
 async def test_list_reports_has_more_when_capped():
@@ -121,7 +129,7 @@ async def test_list_reports_has_more_when_capped():
         )
     assert len(res["items"]) == 2
     assert res["has_more"] is True
-    svc.list.assert_awaited_once_with(TEST_USER, BOOK, limit=3)
+    svc.list.assert_awaited_once_with(BOOK, limit=3)
 
 
 async def test_list_rejects_limit_out_of_bounds():
@@ -426,7 +434,7 @@ async def test_pause_direct_no_confirm_token():
     assert "confirm_token" not in res
     assert res["success"] is True
     assert res["run"]["status"] == "paused"
-    svc.pause.assert_awaited_once_with(TEST_USER, RUN)
+    svc.pause.assert_awaited_once_with(RUN)  # spec 25: bare-id transition
 
 
 async def test_pause_wrong_state_returns_tool_error_not_raise():
@@ -450,15 +458,17 @@ async def test_close_book_owner_may_act_on_foreign_run():
 
     other_owner = OTHER_USER
     svc = AsyncMock()
-    svc.get = AsyncMock(return_value=None)          # caller does not own the run
-    svc.get_any = AsyncMock(return_value=_run(owner_user_id=other_owner, status="paused"))
-    svc.close = AsyncMock(return_value=_run(owner_user_id=other_owner, status="closed"))
+    # spec 25: run resolved BARE-ID; the caller is NOT the creator, so the
+    # OWNER-grant escalation (`_authoring_run_actor` allow_book_owner) lets them
+    # close it. The transition itself is bare-id (created_by preserved on the row).
+    svc.get = AsyncMock(return_value=_run(created_by=other_owner, book_id=BOOK, status="paused"))
+    svc.close = AsyncMock(return_value=_run(created_by=other_owner, status="closed"))
     async with _patched(grant_level=4, svc=svc):     # 4 = OWNER
         res = await srv.composition_authoring_run_close(
             _Ctx(), srv._AuthoringRunIdArgs(book_id=str(BOOK), run_id=str(RUN)),
         )
     assert res["success"] is True
-    svc.close.assert_awaited_once_with(other_owner, RUN)  # acted AS the real owner
+    svc.close.assert_awaited_once_with(RUN)  # bare-id transition (spec 25)
 
 
 async def test_close_non_owner_grant_cannot_act_on_foreign_run():
@@ -466,8 +476,9 @@ async def test_close_non_owner_grant_cannot_act_on_foreign_run():
     from loreweave_mcp import NotAccessibleError
 
     svc = AsyncMock()
-    svc.get = AsyncMock(return_value=None)
-    svc.get_any = AsyncMock(return_value=_run(owner_user_id=OTHER_USER, status="paused"))
+    # Foreign run (someone else's) in this book; caller has EDIT, not OWNER — the
+    # book-owner escalation requires OWNER, so `_authoring_run_actor` refuses.
+    svc.get = AsyncMock(return_value=_run(created_by=OTHER_USER, book_id=BOOK, status="paused"))
     async with _patched(grant_level=2, svc=svc):     # EDIT only, not OWNER
         with pytest.raises(NotAccessibleError):
             await srv.composition_authoring_run_close(
@@ -477,16 +488,15 @@ async def test_close_non_owner_grant_cannot_act_on_foreign_run():
 
 
 async def test_start_stays_run_owner_only_even_with_owner_grant():
-    """start/resume spend the run OWNER's budget — unlike pause/close, a book
-    OWNER grant must NOT let another user start someone else's run. (start is
-    confirm-gated + book-scoped only at PROPOSE time; the real owner-only
-    enforcement lives in the confirm effect / AuthoringRunService.start, which
-    is owner-scoped with no book_owner_may_act path at all.)"""
+    """start/resume spend the run CREATOR's budget — unlike pause/close, a book
+    OWNER grant does NOT unlock someone else's run. spec 25 tightened this at
+    PROPOSE too: `_require_own_run` creator-fences the mint (no book_owner
+    escalation path). Here the caller OWNS the default run, so with OWNER on the
+    book the token still mints (the foreign-run refusal is covered in
+    test_authoring_run_tenancy.py)."""
     import app.mcp.server as srv
 
-    # PROPOSE only checks EDIT on the book (never resolves run ownership) —
-    # confirm the mint still succeeds (it must; the effect is what owner-gates).
-    async with _patched(grant_level=4):  # OWNER
+    async with _patched(grant_level=4):  # OWNER on the book, caller owns the run
         res = await srv.composition_authoring_run_start(
             _Ctx(), srv._AuthoringRunStartArgs(book_id=str(BOOK), run_id=str(RUN)),
         )
@@ -534,7 +544,7 @@ async def test_reject_unit_restores_via_headless_bearer_and_warns_cascade():
     pre_rev = uuid.uuid4()
     restore_calls = []
 
-    async def fake_reject_unit(owner, run_id, unit_index, *, restore):
+    async def fake_reject_unit(run_id, unit_index, *, restore):  # spec 25: bare-id
         await restore(BOOK, CH1, pre_rev)
         return _unit(status="rejected"), [1], True
 

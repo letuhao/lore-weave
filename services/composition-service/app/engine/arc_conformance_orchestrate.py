@@ -50,7 +50,7 @@ async def compute_arc_report(
     over the placement motifs' effects/preconditions (D-SUCCESSION-ENTAILMENT-JUDGE). Without it
     the deep overlay is structural + causal only (the GET's lighter path)."""
     # Coarse — the materialized bindings vs the template (no LLM).
-    rows = await reader.arc_bindings(user_id, project_id, arc.id)
+    rows = await reader.arc_bindings(project_id, arc.id)
     order: dict[Any, int] = {}
     for r in rows:
         ch = r["chapter_id"]

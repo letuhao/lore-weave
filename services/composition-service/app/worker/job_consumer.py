@@ -80,7 +80,7 @@ async def _finalize_plan_forge_job(
     else:
         job_for_apply = job.model_copy(update={"status": "completed", "result": result})
     await svc.apply_job_outcome(
-        job.user_id, UUID(str(book_id_raw)), UUID(str(run_id_raw)),
+        job.created_by, UUID(str(book_id_raw)), UUID(str(run_id_raw)),
         job_for_apply, result,
     )
 
@@ -90,10 +90,14 @@ async def run_job(
 ) -> str:
     """Run ONE composition job to terminal. Idempotent: a 'completed' job returns
     immediately; a crash mid-run left 'running' → recompute + overwrite. A business
-    failure marks 'failed' + returns (ACK); an infra error propagates (un-ACK)."""
+    failure marks 'failed' + returns (ACK); an infra error propagates (un-ACK).
+
+    `user_id` is the enqueue-message actor kept for the AMQP field contract; the
+    job runs AS its ROW's actor (`job.created_by` — F7: a sweeper re-drive keeps
+    spend attribution on the original caller), never as the message field."""
+    del user_id  # row-authoritative actor (job.created_by); field kept for the wire shape
     repo = GenerationJobsRepo(pool)
-    uid = UUID(user_id)
-    job = await repo.get(uid, UUID(job_id))
+    job = await repo.get(UUID(job_id))
     if job is None:
         logger.warning("composition job %s not found — dropping", job_id)
         return "not_found"
@@ -103,7 +107,7 @@ async def run_job(
         # A terminal-failed/cancelled job re-triggered (sweeper/dup) — leave it.
         return f"already_{job.status}"
 
-    await repo.update_status(uid, UUID(job_id), "running")
+    await repo.update_status(UUID(job_id), "running")
 
     async def cancel_check() -> bool:
         # bug #34 — immediate-cancel: abort the in-flight LLM call the moment the
@@ -111,7 +115,7 @@ async def run_job(
         # DB/read error returns False so a transient blip never spuriously cancels a
         # healthy job (the engine LLM calls just continue).
         try:
-            row = await repo.get(uid, UUID(job_id))
+            row = await repo.get(UUID(job_id))
         except Exception:  # noqa: BLE001 — read failure must not cancel a live job
             return False
         return row is not None and row.status == "cancelled"
@@ -121,7 +125,7 @@ async def run_job(
     except _BUSINESS_ERRORS as exc:
         logger.info("composition job %s (%s) failed: %s", job_id, job.operation, exc)
         await repo.update_status(
-            uid, UUID(job_id), "failed",
+            UUID(job_id), "failed",
             result={"error": str(exc)},
         )
         await _finalize_plan_forge_job(pool, job, {"error": str(exc)}, "failed")
@@ -133,7 +137,7 @@ async def run_job(
     # update_status path) — None leaves the existing critic untouched.
     critic_patch = result.pop("_critic", None) if isinstance(result, dict) else None
     await repo.update_status(
-        uid, UUID(job_id), "completed", result=result, critic=critic_patch,
+        UUID(job_id), "completed", result=result, critic=critic_patch,
     )
     await _finalize_plan_forge_job(pool, job, result, "completed")
     return "completed"
@@ -158,25 +162,25 @@ async def _run_operation(
     op = _worker_op(job)
     if op == "decompose_preview":
         return await run_decompose(
-            llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
+            llm, user_id=str(job.created_by), input=job.input or {}, cancel_check=cancel_check)
     if op == "plan_pipeline":
         inp = dict(job.input or {})
         inp.setdefault("project_id", str(job.project_id))
         return await run_plan_pipeline(
-            pool, llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
+            pool, llm, user_id=str(job.created_by), input=inp, cancel_check=cancel_check)
     if op == "stitch_chapter":
         inp = dict(job.input or {})
-        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("user_id", str(job.created_by))
         inp.setdefault("project_id", str(job.project_id))
         return await run_stitch(pool, llm, get_knowledge_client(), input=inp, cancel_check=cancel_check)
     if op == "generate":
         inp = dict(job.input or {})
-        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("user_id", str(job.created_by))
         inp.setdefault("project_id", str(job.project_id))
         return await run_generate(pool, llm, get_knowledge_client(), input=inp, cancel_check=cancel_check)
     if op == "chapter_generate":
         inp = dict(job.input or {})
-        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("user_id", str(job.created_by))
         inp.setdefault("project_id", str(job.project_id))
         return await run_chapter_generate(
             pool, llm, get_knowledge_client(), input=inp, cancel_check=cancel_check)
@@ -185,35 +189,35 @@ async def _run_operation(
         # cancel_check is NOT threaded here: selection_edit drains stream_draft via
         # the raw SDK (engine/cowrite), which has its own abort path (not submit_and_wait).
         inp = dict(job.input or {})
-        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("user_id", str(job.created_by))
         return await run_selection_edit(llm, input=inp)
     if op == "self_heal_propose":
         # No pool/knowledge — the endpoint persisted the chapter text + canon; this just
         # runs the cheap-stack in propose mode (the human review-gate consumes the result).
         inp = dict(job.input or {})
-        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("user_id", str(job.created_by))
         return await run_self_heal_propose(
-            llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
+            llm, user_id=str(job.created_by), input=inp, cancel_check=cancel_check)
     if op == "quality_report":
         # No pool/knowledge — the endpoint persisted the chapter text + canon; this runs the
         # two advisory judges (critic + promise audit) and returns a read-only report.
         inp = dict(job.input or {})
-        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("user_id", str(job.created_by))
         return await run_quality_report(
-            llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
+            llm, user_id=str(job.created_by), input=inp, cancel_check=cancel_check)
     if op == "promise_coverage":
         # No pool/knowledge — the endpoint rendered the outline plan + assembled the book prose;
         # this scores the book against the spec's tracked-promise set (read-only coverage).
         inp = dict(job.input or {})
-        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("user_id", str(job.created_by))
         return await run_promise_coverage(
-            llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
+            llm, user_id=str(job.created_by), input=inp, cancel_check=cancel_check)
     if op == "plan_forge_propose":
         return await run_plan_forge_propose(
-            llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
+            llm, user_id=str(job.created_by), input=job.input or {}, cancel_check=cancel_check)
     if op == "plan_forge_refine":
         return await run_plan_forge_refine(
-            llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
+            llm, user_id=str(job.created_by), input=job.input or {}, cancel_check=cancel_check)
     # ── Wave-2 motif ops (W2-F0 frozen dispatch seam) ─────────────────────────────
     # The Tier-W confirm effects (routers/actions.py) already stamp the full input
     # envelope; each handler lives in its WS-owned engine module (lazy import keeps
@@ -223,18 +227,18 @@ async def _run_operation(
         from app.engine.motif_mine import run_mine_motifs
         return await run_mine_motifs(
             pool, llm, get_knowledge_client(),
-            user_id=str(job.user_id), input=job.input or {},
+            user_id=str(job.created_by), input=job.input or {},
         )
     if op == "analyze_reference":
         from app.engine.motif_deconstruct import run_analyze_reference
         return await run_analyze_reference(
-            pool, llm, user_id=str(job.user_id), input=job.input or {},
+            pool, llm, user_id=str(job.created_by), input=job.input or {},
         )
     if op == "conformance_run":
         from app.engine.motif_conformance_run import run_conformance_run
         return await run_conformance_run(
             pool, llm, get_knowledge_client(),
-            user_id=str(job.user_id), project_id=str(job.project_id), input=job.input or {},
+            user_id=str(job.created_by), project_id=str(job.project_id), input=job.input or {},
         )
     raise UnsupportedOperationError(op)
 
@@ -290,7 +294,7 @@ async def sweep_once(pool: asyncpg.Pool, *, timeout_secs: int, batch: int = 20) 
     async with pool.acquire() as c:
         rows = await c.fetch(
             """
-            SELECT id, user_id FROM generation_job
+            SELECT id, created_by FROM generation_job
             WHERE status = ANY($1::text[]) AND updated_at <= $2
               AND (operation = ANY($3::text[]) OR input->>'worker_op' = ANY($3::text[]))
             ORDER BY updated_at
@@ -300,7 +304,7 @@ async def sweep_once(pool: asyncpg.Pool, *, timeout_secs: int, batch: int = 20) 
         )
     for r in rows:
         try:
-            await run_job(pool, llm, job_id=str(r["id"]), user_id=str(r["user_id"]))
+            await run_job(pool, llm, job_id=str(r["id"]), user_id=str(r["created_by"]))
         except Exception:  # noqa: BLE001 — a sweep failure must not kill the loop
             logger.warning("composition sweep re-drive failed for %s", r["id"], exc_info=True)
     return len(rows)

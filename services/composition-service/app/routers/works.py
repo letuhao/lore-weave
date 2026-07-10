@@ -1,9 +1,13 @@
 """Work resolve + CRUD router (composition-service, M3).
 
 GET /books/{book_id}/work wires the M2 `resolve_work` (§6.2) into a real
-endpoint — forwarding the caller's JWT to knowledge-service (user-scoped, so
-ownership is enforced server-side). GET/PATCH /works/{project_id} expose the
+endpoint — forwarding the caller's JWT to knowledge-service (actor identity;
+access is the E0 book grant). GET/PATCH /works/{project_id} expose the
 WorksRepo with If-Match optimistic concurrency (412 on a stale version).
+
+Book-package re-key (spec 25 PM-9): Work rows are PER-BOOK — repo calls carry
+no user id; every route gates on the caller's E0 grant on the book, and writes
+stamp `created_by` = the acting caller (actor, never scope).
 
 POST /books/{book_id}/work (M8) confirm-creates a Work: ensure a book-typed
 knowledge project exists (resolve, else ProjectCreate), then get-or-create the
@@ -19,6 +23,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, field_validator
 
+from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
 from app.clients.book_client import BookClient, BookClientError
 from app.engine.assembly import ASSEMBLY_MODES
 from app.clients.knowledge_client import KnowledgeClient, KnowledgeContractError
@@ -79,29 +84,36 @@ def _serialize_resolution(res: WorkResolution) -> WorkResolutionResponse:
 
 async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel) -> None:
     """E0-4c book-grant chokepoint → HTTP. none→404 (no oracle), under→403.
-    composition_work stays per-user; this gates whether the caller may use
-    composition on the book at the operation's tier."""
+    composition_work is PER-BOOK (spec 25 PM-9); this gate is the ONLY access
+    decision — the repo never filters on the caller."""
     try:
         await authorize_book(grant, book_id, caller, need)
     except OwnershipError:
-        raise HTTPException(status_code=404, detail="book not found")
+        # Anti-oracle: a no-grant caller and a missing Work must be INDISTINGUISHABLE.
+        # `works.get` is un-user-scoped since the re-key, so a distinct "work not found"
+        # here would let any authenticated user probe project_id existence (PM-8).
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     except InsufficientGrant:
         raise HTTPException(status_code=403, detail="insufficient access")
 
 
-async def _ensure_pending_work(works: WorksRepo, user_id: UUID, book_id: UUID):
+async def _ensure_pending_work(works: WorksRepo, book_id: UUID, *, created_by: UUID):
     """C16 (WG-3) greenfield degrade: return the (at-most-one) lazy null-project
-    Work for this user+book, creating it if absent. Idempotent + race-safe: the
-    partial-unique `(user,book) WHERE pending_project_backfill` index caps it at one,
-    so a concurrent loser re-gets the existing row instead of 500-ing. Used by both
-    the knowledge-DOWN (resolve unavailable) and create_project-OUTAGE paths."""
-    existing = await works.get_pending_for_book(user_id, book_id)
+    Work for this BOOK, creating it if absent (stamped `created_by` = the acting
+    caller — actor, not scope; PM-9). Idempotent + race-safe: the partial-unique
+    `(book_id) WHERE pending_project_backfill` index (PM-4) caps it at one per
+    book, so a concurrent loser — any collaborator — re-gets the existing row
+    instead of 500-ing. The catch-and-re-get below matches that index predicate
+    exactly (book_id + pending marker; see get_pending_for_book —
+    postgres-partial-index-on-conflict-predicate-must-match). Used by both the
+    knowledge-DOWN (resolve unavailable) and create_project-OUTAGE paths."""
+    existing = await works.get_pending_for_book(book_id)
     if existing is not None:
         return existing
     try:
-        return await works.create_pending(user_id, book_id)
+        return await works.create_pending(created_by, book_id)
     except asyncpg.UniqueViolationError:
-        racey = await works.get_pending_for_book(user_id, book_id)
+        racey = await works.get_pending_for_book(book_id)
         if racey is None:
             raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"})
         return racey
@@ -128,7 +140,7 @@ async def get_work_for_book(
     # E0-4c: read-pack tier → VIEW grant on the book.
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
     res = await resolve_work(
-        user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
+        book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
     )
     return _serialize_resolution(res)
 
@@ -168,7 +180,8 @@ async def create_work_for_book(
     is_derivative = body is not None and body.source_work_id is not None
     # E0-4c: creating a work is an authoring (write) action → EDIT grant. Then
     # fetch the book for its title (get_book returns the row for any grantee
-    # post-E0-2). composition_work itself is per-user (caller-keyed below).
+    # post-E0-2). composition_work is per-book (PM-9); the caller only stamps
+    # `created_by` on the create paths below.
     await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
         book_obj = await book.get_book(book_id, bearer)
@@ -178,7 +191,7 @@ async def create_work_for_book(
         raise HTTPException(status_code=404, detail="book not found")
 
     res = await resolve_work(
-        user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
+        book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
     )
     if res.status == "unavailable":
         # C16 (WG-3): knowledge-service is DOWN, so resolve couldn't even list the
@@ -190,7 +203,9 @@ async def create_work_for_book(
         # project. This fully decouples writing from the knowledge-service outage.
         if is_derivative:
             raise HTTPException(status_code=502, detail={"code": "KNOWLEDGE_UNAVAILABLE"})
-        return (await _ensure_pending_work(works, user_id, book_id)).model_dump(mode="json")
+        return (
+            await _ensure_pending_work(works, book_id, created_by=user_id)
+        ).model_dump(mode="json")
     # Already a Work → idempotent return (pick the first if several marked).
     if res.status == "found":
         return res.work.model_dump(mode="json")  # type: ignore[union-attr]
@@ -208,6 +223,11 @@ async def create_work_for_book(
         # (never degrade an auth/validation failure into a grounding-blind Work);
         # only an OUTAGE (None ← down/timeout/5xx) is eligible for graceful
         # degradation.
+        # OQ-1 (ratified): knowledge auto-provision stays OWNER-only — the
+        # caller's own bearer is forwarded and knowledge rejects a non-owner
+        # (F4), which surfaces below rather than minting an owner-identity
+        # token. A grantee's pending Work waits for the owner's next
+        # create/resolve to backfill (MED-1-style path, surfaced not silent).
         try:
             created = await knowledge.create_project(book_id, name, bearer)
         except KnowledgeContractError:
@@ -221,15 +241,20 @@ async def create_work_for_book(
             # GREENFIELD: degrade to a lazy null-project Work so the writer keeps
             # drafting + Generate while knowledge recovers (backfilled by a later
             # setup retry, below).
-            return (await _ensure_pending_work(works, user_id, book_id)).model_dump(mode="json")
+            return (
+                await _ensure_pending_work(works, book_id, created_by=user_id)
+            ).model_dump(mode="json")
         project_id = UUID(str(created["project_id"]))
 
         # C16 backfill seam: if a prior outage left a lazy pending Work for this
-        # (user,book), stamp the freshly-created project onto it (clear the marker)
-        # instead of spawning a second Work — knowledge has recovered.
-        pending = await works.get_pending_for_book(user_id, book_id)
+        # book (possibly created by a grantee — PM-9/F5), stamp the freshly-created
+        # project onto it (clear the marker) instead of spawning a second Work —
+        # knowledge has recovered.
+        pending = await works.get_pending_for_book(book_id)
         if pending is not None and pending.id is not None:
-            backfilled = await works.backfill_project(user_id, pending.id, project_id)
+            backfilled = await works.backfill_project(
+                pending.id, project_id, created_by=user_id,
+            )
             if backfilled is not None:
                 return backfilled.model_dump(mode="json")
 
@@ -240,7 +265,7 @@ async def create_work_for_book(
     # knowledge-side: create_project now dedupes via ProjectsRepo.create_or_get under
     # a per-(user,book) advisory lock, so both POSTs resolve to the SAME project_id
     # and this unique-violation catch dedupes the work row.)
-    existing = await works.get(user_id, project_id)  # type: ignore[arg-type]
+    existing = await works.get(project_id)  # type: ignore[arg-type]
     if existing is not None:
         return existing.model_dump(mode="json")
     # Seed the Work's source language from the book so the drafter writes in the
@@ -251,9 +276,10 @@ async def create_work_for_book(
     _book_lang = (book_obj.get("original_language") or "").strip()
     _init_settings = {"source_language": _book_lang} if _book_lang else None
     try:
+        # `user_id` = created_by, the acting caller (plain actor stamp — PM-9).
         work = await works.create(user_id, project_id, book_id, settings=_init_settings)  # type: ignore[arg-type]
     except asyncpg.UniqueViolationError:
-        racey = await works.get(user_id, project_id)  # type: ignore[arg-type]
+        racey = await works.get(project_id)  # type: ignore[arg-type]
         if racey is None:
             raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"})
         return racey.model_dump(mode="json")
@@ -312,18 +338,21 @@ async def derive_work(
     suspenders.
     """
     body = body or DeriveBody()
-    # Source Work must exist + be owned by the caller (per-user predicate). 404 (not
-    # 403) on a miss — no cross-user oracle.
-    source = await works.get(user_id, project_id)
+    # Source Work resolution is un-user-scoped (PM-9); ACCESS is the EDIT gate on
+    # the source's book just below — a no-grant caller gets the same 404 there
+    # (anti-oracle preserved; nothing is returned before the gate).
+    source = await works.get(project_id)
     if source is None:
         raise HTTPException(status_code=404, detail="source work not found")
-    if source.id is None:  # a pending/lazy source has no surrogate id to link to
-        raise HTTPException(status_code=409, detail={"code": "SOURCE_WORK_NOT_BACKED"})
     book_id = source.book_id
 
     # E0-4c: deriving is an authoring (write) action on the source's book → EDIT grant
     # (LOCKED: a derivative of a shared work follows the source's per-book grant).
+    # Gated BEFORE the 409 below so a no-grant probe can't tell a backed source
+    # from a pending one (no existence/state oracle).
     await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    if source.id is None:  # a pending/lazy source has no surrogate id to link to
+        raise HTTPException(status_code=409, detail={"code": "SOURCE_WORK_NOT_BACKED"})
     try:
         book_obj = await book.get_book(book_id, bearer)
     except BookClientError:
@@ -352,13 +381,14 @@ async def derive_work(
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # `user_id` = created_by, the acting caller (plain actor stamp — PM-9).
             work = await works.create_derivative(
                 user_id, derivative_project_id, book_id, source.id,
                 branch_point=body.branch_point, conn=conn,
             )
             await derivatives.create_spec(
                 DivergenceSpec(
-                    user_id=user_id, project_id=derivative_project_id, work_id=work.id,
+                    created_by=user_id, project_id=derivative_project_id, work_id=work.id,
                     taxonomy=body.divergence.taxonomy, pov_anchor=body.divergence.pov_anchor,
                     canon_rule=list(body.divergence.canon_rule),
                 ),
@@ -367,7 +397,7 @@ async def derive_work(
             for ov in body.entity_overrides:
                 await derivatives.create_override(
                     EntityOverride(
-                        user_id=user_id, project_id=derivative_project_id, work_id=work.id,
+                        created_by=user_id, project_id=derivative_project_id, work_id=work.id,
                         target_entity_id=ov.target_entity_id,
                         overridden_fields=ov.overridden_fields,
                     ),
@@ -383,11 +413,11 @@ async def get_work(
     works: WorksRepo = Depends(get_works_repo),
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
-    # E0-4c: the work row is the caller's own (per-user predicate above); still
-    # require VIEW on its book so a revoked collaborator can't read stale work.
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    # E0-4c/PM-9: the row is per-book — VIEW on its book is the access decision
+    # (a no-grant caller 404s at the gate; nothing returned before it).
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     return work.model_dump(mode="json")
 
@@ -424,16 +454,16 @@ async def get_derivative_context(
     SAME persisted substrate the packer applies — so the studio reflects real state,
     not the ephemeral derive-time react-query cache. VIEW grant on the Work's book
     (a revoked collaborator can't read a stale derivative)."""
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     if work.source_work_id is None:
         return DerivativeContextResponse(is_derivative=False).model_dump(mode="json")
     deriv = await build_derivative_context(
-        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives,
+        work, works_repo=works, derivatives_repo=derivatives,
     )
-    spec = await derivatives.get_spec_for_work(user_id, work.id) if work.id else None
+    spec = await derivatives.get_spec_for_work(work.id) if work.id else None
     return DerivativeContextResponse(
         is_derivative=True,
         source_work_id=work.source_work_id,
@@ -471,9 +501,9 @@ async def get_work_by_id(
     created GREENFIELD null-project Work has (no project_id yet to key the
     /works/{project_id} routes on). Lets the FE hold work.id after POST /work and
     read its backfill status. VIEW grant on the Work's book."""
-    work = await works.get_by_id(user_id, work_id)
+    work = await works.get_by_id(work_id)
     if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     return work.model_dump(mode="json")
 
@@ -498,14 +528,18 @@ async def resolve_work_project(
     STILL_PENDING so the FE keeps polling. A 4xx contract error surfaces as 502
     (never silently swallowed). EDIT grant — backfilling binds a real grounding
     project, an authoring action."""
-    work = await works.get_by_id(user_id, work_id)
+    work = await works.get_by_id(work_id)
     if work is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    # Gate BEFORE the idempotent early-return: get_by_id is un-user-scoped now
+    # (PM-9), so returning row content pre-gate would be an any-caller oracle
+    # (worker-loaded-id-needs-parent-scoping — every by-id load keeps the book
+    # gate as its parent scope).
+    book_id = work.book_id
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     if work.project_id is not None or not work.pending_project_backfill:
         return work.model_dump(mode="json")
 
-    book_id = work.book_id
-    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
         book_obj = await book.get_book(book_id, bearer)
     except BookClientError:
@@ -526,7 +560,7 @@ async def resolve_work_project(
 
     project_id = UUID(str(created["project_id"]))
     try:
-        backfilled = await works.backfill_project(user_id, work.id, project_id)
+        backfilled = await works.backfill_project(work.id, project_id, created_by=user_id)
     except asyncpg.UniqueViolationError:
         # Defensive (review #2): the one-Work-per-book invariant makes this
         # unreachable — a pending row exists ONLY when no backed row already
@@ -540,7 +574,7 @@ async def resolve_work_project(
     # Race / collision: a concurrent POST /work already backfilled (our
     # WHERE-pending UPDATE no-op'd, or a unique row already holds the project).
     # Re-read and return the now-backed row.
-    current = await works.get_by_id(user_id, work_id)
+    current = await works.get_by_id(work_id)
     return (current or work).model_dump(mode="json")
 
 
@@ -554,16 +588,17 @@ async def patch_work(
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> dict[str, Any]:
     # E0-4c: patching the authoring context is a write → EDIT on the work's book.
-    # Resolve the caller's own work first (per-user) to get its book_id.
-    existing = await works.get(user_id, project_id)
+    # Resolve the (per-book) work first to get its book_id; the gate is the
+    # access decision (nothing returned before it).
+    existing = await works.get(project_id)
     if existing is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     await _gate_book(grant, existing.book_id, user_id, GrantLevel.EDIT)
     expected_version = _parse_if_match(if_match)
     patch_dict = patch.model_dump(exclude_unset=True)
     try:
         updated = await works.update(
-            user_id, project_id, patch_dict, expected_version=expected_version,
+            project_id, patch_dict, created_by=user_id, expected_version=expected_version,
         )
     except VersionMismatchError as exc:
         raise HTTPException(
@@ -571,5 +606,5 @@ async def patch_work(
             detail={"code": "WORK_VERSION_CONFLICT", "current": exc.current.model_dump(mode="json")},
         )
     if updated is None:
-        raise HTTPException(status_code=404, detail="work not found")
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
     return updated.model_dump(mode="json")

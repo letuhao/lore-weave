@@ -147,8 +147,10 @@ def client(monkeypatch):
     monkeypatch.setattr("app.routers.conformance.get_pool", lambda: object())
 
     from app.main import app
-    from app.deps import (get_arc_template_repo, get_knowledge_client_dep,
+    from app.deps import (get_arc_template_repo, get_grant_client_dep,
+                          get_knowledge_client_dep,
                           get_outline_repo, get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
     from app.routers.conformance import get_conformance_trace_reader
 
@@ -156,14 +158,22 @@ def client(monkeypatch):
                             motif_tag_calls=[], placement_motifs={}, succ_map={},
                             causal_calls=[], causal_pairs=[])
 
+    # E0 book-grant authority stubbed at OWNER; the conformance route resolves the
+    # Work's book then gates VIEW (deny paths in test_grant_gate).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
+
     class _Works:
-        async def get(self, u, p):
-            return SimpleNamespace(project_id=P, user_id=U, book_id=uuid.uuid4())
+        async def get(self, p):
+            return SimpleNamespace(project_id=P, created_by=U, book_id=uuid.uuid4())
     class _ArcRepo:
         async def get_visible(self, caller_id, arc_id):
             return state.arc
     class _Reader:
-        async def arc_bindings(self, u, p, arc_id):
+        async def arc_bindings(self, p, arc_id):
             return state.rows
     class _Knowledge:
         async def get_motif_beat_sequences(self, user_id, *, book_id=None, corpus=False, language=None):
@@ -190,6 +200,7 @@ def client(monkeypatch):
     monkeypatch.setattr("app.routers.conformance.MotifRepo", _MotifRepo)
 
     app.dependency_overrides[get_current_user] = lambda: U
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     app.dependency_overrides[get_works_repo] = lambda: _Works()
     app.dependency_overrides[get_arc_template_repo] = lambda: _ArcRepo()
     app.dependency_overrides[get_conformance_trace_reader] = lambda: _Reader()

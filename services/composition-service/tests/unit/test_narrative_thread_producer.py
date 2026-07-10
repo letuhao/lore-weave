@@ -41,22 +41,22 @@ class _FakeRepo:
         self.opened: list[dict] = []
         self.paid: list[tuple[str, str]] = []
 
-    async def list_open(self, user_id, project_id, *, limit=100):
+    async def list_open(self, project_id, *, limit=100):
         return self._open
 
-    async def open_thread(self, user_id, project_id, *, kind, summary,
+    async def open_thread(self, project_id, *, created_by=None, kind, summary,
                           opened_at_node=None, trigger="", **kw):
         self.opened.append({"kind": kind, "summary": summary})
         return None
 
-    async def update_status(self, user_id, project_id, thread_id, *, status, payoff_node=None):
+    async def update_status(self, project_id, thread_id, *, status, payoff_node=None):
         self.paid.append((str(thread_id), status))
         return SimpleNamespace(id=thread_id)  # non-None = matched/updated
 
 
 def _thread(summary: str, kind: str = "promise") -> NarrativeThread:
     return NarrativeThread(
-        id=uuid4(), user_id=uuid4(), project_id=uuid4(),
+        id=uuid4(), created_by=uuid4(), project_id=uuid4(),
         kind=kind, status="open", summary=summary,
     )
 

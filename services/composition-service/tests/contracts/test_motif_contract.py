@@ -149,7 +149,7 @@ def test_row_models_construct():
     """The other frozen row models construct + round-trip (W9/W10/W2 consume)."""
     MotifLink(id=uuid.uuid4(), from_motif_id=uuid.uuid4(), to_motif_id=uuid.uuid4(), kind="precedes")
     MotifApplication(
-        id=uuid.uuid4(), user_id=uuid.uuid4(), project_id=uuid.uuid4(), book_id=uuid.uuid4(),
+        id=uuid.uuid4(), created_by=uuid.uuid4(), project_id=uuid.uuid4(), book_id=uuid.uuid4(),
     )
     ArcTemplate(id=uuid.uuid4(), code="arc.revenge", name="Revenge Arc")
     ImportSource(id=uuid.uuid4(), owner_user_id=uuid.uuid4(), content="raw text")

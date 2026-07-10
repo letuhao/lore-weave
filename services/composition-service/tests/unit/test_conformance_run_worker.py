@@ -39,8 +39,8 @@ def patched(monkeypatch):
 
     class _Works:
         def __init__(self, pool): pass
-        async def get(self, u, p):
-            return SimpleNamespace(book_id=BOOK, project_id=p, user_id=u)
+        async def get(self, p):
+            return SimpleNamespace(book_id=BOOK, project_id=p, created_by=U)
 
     class _ArcRepo:
         def __init__(self, pool): pass
@@ -49,7 +49,7 @@ def patched(monkeypatch):
 
     class _Reader:
         def __init__(self, pool): pass
-        async def arc_bindings(self, u, p, aid):
+        async def arc_bindings(self, p, aid):
             return state.rows
 
     class _MotifRepo:

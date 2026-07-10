@@ -270,10 +270,13 @@ CREATE TABLE IF NOT EXISTS parts (
 CREATE TABLE IF NOT EXISTS scenes (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
   chapter_id      UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  book_id         UUID REFERENCES books(id) ON DELETE CASCADE,  -- 22-A1/SC1: NULLABLE, backfilled from chapters
   sort_order      INT  NOT NULL,
   path            TEXT NOT NULL,
+  title           TEXT NOT NULL DEFAULT '',                     -- 22-A1: parsed heading (AUTHORED title = outline_node.title)
   leaf_text       TEXT NOT NULL,
   content_hash    TEXT NOT NULL,
+  source_scene_id UUID,                                         -- 22-A1/SC2: soft ref → composition outline_node.id (NO FK, non-unique)
   parse_version   INT  NOT NULL DEFAULT 1,
   lifecycle_state TEXT NOT NULL DEFAULT 'active',
   trashed_at      TIMESTAMPTZ,
@@ -491,6 +494,39 @@ CREATE TABLE IF NOT EXISTS chapter_page_images (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_chapter_page_images_chapter ON chapter_page_images(chapter_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Scene model 22-A1 - 2026-07-10
+-- Spec: docs/specs/2026-07-01-writing-studio/22_scene_model_and_crud.md
+--
+-- scenes gains book_id (SC1 — direct book scope; NULLABLE, backfilled from
+-- chapters.book_id by the batched, marker-gated backfillScenesBookID — spec 22
+-- explicitly forbids a bare full-table UPDATE, 10k+ chapter books are real),
+-- title (parsed heading; the AUTHORED title stays on composition's
+-- outline_node.title), and source_scene_id (SC2 amended: the source map — a
+-- SOFT ref to composition.outline_node.id, deliberately NO FK because it
+-- crosses a service/DB boundary, NULLABLE for undecompiled imports,
+-- NON-unique). NO 'origin' column — dropped by the SC5 inversion: every
+-- scenes row is parser output, so the column would be a constant.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE scenes ADD COLUMN IF NOT EXISTS book_id UUID
+  REFERENCES books(id) ON DELETE CASCADE;
+ALTER TABLE scenes ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+ALTER TABLE scenes ADD COLUMN IF NOT EXISTS source_scene_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_scenes_book_active
+  ON scenes(book_id, chapter_id, sort_order) WHERE lifecycle_state = 'active';
+CREATE INDEX IF NOT EXISTS idx_scenes_source
+  ON scenes(source_scene_id) WHERE source_scene_id IS NOT NULL;
+
+-- One-row-per-step marker (mirrors word_count_backfill_migration) so the
+-- batched book_id backfill runs to completion once, not on every startup.
+-- Safe to re-run to completion if interrupted — the copy is a pure function
+-- of current chapters.book_id (see backfillScenesBookID).
+CREATE TABLE IF NOT EXISTS scenes_book_id_backfill_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 
 // WorldsDownSQL is the explicit reversible DDL for the C20 world container.
@@ -648,6 +684,15 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		slog.Error("book-service: word_count backfill failed; will retry on next startup", "err", err)
 	}
 
+	// 22-A1: batched, marker-gated scenes.book_id backfill from chapters.
+	// Best-effort — same degrade story as word_count: a failure must NEVER block
+	// book-service startup (book_id simply stays NULL for un-backfilled rows and
+	// readers keep resolving scope via chapter_id → chapters.book_id); the marker
+	// stays unset on failure so the next startup retries.
+	if err := backfillScenesBookID(ctx, pool); err != nil {
+		slog.Error("book-service: scenes.book_id backfill failed; will retry on next startup", "err", err)
+	}
+
 	return nil
 }
 
@@ -719,6 +764,76 @@ FROM agg WHERE c.id = agg.chapter_id
 	}
 
 	if _, err := pool.Exec(ctx, `INSERT INTO word_count_backfill_migration (id) VALUES ('wc_backfill_v1') ON CONFLICT DO NOTHING`); err != nil {
+		return fmt.Errorf("mark backfill complete: %w", err)
+	}
+	return nil
+}
+
+// scenesBookIDBackfillBatchSize mirrors wordCountBackfillBatchSize's rationale:
+// spec 22 explicitly forbids a bare full-table `UPDATE scenes SET book_id = …`
+// (10k+ chapter books are real; that shape takes a full-table lock).
+const scenesBookIDBackfillBatchSize = 500
+
+// backfillScenesBookID copies chapters.book_id onto every pre-existing scenes
+// row (spec 22-A1 / SC1), in small keyset batches ordered by id (scenes.id is
+// a UUIDv7 — time-ordered, so `id > lastID ORDER BY id LIMIT N` is a total
+// order with no duplicate/skip risk). The batch query additionally filters
+// `book_id IS NULL` so a crash-interrupted run's retry skips already-copied
+// rows instead of re-writing them. Marker-gated
+// (scenes_book_id_backfill_migration) so completed installs skip the scan on
+// every later startup. Safe to re-run to completion: the assignment is a pure
+// copy of current chapters.book_id, so repeating it is wasted CPU, never a
+// correctness risk — the backfillWordCounts safety argument. A scene whose
+// chapter vanished mid-run simply doesn't match the UPDATE ... FROM join and
+// keeps NULL (the FK cascade will remove it anyway).
+func backfillScenesBookID(ctx context.Context, pool *pgxpool.Pool) error {
+	var done bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM scenes_book_id_backfill_migration WHERE id='scenes_book_id_backfill_v1')`).Scan(&done); err != nil {
+		return fmt.Errorf("check marker: %w", err)
+	}
+	if done {
+		return nil
+	}
+
+	var lastID uuid.UUID // zero UUID sorts before every real scene id
+	for {
+		rows, err := pool.Query(ctx, `SELECT id FROM scenes WHERE id > $1 AND book_id IS NULL ORDER BY id LIMIT $2`, lastID, scenesBookIDBackfillBatchSize)
+		if err != nil {
+			return fmt.Errorf("fetch batch: %w", err)
+		}
+		ids := make([]uuid.UUID, 0, scenesBookIDBackfillBatchSize)
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan batch id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate batch: %w", err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		lastID = ids[len(ids)-1]
+
+		if _, err := pool.Exec(ctx, `
+UPDATE scenes s
+SET book_id = c.book_id
+FROM chapters c
+WHERE c.id = s.chapter_id AND s.id = ANY($1)
+`, ids); err != nil {
+			return fmt.Errorf("backfill batch (after id %s): %w", lastID, err)
+		}
+
+		if len(ids) < scenesBookIDBackfillBatchSize {
+			break // last (partial) batch — no more rows
+		}
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO scenes_book_id_backfill_migration (id) VALUES ('scenes_book_id_backfill_v1') ON CONFLICT DO NOTHING`); err != nil {
 		return fmt.Errorf("mark backfill complete: %w", err)
 	}
 	return nil

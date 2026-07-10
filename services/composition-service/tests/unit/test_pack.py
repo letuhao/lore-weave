@@ -85,17 +85,17 @@ class StubKnowledge:
 class StubCanon:
     def __init__(self, rules=None):
         self._rules = rules or []
-    async def list_active(self, user_id, project_id):
+    async def list_active(self, project_id):
         return self._rules
 
 
 class StubOutline:
-    async def list_tree(self, user_id, project_id, **kw):
+    async def list_tree(self, project_id, **kw):
         return []
 
 
 class StubSceneLinks:
-    async def list_by_project(self, user_id, project_id):
+    async def list_by_project(self, project_id):
         return []
 
 
@@ -114,7 +114,7 @@ class StubNarrativeThreads:
     def __init__(self, threads=None):
         self._t = threads or []
 
-    async def list_open(self, user_id, project_id, *, limit=100):
+    async def list_open(self, project_id, *, limit=100):
         from types import SimpleNamespace
         return [SimpleNamespace(kind=k, summary=s) for k, s in self._t][:limit]
 
@@ -131,7 +131,7 @@ class StubGroundingPins:
     def __init__(self, rows=None):
         self._rows = rows or []
 
-    async def list_for_scene(self, user_id, project_id, outline_node_id):
+    async def list_for_scene(self, project_id, outline_node_id):
         from types import SimpleNamespace
         return [SimpleNamespace(item_type=t, item_id=i, action=a) for (t, i, a) in self._rows]
 
@@ -141,7 +141,7 @@ class StubStyleRepo:
     def __init__(self, resolved=None):
         self._r = resolved
 
-    async def resolve(self, user_id, project_id, scene_id, chapter_id):
+    async def resolve(self, project_id, scene_id, chapter_id):
         return self._r
 
 
@@ -150,7 +150,7 @@ class StubVoiceRepo:
     def __init__(self, rows=None):
         self._rows = rows or []
 
-    async def list_for_entities(self, user_id, project_id, entity_ids):
+    async def list_for_entities(self, project_id, entity_ids):
         ids = {str(e) for e in entity_ids}
         return [v for v in self._rows if str(v.entity_id) in ids]
 
@@ -160,7 +160,7 @@ class StubRefsRepo:
     def __init__(self, hits=None):
         self._hits = hits or []
 
-    async def search(self, user_id, project_id, vector, *, limit=6):
+    async def search(self, project_id, vector, *, limit=6):
         return list(self._hits)
 
 
@@ -231,9 +231,9 @@ async def test_pack_threads_style_and_voice_into_profile():
               "goal": "rescue", "synopsis": "the escape", "title": "Ch1"},
         bearer="jwt", guide="", settings={},
     )
-    sp = StyleProfile(user_id=USER, project_id=PROJECT, scope_type="scene",
+    sp = StyleProfile(created_by=USER, project_id=PROJECT, scope_type="scene",
                       scope_id=NODE, density=90, pace=10)
-    vp = VoiceProfile(user_id=USER, project_id=PROJECT, entity_id=ent,
+    vp = VoiceProfile(created_by=USER, project_id=PROJECT, entity_id=ent,
                       entity_name="Kael", tags=["terse"])
     pc = await _pack(req, style_profiles=StubStyleRepo(sp), voice_profiles=StubVoiceRepo([vp]))
     assert pc.profile.density_level == 90 and pc.profile.pace_level == 10
@@ -554,8 +554,8 @@ async def test_di3_soft_absent_glossary_entity_skipped():
 
 async def test_canon_filtered_by_story_order():
     rules = [
-        CanonRule(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, text="applies now", from_order=1, until_order=10),
-        CanonRule(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, text="future reveal", from_order=8, until_order=None),
+        CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="applies now", from_order=1, until_order=10),
+        CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="future reveal", from_order=8, until_order=None),
     ]
     pc = await _pack(_req(story_order=5), canon=StubCanon(rules))
     assert "applies now" in pc.blocks.get("canon", "")
@@ -566,8 +566,8 @@ async def test_canon_none_story_order_fails_closed_on_reveal_gates():
     # /review-impl M4 MED#1: a scene with no story_order must NOT see gated
     # reveal rules (their text is a future spoiler) — only ungated world rules.
     rules = [
-        CanonRule(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, text="world rule always"),
-        CanonRule(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, text="king is the villain", from_order=20, scope="reveal_gate"),
+        CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="world rule always"),
+        CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="king is the villain", from_order=20, scope="reveal_gate"),
     ]
     pc = await _pack(_req(story_order=None), canon=StubCanon(rules))
     assert "world rule always" in pc.blocks.get("canon", "")

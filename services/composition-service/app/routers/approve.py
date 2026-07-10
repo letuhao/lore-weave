@@ -16,8 +16,9 @@ LOCKED invariants (delegated to app.engine.delta_flywheel):
     delta → skipped (thinner delta, graceful — a clean 200, not an error).
   • REUSE the existing extract-item trigger — no new extraction engine.
 
-AUTH: loads the Work user-scoped (404 if not the caller's) → EDIT grant on the
-book (approving is an authoring action) → forwards the JWT for the book-draft read
+AUTH: resolves the Work by project_id (un-user-scoped — PM-9) → EDIT grant on the
+book (approving is an authoring action; the gate is the ONLY access decision, the
+repo never filters on the caller) → forwards the JWT for the book-draft read
 and uses the internal token for the extract-item dispatch (SEC2: ownership is
 verified by the Work load + grant gate before any internal call).
 """
@@ -91,7 +92,10 @@ async def approve_chapter(
     Returns `{dispatched, reason, project_id, ...}`. A non-derivative or a
     pre-branch (out-of-order) chapter is a clean `dispatched=false` 200 — never an
     error. A real derivative chapter with a null delta project → 409 (the GUARD)."""
-    work = await works.get(user_id, project_id)
+    # PM-9: composition_work is per-book — resolve by project_id (no user filter).
+    # ACCESS is the EDIT gate on the row's book just below; a no-grant caller gets
+    # the same uniform 404 there (anti-oracle — nothing returned before the gate).
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
     # Approving (committing a chapter into the dị bản) is an authoring action.
@@ -101,7 +105,7 @@ async def approve_chapter(
     # packer uses (reuse, no re-implementation). source_project_id non-None ⟺ this
     # Work is a derivative whose source resolved.
     deriv = await build_derivative_context(
-        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives,
+        work, works_repo=works, derivatives_repo=derivatives,
     )
 
     # Disambiguate "not a derivative" from "derivative whose source is unresolvable"

@@ -35,11 +35,12 @@ NEW = uuid4()
 NODE = uuid4()
 CHAP = uuid4()
 PROJ = uuid4()
+BOOK = uuid4()
 
 
 def _row(**over):
     base = dict(
-        id=JOB, user_id=USER, project_id=PROJ, outline_node_id=None,
+        id=JOB, created_by=USER, project_id=PROJ, book_id=BOOK, outline_node_id=None,
         operation="generate", mode="auto", status="cancelled", llm_job_id=None,
         input={}, result=None, critic=None, target_chapter_id=None,
         base_revision_id=None, target_revision_id=None, cost_usd=Decimal("0"),
@@ -66,7 +67,7 @@ async def test_cancel_cas_won_emits_cancelled(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(generation_jobs, "emit_job_event", spy)
     repo = GenerationJobsRepo(pool=None)
-    out = await repo.cancel(USER, JOB, conn=FakeConn(_row(status="cancelled")))
+    out = await repo.cancel(JOB, conn=FakeConn(_row(status="cancelled")))
     assert out is not None and out.status == "cancelled"
     spy.assert_awaited_once()
     kw = spy.await_args.kwargs
@@ -81,7 +82,7 @@ async def test_cancel_cas_lost_no_emit(monkeypatch):
     spy = AsyncMock()
     monkeypatch.setattr(generation_jobs, "emit_job_event", spy)
     repo = GenerationJobsRepo(pool=None)
-    out = await repo.cancel(USER, JOB, conn=FakeConn(None))
+    out = await repo.cancel(JOB, conn=FakeConn(None))
     assert out is None
     spy.assert_not_awaited()
 
@@ -98,11 +99,13 @@ def _repo(job, cancelled=True):
 
 @pytest.mark.asyncio
 async def test_cancel_owned_job_200():
-    repo = _repo(SimpleNamespace(id=JOB, status="running"))
+    repo = _repo(SimpleNamespace(id=JOB, status="running", created_by=USER))
     resp = await control_generation_job(JOB, "cancel", JobControlPayload(owner_user_id=USER), repo)
     assert resp.status == "cancelled" and resp.job_id == JOB
-    repo.get.assert_awaited_once_with(USER, JOB)       # M4 owner-scoped re-check
-    repo.cancel.assert_awaited_once_with(USER, JOB)
+    # 25 re-key: get()/cancel() are BARE-ID; the M4 owner re-check is an explicit
+    # `job.created_by == payload.owner_user_id` assert in the handler, not a scoped read.
+    repo.get.assert_awaited_once_with(JOB)
+    repo.cancel.assert_awaited_once_with(JOB)
 
 
 @pytest.mark.asyncio
@@ -117,7 +120,7 @@ async def test_not_owned_is_404():
 @pytest.mark.asyncio
 async def test_already_terminal_is_409():
     # owner-scoped get finds it, but the CAS cancel matched nothing (terminal/raced)
-    repo = _repo(SimpleNamespace(id=JOB, status="completed"), cancelled=False)
+    repo = _repo(SimpleNamespace(id=JOB, status="completed", created_by=USER), cancelled=False)
     with pytest.raises(HTTPException) as exc:
         await control_generation_job(JOB, "cancel", JobControlPayload(owner_user_id=USER), repo)
     assert exc.value.status_code == 409
@@ -136,7 +139,7 @@ async def test_unknown_action_400():
 # ── router: retry (D-JOBS-P4-RETRY-COMPOSITION) ─────────────────────────────────
 def _failed_job(**over):
     base = dict(
-        id=JOB, user_id=USER, project_id=PROJ, outline_node_id=NODE,
+        id=JOB, created_by=USER, project_id=PROJ, outline_node_id=NODE,
         operation="draft_scene", mode="auto", status="failed",
         # worker-drivable: input carries the canonical worker_op + the resolved context.
         input={"worker_op": "generate", "packed_prompt": "…", "model_source": "user_model",
@@ -286,7 +289,7 @@ async def test_retry_chapter_in_flight_409(_retry_env):
 async def test_reconcile_jobs_maps_to_canonical_payload():
     from datetime import datetime, timezone
     updated = datetime(2026, 6, 15, tzinfo=timezone.utc)
-    job = SimpleNamespace(id=JOB, user_id=USER, operation="generate", status="running", updated_at=updated)
+    job = SimpleNamespace(id=JOB, created_by=USER, operation="generate", status="running", updated_at=updated)
     repo = AsyncMock()
     repo.list_since = AsyncMock(return_value=[job])
     out = await reconcile_jobs(since=updated, jobs=repo)

@@ -1,8 +1,12 @@
 """plan_run + plan_artifact repository (PlanForge M3).
 
-Tenancy: every method takes owner_user_id first and filters on owner_user_id +
-book_id (or run_id scoped to owner). A foreign/missing id returns None — routers
-map to 404 (no existence oracle).
+Tenancy (BPS re-key, spec 25 OQ-3): rows are BOOK-scoped — every read filters
+by book_id, and access is decided BEFORE the repo at the route's E0 book-grant
+gate. `created_by` is a plain actor stamp on writes — STORED, never filtered
+on. `plan_artifact` carries no book_id column: its reads gate through the
+`JOIN plan_run r ON r.id = plan_artifact.run_id` with the scope on r.book_id —
+never a direct artifact read without that join. A foreign/missing id returns
+None — routers map to 404 (no existence oracle).
 """
 
 from __future__ import annotations
@@ -17,11 +21,13 @@ import asyncpg
 from app.db.models import PlanArtifact, PlanArtifactKind, PlanRun, PlanRunMode, PlanRunStatus
 
 _SELECT_RUN = """
-  id, owner_user_id, book_id, work_id, status, mode, model_ref, source_checksum,
+  id, created_by, book_id, work_id, status, mode, model_ref, source_checksum,
   source_markdown, active_job_id, error_detail, checkpoint_state, created_at, updated_at
 """
 
-_SELECT_ARTIFACT = "id, run_id, owner_user_id, kind, content, created_at"
+# `a.`-prefixed so the artifact reads can join plan_run (the book-scope gate);
+# the INSERT RETURNING strips the prefix (authoring_run_units precedent).
+_SELECT_ARTIFACT = "a.id, a.run_id, a.created_by, a.kind, a.content, a.created_at"
 
 
 def _jsonb(value: dict[str, Any] | None) -> str:
@@ -50,7 +56,7 @@ class PlanRunsRepo:
 
     async def create(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         *,
         mode: PlanRunMode,
@@ -61,14 +67,14 @@ class PlanRunsRepo:
     ) -> PlanRun:
         query = f"""
         INSERT INTO plan_run
-          (owner_user_id, book_id, mode, model_ref, source_checksum, source_markdown, status)
+          (created_by, book_id, mode, model_ref, source_checksum, source_markdown, status)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_SELECT_RUN}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
                 query,
-                owner_user_id,
+                created_by,
                 book_id,
                 mode,
                 model_ref,
@@ -79,42 +85,43 @@ class PlanRunsRepo:
         return _row_run(row)
 
     async def find_by_checksum(
-        self, owner_user_id: UUID, book_id: UUID, source_checksum: str, mode: str,
+        self, book_id: UUID, source_checksum: str, mode: str,
     ) -> PlanRun | None:
         # `mode` is part of the identity of a propose request, not just the text --
         # a user re-Proposing identical markdown after switching Rules -> LLM must
         # get a FRESH run, never the stale other-mode result (D-PLANFORGE-MODE-DEDUPE).
+        # Book-scoped dedupe (OQ-3): a grantee re-Proposing the owner's identical
+        # markdown finds the existing run instead of forking a duplicate.
         query = f"""
         SELECT {_SELECT_RUN} FROM plan_run
-        WHERE owner_user_id = $1 AND book_id = $2 AND source_checksum = $3 AND mode = $4
+        WHERE book_id = $1 AND source_checksum = $2 AND mode = $3
         ORDER BY created_at DESC
         LIMIT 1
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, owner_user_id, book_id, source_checksum, mode)
+            row = await c.fetchrow(query, book_id, source_checksum, mode)
         return _row_run(row) if row else None
 
-    async def get_for_owner(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID,
+    async def get_for_book(
+        self, book_id: UUID, run_id: UUID,
     ) -> PlanRun | None:
         query = f"""
         SELECT {_SELECT_RUN} FROM plan_run
-        WHERE id = $1 AND owner_user_id = $2 AND book_id = $3
+        WHERE id = $1 AND book_id = $2
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, run_id, owner_user_id, book_id)
+            row = await c.fetchrow(query, run_id, book_id)
         return _row_run(row) if row else None
 
-    async def list_for_owner(
+    async def list_for_book(
         self,
-        owner_user_id: UUID,
         book_id: UUID,
         *,
         limit: int = 20,
         cursor: str | None = None,
     ) -> tuple[list[PlanRun], str | None]:
-        params: list[Any] = [owner_user_id, book_id]
-        where = ["owner_user_id = $1", "book_id = $2"]
+        params: list[Any] = [book_id]
+        where = ["book_id = $1"]
         if cursor:
             try:
                 ts_str, id_str = cursor.split("|", 1)
@@ -146,7 +153,6 @@ class PlanRunsRepo:
 
     async def update_run(
         self,
-        owner_user_id: UUID,
         book_id: UUID,
         run_id: UUID,
         *,
@@ -158,7 +164,7 @@ class PlanRunsRepo:
         clear_error: bool = False,
     ) -> PlanRun | None:
         sets: list[str] = ["updated_at = now()"]
-        params: list[Any] = [run_id, owner_user_id, book_id]
+        params: list[Any] = [run_id, book_id]
         if status is not None:
             params.append(status)
             sets.append(f"status = ${len(params)}")
@@ -186,7 +192,7 @@ class PlanRunsRepo:
             sets.append(f"checkpoint_state = ${len(params)}::jsonb")
         query = f"""
         UPDATE plan_run SET {", ".join(sets)}
-        WHERE id = $1 AND owner_user_id = $2 AND book_id = $3
+        WHERE id = $1 AND book_id = $2
         RETURNING {_SELECT_RUN}
         """
         async with self._pool.acquire() as c:
@@ -195,47 +201,51 @@ class PlanRunsRepo:
 
     async def save_artifact(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         run_id: UUID,
         kind: PlanArtifactKind,
         content: dict[str, Any],
     ) -> PlanArtifact:
         query = f"""
-        INSERT INTO plan_artifact (run_id, owner_user_id, kind, content)
+        INSERT INTO plan_artifact (run_id, created_by, kind, content)
         VALUES ($1, $2, $3, $4::jsonb)
-        RETURNING {_SELECT_ARTIFACT}
+        RETURNING {_SELECT_ARTIFACT.replace("a.", "")}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
-                query, run_id, owner_user_id, kind, _jsonb(content),
+                query, run_id, created_by, kind, _jsonb(content),
             )
         return _row_artifact(row)
 
     async def latest_artifact(
         self,
-        owner_user_id: UUID,
+        book_id: UUID,
         run_id: UUID,
         kind: PlanArtifactKind,
     ) -> PlanArtifact | None:
+        # plan_artifact has no book_id column — its book scope is transitive
+        # through the parent run join (OQ-3; worker-loaded-id parent scoping).
         query = f"""
-        SELECT {_SELECT_ARTIFACT} FROM plan_artifact
-        WHERE run_id = $1 AND owner_user_id = $2 AND kind = $3
-        ORDER BY created_at DESC
+        SELECT {_SELECT_ARTIFACT} FROM plan_artifact a
+        JOIN plan_run r ON r.id = a.run_id
+        WHERE a.run_id = $1 AND r.book_id = $2 AND a.kind = $3
+        ORDER BY a.created_at DESC
         LIMIT 1
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, run_id, owner_user_id, kind)
+            row = await c.fetchrow(query, run_id, book_id, kind)
         return _row_artifact(row) if row else None
 
     async def list_artifact_refs(
-        self, owner_user_id: UUID, run_id: UUID,
+        self, book_id: UUID, run_id: UUID,
     ) -> list[dict[str, Any]]:
         query = """
-        SELECT DISTINCT ON (kind) kind, id AS artifact_id
-        FROM plan_artifact
-        WHERE run_id = $1 AND owner_user_id = $2
-        ORDER BY kind, created_at DESC
+        SELECT DISTINCT ON (a.kind) a.kind, a.id AS artifact_id
+        FROM plan_artifact a
+        JOIN plan_run r ON r.id = a.run_id
+        WHERE a.run_id = $1 AND r.book_id = $2
+        ORDER BY a.kind, a.created_at DESC
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, run_id, owner_user_id)
+            rows = await c.fetch(query, run_id, book_id)
         return [{"kind": r["kind"], "artifact_id": r["artifact_id"]} for r in rows]

@@ -30,9 +30,13 @@ from app.routers.conformance import ConformanceTraceReader
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
 
-pytestmark = pytest.mark.skipif(
-    not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    # Shared-Postgres tests serialize onto one xdist worker (CLAUDE.md).
+    pytest.mark.xdist_group("pg"),
+]
 
 _TABLES = [
     "consumed_tokens", "motif_application", "motif_link", "import_source",
@@ -80,12 +84,13 @@ async def test_rnode_p1_dataplane_all_workstreams_compose(pool):
     ))
     assert um.owner_user_id == user and um.visibility == "private"
 
-    # a chapter node in the project (the bind target; H-5 scope guard validates it)
+    # a chapter node in the project (the bind target; H-5 scope guard validates it).
+    # 25 M3: created_by = actor stamp, book_id NOT NULL is the tenancy scope key.
     async with pool.acquire() as c:
         node = await c.fetchval(
-            "INSERT INTO outline_node (user_id, project_id, kind, rank, chapter_id, beat_role, tension) "
-            "VALUES ($1,$2,'chapter','a0',$3,'hook',80) RETURNING id",
-            user, project, uuid.uuid4(),
+            "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, chapter_id, beat_role, tension) "
+            "VALUES ($1,$2,$3,'chapter','a0',$4,'hook',80) RETURNING id",
+            user, project, book, uuid.uuid4(),
         )
 
     # ── W3: retrieve candidates for a hook beat — DEGRADE path (no embed model) ────
@@ -104,22 +109,25 @@ async def test_rnode_p1_dataplane_all_workstreams_compose(pool):
     chosen = seed_cand.motif
 
     # ── W2: write the binding ledger row (beat_key folded into annotations) ────────
+    # 25 M3/DA-11: scope keys (project, book) are positional; created_by is the
+    # keyword-only actor stamp (stored, never filtered on).
     apps = MotifApplicationRepo(pool)
-    written = await apps.insert_many(user, project, book, rows=[{
+    written = await apps.insert_many(project, book, rows=[{
         "motif_id": str(chosen.id), "motif_version": chosen.version,
         "outline_node_id": str(node), "role_bindings": {"hero": "ent-1"},
         "annotations": {"beat_key": "hook"},
-    }])
+    }], created_by=user)
     assert len(written) == 1 and written[0].motif_id == chosen.id
 
     # ── W5: the trace reads it back — the W2->W5 beat_key seam, verified live ──────
     reader = ConformanceTraceReader(pool)
-    trace = await reader.apps_by_nodes(user, project, [node])
+    trace = await reader.apps_by_nodes(project, [node])
     app = trace.get(node)
     assert app is not None
     assert app.motif_id == chosen.id
     assert app.annotations.get("beat_key") == "hook"  # the seam the parallel build assumed
 
     # ── W2: anti-repetition aggregate counts the binding ──────────────────────────
-    counts = await apps.count_by_motif_for_book(user, book)
+    # 25 M3: the per-book aggregate is scoped by book_id alone (no per-user leg).
+    counts = await apps.count_by_motif_for_book(book)
     assert counts.get(str(chosen.id)) == 1

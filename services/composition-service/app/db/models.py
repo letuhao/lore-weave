@@ -4,6 +4,19 @@ One model per table — the shape the repos (M2) return and validate. Text field
 carry StringConstraints length caps so a repo write can't store unbounded input
 (the cap is the input guard; reads tolerate existing rows). Cross-DB id fields
 are plain UUIDs (no FK — §1.4, validated in app code).
+
+BOOK-PACKAGE RE-KEY (spec 25 M3 / BPS-1; PM-5/PM-14 anti-revert): on the package
+tables the actor column is `created_by` — a plain STAMP (who did it: spend/audit
+attribution under BYOK), STORED but NEVER a scope key and NEVER filtered on.
+`project_id` is the Work PARTITION key and `book_id` is the TENANCY scope key;
+access is decided BEFORE the repo at the E0 book-grant gate. Do NOT re-introduce a
+per-user `user_id` field here or an actor predicate in a query — that reverts the
+re-key. Each model's fields mirror exactly what its repo's `_SELECT_COLS` project:
+a model carries `book_id` only where the repo actually selects it (OutlineNode,
+GenerationJob, MotifApplication, CompositionWork, Motif) — the other package
+tables store book_id but their repos don't project it, so the model omits it. The
+deps/ registry (StructureTemplate, Motif, ArcTemplate) and outside-the-package
+tables (ImportSource, daily-progress) keep `owner_user_id` BY DESIGN (PM-16).
 """
 
 from __future__ import annotations
@@ -44,7 +57,7 @@ class CompositionWork(BaseModel):
     # (C23 guard — null is greenfield-only). `id` defaults to project_id for backed
     # rows so existing project_id-keyed callers keep working unchanged.
     project_id: UUID | None = None
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     book_id: UUID
     id: UUID | None = None
     pending_project_backfill: bool = False
@@ -72,7 +85,7 @@ class DivergenceSpec(BaseModel):
     + added canon rules). `project_id` = the derivative's own project."""
 
     id: UUID | None = None
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     work_id: UUID
     taxonomy: DivergenceTaxonomy = "au"
@@ -88,7 +101,7 @@ class EntityOverride(BaseModel):
     applies it at retrieval in C25 (this cycle persists only)."""
 
     id: UUID | None = None
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     work_id: UUID
     target_entity_id: UUID
@@ -110,7 +123,7 @@ class NarrativeThread(BaseModel):
     ADVISORY — a flag + re-injection signal, not a hard commit gate."""
 
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     kind: Literal["promise", "foreshadow", "question", "mice_thread"]
     status: Literal["open", "progressing", "paid", "dropped"] = "open"
@@ -128,8 +141,9 @@ class NarrativeThread(BaseModel):
 
 class OutlineNode(BaseModel):
     id: UUID
-    user_id: UUID
-    project_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
+    project_id: UUID  # Work partition key (PM-3)
+    book_id: UUID     # tenancy scope key (25 M1/M2); the E0 book gate resolves on this
     parent_id: UUID | None = None
     kind: NodeKind
     rank: Annotated[str, StringConstraints(max_length=200)]
@@ -154,9 +168,36 @@ class OutlineNode(BaseModel):
     child_count: int | None = None
 
 
+# 22 SC12/BPS-12 — provenance of an exit_state write: 'generator' (the drafting
+# seam emitted it) vs 'author' (a human corrected it — a regeneration must never
+# silently discard an author's correction).
+ExitStateSource = Literal["generator", "author"]
+
+
+class SceneExitState(BaseModel):
+    """22 SC12 — the versioned `{v:1,…}` envelope stored in `outline_node.exit_state`.
+
+    Typed JSONB validated on write — never a free-form blob (an unvalidated JSONB
+    column becomes a schema nobody owns; the versioned envelope makes the next
+    migration possible). Mirrors the cross-chapter ChapterExitState delta
+    (engine/plan.py) pushed down to scene granularity: three typed buckets
+    (Character / World / Plot) as compact strings + the NEW-developments list.
+    extra='forbid' keeps a caller (LLM/router) from smuggling unversioned keys.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    v: Literal[1] = 1
+    source: ExitStateSource = "generator"
+    characters: _Short = ""  # per-entity emotion/goal/relationship/power at scene end
+    world: _Short = ""       # location + time at scene end
+    plot: _Short = ""        # open threads / secrets / what's now revealed
+    advances: list[_Short] = Field(default_factory=list)  # NEW developments (anti-repeat signal)
+
+
 class SceneLink(BaseModel):
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     from_node_id: UUID
     to_node_id: UUID
@@ -167,7 +208,7 @@ class SceneLink(BaseModel):
 
 class CanonRule(BaseModel):
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     text: _Long
     scope: RuleScope = "world"
@@ -188,7 +229,7 @@ class SceneGroundingPin(BaseModel):
     source_id), never a localized label, so the pin survives a reader-language
     switch or a derivative override."""
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     outline_node_id: UUID
     item_type: GroundingItemType
@@ -205,7 +246,7 @@ class ReferenceSource(BaseModel):
     `embedding` is omitted from the list/search projection (the vector stays on the
     server); a row with a null embedding is never a search hit."""
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     title: _Title = ""
     author: _Title = ""
@@ -224,7 +265,7 @@ class StyleProfile(BaseModel):
     chapter_id (chapter) or outline node_id (scene). Density/Pace are 0-100; the
     packer resolves the most-specific row for a scene and maps them to prose-style
     directives in the draft prompts."""
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     scope_type: StyleScope
     scope_id: UUID
@@ -237,7 +278,7 @@ class VoiceProfile(BaseModel):
     """T3.5 — per-character voice tags. Keyed by `entity_id`; `entity_name` is
     denormalized for prompt rendering. Injected only when the entity is present in
     the scene."""
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     entity_id: UUID
     entity_name: str
@@ -247,8 +288,9 @@ class VoiceProfile(BaseModel):
 
 class GenerationJob(BaseModel):
     id: UUID
-    user_id: UUID
-    project_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — BYOK spend attribution (25 T5); never a filter
+    project_id: UUID  # Work partition key (PM-3)
+    book_id: UUID     # tenancy scope key (25 M1/M2); the E0 book gate resolves on this
     outline_node_id: UUID | None = None
     operation: Annotated[str, StringConstraints(max_length=100)]
     mode: JobMode = "cowrite"
@@ -268,7 +310,7 @@ class GenerationJob(BaseModel):
 
 class GenerationCorrection(BaseModel):
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (the corrector) — stored, never a filter (PM-5)
     project_id: UUID
     job_id: UUID
     kind: CorrectionKind
@@ -424,7 +466,7 @@ class MotifLink(BaseModel):
 
 class MotifApplication(BaseModel):
     id: UUID
-    user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp — stored, never a scope key / filter (PM-5)
     project_id: UUID
     book_id: UUID
     motif_id: UUID | None = None                   # SET NULL if the motif is archived
@@ -490,7 +532,7 @@ PlanArtifactKind = Literal[
 
 class PlanRun(BaseModel):
     id: UUID
-    owner_user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (was owner_user_id) — stored, never a filter (PM-5)
     book_id: UUID
     work_id: UUID | None = None
     status: PlanRunStatus = "pending"
@@ -508,7 +550,7 @@ class PlanRun(BaseModel):
 class PlanArtifact(BaseModel):
     id: UUID
     run_id: UUID
-    owner_user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (was owner_user_id) — stored, never a filter (PM-5)
     kind: PlanArtifactKind
     content: dict[str, Any]
     created_at: datetime | None = None
@@ -524,7 +566,7 @@ class PlanBootstrapProposal(BaseModel):
     id: UUID
     run_id: UUID
     book_id: UUID
-    owner_user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (was owner_user_id) — stored, never a filter (PM-5)
     status: PlanBootstrapProposalStatus = "pending"
     diff: dict[str, Any]
     applied_results: dict[str, Any] = Field(default_factory=dict)
@@ -541,7 +583,7 @@ AuthoringRunStatus = Literal[
 
 class AuthoringRun(BaseModel):
     run_id: UUID
-    owner_user_id: UUID
+    created_by: UUID  # 25 M3 actor stamp (was owner_user_id) — spend/bearer identity; never a filter
     book_id: UUID
     plan_run_id: UUID
     level: int

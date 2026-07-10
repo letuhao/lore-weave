@@ -31,7 +31,7 @@ CHAPTER = uuid.uuid4()
 
 def _work(settings=None) -> CompositionWork:
     return CompositionWork(
-        project_id=PROJECT, user_id=USER, book_id=BOOK, id=uuid.uuid4(),
+        project_id=PROJECT, created_by=USER, book_id=BOOK, id=uuid.uuid4(),
         version=1, status="active", settings=settings or {},
     )
 
@@ -40,7 +40,7 @@ class StubWorks:
     def __init__(self, work=None):
         self.work = work
 
-    async def get(self, user_id, project_id):
+    async def get(self, project_id):
         return self.work
 
 
@@ -67,13 +67,23 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
     from app.main import app
-    from app.deps import get_daily_progress_repo, get_works_repo
+    from app.deps import get_daily_progress_repo, get_grant_client_dep, get_works_repo
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
+
+    # E0 book-grant authority stubbed at OWNER (the gate's deny paths live in
+    # test_grant_gate); the router now resolves the Work's book then gates VIEW.
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     works, progress = StubWorks(_work()), StubProgress()
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_daily_progress_repo] = lambda: progress
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, works, progress
     app.dependency_overrides.clear()

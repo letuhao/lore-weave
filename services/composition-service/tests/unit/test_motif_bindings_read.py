@@ -22,7 +22,7 @@ def _scene(node_id):
 
 def _app(node_id, *, motif_id, role_bindings=None, annotations=None):
     return MotifApplication(
-        id=uuid.uuid4(), user_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        id=uuid.uuid4(), created_by=uuid.uuid4(), project_id=uuid.uuid4(),
         book_id=uuid.uuid4(), motif_id=motif_id, motif_version=1,
         outline_node_id=node_id, role_bindings=role_bindings or {},
         annotations=annotations or {},

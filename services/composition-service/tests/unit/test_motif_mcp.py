@@ -172,7 +172,7 @@ class _Ctx:
 
 def _work(user=TEST_USER):
     from app.db.models import CompositionWork
-    return CompositionWork(project_id=PROJECT, user_id=user, book_id=BOOK, id=PROJECT, version=1)
+    return CompositionWork(project_id=PROJECT, created_by=user, book_id=BOOK, id=PROJECT, version=1)
 
 
 @asynccontextmanager
@@ -258,7 +258,7 @@ async def test_suggest_foreign_node_uniform():
     from loreweave_mcp import NotAccessibleError
     from app.db.models import OutlineNode
 
-    foreign = OutlineNode(id=NODE, user_id=TEST_USER, project_id=OTHER_PROJECT,
+    foreign = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=OTHER_PROJECT,
                           kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=foreign)
@@ -343,7 +343,7 @@ async def test_bind_wires_to_swap_engine_and_returns_undo_token():
     import app.mcp.server as srv
     from app.db.models import OutlineNode
 
-    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+    node = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
@@ -380,7 +380,7 @@ async def test_bind_idor_foreign_motif_still_rejected():
     from app.db.models import OutlineNode
     from loreweave_mcp import NotAccessibleError
 
-    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+    node = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
@@ -401,7 +401,7 @@ async def test_unbind_clears_chapter_when_no_token():
     import app.mcp.server as srv
     from app.db.models import OutlineNode
 
-    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+    node = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
@@ -425,7 +425,7 @@ async def test_unbind_with_token_does_exact_inverse():
     import app.mcp.server as srv
     from app.db.models import OutlineNode
 
-    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+    node = OutlineNode(id=NODE, created_by=TEST_USER, book_id=BOOK, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
@@ -1088,7 +1088,7 @@ async def test_get_mine_job_foreign_project_uniform():
     from loreweave_mcp import NotAccessibleError
     from app.db.models import GenerationJob
 
-    job = GenerationJob(id=uuid.uuid4(), user_id=TEST_USER, project_id=OTHER_PROJECT,
+    job = GenerationJob(id=uuid.uuid4(), created_by=TEST_USER, book_id=BOOK, project_id=OTHER_PROJECT,
                         operation="mine_motifs", status="pending")
     jobs = AsyncMock()
     jobs.get = AsyncMock(return_value=job)
@@ -1316,7 +1316,7 @@ def test_mine_confirm_enqueues_202(client):
     NOT in-process compute. The precheck passes; the worker compute is W8 (Wave 2)."""
     from app.db.models import GenerationJob
 
-    job = GenerationJob(id=uuid.uuid4(), user_id=TEST_USER, project_id=uuid.uuid4(),
+    job = GenerationJob(id=uuid.uuid4(), created_by=TEST_USER, book_id=BOOK, project_id=uuid.uuid4(),
                         operation="mine_motifs", status="pending")
     jobs = AsyncMock()
     jobs.create = AsyncMock(return_value=(job, True))

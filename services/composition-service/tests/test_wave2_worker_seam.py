@@ -21,8 +21,11 @@ _WAVE2_OPS = ("mine_motifs", "analyze_reference", "conformance_run")
 
 
 def _job(operation, input=None):
+    # created_by is the row-authoritative actor the worker injects (25 F7); user_id
+    # kept as the SAME value so the test's `str(job.user_id)` assertions still hold.
+    _uid = uuid4()
     return SimpleNamespace(
-        id=uuid4(), user_id=uuid4(), project_id=uuid4(), operation=operation,
+        id=uuid4(), created_by=_uid, user_id=_uid, project_id=uuid4(), operation=operation,
         status="pending", input=input if input is not None else {"worker_op": operation},
     )
 
@@ -84,10 +87,10 @@ async def test_dispatch_stub_raises_terminal_business_error(monkeypatch):
             self._j = j
             self.updates = []
 
-        async def get(self, uid, jid):
+        async def get(self, jid):
             return self._j
 
-        async def update_status(self, uid, jid, status, *, result=None, **kw):
+        async def update_status(self, jid, status, *, result=None, **kw):
             self.updates.append((status, result))
             return self._j
 

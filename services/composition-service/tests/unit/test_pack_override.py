@@ -270,7 +270,7 @@ async def test_flywheel_delta_fact_after_scene_position_is_spoiler_filtered():
 
 def _override(target_entity_id, fields):
     return EntityOverride(
-        user_id=USER, project_id=DELTA_PROJECT, work_id=DELTA_PROJECT,
+        created_by=USER, project_id=DELTA_PROJECT, work_id=DELTA_PROJECT,
         target_entity_id=target_entity_id, overridden_fields=fields,
     )
 
@@ -364,16 +364,16 @@ async def test_build_derivative_context_resolves_base_via_source_id_not_project(
     )
 
     class WR:
-        async def get_by_id(self, user_id, work_id):
+        async def get_by_id(self, work_id):
             assert str(work_id) == str(source_id)  # looked up by id, not project
             return SimpleNamespace(project_id=source_project)
 
     class DR:
-        async def list_overrides_for_work(self, user_id, work_id):
+        async def list_overrides_for_work(self, work_id):
             return []
 
     ctx = await build_derivative_context(
-        work, user_id=USER, works_repo=WR(), derivatives_repo=DR())
+        work, works_repo=WR(), derivatives_repo=DR())
     assert ctx.source_project_id == source_project  # the source's PROJECT, not its id
     assert ctx.branch_point == 3
 
@@ -383,7 +383,7 @@ async def test_build_derivative_context_empty_for_non_derivative():
     from app.packer.pack import build_derivative_context
     work = SimpleNamespace(id=DELTA_PROJECT, source_work_id=None, branch_point=None)
     ctx = await build_derivative_context(
-        work, user_id=USER, works_repo=object(), derivatives_repo=object())
+        work, works_repo=object(), derivatives_repo=object())
     assert ctx.source_project_id is None
     assert ctx.overrides == []
 

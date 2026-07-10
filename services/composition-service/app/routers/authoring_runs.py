@@ -1,12 +1,16 @@
 """Autonomous authoring-run HTTP router (RAID Wave D2, DR-D / 07S §10) —
 `/v1/composition/authoring-runs/*`.
 
-Auth mirrors plan_forge: JWT user + E0 book-grant gate (EDIT — an authoring run
-writes chapter drafts and spends) on the routes that carry a book_id; the
-run-scoped routes are owner-filtered in SQL (a foreign run_id is a 404, no
-existence oracle). Status mapping: gate-validation failure → 400 · unknown
-run → 404 · wrong-from transition → 409 · active-run overlap (scope fence,
-edge #11) → 409 with code `active_run_overlap`.
+Auth (BPS re-key, spec 25 OQ-3): JWT user + E0 book-grant gate at the ROUTE —
+the repo no longer filters on the actor. READS are book-grant-keyed: GET /
+list / report gate VIEW on the run's book_id (every grantee sees the book's
+runs — `.runs/` is inside the package). MUTATIONS belong to the run's CREATOR
+(`created_by`, the stored actor stamp), gated EDIT on the book; pause/close
+additionally keep the OWNER escalation (an OWNER-grant holder may pause/close
+a collaborator's run — the row's created_by stamp is untouched). A no-grant or
+non-creator caller 404s (no existence oracle). Status mapping: gate-validation
+failure → 400 · unknown run → 404 · wrong-from transition → 409 · active-run
+overlap (scope fence, edge #11) → 409 with code `active_run_overlap`.
 """
 
 from __future__ import annotations
@@ -42,6 +46,36 @@ async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: Gran
         raise HTTPException(status_code=404, detail="book not found")
     except InsufficientGrant:
         raise HTTPException(status_code=403, detail="insufficient access")
+
+
+async def _run_for_mutation(
+    svc: "AuthoringRunService",
+    grant: GrantClient,
+    run_id: UUID,
+    user_id: UUID,
+    *,
+    book_owner_may_act: bool = False,
+) -> Any:
+    """Load the run and decide access for a MUTATING route (OQ-3: access is
+    decided at the gate, never by an actor filter in the repo). Run mutations
+    belong to the run's CREATOR (`created_by` — the stored actor stamp), gated
+    EDIT on the run's book. `book_owner_may_act` (pause/close only): the scope
+    fence is per-BOOK across users, so a collaborator's abandoned gated/paused
+    run would lock the book's owner out of autonomous runs forever if only the
+    creator could clear it — the book's OWNER-grant holder may therefore
+    pause/close ANY run on their book (the row's created_by stamp is
+    preserved). Non-creator callers without that escalation 404 (no existence
+    oracle)."""
+    run = await svc.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    if run.created_by == user_id:
+        await _gate_book(grant, run.book_id, user_id, GrantLevel.EDIT)
+    elif book_owner_may_act:
+        await _gate_book(grant, run.book_id, user_id, GrantLevel.OWNER)
+    else:
+        raise HTTPException(status_code=404, detail="run not found")
+    return run
 
 
 class AuthoringRunCreate(BaseModel):
@@ -102,7 +136,7 @@ async def create_authoring_run(
     await _gate_book(grant, body.book_id, user_id, GrantLevel.EDIT)
     try:
         run = await svc.create(
-            user_id, body.book_id,
+            user_id, body.book_id,  # caller = created_by (plain actor stamp)
             plan_run_id=body.plan_run_id,
             level=body.level,
             scope=[str(c) for c in body.scope],
@@ -126,7 +160,7 @@ async def list_authoring_runs(
     svc: AuthoringRunService = Depends(get_authoring_run_service),
 ):
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
-    runs = await svc.list(user_id, book_id, limit=limit)
+    runs = await svc.list(book_id, limit=limit)
     return {"items": [_serialize(r) for r in runs]}
 
 
@@ -134,11 +168,15 @@ async def list_authoring_runs(
 async def get_authoring_run(
     run_id: UUID,
     user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
     svc: AuthoringRunService = Depends(get_authoring_run_service),
 ):
-    run = await svc.get(user_id, run_id)
+    # OQ-3 read widening: any E0 VIEW grantee on the run's book may read it
+    # (load-then-gate; a no-grant caller 404s — no existence oracle).
+    run = await svc.get(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
+    await _gate_book(grant, run.book_id, user_id, GrantLevel.VIEW)
     return _serialize(run)
 
 
@@ -151,14 +189,16 @@ async def set_authoring_run_pause_policy(
     run_id: UUID,
     body: AuthoringRunPausePolicy,
     user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
     svc: AuthoringRunService = Depends(get_authoring_run_service),
 ):
     """D-AGENT-MODE §20 D4a: flip the server-side auto-pause-after-each-unit
-    policy — owner-only (same tenancy as GET/list; no book_owner_may_act
-    widening), allowed from any non-closed status (a run-header toggle, not an
-    FSM transition)."""
+    policy — creator-only (no book_owner_may_act widening), gated EDIT on the
+    run's book, allowed from any non-closed status (a run-header toggle, not
+    an FSM transition)."""
+    await _run_for_mutation(svc, grant, run_id, user_id)
     try:
-        run = await svc.set_pause_policy(user_id, run_id, body.pause_after_each_unit)
+        run = await svc.set_pause_policy(run_id, body.pause_after_each_unit)
     except LookupError:
         raise HTTPException(status_code=404, detail="run not found")
     except TransitionConflictError as exc:
@@ -171,14 +211,15 @@ async def gate_authoring_run(
     run_id: UUID,
     user_id: UUID = Depends(get_current_user),
     bearer: str = Depends(get_bearer_token),
+    grant: GrantClient = Depends(get_grant_client_dep),
     svc: AuthoringRunService = Depends(get_authoring_run_service),
     book: BookClient = Depends(get_book_client_dep),
 ):
+    # Creator-only mutation, gated EDIT on the run's book (OQ-3: gate at the
+    # route, no actor filter in the repo).
+    run = await _run_for_mutation(svc, grant, run_id, user_id)
     # Resolve the book's active chapter-id set for the scope-membership check
-    # (with the CALLER's bearer — book-service re-checks ownership on `sub`).
-    run = await svc.get(user_id, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="run not found")
+    # (with the CALLER's bearer — book-service re-checks access on `sub`).
     try:
         chapters = await book.list_chapters(run.book_id, bearer)
     except BookClientError as exc:
@@ -187,7 +228,7 @@ async def gate_authoring_run(
         raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
     chapter_ids = {str(c["chapter_id"]) for c in chapters if c.get("chapter_id")}
     try:
-        gated = await svc.gate(user_id, run_id, book_chapter_ids=chapter_ids)
+        gated = await svc.gate(run_id, book_chapter_ids=chapter_ids)
     except LookupError:
         raise HTTPException(status_code=404, detail="run not found")
     except ActiveRunOverlapError as exc:
@@ -202,12 +243,13 @@ async def gate_authoring_run(
 
 
 def _transition_route(action: str, *, book_owner_may_act: bool = False):
-    """`book_owner_may_act` (pause/close only): the scope fence is per-BOOK
-    across users, so a collaborator's abandoned gated/paused run would lock the
-    book's owner out of autonomous runs forever if only the run owner could
-    clear it. The book's OWNER-grant holder may therefore pause/close ANY run
-    on their book — the action executes AS the run's owner (row tenancy
-    preserved). No-grant callers still 404 (no existence oracle)."""
+    """FSM transition route. Access via `_run_for_mutation`: the run's CREATOR
+    (created_by), gated EDIT on the book — plus, when `book_owner_may_act`
+    (pause/close only), the book's OWNER-grant holder acting on a
+    collaborator's run (the scope fence is per-BOOK across users, so an
+    abandoned gated/paused run would otherwise lock the owner out forever).
+    The row's created_by stamp is untouched by the escalation. No-grant /
+    non-creator callers still 404 (no existence oracle)."""
 
     async def _run(
         run_id: UUID,
@@ -215,15 +257,11 @@ def _transition_route(action: str, *, book_owner_may_act: bool = False):
         grant: GrantClient = Depends(get_grant_client_dep),
         svc: AuthoringRunService = Depends(get_authoring_run_service),
     ):
-        acting_owner = user_id
-        if book_owner_may_act and await svc.get(user_id, run_id) is None:
-            foreign = await svc.get_any(run_id)
-            if foreign is None:
-                raise HTTPException(status_code=404, detail="run not found")
-            await _gate_book(grant, foreign.book_id, user_id, GrantLevel.OWNER)
-            acting_owner = foreign.owner_user_id
+        await _run_for_mutation(
+            svc, grant, run_id, user_id, book_owner_may_act=book_owner_may_act,
+        )
         try:
-            run = await getattr(svc, action)(acting_owner, run_id)
+            run = await getattr(svc, action)(run_id)
         except LookupError:
             raise HTTPException(status_code=404, detail="run not found")
         except TransitionConflictError as exc:
@@ -272,12 +310,12 @@ async def get_run_report(
     grant: GrantClient = Depends(get_grant_client_dep),
     svc: AuthoringRunService = Depends(get_authoring_run_service),
 ):
-    """Run Report — owner or E0 VIEW grantee (this is the ONE run-scoped route
-    that is grant- rather than owner-gated: the report is the run's reviewable
-    artifact, same read tier as the runs list). Available from report_ready and
-    from failed/paused (edge #12 — partial completion must be reviewable) +
-    closed (post-Revert-All audit)."""
-    run = await svc.get_any(run_id)
+    """Run Report — any E0 VIEW grantee on the run's book (the report is the
+    run's reviewable artifact, same read tier as the runs list — the
+    load-then-gate shape every read route now uses under OQ-3). Available from
+    report_ready and from failed/paused (edge #12 — partial completion must be
+    reviewable) + closed (post-Revert-All audit)."""
+    run = await svc.get(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
     await _gate_book(grant, run.book_id, user_id, GrantLevel.VIEW)
@@ -305,10 +343,13 @@ async def accept_run_unit(
     run_id: UUID,
     unit_index: int,
     user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
     svc: AuthoringRunService = Depends(get_authoring_run_service),
 ):
+    # Review is a mutation: creator-only + EDIT gate on the run's book.
+    await _run_for_mutation(svc, grant, run_id, user_id)
     try:
-        unit = await svc.accept_unit(user_id, run_id, unit_index)
+        unit = await svc.accept_unit(run_id, unit_index)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except TransitionConflictError as exc:
@@ -322,21 +363,24 @@ async def reject_run_unit(
     unit_index: int,
     user_id: UUID = Depends(get_current_user),
     bearer: str = Depends(get_bearer_token),
+    grant: GrantClient = Depends(get_grant_client_dep),
     svc: AuthoringRunService = Depends(get_authoring_run_service),
     book: BookClient = Depends(get_book_client_dep),
 ):
     """Reject = restore the chapter to its pre-run revision FIRST (book-service
-    public restore route, CALLER's bearer — the owner clicked it), then mark
-    rejected. Restore failure → 502 with the unit left drafted. The response
-    carries `cascade_warning` (edge #3): the downstream drafted/accepted units
-    this rejection invalidates (v1 warns, never auto-rejects)."""
+    public restore route, CALLER's bearer — the creator clicked it), then mark
+    rejected. Creator-only + EDIT gate on the run's book. Restore failure →
+    502 with the unit left drafted. The response carries `cascade_warning`
+    (edge #3): the downstream drafted/accepted units this rejection
+    invalidates (v1 warns, never auto-rejects)."""
+    await _run_for_mutation(svc, grant, run_id, user_id)
 
     async def _restore(book_id: UUID, chapter_id: UUID, revision_id: UUID) -> None:
         await book.restore_revision(book_id, chapter_id, revision_id, bearer)
 
     try:
         unit, cascade, reverted = await svc.reject_unit(
-            user_id, run_id, unit_index, restore=_restore,
+            run_id, unit_index, restore=_restore,
         )
     except BookClientError as exc:
         raise HTTPException(
@@ -368,19 +412,21 @@ async def revert_all_run_units(
     run_id: UUID,
     user_id: UUID = Depends(get_current_user),
     bearer: str = Depends(get_bearer_token),
+    grant: GrantClient = Depends(get_grant_client_dep),
     svc: AuthoringRunService = Depends(get_authoring_run_service),
     book: BookClient = Depends(get_book_client_dep),
 ):
     """Reject every drafted/accepted unit in REVERSE unit order (downstream
-    first — the threaded restores unwind cleanly). First restore failure stops
-    the sweep → 502 reporting which units DID revert (run left as-is); full
-    success closes the run."""
+    first — the threaded restores unwind cleanly). Creator-only + EDIT gate on
+    the run's book. First restore failure stops the sweep → 502 reporting
+    which units DID revert (run left as-is); full success closes the run."""
+    await _run_for_mutation(svc, grant, run_id, user_id)
 
     async def _restore(book_id: UUID, chapter_id: UUID, revision_id: UUID) -> None:
         await book.restore_revision(book_id, chapter_id, revision_id, bearer)
 
     try:
-        result = await svc.revert_all(user_id, run_id, restore=_restore)
+        result = await svc.revert_all(run_id, restore=_restore)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except TransitionConflictError as exc:

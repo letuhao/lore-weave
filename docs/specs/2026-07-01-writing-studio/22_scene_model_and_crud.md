@@ -401,7 +401,7 @@ which is a parsed heading (SC1).
 | A2 | **3** public `/v1` scene routes, VIEW-gated (read-only — see the API amendment) | `internal/api/scenes.go`, `server.go` |
 | A3 | Keyset paging + filters on the book-wide list | `internal/api/scenes.go` |
 | A4 | `book_scene_list` / `book_scene_get` MCP tools (SC9, **read-only**), **including a `source_scene_id` filter arg on `_list`** — [`28`](28_agent_native_studio.md) AN-5b requires it (go-to-prose resolves spec scene → index row); 28-AN-C1's test reds without it | `internal/api/scene_tools.go` (new), `mcp_server.go` |
-| A5 | Parse writers set `book_id`; **set `source_scene_id` by matching the `data-scene-id` anchor** (SC7) | `parse.go`, `worker-infra/…/import_processor{,_pdf}.go` |
+| A5 | Parse writers set `book_id`; **set `source_scene_id` by matching the `data-scene-id` anchor** (SC7). **⚠ A5 MUST ALSO re-run the `book_id` backfill under a bumped marker (`scenes_book_id_backfill_v2`)** — A1's backfill is one-time and marker-gated, so every scene created in the A1→A5 window carries `book_id NULL` *permanently*, and `idx_scenes_book_active` is book-keyed. The A2/A3 book-wide reads that ship in this same wave would silently omit those rows. This was raised as a Stage-1 finding, correctly refuted **as an A1 defect** (no `book_id` reader exists yet), and re-homed here: A1's correctness is *conditional on A5 doing this*. Ship A5 with a test asserting `count(*) FROM scenes WHERE book_id IS NULL = 0`. | `parse.go`, `worker-infra/…/import_processor{,_pdf}.go`, `internal/migrate/migrate.go` |
 
 ### Phase B — composition-service (Python)
 

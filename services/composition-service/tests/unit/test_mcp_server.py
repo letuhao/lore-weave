@@ -247,12 +247,12 @@ async def test_rejects_bad_user_id_uuid(mcp_base_url):
 
 
 def _work(user=TEST_USER) -> CompositionWork:
-    return CompositionWork(project_id=PROJECT, user_id=user, book_id=BOOK, id=PROJECT, version=1)
+    return CompositionWork(project_id=PROJECT, created_by=user, book_id=BOOK, id=PROJECT, version=1)
 
 
 def _node(**kw) -> OutlineNode:
     return OutlineNode(
-        id=kw.get("id", uuid.uuid4()), user_id=TEST_USER, project_id=PROJECT,
+        id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=PROJECT, book_id=BOOK,
         kind=kw.get("kind", "scene"), rank="a0", title=kw.get("title", "S"),
         status=kw.get("status", "empty"), version=kw.get("version", 1),
     )
@@ -260,13 +260,13 @@ def _node(**kw) -> OutlineNode:
 
 def _rule(**kw) -> CanonRule:
     return CanonRule(
-        id=kw.get("id", uuid.uuid4()), user_id=TEST_USER, project_id=PROJECT,
+        id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=PROJECT,
         text=kw.get("text", "magic costs HP"), version=kw.get("version", 1),
     )
 
 
 def _link() -> SceneLink:
-    return SceneLink(id=uuid.uuid4(), user_id=TEST_USER, project_id=PROJECT,
+    return SceneLink(id=uuid.uuid4(), created_by=TEST_USER, project_id=PROJECT,
                      from_node_id=uuid.uuid4(), to_node_id=uuid.uuid4())
 
 
@@ -289,8 +289,8 @@ async def _patched(*, grant_level=2, works_get=None, **repo_overrides):
     import app.mcp.server as srv
 
     if works_get is None:
-        async def works_get(user_id, project_id):  # default: caller owns the Work
-            return _work(user_id) if user_id == TEST_USER else None
+        async def works_get(project_id):  # default: caller owns the Work
+            return _work()
 
     works = AsyncMock()
     works.get = AsyncMock(side_effect=works_get)
@@ -342,12 +342,14 @@ async def test_od8_public_key_owned_only():
             await srv.composition_get_work(public, project_id=str(PROJECT))
 
 
-async def test_get_work_non_owner_rejected():
-    """A caller with NO Work row (the repo filters on user_id) → H13 uniform error."""
+async def test_get_work_missing_project_rejected():
+    """25 PM-9: reads are bare-id + gated at the E0 book grant — a project with no
+    Work row (works.get → None) yields the H13 uniform error (no existence oracle),
+    regardless of caller. The book-grant DENY path is covered separately below."""
     import app.mcp.server as srv
     from loreweave_mcp import NotAccessibleError
 
-    async def no_work(user_id, project_id):
+    async def no_work(project_id):
         return None
 
     async with _patched(works_get=no_work):
@@ -378,7 +380,7 @@ async def test_get_work_by_book_id_resolves_the_project():
         works.resolve_by_book = AsyncMock(return_value=[_work()])
         res = await srv.composition_get_work(_Ctx(), book_id=str(BOOK))
     assert res["project_id"] == str(PROJECT)
-    works.resolve_by_book.assert_awaited_once_with(TEST_USER, BOOK)
+    works.resolve_by_book.assert_awaited_once_with(BOOK)  # 25 PM-9: book-keyed, no user
 
 
 async def test_get_work_by_book_id_no_marked_work_uniform_deny():
@@ -426,7 +428,7 @@ async def test_create_work_no_project_id_auto_creates_default_project():
 
     new_project_id = uuid.uuid4()
 
-    async def no_existing_work(user_id, project_id):
+    async def no_existing_work(project_id):
         return None
 
     knowledge = AsyncMock()
@@ -436,7 +438,7 @@ async def test_create_work_no_project_id_auto_creates_default_project():
     book.get_book = AsyncMock(return_value={"title": "My Book"})
 
     created_work = CompositionWork(
-        project_id=new_project_id, user_id=TEST_USER, book_id=BOOK,
+        project_id=new_project_id, created_by=TEST_USER, book_id=BOOK,
         id=new_project_id, version=1,
     )
 
@@ -463,12 +465,12 @@ async def test_create_work_no_project_id_second_call_is_idempotent():
 
     existing_project_id = uuid.uuid4()
     existing_work = CompositionWork(
-        project_id=existing_project_id, user_id=TEST_USER, book_id=BOOK,
+        project_id=existing_project_id, created_by=TEST_USER, book_id=BOOK,
         id=existing_project_id, version=1,
     )
 
-    async def works_get(user_id, project_id):
-        if user_id == TEST_USER and project_id == existing_project_id:
+    async def works_get(project_id):
+        if project_id == existing_project_id:
             return existing_work
         return None
 
@@ -492,11 +494,11 @@ async def test_create_work_no_project_id_knowledge_outage_degrades_to_pending():
     C16/WG-3 path), so authoring keeps working while knowledge is down."""
     import app.mcp.server as srv
 
-    async def no_existing_work(user_id, project_id):
+    async def no_existing_work(project_id):
         return None
 
     pending_work = CompositionWork(
-        project_id=None, user_id=TEST_USER, book_id=BOOK,
+        project_id=None, created_by=TEST_USER, book_id=BOOK,
         id=uuid.uuid4(), pending_project_backfill=True, version=1,
     )
 
@@ -531,11 +533,11 @@ async def test_create_work_no_project_id_after_prior_outage_backfills_pending_ro
     new_project_id = uuid.uuid4()
 
     pending_work = CompositionWork(
-        project_id=None, user_id=TEST_USER, book_id=BOOK,
+        project_id=None, created_by=TEST_USER, book_id=BOOK,
         id=pending_id, pending_project_backfill=True, version=1,
     )
     backfilled_work = CompositionWork(
-        project_id=new_project_id, user_id=TEST_USER, book_id=BOOK,
+        project_id=new_project_id, created_by=TEST_USER, book_id=BOOK,
         id=pending_id, pending_project_backfill=False, version=2,
     )
 
@@ -546,7 +548,7 @@ async def test_create_work_no_project_id_after_prior_outage_backfills_pending_ro
     book = AsyncMock()
     book.get_book = AsyncMock(return_value={"title": "My Book"})
 
-    async def no_existing_work(user_id, project_id):
+    async def no_existing_work(project_id):
         return None
 
     # ── call 1: knowledge DOWN → degrades to a lazy pending Work ──
@@ -567,10 +569,10 @@ async def test_create_work_no_project_id_after_prior_outage_backfills_pending_ro
     # ── call 2: knowledge RECOVERED → resolve_work → status="none" (still no
     # marked Work, still no book-typed knowledge project) → create_project
     # succeeds → the PRIOR pending row must be backfilled, not duplicated. ──
-    async def existing_work_lookup(user_id, project_id):
+    async def existing_work_lookup(project_id):
         # composition_create_work's idempotent-get (`works.get(user, pid)`) must
         # find the NOW-BACKFILLED row (its project_id == new_project_id).
-        if user_id == TEST_USER and project_id == new_project_id:
+        if project_id == new_project_id:
             return backfilled_work
         return None
 
@@ -586,7 +588,7 @@ async def test_create_work_no_project_id_after_prior_outage_backfills_pending_ro
 
     assert second["project_id"] == str(new_project_id)
     assert second["pending_project_backfill"] is False
-    works2.backfill_project.assert_awaited_once_with(TEST_USER, pending_id, new_project_id)
+    works2.backfill_project.assert_awaited_once_with(pending_id, new_project_id, created_by=TEST_USER)
     works2.create.assert_not_awaited()  # no SECOND composition_work row inserted
     knowledge.create_project.assert_awaited_once()  # exactly ONE project, across BOTH calls
 
@@ -600,7 +602,7 @@ async def test_create_work_auto_create_404_error_names_owner_only_reason():
     import app.mcp.server as srv
     from app.clients.knowledge_client import KnowledgeContractError
 
-    async def no_existing_work(user_id, project_id):
+    async def no_existing_work(project_id):
         return None
 
     knowledge = AsyncMock()
@@ -639,7 +641,7 @@ async def test_get_generation_job_owner_ok():
     from app.db.models import GenerationJob
 
     job_id = uuid.uuid4()
-    job = GenerationJob(id=job_id, user_id=TEST_USER, project_id=PROJECT,
+    job = GenerationJob(id=job_id, created_by=TEST_USER, project_id=PROJECT, book_id=BOOK,
                         operation="generate", status="completed")
     jobs = AsyncMock()
     jobs.get = AsyncMock(return_value=job)
@@ -649,7 +651,8 @@ async def test_get_generation_job_owner_ok():
         )
     assert res["id"] == str(job_id)
     assert res["status"] == "completed"
-    jobs.get.assert_awaited_once_with(TEST_USER, job_id)
+    # 25 re-key: jobs.get is BARE-ID; the IDOR scope check is job.project_id == pid.
+    jobs.get.assert_awaited_once_with(job_id)
 
 
 async def test_get_generation_job_foreign_project_rejected():
@@ -660,7 +663,7 @@ async def test_get_generation_job_foreign_project_rejected():
     from app.db.models import GenerationJob
 
     job_id, other_project = uuid.uuid4(), uuid.uuid4()
-    job = GenerationJob(id=job_id, user_id=TEST_USER, project_id=other_project,
+    job = GenerationJob(id=job_id, created_by=TEST_USER, project_id=other_project, book_id=BOOK,
                         operation="generate", status="completed")
     jobs = AsyncMock()
     jobs.get = AsyncMock(return_value=job)
@@ -704,7 +707,7 @@ async def test_get_outline_node_owner_ok():
         )
     assert res["id"] == str(node_id)
     assert res["version"] == 4
-    outline.get_node.assert_awaited_once_with(TEST_USER, node_id)
+    outline.get_node.assert_awaited_once_with(node_id)  # 25 PM-9: bare-id; IDOR via project_id
 
 
 async def test_get_outline_node_foreign_project_rejected():
@@ -715,7 +718,7 @@ async def test_get_outline_node_foreign_project_rejected():
 
     other_project = uuid.uuid4()
     foreign = OutlineNode(
-        id=uuid.uuid4(), user_id=TEST_USER, project_id=other_project,
+        id=uuid.uuid4(), created_by=TEST_USER, project_id=other_project, book_id=BOOK,
         kind="scene", rank="a0", title="S", status="empty", version=1,
     )
     outline = AsyncMock()
@@ -823,7 +826,7 @@ OTHER_PROJECT = uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
 def _foreign_node(**kw) -> OutlineNode:
     """A node the caller owns but that lives in a DIFFERENT project (Work-B)."""
     return OutlineNode(
-        id=kw.get("id", uuid.uuid4()), user_id=TEST_USER, project_id=OTHER_PROJECT,
+        id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=OTHER_PROJECT, book_id=BOOK,
         kind="scene", rank="a0", title="foreign", status="empty",
         version=kw.get("version", 1),
     )
@@ -831,7 +834,7 @@ def _foreign_node(**kw) -> OutlineNode:
 
 def _foreign_rule(**kw) -> CanonRule:
     return CanonRule(
-        id=kw.get("id", uuid.uuid4()), user_id=TEST_USER, project_id=OTHER_PROJECT,
+        id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=OTHER_PROJECT,
         text="foreign rule", version=kw.get("version", 1),
     )
 
@@ -929,7 +932,7 @@ async def test_scene_link_delete_foreign_project_refused():
     from loreweave_mcp import NotAccessibleError
 
     links = AsyncMock()
-    # delete() returns False when the (user_id, id, project_id) triple matches nothing.
+    # delete() returns False when the (project_id, id) pair matches nothing (25 PM-9).
     links.delete = AsyncMock(return_value=False)
     async with _patched(SceneLinksRepo=links):
         with pytest.raises(NotAccessibleError):
@@ -937,8 +940,9 @@ async def test_scene_link_delete_foreign_project_refused():
                 _Ctx(), project_id=str(PROJECT), link_id=str(uuid.uuid4()),
             )
     # The handler must constrain the repo delete by the resolved Work's project_id.
-    _, kwargs = links.delete.await_args
-    assert kwargs.get("project_id") == PROJECT
+    # 25 PM-9: delete is bare (project_id, link_id) — project_id is the 1st positional.
+    args, _ = links.delete.await_args
+    assert args[0] == PROJECT
 
 
 async def test_write_prose_stale_draft_version_rejected():

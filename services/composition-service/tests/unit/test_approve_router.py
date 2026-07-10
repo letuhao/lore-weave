@@ -29,7 +29,7 @@ CHAPTER = uuid.uuid4()
 def _derivative_work(**kw) -> CompositionWork:
     """A derivative Work: source_work_id + branch_point set, its OWN project_id."""
     return CompositionWork(
-        project_id=kw.get("project_id", DELTA), user_id=USER, book_id=BOOK,
+        project_id=kw.get("project_id", DELTA), created_by=USER, book_id=BOOK,
         id=kw.get("id", uuid.uuid4()), version=1, status="active",
         source_work_id=kw.get("source_work_id", SOURCE_WORK_ID),
         branch_point=kw.get("branch_point", 4),
@@ -38,7 +38,7 @@ def _derivative_work(**kw) -> CompositionWork:
 
 def _canon_work(**kw) -> CompositionWork:
     return CompositionWork(
-        project_id=kw.get("project_id", DELTA), user_id=USER, book_id=BOOK,
+        project_id=kw.get("project_id", DELTA), created_by=USER, book_id=BOOK,
         id=uuid.uuid4(), version=1, status="active",
     )
 
@@ -48,10 +48,10 @@ class StubWorks:
         self.work = work
         self.source = source
 
-    async def get(self, user_id, project_id):
+    async def get(self, project_id):
         return self.work
 
-    async def get_by_id(self, user_id, work_id):
+    async def get_by_id(self, work_id):
         # build_derivative_context resolves the BASE project via source_work_id.
         return self.source
 
@@ -60,7 +60,7 @@ class StubDerivatives:
     def __init__(self, overrides=None):
         self._overrides = overrides or []
 
-    async def list_overrides_for_work(self, user_id, work_id):
+    async def list_overrides_for_work(self, work_id):
         return list(self._overrides)
 
 

@@ -63,7 +63,7 @@ class _FakeOutline:
     def __init__(self, *, raise_already=False):
         self.raise_already = raise_already
         self.committed = None
-    async def commit_decomposed_tree(self, u, p, *, arc_title, chapters, replace, idempotency_key):
+    async def commit_decomposed_tree(self, p, *, created_by=None, arc_title, chapters, replace, idempotency_key):
         if self.raise_already:
             raise AlreadyPlannedError([CH1])
         self.committed = chapters
@@ -76,7 +76,7 @@ class _FakeOutline:
 class _FakeAppRepo:
     last_rows: list = []
     def __init__(self, pool): pass
-    async def insert_many(self, u, p, b, rows, *, conn=None):
+    async def insert_many(self, p, b, rows, *, created_by=None, conn=None):
         _FakeAppRepo.last_rows = rows
         return rows
 
@@ -92,8 +92,18 @@ def client(monkeypatch):
 
     from app.main import app
     from app.deps import (get_arc_template_repo, get_book_client_dep,
-                          get_kal_client_dep, get_motif_repo, get_outline_repo, get_works_repo)
+                          get_grant_client_dep, get_kal_client_dep, get_motif_repo,
+                          get_outline_repo, get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the arc-materialize route resolves
+    # the Work's book then gates EDIT (deny paths in test_grant_gate).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     state = SimpleNamespace(
         arc=_arc(), motif=_motif(), chapters=[
@@ -103,6 +113,7 @@ def client(monkeypatch):
 
     app.dependency_overrides[get_current_user] = lambda: U
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     app.dependency_overrides[get_works_repo] = lambda: SimpleNamespace(
         get=AsyncMock(return_value=SimpleNamespace(project_id=P, user_id=U, book_id=B, settings={})))
     app.dependency_overrides[get_book_client_dep] = lambda: _FakeBook(state.chapters)

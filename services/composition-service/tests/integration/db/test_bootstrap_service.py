@@ -21,15 +21,26 @@ from app.db.migrate import run_migrations
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
+from app.db.repositories.works import WorksRepo
 from app.services.bootstrap_service import BootstrapService
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
 
-pytestmark = pytest.mark.skipif(
-    not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    # Shared-Postgres tests serialize onto one xdist worker (CLAUDE.md).
+    pytest.mark.xdist_group("pg"),
+]
 
-_TABLES = ["plan_bootstrap_proposal", "plan_artifact", "generation_job", "plan_run"]
+_TABLES = [
+    "plan_bootstrap_proposal", "plan_artifact", "generation_job", "plan_run",
+    # composition_work is now seeded by _completed_pipeline_job (spec 25: a
+    # generation_job derives book_id in-SQL from its Work partition), so the
+    # fixture owns its cleanup too.
+    "composition_work",
+]
 
 
 @pytest.fixture
@@ -147,13 +158,13 @@ async def test_propose_excludes_existing_and_prior_applied_titles(pool):
         user, book, prior_run.id,
         diff={"new_chapters": [{"event_id": "e2", "title": "Already Applied", "ordinal": 1}]},
     )
-    await proposals.mark_approved(user, book, prior.id)
-    await proposals.claim_for_apply(user, book, prior.id)
+    await proposals.mark_approved(book, prior.id)
+    await proposals.claim_for_apply(book, prior.id)
     await proposals.mark_item_applied(
-        user, book, prior.id, item_key="e2",
+        book, prior.id, item_key="e2",
         result={"chapter_id": "y", "title": "Already Applied"},
     )
-    await proposals.mark_applied(user, book, prior.id)
+    await proposals.mark_applied(book, prior.id)
 
     record = await svc.propose(user, book, run.id, bearer="tok")
     titles = {c["title"] for c in record.diff["new_chapters"]}
@@ -179,7 +190,7 @@ async def test_propose_twice_before_applying_does_not_double_offer(pool):
     assert second.diff["new_chapters"] == []  # already claimed by `first`, still pending
 
     # Rejecting the first FREES its claim — a fresh propose can re-offer it.
-    await svc.reject(user, book, first.id)
+    await svc.reject(book, first.id)
     third = await svc.propose(user, book, run.id, bearer="tok")
     assert {c["title"] for c in third.diff["new_chapters"]} == {"Chapter One"}
 
@@ -206,7 +217,7 @@ async def test_approve_then_apply_creates_chapters_and_records_results(pool):
     svc = _svc(pool, book_client)
 
     proposed = await svc.propose(user, book, run.id, bearer="tok")
-    approved = await svc.approve(user, book, proposed.id)
+    approved = await svc.approve(book, proposed.id)
     assert approved.status == "approved"
 
     applied = await svc.apply(user, book, proposed.id, bearer="tok")
@@ -239,7 +250,7 @@ async def test_apply_twice_on_applied_record_is_a_safe_noop(pool):
     book_client = FakeBookClient()
     svc = _svc(pool, book_client)
     proposed = await svc.propose(user, book, run.id, bearer="tok")
-    await svc.approve(user, book, proposed.id)
+    await svc.approve(book, proposed.id)
     first = await svc.apply(user, book, proposed.id, bearer="tok")
     assert first.status == "applied"
 
@@ -261,12 +272,12 @@ async def test_apply_partial_failure_then_resume_only_retries_remaining_items(po
     book_client.fail_on_title = "Chapter Two"
     svc = _svc(pool, book_client)
     proposed = await svc.propose(user, book, run.id, bearer="tok")
-    await svc.approve(user, book, proposed.id)
+    await svc.approve(book, proposed.id)
 
     with pytest.raises(BookClientError):
         await svc.apply(user, book, proposed.id, bearer="tok")
 
-    failed = await svc.get(user, book, proposed.id)
+    failed = await svc.get(book, proposed.id)
     assert failed is not None and failed.status == "failed"
     assert "e1" in failed.applied_results
     assert "e2" not in failed.applied_results
@@ -313,7 +324,7 @@ async def test_approve_then_apply_seeds_glossary_entities(pool):
     svc = _svc(pool, FakeBookClient(), glossary)
 
     proposed = await svc.propose(user, book, run.id, bearer="tok")
-    await svc.approve(user, book, proposed.id)
+    await svc.approve(book, proposed.id)
     applied = await svc.apply(user, book, proposed.id, bearer="tok")
 
     assert applied.status == "applied"
@@ -334,14 +345,14 @@ async def test_apply_surfaces_book_not_adopted_as_actionable_422(pool):
     glossary.fail_with = GlossaryClientError(422, "GLOSS_BOOK_NOT_SCAFFOLDED", "not adopted")
     svc = _svc(pool, FakeBookClient(), glossary)
     proposed = await svc.propose(user, book, run.id, bearer="tok")
-    await svc.approve(user, book, proposed.id)
+    await svc.approve(book, proposed.id)
 
     with pytest.raises(GlossaryClientError) as exc_info:
         await svc.apply(user, book, proposed.id, bearer="tok")
     assert exc_info.value.code == "GLOSS_BOOK_NOT_SCAFFOLDED"
     assert "Graph Schema" in exc_info.value.detail
 
-    failed = await svc.get(user, book, proposed.id)
+    failed = await svc.get(book, proposed.id)
     assert failed is not None and failed.status == "failed"
     assert "Graph Schema" in failed.error_detail
 
@@ -362,7 +373,7 @@ async def test_apply_chapters_and_glossary_together_both_recorded(pool):
     glossary = FakeGlossaryClient()
     svc = _svc(pool, book_client, glossary)
     proposed = await svc.propose(user, book, run.id, bearer="tok")
-    await svc.approve(user, book, proposed.id)
+    await svc.approve(book, proposed.id)
 
     applied = await svc.apply(user, book, proposed.id, bearer="tok")
     assert applied.status == "applied"
@@ -393,11 +404,16 @@ _PIPELINE_RESULT_FIXTURE = {
 
 
 async def _completed_pipeline_job(pool, user, project_id, result=None):
+    # Package re-key (spec 25): generation_job.book_id is NOT NULL and derived
+    # in-SQL from composition_work, so the Work partition must exist first.
+    # `created_by` is a plain actor stamp; the job is later looked up by id only.
+    await WorksRepo(pool).create(user, project_id, uuid.uuid4())
     jobs = GenerationJobsRepo(pool)
     job, _ = await jobs.create(
-        user, project_id, operation="plan_pipeline", mode="auto", status="pending", input={},
+        project_id, created_by=user, operation="plan_pipeline", mode="auto",
+        status="pending", input={},
     )
-    await jobs.update_status(user, job.id, "completed", result=result or _PIPELINE_RESULT_FIXTURE)
+    await jobs.update_status(job.id, "completed", result=result or _PIPELINE_RESULT_FIXTURE)
     return job
 
 
@@ -409,7 +425,7 @@ async def test_propose_attaches_drafting_guide_from_completed_pipeline_job(pool)
     )
     job = await _completed_pipeline_job(pool, user, uuid.uuid4())
     await PlanRunsRepo(pool).update_run(
-        user, book, run.id, checkpoint_state={"pipeline_job_id": str(job.id)},
+        book, run.id, checkpoint_state={"pipeline_job_id": str(job.id)},
     )
 
     svc = _svc(pool, FakeBookClient())
@@ -427,12 +443,12 @@ async def test_apply_carries_drafting_guide_into_applied_results(pool):
     )
     job = await _completed_pipeline_job(pool, user, uuid.uuid4())
     await PlanRunsRepo(pool).update_run(
-        user, book, run.id, checkpoint_state={"pipeline_job_id": str(job.id)},
+        book, run.id, checkpoint_state={"pipeline_job_id": str(job.id)},
     )
     svc = _svc(pool, FakeBookClient())
 
     proposed = await svc.propose(user, book, run.id, bearer="tok")
-    await svc.approve(user, book, proposed.id)
+    await svc.approve(book, proposed.id)
     applied = await svc.apply(user, book, proposed.id, bearer="tok")
 
     assert "Hero wakes up powerless." in applied.applied_results["e1"]["drafting_guide"]
@@ -463,7 +479,7 @@ async def test_propose_with_a_malformed_pipeline_job_id_still_succeeds(pool):
         chapters=[{"event_id": "e1", "title": "Chapter One", "ordinal": 1}],
     )
     await PlanRunsRepo(pool).update_run(
-        user, book, run.id, checkpoint_state={"pipeline_job_id": "not-a-real-uuid"},
+        book, run.id, checkpoint_state={"pipeline_job_id": "not-a-real-uuid"},
     )
     svc = _svc(pool, FakeBookClient())
     proposed = await svc.propose(user, book, run.id, bearer="tok")
@@ -486,12 +502,12 @@ async def test_apply_get_book_failure_marks_failed_not_stuck_applying(pool):
     book_client.fail_get_book = True
     svc = _svc(pool, book_client)
     proposed = await svc.propose(user, book, run.id, bearer="tok")
-    await svc.approve(user, book, proposed.id)
+    await svc.approve(book, proposed.id)
 
     with pytest.raises(BookClientError):
         await svc.apply(user, book, proposed.id, bearer="tok")
 
-    failed = await svc.get(user, book, proposed.id)
+    failed = await svc.get(book, proposed.id)
     assert failed is not None and failed.status == "failed"
     assert failed.error_detail and "simulated transient outage" in failed.error_detail
 

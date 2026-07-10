@@ -29,17 +29,18 @@ class _FakeRepo:
         self._job = job
         self.updates: list = []
 
-    async def get(self, uid, jid):
+    async def get(self, jid):
         return self._job
 
-    async def update_status(self, uid, jid, status, *, result=None, **kw):
+    async def update_status(self, jid, status, *, result=None, **kw):
         self.updates.append((status, result))
         return self._job
 
 
 def _job(operation="decompose_preview", status="pending", input=None):
+    _uid = uuid4()
     return SimpleNamespace(
-        id=uuid4(), user_id=uuid4(), project_id=uuid4(), operation=operation,
+        id=uuid4(), created_by=_uid, user_id=_uid, project_id=uuid4(), operation=operation,
         status=status, input=input if input is not None else {},
     )
 
@@ -144,12 +145,12 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={"source_language": "en"})
 
     class _FakeJobsRepo:
         def __init__(self, pool): ...
-        async def chapter_scene_drafts(self, uid, pid, cid):
+        async def chapter_scene_drafts(self, pid, cid):
             return [{"title": "Scene One", "text": "scene 1 draft"},
                     {"title": "Scene Two", "text": "scene 2 draft"}]
 
@@ -197,12 +198,12 @@ async def test_run_stitch_raises_when_no_drafts(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})
 
     class _FakeJobsRepo:
         def __init__(self, pool): ...
-        async def chapter_scene_drafts(self, uid, pid, cid):
+        async def chapter_scene_drafts(self, pid, cid):
             return []  # nothing to stitch
 
     monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
@@ -247,7 +248,7 @@ async def test_run_generate_computes_winner_and_canon(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={"source_language": "en"})
 
     seen: dict = {}
@@ -299,7 +300,7 @@ async def test_run_generate_select_failure_is_terminal(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})
 
     async def _boom(llm, judge, **kw):
@@ -347,7 +348,7 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
 
     class _FakeWorks:
         def __init__(self, pool): ...
-        async def get(self, uid, pid):
+        async def get(self, pid):
             return SimpleNamespace(settings={})  # narrative_thread off
 
     seen: dict = {}

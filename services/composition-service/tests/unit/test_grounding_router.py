@@ -23,12 +23,12 @@ NODE = uuid.uuid4()
 
 
 def _work():
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK)
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK)
 
 
 def _node(project_id=PROJECT):
-    return OutlineNode(id=NODE, user_id=USER, project_id=project_id, kind="scene",
-                       rank="a0", chapter_id=uuid.uuid4())
+    return OutlineNode(id=NODE, created_by=USER, project_id=project_id, book_id=BOOK,
+                       kind="scene", rank="a0", chapter_id=uuid.uuid4())
 
 
 def _packed(available=True):
@@ -43,14 +43,14 @@ def _packed(available=True):
 class StubWorks:
     def __init__(self):
         self.work = None
-    async def get(self, user_id, project_id):
+    async def get(self, project_id):
         return self.work
 
 
 class StubOutline:
     def __init__(self):
         self.node = None
-    async def get_node(self, user_id, node_id):
+    async def get_node(self, node_id):
         return self.node
 
 
@@ -63,11 +63,21 @@ def ctx(monkeypatch):
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
                           get_embedding_client_dep, get_generation_jobs_repo,
-                          get_glossary_client_dep, get_grounding_pins_repo,
+                          get_glossary_client_dep, get_grant_client_dep,
+                          get_grounding_pins_repo,
                           get_knowledge_client_dep, get_outline_repo, get_references_repo,
                           get_scene_links_repo, get_style_profile_repo,
                           get_voice_profile_repo, get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the PUT grounding-pins endpoint
+    # gates EDIT on the Work's book before writing.
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     works, outline = StubWorks(), StubOutline()
     pack_stub = AsyncMock(return_value=_packed())
@@ -75,6 +85,7 @@ def ctx(monkeypatch):
 
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_outline_repo] = lambda: outline
     # the remaining packer deps are unused once pack() is stubbed, but must resolve
@@ -166,11 +177,11 @@ _PINS_URL = f"/v1/composition/works/{PROJECT}/scenes/{NODE}/grounding-pins"
 class _RecordingPins:
     def __init__(self):
         self.calls = []
-    async def set_action(self, user_id, project_id, node_id, item_type, item_id, action):
+    async def set_action(self, project_id, node_id, item_type, item_id, action, *, created_by=None):
         self.calls.append(("set", item_type, item_id, action))
         from types import SimpleNamespace
         return SimpleNamespace(item_type=item_type, item_id=item_id, action=action)
-    async def clear(self, user_id, project_id, node_id, item_type, item_id):
+    async def clear(self, project_id, node_id, item_type, item_id):
         self.calls.append(("clear", item_type, item_id))
         return True
 

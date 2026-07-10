@@ -18,7 +18,7 @@ ENTITY = uuid.uuid4()
 
 
 def _work() -> CompositionWork:
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK,
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK,
                            id=uuid.uuid4(), version=1, status="active")
 
 
@@ -26,7 +26,7 @@ class StubWorks:
     def __init__(self, work=None):
         self.work = work
 
-    async def get(self, user_id, project_id):
+    async def get(self, project_id):
         return self.work
 
 
@@ -35,16 +35,16 @@ class StubStyle:
         self.upserted = []
         self.deleted = []
 
-    async def list_all(self, user_id, project_id):
-        return [StyleProfile(user_id=USER, project_id=PROJECT, scope_type="work",
+    async def list_all(self, project_id):
+        return [StyleProfile(created_by=USER, project_id=PROJECT, scope_type="work",
                              scope_id=PROJECT, density=40, pace=60)]
 
-    async def upsert(self, user_id, project_id, scope_type, scope_id, density, pace):
+    async def upsert(self, project_id, scope_type, scope_id, density, pace, *, created_by=None):
         self.upserted.append((scope_type, scope_id, density, pace))
-        return StyleProfile(user_id=USER, project_id=PROJECT, scope_type=scope_type,
+        return StyleProfile(created_by=USER, project_id=PROJECT, scope_type=scope_type,
                             scope_id=scope_id, density=density, pace=pace)
 
-    async def delete(self, user_id, project_id, scope_type, scope_id):
+    async def delete(self, project_id, scope_type, scope_id):
         self.deleted.append((scope_type, scope_id))
         return True
 
@@ -54,16 +54,16 @@ class StubVoice:
         self.upserted = []
         self.deleted = []
 
-    async def list_all(self, user_id, project_id):
-        return [VoiceProfile(user_id=USER, project_id=PROJECT, entity_id=ENTITY,
+    async def list_all(self, project_id):
+        return [VoiceProfile(created_by=USER, project_id=PROJECT, entity_id=ENTITY,
                              entity_name="Kael", tags=["terse"])]
 
-    async def upsert(self, user_id, project_id, entity_id, entity_name, tags):
+    async def upsert(self, project_id, entity_id, entity_name, tags, *, created_by=None):
         self.upserted.append((entity_id, entity_name, tags))
-        return VoiceProfile(user_id=USER, project_id=PROJECT, entity_id=entity_id,
+        return VoiceProfile(created_by=USER, project_id=PROJECT, entity_id=entity_id,
                             entity_name=entity_name, tags=tags)
 
-    async def delete(self, user_id, project_id, entity_id):
+    async def delete(self, project_id, entity_id):
         self.deleted.append(entity_id)
         return True
 
@@ -75,14 +75,29 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
     from app.main import app
-    from app.deps import get_style_profile_repo, get_voice_profile_repo, get_works_repo
+    from app.deps import (
+        get_grant_client_dep,
+        get_style_profile_repo,
+        get_voice_profile_repo,
+        get_works_repo,
+    )
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; _gate_work resolves the Work's
+    # book then gates VIEW/EDIT (deny paths covered in test_grant_gate).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     works, style, voice = StubWorks(_work()), StubStyle(), StubVoice()
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_style_profile_repo] = lambda: style
     app.dependency_overrides[get_voice_profile_repo] = lambda: voice
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, works, style, voice
     app.dependency_overrides.clear()

@@ -52,9 +52,9 @@ class FakeApps:
     def __init__(self, bound=None):
         self._bound = bound
         self.set_calls: list = []
-    async def by_nodes(self, u, p, nodes):
+    async def by_nodes(self, p, nodes):
         return [self._bound] if self._bound is not None else []
-    async def set_role_binding(self, u, p, node, role_key, entity_id, *, conn=None):
+    async def set_role_binding(self, p, node, role_key, entity_id, *, conn=None):
         self.set_calls.append((role_key, entity_id))
         return 1
 
@@ -81,21 +81,31 @@ def client(monkeypatch):
     monkeypatch.setattr("app.routers.plan.get_pool", lambda: FakePool())
 
     from app.main import app
-    from app.deps import get_kal_client_dep, get_outline_repo, get_works_repo
+    from app.deps import get_grant_client_dep, get_kal_client_dep, get_outline_repo, get_works_repo
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
-    work = SimpleNamespace(project_id=P, user_id=U, book_id=B, settings={})
+    # E0 book-grant authority stubbed at OWNER; the role/chain routes _require_work
+    # (resolve the Work's book, then gate) before acting.
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
+
+    work = SimpleNamespace(project_id=P, created_by=U, book_id=B, settings={})
     state = SimpleNamespace(node=None, kal=FakeKal([]))
 
     class _Works:
-        async def get(self, u, p):
+        async def get(self, p):
             return work
     class _Outline:
-        async def get_node(self, user_id, node_id, *, conn=None):
+        async def get_node(self, node_id, *, conn=None):
             return state.node
 
     app.dependency_overrides[get_current_user] = lambda: U
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     app.dependency_overrides[get_works_repo] = lambda: _Works()
     app.dependency_overrides[get_outline_repo] = lambda: _Outline()
     app.dependency_overrides[get_kal_client_dep] = lambda: state.kal
@@ -244,9 +254,9 @@ async def test_bind_scene_motif_stamps_bound_via_chain(monkeypatch):
     class FakeApps2:
         def __init__(self):
             self.inserted: list = []
-        async def delete_for_nodes(self, u, p, nodes, *, conn=None):
+        async def delete_for_nodes(self, p, nodes, *, conn=None):
             return 0
-        async def insert_many(self, u, p, b, rows, *, conn=None):
+        async def insert_many(self, p, b, rows, *, created_by=None, conn=None):
             self.inserted.extend(rows)
             return rows
 

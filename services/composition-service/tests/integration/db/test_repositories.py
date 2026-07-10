@@ -73,18 +73,30 @@ def _ids():
     return uuid.uuid4(), uuid.uuid4(), uuid.uuid4()  # user, project, book
 
 
+async def _seed_work(pool, created_by, project_id, book_id=None):
+    """Seed the composition_work row every re-keyed package INSERT derives its
+    NOT-NULL book_id from (spec 25 M1/M2 — INSERT … SELECT w.book_id). Returns the
+    created Work; book_id is a fresh id unless given (a distinct book per canonical
+    Work avoids the one-canonical-Work-per-book partial unique
+    uq_composition_work_book)."""
+    return await WorksRepo(pool).create(created_by, project_id, book_id or uuid.uuid4())
+
+
 # ───────────────────────── works ─────────────────────────
 
 async def test_works_create_get_roundtrip(pool):
     repo = WorksRepo(pool)
     user, project, book = _ids()
+    # 25 M3 / PM-5: the actor column is `created_by` (a plain stamp), NOT `user_id`;
+    # reads key on project_id alone (no actor arg — access is the E0 book gate).
     w = await repo.create(user, project, book, settings={"voice": "wry"})
-    assert w.project_id == project and w.user_id == user and w.book_id == book
+    assert w.project_id == project and w.created_by == user and w.book_id == book
     assert w.settings == {"voice": "wry"} and w.version == 1
-    got = await repo.get(user, project)
+    got = await repo.get(project)
     assert got is not None and got.settings == {"voice": "wry"}
-    # cross-user isolation
-    assert await repo.get(uuid.uuid4(), project) is None
+    # cross-PROJECT isolation: a different project id resolves to None (the repo's
+    # surviving scope is the Work partition; per-actor isolation moved to the gate).
+    assert await repo.get(uuid.uuid4()) is None
 
 
 async def test_works_create_pending_null_project_and_backfill(pool):
@@ -98,24 +110,25 @@ async def test_works_create_pending_null_project_and_backfill(pool):
     assert pend.project_id is None
     assert pend.pending_project_backfill is True
     assert pend.id is not None and pend.settings == {"voice": "dry"}
-    # findable via the backfill-seam read
-    found = await repo.get_pending_for_book(user, book)
+    # findable via the backfill-seam read (keyed on book alone — PM-4)
+    found = await repo.get_pending_for_book(book)
     assert found is not None and found.id == pend.id
-    # cross-user isolation
-    assert await repo.get_pending_for_book(uuid.uuid4(), book) is None
-    # at most one pending per (user,book) — the partial-unique index rejects a 2nd
+    # cross-BOOK isolation: a different book has no pending row
+    assert await repo.get_pending_for_book(uuid.uuid4()) is None
+    # at most one pending per book — the partial-unique index rejects a 2nd
     with pytest.raises(asyncpg.exceptions.UniqueViolationError):
         await repo.create_pending(user, book)
-    # backfill: stamp the project, clear the marker (idempotent — only still-pending)
+    # backfill: stamp the project, clear the marker (idempotent — only still-pending).
+    # `created_by` is the actor stamp (attribution only), keyword-only per the write law.
     new_pid = uuid.uuid4()
-    bf = await repo.backfill_project(user, pend.id, new_pid)
+    bf = await repo.backfill_project(pend.id, new_pid, created_by=user)
     assert bf is not None and bf.project_id == new_pid
     assert bf.pending_project_backfill is False
-    assert await repo.get_pending_for_book(user, book) is None  # no longer pending
+    assert await repo.get_pending_for_book(book) is None  # no longer pending
     # second backfill no-ops (row no longer pending)
-    assert await repo.backfill_project(user, pend.id, uuid.uuid4()) is None
+    assert await repo.backfill_project(pend.id, uuid.uuid4(), created_by=user) is None
     # the backfilled row is now a normal project-keyed Work
-    got = await repo.get(user, new_pid)
+    got = await repo.get(new_pid)
     assert got is not None and got.id == pend.id
 
 
@@ -126,10 +139,10 @@ async def test_works_resolve_excludes_pending_until_backfilled(pool):
     repo = WorksRepo(pool)
     user, _, book = _ids()
     pend = await repo.create_pending(user, book)
-    assert await repo.resolve_by_book(user, book) == []  # excluded while pending
+    assert await repo.resolve_by_book(book) == []  # excluded while pending
     new_pid = uuid.uuid4()
-    await repo.backfill_project(user, pend.id, new_pid)
-    marked = await repo.resolve_by_book(user, book)
+    await repo.backfill_project(pend.id, new_pid, created_by=user)
+    marked = await repo.resolve_by_book(book)
     assert len(marked) == 1 and marked[0].project_id == new_pid  # now a real marked Work
 
 
@@ -151,33 +164,34 @@ async def test_works_resolve_found_none_candidates(pool):
     repo = WorksRepo(pool)
     user, _, book = _ids()
     # none
-    assert await repo.resolve_by_book(user, book) == []
+    assert await repo.resolve_by_book(book) == []
     # found (1)
     p1 = uuid.uuid4()
     await repo.create(user, p1, book)
-    res = await repo.resolve_by_book(user, book)
+    res = await repo.resolve_by_book(book)
     assert len(res) == 1 and res[0].project_id == p1
-    # candidates (2)
+    # candidates (2) — a derivative is N-per-book; a 2nd CANONICAL work would trip
+    # uq_composition_work_book, so p2 is created as a derivative of p1's Work.
     p2 = uuid.uuid4()
-    await repo.create(user, p2, book)
-    assert len(await repo.resolve_by_book(user, book)) == 2
+    await repo.create_derivative(user, p2, book, res[0].id, branch_point=1)
+    assert len(await repo.resolve_by_book(book)) == 2
     # archived work drops out of resolve
-    await repo.update(user, p2, {"status": "archived"})
-    assert len(await repo.resolve_by_book(user, book)) == 1
+    await repo.update(p2, {"status": "archived"}, created_by=user)
+    assert len(await repo.resolve_by_book(book)) == 1
 
 
 async def test_works_ifmatch_bump_and_412(pool):
     repo = WorksRepo(pool)
     user, project, book = _ids()
     await repo.create(user, project, book)
-    updated = await repo.update(user, project, {"settings": {"a": 1}}, expected_version=1)
+    updated = await repo.update(project, {"settings": {"a": 1}}, created_by=user, expected_version=1)
     assert updated is not None and updated.version == 2 and updated.settings == {"a": 1}
     # stale version → 412 carrying current row
     with pytest.raises(VersionMismatchError) as ei:
-        await repo.update(user, project, {"settings": {"a": 2}}, expected_version=1)
+        await repo.update(project, {"settings": {"a": 2}}, created_by=user, expected_version=1)
     assert ei.value.current.version == 2
     # missing row with expected_version → None (404), not 412
-    assert await repo.update(user, uuid.uuid4(), {"settings": {}}, expected_version=1) is None
+    assert await repo.update(uuid.uuid4(), {"settings": {}}, created_by=user, expected_version=1) is None
 
 
 async def test_works_update_noop_preserves_version(pool):
@@ -185,7 +199,7 @@ async def test_works_update_noop_preserves_version(pool):
     user, project, book = _ids()
     await repo.create(user, project, book)
     # explicit None on a NOT-NULL field is skipped → empty effective patch
-    same = await repo.update(user, project, {"status": None})
+    same = await repo.update(project, {"status": None}, created_by=user)
     assert same is not None and same.version == 1
 
 
@@ -200,7 +214,7 @@ async def test_c23_derivative_guard_rejects_null_project(pool):
     async with pool.acquire() as c:
         with pytest.raises(asyncpg.exceptions.CheckViolationError):
             await c.execute(
-                "INSERT INTO composition_work (project_id, user_id, book_id, source_work_id) "
+                "INSERT INTO composition_work (project_id, created_by, book_id, source_work_id) "
                 "VALUES (NULL, $1, $2, $3)",
                 user, book, src.id,
             )
@@ -242,12 +256,13 @@ async def test_c25_get_by_id_resolves_source_work_for_base_project(pool):
     src = await works.create(user, uuid.uuid4(), book)
     # A derivative links to the source by id; the packer looks the source up by id.
     deriv = await works.create_derivative(user, uuid.uuid4(), book, src.id, branch_point=2)
-    fetched = await works.get_by_id(user, deriv.source_work_id)
+    fetched = await works.get_by_id(deriv.source_work_id)
     assert fetched is not None
     assert fetched.id == src.id
     assert fetched.project_id == src.project_id  # the BASE knowledge project
-    # cross-user isolation: another user can't read it by id.
-    assert await works.get_by_id(uuid.uuid4(), src.id) is None
+    # get_by_id is a bare-id read (no actor scope — access is gated before the repo);
+    # a NONEXISTENT work id resolves to None.
+    assert await works.get_by_id(uuid.uuid4()) is None
 
 
 async def test_c23_divergence_spec_and_override_roundtrip(pool):
@@ -259,29 +274,29 @@ async def test_c23_divergence_spec_and_override_roundtrip(pool):
     deriv = await works.create_derivative(user, uuid.uuid4(), book, src.id, branch_point=3)
     pov = uuid.uuid4()
     spec = await drepo.create_spec(DivergenceSpec(
-        user_id=user, project_id=deriv.project_id, work_id=deriv.id,
+        created_by=user, project_id=deriv.project_id, work_id=deriv.id,
         taxonomy="pov_shift", pov_anchor=pov, canon_rule=["The villain wins", "No magic"],
     ))
     assert spec.taxonomy == "pov_shift" and spec.pov_anchor == pov
     assert spec.canon_rule == ["The villain wins", "No magic"]
-    got_spec = await drepo.get_spec_for_work(user, deriv.id)
+    got_spec = await drepo.get_spec_for_work(deriv.id)
     assert got_spec is not None and got_spec.id == spec.id
 
     target = uuid.uuid4()
     ov = await drepo.create_override(EntityOverride(
-        user_id=user, project_id=deriv.project_id, work_id=deriv.id,
+        created_by=user, project_id=deriv.project_id, work_id=deriv.id,
         target_entity_id=target, overridden_fields={"role": "antagonist", "alive": False},
     ))
     assert ov.overridden_fields == {"role": "antagonist", "alive": False}
-    overrides = await drepo.list_overrides_for_work(user, deriv.id)
+    overrides = await drepo.list_overrides_for_work(deriv.id)
     assert len(overrides) == 1 and overrides[0].target_entity_id == target
-    # cross-user isolation
-    assert await drepo.get_spec_for_work(uuid.uuid4(), deriv.id) is None
-    assert await drepo.list_overrides_for_work(uuid.uuid4(), deriv.id) == []
+    # bare work_id reads (access gated before the repo): a nonexistent work → empty
+    assert await drepo.get_spec_for_work(uuid.uuid4()) is None
+    assert await drepo.list_overrides_for_work(uuid.uuid4()) == []
     # per-(work,target) unique rejects a duplicate override
     with pytest.raises(asyncpg.exceptions.UniqueViolationError):
         await drepo.create_override(EntityOverride(
-            user_id=user, project_id=deriv.project_id, work_id=deriv.id,
+            created_by=user, project_id=deriv.project_id, work_id=deriv.id,
             target_entity_id=target, overridden_fields={"x": 1},
         ))
 
@@ -334,98 +349,103 @@ async def test_c23_migration_roundtrip_up_down_up_clean(pool):
 
 async def test_outline_autorank_appends_in_order(pool):
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
-    a = await repo.create_node(user, project, kind="arc", title="A")
-    b = await repo.create_node(user, project, kind="arc", title="B")
-    c = await repo.create_node(user, project, kind="arc", title="C")
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    a = await repo.create_node(project, created_by=user, kind="arc", title="A")
+    b = await repo.create_node(project, created_by=user, kind="arc", title="B")
+    c = await repo.create_node(project, created_by=user, kind="arc", title="C")
     assert a.rank < b.rank < c.rank
-    tree = await repo.list_tree(user, project)
+    tree = await repo.list_tree(project)
     assert [n.title for n in tree] == ["A", "B", "C"]
 
 
 async def test_outline_ifmatch_and_present_entities(pool):
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
     node = await repo.create_node(
-        user, project, kind="chapter", chapter_id=chapter,
+        project, created_by=user, kind="chapter", chapter_id=chapter,
         present_entity_ids=[uuid.uuid4()],
     )
     e2 = uuid.uuid4()
     upd = await repo.update_node(
-        user, node.id, {"title": "T", "present_entity_ids": [e2]}, expected_version=1,
+        node.id, {"title": "T", "present_entity_ids": [e2]}, expected_version=1,
     )
     assert upd is not None and upd.version == 2 and upd.title == "T"
     assert upd.present_entity_ids == [e2]
     with pytest.raises(VersionMismatchError):
-        await repo.update_node(user, node.id, {"title": "X"}, expected_version=1)
+        await repo.update_node(node.id, {"title": "X"}, expected_version=1)
 
 
 async def test_outline_archive_recurses_subtree(pool):
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
     chap = await repo.create_node(
-        user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter,
+        project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter,
     )
     scene = await repo.create_node(
-        user, project, kind="scene", parent_id=chap.id, chapter_id=chapter,
+        project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter,
     )
     # a sibling arc (NOT under the archived one) must survive
-    other = await repo.create_node(user, project, kind="arc", title="other")
+    other = await repo.create_node(project, created_by=user, kind="arc", title="other")
 
-    archived = await repo.archive_node(user, arc.id)
+    archived = await repo.archive_node(arc.id)
     assert archived is not None and archived.is_archived
 
-    visible = {n.id for n in await repo.list_tree(user, project)}
+    visible = {n.id for n in await repo.list_tree(project)}
     assert arc.id not in visible
     assert chap.id not in visible  # descendant archived too
     assert scene.id not in visible
     assert other.id in visible
     # archiving again → already archived → None
-    assert await repo.archive_node(user, arc.id) is None
+    assert await repo.archive_node(arc.id) is None
 
 
 async def test_outline_restore_recurses_subtree(pool):
     """T1.1b restore = inverse of archive: un-archives the node + its archived
     descendants (the whole cascade comes back)."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
     chap = await repo.create_node(
-        user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter,
+        project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter,
     )
     scene = await repo.create_node(
-        user, project, kind="scene", parent_id=chap.id, chapter_id=chapter,
+        project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter,
     )
-    await repo.archive_node(user, arc.id)  # archives arc+chap+scene
+    await repo.archive_node(arc.id)  # archives arc+chap+scene
 
-    restored = await repo.restore_node(user, arc.id)
+    restored = await repo.restore_node(arc.id)
     assert restored is not None and restored.is_archived is False
-    visible = {n.id for n in await repo.list_tree(user, project)}
+    visible = {n.id for n in await repo.list_tree(project)}
     assert {arc.id, chap.id, scene.id} <= visible  # whole subtree back
     # restoring again → nothing archived → None
-    assert await repo.restore_node(user, arc.id) is None
+    assert await repo.restore_node(arc.id) is None
 
 
 async def test_outline_reorder_within_siblings_renumbers_story_order(pool):
     """T1.1c: reordering a scene after a later sibling rewrites its rank AND
     dense-renumbers the chapter's scene story_order to match (reading order)."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    arc = await repo.create_node(user, project, kind="arc", title="arc")
-    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
-    s1 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s1")
-    s2 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s2")
-    s3 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s3")
+    arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
+    chap = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    s1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s1")
+    s2 = await repo.create_node(project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s2")
+    s3 = await repo.create_node(project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s3")
 
     # move s1 to AFTER s3 → new order s2, s3, s1
-    moved = await repo.reorder_node(user, s1.id, new_parent_id=chap.id, after_id=s3.id)
+    moved = await repo.reorder_node(s1.id, new_parent_id=chap.id, after_id=s3.id)
     assert moved is not None
-    scenes = await repo.scenes_for_chapter(user, project, chapter)  # ORDER BY story_order, rank
+    scenes = await repo.scenes_for_chapter(project, chapter)  # ORDER BY story_order, rank
     assert [s.title for s in scenes] == ["s2", "s3", "s1"]
     assert [s.story_order for s in scenes] == [0, 1, 2]  # dense, matches rank order
 
@@ -435,21 +455,22 @@ async def test_outline_reorder_reparents_scene_across_chapters(pool):
     and is renumbered into the destination's reading order; the source chapter's
     remaining scenes re-densify."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chA, chB = uuid.uuid4(), uuid.uuid4()
-    arc = await repo.create_node(user, project, kind="arc", title="arc")
-    cA = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chA)
-    cB = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chB)
-    a1 = await repo.create_node(user, project, kind="scene", parent_id=cA.id, chapter_id=chA, title="a1")
-    a2 = await repo.create_node(user, project, kind="scene", parent_id=cA.id, chapter_id=chA, title="a2")
-    b1 = await repo.create_node(user, project, kind="scene", parent_id=cB.id, chapter_id=chB, title="b1")
+    arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
+    cA = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chA)
+    cB = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chB)
+    a1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=cA.id, chapter_id=chA, title="a1")
+    a2 = await repo.create_node(project, created_by=user, kind="scene", parent_id=cA.id, chapter_id=chA, title="a2")
+    b1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=cB.id, chapter_id=chB, title="b1")
 
-    moved = await repo.reorder_node(user, a1.id, new_parent_id=cB.id, after_id=b1.id)
+    moved = await repo.reorder_node(a1.id, new_parent_id=cB.id, after_id=b1.id)
     assert moved is not None
     assert moved.parent_id == cB.id and moved.chapter_id == chB  # inherited new chapter
-    dest = await repo.scenes_for_chapter(user, project, chB)
+    dest = await repo.scenes_for_chapter(project, chB)
     assert [s.title for s in dest] == ["b1", "a1"] and [s.story_order for s in dest] == [0, 1]
-    src = await repo.scenes_for_chapter(user, project, chA)
+    src = await repo.scenes_for_chapter(project, chA)
     assert [s.title for s in src] == ["a2"] and [s.story_order for s in src] == [0]  # re-densified
 
 
@@ -457,34 +478,36 @@ async def test_outline_beat_role_allowed_on_scene_and_chapter_not_arc(pool):
     """T1.2 Beat Sheet migration: beat_role may live on a scene OR a chapter, but
     an arc (or beat) still violates outline_beatrole_kind."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    arc = await repo.create_node(user, project, kind="arc", title="arc")
-    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
-    scene = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter)
+    arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
+    chap = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    scene = await repo.create_node(project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter)
 
-    s = await repo.update_node(user, scene.id, {"beat_role": "catalyst"})
+    s = await repo.update_node(scene.id, {"beat_role": "catalyst"})
     assert s is not None and s.beat_role == "catalyst"
-    c = await repo.update_node(user, chap.id, {"beat_role": "opening_image"})  # NEW: chapter allowed
+    c = await repo.update_node(chap.id, {"beat_role": "opening_image"})  # NEW: chapter allowed
     assert c is not None and c.beat_role == "opening_image"
     # clearing works (nullable)
-    cleared = await repo.update_node(user, chap.id, {"beat_role": None})
+    cleared = await repo.update_node(chap.id, {"beat_role": None})
     assert cleared is not None and cleared.beat_role is None
     # an arc still cannot carry a beat_role
     with pytest.raises(asyncpg.exceptions.CheckViolationError):
-        await repo.update_node(user, arc.id, {"beat_role": "finale"})
+        await repo.update_node(arc.id, {"beat_role": "finale"})
 
 
 async def test_outline_reorder_rejects_cycle(pool):
     """Reparenting a node under its own descendant is a 400 (ReferenceViolationError)
     — the same guard update_node uses, applied before any write."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    arc = await repo.create_node(user, project, kind="arc", title="arc")
-    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
+    chap = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter)
     with pytest.raises(ReferenceViolationError):
-        await repo.reorder_node(user, arc.id, new_parent_id=chap.id, after_id=None)
+        await repo.reorder_node(arc.id, new_parent_id=chap.id, after_id=None)
 
 
 async def test_outline_restore_reconnects_archived_ancestors(pool):
@@ -492,21 +515,22 @@ async def test_outline_restore_reconnects_archived_ancestors(pool):
     archived ancestor chain — else the restored node orphans out of the tree
     (its parent_id points at an archived, invisible row)."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
     chap = await repo.create_node(
-        user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter,
+        project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter,
     )
     scene = await repo.create_node(
-        user, project, kind="scene", parent_id=chap.id, chapter_id=chapter,
+        project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter,
     )
-    await repo.archive_node(user, arc.id)  # archives arc+chap+scene
+    await repo.archive_node(arc.id)  # archives arc+chap+scene
 
     # restore only the SCENE → ancestor chain (chap, arc) restored too
-    restored = await repo.restore_node(user, scene.id)
+    restored = await repo.restore_node(scene.id)
     assert restored is not None and restored.is_archived is False
-    visible = {n.id for n in await repo.list_tree(user, project)}
+    visible = {n.id for n in await repo.list_tree(project)}
     assert {arc.id, chap.id, scene.id} <= visible  # reconnected to a visible root
 
 
@@ -516,16 +540,17 @@ async def test_outline_archive_terminates_on_parent_cycle(pool):
     test_outline_reparent_cycle_blocked), so we forge the cycle via RAW SQL to
     still prove the UNION backstop. Without UNION this test hangs."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
-    a = await repo.create_node(user, project, kind="arc", title="a")
-    b = await repo.create_node(user, project, kind="arc", parent_id=a.id, title="b")
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    a = await repo.create_node(project, created_by=user, kind="arc", title="a")
+    b = await repo.create_node(project, created_by=user, kind="arc", parent_id=a.id, title="b")
     # forge a cycle a → b → a bypassing the repo guard
     async with pool.acquire() as c:
         await c.execute("UPDATE outline_node SET parent_id = $1 WHERE id = $2", b.id, a.id)
-    archived = await repo.archive_node(user, a.id)
+    archived = await repo.archive_node(a.id)
     assert archived is not None and archived.is_archived
     # both nodes in the cycle archived; query returned (did not hang)
-    assert {n.id for n in await repo.list_tree(user, project)} == set()
+    assert {n.id for n in await repo.list_tree(project)} == set()
 
 
 def _chapters_payload(*chapter_ids, scenes_per=1):
@@ -536,12 +561,14 @@ def _chapters_payload(*chapter_ids, scenes_per=1):
     ]
 
 
-async def _active_ids(pool, user, project, kind):
+async def _active_ids(pool, project, kind):
+    # Package re-key: outline_node is project-partitioned; `created_by` is a plain
+    # actor stamp, never a filter — so the read keys on project_id alone.
     async with pool.acquire() as c:
         rows = await c.fetch(
-            "SELECT id FROM outline_node WHERE user_id=$1 AND project_id=$2 "
-            "AND kind=$3 AND NOT is_archived",
-            user, project, kind,
+            "SELECT id FROM outline_node WHERE project_id=$1 "
+            "AND kind=$2 AND NOT is_archived",
+            project, kind,
         )
     return {r["id"] for r in rows}
 
@@ -551,17 +578,18 @@ async def test_decompose_replace_archives_prior_arc_and_chapter_nodes(pool):
     nodes, not ONLY their scenes — else orphan arc/chapter nodes accumulate on
     every re-plan (their scenes archived, a fresh arc/chapters created beside)."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chA = uuid.uuid4()
     r1 = await repo.commit_decomposed_tree(
-        user, project, arc_title="v1", chapters=_chapters_payload(chA),
+        project, created_by=user, arc_title="v1", chapters=_chapters_payload(chA),
     )
     r2 = await repo.commit_decomposed_tree(
-        user, project, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
+        project, created_by=user, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
     )
-    arcs = await _active_ids(pool, user, project, "arc")
-    chaps = await _active_ids(pool, user, project, "chapter")
-    scenes = await _active_ids(pool, user, project, "scene")
+    arcs = await _active_ids(pool, project, "arc")
+    chaps = await _active_ids(pool, project, "chapter")
+    scenes = await _active_ids(pool, project, "scene")
     # exactly the v2 tree is active — no orphan v1 arc/chapter/scene survives.
     assert arcs == {uuid.UUID(r2["arc_id"])}
     assert uuid.UUID(r1["arc_id"]) not in arcs
@@ -574,20 +602,21 @@ async def test_decompose_partial_replace_preserves_arc_with_active_out_of_target
     chapter OUTSIDE the replaced set (a partial re-plan) — only fully-emptied
     arcs are reaped."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chA, chB = uuid.uuid4(), uuid.uuid4()
     r1 = await repo.commit_decomposed_tree(
-        user, project, arc_title="v1", chapters=_chapters_payload(chA, chB),
+        project, created_by=user, arc_title="v1", chapters=_chapters_payload(chA, chB),
     )
     r2 = await repo.commit_decomposed_tree(
-        user, project, arc_title="v2-chA", chapters=_chapters_payload(chA), replace=True,
+        project, created_by=user, arc_title="v2-chA", chapters=_chapters_payload(chA), replace=True,
     )
-    arcs = await _active_ids(pool, user, project, "arc")
+    arcs = await _active_ids(pool, project, "arc")
     # v1 arc SURVIVES (chB child still active) AND the new v2 arc exists.
     assert uuid.UUID(r1["arc_id"]) in arcs
     assert uuid.UUID(r2["arc_id"]) in arcs
     assert len(arcs) == 2
-    chaps = await _active_ids(pool, user, project, "chapter")
+    chaps = await _active_ids(pool, project, "chapter")
     assert uuid.UUID(r1["chapter_ids"][0]) not in chaps   # chA prior chapter archived
     assert uuid.UUID(r1["chapter_ids"][1]) in chaps        # chB chapter preserved
     assert uuid.UUID(r2["chapter_ids"][0]) in chaps        # chA new chapter active
@@ -600,59 +629,67 @@ async def test_decompose_replace_does_not_archive_unrelated_empty_arc(pool):
     project, not be archived as collateral by a project-wide 'any childless
     arc' sweep."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
-    bystander = await repo.create_node(user, project, kind="arc", title="manual-empty")
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    bystander = await repo.create_node(project, created_by=user, kind="arc", title="manual-empty")
     chA = uuid.uuid4()
     await repo.commit_decomposed_tree(
-        user, project, arc_title="v1", chapters=_chapters_payload(chA),
+        project, created_by=user, arc_title="v1", chapters=_chapters_payload(chA),
     )
     await repo.commit_decomposed_tree(
-        user, project, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
+        project, created_by=user, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
     )
-    arcs = await _active_ids(pool, user, project, "arc")
+    arcs = await _active_ids(pool, project, "arc")
     assert bystander.id in arcs   # the unrelated empty arc is NOT archived
 
 
 async def test_outline_reparent_guards(pool):
-    """D-COMP-M2-XREF-OWNERSHIP: update_node blocks self-parent, cross-user
+    """D-COMP-M2-XREF-OWNERSHIP: update_node blocks self-parent, cross-PROJECT
     parent, and descendant (cycle) reparents; a valid reparent succeeds."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
-    a = await repo.create_node(user, project, kind="arc", title="a")
-    b = await repo.create_node(user, project, kind="arc", parent_id=a.id, title="b")
-    c_node = await repo.create_node(user, project, kind="arc", title="c")
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    a = await repo.create_node(project, created_by=user, kind="arc", title="a")
+    b = await repo.create_node(project, created_by=user, kind="arc", parent_id=a.id, title="b")
+    c_node = await repo.create_node(project, created_by=user, kind="arc", title="c")
 
     # self-parent
     with pytest.raises(ReferenceViolationError):
-        await repo.update_node(user, a.id, {"parent_id": a.id})
+        await repo.update_node(a.id, {"parent_id": a.id})
     # cycle: parent a under its descendant b
     with pytest.raises(ReferenceViolationError):
-        await repo.update_node(user, a.id, {"parent_id": b.id})
-    # cross-user parent (another user's node)
+        await repo.update_node(a.id, {"parent_id": b.id})
+    # cross-PROJECT parent (a node in a different Work partition) — the scope guard
+    # rejects it (the parent exists but is in another project).
     other_user, other_proj, _ = _ids()
-    foreign = await repo.create_node(other_user, other_proj, kind="arc")
+    await _seed_work(pool, other_user, other_proj)
+    foreign = await repo.create_node(other_proj, created_by=other_user, kind="arc")
     with pytest.raises(ReferenceViolationError):
-        await repo.update_node(user, c_node.id, {"parent_id": foreign.id})
+        await repo.update_node(c_node.id, {"parent_id": foreign.id})
     # valid reparent: move c under a (not a descendant of c)
-    moved = await repo.update_node(user, c_node.id, {"parent_id": a.id})
+    moved = await repo.update_node(c_node.id, {"parent_id": a.id})
     assert moved is not None and moved.parent_id == a.id
     # clearing the parent (→ top-level) is always allowed
-    cleared = await repo.update_node(user, c_node.id, {"parent_id": None})
+    cleared = await repo.update_node(c_node.id, {"parent_id": None})
     assert cleared is not None and cleared.parent_id is None
 
 
 async def test_outline_create_rejects_cross_scope_parent(pool):
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     other_user, other_proj, _ = _ids()
-    foreign = await repo.create_node(other_user, other_proj, kind="arc")
-    # parent owned by another user → rejected
+    await _seed_work(pool, other_user, other_proj)
+    foreign = await repo.create_node(other_proj, created_by=other_user, kind="arc")
+    # parent in a different project (Work partition) → rejected
     with pytest.raises(ReferenceViolationError):
-        await repo.create_node(user, project, kind="arc", parent_id=foreign.id)
-    # parent owned by us but in a DIFFERENT project → rejected
-    mine_other_proj = await repo.create_node(user, uuid.uuid4(), kind="arc")
+        await repo.create_node(project, created_by=user, kind="arc", parent_id=foreign.id)
+    # parent stamped by the same actor but in a DIFFERENT project → rejected
+    mine_other_project = uuid.uuid4()
+    await _seed_work(pool, user, mine_other_project)
+    mine_other = await repo.create_node(mine_other_project, created_by=user, kind="arc")
     with pytest.raises(ReferenceViolationError):
-        await repo.create_node(user, project, kind="arc", parent_id=mine_other_proj.id)
+        await repo.create_node(project, created_by=user, kind="arc", parent_id=mine_other.id)
 
 
 async def test_outline_rank_orders_under_db_collation(pool):
@@ -660,23 +697,28 @@ async def test_outline_rank_orders_under_db_collation(pool):
     collation is en_US.UTF-8. Insert many siblings and confirm list_tree
     (ORDER BY rank COLLATE "C") matches creation order."""
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     titles = [f"n{i:02d}" for i in range(20)]
     for t in titles:
-        await repo.create_node(user, project, kind="arc", title=t)
-    tree = await repo.list_tree(user, project)
+        await repo.create_node(project, created_by=user, kind="arc", title=t)
+    tree = await repo.list_tree(project)
     assert [n.title for n in tree] == titles
     # ranks are strictly ascending under byte (C) comparison
     ranks = [n.rank for n in tree]
     assert ranks == sorted(ranks)
 
 
-async def test_outline_cross_user_isolation(pool):
+async def test_outline_missing_node_returns_none(pool):
+    # NEW-LAW rewrite of the old per-actor isolation test: get_node / archive_node
+    # are bare-id reads (no actor scope — access is decided at the E0 book gate
+    # BEFORE the repo), so a NONEXISTENT node id resolves to None / no-op.
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
-    node = await repo.create_node(user, project, kind="arc")
-    assert await repo.get_node(uuid.uuid4(), node.id) is None
-    assert await repo.archive_node(uuid.uuid4(), node.id) is None
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    await repo.create_node(project, created_by=user, kind="arc")
+    assert await repo.get_node(uuid.uuid4()) is None
+    assert await repo.archive_node(uuid.uuid4()) is None
 
 
 # ───────────────────────── scene_links ─────────────────────────
@@ -684,17 +726,18 @@ async def test_outline_cross_user_isolation(pool):
 async def test_scene_links_crud_and_isolation(pool):
     olr = OutlineRepo(pool)
     slr = SceneLinksRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    s1 = await olr.create_node(user, project, kind="scene", chapter_id=chapter)
-    s2 = await olr.create_node(user, project, kind="scene", chapter_id=chapter)
-    link = await slr.create(user, project, s1.id, s2.id, label="setup→payoff")
+    s1 = await olr.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
+    s2 = await olr.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
+    link = await slr.create(project, s1.id, s2.id, created_by=user, label="setup→payoff")
     assert link.from_node_id == s1.id and link.to_node_id == s2.id
-    assert len(await slr.list_by_project(user, project)) == 1
-    # cross-user delete is a no-op
+    assert len(await slr.list_by_project(project)) == 1
+    # cross-PROJECT delete is a no-op (an edge in another Work can't be deleted here)
     assert await slr.delete(uuid.uuid4(), link.id) is False
-    assert await slr.delete(user, link.id) is True
-    assert await slr.list_by_project(user, project) == []
+    assert await slr.delete(project, link.id) is True
+    assert await slr.list_by_project(project) == []
 
 
 async def test_scene_link_rejects_foreign_endpoint(pool):
@@ -702,56 +745,64 @@ async def test_scene_link_rejects_foreign_endpoint(pool):
     this project is rejected (FK proves existence, not ownership)."""
     olr = OutlineRepo(pool)
     slr = SceneLinksRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    mine = await olr.create_node(user, project, kind="scene", chapter_id=chapter)
+    mine = await olr.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
     other_user, other_proj, _ = _ids()
-    foreign = await olr.create_node(other_user, other_proj, kind="scene", chapter_id=chapter)
+    await _seed_work(pool, other_user, other_proj)
+    foreign = await olr.create_node(other_proj, created_by=other_user, kind="scene", chapter_id=chapter)
     with pytest.raises(ReferenceViolationError):
-        await slr.create(user, project, mine.id, foreign.id)
-    # a node of ours but in another project is also rejected
-    mine_other = await olr.create_node(user, uuid.uuid4(), kind="scene", chapter_id=chapter)
+        await slr.create(project, mine.id, foreign.id, created_by=user)
+    # a node in another project is also rejected (endpoint scope guard)
+    mine_other_project = uuid.uuid4()
+    await _seed_work(pool, user, mine_other_project)
+    mine_other = await olr.create_node(mine_other_project, created_by=user, kind="scene", chapter_id=chapter)
     with pytest.raises(ReferenceViolationError):
-        await slr.create(user, project, mine.id, mine_other.id)
+        await slr.create(project, mine.id, mine_other.id, created_by=user)
 
 
 async def test_generation_job_rejects_foreign_node(pool):
     olr = OutlineRepo(pool)
     gjr = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     other_user, other_proj, _ = _ids()
-    foreign = await olr.create_node(other_user, other_proj, kind="scene", chapter_id=uuid.uuid4())
+    await _seed_work(pool, other_user, other_proj)
+    foreign = await olr.create_node(other_proj, created_by=other_user, kind="scene", chapter_id=uuid.uuid4())
     with pytest.raises(ReferenceViolationError):
-        await gjr.create(user, project, operation="draft_scene", outline_node_id=foreign.id)
+        await gjr.create(project, created_by=user, operation="draft_scene", outline_node_id=foreign.id)
 
 
 # ───────────────────────── canon_rules ─────────────────────────
 
 async def test_canon_rules_active_listing_and_archive(pool):
     repo = CanonRulesRepo(pool)
-    user, project, _ = _ids()
-    r1 = await repo.create(user, project, "King is secretly dead", scope="reveal_gate")
-    r2 = await repo.create(user, project, "Magic costs blood")
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    r1 = await repo.create(project, "King is secretly dead", created_by=user, scope="reveal_gate")
+    r2 = await repo.create(project, "Magic costs blood", created_by=user)
     # deactivate r2 → not in list_active, still in list_all
-    await repo.update(user, r2.id, {"active": False})
-    active = await repo.list_active(user, project)
+    await repo.update(project, r2.id, {"active": False})
+    active = await repo.list_active(project)
     assert [r.id for r in active] == [r1.id]
-    assert len(await repo.list_all(user, project)) == 2
+    assert len(await repo.list_all(project)) == 2
     # archive r1 → out of both
-    assert (await repo.archive(user, r1.id)) is not None
-    assert await repo.list_active(user, project) == []
-    assert len(await repo.list_all(user, project)) == 1
-    assert await repo.archive(user, r1.id) is None  # already archived
+    assert (await repo.archive(project, r1.id)) is not None
+    assert await repo.list_active(project) == []
+    assert len(await repo.list_all(project)) == 1
+    assert await repo.archive(project, r1.id) is None  # already archived
 
 
 async def test_canon_rules_ifmatch(pool):
     repo = CanonRulesRepo(pool)
-    user, project, _ = _ids()
-    r = await repo.create(user, project, "rule")
-    upd = await repo.update(user, r.id, {"text": "rule v2"}, expected_version=1)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    r = await repo.create(project, "rule", created_by=user)
+    upd = await repo.update(project, r.id, {"text": "rule v2"}, expected_version=1)
     assert upd is not None and upd.version == 2
     with pytest.raises(VersionMismatchError):
-        await repo.update(user, r.id, {"text": "x"}, expected_version=1)
+        await repo.update(project, r.id, {"text": "x"}, expected_version=1)
 
 
 # ───────────────────────── grounding_pins (T3.4) ─────────────────────────
@@ -759,86 +810,90 @@ async def test_canon_rules_ifmatch(pool):
 async def test_grounding_pins_upsert_flip_clear_and_tenancy(pool):
     repo = GroundingPinsRepo(pool)
     olr = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     # outline_node_id is an in-DB FK (ON DELETE CASCADE) → create a real scene.
-    scene = await olr.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
+    scene = await olr.create_node(project, created_by=user, kind="scene", chapter_id=uuid.uuid4())
     # pin a lore source + exclude a cast entity
-    p1 = await repo.set_action(user, project, scene.id, "lore", "src-1", "pin")
+    p1 = await repo.set_action(project, scene.id, "lore", "src-1", "pin", created_by=user)
     assert p1.action == "pin" and p1.item_type == "lore" and p1.item_id == "src-1"
-    await repo.set_action(user, project, scene.id, "present", "ent-1", "exclude")
-    rows = await repo.list_for_scene(user, project, scene.id)
+    await repo.set_action(project, scene.id, "present", "ent-1", "exclude", created_by=user)
+    rows = await repo.list_for_scene(project, scene.id)
     assert {(r.item_type, r.item_id, r.action) for r in rows} == {
         ("lore", "src-1", "pin"), ("present", "ent-1", "exclude"),
     }
     # flip the lore pin → exclude IN PLACE (still one row for that item)
-    flipped = await repo.set_action(user, project, scene.id, "lore", "src-1", "exclude")
+    flipped = await repo.set_action(project, scene.id, "lore", "src-1", "exclude", created_by=user)
     assert flipped.action == "exclude"
-    rows = await repo.list_for_scene(user, project, scene.id)
+    rows = await repo.list_for_scene(project, scene.id)
     assert len(rows) == 2  # no duplicate row for src-1
     assert next(r for r in rows if r.item_id == "src-1").action == "exclude"
     # clear → row gone; a second clear is a no-op (False)
-    assert await repo.clear(user, project, scene.id, "lore", "src-1") is True
-    assert await repo.clear(user, project, scene.id, "lore", "src-1") is False
-    assert len(await repo.list_for_scene(user, project, scene.id)) == 1
-    # cross-user isolation — another user sees nothing for this scene
-    assert await repo.list_for_scene(uuid.uuid4(), project, scene.id) == []
+    assert await repo.clear(project, scene.id, "lore", "src-1") is True
+    assert await repo.clear(project, scene.id, "lore", "src-1") is False
+    assert len(await repo.list_for_scene(project, scene.id)) == 1
+    # cross-PROJECT scoping — a different project sees nothing for this scene
+    assert await repo.list_for_scene(uuid.uuid4(), scene.id) == []
 
 
 async def test_grounding_pins_cascade_on_scene_delete(pool):
     repo = GroundingPinsRepo(pool)
     olr = OutlineRepo(pool)
-    user, project, _ = _ids()
-    scene = await olr.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
-    await repo.set_action(user, project, scene.id, "canon", str(uuid.uuid4()), "pin")
-    assert len(await repo.list_for_scene(user, project, scene.id)) == 1
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    scene = await olr.create_node(project, created_by=user, kind="scene", chapter_id=uuid.uuid4())
+    await repo.set_action(project, scene.id, "canon", str(uuid.uuid4()), "pin", created_by=user)
+    assert len(await repo.list_for_scene(project, scene.id)) == 1
     # deleting the scene CASCADE-drops its pins (no orphan rows)
     async with pool.acquire() as c:
         await c.execute("DELETE FROM outline_node WHERE id = $1", scene.id)
-    assert await repo.list_for_scene(user, project, scene.id) == []
+    assert await repo.list_for_scene(project, scene.id) == []
 
 
 # ───────────────────────── generation_jobs ─────────────────────────
 
 async def test_generation_job_idempotency_replay(pool):
     repo = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     job1, created1 = await repo.create(
-        user, project, operation="draft_scene", idempotency_key="k1",
+        project, created_by=user, operation="draft_scene", idempotency_key="k1",
     )
     assert created1 is True
     job2, created2 = await repo.create(
-        user, project, operation="draft_scene", idempotency_key="k1",
+        project, created_by=user, operation="draft_scene", idempotency_key="k1",
     )
     assert created2 is False and job2.id == job1.id  # replay returns same job
     # no key → always a fresh row
-    j3, c3 = await repo.create(user, project, operation="continue")
-    j4, c4 = await repo.create(user, project, operation="continue")
+    j3, c3 = await repo.create(project, created_by=user, operation="continue")
+    j4, c4 = await repo.create(project, created_by=user, operation="continue")
     assert c3 and c4 and j3.id != j4.id
 
 
 async def test_generation_job_status_update_coalesces(pool):
     repo = GenerationJobsRepo(pool)
     olr = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     # outline_node_id is an in-DB FK → create a real node to point at.
-    node = await olr.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
+    node = await olr.create_node(project, created_by=user, kind="scene", chapter_id=uuid.uuid4())
     node_id = node.id
     job, _ = await repo.create(
-        user, project, operation="draft_scene", outline_node_id=node_id,
+        project, created_by=user, operation="draft_scene", outline_node_id=node_id,
         input={"prompt": "hi"},
     )
-    assert len(await repo.list_active_for_node(user, project, node_id)) == 1
+    assert len(await repo.list_active_for_node(project, node_id)) == 1
     # set result + run
-    await repo.update_status(user, job.id, "running", result={"text": "draft"})
+    await repo.update_status(job.id, "running", result={"text": "draft"})
     # later set critic WITHOUT clobbering result
     done = await repo.update_status(
-        user, job.id, "completed", critic={"coherence": 4},
+        job.id, "completed", critic={"coherence": 4},
         target_revision_id=uuid.uuid4(),
     )
     assert done is not None
     assert done.result == {"text": "draft"} and done.critic == {"coherence": 4}
     assert done.status == "completed"
-    assert await repo.list_active_for_node(user, project, node_id) == []
+    assert await repo.list_active_for_node(project, node_id) == []
 
 
 # ── M3 (WS-B3): promoted scene-prose synthetic-job store ──
@@ -849,26 +904,27 @@ async def test_promoted_scene_prose_persists_and_reads_back(pool):
     # with NO new table — the M3 contract's core requirement.
     gjr = GenerationJobsRepo(pool)
     olr = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    arc = await olr.create_node(user, project, kind="arc", title="arc")
-    chap = await olr.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
-    s1 = await olr.create_node(user, project, kind="scene", parent_id=chap.id,
+    arc = await olr.create_node(project, created_by=user, kind="arc", title="arc")
+    chap = await olr.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    s1 = await olr.create_node(project, created_by=user, kind="scene", parent_id=chap.id,
                                chapter_id=chapter, story_order=1, title="s1")
-    s2 = await olr.create_node(user, project, kind="scene", parent_id=chap.id,
+    s2 = await olr.create_node(project, created_by=user, kind="scene", parent_id=chap.id,
                                chapter_id=chapter, story_order=2, title="s2")
-    job1, v1 = await gjr.upsert_promoted_scene_prose(user, project, s1.id, "scene one prose")
-    job2, v2 = await gjr.upsert_promoted_scene_prose(user, project, s2.id, "scene two prose")
+    job1, v1 = await gjr.upsert_promoted_scene_prose(project, s1.id, "scene one prose", created_by=user)
+    job2, v2 = await gjr.upsert_promoted_scene_prose(project, s2.id, "scene two prose", created_by=user)
     assert v1 == 1 and v2 == 1
     assert job1.status == "completed" and job1.result == {"text": "scene one prose"}
     assert job1.input.get("kind") == "promoted_scene_prose"
     # chapter_scene_drafts reads EVERY scene's promoted prose in story_order
     # (F4: as {title, text} rows so the stitch can prepend scene headings)
-    drafts = await gjr.chapter_scene_drafts(user, project, chapter)
+    drafts = await gjr.chapter_scene_drafts(project, chapter)
     assert drafts == [{"title": "s1", "text": "scene one prose"},
                       {"title": "s2", "text": "scene two prose"}]
     # prior_scene_drafts is position-bounded (strictly before story_order=2 → only s1)
-    prior = await gjr.prior_scene_drafts(user, project, chapter, 2)
+    prior = await gjr.prior_scene_drafts(project, chapter, 2)
     assert prior == ["scene one prose"]
 
 
@@ -877,14 +933,15 @@ async def test_promoted_scene_prose_idempotent_overwrite_never_duplicates(pool):
     # duplicates; the version increments and the read-back reflects the latest text.
     gjr = GenerationJobsRepo(pool)
     olr = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    arc = await olr.create_node(user, project, kind="arc", title="arc")
-    chap = await olr.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
-    scene = await olr.create_node(user, project, kind="scene", parent_id=chap.id,
+    arc = await olr.create_node(project, created_by=user, kind="arc", title="arc")
+    chap = await olr.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    scene = await olr.create_node(project, created_by=user, kind="scene", parent_id=chap.id,
                                   chapter_id=chapter, story_order=1, title="s1")
-    _, v1 = await gjr.upsert_promoted_scene_prose(user, project, scene.id, "first take")
-    _, v2 = await gjr.upsert_promoted_scene_prose(user, project, scene.id, "second take")
+    _, v1 = await gjr.upsert_promoted_scene_prose(project, scene.id, "first take", created_by=user)
+    _, v2 = await gjr.upsert_promoted_scene_prose(project, scene.id, "second take", created_by=user)
     assert v1 == 1 and v2 == 2
     # exactly ONE promoted-prose row for the node (overwrite, not duplicate)
     async with pool.acquire() as c:
@@ -893,7 +950,7 @@ async def test_promoted_scene_prose_idempotent_overwrite_never_duplicates(pool):
             "WHERE outline_node_id=$1 AND input->>'kind'='promoted_scene_prose'", scene.id)
     assert n == 1
     # read-back is the latest take
-    drafts = await gjr.chapter_scene_drafts(user, project, chapter)
+    drafts = await gjr.chapter_scene_drafts(project, chapter)
     assert drafts == [{"title": "s1", "text": "second take"}]
 
 
@@ -901,16 +958,18 @@ async def test_promoted_scene_prose_rejects_foreign_or_non_scene_node(pool):
     # Defense-in-depth: the node must be the caller's SCENE in this project.
     gjr = GenerationJobsRepo(pool)
     olr = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     other_user, other_proj, _ = _ids()
-    # foreign scene (another user/project)
-    foreign = await olr.create_node(other_user, other_proj, kind="scene", chapter_id=uuid.uuid4())
+    await _seed_work(pool, other_user, other_proj)
+    # foreign scene (another project)
+    foreign = await olr.create_node(other_proj, created_by=other_user, kind="scene", chapter_id=uuid.uuid4())
     with pytest.raises(ReferenceViolationError):
-        await gjr.upsert_promoted_scene_prose(user, project, foreign.id, "x")
+        await gjr.upsert_promoted_scene_prose(project, foreign.id, "x", created_by=user)
     # a non-scene node (a chapter) in this project is rejected too
-    chap = await olr.create_node(user, project, kind="chapter", chapter_id=uuid.uuid4())
+    chap = await olr.create_node(project, created_by=user, kind="chapter", chapter_id=uuid.uuid4())
     with pytest.raises(ReferenceViolationError):
-        await gjr.upsert_promoted_scene_prose(user, project, chap.id, "x")
+        await gjr.upsert_promoted_scene_prose(project, chap.id, "x", created_by=user)
 
 
 async def test_promoted_scene_prose_scoped_per_project(pool):
@@ -920,36 +979,41 @@ async def test_promoted_scene_prose_scoped_per_project(pool):
     olr = OutlineRepo(pool)
     user, projA, _ = _ids()
     _, projB, _ = _ids()
+    await _seed_work(pool, user, projA)
+    await _seed_work(pool, user, projB)
     chapter = uuid.uuid4()
-    sA = await olr.create_node(user, projA, kind="scene", chapter_id=chapter, story_order=1)
-    sB = await olr.create_node(user, projB, kind="scene", chapter_id=chapter, story_order=1)
-    await gjr.upsert_promoted_scene_prose(user, projA, sA.id, "A prose")
-    await gjr.upsert_promoted_scene_prose(user, projB, sB.id, "B prose")
+    sA = await olr.create_node(projA, created_by=user, kind="scene", chapter_id=chapter, story_order=1)
+    sB = await olr.create_node(projB, created_by=user, kind="scene", chapter_id=chapter, story_order=1)
+    await gjr.upsert_promoted_scene_prose(projA, sA.id, "A prose", created_by=user)
+    await gjr.upsert_promoted_scene_prose(projB, sB.id, "B prose", created_by=user)
     # an untitled scene coalesces to title:"" (the stitch skips the heading for it)
-    assert await gjr.chapter_scene_drafts(user, projA, chapter) == [{"title": "", "text": "A prose"}]
-    assert await gjr.chapter_scene_drafts(user, projB, chapter) == [{"title": "", "text": "B prose"}]
+    assert await gjr.chapter_scene_drafts(projA, chapter) == [{"title": "", "text": "A prose"}]
+    assert await gjr.chapter_scene_drafts(projB, chapter) == [{"title": "", "text": "B prose"}]
 
 
-async def _insert_stale_job(pool, user, project, *, chapter_id=None) -> uuid.UUID:
+async def _insert_stale_job(pool, created_by, project, book, *, chapter_id=None) -> uuid.UUID:
     """Insert a `running` job created 1h ago (a crash-orphan). Optional chapter_id
-    in input makes it a chapter-level node-less job for the opportunistic-reap test."""
+    in input makes it a chapter-level node-less job for the opportunistic-reap test.
+    Package re-key: the actor column is `created_by`; book_id is NOT NULL (no FK — a
+    plain id supplied here, mirroring the in-SQL derivation the repo does)."""
     inp = {"chapter_id": str(chapter_id)} if chapter_id else {}
     async with pool.acquire() as c:
         return await c.fetchval(
             """INSERT INTO generation_job
-                 (user_id, project_id, operation, mode, status, input, created_at)
-               VALUES ($1,$2,'draft_chapter','auto','running',$3::jsonb, now() - interval '1 hour')
+                 (created_by, project_id, book_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,$3,'draft_chapter','auto','running',$4::jsonb, now() - interval '1 hour')
                RETURNING id""",
-            user, project, json.dumps(inp))
+            created_by, project, book, json.dumps(inp))
 
 
 async def test_reap_stale_jobs_marks_stale_failed_leaves_fresh(pool):
     # D-COMP-CHAPTER-INFLIGHT-REAPER sweep: jobs orphaned in `running` past the
     # cutoff are marked failed; a fresh one is untouched.
     repo = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
-    stale = [await _insert_stale_job(pool, user, project) for _ in range(2)]
-    fresh, _ = await repo.create(user, project, operation="draft_chapter", status="running")
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    stale = [await _insert_stale_job(pool, user, project, book) for _ in range(2)]
+    fresh, _ = await repo.create(project, created_by=user, operation="draft_chapter", status="running")
     reaped = await repo.reap_stale_jobs(datetime.now(timezone.utc) - timedelta(minutes=30))
     assert reaped == 2  # clean test DB → exactly the two stale jobs
     async with pool.acquire() as c:
@@ -966,20 +1030,21 @@ async def test_reap_stale_jobs_excludes_worker_ops(pool):
     from app.worker.operations import SUPPORTED_OPERATIONS
 
     repo = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     async with pool.acquire() as c:
         worker_by_op = await c.fetchval(
-            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
-               VALUES ($1,$2,'stitch_chapter','auto','running','{}'::jsonb, now() - interval '1 hour')
-               RETURNING id""", user, project)
+            """INSERT INTO generation_job (created_by, project_id, book_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,$3,'stitch_chapter','auto','running','{}'::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project, book)
         worker_by_input = await c.fetchval(
-            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
-               VALUES ($1,$2,'draft_scene','auto','running',$3::jsonb, now() - interval '1 hour')
-               RETURNING id""", user, project, json.dumps({"worker_op": "generate"}))
+            """INSERT INTO generation_job (created_by, project_id, book_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,$3,'draft_scene','auto','running',$4::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project, book, json.dumps({"worker_op": "generate"}))
         inline = await c.fetchval(
-            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
-               VALUES ($1,$2,'draft_chapter','auto','running','{}'::jsonb, now() - interval '1 hour')
-               RETURNING id""", user, project)
+            """INSERT INTO generation_job (created_by, project_id, book_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,$3,'draft_chapter','auto','running','{}'::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project, book)
 
     reaped = await repo.reap_stale_jobs(
         datetime.now(timezone.utc) - timedelta(minutes=30),
@@ -996,11 +1061,12 @@ async def test_create_chapter_job_guarded_opportunistic_reap(pool):
     # The guard marks THIS chapter's stale node-less jobs failed (opportunistic),
     # then creates a new one (the stale job is past the window, so it doesn't block).
     repo = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    stale = await _insert_stale_job(pool, user, project, chapter_id=chapter)
+    stale = await _insert_stale_job(pool, user, project, book, chapter_id=chapter)
     job, created = await repo.create_chapter_job_guarded(
-        user, project, chapter, operation="draft_chapter",
+        project, chapter, created_by=user, operation="draft_chapter",
         input={"chapter_id": str(chapter)}, stale_secs=1800)
     assert created is True and job.status == "running"
     async with pool.acquire() as c:
@@ -1042,12 +1108,14 @@ async def test_outbox_emit_is_transactional(pool):
         n = await c.fetchval("SELECT count(*) FROM outbox_events WHERE event_type=$1", outbox.WORK_CREATED)
     assert n == 1
 
-    # rollback path: the event vanishes with the aborted txn
-    p2 = uuid.uuid4()
+    # rollback path: the event vanishes with the aborted txn. A DISTINCT book — the
+    # one-canonical-Work-per-book partial unique (uq_composition_work_book) rejects a
+    # second active canonical Work under `book`, so p2 gets its own book.
+    p2, book2 = uuid.uuid4(), uuid.uuid4()
     with pytest.raises(RuntimeError):
         async with pool.acquire() as conn:
             async with conn.transaction():
-                await works.create(user, p2, book, conn=conn)
+                await works.create(user, p2, book2, conn=conn)
                 await outbox.emit(conn, aggregate_id=p2, event_type="composition.rolled_back")
                 raise RuntimeError("force rollback")
     async with pool.acquire() as c:
@@ -1068,12 +1136,13 @@ async def _scene_committed_count(pool, project) -> int:
 
 async def test_scene_commit_emits_scene_committed_event(pool):
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    scene = await repo.create_node(user, project, kind="scene", chapter_id=chapter, title="S1")
+    scene = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter, title="S1")
 
     # drafting → done: exactly one scene_committed event, with the right payload
-    done = await repo.update_node_commit_aware(user, scene.id, {"status": "done"})
+    done = await repo.update_node_commit_aware(scene.id, {"status": "done"})
     assert done is not None and done.status == "done"
     async with pool.acquire() as c:
         rows = await c.fetch(
@@ -1089,15 +1158,16 @@ async def test_scene_commit_emits_scene_committed_event(pool):
     assert payload["project_id"] == str(project)
 
     # done → done: a no-op transition emits NO further event
-    await repo.update_node_commit_aware(user, scene.id, {"status": "done"})
+    await repo.update_node_commit_aware(scene.id, {"status": "done"})
     assert await _scene_committed_count(pool, project) == 1
 
 
 async def test_non_scene_done_emits_no_event(pool):
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
-    chapter = await repo.create_node(user, project, kind="chapter", chapter_id=uuid.uuid4())
-    await repo.update_node_commit_aware(user, chapter.id, {"status": "done"})
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    chapter = await repo.create_node(project, created_by=user, kind="chapter", chapter_id=uuid.uuid4())
+    await repo.update_node_commit_aware(chapter.id, {"status": "done"})
     assert await _scene_committed_count(pool, project) == 0
 
 
@@ -1105,52 +1175,55 @@ async def test_scene_commit_rolls_back_event_on_version_conflict(pool):
     # a stale If-Match raises VersionMismatchError from inside the txn → the
     # status write AND any event roll back together (no orphan telemetry).
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
-    scene = await repo.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    scene = await repo.create_node(project, created_by=user, kind="scene", chapter_id=uuid.uuid4())
     with pytest.raises(VersionMismatchError):
-        await repo.update_node_commit_aware(user, scene.id, {"status": "done"}, expected_version=99)
+        await repo.update_node_commit_aware(scene.id, {"status": "done"}, expected_version=99)
     assert await _scene_committed_count(pool, project) == 0
     # the scene status was NOT advanced
-    still = await repo.get_node(user, scene.id)
+    still = await repo.get_node(scene.id)
     assert still is not None and still.status != "done"
 
 
 async def test_chapter_scene_gate_counts_and_can_publish(pool):
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
     other_chapter = uuid.uuid4()
-    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
-    s2 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    s1 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
+    s2 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
     # a scene in a DIFFERENT chapter must not count
-    await repo.create_node(user, project, kind="scene", chapter_id=other_chapter, status="done")
+    await repo.create_node(project, created_by=user, kind="scene", chapter_id=other_chapter, status="done")
 
     # zero done → blocked
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate == {"chapter_id": str(chapter), "scenes_total": 2, "scenes_done": 0,
                     "canon_blocked": False, "canon_unresolved_scenes": 0,
                     "canon_unchecked_scenes": 0, "can_publish": False}
 
     # one done → still blocked
-    await repo.update_node_commit_aware(user, s1.id, {"status": "done"})
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    await repo.update_node_commit_aware(s1.id, {"status": "done"})
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["scenes_done"] == 1 and gate["can_publish"] is False
 
     # all done → publishable
-    await repo.update_node_commit_aware(user, s2.id, {"status": "done"})
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    await repo.update_node_commit_aware(s2.id, {"status": "done"})
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["scenes_total"] == 2 and gate["scenes_done"] == 2 and gate["can_publish"] is True
 
     # an archived scene drops out of the count
-    await repo.archive_node(user, s2.id)
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    await repo.archive_node(s2.id)
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["scenes_total"] == 1 and gate["can_publish"] is True
 
 
 async def test_chapter_scene_gate_zero_scenes_blocks(pool):
     repo = OutlineRepo(pool)
-    user, project, _ = _ids()
-    gate = await repo.chapter_scene_gate(user, project, uuid.uuid4())
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    gate = await repo.chapter_scene_gate(project, uuid.uuid4())
     assert gate["scenes_total"] == 0 and gate["can_publish"] is False
 
 
@@ -1160,32 +1233,33 @@ async def test_chapter_scene_gate_blocks_on_unresolved_canon(pool):
     (result.canon.resolved == false); a newer resolved job supersedes it."""
     repo = OutlineRepo(pool)
     jobs = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
-    await repo.update_node_commit_aware(user, s1.id, {"status": "done"})  # all done
+    s1 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
+    await repo.update_node_commit_aware(s1.id, {"status": "done"})  # all done
 
     # baseline: no jobs → not canon-blocked → publishable.
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["can_publish"] is True and gate["canon_blocked"] is False
 
     # latest completed auto job left an UNRESOLVED canon contradiction → blocked.
-    j1, _ = await jobs.create(user, project, operation="draft_scene",
+    j1, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j1.id, "completed",
+    await jobs.update_status(j1.id, "completed",
                              result={"text": "x", "canon": {"resolved": False,
                                                             "violations": [{"entity_id": "e"}]}})
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["scenes_done"] == 1
     assert gate["canon_blocked"] is True and gate["canon_unresolved_scenes"] == 1
     assert gate["can_publish"] is False
 
     # a NEWER resolved job for the same scene supersedes (DISTINCT ON latest).
-    j2, _ = await jobs.create(user, project, operation="draft_scene",
+    j2, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j2.id, "completed",
+    await jobs.update_status(j2.id, "completed",
                              result={"text": "y", "canon": {"resolved": True}})
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["canon_blocked"] is False and gate["can_publish"] is True
 
 
@@ -1197,22 +1271,23 @@ async def test_chapter_scene_gate_synthetic_prose_job_does_not_mask_canon(pool):
     blocked (conservative-for-canon: only a real re-generation can clear the block)."""
     repo = OutlineRepo(pool)
     jobs = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
-    await repo.update_node_commit_aware(user, s1.id, {"status": "done"})
+    s1 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
+    await repo.update_node_commit_aware(s1.id, {"status": "done"})
 
     # auto job leaves an unresolved contradiction → blocked.
-    j1, _ = await jobs.create(user, project, operation="draft_scene",
+    j1, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j1.id, "completed",
+    await jobs.update_status(j1.id, "completed",
                              result={"text": "x", "canon": {"resolved": False,
                                                             "violations": [{"entity_id": "e"}]}})
-    assert (await repo.chapter_scene_gate(user, project, chapter))["canon_blocked"] is True
+    assert (await repo.chapter_scene_gate(project, chapter))["canon_blocked"] is True
 
     # a LATER synthetic prose-persist job (no canon key) must NOT mask the block.
-    await jobs.upsert_promoted_scene_prose(user, project, s1.id, "author's edited take prose")
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    await jobs.upsert_promoted_scene_prose(project, s1.id, "author's edited take prose", created_by=user)
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["canon_blocked"] is True and gate["canon_unresolved_scenes"] == 1
     assert gate["can_publish"] is False
 
@@ -1224,16 +1299,17 @@ async def test_chapter_scene_gate_surfaces_unchecked_without_blocking(pool):
     the FE warns instead)."""
     repo = OutlineRepo(pool)
     jobs = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
-    await repo.update_node_commit_aware(user, s1.id, {"status": "done"})
-    j, _ = await jobs.create(user, project, operation="draft_scene",
+    s1 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
+    await repo.update_node_commit_aware(s1.id, {"status": "done"})
+    j, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                              outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j.id, "completed",
+    await jobs.update_status(j.id, "completed",
                              result={"text": "x", "canon": {"resolved": True,
                                                             "status": "skipped_no_position"}})
-    gate = await repo.chapter_scene_gate(user, project, chapter)
+    gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["canon_unchecked_scenes"] == 1
     assert gate["canon_blocked"] is False
     assert gate["can_publish"] is True  # surfaced, NOT blocked
@@ -1241,8 +1317,9 @@ async def test_chapter_scene_gate_surfaces_unchecked_without_blocking(pool):
 
 async def test_canon_issues_empty_book_returns_empty_list(pool):
     repo = OutlineRepo(pool)
-    _, project, _ = _ids()
-    assert await repo.canon_issues(uuid.uuid4(), project) == []
+    # a project with no generation jobs → no canon issues (canon_issues keys on
+    # project_id alone now — no actor arg).
+    assert await repo.canon_issues(uuid.uuid4()) == []
 
 
 async def test_canon_issues_lists_unresolved_scenes_itemized(pool):
@@ -1252,23 +1329,24 @@ async def test_canon_issues_lists_unresolved_scenes_itemized(pool):
     violations payload and chapter_id (no title — composition doesn't own that)."""
     repo = OutlineRepo(pool)
     jobs = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     ch1, ch2 = uuid.uuid4(), uuid.uuid4()
-    s1 = await repo.create_node(user, project, kind="scene", chapter_id=ch1, title="Scene A")
-    s2 = await repo.create_node(user, project, kind="scene", chapter_id=ch2, title="Scene B")
+    s1 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=ch1, title="Scene A")
+    s2 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=ch2, title="Scene B")
 
-    j1, _ = await jobs.create(user, project, operation="draft_scene",
+    j1, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j1.id, "completed",
+    await jobs.update_status(j1.id, "completed",
                              result={"text": "x", "canon": {"resolved": False, "status": "checked",
                                                             "violations": [{"entity_id": "e1", "name": "Old Man Wu"}]}})
-    j2, _ = await jobs.create(user, project, operation="draft_scene",
+    j2, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s2.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j2.id, "completed",
+    await jobs.update_status(j2.id, "completed",
                              result={"text": "y", "canon": {"resolved": False, "status": "checked",
                                                             "violations": [{"entity_id": "e2", "name": "Su Han"}]}})
 
-    issues = await repo.canon_issues(user, project)
+    issues = await repo.canon_issues(project)
     assert len(issues) == 2
     by_scene = {i["scene_id"]: i for i in issues}
     assert by_scene[str(s1.id)]["chapter_id"] == str(ch1)
@@ -1281,29 +1359,30 @@ async def test_canon_issues_lists_unresolved_scenes_itemized(pool):
 async def test_canon_issues_resolved_scene_absent_and_newer_job_supersedes(pool):
     repo = OutlineRepo(pool)
     jobs = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    s1 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
 
     # a resolved job never appears.
-    j1, _ = await jobs.create(user, project, operation="draft_scene",
+    j1, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j1.id, "completed", result={"text": "x", "canon": {"resolved": True}})
-    assert await repo.canon_issues(user, project) == []
+    await jobs.update_status(j1.id, "completed", result={"text": "x", "canon": {"resolved": True}})
+    assert await repo.canon_issues(project) == []
 
     # an unresolved job appears...
-    j2, _ = await jobs.create(user, project, operation="draft_scene",
+    j2, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j2.id, "completed",
+    await jobs.update_status(j2.id, "completed",
                              result={"text": "y", "canon": {"resolved": False, "violations": []}})
-    issues = await repo.canon_issues(user, project)
+    issues = await repo.canon_issues(project)
     assert len(issues) == 1 and issues[0]["job_id"] == str(j2.id)
 
     # ...until a NEWER resolved job supersedes it (DISTINCT ON latest, same as chapter_scene_gate).
-    j3, _ = await jobs.create(user, project, operation="draft_scene",
+    j3, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j3.id, "completed", result={"text": "z", "canon": {"resolved": True}})
-    assert await repo.canon_issues(user, project) == []
+    await jobs.update_status(j3.id, "completed", result={"text": "z", "canon": {"resolved": True}})
+    assert await repo.canon_issues(project) == []
 
 
 async def test_canon_issues_synthetic_prose_job_does_not_mask(pool):
@@ -1312,15 +1391,16 @@ async def test_canon_issues_synthetic_prose_job_does_not_mask(pool):
     same exclusion as chapter_scene_gate, itemized list must stay conservative-for-canon."""
     repo = OutlineRepo(pool)
     jobs = GenerationJobsRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
-    j1, _ = await jobs.create(user, project, operation="draft_scene",
+    s1 = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter)
+    j1, _ = await jobs.create(project, created_by=user, operation="draft_scene",
                               outline_node_id=s1.id, mode="auto", status="running", input={})
-    await jobs.update_status(user, j1.id, "completed",
+    await jobs.update_status(j1.id, "completed",
                              result={"text": "x", "canon": {"resolved": False, "violations": [{"entity_id": "e"}]}})
-    await jobs.upsert_promoted_scene_prose(user, project, s1.id, "author's edited take prose")
-    issues = await repo.canon_issues(user, project)
+    await jobs.upsert_promoted_scene_prose(project, s1.id, "author's edited take prose", created_by=user)
+    issues = await repo.canon_issues(project)
     assert len(issues) == 1 and issues[0]["job_id"] == str(j1.id)
 
 
@@ -1329,19 +1409,22 @@ async def test_canon_issues_synthetic_prose_job_does_not_mask(pool):
 import json as _json  # noqa: E402
 
 
-async def _make_job(pool, user, project):
+async def _make_job(pool, created_by, project):
+    # Caller must have seeded the project's composition_work first (the INSERT derives
+    # book_id from it). `created_by` is the actor stamp, keyword-only on the repo.
     gjr = GenerationJobsRepo(pool)
-    job, _ = await gjr.create(user, project, operation="draft_scene",
+    job, _ = await gjr.create(project, created_by=created_by, operation="draft_scene",
                               status="completed", input={"model_ref": str(uuid.uuid4())})
     return job
 
 
 async def test_correction_create_emits_relayable_event_atomically(pool):
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     job = await _make_job(pool, user, project)
     repo = GenerationCorrectionsRepo(pool)
     corr = await repo.create(
-        user, project, job.id, kind="edit", changed_blocks=3, guidance="tighten",
+        project, job.id, created_by=user, kind="edit", changed_blocks=3, guidance="tighten",
     )
     assert corr.kind == "edit" and corr.changed_blocks == 3
     async with pool.acquire() as c:
@@ -1366,9 +1449,10 @@ async def test_correction_payload_carries_winner_and_k_for_reconstruction(pool):
     """LOW#4: a pick_different event must carry winner_index (i) + chosen (j) + k
     so slice-2 learning can reconstruct `j ≻ i` without reading composition's DB."""
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     job = await _make_job(pool, user, project)
     repo = GenerationCorrectionsRepo(pool)
-    await repo.create(user, project, job.id, kind="pick_different",
+    await repo.create(project, job.id, created_by=user, kind="pick_different",
                       chosen_candidate_index=1, winner_index=2, candidate_count=3)
     async with pool.acquire() as c:
         ev = await c.fetchval(
@@ -1384,6 +1468,7 @@ async def test_correction_emit_failure_rolls_back_row(pool, monkeypatch):
     """The insert + outbox emit share ONE transaction: if the emit raises, the
     correction row must NOT persist (no capture without a relayable event)."""
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     job = await _make_job(pool, user, project)
     repo = GenerationCorrectionsRepo(pool)
 
@@ -1392,7 +1477,7 @@ async def test_correction_emit_failure_rolls_back_row(pool, monkeypatch):
 
     monkeypatch.setattr("app.db.repositories.outbox.emit", boom)
     with pytest.raises(RuntimeError):
-        await repo.create(user, project, job.id, kind="reject")
+        await repo.create(project, job.id, created_by=user, kind="reject")
     async with pool.acquire() as c:
         n = await c.fetchval("SELECT count(*) FROM generation_correction WHERE job_id=$1", job.id)
     assert n == 0  # atomic: the row rolled back with the failed emit
@@ -1400,15 +1485,19 @@ async def test_correction_emit_failure_rolls_back_row(pool, monkeypatch):
 
 async def test_correction_rejects_foreign_job(pool):
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     job = await _make_job(pool, user, project)
     repo = GenerationCorrectionsRepo(pool)
-    # another user correcting our job → rejected, no row, no event
+    # NEW LAW (spec 25 PM-5): the actor (created_by) is a plain stamp — a book grantee
+    # may correct — so per-actor refusal moved to the E0 gate. The repo's surviving
+    # guard is that the job must live in the GIVEN project: a wrong project id can't
+    # resolve the job → rejected, and NOTHING is written (no row, no event). A
+    # different actor stamp on the SAME wrong project is refused for the same reason.
     other, _, _ = _ids()
     with pytest.raises(ReferenceViolationError):
-        await repo.create(other, project, job.id, kind="reject")
-    # wrong project for the right user → also rejected
+        await repo.create(uuid.uuid4(), job.id, created_by=user, kind="reject")
     with pytest.raises(ReferenceViolationError):
-        await repo.create(user, uuid.uuid4(), job.id, kind="reject")
+        await repo.create(uuid.uuid4(), job.id, created_by=other, kind="reject")
     async with pool.acquire() as c:
         n = await c.fetchval("SELECT count(*) FROM generation_correction")
         ev = await c.fetchval("SELECT count(*) FROM outbox_events WHERE event_type=$1",
@@ -1420,22 +1509,24 @@ async def test_correction_rejects_foreign_regenerated_to_job(pool):
     """/review-impl MED#2: the §8.3 chain target must also be the caller's job in
     this project — a foreign regenerated_to_job_id is rejected, nothing written."""
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     job = await _make_job(pool, user, project)
-    # a job owned by another user (FK would pass — it exists — but ownership must not)
+    # a job in another project (FK would pass — it exists — but scope must not)
     other, other_proj, _ = _ids()
+    await _seed_work(pool, other, other_proj)
     foreign_job = await _make_job(pool, other, other_proj)
     repo = GenerationCorrectionsRepo(pool)
     with pytest.raises(ReferenceViolationError):
-        await repo.create(user, project, job.id, kind="regenerate",
+        await repo.create(project, job.id, created_by=user, kind="regenerate",
                           regenerated_to_job_id=foreign_job.id)
     async with pool.acquire() as c:
         n = await c.fetchval("SELECT count(*) FROM generation_correction")
         ev = await c.fetchval("SELECT count(*) FROM outbox_events WHERE event_type=$1",
                               outbox.GENERATION_CORRECTED)
     assert n == 0 and ev == 0
-    # a chain target that IS the caller's own job in-project is accepted
+    # a chain target that IS a job in the SAME project is accepted
     own2 = await _make_job(pool, user, project)
-    ok = await repo.create(user, project, job.id, kind="regenerate",
+    ok = await repo.create(project, job.id, created_by=user, kind="regenerate",
                            regenerated_to_job_id=own2.id)
     assert ok.regenerated_to_job_id == own2.id
 
@@ -1443,23 +1534,25 @@ async def test_correction_rejects_foreign_regenerated_to_job(pool):
 async def test_correction_pick_different_check_constraint(pool):
     """The DB CHECK forbids a pick_different without the candidate it points at."""
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     job = await _make_job(pool, user, project)
     repo = GenerationCorrectionsRepo(pool)
     with pytest.raises(asyncpg.CheckViolationError):
-        await repo.create(user, project, job.id, kind="pick_different",
+        await repo.create(project, job.id, created_by=user, kind="pick_different",
                           chosen_candidate_index=None)
 
 
 async def test_correction_stores_raw_prose_and_lists(pool):
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     job = await _make_job(pool, user, project)
     repo = GenerationCorrectionsRepo(pool)
-    await repo.create(user, project, job.id, kind="edit", changed_blocks=1,
+    await repo.create(project, job.id, created_by=user, kind="edit", changed_blocks=1,
                       raw_before="winner text", raw_after="edited text")
-    listed = await repo.list_for_job(user, job.id)
+    listed = await repo.list_for_job(project, job.id)
     assert len(listed) == 1
     assert listed[0].raw_before == "winner text" and listed[0].raw_after == "edited text"
-    # cross-user list is empty
+    # cross-PROJECT list is empty (list_for_job keys on project_id + job_id)
     assert await repo.list_for_job(uuid.uuid4(), job.id) == []
 
 
@@ -1470,23 +1563,24 @@ async def test_correction_stats_rates_by_mode(pool):
     gjr = GenerationJobsRepo(pool)
     cr = GenerationCorrectionsRepo(pool)
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     auto = []
     for _ in range(4):
-        j, _ = await gjr.create(user, project, operation="draft_scene", mode="auto", status="completed")
+        j, _ = await gjr.create(project, created_by=user, operation="draft_scene", mode="auto", status="completed")
         auto.append(j)
     cow = []
     for _ in range(2):
-        j, _ = await gjr.create(user, project, operation="draft_scene", mode="cowrite", status="completed")
+        j, _ = await gjr.create(project, created_by=user, operation="draft_scene", mode="cowrite", status="completed")
         cow.append(j)
     # a 'running' auto job must NOT count toward generations (denominator)
-    await gjr.create(user, project, operation="draft_scene", mode="auto", status="running")
+    await gjr.create(project, created_by=user, operation="draft_scene", mode="auto", status="running")
     # auto: one edit (magnitude 3) + one pick_different → 2 corrected of 4
-    await cr.create(user, project, auto[0].id, kind="edit", changed_blocks=3)
-    await cr.create(user, project, auto[1].id, kind="pick_different", chosen_candidate_index=1)
+    await cr.create(project, auto[0].id, created_by=user, kind="edit", changed_blocks=3)
+    await cr.create(project, auto[1].id, created_by=user, kind="pick_different", chosen_candidate_index=1)
     # cowrite: one reject → 1 corrected of 2
-    await cr.create(user, project, cow[0].id, kind="reject")
+    await cr.create(project, cow[0].id, created_by=user, kind="reject")
 
-    stats = await cr.correction_stats(user, project)
+    stats = await cr.correction_stats(project)
     by = {m.mode: m for m in stats.by_mode}
     assert set(by) == {"auto", "cowrite"}  # both always present
     a = by["auto"]
@@ -1497,8 +1591,8 @@ async def test_correction_stats_rates_by_mode(pool):
     cw = by["cowrite"]
     assert cw.generations == 2 and cw.corrected_jobs == 1 and cw.reject_rate == 0.5
     assert cw.edit_rate == 0.0 and cw.avg_edit_magnitude is None
-    # cross-user isolation → all zero
-    other = await cr.correction_stats(uuid.uuid4(), project)
+    # cross-PROJECT isolation → all zero (stats key on project_id)
+    other = await cr.correction_stats(uuid.uuid4())
     assert all(m.generations == 0 and m.corrected_jobs == 0 for m in other.by_mode)
 
 
@@ -1510,13 +1604,14 @@ async def test_correction_stats_excludes_selection_edits(pool):
     gjr = GenerationJobsRepo(pool)
     cr = GenerationCorrectionsRepo(pool)
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     # one real cowrite scene draft + two selection edits (also mode='cowrite').
-    await gjr.create(user, project, operation="draft_scene", mode="cowrite", status="completed")
-    await gjr.create(user, project, operation="rewrite", mode="cowrite", status="completed",
+    await gjr.create(project, created_by=user, operation="draft_scene", mode="cowrite", status="completed")
+    await gjr.create(project, created_by=user, operation="rewrite", mode="cowrite", status="completed",
                      input={"selection_edit": True})
-    await gjr.create(user, project, operation="expand", mode="cowrite", status="completed",
+    await gjr.create(project, created_by=user, operation="expand", mode="cowrite", status="completed",
                      input={"selection_edit": True})
-    stats = await cr.correction_stats(user, project)
+    stats = await cr.correction_stats(project)
     cw = next(m for m in stats.by_mode if m.mode == "cowrite")
     assert cw.generations == 1  # ONLY the real scene draft, not the 2 selection edits
 
@@ -1528,15 +1623,16 @@ async def test_correction_stats_distinct_job_and_completed_only(pool):
     gjr = GenerationJobsRepo(pool)
     cr = GenerationCorrectionsRepo(pool)
     user, project, _ = _ids()
+    await _seed_work(pool, user, project)
     # one completed auto generation that gets TWO corrections (regenerate + edit)
-    j, _ = await gjr.create(user, project, operation="draft_scene", mode="auto", status="completed")
-    await cr.create(user, project, j.id, kind="regenerate", guidance="darker")
-    await cr.create(user, project, j.id, kind="edit", changed_blocks=2)
+    j, _ = await gjr.create(project, created_by=user, operation="draft_scene", mode="auto", status="completed")
+    await cr.create(project, j.id, created_by=user, kind="regenerate", guidance="darker")
+    await cr.create(project, j.id, created_by=user, kind="edit", changed_blocks=2)
     # a RUNNING auto job with a reject correction (creatable via the API) must NOT count
-    run, _ = await gjr.create(user, project, operation="draft_scene", mode="auto", status="running")
-    await cr.create(user, project, run.id, kind="reject")
+    run, _ = await gjr.create(project, created_by=user, operation="draft_scene", mode="auto", status="running")
+    await cr.create(project, run.id, created_by=user, kind="reject")
 
-    a = next(m for m in (await cr.correction_stats(user, project)).by_mode if m.mode == "auto")
+    a = next(m for m in (await cr.correction_stats(project)).by_mode if m.mode == "auto")
     assert a.generations == 1          # only the completed job
     assert a.corrected_jobs == 1       # the one job, counted ONCE despite 2 corrections
     assert a.edit_rate == 1.0 and a.regenerate_rate == 1.0   # ≤ 1.0
@@ -1547,8 +1643,8 @@ async def test_correction_stats_distinct_job_and_completed_only(pool):
 async def test_correction_stats_cold_start_null_rates(pool):
     """No generations → rates are None (cold-start), not div-by-zero."""
     cr = GenerationCorrectionsRepo(pool)
-    user, project, _ = _ids()
-    stats = await cr.correction_stats(user, project)
+    _, project, _ = _ids()
+    stats = await cr.correction_stats(project)
     for m in stats.by_mode:
         assert m.generations == 0 and m.accept_rate is None and m.edit_rate is None
 
@@ -1556,13 +1652,15 @@ async def test_correction_stats_cold_start_null_rates(pool):
 # ── narrative_thread ledger (cycle 14 §5.2/§10.2) ──────────────────────────────
 
 
-async def _make_node(pool, user, project) -> uuid.UUID:
-    """A minimal arc outline_node so the narrative_thread node FKs resolve."""
+async def _make_node(pool, created_by, project, book) -> uuid.UUID:
+    """A minimal arc outline_node so the narrative_thread node FKs resolve. Package
+    re-key: the actor column is `created_by`; book_id is NOT NULL (no FK — a plain
+    id supplied here)."""
     async with pool.acquire() as c:
         return await c.fetchval(
-            "INSERT INTO outline_node (user_id, project_id, kind, rank) "
-            "VALUES ($1, $2, 'arc', 'a') RETURNING id",
-            user, project,
+            "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank) "
+            "VALUES ($1, $2, $3, 'arc', 'a') RETURNING id",
+            created_by, project, book,
         )
 
 
@@ -1570,27 +1668,28 @@ async def test_narrative_thread_open_pay_lifecycle(pool):
     """open → list_open shows it → pay (with payoff_node) → list_open drops it,
     list_for_project keeps it (paid). Tenant isolation: another user can't pay it."""
     repo = NarrativeThreadRepo(pool)
-    user, project, _ = _ids()
-    node = await _make_node(pool, user, project)
-    payoff = await _make_node(pool, user, project)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    node = await _make_node(pool, user, project, book)
+    payoff = await _make_node(pool, user, project, book)
     t = await repo.open_thread(
-        user, project, kind="promise", summary="a sword is promised",
+        project, created_by=user, kind="promise", summary="a sword is promised",
         opened_at_node=node, trigger="hand on the hilt", priority=80,
     )
     assert t.status == "open" and t.payoff_node is None and t.opened_at_node == node
 
-    assert [x.id for x in await repo.list_open(user, project)] == [t.id]
+    assert [x.id for x in await repo.list_open(project)] == [t.id]
 
-    # tenant isolation: another user cannot transition it.
-    other = uuid.uuid4()
-    assert await repo.update_status(other, project, t.id, status="paid", payoff_node=payoff) is None
+    # scoping (NEW LAW): the thread is keyed on its project partition — a WRONG project
+    # id can't transition it (per-actor refusal moved to the E0 book gate).
+    assert await repo.update_status(uuid.uuid4(), t.id, status="paid", payoff_node=payoff) is None
 
-    paid = await repo.update_status(user, project, t.id, status="paid", payoff_node=payoff)
+    paid = await repo.update_status(project, t.id, status="paid", payoff_node=payoff)
     assert paid is not None and paid.status == "paid" and paid.payoff_node == payoff and paid.version == 2
 
     # paid → out of the re-injectable open set; still in the full list.
-    assert await repo.list_open(user, project) == []
-    allt = await repo.list_for_project(user, project)
+    assert await repo.list_open(project) == []
+    allt = await repo.list_for_project(project)
     assert len(allt) == 1 and allt[0].status == "paid"
 
 
@@ -1598,33 +1697,36 @@ async def test_narrative_thread_payoff_only_when_paid(pool):
     """A payoff_node on a non-paid transition is cleared by the repo, so the
     table CHECK (payoff_node IS NULL OR status='paid') never trips."""
     repo = NarrativeThreadRepo(pool)
-    user, project, _ = _ids()
-    node = await _make_node(pool, user, project)
-    t = await repo.open_thread(user, project, kind="foreshadow", summary="a stranger watches")
-    prog = await repo.update_status(user, project, t.id, status="progressing", payoff_node=node)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    node = await _make_node(pool, user, project, book)
+    t = await repo.open_thread(project, created_by=user, kind="foreshadow", summary="a stranger watches")
+    prog = await repo.update_status(project, t.id, status="progressing", payoff_node=node)
     assert prog is not None and prog.status == "progressing" and prog.payoff_node is None
 
 
 async def test_narrative_thread_list_open_ordering(pool):
     """The F2 re-injection read order: highest priority first, then oldest-first."""
     repo = NarrativeThreadRepo(pool)
-    user, project, _ = _ids()
-    low = await repo.open_thread(user, project, kind="promise", summary="low", priority=10)
-    high = await repo.open_thread(user, project, kind="promise", summary="high", priority=90)
-    mid = await repo.open_thread(user, project, kind="promise", summary="mid", priority=50)
-    assert [x.id for x in await repo.list_open(user, project)] == [high.id, mid.id, low.id]
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    low = await repo.open_thread(project, created_by=user, kind="promise", summary="low", priority=10)
+    high = await repo.open_thread(project, created_by=user, kind="promise", summary="high", priority=90)
+    mid = await repo.open_thread(project, created_by=user, kind="promise", summary="mid", priority=50)
+    assert [x.id for x in await repo.list_open(project)] == [high.id, mid.id, low.id]
 
 
 async def test_narrative_thread_node_delete_sets_null(pool):
     """ON DELETE SET NULL: removing the anchored outline_node leaves the thread
     intact but un-anchored (no dangling ref)."""
     repo = NarrativeThreadRepo(pool)
-    user, project, _ = _ids()
-    node = await _make_node(pool, user, project)
-    t = await repo.open_thread(user, project, kind="promise", summary="anchored", opened_at_node=node)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    node = await _make_node(pool, user, project, book)
+    t = await repo.open_thread(project, created_by=user, kind="promise", summary="anchored", opened_at_node=node)
     async with pool.acquire() as c:
         await c.execute("DELETE FROM outline_node WHERE id = $1", node)
-    after = (await repo.list_for_project(user, project))[0]
+    after = (await repo.list_for_project(project))[0]
     assert after.id == t.id and after.opened_at_node is None
 
 
@@ -1744,68 +1846,73 @@ async def test_daily_progress_book_total_includes_unwritten_baseline(pool):
 async def test_style_profile_resolve_precedence(pool):
     """resolve() returns the MOST SPECIFIC scope: scene > chapter > work > None."""
     repo = StyleProfileRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     scene, chapter = uuid.uuid4(), uuid.uuid4()
-    await repo.upsert(user, project, "work", project, 50, 50)
+    await repo.upsert(project, "work", project, 50, 50, created_by=user)
     # only work set → resolve returns work
-    r = await repo.resolve(user, project, scene, chapter)
+    r = await repo.resolve(project, scene, chapter)
     assert r is not None and r.scope_type == "work"
     # add chapter → chapter wins over work
-    await repo.upsert(user, project, "chapter", chapter, 40, 60)
-    r = await repo.resolve(user, project, scene, chapter)
+    await repo.upsert(project, "chapter", chapter, 40, 60, created_by=user)
+    r = await repo.resolve(project, scene, chapter)
     assert r.scope_type == "chapter" and r.density == 40
     # add scene → scene wins over chapter + work
-    await repo.upsert(user, project, "scene", scene, 80, 20)
-    r = await repo.resolve(user, project, scene, chapter)
+    await repo.upsert(project, "scene", scene, 80, 20, created_by=user)
+    r = await repo.resolve(project, scene, chapter)
     assert r.scope_type == "scene" and r.density == 80 and r.pace == 20
     # a DIFFERENT scene (no scene row) falls back to chapter
-    other = await repo.resolve(user, project, uuid.uuid4(), chapter)
+    other = await repo.resolve(project, uuid.uuid4(), chapter)
     assert other.scope_type == "chapter"
 
 
 async def test_style_profile_upsert_replaces_and_delete_reverts(pool):
     repo = StyleProfileRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
-    await repo.upsert(user, project, "chapter", chapter, 30, 30)
-    await repo.upsert(user, project, "chapter", chapter, 70, 70)  # replace in place
-    rows = await repo.list_all(user, project)
+    await repo.upsert(project, "chapter", chapter, 30, 30, created_by=user)
+    await repo.upsert(project, "chapter", chapter, 70, 70, created_by=user)  # replace in place
+    rows = await repo.list_all(project)
     assert len(rows) == 1 and rows[0].density == 70
-    assert await repo.delete(user, project, "chapter", chapter) is True
-    assert await repo.list_all(user, project) == []
-    # cross-user isolation
-    assert await repo.resolve(uuid.uuid4(), project, None, chapter) is None
+    assert await repo.delete(project, "chapter", chapter) is True
+    assert await repo.list_all(project) == []
+    # cross-PROJECT scoping — a different project resolves to nothing
+    assert await repo.resolve(uuid.uuid4(), None, chapter) is None
 
 
 async def test_voice_profile_present_only_and_upsert(pool):
     """list_for_entities returns only the requested (present) entities; upsert replaces."""
     repo = VoiceProfileRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     kael, mira, absent = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    await repo.upsert(user, project, kael, "Kael", ["terse", "understatement"])
-    await repo.upsert(user, project, mira, "Mira", ["formal"])
+    await repo.upsert(project, kael, "Kael", ["terse", "understatement"], created_by=user)
+    await repo.upsert(project, mira, "Mira", ["formal"], created_by=user)
     # only Kael present in the scene
-    present = await repo.list_for_entities(user, project, [kael, absent])
+    present = await repo.list_for_entities(project, [kael, absent])
     assert [v.entity_name for v in present] == ["Kael"]
     assert present[0].tags == ["terse", "understatement"]
-    # upsert replaces tags in place (not a second row)
-    await repo.upsert(user, project, kael, "Kael", ["wry"])
-    again = await repo.list_for_entities(user, project, [kael])
+    # upsert replaces tags in place (ON CONFLICT on the (project_id, entity_id) PK —
+    # NOT the actor — so a re-edit updates the shared row, never a second row)
+    await repo.upsert(project, kael, "Kael", ["wry"], created_by=user)
+    again = await repo.list_for_entities(project, [kael])
     assert again[0].tags == ["wry"]
     # empty present set → no query, empty list
-    assert await repo.list_for_entities(user, project, []) == []
-    # cross-user isolation
-    assert await repo.list_for_entities(uuid.uuid4(), project, [kael]) == []
+    assert await repo.list_for_entities(project, []) == []
+    # cross-PROJECT scoping — a different project sees nothing
+    assert await repo.list_for_entities(uuid.uuid4(), [kael]) == []
 
 
 async def test_voice_profile_list_all_and_delete(pool):
     repo = VoiceProfileRepo(pool)
-    user, project, _ = _ids()
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
     e = uuid.uuid4()
-    await repo.upsert(user, project, e, "Kael", ["terse"])
-    assert len(await repo.list_all(user, project)) == 1
-    assert await repo.delete(user, project, e) is True
-    assert await repo.list_all(user, project) == []
+    await repo.upsert(project, e, "Kael", ["terse"], created_by=user)
+    assert len(await repo.list_all(project)) == 1
+    assert await repo.delete(project, e) is True
+    assert await repo.list_all(project) == []
 
 
 # ───────────────────────── plan_run (PlanForge M3) ─────────────────────────
@@ -1815,33 +1922,37 @@ async def test_plan_runs_roundtrip_and_tenancy(pool):
 
     repo = PlanRunsRepo(pool)
     user, _project, book = _ids()
-    other = uuid.uuid4()
+    other_book = uuid.uuid4()
     run = await repo.create(
         user, book, mode="rules", source_checksum="chk1",
         source_markdown="# plan", status="pending",
     )
-    assert run.owner_user_id == user
-    got = await repo.get_for_owner(user, book, run.id)
+    # 25 M3 (OQ-3): the actor column is `created_by`; reads are BOOK-scoped (no owner
+    # filter — access is the E0 book gate).
+    assert run.created_by == user
+    got = await repo.get_for_book(book, run.id)
     assert got is not None and got.id == run.id
-    assert await repo.get_for_owner(other, book, run.id) is None
+    # NEW LAW: the OLD owner-scoped read is now book-scoped — a grantee reading the
+    # book succeeds; a DIFFERENT book resolves to None (was: a different user → None).
+    assert await repo.get_for_book(other_book, run.id) is None
 
     art = await repo.save_artifact(user, run.id, "spec", {"events": []})
-    latest = await repo.latest_artifact(user, run.id, "spec")
+    latest = await repo.latest_artifact(book, run.id, "spec")
     assert latest is not None and latest.id == art.id
-    refs = await repo.list_artifact_refs(user, run.id)
+    refs = await repo.list_artifact_refs(book, run.id)
     assert refs[0]["kind"] == "spec"
 
-    updated = await repo.update_run(user, book, run.id, status="proposed", clear_error=True)
+    updated = await repo.update_run(book, run.id, status="proposed", clear_error=True)
     assert updated is not None and updated.status == "proposed"
 
-    runs, cursor = await repo.list_for_owner(user, book, limit=10)
+    runs, cursor = await repo.list_for_book(book, limit=10)
     assert len(runs) == 1
     assert cursor is None
 
-    dup = await repo.find_by_checksum(user, book, "chk1", "rules")
+    dup = await repo.find_by_checksum(book, "chk1", "rules")
     assert dup is not None and dup.id == run.id
     # D-PLANFORGE-MODE-DEDUPE: same checksum, different mode -> no reuse.
-    assert await repo.find_by_checksum(user, book, "chk1", "llm") is None
+    assert await repo.find_by_checksum(book, "chk1", "llm") is None
 
 
 async def test_get_run_detail_surfaces_arcs_for_a_picker(pool):
@@ -1914,9 +2025,14 @@ async def test_compile_run_pipeline_shapes_chapters_and_persists_job_id(pool, mo
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "plan-forge" / "story-plan-v1.md"
     spec = propose_spec(ingest_file(fixture))
 
-    user, _project, book = _ids()
+    user, project, book = _ids()
     runs = PlanRunsRepo(pool)
     jobs = GenerationJobsRepo(pool)
+    # Seed the book's canonical Work so compile's pipeline job can derive its
+    # NOT-NULL book_id from composition_work (via _ensure_work → resolve_by_book).
+    # Without a backed Work, _ensure_work mints a project-less pending row and the
+    # generation_job INSERT … SELECT w.book_id would find no home (ReferenceViolationError).
+    await _seed_work(pool, user, project, book)
     svc = PlanForgeService(runs, jobs, WorksRepo(pool))
 
     run = await runs.create(
@@ -1931,7 +2047,7 @@ async def test_compile_run_pipeline_shapes_chapters_and_persists_job_id(pool, mo
     assert mode == "async"
     assert body["pipeline_job_id"] == str(captured["job_id"])
 
-    job = await jobs.get(user, captured["job_id"])
+    job = await jobs.get(captured["job_id"])
     assert job is not None
     chapters_in = job.input["chapters"]
     assert chapters_in, "compile() must produce at least one chapter for arc_2"
@@ -1942,7 +2058,7 @@ async def test_compile_run_pipeline_shapes_chapters_and_persists_job_id(pool, mo
         assert c["chapter_id"].startswith("arc_2_event_")  # correlates back to PlanForge's event_id
         ChapterPlan(**c)  # must not raise — this is the exact call site that used to crash
 
-    updated_run = await runs.get_for_owner(user, book, run.id)
+    updated_run = await runs.get_for_book(book, run.id)
     assert updated_run is not None
     assert updated_run.checkpoint_state.get("pipeline_job_id") == str(captured["job_id"])
 
@@ -1963,15 +2079,17 @@ async def test_bootstrap_proposal_roundtrip_and_tenancy(pool):
 
     repo = PlanBootstrapProposalsRepo(pool)
     user, _project, book = _ids()
-    other = uuid.uuid4()
+    other_book = uuid.uuid4()
     run = await _make_run(pool, user, book)
 
     rec = await repo.create(
         user, book, run.id, diff={"new_chapters": [{"event_id": "e1", "title": "Ch 1"}]},
     )
     assert rec.status == "pending"
-    assert await repo.get_for_owner(user, book, rec.id) is not None
-    assert await repo.get_for_owner(other, book, rec.id) is None
+    # NEW LAW (OQ-3): reads are book-scoped — a grantee reading the book resolves the
+    # record; a DIFFERENT book resolves to None (was: a different user → None).
+    assert await repo.get_for_book(book, rec.id) is not None
+    assert await repo.get_for_book(other_book, rec.id) is None
 
 
 async def test_bootstrap_proposal_approve_reject_are_guarded_transitions(pool):
@@ -1983,14 +2101,14 @@ async def test_bootstrap_proposal_approve_reject_are_guarded_transitions(pool):
     rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
 
     # A second approve on an already-approved record is a no-op miss, not an error.
-    approved = await repo.mark_approved(user, book, rec.id)
+    approved = await repo.mark_approved(book, rec.id)
     assert approved is not None and approved.status == "approved"
-    assert await repo.mark_approved(user, book, rec.id) is None
+    assert await repo.mark_approved(book, rec.id) is None
 
     # Rejecting an approved (not-yet-applied) record is allowed and kept for audit.
-    rejected = await repo.mark_rejected(user, book, rec.id)
+    rejected = await repo.mark_rejected(book, rec.id)
     assert rejected is not None and rejected.status == "rejected"
-    still_there = await repo.get_for_owner(user, book, rec.id)
+    still_there = await repo.get_for_book(book, rec.id)
     assert still_there is not None and still_there.status == "rejected"
 
 
@@ -2003,25 +2121,25 @@ async def test_bootstrap_proposal_claim_for_apply_is_atomic(pool):
     rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
 
     # Can't claim a pending (not yet approved) record.
-    assert await repo.claim_for_apply(user, book, rec.id) is None
+    assert await repo.claim_for_apply(book, rec.id) is None
 
-    await repo.mark_approved(user, book, rec.id)
-    claimed = await repo.claim_for_apply(user, book, rec.id)
+    await repo.mark_approved(book, rec.id)
+    claimed = await repo.claim_for_apply(book, rec.id)
     assert claimed is not None and claimed.status == "applying"
 
     # A second concurrent/retried claim on the same (now 'applying') record misses.
-    assert await repo.claim_for_apply(user, book, rec.id) is None
+    assert await repo.claim_for_apply(book, rec.id) is None
 
     await repo.mark_item_applied(
-        user, book, rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
+        book, rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
     )
-    applied = await repo.mark_applied(user, book, rec.id)
+    applied = await repo.mark_applied(book, rec.id)
     assert applied is not None
     assert applied.status == "applied"
     assert applied.applied_results == {"e1": {"chapter_id": "c1", "title": "Ch 1"}}
 
     # Fully-applied record can never be re-claimed (safe no-op at the service layer).
-    assert await repo.claim_for_apply(user, book, rec.id) is None
+    assert await repo.claim_for_apply(book, rec.id) is None
 
 
 async def test_bootstrap_proposal_failed_apply_is_resumable(pool):
@@ -2031,17 +2149,17 @@ async def test_bootstrap_proposal_failed_apply_is_resumable(pool):
     user, _project, book = _ids()
     run = await _make_run(pool, user, book)
     rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
-    await repo.mark_approved(user, book, rec.id)
-    await repo.claim_for_apply(user, book, rec.id)
+    await repo.mark_approved(book, rec.id)
+    await repo.claim_for_apply(book, rec.id)
 
-    failed = await repo.mark_failed(user, book, rec.id, error_detail="book-service 502")
+    failed = await repo.mark_failed(book, rec.id, error_detail="book-service 502")
     assert failed is not None and failed.status == "failed" and failed.error_detail == "book-service 502"
 
     # A 'failed' record CAN be re-claimed (resume), unlike 'applied'.
-    reclaimed = await repo.claim_for_apply(user, book, rec.id)
+    reclaimed = await repo.claim_for_apply(book, rec.id)
     assert reclaimed is not None and reclaimed.status == "applying"
 
-    done = await repo.mark_applied(user, book, rec.id)
+    done = await repo.mark_applied(book, rec.id)
     assert done is not None and done.status == "applied" and done.error_detail is None
 
 
@@ -2054,16 +2172,16 @@ async def test_bootstrap_proposal_list_active_for_book_scopes_by_book_and_exclud
     run = await _make_run(pool, user, book)
 
     applied_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
-    await repo.mark_approved(user, book, applied_rec.id)
-    await repo.claim_for_apply(user, book, applied_rec.id)
+    await repo.mark_approved(book, applied_rec.id)
+    await repo.claim_for_apply(book, applied_rec.id)
     await repo.mark_item_applied(
-        user, book, applied_rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
+        book, applied_rec.id, item_key="e1", result={"chapter_id": "c1", "title": "Ch 1"},
     )
-    await repo.mark_applied(user, book, applied_rec.id)
+    await repo.mark_applied(book, applied_rec.id)
 
     pending_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
     rejected_rec = await repo.create(user, book, run.id, diff={"new_chapters": []})
-    await repo.mark_rejected(user, book, rejected_rec.id)
+    await repo.mark_rejected(book, rejected_rec.id)
 
     active = await repo.list_active_for_book(book)
     active_ids = {r.id for r in active}

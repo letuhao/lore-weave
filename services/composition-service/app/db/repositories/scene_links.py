@@ -1,10 +1,15 @@
 """scene_link repository — non-derivable scene edges (setup_payoff / custom).
 
-SECURITY RULE (M5 isolation): every method takes `user_id` first and filters
-`user_id = $1`. Edges have no archive column and no children, so DELETE is a
-hard delete (the only hard delete in M2). The unique (from,to,kind) constraint
-makes create idempotent-ish — a duplicate raises UniqueViolation, surfaced to
-the router as a 409.
+SCOPE RULE (package re-key, spec 25 §Repo/service layer): reads key on
+`project_id` — access is decided BEFORE the repo, at the gate (E0 grant on the
+row's `book_id`). Writes stamp `created_by` (a plain actor stamp — STORED,
+never filtered on) and derive `book_id` from composition_work inside the
+INSERT. Edges have no archive column and no children, so DELETE is a hard
+delete (the only hard delete in M2) — and it is always project-bound, so an
+edge from another Work (gated on a different book) can never be deleted under
+this Work's gate. The unique (from,to,kind) constraint makes create
+idempotent-ish — a duplicate raises UniqueViolation, surfaced to the router as
+a 409.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ from app.db.models import SceneLink
 from app.db.repositories import ReferenceViolationError, rows_changed
 
 _SELECT_COLS = """
-  id, user_id, project_id, from_node_id, to_node_id, kind, label, created_at
+  id, created_by, project_id, from_node_id, to_node_id, kind, label, created_at
 """
 
 
@@ -31,66 +36,61 @@ class SceneLinksRepo:
 
     async def create(
         self,
-        user_id: UUID,
         project_id: UUID,
         from_node_id: UUID,
         to_node_id: UUID,
         *,
+        created_by: UUID,
         kind: str = "setup_payoff",
         label: str = "",
     ) -> SceneLink:
         query = f"""
-        INSERT INTO scene_link (user_id, project_id, from_node_id, to_node_id, kind, label)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO scene_link (created_by, project_id, book_id, from_node_id, to_node_id, kind, label)
+        SELECT $1, $2, w.book_id, $3, $4, $5, $6
+        FROM composition_work w WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
             # Defense-in-depth (D-COMP-M2-XREF-OWNERSHIP): both endpoints must be
-            # the caller's nodes in THIS project — the in-DB FK only proves they
-            # exist, not that they're ours. Distinct from/to is enforced by the
-            # table CHECK; here we guard ownership + project scope.
+            # nodes in THIS project — the in-DB FK only proves they exist, not
+            # that they're in scope. Distinct from/to is enforced by the table
+            # CHECK; here we guard the project scope.
             owned = await c.fetchval(
                 "SELECT count(*) FROM outline_node "
-                "WHERE user_id = $1 AND project_id = $2 AND id = ANY($3::uuid[])",
-                user_id, project_id, [from_node_id, to_node_id],
+                "WHERE project_id = $1 AND id = ANY($2::uuid[])",
+                project_id, [from_node_id, to_node_id],
             )
             if owned != 2:
                 raise ReferenceViolationError(
-                    "scene_link endpoints must both be the caller's nodes in this project"
+                    "scene_link endpoints must both be nodes in this project"
                 )
             row = await c.fetchrow(
-                query, user_id, project_id, from_node_id, to_node_id, kind, label
+                query, created_by, project_id, from_node_id, to_node_id, kind, label
+            )
+        if row is None:
+            raise ReferenceViolationError(
+                f"project {project_id} has no composition work (book scope unresolvable)"
             )
         return _row_to_link(row)
 
-    async def list_by_project(self, user_id: UUID, project_id: UUID) -> list[SceneLink]:
+    async def list_by_project(self, project_id: UUID) -> list[SceneLink]:
         query = f"""
         SELECT {_SELECT_COLS} FROM scene_link
-        WHERE user_id = $1 AND project_id = $2
+        WHERE project_id = $1
         ORDER BY created_at, id
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, user_id, project_id)
+            rows = await c.fetch(query, project_id)
         return [_row_to_link(r) for r in rows]
 
-    async def delete(
-        self, user_id: UUID, link_id: UUID, *, project_id: UUID | None = None,
-    ) -> bool:
-        """Hard-delete an edge. Returns False on a cross-user / missing id. When
-        `project_id` is given, the edge must also belong to that project (the MCP
-        by-id path constrains this so a same-user edge from another Work — gated on
-        a different book — cannot be deleted under the resolved Work's book gate)."""
-        if project_id is not None:
-            async with self._pool.acquire() as c:
-                status = await c.execute(
-                    "DELETE FROM scene_link "
-                    "WHERE user_id = $1 AND id = $2 AND project_id = $3",
-                    user_id, link_id, project_id,
-                )
-            return rows_changed(status) > 0
+    async def delete(self, project_id: UUID, link_id: UUID) -> bool:
+        """Hard-delete an edge. Returns False on a missing id or an edge outside
+        this project. The project bind is mandatory (kinds-bug scope rule): an
+        edge from another Work — gated on a different book — cannot be deleted
+        under the resolved Work's book gate."""
         async with self._pool.acquire() as c:
             status = await c.execute(
-                "DELETE FROM scene_link WHERE user_id = $1 AND id = $2",
-                user_id, link_id,
+                "DELETE FROM scene_link WHERE project_id = $1 AND id = $2",
+                project_id, link_id,
             )
         return rows_changed(status) > 0

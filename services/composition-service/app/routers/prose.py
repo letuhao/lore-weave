@@ -3,10 +3,13 @@
 FE ↔ composition ↔ book-service for canonical chapter DRAFT content, so the
 reused editor never reworks its backend when V1 adds sandbox branch/take prose.
 
-Auth: composition loads the Work (user-scoped → 404 if not the caller's) to find
-its `book_id`, then FORWARDS the caller's JWT to book-service's public draft
-routes — book-service enforces book ownership in SQL (404 for a non-owner). So
-the prose path needs no separate internal-token chokepoint.
+Auth (spec 25 PM-8/PM-9): composition resolves the Work by `project_id` (un-user-
+scoped) to find its `book_id`, then gates the caller's E0 grant on that book —
+VIEW to read prose, EDIT to write it — BEFORE forwarding the caller's JWT to
+book-service's public draft routes. The grant gate is the access decision (the
+repo never filters on the caller); book-service additionally enforces book access
+in SQL. A missing project OR a no-grant caller collapses to the same 404 (no
+existence oracle).
 
 OI-2/PS2 (the load-bearing bit): `PUT` requires `expected_draft_version` in the
 body (a required model field → 422 if omitted) so a blind clobber can never
@@ -26,8 +29,11 @@ from pydantic import BaseModel
 
 from app.clients.book_client import BookClient, BookClientError
 from app.db.repositories.works import WorksRepo
-from app.deps import get_book_client_dep, get_works_repo
+from app.deps import get_book_client_dep, get_grant_client_dep, get_works_repo
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, book_id_for_project
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
+from app.packer.pack import OwnershipError
 
 router = APIRouter(prefix="/v1/composition")
 
@@ -61,11 +67,19 @@ def _map_book_error(exc: BookClientError) -> HTTPException:
     )
 
 
-async def _resolve_book_id(works: WorksRepo, user_id: UUID, project_id: UUID) -> UUID:
-    work = await works.get(user_id, project_id)
-    if work is None:
+async def _resolve_book_id(
+    works: WorksRepo, grant: GrantClient, user_id: UUID, project_id: UUID, need: GrantLevel,
+) -> UUID:
+    """PM-8/PM-9: resolve `project_id` → its Work's `book_id` via the ids-only,
+    un-user-scoped `scope_meta` read and gate the caller's E0 grant on that book at
+    `need` (VIEW to read prose, EDIT to write). The gate is the ONLY access decision;
+    a missing project OR a no-grant caller → uniform 404 (anti-oracle), under-tier → 403."""
+    try:
+        return await book_id_for_project(works, grant, project_id, user_id, need)
+    except OwnershipError:
         raise HTTPException(status_code=404, detail="work not found")
-    return work.book_id
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
 
 
 def _base_revision_id(revisions: dict[str, Any]) -> str | None:
@@ -83,8 +97,10 @@ async def get_prose(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    book_id = await _resolve_book_id(works, user_id, project_id)
+    # Reading prose is a VIEW act on the book (E0-4c).
+    book_id = await _resolve_book_id(works, grant, user_id, project_id, GrantLevel.VIEW)
     try:
         draft = await book.get_draft(book_id, chapter_id, bearer)
         revisions = await book.list_revisions(book_id, chapter_id, bearer, limit=1)
@@ -105,8 +121,10 @@ async def put_prose(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    book_id = await _resolve_book_id(works, user_id, project_id)
+    # Writing the draft is an authoring act → EDIT grant on the book (E0-4c).
+    book_id = await _resolve_book_id(works, grant, user_id, project_id, GrantLevel.EDIT)
     try:
         updated = await book.patch_draft(
             book_id, chapter_id, bearer,

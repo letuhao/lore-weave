@@ -1,11 +1,14 @@
 """reference_source repository — LOOM T3.6 the author's per-Work reference shelf.
 
-SECURITY (M5 isolation): every method takes `user_id` first and filters
-`user_id = $1 AND project_id = $2`. References are composition-owned authoring
-data; the embedding vector is stored as a plain `real[]` and the SEARCH ranks by
-brute-force cosine IN APP CODE (a reference shelf is small — dozens to low-hundreds
-of rows — so a kNN index is unnecessary; this avoids a pgvector dependency and the
-fixed-dimension column it would force). DELETE is a hard delete (unlike canon_rule's
+SCOPE RULE (package re-key, spec 25 §Repo/service layer): reads key on
+`project_id` — access is decided BEFORE the repo, at the gate (E0 grant on the
+row's `book_id`). Writes stamp `created_by` (a plain actor stamp — STORED,
+never filtered on) and derive `book_id` from composition_work inside the
+INSERT. References are composition-owned authoring data; the embedding vector
+is stored as a plain `real[]` and the SEARCH ranks by brute-force cosine IN APP
+CODE (a reference shelf is small — dozens to low-hundreds of rows — so a kNN
+index is unnecessary; this avoids a pgvector dependency and the fixed-dimension
+column it would force). DELETE is a hard delete (unlike canon_rule's
 soft-archive — a reference has no critic-calibration history to preserve).
 
 The `embedding` column is NEVER projected into a returned model (the vector stays on
@@ -21,10 +24,11 @@ import asyncpg
 from loreweave_vecmath import cosine_similarity as _cosine
 
 from app.db.models import ReferenceSource
+from app.db.repositories import ReferenceViolationError
 
 # Attribution projection — the vector is deliberately excluded (stays server-side).
 _SELECT_COLS = """
-  id, user_id, project_id, title, author, source_url, content,
+  id, created_by, project_id, title, author, source_url, content,
   embedding_model, embedding_dim, created_at
 """
 
@@ -62,9 +66,9 @@ class ReferencesRepo:
 
     async def create(
         self,
-        user_id: UUID,
         project_id: UUID,
         *,
+        created_by: UUID,
         content: str,
         embedding: list[float],
         title: str = "",
@@ -75,47 +79,53 @@ class ReferencesRepo:
     ) -> ReferenceSource:
         query = f"""
         INSERT INTO reference_source
-          (user_id, project_id, title, author, source_url, content,
+          (created_by, project_id, book_id, title, author, source_url, content,
            embedding, embedding_model, embedding_dim)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        SELECT $1, $2, w.book_id, $3, $4, $5, $6, $7, $8, $9
+        FROM composition_work w WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
-                query, user_id, project_id, title, author, source_url, content,
+                query, created_by, project_id, title, author, source_url, content,
                 embedding, embedding_model, embedding_dim,
+            )
+        if row is None:
+            raise ReferenceViolationError(
+                f"project {project_id} has no composition work (book scope unresolvable)"
             )
         return _row_to_ref(row)
 
-    async def list(self, user_id: UUID, project_id: UUID) -> list[ReferenceSource]:
+    async def list(self, project_id: UUID) -> list[ReferenceSource]:
         """The Work's reference library (newest first) — the management list."""
         query = f"""
         SELECT {_SELECT_COLS} FROM reference_source
-        WHERE user_id = $1 AND project_id = $2
+        WHERE project_id = $1
         ORDER BY created_at DESC, id DESC
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, user_id, project_id)
+            rows = await c.fetch(query, project_id)
         return [_row_to_ref(r) for r in rows]
 
-    async def get(self, user_id: UUID, reference_id: UUID) -> ReferenceSource | None:
-        query = f"SELECT {_SELECT_COLS} FROM reference_source WHERE user_id = $1 AND id = $2"
+    async def get(self, project_id: UUID, reference_id: UUID) -> ReferenceSource | None:
+        query = f"SELECT {_SELECT_COLS} FROM reference_source WHERE project_id = $1 AND id = $2"
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, user_id, reference_id)
+            row = await c.fetchrow(query, project_id, reference_id)
         return _row_to_ref(row) if row else None
 
-    async def delete(self, user_id: UUID, reference_id: UUID) -> bool:
-        """Hard delete. Returns True if a row was removed (False if missing /
-        cross-user — the router maps False → 404, no existence oracle)."""
+    async def delete(self, project_id: UUID, reference_id: UUID) -> bool:
+        """Hard delete, project-bound. Returns True if a row was removed (False if
+        missing / another project's — the router maps False → 404, no existence
+        oracle)."""
         async with self._pool.acquire() as c:
             status = await c.execute(
-                "DELETE FROM reference_source WHERE user_id = $1 AND id = $2",
-                user_id, reference_id,
+                "DELETE FROM reference_source WHERE project_id = $1 AND id = $2",
+                project_id, reference_id,
             )
         return status.rsplit(" ", 1)[-1] != "0"
 
     async def search(
-        self, user_id: UUID, project_id: UUID, query_vector: list[float], *, limit: int = 8,
+        self, project_id: UUID, query_vector: list[float], *, limit: int = 8,
     ) -> list[dict[str, Any]]:
         """Brute-force cosine top-K over the Work's references. Returns a list of
         attribution dicts each with a `score` (cosine, 0..1), highest first. Rows
@@ -124,10 +134,10 @@ class ReferencesRepo:
         (the vector stays on the server)."""
         sql = f"""
         SELECT {_SELECT_COLS}, embedding FROM reference_source
-        WHERE user_id = $1 AND project_id = $2 AND embedding IS NOT NULL
+        WHERE project_id = $1 AND embedding IS NOT NULL
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(sql, user_id, project_id)
+            rows = await c.fetch(sql, project_id)
         scored: list[tuple[float, asyncpg.Record]] = []
         for r in rows:
             vec = r["embedding"]

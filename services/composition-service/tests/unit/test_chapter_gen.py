@@ -13,11 +13,13 @@ from app.engine.chapter_gen import (
 )
 
 U, P, CH = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+B = uuid.uuid4()
 E1, E2, E3 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
 
 
 def _scene(rank, *, title="", synopsis="", tension=None, present=None, pov=None, story_order=None):
-    return OutlineNode(id=uuid.uuid4(), user_id=U, project_id=P, kind="scene", rank=rank,
+    return OutlineNode(id=uuid.uuid4(), created_by=U, project_id=P, book_id=B, kind="scene",
+                       rank=rank,
                        chapter_id=CH, title=title, synopsis=synopsis, tension=tension,
                        present_entity_ids=present or [], pov_entity_id=pov, story_order=story_order)
 

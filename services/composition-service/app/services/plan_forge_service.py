@@ -75,26 +75,30 @@ class PlanForgeService:
         self._works = works
         self._llm = llm
 
-    async def sync_from_job(self, owner_user_id: UUID, book_id: UUID, run: PlanRun) -> PlanRun:
+    async def sync_from_job(self, created_by: UUID, book_id: UUID, run: PlanRun) -> PlanRun:
         """Lazy backstop: persist worker result when GET arrives before hook."""
         if run.active_job_id is None:
             return run
-        job = await self._jobs.get(owner_user_id, run.active_job_id)
-        if job is None:
+        # jobs.get is a BARE-ID read (no scope filter, spec 25 §Repo/service layer) —
+        # assert the loaded job lives in THIS run's book partition before adopting it,
+        # mirroring the MCP server's `job.project_id != pid` IDOR guard
+        # (worker-loaded-id-needs-parent-scoping). A wrong/foreign active_job_id → not-found.
+        job = await self._jobs.get(run.active_job_id)
+        if job is None or job.book_id != book_id:
             return run
         if job.status in ("pending", "running"):
             return run
         if job.status == "completed":
-            await self.apply_job_outcome(owner_user_id, book_id, run.id, job, job.result or {})
+            await self.apply_job_outcome(created_by, book_id, run.id, job, job.result or {})
         elif job.status == "failed":
             err = (job.result or {}).get("error", "job failed")
             await self._runs.update_run(
-                owner_user_id, book_id, run.id,
+                book_id, run.id,
                 status="failed", error_detail=str(err), active_job_id=None,
             )
-        return (await self._runs.get_for_owner(owner_user_id, book_id, run.id)) or run
+        return (await self._runs.get_for_book(book_id, run.id)) or run
 
-    async def _resolve_model_ref(self, owner_user_id: UUID, model_ref: UUID | None) -> UUID:
+    async def _resolve_model_ref(self, created_by: UUID, model_ref: UUID | None) -> UUID:
         """D-PLANFORGE-DEFAULT-MODEL — shared fallback for every PlanForge LLM step:
         an explicit ref always wins; otherwise resolve the author's default planner
         model (mirrors glossary_plan's own GET /internal/planner-model fallback —
@@ -104,7 +108,7 @@ class PlanForgeService:
         these tools when no session pin is set)."""
         if model_ref is not None:
             return model_ref
-        resolved = self._llm and await self._llm.resolve_planner_model(str(owner_user_id))
+        resolved = self._llm and await self._llm.resolve_planner_model(str(created_by))
         if resolved is None:
             raise ValueError(
                 "model_ref required — no default chat model is set; "
@@ -114,7 +118,7 @@ class PlanForgeService:
 
     async def create_run(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         *,
         source_markdown: str,
@@ -133,20 +137,20 @@ class PlanForgeService:
         # already-resolved model_ref, and silently re-run the (billed) LLM propose
         # on every retry.
         if mode == "llm":
-            model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
+            model_ref = await self._resolve_model_ref(created_by, model_ref)
         checksum = hashlib.sha256(text.encode("utf-8")).hexdigest()
         if not force:
             # D-PLANFORGE-MODE-DEDUPE: identical text but a different mode/model is a
             # DIFFERENT request, not a duplicate -- reusing the prior run here silently
             # ignored the user's newly-picked mode/model (e.g. Rules -> LLM retry on
             # unchanged text kept returning the stale Rules-mode result with no error).
-            existing = await self._runs.find_by_checksum(owner_user_id, book_id, checksum, mode)
+            existing = await self._runs.find_by_checksum(book_id, checksum, mode)
             if existing is not None and existing.status != "failed" and existing.model_ref == model_ref:
-                synced = await self.sync_from_job(owner_user_id, book_id, existing)
+                synced = await self.sync_from_job(created_by, book_id, existing)
                 return synced, False, synced.active_job_id
 
         run = await self._runs.create(
-            owner_user_id,
+            created_by,
             book_id,
             mode=mode,  # type: ignore[arg-type]
             source_checksum=checksum,
@@ -155,38 +159,40 @@ class PlanForgeService:
             status="pending",
         )
         doc = ingest_markdown(text)
-        await self._runs.save_artifact(owner_user_id, run.id, "document", doc)
+        await self._runs.save_artifact(created_by, run.id, "document", doc)
 
         if mode == "rules":
-            await self._finalize_rules_propose(owner_user_id, book_id, run.id, doc)
-            updated = await self._runs.get_for_owner(owner_user_id, book_id, run.id)
+            await self._finalize_rules_propose(created_by, book_id, run.id, doc)
+            updated = await self._runs.get_for_book(book_id, run.id)
             return updated or run, False, None
 
-        job_id = await self._enqueue_propose(owner_user_id, book_id, run, text, model_ref)
-        updated = await self._runs.get_for_owner(owner_user_id, book_id, run.id)
+        job_id = await self._enqueue_propose(created_by, book_id, run, text, model_ref)
+        updated = await self._runs.get_for_book(book_id, run.id)
         return updated or run, True, job_id
 
     async def _finalize_rules_propose(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID, doc: dict[str, Any],
+        self, created_by: UUID, book_id: UUID, run_id: UUID, doc: dict[str, Any],
     ) -> None:
         spec = propose_spec(doc)
         graph = build_graph(spec)
-        await self._runs.save_artifact(owner_user_id, run_id, "spec", spec)
-        await self._runs.save_artifact(owner_user_id, run_id, "graph", graph)
+        await self._runs.save_artifact(created_by, run_id, "spec", spec)
+        await self._runs.save_artifact(created_by, run_id, "graph", graph)
         await self._runs.update_run(
-            owner_user_id, book_id, run_id,
+            book_id, run_id,
             status="proposed", clear_error=True, active_job_id=None,
         )
 
     async def _enqueue_propose(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         run: PlanRun,
         source_markdown: str,
         model_ref: UUID | None,
     ) -> UUID:
-        work = await self._ensure_work(owner_user_id, book_id)
+        # PM-9: the Work resolves per-BOOK; the caller flows only as the actor
+        # stamp on a pending create (and as spend attribution below).
+        work = await self._ensure_work(book_id, created_by=created_by)
         project_id = _work_project_id(work)
         pipe_input: dict[str, Any] = {
             "worker_op": "plan_forge_propose",
@@ -198,34 +204,36 @@ class PlanForgeService:
         }
         if settings.composition_worker_enabled:
             job, _ = await self._jobs.create(
-                owner_user_id, project_id,
+                project_id,
+                created_by=created_by,
                 operation="plan_forge_propose", mode="auto", status="pending",
                 input=pipe_input,
             )
             await enqueue_job(
                 settings.redis_url, job_id=str(job.id),
-                user_id=str(owner_user_id), project_id=str(project_id),
+                user_id=str(created_by), project_id=str(project_id),
             )
             await self._runs.update_run(
-                owner_user_id, book_id, run.id, active_job_id=job.id,
+                book_id, run.id, active_job_id=job.id,
             )
             return job.id
         if self._llm is None:
             raise RuntimeError("LLM client required when worker disabled")
         result = await run_plan_forge_propose(
-            self._llm, user_id=str(owner_user_id), input=pipe_input,
+            self._llm, user_id=str(created_by), input=pipe_input,
         )
         job, _ = await self._jobs.create(
-            owner_user_id, project_id,
+            project_id,
+            created_by=created_by,
             operation="plan_forge_propose", mode="auto", status="completed",
             input=pipe_input, result=result,
         )
-        await self.apply_job_outcome(owner_user_id, book_id, run.id, job, result)
+        await self.apply_job_outcome(created_by, book_id, run.id, job, result)
         return job.id
 
     async def apply_job_outcome(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         run_id: UUID,
         job: GenerationJob,
@@ -234,7 +242,7 @@ class PlanForgeService:
         op = (job.input or {}).get("worker_op") or job.operation
         if job.status == "failed" or result.get("error"):
             await self._runs.update_run(
-                owner_user_id, book_id, run_id,
+                book_id, run_id,
                 status="failed",
                 error_detail=str(result.get("error", "job failed")),
                 active_job_id=None,
@@ -244,17 +252,17 @@ class PlanForgeService:
             spec = result.get("novel_system_spec")
             analyze = result.get("plan_analyze")
             if isinstance(spec, dict):
-                await self._runs.save_artifact(owner_user_id, run_id, "spec", spec)
-                await self._runs.save_artifact(owner_user_id, run_id, "graph", build_graph(spec))
+                await self._runs.save_artifact(created_by, run_id, "spec", spec)
+                await self._runs.save_artifact(created_by, run_id, "graph", build_graph(spec))
             if isinstance(analyze, dict):
-                await self._runs.save_artifact(owner_user_id, run_id, "analyze", analyze)
+                await self._runs.save_artifact(created_by, run_id, "analyze", analyze)
             llm_io = result.get("llm_io")
             if llm_io:
                 await self._runs.save_artifact(
-                    owner_user_id, run_id, "llm_io", {"steps": llm_io},
+                    created_by, run_id, "llm_io", {"steps": llm_io},
                 )
             await self._runs.update_run(
-                owner_user_id, book_id, run_id,
+                book_id, run_id,
                 status="proposed", clear_error=True, active_job_id=None,
             )
             return
@@ -262,53 +270,55 @@ class PlanForgeService:
             llm_io = result.get("llm_io")
             if llm_io:
                 await self._runs.save_artifact(
-                    owner_user_id, run_id, "llm_io", {"steps": llm_io},
+                    created_by, run_id, "llm_io", {"steps": llm_io},
                 )
             if result.get("accepted") and isinstance(result.get("spec"), dict):
-                await self._runs.save_artifact(owner_user_id, run_id, "spec", result["spec"])
+                await self._runs.save_artifact(created_by, run_id, "spec", result["spec"])
                 await self._runs.save_artifact(
-                    owner_user_id, run_id, "graph", build_graph(result["spec"]),
+                    created_by, run_id, "graph", build_graph(result["spec"]),
                 )
                 await self._runs.update_run(
-                    owner_user_id, book_id, run_id,
+                    book_id, run_id,
                     status="checkpoint", clear_error=True, active_job_id=None,
                 )
             else:
                 await self._runs.update_run(
-                    owner_user_id, book_id, run_id,
+                    book_id, run_id,
                     status="checkpoint",
                     error_detail=str(result.get("error") or result.get("reasons")),
                     active_job_id=None,
                 )
 
     async def get_run_detail(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID,
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
     ) -> dict[str, Any] | None:
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             return None
-        run = await self.sync_from_job(owner_user_id, book_id, run)
-        return await self._serialize_run(owner_user_id, run)
+        run = await self.sync_from_job(created_by, book_id, run)
+        return await self._serialize_run(created_by, run)
 
     async def list_runs(
-        self, owner_user_id: UUID, book_id: UUID, *, limit: int, cursor: str | None,
+        self, created_by: UUID, book_id: UUID, *, limit: int, cursor: str | None,
     ) -> dict[str, Any]:
-        runs, next_cursor = await self._runs.list_for_owner(
-            owner_user_id, book_id, limit=limit, cursor=cursor,
+        runs, next_cursor = await self._runs.list_for_book(
+            book_id, limit=limit, cursor=cursor,
         )
         items = []
         for r in runs:
-            synced = await self.sync_from_job(owner_user_id, book_id, r)
-            items.append(await self._serialize_run(owner_user_id, synced))
+            synced = await self.sync_from_job(created_by, book_id, r)
+            items.append(await self._serialize_run(created_by, synced))
         return {"items": items, "next_cursor": next_cursor}
 
-    async def _serialize_run(self, owner_user_id: UUID, run: PlanRun) -> dict[str, Any]:
+    async def _serialize_run(self, created_by: UUID, run: PlanRun) -> dict[str, Any]:
         job_status = None
         if run.active_job_id is not None:
-            job = await self._jobs.get(owner_user_id, run.active_job_id)
-            if job is not None:
+            # Bare-id job read (spec 25) — confirm it belongs to this run's book
+            # partition before surfacing its status (same IDOR guard as sync_from_job).
+            job = await self._jobs.get(run.active_job_id)
+            if job is not None and job.book_id == run.book_id:
                 job_status = job.status
-        artifacts = await self._runs.list_artifact_refs(owner_user_id, run.id)
+        artifacts = await self._runs.list_artifact_refs(run.book_id, run.id)
         # D-PLANFORGE-ARC-PICKER: the Compile step's `arc_id` was a bare text input —
         # a writer has no reason to know a spec's internal arc ids ("arc_2"). The spec
         # itself already HAS the picker data (id + a human title); it was just never
@@ -316,7 +326,7 @@ class PlanForgeService:
         # returned). Cheap to add: read the already-fetched-elsewhere latest spec
         # artifact once here. Empty list (not an error) when no spec exists yet.
         arcs: list[dict[str, Any]] = []
-        spec_art = await self._runs.latest_artifact(owner_user_id, run.id, "spec")
+        spec_art = await self._runs.latest_artifact(run.book_id, run.id, "spec")
         if spec_art is not None:
             arcs = [
                 {"id": a.get("id"), "title": a.get("title") or a.get("id")}
@@ -344,34 +354,34 @@ class PlanForgeService:
         }
 
     async def patch_spec(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID, patch: dict[str, Any],
+        self, created_by: UUID, book_id: UUID, run_id: UUID, patch: dict[str, Any],
     ) -> dict[str, Any] | None:
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             return None
-        art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        art = await self._runs.latest_artifact(book_id, run_id, "spec")
         if art is None:
             raise ValueError("no spec artifact to patch")
         merged = _deep_merge(art.content, patch)
-        await self._runs.save_artifact(owner_user_id, run_id, "spec", merged)
-        await self._runs.save_artifact(owner_user_id, run_id, "graph", build_graph(merged))
+        await self._runs.save_artifact(created_by, run_id, "spec", merged)
+        await self._runs.save_artifact(created_by, run_id, "graph", build_graph(merged))
         await self._runs.update_run(
-            owner_user_id, book_id, run_id, status="checkpoint",
+            book_id, run_id, status="checkpoint",
         )
-        updated = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
-        return await self._serialize_run(owner_user_id, updated) if updated else None
+        updated = await self._runs.get_for_book(book_id, run_id)
+        return await self._serialize_run(created_by, updated) if updated else None
 
     async def validate(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID,
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
     ) -> dict[str, Any] | None:
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             return None
-        spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
         if spec_art is None:
             raise ValueError("no spec to validate")
         spec = spec_art.content
-        pkg_art = await self._runs.latest_artifact(owner_user_id, run_id, "package")
+        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
         package = pkg_art.content.get("planning_package") if pkg_art else None
         rules_out = run_rules(spec, package)
         passed_rules = _hard_rules_pass(rules_out)
@@ -406,16 +416,16 @@ class PlanForgeService:
             "fidelity_report_id": None,
         }
         art = await self._runs.save_artifact(
-            owner_user_id, run_id, "validation_report", report,
+            created_by, run_id, "validation_report", report,
         )
         report["fidelity_report_id"] = str(art.id)
         if all_pass:
-            await self._runs.update_run(owner_user_id, book_id, run_id, status="validated")
+            await self._runs.update_run(book_id, run_id, status="validated")
         return report
 
     async def refine(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         run_id: UUID,
         *,
@@ -424,19 +434,19 @@ class PlanForgeService:
         focus_paths: list[str] | None,
     ) -> tuple[str, dict[str, Any]]:
         """Returns (http_mode, body) where http_mode is 'sync' or 'async'."""
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             raise LookupError("run not found")
-        spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
         if spec_art is None:
             raise ValueError("no spec to refine")
         spec = spec_art.content
         rev = dict(revision or {})
         if focus_paths:
             rev["focus_paths"] = focus_paths
-        analyze_art = await self._runs.latest_artifact(owner_user_id, run_id, "analyze")
+        analyze_art = await self._runs.latest_artifact(book_id, run_id, "analyze")
         analyze = analyze_art.content if analyze_art else None
-        pkg_art = await self._runs.latest_artifact(owner_user_id, run_id, "package")
+        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
         package = pkg_art.content.get("planning_package") if pkg_art else None
 
         if not rev:
@@ -450,8 +460,8 @@ class PlanForgeService:
         # Resolved AFTER the no-op early-return above — a no_change refine never
         # needs a model at all, so it must not force a resolve (or a required-model
         # error) on a call that's about to do nothing anyway.
-        model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
-        work = await self._ensure_work(owner_user_id, book_id)
+        model_ref = await self._resolve_model_ref(created_by, model_ref)
+        work = await self._ensure_work(book_id, created_by=created_by)
         project_id = _work_project_id(work)
         pipe_input: dict[str, Any] = {
             "worker_op": "plan_forge_refine",
@@ -468,16 +478,17 @@ class PlanForgeService:
 
         if settings.composition_worker_enabled:
             job, _ = await self._jobs.create(
-                owner_user_id, project_id,
+                project_id,
+                created_by=created_by,
                 operation="plan_forge_refine", mode="auto", status="pending",
                 input=pipe_input,
             )
             await enqueue_job(
                 settings.redis_url, job_id=str(job.id),
-                user_id=str(owner_user_id), project_id=str(project_id),
+                user_id=str(created_by), project_id=str(project_id),
             )
             await self._runs.update_run(
-                owner_user_id, book_id, run_id, active_job_id=job.id, status="checkpoint",
+                book_id, run_id, active_job_id=job.id, status="checkpoint",
             )
             return "async", {"run_id": str(run_id), "job_id": str(job.id), "status": "pending"}
 
@@ -485,15 +496,16 @@ class PlanForgeService:
             raise RuntimeError("LLM client required when worker disabled")
         before_checksum = _spec_checksum(spec)
         result = await run_plan_forge_refine(
-            self._llm, user_id=str(owner_user_id), input=pipe_input,
+            self._llm, user_id=str(created_by), input=pipe_input,
         )
         job, _ = await self._jobs.create(
-            owner_user_id, project_id,
+            project_id,
+            created_by=created_by,
             operation="plan_forge_refine", mode="auto", status="completed",
             input=pipe_input, result=result,
         )
-        await self.apply_job_outcome(owner_user_id, book_id, run_id, job, result)
-        new_spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        await self.apply_job_outcome(created_by, book_id, run_id, job, result)
+        new_spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
         # D-PF-APPLY-HONESTY: a refine the model "accepted" but that did NOT change
         # the spec is a `no_change`, never `applied` — don't claim an edit that didn't
         # land. Compare the actual spec content, not the model's self-report.
@@ -516,62 +528,62 @@ class PlanForgeService:
         }
 
     async def review_checkpoint(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID, *, approved: bool,
+        self, created_by: UUID, book_id: UUID, run_id: UUID, *, approved: bool,
     ) -> dict[str, Any] | None:
         """Advance/hold a checkpoint (M4 plan_review_checkpoint). approved=True →
         the current spec becomes `validated` intent; approved=False keeps it at
         `checkpoint` for further refinement. Idempotent, no LLM."""
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             return None
-        spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
         if spec_art is None:
             raise ValueError("no spec to review")
         await self._runs.update_run(
-            owner_user_id, book_id, run_id,
+            book_id, run_id,
             status="validated" if approved else "checkpoint",
         )
-        updated = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
-        return await self._serialize_run(owner_user_id, updated) if updated else None
+        updated = await self._runs.get_for_book(book_id, run_id)
+        return await self._serialize_run(created_by, updated) if updated else None
 
     async def handoff_autofix(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID,
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
         *, model_ref: UUID | None, max_rounds: int = 3,
     ) -> dict[str, Any] | None:
         """Batch-apply the top self-check gaps as a bounded refine loop (M4
         plan_handoff_autofix). Each round: self-check → take the ranked gaps →
         refine toward them; stop when no gaps remain or max_rounds is hit. Runs the
         refine synchronously (worker-off path); enqueues if the worker is on."""
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             return None
         # Resolved ONCE up front (not per-round) — every round in this loop must use
         # the SAME model, and resolving here also means a gap-free run (0 rounds)
         # never pays for a resolve it doesn't need.
-        model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
+        model_ref = await self._resolve_model_ref(created_by, model_ref)
         rounds = max(1, min(int(max_rounds), 5))
         applied: list[dict[str, Any]] = []
         for i in range(rounds):
-            check = await self.self_check(owner_user_id, book_id, run_id)
+            check = await self.self_check(created_by, book_id, run_id)
             gaps = (check or {}).get("gaps") or []
             top = [g for g in gaps if g.get("severity") in ("error", "warn")][:5]
             if not top:
                 break
             revision = {"focus_paths": [g["path"] for g in top if g.get("path")]}
             mode, payload = await self.refine(
-                owner_user_id, book_id, run_id,
+                created_by, book_id, run_id,
                 model_ref=model_ref, revision=revision, focus_paths=None,
             )
             applied.append({"round": i + 1, "targets": len(top), "result": payload.get("status")})
             if mode == "async" or payload.get("status") != "applied":
                 # async enqueued (can't loop synchronously) or no progress → stop.
                 break
-        detail = await self.get_run_detail(owner_user_id, book_id, run_id)
+        detail = await self.get_run_detail(created_by, book_id, run_id)
         return {"rounds": applied, "run": detail}
 
     async def interpret(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         run_id: UUID,
         *,
@@ -579,15 +591,15 @@ class PlanForgeService:
         model_ref: UUID | None,
         apply_mode_hint: str | None = None,
     ) -> dict[str, Any] | None:
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             return None
-        spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
         if spec_art is None:
             raise ValueError("no spec for interpret")
-        model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
+        model_ref = await self._resolve_model_ref(created_by, model_ref)
         spec = spec_art.content
-        doc_art = await self._runs.latest_artifact(owner_user_id, run_id, "document")
+        doc_art = await self._runs.latest_artifact(book_id, run_id, "document")
         section_map: list[dict[str, Any]] = []
         self_check_report = None
         if _FIDELITY.exists() and doc_art is not None:
@@ -606,7 +618,7 @@ class PlanForgeService:
         if self._llm is not None:
             client = ProviderPlanForgeLLM(
                 self._llm,
-                user_id=str(owner_user_id),
+                user_id=str(created_by),
                 model_source="user_model",
                 model_ref=str(model_ref),
             )
@@ -644,12 +656,12 @@ class PlanForgeService:
         return out
 
     async def self_check(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID,
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
     ) -> dict[str, Any] | None:
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             return None
-        spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
         if spec_art is None:
             raise ValueError("no spec for self-check")
         spec = spec_art.content
@@ -678,7 +690,7 @@ class PlanForgeService:
 
     async def compile(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         run_id: UUID,
         *,
@@ -686,10 +698,10 @@ class PlanForgeService:
         run_pipeline: bool = False,
         model_ref: UUID | None = None,
     ) -> tuple[str, dict[str, Any]]:
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             raise LookupError("run not found")
-        spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
         if spec_art is None:
             raise ValueError("no spec to compile")
         spec = spec_art.content
@@ -706,12 +718,12 @@ class PlanForgeService:
         compiled = compile_artifacts(spec, arc_id=arc_id)
         package = compiled["planning_package"]
         await self._runs.save_artifact(
-            owner_user_id, run_id, "package",
+            created_by, run_id, "package",
             {"planning_package": package, **{k: v for k, v in compiled.items() if k != "planning_package"}},
         )
-        work = await self._ensure_work(owner_user_id, book_id)
+        work = await self._ensure_work(book_id, created_by=created_by)
         await self._runs.update_run(
-            owner_user_id, book_id, run_id,
+            book_id, run_id,
             status="compiled", work_id=work.id,
         )
         body: dict[str, Any] = {
@@ -721,7 +733,7 @@ class PlanForgeService:
         }
         if not run_pipeline:
             return "sync", body
-        model_ref = await self._resolve_model_ref(owner_user_id, model_ref)
+        model_ref = await self._resolve_model_ref(created_by, model_ref)
         project_id = _work_project_id(work)
         # D-PLANFORGE-PIPELINE-CHAPTERPLAN-FIX: package.chapters[] is
         # {title, ordinal, event_id} (compile.py) — the worker's
@@ -766,13 +778,14 @@ class PlanForgeService:
         }
         if settings.composition_worker_enabled:
             job, _ = await self._jobs.create(
-                owner_user_id, project_id,
+                project_id,
+                created_by=created_by,
                 operation="plan_pipeline", mode="auto", status="pending",
                 input=pipe_input,
             )
             await enqueue_job(
                 settings.redis_url, job_id=str(job.id),
-                user_id=str(owner_user_id), project_id=str(project_id),
+                user_id=str(created_by), project_id=str(project_id),
             )
             body["pipeline_job_id"] = str(job.id)
             # §6 M3: persist the job id onto the run (checkpoint_state — a
@@ -783,29 +796,48 @@ class PlanForgeService:
             # persisted anywhere queryable — a caller that didn't capture
             # the response had no way to find it again.
             await self._runs.update_run(
-                owner_user_id, book_id, run_id,
+                book_id, run_id,
                 checkpoint_state={**run.checkpoint_state, "pipeline_job_id": str(job.id)},
             )
             return "async", body
         body["pipeline_preview"] = mock_pipeline_result(package)
         return "sync", body
 
-    async def _ensure_work(self, owner_user_id: UUID, book_id: UUID) -> CompositionWork:
+    async def _ensure_work(self, book_id: UUID, *, created_by: UUID) -> CompositionWork:
+        """Resolve THE Work for the book — caller-INDEPENDENT (PM-9, spec 25).
+
+        Previously keyed by the acting caller, so an EDIT-grantee running
+        PlanForge silently forked their own pending Work that could never be
+        backfilled (knowledge create is owner-only) — the F5 fork bug. Now:
+        the book's CANONICAL marked Work (`source_work_id IS NULL`, active —
+        at most one via the partial `uq_composition_work_book`), else the
+        book's single pending Work (`(book_id) WHERE pending` partial unique,
+        PM-4), else create a pending Work stamped `created_by` = the acting
+        caller (plain actor stamp for attribution — never scope). Whichever
+        later owner-path creates the knowledge project backfills that row.
+        The UniqueViolation catch re-gets by the SAME book-keyed predicates
+        the partial indexes enforce."""
         import asyncpg
 
-        marked = await self._works.resolve_by_book(owner_user_id, book_id)
-        if len(marked) == 1:
-            return marked[0]
-        pending = await self._works.get_pending_for_book(owner_user_id, book_id)
+        def _canonical(works: list[CompositionWork]) -> CompositionWork | None:
+            for w in works:
+                if w.source_work_id is None:
+                    return w  # earliest-created first (repo ORDER BY); ≤1 post-M3
+            return None
+
+        work = _canonical(await self._works.resolve_by_book(book_id))
+        if work is not None:
+            return work
+        pending = await self._works.get_pending_for_book(book_id)
         if pending is not None:
             return pending
         try:
-            return await self._works.create_pending(owner_user_id, book_id)
+            return await self._works.create_pending(created_by, book_id)
         except asyncpg.UniqueViolationError:
-            pending = await self._works.get_pending_for_book(owner_user_id, book_id)
+            pending = await self._works.get_pending_for_book(book_id)
             if pending is not None:
                 return pending
-            marked = await self._works.resolve_by_book(owner_user_id, book_id)
-            if len(marked) == 1:
-                return marked[0]
+            work = _canonical(await self._works.resolve_by_book(book_id))
+            if work is not None:
+                return work
             raise

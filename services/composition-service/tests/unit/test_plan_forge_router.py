@@ -27,7 +27,7 @@ class StubGrant:
 class StubPlanForge:
     def __init__(self):
         self.run = PlanRun(
-            id=RUN, owner_user_id=USER, book_id=BOOK, mode="rules", status="proposed",
+            id=RUN, created_by=USER, book_id=BOOK, mode="rules", status="proposed",
         )
 
     async def create_run(self, owner_user_id, book_id, **kwargs):

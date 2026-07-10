@@ -18,24 +18,25 @@ RULE = uuid.uuid4()
 
 
 def _work():
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=uuid.uuid4())
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=uuid.uuid4())
 
 
 def _node(**kw):
-    return OutlineNode(id=kw.get("id", NODE), user_id=USER, project_id=PROJECT,
+    return OutlineNode(id=kw.get("id", NODE), created_by=USER, project_id=PROJECT,
+                       book_id=uuid.uuid4(),
                        kind=kw.get("kind", "scene"), rank="a0", version=kw.get("version", 1),
                        chapter_id=uuid.uuid4(), is_archived=kw.get("is_archived", False))
 
 
 def _rule(**kw):
-    return CanonRule(id=kw.get("id", RULE), user_id=USER, project_id=PROJECT,
+    return CanonRule(id=kw.get("id", RULE), created_by=USER, project_id=PROJECT,
                      text=kw.get("text", "no magic"), version=kw.get("version", 1),
                      from_order=kw.get("from_order"), until_order=kw.get("until_order"))
 
 
 class StubWorks:
     def __init__(self): self.work = _work()
-    async def get(self, u, p): return self.work
+    async def get(self, p): return self.work
 
 
 class StubOutline:
@@ -53,23 +54,24 @@ class StubOutline:
         self.gate = {"chapter_id": "c", "scenes_total": 2, "scenes_done": 2, "can_publish": True}
         self.commit_aware_called = False
         self.canon_issues_result = []
-    async def list_tree(self, u, p, **kw): return self.tree
-    async def create_node(self, u, p, **kw):
+    async def get_node(self, n, **kw): return self.node
+    async def list_tree(self, p, **kw): return self.tree
+    async def create_node(self, p, **kw):
         if self.create_raises: raise self.create_raises
         return self.node
-    async def update_node(self, u, n, patch, **kw):
+    async def update_node(self, n, patch, **kw):
         self.last_patch = patch
         if self.update_raises: raise self.update_raises
         return self.update_result
-    async def update_node_commit_aware(self, u, n, patch, **kw):
+    async def update_node_commit_aware(self, n, patch, **kw):
         self.commit_aware_called = True
         if self.update_raises: raise self.update_raises
         return self.update_result
-    async def chapter_scene_gate(self, u, p, ch): return self.gate
-    async def canon_issues(self, u, p): return self.canon_issues_result
-    async def archive_node(self, u, n): return self.archive_result
-    async def restore_node(self, u, n): return self.restore_result
-    async def reorder_node(self, u, n, **kw):
+    async def chapter_scene_gate(self, p, ch): return self.gate
+    async def canon_issues(self, p): return self.canon_issues_result
+    async def archive_node(self, n): return self.archive_result
+    async def restore_node(self, n): return self.restore_result
+    async def reorder_node(self, n, **kw):
         if self.reorder_raises: raise self.reorder_raises
         return self.reorder_result
 
@@ -79,11 +81,11 @@ class StubSceneLinks:
         self.links = []
         self.create_raises = None
         self.deleted = True
-    async def list_by_project(self, u, p): return self.links
-    async def create(self, u, p, f, t, **kw):
+    async def list_by_project(self, p): return self.links
+    async def create(self, p, f, t, **kw):
         if self.create_raises: raise self.create_raises
-        return SceneLink(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, from_node_id=f, to_node_id=t)
-    async def delete(self, u, lid): return self.deleted
+        return SceneLink(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, from_node_id=f, to_node_id=t)
+    async def delete(self, p, lid): return self.deleted
 
 
 class StubCanon:
@@ -93,14 +95,14 @@ class StubCanon:
         self.update_raises = None
         self.update_result = _rule(version=2)
         self.archive_result = _rule()
-    async def list_all(self, u, p): return self.rules
-    async def list_active(self, u, p): return self.rules
-    async def create(self, u, p, text, **kw): return self.rule
-    async def get(self, u, rid): return self.rule
-    async def update(self, u, rid, patch, **kw):
+    async def list_all(self, p): return self.rules
+    async def list_active(self, p): return self.rules
+    async def create(self, p, text, **kw): return self.rule
+    async def get(self, p, rid): return self.rule
+    async def update(self, p, rid, patch, **kw):
         if self.update_raises: raise self.update_raises
         return self.update_result
-    async def archive(self, u, rid): return self.archive_result
+    async def archive(self, p, rid): return self.archive_result
 
 
 class StubTemplates:
@@ -114,10 +116,30 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.run_migrations", AsyncMock())
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
+
+    # By-id DELETE (scene-link) + canon PATCH/DELETE resolve their scope from the
+    # row itself via get_pool().fetchrow (PM-8 scope-bootstrap) before gating —
+    # give both routers a fake pool that returns this project's row.
+    class _FakePool:
+        async def fetchrow(self, query, *args):
+            return {"project_id": PROJECT}
+    monkeypatch.setattr("app.routers.outline.get_pool", lambda: _FakePool())
+    monkeypatch.setattr("app.routers.canon.get_pool", lambda: _FakePool())
+
     from app.main import app
-    from app.deps import (get_canon_rules_repo, get_outline_repo, get_scene_links_repo,
-                          get_structure_templates_repo, get_works_repo)
+    from app.deps import (get_canon_rules_repo, get_grant_client_dep, get_outline_repo,
+                          get_scene_links_repo, get_structure_templates_repo, get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the outline/canon routers resolve
+    # the Work's book then gate VIEW/EDIT (deny paths in test_grant_gate).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
+
     works, outline, links, canon, templates = StubWorks(), StubOutline(), StubSceneLinks(), StubCanon(), StubTemplates()
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: works
@@ -125,6 +147,7 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_scene_links_repo] = lambda: links
     app.dependency_overrides[get_canon_rules_repo] = lambda: canon
     app.dependency_overrides[get_structure_templates_repo] = lambda: templates
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, works, outline, links, canon
     app.dependency_overrides.clear()
@@ -135,7 +158,7 @@ def ctx(monkeypatch):
 def test_get_outline_returns_tree_and_links(ctx):
     c, _, outline, links, _ = ctx
     outline.tree = [_node()]
-    links.links = [SceneLink(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, from_node_id=NODE, to_node_id=uuid.uuid4())]
+    links.links = [SceneLink(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, from_node_id=NODE, to_node_id=uuid.uuid4())]
     r = c.get(f"/v1/composition/works/{PROJECT}/outline")
     assert r.status_code == 200 and len(r.json()["nodes"]) == 1 and len(r.json()["scene_links"]) == 1
 

@@ -8,9 +8,13 @@ magnitude, has_guidance/has_raw flags); verbatim prose + guidance text live in
 the row (composition is the source of truth), redact-by-default on the wire so a
 learning consumer gets the preference signal without the novel text (§3/§5).
 
-SECURITY (M5 isolation): `create` is user_id-scoped and verifies the job is the
-caller's in THIS project before writing — the in-DB FK only proves the job
-exists, not that it belongs to the caller (D-COMP-M2-XREF-OWNERSHIP).
+SCOPE RULE (package re-key, spec 25 §Repo/service layer): reads key on
+`project_id` — access is decided BEFORE the repo, at the gate (E0 grant on the
+row's `book_id`). `create` stamps `created_by` (a plain actor stamp — STORED,
+never filtered on), derives `book_id` from the correction's generation_job
+inside the INSERT, and verifies the job is in THIS project before writing —
+the in-DB FK only proves the job exists, not that it is in scope
+(D-COMP-M2-XREF-OWNERSHIP).
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ from app.db.repositories import ReferenceViolationError, outbox
 _DASHBOARD_MODES = ("auto", "cowrite")
 
 _SELECT_COLS = """
-  id, user_id, project_id, job_id, kind, chosen_candidate_index, guidance,
+  id, created_by, project_id, job_id, kind, chosen_candidate_index, guidance,
   changed_blocks, raw_before, raw_after, regenerated_to_job_id, created_at
 """
 
@@ -58,10 +62,10 @@ class GenerationCorrectionsRepo:
 
     async def create(
         self,
-        user_id: UUID,
         project_id: UUID,
         job_id: UUID,
         *,
+        created_by: UUID,
         kind: CorrectionKind,
         chosen_candidate_index: int | None = None,
         guidance: str | None = None,
@@ -71,53 +75,60 @@ class GenerationCorrectionsRepo:
         regenerated_to_job_id: UUID | None = None,
         winner_index: int | None = None,
         candidate_count: int | None = None,
-        book_id: UUID | None = None,
     ) -> GenerationCorrection:
         """Insert a correction + emit the relayable event, atomically.
 
-        Raises ReferenceViolationError when `job_id` is not the caller's job in
-        `project_id` (the router maps it to 404). The row insert and the outbox
-        emit share one transaction: if either fails, neither is persisted (no
-        capture without a relayable event, no orphan event without a capture).
+        Raises ReferenceViolationError when `job_id` is not a job in
+        `project_id` (the router maps it to 404). `book_id` is derived from the
+        job row inside the INSERT (it can never be NULL; callers do not thread
+        it). The row insert and the outbox emit share one transaction: if either
+        fails, neither is persisted (no capture without a relayable event, no
+        orphan event without a capture).
         """
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 owned = await conn.fetchval(
                     "SELECT 1 FROM generation_job "
-                    "WHERE user_id = $1 AND id = $2 AND project_id = $3",
-                    user_id, job_id, project_id,
+                    "WHERE id = $1 AND project_id = $2",
+                    job_id, project_id,
                 )
                 if owned is None:
                     raise ReferenceViolationError(
-                        f"job {job_id} is not the caller's job in project {project_id}"
+                        f"job {job_id} is not a job in project {project_id}"
                     )
-                # §8.3 chain: the regenerated-to job must ALSO be the caller's in
-                # this project — the FK only proves existence, so without this a
+                # §8.3 chain: the regenerated-to job must ALSO be in this
+                # project — the FK only proves existence, so without this a
                 # correction could point at a foreign job (D-COMP-M2-XREF-OWNERSHIP,
                 # /review-impl MED#2).
                 if regenerated_to_job_id is not None:
                     chain_owned = await conn.fetchval(
                         "SELECT 1 FROM generation_job "
-                        "WHERE user_id = $1 AND id = $2 AND project_id = $3",
-                        user_id, regenerated_to_job_id, project_id,
+                        "WHERE id = $1 AND project_id = $2",
+                        regenerated_to_job_id, project_id,
                     )
                     if chain_owned is None:
                         raise ReferenceViolationError(
-                            f"regenerated_to_job_id {regenerated_to_job_id} is not the caller's job"
+                            f"regenerated_to_job_id {regenerated_to_job_id} is not a job in this project"
                         )
                 row = await conn.fetchrow(
                     f"""
                     INSERT INTO generation_correction
-                      (user_id, project_id, job_id, kind, chosen_candidate_index,
+                      (created_by, project_id, book_id, job_id, kind, chosen_candidate_index,
                        guidance, changed_blocks, raw_before, raw_after,
                        regenerated_to_job_id)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-                    RETURNING {_SELECT_COLS}
+                    SELECT $1, $2, j.book_id, $3, $4, $5, $6, $7, $8, $9, $10
+                    FROM generation_job j WHERE j.id = $3 AND j.project_id = $2
+                    RETURNING {_SELECT_COLS}, book_id
                     """,
-                    user_id, project_id, job_id, kind, chosen_candidate_index,
+                    created_by, project_id, job_id, kind, chosen_candidate_index,
                     guidance, changed_blocks, raw_before, raw_after,
                     regenerated_to_job_id,
                 )
+                if row is None:
+                    raise ReferenceViolationError(
+                        f"job {job_id} is not a job in project {project_id}"
+                    )
+                book_id = row["book_id"]
                 corr = _row_to_correction(row)
                 # STRUCTURAL-ONLY payload (redact-by-default §5): no verbatim prose
                 # and no guidance text on the wire — the learning consumer needs the
@@ -131,9 +142,11 @@ class GenerationCorrectionsRepo:
                         "correction_id": str(corr.id),
                         "job_id": str(job_id),
                         "project_id": str(project_id),
-                        # owner identity for the learning corrections store (it is
-                        # user_id-scoped, NOT NULL); the author IS the work owner.
-                        "user_id": str(user_id),
+                        # actor identity for the learning corrections store (it is
+                        # keyed per correcting user, NOT NULL). `created_by` is the
+                        # acting caller — the owner of the preference signal. The
+                        # wire key stays `user_id` (the consumer's contract).
+                        "user_id": str(created_by),
                         "book_id": str(book_id) if book_id else None,
                         "kind": kind,
                         # winner_index (i) + chosen_candidate_index (j) + k let the
@@ -155,7 +168,7 @@ class GenerationCorrectionsRepo:
                 return corr
 
     async def correction_stats(
-        self, user_id: UUID, project_id: UUID
+        self, project_id: UUID
     ) -> CorrectionStats:
         """Per-Work, per-mode correction-rate signal (the V1 eval-gate, §6).
 
@@ -181,8 +194,10 @@ class GenerationCorrectionsRepo:
               avg(c.changed_blocks) FILTER (WHERE j.status = 'completed' AND c.kind = 'edit')              AS avg_edit_mag
             FROM generation_job j
             LEFT JOIN generation_correction c
-              ON c.job_id = j.id AND c.user_id = j.user_id
-            WHERE j.user_id = $1 AND j.project_id = $2
+              -- double-filter: the project leg stays on BOTH joined re-keyed
+              -- tables (the kinds-bug rule).
+              ON c.job_id = j.id AND c.project_id = j.project_id
+            WHERE j.project_id = $1
               -- /review-impl: T3.2 selection edits run mode='cowrite' but are NOT
               -- part of the draft-correction flywheel (no correction is captured),
               -- so they'd inflate the cowrite `generations` denominator and drag its
@@ -191,7 +206,7 @@ class GenerationCorrectionsRepo:
               AND NOT coalesce((j.input->>'selection_edit')::boolean, false)
             GROUP BY j.mode
             """,
-            user_id, project_id,
+            project_id,
         )
         by_mode_raw = {r["mode"]: r for r in rows}
 
@@ -221,13 +236,13 @@ class GenerationCorrectionsRepo:
         return CorrectionStats(project_id=project_id, by_mode=stats)
 
     async def list_for_job(
-        self, user_id: UUID, job_id: UUID
+        self, project_id: UUID, job_id: UUID
     ) -> list[GenerationCorrection]:
-        """Corrections recorded on a job (newest first), user-scoped."""
+        """Corrections recorded on a job (newest first), project-scoped."""
         async with self._pool.acquire() as c:
             rows = await c.fetch(
                 f"SELECT {_SELECT_COLS} FROM generation_correction "
-                f"WHERE user_id = $1 AND job_id = $2 ORDER BY created_at DESC",
-                user_id, job_id,
+                f"WHERE project_id = $1 AND job_id = $2 ORDER BY created_at DESC",
+                project_id, job_id,
             )
         return [_row_to_correction(r) for r in rows]

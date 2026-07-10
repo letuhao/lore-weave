@@ -3,8 +3,9 @@
 Per-scope prose-style steering (Density/Pace, 0-100, scoped work|chapter|scene) and
 per-character voice tags. Both are authoring config the packer threads into the
 draft prompts (density/pace via the most-specific scope; voice for present
-characters only). Every route gates on `works.get(user_id, project_id)` → a
-cross-user / unknown project is a 404 (per-user, no existence oracle).
+characters only). Access is the E0 book grant (25 PM-8): every route resolves
+the Work by project and gates VIEW (reads) / EDIT (writes) on its book — an
+unknown project / no-grant caller is a 404 (no existence oracle).
 """
 
 from __future__ import annotations
@@ -18,17 +19,33 @@ from pydantic import BaseModel, Field, StringConstraints
 from app.db.models import StyleScope
 from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.works import WorksRepo
-from app.deps import get_style_profile_repo, get_voice_profile_repo, get_works_repo
+from app.deps import (get_grant_client_dep, get_style_profile_repo,
+                      get_voice_profile_repo, get_works_repo)
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
+from app.packer.pack import OwnershipError
 
 router = APIRouter(prefix="/v1/composition")
 
 _Tag = Annotated[str, StringConstraints(min_length=1, max_length=40)]
 
 
-async def _gate_work(works: WorksRepo, user_id: UUID, project_id: UUID) -> None:
-    if await works.get(user_id, project_id) is None:
+async def _gate_work(
+    works: WorksRepo, grant: GrantClient, user_id: UUID, project_id: UUID,
+    need: GrantLevel,
+) -> None:
+    """Resolve the Work by project (un-user-scoped — 25 PM-9) and gate the
+    caller's E0 grant on its book (PM-8). none→404 (no oracle), under-tier→403."""
+    work = await works.get(project_id)
+    if work is None:
         raise HTTPException(status_code=404, detail="work not found")
+    try:
+        await authorize_book(grant, work.book_id, user_id, need)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="work not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
 
 
 # ── style profiles ──
@@ -46,9 +63,10 @@ async def list_style_profiles(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     style: StyleProfileRepo = Depends(get_style_profile_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _gate_work(works, user_id, project_id)
-    rows = await style.list_all(user_id, project_id)
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    rows = await style.list_all(project_id)
     return {"items": [r.model_dump(mode="json") for r in rows]}
 
 
@@ -59,10 +77,12 @@ async def put_style_profile(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     style: StyleProfileRepo = Depends(get_style_profile_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _gate_work(works, user_id, project_id)
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.EDIT)
     row = await style.upsert(
-        user_id, project_id, body.scope_type, body.scope_id, body.density, body.pace)
+        project_id, body.scope_type, body.scope_id, body.density, body.pace,
+        created_by=user_id)
     return row.model_dump(mode="json")
 
 
@@ -74,9 +94,10 @@ async def delete_style_profile(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     style: StyleProfileRepo = Depends(get_style_profile_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _gate_work(works, user_id, project_id)
-    removed = await style.delete(user_id, project_id, scope_type, scope_id)
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    removed = await style.delete(project_id, scope_type, scope_id)
     return {"removed": removed}
 
 
@@ -95,9 +116,10 @@ async def list_voice_profiles(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     voice: VoiceProfileRepo = Depends(get_voice_profile_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _gate_work(works, user_id, project_id)
-    rows = await voice.list_all(user_id, project_id)
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    rows = await voice.list_all(project_id)
     return {"items": [r.model_dump(mode="json") for r in rows]}
 
 
@@ -108,10 +130,12 @@ async def put_voice_profile(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     voice: VoiceProfileRepo = Depends(get_voice_profile_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _gate_work(works, user_id, project_id)
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.EDIT)
     row = await voice.upsert(
-        user_id, project_id, body.entity_id, body.entity_name, list(body.tags))
+        project_id, body.entity_id, body.entity_name, list(body.tags),
+        created_by=user_id)
     return row.model_dump(mode="json")
 
 
@@ -122,7 +146,8 @@ async def delete_voice_profile(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     voice: VoiceProfileRepo = Depends(get_voice_profile_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _gate_work(works, user_id, project_id)
-    removed = await voice.delete(user_id, project_id, entity_id)
+    await _gate_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    removed = await voice.delete(project_id, entity_id)
     return {"removed": removed}

@@ -249,10 +249,10 @@ async def run_stitch(
     jobs_repo = GenerationJobsRepo(pool)
     works = WorksRepo(pool)
 
-    work = await works.get(UUID(user_id), UUID(project_id))
+    work = await works.get(UUID(project_id))
     profile = from_settings(work.settings if work else None)
     rows = await jobs_repo.chapter_scene_drafts(
-        UUID(user_id), UUID(project_id), UUID(chapter_id)
+        UUID(project_id), UUID(chapter_id)
     )
     if not rows:
         raise ValueError("no completed scene drafts to stitch")
@@ -330,7 +330,7 @@ async def run_generate(
 
     user_id = input["user_id"]
     project_id = input["project_id"]
-    work = await WorksRepo(pool).get(UUID(user_id), UUID(project_id))
+    work = await WorksRepo(pool).get(UUID(project_id))
     sdict = (work.settings if work else None) or {}
     profile = from_settings(work.settings if work else None)
 
@@ -455,7 +455,7 @@ async def run_chapter_generate(
 
     user_id = input["user_id"]
     project_id = input["project_id"]
-    work = await WorksRepo(pool).get(UUID(user_id), UUID(project_id))
+    work = await WorksRepo(pool).get(UUID(project_id))
     sdict = (work.settings if work else None) or {}
     profile = from_settings(work.settings if work else None)
 
@@ -520,7 +520,7 @@ async def run_chapter_generate(
     if sdict.get("narrative_thread_enabled"):
         try:
             open_promise_count = await NarrativeThreadRepo(pool).count_open(
-                UUID(user_id), UUID(project_id))
+                UUID(project_id))
         except Exception:  # noqa: BLE001 — advisory; must not fail the generate
             logger.warning("open_promise_count read failed (advisory)", exc_info=True)
 

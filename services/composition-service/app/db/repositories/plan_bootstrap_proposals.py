@@ -1,7 +1,10 @@
 """plan_bootstrap_proposal repository (PlanForge auto-bootstrap POC gate).
 
-Tenancy: every method takes book_id + owner_user_id and filters on both — a
-foreign/missing id returns None, routers map to 404 (no existence oracle).
+Tenancy (BPS re-key, spec 25 OQ-3): rows are BOOK-scoped — every method
+filters by book_id, and access is decided BEFORE the repo at the route's E0
+book-grant gate. `created_by` is a plain actor stamp on the INSERT — STORED,
+never filtered on. A foreign/missing id returns None, routers map to 404 (no
+existence oracle).
 
 The pending→approved→applying→applied|failed lifecycle is enforced here via
 conditional `UPDATE ... WHERE status = <expected>` claims, not a DB trigger
@@ -21,7 +24,7 @@ import asyncpg
 from app.db.models import PlanBootstrapProposal, PlanBootstrapProposalStatus
 
 _SELECT = """
-  id, run_id, book_id, owner_user_id, status, diff, applied_results,
+  id, run_id, book_id, created_by, status, diff, applied_results,
   error_detail, created_at, updated_at
 """
 
@@ -45,30 +48,30 @@ class PlanBootstrapProposalsRepo:
 
     async def create(
         self,
-        owner_user_id: UUID,
+        created_by: UUID,
         book_id: UUID,
         run_id: UUID,
         *,
         diff: dict[str, Any],
     ) -> PlanBootstrapProposal:
         query = f"""
-        INSERT INTO plan_bootstrap_proposal (run_id, book_id, owner_user_id, diff)
+        INSERT INTO plan_bootstrap_proposal (run_id, book_id, created_by, diff)
         VALUES ($1, $2, $3, $4::jsonb)
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, run_id, book_id, owner_user_id, _jsonb(diff))
+            row = await c.fetchrow(query, run_id, book_id, created_by, _jsonb(diff))
         return _row(row)
 
-    async def get_for_owner(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+    async def get_for_book(
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal | None:
         query = f"""
         SELECT {_SELECT} FROM plan_bootstrap_proposal
-        WHERE id = $1 AND owner_user_id = $2 AND book_id = $3
+        WHERE id = $1 AND book_id = $2
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, proposal_id, owner_user_id, book_id)
+            row = await c.fetchrow(query, proposal_id, book_id)
         return _row(row) if row else None
 
     async def list_active_for_book(
@@ -95,7 +98,6 @@ class PlanBootstrapProposalsRepo:
 
     async def _transition(
         self,
-        owner_user_id: UUID,
         book_id: UUID,
         proposal_id: UUID,
         *,
@@ -106,17 +108,17 @@ class PlanBootstrapProposalsRepo:
     ) -> PlanBootstrapProposal | None:
         """Claim a legal transition atomically: only succeeds if the row is
         currently in `from_status`. Returns None (not an error) if the row
-        doesn't exist, isn't owned, or is no longer in `from_status` — the
-        caller distinguishes "not found" from "already transitioned" via a
-        follow-up `get_for_owner` read, same as the rest of this repo's
+        doesn't exist, isn't on this book, or is no longer in `from_status` —
+        the caller distinguishes "not found" from "already transitioned" via a
+        follow-up `get_for_book` read, same as the rest of this repo's
         no-existence-oracle convention."""
-        params: list[Any] = [proposal_id, owner_user_id, book_id, to_status, from_status]
+        params: list[Any] = [proposal_id, book_id, to_status, from_status]
         if extra_params:
             params.extend(extra_params)
         query = f"""
         UPDATE plan_bootstrap_proposal
-        SET status = $4, updated_at = now(){extra_set}
-        WHERE id = $1 AND owner_user_id = $2 AND book_id = $3 AND status = $5
+        SET status = $3, updated_at = now(){extra_set}
+        WHERE id = $1 AND book_id = $2 AND status = $4
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
@@ -124,21 +126,21 @@ class PlanBootstrapProposalsRepo:
         return _row(row) if row else None
 
     async def mark_approved(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal | None:
         return await self._transition(
-            owner_user_id, book_id, proposal_id,
+            book_id, proposal_id,
             from_status="pending", to_status="approved",
         )
 
     async def mark_rejected(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal | None:
         # Rejecting from 'pending' OR 'approved' (not-yet-applied second thoughts)
         # is allowed; kept as status='rejected' for audit, never deleted (§4.1.4).
         for from_status in ("pending", "approved"):
             result = await self._transition(
-                owner_user_id, book_id, proposal_id,
+                book_id, proposal_id,
                 from_status=from_status, to_status="rejected",
             )
             if result is not None:
@@ -146,7 +148,7 @@ class PlanBootstrapProposalsRepo:
         return None
 
     async def claim_for_apply(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal | None:
         """Atomic claim: succeeds from 'approved' (first apply) OR 'failed'
         (retry after a partial failure — the service resumes via
@@ -157,17 +159,16 @@ class PlanBootstrapProposalsRepo:
         query = f"""
         UPDATE plan_bootstrap_proposal
         SET status = 'applying', updated_at = now()
-        WHERE id = $1 AND owner_user_id = $2 AND book_id = $3
+        WHERE id = $1 AND book_id = $2
           AND status IN ('approved', 'failed')
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, proposal_id, owner_user_id, book_id)
+            row = await c.fetchrow(query, proposal_id, book_id)
         return _row(row) if row else None
 
     async def mark_item_applied(
         self,
-        owner_user_id: UUID,
         book_id: UUID,
         proposal_id: UUID,
         *,
@@ -180,29 +181,29 @@ class PlanBootstrapProposalsRepo:
         instead of an opaque "500, try again"."""
         query = """
         UPDATE plan_bootstrap_proposal
-        SET applied_results = applied_results || $4::jsonb, updated_at = now()
-        WHERE id = $1 AND owner_user_id = $2 AND book_id = $3
+        SET applied_results = applied_results || $3::jsonb, updated_at = now()
+        WHERE id = $1 AND book_id = $2
         """
         async with self._pool.acquire() as c:
             await c.execute(
-                query, proposal_id, owner_user_id, book_id,
+                query, proposal_id, book_id,
                 json.dumps({item_key: result}),
             )
 
     async def mark_applied(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal | None:
         return await self._transition(
-            owner_user_id, book_id, proposal_id,
+            book_id, proposal_id,
             from_status="applying", to_status="applied",
             extra_set=", error_detail = NULL",
         )
 
     async def mark_failed(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID, *, error_detail: str,
+        self, book_id: UUID, proposal_id: UUID, *, error_detail: str,
     ) -> PlanBootstrapProposal | None:
         return await self._transition(
-            owner_user_id, book_id, proposal_id,
+            book_id, proposal_id,
             from_status="applying", to_status="failed",
-            extra_set=", error_detail = $6", extra_params=[error_detail],
+            extra_set=", error_detail = $5", extra_params=[error_detail],
         )

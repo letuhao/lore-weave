@@ -2,8 +2,10 @@
 
 Reuses the M2 OutlineRepo / SceneLinksRepo (incl. the M2-closure ownership +
 reparent-cycle guards, which surface as ReferenceViolationError → 400 here, and
-If-Match VersionMismatchError → 412). The /works/{project_id}/* routes verify
-the Work exists (user-scoped 404) before mutating its tree.
+If-Match VersionMismatchError → 412). Access is the E0 book grant (25 PM-8):
+the /works/{project_id}/* routes resolve the Work by project and gate the
+caller's grant on its book (VIEW for reads, EDIT for writes) BEFORE any repo
+call; by-id routes resolve the target row's scope first and gate on ITS book.
 """
 
 from __future__ import annotations
@@ -16,13 +18,20 @@ import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
+
 from app.db.models import LinkKind, NodeKind, NodeStatus
+from app.db.pool import get_pool
 from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
-from app.deps import get_outline_repo, get_scene_links_repo, get_works_repo
+from app.deps import (get_grant_client_dep, get_outline_repo,
+                      get_scene_links_repo, get_works_repo)
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
+from app.packer.pack import OwnershipError
 
 router = APIRouter(prefix="/v1/composition")
 
@@ -79,9 +88,52 @@ def _parse_if_match(if_match: str | None) -> int | None:
         raise HTTPException(status_code=400, detail="If-Match must be an integer version")
 
 
-async def _require_work(works: WorksRepo, user_id: UUID, project_id: UUID) -> None:
-    if await works.get(user_id, project_id) is None:
-        raise HTTPException(status_code=404, detail="work not found")
+async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel) -> None:
+    """E0-4c book-grant chokepoint → HTTP (mirrors works._gate_book). none→404
+    (no oracle), under-tier→403. The 404 uses the SAME uniform detail as every
+    other not-found/not-accessible branch in this router (the MCP
+    `uniform_not_accessible()` H13 message) so a by-id gate can't leak existence:
+    "this row exists but isn't yours" reads identically to "no such row"."""
+    try:
+        await authorize_book(grant, book_id, caller, need)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
+
+
+async def _require_work(
+    works: WorksRepo, grant: GrantClient, user_id: UUID, project_id: UUID,
+    need: GrantLevel,
+) -> None:
+    """Resolve the Work by project (un-user-scoped — 25 PM-9) and gate the
+    caller's E0 grant on its book (PM-8: access is decided HERE, never in the
+    repos — the repos no longer filter on the actor)."""
+    work = await works.get(project_id)
+    if work is None:
+        # Uniform with the no-grant branch below (and every by-id gate) so a
+        # missing project can't be told apart from an unauthorized one.
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _gate_book(grant, work.book_id, user_id, need)
+
+
+async def _gate_node(
+    outline: OutlineRepo, works: WorksRepo, grant: GrantClient,
+    user_id: UUID, node_id: UUID, need: GrantLevel,
+) -> None:
+    """By-id routes: resolve the target node's scope from the ROW ITSELF, then
+    gate the caller's grant on that book (`worker-loaded-id-needs-parent-scoping`
+    — the gate can never check a different book than the row mutated).
+
+    `get_node` is a bare-id read (no scope filter), so a node the caller may not
+    see still resolves here — the grant is what gates. A missing node therefore
+    returns the SAME uniform detail as a node the caller lacks a grant on (the
+    MCP `uniform_not_accessible()` H13 message), never a distinct 'node not
+    found' that would confirm the id exists."""
+    node = await outline.get_node(node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _require_work(works, grant, user_id, node.project_id, need)
 
 
 @router.get("/works/{project_id}/outline")
@@ -92,10 +144,11 @@ async def get_outline(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _require_work(works, user_id, project_id)
-    nodes = await outline.list_tree(user_id, project_id, include_archived=include_archived)
-    links = await scene_links.list_by_project(user_id, project_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    nodes = await outline.list_tree(project_id, include_archived=include_archived)
+    links = await scene_links.list_by_project(project_id)
     return {
         "nodes": [n.model_dump(mode="json") for n in nodes],
         "scene_links": [l.model_dump(mode="json") for l in links],
@@ -131,16 +184,17 @@ async def list_outline_children(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Lazy-tree primitive for the manuscript navigator (#02): the direct children of
     `parent_id` (omitted → top-level arcs), keyset-paged by (rank, id). Fetch one level
     a page at a time so a 10k-chapter outline scales like the book-service chapter spine
     instead of the whole-tree `GET /outline`. Response: {items, next_cursor}."""
-    await _require_work(works, user_id, project_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
     limit = max(1, min(limit, 200))
     after = _decode_child_cursor(cursor) if cursor else None
     nodes = await outline.list_children(
-        user_id, project_id, parent_id,
+        project_id, parent_id,
         after=after, limit=limit, include_archived=include_archived,
     )
     next_cursor: str | None = None
@@ -161,6 +215,7 @@ async def list_chapter_scenes(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Studio #12 cycle-1 — the active scene nodes of one BOOK chapter in reading
     order (the manuscript-unit document's `scenes[]` source). Thin wrapper over the
@@ -168,9 +223,9 @@ async def list_chapter_scenes(
     read one ordering. M-G: also returns `chapter_node_id` (the outline chapter node
     scenes parent under — the rail's Create needs it when the chapter has 0 scenes;
     null when the chapter was never outlined)."""
-    await _require_work(works, user_id, project_id)
-    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
-    node_id = await outline.chapter_node_id(user_id, project_id, chapter_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    scenes = await outline.scenes_for_chapter(project_id, chapter_id)
+    node_id = await outline.chapter_node_id(project_id, chapter_id)
     return {
         "items": [n.model_dump(mode="json") for n in scenes],
         "chapter_node_id": str(node_id) if node_id else None,
@@ -185,17 +240,18 @@ async def search_outline(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Manuscript jump/search (#02 nav jump box + #06a Quick Open): title substring match
     across the WHOLE outline (arc/chapter/scene), not just the lazy-loaded tree window.
     Empty query → no items (the client shows the tree instead). Response: {items} where each
     item is {id, kind, title, chapter_id, status, story_order, path[]}."""
-    await _require_work(works, user_id, project_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
     q = q.strip()
     if not q:
         return {"items": []}
     limit = max(1, min(limit, 50))
-    items = await outline.search_nodes(user_id, project_id, q, limit=limit)
+    items = await outline.search_nodes(project_id, q, limit=limit)
     return {"items": items}
 
 
@@ -205,11 +261,12 @@ async def outline_stats(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, int]:
     """Whole-book totals for the navigator footer: {arcs, chapters, scenes} (non-archived).
     Not derivable from the lazy-loaded tree window — a single GROUP BY over the outline."""
-    await _require_work(works, user_id, project_id)
-    return await outline.outline_stats(user_id, project_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    return await outline.outline_stats(project_id)
 
 
 @router.get("/works/{project_id}/chapters/{chapter_id}/publish-gate")
@@ -219,13 +276,14 @@ async def get_publish_gate(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """M9 chapter-gate: is the chapter publishable? `can_publish` is True only
     when ALL the chapter's composition scenes are status='done' (OI-1 — no
     unreviewed scene canonized). The FE gates the (CM-FE) Publish affordance on
-    this. Verifies the Work exists (user-scoped 404) first."""
-    await _require_work(works, user_id, project_id)
-    return await outline.chapter_scene_gate(user_id, project_id, chapter_id)
+    this. Gates the book grant (VIEW) first."""
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    return await outline.chapter_scene_gate(project_id, chapter_id)
 
 
 @router.get("/works/{project_id}/canon-issues")
@@ -234,13 +292,14 @@ async def get_canon_issues(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Studio Quality tab (`quality-canon` panel): every scene in the book whose
     latest completed auto-generation left a CONFIRMED canon contradiction —
-    itemized, not the `publish-gate`'s per-chapter count. Verifies the Work
-    exists (user-scoped 404) first."""
-    await _require_work(works, user_id, project_id)
-    items = await outline.canon_issues(user_id, project_id)
+    itemized, not the `publish-gate`'s per-chapter count. Gates the book grant
+    (VIEW) first."""
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    items = await outline.canon_issues(project_id)
     return {"items": items}
 
 
@@ -251,15 +310,17 @@ async def create_node(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _require_work(works, user_id, project_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
     try:
         node = await outline.create_node(
-            user_id, project_id, kind=body.kind, parent_id=body.parent_id, rank=body.rank,
+            project_id, kind=body.kind, parent_id=body.parent_id, rank=body.rank,
             title=body.title, pov_entity_id=body.pov_entity_id,
             present_entity_ids=body.present_entity_ids, goal=body.goal,
             beat_role=body.beat_role, status=body.status, chapter_id=body.chapter_id,
             tension=body.tension, story_order=body.story_order, synopsis=body.synopsis,
+            created_by=user_id,
         )
     except ReferenceViolationError as exc:
         raise HTTPException(status_code=400, detail={"code": "BAD_REFERENCE", "detail": exc.message})
@@ -273,9 +334,12 @@ async def patch_node(
     node_id: UUID,
     body: NodePatch,
     user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> dict[str, Any]:
+    await _gate_node(outline, works, grant, user_id, node_id, GrantLevel.EDIT)
     patch = body.model_dump(exclude_unset=True)
     expected_version = _parse_if_match(if_match)
     # A scene committing (status → 'done') routes through the commit-aware path,
@@ -284,11 +348,11 @@ async def patch_node(
     try:
         if patch.get("status") == "done":
             node = await outline.update_node_commit_aware(
-                user_id, node_id, patch, expected_version=expected_version,
+                node_id, patch, expected_version=expected_version,
             )
         else:
             node = await outline.update_node(
-                user_id, node_id, patch, expected_version=expected_version,
+                node_id, patch, expected_version=expected_version,
             )
     except VersionMismatchError as exc:
         raise HTTPException(status_code=412, detail={"code": "NODE_VERSION_CONFLICT",
@@ -304,9 +368,12 @@ async def patch_node(
 async def delete_node(
     node_id: UUID,
     user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    node = await outline.archive_node(user_id, node_id)
+    await _gate_node(outline, works, grant, user_id, node_id, GrantLevel.EDIT)
+    node = await outline.archive_node(node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
     return node.model_dump(mode="json")
@@ -316,12 +383,15 @@ async def delete_node(
 async def restore_node(
     node_id: UUID,
     user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """T1.1b — un-archive a node (inverse of DELETE). Restores the node's archived
     subtree + archived ancestor chain so it reconnects to a visible root. 404 if
-    the node doesn't exist / isn't ours / wasn't archived."""
-    node = await outline.restore_node(user_id, node_id)
+    the node doesn't exist / isn't grant-visible / wasn't archived."""
+    await _gate_node(outline, works, grant, user_id, node_id, GrantLevel.EDIT)
+    node = await outline.restore_node(node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found or not archived")
     return node.model_dump(mode="json")
@@ -332,7 +402,9 @@ async def reorder_node(
     node_id: UUID,
     body: NodeReorder,
     user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> dict[str, Any]:
     """T1.1c — drag-reorder + reparent: place `node_id` under `new_parent_id`
@@ -340,10 +412,11 @@ async def reorder_node(
     renumbers scene story_order server-side (atomic). 412 NODE_VERSION_CONFLICT on
     a stale If-Match; 400 BAD_REFERENCE on a reparent cycle / cross-scope parent /
     bad after_id."""
+    await _gate_node(outline, works, grant, user_id, node_id, GrantLevel.EDIT)
     expected_version = _parse_if_match(if_match)
     try:
         node = await outline.reorder_node(
-            user_id, node_id,
+            node_id,
             new_parent_id=body.new_parent_id, after_id=body.after_id,
             expected_version=expected_version,
         )
@@ -364,11 +437,13 @@ async def create_scene_link(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
-    await _require_work(works, user_id, project_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
     try:
-        link = await scene_links.create(user_id, project_id, body.from_node_id, body.to_node_id,
-                                        kind=body.kind, label=body.label)
+        link = await scene_links.create(project_id, body.from_node_id, body.to_node_id,
+                                        kind=body.kind, label=body.label,
+                                        created_by=user_id)
     except ReferenceViolationError as exc:
         raise HTTPException(status_code=400, detail={"code": "BAD_REFERENCE", "detail": exc.message})
     except asyncpg.UniqueViolationError:
@@ -380,7 +455,25 @@ async def create_scene_link(
 async def delete_scene_link(
     link_id: UUID,
     user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> None:
-    if not await scene_links.delete(user_id, link_id):
+    # By-id route (`/scene-links/{link_id}` has no project in the path): resolve
+    # the edge's scope from the ROW ITSELF via an ids-only read (PM-8 scope-
+    # bootstrap, mirrors works.scope_meta's anti-oracle), gate the caller's grant
+    # on ITS book, then delete under the same project constraint (the gate and
+    # the mutation can never target different books).
+    row = await get_pool().fetchrow(
+        "SELECT project_id FROM scene_link WHERE id = $1", link_id,
+    )
+    if row is None:
+        # Same uniform detail as the no-grant branch (_require_work below): a
+        # by-id existence probe must not distinguish "no such link" from
+        # "exists but not yours".
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _require_work(works, grant, user_id, row["project_id"], GrantLevel.EDIT)
+    if not await scene_links.delete(row["project_id"], link_id):
+        # Post-authorization (the caller cleared the EDIT grant above): a benign
+        # race where the row vanished — keep the specific, non-leaking message.
         raise HTTPException(status_code=404, detail="scene-link not found")

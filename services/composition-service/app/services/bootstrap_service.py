@@ -66,7 +66,7 @@ class BootstrapService:
         self._jobs = jobs
 
     async def propose(
-        self, owner_user_id: UUID, book_id: UUID, run_id: UUID, bearer: str,
+        self, created_by: UUID, book_id: UUID, run_id: UUID, bearer: str,
     ) -> PlanBootstrapProposal:
         """One deterministic diff pass — zero LLM calls for this scope (the
         diff is title-matched against real chapters + every non-rejected
@@ -77,11 +77,11 @@ class BootstrapService:
         this, calling propose() twice before applying the first would
         silently double-offer (and, if both got applied, double-create)
         the same chapters)."""
-        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             raise LookupError("run not found")
 
-        pkg_art = await self._runs.latest_artifact(owner_user_id, run_id, "package")
+        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
         package = pkg_art.content.get("planning_package") if pkg_art else None
         if not package:
             raise ValueError("run has no compiled package yet — call compile() first")
@@ -119,7 +119,7 @@ class BootstrapService:
         pipeline_job_id = run.checkpoint_state.get("pipeline_job_id")
         if pipeline_job_id:
             try:
-                job = await self._jobs.get(owner_user_id, UUID(pipeline_job_id))
+                job = await self._jobs.get(UUID(pipeline_job_id))
                 if job is not None and job.status == "completed" and job.result:
                     drafting_guides = _drafting_guides_by_event_id(job.result)
             except (ValueError, TypeError) as exc:
@@ -161,7 +161,7 @@ class BootstrapService:
         ]
 
         diff = {"new_chapters": new_chapters, "new_glossary_entities": new_glossary_entities}
-        record = await self._proposals.create(owner_user_id, book_id, run_id, diff=diff)
+        record = await self._proposals.create(created_by, book_id, run_id, diff=diff)
         logger.info(
             "bootstrap propose: book=%s run=%s proposal=%s new_chapters=%d "
             "(%d with a drafting guide from job %s) new_glossary_entities=%d "
@@ -175,45 +175,55 @@ class BootstrapService:
         return record
 
     async def get(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal | None:
-        return await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
+        # Book-scoped read (OQ-3): the router's E0 book VIEW gate is the access
+        # decision, made BEFORE this call; the repo never filters on the actor,
+        # so a read carries no created_by.
+        return await self._proposals.get_for_book(book_id, proposal_id)
 
     async def approve(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal:
-        result = await self._proposals.mark_approved(owner_user_id, book_id, proposal_id)
+        # Book-scoped status transition (OQ-3): the router's E0 book EDIT gate is
+        # the access decision; the actor isn't stamped on the state change (the
+        # repo's mark_approved stores nothing about the caller), so no created_by.
+        result = await self._proposals.mark_approved(book_id, proposal_id)
         if result is not None:
             logger.info("bootstrap approve: book=%s proposal=%s", book_id, proposal_id)
             return result
-        existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
+        existing = await self._proposals.get_for_book(book_id, proposal_id)
         if existing is None:
             raise LookupError("proposal not found")
         raise ValueError(f"cannot approve a proposal in status '{existing.status}'")
 
     async def reject(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID,
+        self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal:
-        result = await self._proposals.mark_rejected(owner_user_id, book_id, proposal_id)
+        # Book-scoped status transition (OQ-3): the router's E0 book EDIT gate is
+        # the access decision; the actor isn't stamped on the state change (the
+        # repo's mark_rejected stores nothing about the caller), so no created_by.
+        result = await self._proposals.mark_rejected(book_id, proposal_id)
         if result is not None:
             logger.info("bootstrap reject: book=%s proposal=%s", book_id, proposal_id)
             return result
-        existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
+        existing = await self._proposals.get_for_book(book_id, proposal_id)
         if existing is None:
             raise LookupError("proposal not found")
         raise ValueError(f"cannot reject a proposal in status '{existing.status}'")
 
     async def apply(
-        self, owner_user_id: UUID, book_id: UUID, proposal_id: UUID, bearer: str,
+        self, created_by: UUID, book_id: UUID, proposal_id: UUID, bearer: str,
     ) -> PlanBootstrapProposal:
         """Deterministic, zero LLM calls. Claims the record atomically
         (approved|failed → applying); a claim miss means another apply
         already ran or the record isn't in an applicable state — the
         current record is returned as-is (safe no-op / caller inspects
         `status`), never a blind re-run."""
-        claimed = await self._proposals.claim_for_apply(owner_user_id, book_id, proposal_id)
+        del created_by  # actor arity kept; apply replays the approved diff, book-scoped
+        claimed = await self._proposals.claim_for_apply(book_id, proposal_id)
         if claimed is None:
-            existing = await self._proposals.get_for_owner(owner_user_id, book_id, proposal_id)
+            existing = await self._proposals.get_for_book(book_id, proposal_id)
             if existing is None:
                 raise LookupError("proposal not found")
             logger.info(
@@ -259,7 +269,7 @@ class BootstrapService:
                     # suggested scene/beat guide" for the chapter it just created.
                     result["drafting_guide"] = ch["drafting_guide"]
                 await self._proposals.mark_item_applied(
-                    owner_user_id, book_id, proposal_id,
+                    book_id, proposal_id,
                     item_key=event_id, result=result,
                 )
 
@@ -282,7 +292,7 @@ class BootstrapService:
                     raise
                 for item in created_entities:
                     await self._proposals.mark_item_applied(
-                        owner_user_id, book_id, proposal_id,
+                        book_id, proposal_id,
                         item_key=_glossary_item_key(item.get("kind_code"), item.get("name")),
                         result={
                             "entity_id": item.get("entity_id"),
@@ -312,10 +322,10 @@ class BootstrapService:
                 book_id, proposal_id, error_detail, type(exc).__name__,
             )
             await self._proposals.mark_failed(
-                owner_user_id, book_id, proposal_id, error_detail=error_detail,
+                book_id, proposal_id, error_detail=error_detail,
             )
             raise
 
-        applied = await self._proposals.mark_applied(owner_user_id, book_id, proposal_id)
+        applied = await self._proposals.mark_applied(book_id, proposal_id)
         logger.info("bootstrap apply: book=%s proposal=%s all items applied", book_id, proposal_id)
         return applied if applied is not None else claimed

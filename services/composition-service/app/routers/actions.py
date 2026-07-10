@@ -319,7 +319,7 @@ async def confirm_action(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
 
-    work = await works.get(envelope_user, project_id)
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
     try:
@@ -357,7 +357,7 @@ async def _execute_publish(
     # Canonization gate (CM1 / OI-1): a chapter is publishable ONLY when all its
     # composition scenes are 'done' and no unresolved canon contradiction survives
     # (the SAME gate the FE's Publish affordance reads). Re-check at execute time.
-    gate = await outline.chapter_scene_gate(envelope_user, project_id, chapter_id)
+    gate = await outline.chapter_scene_gate(project_id, chapter_id)
     if not gate.get("can_publish"):
         raise HTTPException(
             status_code=409,
@@ -551,7 +551,7 @@ async def _enqueue_motif_job(
     # project_id exists (conformance), use it.
     pid = project_id if project_id is not None else uuid4()
     job, _created = await jobs.create(
-        envelope_user, pid, operation=operation,
+        pid, created_by=envelope_user, operation=operation,
         input={"worker_op": operation, **spec}, status="pending",
     )
     await enqueue_job(
@@ -846,6 +846,7 @@ async def _execute_authoring_run_gate(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
+    await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
     try:
         chapters = await book.list_chapters(book_id, bearer)
@@ -853,7 +854,7 @@ async def _execute_authoring_run_gate(
         raise HTTPException(status_code=502, detail={"code": "action_error"}) from exc
     chapter_ids = {str(c["chapter_id"]) for c in chapters if c.get("chapter_id")}
     try:
-        run = await svc.gate(envelope_user, run_id, book_chapter_ids=chapter_ids)
+        run = await svc.gate(run_id, book_chapter_ids=chapter_ids)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except ActiveRunOverlapError as exc:
@@ -874,19 +875,44 @@ async def _execute_authoring_run_gate(
     }
 
 
+async def _authoring_run_in_book(
+    svc: Any, run_id: UUID, book_id: UUID, envelope_user: UUID,
+) -> Any:
+    """Reconcile the confirm-gated book with the run's OWN book, then re-assert the
+    creator rule (REST `_run_for_mutation` parity).
+
+    The EDIT gate at the dispatch above proves only that the caller may edit the book
+    they NAMED in the confirm payload — never that the run they named lives in it.
+    Before the 25 re-key the service scoped every transition by the acting owner
+    (`svc.start(envelope_user, run_id)`); de-scoping the repos moved that duty here
+    (`worker-loaded-id-needs-parent-scoping`). Without it, an EDIT grant on ANY book
+    lets a caller start/resume/gate an arbitrary run — spending its creator's BYOK
+    budget — or `revert_all` it, destroying their drafted chapters.
+
+    Book-owner escalation is pause/close ONLY (see the REST router); none of the
+    confirm-gated descriptors are pause/close, so this fence is creator-only. Missing,
+    foreign, and not-yours all raise the SAME `action_error` — no existence oracle.
+    """
+    run = await svc.get(run_id)
+    if run is None or run.book_id != book_id or run.created_by != envelope_user:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+    return run
+
+
 async def _apply_pause_override(
-    svc: Any, envelope_user: UUID, run_id: UUID, payload: dict[str, Any],
+    svc: Any, run_id: UUID, payload: dict[str, Any],
 ) -> None:
     """D4b: start/resume optionally OVERRIDE the run's pause_after_each_unit
     policy at the same time. `None`/absent = leave the run's existing policy
-    untouched (set at create time)."""
+    untouched (set at create time). Callers MUST have fenced `run_id` against the
+    gated book first (`_authoring_run_in_book`) — this itself writes to the run."""
     from app.services.authoring_run_service import TransitionConflictError
 
     override = payload.get("pause_after_each_unit")
     if override is None:
         return
     try:
-        await svc.set_pause_policy(envelope_user, run_id, bool(override))
+        await svc.set_pause_policy(run_id, bool(override))
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
@@ -907,9 +933,10 @@ async def _execute_authoring_run_start(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
-    await _apply_pause_override(svc, envelope_user, run_id, payload)
+    await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
+    await _apply_pause_override(svc, run_id, payload)
     try:
-        run = await svc.start(envelope_user, run_id)
+        run = await svc.start(run_id)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
@@ -935,9 +962,10 @@ async def _execute_authoring_run_resume(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
-    await _apply_pause_override(svc, envelope_user, run_id, payload)
+    await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
+    await _apply_pause_override(svc, run_id, payload)
     try:
-        run = await svc.resume(envelope_user, run_id)
+        run = await svc.resume(run_id)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
@@ -965,13 +993,14 @@ async def _execute_authoring_run_revert_all(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
+    await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
 
     async def _restore(bid: UUID, chapter_id: UUID, revision_id: UUID) -> None:
         await book.restore_revision(bid, chapter_id, revision_id, bearer)
 
     try:
-        result = await svc.revert_all(envelope_user, run_id, restore=_restore)
+        result = await svc.revert_all(run_id, restore=_restore)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:

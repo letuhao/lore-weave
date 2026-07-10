@@ -24,16 +24,18 @@ CRITIC = uuid.uuid4()
 
 
 def _work(settings=None):
-    return CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, settings=settings or {})
+    return CompositionWork(project_id=PROJECT, created_by=USER, book_id=BOOK, settings=settings or {})
 
 
 def _node():
-    return OutlineNode(id=NODE, user_id=USER, project_id=PROJECT, kind="scene", rank="a0",
+    return OutlineNode(id=NODE, created_by=USER, project_id=PROJECT, book_id=BOOK,
+                       kind="scene", rank="a0",
                        chapter_id=uuid.uuid4(), goal="escape", synopsis="the run")
 
 
 def _job(**kw):
-    return GenerationJob(id=JOB, user_id=USER, project_id=PROJECT, operation="draft_scene",
+    return GenerationJob(id=JOB, created_by=USER, project_id=PROJECT, book_id=BOOK,
+                         operation="draft_scene",
                          input=kw.get("input", {"model_ref": str(DRAFTER)}),
                          critic=kw.get("critic"), status=kw.get("status", "completed"),
                          result=kw.get("result", {"text": "drafted prose"}))
@@ -41,21 +43,21 @@ def _job(**kw):
 
 class StubWorks:
     def __init__(self): self.work = _work(); self.source = None
-    async def get(self, u, p): return self.work
-    async def get_by_id(self, u, wid): return self.source
+    async def get(self, p): return self.work
+    async def get_by_id(self, wid): return self.source
 
 
 class StubOutline:
     def __init__(self):
         self.node = _node()
         self.chapter_scenes: list = []
-    async def get_node(self, u, n): return self.node
-    async def scenes_for_chapter(self, u, p, ch): return self.chapter_scenes
+    async def get_node(self, n, *, conn=None): return self.node
+    async def scenes_for_chapter(self, p, ch): return self.chapter_scenes
 
 
 class StubCanon:
     def __init__(self, rules=None): self.rules = rules or []
-    async def list_active(self, u, p): return self.rules
+    async def list_active(self, p): return self.rules
 
 
 class StubJobs:
@@ -64,14 +66,14 @@ class StubJobs:
         self.created = True
         self.job = _job()
         self.updates = []
-    async def list_active_for_node(self, u, p, n): return self.active
-    async def create(self, u, p, **kw):
+    async def list_active_for_node(self, p, n): return self.active
+    async def create(self, p, **kw):
         self._last_create = kw
         return self.job, self.created
-    async def update_status(self, u, jid, status, **kw):
+    async def update_status(self, jid, status, **kw):
         self.updates.append((str(jid), status, kw))
         return self.job
-    async def get(self, u, jid): return self.job
+    async def get(self, jid): return self.job
 
 
 @pytest.fixture
@@ -107,16 +109,27 @@ def ctx(monkeypatch):
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
                           get_embedding_client_dep, get_generation_jobs_repo,
-                          get_glossary_client_dep, get_grounding_pins_repo,
+                          get_glossary_client_dep, get_grant_client_dep,
+                          get_grounding_pins_repo,
                           get_knowledge_client_dep, get_llm_client_dep,
                           get_narrative_thread_repo, get_outline_repo, get_references_repo,
                           get_scene_links_repo, get_style_profile_repo, get_voice_profile_repo,
                           get_works_repo)
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    # E0 book-grant authority stubbed at OWNER; the engine endpoints _gate_work
+    # (resolve the Work's book, then gate VIEW/EDIT) before acting (25 PM-8/PM-9).
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     works, outline, canon, jobs = StubWorks(), StubOutline(), StubCanon(), StubJobs()
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_outline_repo] = lambda: outline
     app.dependency_overrides[get_canon_rules_repo] = lambda: canon
@@ -308,7 +321,7 @@ def test_generate_reasoning_auto_on_adaptive_model_passes_through(ctx):
 def test_generate_cancels_in_flight_job_s2(ctx):
     c, _, _, _, jobs, _, _ = ctx
     prior = uuid.uuid4()
-    jobs.active = [GenerationJob(id=prior, user_id=USER, project_id=PROJECT, operation="x", status="running")]
+    jobs.active = [GenerationJob(id=prior, created_by=USER, project_id=PROJECT, book_id=BOOK, operation="x", status="running")]
     c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
     assert (str(prior), "cancelled", {}) in [(j, s, k) for j, s, k in jobs.updates]
 
@@ -318,7 +331,7 @@ def test_generate_idempotent_replay_does_not_restream_or_cancel(ctx):
     # in-flight job (which is still streaming) nor re-stream.
     c, _, _, _, jobs, _, _ = ctx
     jobs.created = False  # idempotency_key already used
-    jobs.active = [GenerationJob(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, operation="x", status="running")]
+    jobs.active = [GenerationJob(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, book_id=BOOK, operation="x", status="running")]
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "idempotency_key": "k1"})
     assert '"replay": true' in r.text and '"type": "token"' not in r.text
     assert not any(s == "cancelled" for _, s, _ in jobs.updates)  # original survives
@@ -388,7 +401,8 @@ def test_generate_auto_uses_adaptive_k_from_node_tension(ctx, monkeypatch):
     # with a 1-5 mis-scale, tension 10 would read as "high" → ceiling 3 and fail.
     c, _, outline, _, _, _, _ = ctx
     from app.engine.select import Candidate, Selection
-    outline.node = OutlineNode(id=NODE, user_id=USER, project_id=PROJECT, kind="scene",
+    outline.node = OutlineNode(id=NODE, created_by=USER, project_id=PROJECT, book_id=BOOK,
+                               kind="scene",
                                rank="a0", chapter_id=uuid.uuid4(), goal="walk",
                                synopsis="a quiet transition", tension=10)
     seen: dict = {}
@@ -483,7 +497,7 @@ def test_generate_cowrite_stays_inline_when_worker_enabled(ctx, monkeypatch):
 def test_critique_runs_with_distinct_critic_and_fresh_canon(ctx):
     c, works, _, canon, jobs, judge, _ = ctx
     works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
-    canon.rules = [CanonRule(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, text="no guns")]
+    canon.rules = [CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="no guns")]
     r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
     assert r.status_code == 200 and r.json()["critic"]["canon_consistency"] == 5
     # CC2: judge_prose got the freshly-resolved ACTIVE rule
@@ -517,18 +531,18 @@ def test_critique_derivative_dimension_FIRES_at_call_site(ctx, monkeypatch):
     src_proj, deriv_proj = uuid.uuid4(), uuid.uuid4()
     tid = uuid.uuid4()
     # A derivative Work: source_work_id set + its OWN delta project. NO critic model.
-    deriv = CompositionWork(project_id=deriv_proj, user_id=USER, book_id=BOOK,
+    deriv = CompositionWork(project_id=deriv_proj, created_by=USER, book_id=BOOK,
                             id=uuid.uuid4(), source_work_id=uuid.uuid4(),
                             branch_point=3, settings={})
     works.work = deriv
-    works.source = CompositionWork(project_id=src_proj, user_id=USER, book_id=BOOK,
+    works.source = CompositionWork(project_id=src_proj, created_by=USER, book_id=BOOK,
                                    id=deriv.source_work_id)
 
     # derivatives repo returns the active override (the genderbend slip).
     from app.deps import get_derivatives_repo
     from app.main import app
 
-    async def _list_overrides(u, wid):
+    async def _list_overrides(wid):
         return [SimpleNamespace(target_entity_id=tid,
                                 overridden_fields={"description": "now a woman (genderbend)"})]
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
@@ -565,16 +579,16 @@ def _derivative_ctx(c, works, jobs, monkeypatch, *, passage, override_fields,
     override target id."""
     src_proj = uuid.uuid4()
     tid = uuid.uuid4()
-    deriv = CompositionWork(project_id=uuid.uuid4(), user_id=USER, book_id=BOOK,
+    deriv = CompositionWork(project_id=uuid.uuid4(), created_by=USER, book_id=BOOK,
                             id=uuid.uuid4(), source_work_id=uuid.uuid4(),
                             branch_point=3, settings={})
     works.work = deriv
-    works.source = CompositionWork(project_id=src_proj, user_id=USER, book_id=BOOK,
+    works.source = CompositionWork(project_id=src_proj, created_by=USER, book_id=BOOK,
                                    id=deriv.source_work_id)
     from app.deps import get_derivatives_repo
     from app.main import app
 
-    async def _list_overrides(u, wid):
+    async def _list_overrides(wid):
         return [SimpleNamespace(target_entity_id=tid, overridden_fields=override_fields)]
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
         list_overrides_for_work=_list_overrides)
@@ -827,7 +841,7 @@ def test_persist_job_survives_scene_fetch_failure(ctx):
     book = _StubBook()
     _use_book(book)
 
-    async def boom(u, p, ch):
+    async def boom(p, ch):
         raise RuntimeError("outline down")
     outline.scenes_for_chapter = boom
     jobs.job = _job(status="completed", result={

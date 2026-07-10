@@ -88,11 +88,11 @@ def _applies_at(rule: CanonRule, story_order: int | None) -> bool:
 
 
 async def gather_canon(
-    canon_repo: CanonRulesRepo, user_id: UUID, project_id: UUID, story_order: int | None,
+    canon_repo: CanonRulesRepo, project_id: UUID, story_order: int | None,
 ) -> list[CanonRule]:
     """L0 — active canon rules applying at the scene's in-world position."""
     try:
-        rules = await canon_repo.list_active(user_id, project_id)
+        rules = await canon_repo.list_active(project_id)
     except Exception:  # noqa: BLE001 — repo failure degrades the lens
         logger.warning("gather_canon failed", exc_info=True)
         return []
@@ -100,7 +100,7 @@ async def gather_canon(
 
 
 async def gather_open_promises(
-    repo, user_id: UUID, project_id: UUID, *, cap: int,
+    repo, project_id: UUID, *, cap: int,
 ) -> list[dict[str, Any]]:
     """FD-1 S3 — the open promise/foreshadow set to re-inject (F2). Returns the
     top-`cap` open threads (list_open is priority DESC, created ASC) as
@@ -114,7 +114,7 @@ async def gather_open_promises(
     this is an edge case; the spoiler-axis filter (compare opened_at_node position
     to the scene's story_order) belongs with S4's debt/spoiler work."""
     try:
-        threads = await repo.list_open(user_id, project_id, limit=cap)
+        threads = await repo.list_open(project_id, limit=cap)
     except Exception:  # noqa: BLE001 — repo failure degrades the lens
         logger.warning("gather_open_promises failed", exc_info=True)
         return []
@@ -201,7 +201,7 @@ async def gather_timeline(
 
 async def gather_structural(
     outline_repo: OutlineRepo, scene_links_repo: SceneLinksRepo, *,
-    user_id: UUID, project_id: UUID, node: dict[str, Any],
+    project_id: UUID, node: dict[str, Any],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     """L2 beat/goal/POV/synopsis + setup_payoff threads, and L2′ planned
     synopses of unwritten scenes at/before this position."""
@@ -214,7 +214,7 @@ async def gather_structural(
     planned: list[dict[str, Any]] = []
     node_id = node.get("id")
     try:
-        links = await scene_links_repo.list_by_project(user_id, project_id)
+        links = await scene_links_repo.list_by_project(project_id)
         threads = [
             {"kind": l.kind, "label": l.label, "to": str(l.to_node_id)}
             for l in links if str(l.from_node_id) == str(node_id) or str(l.to_node_id) == str(node_id)
@@ -222,7 +222,7 @@ async def gather_structural(
     except Exception:  # noqa: BLE001
         logger.warning("gather threads failed", exc_info=True)
     try:
-        tree = await outline_repo.list_tree(user_id, project_id)
+        tree = await outline_repo.list_tree(project_id)
         my_order = node.get("story_order")
         for n in tree:
             if n.kind != "scene" or n.status == "done" or str(n.id) == str(node_id):
@@ -240,7 +240,7 @@ async def gather_recent(
     book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str, *,
     k: int = _RECENT_PARAGRAPHS,
     jobs_repo: GenerationJobsRepo | None = None,
-    user_id: UUID | None = None, project_id: UUID | None = None,
+    project_id: UUID | None = None,
     story_order: int | None = None,
 ) -> list[str]:
     """L3 — the chapter's 'story so far'. PRIMARY source = the accepted chapter
@@ -263,9 +263,9 @@ async def gather_recent(
     if paras:
         return paras[-k:]  # primary: the accepted draft tail
     # Fallback: no accepted draft → prior generated scene winners (strictly prior).
-    if jobs_repo is not None and user_id is not None and project_id is not None and story_order is not None:
+    if jobs_repo is not None and project_id is not None and story_order is not None:
         try:
-            prior = await jobs_repo.prior_scene_drafts(user_id, project_id, chapter_id, story_order)
+            prior = await jobs_repo.prior_scene_drafts(project_id, chapter_id, story_order)
         except Exception:  # noqa: BLE001
             logger.warning("gather_recent prior-scene fallback failed", exc_info=True)
             return []
@@ -352,7 +352,7 @@ async def gather_references(
             user_id=user_id, model_source=model_source, model_ref=model_ref, texts=[query])
         if not result.embeddings or not result.embeddings[0]:
             return [], False
-        hits = await refs_repo.search(user_id, project_id, result.embeddings[0], limit=limit)
+        hits = await refs_repo.search(project_id, result.embeddings[0], limit=limit)
     except Exception:  # noqa: BLE001 — references are advisory; never fail a pack
         logger.warning("gather_references failed", exc_info=True)
         return [], False

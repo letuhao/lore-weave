@@ -18,7 +18,8 @@ generation_job per node (the same rule stitch/publish use). `scope=arc` is accep
 in the contract (so the FE shape is stable) but returns a clear "not available
 yet — P4" body (the §14.4 extract-diff is out of P1).
 
-TENANCY: the two reads filter user_id + project_id on BOTH the application/job AND
+TENANCY: access is decided BEFORE these reads, at the gate (E0 grant on the row's
+book_id — 25 PM-8). The two reads filter project_id on BOTH the application/job AND
 the joined node (defense-in-depth — the kinds-bug lesson). A node-id-only query
 would be a cross-tenant read.
 
@@ -43,23 +44,26 @@ from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.works import WorksRepo
 from app.clients.knowledge_client import KnowledgeClient
-from app.deps import (get_arc_template_repo, get_knowledge_client_dep,
-                      get_outline_repo, get_works_repo)
+from app.deps import (get_arc_template_repo, get_grant_client_dep,
+                      get_knowledge_client_dep, get_outline_repo, get_works_repo)
 from app.engine.arc_conformance_orchestrate import compute_arc_report
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
+from app.packer.pack import OwnershipError
 
 router = APIRouter(prefix="/v1/composition")
 
 
 class ConformanceTraceReader:
     """W5-owned read helper for the two trace joins (§4.2). Both queries are
-    user+project scoped on BOTH the row AND the joined node (defense-in-depth)."""
+    project scoped on BOTH the row AND the joined node (defense-in-depth)."""
 
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
     async def apps_by_nodes(
-        self, user_id: UUID, project_id: UUID, node_ids: list[UUID],
+        self, project_id: UUID, node_ids: list[UUID],
     ) -> dict[UUID, MotifApplication]:
         """The bound motif_application per scene node (most-recent per node). READ-
         only; W2 is the sole writer. Returns a node_id → MotifApplication map."""
@@ -69,13 +73,13 @@ class ConformanceTraceReader:
         rows = await self._pool.fetch(
             """
             SELECT DISTINCT ON (outline_node_id)
-                   id, user_id, project_id, book_id, motif_id, motif_version,
+                   id, created_by, project_id, book_id, motif_id, motif_version,
                    outline_node_id, role_bindings, annotations, created_at
             FROM motif_application
-            WHERE user_id = $1 AND project_id = $2 AND outline_node_id = ANY($3)
+            WHERE project_id = $1 AND outline_node_id = ANY($2)
             ORDER BY outline_node_id, created_at DESC
             """,
-            user_id, project_id, node_ids,
+            project_id, node_ids,
         )
         out: dict[UUID, MotifApplication] = {}
         for r in rows:
@@ -85,13 +89,13 @@ class ConformanceTraceReader:
         return out
 
     async def arc_bindings(
-        self, user_id: UUID, project_id: UUID, arc_template_id: UUID,
+        self, project_id: UUID, arc_template_id: UUID,
     ) -> list[dict[str, Any]]:
         """The realized bindings materialized from one arc (D-W10-ARC-CONFORMANCE) →
         rows ``{motif_id, motif_code, annotations, chapter_id, tension, story_order}``,
         ordered by story_order. JOINs ``motif_application`` (the materialize ledger, keyed
         by ``annotations->>'arc_template_id'``) → its scene ``outline_node`` (chapter +
-        tension) → ``motif`` (the stable code). Tenant-scoped on BOTH the application AND
+        tension) → ``motif`` (the stable code). Project-scoped on BOTH the application AND
         the node (the kinds-bug rule). An archived/cleared binding (motif_id NULL) drops
         out via the INNER motif JOIN — it can't be conformance-checked."""
         rows = await self._pool.fetch(
@@ -101,12 +105,12 @@ class ConformanceTraceReader:
             FROM motif_application a
             JOIN outline_node o ON o.id = a.outline_node_id
             JOIN motif m ON m.id = a.motif_id
-            WHERE a.user_id = $1 AND a.project_id = $2
-              AND o.user_id = $1 AND o.project_id = $2
-              AND a.annotations->>'arc_template_id' = $3
+            WHERE a.project_id = $1
+              AND o.project_id = $1
+              AND a.annotations->>'arc_template_id' = $2
             ORDER BY o.story_order NULLS LAST, o.id
             """,
-            user_id, project_id, str(arc_template_id),
+            project_id, str(arc_template_id),
         )
         import json
         out: list[dict[str, Any]] = []
@@ -118,12 +122,12 @@ class ConformanceTraceReader:
         return out
 
     async def latest_completed_by_nodes(
-        self, user_id: UUID, project_id: UUID, node_ids: list[UUID],
+        self, project_id: UUID, node_ids: list[UUID],
     ) -> dict[UUID, dict[str, Any]]:
         """The latest COMPLETED generation_job per node → {job_id, critic, has_text}.
         The prose blob is NOT projected (the trace shows status; the editor shows
         prose). Mirrors chapter_scene_drafts' DISTINCT ON + created_at DESC rule.
-        M5 isolation: user_id/project_id on BOTH the job AND the joined node."""
+        Isolation: project_id on BOTH the job AND the joined node."""
         if not node_ids:
             return {}
         rows = await self._pool.fetch(
@@ -135,13 +139,13 @@ class ConformanceTraceReader:
                    (j.result->>'text' IS NOT NULL AND j.result->>'text' <> '') AS has_text
             FROM generation_job j
             JOIN outline_node o ON o.id = j.outline_node_id
-            WHERE j.user_id = $1 AND j.project_id = $2
-              AND o.user_id = $1 AND o.project_id = $2
-              AND j.outline_node_id = ANY($3)
+            WHERE j.project_id = $1
+              AND o.project_id = $1
+              AND j.outline_node_id = ANY($2)
               AND j.status = 'completed'
             ORDER BY j.outline_node_id, j.created_at DESC
             """,
-            user_id, project_id, node_ids,
+            project_id, node_ids,
         )
         out: dict[UUID, dict[str, Any]] = {}
         for r in rows:
@@ -253,6 +257,7 @@ async def read_conformance(
     reader: ConformanceTraceReader = Depends(get_conformance_trace_reader),
     arc_repo: ArcTemplateRepo = Depends(get_arc_template_repo),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """The motif-conformance trace (§4). `scope=chapter` (default) is the per-scene
     planned│realized│conformance trace. `scope=arc` is the COARSE arc-conformance diff
@@ -262,9 +267,16 @@ async def read_conformance(
     `coarse=true`, `causal_verified=false`."""
     from app.config import settings
 
-    work = await works.get(user_id, project_id)
+    work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
+    # E0 book gate (25 PM-8): the trace is a READ of an advisory signal → VIEW.
+    try:
+        await authorize_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="work not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
 
     if scope == "arc":
         if arc_template_id is None:
@@ -285,10 +297,10 @@ async def read_conformance(
     if chapter_id is None:
         raise HTTPException(status_code=422, detail={"code": "CHAPTER_ID_REQUIRED"})
 
-    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    scenes = await outline.scenes_for_chapter(project_id, chapter_id)
     node_ids = [s.id for s in scenes]
-    apps_by_node = await reader.apps_by_nodes(user_id, project_id, node_ids)
-    latest_by_node = await reader.latest_completed_by_nodes(user_id, project_id, node_ids)
+    apps_by_node = await reader.apps_by_nodes(project_id, node_ids)
+    latest_by_node = await reader.latest_completed_by_nodes(project_id, node_ids)
 
     return _assemble_conformance(
         chapter_id=chapter_id,

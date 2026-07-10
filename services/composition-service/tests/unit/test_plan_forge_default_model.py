@@ -26,7 +26,7 @@ EXPLICIT_MODEL = uuid4()
 
 def _run(**over) -> PlanRun:
     base = dict(
-        id=uuid4(), owner_user_id=USER, book_id=BOOK, mode="llm",
+        id=uuid4(), created_by=USER, book_id=BOOK, mode="llm",
         model_ref=DEFAULT_MODEL, source_checksum="chk", status="proposed",
     )
     base.update(over)
@@ -34,7 +34,8 @@ def _run(**over) -> PlanRun:
 
 
 def _job() -> GenerationJob:
-    return GenerationJob(id=uuid4(), user_id=USER, project_id=uuid4(), operation="plan_forge_propose")
+    return GenerationJob(id=uuid4(), created_by=USER, project_id=uuid4(), book_id=BOOK,
+                         operation="plan_forge_propose")
 
 
 def _svc(*, find_by_checksum_return=None, llm_resolve_return=str(DEFAULT_MODEL)):
@@ -44,13 +45,13 @@ def _svc(*, find_by_checksum_return=None, llm_resolve_return=str(DEFAULT_MODEL))
     runs = AsyncMock()
     runs.find_by_checksum.return_value = find_by_checksum_return
     runs.create.return_value = _run()
-    runs.get_for_owner.return_value = _run()
+    runs.get_for_book.return_value = _run()
 
     works = AsyncMock()
     works.resolve_by_book.return_value = []
     works.get_pending_for_book.return_value = None
     works.create_pending.return_value = CompositionWork(
-        id=uuid4(), user_id=USER, book_id=BOOK, project_id=uuid4(),
+        id=uuid4(), created_by=USER, book_id=BOOK, project_id=uuid4(),
     )
 
     jobs = AsyncMock()
@@ -97,7 +98,7 @@ async def test_two_omitted_model_ref_proposes_for_identical_text_dedupe():
     reuse retry #1's run -- NOT re-run the LLM propose a second time."""
     existing = _run(model_ref=DEFAULT_MODEL, status="proposed")
     svc, runs, jobs, works, llm = _svc(find_by_checksum_return=existing)
-    runs.get_for_owner.return_value = existing
+    runs.get_for_book.return_value = existing
 
     result_run, is_async, job_id = await svc.create_run(
         USER, BOOK, source_markdown="same text", mode="llm", model_ref=None,
