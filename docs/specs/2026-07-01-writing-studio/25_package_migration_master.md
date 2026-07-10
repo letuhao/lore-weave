@@ -172,6 +172,19 @@ GROUP BY project_id, entity_id HAVING count(*) > 1;
 
 **Resolution protocol for hits (manual, documented, never automated):** M0.1/M0.2 → an operator picks the survivor row and re-points the loser's children (`UPDATE … SET project_id = <survivor>` per table) or archives the loser — by hand, against the snapshot first. M0.3 → inspect and hand-delete or re-kind the rows. M0.4 → the orphans predate the Work model; archive them to a `_pkg_rekey_quarantine` side table by hand. M0.6 → the operator merges duplicate profiles by hand (per scope: pick the survivor — normally the book owner's row — delete the rest), against the snapshot first. Then re-boot; M0 re-runs.
 
+**Pre-flight preview — run READ-ONLY against the live dev DB, 2026-07-10.** The assertions were
+executed ahead of time so Deploy 1 starts with facts, not surprises. Results: **M0.2 = 0 · M0.4
+orphans = 0 · 201 Works / 195 books · 81 legacy arc rows** (the M4 lift's whole workload — small).
+Two hits, both scoped and **pre-decided**:
+
+| Hit | Detail | Pre-decided resolution |
+|---|---|---|
+| **M0.1 — ONE book** with two canonical Works | book `019eeb09-a4aa…`, both Works owned by the claude-test account; the 2026-06-22 Work has 6 outline rows, the 2026-06-28 duplicate has **0** (the F5 fork bug caught in the wild) | archive the empty 2026-06-28 Work (`019f0f0d-b723…`); nothing to re-point |
+| **M0.3 — 4 `kind='beat'` rows** (the F6 free-string hazard, confirmed real) | all four titled literally "Beat", empty `goal`, test account, same day 2026-06-05 — an agent experiment | archive all 4; nothing references them |
+
+The dev-DB operator pass is therefore **two known actions**, not open-ended triage. Production
+data (if any diverges) still gets the full protocol above.
+
 ### M1 — EXPAND (additive DDL, inline in `_SCHEMA_SQL`)
 
 ```sql

@@ -42,6 +42,8 @@ genuinely the PO's. That is this file.
 | **`28_agent_native_studio.md` now EXISTS** (CF-13 closed): authored + adversarially verified 2026-07-10 (2 HIGH / 3 MED / 4 LOW findings, all 9 fixed). Zero new tables; 7 tools + 1 arg extension; the ownership boundary "new agent-experience tools → 28" is now enforceable. | File on disk; AN-1's closed capability matrix. |
 | **The adjudication stamps are on disk** — 23 carries two ⚠ supersession blocks (migration → 25, Phase E → 27) and the "MCP-first *for agents*" reword; 22 carries the SC5 publish-only and D5 read-time-null amendments; 00A carries the PM-3/PM-4/PM-10 ✏️ refinements, the DA-8 role reword, the BPS-15/BPS-18 corrections, and the `import_source` move; 25 carries OQ-8 (MOOT) + OQ-11 (M-train rule); 27 carries V2-E2b. | §5 ledger, per-row anchors. The four residual items (NC-1..4) were closed the same day. |
 | **`29_translation_repair.md` exists; no `24_` collision remains** (CF-14 closed). | Rename on disk (`24_translation_repair.md → 29_translation_repair.md`), links swept; 00A §10 row ✅. |
+| **The bootstrap contract after 23-E5 is proven BY EXECUTION** (was held by inspection only). | 2026-07-10: `test_bootstrap_service.py` — **16/16 passed** against a throwaway Postgres (`TEST_COMPOSITION_DB_URL`, created + dropped for the run). `glossary_seeds`/`planning_package` consumption of the slimmed compile output verified live. |
+| **25's M0 pre-flights were previewed READ-ONLY on the live dev DB** — Deploy 1 starts with facts. | 2026-07-10: M0.2=0, M0.4=0, 81 arc rows (M4 workload), 201 Works/195 books. Two hits, both scoped + pre-decided in 25's M0 section: ONE duplicate-canonical-Work book (test account, empty duplicate → archive) and 4 junk `kind='beat'` rows (test account → archive). Operator pass = two known actions. |
 | **Everything else in 22–28 is unbuilt.** `structure_node`, `scenes.source_scene_id`, `pass_state`, `arc_conformance_state`, `book_steering` MCP tools, the re-key — all absent from code (each spec's own Investigation sections verified this; spot-checked). | Grep evidence cited inside each spec. |
 
 ---
@@ -299,4 +301,40 @@ its effect, not when its tasks are checked off.
 | 27-A3 builds without its 25 M-step and the non-additive swap ships unordered | Stage 6.0 is a hard gate (NC-4); the M-train rule is in the §4 registry where the builder will look |
 | Stage 7 builds against 26-less drift data and fakes a zero | 24-OQ-8 already decided: the drift key/route is ABSENT until 26-C ships — absent ≠ zero; the FE renders no badge (`fe-status-default-fallback-signals-backend-field-omission`) — the same posture 28-AN-2 applies to its manuscript/index/runs blocks |
 | 28's tools ship but the model never calls them (the S06 baseline failure: no attempt) | AN-10 synonyms + `tool_list` completeness + AN-C2's static note; AN-D3 counts orientation reads — shipped-but-unfound is a FAIL (`checklist-is-self-report-enforce-by-tests`) |
-| The residual stamps (NC-2/NC-3) never land and a builder follows the stale text | They ride Stage 1.1's task-1b commit — the stamps ride the first commit of the build, not a "later" docs pass (`silent-success-is-a-bug-not-environment`, applied to docs) |
+| The residual stamps (NC-2/NC-3) never land and a builder follows the stale text | ✅ landed 2026-07-10 (same-day clearance); residual risk retired — §2's ground truth is the check |
+
+---
+
+## 9. The v2+ ledger — everything deliberately NOT in v1, in one place
+
+Every "v1 ships X, revisit later" across the cluster, consolidated (added at clearance,
+2026-07-10). **A row here is a conscious cut with an owner and a trigger — not a forgotten item.**
+Nothing below blocks any v1 stage. Rule: shipping a ledger row early is a *spec amendment to its
+owner first* (the owning OQ/decision row gets un-deferred), never an inline build decision.
+
+### Product features cut to v2+ (each ratified as a v1 cut by its P-row)
+
+| # | What it is | Owner (spec home) | Ships when / trigger |
+|---|---|---|---|
+| V2-1 | **Timeline view mode** — same canvas nodes re-laid on the `story_time` axis (data contract already locked: sort stays `story_order`, `story_time` renders as captions; "Undated" tray) | 24 PH22 / Phase H7 (P-10 ✅) | its own cycle after Hub v1 ships; PO schedules |
+| V2-2 | **Worldmap view mode** — nodes clustered by `location_entity_id`, edges = scene transitions ("Unlocated" tray) | 24 PH22 / Phase H7 (P-10 ✅) | after V2-1 (each mode its own cycle) |
+| V2-3 | **Canvas-native plan agent** — "Ask AI" acts ON the canvas: AI-pending ghost nodes (`ai-pending` dashed-gold state), highlight-my-pending-edit | 21 PH8 / 24 Phase 4 (P-13 ✅) | gated on **AN-12 `resource_ref`** (28 OQ-8) being specced first; after `27` links PlanForge output so the agent has real spec objects to point at |
+| V2-4 | **Draft indexing** — debounced re-parse on save so the scene browser sees unpublished prose | 26 OQ-2 (P-6 ✅, canon-only v1) | a real user request — not before |
+| V2-5 | **Federated `find_references`** — one call spanning composition + glossary links + KG edges | 28 OQ-1 (P-14 ✅) | transcript evidence that agents fail to compose the three existing reads |
+| V2-6 | **Per-turn live package digest** in the studio agent's context | 28 OQ-2 / AN-9 (P-15 ✅) | AN-D3 replay data showing orientation reads don't happen |
+| V2-7 | **Per-book `genre_tags` fallback setting** layered under the explicit run-create arg | 27 PF-15 (P-9 ✅) | when a book-settings home exists with a consumption proof (SET rules) |
+| V2-8 | **Branching UX** — diff / merge / promote between a book's Works (the dị bản substrate already shipped as C23 `source_work_id`; what's missing is only the UX + merge semantics) | 00A BPS-15 ✏️ (no pillar spec yet — it will need its own) | the first real user request for two plans on one book |
+| V2-9 | **Volume-aligned arc proposals** — the decompiler proposes arc boundaries at `parts` boundaries, human approves (`boundary_hint: volume\|content`) | 26 IX-17 (BPS-9 ✅) | ships WITH 26 Phase D's arc-level decompile work — early v2, already fully specced |
+| V2-10 | **Per-node track paint** on canvas nodes (v1: tracks render as lane legend + drawer only) | 24 PH23 | users ask; PO-reviewable enhancement |
+| V2-11 | **Server-side `status`/`pov` filters** on the scene browser (v1: client-side, documented in the panel footer) | 22 OQ-1/BPS-11 | profiling evidence from a real 10k-scene book — never speculation |
+| V2-12 | **Scene-level anchor-orphan detail in `composition_diagnostics`** (v1: chapter-level `index.stale` rollup; scene detail lives on 22's browser union) | 28 AN-4 | when the diagnostics tool gains a book-service read path worth its cost |
+| V2-13 | **Event-driven staleness** (v1: poll-on-read via IX-9 canon-markers; the manifest comparison is transport-agnostic) | 26 IX-9 | if profiling shows the poll hurting — "the event alternative stays available without schema change" |
+| V2-14 | **`_arc_lift_map`-style provenance beyond M5** — none needed (OQ-8 MOOT); listed only to say so | 25 OQ-8 ✅ | n/a — closed |
+
+### Contract work scheduled INSIDE the v1 stages (not v2 — just later stages; listed to kill ambiguity)
+
+| What | Owner | Ships at |
+|---|---|---|
+| `planner_state` un-fixture + `VariableDef.initial` + first reader (BPS-21) | 27 PF-14 | **27 V2-B1** (Stage 6) — scheduled, not deferred |
+| `resource_ref` convention (AN-12) | 28 OQ-8 | specced when 24 Phase 4 is scheduled — a Phase-4 build without it is a spec violation |
+| 10k-chapter perf fixture (assumed by 24-H8.1's EXPLAIN/budget gate, 28-A2's token-budget test, 26's sweep tests) | **built once at Stage 7.6 (24-H8.1), owner of record; 28-AN-D and 26-F reuse it** | Stage 7.6; a generated-content script, not hand-authored |
