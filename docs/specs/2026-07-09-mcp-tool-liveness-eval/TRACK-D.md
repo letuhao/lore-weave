@@ -127,8 +127,29 @@ appear when not allowlisted.
 **Exit:** 10 tools spanning R/A/W/async, all four gates, ≥1 genuine bug found. → **ND2**
 
 ### WS-D3 · TLE P1 — the workflow-critical set + ship gate *(size M)*
-Probe every tool an authored C3 workflow can reference. Wire CD4 into `validateWorkflow`
-(**warn** at this stage) and enforce "no RED-G3 tool in `tool_list`".
+**The gate itself is SHIPPED 2026-07-10.** Probing the full workflow-critical set remains
+(that is the P1 grind, and it is what actually populates the manifest).
+
+- `contracts/tool-liveness.json` is **generated** by `scripts/eval/tool_liveness/manifest.py`
+  (CD4: never hand-maintained), together with two byte-identical service copies — `go:embed` and
+  Python package data cannot climb out of their modules. A **drift lock** in each service reds if a
+  copy diverges, and it *fails*, never skips.
+- **`validateWorkflow` (agent-registry Go):** rejects a step whose tool is **proven broken**
+  (`executes: false`); emits a sorted, deduped `unproven_tool` **warning** otherwise. The
+  `proposeWorkflowOut.warnings` field is omitted when clean, so a proven set sees no shape change.
+- **`tool_list` / `tool_load` (chat-service Python):** a proven-broken tool is withdrawn.
+  `tool_load` reports it under `unavailable` + `unavailable_reason` — never a silent drop, and
+  never `not_found` (which would send the model hunting for a name that exists).
+- **The manifest carries derived `executes` / `proven` fields** so the Go gate and the Python filter
+  never re-implement the verdict logic in two languages.
+- **`executes` is three-valued and that is the point.** `null` = never checked. Reading it as
+  `false` would reject/hide the ~200 tools with no probe yet; reading it as `true` would ship a
+  broken tool. Both consumers test for an **explicit** `false`. See the amended CD4 phasing table.
+- **Today the gate is provably inert:** 0 tools blocked, 5 warned. It cannot false-block, because
+  the current matrix predates the capability field so every RED is honestly `null`.
+
+Remaining for WS-D3: probe every tool an authored C3 workflow can reference, so the manifest stops
+being 10 rows. → **ND3**
 **Exit:** the ship gate is real. → **ND3** *(this is the actual "before we ship workflow" gate)*
 
 ### WS-D4 · TLE P2 — full sweep *(size XL, grind)*

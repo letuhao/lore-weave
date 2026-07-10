@@ -83,6 +83,11 @@ type proposeWorkflowOut struct {
 	ProposalID string `json:"proposal_id"`
 	Status     string `json:"status"`
 	Message    string `json:"message"`
+	// Warnings — CD4. Non-empty when the workflow references a tool that has not passed
+	// the liveness gates. The proposal is still admitted (the tool may simply have no
+	// probe yet); a PROVEN-BROKEN tool is rejected outright by validateWorkflow instead.
+	// Omitted when clean, so the existing response shape is unchanged for a proven set.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // workflowInput — the normalized, validated internal shape (post-MCP / REST).
@@ -142,6 +147,16 @@ func validateWorkflow(in *workflowInput) (string, bool) {
 		seen[st.ID] = true
 		if strings.TrimSpace(st.Tool) == "" {
 			return where + " ('" + st.ID + "'): tool is required", false
+		}
+		// CD4 ship gate — reject a step whose tool is PROVEN BROKEN: the liveness matrix
+		// called it correctly, with valid args, and it failed. Authoring a workflow around
+		// such a tool guarantees a broken run. An *unproven* tool only warns (see
+		// livenessWarnings). A tool the model merely fails to SELECT is fine here, because
+		// a workflow step names its tool directly — no selection is involved. See liveness.go.
+		if toolBlocked(st.Tool) {
+			return where + " ('" + st.ID + "'): tool '" + st.Tool + "' is known-broken — it " +
+				"fails when called with valid arguments (liveness gate G3/capability). " +
+				"Fix the tool, or use a different one.", false
 		}
 		if st.Gate != "" && !contains(validWorkflowGates, st.Gate) {
 			return where + " ('" + st.ID + "'): gate must be none | confirm | approval", false
@@ -354,6 +369,7 @@ func (s *Server) toolProposeWorkflow(ctx context.Context, _ *mcp.CallToolRequest
 	return nil, proposeWorkflowOut{
 		ProposalID: p.ProposalID.String(),
 		Status:     "pending",
+		Warnings:   livenessWarnings(wfIn.Steps), // CD4: loud, but non-blocking
 		Message:    "Proposed workflow '" + in.Slug + "'. Awaiting the user's approval in the UI — nothing runs or is saved until they approve.",
 	}, nil
 }
@@ -403,7 +419,12 @@ func (s *Server) toolUpdateWorkflow(ctx context.Context, _ *mcp.CallToolRequest,
 	if msg != "" {
 		return nil, proposeWorkflowOut{}, errors.New(msg)
 	}
-	return nil, proposeWorkflowOut{ProposalID: p.ProposalID.String(), Status: "pending", Message: "Proposed an update to '" + in.Slug + "'. Awaiting the user's approval."}, nil
+	return nil, proposeWorkflowOut{
+		ProposalID: p.ProposalID.String(),
+		Status:     "pending",
+		Warnings:   livenessWarnings(wfIn.Steps), // CD4: loud, but non-blocking
+		Message:    "Proposed an update to '" + in.Slug + "'. Awaiting the user's approval.",
+	}, nil
 }
 
 // normalize validates + converts the MCP input into the internal workflowInput. A

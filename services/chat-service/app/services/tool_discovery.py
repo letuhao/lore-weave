@@ -37,6 +37,8 @@ from difflib import SequenceMatcher
 
 from loreweave_vecmath import cosine_similarity
 
+from app.services.tool_liveness import tool_is_broken  # CD4 ship gate
+
 logger = logging.getLogger(__name__)
 
 # ── C-FT: the find_tools meta-tool ───────────────────────────────────────────
@@ -700,6 +702,15 @@ def visible_tools(
         name = tool_name(tool_def)
         if not name or name in exclude:
             continue
+        # CD4 ship gate — never advertise a tool the liveness matrix proved cannot
+        # execute. A broken tool is WORSE than an absent one: the model spends a turn
+        # calling it, gets an error, and often reports success anyway (the false-persist
+        # bug class). Only an explicit `executes: false` hides a tool — an unprobed or
+        # unchecked tool stays visible, and a RED-SELECT tool (works; the model just
+        # doesn't pick it) stays visible too, because hiding it would guarantee it is
+        # never picked. See tool_liveness.py.
+        if tool_is_broken(name):
+            continue
         if group is not None and _domain_of(name) != group:
             continue
         deprecated = is_legacy_tool(tool_def)
@@ -777,12 +788,19 @@ def tool_load_result(
     by_category = category if category and category != "all" else None
     loaded: list[dict] = []
     seen: set[str] = set()
+    broken: set[str] = set()
     for tool_def in catalog:
         nm = tool_name(tool_def)
-        if not nm or nm in seen:
+        if not nm or nm in seen or nm in broken:
             continue
         match = nm in want or whole or (by_category is not None and _domain_of(nm) == by_category)
         if not match:
+            continue
+        # CD4 — never ACTIVATE a proven-broken tool either. Report it with a reason
+        # rather than silently omitting it: a resolver that drops a request without
+        # saying so is how a model ends up hallucinating that the call succeeded.
+        if tool_is_broken(nm):
+            broken.add(nm)
             continue
         seen.add(nm)
         entry: dict = {
@@ -798,9 +816,15 @@ def tool_load_result(
                 entry["superseded_by"] = sb
         loaded.append(entry)
     payload: dict = {"tools": loaded}
-    missing = sorted(n for n in want if n not in seen)
+    missing = sorted(n for n in want if n not in seen and n not in broken)
     if missing:
         payload["not_found"] = missing
+    if broken & want:
+        payload["unavailable"] = sorted(broken & want)
+        payload["unavailable_reason"] = (
+            "this tool is known to fail when called — it is temporarily withdrawn. "
+            "Do not retry it; use another tool or tell the user it is unavailable."
+        )
     return payload, [t["name"] for t in loaded]
 
 
