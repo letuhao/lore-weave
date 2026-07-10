@@ -155,3 +155,69 @@ def test_direct_builders_are_uniform_arity_and_fixture_scoped():
         assert len(sig.parameters) == 2, f"{p['id']}: direct{sig} must take (fx, harness)"
         if "setup" in p:
             assert len(inspect.signature(p["setup"]).parameters) == 2, p["id"]
+
+
+# ── the capability sweep's classifier (sweep.py) ────────────────────────────────
+#
+# An `executes: false` BLOCKS the tool from every workflow and hides it from tool_list.
+# So the classifier must be conservative — but widening it must not swallow the real bug
+# it was built to find. Both directions are pinned here with the ACTUAL messages observed
+# in the 2026-07-10 sweep.
+
+def test_sweep_classifier_scores_our_own_bad_args_as_inconclusive():
+    """The first sweep scored 10 healthy tools 'broken' because it handed them a
+    placeholder where they wanted a UUID or an existing kind-code. Those are our bugs."""
+    from tool_liveness.sweep import classify
+
+    caller_fault = [
+        "Error executing tool composition_motif_get: badly formed hexadecimal UUID string",
+        "Error executing tool composition_get_work: pass project_id or book_id",
+        "no live genre with that code in this book",
+        "unknown kind: tle-sweep",
+        'Error executing tool kg_world_query: {"message": "world_id is not a valid id: \'tle-sweep\'"}',
+        "Error executing tool plan_validate: badly formed hexadecimal UUID string",
+        "book_id is required",
+        "only the project's owner can set its embedding model",
+    ]
+    for msg in caller_fault:
+        executes, why = classify(False, msg)
+        assert executes is None, f"must be INCONCLUSIVE, not broken: {msg!r} -> {why}"
+
+
+def test_sweep_classifier_still_catches_the_real_bug_it_was_built_to_find():
+    """settings_get_profile declared its `profile` field as null|array (json.RawMessage is
+    []byte) while returning an object, so the SDK rejected the tool's OWN output — 100% of
+    calls, for every user. The classifier must NOT launder this into 'inconclusive'."""
+    from tool_liveness.sweep import classify
+
+    real = (
+        "tool 'settings_get_profile' failed: rejected by the owning service: validating "
+        'tool output: validating root: validating /properties/profile: type: map[...] '
+        'has type "object", want one of "null, array"'
+    )
+    executes, why = classify(False, real)
+    assert executes is False, f"a genuine tool failure must score BROKEN, got {executes} ({why})"
+
+
+def test_sweep_classifier_success_is_executes_true():
+    from tool_liveness.sweep import classify
+
+    assert classify(True, "")[0] is True
+
+
+def test_sweep_refuses_to_call_a_tool_whose_ids_it_cannot_supply():
+    """Refusing to call is the safe move: a placeholder id produces a lookup failure that
+    says nothing about the tool. `None` means SKIP, not broken."""
+    from tool_liveness.sweep import fill_args
+
+    fx = {"book_id": "b-1"}
+    # a uuid arg with no fixture value -> cannot build
+    assert fill_args({"required": ["motif_id"], "properties": {"motif_id": {"type": "string"}}}, fx) is None
+    # a reference code -> cannot build
+    assert fill_args({"required": ["kind"], "properties": {"kind": {"type": "string"}}}, fx) is None
+    # a fixture-backed id -> fine
+    assert fill_args({"required": ["book_id"], "properties": {"book_id": {"type": "string"}}}, fx) == {"book_id": "b-1"}
+    # an enum -> take the first
+    assert fill_args({"required": ["mode"], "properties": {"mode": {"enum": ["a", "b"]}}}, fx) == {"mode": "a"}
+    # free text -> a placeholder is harmless
+    assert fill_args({"required": ["query"], "properties": {"query": {"type": "string"}}}, fx) == {"query": "tle-sweep"}

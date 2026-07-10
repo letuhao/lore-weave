@@ -57,13 +57,35 @@ def _executes(row: dict) -> bool | None:
     return None  # SKIP-PAID / SKIP-NO-ARGS / not probed
 
 
-def build(rows: list[dict], meta: dict[str, Any]) -> dict:
+def build(rows: list[dict], meta: dict[str, Any], sweep: list[dict] | None = None) -> dict:
+    """Merge the two evidence sources.
+
+    The NL matrix answers `proven` (every gate passed under a real model). The
+    deterministic capability sweep answers `executes` for far more tools, cheaply. They
+    are different questions and neither subsumes the other:
+
+      * a sweep-only tool has `executes: true` but `proven: false` — it works when called,
+        but no model has been shown to select it and produce a verified effect. It WARNS
+        in validateWorkflow, and is still advertised.
+      * the matrix wins wherever both have an opinion: it drove the tool through a real
+        model, which is strictly more evidence.
+    """
     tools: dict[str, dict] = {}
+    for r in sweep or []:
+        tools[r["tool"]] = {
+            "status": "SWEEP-" + ("PASS" if r["executes"] else
+                                  "BROKEN" if r["executes"] is False else "INCONCLUSIVE"),
+            "executes": r["executes"],
+            "proven": False,  # a deterministic call is not a model selecting it
+        }
     for r in rows:
         status = r.get("status", "?")
+        prior = tools.get(r["tool"], {})
+        ex = _executes(r)
         tools[r["tool"]] = {
             "status": status,
-            "executes": _executes(r),
+            # the matrix wins when it has an opinion; otherwise keep the sweep's
+            "executes": ex if ex is not None else prior.get("executes"),
             "proven": status == "PASS",
         }
     return {
@@ -98,7 +120,12 @@ def main() -> int:
     rows = data if isinstance(data, list) else data.get("rows", [])
     meta = {} if isinstance(data, list) else data.get("meta", {})
     meta.setdefault("source", str(src).replace("\\", "/"))
-    out = build(rows, meta)
+    sweep = None
+    if len(sys.argv) > 2:
+        sweep_path = Path(sys.argv[2])
+        sweep = json.loads(sweep_path.read_text(encoding="utf-8"))
+        meta["source"] = meta["source"] + " + " + str(sweep_path).replace("\\", "/")
+    out = build(rows, meta, sweep)
     body = json.dumps(out, indent=2, ensure_ascii=False) + "\n"
     for path in (MANIFEST_PATH, *CONSUMER_COPIES):
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -196,8 +196,31 @@ func (s *Server) providerCredGuard() lwmcp.Guard {
 
 type emptyIn struct{}
 
+// profileObject decodes the auth-service profile body into a plain object.
+//
+// It must NOT be `json.RawMessage`. That type is `[]byte`, so the MCP Go SDK's schema
+// inference declares the field as `["null","array"]` — while `encoding/json` marshals it
+// as the raw JSON it holds, an OBJECT. The SDK then validates the tool's OUTPUT against
+// its own declared schema and rejects every call:
+//
+//	validating /properties/profile: type: map[...] has type "object", want one of "null, array"
+//
+// Both settings_get_profile and settings_update_profile were broken this way — 100% of
+// calls, for every user, since the tools were written. Nothing caught it: the wire gates
+// assert over `tools/list` metadata and never call `tools/call`, and no NL probe covered
+// them. A deterministic capability sweep (scripts/eval/tool_liveness/sweep.py) found it.
+//
+// Rule: an MCP tool's Out struct must never carry a `json.RawMessage` field.
+func profileObject(body json.RawMessage) map[string]any {
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		return map[string]any{}
+	}
+	return m
+}
+
 type getProfileOut struct {
-	Profile json.RawMessage `json:"profile"`
+	Profile map[string]any `json:"profile"`
 }
 
 func (s *Server) toolGetProfile(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, getProfileOut, error) {
@@ -209,7 +232,7 @@ func (s *Server) toolGetProfile(ctx context.Context, _ *mcp.CallToolRequest, _ e
 	if err != nil {
 		return nil, getProfileOut{}, err
 	}
-	return nil, getProfileOut{Profile: body}, nil
+	return nil, getProfileOut{Profile: profileObject(body)}, nil
 }
 
 // ── Tier R: providers (NO secret) ──────────────────────────────────────────────
@@ -422,8 +445,9 @@ type updateProfileIn struct {
 	Languages   []string `json:"languages,omitempty" jsonschema:"languages the user reads/writes (max 20)"`
 }
 type updateProfileOut struct {
-	Profile  json.RawMessage `json:"profile"`
-	UndoHint map[string]any  `json:"_meta_undo_hint,omitempty"`
+	// map, not json.RawMessage — see profileObject. Same output-schema break.
+	Profile  map[string]any `json:"profile"`
+	UndoHint map[string]any `json:"_meta_undo_hint,omitempty"`
 }
 
 func (s *Server) toolUpdateProfile(ctx context.Context, _ *mcp.CallToolRequest, in updateProfileIn) (*mcp.CallToolResult, updateProfileOut, error) {
@@ -462,7 +486,7 @@ func (s *Server) toolUpdateProfile(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, updateProfileOut{}, err
 	}
 	res := mcpResultWithUndo(undoHintForProfile(before, patch))
-	return res, updateProfileOut{Profile: body, UndoHint: undoHintForProfile(before, patch)}, nil
+	return res, updateProfileOut{Profile: profileObject(body), UndoHint: undoHintForProfile(before, patch)}, nil
 }
 
 // undoHintForProfile builds the reverse settings_update_profile args from the

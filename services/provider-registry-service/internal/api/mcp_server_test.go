@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -604,4 +607,63 @@ func extractStructured(t *testing.T, out map[string]any, field string) string {
 		}
 	}
 	return ""
+}
+
+// TestSettingsMCP_NoOutStructUsesRawMessage — the bug class that made
+// settings_get_profile and settings_update_profile fail 100% of calls, for every user,
+// from the day they were written.
+//
+// `json.RawMessage` is `[]byte`. The MCP Go SDK infers its output schema as
+// `["null","array"]`, but `encoding/json` marshals it as the raw JSON it HOLDS — an
+// object. The SDK then validates the tool's own output against its own declared schema
+// and rejects the call:
+//
+//	validating /properties/profile: type: map[...] has type "object", want one of "null, array"
+//
+// Nothing caught it: every wire gate asserts over `tools/list` METADATA and never issues a
+// `tools/call`, and no NL probe covered these tools. A deterministic capability sweep
+// (scripts/eval/tool_liveness/sweep.py) found it by simply calling every Tier-R tool.
+//
+// NOTE this asserts on the TYPE, not the schema. A genuine Go slice (`[]webSearchSource`)
+// also declares `["null","array"]` — and correctly marshals as an array. The schema shape
+// cannot tell the two apart; the field's Go type can.
+func TestSettingsMCP_NoOutStructUsesRawMessage(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "mcp_server.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse mcp_server.go: %v", err)
+	}
+	checked := 0
+	ast.Inspect(f, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok || !strings.HasSuffix(ts.Name.Name, "Out") {
+			return true
+		}
+		st, ok := ts.Type.(*ast.StructType)
+		if !ok {
+			return true
+		}
+		checked++
+		for _, field := range st.Fields.List {
+			sel, ok := field.Type.(*ast.SelectorExpr)
+			if !ok {
+				continue
+			}
+			pkg, _ := sel.X.(*ast.Ident)
+			if pkg != nil && pkg.Name == "json" && sel.Sel.Name == "RawMessage" {
+				name := "<embedded>"
+				if len(field.Names) > 0 {
+					name = field.Names[0].Name
+				}
+				t.Errorf("%s.%s is json.RawMessage — the SDK declares it ['null','array'] but "+
+					"marshals the object it holds, so the tool's OWN output fails validation and "+
+					"every call errors. Use map[string]any (see profileObject).", ts.Name.Name, name)
+			}
+		}
+		return true
+	})
+	if checked == 0 {
+		t.Fatal("found no *Out structs to check — this gate is inert")
+	}
+	t.Logf("checked %d MCP Out structs", checked)
 }

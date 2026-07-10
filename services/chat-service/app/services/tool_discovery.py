@@ -145,6 +145,11 @@ FIND_TOOLS_TOOL: dict = {
             "required": ["intent"],
             "additionalProperties": False,
         },
+        # C-TOOL — declared, not inferred. These are pure disclosure over the catalog:
+        # they execute nothing and take no scope key. Without an explicit tier they
+        # relied on tool_tier()'s silent "R" default — the exact hole the wire gates
+        # exist to close, and the reason a federated catalog showed 3 untiered tools.
+        "_meta": {"tier": "R", "scope": "none"},
     },
 }
 
@@ -178,6 +183,11 @@ TOOL_LIST_TOOL: dict = {
             },
             "additionalProperties": False,
         },
+        # C-TOOL — declared, not inferred. These are pure disclosure over the catalog:
+        # they execute nothing and take no scope key. Without an explicit tier they
+        # relied on tool_tier()'s silent "R" default — the exact hole the wire gates
+        # exist to close, and the reason a federated catalog showed 3 untiered tools.
+        "_meta": {"tier": "R", "scope": "none"},
     },
 }
 
@@ -207,6 +217,11 @@ TOOL_LOAD_TOOL: dict = {
             },
             "additionalProperties": False,
         },
+        # C-TOOL — declared, not inferred. These are pure disclosure over the catalog:
+        # they execute nothing and take no scope key. Without an explicit tier they
+        # relied on tool_tier()'s silent "R" default — the exact hole the wire gates
+        # exist to close, and the reason a federated catalog showed 3 untiered tools.
+        "_meta": {"tier": "R", "scope": "none"},
     },
 }
 

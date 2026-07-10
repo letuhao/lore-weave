@@ -94,6 +94,12 @@ export const FIND_TOOLS_TOOL = {
     required: ['intent'],
     additionalProperties: false,
   },
+  // C-TOOL — declared, not inferred. These three are pure disclosure over the catalog:
+  // they execute nothing and take no scope key. Without an explicit tier they relied on
+  // the consumer's silent "R" default (tool_tier()) — the exact hole the per-service wire
+  // gates exist to close, and why a federated tools/list showed 3 untiered tools. They are
+  // consumer-local, so no domain service's gate ever covered them.
+  _meta: { tier: 'R', scope: 'none' },
 } as const;
 
 interface McpTool {
@@ -415,6 +421,12 @@ export const TOOL_LIST_TOOL = {
     },
     additionalProperties: false,
   },
+  // C-TOOL — declared, not inferred. These three are pure disclosure over the catalog:
+  // they execute nothing and take no scope key. Without an explicit tier they relied on
+  // the consumer's silent "R" default (tool_tier()) — the exact hole the per-service wire
+  // gates exist to close, and why a federated tools/list showed 3 untiered tools. They are
+  // consumer-local, so no domain service's gate ever covered them.
+  _meta: { tier: 'R', scope: 'none' },
 } as const;
 
 export const TOOL_LOAD_TOOL = {
@@ -432,6 +444,12 @@ export const TOOL_LOAD_TOOL = {
     },
     additionalProperties: false,
   },
+  // C-TOOL — declared, not inferred. These three are pure disclosure over the catalog:
+  // they execute nothing and take no scope key. Without an explicit tier they relied on
+  // the consumer's silent "R" default (tool_tier()) — the exact hole the per-service wire
+  // gates exist to close, and why a federated tools/list showed 3 untiered tools. They are
+  // consumer-local, so no domain service's gate ever covered them.
+  _meta: { tier: 'R', scope: 'none' },
 } as const;
 
 /** Build the `tool_list` payload (contracts.md C2). `category` omitted or "all" → the whole visible
