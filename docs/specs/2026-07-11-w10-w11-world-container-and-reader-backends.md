@@ -16,6 +16,8 @@
 
 **Net remaining scope:** W10 = a world-scoped MCP **write** surface + graph authoring + a **new map primitive**. W11 = a reading-position→cutoff **resolver** + a **reader-scoped ask-the-lore facade** (cutoff server-enforced) + a **RAG cutoff** + **KG-auth unification onto grants** + a **new public/anonymous lore route**.
 
+**Services touched (scope-accuracy note, review-impl 2026-07-11).** TRACK-B.md's "Owns" list names glossary-service, knowledge-service, and chat-service — **not book-service**. But `worlds`, the bible-book/chapter substrate, `reading_progress`, MinIO image storage, and the world MCP write surface all live in **book-service**, so W10/W11 unavoidably extend it (world tools §3.1, reading-position resolver §4.1, maps §3.3). This is a correct follow-the-data extension of Track B's surface, not scope creep — but the owns-list predates this design, so flag it for Track-C coordination and the build plan. Services in play: **book-service (Go), knowledge-service (Py), glossary-service (Go), sharing-service (Go).**
+
 ---
 
 ## 1. Locked decisions this design honors / overrides
@@ -41,13 +43,15 @@
 
 **Problem.** World CRUD is HTTP/JWT-only today (`book-service/internal/api/worlds.go`); no MCP tool creates a world or authors world lore world-natively. Glossary propose/confirm are `ScopeBook` — an agent must be hand-fed `bible_book_id`. The FE hides this (`world/api.ts`); the agent surface must too.
 
-**Design.** book-service already exposes an MCP read surface (`mcp_tools_read.go`), so add world tools there:
+**Design.** book-service already exposes a full MCP surface — **reads** (`mcp_tools_read.go`) *and* **TierW/TierA writes** (`mcp_actions.go`: `book_chapter_publish`, `book_delete`, `book_set_cover` via `addTool(srv, …, NewToolMeta(TierW, ScopeBook, …))`). [verified review-impl 2026-07-11] So world tools mirror the existing `mcp_actions.go` pattern:
 
-| Tool | Tier | Behavior |
+| Tool | Tier · Scope | Behavior |
 |---|---|---|
-| `world_create(name, description?)` | **A** (creation) | Runs the existing `createWorld` transaction (`worlds.go:54`): world + hidden bible book (`is_bible`) + `provisionBibleChapter`. Returns `{world_id, bible_book_id, bible_chapter_id}`. |
-| `world_list()` / `world_get(world_id)` | **R** | Wrap `listWorlds`/`getWorldByID`; returns `book_count`, `bible_book_id`, `bible_chapter_id`. |
-| `world_move_book(world_id, book_id)` | **A** | Wrap `moveBookIntoWorld` (guards `is_bible=false`). |
+| `world_create(name, description?)` | **A · none** | Runs the existing `createWorld` transaction (`worlds.go:54`): world + hidden bible book (`is_bible`) + `provisionBibleChapter`. Returns `{world_id, bible_book_id, bible_chapter_id}`. |
+| `world_list()` / `world_get(world_id)` | **R · none** | Wrap `listWorlds`/`getWorldByID`; returns `book_count`, `bible_book_id`, `bible_chapter_id`. |
+| `world_move_book(world_id, book_id)` | **A · book** | Wrap `moveBookIntoWorld` (guards `is_bible=false`). |
+
+**Scope decision (build):** existing book-service MCP tools are `ScopeBook`; a world is not a book. World tools need either a new `ScopeWorld` in the shared `lwmcp` kit (cleaner, but a kit change other services inherit) or `ScopeNone` with an in-handler owner check (`requireWorldOwner`, `worlds.go:353`). Decide at build; `ScopeNone` + explicit owner check is the lower-blast-radius default.
 
 **World-native lore authoring (hide the bible-book mechanic).** Rather than force agents to juggle `bible_book_id`, the design adds a **world-resolution helper** consumed by glossary/knowledge authoring tools: an optional `world_id` arg that resolves to the world's `bible_book_id` (glossary) / world KG project (knowledge) via a book-service internal route, then authors book-keyed per G1. Storage is unchanged; only the tool ergonomics improve.
 - New internal route (book-service): `GET /internal/worlds/{world_id}/bible` → `{bible_book_id, bible_chapter_id}` (owner/grant-checked). Analogous to the existing `/internal/worlds/{id}/books` (`server.go:198`).
@@ -62,32 +66,32 @@ Most of this shipped in WS-4B (`kg_project_entities_to_nodes`, `kg_propose_edge`
 
 **Not** the LLM_MMO_RPG procedural tile kernel (`crates/world-gen`, `tilemap-service`, `world-service` — a separate game-runtime stack, downstream-only). This is a **worldbuilder's reference map** (World-Anvil/Inkarnate-lite): a base image with placed pins/regions linked to `location` glossary entities.
 
-**Home service: glossary-service (Go).** Rationale: markers FK to glossary `location` entities (kept intra-service, no cross-service FK); glossary is the authored-lore SSOT and already hosts an analogous authored surface (the `wiki_*` tables). Alternative considered — book-service (owns worlds) — rejected because the marker→entity FK would then cross services.
+**Home service: book-service (Go). [REVISED — review-impl 2026-07-11]** The first draft put maps in glossary-service; that was wrong on two counts the review caught: (1) **glossary-service has no MinIO/blob infra** (verified — nor does knowledge-service), so it could not store a map image without new infra, whereas **book-service already has MinIO and an image precedent** (`book_set_cover`, cover art); (2) **G1 forbids `world_id` on glossary** — `world_id` legitimately lives in book-service, which owns the `worlds` table. The original rationale ("keep marker→entity FK intra-service") rested on a false premise: glossary is a **separate database**, so a marker's `entity_id` is a **cross-service soft UUID reference no matter where the map lives** — there is no intra-service FK to preserve. book-service already owns the world container + world_id + image storage, so it is the correct home; the marker→entity reference is soft (optionally validated best-effort via a book-service→glossary internal call at write, never a hard FK).
 
-**Scope: world-first.** A world map spans a world's books, so it carries `world_id` (a *new* additive table, not a G1-violating retrofit — see §1). Markers bridge world↔book: a marker references a glossary entity that is itself book-keyed (in one of the world's books).
+**Scope: world-first.** A world map spans a world's books, so it carries `world_id` — clean in book-service (where `world_id` already lives; G1-consistent). Markers bridge world↔book: a marker references a glossary `location` entity that is itself book-keyed (in one of the world's books).
 
-**Data model (new, glossary-service):**
+**Data model (new, book-service):**
 ```
 world_maps(id, owner_user_id, world_id, name, image_object_key, image_w, image_h,
-           created_at, updated_at)                        -- image blob in MinIO
+           created_at, updated_at)              -- image blob in MinIO (book-service already has it)
 map_markers(id, map_id, entity_id NULLABLE, label, x REAL, y REAL,   -- x,y ∈ [0,1] relative
-            marker_type, created_at)                      -- entity_id → glossary_entities (location)
-map_regions(id, map_id, name, polygon JSONB, entity_id NULLABLE, created_at)  -- optional polygon overlay
+            marker_type, created_at)            -- entity_id = SOFT cross-service ref → glossary location entity
+map_regions(id, map_id, name, polygon JSONB, entity_id NULLABLE, created_at)  -- polygon overlay (full, per sign-off)
 ```
-Scope key `world_id` + `owner_user_id`; every query filters by both; grant-gated for collaborators.
+Scope key `world_id` + `owner_user_id`; every query filters by both; `world_id` re-checked as the owner's world; grant-gated for collaborators (mirrors `worlds.go requireWorldOwner`).
 
-**MCP tools (glossary-service):**
+**MCP tools (book-service — mirror the existing `mcp_actions.go` TierW/TierA write surface, `book_set_cover`/`book_chapter_publish` etc.):**
 
-| Tool | Tier | Behavior |
+| Tool | Tier · Scope | Behavior |
 |---|---|---|
-| `world_map_create(world_id, name, image_ref?)` | **A** | Create a map; image uploaded separately (presigned MinIO PUT) or referenced. |
-| `world_map_add_marker(map_id, label, x, y, entity_id?, marker_type?)` | **A** | Place a pin; optionally bind to a `location` entity. |
-| `world_map_add_region(map_id, name, polygon, entity_id?)` | **A** | Add a polygon overlay. |
-| `world_map_get(map_id)` / `world_map_list(world_id)` | **R** | Read markers + regions + image URL. |
+| `world_map_create(world_id, name, image_ref?)` | **A · none** | Create a map (scope `none`, not `book` — a map is world-, not book-scoped; needs a `ScopeWorld` addition or `ScopeNone`, decide at build). Image via presigned MinIO PUT (reuse the cover-image path). |
+| `world_map_add_marker(map_id, label, x, y, entity_id?, marker_type?)` | **A · none** | Place a pin; optionally bind to a `location` entity (soft ref, best-effort existence check). |
+| `world_map_add_region(map_id, name, polygon, entity_id?)` | **A · none** | Add a polygon overlay. |
+| `world_map_get(map_id)` / `world_map_list(world_id)` | **R · none** | Read markers + regions + presigned image URL. |
 
-**REST (for the FE canvas — Track C):** `POST/GET /v1/glossary/worlds/{world_id}/maps`, `.../maps/{map_id}/markers`, image presign route. FE map canvas is Track C.
+**REST (for the FE canvas — Track C):** `POST/GET /v1/worlds/{world_id}/maps`, `.../maps/{map_id}/markers`, image presign route (reuse book-service's cover presign). FE map canvas is Track C.
 
-**Effort flag:** this is the bulk of W10's new work — new tables + migration, MinIO image handling, 4 MCP tools + REST, and (Track C) a canvas. Its own build milestone.
+**Effort flag:** the bulk of W10's new work — new tables + migration, MinIO image handling (reusing the cover path), 4 MCP tools + REST, and (Track C) a canvas. Its own build milestone.
 
 ---
 
@@ -97,7 +101,8 @@ Scope key `world_id` + `owner_user_id`; every query filters by both; grant-gated
 
 `reading_progress` stores per-chapter rows (`book-service migrate.go:179`), not a single "furthest-read" pointer, but `getReadingHistory` already joins `chapters.sort_order` (`analytics.go:248`).
 
-**Design (book-service):** `GET /internal/books/{book_id}/reading-position?user_id=` → `{furthest_chapter_id, furthest_sort_order}` = `MAX(sort_order)` over the user's rows. Small derivation, no schema change. The reader facade (§4.2) calls it to obtain `before_chapter_id`, then `resolve_before_order` (`spoiler_window.py:31`) turns it into the `before_order` ceiling.
+**Design (book-service):** `GET /internal/books/{book_id}/reading-position?user_id=` → `{furthest_chapter_id, furthest_sort_order}` = `MAX(ch.sort_order)` over the user's `reading_progress` rows LEFT-JOINed to `chapters` (the `getReadingHistory` join, `analytics.go:251`). Small derivation, no schema change. The reader facade (§4.2) calls it to obtain `before_chapter_id`, then `resolve_before_order` (`spoiler_window.py:31`) turns it into the `before_order` ceiling.
+- **Edge (review-impl 2026-07-11):** a read chapter that was later **deleted** LEFT-JOINs to `NULL sort_order`; SQL `MAX` ignores NULLs, so the furthest *surviving* chapter wins — correct. If **every** read chapter is deleted (or the user has no rows), `MAX → NULL → no position →` the facade **fails closed** (nothing passes), consistent with `spoiler_window.py:28`. Both cases need an explicit test — a fresh/empty reader must not accidentally see the whole book.
 
 ### 4.2 Reader-scoped ask-the-lore facade (cutoff SERVER-enforced)
 
@@ -130,6 +135,7 @@ Today KG `entities.py` facts/statuses/timeline are **owner-`user_id`-scoped** (`
 **Anonymous cutoff = self-declared.** An anonymous reader has no `reading_progress` (no account), so their spoiler cutoff is **client-declared** ("I've read up to chapter N") — a weaker guarantee than the server-enforced grant-holder path (§4.2), acceptable for public exploration. Logged-in grant-holders always get the server-enforced position.
 
 **Data-exposure guard (critical).** The public route exposes **confirmed canon only** — never `ai-suggested`/draft glossary entries, never owner-private KG scratch. Filter to published/confirmed status; spoiler-window on top. Its own review-impl pass at build (public data surface).
+- **Status-field to pin at build (review-impl 2026-07-11):** glossary has two distinct status axes — the entity-level `status` (`= 'active'`, `entities.py:527`) and the fact/enrichment `review_status ∈ {proposed, promoted}` (`glossary migrate.go:1484`); the WS-4C canon-capture inbox adds an `ai-suggested` origin. The public canon-only filter must exclude BOTH un-promoted facts (`review_status <> 'promoted'`) AND `ai-suggested`/draft entities — confirm the exact predicate against the live schema before shipping M3, because a wrong predicate here **leaks unreviewed AI guesses to the public**. This is the single highest-risk line in the whole design.
 
 **Design (sharing-service or a knowledge public route behind the public-visibility gate):** `GET /v1/public/books/{book_id}/lore?before_chapter=N&query=...` → windowed, canon-only glossary + KG + RAG. No JWT; rate-limited at the gateway edge.
 
