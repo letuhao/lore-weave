@@ -28,8 +28,16 @@ package api
 // workflow, whose runner calls the step's tool directly and needs no selection) with
 // "the tool is broken" (an F6 product bug). Rejecting on an ambiguous RED would have
 // blocked steps that reference perfectly good tools. Now that the harness scores those
-// apart, rejecting on `executes == false` is unambiguous and safe TODAY, while an
-// *unproven* tool still only warns.
+// apart, rejecting on `executes == false` is unambiguous and safe TODAY.
+//
+// The WARNING fires on `executes == null` (UNCHECKED), NOT on `!proven`. CD4's verdict
+// table is explicit: a tool proven to EXECUTE (executes == true) is admitted with NO
+// warning even when it is not `proven` (every gate G1–G4 under a model) — because `proven`
+// includes G1 ("did a model pick this tool from its description?"), and a workflow step
+// NAMES its tool directly, so selection is irrelevant to it. Warning on `!proven` would
+// flag every tool the deterministic sweep proved executes (126 of them) — noise that
+// buries the ~73 tools with no execution evidence at all. (`proven` remains a separate,
+// higher-confidence signal; it is simply not the warning trigger.)
 
 import (
 	_ "embed"
@@ -73,19 +81,25 @@ func toolBlocked(tool string) bool {
 	return ok && t.Executes != nil && !*t.Executes
 }
 
-// toolUnproven reports whether the tool has NOT passed every gate. An absent tool has no
-// probe at all, so it is unproven.
-func toolUnproven(tool string) bool {
+// toolUnchecked reports whether the tool has NO execution evidence either way — never
+// probed (absent from the manifest) or probed but inconclusive (executes == null). This is
+// the CD4 warning trigger. A tool proven to EXECUTE (executes == true) is NOT unchecked
+// even if it is not `proven` (G1–G4 under a model): a workflow step names its tool
+// directly, so a selection failure (the only thing separating "executes" from "proven") is
+// irrelevant to it. Only "we have never seen this run" warrants the caveat.
+func toolUnchecked(tool string) bool {
 	t, ok := liveness.Tools[tool]
-	return !ok || !t.Proven
+	return !ok || t.Executes == nil
 }
 
-// livenessWarnings returns one `unproven_tool` warning per distinct unproven tool the
-// workflow references, sorted so the response is deterministic.
+// livenessWarnings returns one `unproven_tool` warning per distinct UNCHECKED tool the
+// workflow references (executes == null or absent), sorted so the response is
+// deterministic. A proven-broken tool is not warned about — it is REJECTED outright by
+// validateWorkflow — and a tool proven to execute needs no caveat at all.
 func livenessWarnings(steps []workflowStepIn) []string {
 	seen := map[string]bool{}
 	for _, st := range steps {
-		if st.Tool != "" && toolUnproven(st.Tool) && !toolBlocked(st.Tool) {
+		if st.Tool != "" && toolUnchecked(st.Tool) && !toolBlocked(st.Tool) {
 			seen[st.Tool] = true
 		}
 	}
@@ -99,8 +113,9 @@ func livenessWarnings(steps []workflowStepIn) []string {
 	sort.Strings(names)
 	out := make([]string, 0, len(names))
 	for _, n := range names {
-		out = append(out, "unproven_tool: '"+n+"' has not passed the liveness gates (G1-G4). "+
-			"It may fail at run time; see docs/eval/tool-liveness/.")
+		out = append(out, "unproven_tool: '"+n+"' has not been shown to execute "+
+			"(no successful call is recorded in the liveness manifest). It may fail at run "+
+			"time; see docs/eval/tool-liveness/.")
 	}
 	return out
 }

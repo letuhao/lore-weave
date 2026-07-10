@@ -80,39 +80,54 @@ func TestToolBlockedOnlyOnExplicitFalse(t *testing.T) {
 	})
 }
 
-func TestUnprovenCoversAbsentAndNonPassing(t *testing.T) {
+func TestUncheckedCoversAbsentAndNullOnly(t *testing.T) {
 	withLiveness(t, _fixture, func() {
-		if toolUnproven("good_tool") {
-			t.Error("a PASS tool is proven")
-		}
-		for _, n := range []string{"broken_tool", "unchecked", "works_but_unpicked", "absent"} {
-			if !toolUnproven(n) {
-				t.Errorf("%q must be unproven", n)
+		// "unchecked" = no execution evidence: executes==null, or absent from the manifest.
+		for _, n := range []string{"unchecked", "absent"} {
+			if !toolUnchecked(n) {
+				t.Errorf("%q must be unchecked (null executes / absent from manifest)", n)
 			}
+		}
+		// A tool that EXECUTES is NOT unchecked — even when it is not `proven` (RED-SELECT).
+		// This is the whole fix: warning on `!proven` flagged these; warning on unchecked
+		// does not.
+		for _, n := range []string{"good_tool", "works_but_unpicked"} {
+			if toolUnchecked(n) {
+				t.Errorf("%q executes (executes==true) — it must NOT be unchecked", n)
+			}
+		}
+		// executes==false is evidence too — it is REJECTED, not merely "unchecked".
+		if toolUnchecked("broken_tool") {
+			t.Error("executes=false is execution evidence, not 'unchecked'")
 		}
 	})
 }
 
-func TestLivenessWarningsAreDeterministicAndSkipBlocked(t *testing.T) {
+func TestLivenessWarningsWarnOnlyOnUncheckedTools(t *testing.T) {
 	withLiveness(t, _fixture, func() {
 		steps := []workflowStepIn{
-			{ID: "s3", Tool: "unchecked"},
-			{ID: "s1", Tool: "good_tool"},          // proven — no warning
-			{ID: "s2", Tool: "works_but_unpicked"}, // unproven — warns
+			{ID: "s1", Tool: "good_tool"},          // executes + proven — no warning
+			{ID: "s2", Tool: "works_but_unpicked"}, // executes (RED-SELECT) — NO warning (CD4 §table)
+			{ID: "s3", Tool: "unchecked"},          // executes==null — warns
 			{ID: "s4", Tool: "unchecked"},          // dupe — one warning only
 			{ID: "s5", Tool: "broken_tool"},        // BLOCKED — rejected, never warned about
+			{ID: "s6", Tool: "never_probed"},       // absent — unchecked — warns
 		}
 		w := livenessWarnings(steps)
 		if len(w) != 2 {
-			t.Fatalf("want 2 warnings (deduped, blocked excluded), got %d: %v", len(w), w)
+			t.Fatalf("want 2 warnings (unchecked + absent; executing & blocked excluded), got %d: %v", len(w), w)
 		}
-		// sorted → unchecked before works_but_unpicked
-		if !strings.Contains(w[0], "'unchecked'") || !strings.Contains(w[1], "'works_but_unpicked'") {
+		// sorted → "never_probed" before "unchecked"
+		if !strings.Contains(w[0], "'never_probed'") || !strings.Contains(w[1], "'unchecked'") {
 			t.Errorf("warnings must be sorted for a deterministic response: %v", w)
 		}
 		for _, s := range w {
 			if !strings.Contains(s, "unproven_tool") {
 				t.Errorf("warning must carry the unproven_tool code: %q", s)
+			}
+			// the regression this fix prevents: a tool that EXECUTES must never be warned about
+			if strings.Contains(s, "works_but_unpicked") || strings.Contains(s, "good_tool") {
+				t.Errorf("a tool proven to execute must not warn (CD4: RED-SELECT → no warning): %q", s)
 			}
 		}
 	})

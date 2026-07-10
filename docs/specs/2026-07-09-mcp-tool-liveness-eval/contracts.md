@@ -256,3 +256,12 @@ recorded there and announced on the board.
 - 2026-07-09 — **CD5 added** (universal vs domain-scoped naming/placement). Adjudicates
   `glossary_web_search` → `web_search` @ provider-registry, and `glossary_deep_research` stays.
   Forces **C1 += `research`** (Track A's frozen contract — announced on the board).
+- 2026-07-11 — **CD4 implementation corrected to match the frozen table (no contract change).**
+  `agent-registry`'s `livenessWarnings` fired the `unproven_tool` warning on `!proven`, which
+  contradicts the CD4 verdict table: `executes: true` tools (incl. `RED-SELECT`) are "admit, **no
+  warning**" — only `executes: null` (unchecked) warns. Warning on `!proven` flagged all 126
+  sweep-executing tools, burying the ~73 with no execution evidence. Fixed the Go predicate
+  (`toolUnchecked` = `executes == null` or absent; the dead `toolUnproven` removed). The chat-service
+  `tool_list`/`tool_load` side was already correct (acts only on `executes: false`). The **hard
+  reject** gate is unchanged (`executes: false`). WS-D4's warn→reject tightening — and whether it
+  targets full `proven`, `executes ∧ effect`, or just `executes` — remains open.
