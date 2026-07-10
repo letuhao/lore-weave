@@ -295,6 +295,37 @@ class BookClient:
             )
             return None
 
+    async def get_reading_position(
+        self, book_id: UUID, user_id: UUID,
+    ) -> UUID | None:
+        """W11-M2 (spec §4.2) — resolve a reader's FURTHEST-read chapter for a book,
+        so the reader facade can server-enforce a spoiler cutoff from the reader's
+        OWN position (never an LLM-supplied arg).
+
+        Calls book-service GET /internal/books/{book_id}/reading-position?user_id=
+        (W11-M1). Returns the furthest-read chapter_id, or **None** — the fail-closed
+        signal — when the reader has no active read chapter OR on ANY failure. Note
+        the route returns HTTP 200 with ``furthest_chapter_id: null`` for "no
+        position" (not a 404), so BOTH the 200-null case and a transport failure
+        collapse to None here; the facade then windows to nothing (a reader whose
+        position can't be pinned sees no future lore, never all of it).
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/reading-position"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(url, params={"user_id": str(user_id)})
+            if resp.status_code != 200:
+                return None
+            raw = resp.json().get("furthest_chapter_id")
+            if not raw:
+                return None  # 200 with null furthest_chapter_id = no position (fail-closed)
+            return UUID(str(raw))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service reading-position unavailable: %s, trace_id=%s", exc, tid,
+            )
+            return None
+
     async def get_chapter_titles(
         self, chapter_ids: list[UUID], language: str | None = None,
     ) -> dict[UUID, str]:
