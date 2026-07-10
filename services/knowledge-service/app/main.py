@@ -227,6 +227,7 @@ async def lifespan(app: FastAPI):
             handle_chat_turn,
             handle_chapter_published,
             handle_chapter_unpublished,
+            handle_chapter_scenes_reparsed,
             handle_chapter_deleted,
             handle_chat_message_feedback,
             handle_glossary_entity_updated,
@@ -249,6 +250,11 @@ async def lifespan(app: FastAPI):
         # handler was dropped); statistics-service still consumes it separately.
         dispatcher.register("chapter.published", handle_chapter_published)
         dispatcher.register("chapter.unpublished", handle_chapter_unpublished)
+        # IX-10 (spec 26 / RB-5) — book-service re-parsed a chapter's index
+        # (publish path or sweeper); invalidate this book's extraction cache so
+        # the graph re-derives from the fresh scenes (the F6 endpoint's logic,
+        # finally wired to its event trigger). Arrives on the chapter stream.
+        dispatcher.register("chapter.scenes_reparsed", handle_chapter_scenes_reparsed)
         dispatcher.register("chapter.deleted", handle_chapter_deleted)
         # C4 (K14) — auto glossary→KG propagation. glossary-service emits
         # glossary.entity_updated on every entity write (single + bulk

@@ -21,6 +21,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
 from app.db.repositories.extraction_pending import (
     ExtractionPendingQueueRequest,
     ExtractionPendingRepo,
@@ -33,6 +34,7 @@ __all__ = [
     "handle_chat_message_feedback",
     "handle_chapter_published",
     "handle_chapter_unpublished",
+    "handle_chapter_scenes_reparsed",
     "handle_chapter_deleted",
     "handle_glossary_entity_updated",
     "handle_glossary_entity_merged",
@@ -602,6 +604,66 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
             )
     else:
         logger.debug("No knowledge project for book %s — skipping delete cascade", book_id)
+
+
+async def handle_chapter_scenes_reparsed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """IX-10 (spec 26) — chapter.scenes_reparsed handler (RB-5 consumer side).
+
+    Book-service re-parses a chapter's index (`scenes` rows) whenever its
+    pinned published revision changes — in the publish request path (IX-2) or
+    the background sweeper (IX-3) — and emits `chapter.scenes_reparsed` in the
+    SAME transaction as the index upsert. The parse leaves the graph reads
+    (P2 extraction, F7) just moved under it, so this handler invalidates the
+    knowledge extraction cache for the affected book, book-scoped, so the next
+    extraction re-derives from the fresh index.
+
+    This wires the F6 orphaned invalidation logic (`ExtractionLeavesRepo.
+    delete_by_book`, the same path the `/invalidate-cache/{book_id}` endpoint
+    already exposes but nothing called) to its event trigger.
+
+    FROZEN payload (spec 26 IX-10, must equal book-service's producer — 4 fields):
+      {book_id, chapter_id, published_revision_id, parse_version}
+    Consumed here: `book_id` (the invalidation scope, required) and
+    `chapter_id` (log/scope; falls back to the aggregate id per the chapter.*
+    convention). `published_revision_id`/`parse_version` are observability fields —
+    the invalidation is book-scoped, not per-revision, so it tolerates additional
+    or absent observability fields (only `book_id` is load-bearing).
+
+    Idempotent (at-least-once safe): `delete_by_book` deletes the book's leaf
+    rows; a redelivered event finds them already gone → deletes 0 → clean
+    no-op. Correctness never depends on it — `task_id` keys on the text hash
+    (F6/SR-4), so a changed leaf naturally cache-misses; this delete is
+    hygiene (dead leaf + claim rows) that also lets the F6 endpoint's logic
+    finally fire on the real trigger. Benign race with the chapter.published
+    extraction handler is stated in the spec (§Cross-service events): worst
+    case is a deleted-then-recomputed cache entry — cost, never corruption.
+
+    A malformed payload (missing/invalid book_id) is a clean skip, never a
+    raise, so one bad event can't wedge the consumer loop.
+    """
+    payload = event.payload
+    book_id = _uuid(payload.get("book_id"))
+    # chapter_id rides the payload (frozen shape); tolerate the chapter.*
+    # convention where it also arrives as the aggregate id.
+    chapter_id = payload.get("chapter_id") or event.aggregate_id
+
+    if book_id is None:
+        logger.warning(
+            "chapter.scenes_reparsed missing/invalid book_id: %s", event.message_id
+        )
+        return
+
+    # Book-scoped cache invalidation (all extraction ops) — the existing F6
+    # path, reused (not reinvented). Best-effort: a failure propagates to the
+    # consumer's retry → DLQ policy (K14.8) so a transient DB blip redelivers;
+    # the delete is idempotent so a redelivery is safe.
+    deleted_leaves, deleted_raw = await ExtractionLeavesRepo(pool).delete_by_book(book_id)
+    logger.info(
+        "IX-10: chapter.scenes_reparsed invalidated extraction cache: book=%s "
+        "chapter=%s parse_version=%s deleted_leaves=%d deleted_raw=%d",
+        book_id, chapter_id, payload.get("parse_version"),
+        deleted_leaves, deleted_raw,
+    )
 
 
 async def handle_glossary_entity_updated(

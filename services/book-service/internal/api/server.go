@@ -220,6 +220,10 @@ func (s *Server) Router() http.Handler {
 		// /internal/books/... because it's not scoped to a single book.
 		r.Post("/chapters/titles", s.postInternalChapterTitles)
 		r.Post("/chapters/sort-orders", s.postInternalChapterSortOrders)
+		// 26 IX-9 — canon-markers batch resolver consumed by composition's
+		// conformance-status read (the dirty predicate). Mirrors sort-orders'
+		// contract (200-id cap, partial responses) but is book-scoped by the path.
+		r.Post("/books/{book_id}/chapters/canon-markers", s.postInternalChapterCanonMarkers)
 		r.Patch("/imports/{import_id}", s.updateImportJobStatus)
 	})
 
@@ -1561,7 +1565,11 @@ func (s *Server) getChapter(w http.ResponseWriter, r *http.Request) {
 // (authBook). E0-2 dropped the owner filter — the query is keyed by chapter+book
 // id, which still scopes to the authorized book. `caller` is unused in the query
 // now but kept in the signature for call-site symmetry / future per-caller fields.
-func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, bookID, chapterID, caller uuid.UUID, status int) {
+// getChapterByID writes the canonical chapter JSON. `extra` (variadic, at most
+// one map) is merged into the response envelope — the publish path uses it to
+// carry the 26 IX-4 `reparse` delta counts as an additive field without forking
+// this shared reader. Existing callers pass no extra and are unaffected.
+func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, bookID, chapterID, caller uuid.UUID, status int, extra ...map[string]any) {
 	_ = caller
 	var id, bid uuid.UUID
 	var title *string // chapters.title is NULLABLE — a plain string errors on a titleless chapter
@@ -1583,7 +1591,7 @@ WHERE c.id=$1 AND c.book_id=$2
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to get chapter")
 		return
 	}
-	writeJSON(w, status, map[string]any{
+	resp := map[string]any{
 		"chapter_id":            id,
 		"book_id":               bid,
 		"title":                 nullableStringPtr(title),
@@ -1602,7 +1610,13 @@ WHERE c.id=$1 AND c.book_id=$2
 		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
 		"word_count":            wordCount,
-	})
+	}
+	if len(extra) > 0 {
+		for k, v := range extra[0] {
+			resp[k] = v
+		}
+	}
+	writeJSON(w, status, resp)
 }
 
 func (s *Server) patchChapter(w http.ResponseWriter, r *http.Request) {
@@ -2302,6 +2316,14 @@ func (s *Server) publishChapter(w http.ResponseWriter, r *http.Request) {
 	// Body is optional; ignore decode errors (no/empty body → unconditional publish).
 	_ = json.NewDecoder(r.Body).Decode(&in)
 
+	// 26 IX-2: parse the to-be-pinned body BEFORE the Tx (stateless /internal/parse,
+	// never a cross-service call inside the transaction). We compare prep.draftVersion
+	// against the FOR-UPDATE draft_version inside the Tx: if a concurrent save
+	// slipped in, the parsed tree describes a stale body → skip the upsert and let
+	// the sweeper heal (the same OQ-1 degrade as a parse failure). A parse failure
+	// itself never blocks publish.
+	prep := s.prepareReparse(r.Context(), bookID, chID)
+
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
@@ -2374,6 +2396,37 @@ WHERE id=$1`, chID, revID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 		return
 	}
+	// 26 IX-2 step 3(b–d): same-Tx re-parse. Only when the parse succeeded AND it
+	// described the body we are actually pinning (draftVersion match). Otherwise
+	// the marker stays behind → the chapter is stale by the IX-3 predicate and the
+	// sweeper heals it. A parse/upsert issue must NOT hold user prose hostage
+	// (OQ-1), so a skipped re-parse is a warning, never a publish failure.
+	var counts reparseCounts
+	if prep.ok && prep.draftVersion == curr {
+		var uerr error
+		counts, uerr = s.upsertChapterScenes(r.Context(), tx, bookID, chID, prep.structuralPath, prep.tree)
+		if uerr != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to reindex scenes")
+			return
+		}
+		if _, err := tx.Exec(r.Context(), `UPDATE chapters SET last_parsed_revision_id=$2 WHERE id=$1`, chID, revID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+			return
+		}
+		// RB5-1: only emit when the INDEX actually changed. A no-op re-parse (identical
+		// prose → all scenes Unchanged) must not fire chapter.scenes_reparsed, whose
+		// knowledge consumer wipes the WHOLE book's extraction cache (a costly re-extract
+		// for zero index change). chapter.published still fires for the publish itself.
+		if counts.changed() {
+			if err := emitScenesReparsed(r.Context(), tx, bookID, chID, revID, counts.ParseVersion); err != nil {
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+				return
+			}
+		}
+	} else {
+		slog.WarnContext(r.Context(), "publish: re-parse skipped; index left stale for the sweeper",
+			"chapter_id", chID, "parse_ok", prep.ok, "draft_version_match", prep.draftVersion == curr)
+	}
 	if err := insertOutboxEvent(r.Context(), tx, "chapter.published", chID,
 		map[string]any{"book_id": bookID, "chapter_id": chID, "revision_id": revID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
@@ -2383,7 +2436,7 @@ WHERE id=$1`, chID, revID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 		return
 	}
-	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
+	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK, map[string]any{"reparse": counts})
 }
 
 // unpublishChapter — Canon Model CM1. Reverts a chapter to 'draft' and clears
@@ -3326,6 +3379,90 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sort_orders": sortOrders})
+}
+
+// postInternalChapterCanonMarkers — 26 IX-9. The batch resolver composition's
+// conformance-status read polls to compute dirtiness (prose_drift / index_stale)
+// without a stored dirty bit. Mirrors postInternalChapterSortOrders' contract:
+//
+//	Request:  { "chapter_ids": [uuid, ...] }
+//	Response: { "markers": { "<uuid>": { "published_revision_id": uuid|null,
+//	                                     "last_parsed_revision_id": uuid|null,
+//	                                     "parse_version": int,
+//	                                     "editorial_status": "draft"|"published" } } }
+//
+//   - Empty list → 200 with an empty markers map.
+//   - Cap at 200 ids per call; oversized → 422.
+//   - BOOK-SCOPED by the path {book_id}: ids not in that book (or not active) are
+//     silently dropped — the query filters on book_id, so a caller passing a
+//     wrong book_id gets no cross-book leak (the token authenticates the caller
+//     service; the book_id scope is the tenancy defense at this layer, with the
+//     E0 grant enforced upstream at composition's VIEW-gated status route).
+//   - parse_version is the IX-4 CHAPTER SCALAR: MAX(parse_version) over the
+//     chapter's ACTIVE scenes rows (0 when a chapter has none yet).
+//   - Scan errors surface via scan_error_count (best-effort partial response);
+//     iterator-level errors return 500.
+func (s *Server) postInternalChapterCanonMarkers(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	const maxIDs = 200
+	var body struct {
+		ChapterIDs []uuid.UUID `json:"chapter_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid JSON body")
+		return
+	}
+	if len(body.ChapterIDs) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"markers": map[string]any{}})
+		return
+	}
+	if len(body.ChapterIDs) > maxIDs {
+		writeError(w, http.StatusUnprocessableEntity, "BOOK_VALIDATION_ERROR",
+			fmt.Sprintf("too many chapter_ids (max %d)", maxIDs))
+		return
+	}
+	rows, err := s.pool.Query(r.Context(), `
+SELECT c.id, c.published_revision_id, c.last_parsed_revision_id, c.editorial_status,
+       COALESCE((SELECT MAX(parse_version) FROM scenes
+                 WHERE chapter_id = c.id AND lifecycle_state = 'active'), 0) AS parse_version
+FROM chapters c
+WHERE c.book_id = $1 AND c.id = ANY($2::uuid[]) AND c.lifecycle_state = 'active'
+`, bookID, body.ChapterIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to query canon markers")
+		return
+	}
+	defer rows.Close()
+	markers := make(map[string]any)
+	var scanErrors int
+	for rows.Next() {
+		var id uuid.UUID
+		var publishedRev, lastParsedRev *uuid.UUID
+		var editorialStatus string
+		var parseVersion int
+		if err := rows.Scan(&id, &publishedRev, &lastParsedRev, &editorialStatus, &parseVersion); err != nil {
+			scanErrors++
+			continue
+		}
+		markers[id.String()] = map[string]any{
+			"published_revision_id":   publishedRev,
+			"last_parsed_revision_id": lastParsedRev,
+			"parse_version":           parseVersion,
+			"editorial_status":        editorialStatus,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "canon markers iterator errored")
+		return
+	}
+	if scanErrors > 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"markers": markers, "scan_error_count": scanErrors})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"markers": markers})
 }
 
 func excerpt(s string, n int) string {

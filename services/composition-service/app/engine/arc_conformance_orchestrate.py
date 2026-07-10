@@ -26,6 +26,8 @@ caller-supplied ``model_ref``/``model_source`` (BYOK) — NO provider SDK / mode
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 from uuid import UUID
 
@@ -144,3 +146,295 @@ async def compute_arc_report(
         entailed_code_pairs=entailed_code_pairs,
     )
     return report
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 26 IX-8/IX-9/IX-14 — durable, input-pinned conformance snapshots + the ONE
+# staleness read contract. The SAME member/binding/fingerprint helpers assemble the
+# manifest at PERSIST time (compute_arc_report's two callers) AND recompute the
+# comparison at READ time (the status route + MCP tool), so persist and read can
+# never disagree about what "the book moved" means (reconcile-by-truth: one
+# computation, not two). This module imports only repos (no router import), so both
+# the router and the MCP server compose it without an import cycle.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+async def _member_chapter_rows(pool: Any, book_id: UUID, arc_id: UUID) -> list[Any]:
+    """The arc's member outline nodes for the spec fingerprint + the manifest's
+    chapter list. Member chapters are the arc SUBTREE's chapter-kind nodes
+    (`outline_node.structure_node_id` in subtree(arc) — BA6), and this returns those
+    chapters PLUS their scenes (the fingerprint must move when a scene's planned
+    tension/order/beat_role changes, or a scene-plan edit would false-CLEAN a report).
+    Book-scoped (defense-in-depth) and DETERMINISTICALLY ordered so the hash is stable."""
+    async with pool.acquire() as c:
+        return await c.fetch(
+            """
+            WITH RECURSIVE subtree AS (
+              SELECT id FROM structure_node WHERE id = $1
+              UNION
+              SELECT s.id FROM structure_node s JOIN subtree t ON s.parent_id = t.id
+            ),
+            member_chapters AS (
+              SELECT DISTINCT chapter_id FROM outline_node
+              WHERE structure_node_id IN (SELECT id FROM subtree)
+                AND kind = 'chapter' AND NOT is_archived
+                AND book_id = $2 AND chapter_id IS NOT NULL
+            )
+            SELECT id, chapter_id, version, tension, story_order, beat_role, kind
+            FROM outline_node
+            WHERE book_id = $2 AND NOT is_archived
+              AND kind IN ('chapter', 'scene')
+              AND chapter_id IN (SELECT chapter_id FROM member_chapters)
+            ORDER BY chapter_id, story_order NULLS LAST, id
+            """,
+            arc_id, book_id,
+        )
+
+
+async def _binding_rows(pool: Any, book_id: UUID, arc_id: UUID) -> list[Any]:
+    """The arc's realized bindings for the bindings fingerprint — keyed on
+    `motif_application.structure_node_id = arc_id` (EXACTLY the axis
+    ``arc_bindings_by_structure`` measures conformance over, BA4), book-scoped.
+    Ordered by id for a stable hash."""
+    async with pool.acquire() as c:
+        return await c.fetch(
+            """
+            SELECT id, motif_version, outline_node_id
+            FROM motif_application
+            WHERE structure_node_id = $1 AND book_id = $2
+            ORDER BY id
+            """,
+            arc_id, book_id,
+        )
+
+
+def _sha(material: Any) -> str:
+    """Stable sha256 over a JSON-serialized value (sorted keys, str fallback)."""
+    return "sha256:" + hashlib.sha256(
+        json.dumps(material, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _spec_fingerprints(arc: Any, member_rows: list[Any], binding_rows: list[Any]) -> dict[str, Any]:
+    """The manifest's `spec` block (IX-8): `structure_node_version` + a coarse
+    `outline_fingerprint` (ordered member nodes' id/version/tension/story_order/
+    beat_role) + a `bindings_fingerprint` (the arc's motif_application rows'
+    id/motif_version/outline_node_id). Hashes VALUES, never timestamps, so a no-op
+    touch cannot false-dirty (and a false-clean is impossible — every conformance
+    input is covered). ALL leaf values are JSON scalars (int/str/None) so a JSONB
+    round-trip compares equal to a freshly-computed dict."""
+    outline_material = [
+        [str(r["id"]), r["version"], r["tension"], r["story_order"], r["beat_role"]]
+        for r in member_rows
+    ]
+    bindings_material = [
+        [str(r["id"]), r["motif_version"],
+         str(r["outline_node_id"]) if r["outline_node_id"] is not None else None]
+        for r in binding_rows
+    ]
+    return {
+        "structure_node_version": int(getattr(arc, "version", 0) or 0),
+        "outline_fingerprint": _sha(outline_material),
+        "bindings_fingerprint": _sha(bindings_material),
+    }
+
+
+async def assemble_input_manifest(
+    *, pool: Any, book_client: Any, book_id: UUID, arc: Any,
+) -> dict[str, Any]:
+    """Build the IX-8 `input_manifest` — `{v:1, chapters:[...], spec:{...}}` — from the
+    SAME reads the compute just did, so the report and its manifest describe one book
+    state. `chapters` carries every member chapter's canon markers (published_revision_id
+    + the IX-4 chapter-scalar parse_version) AS READ AT COMPUTE TIME through IX-9's batch
+    route; `spec` is the fingerprint block. A degraded canon-markers read (book-service
+    down → {}) yields null markers here — erring conservative (a later status read then
+    sees prose_drift), never a crash."""
+    member_rows = await _member_chapter_rows(pool, book_id, arc.id)
+    binding_rows = await _binding_rows(pool, book_id, arc.id)
+    chapter_ids = list(dict.fromkeys(
+        r["chapter_id"] for r in member_rows if r["chapter_id"] is not None))
+    markers: dict[str, Any] = {}
+    if chapter_ids:
+        markers = await book_client.canon_markers(book_id, chapter_ids)
+    chapters = []
+    for cid in chapter_ids:
+        m = markers.get(str(cid)) or {}
+        chapters.append({
+            "chapter_id": str(cid),
+            "published_revision_id": m.get("published_revision_id"),
+            "parse_version": m.get("parse_version"),
+        })
+    return {"v": 1, "chapters": chapters,
+            "spec": _spec_fingerprints(arc, member_rows, binding_rows)}
+
+
+async def persist_conformance_state(
+    *, pool: Any, book_client: Any, book_id: UUID, arc: Any,
+    report: dict[str, Any], deep: bool, generation_job_id: str | UUID | None = None,
+) -> dict[str, Any]:
+    """IX-8 — the ONE persist seam. Assemble the manifest, then UPSERT-latest the
+    (report, manifest, deep, provenance) snapshot for this arc. Called by BOTH
+    `compute_arc_report` callers immediately after compute; only the durable-SPEC arc
+    path (a `structure_node`) persists — the template-drift path (an `arc_template`)
+    never reaches here. Returns the manifest (for tests/callers). Not itself
+    fail-soft: the CALLER wraps it best-effort so a snapshot-write failure never holds
+    the primary report hostage (OQ-1 philosophy)."""
+    from app.db.repositories.conformance_state import ConformanceStateRepo
+
+    manifest = await assemble_input_manifest(
+        pool=pool, book_client=book_client, book_id=book_id, arc=arc)
+    await ConformanceStateRepo(pool).upsert(
+        book_id=book_id, structure_node_id=arc.id,
+        report=report, input_manifest=manifest, deep=bool(deep),
+        generation_job_id=generation_job_id)
+    return manifest
+
+
+# ── IX-9 dirty predicate (poll-on-read) + IX-14 status computation ──────────────
+
+# The closed set of dirty reasons (IX-9). Surfaced through the status route/tool;
+# the output vocabulary is asserted by the contract snapshot test.
+DIRTY_REASONS = ("never_run", "prose_drift", "spec_drift", "index_stale")
+
+
+def _norm(v: Any) -> str | None:
+    """Normalize a revision-id marker to a comparable form — a cross-boundary value
+    (markers are JSON strings; recorded manifest values are strings) reconciled to str,
+    None preserved (the cross-service-normalization-bug-class guard)."""
+    return None if v is None else str(v)
+
+
+def _dirty_reasons(
+    *, snap: Any, arc: Any, member_rows: list[Any], binding_rows: list[Any],
+    chapter_ids: list[Any], markers: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Compute an arc's dirty reasons + its stale chapter ids from the snapshot's
+    manifest vs the current markers + recomputed fingerprints (IX-9). Never writes."""
+    manifest = snap.input_manifest or {}
+    recorded = {str(c.get("chapter_id")): c.get("published_revision_id")
+                for c in (manifest.get("chapters") or [])}
+    reasons: list[str] = []
+
+    # prose_drift ⇔ ∃ recorded member chapter whose current published_revision_id
+    # differs (a publish, an unpublish, or a delete since the snapshot). COMP-STALE-1:
+    # collect the drifted chapters (do NOT break) — the scene-inspector chip is
+    # `arc.dirty AND chapter IN stale_chapters` (IX-14), so a prose-drifted chapter
+    # must be IN stale_chapters or it renders false-fresh. On the normal publish path
+    # (IX-2 re-parses in-Tx → index fresh immediately) prose_drift is the ONLY signal,
+    # so omitting the drifted chapters hides every real drift.
+    drifted: list[str] = []
+    for cid_str, rec_pub in recorded.items():
+        cur = markers.get(cid_str) or {}
+        if _norm(cur.get("published_revision_id")) != _norm(rec_pub):
+            drifted.append(cid_str)
+    if drifted:
+        reasons.append("prose_drift")
+
+    # spec_drift ⇔ current fingerprints ≠ the snapshot's (recompute both, compare).
+    if _spec_fingerprints(arc, member_rows, binding_rows) != (manifest.get("spec") or {}):
+        reasons.append("spec_drift")
+
+    # index_stale ⇔ ∃ PUBLISHED member chapter whose index lags the canon (repeats the
+    # sweeper's own WHERE clause, so the badge never fires on a chapter the sweeper
+    # cannot heal — a draft-indexed / unpublished chapter is NOT stale). Advisory.
+    index_stale: list[str] = []
+    for cid in chapter_ids:
+        m = markers.get(str(cid)) or {}
+        if m.get("editorial_status") == "published" and \
+                _norm(m.get("last_parsed_revision_id")) != _norm(m.get("published_revision_id")):
+            index_stale.append(str(cid))
+    if index_stale:
+        reasons.append("index_stale")
+
+    # Per-arc stale_chapters = every chapter the inspector should chip (prose-drift ∪
+    # index-stale). The index-stale set is returned separately so the book-level
+    # `stale_chapter_count` rollup stays keyed on index staleness only (the two are
+    # distinct concepts — a fresh-index but canon-moved chapter is dirty, not stale).
+    stale_chapters = sorted(set(drifted) | set(index_stale))
+    return reasons, stale_chapters, index_stale
+
+
+def _summary_projection(report: dict[str, Any]) -> dict[str, Any]:
+    """The fixed status `summary` projection of the stored report (OUT-1 reference-
+    first — the full body is fetched per-arc via the existing conformance GET / job,
+    not dumped in the status list). Tolerant of a coarse-only or deep report."""
+    tp = report.get("thread_progress") or []
+    planned = sum(int(t.get("planned") or 0) for t in tp if isinstance(t, dict))
+    covered = sum(int(t.get("covered") or 0) for t in tp if isinstance(t, dict))
+    succ = report.get("succession") or {}
+    violations = sum(len(t.get("violations") or [])
+                     for t in (succ.get("threads") or []) if isinstance(t, dict))
+    return {
+        "thread_progress": round(covered / planned, 2) if planned else 0.0,
+        "pacing_drift": (report.get("pacing") or {}).get("max_drift"),
+        "succession_violations": violations,
+        "unmaterialized": len(report.get("unmaterialized") or []),
+    }
+
+
+async def compute_conformance_status(
+    *, pool: Any, book_client: Any, book_id: UUID, arc_id: UUID | None = None,
+) -> dict[str, Any]:
+    """The IX-14 read contract (the ONE staleness computation). Returns per-arc
+    freshness state + an `index.stale_chapter_count` rollup, cheap: `arc_conformance_
+    state` + ONE canon-markers batch (across every snapshotted arc's member chapters)
+    + in-DB fingerprint scans — no LLM, no re-extract. `never_run` (no snapshot) yields
+    `computed_at:null, dirty:true` — absence is STATED, not omitted (a LIST that drops
+    the field makes every consumer invent a default). 24's Hub consumes this route
+    directly; 28's agent aggregates compose this same helper — one shape, no siblings."""
+    from app.db.repositories.conformance_state import ConformanceStateRepo
+    from app.db.repositories.structure import StructureRepo
+
+    nodes = await StructureRepo(pool).list_tree(book_id)
+    if arc_id is not None:
+        nodes = [n for n in nodes if n.id == arc_id]
+    snaps = {s.structure_node_id: s
+             for s in await ConformanceStateRepo(pool).list_for_book(book_id)}
+
+    # Gather member/binding rows for the SNAPSHOTTED arcs only (a never_run arc needs
+    # no reads), and union their member chapters for ONE canon-markers batch.
+    per_arc: dict[Any, tuple[list[Any], list[Any], list[Any]]] = {}
+    all_chapter_ids: set[Any] = set()
+    for n in nodes:
+        if n.id in snaps:
+            member_rows = await _member_chapter_rows(pool, book_id, n.id)
+            binding_rows = await _binding_rows(pool, book_id, n.id)
+            chapter_ids = list(dict.fromkeys(
+                r["chapter_id"] for r in member_rows if r["chapter_id"] is not None))
+            per_arc[n.id] = (member_rows, binding_rows, chapter_ids)
+            all_chapter_ids.update(chapter_ids)
+
+    markers: dict[str, Any] = {}
+    if all_chapter_ids:
+        markers = await book_client.canon_markers(book_id, list(all_chapter_ids))
+
+    arcs: list[dict[str, Any]] = []
+    global_stale: set[str] = set()
+    for n in nodes:
+        snap = snaps.get(n.id)
+        if snap is None:
+            arcs.append({
+                "structure_node_id": str(n.id), "title": n.title, "kind": n.kind,
+                "computed_at": None, "deep": False,
+                "dirty": True, "dirty_reasons": ["never_run"],
+                "stale_chapters": [], "summary": None,
+            })
+            continue
+        member_rows, binding_rows, chapter_ids = per_arc[n.id]
+        reasons, stale_chapters, index_stale = _dirty_reasons(
+            snap=snap, arc=n, member_rows=member_rows, binding_rows=binding_rows,
+            chapter_ids=chapter_ids, markers=markers)
+        # The book-level rollup counts INDEX-stale chapters only (what the sweeper
+        # heals); the per-arc chip surfaces prose-drift ∪ index-stale (COMP-STALE-1).
+        global_stale.update(index_stale)
+        arcs.append({
+            "structure_node_id": str(n.id), "title": n.title, "kind": n.kind,
+            "computed_at": snap.computed_at.isoformat() if snap.computed_at else None,
+            "deep": bool(snap.deep),
+            "dirty": bool(reasons), "dirty_reasons": reasons,
+            "stale_chapters": stale_chapters,
+            "summary": _summary_projection(snap.report or {}),
+        })
+
+    return {"book_id": str(book_id), "arcs": arcs,
+            "index": {"stale_chapter_count": len(global_stale)}}

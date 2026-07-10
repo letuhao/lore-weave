@@ -239,6 +239,7 @@ async def _run_operation(
         return await run_conformance_run(
             pool, llm, get_knowledge_client(),
             user_id=str(job.created_by), project_id=str(job.project_id), input=job.input or {},
+            job_id=str(job.id),  # IX-8 snapshot provenance (generation_job_id)
         )
     raise UnsupportedOperationError(op)
 

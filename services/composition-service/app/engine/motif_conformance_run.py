@@ -33,18 +33,21 @@ frozen.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import asyncpg
 
 from app.clients.llm_client import LLMClient
 
+logger = logging.getLogger(__name__)
+
 __all__ = ["run_conformance_run"]
 
 
 async def run_conformance_run(
     pool: asyncpg.Pool, llm: LLMClient, knowledge, *, user_id: str, project_id: str,
-    input: dict[str, Any],
+    input: dict[str, Any], job_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the cost-gated arc conformance extract-diff (D-W10-ARC-CONFORMANCE-DEEP-JOB).
 
@@ -90,9 +93,25 @@ async def run_conformance_run(
     if node is None or node.book_id != work.book_id:
         raise ValueError("conformance_run: arc not found / not in this book")
 
-    return await compute_arc_report(
+    report = await compute_arc_report(
         reader=ConformanceTraceReader(pool), mrepo=MotifRepo(pool), knowledge=knowledge,
         user_id=uid, project_id=pid, book_id=work.book_id, arc=node, by_structure=True,
         deep=True, model_ref=input.get("model_ref"), model_source=input.get("model_source"),
         llm=llm,  # the job runs the deepest signal — the entailment judge (the GET does not)
     )
+
+    # IX-8 — persist the durable, input-pinned snapshot through the ONE seam the sync
+    # GET also uses (deep=True here; provenance = this job). BEST-EFFORT: the report is
+    # already the job result the poll returns, so a snapshot-write failure is logged,
+    # never fails the job (OQ-1 philosophy).
+    try:
+        from app.clients.book_client import get_book_client
+        from app.engine.arc_conformance_orchestrate import persist_conformance_state
+
+        await persist_conformance_state(
+            pool=pool, book_client=get_book_client(), book_id=work.book_id, arc=node,
+            report=report, deep=True, generation_job_id=job_id)
+    except Exception:  # noqa: BLE001 — best-effort snapshot (IX-8); logged, never fatal
+        logger.warning(
+            "arc_conformance_state persist failed for arc %s", arc_id, exc_info=True)
+    return report

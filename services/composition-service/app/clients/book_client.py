@@ -167,6 +167,51 @@ class BookClient:
             logger.warning("book sort-orders unavailable: %s", exc)
             return {}
 
+    async def canon_markers(
+        self, book_id: UUID, chapter_ids: list[UUID],
+    ) -> dict[str, dict[str, Any]]:
+        """26 IX-9 — batch chapter canon/index markers for the conformance-staleness
+        read: `{chapter_id: {published_revision_id, last_parsed_revision_id,
+        parse_version, editorial_status}}` (parse_version = the IX-4 chapter scalar).
+        Calls book-service's INTERNAL batch route
+        `POST /internal/books/{book_id}/chapters/canon-markers` (B5, mirrors
+        `/internal/chapters/sort-orders` — ≤200 ids, partial responses,
+        missing/inactive ids silently absent). Uses the INTERNAL token (book-scoped,
+        no user check); the CALLER MUST have gated the book first — the conformance
+        status route's E0 VIEW gate is that SEC2 chokepoint (same discipline as
+        `get_chapter_sort_orders`). Returns {} on ANY non-200 / transport failure: a
+        degraded markers read renders conformance freshness conservatively (a snapshot
+        reads `fresh`/`never_run`), never 500s the Hub."""
+        if not chapter_ids:
+            return {}
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/canon-markers"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.post(
+                url, json={"chapter_ids": [str(c) for c in chapter_ids]}, headers=headers,
+            )
+            if resp.status_code != 200:
+                logger.warning("book canon-markers → %d", resp.status_code)
+                return {}
+            body = resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("book canon-markers unavailable: %s", exc)
+            return {}
+        # Contract (IX-9): the map rides under `markers` (mirrors sort-orders' named
+        # field). Tolerate `canon_markers` + a bare {chapter_id: {...}} body so a benign
+        # producer-side field-name choice degrades to a normalized read, never a crash.
+        if isinstance(body, dict):
+            for key in ("markers", "canon_markers"):
+                inner = body.get(key)
+                if isinstance(inner, dict):
+                    return inner
+            if body and all(isinstance(v, dict) for v in body.values()):
+                return body
+        return {}
+
     async def get_reader_language(self, book_id: UUID, user_id: UUID) -> str | None:
         """KG-ML M7 (C6) — the user's stored reader-language for this book (M3),
         via the INTERNAL resolver `GET /internal/books/{id}/reader-language?user_id=`

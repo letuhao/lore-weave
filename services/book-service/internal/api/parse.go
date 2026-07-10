@@ -40,6 +40,13 @@ type parsedScene struct {
 	// exactly the SC7 degrade. A soft ref (no FK): it crosses the service/DB
 	// boundary to composition.
 	SourceSceneID *string `json:"source_scene_id,omitempty"`
+	// AnchorSceneID (26 IX-5/IX-6) — the opening heading's `data-scene-id`
+	// carried through by the tiptap walker on a re-parse (source_format='tiptap').
+	// /internal/parse serializes the SDK `Scene.anchor_scene_id` field under THIS
+	// name (the import formats plain/html never populate it, so the older
+	// source_scene_id tag above stayed nil regardless). Evidence rule 1 in
+	// reparse.go reads it to set scenes.source_scene_id.
+	AnchorSceneID *string `json:"anchor_scene_id,omitempty"`
 }
 
 type parsedChapter struct {
@@ -275,8 +282,13 @@ RETURNING id
 			// Error-checked (NOT fire-and-forget): this UPDATE is what actually pins
 			// the revision + flips to published — swallowing its error would commit an
 			// orphan revision with the chapter stuck at 'draft' (adversary review-code W1).
+			// 26 IX-1/IX-3: the just-inserted scenes ARE the parse of importRevID,
+			// so mark the index fresh (last_parsed_revision_id=importRevID) at birth
+			// — an imported chapter is born published AND fresh by the sweeper's own
+			// `last_parsed_revision_id IS DISTINCT FROM published_revision_id`
+			// predicate, so it is never needlessly re-swept.
 			if _, err := tx.Exec(r.Context(),
-				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2 WHERE id=$1`,
+				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
 				chapterID, importRevID); err != nil {
 				tx.Rollback(r.Context())
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",

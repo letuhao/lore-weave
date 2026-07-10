@@ -281,10 +281,26 @@ RETURNING id
 			_, _ = tx.Exec(ctx,
 				`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1, $2, 'json', now(), 1)`,
 				chapterID, tiptapJSON)
-			_, _ = tx.Exec(ctx,
-				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4)`,
-				chapterID, tiptapJSON, "imported from "+origFilename, payload.UserID)
-			_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
+			// 26 IX-1 corollary: the epub/docx worker importer gains the sync .txt
+			// path's auto-publish so every import path births index rows that parse
+			// the pinned PUBLISHED revision (F1: this importer used to leave chapters
+			// at 'draft'). Capture the import revision id (error-checked — it is what
+			// we pin) and mark the index fresh (last_parsed_revision_id=importRevID),
+			// since the scenes inserted below ARE that revision's parse. Born
+			// published+fresh ⇒ never needlessly re-swept.
+			var importRevID string
+			if err := tx.QueryRow(ctx,
+				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4) RETURNING id`,
+				chapterID, tiptapJSON, "imported from "+origFilename, payload.UserID).Scan(&importRevID); err != nil {
+				tx.Rollback(ctx)
+				return count, fmt.Errorf("insert revision: %w", err)
+			}
+			if _, err := tx.Exec(ctx,
+				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
+				chapterID, importRevID); err != nil {
+				tx.Rollback(ctx)
+				return count, fmt.Errorf("publish imported chapter: %w", err)
+			}
 
 			// Insert scenes for this chapter.
 			for _, sc := range ch.Scenes {

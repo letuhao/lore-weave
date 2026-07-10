@@ -35,6 +35,7 @@ these reads can move there — but W5 does not edit their files to add them.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -57,7 +58,31 @@ from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
 from app.packer.pack import OwnershipError
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/v1/composition")
+
+
+async def _persist_conformance_best_effort(
+    *, book_id: UUID, arc: Any, report: dict[str, Any], deep: bool,
+) -> None:
+    """IX-8 — snapshot the durable, input-pinned report after an arc-scope compute
+    (the sync GET's twin of the Tier-W worker's persist). BEST-EFFORT: the report is
+    the primary product, so a snapshot-write failure (book-service markers down, DB
+    hiccup) is logged, never a 500 (OQ-1 philosophy — freshness of a derived artifact
+    must not hold the read hostage). The book-markers read inside uses the INTERNAL
+    token, safe because the E0 VIEW gate already authorized this book."""
+    from app.clients.book_client import get_book_client
+    from app.engine.arc_conformance_orchestrate import persist_conformance_state
+
+    try:
+        await persist_conformance_state(
+            pool=get_pool(), book_client=get_book_client(),
+            book_id=book_id, arc=arc, report=report, deep=deep)
+    except Exception:  # noqa: BLE001 — best-effort snapshot (IX-8); logged, never fatal
+        logger.warning(
+            "arc_conformance_state persist failed for arc %s",
+            getattr(arc, "id", "?"), exc_info=True)
 
 
 class ConformanceTraceReader:
@@ -352,10 +377,16 @@ async def read_conformance(
     if scope == "arc":
         # BA4 — the durable-spec arc, measured against the PROSE (via structure_node_id).
         node = await _resolve_book_arc(structure_repo, arc_id, work.book_id)
-        return await compute_arc_report(
+        report = await compute_arc_report(
             reader=reader, mrepo=MotifRepo(get_pool()), knowledge=knowledge,
             user_id=user_id, project_id=project_id, book_id=work.book_id, arc=node,
             by_structure=True, deep=deep, model_ref=model_ref, model_source=model_source)
+        # IX-8 — durable, input-pinned snapshot (ONE persist seam shared with the
+        # Tier-W worker; the template-drift scope below never persists — it is not a
+        # structure_node arc).
+        await _persist_conformance_best_effort(
+            book_id=work.book_id, arc=node, report=report, deep=deep)
+        return report
     if scope == "arc_template_drift":
         # BA4 — the SPLIT-OUT optional question: the spec vs the template it came from. Resolve
         # the node's arc_template_id provenance, then run the OLD comparison (annotation-keyed).
@@ -388,3 +419,36 @@ async def read_conformance(
         apps_by_node=apps_by_node,
         latest_by_node=latest_by_node,
     )
+
+
+@router.get("/books/{book_id}/conformance/status")
+async def read_conformance_status(
+    book_id: UUID,
+    arc_id: UUID | None = Query(None),
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """IX-14 — the conformance staleness read contract, defined ONCE here. VIEW-gated
+    (E0 grant on `book_id`, BPS-8). Cheap: no LLM, no re-extract — `arc_conformance_
+    state` + one canon-markers batch + in-DB fingerprint scans. Returns per-arc
+    `{dirty, dirty_reasons, stale_chapters, summary, computed_at, deep}` + an
+    `index.stale_chapter_count` rollup; pass `arc_id` to scope to one arc. 24's Plan
+    Hub consumes this route directly (its read surface #7); 22's scene-inspector reads
+    the same response (a scene's dirty chip = its arc's `dirty ∧ chapter ∈
+    stale_chapters`). To RE-RUN conformance use the existing
+    `composition_conformance_run` Tier-W flow — on completion the snapshot updates and
+    the badge clears by predicate, no cache to invalidate."""
+    from app.clients.book_client import get_book_client
+    from app.engine.arc_conformance_orchestrate import compute_conformance_status
+
+    # E0 book gate (BPS-8): the staleness read is a VIEW of an advisory signal. H13
+    # uniform — a foreign/missing book is 404, a viewer without VIEW is 403.
+    try:
+        await authorize_book(grant, book_id, user_id, GrantLevel.VIEW)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="book not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
+
+    return await compute_conformance_status(
+        pool=get_pool(), book_client=get_book_client(), book_id=book_id, arc_id=arc_id)

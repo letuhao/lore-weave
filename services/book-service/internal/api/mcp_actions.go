@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -437,12 +438,12 @@ func (s *Server) effectPublish(w http.ResponseWriter, ctx context.Context, userI
 	}
 	switch p.Op {
 	case "publish":
-		revID, perr := s.mcpPublishChapter(ctx, userID, bookID, chID)
+		revID, counts, perr := s.mcpPublishChapter(ctx, userID, bookID, chID)
 		if perr != nil {
 			s.writeActionEffectError(w, perr)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"outcome": "action_done", "op": "publish", "chapter_id": chID, "revision_id": revID})
+		writeJSON(w, http.StatusOK, map[string]any{"outcome": "action_done", "op": "publish", "chapter_id": chID, "revision_id": revID, "reparse": counts})
 	case "unpublish":
 		if perr := s.mcpUnpublishChapter(ctx, bookID, chID); perr != nil {
 			s.writeActionEffectError(w, perr)
@@ -534,10 +535,16 @@ func isDestructiveOp(op string) bool {
 
 // ── effects reusing book-service write logic (re-validated at confirm) ────────
 
-func (s *Server) mcpPublishChapter(ctx context.Context, caller, bookID, chID uuid.UUID) (uuid.UUID, error) {
+func (s *Server) mcpPublishChapter(ctx context.Context, caller, bookID, chID uuid.UUID) (uuid.UUID, reparseCounts, error) {
+	// 26 IX-2: parse the to-be-pinned body BEFORE the Tx (never a cross-service
+	// call inside the transaction); the draftVersion guard below skips the upsert
+	// on a concurrent save. Mirrors publishChapter exactly (both publish sites,
+	// F10) so heal and produce share one path.
+	prep := s.prepareReparse(ctx, bookID, chID)
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
 	defer tx.Rollback(ctx)
 	var curr int64
@@ -547,10 +554,10 @@ func (s *Server) mcpPublishChapter(ctx context.Context, caller, bookID, chID uui
 SELECT d.draft_version, d.body, d.draft_format FROM chapter_drafts d JOIN chapters c ON c.id=d.chapter_id
 WHERE d.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active' FOR UPDATE OF d`, chID, bookID).Scan(&curr, &body, &format)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, errActionTargetGone
+		return uuid.Nil, reparseCounts{}, errActionTargetGone
 	}
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
 	// Empty-prose guard — union of the editor `_text` projection AND standard
 	// tiptap nested text leaves ($.**.text); see publishChapter for the rationale
@@ -563,26 +570,49 @@ SELECT COALESCE((
   SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(($1)::jsonb, '$.**.text') AS y(t)
 ), '')`, body).Scan(&prose)
 	if strings.TrimSpace(prose) == "" {
-		return uuid.Nil, errActionBadState
+		return uuid.Nil, reparseCounts{}, errActionBadState
 	}
 	var revID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
 VALUES($1,$2,$3,'publish',$4) RETURNING id`, chID, body, format, caller).Scan(&revID); err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
 	if _, err := tx.Exec(ctx, `
 UPDATE chapters SET editorial_status='published', published_revision_id=$2,
   draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1`, chID, revID); err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
+	}
+	// 26 IX-2 step 3(b–d): same-Tx re-parse when the parse succeeded and describes
+	// the pinned body (draftVersion match). Otherwise the marker stays behind and
+	// the sweeper heals — a parse failure never blocks publish (OQ-1).
+	var counts reparseCounts
+	if prep.ok && prep.draftVersion == curr {
+		counts, err = s.upsertChapterScenes(ctx, tx, bookID, chID, prep.structuralPath, prep.tree)
+		if err != nil {
+			return uuid.Nil, reparseCounts{}, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE chapters SET last_parsed_revision_id=$2 WHERE id=$1`, chID, revID); err != nil {
+			return uuid.Nil, reparseCounts{}, err
+		}
+		// RB5-1: emit only when the index changed (a no-op re-parse must not wipe the
+		// book's extraction cache via the knowledge consumer).
+		if counts.changed() {
+			if err := emitScenesReparsed(ctx, tx, bookID, chID, revID, counts.ParseVersion); err != nil {
+				return uuid.Nil, reparseCounts{}, err
+			}
+		}
+	} else {
+		slog.WarnContext(ctx, "mcp publish: re-parse skipped; index left stale for the sweeper",
+			"chapter_id", chID, "parse_ok", prep.ok, "draft_version_match", prep.draftVersion == curr)
 	}
 	if err := insertOutboxEvent(ctx, tx, "chapter.published", chID, map[string]any{"book_id": bookID, "chapter_id": chID, "revision_id": revID}); err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, reparseCounts{}, err
 	}
-	return revID, nil
+	return revID, counts, nil
 }
 
 func (s *Server) mcpUnpublishChapter(ctx context.Context, bookID, chID uuid.UUID) error {

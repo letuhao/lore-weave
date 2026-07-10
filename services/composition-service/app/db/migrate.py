@@ -1384,6 +1384,29 @@ CREATE INDEX IF NOT EXISTS idx_plan_bootstrap_proposal_book
   ON plan_bootstrap_proposal(book_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_plan_bootstrap_proposal_run
   ON plan_bootstrap_proposal(run_id, created_at DESC);
+
+-- ── arc_conformance_state (26 IX-8, `.runs/`): the durable, INPUT-PINNED latest
+-- conformance report per (book, arc). UPSERT-latest — exactly one row per arc; run
+-- history stays in generation_job rows (OQ-7). `report` is the full coarse ±deep body
+-- the per-arc GET / job already returns; `input_manifest` is the {v:1, chapters:[...],
+-- spec:{...}} envelope (per-chapter published_revision_id + parse_version + the spec
+-- fingerprints) the READ-time dirty predicate (IX-9) compares against current canon
+-- markers + recomputed fingerprints — a POLL-ON-READ derivation, so NO stored dirty bit
+-- can itself go stale. FKs structure_node (created above) ON DELETE CASCADE so a deleted
+-- arc drops its snapshot (IX-13). New + empty on every DB (25: no backfill). `computed_at`
+-- is a server default (now()) — never a client-bound timestamp string (asyncpg-timestamptz
+-- lesson). PK (book_id, structure_node_id) leads with book_id, so list_for_book is an
+-- index range scan (the status route's per-book read).
+CREATE TABLE IF NOT EXISTS arc_conformance_state (
+  book_id            UUID NOT NULL,
+  structure_node_id  UUID NOT NULL REFERENCES structure_node(id) ON DELETE CASCADE,
+  report             JSONB NOT NULL,
+  input_manifest     JSONB NOT NULL,
+  deep               BOOLEAN NOT NULL DEFAULT false,
+  generation_job_id  UUID,
+  computed_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (book_id, structure_node_id)
+);
 """
 
 

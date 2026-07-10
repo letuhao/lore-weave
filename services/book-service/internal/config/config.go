@@ -48,6 +48,15 @@ type Config struct {
 	// Default 1h; 0 would make every cross-tenant read emit (volume hazard) so the
 	// loader floors it to 1s.
 	TenantAuditCoalesceWindowSeconds int64
+
+	// 26 IX-3 (OQ-8) — the index-freshness sweeper. A background goroutine
+	// re-parses any published chapter whose last_parsed_revision_id IS DISTINCT
+	// FROM published_revision_id (the producer's own predicate) and backfills the
+	// legacy corpus on first run. Both knobs are deploy-time infra ceilings, NOT
+	// per-user settings (settings-and-config: platform infra). Interval <= 0
+	// disables the sweeper (e.g. a one-off migration container).
+	ReparseSweepIntervalSeconds int64 // default 300 (5 min)
+	ReparseSweepBatchSize       int   // default 20 chapters/batch; floored to 1
 }
 
 func Load() (*Config, error) {
@@ -70,9 +79,14 @@ func Load() (*Config, error) {
 		KnowledgeServiceURL:       getEnv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
 		AuthServiceInternalURL:    getEnv("AUTH_SERVICE_INTERNAL_URL", "http://auth-service:8081"),
 		TenantAuditCoalesceWindowSeconds: getInt64("TENANT_AUDIT_COALESCE_WINDOW_S", 3600),
+		ReparseSweepIntervalSeconds:      getInt64("REPARSE_SWEEP_INTERVAL_S", 300),
+		ReparseSweepBatchSize:            int(getInt64("REPARSE_SWEEP_BATCH", 20)),
 	}
 	if c.TenantAuditCoalesceWindowSeconds < 1 {
 		c.TenantAuditCoalesceWindowSeconds = 1 // floor: 0/negative would emit every read
+	}
+	if c.ReparseSweepBatchSize < 1 {
+		c.ReparseSweepBatchSize = 1 // floor: a zero/negative batch would sweep nothing
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

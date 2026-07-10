@@ -163,10 +163,25 @@ RETURNING id
 		_, _ = tx.Exec(ctx,
 			`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1, $2, 'json', now(), 1)`,
 			chapterID, tiptapJSON)
-		_, _ = tx.Exec(ctx,
-			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4)`,
-			chapterID, tiptapJSON, fmt.Sprintf("imported from PDF (pages %d-%d)", pageStart, pageEnd), payload.UserID)
-		_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
+		// 26 IX-1 corollary: the PDF worker importer gains the sync .txt path's
+		// auto-publish so every import path births index rows that parse the pinned
+		// PUBLISHED revision (F1). Capture the import revision id (error-checked) and
+		// mark the index fresh (last_parsed_revision_id=importRevID) — the scenes
+		// inserted below ARE that revision's parse, so the chapter is born
+		// published+fresh and is never needlessly re-swept.
+		var importRevID string
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4) RETURNING id`,
+			chapterID, tiptapJSON, fmt.Sprintf("imported from PDF (pages %d-%d)", pageStart, pageEnd), payload.UserID).Scan(&importRevID); err != nil {
+			tx.Rollback(ctx)
+			return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("insert revision: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
+			chapterID, importRevID); err != nil {
+			tx.Rollback(ctx)
+			return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("publish imported chapter: %w", err)
+		}
 
 		for _, sc := range ch.Scenes {
 			// 22-A5: set book_id (SC1) AND source_scene_id (SC7 anchor, when present)

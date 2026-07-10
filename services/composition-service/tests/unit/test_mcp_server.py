@@ -86,6 +86,7 @@ EXPECTED_TOOLS = {
     # ── 23 structure layer — arc SPEC CRUD + outline reorder (SAME server) ──
     # Tier R (arc reads)
     "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
+    "composition_conformance_status",   # 26 IX-14 staleness read contract
     # Tier A (arc auto-writes + outline move)
     "composition_arc_create", "composition_arc_update", "composition_arc_delete",
     "composition_arc_restore", "composition_arc_move", "composition_arc_assign_chapters",
@@ -106,6 +107,7 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
           "composition_get_mine_job", "composition_motif_link_list",
           "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
+          "composition_conformance_status",
           "plan_validate", "plan_self_check",
           "composition_authoring_run_list", "composition_authoring_run_get"}
 TIER_W = {"composition_publish", "composition_generate",

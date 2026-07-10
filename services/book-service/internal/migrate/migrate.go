@@ -306,6 +306,15 @@ ALTER TABLE chapters ADD COLUMN IF NOT EXISTS editorial_status TEXT NOT NULL DEF
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS published_revision_id UUID
   REFERENCES chapter_revisions(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_chapters_editorial ON chapters(book_id, editorial_status);
+-- ── 26 IX-3 (index freshness marker) — 2026-07-11 ───────────────────────────
+-- last_parsed_revision_id pins the revision the .index/ (scenes) rows were last
+-- parsed from. NULL = never parsed (so the IX-3 sweeper's legacy-backfill
+-- predicate last_parsed_revision_id IS DISTINCT FROM published_revision_id
+-- matches every already-published chapter on its first sweep). A plain UUID (no
+-- FK): it names a chapter_revisions.id but a revision purge must not fail on it —
+-- a dangling marker just re-triggers a heal. IS DISTINCT FROM
+-- published_revision_id on a published chapter means the index is stale.
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS last_parsed_revision_id UUID;
 -- One-row-per-step marker so the data backfill (backfillSQL) runs EXACTLY once,
 -- not every startup (book-service has no migration ledger). Without this guard
 -- a post-CM1 draft chapter that gains revisions while being written would be

@@ -3204,6 +3204,48 @@ async def composition_get_mine_job(
     return job.model_dump(mode="json")
 
 
+@mcp_server.tool(
+    name="composition_conformance_status",
+    description=(
+        "Read conformance FRESHNESS for a book's arcs — is each arc's last conformance "
+        "report still true of the current canon, or has the book MOVED since (prose "
+        "published, spec edited, or the prose index gone stale)? Cheap: no LLM, no "
+        "re-extract — compares the stored per-arc snapshot to current chapter markers + "
+        "spec fingerprints. Returns per-arc {dirty, dirty_reasons, stale_chapters, "
+        "summary, computed_at, deep} + an index.stale_chapter_count rollup; an arc that "
+        "never ran conformance is {computed_at:null, dirty:true, dirty_reasons:['never_run']}. "
+        "Pass arc_id to scope to one arc. To actually RE-RUN conformance use "
+        "composition_conformance_run. VIEW on the book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["conformance status", "is conformance stale", "arc dirty",
+                  "conformance freshness", "did the book move since conformance",
+                  "stale conformance", "conformance staleness"],
+        tool_name="composition_conformance_status",
+    ),
+)
+async def composition_conformance_status(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    arc_id: Annotated[
+        str | None,
+        "Optional structure_node arc id — scope the response to one arc.",
+    ] = None,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    # IX-14 — book-scoped read; the E0 VIEW gate IS the access control (the internal
+    # canon-markers read inside is safe only behind it). H13 uniform on denial.
+    await _gate(tc, bid, GrantLevel.VIEW)
+    from app.engine.arc_conformance_orchestrate import compute_conformance_status
+
+    return await compute_conformance_status(
+        pool=get_pool(), book_client=get_book_client(), book_id=bid,
+        arc_id=UUID(arc_id) if arc_id else None,
+    )
+
+
 # ── PlanForge (M4) — plan_* tools ─────────────────────────────────────────────
 # Thin MCP wrappers over PlanForgeService (the SAME service the /v1/composition
 # .../plan/* router uses). Scope=book, envelope identity only, VIEW reads / EDIT
