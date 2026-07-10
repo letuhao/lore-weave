@@ -3,6 +3,18 @@
 **Status:** **SHIPPED** (M1a–M5) + `/review-impl` + all defers cleared 2026-07-05. Edge-case-hardened (adversarial review, §12). Size **XL** (multi-service). Codified the [Settings & Configuration Boundary Standard](../standards/settings-and-config.md) (SET-1..8) from this work.
 **Date:** 2026-07-05 · **Branch of origin:** feat/context-budget-law
 
+**Reachability fix, 2026-07-10.** G1 ("one place") held only on `/settings`. The tab list was declared
+**twice** — `pages/SettingsPage.tsx` and `features/studio/panels/SettingsPanel.tsx` — and the new
+`chat-ai` tab was added to the page but **missed on the Studio dock**, whose header comment still read
+*"reuses the six settings tab components"*. A user working inside the Writing Studio could not reach
+Chat & AI settings at all: built, mounted, unreachable. Root-caused rather than patched — both surfaces
+now derive from one registry (`features/settings/tabs.tsx`); `SettingsTabContent` is an exhaustive
+`switch`, so the compiler rejects a listed-but-bodiless tab; and `__tests__/settingsTabParity.test.tsx`
+renders **both** surfaces and asserts each offers exactly what the registry yields (proved red by
+deleting `chat-ai` from the registry — 6 tests fail). Live-verified in a browser: the Studio dock's
+Chat & AI tab renders all six sections with 0 console errors. The command palette's stale panel
+description ("Account, providers & translation") was corrected too.
+
 **Resolution log (2026-07-05):** M1a–M5 shipped; `/review-impl` fixed the write-only-behavior HIGH + enum MED; **M1b** (Book tier, grant-gated cross-service) shipped `9d1575cc8`; **M5** (voice unified home, kills `af_heart`) shipped `ccae0ce68`; **M4-TIER-CONSUMPTION** resolved as a **conscious won't-fix** (defer gate #5) — the T5/T4/D13a tiers are eval-proven inert (blind-judge baseline≡candidate; compaction architecturally rare), the shipped `mode` Off switch is the meaningful control, and no per-tier write-only toggles were built (SET-5 clean); revisit only if a future eval shows the tiers add quality.
 **Mockups:** [`design-drafts/settings/2026-07-05-chat-ai-settings-redesign-mockup.html`](../../design-drafts/settings/2026-07-05-chat-ai-settings-redesign-mockup.html) (this spec) · [`design-drafts/settings/2026-07-05-advanced-context-management-mockup.html`](../../design-drafts/settings/2026-07-05-advanced-context-management-mockup.html) (context-mgmt sub-panel, folded in).
 **Supersedes:** the standalone **D-LONG-WORK-CONTEXT-MODE** proposal (context management becomes one section of this surface).

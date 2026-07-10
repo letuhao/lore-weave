@@ -1,56 +1,45 @@
 // #11 W2 · Settings dock panel — VS Code precedent: settings opens as a tab, not a route hop.
-// Reuses the six settings tab components AS-IS; what differs from SettingsPage is ONLY tab
-// state: route (`/settings/:tab`) becomes internal state seeded/updated by dock `params.tab`
-// (the F1 deep-link seam — the palette or the link resolver can open straight to a tab).
-// Keeps the Q-GATE: the public-MCP tab only exists when the platform flag is on.
+// Reuses the settings tab components AS-IS via the shared registry (`features/settings/tabs`);
+// what differs from SettingsPage is ONLY tab state: route (`/settings/:tab`) becomes internal
+// state seeded/updated by dock `params.tab` (the F1 deep-link seam — the palette or the link
+// resolver can open straight to a tab). Keeps the Q-GATE: the public-MCP tab only exists when
+// the platform flag is on.
+//
+// The tab list used to be duplicated here. It drifted: Chat & AI shipped to SettingsPage and
+// was never added to this dock, so the Studio could not reach it at all. Both surfaces now
+// derive from the one registry, and `settingsTabParity` proves they agree.
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { User, Cpu, Languages, BookOpen, Globe, KeyRound } from 'lucide-react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
-import { AccountTab } from '@/features/settings/AccountTab';
-import { ProvidersTab } from '@/features/settings/ProvidersTab';
-import { TranslationTab } from '@/features/settings/TranslationTab';
-import { ReadingTab } from '@/features/settings/ReadingTab';
-import { LanguageTab } from '@/features/settings/LanguageTab';
-import { McpAccessTab } from '@/features/settings/McpAccessTab';
+import {
+  settingsTabsFor,
+  isSettingsTab,
+  SettingsTabContent,
+  type SettingsTabId,
+} from '@/features/settings/tabs';
 import { useStudioPanel } from './useStudioPanel';
-
-type Tab = 'account' | 'providers' | 'translation' | 'reading' | 'language' | 'mcp';
-
-const BASE_TABS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'account', icon: User },
-  { id: 'providers', icon: Cpu },
-  { id: 'translation', icon: Languages },
-  { id: 'reading', icon: BookOpen },
-  { id: 'language', icon: Globe },
-];
-
-const isTab = (v: unknown): v is Tab =>
-  typeof v === 'string' && ['account', 'providers', 'translation', 'reading', 'language', 'mcp'].includes(v);
 
 export function SettingsPanel(props: IDockviewPanelProps) {
   useStudioPanel('settings', props.api);
   const { t } = useTranslation('settings');
   const { user } = useAuth();
 
-  const tabs = user?.public_mcp_enabled
-    ? [...BASE_TABS, { id: 'mcp' as Tab, icon: KeyRound }]
-    : BASE_TABS;
+  const tabs = settingsTabsFor(user?.public_mcp_enabled);
 
   // Deep-linked tab (F1): seed from the addPanel params, then follow EVERY updateParameters via
   // the dockview event — it fires on each call, so a repeat deep-link to the SAME tab after the
   // user clicked elsewhere still lands (/review-impl MED — a render-derivation comparing values
   // would swallow it). Local clicks win between deep-links.
-  const paramTab = isTab((props.params as { tab?: unknown } | undefined)?.tab)
-    ? ((props.params as { tab: Tab }).tab)
+  const paramTab = isSettingsTab((props.params as { tab?: unknown } | undefined)?.tab)
+    ? ((props.params as { tab: SettingsTabId }).tab)
     : null;
-  const [tab, setTab] = useState<Tab>(paramTab ?? 'account');
+  const [tab, setTab] = useState<SettingsTabId>(paramTab ?? 'account');
   useEffect(() => {
     const d = props.api.onDidParametersChange?.((p: Record<string, unknown> | undefined) => {
       const next = (p as { tab?: unknown } | undefined)?.tab;
-      if (isTab(next)) setTab(next);
+      if (isSettingsTab(next)) setTab(next);
     });
     return () => d?.dispose?.();
   }, [props.api]);
@@ -86,12 +75,7 @@ export function SettingsPanel(props: IDockviewPanelProps) {
       </nav>
 
       <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-        {activeTab === 'account' && <AccountTab />}
-        {activeTab === 'providers' && <ProvidersTab />}
-        {activeTab === 'translation' && <TranslationTab />}
-        {activeTab === 'reading' && <ReadingTab />}
-        {activeTab === 'language' && <LanguageTab />}
-        {activeTab === 'mcp' && <McpAccessTab />}
+        <SettingsTabContent tab={activeTab} />
       </div>
     </div>
   );

@@ -38,8 +38,8 @@
     },
     "settings": {
       "title": "Settings",
-      "desc": "Account, providers & translation",
-      "guideBody": "Manage your account, connect your own AI providers (OpenAI, local models, etc.), and configure translation defaults like target language and glossary behavior. Open it before starting a new project to set things up, or any time you need to swap providers, update credentials, or change how translations behave by default."
+      "desc": "Account, Chat & AI, providers & translation",
+      "guideBody": "Manage your account, set your Chat & AI defaults (models, reasoning effort, tool authority, grounding, voice), connect your own AI providers (OpenAI, local models, etc.), and configure translation defaults like target language and glossary behavior. Open it before starting a new project to set things up, or any time you need to swap providers, update credentials, or change how the assistant behaves by default."
     },
     "trash": {
       "title": "Trash",
