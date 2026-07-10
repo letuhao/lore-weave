@@ -77,11 +77,39 @@ then make that proof a precondition for shipping workflows.
 **Exit:** zero tools with absent `tier`/`scope`; every `paid` tool declares it **and** passes the spend
 gate; `web_search` is universal, categorized, and hot-path; each service has a `tools/list` gate. → **ND1**
 
-### WS-D1 · `propose_*` semantics (CD2) *(size S)*
+### WS-D1 · `propose_*` semantics (CD2) — ✅ **SHIPPED 2026-07-10** *(size S)*
 Declare each `propose_*` tool's pattern (token vs draft) in its description; add the
-`propose ⇒ tier ∈ {A,W}` lint. **Audit `glossary_propose_aliases`** (it touches
-`entity_attribute_values` — confirm draft-only). No renames: the "propose = direct write" finding was
-**verified false** (see `contracts.md` → Rejected findings).
+`propose ⇒ tier ∈ {A,W}` lint. **Audit `glossary_propose_aliases`**. No renames: the
+"propose = direct write" finding was **verified false** (see `contracts.md` → Rejected findings).
+
+**Outcome.** Wire lints on **three** services (glossary Go · knowledge Py · composition Py) cover
+**19** `propose_*` tools — 15 federated + **4 `glossary_admin_propose_*`** that never appear in the
+gateway catalog (the admin server isn't federated) and so were invisible to the tool audit.
+
+- **Rule 1 (`tier ∈ {A,W}`) already held** — Wave 1's `_meta` adoption tiered every `propose_*`.
+  The lint is now the regression gate that keeps it true.
+- **Rule 4 (description declares the pattern) had exactly one real violation:**
+  `plan_propose_spec` declared neither. It writes `status='proposed'` (draft pattern) — fixed.
+- The checks are **tier-directed**, and that is load-bearing. A naive substring scan false-positives:
+  `glossary_propose_status_change` is Tier **W** yet contains the word "draft" — as a *status value*
+  (`active|inactive|draft|rejected`), not a pattern declaration. Only "a W tool must carry a confirm
+  marker" / "an A tool must carry a draft marker **and must not claim a `confirm_token`**" is sound.
+- **The A-branch's no-`confirm_token` rule caught its author.** The first draft of
+  `plan_propose_spec`'s new description said "…(CD2 draft pattern, no `confirm_token`)" and the lint
+  reddened. That is correct behavior, not a false positive: models handle negation poorly, so naming
+  a token that is never minted invites the exact confusion the rule exists to prevent. Prose fixed.
+- Each lint ships a **negative control** (`…LintIsNotVacuous` / `…marker_predicate_discriminates`)
+  proving the predicate rejects non-declaring prose, accepts real declarations, and never lets the
+  `draft` status value satisfy a Tier-W confirm requirement.
+
+**Audit result — `glossary_propose_aliases` is draft-only, confirmed at the SQL:** its
+`entity_attribute_values` insert creates an empty `'[]'` scaffold under
+`ON CONFLICT DO UPDATE SET original_value = entity_attribute_values.original_value` — a
+self-assignment no-op that only RETURNs the existing row id, so it cannot alter existing content;
+and `upsertDraftTranslation` writes `confidence='draft', translator='assistant'` guarded by
+`ON CONFLICT … WHERE confidence <> 'verified'`, so it can **never** overwrite a verified rendering.
+Tier A is correct. (Rules 2/3 — "no canonical mutation at call time" — are not decidable from the
+wire and remain per-handler audits.)
 
 ### WS-D2 · TLE harness P0 *(size L)*
 Build the six components (`README.md` §5). Reuse the SSE driver + tool-record parser; **build** the
@@ -133,7 +161,11 @@ S00–S06 + authored workflows: ordering, gates honored, async honesty, **zero f
 ## Definition of done
 
 1. No MCP tool ships without `tier` + `scope`; job-starters declare `async`; money-spenders declare
-   `paid` and are never tier `R`. A CI gate per service enforces it on the real wire.
+   `paid`. A CI gate per service enforces it on the real wire.
+   *(Corrected 2026-07-10: this line used to read "…and are never tier `R`". That conflated spend
+   with mutation and contradicts CD1's `paid ⊥ tier`. A paid **read** is Tier `R` — `web_search`
+   ships as `tier:R, paid:true`, and the rule as written would have forced it out of `ask` mode
+   or dropped its spend gate. `tier` governs mutation; `paid` governs money.)*
 2. `docs/eval/tool-liveness/<date>/matrix.json` exists, is **generated** from the live gateway, and a
    tool without an authored probe is a RED cell.
 3. Every tool in the workflow-critical set passes **G1–G4** — including the confirm round-trip for

@@ -3118,11 +3118,13 @@ def _opt_uuid(v: str | None) -> UUID | None:
     name="plan_propose_spec",
     description=(
         "PlanForge: turn a novel-system source document into a structured "
-        "NovelSystemSpec + analysis. mode='rules' proposes synchronously; mode='llm' "
-        "enqueues an async job (poll the run). model_ref is optional for mode='llm' — "
-        "omit it to use the author's default planner model (their pinned 'planner' "
-        "default, else their best chat model); pass one only when the author names a "
-        "specific model. EDIT on the book required."
+        "NovelSystemSpec + analysis. Writes a DRAFT proposal — the run lands at "
+        "status='proposed' and a human must approve it before anything becomes "
+        "canonical; nothing canonical changes at call time. mode='rules' proposes "
+        "synchronously; mode='llm' enqueues an async job (poll the run). model_ref is "
+        "optional for mode='llm' — omit it to use the author's default planner model "
+        "(their pinned 'planner' default, else their best chat model); pass one only "
+        "when the author names a specific model. EDIT on the book required."
     ),
     meta=require_meta(
         "A", "book",
