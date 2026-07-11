@@ -789,6 +789,52 @@ CREATE TABLE IF NOT EXISTS extraction_leaves_raw (
 ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS save_raw_extraction BOOLEAN NOT NULL DEFAULT false;
 
+-- ── WS-1.3 · the assistant project (spec 01 §4.1.1, decision D6) — 2026-07-12 ──
+--
+-- is_assistant marks the ONE project that backs a user's work-assistant / diary. Additive
+-- marker column; project_type's CHECK is deliberately NOT widened (it stays
+-- book|translation|code|general) — the assistant project IS a book project (its book is the
+-- diary), and widening a CHECK that five services switch on would be a far larger blast
+-- radius than a boolean.
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS is_assistant BOOLEAN NOT NULL DEFAULT false;
+
+-- Exactly ONE assistant project per user. Provisioning is a multi-service fan-out that can
+-- be retried, double-clicked, or raced across two devices; without this a user ends up with
+-- two assistant projects and their memory silently splits in half.
+-- (Partial index — it must exempt archived rows, or a user who archived an old assistant
+-- project could never provision a new one: the partial-unique-must-exempt-tombstones lesson.)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_projects_one_assistant_per_user
+  ON knowledge_projects(user_id)
+  WHERE is_assistant = true AND is_archived = false;
+
+-- ⚠️ chat_turn_extraction_enabled DEFAULTS **FALSE** — fail CLOSED.
+--
+-- The v2 spec had this DEFAULT true. That is fail-OPEN on a privacy flag, on the exact
+-- table that already shipped this bug once (canon_capture_enabled ships DEFAULT false and
+-- carries a corrective self-disarm migration for precisely this mistake).
+--
+-- Why it matters: provisioning is a multi-service fan-out that CAN partially fail. With a
+-- true default, a half-provisioned assistant would extract EVERY TURN of an all-day work
+-- session as trusted canon — the exact outcome D6 exists to prevent. A privacy flag must
+-- never arrive switched on by accident.
+--
+-- NOTE: the effective gate is DERIVED, never stored:
+--     may_extract_chat_turn = (NOT is_assistant) AND chat_turn_extraction_enabled
+-- Storing a copy of that answer is how the two consumers (handle_chat_turn and worker-ai's
+-- drainer) drift apart, and a one-sided gate is a silent-success bug. See
+-- app/events/gating.py.
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS chat_turn_extraction_enabled BOOLEAN NOT NULL DEFAULT false;
+
+-- Explicit backfill: EXISTING projects were extracting chat turns unconditionally, so a
+-- DEFAULT false would silently switch that off for every current user. A DEFAULT never
+-- revisits existing rows, so this must be a real UPDATE. The assistant project is the ONE
+-- kind that stays off (its facts come from the confirmed daily entry — D6).
+UPDATE knowledge_projects
+   SET chat_turn_extraction_enabled = true
+ WHERE is_assistant = false AND chat_turn_extraction_enabled = false;
+
 -- WS-0.1 (2026-07-11) — chapter-scoped cache invalidation.
 -- Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.3 (P0-4).
 --

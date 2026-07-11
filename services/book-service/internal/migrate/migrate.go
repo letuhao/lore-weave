@@ -1229,6 +1229,43 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- ── WS-1.3 · diary entry columns (spec 01 §4.3, D9) — 2026-07-12 ──
+--
+-- A diary entry IS a chapter (that is the whole point of books.kind — the entire book
+-- workspace, editor and chapter machinery is reused). These columns are diary-only and
+-- nullable everywhere else.
+--
+-- entry_date — the LOCAL day the entry is about. It has NO timezone semantics at the DB
+-- layer, deliberately: the distiller computes it from the user's IANA zone + day-cutoff
+-- BEFORE the insert. Storing a timestamptz and deriving the day later would let a user who
+-- flies to another timezone silently re-bucket their history.
+--
+-- journal_kind — 'primary' is THE entry for that day; 'supplement' is an extra one the user
+-- added later. Only ONE primary per (book, day): "End my day" on a phone and a laptop at
+-- the same moment must converge, not mint two entries. The partial unique index is what
+-- makes that a database fact rather than a hope.
+--
+-- diary_kept_at — an ORTHOGONAL column, NOT a third value on editorial_status. Widening
+-- editorial_status (today CHECK IN ('draft','published')) would break the reparse sweeper's
+-- gate and the CM1 canon backfill, and it would contradict "a diary has no publish concept"
+-- — the whole reason kind='diary' exists. Orthogonal sidesteps every existing consumer.
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS entry_date DATE;
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS journal_kind TEXT
+  CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement'));
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS diary_kept_at TIMESTAMPTZ;
+
+-- ONE primary entry per day, per book. The predicate must repeat EXACTLY in any
+-- ON CONFLICT that targets it (the repo's partial-index/ON-CONFLICT lesson), and it must
+-- exempt trashed rows or a deleted entry would block ever writing that day again (the
+-- partial-unique-must-exempt-tombstones lesson).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chapters_primary_entry_per_day
+  ON chapters(book_id, entry_date)
+  WHERE journal_kind = 'primary' AND lifecycle_state = 'active';
+
+-- The diary timeline read: "my entries, newest first".
+CREATE INDEX IF NOT EXISTS idx_chapters_entry_date
+  ON chapters(book_id, entry_date DESC) WHERE entry_date IS NOT NULL;
+
 -- ── WS-1.2 · EGRESS GUARD #1: a diary can never be shared (spec 09, D16) ──
 --
 -- There are already TWO grant paths (invite-by-email and grant-by-user-id), and a third

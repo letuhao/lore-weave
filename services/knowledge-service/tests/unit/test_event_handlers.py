@@ -142,9 +142,13 @@ async def test_feedback_rejects_out_of_range_rating(mock_apply):
 
 
 @pytest.mark.asyncio
+# WS-1.3: the D6 gate now GATES the enqueue (it used to be computed and only logged).
+# A normal project may extract; the assistant may not. See test_d6_chat_turn_gate.py.
+@patch("app.events.handlers.may_extract_chat_turn", new_callable=AsyncMock)
 @patch("app.events.handlers.should_extract", return_value=True)
 @patch("app.events.handlers.ExtractionPendingRepo")
-async def test_chat_turn_enqueues_aggregate_type_chat(mock_repo_cls, mock_gate):
+async def test_chat_turn_enqueues_aggregate_type_chat(mock_repo_cls, mock_gate, mock_d6):
+    mock_d6.return_value = True
     # FD-2 regression: enqueue as aggregate_type='chat' so the worker-ai chat
     # drainer (WHERE aggregate_type='chat') consumes it. Was 'chat_session' →
     # never drained → chat knowledge was never extracted.
@@ -162,18 +166,22 @@ async def test_chat_turn_enqueues_aggregate_type_chat(mock_repo_cls, mock_gate):
 
 
 @pytest.mark.asyncio
+@patch("app.events.handlers.may_extract_chat_turn", new_callable=AsyncMock)
 @patch("app.events.handlers.should_extract", return_value=True)
-async def test_chat_turn_resolves_user_from_db(mock_gate):
+async def test_chat_turn_resolves_user_from_db(mock_gate, mock_d6):
     """user_id missing from payload — handler looks up from project."""
+    mock_d6.return_value = True
     pool, conn = _mock_pool()
-    # First pool.fetchrow: user_id lookup from project
+    # First pool.fetchrow: user_id lookup from project.
+    # (WS-1.3: the D6 gate reads the project row too, so this is no longer the ONLY
+    # fetchrow — assert it happened, not that it happened exactly once.)
     pool.fetchrow = AsyncMock(return_value={"user_id": _USER})
     event = _event(
         "chat.turn_completed",
         payload={"project_id": str(_PROJECT)},  # no user_id
     )
     await handle_chat_turn(event, pool=pool)
-    pool.fetchrow.assert_called_once()  # user lookup
+    pool.fetchrow.assert_called()  # user lookup happened
 
 
 @pytest.mark.asyncio

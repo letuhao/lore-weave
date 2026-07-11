@@ -27,7 +27,7 @@ from app.db.repositories.extraction_pending import (
     ExtractionPendingRepo,
 )
 from app.events.dispatcher import EventData
-from app.events.gating import should_extract
+from app.events.gating import may_extract_chat_turn, should_extract
 
 __all__ = [
     "handle_chat_turn",
@@ -73,10 +73,31 @@ async def handle_chat_turn(event: EventData, *, pool: asyncpg.Pool) -> None:
             return
         user_id = row["user_id"]
 
+    # ── WS-1.3 · the D6 gate, and it ACTUALLY GATES ──
+    #
+    # `should_extract` below is consulted but its result was only ever LOGGED — the enqueue
+    # ran unconditionally. So this was a decorative gate. That is fine (if untidy) for a
+    # normal project, and unacceptable for the assistant: every turn of an 8-hour work
+    # conversation would be queued and extracted as trusted canon about the user's real
+    # colleagues.
+    #
+    # may_extract_chat_turn is DERIVED (NOT is_assistant AND chat_turn_extraction_enabled)
+    # and FAILS CLOSED. It must be consulted here AND in worker-ai's drainer — a one-sided
+    # gate is a silent-success bug: one side stops, the other keeps extracting.
+    if not await may_extract_chat_turn(pool, project_id, user_id):
+        # Never silent: say WHY nothing happened.
+        logger.info(
+            "D6: chat turn NOT queued for extraction (project=%s). Either this is the "
+            "assistant project — whose facts come from the CONFIRMED daily entry, not from "
+            "every turn — or per-turn extraction is disabled for it.",
+            project_id,
+        )
+        return
+
     if await should_extract(pool, project_id, user_id):
         logger.info("K14.5: chat turn queued for extraction: %s", event.aggregate_id)
 
-    # Always queue in extraction_pending — worker-ai processes from here
+    # Queue in extraction_pending — worker-ai processes from here
     repo = ExtractionPendingRepo(pool)
     await repo.queue_event(
         user_id,
