@@ -551,6 +551,31 @@ func appendEditorialStatusFilter(
 	return selWhere, countWhere, outArgs
 }
 
+// appendKGIndexedFilter — WS-0.6. The "is this chapter in the knowledge graph?" gate.
+//
+// Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.5 (red-team P0-2).
+//
+// This is a SIBLING of appendEditorialStatusFilter, deliberately NOT a replacement.
+// `editorial_status` keeps meaning editorial status — it has legitimate non-KG users
+// (translation-service word counts, lore-enrichment, the chapter browser, knowledge's
+// draft lexical search). Re-defining it would break them. Extraction callers ask the
+// NEW question instead: "which chapters has the user put in their knowledge graph?"
+//
+// The predicate is the SAME ONE the reparse sweeper uses (WS-0.5) — deliberately, so
+// enumerate and heal can never disagree about the graph's membership. It is served by
+// idx_chapters_kg_indexed (migrate.go).
+//
+// Takes no bound argument: the predicate is a constant, so it cannot disturb the
+// caller's $N positions for limit/offset.
+func appendKGIndexedFilter(selWhere, countWhere string, kgIndexed bool) (string, string) {
+	if !kgIndexed {
+		return selWhere, countWhere
+	}
+	selWhere += " AND c.kg_indexed_revision_id IS NOT NULL AND c.kg_exclude = false"
+	countWhere += " AND kg_indexed_revision_id IS NOT NULL AND kg_exclude = false"
+	return selWhere, countWhere
+}
+
 func (s *Server) ensureQuotaRow(ctx context.Context, ownerID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
 INSERT INTO user_storage_quota(owner_user_id, used_bytes, quota_bytes)
@@ -2906,6 +2931,31 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	where, countWhere, countArgs = appendEditorialStatusFilter(where, countWhere, countArgs, es)
+
+	// WS-0.6 — the kg_indexed gate (spec §3.5, red-team P0-2). ADDITIVE: it does not
+	// change what editorial_status means (see appendKGIndexedFilter).
+	//
+	// Extraction callers (worker-ai's whole-book rebuild, the passage backfill/ingester,
+	// the cost estimate, campaign chapter selection) must ask "what is in the knowledge
+	// graph?", NOT "what is published". Without this filter they can only ask the old
+	// question, so a user who indexes 50 draft chapters and then hits "Rebuild knowledge
+	// graph" gets ZERO of them enumerated — the job reports success having extracted
+	// nothing, and the cost estimate says "0 chapters". Their explicit act is silently
+	// undone by an unrelated button (the repo's own silent-success-is-a-bug class).
+	//
+	// Closed set: a typo'd value must 400, never silently fall through to "all chapters"
+	// (which would over-extract kg_exclude'd prose the user asked us to forget).
+	kgIndexedParam := r.URL.Query().Get("kg_indexed")
+	if kgIndexedParam != "" && kgIndexedParam != "true" && kgIndexedParam != "false" {
+		ChaptersListTotal.WithLabelValues(OutcomeValidationError).Inc()
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR",
+			"invalid kg_indexed (expected true|false)")
+		return
+	}
+	// Filter BOTH the COUNT and the LIST, so `total` matches the returned items — an
+	// estimate/enumeration drift here is what makes a cost preview lie.
+	where, countWhere = appendKGIndexedFilter(where, countWhere, kgIndexedParam == "true")
+
 	var total int
 	// CM3c review WARN#2: the published-gate rides on `total`; a swallowed
 	// COUNT error would yield total=0 (HTTP 200) — a silent published-gate
@@ -2920,9 +2970,13 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 	listArgs = append(listArgs, limit, offset)
 	limitPos := len(countArgs) + 1
 	offsetPos := len(countArgs) + 2
+	// WS-0.6: kg_indexed_revision_id + kg_exclude join the projection. Without them a
+	// re-keyed reader could FILTER on the KG gate but could not PIN the right revision —
+	// and worker-ai's extractor falls back to the LIVE DRAFT text when it gets no
+	// revision_id, which would silently extract unreviewed prose.
 	rows, err := s.pool.Query(r.Context(), fmt.Sprintf(`
 SELECT c.id, c.title, c.sort_order, c.original_language, c.draft_updated_at,
-  c.editorial_status, c.published_revision_id,
+  c.editorial_status, c.published_revision_id, c.kg_indexed_revision_id, c.kg_exclude,
   COALESCE((SELECT octet_length(d.body::text) / 5 FROM chapter_drafts d WHERE d.chapter_id = c.id LIMIT 1), 0) AS word_count_estimate
 FROM chapters c
 WHERE %s
@@ -2942,18 +2996,24 @@ LIMIT $%d OFFSET $%d
 		var lang, editorialStatus string
 		var sortOrder int
 		var draftUpdated *time.Time
-		var publishedRevID *uuid.UUID
+		var publishedRevID, kgIndexedRevID *uuid.UUID
+		var kgExclude bool
 		var wordCount int
-		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated, &editorialStatus, &publishedRevID, &wordCount); err == nil {
+		// Every column scans into a real target. A discarded scan zeroes the WHOLE pgx
+		// row, so kg_exclude would read false — i.e. fail OPEN on the user's opt-out.
+		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated, &editorialStatus,
+			&publishedRevID, &kgIndexedRevID, &kgExclude, &wordCount); err == nil {
 			items = append(items, map[string]any{
-				"chapter_id":            chapterID,
-				"title":                 nullableStringPtr(title),
-				"sort_order":            sortOrder,
-				"original_language":     lang,
-				"draft_updated_at":      draftUpdated,
-				"editorial_status":      editorialStatus,
-				"published_revision_id": publishedRevID,
-				"word_count_estimate":   wordCount,
+				"chapter_id":             chapterID,
+				"title":                  nullableStringPtr(title),
+				"sort_order":             sortOrder,
+				"original_language":      lang,
+				"draft_updated_at":       draftUpdated,
+				"editorial_status":       editorialStatus,
+				"published_revision_id":  publishedRevID,
+				"kg_indexed_revision_id": kgIndexedRevID,
+				"kg_exclude":             kgExclude,
+				"word_count_estimate":    wordCount,
 			})
 		}
 	}
