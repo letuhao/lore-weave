@@ -138,6 +138,61 @@ func TestSchemaAddsCanonEditorialColumns(t *testing.T) {
 	}
 }
 
+// ── WS-0.2 publish-independent KG indexing — 2026-07-11 ─────────────────────
+
+func TestSchemaAddsKGIndexingColumns(t *testing.T) {
+	for _, frag := range []string{
+		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS kg_indexed_revision_id UUID",
+		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS kg_exclude BOOLEAN NOT NULL DEFAULT false",
+		"CREATE INDEX IF NOT EXISTS idx_chapters_kg_indexed",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("WS-0.2 schema missing: %q", frag)
+		}
+	}
+}
+
+// kg_indexed_revision_id must be a PLAIN UUID with NO foreign key — deliberately
+// mirroring last_parsed_revision_id, NOT published_revision_id.
+//
+// published_revision_id's FK is `ON DELETE SET NULL`. If the KG pointer carried the
+// same FK, a revision purge (GC of old chapter_revisions) would silently NULL it —
+// i.e. silently UN-INDEX the chapter from the knowledge graph, with no event and no
+// way to notice. A dangling plain UUID instead just re-triggers a heal on the next
+// sweep, which is the same dangling-safe rationale last_parsed_revision_id documents.
+func TestKGIndexedRevisionHasNoForeignKey(t *testing.T) {
+	i := strings.Index(schemaSQL, "ADD COLUMN IF NOT EXISTS kg_indexed_revision_id")
+	if i == -1 {
+		t.Fatal("kg_indexed_revision_id ALTER not found")
+	}
+	// The statement ends at the first semicolon after the column name.
+	stmt := schemaSQL[i:]
+	if j := strings.Index(stmt, ";"); j != -1 {
+		stmt = stmt[:j]
+	}
+	if strings.Contains(strings.ToUpper(stmt), "REFERENCES") {
+		t.Fatalf("kg_indexed_revision_id must NOT have an FK (a revision purge with "+
+			"ON DELETE SET NULL would silently un-index the chapter): %q", stmt)
+	}
+}
+
+// The backfill must be marker-gated so it runs EXACTLY ONCE. An ungated re-run would
+// re-set kg_indexed_revision_id on a chapter whose kg_exclude retraction had cleared
+// it — silently pulling a chapter the user removed from their KG back into it on the
+// next restart. (The live proof is TestKGIndexedBackfillIsMarkerGatedAnd... in
+// kg_indexed_db_test.go; this is the cheap static lock.)
+func TestKGIndexedBackfillIsMarkerGated(t *testing.T) {
+	for _, frag := range []string{
+		"canon_model_migration WHERE id = 'kg_indexed_backfill_v1'",
+		"INSERT INTO canon_model_migration (id) VALUES ('kg_indexed_backfill_v1')",
+		"kg_exclude            = false", // belt-and-braces guard inside the UPDATE
+	} {
+		if !strings.Contains(kgIndexedBackfillSQL, frag) {
+			t.Fatalf("kg_indexed backfill missing marker/guard: %q", frag)
+		}
+	}
+}
+
 // The new chapters ALTERs must be idempotent (IF NOT EXISTS) so Up() re-runs
 // cleanly — book-service has NO down-migration (adversary-R1#1), so Up()
 // idempotency is the rollback story.

@@ -315,6 +315,33 @@ CREATE INDEX IF NOT EXISTS idx_chapters_editorial ON chapters(book_id, editorial
 -- a dangling marker just re-triggers a heal. IS DISTINCT FROM
 -- published_revision_id on a published chapter means the index is stale.
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS last_parsed_revision_id UUID;
+-- ── WS-0.2 publish-independent KG indexing — 2026-07-11 ─────────────────────
+-- Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.1
+--
+-- PUBLISH stops gating the knowledge graph. Publish now means only "this is the
+-- canonical/shareable version"; INDEXING ("add this to my knowledge") becomes an
+-- independent act available on ANY chapter of ANY book kind, draft or published.
+-- Writers draft without publishing and still want a glossary/KG; some book kinds
+-- (kind='diary') have no publish at all.
+--
+-- kg_indexed_revision_id = the revision the knowledge layer (and the scene index it
+-- depends on) reflects. It is what the reparse sweeper keys on, replacing
+-- published_revision_id. A plain UUID with NO FK — deliberately mirroring
+-- last_parsed_revision_id above, for the same reason: a revision purge must not fail
+-- on it; a dangling pointer just re-triggers a heal. (published_revision_id's FK is
+-- ON DELETE SET NULL, which would silently UN-INDEX a chapter on revision GC.)
+--
+-- kg_exclude = the explicit opt-out that publish-gating used to provide implicitly.
+-- PRODUCER-side authoritative (§3.7): knowledge-service cannot see this column, so
+-- book-service simply does not set the pointer and does not emit chapter.kg_indexed
+-- when it is true.
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS kg_indexed_revision_id UUID;
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS kg_exclude BOOLEAN NOT NULL DEFAULT false;
+-- Serves the sweeper's hot predicate (kg_indexed_revision_id IS NOT NULL AND
+-- kg_exclude = false AND last_parsed IS DISTINCT FROM kg_indexed) and the new
+-- kg_indexed filter on GET /internal/books/{id}/chapters.
+CREATE INDEX IF NOT EXISTS idx_chapters_kg_indexed
+  ON chapters(book_id) WHERE kg_indexed_revision_id IS NOT NULL AND kg_exclude = false;
 -- One-row-per-step marker so the data backfill (backfillSQL) runs EXACTLY once,
 -- not every startup (book-service has no migration ledger). Without this guard
 -- a post-CM1 draft chapter that gains revisions while being written would be
@@ -708,6 +735,17 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
+	// WS-0.2: seed kg_indexed_revision_id from published_revision_id (marker-gated).
+	// ORDER IS LOAD-BEARING — this MUST run AFTER the CM1 canon backfill above, which
+	// is what pins published_revision_id on pre-CM1 legacy chapters. Run it first and
+	// those chapters still have a NULL published_revision_id, so they'd get a NULL
+	// kg pointer, drop out of the re-keyed sweeper, and their scenes would never be
+	// parsed — a silent, permanent hole in the graph that the marker would then make
+	// unrecoverable on restart.
+	if err := execGuarded(ctx, pool, "kg-indexed backfill", kgIndexedBackfillSQL); err != nil {
+		return err
+	}
+
 	// D1-03: trigger function to extract chapter_blocks from Tiptap JSONB
 	if err := execGuarded(ctx, pool, "trigger", triggerSQL); err != nil {
 		return err
@@ -1018,6 +1056,42 @@ DO $cm1$ BEGIN
     INSERT INTO canon_model_migration (id) VALUES ('cm1_editorial_backfill');
   END IF;
 END $cm1$;
+`
+
+// kgIndexedBackfillSQL — WS-0.2 one-time data backfill for publish-independent KG
+// indexing. Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.1/§6.
+//
+// Seeds kg_indexed_revision_id from published_revision_id on today's corpus, so the
+// NEW sweeper predicate selects EXACTLY the set the OLD (published-gated) predicate
+// selected — no re-parse storm on first sweep, no chapter silently dropping out of
+// the graph. Proof (spec §6): the backfill set is exactly the old predicate's set;
+// the new predicate keeps lifecycle_state='active' so trashed chapters stay out;
+// chapters with a NULL published_revision_id are excluded by both.
+//
+// ⚠️ MARKER-GATED, and that is load-bearing — NOT mere startup-cost hygiene.
+// This statement must run EXACTLY ONCE, not on every boot. If it re-ran, it would
+// clobber the user's own decisions:
+//
+//	kg_exclude retraction (§3.8) clears kg_indexed_revision_id on a chapter the user
+//	asked to keep OUT of their knowledge graph. That chapter is still
+//	editorial_status='published' with a published_revision_id — so an ungated
+//	re-run would RE-SET the pointer on the next restart and silently pull the
+//	excluded chapter back into the KG. A privacy decision undone by a reboot.
+//
+// The `kg_exclude = false` guard below is belt-and-braces for exactly that case; the
+// marker is the actual defense (it also makes the behavior independent of restart
+// timing, which an "IS NULL"-guarded re-run would not be).
+const kgIndexedBackfillSQL = `
+DO $kg1$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM canon_model_migration WHERE id = 'kg_indexed_backfill_v1') THEN
+    UPDATE chapters
+       SET kg_indexed_revision_id = published_revision_id
+     WHERE editorial_status      = 'published'
+       AND published_revision_id IS NOT NULL
+       AND kg_exclude            = false;
+    INSERT INTO canon_model_migration (id) VALUES ('kg_indexed_backfill_v1');
+  END IF;
+END $kg1$;
 `
 
 const triggerSQL = `
