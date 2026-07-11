@@ -51,11 +51,19 @@ do **not** claim the operator cannot read the diary.
    → **Resolution: a blind index.** Store HMAC-keyed trigrams/tokens under the user's key. Search works; the
    operator sees keyed hashes, not text. **Accepted leak:** token frequency (a known, bounded weakness of
    blind indexing). *This is net-new work in WS-1.9 — it is no longer "add a GIN index".*
-2. **Embeddings cannot be encrypted** if vector search is to work, and embeddings are **partially invertible**
-   (they leak approximate content).
-   → **Resolution: accept and record.** Embeddings for the assistant project are the **acknowledged residual
-   exposure**. If that is unacceptable, the alternative is dropping semantic recall for the diary and relying
-   on lexical + KG — **flagged for PO, not silently chosen.**
+2. **Embeddings.** ⚠️ **RETRACTED — the first draft called this a "limited residual exposure". It is not.**
+   [Vec2Text](https://arxiv.org/pdf/2310.06816) recovers **92% of short text exactly** (BLEU 97.3) and
+   demonstrably recovers **patient names from clinical notes**; training an inverter needs **no access to the
+   embedding model's parameters** (just text↔embedding pairs), and [transferable attacks](https://arxiv.org/html/2406.10280v1)
+   need no model queries at all. Attack cost ≈ 5M pairs / 2 days on 4 GPUs — a weekend, for exactly the
+   adversary we care about. **Plaintext embeddings ≈ plaintext diary.** Encrypting `fact_text` while leaving
+   embeddings readable is a deadbolt on the door with the window open.
+   → **Resolution (c): encrypt the embeddings too, and brute-force cosine IN MEMORY per user at query time.**
+   This works *because a diary is tiny by vector-search standards* — a few years of entries is 10k–100k
+   vectors (~200MB at 1024-dim), and a brute-force scan is milliseconds. **No ANN index is needed at per-user
+   scale.** Semantic recall survives and the hole closes. Defense-in-depth: adding
+   [Gaussian noise](https://arxiv.org/html/2402.12784) to stored vectors sharply degrades inversion while
+   barely hurting retrieval — the fallback if we ever must store them readable.
 
 **Cost:** encryption + blind index is roughly a **medium-to-large** addition to P1, and it touches the hottest
 read paths. It is now a first-class work-slice (**WS-1.0**), scheduled *before* anything that stores diary
@@ -132,12 +140,35 @@ No auto-purge of raw transcripts, diary, KG, or coach artifacts.
 4. **D18 (erasure) is a release requirement, not P2 polish** — PO-4 removed every other minimization story.
 5. **Honest operator disclosure still ships in P1** alongside the encryption (PO-2's residual risk).
 
-## Part D — The one thing still open
+## Part D — RESOLVED: embeddings are encrypted too (option **c**)
 
-**Embedding exposure (PO-2, casualty 2).** Embeddings for the assistant project cannot be encrypted if
-semantic recall is to work, and they are partially invertible. Two choices:
+Was: *"(a) accept the exposure, or (b) drop semantic recall."* **Both were wrong.** See PO-2 casualty 2 — the
+exposure is not "limited", it is near-plaintext; and dropping semantic recall was never necessary, because a
+**per-user** diary needs no ANN index. **Encrypt the vectors; brute-force cosine in memory at query time.**
 
-- **(a) Accept** — record it as the residual exposure and keep semantic recall. *(current default)*
-- **(b) Drop semantic recall for the diary** — lexical (blind index) + KG only. Stronger privacy, weaker recall.
+---
 
-**This is flagged for PO, not silently chosen.** It does not block the start of Phase 0.
+## Part E — What the industry actually does (and the half we were missing)
+
+Checked, because "how do Claude/ChatGPT protect this?" is the right question to ask before inventing something:
+
+- **AES-256 at rest, TLS in transit — and *no* end-to-end encryption. The provider holds the keys**
+  ([OpenAI enterprise privacy](https://openai.com/enterprise-privacy/)).
+- **Authorized employees can access conversations** (incident response, abuse investigation, legal
+  compliance), plus third-party contractors for abuse review. A flagged/sampled conversation **can be read by
+  a human**.
+- Retention limits (30-day deletion), and user escape hatches (Temporary Chat, memory off).
+
+**Conclusion: nobody has solved "the operator cannot read it" while keeping server-side AI — because you
+can't.** The industry's protection is **encryption-at-rest against theft + strict access control + audit +
+retention + disclosure**. It is *organizational*, not cryptographic.
+
+### What we adopt from that (the half our design was missing)
+
+| | Decision |
+|---|---|
+| **Encryption** | Our per-user DEK is **at or above** the industry bar (better blast-radius containment than one provider-held key). Keep it |
+| **Audit** | 🔴 **NEW REQUIREMENT — WS-1.0b: an append-only audit log of every admin/operator read of diary content.** This is the control the industry actually relies on, and we had none |
+| **Retention/deletion** | User-controlled (PO-4) + D18 erasure. Already planned |
+| **Disclosure** | Honest, derived from real deployment facts. Already planned |
+| **The claim we are allowed to make** | *"Encrypted at rest with your own key. An administrator who controls the server could still access it — and every such access is logged."* **Never** *"we cannot read your diary."* |
