@@ -205,6 +205,9 @@ func (s *Server) newMCPServer() *mcp.Server {
 	// ── W10-M1 world-container tools (Tier-R reads + Tier-A create/move) ──
 	s.registerWorldTools(srv)
 
+	// ── W10-M2 world-map tools (Tier-R reads + Tier-A create/marker/region) ──
+	s.registerMapTools(srv)
+
 	return srv
 }
 

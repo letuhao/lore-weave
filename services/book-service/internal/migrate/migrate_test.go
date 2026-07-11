@@ -226,10 +226,16 @@ func TestSchemaAddsBooksWorldIDColumn(t *testing.T) {
 		}
 	}
 	// MUST NOT be NOT NULL and MUST NOT carry a non-NULL default (no backfill).
-	if strings.Contains(schemaSQL, "world_id UUID NOT NULL") {
-		t.Fatal("world_id must be NULLABLE (default NULL = standalone) — NOT NULL is a LOCK breach")
+	// Scoped to the BOOKS column: world_maps.world_id (W10-M2) is legitimately
+	// `NOT NULL REFERENCES worlds(id) ON DELETE CASCADE` — a map MUST belong to a
+	// world and is dropped with it — so the lock check must not naively match any
+	// `world_id UUID NOT NULL` / `REFERENCES worlds(id) ON DELETE CASCADE` in the schema.
+	if strings.Contains(schemaSQL, "books ADD COLUMN IF NOT EXISTS world_id UUID NOT NULL") {
+		t.Fatal("books.world_id must be NULLABLE (default NULL = standalone) — NOT NULL is a LOCK breach")
 	}
-	if strings.Contains(schemaSQL, "ON DELETE CASCADE") && strings.Contains(schemaSQL, "REFERENCES worlds(id) ON DELETE CASCADE") {
+	// The books FK is asserted `ON DELETE SET NULL` by the fragment check above; a
+	// regression to a books cascade would drop that fragment (already a failure).
+	if strings.Contains(schemaSQL, "books ADD COLUMN IF NOT EXISTS world_id UUID\n  REFERENCES worlds(id) ON DELETE CASCADE") {
 		t.Fatal("world deletion must SET NULL on member books, never cascade-delete books")
 	}
 }

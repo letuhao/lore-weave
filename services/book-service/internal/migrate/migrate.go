@@ -363,6 +363,49 @@ ALTER TABLE books ADD COLUMN IF NOT EXISTS is_bible BOOLEAN NOT NULL DEFAULT fal
 
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS is_bible BOOLEAN NOT NULL DEFAULT false;
 
+-- W10-M2 — world maps (a worldbuilder's reference map: a base image + pins/regions
+-- linked to location entities). WORLD-scoped (a map spans a world's books; world_id
+-- lives here in book-service, G1-clean). Markers/regions reference a glossary
+-- location entity by a SOFT cross-service UUID (glossary is a separate DB — no hard
+-- FK). The image blob lives in MinIO (image_object_key); the row is authored
+-- independently of the image, so markers/regions use relative [0,1] coords. ON DELETE
+-- CASCADE from worlds (delete a world → its maps go) and from world_maps (→ markers,
+-- regions), so a map is self-cleaning.
+CREATE TABLE IF NOT EXISTS world_maps (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id UUID NOT NULL,
+  world_id UUID NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  image_object_key TEXT,
+  image_w INT,
+  image_h INT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_world_maps_world ON world_maps(world_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS map_markers (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  map_id UUID NOT NULL REFERENCES world_maps(id) ON DELETE CASCADE,
+  entity_id UUID,             -- soft cross-service ref → glossary location entity (nullable)
+  label TEXT NOT NULL,
+  x DOUBLE PRECISION NOT NULL, -- relative [0,1] on the base image (float64 → exact round-trip)
+  y DOUBLE PRECISION NOT NULL,
+  marker_type TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_map_markers_map ON map_markers(map_id);
+
+CREATE TABLE IF NOT EXISTS map_regions (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  map_id UUID NOT NULL REFERENCES world_maps(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  polygon JSONB NOT NULL,     -- array of [x,y] relative points
+  entity_id UUID,             -- soft cross-service ref → glossary location entity (nullable)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_map_regions_map ON map_regions(map_id);
+
 -- ═══════════════════════════════════════════════════════════════
 -- MCP fan-out Tier-W single-use confirm-token ledger - 2026-06-20
 -- /review-impl HIGH: the confirm route (confirmBookAction) must be single-use.
