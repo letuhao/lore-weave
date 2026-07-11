@@ -186,6 +186,7 @@ class OutlineRepo:
         beat_role: str | None = None,
         status: str = "empty",
         chapter_id: UUID | None = None,
+        structure_node_id: UUID | None = None,
         tension: int | None = None,
         story_order: int | None = None,
         synopsis: str = "",
@@ -216,7 +217,12 @@ class OutlineRepo:
         The eight SC4 authored-intent fields (location_entity_id/story_time/
         conflict/outcome/value_shift/stakes/target_words/exit_state) are inserted
         here too; `exit_state` is serialized + cast ::jsonb (asyncpg does not
-        auto-encode a dict — same shape as update_node's SC12 path)."""
+        auto-encode a dict — same shape as update_node's SC12 path).
+
+        `structure_node_id` links a CHAPTER to its spec arc in `structure_node`
+        (25 M4 lifted model — arcs live there, NOT as a `kind='arc'` outline_node).
+        The DB CHECK (`structure_node_id IS NULL OR kind='chapter'`) rejects it on
+        any other kind; the referenced arc must exist first (FK)."""
         async def _do(c: asyncpg.Connection) -> asyncpg.Record:
             if parent_id is not None:
                 await self._validate_parent(c, project_id, parent_id)
@@ -230,12 +236,14 @@ class OutlineRepo:
                    pov_entity_id, present_entity_ids, goal, beat_role, status,
                    chapter_id, tension, story_order, synopsis,
                    location_entity_id, story_time, conflict, outcome, value_shift,
-                   stakes, target_words, exit_state, source, decompile_key)
+                   stakes, target_words, exit_state, source, decompile_key,
+                   structure_node_id)
                 SELECT $1, $2, w.book_id, $3, $4, $5, $6,
                        $7, $8, $9, $10, $11,
                        $12, $13, $14, $15,
                        $16, $17, $18, $19, $20,
-                       $21, $22, $23::jsonb, $24, $25
+                       $21, $22, $23::jsonb, $24, $25,
+                       $26
                 FROM composition_work w
                 WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
                 RETURNING {_SELECT_COLS}
@@ -246,7 +254,7 @@ class OutlineRepo:
                 location_entity_id, story_time, conflict, outcome, value_shift,
                 stakes, target_words,
                 json.dumps(exit_state) if exit_state is not None else None,
-                source, decompile_key,
+                source, decompile_key, structure_node_id,
             )
             if row is None:
                 # The INSERT … SELECT found no composition_work to derive book_id
@@ -344,21 +352,30 @@ class OutlineRepo:
 
     async def _insert_decomposed_tree(
         self, c: asyncpg.Connection, project_id: UUID, *,
-        created_by: UUID, arc_title: str, chapters: list[dict[str, Any]],
+        book_id: UUID, created_by: UUID, arc_title: str, chapters: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Insert arc→chapter→scene on an open connection (NO Tx of its own — the
-        caller owns the transaction). `beat_role` is stamped on the SCENES (DB
-        CHECK forbids it on chapter); the chapter node carries the beat intent in
-        `goal`. Returns the created node ids (UUIDs)."""
-        arc = await self.create_node(
-            project_id, created_by=created_by, kind="arc", title=arc_title,
+        caller owns the transaction). The ARC is a `structure_node` (kind='arc',
+        the 25 M4 lifted model / spec 27 link step — arcs live in `structure_node`,
+        NEVER as a `kind='arc'` outline_node, which the post-lift CHECK rejects);
+        chapters are outline_nodes LINKED to it via `structure_node_id` (parent_id
+        stays NULL — the arc is not an outline parent). `beat_role` is stamped on
+        the SCENES (DB CHECK forbids it on chapter); the chapter node carries the
+        beat intent in `goal`. Returns the created node ids (UUIDs); `arc_id` is a
+        `structure_node` id."""
+        # Lazy import avoids a package-load cycle (structure ↔ repositories __init__).
+        from app.db.repositories.structure import StructureRepo
+
+        arc = await StructureRepo(self._pool).create_node(
+            book_id, created_by=created_by, kind="arc", title=arc_title,
             status="outline", conn=c,
         )
         chapter_ids: list[UUID] = []
         scene_ids: list[UUID] = []
         for ch in chapters:
             ch_node = await self.create_node(
-                project_id, created_by=created_by, kind="chapter", parent_id=arc.id,
+                project_id, created_by=created_by, kind="chapter",
+                structure_node_id=arc.id,
                 chapter_id=ch["chapter_id"], title=ch.get("title", ""),
                 goal=ch.get("intent", ""), status="outline", conn=c,
             )
@@ -379,7 +396,7 @@ class OutlineRepo:
 
     async def create_decomposed_tree(
         self, project_id: UUID, *,
-        created_by: UUID, arc_title: str, chapters: list[dict[str, Any]],
+        book_id: UUID, created_by: UUID, arc_title: str, chapters: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """A3 commit — persist an arc→chapter→scene tree ATOMICALLY (one Tx).
         Low-level inserter (no idempotency/replace guard); prefer
@@ -388,13 +405,13 @@ class OutlineRepo:
         async with self._pool.acquire() as c:
             async with c.transaction():
                 return await self._insert_decomposed_tree(
-                    c, project_id, created_by=created_by, arc_title=arc_title,
-                    chapters=chapters,
+                    c, project_id, book_id=book_id, created_by=created_by,
+                    arc_title=arc_title, chapters=chapters,
                 )
 
     async def commit_decomposed_tree(
         self, project_id: UUID, *,
-        created_by: UUID, arc_title: str, chapters: list[dict[str, Any]],
+        book_id: UUID, created_by: UUID, arc_title: str, chapters: list[dict[str, Any]],
         replace: bool = False, idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         """Atomic + idempotent A3 commit (D-A3-COMMIT-IDEMPOTENCY/TRUE-REPLACE).
@@ -453,29 +470,29 @@ class OutlineRepo:
                         raise AlreadyPlannedError(existing_ids)
                     if replace:
                         # true replace — soft-archive the target chapters' prior
-                        # PLAN nodes: BOTH scenes AND their `chapter` nodes
-                        # (D-A3-REPLACE-ORPHAN-ARC-NODES / FD-17). Archiving only
-                        # scenes left every prior `chapter` node (and its `arc`)
-                        # childless-but-active, accumulating orphan structure on
-                        # each re-plan.
+                        # PLAN nodes: the scene + chapter outline_nodes AND the now-
+                        # emptied `structure_node` arc (D-A3-REPLACE-ORPHAN-ARC-NODES
+                        # / FD-17). Archiving only scenes left every prior `chapter`
+                        # node (and its arc) childless-but-active, accumulating
+                        # orphan structure on each re-plan.
                         #
-                        # Capture the parent arcs of the chapter nodes we're about
-                        # to archive FIRST, so the arc sweep below is SCOPED to the
-                        # arc(s) this replace actually orphans — NOT a project-wide
-                        # "any childless arc" sweep, which would also archive an
-                        # unrelated freshly-created empty arc (a bystander). Arcs
-                        # carry no chapter_id, so they can only be tied to this
-                        # operation through the chapter→arc parent link.
+                        # Capture the SPEC ARCS the chapters we're about to archive
+                        # link to FIRST (via `structure_node_id`, the 25 M4 lifted
+                        # model — arcs are `structure_node` rows, not outline `arc`
+                        # nodes), so the arc sweep below is SCOPED to the arc(s) this
+                        # replace actually orphans — NOT a book-wide "any childless
+                        # arc" sweep, which would also archive an unrelated freshly-
+                        # created empty arc (a bystander).
                         candidate_arcs = await c.fetch(
                             """
-                            SELECT DISTINCT parent_id FROM outline_node
+                            SELECT DISTINCT structure_node_id FROM outline_node
                             WHERE project_id = $1 AND kind = 'chapter'
                               AND NOT is_archived AND chapter_id = ANY($2)
-                              AND parent_id IS NOT NULL
+                              AND structure_node_id IS NOT NULL
                             """,
                             project_id, affected,
                         )
-                        candidate_arc_ids = [r["parent_id"] for r in candidate_arcs]
+                        candidate_arc_ids = [r["structure_node_id"] for r in candidate_arcs]
                         # Archive the prior scene + chapter nodes for the target
                         # chapters. Keyed on `affected` (all target chapters), NOT
                         # `existing_ids` (chapters with active scenes), so this also
@@ -491,30 +508,30 @@ class OutlineRepo:
                             """,
                             project_id, affected,
                         )
-                        # Archive only THOSE candidate arcs left with NO active
-                        # `chapter` child. The NOT EXISTS guard preserves an arc
-                        # that still spans active chapters OUTSIDE the target set (a
-                        # partial re-plan). Scoped by id, so a bystander empty arc
-                        # is untouched. Runs BEFORE the insert (the fresh tree is
-                        # never matched). project_id filters BOTH sides of the
-                        # self-join (the kinds-bug double-filter rule).
+                        # Archive only THOSE candidate spec arcs left with NO active
+                        # `chapter` still linking to them. The NOT EXISTS guard
+                        # preserves an arc that still spans active chapters OUTSIDE
+                        # the target set (a partial re-plan). Scoped by id, so a
+                        # bystander empty arc is untouched. Runs BEFORE the insert
+                        # (the fresh tree links to a NEW arc, never matched here).
+                        # book_id scopes the structure_node side (its scope key).
                         if candidate_arc_ids:
                             await c.execute(
                                 """
-                                UPDATE outline_node a SET is_archived = true, updated_at = now()
-                                WHERE a.project_id = $1 AND a.kind = 'arc'
+                                UPDATE structure_node a SET is_archived = true, updated_at = now()
+                                WHERE a.book_id = $1 AND a.kind = 'arc'
                                   AND NOT a.is_archived AND a.id = ANY($2)
                                   AND NOT EXISTS (
                                     SELECT 1 FROM outline_node ch
-                                    WHERE ch.project_id = $1 AND ch.parent_id = a.id
+                                    WHERE ch.structure_node_id = a.id
                                       AND ch.kind = 'chapter' AND NOT ch.is_archived
                                   )
                                 """,
-                                project_id, candidate_arc_ids,
+                                book_id, candidate_arc_ids,
                             )
                     ids = await self._insert_decomposed_tree(
-                        c, project_id, created_by=created_by, arc_title=arc_title,
-                        chapters=chapters,
+                        c, project_id, book_id=book_id, created_by=created_by,
+                        arc_title=arc_title, chapters=chapters,
                     )
                     result = {
                         "arc_id": str(ids["arc_id"]),

@@ -63,7 +63,7 @@ class _FakeOutline:
     def __init__(self, *, raise_already=False):
         self.raise_already = raise_already
         self.committed = None
-    async def commit_decomposed_tree(self, p, *, created_by=None, arc_title, chapters, replace, idempotency_key):
+    async def commit_decomposed_tree(self, p, *, book_id=None, created_by=None, arc_title, chapters, replace, idempotency_key):
         if self.raise_already:
             raise AlreadyPlannedError([CH1])
         self.committed = chapters

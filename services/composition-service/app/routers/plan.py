@@ -725,8 +725,8 @@ async def decompose_commit(
     } for ch in body.chapters]
     try:
         created = await outline.commit_decomposed_tree(
-            project_id, created_by=user_id, arc_title=body.arc_title, chapters=spec,
-            replace=body.replace or body.force, idempotency_key=body.idempotency_key,
+            project_id, book_id=work.book_id, created_by=user_id, arc_title=body.arc_title,
+            chapters=spec, replace=body.replace or body.force, idempotency_key=body.idempotency_key,
         )
     except AlreadyPlannedError as exc:
         raise HTTPException(status_code=409, detail={
@@ -1347,8 +1347,8 @@ async def materialize_arc(
 
     try:
         created = await outline.commit_decomposed_tree(
-            project_id, created_by=user_id, arc_title=arc.name, chapters=commit_chapters,
-            replace=body.replace, idempotency_key=body.idempotency_key,
+            project_id, book_id=work.book_id, created_by=user_id, arc_title=arc.name,
+            chapters=commit_chapters, replace=body.replace, idempotency_key=body.idempotency_key,
         )
     except AlreadyPlannedError as exc:
         raise HTTPException(status_code=409, detail={

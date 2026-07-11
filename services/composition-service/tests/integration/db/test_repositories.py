@@ -48,7 +48,7 @@ _TABLES = [
     "voice_profile",
     "scene_grounding_pins",
     "outbox_events", "generation_correction", "generation_job", "narrative_thread",
-    "canon_rule", "scene_link", "outline_node", "structure_template",
+    "canon_rule", "scene_link", "outline_node", "structure_node", "structure_template",
     "entity_override", "divergence_spec", "composition_work",
 ]
 
@@ -573,23 +573,67 @@ async def _active_ids(pool, project, kind):
     return {r["id"] for r in rows}
 
 
+async def _active_structure_arcs(pool, book):
+    # 25 M4 lifted model: arcs are `structure_node` rows (kind='arc'), book-scoped —
+    # NEVER `kind='arc'` outline_nodes anymore. Decompose/apply link chapters to them
+    # via outline_node.structure_node_id.
+    async with pool.acquire() as c:
+        rows = await c.fetch(
+            "SELECT id FROM structure_node WHERE book_id=$1 "
+            "AND kind='arc' AND NOT is_archived",
+            book,
+        )
+    return {r["id"] for r in rows}
+
+
+async def test_decompose_creates_structure_node_arc_not_outline_arc(pool):
+    """25 M4 legacy-close (the live 500): a decompose commit persists the arc as a
+    `structure_node` (kind='arc'), NEVER a `kind='arc'` outline_node — the latter
+    is CHECK-rejected on a lifted DB. Chapters LINK to the spec arc via
+    `structure_node_id` with a NULL outline parent (so the arc lens resolves off
+    that link, not an outline-arc container)."""
+    repo = OutlineRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    chA = uuid.uuid4()
+    r = await repo.commit_decomposed_tree(
+        project, book_id=book, created_by=user, arc_title="Arc One",
+        chapters=_chapters_payload(chA),
+    )
+    # NO outline_node arc was minted (the regression guard for the live bug).
+    assert await _active_ids(pool, project, "arc") == set()
+    # the arc is a structure_node, and result["arc_id"] is its id.
+    assert await _active_structure_arcs(pool, book) == {uuid.UUID(r["arc_id"])}
+    # the chapter links to the spec arc via structure_node_id, no outline parent.
+    async with pool.acquire() as c:
+        row = await c.fetchrow(
+            "SELECT parent_id, structure_node_id FROM outline_node WHERE id=$1",
+            uuid.UUID(r["chapter_ids"][0]),
+        )
+    assert row["parent_id"] is None
+    assert row["structure_node_id"] == uuid.UUID(r["arc_id"])
+
+
 async def test_decompose_replace_archives_prior_arc_and_chapter_nodes(pool):
     """FD-17/069: a replace re-plan must soft-archive the prior arc + chapter
     nodes, not ONLY their scenes — else orphan arc/chapter nodes accumulate on
-    every re-plan (their scenes archived, a fresh arc/chapters created beside)."""
+    every re-plan. Post-25-M4 the arc is a `structure_node` (not an outline
+    `kind='arc'` node); the emptied prior spec arc is archived there."""
     repo = OutlineRepo(pool)
     user, project, book = _ids()
     await _seed_work(pool, user, project, book)
     chA = uuid.uuid4()
     r1 = await repo.commit_decomposed_tree(
-        project, created_by=user, arc_title="v1", chapters=_chapters_payload(chA),
+        project, book_id=book, created_by=user, arc_title="v1", chapters=_chapters_payload(chA),
     )
     r2 = await repo.commit_decomposed_tree(
-        project, created_by=user, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
+        project, book_id=book, created_by=user, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
     )
-    arcs = await _active_ids(pool, project, "arc")
+    arcs = await _active_structure_arcs(pool, book)
     chaps = await _active_ids(pool, project, "chapter")
     scenes = await _active_ids(pool, project, "scene")
+    # no outline_node arc is EVER minted (the lifted model).
+    assert await _active_ids(pool, project, "arc") == set()
     # exactly the v2 tree is active — no orphan v1 arc/chapter/scene survives.
     assert arcs == {uuid.UUID(r2["arc_id"])}
     assert uuid.UUID(r1["arc_id"]) not in arcs
@@ -598,21 +642,21 @@ async def test_decompose_replace_archives_prior_arc_and_chapter_nodes(pool):
 
 
 async def test_decompose_partial_replace_preserves_arc_with_active_out_of_target_chapter(pool):
-    """The childless-arc sweep must NOT archive an arc that still spans an active
-    chapter OUTSIDE the replaced set (a partial re-plan) — only fully-emptied
-    arcs are reaped."""
+    """The childless-arc sweep must NOT archive a spec arc that still spans an
+    active chapter OUTSIDE the replaced set (a partial re-plan) — only fully-
+    emptied arcs are reaped."""
     repo = OutlineRepo(pool)
     user, project, book = _ids()
     await _seed_work(pool, user, project, book)
     chA, chB = uuid.uuid4(), uuid.uuid4()
     r1 = await repo.commit_decomposed_tree(
-        project, created_by=user, arc_title="v1", chapters=_chapters_payload(chA, chB),
+        project, book_id=book, created_by=user, arc_title="v1", chapters=_chapters_payload(chA, chB),
     )
     r2 = await repo.commit_decomposed_tree(
-        project, created_by=user, arc_title="v2-chA", chapters=_chapters_payload(chA), replace=True,
+        project, book_id=book, created_by=user, arc_title="v2-chA", chapters=_chapters_payload(chA), replace=True,
     )
-    arcs = await _active_ids(pool, project, "arc")
-    # v1 arc SURVIVES (chB child still active) AND the new v2 arc exists.
+    arcs = await _active_structure_arcs(pool, book)
+    # v1 arc SURVIVES (chB child still links to it) AND the new v2 arc exists.
     assert uuid.UUID(r1["arc_id"]) in arcs
     assert uuid.UUID(r2["arc_id"]) in arcs
     assert len(arcs) == 2
@@ -624,22 +668,24 @@ async def test_decompose_partial_replace_preserves_arc_with_active_out_of_target
 
 async def test_decompose_replace_does_not_archive_unrelated_empty_arc(pool):
     """/review-impl HIGH: the childless-arc sweep must be SCOPED to the arc(s)
-    this replace orphans — a freshly-created, not-yet-populated bystander arc
-    (no chapter children) must SURVIVE a decompose replace elsewhere in the
-    project, not be archived as collateral by a project-wide 'any childless
-    arc' sweep."""
+    this replace orphans — a freshly-created, not-yet-populated bystander
+    `structure_node` arc (no chapters linked) must SURVIVE a decompose replace
+    elsewhere in the book, not be archived as collateral by a book-wide 'any
+    childless arc' sweep."""
+    from app.db.repositories.structure import StructureRepo
     repo = OutlineRepo(pool)
     user, project, book = _ids()
     await _seed_work(pool, user, project, book)
-    bystander = await repo.create_node(project, created_by=user, kind="arc", title="manual-empty")
+    bystander = await StructureRepo(pool).create_node(
+        book, created_by=user, kind="arc", title="manual-empty")
     chA = uuid.uuid4()
     await repo.commit_decomposed_tree(
-        project, created_by=user, arc_title="v1", chapters=_chapters_payload(chA),
+        project, book_id=book, created_by=user, arc_title="v1", chapters=_chapters_payload(chA),
     )
     await repo.commit_decomposed_tree(
-        project, created_by=user, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
+        project, book_id=book, created_by=user, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
     )
-    arcs = await _active_ids(pool, project, "arc")
+    arcs = await _active_structure_arcs(pool, book)
     assert bystander.id in arcs   # the unrelated empty arc is NOT archived
 
 

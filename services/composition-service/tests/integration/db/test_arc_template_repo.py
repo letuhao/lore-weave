@@ -104,3 +104,33 @@ async def test_arc_clone_propagates_b3_taint(repo):
     assert cloned_imp.source_ref == f"lineage:{imp.id}"
     cloned_auth = await r.clone(u2, auth.id, target_owner=u2)
     assert cloned_auth.imported_derived is False         # not over-broad
+
+
+async def test_retrieve_arcs_projects_renamed_columns_via_alias(repo):
+    """25 M5.2 (BA10 alias) guard-by-EFFECT: retrieve_arcs' _ARC_RETRIEVE_COLS reads the
+    RENAMED arc_template columns (tracks/roster) ALIASED back to the model field names
+    (threads/arc_roster). A reader that forgets the alias 500s on the renamed schema — the
+    exact motif_retrieve.retrieve_arcs bug this session fixed. The unit test (test_arc_
+    retrieve.py) mocks the pool with rows already shaped as threads/arc_roster, so it CANNOT
+    catch an unaliased column; this runs the REAL SELECT against the renamed columns. Any
+    future arc_template reader that drops the alias reds here (the coverage gap that let the
+    500 ship until the adversarial review caught it)."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+    from app.db.models import ArcRosterEntry, ArcThread
+
+    r, pool = repo
+    u = uuid.uuid4()
+    await r.create(u, _args(
+        code="alias.arc", genre_tags=["xianxia"],
+        threads=[ArcThread(key="main", label="Main Line")],
+        arc_roster=[ArcRosterEntry(key="protagonist", label="Hero")],
+    ))
+    # premise/genre omitted ⇒ no embedder call; the arc ranks on genre order and is returned
+    # (retrieve_arcs never drops an arc for being unembedded). caller=owner ⇒ visible.
+    cands = await MotifRetriever(pool).retrieve_arcs(u, limit=5)
+    got = {c.arc_template.code: c.arc_template for c in cands}
+    assert "alias.arc" in got                          # the SELECT executed (no 500) + visible
+    arc = got["alias.arc"]
+    # the renamed DB columns round-trip to the model field names THROUGH the alias.
+    assert [t["key"] for t in arc.threads] == ["main"]
+    assert [e["key"] for e in arc.arc_roster] == ["protagonist"]

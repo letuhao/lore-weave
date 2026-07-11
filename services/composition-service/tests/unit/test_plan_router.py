@@ -72,14 +72,14 @@ class StubOutline:
     async def get_node(self, node_id, *, conn=None):
         from types import SimpleNamespace
         return SimpleNamespace(project_id=PROJECT, kind=self.node_kind)
-    async def commit_decomposed_tree(self, p, *, created_by=None, arc_title, chapters, replace=False, idempotency_key=None):
+    async def commit_decomposed_tree(self, p, *, book_id=None, created_by=None, arc_title, chapters, replace=False, idempotency_key=None):
         if idempotency_key and idempotency_key in self.ledger:
             return {**self.ledger[idempotency_key], "replay": True}
         clash = [ch["chapter_id"] for ch in chapters if ch["chapter_id"] in self.existing]
         if clash and not replace:
             from app.db.repositories import AlreadyPlannedError
             raise AlreadyPlannedError(clash)
-        self.created = {"arc_title": arc_title, "chapters": chapters, "replace": replace}
+        self.created = {"arc_title": arc_title, "chapters": chapters, "replace": replace, "book_id": book_id}
         result = {"arc_id": str(uuid.uuid4()),
                   "chapter_ids": [str(uuid.uuid4()) for _ in chapters],
                   "scene_ids": [str(uuid.uuid4()) for ch in chapters for _ in ch["scenes"]]}
