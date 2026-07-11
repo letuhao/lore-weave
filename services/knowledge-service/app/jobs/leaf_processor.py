@@ -43,6 +43,7 @@ RETRY_BUDGET = 2
 class LeafTaskInput:
     """Per-leaf task payload."""
     book_id: UUID
+    chapter_id: UUID  # WS-0.1: the invalidation key; NOT interchangeable with scene_id
     scene_id: UUID
     leaf_path: str
     op: str  # one of: entity, relation, event, fact
@@ -107,6 +108,7 @@ class LeafProcessor:
         # for them — wasted work bounded by # racers (typically 0 or 1).
         await self._repo.claim_pending(
             book_id=task.book_id,
+            chapter_id=task.chapter_id,
             scene_id=task.scene_id,
             leaf_path=task.leaf_path,
             op=task.op,

@@ -37,6 +37,7 @@ class _FakeRepo:
 def _task(op: str = "entity", task_id: str = "tid-1") -> LeafTaskInput:
     return LeafTaskInput(
         book_id=uuid4(),
+        chapter_id=uuid4(),
         scene_id=uuid4(),
         leaf_path="book/part-1/chapter-1/scene-1",
         op=op,
@@ -54,7 +55,7 @@ def _task(op: str = "entity", task_id: str = "tid-1") -> LeafTaskInput:
 async def test_cache_hit_returns_immediately_no_llm_call():
     repo = _FakeRepo()
     repo.cached["tid-1"] = ExtractionLeaf(
-        id=uuid4(), book_id=uuid4(), scene_id=uuid4(),
+        id=uuid4(), book_id=uuid4(), chapter_id=uuid4(), scene_id=uuid4(),
         leaf_path="p", op="entity", task_id="tid-1", status="completed",
         candidates_jsonb=[{"name": "Alice"}],
         retried_n=0, error_message=None,

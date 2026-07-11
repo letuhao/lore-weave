@@ -789,6 +789,31 @@ CREATE TABLE IF NOT EXISTS extraction_leaves_raw (
 ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS save_raw_extraction BOOLEAN NOT NULL DEFAULT false;
 
+-- WS-0.1 (2026-07-11) — chapter-scoped cache invalidation.
+-- Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.3 (P0-4).
+--
+-- `chapter.scenes_reparsed` used to invalidate BOOK-scoped (delete_by_book), which
+-- was tolerable only while publish was rare and deliberate. Publish-independent
+-- indexing makes "add to knowledge" a frequent per-chapter click, so a book-scoped
+-- wipe would re-pay the LLM cost for all 200 chapters on every single click.
+--
+-- Why a NEW column rather than keying the delete on `scene_id`: `scene_id` currently
+-- holds the chapter_id as an explicit PLACEHOLDER (pass2_orchestrator: "placeholder
+-- until per-scene fanout", D-P2-PER-SCENE-FANOUT). A delete keyed on scene_id works
+-- today and would silently match ZERO rows the day real per-scene fanout lands —
+-- leaving a stale extraction cache (a correctness bug), not just a cost bug.
+--
+-- Backfill is correct by construction: every existing row was written with
+-- scene_id := chapter_id. NOT NULL is then enforced so a future writer that forgets
+-- to set chapter_id fails loudly instead of orphaning a leaf that no invalidation
+-- can ever reach.
+ALTER TABLE extraction_leaves
+  ADD COLUMN IF NOT EXISTS chapter_id UUID;
+UPDATE extraction_leaves SET chapter_id = scene_id WHERE chapter_id IS NULL;
+ALTER TABLE extraction_leaves ALTER COLUMN chapter_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_extraction_leaves_chapter
+  ON extraction_leaves(book_id, chapter_id);
+
 
 -- ═══════════════════════════════════════════════════════════════
 -- P3 (hierarchical extraction T4 + T7 stage 1) — 2026-05-23

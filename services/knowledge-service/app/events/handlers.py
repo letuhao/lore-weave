@@ -609,43 +609,56 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
 async def handle_chapter_scenes_reparsed(event: EventData, *, pool: asyncpg.Pool) -> None:
     """IX-10 (spec 26) — chapter.scenes_reparsed handler (RB-5 consumer side).
 
-    Book-service re-parses a chapter's index (`scenes` rows) whenever its
-    pinned published revision changes — in the publish request path (IX-2) or
-    the background sweeper (IX-3) — and emits `chapter.scenes_reparsed` in the
-    SAME transaction as the index upsert. The parse leaves the graph reads
-    (P2 extraction, F7) just moved under it, so this handler invalidates the
-    knowledge extraction cache for the affected book, book-scoped, so the next
-    extraction re-derives from the fresh index.
+    Book-service re-parses a chapter's index (`scenes` rows) whenever the revision
+    the knowledge layer reflects changes — the publish path (IX-2), the new
+    "add to knowledge" path (WS-0.4), or the background sweeper (IX-3) — and emits
+    `chapter.scenes_reparsed` in the SAME transaction as the index upsert. The parse
+    moved the index the graph reads (P2 extraction, F7) out from under it, so this
+    handler invalidates the knowledge extraction cache so the next extraction
+    re-derives from the fresh index.
 
-    This wires the F6 orphaned invalidation logic (`ExtractionLeavesRepo.
-    delete_by_book`, the same path the `/invalidate-cache/{book_id}` endpoint
-    already exposes but nothing called) to its event trigger.
+    ── WS-0.1: the invalidation is CHAPTER-scoped, not book-scoped ──
+    Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.3 (P0-4).
+
+    This handler used to call `delete_by_book`, wiping every chapter's cached leaves.
+    That was tolerable only while publish was rare and deliberate. Publish-independent
+    indexing turns "add to knowledge" into a frequent per-chapter click, so a
+    book-scoped wipe would re-pay the LLM extraction cost for all 200 chapters of a
+    book every time the user indexed ONE — the cost bug that made the v1 spec
+    self-contradictory (it claimed caches short-circuit the LLM while emitting the
+    very event that deleted those caches).
+
+    Re-parsing chapter 7 only moves chapter 7's scenes, so only chapter 7's leaves
+    are stale. `delete_by_chapter` is therefore both cheaper AND more correct.
 
     FROZEN payload (spec 26 IX-10, must equal book-service's producer — 4 fields):
       {book_id, chapter_id, published_revision_id, parse_version}
-    Consumed here: `book_id` (the invalidation scope, required) and
-    `chapter_id` (log/scope; falls back to the aggregate id per the chapter.*
-    convention). `published_revision_id`/`parse_version` are observability fields —
-    the invalidation is book-scoped, not per-revision, so it tolerates additional
-    or absent observability fields (only `book_id` is load-bearing).
+    Consumed here: `chapter_id` (the invalidation scope) and `book_id` (required —
+    it is the fallback scope and the log key). `published_revision_id`/`parse_version`
+    are observability fields; unknown extra fields are tolerated (forward-compat).
 
-    Idempotent (at-least-once safe): `delete_by_book` deletes the book's leaf
-    rows; a redelivered event finds them already gone → deletes 0 → clean
-    no-op. Correctness never depends on it — `task_id` keys on the text hash
-    (F6/SR-4), so a changed leaf naturally cache-misses; this delete is
-    hygiene (dead leaf + claim rows) that also lets the F6 endpoint's logic
-    finally fire on the real trigger. Benign race with the chapter.published
-    extraction handler is stated in the spec (§Cross-service events): worst
-    case is a deleted-then-recomputed cache entry — cost, never corruption.
+    Fallback (deliberate, and NOT a silent skip): if `chapter_id` is missing or
+    unparseable we fall back to the old book-scoped wipe and log a WARNING. Rationale:
+    over-deleting costs money (a re-extract), but UNDER-deleting leaves a stale cache
+    that the graph then re-derives from a scene index that no longer exists — a
+    correctness bug. When the scope is unknown, spend money rather than corrupt the
+    graph. The warning means it can never rot unnoticed.
 
-    A malformed payload (missing/invalid book_id) is a clean skip, never a
-    raise, so one bad event can't wedge the consumer loop.
+    Idempotent (at-least-once safe): the delete finds the rows already gone on a
+    redelivery → deletes 0 → clean no-op. Correctness never depends on it — `task_id`
+    keys on the text hash (F6/SR-4), so a changed leaf naturally cache-misses; this
+    delete is hygiene (dead leaf + claim rows). Benign race with the chapter.published
+    extraction handler is stated in the spec (§Cross-service events): worst case is a
+    deleted-then-recomputed cache entry — cost, never corruption.
+
+    A malformed payload (missing/invalid book_id) is a clean skip, never a raise, so
+    one bad event can't wedge the consumer loop.
     """
     payload = event.payload
     book_id = _uuid(payload.get("book_id"))
     # chapter_id rides the payload (frozen shape); tolerate the chapter.*
     # convention where it also arrives as the aggregate id.
-    chapter_id = payload.get("chapter_id") or event.aggregate_id
+    chapter_id = _uuid(payload.get("chapter_id") or event.aggregate_id)
 
     if book_id is None:
         logger.warning(
@@ -653,15 +666,28 @@ async def handle_chapter_scenes_reparsed(event: EventData, *, pool: asyncpg.Pool
         )
         return
 
-    # Book-scoped cache invalidation (all extraction ops) — the existing F6
-    # path, reused (not reinvented). Best-effort: a failure propagates to the
-    # consumer's retry → DLQ policy (K14.8) so a transient DB blip redelivers;
-    # the delete is idempotent so a redelivery is safe.
-    deleted_leaves, deleted_raw = await ExtractionLeavesRepo(pool).delete_by_book(book_id)
+    repo = ExtractionLeavesRepo(pool)
+
+    # Best-effort: a failure propagates to the consumer's retry → DLQ policy (K14.8)
+    # so a transient DB blip redelivers; the delete is idempotent so that is safe.
+    if chapter_id is None:
+        # Scope unknown → widen rather than skip (see the fallback note above).
+        logger.warning(
+            "IX-10: chapter.scenes_reparsed has no usable chapter_id (msg=%s book=%s) "
+            "— falling back to BOOK-scoped invalidation (correct but costly: the whole "
+            "book will re-extract). Producer should always send chapter_id.",
+            event.message_id, book_id,
+        )
+        deleted_leaves, deleted_raw = await repo.delete_by_book(book_id)
+        scope = "book"
+    else:
+        deleted_leaves, deleted_raw = await repo.delete_by_chapter(chapter_id)
+        scope = "chapter"
+
     logger.info(
-        "IX-10: chapter.scenes_reparsed invalidated extraction cache: book=%s "
-        "chapter=%s parse_version=%s deleted_leaves=%d deleted_raw=%d",
-        book_id, chapter_id, payload.get("parse_version"),
+        "IX-10: chapter.scenes_reparsed invalidated extraction cache (%s-scoped): "
+        "book=%s chapter=%s parse_version=%s deleted_leaves=%d deleted_raw=%d",
+        scope, book_id, chapter_id, payload.get("parse_version"),
         deleted_leaves, deleted_raw,
     )
 

@@ -78,7 +78,7 @@ commits without VERIFY/POST-REVIEW evidence. If I find myself wanting to bypass 
 
 | Slice | Status | Evidence (required for ✅) |
 |---|---|---|
-| WS-0.1 chapter-scoped cache invalidation | ⬜ | |
+| WS-0.1 chapter-scoped cache invalidation | ✅ | **unit 3780 passed** (`-n auto --dist loadgroup`, 0 failed). **Integration 7/7 vs REAL Postgres** (`test_extraction_leaves_chapter_scope.py`): `test_delete_by_chapter_spares_the_other_199_chapters` PASSED (seed 200 chapters × 4 ops = 800 leaves → invalidate 1 → **796 survive**, exactly the other 199); `..._does_not_leak_across_books`; `..._is_idempotent_on_replay`; `..._respects_op_filter`; `test_delete_by_book_still_wipes_everything` (the `/invalidate-cache` route keeps book-wide semantics); `test_migration_backfills_chapter_id_from_scene_id_on_legacy_rows` (reconstructs the pre-WS-0.1 shape, runs the **real** `migrate.DDL`, asserts `chapter_id == scene_id`, rolls back); `test_chapter_id_is_not_null_so_a_forgetful_writer_fails_loudly`. **`test_migrations_idempotent` PASSED** (real double-run vs live PG, `-rs` confirms ran-not-skipped). Live schema verified: `chapter_id` `is_nullable=NO`. |
 | WS-0.2 columns + backfill | ⬜ | |
 | WS-0.3 all six writers + hygiene test | ⬜ | |
 | WS-0.4 index action + `chapter.kg_indexed` | ⬜ | |
@@ -93,7 +93,10 @@ commits without VERIFY/POST-REVIEW evidence. If I find myself wanting to bypass 
 
 | # | Decision | Why | Reversible? |
 |---|---|---|---|
-| *(appended as I go)* | | | |
+| **D-R1** | `delete_by_chapter` keys on a **new `extraction_leaves.chapter_id` column**, not on the existing `scene_id`. | The spec said "the event already carries `chapter_id`" but the *table* has no such column — it has `scene_id`, which production writes as `scene_id := chapter_id`, an explicit **placeholder** (`pass2_orchestrator.py`: *"placeholder until per-scene fanout"*, D-P2-PER-SCENE-FANOUT). A delete keyed on `scene_id` passes every test today and silently matches **zero** rows the day real per-scene fanout lands → a stale extraction cache the graph then re-derives from → **correctness** bug, not a cost bug. An explicit column survives the fanout. Backfill `chapter_id := scene_id` is correct by construction for every existing row. | Yes (drop column) — but don't; the placeholder coupling is the trap. |
+| **D-R2** | `chapter_id` is **NOT NULL**, enforced after the backfill. | A leaf written without a chapter_id is unreachable by *any* chapter-scoped invalidation — a permanently-stale cache entry, silently. NOT NULL converts latent corruption into a loud failure at the write. (Repo class: `add-column-if-not-exists-never-revisits-a-bad-default`.) | Yes |
+| **D-R3** | An event with an unusable `chapter_id` **widens to book-scope + WARNs** — it does **not** skip. | Over-deleting costs an LLM re-extract; under-deleting leaves a stale cache → the graph re-derives from a scene index that no longer exists. **When the scope is unknown, spend money rather than corrupt the graph.** The WARN means the degradation can't rot unnoticed (no-silent-success). | Yes |
+| **D-R4** | Taught `test_p2_block_is_idempotent` that `ALTER COLUMN … SET NOT NULL` is inherently idempotent, rather than dropping the guard. | The guard greps every P2 `ALTER TABLE` for `IF NOT EXISTS`; Postgres has **no such spelling** for `SET NOT NULL`, so the *syntactic* proxy can't express a statement that *is* re-runnable. The **semantic** guarantee is already proven by effect (`test_migrations_idempotent` runs the real DDL twice vs live PG) — so I narrowed the static backstop with a documented exception instead of weakening the real gate. | Yes |
 
 ## 7. Parked problems (blocked ≠ stopped — PO reviews these)
 
@@ -105,7 +108,7 @@ commits without VERIFY/POST-REVIEW evidence. If I find myself wanting to bypass 
 
 | # | Debt | Where | Cost of leaving it | Pay-off trigger |
 |---|---|---|---|---|
-| *(appended as I go)* | | | | |
+| **DBT-1** | WS-0.1 has **no cross-service live-smoke**: the real loop is book-service emits `chapter.scenes_reparsed` → knowledge invalidates one chapter. I proved the consumer half against real SQL, and the handler wiring by unit test, but never ran a real producer→consumer round trip. | knowledge-service (consumer proven) ↔ book-service (producer untouched this slice) | Low **for this slice** (the producer is unchanged), but the repo has been burned 4× by mock-only cross-service coverage. The honest statement: the *contract* is unproven end-to-end. | **WS-0.8 / Phase-0 exit smoke** — where the index action exists and the whole loop is real. Acceptance §5.4 covers exactly this. **Do not let the phase exit without it.** |
 
 ## 9. Drift log (bar-lowering, caught and corrected)
 
@@ -114,7 +117,8 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 
 | # | Drift | Caught by | Corrected how |
 |---|---|---|---|
-| *(appended as I go)* | | | |
+| **DR-1** | **The spec was wrong, and its wording invited the lazy fix.** §3.3 says *"add `delete_by_chapter(chapter_id)` … (the event already carries `chapter_id`)"* — which reads as a trivial re-key. But the **table has no `chapter_id` column**. The available column is `scene_id`, which production sets to the chapter id. Keying the delete on `scene_id` would have passed every test I wrote, shipped clean, and silently deleted **zero** rows the day per-scene fanout landed. | Reading `pass2_orchestrator.py:706` before writing the query — the line is literally commented *"placeholder until per-scene fanout"*. **The spec's own phrasing would have led me straight past it.** | Added a real `chapter_id` column (D-R1) + NOT NULL (D-R2). **The spec's §3.3 is now factually wrong and must be corrected** (done — see the spec edit in this commit). |
+| **DR-2** | **I nearly shipped a fake backfill proof.** I ran `SELECT count(*) FILTER (WHERE chapter_id = scene_id)` against the live DB, got a clean result, and was about to record "backfill verified". The table had **0 rows** — the query proved *nothing*. This is precisely the `env-gated-tests-skip-and-the-green-suite-lies` class, self-inflicted. | Checking `total_leaves` before writing the evidence string, instead of after. | Wrote `test_migration_backfills_chapter_id_from_scene_id_on_legacy_rows`: reconstructs the legacy shape, runs the **real imported `migrate.DDL`** (not a paraphrase that could drift), asserts `chapter_id == scene_id`, rolls back. Evidence string now cites *that*, not the vacuous count. |
 
 ## 10. Completeness ledger (the definition of "done" for the whole run)
 

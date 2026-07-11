@@ -127,6 +127,17 @@ case — i.e. the normal case** — because the very event it emits **deletes th
 `handle_chapter_scenes_reparsed` use it (the event already carries `chapter_id`). Book-wide invalidation
 remains available for the explicit `/invalidate-cache/{book_id}` route.
 
+> **⚠️ CORRECTION (2026-07-11, during WS-0.1 BUILD — this paragraph was wrong and the error was a trap).**
+> "The event carries `chapter_id`" is true, but it made the fix *sound* like a trivial re-key. **The
+> `extraction_leaves` TABLE had no `chapter_id` column.** Its only chapter-ish key was `scene_id`, which
+> production writes as `scene_id := chapter_id` — an explicit **placeholder** (`pass2_orchestrator.py`:
+> *"placeholder until per-scene fanout"*, D-P2-PER-SCENE-FANOUT). Keying the DELETE on `scene_id` passes
+> every test today and silently matches **zero** rows the moment real per-scene fanout lands → a stale
+> extraction cache the graph then re-derives from → a **correctness** bug, not merely a cost bug.
+> **As built:** a real `extraction_leaves.chapter_id UUID NOT NULL` column, backfilled `:= scene_id`
+> (correct by construction for every pre-existing row), set by **both** `claim_pending` callers.
+> NOT NULL so a future writer that forgets it fails loudly instead of orphaning an unreachable leaf.
+
 **Churn control:**
 - Indexing fires **only** on the explicit action. **The idle-debounce is REMOVED from v1** (it was
   auto-indexing on a timer — precisely the thrash this spec claims to prevent). It may return only after
