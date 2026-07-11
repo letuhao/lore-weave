@@ -30,6 +30,7 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.plan_overlay import PlanOverlayRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
 from app.db.repositories.works import WorksRepo
@@ -687,6 +688,50 @@ async def test_decompose_replace_does_not_archive_unrelated_empty_arc(pool):
     )
     arcs = await _active_structure_arcs(pool, book)
     assert bystander.id in arcs   # the unrelated empty arc is NOT archived
+
+
+async def test_plan_hub_h1_read_surfaces_live_sql(pool):
+    """24 Phase H1 read surfaces — the LIVE SQL executes against the real (renamed,
+    lifted) schema. The parallel-build agents wrote MOCKED unit tests only; this is
+    the by-effect proof (mocked-client-hides-server-filters) for every new query:
+    the structure-axis keyset children (partial-index predicate), the scene-axis
+    book-keyed children + its tenancy double-filter, book-keyed scene-links, and
+    every PlanOverlayRepo aggregate."""
+    outline = OutlineRepo(pool)
+    overlay = PlanOverlayRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    chA, chB = uuid.uuid4(), uuid.uuid4()
+    # commit_decomposed_tree creates a structure_node arc + chapters linked via
+    # structure_node_id (the 25-M4 decompose fix) — exactly the Hub's arc axis.
+    r = await outline.commit_decomposed_tree(
+        project, book_id=book, created_by=user, arc_title="Arc I",
+        chapters=_chapters_payload(chA, chB, scenes_per=2),
+    )
+    arc_id = uuid.UUID(r["arc_id"])
+
+    # ── children, ARC axis: the chapters attached to the structure_node arc ──
+    chapters = await outline.list_children_by_structure(book, arc_id, limit=100)
+    assert {c.chapter_id for c in chapters} == {chA, chB}
+    assert all(c.kind == "chapter" and c.structure_node_id == arc_id for c in chapters)
+    # a structure_node_id under ANOTHER book leaks nothing (tenancy double-filter)
+    assert await outline.list_children_by_structure(uuid.uuid4(), arc_id, limit=100) == []
+
+    # ── children, CHAPTER axis: the scene children of a chapter node, book-keyed ──
+    chapter_node_id = chapters[0].id
+    scenes = await outline.list_children_by_parent_book(book, chapter_node_id, limit=100)
+    assert len(scenes) == 2 and all(s.kind == "scene" for s in scenes)
+    # a parent_id under ANOTHER book returns nothing (the double-filter, not "omitted → all")
+    assert await outline.list_children_by_parent_book(uuid.uuid4(), chapter_node_id) == []
+
+    # ── book-keyed scene-links list executes (empty — none seeded) ──
+    assert await SceneLinksRepo(pool).list_by_book(book) == []
+
+    # ── every plan-overlay aggregate executes against the real schema ──
+    for fetch in (overlay.fetch_canon_anchors, overlay.fetch_open_threads,
+                  overlay.fetch_structure_parents, overlay.fetch_tension_rollup,
+                  overlay.fetch_motif_chips):
+        assert isinstance(await fetch(book), list)
 
 
 async def test_outline_reparent_guards(pool):

@@ -83,6 +83,21 @@ class SceneLinksRepo:
             rows = await c.fetch(query, project_id)
         return [_row_to_link(r) for r in rows]
 
+    async def list_by_book(self, book_id: UUID) -> list[SceneLink]:
+        """24 PH13/H1.4 — every scene-link edge of a BOOK in one call (mirrors
+        list_by_project but keyed on `book_id`, the Hub's tenancy scope — BPS-8).
+        scene_link edges are sparse by design ("ONLY non-derivable edges"), so a
+        whole-book fetch is cheap (F-H7). Served by idx_scene_link_book. Access is
+        decided BEFORE the repo, at the E0 VIEW gate on `book_id`."""
+        query = f"""
+        SELECT {_SELECT_COLS} FROM scene_link
+        WHERE book_id = $1
+        ORDER BY created_at, id
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, book_id)
+        return [_row_to_link(r) for r in rows]
+
     async def delete(self, project_id: UUID, link_id: UUID) -> bool:
         """Hard-delete an edge. Returns False on a missing id or an edge outside
         this project. The project bind is mandatory (kinds-bug scope rule): an

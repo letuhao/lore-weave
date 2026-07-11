@@ -22,6 +22,13 @@ import type {
 
 const BASE = '/v1/glossary';
 
+/** One keyset page of the widened entity-names endpoint (F-H9/PH26). */
+type EntityNamesPage = {
+  items: EntityNameEntry[];
+  truncated: boolean;
+  next_cursor: string | null;
+};
+
 export const glossaryApi = {
   getKinds(token: string): Promise<EntityKind[]> {
     return apiJson<EntityKind[]>(`${BASE}/kinds`, { token });
@@ -238,9 +245,28 @@ export const glossaryApi = {
     );
   },
 
-  /** Lightweight names-only list for editor decoration scanning */
-  listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
-    return apiJson<EntityNameEntry[]>(`${BASE}/books/${bookId}/entity-names`, { token });
+  /** Lightweight names-only list for editor decoration scanning + the Plan Hub
+   *  badge name map. The backend endpoint is now KEYSET-paginated (F-H9/PH26) and
+   *  returns ALL non-deleted entities (draft/inactive/active), not just active —
+   *  so we follow next_cursor until truncated=false and accumulate every page.
+   *  Callers still receive the same flat EntityNameEntry[] (paging is internal). */
+  async listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
+    const acc: EntityNameEntry[] = [];
+    let cursor: string | null = null;
+    // Safety cap: 500/page × 500 pages = 250k entities before we bail (never hit
+    // in practice; guards against a misbehaving server looping forever).
+    for (let page = 0; page < 500; page++) {
+      const params = new URLSearchParams({ limit: '500' });
+      if (cursor) params.set('cursor', cursor);
+      const res = await apiJson<EntityNamesPage>(
+        `${BASE}/books/${bookId}/entity-names?${params.toString()}`,
+        { token },
+      );
+      if (res.items?.length) acc.push(...res.items);
+      if (!res.truncated || !res.next_cursor) break;
+      cursor = res.next_cursor;
+    }
+    return acc;
   },
 
   deleteEntity(bookId: string, entityId: string, token: string): Promise<void> {

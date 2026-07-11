@@ -39,7 +39,7 @@ from app.routers import (
     actions, approve, arc, authoring_runs, canon, conformance, engine, grounding, health,
     import_source, internal_eval, internal_job_control, internal_model_settings, metrics,
     motif, motif_sync, narrative_threads, outline, ping, plan, plan_bootstrap, plan_forge,
-    progress, prose, references, style_voice, works,
+    plan_overlay, progress, prose, references, style_voice, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,6 +230,7 @@ app.include_router(engine.router)
 app.include_router(outline.router)
 app.include_router(outline.internal_router)  # 22 SC6/B4 — scene decompiler (internal token)
 app.include_router(plan.router)
+app.include_router(plan_overlay.router)  # 24 Plan Hub v2 H1.3 — decorations aggregate (read surface #3)
 app.include_router(plan_forge.router)
 app.include_router(plan_bootstrap.router)  # PlanForge auto-bootstrap gate POC
 app.include_router(authoring_runs.router)  # RAID Wave D2 — autonomy-dial run FSM

@@ -1188,6 +1188,19 @@ BEGIN
   END IF;
 END $$;
 
+-- 24 PH11 / H1.2 (Plan Hub v2) · chapters-under-arc window. After the 25 M4 lift a
+-- chapter node has parent_id NULL and attaches to its arc via structure_node_id, so the
+-- existing parent_id-leading idx_outline_node_children_keyset cannot serve the ARC axis.
+-- Same collation discipline as that index (rank COLLATE "C", id keyset). QUERY-SIDE
+-- REQUIREMENT (asserted by H8.1's EXPLAIN test): a partial index matches only when the
+-- query IMPLIES its predicate — Postgres does NOT infer `kind = 'chapter'` from the
+-- outline_structure_kind CHECK — so OutlineRepo.list_children_by_structure repeats
+-- `AND kind = 'chapter' AND NOT is_archived` VERBATIM (lesson family:
+-- postgres-partial-index-on-conflict-predicate-must-match).
+CREATE INDEX IF NOT EXISTS idx_outline_node_structure_keyset
+  ON outline_node(structure_node_id, rank COLLATE "C", id)
+  WHERE NOT is_archived AND kind = 'chapter';
+
 -- 26 IX-11 (D1) · provenance on the spec. `source` distinguishes human authoring from
 -- the decompiler's mints and PlanForge's; `decompile_key = '<chapter_id>:<sort_order>'`
 -- is 22 SC6's idempotency key. CONSUMED (not a write-only blob): the decompiler's upsert

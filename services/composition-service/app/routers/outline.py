@@ -11,7 +11,7 @@ call; by-id routes resolve the target row's scope first and gate on ITS book.
 from __future__ import annotations
 
 import base64
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
@@ -242,6 +242,138 @@ async def list_outline_children(
     return {
         "items": [n.model_dump(mode="json") for n in nodes],
         "next_cursor": next_cursor,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 24 Plan Hub v2 (H1) — the BOOK-KEYED read surfaces (BPS-8: keyed on book_id, gated
+# VIEW on the book — NO Work gate, PH9). Distinct from the /works/{project_id}/*
+# routes above: the Hub renders the whole package on the graph canvas and never
+# resolves a Work (BPS-1/BA8). These are canvas reads, so the children route ships a
+# `detail=summary` L1-ref projection (PH10) — prose (goal/synopsis) never reaches the
+# canvas; the drawer's per-node full fetch loads it on selection.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# PH23 chip cap — the canvas paints at most 3 cast chips; the wire mirrors that cap
+# (a COUNT can render "+N", never a chip — so the first 3 ids ship too, PH10).
+_PRESENT_ENTITY_CAP = 3
+
+_ChildDetail = Literal["summary", "full"]
+
+
+def _summary_projection(node: Any) -> dict[str, Any]:
+    """PH10 canvas node payload = L1 ref + badge scalars; prose NEVER ships to the
+    canvas (the 146K-token `composition_list_outline` lesson applied to the GUI wire —
+    a canvas renders thousands of nodes, the drawer renders one). `present_entity_ids`
+    is server-truncated to the first `_PRESENT_ENTITY_CAP` (the PH23 chip cap mirrored
+    on the wire); `present_entity_count` stays EXACT (the full roster length) so the
+    canvas can render a `+N` overflow. Pure over an OutlineNode → unit-testable
+    headless."""
+    present = list(node.present_entity_ids or [])
+    return {
+        "id": str(node.id),
+        "kind": node.kind,
+        "parent_id": str(node.parent_id) if node.parent_id else None,
+        "structure_node_id": str(node.structure_node_id) if node.structure_node_id else None,
+        "chapter_id": str(node.chapter_id) if node.chapter_id else None,
+        "title": node.title,
+        "status": node.status,
+        "version": node.version,
+        "story_order": node.story_order,
+        "rank": node.rank,
+        "beat_role": node.beat_role,
+        "tension": node.tension,
+        "pov_entity_id": str(node.pov_entity_id) if node.pov_entity_id else None,
+        "present_entity_ids": [str(e) for e in present[:_PRESENT_ENTITY_CAP]],
+        "present_entity_count": len(present),
+    }
+
+
+@router.get("/books/{book_id}/outline/children")
+async def list_book_outline_children(
+    book_id: UUID,
+    structure_node_id: UUID | None = None,
+    parent_id: UUID | None = None,
+    cursor: str | None = None,
+    limit: int = 100,
+    detail: _ChildDetail = "summary",
+    user_id: UUID = Depends(get_current_user),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """24 H1.1 — the Plan Hub's lazy children window, keyed on `book_id` (PH9/PH11).
+    Two axes, MUTUALLY EXCLUSIVE and exactly one REQUIRED (OQ-4, critical):
+
+      • `structure_node_id` — the ARC axis: the chapters attached to an arc
+        (`structure_node`). After the 25 M4 lift chapters carry `parent_id NULL`, so an
+        omitted parent MUST NOT be read as "top-level" — that would return every chapter
+        in the book. There is NO "omitted = all chapters" behavior anywhere here.
+      • `parent_id` — the CHAPTER axis: the scenes under a chapter node.
+
+    Neither axis, or BOTH, → 400 (never a silent whole-book fetch). Keyset-paged by
+    (rank, id) via the shared opaque cursor codec (malformed → 400, never a page-1
+    reset); limit clamped 1..200. `detail=summary` (default) ships the PH10 L1-ref
+    projection — prose stays off the canvas; `detail=full` returns the whole node (the
+    drawer's per-node fetch). Gates VIEW on the book (BPS-8) BEFORE the repo."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    # OQ-4 omitted-parent semantics: exactly one axis. `(a is None) == (b is None)` is
+    # True when BOTH are None (neither given) or BOTH set — either is a 400. This is the
+    # guard the contract test pins: a structure_node_id-absent / parent_id-omitted call
+    # can never return chapter-kind rows, because it never reaches the repo.
+    if (structure_node_id is None) == (parent_id is None):
+        raise HTTPException(status_code=400, detail={
+            "code": "OUTLINE_CHILDREN_AXIS_REQUIRED",
+            "detail": "exactly one of structure_node_id (arc axis) or parent_id "
+                      "(chapter axis) is required",
+        })
+    limit = max(1, min(limit, 200))
+    after = _decode_child_cursor(cursor) if cursor else None
+    if structure_node_id is not None:
+        nodes = await outline.list_children_by_structure(
+            book_id, structure_node_id, after=after, limit=limit,
+        )
+    else:
+        assert parent_id is not None  # exclusivity guard above guarantees it
+        nodes = await outline.list_children_by_parent_book(
+            book_id, parent_id, after=after, limit=limit,
+        )
+    next_cursor: str | None = None
+    if len(nodes) > limit:
+        nodes = nodes[:limit]
+        last = nodes[-1]
+        next_cursor = _encode_child_cursor(last.rank, last.id)
+    if detail == "full":
+        items = [n.model_dump(mode="json") for n in nodes]
+    else:
+        items = [_summary_projection(n) for n in nodes]
+    return {"items": items, "next_cursor": next_cursor}
+
+
+@router.get("/books/{book_id}/scene-links")
+async def list_book_scene_links(
+    book_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """24 H1.4 / PH13 — every scene-link edge of the book in one call (read surface #4:
+    the graph canvas's native edges). Sparse by design (F-H7), so a whole-book fetch is
+    cheap. Projected to the PH13 wire shape `{id, from_node_id, to_node_id, kind, label}`
+    — the actor/scope columns (`created_by`/`project_id`/`created_at`) stay off the
+    canvas contract. Gates VIEW on the book (BPS-8) BEFORE the repo."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    links = await scene_links.list_by_book(book_id)
+    return {
+        "scene_links": [
+            {
+                "id": str(link.id),
+                "from_node_id": str(link.from_node_id),
+                "to_node_id": str(link.to_node_id),
+                "kind": link.kind,
+                "label": link.label,
+            }
+            for link in links
+        ]
     }
 
 

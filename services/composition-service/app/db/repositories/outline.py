@@ -632,6 +632,92 @@ class OutlineRepo:
             rows = await c.fetch(query, *args)
         return [_row_to_node(r) for r in rows]
 
+    async def list_children_by_structure(
+        self,
+        book_id: UUID,
+        structure_node_id: UUID,
+        *,
+        after: tuple[str, UUID] | None = None,
+        limit: int = 100,
+    ) -> list[OutlineNode]:
+        """24 PH11/H1.1 — the ARC axis of the Plan Hub children window: the CHAPTER
+        nodes attached to `structure_node_id`. After the 25 M4 lift a chapter carries
+        `parent_id = NULL` and attaches to its arc via `structure_node_id` (arcs are
+        `structure_node` rows, not `kind='arc'` outline nodes), so the parent-axis
+        `list_children` cannot serve this level. Keyset-paged by (rank, id).
+
+        `book_id` is the TENANCY double-filter (the router already gated VIEW on it;
+        the query re-scopes so a `structure_node_id` belonging to ANOTHER book can never
+        leak its chapters under a book the caller happens to hold — the kinds-bug
+        double-filter rule). `AND kind = 'chapter' AND NOT is_archived` is repeated
+        VERBATIM so Postgres matches the partial `idx_outline_node_structure_keyset`
+        (H8.1's EXPLAIN asserts it — the planner will NOT infer `kind='chapter'` from the
+        `outline_structure_kind` CHECK; without the literal the 10k-chapter window
+        degrades to scan+sort). `rank COLLATE "C"` (byte order) matches the fractional-
+        rank algorithm so the keyset is a strict total order regardless of DB locale.
+        Returns up to limit+1 rows so the caller can detect a further page."""
+        args: list[Any] = [structure_node_id, book_id]
+        keyset_pred = ""
+        if after is not None:
+            after_rank, after_id = after
+            args.extend([after_rank, after_id])
+            # strictly after (rank, id): rank byte-greater, or same rank + greater id.
+            keyset_pred = (
+                f' AND (rank COLLATE "C" > ${len(args) - 1}'
+                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
+            )
+        args.append(limit + 1)
+        query = f"""
+        SELECT {_SELECT_COLS} FROM outline_node
+        WHERE structure_node_id = $1 AND book_id = $2
+          AND kind = 'chapter' AND NOT is_archived{keyset_pred}
+        ORDER BY rank COLLATE "C", id
+        LIMIT ${len(args)}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, *args)
+        return [_row_to_node(r) for r in rows]
+
+    async def list_children_by_parent_book(
+        self,
+        book_id: UUID,
+        parent_id: UUID,
+        *,
+        after: tuple[str, UUID] | None = None,
+        limit: int = 100,
+    ) -> list[OutlineNode]:
+        """24 H1.1 — the CHAPTER axis of the Plan Hub children window: the SCENE
+        children of `parent_id`, book-scoped. Mirrors `list_children` but keys on
+        `book_id` (BPS-8, the Hub's tenancy scope), not `project_id`. Serves the existing
+        `idx_outline_node_children_keyset` (parent_id-leading, `WHERE NOT is_archived`).
+
+        `parent_id` is a concrete CHAPTER node id here — the book-keyed route requires
+        exactly one of {structure_node_id, parent_id} (OQ-4), so this axis is never called
+        with NULL; a plain `parent_id = $2` is correct (no `IS NOT DISTINCT FROM`, which
+        would resurrect the "omitted → every chapter" root-semantics bug). `book_id` is the
+        tenancy double-filter: a `parent_id` from another book yields no rows under this
+        book (its scenes carry that other book's `book_id`). Returns up to limit+1 rows."""
+        args: list[Any] = [book_id, parent_id]
+        keyset_pred = ""
+        if after is not None:
+            after_rank, after_id = after
+            args.extend([after_rank, after_id])
+            keyset_pred = (
+                f' AND (rank COLLATE "C" > ${len(args) - 1}'
+                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
+            )
+        args.append(limit + 1)
+        query = f"""
+        SELECT {_SELECT_COLS} FROM outline_node
+        WHERE book_id = $1 AND parent_id = $2
+          AND NOT is_archived{keyset_pred}
+        ORDER BY rank COLLATE "C", id
+        LIMIT ${len(args)}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, *args)
+        return [_row_to_node(r) for r in rows]
+
     async def outline_stats(
         self, project_id: UUID,
     ) -> dict[str, int]:
