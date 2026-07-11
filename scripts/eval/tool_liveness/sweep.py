@@ -41,6 +41,7 @@ import asyncio
 import json
 import re
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +56,10 @@ OUT_DIR = Path("docs/eval/tool-liveness")
 _HEADERS = {
     "X-Internal-Token": config.INTERNAL_TOKEN,
     "X-User-Id": config.USER_ID,
-    "X-Session-Id": "tle-sweep",
+    # Unique per process: some tools cap per-session (memory_remember allows 10/session), so
+    # a fixed id accumulates state across runs and eventually trips the cap. A fresh session
+    # each run keeps those tools reachable.
+    "X-Session-Id": f"tle-sweep-{uuid.uuid4().hex[:8]}",
 }
 
 # POSITIVE evidence that the TOOL is broken — the only thing that scores `executes: false`.
@@ -80,8 +84,11 @@ _INTERNAL_FAULT = re.compile(
     r"syntax error at or near|undefined column|"
     # Go
     r"panic:|nil pointer dereference|index out of range \[|"
-    # the tool's own output violates the schema it advertises (settings_get_profile)
-    r"validating tool output|validating root: validating|"
+    # the tool's own OUTPUT violates the schema it advertises (settings_get_profile). Only
+    # "validating tool output" — NOT a bare "validating root: validating", which also fires
+    # on INPUT-arg validation (a caller-fault from OUR bad payload, e.g. a wrong array-item
+    # shape). The real settings bug message contains "validating tool output" and is caught.
+    r"validating tool output|"
     # unhandled server-side failure
     r"internal server error|unhandled exception",
     re.I,
@@ -382,6 +389,8 @@ def main() -> int:
     ids = {"book_id": fx.book_id, "chapter_id": fx.chapter_id}
     if fx.entities:
         ids["entity_id"] = fx.entities[0]["entity_id"]
+    if len(fx.entities) > 1:
+        ids["entity_id2"] = fx.entities[1]["entity_id"]  # a distinct loser for propose_merge
     try:
         proj = MCPDirect().call("kg_project_create", {
             "name": f"TLE-sweep-{fx.run_id}", "project_type": "book", "book_id": fx.book_id})

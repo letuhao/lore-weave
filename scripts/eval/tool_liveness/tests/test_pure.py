@@ -301,6 +301,21 @@ def test_a_python_typeerror_is_the_tools_fault_not_ours():
     assert "internal" in why
 
 
+def test_input_arg_validation_is_our_fault_not_the_tools():
+    """A "validating arguments / validating root" error is OUR bad payload (e.g. a wrong
+    array-item shape we authored), NOT the tool's output violating its schema. It must score
+    null, not false — else a bad authored arg would BLOCK a healthy tool from every workflow.
+    Only "validating tool OUTPUT" is the tool's fault."""
+    from tool_liveness.sweep import classify
+
+    ours = ('validating "arguments": validating root: validating /properties/chapters: '
+            'validating /properties/chapters/items: unknown field')
+    assert classify(False, ours)[0] is None, "input-arg validation is caller-fault → null"
+    # the real OUTPUT bug (settings_get_profile) still scores false — it says "tool output"
+    real = 'validating tool output: validating root: want one of "null, array"'
+    assert classify(False, real)[0] is False
+
+
 def test_a_sql_schema_error_is_the_tools_fault_not_ours():
     """translation_list_versions: column ct.model_source does not exist. Must not be
     laundered by the `does not exist` alternative (which exists to absorb 'entity does not
@@ -815,6 +830,29 @@ def test_project_chain_glossary_direct_and_array_tools():
     assert al["items"][0]["entity_id"] == "e" and al["items"][0]["aliases"]
     batch = authored_project_args("glossary_propose_batch", ids, {})
     assert batch["ops"][0]["type"] == "create_kinds" and batch["ops"][0]["params"]["kinds"]
+
+
+def test_project_chain_lower_yield_handful_authors_and_chains():
+    from tool_liveness.project_chain import authored_project_args
+
+    ids = {"book_id": "b", "chapter_id": "c", "entity_id": "e1", "entity_id2": "e2",
+           "project_id": "kg-1", "authoring_run_id": "run1"}
+    # authored payloads
+    bulk = authored_project_args("book_chapter_bulk_create", ids, {})
+    assert bulk["chapters"][0] == {"title": "TLE Bulk Chapter", "content": "TLE body"}
+    assert authored_project_args("glossary_book_set_kind_genres", ids, {})["kind_code"] == "character"
+    # propose_merge uses two DISTINCT fixture entities
+    merge = authored_project_args("glossary_propose_merge", ids, {})
+    assert merge["winner_id"] == "e1" and merge["loser_ids"] == ["e2"]
+    # revert_all reuses the seeded authoring run (args-wrapped)
+    assert authored_project_args("composition_authoring_run_revert_all", ids, {}) == \
+        {"args": {"book_id": "b", "run_id": "run1"}}
+    # memory: remember mints a fact_id (valid enum) that forget consumes
+    rem = authored_project_args("memory_remember", ids, {})
+    assert rem["fact_type"] == "preference" and rem["project_id"] == "kg-1"
+    assert authored_project_args("memory_forget", ids, {}) is None  # no fact yet
+    state = {"memory_remember": {"fact_id": "f1"}}
+    assert authored_project_args("memory_forget", ids, state)["fact_id"] == "f1"
 
 
 def test_project_chain_restore_revision_consumes_the_listed_revision():

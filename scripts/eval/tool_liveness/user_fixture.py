@@ -197,6 +197,7 @@ USER_SWEEP_ORDER: tuple[str, ...] = (
     "registry_update_skill",
     "registry_set_skill_enabled",
     "registry_get_workflow",
+    "registry_update_workflow",
 )
 
 
@@ -303,6 +304,11 @@ def authored_user_args(tool: str, fx: UserFixture, state: dict) -> dict | None:
             return {"slug": fx.skill_slug, "enabled": True} if fx.skill_slug else None
         case "registry_get_workflow":
             return {"slug": fx.workflow_slug} if fx.workflow_slug else None
+        case "registry_update_workflow":
+            return {"slug": fx.workflow_slug, "title": "TLE workflow v2",
+                    "description": "Updated by the TLE capability sweep.",
+                    "steps": [{"id": "step-one", "tool": "book_list", "gate": "none"}]} \
+                if fx.workflow_slug else None
         case "registry_propose_skill":
             return {
                 "slug": f"tle-sweep-{fx.run_id}",

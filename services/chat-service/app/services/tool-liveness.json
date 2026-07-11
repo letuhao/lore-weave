@@ -11,8 +11,8 @@
       "proven": false
     },
     "book_chapter_bulk_create": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "book_chapter_create": {
@@ -265,8 +265,8 @@
       "proven": false
     },
     "composition_authoring_run_revert_all": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_authoring_run_start": {
@@ -502,8 +502,8 @@
       "proven": false
     },
     "glossary_book_set_kind_genres": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_book_sync_apply": {
@@ -633,8 +633,8 @@
       "proven": false
     },
     "glossary_propose_merge": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_propose_new_attribute": {
@@ -653,8 +653,8 @@
       "proven": false
     },
     "glossary_propose_reassign_kind": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_propose_restore_revision": {
@@ -863,8 +863,8 @@
       "proven": false
     },
     "memory_forget": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "memory_recall_entity": {
@@ -873,8 +873,8 @@
       "proven": false
     },
     "memory_remember": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "memory_search": {
@@ -968,8 +968,8 @@
       "proven": false
     },
     "registry_update_workflow": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "settings_get_defaults": {

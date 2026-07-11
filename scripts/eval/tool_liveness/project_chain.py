@@ -52,6 +52,9 @@ PROJECT_SWEEP_ORDER: tuple[str, ...] = (
     "composition_authoring_run_get",
     "composition_authoring_run_gate",
     "composition_authoring_run_close",   # ← transitions draft→closed, so LAST
+    # memory: remember mints a fact_id that forget consumes
+    "memory_remember",
+    "memory_forget",
     # deletes LAST — they destroy the id their siblings above need
     "composition_canon_rule_delete",
     "composition_outline_node_delete",
@@ -145,6 +148,34 @@ def authored_project_args(tool: str, ids: dict, state: dict) -> dict | None:
                              "params": {"kinds": [{"code": "tle_batch_kind",
                                                    "name": "TLE Batch Kind"}]},
                              "rationale": "probe"}]} if book else None
+        # ── the lower-yield buildable handful (author payloads / reuse fixture state) ──
+        case "book_chapter_bulk_create":
+            return {"book_id": book,
+                    "chapters": [{"title": "TLE Bulk Chapter", "content": "TLE body"}]} \
+                if book else None
+        case "glossary_book_set_kind_genres":
+            return {"book_id": book, "kind_code": "character", "add": ["universal"]} if book else None
+        case "glossary_propose_reassign_kind":
+            # Tier W: mint a token to reassign the fixture entity to a different live kind.
+            return {"book_id": book, "entity_id": entity_id, "kind_code": "location"} \
+                if (book and entity_id) else None
+        case "glossary_propose_merge":
+            # Tier W: mint a merge token. Fixture seeds ≥2 entities (Aldric winner, Mira loser).
+            loser = ids.get("entity_id2")
+            return {"book_id": book, "winner_id": entity_id, "loser_ids": [loser]} \
+                if (book and entity_id and loser) else None
+        case "composition_authoring_run_revert_all":
+            arun = ids.get("authoring_run_id")
+            return {"args": {"book_id": book, "run_id": arun}} if (book and arun) else None
+        case "memory_remember":
+            # scope=project — a fact on the kg project; mints a fact_id the forget consumes.
+            # fact_type enum: decision|preference|milestone|negation.
+            proj = ids.get("project_id")
+            return {"fact_text": "TLE probe fact", "fact_type": "preference",
+                    "project_id": proj} if proj else None
+        case "memory_forget":
+            fid = _id(state.get("memory_remember") or {}, "fact_id", "id")
+            return {"fact_id": fid} if fid else None
         case "composition_authoring_run_get" | "composition_authoring_run_gate" \
                 | "composition_authoring_run_close":
             # the seeded authoring_runs row (see seed_authoring_run). get reads it, gate
