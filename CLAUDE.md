@@ -148,6 +148,47 @@ A commit is a **task checkpoint, not a session boundary**. Once code is committe
 
 The legitimate stop points are the workflow's own PO checkpoints (CLARIFY end, POST-REVIEW) and the user explicitly saying they're done — nothing else.
 
+### Long autonomous runs — the GOAL COMMITMENT (anti-drift) — MANDATORY
+
+Before any long / multi-phase / unattended run (`/loom` across milestones, a build track, an autonomous
+implementation), **establish an explicit GOAL first — it is a commitment between the human and the agent, and
+the agent must ASK for it, never invent it.** A run with no agreed finish line drifts by construction.
+
+**1 · Ask, then set `/goal`** (Claude Code ≥ v2.1.139 — condition-based; the session keeps working across
+turns until a fast evaluator says the condition holds). The agent asks the human what "done" means, proposes
+a precise condition, and the human sets it. One goal per session; `/goal` = status, `/goal clear` = stop.
+(`/loop` is a *time-interval* re-run — the wrong tool for "until done".)
+
+**2 · Know the evaluator's blind spot — this is the whole reason for the rest of this section.** The `/goal`
+evaluator **reads the transcript only. It cannot run commands or read files.** So it is satisfied by the agent
+*claiming* a check passed. **`/goal` enforces persistence, not honesty.** Therefore:
+
+- **Write the condition so it forces the proof INTO the transcript** ("the transcript contains the actual
+  pasted output of X"; "claiming a check passed without pasting its output does NOT satisfy this condition").
+- **Bound it** (`or stop after N turns`).
+
+**3 · Layer the enforcement — a goal alone is not enough.** Drift in a long run is rarely "forgot the task";
+it is **silently lowering the bar** (skipping `/review-impl`, treating a green unit test as proof of a
+behavior it never exercised, marking a slice done whose live-smoke never ran). Use all three:
+
+| Layer | Enforces | Can the agent talk past it? |
+|---|---|---|
+| `/goal` condition | persistence + a fresh-model completion check | **yes** (transcript-only evaluator) |
+| **A RUN-STATE file on disk** (the commitment, the invariants, the slice board where *done* = an evidence string, + registers for decisions/parked/debt/drift) | memory across compaction | no — it is a file |
+| **Rule-based scripts** — the pre-commit hook (`git config core.hooksPath .githooks`) + `scripts/workflow-gate.py` | phase order, VERIFY/POST-REVIEW evidence, the repo invariants | **no** — mechanical |
+
+**4 · Re-read the commitment, don't remember it.** Context is lossy (compaction summarizes; anything living
+only in the conversation can evaporate). **After every compaction: re-read the RUN-STATE file first**, then
+`git log`, then continue. Keep the RUN-STATE path in the TODO list — the harness re-surfaces todos, so it is
+the anchor that survives. **Never re-litigate a sealed decision from memory; re-read it.**
+
+**5 · Blocked ≠ stopped.** If the human has granted an autonomous run: park an unsolvable problem in the
+RUN-STATE register, move to other work, and keep going. Stop and ask **only** when an action is
+destructive/irreversible or a sealed decision turns out to be wrong.
+
+**6 · The registers make the final audit a byproduct.** Append decisions · parked · debt · drift as you go.
+**A run that ends with an empty drift log is not clean — it is dishonest.** Record the near-misses.
+
 ---
 
 ## MCP Integration (ContextHub)
