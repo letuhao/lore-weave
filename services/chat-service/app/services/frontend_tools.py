@@ -399,7 +399,7 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon"],
+                    "enum": ["compose", "editor", "planner", "agent-mode", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "scene-browser", "scene-inspector", "plan-hub", "book-import", "context-inspector", "sharing", "book-settings", "translation", "enrichment-compose", "enrichment-proposals", "enrichment-gaps", "enrichment-sources", "enrichment-jobs", "enrichment-settings", "user-guide", "quality", "quality-promises", "quality-critic", "quality-coverage", "quality-canon"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
                         "'editor' = the manuscript editor; 'planner' = the PlanForge "
@@ -445,6 +445,9 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "plan exists); "
                         "'scene-inspector' = read/edit every field of ONE selected scene (intent, "
                         "craft, tension, grounding) — the detail pane over a selection; "
+                        "'plan-hub' = the whole book's plan as a graph canvas — arc/sub-arc lanes "
+                        "with their chapters and scenes, scene-link edges, and problem/staleness "
+                        "decorations; pan/zoom, expand an arc to see its chapters; "
                         "'book-import' = import chapters from text/.docx/.epub files, or a whole "
                         "book from a PDF (with optional AI image captioning); "
                         "'context-inspector' = trace what context management did per turn "

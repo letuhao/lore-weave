@@ -269,6 +269,11 @@
         "failed": "{{n}} failed"
       }
     },
+    "plan-hub": {
+      "title": "Plan Hub",
+      "desc": "The whole book's plan on a graph canvas — arc lanes, chapters, scenes and their links",
+      "guideBody": "The Plan Hub renders your book's entire structure as a graph: each saga/arc/sub-arc is a lane, its chapters and scenes are cards along a story-order axis, and scene-links draw the causal edges between them. Open the panel to see every arc collapsed to a rollup card; expand an arc to lazily load its chapters, and a chapter to see its scenes. Pan and zoom to navigate; problem and staleness badges surface where canon or promises need attention."
+    },
     "scene-inspector": {
       "title": "Scene Inspector",
       "desc": "Read and edit every field of one scene — intent, craft, tension and grounding",

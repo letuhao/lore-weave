@@ -51,6 +51,7 @@ import { LeaderboardTrendingPanel } from './LeaderboardTrendingPanel';
 import { ChapterBrowserPanel } from './ChapterBrowserPanel';
 import { SceneBrowserPanel } from './SceneBrowserPanel';
 import { SceneInspectorPanel } from './SceneInspectorPanel';
+import { PlanHubPanel } from './PlanHubPanel';
 import { BookImportPanel } from './BookImportPanel';
 import { ContextInspectorPanel } from './ContextInspectorPanel';
 import { MediaVersionHistoryPanel } from './MediaVersionHistoryPanel';
@@ -182,6 +183,11 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'chapter-browser', component: ChapterBrowserPanel, titleKey: 'panels.chapter-browser.title', descKey: 'panels.chapter-browser.desc', category: 'editor', guideBodyKey: 'panels.chapter-browser.guideBody' },
   { id: 'scene-browser', component: SceneBrowserPanel, titleKey: 'panels.scene-browser.title', descKey: 'panels.scene-browser.desc', category: 'editor', guideBodyKey: 'panels.scene-browser.guideBody' },
   { id: 'scene-inspector', component: SceneInspectorPanel, titleKey: 'panels.scene-inspector.title', descKey: 'panels.scene-inspector.desc', category: 'editor', guideBodyKey: 'panels.scene-inspector.guideBody' },
+  // 24 Plan Hub v2 (H2.1) — the package explorer on the graph canvas (structure lanes +
+  // keyset chapter/scene windows + scene-link edges, React Flow over the pure laneLayout).
+  // Palette + agent openable (panelCatalogContract enforces openable-set == the
+  // ui_open_studio_panel enum + regenerated contracts/frontend-tools.contract.json).
+  { id: 'plan-hub', component: PlanHubPanel, titleKey: 'panels.plan-hub.title', descKey: 'panels.plan-hub.desc', category: 'editor', guideBodyKey: 'panels.plan-hub.guideBody' },
   // D-STUDIO-IMPORT-PANEL — the classic ChaptersTab's import toolbar (text/.docx/.epub +
   // PDF-with-vision-captioning) ported into the studio dock, reusing ImportDialog/PdfImportWizard
   // as-is (DOCK-2). Was reachable only from the pre-Studio /books/:bookId/chapters tab.

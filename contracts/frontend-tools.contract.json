@@ -236,6 +236,7 @@
           "chapter-browser",
           "scene-browser",
           "scene-inspector",
+          "plan-hub",
           "book-import",
           "context-inspector",
           "sharing",
