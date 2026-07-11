@@ -30,9 +30,9 @@
   {
     "tool": "book_chapter_publish",
     "ask": "make canon",
-    "verdict": "MISS",
-    "picked": "composition_publish",
-    "answer": "composition_publish"
+    "verdict": "HIT",
+    "picked": "book_chapter_publish",
+    "answer": "book_chapter_publish"
   },
   {
     "tool": "book_chapter_purge",
@@ -51,9 +51,9 @@
   {
     "tool": "book_chapter_save_draft",
     "ask": "edit chapter text",
-    "verdict": "MISS",
-    "picked": "composition_write_prose",
-    "answer": "composition_write_prose"
+    "verdict": "HIT",
+    "picked": "book_chapter_save_draft",
+    "answer": "book_chapter_save_draft"
   },
   {
     "tool": "book_chapter_unpublish",
@@ -240,9 +240,9 @@
   {
     "tool": "composition_arc_get",
     "ask": "resolved tracks",
-    "verdict": "MISS",
-    "picked": "composition_arc_list",
-    "answer": "composition_arc_list"
+    "verdict": "HIT",
+    "picked": "composition_arc_get",
+    "answer": "composition_arc_get"
   },
   {
     "tool": "composition_arc_import_analyze",
@@ -275,9 +275,9 @@
   {
     "tool": "composition_arc_suggest",
     "ask": "multi-chapter structure",
-    "verdict": "HIT",
-    "picked": "composition_arc_suggest",
-    "answer": "composition_arc_suggest"
+    "verdict": "MISS",
+    "picked": "composition_arc_list",
+    "answer": "composition_arc_list"
   },
   {
     "tool": "composition_arc_template_drift",
@@ -359,9 +359,9 @@
   {
     "tool": "composition_authoring_run_revert_all",
     "ask": "discard all drafted chapters",
-    "verdict": "HIT",
-    "picked": "composition_authoring_run_revert_all",
-    "answer": "composition_authoring_run_revert_all"
+    "verdict": "MISS",
+    "picked": "book_chapter_delete",
+    "answer": "book_chapter_delete"
   },
   {
     "tool": "composition_authoring_run_start",
@@ -441,13 +441,6 @@
     "answer": "composition_get_outline_node"
   },
   {
-    "tool": "composition_get_prose",
-    "ask": "chapter text",
-    "verdict": "MISS",
-    "picked": "book_get_chapter",
-    "answer": "book_get_chapter"
-  },
-  {
     "tool": "composition_get_work",
     "ask": "project id for book",
     "verdict": "MISS",
@@ -492,9 +485,9 @@
   {
     "tool": "composition_motif_book_list",
     "ask": "collaborator motifs",
-    "verdict": "MISS",
-    "picked": "(unrecognized)",
-    "answer": "book_motif_book_list"
+    "verdict": "HIT",
+    "picked": "composition_motif_book_list",
+    "answer": "composition_motif_book_list"
   },
   {
     "tool": "composition_motif_create",
@@ -602,13 +595,6 @@
     "answer": "book_chapter_update_meta"
   },
   {
-    "tool": "composition_publish",
-    "ask": "finalize chapter",
-    "verdict": "HIT",
-    "picked": "composition_publish",
-    "answer": "composition_publish"
-  },
-  {
     "tool": "composition_scene_link_create",
     "ask": "connect scenes",
     "verdict": "HIT",
@@ -621,13 +607,6 @@
     "verdict": "HIT",
     "picked": "composition_scene_link_delete",
     "answer": "composition_scene_link_delete"
-  },
-  {
-    "tool": "composition_write_prose",
-    "ask": "edit chapter text",
-    "verdict": "HIT",
-    "picked": "composition_write_prose",
-    "answer": "composition_write_prose"
   },
   {
     "tool": "glossary_entity_delete",
@@ -667,9 +646,9 @@
   {
     "tool": "glossary_ontology_delete",
     "ask": "trash an attribute",
-    "verdict": "MISS",
-    "picked": "glossary_book_delete",
-    "answer": "glossary_book_delete"
+    "verdict": "HIT",
+    "picked": "glossary_ontology_delete",
+    "answer": "glossary_ontology_delete"
   },
   {
     "tool": "glossary_ontology_upsert",
@@ -723,9 +702,9 @@
   {
     "tool": "lore_enrichment_auto_enrich",
     "ask": "flesh out entities",
-    "verdict": "HIT",
-    "picked": "lore_enrichment_auto_enrich",
-    "answer": "lore_enrichment_auto_enrich"
+    "verdict": "MISS",
+    "picked": "glossary_deep_research",
+    "answer": "glossary_deep_research"
   },
   {
     "tool": "plan_apply_revision",
@@ -962,8 +941,8 @@
     "tool": "translation_patch_block",
     "ask": "edit one paragraph",
     "verdict": "MISS",
-    "picked": "composition_write_prose",
-    "answer": "composition_write_prose"
+    "picked": "composition_generate",
+    "answer": "composition_generate"
   },
   {
     "tool": "translation_retranslate_dirty",

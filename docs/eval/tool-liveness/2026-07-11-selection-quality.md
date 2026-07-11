@@ -29,6 +29,35 @@ synonyms; the other 77 aren't probeable this way.)
 75% is a *floor* under the hardest conditions (all 223 siblings present). The 36 misses are
 where two tools' descriptions genuinely collide — the actionable output.
 
+## Dedup pass (2026-07-11, after verifying the "Bucket 2" duplicates in code)
+
+Two parallel code traces settled which "feels-same" pairs *are* the same:
+
+- **`composition_{get_prose, write_prose, publish}` are thin proxies over
+  `book_{get_chapter, chapter_save_draft, chapter_publish}`** — the SAME
+  `loreweave_book.chapter_drafts` row, same `draft_version` token (my earlier "two-layer
+  pipeline" guess was wrong). → **Deprecated** the 3 composition proxies
+  (`visibility: legacy` + `superseded_by`), following the repo's own precedent. They stay
+  callable; they leave agent discovery. book-service owns the data.
+- **`glossary_book_delete` ⊂ `glossary_ontology_delete`** (strict superset) — but
+  `book_delete` was *already* `legacy`. Nothing to do.
+- **`glossary_ontology_upsert` vs `glossary_propose_new_attribute` are NOT duplicates** —
+  direct write (Tier A) vs confirm-token proposal (Tier W). Kept both; descriptions now say
+  so.
+
+**Harness correction (the leverage):** `selection.py` was including the 11 `visibility:
+legacy` tools as distractors, but production *excludes* legacy from discovery — so the test
+had been manufacturing misses against already-deprecated siblings. Fixed.
+
+**Faithful re-run (legacy excluded, proxies hidden): 112/143 discoverable (78%) · 31 miss.**
+The remaining 31 are, in order: **inherent ambiguity** (two real tools for one phrase —
+"chapter text", "rename chapter", get-vs-list pairs), which no prose fixes; and a handful of
+**over-generic synonyms** ("remove from library", "default model", "project id for book")
+where a targeted synonym edit would help. Note the destructive near-misses (e.g. "remove
+from library" → `book_delete`) are **confirm-gated** — a wrong destructive pick proposes a
+card the human must approve, so the tier system catches it; these are UX-confusion, not
+data-loss.
+
 ## Post-fix live re-run (2026-07-11, after WS-D5a + container/gateway rebuild)
 
 The fixable subset shipped (synonyms specialized, `[Authoring workspace]`/`[Saved book]`
