@@ -343,6 +343,25 @@ async def create_node(
     return node.model_dump(mode="json")
 
 
+@router.get("/outline/nodes/{node_id}")
+async def get_node(
+    node_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """22-C3 — the single-node read the scene-inspector needs (a detail-over-selection
+    pane, SC10). VIEW-gated; the REST mirror of the MCP `composition_get_outline_node`
+    (one repo method, two front doors — 23 Phase B). Scope is derived from the ROW, and a
+    missing node returns the same uniform 404 as one the caller lacks a grant on."""
+    await _gate_node(outline, works, grant, user_id, node_id, GrantLevel.VIEW)
+    node = await outline.get_node(node_id)
+    if node is None:  # raced with a delete between the gate and the read
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    return node.model_dump(mode="json")
+
+
 @router.patch("/outline/nodes/{node_id}")
 async def patch_node(
     node_id: UUID,

@@ -1,0 +1,99 @@
+// 22-C3 panel-shell test: the inspector renders the sectioned form for the selected node, edits
+// commit via the hook's OCC patch, and the no-selection empty state shows. The hook + GroundingPanel
+// are mocked so this stays a pure view test (the hook's load/OCC is covered by useSceneInspector.test).
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
+import type { IDockviewPanelProps } from 'dockview-react';
+import { StudioHostProvider } from '../../host/StudioHostProvider';
+import type { SceneInspectorState } from '../useSceneInspector';
+import type { OutlineNode } from '@/features/composition/types';
+
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
+}));
+vi.mock('@/features/composition/components/GroundingPanel', () => ({
+  GroundingPanel: () => <div data-testid="mock-grounding" />,
+}));
+const state = vi.fn<[], SceneInspectorState>();
+vi.mock('../useSceneInspector', () => ({ useSceneInspector: () => state() }));
+
+import { SceneInspectorPanel } from '../SceneInspectorPanel';
+
+const node = (o: Partial<OutlineNode> = {}): OutlineNode => ({
+  id: 'n1', project_id: 'p', parent_id: null, kind: 'scene', rank: 'a', title: 'Opening',
+  chapter_id: 'ch1', story_order: 0, status: 'drafting', synopsis: 'the hero arrives', version: 3,
+  is_archived: false, beat_role: 'inciting', goal: 'establish stakes', tension: 55, conflict: 'x',
+  outcome: 'y', stakes: 'z', story_time: 'dawn', value_shift: -10, target_words: 900, source: 'decompiled', ...o,
+});
+const patch = vi.fn(async () => {});
+const baseState = (o: Partial<SceneInspectorState>): SceneInspectorState => ({
+  node: null, projectId: 'p', loading: false, error: null, saving: false, patch, ...o,
+});
+
+function dockProps() { return { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps; }
+function withHost(ui: ReactNode) { return render(<StudioHostProvider bookId="book-1">{ui}</StudioHostProvider>); }
+
+beforeEach(() => { state.mockReset(); patch.mockClear(); });
+
+describe('SceneInspectorPanel (22-C3)', () => {
+  it('shows the no-selection empty state when nothing is selected', () => {
+    state.mockReturnValue(baseState({ node: null }));
+    withHost(<SceneInspectorPanel {...dockProps()} />);
+    expect(screen.getByText(/Select a scene/i)).toBeInTheDocument();
+  });
+
+  it('renders every section + the field values for the selected node', () => {
+    state.mockReturnValue(baseState({ node: node() }));
+    withHost(<SceneInspectorPanel {...dockProps()} />);
+    expect((screen.getByTestId('scene-inspector-title') as HTMLInputElement).value).toBe('Opening');
+    expect((screen.getByTestId('scene-inspector-goal') as HTMLInputElement).value).toBe('establish stakes');
+    expect((screen.getByTestId('scene-inspector-tension') as HTMLInputElement).value).toBe('55');
+    expect((screen.getByTestId('scene-inspector-conflict') as HTMLTextAreaElement).value).toBe('x');
+    expect((screen.getByTestId('scene-inspector-targetwords') as HTMLInputElement).value).toBe('900');
+    expect(screen.getByTestId('scene-inspector-source').textContent).toBe('Mined'); // decompiled → "Mined" badge
+    expect(screen.getByTestId('mock-grounding')).toBeInTheDocument();
+  });
+
+  it('committing a changed intent field OCC-patches only that field', () => {
+    state.mockReturnValue(baseState({ node: node() }));
+    withHost(<SceneInspectorPanel {...dockProps()} />);
+    const goal = screen.getByTestId('scene-inspector-goal');
+    fireEvent.focus(goal);
+    fireEvent.change(goal, { target: { value: 'raise the stakes' } });
+    fireEvent.blur(goal);
+    expect(patch).toHaveBeenCalledWith({ goal: 'raise the stakes' });
+  });
+
+  it('an unchanged field does NOT patch on blur', () => {
+    state.mockReturnValue(baseState({ node: node() }));
+    withHost(<SceneInspectorPanel {...dockProps()} />);
+    const goal = screen.getByTestId('scene-inspector-goal');
+    fireEvent.focus(goal);
+    fireEvent.blur(goal);
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('a tension number commits as a number; clearing it commits null', () => {
+    state.mockReturnValue(baseState({ node: node() }));
+    withHost(<SceneInspectorPanel {...dockProps()} />);
+    const tension = screen.getByTestId('scene-inspector-tension');
+    fireEvent.focus(tension);
+    fireEvent.change(tension, { target: { value: '80' } });
+    fireEvent.blur(tension);
+    expect(patch).toHaveBeenCalledWith({ tension: 80 });
+
+    patch.mockClear();
+    fireEvent.focus(tension);
+    fireEvent.change(tension, { target: { value: '' } });
+    fireEvent.blur(tension);
+    expect(patch).toHaveBeenCalledWith({ tension: null });
+  });
+
+  it('surfaces a save/load error', () => {
+    state.mockReturnValue(baseState({ node: node(), error: 'changed elsewhere — reloaded' }));
+    withHost(<SceneInspectorPanel {...dockProps()} />);
+    expect(screen.getAllByTestId('scene-inspector-error')[0].textContent).toMatch(/changed elsewhere/);
+  });
+});

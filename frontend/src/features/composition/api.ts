@@ -201,6 +201,12 @@ export const compositionApi = {
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });
   },
+  // 22-C3 — a single node's FULL fields (the scene-inspector's detail read, VIEW-gated). The
+  // summary projections drop the intent/craft fields the inspector edits, so it reads the node whole.
+  // BARE node path (like patchNode/archiveNode) — the gate derives scope from the row, no project prefix.
+  getNode(nodeId: string, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { token });
+  },
   // M3 (WS-B3 prose-persist-on-promote) — persist a promoted derivative scene's take
   // PROSE, scene-scoped, in the DERIVATIVE project (a synthetic completed job keyed by
   // node_id; NEVER the shared book draft → source-clobber guard is server-side). Plain

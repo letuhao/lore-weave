@@ -235,6 +235,7 @@
           "leaderboard-trending",
           "chapter-browser",
           "scene-browser",
+          "scene-inspector",
           "book-import",
           "context-inspector",
           "sharing",

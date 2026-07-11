@@ -50,6 +50,7 @@ import { LeaderboardTranslatorsPanel } from './LeaderboardTranslatorsPanel';
 import { LeaderboardTrendingPanel } from './LeaderboardTrendingPanel';
 import { ChapterBrowserPanel } from './ChapterBrowserPanel';
 import { SceneBrowserPanel } from './SceneBrowserPanel';
+import { SceneInspectorPanel } from './SceneInspectorPanel';
 import { BookImportPanel } from './BookImportPanel';
 import { ContextInspectorPanel } from './ContextInspectorPanel';
 import { MediaVersionHistoryPanel } from './MediaVersionHistoryPanel';
@@ -180,6 +181,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // the Manuscript Navigator (tree, for writing) not a replacement for it.
   { id: 'chapter-browser', component: ChapterBrowserPanel, titleKey: 'panels.chapter-browser.title', descKey: 'panels.chapter-browser.desc', category: 'editor', guideBodyKey: 'panels.chapter-browser.guideBody' },
   { id: 'scene-browser', component: SceneBrowserPanel, titleKey: 'panels.scene-browser.title', descKey: 'panels.scene-browser.desc', category: 'editor', guideBodyKey: 'panels.scene-browser.guideBody' },
+  { id: 'scene-inspector', component: SceneInspectorPanel, titleKey: 'panels.scene-inspector.title', descKey: 'panels.scene-inspector.desc', category: 'editor', guideBodyKey: 'panels.scene-inspector.guideBody' },
   // D-STUDIO-IMPORT-PANEL — the classic ChaptersTab's import toolbar (text/.docx/.epub +
   // PDF-with-vision-captioning) ported into the studio dock, reusing ImportDialog/PdfImportWizard
   // as-is (DOCK-2). Was reachable only from the pre-Studio /books/:bookId/chapters tab.

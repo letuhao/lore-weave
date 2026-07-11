@@ -92,4 +92,19 @@ describe('SceneBrowserPanel (22-C2)', () => {
     expect(screen.getByTestId('scene-browser-intent-unavailable')).toBeInTheDocument();
     expect(screen.getByTestId('scene-browser-row')).toBeInTheDocument(); // identity row survives
   });
+
+  it('22-C3: a spec-backed row is clickable-to-inspect; an index_only row is not', () => {
+    // The publish/openPanel effect is GUI glue verified live in the browser smoke; here we pin the
+    // affordance: only rows with a spec node carry the cursor + a click handler.
+    state.mockReturnValue(baseState({
+      rows: [
+        row({ key: 'lk', shape: 'linked', spec: { id: 'node-9', status: 'drafting' } as SceneUnionRow['spec'] }),
+        row({ key: 'io', shape: 'index_only', index: { title: 'Prose' } as SceneUnionRow['index'] }),
+      ],
+    }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    const rows = screen.getAllByTestId('scene-browser-row');
+    expect(rows[0].className).toContain('cursor-pointer');  // spec-backed → inspectable
+    expect(rows[1].className).not.toContain('cursor-pointer'); // index_only → not
+  });
 });

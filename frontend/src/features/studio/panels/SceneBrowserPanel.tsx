@@ -110,7 +110,13 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
                 key={r.key}
                 data-testid="scene-browser-row"
                 data-shape={r.shape}
-                className={cn('border-b hover:bg-muted/40', r.shape === 'spec_only' && 'italic')}
+                // A row with a spec node is a detail-over-selection target: click selects the scene
+                // (bus) and opens the inspector. An index_only row has no spec to inspect yet.
+                onClick={r.spec ? () => {
+                  host.publish({ type: 'scene', sceneId: r.spec!.id, chapterId: r.chapterId ?? '' });
+                  host.openPanel('scene-inspector', { focus: true });
+                } : undefined}
+                className={cn('border-b hover:bg-muted/40', r.shape === 'spec_only' && 'italic', r.spec && 'cursor-pointer')}
               >
                 <td className="whitespace-nowrap px-2 py-1.5 text-muted-foreground">
                   {r.sortOrder != null ? r.sortOrder + 1 : '—'}

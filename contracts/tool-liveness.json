@@ -320,8 +320,8 @@
       "proven": false
     },
     "composition_get_outline_node": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_get_prose": {
@@ -405,8 +405,8 @@
       "proven": false
     },
     "composition_motif_suggest_for_chapter": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_unbind": {
@@ -415,13 +415,13 @@
       "proven": false
     },
     "composition_outline_node_create": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_outline_node_delete": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_outline_node_move": {
@@ -435,8 +435,8 @@
       "proven": false
     },
     "composition_outline_node_update": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_publish": {

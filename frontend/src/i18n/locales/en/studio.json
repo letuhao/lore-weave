@@ -255,6 +255,39 @@
         "anchorLost": "anchor lost"
       }
     },
+    "scene-inspector": {
+      "title": "Scene Inspector",
+      "desc": "Read and edit every field of one scene — intent, craft, tension and grounding",
+      "guideBody": "The Scene Inspector is the detail pane for a single scene: select a scene (in the Scene Browser or the manuscript) and its full plan opens here — status, goal, synopsis, beat role, tension, and the craft fields (conflict, outcome, stakes, story time, value shift, target words) — all editable, with grounding pins folded in. Edits save immediately and are guarded against conflicting changes.",
+      "none": "Select a scene to inspect its full plan.",
+      "loading": "Loading…",
+      "section": {
+        "identity": "Identity",
+        "intent": "Intent",
+        "craft": "Craft",
+        "grounding": "Grounding"
+      },
+      "f": {
+        "title": "Title",
+        "status": "Status",
+        "goal": "Goal",
+        "synopsis": "Synopsis",
+        "beat": "Beat role",
+        "tension": "Tension (0–100)",
+        "conflict": "Conflict",
+        "outcome": "Outcome",
+        "stakes": "Stakes",
+        "storyTime": "Story time",
+        "valueShift": "Value shift (−100…100)",
+        "targetWords": "Target words"
+      },
+      "status": {
+        "empty": "Empty",
+        "outline": "Outline",
+        "drafting": "Drafting",
+        "done": "Done"
+      }
+    },
     "chapter-browser": {
       "title": "Chapter Browser",
       "desc": "Sort, filter, search and bulk-act across this book's chapters",

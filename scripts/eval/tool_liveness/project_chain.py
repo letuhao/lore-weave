@@ -166,8 +166,11 @@ def authored_project_args(tool: str, ids: dict, state: dict) -> dict | None:
                     "source_markdown": "# Arc One\n\nA hero answers the call and sets out."} \
                 if book else None
         case "composition_outline_node_create":
-            return {"args": {"project_id": cproj, "kind": "beat", "title": "TLE node"}} \
-                if cproj else None
+            # kind enum is now {chapter, scene} (was beat); a `chapter` node needs a
+            # chapter_id (the fixture chapter).
+            return {"args": {"project_id": cproj, "kind": "chapter",
+                             "chapter_id": chapter_id, "title": "TLE node"}} \
+                if (cproj and chapter_id) else None
         case "composition_canon_rule_create":
             return {"args": {"project_id": cproj, "text": "TLE canon rule: the sky is green."}} \
                 if cproj else None
