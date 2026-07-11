@@ -236,7 +236,13 @@ VALUES($1,'c.txt','en','text/plain',1,'k','active','published','book/part-1/chap
 		t.Fatalf("seed revision: %v", err)
 	}
 	// Pinned published, but last_parsed_revision_id stays NULL → stale by IX-3.
-	if _, err := pool.Exec(ctx, `UPDATE chapters SET published_revision_id=$2 WHERE id=$1`, chID, revID); err != nil {
+	// WS-0.5: the sweeper is re-keyed onto kg_indexed_revision_id, so a published
+	// chapter must carry it too — which is exactly what the WS-0.2 migration backfill
+	// (kg_indexed_revision_id := published_revision_id) guarantees on the real corpus,
+	// and what all six publish writers now do going forward.
+	if _, err := pool.Exec(ctx,
+		`UPDATE chapters SET published_revision_id=$2, kg_indexed_revision_id=$2 WHERE id=$1`,
+		chID, revID); err != nil {
 		t.Fatalf("pin revision: %v", err)
 	}
 
@@ -245,7 +251,7 @@ VALUES($1,'c.txt','en','text/plain',1,'k','active','published','book/part-1/chap
 	s.cfg.KnowledgeServiceURL = parseSrv.URL
 
 	if err := s.reparseOneChapter(ctx, sweepTarget{
-		chapterID: chID, bookID: bookID, publishedRev: revID,
+		chapterID: chID, bookID: bookID, indexedRev: revID,
 		lang: "en", structuralPath: "book/part-1/chapter-1", body: string(body),
 	}); err != nil {
 		t.Fatalf("reparseOneChapter: %v", err)
