@@ -245,17 +245,33 @@ class StructureRepo:
                   SELECT t.root, s.id FROM structure_node s
                     JOIN tree t ON s.parent_id = t.node
                    WHERE s.book_id = $1 AND NOT s.is_archived
+                ),
+                -- The chapter's POSITION in the book's reading order (1..N), not its raw
+                -- `story_order`. story_order is the STRIDED packer axis (chapter_sort * 1000,
+                -- shared with the scenes + the canon-rule windows), so raw min/max would report a
+                -- 3-chapter arc as span 1000..3000 and `max-min+1 == count` would never hold —
+                -- every arc would read non-contiguous. dense_rank collapses it to the ordinal a
+                -- reader means ("chapters 1–3"), and stays correct for ANY monotonic axis, so a
+                -- future change of stride cannot silently break BA6. Duplicate story_orders share
+                -- a rank ⇒ distinct < count ⇒ still non-contiguous (the check we want to keep).
+                ord AS (
+                  SELECT id, dense_rank() OVER (ORDER BY story_order) AS pos
+                    FROM outline_node
+                   WHERE book_id = $1 AND kind = 'chapter' AND NOT is_archived
+                     AND story_order IS NOT NULL
                 )
                 SELECT t.root,
-                  count(o.id)                   AS chapter_count,
-                  min(o.story_order)            AS min_so,
-                  max(o.story_order)            AS max_so,
-                  count(o.story_order)          AS ordered_count,
-                  count(DISTINCT o.story_order) AS distinct_count
+                  count(o.id)             AS chapter_count,
+                  min(p.pos)              AS min_so,
+                  max(p.pos)              AS max_so,
+                  count(p.pos)            AS ordered_count,
+                  count(DISTINCT p.pos)   AS distinct_count,
+                  min(o.story_order)      AS first_story_order
                 FROM tree t
                 LEFT JOIN outline_node o
                   ON o.structure_node_id = t.node
                  AND o.book_id = $1 AND o.kind = 'chapter' AND NOT o.is_archived
+                LEFT JOIN ord p ON p.id = o.id
                 GROUP BY t.root
                 """,
                 book_id,
@@ -277,7 +293,17 @@ class StructureRepo:
                 if cc > 0 and min_so is not None
                 else None
             )
-            out[r["root"]] = {"span": span, "is_contiguous": is_contig, "chapter_count": cc}
+            out[r["root"]] = {
+                "span": span,
+                "is_contiguous": is_contig,
+                "chapter_count": cc,
+                # The arc's first chapter on the RAW axis. `span` is the human ORDINAL ("chapters
+                # 1–3"); this is the SORT key, and it must be in the same units as the chapter rows
+                # the client interleaves it with (outline_node.story_order). Keeping one field for
+                # both jobs put a collapsed arc's rollup card at the wrong x — an ordinal 4 sorted
+                # ahead of a chapter at 1000. One field, one job.
+                "first_story_order": r["first_story_order"],
+            }
         return out
 
     async def get_children(

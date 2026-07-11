@@ -377,7 +377,17 @@ class OutlineRepo:
                 project_id, created_by=created_by, kind="chapter",
                 structure_node_id=arc.id,
                 chapter_id=ch["chapter_id"], title=ch.get("title", ""),
-                goal=ch.get("intent", ""), status="outline", conn=c,
+                goal=ch.get("intent", ""),
+                # The chapter's reading position on the SAME axis its scenes use
+                # (chapter_sort * STORY_ORDER_CHAPTER_STRIDE — so a chapter sits exactly at its
+                # own scene 0). Omitting it left every chapter node's story_order NULL, which:
+                #   • made the plan-overlay canon anchor join (chapter.story_order =
+                #     canon_rule.from_order) never match, so a chapter could not carry a canon badge;
+                #   • made the arc's derived span/contiguity (BA6) unresolvable (ordered < count);
+                #   • degraded the Plan Hub's x-axis to the id tiebreak — i.e. the canvas never
+                #     showed reading order at all.
+                story_order=ch.get("story_order"),
+                status="outline", conn=c,
             )
             chapter_ids.append(ch_node.id)
             for sc in ch.get("scenes", []):

@@ -25,7 +25,11 @@ export function toWindowNode(n: SummaryNode): WindowNode {
     parent_id: n.parent_id,
     structure_node_id: n.structure_node_id,
     chapter_id: n.chapter_id,
-    story_order: n.story_order ?? 0, // null→0 (SummaryNode.story_order is nullable; WindowNode's isn't)
+    // Pass the position through UNCHANGED, including null. Coercing null→0 here claimed every
+    // unordered chapter was the book's FIRST — and since chapter story_order was NEVER written
+    // (the bug this fixes), that meant EVERY chapter tied at 0 and the canvas x-axis silently
+    // degraded to the id tiebreak. laneLayout sorts a null LAST (absent ≠ zero).
+    story_order: n.story_order,
     rank: n.rank,
   };
 }
@@ -43,7 +47,8 @@ export function toArcShellNode(n: ArcListNode): ArcShellNode {
     parent_id: n.parent_id,
     rank: n.rank,
     title: n.title,
-    span: n.span,
+    span: n.span,                                  // display ordinal ("chapters 1–3")
+    first_story_order: n.first_story_order ?? null, // raw sort key (the chapter cards' axis)
     is_contiguous: n.is_contiguous,
     chapter_count: n.chapter_count,
   };

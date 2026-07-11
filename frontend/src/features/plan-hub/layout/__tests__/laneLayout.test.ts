@@ -10,6 +10,10 @@ import {
 
 const arc = (o: Partial<ArcShellNode> & { id: string }): ArcShellNode => ({
   kind: 'arc', parent_id: null, rank: 'm', title: o.id, span: null,
+  // A rollup sorts on the RAW axis (first_story_order) — the same one the chapter cards use; `span`
+  // is the DISPLAY ordinal. Default the sort key from the span so the dense fixtures (where the two
+  // units coincide) keep working; the strided suite below passes it explicitly.
+  first_story_order: o.span ? o.span.from_order : null,
   is_contiguous: true, chapter_count: 0, ...o,
 });
 const ch = (id: string, structure_node_id: string | null, story_order: number, rank = 'm'): WindowNode =>
@@ -275,3 +279,84 @@ describe('bandAtY — H5 Row-2 arc-band drop target (24-H5.2)', () => {
     expect(bandAtY(lanes, 999)).toBeNull();
   });
 })
+
+// ── The STRIDED reading axis (the production shape) ────────────────────────────────────────────
+// A chapter's story_order is `chapter_sort * 1000` (the packer axis it shares with its scenes and
+// with the canon-rule windows), so ADJACENT chapters differ by 1000, never by 1. The layout must
+// therefore treat adjacency POSITIONALLY. A `prev + 1` test — which is what shipped — reports every
+// arc as segmented the moment real (strided) data arrives, while passing on dense test fixtures.
+const STRIDE = 1000;
+
+describe('laneLayout — the strided story_order axis', () => {
+  it('consecutive STRIDED chapters are ONE contiguous segment (not one per chapter)', () => {
+    const shell = [arc({ id: 'A1', rank: 'a' })];
+    const windows = [ch('c1', 'A1', 1 * STRIDE), ch('c2', 'A1', 2 * STRIDE), ch('c3', 'A1', 3 * STRIDE)];
+    const l = laneLayout(shell, windows);
+    expect(laneOf(l, 'A1')!.segments).toHaveLength(1); // `+1` arithmetic would give 3
+  });
+
+  it('BA6 non-contiguity still detected on the strided axis (another lane interleaves)', () => {
+    // A1 owns chapters 1 and 3; A2 owns 2. On the strided axis: 1000, 3000 vs 2000.
+    const shell = [arc({ id: 'A1', rank: 'a', is_contiguous: false }), arc({ id: 'A2', rank: 'b' })];
+    const windows = [ch('c1', 'A1', 1 * STRIDE), ch('c2', 'A2', 2 * STRIDE), ch('c3', 'A1', 3 * STRIDE)];
+    const l = laneLayout(shell, windows);
+    expect(laneOf(l, 'A1')!.segments).toHaveLength(2); // the hole at slot 2 is real
+    expect(laneOf(l, 'A2')!.segments).toHaveLength(1);
+  });
+
+  it('x still follows reading order on the strided axis', () => {
+    const shell = [arc({ id: 'A1', rank: 'a' }), arc({ id: 'A2', rank: 'b' })];
+    const windows = [ch('c1', 'A1', 1 * STRIDE), ch('c2', 'A2', 2 * STRIDE), ch('c3', 'A1', 3 * STRIDE)];
+    const l = laneLayout(shell, windows);
+    expect(byId(l, 'c1')!.x).toBe(D.padX + 0 * D.cardPitch);
+    expect(byId(l, 'c2')!.x).toBe(D.padX + 1 * D.cardPitch);
+    expect(byId(l, 'c3')!.x).toBe(D.padX + 2 * D.cardPitch);
+  });
+
+  it('a chapter with an UNKNOWN position (null) sorts LAST — never silently first', () => {
+    // The shipped bug coerced null → 0, which claimed an unordered chapter was the book's FIRST
+    // (and, while chapter story_order was never written at all, tied EVERY chapter at 0).
+    const shell = [arc({ id: 'A1', rank: 'a' })];
+    const windows = [
+      { ...ch('c-unknown', 'A1', 0), story_order: null } as WindowNode,
+      ch('c1', 'A1', 1 * STRIDE),
+      ch('c2', 'A1', 2 * STRIDE),
+    ];
+    const l = laneLayout(shell, windows);
+    expect(byId(l, 'c1')!.x).toBe(D.padX + 0 * D.cardPitch);
+    expect(byId(l, 'c2')!.x).toBe(D.padX + 1 * D.cardPitch);
+    expect(byId(l, 'c-unknown')!.x).toBe(D.padX + 2 * D.cardPitch); // last slot
+    expect(byId(l, 'c-unknown')!.storyOrder).toBeNull();            // and it renders as unordered
+  });
+});
+
+describe('laneLayout — a collapsed arc\'s rollup interleaves on the RAW axis', () => {
+  it('places a rollup AFTER the loaded chapters that precede it in reading order', () => {
+    // The live-caught bug: the rollup was sorted by `span.from_order` (a reading POSITION, e.g. 4)
+    // while chapter cards sort by raw `story_order` (e.g. 1000). Mixing the two units put Arc Beta's
+    // rollup at slot 0 — visually BEFORE chapters that actually precede it.
+    const shell = [
+      arc({ id: 'A1', rank: 'a', span: { from_order: 1, to_order: 3 }, first_story_order: 1 * STRIDE, chapter_count: 3 }),
+      arc({ id: 'A2', rank: 'b', span: { from_order: 4, to_order: 4 }, first_story_order: 4 * STRIDE, chapter_count: 1 }),
+    ];
+    // A1 is expanded (3 loaded chapters); A2 is COLLAPSED ⇒ one rollup card.
+    const windows = [ch('c1', 'A1', 1 * STRIDE), ch('c2', 'A1', 2 * STRIDE), ch('c3', 'A1', 3 * STRIDE)];
+    const l = laneLayout(shell, windows, { arcs: ['A2'] });
+
+    expect(byId(l, 'c1')!.x).toBe(D.padX + 0 * D.cardPitch);
+    expect(byId(l, 'c2')!.x).toBe(D.padX + 1 * D.cardPitch);
+    expect(byId(l, 'c3')!.x).toBe(D.padX + 2 * D.cardPitch);
+    expect(byId(l, 'A2')!.x).toBe(D.padX + 3 * D.cardPitch); // the rollup lands LAST, not first
+    expect(byId(l, 'A2')!.shape).toBe('arc-rollup');
+  });
+
+  it('an arc with NO positioned chapters sorts its rollup last (null ≠ position 0)', () => {
+    const shell = [
+      arc({ id: 'A1', rank: 'a', span: { from_order: 1, to_order: 1 }, first_story_order: 1 * STRIDE, chapter_count: 1 }),
+      arc({ id: 'A2', rank: 'b', span: null, first_story_order: null, chapter_count: 0 }),
+    ];
+    const l = laneLayout(shell, [ch('c1', 'A1', 1 * STRIDE)], { arcs: ['A1', 'A2'] });
+    expect(byId(l, 'A1')!.x).toBe(D.padX + 0 * D.cardPitch);
+    expect(byId(l, 'A2')!.x).toBe(D.padX + 1 * D.cardPitch);
+  });
+});

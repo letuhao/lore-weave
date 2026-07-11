@@ -419,7 +419,7 @@ async def list_arcs(
     structures = _structures()
     nodes = await structures.list_tree(book_id, include_archived=include_archived)
     derived = await structures.derived_blocks(book_id)
-    empty = {"span": None, "is_contiguous": True, "chapter_count": 0}
+    empty = {"span": None, "is_contiguous": True, "chapter_count": 0, "first_story_order": None}
     out_nodes = []
     for n in nodes:
         d = n.model_dump(mode="json")

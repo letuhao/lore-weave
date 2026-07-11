@@ -24,6 +24,7 @@ import logging
 import asyncpg
 
 from app.db.package_rekey import run_package_rekey
+from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE
 
 logger = logging.getLogger(__name__)
 
@@ -1575,9 +1576,49 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
         if rekeyed:
             logger.info("composition migrate: package re-key pkg_rekey_v1 applied this boot")
         await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL
+        await _backfill_chapter_story_order(conn)      # 24: the reading axis (was never written)
         await _seed_builtin_templates(conn)
         await _seed_motif_packs(conn)                  # F0 adds the CALL; W7 fills the body
     logger.info("composition migrate: schema applied + %d built-in templates seeded", len(BUILTIN_TEMPLATES))
+
+
+async def _backfill_chapter_story_order(conn: asyncpg.Connection) -> None:
+    """24 — give already-persisted CHAPTER nodes the `story_order` the writer never set.
+
+    `_insert_decomposed_tree` passed `story_order` for scenes but not for their chapter, so every
+    chapter node ever written carries NULL. Consequences (all live): the plan-overlay canon anchor
+    join (`chapter.story_order = canon_rule.from_order`) never matched, the arc's derived span /
+    BA6 contiguity was unresolvable, and the Plan Hub's x-axis fell through to the id tiebreak.
+
+    The chapter's position is recoverable from its OWN scenes, which DO carry it on the strided
+    axis (`chapter_sort * 1000 + scene_idx`): floor the chapter's minimum scene order to its stride
+    boundary and that IS `chapter_sort * 1000` — the chapter's slot, its scene 0. A chapter with no
+    scenes stays NULL: its position is genuinely unknown here (composition has no book-order feed),
+    and a NULL sorts last + reads as "unordered" everywhere, which is truthful. A wrong guess (0)
+    would silently claim it is the book's FIRST chapter.
+
+    Idempotent (only touches NULLs) and cheap (one UPDATE, indexed on project/parent).
+    """
+    updated = await conn.execute(
+        """
+        UPDATE outline_node c
+           SET story_order = s.base, updated_at = now()
+          FROM (
+            SELECT parent_id,
+                   (min(story_order) / $1::int) * $1::int AS base
+              FROM outline_node
+             WHERE kind = 'scene' AND parent_id IS NOT NULL AND story_order IS NOT NULL
+               AND NOT is_archived
+             GROUP BY parent_id
+          ) s
+         WHERE c.id = s.parent_id
+           AND c.kind = 'chapter'
+           AND c.story_order IS NULL
+        """,
+        STORY_ORDER_CHAPTER_STRIDE,
+    )
+    if updated and updated != "UPDATE 0":
+        logger.info("composition migrate: chapter story_order backfill — %s", updated)
 
 
 async def _seed_motif_packs(conn: asyncpg.Connection) -> None:

@@ -22,8 +22,15 @@ export interface ArcShellNode {
   parent_id: string | null; // parent structure node; null at a root
   rank: string; // lexrank among siblings (the within-parent order)
   title: string;
-  /** BA6 derived span over the arc's chapters; null ⇒ the arc holds no chapters. */
+  /** BA6 derived span over the arc's chapters, as READING POSITIONS (1..N — "chapters 1–3"), for
+   *  DISPLAY. null ⇒ the arc holds no chapters. Never a sort key: see first_story_order. */
   span: { from_order: number; to_order: number } | null;
+  /** The arc's first chapter on the RAW story_order axis — the SORT key for a collapsed arc's
+   *  rollup card, which has to interleave with loaded chapter cards (whose axis is raw
+   *  story_order). Sorting the rollup by `span.from_order` instead mixes two units: an ordinal 4
+   *  sorts ahead of a chapter at 1000, and the rollup lands at the wrong x. null ⇒ no chapters
+   *  (or none positioned) ⇒ the rollup sorts LAST. */
+  first_story_order: number | null;
   /** BA6 — false ⇒ the arc's chapters are non-contiguous ⇒ segmented lane + warn chip. */
   is_contiguous: boolean;
   chapter_count: number;
@@ -36,8 +43,19 @@ export interface WindowNode {
   parent_id: string | null; // a scene's chapter node id; a chapter's parent is null post-migration
   structure_node_id: string | null; // the arc lane a CHAPTER is bound to (null on scenes / unplanned)
   chapter_id: string | null;
-  story_order: number; // global order within the book
+  /** Reading position on the book's STRIDED axis (a chapter sits at `chapter_sort * 1000`, its
+   *  scenes at `+0..+n`). Adjacent chapters therefore differ by the STRIDE, never by 1 — nothing
+   *  here may do `prev + 1` arithmetic on it; adjacency is positional (see the segment pass).
+   *  `null` ⇒ genuinely unknown (a chapter with no scenes predating the backfill): it sorts LAST
+   *  and is never silently treated as position 0 (absent ≠ zero). */
+  story_order: number | null;
   rank: string;
+}
+
+/** Sort key for a possibly-unordered node: an unknown position sorts LAST (mirrors the server's
+ *  `ORDER BY story_order NULLS LAST`), never first. */
+function orderKey(story_order: number | null): number {
+  return story_order ?? Number.POSITIVE_INFINITY;
 }
 
 /**
@@ -290,14 +308,15 @@ export function laneLayout(
     const laneId = ch.structure_node_id;
     if (!laneId || !bandById.has(laneId)) continue; // unplanned → tray, handled below
     if (suppressed.has(laneId)) continue; // under a collapsed arc → folded into its rollup
-    units.push({ order: ch.story_order, tie: ch.id, kind: 'chapter', node: ch });
+    units.push({ order: orderKey(ch.story_order), tie: ch.id, kind: 'chapter', node: ch });
     placedChapters.push(ch);
   }
   for (const arcId of rollupArcs) {
     const node = shell.find((s) => s.id === arcId);
     if (!node) continue;
-    const order = node.span ? node.span.from_order : Number.POSITIVE_INFINITY;
-    units.push({ order, tie: arcId, kind: 'rollup', arc: node });
+    // Sort on the RAW axis — the same one the loaded chapter cards use. `span` is the display
+    // ordinal and would put this rollup at the wrong x (see ArcShellNode.first_story_order).
+    units.push({ order: orderKey(node.first_story_order), tie: arcId, kind: 'rollup', arc: node });
   }
   // Deterministic global order: story_order, then kind (chapters before a rollup at the same
   // order), then id. A collapsed arc occupies exactly ONE slot regardless of chapter_count.
@@ -307,8 +326,10 @@ export function laneLayout(
 
   const nodes: NodePosition[] = [];
   const xOf = new Map<string, number>(); // chapter id → x (scenes branch from it)
+  const slotOf = new Map<string, number>(); // node id → its SLOT in the global reading order
   units.forEach((u, i) => {
     const x = opts.padX + i * opts.cardPitch;
+    slotOf.set(u.kind === 'chapter' ? u.node.id : u.arc.id, i);
     if (u.kind === 'chapter') {
       const band = bandById.get(u.node.structure_node_id!)!;
       const collapsedCh = collapsedChapters.has(u.node.id);
@@ -331,7 +352,7 @@ export function laneLayout(
   for (const ch of placedChapters) {
     if (collapsedChapters.has(ch.id)) continue;
     const kids = (scenesByChapter.get(ch.id) ?? []).slice().sort(
-      (a, b) => a.story_order - b.story_order || byRank(a, b),
+      (a, b) => orderKey(a.story_order) - orderKey(b.story_order) || byRank(a, b),
     );
     if (kids.length === 0) continue;
     const band = bandById.get(ch.structure_node_id!)!;
@@ -352,7 +373,7 @@ export function laneLayout(
   }
   for (const band of bands) {
     const chs = (chaptersByLane.get(band.id) ?? []).slice().sort(
-      (a, b) => (a.storyOrder ?? 0) - (b.storyOrder ?? 0),
+      (a, b) => (slotOf.get(a.id) ?? 0) - (slotOf.get(b.id) ?? 0),
     );
     if (chs.length === 0) continue;
     const segs: LaneSegment[] = [];
@@ -366,9 +387,16 @@ export function laneLayout(
     };
     for (let i = 1; i < chs.length; i++) {
       const prev = chs[i - 1], cur = chs[i];
-      // A run breaks when story_order is non-consecutive (a gap = another arc's chapters between,
-      // BA6 non-contiguity) — one band SEGMENT per contiguous run.
-      if ((cur.storyOrder ?? 0) === (prev.storyOrder ?? 0) + 1) run.push(cur);
+      // A run breaks when the two chapters are NOT adjacent in the global reading order — i.e.
+      // some other lane's chapter (or a collapsed arc's rollup) occupies the slot between them.
+      // That is BA6 non-contiguity, and it is what the eye sees: a hole in the band.
+      //
+      // This is POSITIONAL (slot i vs i+1), never `story_order + 1` arithmetic: story_order is the
+      // strided packer axis, so consecutive chapters differ by the STRIDE (1000), and a `+1` test
+      // would report EVERY arc as segmented. Positional adjacency is also stride-agnostic — it
+      // survives any future change to the axis.
+      const adjacent = (slotOf.get(cur.id) ?? 0) === (slotOf.get(prev.id) ?? 0) + 1;
+      if (adjacent) run.push(cur);
       else { flush(); run = [cur]; }
     }
     flush();
@@ -379,7 +407,7 @@ export function laneLayout(
   // ---- unplanned chapters (PH21 tray): no lane, laid on their own order line, off the canvas y ----
   const unplanned: NodePosition[] = chapters
     .filter((ch) => !ch.structure_node_id || !bandById.has(ch.structure_node_id))
-    .sort((a, b) => a.story_order - b.story_order || byRank(a, b))
+    .sort((a, b) => orderKey(a.story_order) - orderKey(b.story_order) || byRank(a, b))
     .map((ch, i) => ({
       id: ch.id, shape: 'chapter', laneId: null, x: opts.padX + i * opts.cardPitch, y: 0,
       width: opts.cardWidth, collapsed: collapsedChapters.has(ch.id), storyOrder: ch.story_order,

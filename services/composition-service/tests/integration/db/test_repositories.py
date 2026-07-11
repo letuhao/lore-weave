@@ -819,43 +819,112 @@ async def test_plan_hub_structure_axis_uses_keyset_index_at_scale(pool):
     assert page[0].rank == "00000001"
 
 
-async def test_structure_derived_blocks_rollup_and_contiguity(pool):
-    """24 PH9/OQ-2/BA6 — StructureRepo.derived_blocks returns, per node in ONE query,
-    the span + chapter_count + is_contiguous rolled up over the node's SUBTREE. Read
-    surface #1 (the Hub arc shell). A live smoke caught the missing derived block (the
-    route shipped raw structure_node rows), so this locks the shape by effect."""
-    from app.db.repositories.structure import StructureRepo
-
-    book = uuid.uuid4()
-    project = uuid.uuid4()
-    saga, arc1, arc2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+async def _seed_derived_block_book(pool, orders: dict[str, list[int]]):
+    """saga{arc1, arc2} + a top-level arc3, with each arc's chapters at the given story_orders.
+    Returns (book, saga, arc1, arc2, arc3)."""
+    from uuid import uuid4 as _u
+    book, project = _u(), _u()
+    saga, arc1, arc2, arc3 = _u(), _u(), _u(), _u()
     async with pool.acquire() as c:
         await c.execute("INSERT INTO structure_node (id, book_id, kind, rank, title) "
                         "VALUES ($1,$2,'saga','m','Saga')", saga, book)
         for a, r in ((arc1, 'a'), (arc2, 'b')):
             await c.execute("INSERT INTO structure_node (id, book_id, parent_id, kind, rank, title) "
                             "VALUES ($1,$2,$3,'arc',$4,'Arc')", a, book, saga, r)
-        # arc1: story_order 1,2,3 (contiguous). arc2: 5,7 (a gap → non-contiguous).
-        async def ch(arc, rank, so):
-            await c.execute(
-                "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, "
-                "chapter_id, structure_node_id, story_order) "
-                "VALUES ($1,$2,$3,'chapter',$4,gen_random_uuid(),$5,$6)",
-                uuid.uuid4(), project, book, rank, arc, so,
-            )
-        await ch(arc1, 'a', 1); await ch(arc1, 'b', 2); await ch(arc1, 'c', 3)
-        await ch(arc2, 'a', 5); await ch(arc2, 'b', 7)
+        await c.execute("INSERT INTO structure_node (id, book_id, kind, rank, title) "
+                        "VALUES ($1,$2,'arc','z','Arc3')", arc3, book)
+        for key, arc in (("arc1", arc1), ("arc2", arc2), ("arc3", arc3)):
+            for i, so in enumerate(orders[key]):
+                await c.execute(
+                    "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, "
+                    "chapter_id, structure_node_id, story_order) "
+                    "VALUES ($1,$2,$3,'chapter',$4,gen_random_uuid(),$5,$6)",
+                    uuid.uuid4(), project, book, f"{i:04d}", arc, so,
+                )
+    return book, saga, arc1, arc2, arc3
 
+
+async def test_structure_derived_blocks_rollup_and_contiguity(pool):
+    """24 PH9/OQ-2/BA6 — StructureRepo.derived_blocks returns, per node in ONE query, the span +
+    chapter_count + is_contiguous rolled up over the node's SUBTREE. Read surface #1 (the Hub arc
+    shell). A live smoke caught the missing derived block (the route shipped raw structure_node
+    rows), so this locks the shape by effect.
+
+    BA6 non-contiguity means ANOTHER ARC'S CHAPTERS INTERLEAVE — a hole in the lane — not merely a
+    gap in the raw numbers. So the block reports POSITIONS in the book's reading order (1..N), and
+    a lane is contiguous iff its chapters occupy a consecutive run of those positions.
+
+    Fixture: arc1 = book chapters 1,2 · arc3 = 3 · arc2 = 4,5. arc3's chapter splits the saga.
+    """
+    from app.db.repositories.structure import StructureRepo
+
+    book, saga, arc1, arc2, arc3 = await _seed_derived_block_book(
+        pool, {"arc1": [1, 2], "arc3": [3], "arc2": [4, 5]},
+    )
     blocks = await StructureRepo(pool).derived_blocks(book)
 
-    assert blocks[arc1] == {"span": {"from_order": 1, "to_order": 3},
-                            "is_contiguous": True, "chapter_count": 3}
-    # arc2 spans 5..7 but has only 2 chapters (5,7) → a gap → non-contiguous.
-    assert blocks[arc2] == {"span": {"from_order": 5, "to_order": 7},
-                            "is_contiguous": False, "chapter_count": 2}
-    # the saga rolls up BOTH arcs: 5 chapters over 1..7, gappy → non-contiguous.
-    assert blocks[saga] == {"span": {"from_order": 1, "to_order": 7},
-                            "is_contiguous": False, "chapter_count": 5}
+    # On a DENSE fixture the reading POSITION and the RAW order coincide, so first_story_order
+    # equals the span start. The strided test below is what pulls the two units apart.
+    assert blocks[arc1] == {"span": {"from_order": 1, "to_order": 2}, "first_story_order": 1,
+                            "is_contiguous": True, "chapter_count": 2}
+    assert blocks[arc2] == {"span": {"from_order": 4, "to_order": 5}, "first_story_order": 4,
+                            "is_contiguous": True, "chapter_count": 2}
+    assert blocks[arc3] == {"span": {"from_order": 3, "to_order": 3}, "first_story_order": 3,
+                            "is_contiguous": True, "chapter_count": 1}
+    # The saga rolls up arc1+arc2 = positions 1,2,4,5 — arc3's chapter 3 sits INSIDE that span but
+    # outside the saga ⇒ a real hole in the saga's lane ⇒ non-contiguous.
+    assert blocks[saga] == {"span": {"from_order": 1, "to_order": 5}, "first_story_order": 1,
+                            "is_contiguous": False, "chapter_count": 4}
+
+
+async def test_structure_derived_blocks_are_axis_agnostic_on_the_strided_reading_order(pool):
+    """The SAME book, on the STRIDED axis production actually writes (`chapter_sort * 1000`, the
+    packer axis a chapter shares with its scenes and with the canon-rule windows).
+
+    Raw min/max arithmetic would read arc1's two chapters as spanning 1000..2000 and conclude
+    `max-min+1 (1001) != count (2)` ⇒ non-contiguous — i.e. EVERY arc of every real book would carry
+    the BA6 warn chip, and every lane would render segmented. Reporting POSITIONS instead makes the
+    block identical to the dense fixture above, for any monotonic axis.
+    """
+    from app.db.repositories.structure import StructureRepo
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE as S
+
+    book, saga, arc1, arc2, arc3 = await _seed_derived_block_book(
+        pool, {"arc1": [1 * S, 2 * S], "arc3": [3 * S], "arc2": [4 * S, 5 * S]},
+    )
+    blocks = await StructureRepo(pool).derived_blocks(book)
+
+    # The SPAN is byte-for-byte the same as the dense fixture — it reads as the ORDINAL a human means
+    # ("chapters 1–2"), never the raw strided number. But `first_story_order` stays on the RAW axis:
+    # it is the SORT key the client places a collapsed arc's rollup by, and it has to be in the same
+    # units as the chapter rows it interleaves with. Two units ⇒ two fields.
+    assert blocks[arc1] == {"span": {"from_order": 1, "to_order": 2}, "first_story_order": 1 * S,
+                            "is_contiguous": True, "chapter_count": 2}
+    assert blocks[arc2] == {"span": {"from_order": 4, "to_order": 5}, "first_story_order": 4 * S,
+                            "is_contiguous": True, "chapter_count": 2}
+    assert blocks[saga] == {"span": {"from_order": 1, "to_order": 5}, "first_story_order": 1 * S,
+                            "is_contiguous": False, "chapter_count": 4}
+
+
+async def test_structure_derived_blocks_unordered_chapter_blocks_contiguity(pool):
+    """A member chapter with NO story_order (position unknown) ⇒ contiguity is UNPROVABLE, so it
+    reports False rather than quietly assuming the chapter sits at the end (absent ≠ zero)."""
+    from app.db.repositories.structure import StructureRepo
+
+    book, _saga, arc1, _arc2, _arc3 = await _seed_derived_block_book(
+        pool, {"arc1": [1, 2], "arc3": [3], "arc2": [4, 5]},
+    )
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, chapter_id, "
+            "structure_node_id, story_order) "
+            "VALUES ($1,$2,$3,'chapter','zzz',gen_random_uuid(),$4,NULL)",
+            uuid.uuid4(), uuid.uuid4(), book, arc1,
+        )
+    blocks = await StructureRepo(pool).derived_blocks(book)
+    assert blocks[arc1]["chapter_count"] == 3          # it IS a member
+    assert blocks[arc1]["is_contiguous"] is False      # but its position is unknown
+    assert blocks[arc1]["span"] == {"from_order": 1, "to_order": 2}  # span over what IS known
 
 
 async def test_outline_reparent_guards(pool):
@@ -2403,3 +2472,99 @@ async def test_bootstrap_proposal_list_active_for_book_scopes_by_book_and_exclud
     assert active_ids == {applied_rec.id, pending_rec.id}
     assert rejected_rec.id not in active_ids
     assert await repo.list_active_for_book(other_book) == []
+
+
+async def test_chapter_story_order_backfill_recovers_position_from_scenes(pool):
+    """24 — the backfill for chapter nodes written before the writer set `story_order`.
+
+    Every chapter node ever persisted carried story_order NULL (the writer passed it for scenes but
+    not for their chapter). Its position IS recoverable: the scenes carry it on the strided axis
+    (`chapter_sort * STRIDE + scene_idx`), so flooring a chapter's minimum scene order to its stride
+    boundary yields the chapter's own slot. A chapter with NO scenes stays NULL — its position is
+    genuinely unknown, and a guess of 0 would claim it is the book's first chapter.
+    """
+    from app.db.migrate import _backfill_chapter_story_order
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE as S
+
+    book, project = uuid.uuid4(), uuid.uuid4()
+    arc = uuid.uuid4()
+    async with pool.acquire() as c:
+        await c.execute("INSERT INTO structure_node (id, book_id, kind, rank, title) "
+                        "VALUES ($1,$2,'arc','m','Arc')", arc, book)
+
+        async def chapter(rank):
+            return await c.fetchval(
+                "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, chapter_id, "
+                "structure_node_id, story_order) "
+                "VALUES ($1,$2,$3,'chapter',$4,gen_random_uuid(),$5,NULL) RETURNING id",
+                uuid.uuid4(), project, book, rank, arc,
+            )
+
+        async def scene(parent, rank, so):
+            await c.execute(
+                "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, chapter_id, "
+                "parent_id, story_order) VALUES ($1,$2,$3,'scene',$4,gen_random_uuid(),$5,$6)",
+                uuid.uuid4(), project, book, rank, parent, so,
+            )
+
+        ch2 = await chapter("b")   # book chapter 2 → its scenes live at 2000, 2001, 2002
+        ch5 = await chapter("e")   # book chapter 5 → scenes at 5000..
+        ch_bare = await chapter("z")  # no scenes at all → position unknowable
+        for i in range(3):
+            await scene(ch2, f"s{i}", 2 * S + i)
+        # Deliberately out of insertion order: the floor must come from the MINIMUM scene order.
+        await scene(ch5, "s1", 5 * S + 1)
+        await scene(ch5, "s0", 5 * S + 0)
+
+        await _backfill_chapter_story_order(c)
+
+        got = {r["id"]: r["story_order"] for r in await c.fetch(
+            "SELECT id, story_order FROM outline_node WHERE kind='chapter' AND book_id=$1", book)}
+        assert got[ch2] == 2 * S      # the chapter sits exactly at its own scene 0
+        assert got[ch5] == 5 * S
+        assert got[ch_bare] is None   # unknown stays unknown — never guessed as 0
+
+        # Idempotent: a second run touches nothing (it only fills NULLs), and must not move ch2.
+        await _backfill_chapter_story_order(c)
+        assert await c.fetchval(
+            "SELECT story_order FROM outline_node WHERE id=$1", ch2) == 2 * S
+
+
+async def test_commit_decomposed_tree_persists_the_chapter_on_the_reading_axis(pool):
+    """24 — the WRITER. `_insert_decomposed_tree` passed `story_order` for the scenes but not for
+    their chapter, so every chapter node ever persisted carried NULL — the root cause of a dead
+    canon-anchor join, an unresolvable BA6 span, and a Plan Hub x-axis that fell back to the id
+    tiebreak. The chapter must land at its own slot (`chapter_sort * STRIDE` = its scene 0)."""
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE as S
+
+    repo = OutlineRepo(pool)
+    project, book, user = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO composition_work (project_id, book_id, created_by) VALUES ($1,$2,$3)",
+            project, book, user,
+        )
+
+    # The spec shape the plan router builds: chapter 2 of the book, with two scenes.
+    res = await repo.commit_decomposed_tree(
+        project, book_id=book, created_by=user, arc_title="Arc",
+        chapters=[{
+            "chapter_id": uuid.uuid4(), "title": "Ch Two", "intent": "",
+            "story_order": 2 * S,
+            "scenes": [{"title": "s0", "synopsis": "", "story_order": 2 * S + 0},
+                       {"title": "s1", "synopsis": "", "story_order": 2 * S + 1}],
+        }],
+    )
+
+    ch_id = res["chapter_ids"][0]
+    async with pool.acquire() as c:
+        chapter = await c.fetchrow("SELECT kind, story_order FROM outline_node WHERE id=$1", ch_id)
+        scenes = await c.fetch(
+            "SELECT story_order FROM outline_node WHERE parent_id=$1 ORDER BY story_order", ch_id)
+
+    assert chapter["kind"] == "chapter"
+    assert chapter["story_order"] == 2 * S, "the chapter must carry its reading position, not NULL"
+    assert [s["story_order"] for s in scenes] == [2 * S, 2 * S + 1]
+    # The chapter shares its slot with its own scene 0 — that identity is what makes the canon-rule
+    # window (`from_order` on the strided axis) resolve to the same node the overlay anchors on.
+    assert chapter["story_order"] == scenes[0]["story_order"]

@@ -718,6 +718,9 @@ async def decompose_commit(
     spec = [{
         "chapter_id": ch.chapter_id, "title": ch.title, "intent": ch.intent,
         "beat_role": ch.beat_role,
+        # The CHAPTER's own position on the same axis (= its scene 0). It was missing, so every
+        # persisted chapter node carried story_order NULL — see _insert_decomposed_tree.
+        "story_order": sort_by_chapter[str(ch.chapter_id)] * STORY_ORDER_CHAPTER_STRIDE,
         "scenes": [{"title": sc.title, "synopsis": sc.synopsis, "tension": sc.tension,
                     "present_entity_ids": sc.present_entity_ids,
                     "story_order": sort_by_chapter[str(ch.chapter_id)] * STORY_ORDER_CHAPTER_STRIDE + i}

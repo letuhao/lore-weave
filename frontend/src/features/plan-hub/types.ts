@@ -43,8 +43,12 @@ export interface ArcListNode {
   arc_template_id?: string | null;
   template_version?: number | null;
   version: number;
-  // derived block (BA6) — the Hub's requirement on B1's response (24 OQ-2)
+  // derived block (BA6) — the Hub's requirement on B1's response (24 OQ-2).
+  // `span` is the human READING-POSITION range ("chapters 1–3"), for display.
+  // `first_story_order` is the RAW-axis sort key the rollup card is placed by — a different unit,
+  // deliberately a different field (one field, one job).
   span: { from_order: number; to_order: number } | null;
+  first_story_order: number | null;
   is_contiguous: boolean;
   chapter_count: number;
 }

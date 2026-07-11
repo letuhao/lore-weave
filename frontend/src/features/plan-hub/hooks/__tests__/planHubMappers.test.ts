@@ -20,9 +20,13 @@ const scene = (o: Partial<Scene> & { scene_id: string }): Scene => ({
 });
 
 describe('toWindowNode (PH11) — read surface #2 → laneLayout WindowNode', () => {
-  it('coerces a null story_order to 0 (laneLayout WindowNode.story_order is non-null)', () => {
+  it('preserves an UNKNOWN story_order as null — it must never become position 0', () => {
+    // This previously coerced null → 0, which asserts "this chapter is the book's FIRST". While
+    // chapter story_order was never written at all (the writer omitted it), that tied EVERY chapter
+    // at 0 and the canvas x-axis silently fell through to the id tiebreak — it showed no reading
+    // order whatsoever. Absent ≠ zero: laneLayout sorts a null LAST and renders it as unordered.
     const w = toWindowNode(summary({ id: 'ch', kind: 'chapter', story_order: null, structure_node_id: 'A1' }));
-    expect(w.story_order).toBe(0);
+    expect(w.story_order).toBeNull();
     expect(w.structure_node_id).toBe('A1');
     expect(w.kind).toBe('chapter');
   });
@@ -36,12 +40,17 @@ describe('toArcShellNode (PH11) — read surface #1 → laneLayout ArcShellNode'
   it('keeps only the shell subset and preserves span/contiguity/count', () => {
     const s = toArcShellNode(arcNode({
       id: 'A1', kind: 'arc', parent_id: 'S', rank: 'c', title: 'Rising',
-      span: { from_order: 3, to_order: 9 }, is_contiguous: false, chapter_count: 6,
+      span: { from_order: 3, to_order: 9 }, first_story_order: 3000,
+      is_contiguous: false, chapter_count: 6,
       goal: 'drawer-only', status: 'active',
     }));
     expect(s).toEqual({
       id: 'A1', kind: 'arc', parent_id: 'S', rank: 'c', title: 'Rising',
-      span: { from_order: 3, to_order: 9 }, is_contiguous: false, chapter_count: 6,
+      // `span` is the DISPLAY ordinal ("chapters 3–9"); `first_story_order` is the RAW sort key the
+      // rollup card is placed by. Two units, two fields — one field for both put a collapsed arc's
+      // rollup at the wrong x.
+      span: { from_order: 3, to_order: 9 }, first_story_order: 3000,
+      is_contiguous: false, chapter_count: 6,
     });
     expect('goal' in s).toBe(false); // drawer-only extras dropped
   });
