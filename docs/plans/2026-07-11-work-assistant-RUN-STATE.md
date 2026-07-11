@@ -29,6 +29,20 @@ deferred item closed before "done", and no silent lowering of the bar.**
 | **Blocked ≠ stop** | If I cannot solve something: **park it in §7, move to other work, keep going.** PO reviews parked items and decides. Never block the run on one problem. |
 | **Final audit** | At the end: decisions · drift · debt · deferred · completeness (§6–§10). Built incrementally so the audit is a *byproduct*, not archaeology. |
 
+## 2b. The `/goal` condition (the human↔agent commitment — durable copy)
+
+The human sets this with `/goal` (a built-in CLI command; **the agent cannot set it**). Recorded here so it
+survives compaction and can be re-set verbatim. ⚠️ The `/goal` evaluator **reads the transcript only — it
+cannot run commands or read files**, so the condition is deliberately written to force proof *into* the
+transcript.
+
+```
+/goal Phase 0 of docs/plans/2026-07-11-work-assistant-implementation-plan.md is COMPLETE. Done means ALL of: (1) every slice WS-0.1..WS-0.9 is marked ✅ in docs/plans/2026-07-11-work-assistant-RUN-STATE.md §5 with a real evidence string; (2) the transcript contains the ACTUAL PASTED OUTPUT of the test runs and the live-smokes from §5 of docs/specs/2026-07-11-publish-independent-kg-indexing.md — specifically: a draft chapter that is never published gets indexed into the KG; autosave triggers ZERO extraction jobs; a single index click leaves the other 199 chapters' extraction_leaves intact; the whole-book rebuild enumerates draft-indexed chapters; and composition's index_stale is false after publish@A + index-draft@B; (3) /review-impl has been run on the phase and every finding is FIXED (not deferred), with the fixes committed; (4) the transcript shows `git log --oneline` with the commits; (5) RUN-STATE §6-§9 registers are updated. Claiming a check passed without pasting its output does NOT satisfy this condition. If you cannot solve something, park it in RUN-STATE §7 and continue with other slices — do not stop. Stop and ask ONLY if an action is destructive/irreversible or a sealed decision turns out to be wrong. Or stop after 60 turns.
+```
+
+**Subsequent phases:** re-set `/goal` per phase, same shape (evidence pasted into the transcript, findings
+fixed not deferred, registers updated, turn-bounded).
+
 ## 3. Standing invariants (the bar — never lower these silently)
 
 These are the things that *feel* skippable at 2am and must not be:
