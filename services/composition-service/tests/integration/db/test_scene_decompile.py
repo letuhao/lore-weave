@@ -253,6 +253,44 @@ async def test_archived_decompiled_node_rerun_does_not_collide(pool):
     assert keyed == 2
 
 
+async def test_mappings_returned_for_minted_and_rematched_not_for_preset_or_authored(pool):
+    """26 IX-12: materialize RETURNS the back-link map (the index owner writes it —
+    composition never writes book-service's DB). A mapping entry is emitted for each leaf
+    that now resolves to a decompiler-OWNED node: a fresh mint AND a re-matched prior
+    decompiled node (so a retry after a failed write-back returns the SAME map). A leaf
+    already carrying source_scene_id (skipped) and a human-AUTHORED node are NOT mapped."""
+    project, book, actor = await _canonical_work(pool)
+    ch = uuid.uuid4()
+    outline = OutlineRepo(pool)
+    authored = await outline.create_node(
+        project, created_by=actor, kind="scene", chapter_id=ch, title="hand",
+        story_order=0, status="drafting")
+    scenes = [
+        ParsedScene(chapter_id=ch, sort_order=0, title="authored-leaf"),                 # → skipped_authored, NOT mapped
+        ParsedScene(chapter_id=ch, sort_order=1, title="mint-me"),                        # → created, mapped
+        ParsedScene(chapter_id=ch, sort_order=2, title="already", source_scene_id=uuid.uuid4()),  # → matched, NOT mapped
+    ]
+    r1 = await materialize_scenes(pool, WorksRepo(pool), outline, book_id=book,
+                                  scenes=scenes, created_by=actor)
+    assert (r1.created, r1.matched, r1.skipped_authored) == (1, 1, 1)
+    # exactly ONE mapping — the minted leaf; keyed to its new node
+    assert len(r1.mappings) == 1
+    m = r1.mappings[0]
+    assert (m["chapter_id"], m["sort_order"]) == (str(ch), 1)
+    async with pool.acquire() as c:
+        minted_id = await c.fetchval(
+            "SELECT id FROM outline_node WHERE project_id=$1 AND story_order=1 AND kind='scene'", project)
+    assert m["outline_node_id"] == str(minted_id)
+    assert m["outline_node_id"] != str(authored.id)  # never the authored node
+
+    # a re-run: the minted node is now RE-MATCHED and must still map (idempotent write-back)
+    r2 = await materialize_scenes(pool, WorksRepo(pool), outline, book_id=book,
+                                  scenes=scenes, created_by=actor)
+    assert (r2.created, r2.matched) == (0, 2)  # source_scene_id leaf + the re-matched mint
+    keys = {(m["chapter_id"], m["sort_order"]) for m in r2.mappings}
+    assert keys == {(str(ch), 1)}  # only the decompiled node re-maps; the preset leaf does not
+
+
 async def test_no_canonical_work_is_guarded_gracefully(pool):
     book, actor = uuid.uuid4(), uuid.uuid4()  # NO composition_work for this book
     scenes = [ParsedScene(chapter_id=uuid.uuid4(), sort_order=0, title="orphan")]

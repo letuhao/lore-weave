@@ -34,7 +34,7 @@ WRITE DIRECTION. Composition never writes `book-service.scenes.source_scene_id`
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -80,6 +80,13 @@ class MaterializeResult:
     matched: int
     chapters: int
     skipped_authored: int = 0  # 26 IX-11 — leaves whose spec node a human authored (left alone)
+    # 26 IX-12 — the decompiler RETURNS the back-link map; the index owner (import tail)
+    # writes `scenes.source_scene_id` from it (composition never writes book-service's DB,
+    # SCOPE-2). One entry per leaf that now resolves to a decompiler-owned spec node (a
+    # fresh mint OR a re-matched prior decompiled node — so a retry after a failed
+    # write-back returns the SAME map). Leaves already carrying `source_scene_id` and
+    # human-authored nodes are NOT mapped here (their link is the anchor path, IX-5 r1).
+    mappings: list[dict[str, Any]] = field(default_factory=list)
     detail: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -91,6 +98,7 @@ class MaterializeResult:
             "created": self.created,
             "matched": self.matched,
             "skipped_authored": self.skipped_authored,
+            "mappings": self.mappings,
             "chapters": self.chapters,
             "detail": self.detail,
         }
@@ -235,6 +243,7 @@ async def materialize_scenes(
     created = 0
     matched = 0
     skipped_authored = 0
+    mappings: list[dict[str, Any]] = []
     chapter_node_cache: dict[UUID, UUID | None] = {}
     async with pool.acquire() as c:
         async with c.transaction():
@@ -271,6 +280,13 @@ async def materialize_scenes(
                         skipped_authored += 1
                     else:
                         matched += 1
+                        # IX-12: a re-matched decompiled node still yields its map entry,
+                        # so a retry after a failed write-back returns the SAME mappings.
+                        mappings.append({
+                            "chapter_id": str(sc.chapter_id),
+                            "sort_order": sc.sort_order,
+                            "outline_node_id": str(existing["id"]),
+                        })
                     continue
                 # Parent the scene under its chapter's outline node when one exists
                 # (coherent lazy-tree); else a top-level scene (chapter_id still
@@ -286,7 +302,7 @@ async def materialize_scenes(
                         """,
                         partition, sc.chapter_id,
                     )
-                await outline.create_node(
+                node = await outline.create_node(
                     partition, created_by=created_by, kind="scene",
                     parent_id=chapter_node_cache[sc.chapter_id],
                     chapter_id=sc.chapter_id, title=sc.title,
@@ -297,9 +313,15 @@ async def materialize_scenes(
                     conn=c,
                 )
                 created += 1
+                # IX-12 back-link map — the index owner writes scenes.source_scene_id.
+                mappings.append({
+                    "chapter_id": str(sc.chapter_id),
+                    "sort_order": sc.sort_order,
+                    "outline_node_id": str(node.id),
+                })
 
     return MaterializeResult(
         book_id=book_id, work_resolved=True, project_id=partition,
         scenes_total=scenes_total, created=created, matched=matched,
-        skipped_authored=skipped_authored, chapters=chapters,
+        skipped_authored=skipped_authored, mappings=mappings, chapters=chapters,
     )

@@ -1325,6 +1325,8 @@ services:
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_BUCKET: loreweave-dev-books
       BOOK_SERVICE_URL: http://book-service:8082
+      # 26 IX-12 — import tail decompiles imported prose into spec scenes + writes back source_scene_id.
+      COMPOSITION_SERVICE_URL: http://composition-service:8093
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).

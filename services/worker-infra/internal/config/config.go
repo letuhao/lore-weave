@@ -32,6 +32,11 @@ type Config struct {
 	// P1 (2026-05-23) — knowledge-service /internal/parse for structural decomposition.
 	KnowledgeServiceURL string
 
+	// 26 IX-12 — composition-service /internal/books/{id}/materialize-scenes: the import
+	// tail decompiles imported prose into spec scenes and writes back scenes.source_scene_id
+	// from the returned map (composition never writes book-service's DB, SCOPE-2).
+	CompositionServiceURL string
+
 	// D-C-PRODUCER-OUTBOX — where the outbox relay delivers notification-typed rows
 	// (the producers' durable notification path). Defaults to the compose service name.
 	NotificationServiceURL string
@@ -53,6 +58,8 @@ func Load() *Config {
 		RabbitMQURL:       envOrDefault("RABBITMQ_URL", ""),
 		// P1 — defaults match docker-compose KNOWLEDGE_SERVICE_URL.
 		KnowledgeServiceURL: envOrDefault("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
+		// 26 IX-12 — default matches the compose service name/port.
+		CompositionServiceURL: envOrDefault("COMPOSITION_SERVICE_URL", "http://composition-service:8093"),
 		// D-C-PRODUCER-OUTBOX — default matches the compose service name/port.
 		NotificationServiceURL: envOrDefault("NOTIFICATION_SERVICE_URL", "http://notification-service:8091"),
 	}

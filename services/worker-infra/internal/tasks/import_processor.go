@@ -37,8 +37,9 @@ type ImportProcessor struct {
 	BookDB  *pgxpool.Pool
 	Minio   *minio.Client
 
-	amqpCh      amqpPublisher
-	parseClient *ParseClient // P1 — initialised lazily in Run()
+	amqpCh            amqpPublisher
+	parseClient       *ParseClient        // P1 — initialised lazily in Run()
+	materializeClient *MaterializeClient  // 26 IX-12 — initialised lazily in Run()
 }
 
 func (t *ImportProcessor) Name() string { return "import-processor" }
@@ -55,6 +56,10 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 	// P1 — initialise the structural-decomposer client.
 	if t.parseClient == nil {
 		t.parseClient = NewParseClient(t.Cfg.KnowledgeServiceURL, t.Cfg.InternalToken)
+	}
+	// 26 IX-12 — the scene-decompile / back-link-write client.
+	if t.materializeClient == nil {
+		t.materializeClient = NewMaterializeClient(t.Cfg.CompositionServiceURL, t.Cfg.InternalToken)
 	}
 
 	// Connect to RabbitMQ for WebSocket push events
@@ -324,10 +329,62 @@ RETURNING id
 		}
 	}
 
+	// 5.5 — 26 IX-12 decompile write-back. The book's prose is imported+published; ask
+	// composition to decompile it into spec scenes and write the returned back-link map
+	// onto scenes.source_scene_id. BEST-EFFORT: the import's primary output (chapters +
+	// scenes + prose) is already committed, so a decompile/write-back failure must NOT
+	// fail the import — the leaves simply stay "unplanned" (a recoverable state) until the
+	// Hub's decompile CTA re-runs. A Work-less book is a graceful no-op (work_resolved=false).
+	t.writeBackSceneLinks(ctx, payload.BookID, payload.UserID)
+
 	// 6. Clean up import file from MinIO.
 	_ = t.Minio.RemoveObject(ctx, t.Cfg.MinioBucket, payload.FileStorageKey, minio.RemoveObjectOptions{})
 
 	return count, nil
+}
+
+// writeBackSceneLinks runs the 26 IX-12 loop: decompile via composition, then write the
+// returned mappings onto scenes.source_scene_id. book-service (this worker's book DB) is
+// the sole writer of source_scene_id (SCOPE-2 / DA-8 index-owner role). Only fills a leaf
+// whose back-link is still NULL — IX-5 rule 1 (a recovered anchor) WINS over the decompile
+// map, so an anchor-derived id set at INSERT is never clobbered. Idempotent: a re-run finds
+// the same decompile_key nodes and re-writes the same ids.
+func (t *ImportProcessor) writeBackSceneLinks(ctx context.Context, bookID, ownerUserID string) {
+	// Self-contained: lazily build the client so a caller that bypassed Run() (or a test)
+	// never nil-derefs. No-ops silently if the URL is unset (defense-in-depth).
+	if t.materializeClient == nil {
+		if t.Cfg == nil || t.Cfg.CompositionServiceURL == "" {
+			return
+		}
+		t.materializeClient = NewMaterializeClient(t.Cfg.CompositionServiceURL, t.Cfg.InternalToken)
+	}
+	res, err := t.materializeClient.Materialize(ctx, bookID, ownerUserID)
+	if err != nil {
+		slog.Warn("import: IX-12 decompile failed (leaves stay unplanned; recoverable via Hub)",
+			"book", bookID, "err", err)
+		return
+	}
+	if !res.WorkResolved || len(res.Mappings) == 0 {
+		slog.Info("import: IX-12 decompile no-op",
+			"book", bookID, "work_resolved", res.WorkResolved, "mappings", len(res.Mappings))
+		return
+	}
+	written := 0
+	for _, m := range res.Mappings {
+		tag, err := t.BookDB.Exec(ctx,
+			`UPDATE scenes SET source_scene_id=$1
+			   WHERE book_id=$2 AND chapter_id=$3 AND sort_order=$4 AND source_scene_id IS NULL`,
+			m.OutlineNodeID, bookID, m.ChapterID, m.SortOrder)
+		if err != nil {
+			slog.Warn("import: IX-12 back-link write failed (partial; recoverable)",
+				"book", bookID, "chapter", m.ChapterID, "sort_order", m.SortOrder, "err", err)
+			continue
+		}
+		written += int(tag.RowsAffected())
+	}
+	slog.Info("import: IX-12 decompile write-back done",
+		"book", bookID, "created", res.Created, "matched", res.Matched,
+		"mappings", len(res.Mappings), "linked", written)
 }
 
 // insertPart writes a single parts row in its own short transaction

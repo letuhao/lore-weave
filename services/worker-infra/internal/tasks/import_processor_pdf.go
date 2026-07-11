@@ -225,6 +225,9 @@ RETURNING id
 		t.publishWSEvent(ctx, payload.UserID, payload.JobID, "processing", chunkIdx+1, nil)
 	}
 
+	// 4.5 — 26 IX-12 decompile write-back (mirrors processImport step 5.5). Best-effort.
+	t.writeBackSceneLinks(ctx, payload.BookID, payload.UserID)
+
 	// 5. Clean up the source PDF from MinIO (mirrors processImport step 6).
 	_ = t.Minio.RemoveObject(ctx, t.Cfg.MinioBucket, payload.FileStorageKey, minio.RemoveObjectOptions{})
 
