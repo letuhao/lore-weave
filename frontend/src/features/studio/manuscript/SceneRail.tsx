@@ -35,11 +35,18 @@ function SceneRow({ scene, active, first, last, prevPrevId, nextId, onSaved, onJ
   const { accessToken } = useAuth();
   const [synopsis, setSynopsis] = useState(scene.synopsis);
   const [error, setError] = useState<string | null>(null);
+  // 22-C4 (F2) — the title was CREATE-ONLY (a jump button, never an input). Inline edit writes
+  // outline_node.title (the spec — never scenes.title, which is a parsed heading, SC1). Single
+  // click still jumps; the ✎ affordance opens an input.
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(scene.title);
   const ref = useRef<HTMLDivElement | null>(null);
 
   // External refresh (Lane B / save-reload) re-seeds the draft — but never over an in-progress edit.
   const editing = useRef(false);
   useEffect(() => { if (!editing.current) setSynopsis(scene.synopsis); }, [scene.synopsis]);
+  // Re-seed the title draft on external change too, but never over an open title edit.
+  useEffect(() => { if (!titleEditing) setTitleDraft(scene.title); }, [scene.title, titleEditing]);
 
   useEffect(() => {
     if (active) ref.current?.scrollIntoView?.({ block: 'nearest' });
@@ -60,6 +67,13 @@ function SceneRow({ scene, active, first, last, prevPrevId, nextId, onSaved, onJ
 
   const patch = (p: Partial<OutlineNode>) =>
     run(() => compositionApi.patchNode(scene.id, p, accessToken!, scene.version));
+  const commitTitle = () => {
+    const next = titleDraft.trim();
+    setTitleEditing(false);
+    // Only write on a real change; empty title is rejected (a scene must keep a name).
+    if (next && next !== scene.title) void patch({ title: next });
+    else setTitleDraft(scene.title);
+  };
   // ▲ = place after the scene BEFORE my predecessor (null = become first); ▼ = after my successor.
   const moveUp = () =>
     run(() => compositionApi.reorderNode(scene.id, { new_parent_id: scene.parent_id ?? null, after_id: prevPrevId }, accessToken!, scene.version));
@@ -78,16 +92,41 @@ function SceneRow({ scene, active, first, last, prevPrevId, nextId, onSaved, onJ
       className={cn('group border-b px-2 py-1.5', active && 'bg-[var(--primary-muted)]')}
     >
       <div className="flex items-center gap-1">
-        {/* M-F — the title is the jump affordance: scroll the prose to the anchored heading. */}
-        <button
-          type="button"
-          data-testid={`scene-rail-jump-${scene.id}`}
-          onClick={() => onJump(scene.id)}
-          className="min-w-0 flex-1 truncate text-left text-[11px] font-medium hover:text-primary"
-          title={scene.title}
-        >
-          {scene.title}
-        </button>
+        {titleEditing ? (
+          // 22-C4 (F2) inline title edit → outline_node.title. Enter/blur commits, Escape cancels.
+          <input
+            data-testid={`scene-rail-title-input-${scene.id}`}
+            value={titleDraft}
+            autoFocus
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitTitle();
+              if (e.key === 'Escape') { setTitleDraft(scene.title); setTitleEditing(false); }
+            }}
+            className="min-w-0 flex-1 rounded border bg-background px-1 py-0.5 text-[11px] font-medium"
+          />
+        ) : (
+          <>
+            {/* M-F — single click jumps the prose to the anchored heading. */}
+            <button
+              type="button"
+              data-testid={`scene-rail-jump-${scene.id}`}
+              onClick={() => onJump(scene.id)}
+              className="min-w-0 flex-1 truncate text-left text-[11px] font-medium hover:text-primary"
+              title={scene.title}
+            >
+              {scene.title}
+            </button>
+            <button
+              type="button"
+              data-testid={`scene-rail-title-edit-${scene.id}`}
+              onClick={() => { setTitleDraft(scene.title); setTitleEditing(true); }}
+              className="rounded px-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-focus-within:opacity-100 group-hover:opacity-100"
+              aria-label={t('sceneRail.editTitle', { defaultValue: 'Rename scene' })}
+            >✎</button>
+          </>
+        )}
         <select
           data-testid={`scene-rail-status-${scene.id}`}
           value={scene.status}

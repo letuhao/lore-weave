@@ -400,6 +400,7 @@
     "title": "Scenes",
     "toggle": "Scenes",
     "empty": "No scenes for this chapter (outline it in the composer).",
+    "editTitle": "Rename scene",
     "synopsisPlaceholder": "Synopsis…",
     "stale": "changed elsewhere — reloaded",
     "notAnchored": "Scene not anchored in the text yet — use ⚓ to link headings.",

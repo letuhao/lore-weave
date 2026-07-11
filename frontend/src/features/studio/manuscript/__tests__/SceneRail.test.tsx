@@ -119,6 +119,41 @@ describe('SceneRail (#12 M-C)', () => {
     expect(patchNode).toHaveBeenCalledWith('s1', { status: 'done' }, 'tok', 4);
   });
 
+  it('22-C4 (F2): the ✎ affordance opens an inline title input; a changed title PATCHes outline_node.title', async () => {
+    render(<SceneRail />);
+    // Not editable by default — the title is a jump button, no input present.
+    expect(screen.queryByTestId('scene-rail-title-input-s1')).toBeNull();
+    fireEvent.click(screen.getByTestId('scene-rail-title-edit-s1'));
+    const input = screen.getByTestId('scene-rail-title-input-s1');
+    fireEvent.change(input, { target: { value: 'A Renamed Scene' } });
+    await act(async () => { fireEvent.blur(input); });
+    expect(patchNode).toHaveBeenCalledWith('s1', { title: 'A Renamed Scene' }, 'tok', 4);
+    expect(reloadScenes).toHaveBeenCalled();
+  });
+
+  it('22-C4: an unchanged or empty title does NOT patch (a scene must keep a name)', async () => {
+    render(<SceneRail />);
+    fireEvent.click(screen.getByTestId('scene-rail-title-edit-s1'));
+    const input = screen.getByTestId('scene-rail-title-input-s1');
+    // unchanged
+    await act(async () => { fireEvent.blur(input); });
+    // emptied
+    fireEvent.click(screen.getByTestId('scene-rail-title-edit-s1'));
+    fireEvent.change(screen.getByTestId('scene-rail-title-input-s1'), { target: { value: '   ' } });
+    await act(async () => { fireEvent.blur(screen.getByTestId('scene-rail-title-input-s1')); });
+    expect(patchNode).not.toHaveBeenCalled();
+  });
+
+  it('22-C4: Escape cancels the title edit without patching', async () => {
+    render(<SceneRail />);
+    fireEvent.click(screen.getByTestId('scene-rail-title-edit-s1'));
+    const input = screen.getByTestId('scene-rail-title-input-s1');
+    fireEvent.change(input, { target: { value: 'discard me' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByTestId('scene-rail-title-input-s1')).toBeNull(); // back to jump button
+    expect(patchNode).not.toHaveBeenCalled();
+  });
+
   it('a 412 (stale version) shows the stale notice AND reloads so the next edit lands', async () => {
     patchNode.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 412 }));
     render(<SceneRail />);
