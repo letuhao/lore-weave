@@ -67,6 +67,35 @@ export type ChapterPage = {
   total: number | null;
 };
 
+// 22-C1 — a parse-leaf scene from book-service (`scenes`), the INDEX/identity side of a
+// scene (SC1/SC2). This is book-service's TRUTH (per-book, E0-shared), distinct from the
+// composition `OutlineNode` spec/intent side. `source_scene_id` is the join key back onto
+// composition's spec (`source_scene_id → outline_node.id`); NULL ⇒ "written, not decompiled"
+// (or anchor lost) — the union row shape the scene-browser renders (spec 22 §GUI, BPS-13).
+export type Scene = {
+  id: string;
+  book_id: string;
+  chapter_id: string;
+  sort_order: number;
+  title: string | null;      // a parsed heading (SC1) — NEVER the authored intent title
+  path: string;
+  leaf_text: string;         // read-only projection of chapter.body (D17) — never editable
+  content_hash: string;
+  source_scene_id: string | null; // → outline_node.id; null = not-yet-decompiled / anchor lost
+  parse_version: number;
+  lifecycle_state: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+// Keyset/cursor page of book-wide scenes (GET /v1/books/{id}/scenes). Same envelope as
+// ChapterPage: `next_cursor` null on the last page; `total` on the first page only.
+export type ScenePage = {
+  items: Scene[];
+  next_cursor: string | null;
+  total: number | null;
+};
+
 async function apiForm<T>(path: string, form: FormData, token: string): Promise<T> {
   const res = await fetch(`${base()}${path}`, {
     method: 'POST',
@@ -181,6 +210,26 @@ export const booksApi = {
     if (opts.sort) qs.set('sort', opts.sort);
     const query = qs.toString();
     return apiJson<ChapterPage>(`/v1/books/${bookId}/chapters/page${query ? `?${query}` : ''}`, { token });
+  },
+
+  // 22-C1 — the book-wide scene list (VIEW-gated), keyset-paged by (chapter_id, sort_order).
+  // This is the scene-browser's IDENTITY source; the panel joins each row onto composition's
+  // spec via `source_scene_id`. Server-side filters: `chapter_id`, `source_scene_id` (the
+  // go-to-prose join key, 28 AN-5b), and `q` (a bounded ILIKE over title + leaf_text). Status/
+  // POV/beat filters are CLIENT-side — they live in composition, not here (spec 22 §GUI).
+  listScenes(
+    token: string,
+    bookId: string,
+    opts: { cursor?: string | null; limit?: number; chapter_id?: string; source_scene_id?: string; q?: string } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (opts.cursor) qs.set('cursor', opts.cursor);
+    if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
+    if (opts.chapter_id) qs.set('chapter_id', opts.chapter_id);
+    if (opts.source_scene_id) qs.set('source_scene_id', opts.source_scene_id);
+    if (opts.q) qs.set('q', opts.q);
+    const query = qs.toString();
+    return apiJson<ScenePage>(`/v1/books/${bookId}/scenes${query ? `?${query}` : ''}`, { token });
   },
   /** Chapter Browser A3 — bulk lifecycle change (trash/restore/purge many chapters
    *  in one call). Response is a PER-ID outcome array (CB5) — a partial failure

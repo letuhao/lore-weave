@@ -160,6 +160,26 @@ export type OutlineNode = {
   // #02 navigator badge — non-archived DIRECT child count. Populated only by the
   // lazy-children endpoint (list_children); null/absent from whole-tree/other reads.
   child_count?: number | null;
+  // 22-C1 — the authoring-intent fields the scene-inspector/browser render (previously
+  // agent-writable but human-invisible, or read-only to everyone — see spec 22 §F2).
+  // OPTIONAL because the detail=summary projection (_OUTLINE_REF_FIELDS) deliberately
+  // omits them (spec 24) — a full node get/patch echoes them; a summary/children read does not.
+  goal?: string;                        // scene goal (was agent-writable, human-invisible)
+  pov_entity_id?: string | null;        // point-of-view character (glossary entity id)
+  present_entity_ids?: string[];        // characters present in the scene (drives voice-tag injection)
+  tension?: number | null;              // 0..100 — the pacing sparkline + adaptive_k gate
+  structure_node_id?: string | null;    // 23 BA2 — the arc a CHAPTER node is bound to (null on scenes)
+  // 22 SC4 — authored scene craft (the eight fields; conflict/outcome/stakes default '')
+  location_entity_id?: string | null;
+  story_time?: string | null;
+  conflict?: string;
+  outcome?: string;
+  value_shift?: number | null;          // -100..100
+  stakes?: string;
+  target_words?: number | null;         // > 0
+  exit_state?: Record<string, unknown> | null; // SC12 {v:1,…} envelope (read-mostly)
+  // 26 IX-11 — provenance for the "mined" badge: authored (human) · decompiled (import) · planforge.
+  source?: 'authored' | 'decompiled' | 'planforge';
 };
 
 // #02 nav jump / #06a Quick Open — one outline search hit (title match across the whole
