@@ -664,8 +664,11 @@ func (s *Server) createBook(w http.ResponseWriter, r *http.Request) {
 	}
 	var bookID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `
-INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags)
-VALUES($1,$2,$3,$4,$5,$6)
+-- WS-1.1: kind EXPLICIT, never leaning on the column default. kind is the privacy lock,
+-- and a create path that silently inherits a default is exactly how a new path (a diary!)
+-- ends up mis-kinded and shareable. The hygiene test asserts every INSERT names it.
+INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags,kind)
+VALUES($1,$2,$3,$4,$5,$6,'novel')
 RETURNING id
 `, ownerID, in.Title, in.Description, in.OriginalLanguage, in.Summary, in.GenreTags).Scan(&bookID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")

@@ -1178,6 +1178,57 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- ── fn_outbox_notify: pg_notify when new outbox event inserted ───────────
+-- ── WS-1.1 · books.kind — the privacy lock (spec 03, T29/T30) — 2026-07-12 ──
+--
+-- kind is NOT cosmetic and NOT a UI hint. kind='diary' is the PRIVACY LOCK: every egress
+-- guard in spec 09 (sharing, wiki, public-MCP, notifications, catalog, export, collaborator
+-- grants) keys on it. If kind can be changed after creation — or missed on a create path —
+-- the lock silently opens and a private diary becomes shareable.
+--
+-- So it is enforced in the DATABASE, not by convention:
+--   1. A CHECK constrains the closed set.
+--   2. A BEFORE UPDATE trigger REFUSES to let kind change. The only "enforcement" available
+--      otherwise would be a convention that nobody adds kind to the two dynamic UPDATE
+--      builders in server.go — and a convention is exactly what fails at 2am.
+--
+-- is_bible STAYS: it is the orthogonal hidden-from-counts flag, not a kind. (There is also a
+-- chapters.is_bible; this backfill touches BOOKS ONLY. Do not invent a chapter kind.)
+ALTER TABLE books ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'novel'
+  CHECK (kind IN ('novel','document','lore','diary'));
+
+-- Explicit backfill: a DEFAULT never revisits existing rows (the
+-- add-column-if-not-exists-never-revisits-a-bad-default class). Pre-existing world-bibles
+-- must become 'lore' HERE, in the same migration that teaches createWorldCore to set
+-- kind='lore' — otherwise pre-migration bibles are lore and post-migration ones are novel,
+-- and the two are indistinguishable forever after.
+UPDATE books SET kind = 'lore' WHERE is_bible = true AND kind = 'novel';
+
+CREATE INDEX IF NOT EXISTS idx_books_kind ON books(owner_user_id, kind);
+
+-- kind is IMMUTABLE. Changing a book's kind would strip its privacy lock (diary -> novel
+-- makes a private diary publishable). To get a different kind, create a different book.
+CREATE OR REPLACE FUNCTION fn_books_kind_immutable()
+RETURNS TRIGGER AS $fn$
+BEGIN
+  IF NEW.kind IS DISTINCT FROM OLD.kind THEN
+    RAISE EXCEPTION
+      'books.kind is immutable (attempted % -> %). kind is the privacy lock: every egress '
+      'guard keys on it, so changing it would silently make private content shareable. '
+      'Create a new book instead.', OLD.kind, NEW.kind
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER trg_books_kind_immutable
+    BEFORE UPDATE ON books
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_books_kind_immutable();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE OR REPLACE FUNCTION fn_outbox_notify()
 RETURNS TRIGGER AS $fn$
 BEGIN

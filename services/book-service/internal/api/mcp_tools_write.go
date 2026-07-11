@@ -97,8 +97,10 @@ func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	}
 	var bookID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `
-INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags)
-VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
+-- WS-1.1: kind EXPLICIT (see server.go createBook). An agent-created book is a novel;
+-- only the diary provisioner may write kind='diary'.
+INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags,kind)
+VALUES($1,$2,$3,$4,$5,$6,'novel') RETURNING id`,
 		userID, title, in.Description, in.OriginalLanguage, in.Summary, in.GenreTags).Scan(&bookID); err != nil {
 		return nil, bookCreateOut{}, errors.New("failed to create book")
 	}

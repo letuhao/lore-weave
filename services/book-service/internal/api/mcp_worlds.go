@@ -45,8 +45,12 @@ RETURNING id
 		return
 	}
 	if err = tx.QueryRow(ctx, `
-INSERT INTO books(owner_user_id, title, description, world_id, is_bible)
-VALUES($1,$2,$3,$4,true)
+-- WS-1.1: kind='lore' EXPLICITLY. Without it a world-bible would default to 'novel',
+-- while the migration backfilled every PRE-EXISTING bible to 'lore' — so bibles created
+-- before and after the deploy would be indistinguishable kinds forever after. The two
+-- must land in the same commit.
+INSERT INTO books(owner_user_id, title, description, world_id, is_bible, kind)
+VALUES($1,$2,$3,$4,true,'lore')
 RETURNING id
 `, ownerID, name+" — World Bible", "Auto-created world bible (hidden).", worldID).Scan(&bibleBookID); err != nil {
 		return
