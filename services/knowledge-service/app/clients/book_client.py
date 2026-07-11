@@ -69,6 +69,7 @@ class BookClient:
         from_sort: int | None = None,
         to_sort: int | None = None,
         editorial_status: str | None = None,
+        kg_indexed: bool = False,
     ) -> int | None:
         """Return the number of active chapters for a book.
 
@@ -78,11 +79,18 @@ class BookClient:
         extraction estimate endpoint so users previewing "chapters
         10–20 only" see the range count rather than the whole book.
 
-        CM3c — the extraction cost-estimate passes ``editorial_status=
-        'published'`` so the preview count matches what the gated
-        whole-book rebuild actually extracts (drafts are skipped). The
-        same server-side filter backs the worker enumeration → no
-        estimate/enumeration divergence (R1-BLOCK#1).
+        WS-0.6 — the extraction cost-estimate passes ``kg_indexed=True`` so the
+        preview count matches what the re-keyed whole-book rebuild actually
+        extracts. The SAME server-side filter backs the worker enumeration
+        (worker-ai ``list_chapters(kg_indexed=True)``), so estimate and
+        enumeration cannot diverge (R1-BLOCK#1, restated against the new gate).
+
+        This replaces the old CM3c ``editorial_status='published'`` gate:
+        publishing no longer decides KG membership, so a preview keyed on it
+        would report "0 chapters" for a user who indexed 50 drafts.
+
+        ``editorial_status`` is kept for the callers that legitimately still ask
+        the publish question.
 
         Returns None on any failure (timeout, connection error, bad
         response) — the caller decides how to handle missing data.
@@ -94,6 +102,8 @@ class BookClient:
             params["to_sort"] = str(to_sort)
         if editorial_status is not None:
             params["editorial_status"] = editorial_status
+        if kg_indexed:
+            params["kg_indexed"] = "true"
         url = f"{self._base_url}/internal/books/{book_id}/chapters"
         tid = trace_id_var.get()
         try:
@@ -127,13 +137,22 @@ class BookClient:
         book_id: UUID,
         *,
         editorial_status: str | None = None,
+        kg_indexed: bool = False,
     ) -> list[dict] | None:
         """D-RAWSEARCH-CANON-WIRING — list ALL a book's chapters (id + sort_order +
-        editorial_status) via ``GET /internal/books/{book_id}/chapters``, paging
-        past book-service's 100-row clamp so a >100-chapter book isn't silently
-        truncated. ``editorial_status='draft'`` scopes to unpublished chapters
-        (what the on-demand draft-indexing endpoint enumerates). Returns the full
-        item list, or None on any failure (caller decides)."""
+        editorial_status + kg_indexed_revision_id + kg_exclude) via
+        ``GET /internal/books/{book_id}/chapters``, paging past book-service's 100-row
+        clamp so a >100-chapter book isn't silently truncated.
+
+        ``editorial_status='draft'`` scopes to unpublished chapters (what the on-demand
+        draft-indexing endpoint enumerates).
+
+        WS-0.6: ``kg_indexed=True`` scopes to the chapters that are IN the knowledge
+        graph (``kg_indexed_revision_id IS NOT NULL AND NOT kg_exclude``) — the gate the
+        passage backfill/ingester enumerate on. It is a DIFFERENT question from
+        ``editorial_status``: publishing no longer decides KG membership.
+
+        Returns the full item list, or None on any failure (caller decides)."""
         url = f"{self._base_url}/internal/books/{book_id}/chapters"
         tid = trace_id_var.get()
         collected: list[dict] = []
@@ -146,6 +165,8 @@ class BookClient:
                 }
                 if editorial_status is not None:
                     params["editorial_status"] = editorial_status
+                if kg_indexed:
+                    params["kg_indexed"] = "true"
                 resp = await self._http.get(
                     url,
                     params=params,

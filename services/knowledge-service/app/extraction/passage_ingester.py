@@ -571,7 +571,16 @@ async def backfill_published_passages(
     published canon at setup time; a later edit+republish re-ingests at the pinned
     revision via the event path.
     """
-    items = await book_client.list_chapters(book_id, editorial_status="published")
+    # WS-0.6: enumerate the chapters that are IN the knowledge graph, not the published
+    # ones — a user's explicitly-indexed drafts must get :Passage nodes too, or they are
+    # invisible to L3 semantic retrieval and to chat grounding.
+    #
+    # ⚠️ This re-keys the ENUMERATION ONLY. The `canon` flag on the ingested passages is
+    # NOT re-keyed: `canon = (revision_id == published_revision_id)` stays the rule
+    # (spec §3.7 / P1-8). Draft prose must not become canon=True passages — raw_search
+    # documents a deliberate draft/canon split, and blindly flipping it here would be
+    # the inverse bug: unreviewed draft prose surfacing as canon.
+    items = await book_client.list_chapters(book_id, kg_indexed=True)
     if not items:
         return BackfillResult(0, 0, 0)
 

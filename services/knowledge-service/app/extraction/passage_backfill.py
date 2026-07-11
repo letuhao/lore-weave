@@ -45,7 +45,10 @@ async def backfill_project_passages(
     chapter_range so passages are ingested ONLY for the chapters being extracted, never
     the whole book. Returns per-run counts. Callers guarantee the embedding config
     (``embedding_model``/``embedding_dim``) + Neo4j are present before calling."""
-    chapters = await book_client.list_chapters(book_id, editorial_status="published")
+    # WS-0.6: enumerate the chapters in the KNOWLEDGE GRAPH, not the published ones.
+    # Both the enumeration and the revision pin below must move together — either alone
+    # still yields zero passages.
+    chapters = await book_client.list_chapters(book_id, kg_indexed=True)
     if chapters is None:
         return {
             "chapters_ingested": 0, "passages_created": 0, "chapters_failed": 0,
@@ -61,10 +64,20 @@ async def backfill_project_passages(
 
     ingested = passages = failed = 0
     for ch in chapters:
-        rev = ch.get("published_revision_id")
+        # Pin the revision the KNOWLEDGE LAYER reflects (possibly a draft the user
+        # explicitly indexed), falling back to the published revision for safety.
+        rev = ch.get("kg_indexed_revision_id") or ch.get("published_revision_id")
         cid = ch.get("chapter_id")
         if not rev or not cid:
-            continue  # a published row missing its pinned revision — skip cleanly
+            # Was a bare `continue`. A chapter that is IN the graph but has no pinned
+            # revision is a real anomaly (the sweeper cannot heal it either) — say so,
+            # rather than silently ingesting zero passages for it.
+            logger.warning(
+                "WS-0.6: chapter %s is kg-indexed but has no pinned revision — skipping "
+                "passage ingest; re-index it to pin a revision",
+                cid,
+            )
+            continue
         try:
             async with neo4j_session() as session:
                 res = await ingest_chapter_passages(

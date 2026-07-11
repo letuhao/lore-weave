@@ -889,9 +889,19 @@ def _dyn_embed():
 
 
 @pytest.mark.asyncio
-async def test_backfill_ingests_every_published_chapter_as_canon(monkeypatch):
-    """The backfill enumerates PUBLISHED chapters and ingests each as canon=True —
-    the fix for chapters published before the project/embedding existed."""
+async def test_backfill_ingests_every_kg_indexed_chapter(monkeypatch):
+    """WS-0.6 — the backfill enumerates the chapters in the KNOWLEDGE GRAPH
+    (``kg_indexed=True``), not the published ones.
+
+    A user's explicitly-indexed DRAFT chapters must get :Passage nodes too, or they are
+    invisible to L3 semantic retrieval and to chat grounding — the feature would look
+    like it worked (the chapter says "indexed") while recall returns nothing.
+
+    ⚠️ This re-keys the ENUMERATION ONLY. The `canon` flag on the ingested passages is
+    deliberately NOT re-keyed — ``canon = (revision_id == published_revision_id)`` stays
+    the rule (spec §3.7 / P1-8), because draft prose must not surface as canon. Flipping
+    that too would be the inverse bug.
+    """
     chapters = [
         {"chapter_id": str(uuid4()), "sort_order": 1, "editorial_status": "published"},
         {"chapter_id": str(uuid4()), "sort_order": 2, "editorial_status": "published"},
@@ -910,8 +920,8 @@ async def test_backfill_ingests_every_published_chapter_as_canon(monkeypatch):
         user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
         embedding_model="bge-m3", embedding_dim=1024,
     )
-    # Scopes to PUBLISHED chapters only.
-    book.list_chapters.assert_awaited_once_with(BOOK_ID, editorial_status="published")
+    # WS-0.6: scopes to the chapters that are IN THE KNOWLEDGE GRAPH.
+    book.list_chapters.assert_awaited_once_with(BOOK_ID, kg_indexed=True)
     assert res.chapters_indexed == 2
     assert res.passages_created == 2  # one chunk per chapter
     assert upsert.await_count == 2

@@ -32,6 +32,12 @@ const (
 	evChapterPub      = "chapter.published"
 	evChapterDeleted  = "chapter.deleted"
 	evChapterTrashed  = "chapter.trashed"
+	// WS-0.6 (spec 2026-07-11-publish-independent-kg-indexing): a chapter can now enter
+	// the knowledge graph WITHOUT being published ("add to knowledge" on a draft), which
+	// re-parses its scenes. stalenessRule below is a CLOSED SET — an event it doesn't
+	// name is dropped — so without this the wiki would never re-ground on a re-indexed
+	// chapter and its articles would silently rot against prose that has moved.
+	evChapterKGIndexed = "chapter.kg_indexed"
 )
 
 // StalenessConsumer reads glossary + chapter events and records wiki staleness.
@@ -139,7 +145,11 @@ func stalenessRule(eventType string) (reason, severity, sourceType string, ok bo
 	case evEntityMerged:
 		// aggregate_id is the WINNER (the surviving canon, which now covers both).
 		return "merged", "structural", "entity", true
-	case evChapterPub:
+	case evChapterPub, evChapterKGIndexed:
+		// Same reason code for both: in either case the chapter's prose (and the scene
+		// index the wiki's citations hang off) has been re-pinned, so the articles
+		// grounded on it need re-grounding. Publishing and indexing are now independent
+		// acts, and EITHER one moves the ground truth.
 		return "chapter_regrounded", "content", "block", true
 	case evChapterDeleted, evChapterTrashed:
 		return "citation_broken", "hard", "block", true

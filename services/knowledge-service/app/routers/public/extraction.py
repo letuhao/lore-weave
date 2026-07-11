@@ -282,9 +282,14 @@ async def _count_scope_items(
 
     if scope in ("chapters", "all") and project.book_id is not None:
         bc = book_client if book_client is not None else await get_book_client()
+        # WS-0.6: count what the rebuild will actually EXTRACT — the chapters in the
+        # knowledge graph — not the chapters that happen to be published. Keyed on
+        # publish, this preview would report "0 chapters" for a user who indexed 50
+        # drafts, and then the job would run and (correctly) extract them: the estimate
+        # and the enumeration MUST use the same gate.
         count = await bc.count_chapters(
             project.book_id, from_sort=chapter_from, to_sort=chapter_to,
-            editorial_status="published",
+            kg_indexed=True,
         )
         chapters = count if count is not None else 0
 
@@ -702,9 +707,14 @@ async def _start_extraction_job_core(
         # (internal dispatch / retry callers). get_book_client is async (returns
         # the per-worker singleton).
         bc = book_client if book_client is not None else await get_book_client()
+        # WS-0.6: this admission guard must mirror the re-keyed runner enumeration
+        # exactly — they both gate `scope in ("chapters","all")`. If the guard counted
+        # published chapters while the runner enumerates kg-indexed ones, a user whose
+        # indexed drafts are all unpublished would be REJECTED with "no chapters in
+        # range" for a job that would have extracted them fine.
         in_range = await bc.count_chapters(
             project.book_id, from_sort=chap_from, to_sort=chap_to,
-            editorial_status="published",
+            kg_indexed=True,
         )
         if not in_range:
             raise HTTPException(

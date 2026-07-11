@@ -618,21 +618,37 @@ class BookClient:
 
     async def list_chapters(
         self, book_id: UUID, editorial_status: str | None = None,
+        kg_indexed: bool | None = None,
     ) -> list[ChapterInfo] | None:
         """GET /internal/books/{book_id}/chapters — returns chapters.
 
-        CM3c: pass ``editorial_status='published'`` to server-filter the list
-        (and its count) to canon=published chapters only — the manual
-        ``/extraction/start`` rebuild skips drafts this way, and the gate
-        matches the knowledge cost-estimate (no count divergence). Each item's
-        ``published_revision_id`` is mapped onto ``ChapterInfo.revision_id`` so
-        the per-chapter fetch loop reads the pinned published revision.
+        WS-0.6 (spec 2026-07-11-publish-independent-kg-indexing §3.5, red-team P0-2):
+        the knowledge-graph enumeration gate is now ``kg_indexed=True``, NOT
+        ``editorial_status='published'``.
+
+        Publishing no longer gates the graph. Pass ``kg_indexed=True`` to server-filter
+        the list AND its count to the chapters the user actually put in their knowledge
+        graph (``kg_indexed_revision_id IS NOT NULL AND NOT kg_exclude`` — the same
+        predicate the reparse sweeper uses, so enumerate and heal cannot disagree).
+        Filtering on ``editorial_status='published'`` instead would enumerate ZERO of a
+        user's 50 explicitly-indexed DRAFT chapters, and the rebuild would report success
+        having extracted nothing.
+
+        ``ChapterInfo.revision_id`` is mapped from ``kg_indexed_revision_id`` — the
+        revision the knowledge layer reflects (possibly a draft) — falling back to
+        ``published_revision_id`` so a caller that still asks the publish question keeps
+        the old pinning behavior.
+
+        ``editorial_status`` is retained for the non-KG callers that legitimately ask the
+        publish question.
 
         Returns None on failure.
         """
         url = f"{self._base_url}/internal/books/{book_id}/chapters?limit=1000"
         if editorial_status:
             url += f"&editorial_status={editorial_status}"
+        if kg_indexed:
+            url += "&kg_indexed=true"
         try:
             resp = await self._http.get(url)
             if resp.status_code != 200:
@@ -644,7 +660,12 @@ class BookClient:
                     chapter_id=item["chapter_id"],
                     title=item.get("title") or "",
                     sort_order=item.get("sort_order", 0),
-                    revision_id=item.get("published_revision_id"),
+                    # The revision the KG reflects. The fallback keeps publish-question
+                    # callers pinning the published revision exactly as before.
+                    revision_id=(
+                        item.get("kg_indexed_revision_id")
+                        or item.get("published_revision_id")
+                    ),
                     editorial_status=item.get("editorial_status"),
                 )
                 for item in data.get("items", [])
