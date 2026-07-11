@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -433,9 +434,11 @@ type proposeEntityToolOut struct {
 	EntityID string `json:"entity_id"`
 	// Status is created | skipped_exists | skipped_tombstoned.
 	Status string `json:"status"`
-	// AttributesSkipped (070): attribute codes the caller supplied that don't
-	// exist on the kind and were therefore dropped — surfaced so the LLM knows
-	// they didn't land (mirrors the bulk extract's entityResult.AttributesSkipped).
+	// AttributesSkipped (070): attribute codes the caller supplied that were NOT
+	// applied — either they don't exist on the kind (status=created) OR the entity
+	// already exists and this tool never mutates one (status=skipped_exists /
+	// skipped_tombstoned, in which case ALL supplied attrs are listed). Surfaced so
+	// the LLM knows they didn't land and can reapply via glossary_entity_set_attributes.
 	AttributesSkipped []string `json:"attributes_skipped,omitempty"`
 }
 
@@ -488,6 +491,20 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 // (e.g. a world/realm name) so two entities that share a name+kind but are
 // genuinely different aren't folded together by the dedup check below. "" behaves
 // exactly as before (empty only matches another empty-scope entity).
+// sortedAttrKeys returns the attribute codes in a caller-supplied attrs map, sorted
+// for a stable result. Empty/nil map → nil (nothing to report).
+func sortedAttrKeys(attrs map[string]any) []string {
+	if len(attrs) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any, scopeLabel string) (uuid.UUID, string, []string, error) {
 	// D-GLOSSARY-PROPOSE-LOCK (cleared 2026-07-09): dedup check, tombstone check,
 	// attr-def load, create, and the scope_label set all now run on ONE tx, held
@@ -524,10 +541,15 @@ func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID,
 		if err != nil {
 			return uuid.Nil, "", nil, fmt.Errorf("tombstone check: %w", err)
 		}
+		// The entity already exists and this tool NEVER mutates an existing one, so
+		// none of the caller's attributes were applied. Surface them (rather than drop
+		// them silently) so a weak model can see they didn't land and reapply via
+		// glossary_entity_set_attributes.
+		discarded := sortedAttrKeys(attrs)
 		if rejected {
-			return existingID, "skipped_tombstoned", nil, nil
+			return existingID, "skipped_tombstoned", discarded, nil
 		}
-		return existingID, "skipped_exists", nil, nil
+		return existingID, "skipped_exists", discarded, nil
 	}
 
 	attrDefMap, err := s.loadAttrDefMap(ctx, tx, bookID)

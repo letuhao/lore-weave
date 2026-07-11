@@ -10,6 +10,7 @@ package api
 // world_map_get / world_map_list then return image_object_key + a resolved image_url.
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	// Register the stdlib decoders so image.DecodeConfig can read pixel dims. webp is
@@ -22,6 +23,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/minio/minio-go/v7"
 )
 
@@ -40,15 +42,17 @@ func (s *Server) uploadWorldMapImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Owner-scoped existence check (404 for a foreign/missing map — no oracle).
-	var owned bool
+	// Owner-scoped read: confirms ownership (404 for a foreign/missing map — no
+	// oracle) AND grabs the current key, so a format-changing re-upload can sweep the
+	// orphaned prior object after the replace below.
+	var oldKey *string
 	if err := s.pool.QueryRow(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM world_maps WHERE id=$1 AND owner_user_id=$2)`, mapID, userID).Scan(&owned); err != nil {
+		`SELECT image_object_key FROM world_maps WHERE id=$1 AND owner_user_id=$2`, mapID, userID).Scan(&oldKey); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "MAP_NOT_FOUND", "map not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to resolve map")
-		return
-	}
-	if !owned {
-		writeError(w, http.StatusNotFound, "MAP_NOT_FOUND", "map not found")
 		return
 	}
 
@@ -106,6 +110,12 @@ func (s *Server) uploadWorldMapImage(w http.ResponseWriter, r *http.Request) {
 		objectKey, imgW, imgH, mapID, userID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to record image")
 		return
+	}
+	// A format change (png→jpg) changes the deterministic key, orphaning the prior
+	// object — sweep it best-effort (never fail the upload; the row already points at
+	// the new key).
+	if oldKey != nil && *oldKey != "" && *oldKey != objectKey {
+		_ = s.minio.RemoveObject(ctx, mediaBucket, *oldKey, minio.RemoveObjectOptions{})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"image_object_key": objectKey,

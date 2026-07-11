@@ -115,6 +115,21 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	if status2 != "skipped_exists" || id2 != id {
 		t.Errorf("want skipped_exists with same id, got status=%q id=%v", status2, id2)
 	}
+
+	// The tool never mutates an existing entity, so re-proposing WITH attributes must
+	// surface them as discarded (sorted) rather than silently dropping them — the
+	// signal that tells a weak model to reapply via glossary_entity_set_attributes.
+	_, status3, discarded, err := s.proposeNewEntity(ctx, book, kindID, "Nezha",
+		map[string]any{"weapon": "Fire-tipped Spear", "title": "Third Prince"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status3 != "skipped_exists" {
+		t.Errorf("want skipped_exists, got %q", status3)
+	}
+	if !slices.Equal(discarded, []string{"title", "weapon"}) {
+		t.Errorf("want discarded attrs [title weapon] (sorted), got %v", discarded)
+	}
 }
 
 func TestProposeNewEntity_SkipsTombstoned(t *testing.T) {
