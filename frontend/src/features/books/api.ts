@@ -38,10 +38,22 @@ export type Chapter = {
   trashed_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-  // Canon Model (CM1): editorial lifecycle. canon = published. New chapters
-  // start 'draft'; existing chapters were migrated to 'published'.
+  // Canon Model (CM1): editorial lifecycle. New chapters start 'draft'; existing
+  // chapters were migrated to 'published'. NOTE: publish no longer decides knowledge-
+  // graph membership — see kg_indexed_revision_id below (WS-0.2+).
   editorial_status?: 'draft' | 'published';
   published_revision_id?: string | null;
+  // Publish-independent KG indexing (spec 2026-07-11). "Is this chapter in my knowledge
+  // graph?" is now a SEPARATE question from "is it published":
+  //   kg_indexed_revision_id — the revision the knowledge layer reflects. Non-null ⇒ the
+  //                            chapter is in the KG (possibly as a DRAFT the user
+  //                            explicitly indexed).
+  //   kg_exclude             — the user's explicit "keep this out of my knowledge graph"
+  //                            (also retracts what was already extracted).
+  // Both are optional: an older book-service may not return them, so every consumer must
+  // tolerate `undefined` rather than assume the field exists.
+  kg_indexed_revision_id?: string | null;
+  kg_exclude?: boolean;
   // 15_chapter_browser.md CB3 — multilingual char/word count. Additive + optional:
   // the BE column/backfill (Phase A) may not have landed yet on a given deploy, so
   // every consumer must tolerate `undefined` rather than assume the field exists.
@@ -362,13 +374,41 @@ export const booksApi = {
       ),
     });
   },
-  // Unpublish flips the chapter back to draft and retracts its canon (KG facts
-  // + L3 passages) via chapter.unpublished. Destructive-ish — the UI confirms.
+  // Unpublish flips the chapter back to draft. It is an EDITORIAL act only.
+  //
+  // ⚠️ It NO LONGER retracts the knowledge graph (WS-0.8, spec §3.8 / acceptance #9).
+  // Publishing and indexing are independent now, so a user who added a chapter to their
+  // knowledge graph and later unpublished it for editorial reasons keeps their KG. The
+  // chapter's passages are demoted to non-canon, but its facts and its index request
+  // survive. To actually remove a chapter from the graph, use setChapterKgExclude(true).
   unpublishChapter(token: string, bookId: string, chapterId: string) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}/unpublish`, {
       method: 'POST',
       token,
     });
+  },
+  // "Add to knowledge" — index this chapter into the knowledge graph. Works on a DRAFT;
+  // publishing is neither required nor implied. Emits chapter.kg_indexed → the graph
+  // extracts + L3 passages ingest at the pinned revision. Re-indexing an unchanged draft
+  // reuses the existing revision and costs nothing (`reused_revision: true`).
+  indexChapter(token: string, bookId: string, chapterId: string) {
+    return apiJson<{
+      chapter_id: string;
+      revision_id: string;
+      reused_revision: boolean;
+      reparse?: { unchanged: number; updated: number; inserted: number; deleted: number };
+    }>(`/v1/books/${bookId}/chapters/${chapterId}/index`, { method: 'POST', token });
+  },
+  // Include/exclude a chapter from the knowledge graph.
+  // `true` KEEPS IT OUT and RETRACTS anything already extracted from it (facts +
+  // passages) — this is the real "forget this chapter". `false` merely re-allows
+  // indexing; it does NOT re-index by itself (call indexChapter for that), because a
+  // toggle that silently re-ingests the user's prose is a privacy surprise.
+  setChapterKgExclude(token: string, bookId: string, chapterId: string, kgExclude: boolean) {
+    return apiJson<{ chapter_id: string; kg_exclude: boolean }>(
+      `/v1/books/${bookId}/chapters/${chapterId}/kg-exclude`,
+      { method: 'PUT', token, body: JSON.stringify({ kg_exclude: kgExclude }) },
+    );
   },
   restoreChapter(token: string, bookId: string, chapterId: string) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}/restore`, { method: 'POST', token });

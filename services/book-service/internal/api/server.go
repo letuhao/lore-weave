@@ -1613,11 +1613,16 @@ func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, book
 	var order, revCount, wordCount int
 	var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var publishedRevID *uuid.UUID
+	// WS-0.9: the KG markers ride the public chapter read. Without them the editor
+	// cannot render the "in your knowledge" state at all — an invisible knowledge graph
+	// is one the user can neither trust nor correct.
+	var kgIndexedRevID *uuid.UUID
+	var kgExclude bool
 	err := s.pool.QueryRow(ctx, `
-SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.word_count
+SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id,c.kg_indexed_revision_id,c.kg_exclude,c.word_count
 FROM chapters c
 WHERE c.id=$1 AND c.book_id=$2
-`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID, &wordCount)
+`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID, &kgIndexedRevID, &kgExclude, &wordCount)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1644,7 +1649,11 @@ WHERE c.id=$1 AND c.book_id=$2
 		"updated_at":            updatedAt,
 		"editorial_status":      editorialStatus,
 		"published_revision_id": publishedRevID,
-		"word_count":            wordCount,
+		// WS-0.9 — "is this chapter in my knowledge graph?" is now a DIFFERENT question
+		// from "is it published", so the editor needs both markers.
+		"kg_indexed_revision_id": kgIndexedRevID,
+		"kg_exclude":             kgExclude,
+		"word_count":             wordCount,
 	}
 	if len(extra) > 0 {
 		for k, v := range extra[0] {

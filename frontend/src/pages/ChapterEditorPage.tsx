@@ -36,6 +36,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
 import { PublishControl } from '@/features/books/components/PublishControl';
+import { KnowledgeIndexControl } from '@/features/books/components/KnowledgeIndexControl';
 import { cn } from '@/lib/utils';
 import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
 import { useEditorMode } from '@/hooks/useEditorMode';
@@ -166,6 +167,10 @@ export function ChapterEditorPage() {
   const [title, setTitle] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
   const [editorialStatus, setEditorialStatus] = useState<'draft' | 'published' | undefined>();
+  // WS-0.9 — publish-independent KG indexing. "Is this chapter in my knowledge graph?" is
+  // a SEPARATE question from "is it published", so it needs its own state.
+  const [kgIndexedRevisionId, setKgIndexedRevisionId] = useState<string | null | undefined>();
+  const [kgExclude, setKgExclude] = useState<boolean | undefined>();
 
   // Editor content
   const [savedBody, setSavedBody] = useState<any>(null);
@@ -390,6 +395,9 @@ export function ChapterEditorPage() {
       setTitle(chTitle);
       setSavedTitle(chTitle);
       setEditorialStatus(chapter.editorial_status);
+      // WS-0.9 — the KG markers load with the chapter (see refreshEditorialStatus).
+      setKgIndexedRevisionId(chapter.kg_indexed_revision_id ?? null);
+      setKgExclude(chapter.kg_exclude ?? false);
       // RAID C6 — refresh the pre-edit-revision pointer. Runs on chapter open and
       // after every save/restore (both call load()), so it always reflects the
       // latest committed revision when the next AI edit captures a checkpoint.
@@ -400,14 +408,21 @@ export function ChapterEditorPage() {
     } catch (e) { toast.error((e as Error).message); }
   }, [accessToken, bookId, chapterId]);
 
-  // CM-FE: light refetch of just the editorial_status after publish/unpublish
+  // CM-FE: light refetch of just the chapter's MARKERS after publish/unpublish/index
   // — must NOT touch body/title (would clobber the editor).
+  //
+  // WS-0.9: the KG markers refresh on the same trip. They must, because the two controls
+  // interact: publishing a chapter also indexes it (so the "in your knowledge" badge has
+  // to move), and unpublishing does NOT un-index it (so the badge must NOT move).
+  // Refreshing only editorial_status would leave the knowledge badge lying.
   const refreshEditorialStatus = useCallback(async () => {
     if (!accessToken) return;
     try {
       const chapter = await booksApi.getChapter(accessToken, bookId, chapterId);
       setEditorialStatus(chapter.editorial_status);
-    } catch { /* non-fatal — badge stays until next load */ }
+      setKgIndexedRevisionId(chapter.kg_indexed_revision_id ?? null);
+      setKgExclude(chapter.kg_exclude ?? false);
+    } catch { /* non-fatal — badges stay until next load */ }
   }, [accessToken, bookId, chapterId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -1013,7 +1028,7 @@ export function ChapterEditorPage() {
             </span>
           )}
 
-          {/* CM-FE: canon publish affordance (canon = published) */}
+          {/* CM-FE: canon publish affordance — "is this the canonical, shareable version?" */}
           <PublishControl
             token={accessToken ?? ''}
             bookId={bookId}
@@ -1024,6 +1039,23 @@ export function ChapterEditorPage() {
             blockedReason={publishBlockedReason}
             onChanged={refreshEditorialStatus}
           />
+
+          {/* WS-0.9: a SEPARATE question — "should the assistant know about this?".
+              Publishing no longer puts a chapter in the knowledge graph, so without this
+              control there is no way to get a draft into the KG, and no way to SEE what
+              is in it. Both halves matter: an invisible knowledge graph is one the user
+              can neither trust nor correct. */}
+          {kgExclude !== undefined && (
+            <KnowledgeIndexControl
+              token={accessToken ?? ''}
+              bookId={bookId}
+              chapterId={chapterId}
+              kgIndexedRevisionId={kgIndexedRevisionId}
+              kgExclude={kgExclude}
+              dirty={isDirty}
+              onChanged={refreshEditorialStatus}
+            />
+          )}
         </div>
       </div>
 
