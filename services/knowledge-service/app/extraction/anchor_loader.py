@@ -179,13 +179,15 @@ class ProjectionResult:
     seen: int = 0
     skipped: int = 0
     truncated: bool = False
-    # Entities that could NOT be anchored because some OTHER node already claims
-    # their `glossary_entity_id`. The Neo4j constraint `entity_glossary_id_unique`
-    # is GLOBAL (not scoped by user/project), so a second knowledge project over the
-    # same book cannot anchor entities the first one already anchored. Counted
-    # separately from `skipped` so the tool can explain the partial result instead of
-    # reporting "created N" as if it were the whole glossary
-    # (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE).
+    # Entities that could NOT be anchored because another node in the SAME
+    # (user_id, project_id) already claims their `glossary_entity_id`. The Neo4j
+    # constraint is `entity_glossary_fk_unique`, scoped per (user_id, project_id,
+    # glossary_entity_id) — so a second knowledge project over the same book CAN now
+    # anchor entities the first project already anchored (they carry a different
+    # project_id). A conflict here therefore signals an unexpected duplicate WITHIN
+    # one project, not the old cross-project clash. Counted separately from `skipped`
+    # so the tool can explain a partial result instead of reporting "created N" as if
+    # it were the whole glossary (was D-KG-GLOSSARY-FK-GLOBAL-UNIQUE, fixed 2026-07-10).
     conflicted: int = 0
 
 
@@ -226,14 +228,16 @@ async def project_glossary_entities_to_nodes(
                 aliases=aliases,
             )
         except ConstraintError:
-            # `entity_glossary_id_unique` is a GLOBAL uniqueness constraint on
-            # Entity.glossary_entity_id, so another node (typically this book's
-            # FIRST knowledge project) already claims this entity's FK. Counted
-            # separately so the caller can say WHY the projection is partial rather
-            # than silently reporting a smaller `nodes_created`.
+            # `entity_glossary_fk_unique` is a per-(user_id, project_id,
+            # glossary_entity_id) uniqueness constraint, so a conflict means another
+            # node in THIS SAME project already claims this entity's FK — an
+            # unexpected in-project duplicate (cross-project no longer clashes now that
+            # the FK carries project_id). Counted separately so the caller can say WHY
+            # the projection is partial rather than silently reporting a smaller
+            # `nodes_created`.
             logger.warning(
-                "WS-4B: entity=%s already anchored by another node — cannot anchor "
-                "into project=%s (entity_glossary_id_unique is global)",
+                "WS-4B: entity=%s already anchored by another node in the same "
+                "project=%s — cannot re-anchor (entity_glossary_fk_unique)",
                 eid, project_id,
             )
             conflicted += 1

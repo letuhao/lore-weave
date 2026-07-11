@@ -206,7 +206,7 @@ describe('GROUP_DIRECTORY (Part A, TS mirror)', () => {
     // (or a description edited on only one side) fails here.
     expect(Object.keys(GROUP_DIRECTORY).sort()).toEqual([
       'book', 'catalog', 'composition', 'glossary', 'jobs',
-      'knowledge', 'plan', 'registry', 'research', 'settings', 'story', 'translation',
+      'knowledge', 'plan', 'registry', 'research', 'settings', 'story', 'translation', 'world',
     ]);
   });
 
@@ -514,5 +514,32 @@ describe('Track D Wave 0 — `research` category + the C-GW prefix gate', () => 
   it('find_tools group enum exposes `research`', () => {
     const props = FIND_TOOLS_TOOL.inputSchema.properties as { group: { enum: string[] } };
     expect(props.group.enum).toContain('research');
+  });
+});
+
+describe('W10 remediation — `world` category + the world_* federation namespace', () => {
+  const CAT_WORLD = [
+    ...CATALOG,
+    { name: 'world_create', description: 'Create a worldbuilding container' },
+    { name: 'world_map_create', description: 'Create a reference map with pins and regions' },
+  ];
+
+  it('`world` is a GROUP_DIRECTORY domain (lockstep with tool_discovery.py)', () => {
+    expect(GROUP_DIRECTORY.world).toBeDefined();
+  });
+
+  it('world_* + world_map_* enumerate under `world`, NOT `book` (prose vs worldbuilding)', () => {
+    // domainOf() is prefix-derived: prefix `world` already equals the group (no alias).
+    const inWorld = enumerateGroup(CAT_WORLD, 'world').map((t) => t.name);
+    expect(inWorld).toContain('world_create');
+    expect(inWorld).toContain('world_map_create');
+    const inBook = enumerateGroup(CAT_WORLD, 'book').map((t) => t.name);
+    expect(inBook).not.toContain('world_create');
+    expect(inBook).not.toContain('world_map_create');
+  });
+
+  it('find_tools group enum exposes `world`', () => {
+    const props = FIND_TOOLS_TOOL.inputSchema.properties as { group: { enum: string[] } };
+    expect(props.group.enum).toContain('world');
   });
 });

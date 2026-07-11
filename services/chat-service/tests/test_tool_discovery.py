@@ -933,9 +933,43 @@ class TestDomainAliases:
         assert hot == {"kg_graph_query", "memory_search"}
 
 
+class TestWorldGroupDiscoverable:
+    """W10 remediation (2026-07-11) — group="world" matched NOTHING before this fix:
+    world_*/world_map_* carry the literal `world_` prefix, but GROUP_DIRECTORY had no
+    "world" key, so `_domain_of` resolved them to the non-group domain "world" and they
+    were excluded from every enumerable group AND from "book". Adding the key makes the
+    prefix its own group. Mirror of TestDomainAliases."""
+
+    _CATALOG = [
+        _tool("world_create", "Create a worldbuilding container", tier="R"),
+        _tool("world_map_create", "Create a reference map", tier="R"),
+        _tool("book_create", "Create a book", tier="R"),
+    ]
+
+    def test_group_world_finds_world_tool(self):
+        matches, _ = td.search_catalog(self._CATALOG, "create a world", 8, group="world")
+        assert "world_create" in {m["name"] for m in matches}
+
+    def test_group_world_finds_map_tool(self):
+        matches, _ = td.search_catalog(self._CATALOG, "create a map", 8, group="world")
+        assert "world_map_create" in {m["name"] for m in matches}
+
+    def test_group_world_excludes_book_domain(self):
+        matches, _ = td.search_catalog(self._CATALOG, "create", 8, group="world")
+        assert "book_create" not in {m["name"] for m in matches}
+
+    def test_hot_tool_names_world_domain_includes_both(self):
+        hot = td.hot_tool_names(self._CATALOG, {"world"})
+        assert hot == {"world_create", "world_map_create"}
+
+
 class TestGroupDirectory:
     def test_glossary_entry_exists(self):
         assert "glossary" in td.GROUP_DIRECTORY
+
+    def test_world_entry_exists(self):
+        # W10 remediation — world_*/world_map_* now have a group home.
+        assert "world" in td.GROUP_DIRECTORY
 
     def test_text_is_deterministic_and_mentions_group_param(self):
         text = td.group_directory_text()

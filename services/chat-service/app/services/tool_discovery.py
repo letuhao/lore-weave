@@ -71,6 +71,13 @@ GROUP_DIRECTORY: dict[str, str] = {
     "knowledge": "Derived KG facts (Neo4j-backed), passage retrieval, memory_search.",
     "translation": "Job-based chapter/book translation pipeline.",
     "book": "Book/chapter CRUD, publishing, chapter body reads (incl. book_get_chapter).",
+    # W10 worldbuilding — book-service's SECOND federated namespace (world_*, world_map_*).
+    # A distinct group from "book" (prose): worlds are prose-less containers + reference
+    # maps. `_domain_of` maps the `world_` prefix straight here (no _DOMAIN_ALIASES entry
+    # needed — the prefix already equals the group name). Without this entry the tools
+    # reach the raw catalog but are NOT enumerable by group and are excluded from "book".
+    # Keep in lockstep with ai-gateway find-tools.ts GROUP_DIRECTORY.
+    "world": "Worldbuilding containers + reference maps — world create/get/list/move, plus map/marker/region authoring (world_*, world_map_*).",
     "jobs": "Job status/cancel for any long-running operation.",
     "catalog": "Public catalog browsing (published books, discovery).",
     "registry": "Agent/tool registry administration.",

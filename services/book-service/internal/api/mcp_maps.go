@@ -6,9 +6,11 @@ package api
 // glossary `location` entity (a SOFT cross-service UUID). Maps are WORLD-scoped and
 // OWNER-scoped (worlds have no E0 sharing), so every tool authenticates via the
 // envelope identity (mcpUserID) and filters `owner_user_id`. Writes are Tier-A
-// DIRECT + reversible (delete the map/marker/region), scope=none — like the world
-// tools. Tool names carry the `world_` prefix so ai-gateway federates them (the
-// book provider's second allowed namespace, EXTRA_PREFIX_MAP).
+// DIRECT (scope=none) — like the world tools; a delete/undo surface
+// (world_map_delete/remove_marker/remove_region) is a planned follow-on, so these
+// writes are additive and NOT yet reversible via a tool. Tool names carry the
+// `world_` prefix so ai-gateway federates them (the book provider's second allowed
+// namespace, EXTRA_PREFIX_MAP).
 
 import (
 	"context"
