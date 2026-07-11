@@ -57,10 +57,15 @@ type bookListOut struct {
 // SHARED to the caller (it would otherwise leak another tenant's book ids/titles),
 // matching the per-book owner gate (mcpRequireGrant). First-party keeps owned+shared.
 func bookListFilter(ownerOnly bool) string {
+	// WS-1.2 · EGRESS GUARD #7, MCP twin (review-impl P1). The REST library LIST filters
+	// out kind='diary', but this MCP book_list tool — the agent-facing enumerator in the
+	// SAME service — did not. So the moment WS-1.4 provisions a diary, ANY agent (including
+	// a public MCP key) could enumerate it here and then read its plaintext prose. The
+	// guard belongs on BOTH list surfaces, not just the browser one.
 	if ownerOnly {
-		return `b.owner_user_id=$1 AND b.is_bible=false AND b.lifecycle_state='active'`
+		return `b.owner_user_id=$1 AND b.is_bible=false AND b.kind<>'diary' AND b.lifecycle_state='active'`
 	}
-	return `(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.lifecycle_state='active'`
+	return `(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.kind<>'diary' AND b.lifecycle_state='active'`
 }
 
 func (s *Server) toolBookList(ctx context.Context, _ *mcp.CallToolRequest, in bookListIn) (*mcp.CallToolResult, bookListOut, error) {

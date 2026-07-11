@@ -86,7 +86,10 @@ func (s *Server) internalGetUserDEK(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "failed to generate dek")
 		return
 	}
-	newWrapped, err := sealWithKEK(s.dekKEK, dek)
+	// AAD binds the wrapped DEK to THIS user, so a DB-write adversary cannot move A's
+	// wrapped_dek onto B's row and have it unwrap. Must match loreweave_crypto._wrap_aad
+	// byte-for-byte (same domain separator + user_id), or Python cannot unwrap.
+	newWrapped, err := sealWithKEK(s.dekKEK, dek, wrapAAD(userID))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "failed to wrap dek")
 		return
@@ -141,7 +144,14 @@ func kekRef(kek []byte) string {
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
-func sealWithKEK(kek, plain []byte) (string, error) {
+// wrapAAD mirrors loreweave_crypto._wrap_aad: b"loreweave-dek-wrap\x00" + user_id.
+// A drift here makes every Go-wrapped DEK unreadable by the Python consumers — the golden
+// vector test exists to catch exactly that.
+func wrapAAD(userID uuid.UUID) []byte {
+	return append([]byte("loreweave-dek-wrap\x00"), []byte(userID.String())...)
+}
+
+func sealWithKEK(kek, plain, aad []byte) (string, error) {
 	block, err := aes.NewCipher(kek)
 	if err != nil {
 		return "", err
@@ -154,5 +164,5 @@ func sealWithKEK(kek, plain []byte) (string, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
-	return base64.StdEncoding.EncodeToString(gcm.Seal(nonce, nonce, plain, nil)), nil
+	return base64.StdEncoding.EncodeToString(gcm.Seal(nonce, nonce, plain, aad)), nil
 }

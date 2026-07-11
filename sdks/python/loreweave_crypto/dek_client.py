@@ -119,7 +119,9 @@ class DEKClient:
             raise DEKUnavailable(f"malformed DEK response for {user_id}") from exc
 
         try:
-            dek = unwrap_dek(self._keyring, wrapped)
+            # Pass user_id — auth-service bound the wrap to it (AAD). A wrapped_dek that
+            # belongs to a different user (a row-swap) fails to unwrap here.
+            dek = unwrap_dek(self._keyring, wrapped, str(user_id))
         except CryptoError as exc:
             # The KEK this service holds cannot unwrap what auth stored. Almost always a
             # rotation where the previous KEK was not added to the retired keyring —

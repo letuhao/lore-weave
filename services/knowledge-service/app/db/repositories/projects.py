@@ -149,11 +149,24 @@ class ProjectsRepo:
     async def _insert(
         self, conn: asyncpg.Connection, user_id: UUID, data: ProjectCreate
     ) -> asyncpg.Record:
+        # review-impl (Phase 1) — MUST set chat_turn_extraction_enabled=true here.
+        #
+        # WS-1.3 added that column with DEFAULT FALSE (fail-closed) and a D6 gate that now
+        # HARD-BLOCKS the chat-turn enqueue when it is false. The one-time backfill only
+        # touched PRE-EXISTING rows. So without setting it here, EVERY project created after
+        # the WS-1.3 deploy would silently stop extracting chat knowledge — a regression I
+        # introduced in the very slice that added the gate.
+        #
+        # A normal project opts in (true); this preserves the pre-WS-1.3 behavior. The
+        # assistant project is the exception (facts come once a day from the confirmed
+        # entry, D6) — and it is NOT created through this path: WS-1.4's provisioner inserts
+        # it with is_assistant=true AND chat_turn_extraction_enabled=false explicitly. This
+        # path never sets is_assistant, so it only ever mints normal projects.
         query = f"""
         INSERT INTO knowledge_projects
           (user_id, name, description, project_type, book_id, instructions,
-           genre, is_derivative, world_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           genre, is_derivative, world_id, chat_turn_extraction_enabled)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
         RETURNING {_SELECT_COLS}
         """
         return await conn.fetchrow(

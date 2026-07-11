@@ -907,6 +907,12 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
@@ -1049,6 +1055,12 @@ services:
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # KM5 (D-KM5-M3) — SPKI/PKIX PEM (or base64) of the platform admin-signing
       # key's public half (same value glossary-service gets). When set, the System-
       # tier admin write endpoints + the /mcp/admin server verify an RS256 admin JWT
@@ -1365,6 +1377,12 @@ services:
     environment:
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (review-impl) — the SAME deployment KEK auth-service uses to WRAP each DEK.
+      # This consumer unwraps the DEK with it to decrypt the user's private content, so a
+      # value here that differs from auth-service's is a total decrypt failure. Rotations
+      # must add the old value to DIARY_ENCRYPTION_KEYS_RETIRED on EVERY service at once.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092

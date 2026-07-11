@@ -44,6 +44,11 @@ dependencies = [
   # service drops its own PyJWT pin). fastapi is already a core dep of every
   # consuming FastAPI service, so it stays in the test extras here.
   "PyJWT>=2.8",
+  # WS-1.0 (review-impl) — loreweave_crypto is the envelope-encryption module (per-user
+  # DEK wrap/unwrap, blind index, encrypted embeddings). Every service that stores or reads
+  # private user content pip-installs the SDK and imports it, so `cryptography` MUST be a
+  # declared dependency — without it the import fails at runtime on a fresh install.
+  "cryptography>=42",
 ]
 
 [project.optional-dependencies]
@@ -118,6 +123,13 @@ include = [
   # similarity math, promoted from near-duplicate copies in lore-enrichment/
   # composition/knowledge-service). Pure stdlib (math + typing only), no deps.
   "loreweave_vecmath*",
+  # WS-1.0 (2026-07-12, review-impl) — `loreweave_crypto` added (envelope encryption for
+  # private user content: per-user DEK wrap/unwrap under a deployment KEK, HMAC blind
+  # index, encrypted embeddings + cosine, and the DEKClient). WITHOUT THIS LINE the module
+  # is silently absent from `pip install /sdk`, so every consumer's `import loreweave_crypto`
+  # fails at runtime and the whole encryption slice is unreachable — a shipped-but-unusable
+  # feature. Depends on `cryptography` (declared in [project.dependencies] above).
+  "loreweave_crypto*",
 ]
 exclude = ["tests*"]
 

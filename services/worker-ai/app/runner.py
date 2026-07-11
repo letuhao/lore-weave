@@ -1284,6 +1284,17 @@ async def _enumerate_pending_chat_turns(
           ON p.project_id = ep.project_id AND p.user_id = $1
         WHERE ep.project_id = $2 AND ep.processed_at IS NULL
           AND ep.aggregate_type = 'chat'
+          -- ── WS-1.3 · the D6 gate, ENFORCED ON BOTH SIDES (review-impl P1) ──
+          -- knowledge-service's handle_chat_turn gates at ENQUEUE, but a one-sided gate
+          -- is a silent-success bug (spec 09 says so explicitly, and I wrote a comment
+          -- claiming both sides were covered — they were not). A row can be enqueued and
+          -- THEN the project flipped to assistant, or the extraction re-run over an old
+          -- row. This is the same derived predicate (fail-closed): the ASSISTANT never
+          -- extracts per turn (its facts come once a day from the confirmed entry), and a
+          -- project with per-turn extraction disabled is skipped. A NULL is_assistant or
+          -- flag cannot pass (both are NOT NULL columns, so this reads as false-safe).
+          AND p.is_assistant = false
+          AND p.chat_turn_extraction_enabled = true
         ORDER BY ep.created_at ASC
         LIMIT 1000
         """,

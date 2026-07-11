@@ -235,8 +235,10 @@ func (s *Server) toolWorldMoveBook(ctx context.Context, _ *mcp.CallToolRequest, 
 	// Move only a real (non-bible) book the caller owns; a hidden bible book can
 	// never be re-homed (guards the single-bible invariant).
 	tag, err := s.pool.Exec(ctx, `
+-- WS-1.2 · EGRESS (review-impl): the agent-callable world_move_book must also refuse a
+-- diary — a world is shareable, so moving a diary into one is a back-door share.
 UPDATE books SET world_id=$1, updated_at=now()
-WHERE id=$2 AND owner_user_id=$3 AND is_bible=false AND lifecycle_state!='purge_pending'`,
+WHERE id=$2 AND owner_user_id=$3 AND is_bible=false AND kind<>'diary' AND lifecycle_state!='purge_pending'`,
 		worldID, bookID, ownerID)
 	if err != nil {
 		return nil, worldMoveBookOut{}, errors.New("failed to move book")

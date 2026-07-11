@@ -166,6 +166,83 @@ func TestDiaryEgress_HiddenFromTheLibraryList_DB(t *testing.T) {
 	_ = ctx
 }
 
+// ── EGRESS — a diary must not be enumerable via the MCP book_list tool ──
+
+func TestDiaryEgress_NotInMCPBookList_DB(t *testing.T) {
+	// WS-1.2 guarded the REST library LIST but review-impl found the MCP book_list tool
+	// (the agent-facing enumerator in the SAME service) had no kind filter. So an agent —
+	// including a public MCP key — could list a diary and then read its plaintext prose.
+	_, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+	novel := seedBookOfKind(t, ctx, pool, owner, "novel")
+
+	// The filter is what the tool uses; assert it directly against the DB (both branches).
+	for _, ownerOnly := range []bool{true, false} {
+		where := bookListFilter(ownerOnly)
+		rows, err := pool.Query(ctx,
+			"SELECT b.id FROM books b WHERE "+where, owner)
+		if err != nil {
+			t.Fatalf("query (ownerOnly=%v): %v", ownerOnly, err)
+		}
+		var ids []uuid.UUID
+		for rows.Next() {
+			var id uuid.UUID
+			_ = rows.Scan(&id)
+			ids = append(ids, id)
+		}
+		rows.Close()
+		set := map[uuid.UUID]bool{}
+		for _, id := range ids {
+			set[id] = true
+		}
+		if set[diary] {
+			t.Fatalf("the DIARY is enumerable via bookListFilter(ownerOnly=%v) — an agent "+
+				"could list it and then read its plaintext prose", ownerOnly)
+		}
+		if !set[novel] {
+			t.Fatalf("the novel vanished from bookListFilter(ownerOnly=%v)", ownerOnly)
+		}
+	}
+}
+
+// ── EGRESS — a diary cannot be moved into a (shareable) world ──
+
+func TestDiaryEgress_CannotBeMovedIntoAWorld_DB(t *testing.T) {
+	// A world is shareable and its member books surface through world-scoped reads, so
+	// absorbing a private diary into one is a share by the back door. Both the REST
+	// moveBookIntoWorld and the agent MCP world_move_book gate on kind<>'diary'.
+	_, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+
+	var worldID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO worlds(owner_user_id, name) VALUES($1,'w') RETURNING id`, owner).Scan(&worldID); err != nil {
+		t.Fatalf("seed world: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM worlds WHERE id=$1`, worldID) })
+
+	// The UPDATE both move paths use — a diary must match ZERO rows.
+	ct, err := pool.Exec(ctx,
+		`UPDATE books SET world_id=$1 WHERE id=$2 AND is_bible=false AND kind<>'diary'`,
+		worldID, diary)
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if ct.RowsAffected() != 0 {
+		t.Fatal("a DIARY was moved into a world — a shareable world absorbing a private " +
+			"diary is a back-door share")
+	}
+	var gotWorld *uuid.UUID
+	_ = pool.QueryRow(ctx, `SELECT world_id FROM books WHERE id=$1`, diary).Scan(&gotWorld)
+	if gotWorld != nil {
+		t.Fatalf("the diary's world_id is set to %v", *gotWorld)
+	}
+}
+
 // ── The ENABLING contract: consumers cannot guard what they cannot see ──
 
 func TestBookProjection_CarriesKind_DB(t *testing.T) {

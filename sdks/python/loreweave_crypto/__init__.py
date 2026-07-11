@@ -134,10 +134,16 @@ class Keyring:
                 f"it — refusing to start rather than silently writing plaintext."
             )
         active = _coerce_key(raw)
+        # STRIP each retired entry before deriving it (review-impl P2). The filter used
+        # k.strip() but derived from the UN-stripped k, so `DIARY_ENCRYPTION_KEYS_RETIRED=
+        # "old1, old2"` derived SHA256(" old2") — a key that unwraps nothing. At rotation
+        # time every user still on old2 would then hit a hard "DEK unavailable" (fail-closed,
+        # so no leak — but a total outage), while the error told the operator to add a key
+        # they HAD added. One stray space after a comma.
         retired = tuple(
-            _coerce_key(k)
-            for k in (os.environ.get(retired_var) or "").split(",")
-            if k.strip()
+            _coerce_key(stripped)
+            for raw_k in (os.environ.get(retired_var) or "").split(",")
+            if (stripped := raw_k.strip())
         )
         return Keyring(active=active, active_ref=key_ref(active), retired=retired)
 
@@ -162,45 +168,62 @@ def new_dek() -> DEK:
     return os.urandom(_KEY_LEN)
 
 
-def wrap_dek(keyring: Keyring, dek: DEK) -> tuple[str, str]:
-    """Wrap a user's DEK under the ACTIVE kek. Returns (wrapped_b64, key_ref)."""
+def _wrap_aad(user_id: str | None) -> bytes | None:
+    """The AAD that binds a wrapped DEK to its owner.
+
+    AES-GCM authenticates the AAD without encrypting it, so wrapping user A's DEK under
+    AAD="dek:A" and unwrapping it under AAD="dek:B" FAILS. That closes a DB-write
+    adversary's row-swap: moving A's wrapped_dek onto B's user_deks row no longer yields a
+    usable key for B. Domain-separated so a wrap AAD can never collide with a content AAD.
+    """
+    return None if user_id is None else b"loreweave-dek-wrap\x00" + user_id.encode("utf-8")
+
+
+def wrap_dek(keyring: Keyring, dek: DEK, user_id: str | None = None) -> tuple[str, str]:
+    """Wrap a user's DEK under the ACTIVE kek, BOUND to user_id. Returns (wrapped_b64, key_ref).
+
+    user_id is optional only for back-compat with callers that predate the binding; every
+    real caller (auth-service, DEKClient) passes it, and MUST pass the same value to unwrap.
+    """
     if len(dek) != _KEY_LEN:
         raise CryptoError(f"dek must be {_KEY_LEN} bytes, got {len(dek)}")
-    return _seal(keyring.active, dek), keyring.active_ref
+    return _seal(keyring.active, dek, _wrap_aad(user_id)), keyring.active_ref
 
 
-def unwrap_dek(keyring: Keyring, wrapped: str) -> DEK:
+def unwrap_dek(keyring: Keyring, wrapped: str, user_id: str | None = None) -> DEK:
     """Unwrap a user's DEK, trying the active kek then each retired one.
 
     Trying every key on the read path is what makes rotation safe. AES-GCM is
-    authenticated, so a wrong key fails cleanly (it cannot silently produce garbage).
+    authenticated, so a wrong key — or a wrapped DEK that belongs to a DIFFERENT user
+    (wrong AAD) — fails cleanly; it cannot silently produce garbage.
     """
+    aad = _wrap_aad(user_id)
     last: Exception | None = None
     for kek in keyring.all_for_read():
         try:
-            dek = _open(kek, wrapped)
+            dek = _open(kek, wrapped, aad)
             if len(dek) != _KEY_LEN:
                 raise CryptoError("unwrapped dek has the wrong length")
             return dek
-        except CryptoError as exc:  # wrong key — try the next
+        except CryptoError as exc:  # wrong key or wrong user — try the next kek
             last = exc
     raise CryptoError(
         "could not unwrap the user's DEK with any configured KEK. If a KEK was rotated, "
-        "the previous value MUST be in the retired keyring or this user's content is "
-        "unrecoverable."
+        "the previous value MUST be in the retired keyring; if this row was moved between "
+        "users, the AAD binding will also refuse it."
     ) from last
 
 
 # ── content ───────────────────────────────────────────────────────────────────
 
 
-def _seal(key: bytes, plain: bytes) -> str:
+def _seal(key: bytes, plain: bytes, aad: bytes | None = None) -> str:
     nonce = os.urandom(_NONCE)
-    ct = AESGCM(key).encrypt(nonce, plain, None)
+    ct = AESGCM(key).encrypt(nonce, plain, aad)
     return base64.b64encode(nonce + ct).decode("ascii")
 
 
-def _open(key: bytes, blob: str) -> bytes:
+def _open(key: bytes, blob: str, aad: bytes | None = None) -> bytes:
     try:
         raw = base64.b64decode(blob, validate=True)
     except Exception as exc:  # noqa: BLE001
@@ -208,20 +231,29 @@ def _open(key: bytes, blob: str) -> bytes:
     if len(raw) <= _NONCE:
         raise CryptoError("ciphertext too short")
     try:
-        return AESGCM(key).decrypt(raw[:_NONCE], raw[_NONCE:], None)
+        return AESGCM(key).decrypt(raw[:_NONCE], raw[_NONCE:], aad)
     except Exception as exc:  # noqa: BLE001 — InvalidTag or anything else
-        raise CryptoError("decryption failed (wrong key or tampered ciphertext)") from exc
+        raise CryptoError("decryption failed (wrong key, wrong AAD, or tampered ciphertext)") from exc
 
 
-def encrypt(dek: DEK, plaintext: str) -> str:
-    """Encrypt user content under their DEK. Returns base64(nonce||ct)."""
-    return _seal(dek, plaintext.encode("utf-8"))
+def encrypt(dek: DEK, plaintext: str, aad: str | None = None) -> str:
+    """Encrypt user content under their DEK. Returns base64(nonce||ct).
+
+    Optional `aad` binds the ciphertext to a context (e.g. a "chapter:<id>" row identity),
+    so a DB-write adversary cannot move a ciphertext between rows and have it still decrypt.
+    Forward-compatible: the diary/chat/fact writers (WS-1.4+) will pass their row identity;
+    a caller that passes None gets confidentiality + integrity but no row binding.
+    """
+    return _seal(dek, plaintext.encode("utf-8"),
+                 None if aad is None else b"loreweave-content\x00" + aad.encode("utf-8"))
 
 
-def decrypt(dek: DEK, ciphertext: str) -> str:
-    """Decrypt user content. Raises CryptoError on a wrong key OR any tampering —
-    AES-GCM is authenticated, so a modified row is detected, not silently returned."""
-    return _open(dek, ciphertext).decode("utf-8")
+def decrypt(dek: DEK, ciphertext: str, aad: str | None = None) -> str:
+    """Decrypt user content. Raises CryptoError on a wrong key, a wrong AAD, OR any
+    tampering — AES-GCM is authenticated, so a modified or moved row is detected, not
+    silently returned. `aad` must match what encrypt() was given."""
+    return _open(dek, ciphertext,
+                 None if aad is None else b"loreweave-content\x00" + aad.encode("utf-8")).decode("utf-8")
 
 
 # ── blind index (search over ciphertext) ──────────────────────────────────────
@@ -256,17 +288,28 @@ _NGRAMS = (2, 3)
 
 
 def _tokens(text: str) -> set[str]:
-    """Word tokens + character n-grams (n ∈ _NGRAMS).
+    """Word tokens + character n-grams (n ∈ _NGRAMS), n-grammed PER WORD.
 
     Both, deliberately: whole words give precise matches, n-grams give substring and CJK
-    coverage. The cost is a larger token set per row, which is the price of the feature
-    working in every language we ship.
+    coverage.
+
+    ⚠️ The n-grams are computed per matched word, NOT over the whitespace-squished whole
+    string (review-impl P1). Squishing manufactures n-grams that SPAN a word boundary —
+    e.g. "launch plan" → "launchplan" yields "hp", "hpl". A stored document containing
+    "launch" and "plan" NON-adjacently never produced those spanning n-grams, so under the
+    `stored ⊇ query` containment match a two-word query would silently return ZERO results.
+    Search that quietly finds nothing is worse than no search — the user concludes the
+    assistant has forgotten, when it simply mis-tokenised the query.
+
+    CJK still works because CJK "words" are runs with no internal spaces: `_WORD` matches the
+    whole run as one token, and n-gramming that single token gives the substring coverage.
     """
     low = text.lower()
-    out: set[str] = set(_WORD.findall(low))
-    squished = "".join(low.split())
-    for n in _NGRAMS:
-        out.update(squished[i : i + n] for i in range(max(0, len(squished) - n + 1)))
+    words = _WORD.findall(low)
+    out: set[str] = set(words)
+    for w in words:
+        for n in _NGRAMS:
+            out.update(w[i : i + n] for i in range(max(0, len(w) - n + 1)))
     return {t for t in out if t}
 
 

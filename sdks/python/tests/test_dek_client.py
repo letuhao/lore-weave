@@ -32,14 +32,31 @@ def _client(handler, ring: Keyring | None = None) -> DEKClient:
     return c
 
 
+def _uid_from(request: httpx.Request) -> str:
+    """The user_id auth-service is being asked about — the AAD the wrap must bind to.
+    Real auth-service reads it from the path; the mock does the same, so the test wraps the
+    DEK the same way production does."""
+    return str(request.url).rstrip("/").rsplit("/", 2)[1]  # .../users/<uid>/dek
+
+
+def _serve_dek(ring: Keyring, dek, *, count=None):
+    """A handler that wraps `dek` bound to the REQUESTED user_id (as auth-service does)."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if count is not None:
+            count["n"] += 1
+        wrapped, ref = wrap_dek(ring, dek, _uid_from(request))
+        return httpx.Response(200, json={"wrapped_dek": wrapped, "key_ref": ref})
+    return handler
+
+
 @pytest.mark.asyncio
 async def test_fetches_unwraps_and_the_key_actually_works():
     ring = _ring()
     dek = new_dek()
-    wrapped, ref = wrap_dek(ring, dek)
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["X-Internal-Token"] == "itok", "the DEK read must be token-gated"
+        wrapped, ref = wrap_dek(ring, dek, _uid_from(request))
         return httpx.Response(200, json={"wrapped_dek": wrapped, "key_ref": ref})
 
     c = _client(handler, ring)
@@ -54,14 +71,9 @@ async def test_fetches_unwraps_and_the_key_actually_works():
 @pytest.mark.asyncio
 async def test_caches_so_the_hot_path_does_not_hit_auth_every_write():
     ring = _ring()
-    wrapped, ref = wrap_dek(ring, new_dek())
+    dek = new_dek()
     calls = {"n": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls["n"] += 1
-        return httpx.Response(200, json={"wrapped_dek": wrapped, "key_ref": ref})
-
-    c = _client(handler, ring)
+    c = _client(_serve_dek(ring, dek, count=calls), ring)
     uid = uuid4()
     try:
         a = await c.get(uid)
@@ -77,14 +89,8 @@ async def test_forget_drops_the_cached_key():
     """Erasure (D18) and KEK rotation both depend on this. A stale cached DEK would let a
     process keep decrypting content that is supposed to be unrecoverable."""
     ring = _ring()
-    wrapped, ref = wrap_dek(ring, new_dek())
     calls = {"n": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls["n"] += 1
-        return httpx.Response(200, json={"wrapped_dek": wrapped, "key_ref": ref})
-
-    c = _client(handler, ring)
+    c = _client(_serve_dek(ring, new_dek(), count=calls), ring)
     uid = uuid4()
     try:
         await c.get(uid)
@@ -148,10 +154,14 @@ async def test_rotation_with_a_retired_keyring_still_works():
     """The same rotation, done correctly, must be transparent."""
     old = _ring(active="kek-OLD")
     dek = new_dek()
-    wrapped, ref = wrap_dek(old, dek)
-
     rotated = _ring(active="kek-NEW", retired=("kek-OLD",))
-    c = _client(lambda r: httpx.Response(200, json={"wrapped_dek": wrapped, "key_ref": ref}), rotated)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # wrapped under the OLD kek, bound to the requested user
+        wrapped, ref = wrap_dek(old, dek, _uid_from(request))
+        return httpx.Response(200, json={"wrapped_dek": wrapped, "key_ref": ref})
+
+    c = _client(handler, rotated)
     try:
         assert await c.get(uuid4()) == dek
     finally:
@@ -164,7 +174,7 @@ async def test_cache_is_bounded():
     ring = _ring()
 
     def handler(request: httpx.Request) -> httpx.Response:
-        wrapped, ref = wrap_dek(ring, new_dek())
+        wrapped, ref = wrap_dek(ring, new_dek(), _uid_from(request))
         return httpx.Response(200, json={"wrapped_dek": wrapped, "key_ref": ref})
 
     c = DEKClient("http://auth", "itok", ring, max_cached=3)
