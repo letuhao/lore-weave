@@ -115,6 +115,15 @@ Passes only if, with gemma on the real GUI, as this clueless user:
 - Adjacent gaps to *flag, not fix here*: structured world/scope on identity; upsert/merge on create;
   hard-delete.
 
+## 7b. Re-test — 2026-07-11 (HEAD `5082a3ada`): ✅ PASS
+
+Re-ran warm on HEAD (chat+glossary rebuilt). **❌→✅.** `glossary_propose_entities` now **succeeds** —
+Lâm Uyên is created (real `entity_id`, status=draft) and `glossary_get_entity` returns her with
+*Occupation: Sect Heir, Description: A young sect heir*. Dedup is honest ("skipped — already exists").
+effectful writes 3 (S02a) / 2 (S02b) · silent-success 0 · discovery 0 · `book_id` no longer 400s.
+Root cause fixed by the **context-id injection** the baseline isolated (Track A). Full re-test:
+[`docs/eval/discoverability/2026-07-11-retest-S01-S02-S03-gemma.md`](../../../eval/discoverability/2026-07-11-retest-S01-S02-S03-gemma.md).
+
 ## 9. Re-test gate
 
 Re-run §4 (both paths) as this user after the build; ✅ only when §6 all checks — my stuff is recorded,

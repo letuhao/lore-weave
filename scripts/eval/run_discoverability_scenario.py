@@ -95,6 +95,15 @@ ONLY = {s for s in os.environ.get("QG_ONLY", "").split(",") if s}
 SCEN_PATH = Path(os.environ["QG_SCENARIOS"])
 TURN_TIMEOUT = int(os.environ.get("QG_TURN_TIMEOUT", "600"))
 REPORT_DATE = os.environ.get("QG_REPORT_DATE", "run")
+# Auto-approve suspended calls (the WARM pass, headless). A propose->confirm /
+# Tier-A approval flow suspends on a card a human clicks; with no human the run
+# hangs. On a suspend we POST /tool-results to play the human, so the flow can
+# COMPLETE and we can judge the real outcome. tool_approval cards →
+# QG_APPROVE_OUTCOME (default approved_always = "always allow"); frontend-tool
+# edit cards (no human decision we can honestly fabricate) → dismissed.
+AUTO_APPROVE = os.environ.get("QG_AUTO_APPROVE", "1") != "0"
+APPROVE_OUTCOME = os.environ.get("QG_APPROVE_OUTCOME", "approved_always")
+MAX_RESUMES_PER_TURN = int(os.environ.get("QG_MAX_RESUMES", "16"))
 
 _PLACEHOLDERS = {
     "<BOOK_ID>": os.environ.get("SKILL_BOOK_ID", ""),
@@ -232,11 +241,6 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
     """POST a turn as the GUI does; drain the SSE; capture assistant text, the
     full tool records (name + args + result ok/error) correlated by toolCallId,
     and the context budget."""
-    budget = None
-    text_parts: list[str] = []
-    # tool records keyed by toolCallId while streaming, flushed to a list in order
-    open_calls: dict[str, dict] = {}
-    order: list[str] = []
     hdr = {"Authorization": f"Bearer {_bearer()}", "Accept": "text/event-stream"}
     hdr["x-loreweave-stream-format"] = os.environ.get("QG_STREAM_FORMAT", "agui")
     body: dict = {"content": content, "enabled_skills": enabled_skills}
@@ -244,8 +248,11 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
         body["permission_mode"] = permission_mode
     if context:
         body.update(context)  # {"book_context": {...}} etc.
-    with c.stream("POST", f"{BASE}/v1/chat/sessions/{sid}/messages",
-                  json=body, headers=hdr, timeout=TURN_TIMEOUT) as resp:
+
+    # shared accumulation across the initial stream + every resume (approve) stream
+    st = {"text_parts": [], "open_calls": {}, "order": [], "budget": None, "run_id": None}
+
+    def _drain(resp) -> None:
         resp.raise_for_status()
         for line in resp.iter_lines():
             if not line or not line.startswith("data:"):
@@ -257,33 +264,70 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
                 obj = json.loads(raw)
             except Exception:
                 continue
-            name = obj.get("name")
-            if name == "contextBudget" and isinstance(obj.get("value"), dict):
-                budget = obj["value"]
+            if obj.get("type") == "RUN_STARTED" and obj.get("runId"):
+                st["run_id"] = obj["runId"]
+            if obj.get("name") == "contextBudget" and isinstance(obj.get("value"), dict):
+                st["budget"] = obj["value"]
             typ = obj.get("type") or ""
             if "TEXT_MESSAGE_CONTENT" in typ and obj.get("delta"):
-                text_parts.append(obj["delta"])
+                st["text_parts"].append(obj["delta"])
             elif "TOOL_CALL_START" in typ and obj.get("toolCallName"):
                 cid = obj.get("toolCallId") or str(uuid.uuid4())
-                open_calls[cid] = {"tool": obj["toolCallName"], "args": {},
-                                   "ok": None, "result": None, "error": None}
-                order.append(cid)
+                st["open_calls"][cid] = {"tool": obj["toolCallName"], "args": {},
+                                         "ok": None, "result": None, "error": None}
+                st["order"].append(cid)
             elif "TOOL_CALL_ARGS" in typ:
                 cid = obj.get("toolCallId")
                 delta = obj.get("delta") or ""
-                if cid in open_calls and delta:
-                    prev = open_calls[cid].get("_argstr", "")
-                    open_calls[cid]["_argstr"] = prev + delta
+                if cid in st["open_calls"] and delta:
+                    st["open_calls"][cid]["_argstr"] = st["open_calls"][cid].get("_argstr", "") + delta
             elif "TOOL_CALL_RESULT" in typ:
                 cid = obj.get("toolCallId")
-                if cid in open_calls:
+                if cid in st["open_calls"]:
                     try:
                         env = json.loads(obj.get("content") or "{}")
-                        open_calls[cid]["ok"] = env.get("ok")
-                        open_calls[cid]["result"] = env.get("result")
-                        open_calls[cid]["error"] = env.get("error")
+                        st["open_calls"][cid]["ok"] = env.get("ok")
+                        st["open_calls"][cid]["result"] = env.get("result")
+                        st["open_calls"][cid]["error"] = env.get("error")
                     except Exception:
-                        open_calls[cid]["result"] = obj.get("content")
+                        st["open_calls"][cid]["result"] = obj.get("content")
+
+    with c.stream("POST", f"{BASE}/v1/chat/sessions/{sid}/messages",
+                  json=body, headers=hdr, timeout=TURN_TIMEOUT) as resp:
+        _drain(resp)
+
+    # Resume loop — play the human on a suspended call so the flow completes.
+    resumes = 0
+    while AUTO_APPROVE and resumes < MAX_RESUMES_PER_TURN and st["run_id"]:
+        pend_cid = None
+        for cid in reversed(st["order"]):
+            rec = st["open_calls"][cid]
+            if rec["ok"] is None and not rec.get("resumed"):
+                pend_cid = cid
+                break
+        if pend_cid is None:
+            break
+        rec = st["open_calls"][pend_cid]
+        try:
+            pargs = json.loads(rec.get("_argstr", "") or "{}")
+        except Exception:
+            pargs = {}
+        is_appr = isinstance(pargs, dict) and pargs.get("kind") == "tool_approval"
+        outcome = APPROVE_OUTCOME if is_appr else "dismissed"
+        rec["resumed"] = outcome
+        resumes += 1
+        try:
+            with c.stream("POST", f"{BASE}/v1/chat/sessions/{sid}/tool-results",
+                          json={"run_id": st["run_id"], "tool_call_id": pend_cid, "outcome": outcome},
+                          headers=hdr, timeout=TURN_TIMEOUT) as r2:
+                _drain(r2)
+        except Exception:
+            break
+
+    budget = st["budget"]
+    text_parts = st["text_parts"]
+    order = st["order"]
+    open_calls = st["open_calls"]
     # finalize args (parse the accumulated arg string)
     tools: list[dict] = []
     for cid in order:
@@ -362,6 +406,7 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
     async_jobs: list[dict] = []
     persist_claims_without_write: list[dict] = []
     unresolved_calls: list[dict] = []   # ok is None ⇒ START/ARGS/END with no RESULT
+    resumed_calls: list[dict] = []      # suspended, then auto-approved by the driver
     silent_success_calls: list[dict] = []  # ok:true but every item errored
     cumulative_write_tools = 0
     max_consec = 0
@@ -389,10 +434,12 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
             if _is_empty_intent(name, args):
                 empty_intent += 1
             # A tool call that emitted START/ARGS/END but NO RESULT suspended the run
-            # on a client-side card (Tier-A approval / frontend tool). A headless
-            # driver cannot answer it, so everything after is a COLD-pass artifact,
-            # not a product verdict. Run the WARM pass (pre-seed user_tool_approvals).
-            if tc.get("ok") is None:
+            # on a client-side card. If the driver auto-approved it (resumed), the flow
+            # completed — not unresolved. Only a suspend we could NOT resume is unresolved
+            # (COLD-pass artifact, not a product verdict).
+            if tc.get("resumed"):
+                resumed_calls.append({"turn": turn, "tool": name, "outcome": tc["resumed"]})
+            elif tc.get("ok") is None:
                 unresolved_calls.append({"turn": turn, "tool": name})
             # consecutive same-tool with same args (no state change proxy)
             sig = (name, json.dumps(args, sort_keys=True, ensure_ascii=False))
@@ -479,7 +526,8 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
         "async_jobs": async_jobs,
         "async_jobs_without_status_read": sum(1 for j in async_jobs if not j["status_read_after"]),
         "effectful_tool_calls": cumulative_write_tools,   # 0 = persisted nothing
-        "unresolved_tool_calls": unresolved_calls,        # suspended on a client card
+        "unresolved_tool_calls": unresolved_calls,        # suspended, NOT resumed
+        "resumed_tool_calls": resumed_calls,              # suspended, auto-approved (warm)
         "silent_success_calls": silent_success_calls,      # ok:true, all items errored
         "persist_claims_without_write": persist_claims_without_write,  # CANDIDATE false-"done"
         "jargon_candidates": jargon_candidates,           # CANDIDATES — judge confirms
@@ -575,6 +623,10 @@ def _render_report(scenario: dict, records: list[dict], metrics: dict,
              f"(every completion claim must be preceded by a status-read)")
     L.append(f"- effectful (persisting) tool calls all session: **{metrics['effectful_tool_calls']}** "
              f"(0 ⇒ the book is unchanged — nothing was actually saved)")
+    if metrics.get("resumed_tool_calls"):
+        names = ", ".join(sorted({r["tool"] for r in metrics["resumed_tool_calls"]}))
+        L.append(f"- auto-approved (warm) suspends: **{len(metrics['resumed_tool_calls'])}** ({names}) — "
+                 f"the driver played the human on a confirm/approval card so the flow could complete")
     if metrics["silent_success_calls"]:
         L.append(f"- 🛑 **silent-success calls: {len(metrics['silent_success_calls'])}** — `ok:true`, all "
                  f"items errored (no effect, no failure signal to the agent):")
