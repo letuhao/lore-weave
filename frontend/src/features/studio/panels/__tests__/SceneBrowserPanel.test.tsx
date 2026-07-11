@@ -170,6 +170,13 @@ describe('SceneBrowserPanel (22-C2)', () => {
     expect(bulk.apply).toHaveBeenCalledWith([{ id: 'n1', version: 5 }], { status: 'done' });
     fireEvent.click(screen.getByTestId('scene-browser-bulk-trash'));
     expect(bulk.trash).toHaveBeenCalledWith([{ id: 'n1', version: 5 }]);
+
+    // retarget words commits a positive integer on blur; blank/non-positive is ignored.
+    const words = screen.getByTestId('scene-browser-bulk-words');
+    fireEvent.blur(words, { target: { value: '' } });
+    expect(bulk.apply).not.toHaveBeenCalledWith([{ id: 'n1', version: 5 }], { target_words: expect.anything() });
+    fireEvent.blur(words, { target: { value: '1200' } });
+    expect(bulk.apply).toHaveBeenCalledWith([{ id: 'n1', version: 5 }], { target_words: 1200 });
   });
 
   it('22-C2b: the bar counts only ACTIONABLE (visible+selected) targets, not off-screen selections', () => {

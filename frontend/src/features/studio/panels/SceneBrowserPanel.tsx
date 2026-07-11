@@ -24,11 +24,16 @@ const BULK_STATUSES: OutlineNode['status'][] = ['empty', 'outline', 'drafting', 
 // 22-C2b — the bulk-action bar (module-level so it never remounts on a parent re-render). Shown
 // only when >=1 spec-backed row is selected; applies a status to all, trashes all, and reports the
 // honest partial-failure count from the last run.
-function BulkBar({ count, busy, result, onStatus, onTrash, onClear, t }: {
+function BulkBar({ count, busy, result, onStatus, onWords, onTrash, onClear, t }: {
   count: number; busy: boolean; result: BulkResult | null;
-  onStatus: (s: OutlineNode['status']) => void; onTrash: () => void; onClear: () => void;
+  onStatus: (s: OutlineNode['status']) => void; onWords: (n: number) => void; onTrash: () => void; onClear: () => void;
   t: (k: string, o?: Record<string, unknown>) => string;
 }) {
+  const commitWords = (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
+    const el = e.currentTarget;
+    const n = Number(el.value);
+    if (el.value.trim() !== '' && Number.isFinite(n) && n > 0) { onWords(Math.round(n)); el.value = ''; }
+  };
   return (
     <div data-testid="scene-browser-bulkbar" className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-3 py-1.5 text-xs">
       <span data-testid="scene-browser-bulk-count" className="font-medium">
@@ -43,6 +48,15 @@ function BulkBar({ count, busy, result, onStatus, onTrash, onClear, t }: {
         <option value="">{t('panels.scene-browser.bulk.setStatus', { defaultValue: 'Set status…' })}</option>
         {BULK_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
       </select>
+      {/* Retarget words (spec 22 §GUI): commit on Enter/blur; empty or non-positive is ignored. */}
+      <input
+        type="number" min={1} data-testid="scene-browser-bulk-words" disabled={busy}
+        placeholder={t('panels.scene-browser.bulk.words', { defaultValue: 'Target words' })}
+        onKeyDown={(e) => { if (e.key === 'Enter') commitWords(e); }}
+        onBlur={commitWords}
+        aria-label={t('panels.scene-browser.bulk.words', { defaultValue: 'Set target words' })}
+        className="w-24 rounded border bg-background px-1.5 py-0.5 disabled:opacity-50"
+      />
       <button
         type="button" data-testid="scene-browser-bulk-trash" disabled={busy} onClick={onTrash}
         className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-destructive hover:bg-destructive/10 disabled:opacity-50"
@@ -122,6 +136,7 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
         <BulkBar
           count={selectedTargets.length} busy={bulk.busy} result={bulk.result}
           onStatus={(s) => void bulk.apply(selectedTargets, { status: s })}
+          onWords={(n) => void bulk.apply(selectedTargets, { target_words: n })}
           onTrash={() => void bulk.trash(selectedTargets)}
           onClear={bulk.clear} t={t}
         />
