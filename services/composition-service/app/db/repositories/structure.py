@@ -220,6 +220,62 @@ class StructureRepo:
             )
         return [_row_to_node(r) for r in rows]
 
+    async def derived_blocks(self, book_id: UUID) -> dict[UUID, dict[str, Any]]:
+        """24 PH9/OQ-2/BA6 — the DERIVED block (span, chapter_count, is_contiguous) for
+        EVERY structure node of a book in ONE query (no N+1 — the Hub's arc shell is a
+        single call). Each node's block rolls up its whole SUBTREE's member chapters (a
+        saga spans its arcs' chapters), matching the per-node `span()` semantics. Chapters
+        bind to a leaf arc via `structure_node_id`; a parent's block aggregates descendants.
+
+        Returned per node id: {span: {from_order, to_order} | None, is_contiguous, chapter_count}.
+        `is_contiguous` is warn-only (BA6): the members' story_orders are a gap-free run — every
+        chapter ordered, all distinct, no gaps. `story_order` is book-unique so subtree distinct ==
+        the sum across leaves; the aggregate below is exact for the rollup."""
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                WITH RECURSIVE tree AS (
+                  SELECT id AS root, id AS node FROM structure_node
+                   WHERE book_id = $1 AND NOT is_archived
+                  UNION
+                  SELECT t.root, s.id FROM structure_node s
+                    JOIN tree t ON s.parent_id = t.node
+                   WHERE s.book_id = $1 AND NOT s.is_archived
+                )
+                SELECT t.root,
+                  count(o.id)                   AS chapter_count,
+                  min(o.story_order)            AS min_so,
+                  max(o.story_order)            AS max_so,
+                  count(o.story_order)          AS ordered_count,
+                  count(DISTINCT o.story_order) AS distinct_count
+                FROM tree t
+                LEFT JOIN outline_node o
+                  ON o.structure_node_id = t.node
+                 AND o.book_id = $1 AND o.kind = 'chapter' AND NOT o.is_archived
+                GROUP BY t.root
+                """,
+                book_id,
+            )
+        out: dict[UUID, dict[str, Any]] = {}
+        for r in rows:
+            cc = int(r["chapter_count"] or 0)
+            min_so, max_so = r["min_so"], r["max_so"]
+            ordered = int(r["ordered_count"] or 0)
+            distinct = int(r["distinct_count"] or 0)
+            if cc == 0:
+                is_contig = True                       # empty arc: no gaps to speak of
+            elif ordered < cc:
+                is_contig = False                      # some member chapter has no story_order
+            else:
+                is_contig = distinct == cc and (max_so - min_so + 1) == cc
+            span = (
+                {"from_order": min_so, "to_order": max_so}
+                if cc > 0 and min_so is not None
+                else None
+            )
+            out[r["root"]] = {"span": span, "is_contiguous": is_contig, "chapter_count": cc}
+        return out
+
     async def get_children(
         self, parent_id: UUID, *, include_archived: bool = False,
     ) -> list[StructureNode]:

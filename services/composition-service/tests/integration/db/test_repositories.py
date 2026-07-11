@@ -806,6 +806,45 @@ async def test_plan_hub_structure_axis_uses_keyset_index_at_scale(pool):
     assert "Sort" not in node_types, f"unexpected Sort (index should supply order); plan={nodes}"
 
 
+async def test_structure_derived_blocks_rollup_and_contiguity(pool):
+    """24 PH9/OQ-2/BA6 — StructureRepo.derived_blocks returns, per node in ONE query,
+    the span + chapter_count + is_contiguous rolled up over the node's SUBTREE. Read
+    surface #1 (the Hub arc shell). A live smoke caught the missing derived block (the
+    route shipped raw structure_node rows), so this locks the shape by effect."""
+    from app.db.repositories.structure import StructureRepo
+
+    book = uuid.uuid4()
+    project = uuid.uuid4()
+    saga, arc1, arc2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    async with pool.acquire() as c:
+        await c.execute("INSERT INTO structure_node (id, book_id, kind, rank, title) "
+                        "VALUES ($1,$2,'saga','m','Saga')", saga, book)
+        for a, r in ((arc1, 'a'), (arc2, 'b')):
+            await c.execute("INSERT INTO structure_node (id, book_id, parent_id, kind, rank, title) "
+                            "VALUES ($1,$2,$3,'arc',$4,'Arc')", a, book, saga, r)
+        # arc1: story_order 1,2,3 (contiguous). arc2: 5,7 (a gap → non-contiguous).
+        async def ch(arc, rank, so):
+            await c.execute(
+                "INSERT INTO outline_node (created_by, project_id, book_id, kind, rank, "
+                "chapter_id, structure_node_id, story_order) "
+                "VALUES ($1,$2,$3,'chapter',$4,gen_random_uuid(),$5,$6)",
+                uuid.uuid4(), project, book, rank, arc, so,
+            )
+        await ch(arc1, 'a', 1); await ch(arc1, 'b', 2); await ch(arc1, 'c', 3)
+        await ch(arc2, 'a', 5); await ch(arc2, 'b', 7)
+
+    blocks = await StructureRepo(pool).derived_blocks(book)
+
+    assert blocks[arc1] == {"span": {"from_order": 1, "to_order": 3},
+                            "is_contiguous": True, "chapter_count": 3}
+    # arc2 spans 5..7 but has only 2 chapters (5,7) → a gap → non-contiguous.
+    assert blocks[arc2] == {"span": {"from_order": 5, "to_order": 7},
+                            "is_contiguous": False, "chapter_count": 2}
+    # the saga rolls up BOTH arcs: 5 chapters over 1..7, gappy → non-contiguous.
+    assert blocks[saga] == {"span": {"from_order": 1, "to_order": 7},
+                            "is_contiguous": False, "chapter_count": 5}
+
+
 async def test_outline_reparent_guards(pool):
     """D-COMP-M2-XREF-OWNERSHIP: update_node blocks self-parent, cross-PROJECT
     parent, and descendant (cycle) reparents; a valid reparent succeeds."""

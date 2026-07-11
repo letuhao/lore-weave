@@ -411,10 +411,21 @@ async def list_arcs(
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """The book's SPEC tree in one call (BA11 — the Chapter Browser's arc group
-    headers without the N+1). VIEW on the book."""
+    headers without the N+1). Each node also carries the 24 PH9/OQ-2 DERIVED block
+    (`span`, `is_contiguous`, `chapter_count`) the Plan Hub's arc shell (read surface
+    #1) needs — computed in ONE aggregate query alongside the tree, additive so the
+    Chapter Browser (which ignores them) is unaffected. VIEW on the book."""
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
-    nodes = await _structures().list_tree(book_id, include_archived=include_archived)
-    return {"nodes": [n.model_dump(mode="json") for n in nodes], "book_id": str(book_id)}
+    structures = _structures()
+    nodes = await structures.list_tree(book_id, include_archived=include_archived)
+    derived = await structures.derived_blocks(book_id)
+    empty = {"span": None, "is_contiguous": True, "chapter_count": 0}
+    out_nodes = []
+    for n in nodes:
+        d = n.model_dump(mode="json")
+        d.update(derived.get(n.id, empty))
+        out_nodes.append(d)
+    return {"nodes": out_nodes, "book_id": str(book_id)}
 
 
 @router.get("/arcs/{node_id}")

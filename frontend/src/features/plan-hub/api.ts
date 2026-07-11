@@ -12,9 +12,16 @@ import type {
 
 const COMP = '/v1/composition';
 
-/** Read surface #1 — the whole structure shell (arcs/sagas) in one call. */
-export function getArcs(bookId: string, token: string): Promise<{ arcs: ArcListNode[] }> {
-  return apiJson<{ arcs: ArcListNode[] }>(`${COMP}/books/${bookId}/arcs`, { token });
+/** Read surface #1 — the whole structure shell (arcs/sagas) in one call. The composition route
+ *  envelopes the shell as `{ nodes }` (the BA11 Chapter-Browser contract, shared route); each node
+ *  carries the PH9/OQ-2 derived block (span/is_contiguous/chapter_count). We normalise to `{ arcs }`
+ *  here so the Hub consumers read one name (a live smoke caught the `nodes`-vs-`arcs` drift). */
+export async function getArcs(bookId: string, token: string): Promise<{ arcs: ArcListNode[] }> {
+  const res = await apiJson<{ nodes?: ArcListNode[]; arcs?: ArcListNode[] }>(
+    `${COMP}/books/${bookId}/arcs`,
+    { token },
+  );
+  return { arcs: res.nodes ?? res.arcs ?? [] };
 }
 
 /** Read surface #2 — one keyset page of the children window. Exactly one axis:
