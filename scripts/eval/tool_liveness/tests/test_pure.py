@@ -698,6 +698,49 @@ def test_manifest_null_executes_never_read_as_false_by_blocked():
     assert blocked(m, "absent-tool") is False
 
 
+# ── step 5: the description-quality selection proxy (selection.py) ───────────────
+#
+# Pure parts: which synonym becomes the ask, and how an answer is scored HIT/MISS. The
+# model call itself is live (validated separately). A wrong scorer would silently invert the
+# whole signal, so both are pinned.
+
+def test_selection_ask_is_the_longest_synonym_or_none():
+    from tool_liveness.selection import _synonym_ask
+
+    assert _synonym_ask({"meta": {"synonyms": ["tts", "narration", "audio"]}}) == "narration"
+    assert _synonym_ask({"meta": {"synonyms": []}}) is None
+    assert _synonym_ask({"meta": {}}) is None
+    assert _synonym_ask({}) is None
+
+
+def test_selection_scores_exact_and_tolerant_hits():
+    from tool_liveness.selection import _score
+
+    names = {"book_create", "book_get", "composition_publish"}
+    # exact
+    assert _score("book_create", "book_create", names)[0] == "HIT"
+    # formatting noise (backticks, trailing period, quotes)
+    assert _score("`book_create`.", "book_create", names)[0] == "HIT"
+    assert _score('"book_create"', "book_create", names)[0] == "HIT"
+    # first line only (model added an explanation on line 2)
+    assert _score("book_create\nbecause the user wants a book", "book_create", names)[0] == "HIT"
+
+
+def test_selection_scores_a_sibling_pick_as_a_miss_naming_the_sibling():
+    from tool_liveness.selection import _score
+
+    names = {"book_chapter_publish", "composition_publish"}
+    verdict, picked = _score("composition_publish", "book_chapter_publish", names)
+    assert verdict == "MISS" and picked == "composition_publish", (verdict, picked)
+
+
+def test_selection_scores_an_unrecognized_answer_as_a_miss():
+    from tool_liveness.selection import _score
+
+    verdict, picked = _score("I would use the create tool", "book_create", {"book_create"})
+    assert verdict == "MISS" and picked == "(unrecognized)"
+
+
 # ── WS-D4: executes ∧ effect for the workflow-critical set (critical.py) ─────────
 #
 # The critical tools (what a curated workflow references) are held to a stronger bar than
