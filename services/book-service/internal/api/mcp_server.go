@@ -82,7 +82,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolBookListChapters)
 
 	addTool(srv, "book_get_chapter",
-		"Fetch one chapter by book_id + chapter_id: metadata (title, language, sort "+
+		"[Saved book] Fetch one chapter by book_id + chapter_id: metadata (title, language, sort "+
 			"order, editorial status, published revision) always, plus the chapter's "+
 			"full plain-text prose in `body` when include_body=true (use that to READ a "+
 			"chapter after story_search locates it; the body can be large).",
@@ -126,7 +126,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"chapter), limit/offset. Returns matching chapters/blocks with highlighted "+
 			"snippets + has_more. For meaning-alike / semantic passages use story_search "+
 			"instead — this one only finds the exact characters you pass.",
-		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"grep", "find text", "exact phrase", "literal search", "where does it say"}),
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"grep", "find text", "exact phrase", "literal search", "where in the book does it say"}),
 		s.toolBookSearch)
 
 	// ── Tier A (auto-write + Undo; scope=book; Edit grant) ────────────────────
@@ -171,7 +171,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolChapterRestoreRevision)
 
 	addTool(srv, "book_chapter_save_draft",
-		"Save a chapter draft body (Tiptap JSON). REQUIRES base_version (the "+
+		"[Saved book] Save a chapter draft body (Tiptap JSON). REQUIRES base_version (the "+
 			"draft_version you read); a version mismatch returns a conflict and "+
 			"stops — no overwrite. Reverse: book_chapter_restore_revision.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter"}),
@@ -186,7 +186,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"down / always / never' instructions so they survive compaction + sessions. "+
 			"Returns the prior row when one was replaced; reverse is in the result's "+
 			"undo_hint.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"add rule", "remember this rule", "always do", "never do", "write that down"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"add rule", "remember this steering rule", "always do", "never do", "write that down"}),
 		s.toolBookSteeringSet)
 
 	addTool(srv, "book_steering_delete",

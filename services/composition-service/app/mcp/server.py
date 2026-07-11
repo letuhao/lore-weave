@@ -280,7 +280,7 @@ def _mine_estimate(*, scope: str) -> dict[str, Any]:
 @mcp_server.tool(
     name="composition_get_work",
     description=(
-        "Get the composition Work for a book/project (its status, active template, "
+        "[Authoring workspace] Get the composition Work for a book/project (its status, active template, "
         "and authoring settings). The Work is the book's shared authoring context "
         "(the package manifest). Pass project_id when you know it; otherwise pass "
         "book_id — the book's Work is resolved, which is ALSO how you discover the "
@@ -450,7 +450,7 @@ def _project_prose(draft: dict, detail: str) -> dict:
 @mcp_server.tool(
     name="composition_get_prose",
     description=(
-        "Get the current DRAFT prose of a chapter (the editable body + its "
+        "[Authoring workspace] Get the current DRAFT prose of a chapter (the editable body + its "
         "`draft_version` — the concurrency token you MUST pass back to write_prose). "
         "`detail=summary` returns just the metadata + `draft_version` (drops the chapter "
         "`body` — use it when you only need the version to prep a write); `detail=full` "
@@ -639,7 +639,7 @@ async def _ensure_pending_work(works: WorksRepo, created_by: UUID, book_id: UUID
 @mcp_server.tool(
     name="composition_create_work",
     description=(
-        "Create (or get, idempotently) the composition Work for a book — the "
+        "[Authoring workspace] Create (or get, idempotently) the composition Work for a book — the "
         "authoring context you compose in. `project_id` is OPTIONAL: pass it if "
         "you already know the book's knowledge project id (e.g. from "
         "composition_get_work); omit it and a default per-book knowledge project "
@@ -1207,7 +1207,7 @@ class _WriteProseArgs(ForbidExtra):
 @mcp_server.tool(
     name="composition_write_prose",
     description=(
-        "Write the DRAFT prose of a chapter (NOT publish — that is composition_publish). "
+        "[Authoring workspace] Write the DRAFT prose of a chapter (NOT publish — that is composition_publish). "
         "You MUST pass `expected_draft_version` from composition_get_prose; a stale "
         "version is rejected (no blind clobber → reversible). EDIT required "
         "(auto-applied; Undo restores the prior draft)."

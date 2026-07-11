@@ -37,7 +37,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_propose_skill",
 		Description: "PROPOSE a new prompt-only skill (SKILL.md) for the user. Does NOT create it — it records a proposal the user must approve in the UI. Provide slug (lowercase a-z0-9-), a one-line description, and the markdown body (instructions). Use this to save a useful workflow as a reusable skill.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save skill", "propose skill", "create skill", "remember this as a skill"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save skill", "propose skill", "create skill", "author a reusable skill"}),
 		InputSchema: closedSetSchemaFor[proposeSkillIn](map[string][]any{
 			"surfaces[]": enumSurfaces,
 		}),
