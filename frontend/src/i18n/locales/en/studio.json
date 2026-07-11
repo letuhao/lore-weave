@@ -255,6 +255,17 @@
         "notWritten": "not yet written",
         "notPlanned": "not planned",
         "anchorLost": "anchor lost"
+      },
+      "bulk": {
+        "count": "{{n}} selected",
+        "selectAll": "Select all",
+        "selectRow": "Select scene",
+        "setStatus": "Set status…",
+        "trash": "Trash",
+        "clear": "Clear",
+        "updated": "{{n}} updated",
+        "conflicted": "{{n}} conflicted",
+        "failed": "{{n}} failed"
       }
     },
     "scene-inspector": {

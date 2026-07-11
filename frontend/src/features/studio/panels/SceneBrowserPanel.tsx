@@ -5,17 +5,65 @@
 // amber = intent (composition). Logic lives in useSceneBrowser; this file only renders.
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
-import { AlertTriangle, FileWarning, Search } from 'lucide-react';
+import { AlertTriangle, FileWarning, Search, Trash2 } from 'lucide-react';
+import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
+import type { OutlineNode } from '@/features/composition/types';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 import { useSceneBrowser } from './useSceneBrowser';
 import { useConformanceStatus } from './useConformanceStatus';
+import { useSceneBulk, type BulkResult } from './useSceneBulk';
 import type { SceneUnionRow } from './sceneUnion';
 
 const STATUS_LABEL: Record<string, string> = {
   empty: 'Empty', outline: 'Outline', drafting: 'Drafting', done: 'Done',
 };
+const BULK_STATUSES: OutlineNode['status'][] = ['empty', 'outline', 'drafting', 'done'];
+
+// 22-C2b — the bulk-action bar (module-level so it never remounts on a parent re-render). Shown
+// only when >=1 spec-backed row is selected; applies a status to all, trashes all, and reports the
+// honest partial-failure count from the last run.
+function BulkBar({ count, busy, result, onStatus, onTrash, onClear, t }: {
+  count: number; busy: boolean; result: BulkResult | null;
+  onStatus: (s: OutlineNode['status']) => void; onTrash: () => void; onClear: () => void;
+  t: (k: string, o?: Record<string, unknown>) => string;
+}) {
+  return (
+    <div data-testid="scene-browser-bulkbar" className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-3 py-1.5 text-xs">
+      <span data-testid="scene-browser-bulk-count" className="font-medium">
+        {t('panels.scene-browser.bulk.count', { defaultValue: '{{n}} selected', n: count })}
+      </span>
+      <select
+        data-testid="scene-browser-bulk-status" value="" disabled={busy}
+        onChange={(e) => { if (e.target.value) onStatus(e.target.value as OutlineNode['status']); e.currentTarget.value = ''; }}
+        aria-label={t('panels.scene-browser.bulk.setStatus', { defaultValue: 'Set status' })}
+        className="rounded border bg-background px-1.5 py-0.5 disabled:opacity-50"
+      >
+        <option value="">{t('panels.scene-browser.bulk.setStatus', { defaultValue: 'Set status…' })}</option>
+        {BULK_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+      </select>
+      <button
+        type="button" data-testid="scene-browser-bulk-trash" disabled={busy} onClick={onTrash}
+        className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-destructive hover:bg-destructive/10 disabled:opacity-50"
+      >
+        <Trash2 className="h-3.5 w-3.5" /> {t('panels.scene-browser.bulk.trash', { defaultValue: 'Trash' })}
+      </button>
+      <button type="button" data-testid="scene-browser-bulk-clear" onClick={onClear} className="text-muted-foreground hover:text-foreground">
+        {t('panels.scene-browser.bulk.clear', { defaultValue: 'Clear' })}
+      </button>
+      {result && (
+        <span data-testid="scene-browser-bulk-result" className={cn('ml-auto', (result.conflicts || result.failed) ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+          {[
+            t('panels.scene-browser.bulk.updated', { defaultValue: '{{n}} updated', n: result.ok }),
+            result.conflicts ? t('panels.scene-browser.bulk.conflicted', { defaultValue: '{{n}} conflicted', n: result.conflicts }) : null,
+            result.failed ? t('panels.scene-browser.bulk.failed', { defaultValue: '{{n}} failed', n: result.failed }) : null,
+          ].filter(Boolean).join(' · ')}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function rowTitle(r: SceneUnionRow): string {
   // Prefer the authored intent title; fall back to the parsed heading; else a placeholder.
@@ -25,10 +73,19 @@ function rowTitle(r: SceneUnionRow): string {
 export function SceneBrowserPanel(props: IDockviewPanelProps) {
   useStudioPanel('scene-browser', props.api);
   const { t } = useTranslation('studio');
+  const { accessToken } = useAuth();
   const host = useStudioHost();
   const bookId = host.bookId ?? null;
   const sb = useSceneBrowser(bookId);
   const conf = useConformanceStatus(bookId); // 26 IX-14 — per-chapter dirty (canon-moved) chips
+  const bulk = useSceneBulk(accessToken ?? null, sb.reload); // 22-C2b — bulk triage over spec rows
+
+  // Only spec-backed rows carry an editable outline_node → only they are bulk-selectable.
+  const specRows = sb.rows.filter((r) => r.spec);
+  const selectedTargets = specRows
+    .filter((r) => bulk.selected.has(r.spec!.id))
+    .map((r) => ({ id: r.spec!.id, version: r.spec!.version }));
+  const allSelected = specRows.length > 0 && specRows.every((r) => bulk.selected.has(r.spec!.id));
 
   if (!bookId) {
     return (
@@ -57,6 +114,18 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
           {t('panels.scene-browser.count', { defaultValue: '{{n}} scenes', n: sb.rows.length })}
         </span>
       </div>
+
+      {/* 22-C2b — bulk-action bar. Gated on the ACTIONABLE (visible + selected) targets, not the raw
+          selection size, so it never claims more scenes than an apply will actually touch (a selection
+          made before a search filtered some rows out stays in the Set but drops out of the count). */}
+      {selectedTargets.length > 0 && (
+        <BulkBar
+          count={selectedTargets.length} busy={bulk.busy} result={bulk.result}
+          onStatus={(s) => void bulk.apply(selectedTargets, { status: s })}
+          onTrash={() => void bulk.trash(selectedTargets)}
+          onClear={bulk.clear} t={t}
+        />
+      )}
 
       {/* Work-less state (§GUI ②): identity renders; intent is greyed with a create-plan CTA. */}
       {sb.workless && (
@@ -99,6 +168,15 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 bg-background">
             <tr className="border-b text-left text-muted-foreground">
+              <th className="w-8 px-2 py-1.5">
+                {/* select-all toggles every spec-backed row currently shown (only they are editable) */}
+                <input
+                  type="checkbox" data-testid="scene-browser-select-all"
+                  checked={allSelected} disabled={specRows.length === 0}
+                  onChange={(e) => bulk.setMany(specRows.map((r) => r.spec!.id), e.target.checked)}
+                  aria-label={t('panels.scene-browser.bulk.selectAll', { defaultValue: 'Select all' })}
+                />
+              </th>
               <th className="px-2 py-1.5 font-medium">{t('panels.scene-browser.col.num', { defaultValue: '#' })}</th>
               <th className="px-2 py-1.5 font-medium">{t('panels.scene-browser.col.scene', { defaultValue: 'Scene' })}</th>
               <th className="px-2 py-1.5 font-medium">{t('panels.scene-browser.col.status', { defaultValue: 'Status' })}</th>
@@ -120,6 +198,18 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
                 } : undefined}
                 className={cn('border-b hover:bg-muted/40', r.shape === 'spec_only' && 'italic', r.spec && 'cursor-pointer')}
               >
+                <td className="w-8 px-2 py-1.5">
+                  {/* Only spec-backed rows are bulk-editable; the checkbox click must not open the inspector. */}
+                  {r.spec && (
+                    <input
+                      type="checkbox" data-testid={`scene-browser-select-${r.spec.id}`}
+                      checked={bulk.selected.has(r.spec.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => bulk.toggle(r.spec!.id)}
+                      aria-label={t('panels.scene-browser.bulk.selectRow', { defaultValue: 'Select scene' })}
+                    />
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-2 py-1.5 text-muted-foreground">
                   {r.sortOrder != null ? r.sortOrder + 1 : '—'}
                 </td>

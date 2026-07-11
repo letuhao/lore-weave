@@ -2,7 +2,7 @@
 // markers, the Work-less banner, and self-registers/titles its dock tab. The join logic is
 // covered by sceneUnion.test.ts; the data hook (useSceneBrowser) is mocked so this stays a
 // pure view test.
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
@@ -12,6 +12,14 @@ import type { SceneUnionRow } from '../sceneUnion';
 
 const state = vi.fn<[], SceneBrowserState>();
 vi.mock('../useSceneBrowser', () => ({ useSceneBrowser: () => state() }));
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+// interpolate {{n}} in the defaultValue so the bulk-result string renders concrete numbers.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (_k: string, o?: { defaultValue?: string } & Record<string, unknown>) =>
+      (o?.defaultValue ?? _k).replace(/\{\{(\w+)\}\}/g, (_m, key) => String(o?.[key] ?? '')),
+  }),
+}));
 // 26 IX-14 — the panel also reads conformance; mock it (default: nothing dirty).
 const dirtyChapters = { current: new Set<string>() };
 vi.mock('../useConformanceStatus', () => ({
@@ -20,6 +28,13 @@ vi.mock('../useConformanceStatus', () => ({
     loading: false, error: null, refresh: vi.fn(),
   }),
 }));
+// 22-C2b — the panel drives the bulk controller; mock it so the view wiring is asserted in isolation
+// (the real selection + partial-failure logic is covered by useSceneBulk.test).
+const bulk = {
+  selected: new Set<string>(), busy: false, result: null as null | { ok: number; conflicts: number; failed: number },
+  toggle: vi.fn(), setMany: vi.fn(), clear: vi.fn(), apply: vi.fn(), trash: vi.fn(),
+};
+vi.mock('../useSceneBulk', () => ({ useSceneBulk: () => bulk }));
 
 import { SceneBrowserPanel } from '../SceneBrowserPanel';
 
@@ -35,7 +50,11 @@ const baseState = (o: Partial<SceneBrowserState>): SceneBrowserState => ({
 function dockProps() { return { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps; }
 function withHost(ui: ReactNode) { return render(<StudioHostProvider bookId="book-1">{ui}</StudioHostProvider>); }
 
-beforeEach(() => { state.mockReset(); dirtyChapters.current = new Set(); });
+beforeEach(() => {
+  state.mockReset(); dirtyChapters.current = new Set();
+  bulk.selected = new Set(); bulk.busy = false; bulk.result = null;
+  bulk.toggle.mockReset(); bulk.setMany.mockReset(); bulk.clear.mockReset(); bulk.apply.mockReset(); bulk.trash.mockReset();
+});
 
 describe('SceneBrowserPanel (22-C2)', () => {
   it('renders the three union shapes with distinct state badges', () => {
@@ -111,6 +130,68 @@ describe('SceneBrowserPanel (22-C2)', () => {
     }));
     withHost(<SceneBrowserPanel {...dockProps()} />);
     expect(screen.getAllByTestId('scene-browser-dirty')).toHaveLength(1); // only the stale-chapter row
+  });
+
+  it('22-C2b: a checkbox renders only on spec-backed rows, and toggling it selects the spec node', () => {
+    state.mockReturnValue(baseState({
+      rows: [
+        row({ key: 'lk', shape: 'linked', spec: { id: 'n1', version: 2, status: 'drafting' } as SceneUnionRow['spec'] }),
+        row({ key: 'io', shape: 'index_only', index: { title: 'Prose' } as SceneUnionRow['index'] }),
+      ],
+    }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(screen.getByTestId('scene-browser-select-n1')).toBeInTheDocument();
+    expect(screen.queryByTestId('scene-browser-select-undefined')).toBeNull(); // index_only has no checkbox
+    fireEvent.click(screen.getByTestId('scene-browser-select-n1'));
+    expect(bulk.toggle).toHaveBeenCalledWith('n1');
+  });
+
+  it('22-C2b: select-all toggles every spec-backed row (index_only excluded)', () => {
+    state.mockReturnValue(baseState({
+      rows: [
+        row({ key: 'a', shape: 'linked', spec: { id: 'n1', version: 1 } as SceneUnionRow['spec'] }),
+        row({ key: 'b', shape: 'spec_only', spec: { id: 'n2', version: 1, status: 'outline' } as SceneUnionRow['spec'] }),
+        row({ key: 'c', shape: 'index_only', index: { title: 'x' } as SceneUnionRow['index'] }),
+      ],
+    }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    fireEvent.click(screen.getByTestId('scene-browser-select-all'));
+    expect(bulk.setMany).toHaveBeenCalledWith(['n1', 'n2'], true);
+  });
+
+  it('22-C2b: the bulk bar appears only when rows are selected; status applies to the selected targets', () => {
+    bulk.selected = new Set(['n1']);
+    state.mockReturnValue(baseState({
+      rows: [row({ key: 'a', shape: 'linked', chapterId: 'c', sortOrder: 0, spec: { id: 'n1', version: 5, status: 'drafting' } as SceneUnionRow['spec'] })],
+    }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(screen.getByTestId('scene-browser-bulkbar')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('scene-browser-bulk-status'), { target: { value: 'done' } });
+    expect(bulk.apply).toHaveBeenCalledWith([{ id: 'n1', version: 5 }], { status: 'done' });
+    fireEvent.click(screen.getByTestId('scene-browser-bulk-trash'));
+    expect(bulk.trash).toHaveBeenCalledWith([{ id: 'n1', version: 5 }]);
+  });
+
+  it('22-C2b: the bar counts only ACTIONABLE (visible+selected) targets, not off-screen selections', () => {
+    // n2 is selected but filtered out of view; the bar should count only the visible selected n1.
+    bulk.selected = new Set(['n1', 'n2']);
+    state.mockReturnValue(baseState({
+      rows: [row({ key: 'a', shape: 'linked', spec: { id: 'n1', version: 1 } as SceneUnionRow['spec'] })],
+    }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(screen.getByTestId('scene-browser-bulk-count').textContent).toMatch(/1 selected/);
+    fireEvent.change(screen.getByTestId('scene-browser-bulk-status'), { target: { value: 'done' } });
+    expect(bulk.apply).toHaveBeenCalledWith([{ id: 'n1', version: 1 }], { status: 'done' }); // only the visible one
+  });
+
+  it('22-C2b: the bulk bar is hidden with no selection and shows the partial-failure result', () => {
+    state.mockReturnValue(baseState({ rows: [row({ key: 'a', shape: 'linked', spec: { id: 'n1', version: 1 } as SceneUnionRow['spec'] })] }));
+    const { queryByTestId, rerender } = withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(queryByTestId('scene-browser-bulkbar')).toBeNull(); // no selection → no bar
+
+    bulk.selected = new Set(['n1']); bulk.result = { ok: 3, conflicts: 1, failed: 0 };
+    rerender(<StudioHostProvider bookId="book-1"><SceneBrowserPanel {...dockProps()} /></StudioHostProvider>);
+    expect(screen.getByTestId('scene-browser-bulk-result').textContent).toMatch(/3 updated.*1 conflicted/);
   });
 
   it('22-C3: a spec-backed row is clickable-to-inspect; an index_only row is not', () => {
