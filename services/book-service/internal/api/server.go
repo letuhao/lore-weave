@@ -286,6 +286,9 @@ func (s *Server) Router() http.Handler {
 			// paths (before /chapters/{chapter_id}) — same reason as bulk/page above.
 			r.Patch("/chapters/bulk-status", s.bulkUpdateChapterStatus)
 			r.Post("/chapters/export-zip", s.bulkExportChapters)
+			// 24 PH20 Row-3 — transactional reading-order reorder. Static path (before
+			// /chapters/{chapter_id}) — same reason as bulk/page above.
+			r.Post("/chapters/reorder", s.reorderChapters)
 
 			// 22-A2/A3 — scene browser (read-only, VIEW-gated; SC5 inverted authoring
 			// to composition). Book-wide keyset-paged list + single-scene get. Static
@@ -312,6 +315,11 @@ func (s *Server) Router() http.Handler {
 				r.Post("/revisions/{revision_id}/restore", s.restoreRevision)
 				r.Post("/publish", s.publishChapter)     // Canon Model CM1: draft → published (canon)
 				r.Post("/unpublish", s.unpublishChapter) // Canon Model CM1: published → draft
+				// WS-0.4: indexing is INDEPENDENT of publishing. "publish" now means only
+				// "this is the canonical version"; "index" means "add this to my knowledge
+				// graph" and works on any chapter of any book kind, draft or published.
+				r.Post("/index", s.postChapterIndex)        // → chapter.kg_indexed
+				r.Put("/kg-exclude", s.putChapterKGExclude) // true ⇒ retract from the KG
 				r.Post("/media", s.uploadChapterMedia)
 				r.Post("/media-generate", s.generateChapterMedia)
 				r.Get("/media-versions", s.listMediaVersions)

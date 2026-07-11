@@ -187,6 +187,12 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   book_chapter_update_meta: { tier: 'write_auto', domains: ['book'] },
   book_chapter_restore_revision: { tier: 'write_auto', domains: ['book'] },
   book_chapter_save_draft: { tier: 'write_auto', domains: ['book'] },
+  // WS-0.4 — publish-independent KG indexing. Both carry domains ['book','knowledge']
+  // per the H-F rule (classify by the domains TOUCHED, not by the name prefix): they are
+  // book-prefixed, but their whole purpose is to write/retract the knowledge graph. A
+  // public key must hold BOTH domains to call them.
+  book_index_chapter: { tier: 'write_auto', domains: ['book', 'knowledge'] },
+  book_chapter_set_kg_exclude: { tier: 'write_auto', domains: ['book', 'knowledge'] },
   // glossary
   glossary_book_create: { tier: 'write_auto', domains: ['glossary'] },
   glossary_book_patch: { tier: 'write_auto', domains: ['glossary'] },

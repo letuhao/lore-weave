@@ -496,6 +496,12 @@ func (s *Server) writeActionEffectError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusUnprocessableEntity, "BOOK_ACTION_TOKEN", "the target no longer exists — propose again")
 	case errors.Is(err, errActionBadState):
 		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "the target is not in the right state for this action")
+	case errors.Is(err, errActionKGExcluded):
+		// WS-0.4: refuse LOUDLY and say why. A generic 500 (or worse, a silent 200 that
+		// indexed nothing) would leave the user re-clicking "add to knowledge" forever
+		// with no idea their own kg_exclude flag is what's blocking it.
+		writeError(w, http.StatusConflict, "BOOK_KG_EXCLUDED",
+			"this chapter is excluded from your knowledge graph — clear kg_exclude first")
 	default:
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "action failed")
 	}

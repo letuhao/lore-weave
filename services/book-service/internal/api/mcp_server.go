@@ -177,6 +177,35 @@ func (s *Server) newMCPServer() *mcp.Server {
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter"}),
 		s.toolChapterSaveDraft)
 
+	// WS-0.4 — publish-independent KG indexing. Indexing is NOT publishing: a chapter
+	// can be added to the knowledge graph while remaining a draft forever (and
+	// kind='diary' books never publish at all). Never fires on autosave.
+	addTool(srv, "book_index_chapter",
+		"[Saved book] Add a chapter to the knowledge graph ('index it' / 'remember this "+
+			"chapter'). Works on a DRAFT chapter — it does NOT publish, and publishing is "+
+			"not required. Pins the current draft as the revision the knowledge layer "+
+			"reflects, re-parses its scenes, and enqueues extraction. Re-indexing an "+
+			"unchanged draft reuses the existing revision and costs nothing "+
+			"(reused_revision=true). Refuses if the chapter is kg_exclude'd. "+
+			"Reverse: book_chapter_set_kg_exclude with kg_exclude=true.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+			"index chapter", "add to knowledge", "add chapter to knowledge graph",
+			"remember this chapter", "extract knowledge from this chapter",
+		}),
+		s.toolBookIndexChapter)
+
+	addTool(srv, "book_chapter_set_kg_exclude",
+		"[Saved book] Include or exclude a chapter from the knowledge graph. "+
+			"kg_exclude=true KEEPS IT OUT and RETRACTS anything already extracted from it "+
+			"(facts and passages are removed) — use for 'forget this chapter' / 'don't "+
+			"remember this'. kg_exclude=false merely re-allows indexing; it does NOT "+
+			"re-index by itself (call book_index_chapter for that).",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+			"exclude from knowledge graph", "forget this chapter", "don't remember this chapter",
+			"remove chapter from knowledge", "un-index chapter",
+		}),
+		s.toolBookSetKGExclude)
+
 	addTool(srv, "book_steering_set",
 		"Author or replace a book steering rule (the .cursorrules / story-bible the "+
 			"agent obeys). Upsert keyed on name: a new name CREATES, an existing name "+
