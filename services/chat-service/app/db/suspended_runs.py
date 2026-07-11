@@ -35,6 +35,15 @@ class SuspendedRun:
     # RAID Wave C2 (DR-C2) — the permission mode the turn ran under; the resume
     # pass continues under the SAME mode (default keeps pre-C2 rows on 'write').
     permission_mode: str = "write"
+    # WS-3 — the PINNED rail's step tools, carried across the suspend.
+    #
+    # The rail's TEXT survives a suspend for free (it lives in the system message, which
+    # is persisted in `working`), but its TOOLS did not: the resume pass re-derives the
+    # tool surface from scratch and has no book_id to re-fetch the binding with. So the
+    # resumed turn read a recipe naming tools it could not call — and a rail whose FIRST
+    # gate is a confirm (W6 step 3 of 12) hits that on its very first gate. A rail that
+    # looks runnable but cannot run is the worst failure shape there is.
+    pinned_step_tools: list[str] | None = None
 
 
 async def save_suspended_run(
@@ -53,24 +62,35 @@ async def save_suspended_run(
     parent_message_id: str | None,
     user_message_content: str,
     permission_mode: str = "write",
+    pinned_step_tools: list[str] | None = None,
 ) -> None:
     await pool.execute(
         """
         INSERT INTO chat_suspended_runs
           (run_id, session_id, owner_user_id, message_id, working,
            pending_tool_call, input_tokens, output_tokens, model_source,
-           model_ref, parent_message_id, user_message_content, permission_mode)
-        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13)
+           model_ref, parent_message_id, user_message_content, permission_mode,
+           pinned_step_tools)
+        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)
         """,
         run_id, session_id, owner_user_id, message_id,
         json.dumps(working), json.dumps(pending_tool_call),
         input_tokens, output_tokens, model_source, model_ref,
         parent_message_id, user_message_content, permission_mode,
+        json.dumps(list(pinned_step_tools or [])),
     )
 
 
 def _parse_json(raw: object) -> object:
     return json.loads(raw) if isinstance(raw, str) else raw
+
+
+def _str_list(raw: object) -> list[str]:
+    """Defensive: a pre-WS-3 row has NULL here, and a malformed blob must not reach the
+    tool surface."""
+    if not isinstance(raw, list):
+        return []
+    return [s for s in raw if isinstance(s, str) and s]
 
 
 async def load_suspended_run(
@@ -83,7 +103,7 @@ async def load_suspended_run(
         SELECT run_id, session_id, owner_user_id, message_id, working,
                pending_tool_call, input_tokens, output_tokens, model_source,
                model_ref, parent_message_id, user_message_content,
-               permission_mode
+               permission_mode, pinned_step_tools
         FROM chat_suspended_runs
         WHERE run_id = $1 AND owner_user_id = $2 AND expires_at > now()
         """,
@@ -105,6 +125,7 @@ async def load_suspended_run(
         parent_message_id=str(row["parent_message_id"]) if row["parent_message_id"] else None,
         user_message_content=row["user_message_content"],
         permission_mode=str(row["permission_mode"] or "write"),
+        pinned_step_tools=_str_list(_parse_json(row["pinned_step_tools"])),
     )
 
 

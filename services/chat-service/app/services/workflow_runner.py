@@ -24,6 +24,10 @@ tool returns.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 WORKFLOW_LIST_NAME = "workflow_list"
 WORKFLOW_LOAD_NAME = "workflow_load"
 
@@ -227,23 +231,57 @@ def workflow_load_result(
 #
 # It reuses ``workflow_load_result`` verbatim — ONE rail format, so a pinned rail and a
 # loaded rail can never drift apart.
+#
+# The per-rail prose ceiling (Context Budget Law: an always-on block must be bounded).
+# It is a SAFETY VALVE, not a design budget — an authored rail is expected to fit well
+# inside it. The registry's own seed lint (migrate_lint_test.go) holds System workflow
+# notes under NOTES_SEED_BUDGET_CHARS so a seeded rail can never be cut here; if this
+# ever DOES cut, it is logged loudly, because of what a silent cut costs:
+#
+#   Measured 2026-07-11 — W6 vision-to-book's notes were 3218 chars against a 3000 cap,
+#   so the tail was dropped. The tail was the SPEAK-PLAINLY vocabulary block ("never say
+#   workflow/glossary/spec… this recipe is PRIVATE"), i.e. the exact rules that stop the
+#   agent leaking the machinery to the user. The leak they were written to fix therefore
+#   survived, and the truncation said nothing. A cap that silently eats the end of a
+#   prompt is worse than no cap: the block still LOOKS complete.
+NOTES_CHAR_CAP = 6000
+
+# The TOTAL ceiling for the whole pinned-rail block (all rails together). notes_char_cap
+# bounds ONE rail's prose; this bounds the BLOCK. Without it, a binding pinning many
+# workflows (the PUT allows up to 32) would inflate every single turn of that mode without
+# limit — and an always-on block with no ceiling is exactly what the Context Budget Law
+# exists to forbid.
+TOTAL_CHAR_CAP = 12000
+
+
 def pinned_rail_block(
     workflows: list[dict],
     slugs: list[str],
     async_tools: frozenset[str] = frozenset(),
     *,
-    notes_char_cap: int = 3000,
+    notes_char_cap: int = NOTES_CHAR_CAP,
 ) -> tuple[str | None, list[str]]:
     """Render the pinned workflows as ONE prompt block.
 
     Returns ``(text, step_tool_names)``. A slug that resolves to no visible workflow is
     SKIPPED (it cannot be run) and reported by the caller — never a silent no-op.
-    ``notes_char_cap`` bounds each rail's prose contribution (Context Budget Law: an
-    always-on block must have a ceiling).
     """
     rails: list[str] = []
     tools: list[str] = []
+    used = 0
     for slug in slugs:
+        # TOTAL ceiling across all pinned rails. `notes_char_cap` alone bounds only ONE
+        # rail's notes — a binding may pin up to 32 workflows (the PUT's list cap), each
+        # with an unbounded title/description/step list, so a per-rail cap leaves the
+        # always-on block itself unbounded. This block rides EVERY turn of its mode, so
+        # an unbounded always-on block is precisely what the Context Budget Law forbids.
+        if used >= TOTAL_CHAR_CAP:
+            logger.warning(
+                "pinned rails truncated: %d/%d rendered before the %d-char total ceiling "
+                "— the remaining pins are NOT in context this turn",
+                len(rails), len(slugs), TOTAL_CHAR_CAP,
+            )
+            break
         payload, step_tools = workflow_load_result(workflows, slug, async_tools)
         if payload.get("not_found"):
             continue
@@ -261,12 +299,20 @@ def pinned_rail_block(
         notes = str(payload.get("notes_md") or "").strip()
         if notes:
             if len(notes) > notes_char_cap:
+                logger.warning(
+                    "pinned rail %r: notes_md truncated %d → %d chars — the END of a rail's "
+                    "prose is where its vocabulary/honesty rules live, so a cut here silently "
+                    "removes them. Shorten the workflow's notes_md or raise NOTES_CHAR_CAP.",
+                    payload["slug"], len(notes), notes_char_cap,
+                )
                 notes = notes[:notes_char_cap].rstrip() + " …"
             lines.append("How to run it:")
             lines.append(notes)
         for g in payload.get("guidance", []):
             lines.append(f"- {g}")
-        rails.append("\n".join(lines))
+        rail_text = "\n".join(lines)
+        rails.append(rail_text)
+        used += len(rail_text)
         for t in step_tools:
             if t not in tools:
                 tools.append(t)

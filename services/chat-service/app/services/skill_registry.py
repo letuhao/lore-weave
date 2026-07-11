@@ -348,7 +348,16 @@ def resolve_skills_to_inject(
         if code in out:
             continue
         sk = SYSTEM_SKILLS.get(code)
-        if sk and _skill_visible(sk, active):
+        if sk is None:
+            # A stored setting that can never take effect. The registry now rejects an
+            # unknown code at the write, so reaching here means the two sides have DRIFTED
+            # (a skill renamed/removed in chat-service while a binding still names it) —
+            # which is exactly the kind of thing that otherwise stays invisible forever.
+            logger.warning(
+                "mode binding injects skill %r, which does not exist here — ignored", code,
+            )
+            continue
+        if _skill_visible(sk, active):
             out.append(code)
     return out
 

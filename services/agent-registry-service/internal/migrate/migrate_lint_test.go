@@ -14,19 +14,66 @@ import (
 //   2. an apostrophe in notes_md terminated the SQL string (runtime error — caught ONLY by
 //      reading the container logs, after a full rebuild and a 4-minute eval run).
 //
-// So: lint it statically. Inside an E'...' literal the only legal ways to write a quote
-// are '' (doubled) or \' (backslash-escaped); anything else ends the literal.
+// So: lint it statically — but lint the RIGHT THING. The obvious check ("is there a bare
+// quote inside the body?") is TAUTOLOGICALLY GREEN and was shipped that way for one
+// commit: the scanner stops AT the first bare quote (that is what "terminator" means), so
+// the body it hands you can never contain one. A test that cannot fail on its own bug
+// class is worse than no test.
+//
+// What a bare apostrophe actually does is MIS-TERMINATE the literal early, which leaves
+// the following prose sitting in SQL statement position ("…Saying 'first I" + `ll look…`).
+// So check what FOLLOWS the closing quote: a correctly-terminated literal in this schema
+// is always followed by `,` `)` `;` or `::`. Prose is not.
 func TestSchemaSQL_NoBareApostropheInsideEStringLiterals(t *testing.T) {
 	for _, lit := range eStringLiterals(t, schemaSQL) {
-		// Remove the two legal escape forms, then any quote left is a terminator.
-		s := strings.ReplaceAll(lit.body, `\'`, "")
-		s = strings.ReplaceAll(s, "''", "")
-		if strings.Contains(s, "'") {
-			t.Errorf("bare apostrophe inside an E'...' literal starting at offset %d — it "+
-				"terminates the SQL string and breaks the migration at boot.\nWrite '' or "+
-				"\\' (or reword). First 160 chars:\n%s", lit.start, head(lit.body, 160))
+		if !legalAfterLiteral(lit.after) {
+			t.Errorf("an E'...' literal at offset %d is MIS-TERMINATED — the text after its "+
+				"closing quote is %q, which is prose, not SQL. That means a BARE APOSTROPHE "+
+				"inside the literal ended it early; the migration will die at boot with a "+
+				"syntax error while every unit test stays green. Write '' or \\' (or reword).\n"+
+				"Literal ends: …%s", lit.start, head(strings.TrimSpace(lit.after), 40),
+				tail(lit.body, 60))
 		}
 	}
+}
+
+// A negative control — the lint above must actually FAIL on the exact bug that shipped.
+// Without this, "the lint is green" says nothing (see the tautology it replaced).
+func TestTheApostropheLint_CatchesTheRealBug(t *testing.T) {
+	bad := `INSERT INTO workflows (notes_md) VALUES
+  (E'Saying 'first I will look' is not doing it.')
+ON CONFLICT DO NOTHING;`
+	lits := eStringLiterals(t, bad)
+	if len(lits) == 0 {
+		t.Fatal("scanner found no literal in the control")
+	}
+	if legalAfterLiteral(lits[0].after) {
+		t.Fatalf("the lint would MISS the real bug: literal body %q, after %q",
+			lits[0].body, head(lits[0].after, 20))
+	}
+
+	good := `INSERT INTO workflows (notes_md) VALUES
+  (E'Saying ''first I will look'' is not doing it.')
+ON CONFLICT DO NOTHING;`
+	for _, lit := range eStringLiterals(t, good) {
+		if !legalAfterLiteral(lit.after) {
+			t.Errorf("the lint FALSE-POSITIVES on correctly-escaped prose: after=%q",
+				head(lit.after, 20))
+		}
+	}
+}
+
+// legalAfterLiteral: what may legitimately follow a closing quote in this schema.
+func legalAfterLiteral(after string) bool {
+	s := strings.TrimLeft(after, " \t\r\n")
+	if s == "" {
+		return true
+	}
+	switch s[0] {
+	case ',', ')', ';', ':':
+		return true
+	}
+	return false
 }
 
 func TestSchemaSQL_HasTheSystemWorkflowSeeds(t *testing.T) {
@@ -72,9 +119,38 @@ func TestSchemaSQL_HasTheSystemWorkflowSeeds(t *testing.T) {
 	}
 }
 
+// NOTES_SEED_BUDGET_CHARS mirrors chat-service's pinned-rail prose ceiling
+// (workflow_runner.NOTES_CHAR_CAP = 6000) with headroom. A seeded System workflow whose
+// notes_md exceeds the CONSUMER's cap is silently TRUNCATED when the rail is pinned into
+// the prompt — and the end of a rail's prose is exactly where its vocabulary and honesty
+// rules live.
+//
+// This is not hypothetical: 2026-07-11, W6 vision-to-book's notes were 3218 chars against
+// a 3000 cap, so the SPEAK-PLAINLY block ("never say workflow/glossary/spec…") was cut.
+// The jargon leak those rules were written to fix therefore survived the fix, and nothing
+// said a word. The author of a workflow cannot see the consumer's cap, so assert it here.
+const notesSeedBudgetChars = 5000
+
+func TestSchemaSQL_SeededWorkflowNotesFitTheConsumerCap(t *testing.T) {
+	for _, lit := range eStringLiterals(t, schemaSQL) {
+		// The only E'…' literals in this schema are workflow notes_md bodies.
+		if n := len(lit.body); n > notesSeedBudgetChars {
+			t.Errorf("a seeded workflow's notes_md is %d chars, over the %d budget — chat-service "+
+				"TRUNCATES the pinned rail at NOTES_CHAR_CAP, and the tail is where the "+
+				"vocabulary/honesty rules live. Shorten it (or raise both constants together).",
+				n, notesSeedBudgetChars)
+		}
+	}
+}
+
 type eLit struct {
 	start int
 	body  string
+	// after is the text immediately following the closing quote. This is the ONLY field
+	// that can reveal a bare apostrophe: the scanner necessarily stops AT one (that is
+	// what terminating means), so `body` can never contain it — checking `body` is the
+	// tautology this lint originally shipped.
+	after string
 }
 
 // eStringLiterals finds each E'...' literal's body. It walks the raw SQL and, on E',
@@ -109,7 +185,17 @@ func eStringLiterals(t *testing.T, sql string) []eLit {
 			b.WriteByte(c)
 			j++
 		}
-		out = append(out, eLit{start: i, body: b.String()})
+		// j points AT the terminating quote (or past the end). Capture what follows it —
+		// that is where a mis-termination shows up.
+		after := ""
+		if j < len(sql) {
+			end := j + 1 + 24
+			if end > len(sql) {
+				end = len(sql)
+			}
+			after = sql[j+1 : end]
+		}
+		out = append(out, eLit{start: i, body: b.String(), after: after})
 		i = j
 	}
 	if len(out) == 0 {
@@ -123,4 +209,11 @@ func head(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+func tail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
 }

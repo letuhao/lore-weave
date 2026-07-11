@@ -769,6 +769,18 @@ func (s *Server) internalWorkflows(w http.ResponseWriter, r *http.Request) {
 			bookID = b
 		}
 	}
+	// GRANT-CHECK the book. `book_id` arrives from the caller (chat-service forwards the
+	// FE's client-supplied book_context), so an ungated read here would hand ANY user the
+	// book-tier workflows (full steps + notes_md) and the book-tier mode_binding of any
+	// book whose UUID they know — a cross-tenant config read that also steers their tool
+	// surface. Fail SOFT, not 403: drop to the user's own scope and serve the System ∪
+	// user tiers, because a grant-authority blip must not brick every chat turn (the same
+	// degrade contract the rest of this route follows).
+	if bookID != uuid.Nil {
+		if ok, _ := s.bookGrantOK(r.Context(), bookID, uid, grantclient.GrantView); !ok {
+			bookID = uuid.Nil
+		}
+	}
 	rows, err := s.db.Query(r.Context(),
 		`SELECT slug, title, description, tier, surfaces, inputs, steps, notes_md FROM workflows
 		 WHERE status = 'published' AND (

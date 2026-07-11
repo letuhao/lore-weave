@@ -17,7 +17,7 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import AsyncGenerator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import asyncpg
 from json_repair import repair_json
@@ -908,10 +908,21 @@ def _inject_context_ids(
     ``VALIDATION: missing book_id`` blind-retry loop. A strong model transcribes the UUID; a
     weak one can't. This deterministically supplies the id the SERVER already knows.
 
-    Conservative by design: only fills a MISSING/blank arg (never overrides a value the model
-    supplied — respects a deliberate cross-book/other-id call), and ONLY for a key the tool
-    declares in its schema (so a tool with ``additionalProperties: false`` is never handed an
-    arg it would reject)."""
+    Conservative by design: only fills a MISSING/blank arg (never overrides a VALID value the
+    model supplied — respects a deliberate cross-book/other-id call), and ONLY for a key the
+    tool declares in its schema (so a tool with ``additionalProperties: false`` is never handed
+    an arg it would reject).
+
+    ...with ONE exception, measured 2026-07-11 (S06): a mid-tier model cannot reliably
+    TRANSCRIBE a UUID. gemma called glossary_propose_entities with
+    ``book_id="019f5239-…-edd7176d056e6"`` — the turn's real book id with one extra character —
+    and the tool 400'd ``book_id must be a UUID``. It then repeated the same corruption on a
+    later turn. (Same failure mode as its mangling of a 519-char confirm_token.)
+
+    A MALFORMED value cannot be a deliberate cross-book call: a real id is a UUID. So when the
+    model supplies something that is not a UUID and the server knows the right one, the server's
+    value wins. A valid-but-different UUID is still honored — that IS a deliberate cross-book
+    call, and this must not silently redirect it."""
     if not isinstance(args_obj, dict) or not tool_def:
         return args_obj
     params = tool_def.get("function", {}).get("parameters", {})
@@ -919,9 +930,27 @@ def _inject_context_ids(
     if not props:
         return args_obj
     for key, val in (("book_id", book_id), ("chapter_id", chapter_id), ("project_id", project_id)):
-        if val and key in props and not args_obj.get(key):
+        if not val or key not in props:
+            continue
+        supplied = args_obj.get(key)
+        if not supplied:
+            args_obj[key] = val
+            continue
+        if isinstance(supplied, str) and not _is_uuid(supplied):
+            logger.warning(
+                "tool arg %s=%r is not a UUID — the model mistranscribed it; substituting the "
+                "turn's known id", key, supplied[:64],
+            )
             args_obj[key] = val
     return args_obj
+
+
+def _is_uuid(v: str) -> bool:
+    try:
+        UUID(str(v))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
 
 
 def _missing_required_names(args_obj: dict, tool_def: dict | None) -> list[str]:
@@ -3307,6 +3336,20 @@ async def stream_response(
             logger.warning("user skills fetch/inject failed — built-in skills only", exc_info=True)
             user_skills_block = None
 
+    # The turn's federated tool catalog, fetched ONCE here (it used to be fetched below,
+    # AFTER the system prompt was assembled). The PINNED rail needs it: a step's async
+    # annotation resolves (1) an authored `async_job`, else (2) the catalog's `_meta.async`,
+    # else (3) a NAME HEURISTIC. Rendering the pin without the catalog dropped tier (2), so
+    # a pinned rail and a workflow_load'ed rail could disagree about which steps start a
+    # background job — the exact pin/load drift reusing `workflow_load_result` was meant to
+    # make impossible. (It also saves the duplicate fetch: the block below now reuses this.)
+    _turn_catalog: list[dict] = []
+    if not disable_tools and kctx.tool_calling_enabled and not admin_context:
+        _turn_catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
+    _turn_async_tools = frozenset(
+        n for n, td in _catalog_index(_turn_catalog).items() if tool_async(td)
+    ) if _turn_catalog else frozenset()
+
     # WS-3 (C6) — the PINNED rail. The mode binding may pin a workflow; a pinned rail is
     # rendered straight into the prompt (same renderer workflow_load uses, so the two can
     # never drift) and its step tools are pre-activated below. This is the S06 fix:
@@ -3330,7 +3373,7 @@ async def stream_response(
             )
         if _pinned_slugs:
             pinned_rail_text, pinned_step_tools = pinned_rail_block(
-                turn_workflows, _pinned_slugs,
+                turn_workflows, _pinned_slugs, _turn_async_tools,
             )
 
     # WS-5 — STEER a mid-tier model to USE an authored workflow rail. Advertising
@@ -3521,7 +3564,7 @@ async def stream_response(
         else:
             # REG-P2-03 — pass user_id so the gateway appends this user's external-MCP
             # federation overlay (u_/b_/s_ tools) into the turn catalog.
-            catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
+            catalog = _turn_catalog  # already fetched above (the pin needed it)
             # Discovery needs a catalog to search. When the gateway is unreachable
             # (catalog == []), there is nothing to find_tools over → fall back to the
             # plain path rather than spin up a discovery loop with only frontend tools.
@@ -3657,6 +3700,7 @@ async def stream_response(
         # in-turn compaction + T0 wire spans are appended inside _emit_chat_turn.
         trace=_trace,
         turn_workflows=turn_workflows,
+        pinned_step_tools=pinned_step_tools,
     ):
         yield line
 
@@ -3715,6 +3759,8 @@ async def _emit_chat_turn(
     # WS-2b — curated workflows visible this turn; threaded into the tool loop so
     # workflow_list/workflow_load are advertised + dispatched. Empty on the resume caller.
     turn_workflows: list[dict] | None = None,
+    # WS-3 — the PINNED rail's step tools, so the SUSPEND path can persist them.
+    pinned_step_tools: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -4132,6 +4178,12 @@ async def _emit_chat_turn(
                 parent_message_id=parent_message_id,
                 user_message_content=user_message_content,
                 permission_mode=permission_mode,
+                # WS-3 — carry the PINNED rail's tools across the suspend. The rail's TEXT
+                # rides along for free (it's in the system message inside `working`), but
+                # without this the resumed pass re-derives the tool surface with no book_id
+                # to re-fetch the binding, and the agent reads a recipe naming tools it
+                # cannot call. W6's first confirm gate is step 3 of 12.
+                pinned_step_tools=pinned_step_tools,
             )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
@@ -4825,6 +4877,13 @@ async def resume_stream_response(
                 studio=True,
                 context_length=creds.context_length,
                 permission_mode=susp.permission_mode,
+                # WS-3 — re-advertise the PINNED rail's step tools. The rail's TEXT is
+                # already in the resumed prompt (it lives in the system message inside
+                # `working`), so WITHOUT this the model reads an ordered recipe naming
+                # tools it cannot call — and W6's first confirm gate is step 3 of 12, so
+                # the flagship rail broke at its very first gate. Captured at suspend time
+                # because the resume has no book_id to re-resolve the binding with.
+                pinned_step_tools=susp.pinned_step_tools,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend

@@ -13,6 +13,8 @@ So the tests here assert the properties that make a pin real:
 """
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 
@@ -24,7 +26,11 @@ from app.services.tool_surface import (
     budget_rail_tools,
     discovery_seed_for_surface,
 )
-from app.services.workflow_runner import pinned_rail_block
+from app.services.workflow_runner import (
+    NOTES_CHAR_CAP,
+    TOTAL_CHAR_CAP,
+    pinned_rail_block,
+)
 
 WF = {
     "slug": "vision-to-book",
@@ -103,6 +109,27 @@ def test_pinned_rail_caps_the_notes_prose():
     text, _ = pinned_rail_block([big], ["vision-to-book"], notes_char_cap=100)
     assert "n" * 101 not in text
     assert "…" in text
+
+
+def test_truncating_a_rail_is_LOUD(caplog):
+    # Measured 2026-07-11: W6's notes were 3218 chars against a 3000 cap, so the tail was
+    # dropped — and the tail was the SPEAK-PLAINLY block, i.e. the exact rules that stop
+    # the agent leaking the machinery to the user. The leak they were written to fix
+    # therefore survived, and the truncation said NOTHING. A cap that silently eats the
+    # end of a prompt is worse than no cap: the block still LOOKS complete.
+    big = dict(WF, notes_md="n" * 9000)
+    with caplog.at_level(logging.WARNING):
+        pinned_rail_block([big], ["vision-to-book"], notes_char_cap=100)
+    assert any("truncated" in r.message for r in caplog.records), (
+        "a truncated rail must WARN — a silent cut removes the rail's vocabulary rules"
+    )
+
+
+def test_the_real_w6_notes_would_not_be_truncated():
+    # The authored rail must fit the ceiling with room to spare. The registry side asserts
+    # the same thing on the seed (migrate_lint_test.go) — this is the consumer half, so the
+    # two constants cannot drift apart unnoticed.
+    assert NOTES_CHAR_CAP >= 5000
 
 
 def test_pinned_rail_forbids_leaking_its_own_name_to_the_user():
@@ -193,6 +220,80 @@ def test_binding_categories_union_into_the_hot_seed():
         binding_categories=["translation"],
     )
     assert "translation_start_job" in with_cat
+
+
+def test_a_sync_tool_is_not_mislabelled_async_when_the_step_says_so():
+    # Measured 2026-07-11 (the S06 stall): W6's capture-cast step calls
+    # glossary_extract_entities_from_doc, whose NAME matches the async heuristic
+    # ("extract_entities") — so the rail told the agent "background job, watch it before
+    # continuing" for a tool that returns synchronously. It stalled waiting for a job that
+    # never existed, and the cast was never saved. An AUTHORED async_job must win over the
+    # name heuristic.
+    wf = dict(WF, steps=[
+        {"id": "capture-cast", "tool": "glossary_extract_entities_from_doc",
+         "gate": "none", "async_job": False},
+    ])
+    text, _ = pinned_rail_block([wf], ["vision-to-book"])
+    assert "background job" not in text
+
+
+def test_the_name_heuristic_still_fires_without_an_authored_flag():
+    # Negative control — the fix above must not disable async honesty generally.
+    wf = dict(WF, steps=[
+        {"id": "capture-cast", "tool": "glossary_extract_entities_from_doc", "gate": "none"},
+    ])
+    text, _ = pinned_rail_block([wf], ["vision-to-book"])
+    assert "background job" in text
+
+
+def test_the_catalog_async_flag_reaches_a_PINNED_rail():
+    # workflow_load passes the catalog's _meta.async set; the pin must too, or a pinned
+    # rail and a loaded rail disagree about which steps start a job — the pin/load drift
+    # that reusing workflow_load_result was supposed to make impossible.
+    wf = dict(WF, steps=[{"id": "s", "tool": "some_quiet_tool", "gate": "none"}])
+    plain, _ = pinned_rail_block([wf], ["vision-to-book"])
+    assert "background job" not in plain
+    flagged, _ = pinned_rail_block([wf], ["vision-to-book"], frozenset({"some_quiet_tool"}))
+    assert "background job" in flagged
+
+
+def test_the_pinned_block_has_a_TOTAL_ceiling_not_just_a_per_rail_one():
+    # A binding may pin up to 32 workflows; notes_char_cap bounds ONE rail's prose, so
+    # without a block-level ceiling the always-on block is unbounded.
+    many = [dict(WF, slug=f"wf-{i}", notes_md="n" * 4000) for i in range(20)]
+    text, _ = pinned_rail_block(many, [w["slug"] for w in many])
+    assert len(text) < TOTAL_CHAR_CAP + 8000, "the pinned block must stop at its total ceiling"
+
+
+def test_a_resumed_turn_still_advertises_the_pinned_rails_tools():
+    """The HIGH bug: the rail's TEXT survives a confirm-gate suspend for free (it lives in
+    the system message inside `working`), but its TOOLS did not — the resume re-derives the
+    tool surface from scratch and has no book_id to re-fetch the binding with. So the
+    resumed turn read an ordered recipe naming tools it could not call. W6's FIRST confirm
+    gate is step 3 of 12, so the flagship rail broke at its very first gate.
+
+    The fix carries `pinned_step_tools` on the SuspendedRun; this asserts the seam that
+    consumes it — a resume-shaped seed call (which passes no binding) still advertises them.
+    """
+    cat = _catalog("glossary_adopt_standards", "glossary_confirm_action", "plan_propose_spec")
+    resumed = discovery_seed_for_surface(
+        cat,
+        pins=_pins(),
+        editor=True, book_scoped=True, studio=True,   # the resume superset
+        permission_mode="write",
+        pinned_step_tools=["glossary_adopt_standards", "glossary_confirm_action", "plan_propose_spec"],
+    )
+    assert {"glossary_adopt_standards", "glossary_confirm_action", "plan_propose_spec"} <= resumed
+
+
+def test_a_resume_with_no_pin_is_unchanged():
+    # A pre-WS-3 suspended row has NULL here; it must behave exactly as before.
+    cat = _catalog("glossary_search")
+    before = discovery_seed_for_surface(cat, pins=_pins(), editor=True, book_scoped=True, studio=True)
+    after = discovery_seed_for_surface(
+        cat, pins=_pins(), editor=True, book_scoped=True, studio=True, pinned_step_tools=None,
+    )
+    assert before == after
 
 
 # ── skills ────────────────────────────────────────────────────────────────────
@@ -291,3 +392,42 @@ async def test_an_all_empty_binding_is_treated_as_no_binding():
     got = await c.get_workflows("u1", mode="ask")
     assert got.mode_binding is None
     await c.aclose()
+
+
+# ── the model cannot transcribe a UUID ────────────────────────────────────────
+
+def test_a_mistranscribed_book_id_is_corrected_not_400d():
+    """Measured 2026-07-11 (S06): gemma called glossary_propose_entities with the turn's
+    real book_id plus one extra character ("…056e6") and the tool 400'd "book_id must be a
+    UUID" — twice. A mid-tier model cannot reliably copy a 36-char UUID. A MALFORMED value
+    cannot be a deliberate cross-book call, so the server's known id must win."""
+    from app.services.stream_service import _inject_context_ids
+
+    real = "019f5239-3f0d-7ad7-8fff-edd7176d056e"
+    td = {"function": {"parameters": {"properties": {"book_id": {"type": "string"}}}}}
+    args = _inject_context_ids(
+        {"book_id": real + "6"}, td, book_id=real, chapter_id=None, project_id=None,
+    )
+    assert args["book_id"] == real
+
+
+def test_a_valid_but_different_book_id_is_STILL_honored():
+    """The negative control: a well-formed id that differs IS a deliberate cross-book call.
+    Correcting a typo must not become silently redirecting an intentional one."""
+    from app.services.stream_service import _inject_context_ids
+
+    other = "019f0000-0000-7000-8000-000000000000"
+    td = {"function": {"parameters": {"properties": {"book_id": {"type": "string"}}}}}
+    args = _inject_context_ids(
+        {"book_id": other}, td,
+        book_id="019f5239-3f0d-7ad7-8fff-edd7176d056e", chapter_id=None, project_id=None,
+    )
+    assert args["book_id"] == other
+
+
+def test_a_missing_book_id_is_still_filled():
+    from app.services.stream_service import _inject_context_ids
+
+    real = "019f5239-3f0d-7ad7-8fff-edd7176d056e"
+    td = {"function": {"parameters": {"properties": {"book_id": {"type": "string"}}}}}
+    assert _inject_context_ids({}, td, book_id=real, chapter_id=None, project_id=None)["book_id"] == real

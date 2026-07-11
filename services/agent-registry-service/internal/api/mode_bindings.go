@@ -33,6 +33,35 @@ import (
 
 var validModes = map[string]bool{"ask": true, "write": true, "plan": true}
 
+// validCategories is contract C1 — the frozen closed set of tool categories
+// (docs/specs/2026-07-09-agent-discoverability-and-workflow/contracts.md §C1; source of
+// truth GROUP_DIRECTORY in ai-gateway find-tools.ts, mirrored in chat-service
+// tool_discovery.py). `admin` is deliberately excluded (RS256-segregated catalog, OQ2).
+//
+// It is enumerated here because a `seed_tool_categories` value is a CLOSED-SET arg and an
+// unknown one seeds exactly zero tools — stored, echoed back by GET as the effective
+// value, and doing nothing forever. That is the write-only-behavior bug the Settings &
+// Config standard names outright; the sibling `inject_workflows` already rejects an
+// unpinnable slug at the write, and these two must not be held to a lower bar.
+var validCategories = map[string]bool{
+	"book": true, "catalog": true, "composition": true, "glossary": true, "jobs": true,
+	"knowledge": true, "plan": true, "registry": true, "research": true, "settings": true,
+	"story": true, "translation": true,
+}
+
+// skillCodeVisible reports whether `code` names a skill this caller could actually have
+// injected — System-tier, or one of their own. chat-service filters an unknown code out
+// silently, so an unvalidated write would be a setting that never takes effect.
+func (s *Server) skillCodeVisible(ctx context.Context, uid uuid.UUID, code string) bool {
+	var one int
+	err := s.db.QueryRow(ctx,
+		`SELECT 1 FROM skills
+		  WHERE slug = $1 AND status = 'published'
+		    AND (tier = 'system' OR (tier = 'user' AND owner_user_id = $2))
+		  LIMIT 1`, code, uid).Scan(&one)
+	return err == nil
+}
+
 // ModeBinding is the C6 record — the effective (resolved) shape the chat-service reads.
 type ModeBinding struct {
 	Mode               string   `json:"mode"`
@@ -190,6 +219,21 @@ func cleanList(in []string) ([]string, bool) {
 	return out, true
 }
 
+// workflowVisibleInBook reports whether EVERY grantee of `bookID` will see `slug` on a
+// turn scoped to that book. The predicate deliberately mirrors internalWorkflows' own
+// book-tier arm (System ∪ that book's rows) — if the two ever disagree, a book-tier pin
+// that validates at the write silently no-ops at turn time, which is the failure this
+// check exists to prevent.
+func (s *Server) workflowVisibleInBook(ctx context.Context, bookID uuid.UUID, slug string) bool {
+	var one int
+	err := s.db.QueryRow(ctx,
+		`SELECT 1 FROM workflows
+		  WHERE slug = $1 AND status = 'published'
+		    AND (tier = 'system' OR (tier = 'book' AND book_id = $2))
+		  LIMIT 1`, slug, bookID).Scan(&one)
+	return err == nil
+}
+
 // getModeBinding — GET /v1/agent-registry/mode-bindings/{mode}[?book_id=]
 // Returns the EFFECTIVE binding plus its per-tier sources (effective value + source tier).
 func (s *Server) getModeBinding(w http.ResponseWriter, r *http.Request) {
@@ -276,12 +320,50 @@ func (s *Server) putModeBinding(w http.ResponseWriter, r *http.Request) {
 		bookID = b
 	}
 
-	// A PIN that names a workflow the caller cannot see would be a silent no-op at turn
-	// time (Agent Extensibility Standard: no-silent-no-op). Reject it at the write.
-	for _, slug := range workflows {
-		if _, _, _, found := s.resolveVisibleWorkflowBySlug(r.Context(), uid, slug); !found {
+	// A PIN that names a workflow the CONSUMER cannot see is a silent no-op at turn time
+	// (Agent Extensibility Standard). Reject it at the write — but validate against the
+	// visibility of whoever will CONSUME the binding, which is not always the writer:
+	//
+	//   - user tier   → the writer is the only consumer  ⇒ System ∪ their own.
+	//   - book tier   → EVERY grantee of the book consumes it ⇒ System ∪ that BOOK's rows.
+	//
+	// Validating a book-tier write against the writer's private set was wrong both ways:
+	// it let A pin their own private user-tier workflow into a shared book (invisible to
+	// every other grantee, whose turns then ran unpinned while GET still reported the pin
+	// as effective), AND it rejected the legitimate case of pinning the book's OWN
+	// book-tier workflow, making that whole tier unpinnable.
+	// Closed-set validation for the other two lists — same reason, same bar (see
+	// validCategories). An unknown value here is not "harmless extra config": it is a
+	// setting the GET reports as effective that can never do anything.
+	for _, cat := range cats {
+		if !validCategories[cat] {
 			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR",
-				"no workflow '"+slug+"' is visible to you — it cannot be pinned")
+				"'"+cat+"' is not a tool category — it would seed nothing")
+			return
+		}
+	}
+	for _, code := range skills {
+		if !s.skillCodeVisible(r.Context(), uid, code) {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR",
+				"no skill '"+code+"' is visible to you — it cannot be injected")
+			return
+		}
+	}
+
+	for _, slug := range workflows {
+		var visible bool
+		if bookID != uuid.Nil {
+			visible = s.workflowVisibleInBook(r.Context(), bookID, slug)
+		} else {
+			_, _, _, visible = s.resolveVisibleWorkflowBySlug(r.Context(), uid, slug)
+		}
+		if !visible {
+			scope := "you"
+			if bookID != uuid.Nil {
+				scope = "this book"
+			}
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR",
+				"no workflow '"+slug+"' is visible to "+scope+" — it cannot be pinned")
 			return
 		}
 	}

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from app.services.token_budget import estimate_tokens, scale_by_window
 from app.services.tool_discovery import (
+    _domain_of,
     hot_tool_names,
     surface_hot_domains,
     tool_name,
@@ -219,6 +220,16 @@ def discovery_seed_for_surface(
         editor=editor, book_scoped=book_scoped, studio=studio, permission_mode=permission_mode,
     )
     if binding_categories:
+        # An unknown category contributes no tools. The registry rejects one at the write
+        # (contract C1 closed set), so if one arrives here the two sides have DRIFTED —
+        # say so rather than silently seeding nothing.
+        known = {_domain_of(tool_name(td)) for td in catalog}
+        for _cat in binding_categories:
+            if _cat not in known:
+                logger.warning(
+                    "mode binding seeds tool category %r, which matches no tool in the "
+                    "catalog — it seeds nothing", _cat,
+                )
         hot_domains = set(hot_domains) | set(binding_categories)
     # FIX (context-explosion): token-budget the hot-seed instead of seeding the
     # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a

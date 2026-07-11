@@ -540,7 +540,7 @@ INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, 
      {"id":"adopt-categories","tool":"glossary_adopt_standards","gate":"none"},
      {"id":"apply-categories","tool":"glossary_confirm_action","gate":"confirm","inputs_map":{"confirm_token":"adopt-categories.confirm_token"}},
      {"id":"read-back","tool":"glossary_book_ontology_read","gate":"none"},
-     {"id":"capture-cast","tool":"glossary_extract_entities_from_doc","gate":"none"},
+     {"id":"capture-cast","tool":"glossary_extract_entities_from_doc","gate":"none","async_job":false},
      {"id":"save-cast","tool":"glossary_propose_entities","gate":"none"},
      {"id":"apply-cast","tool":"glossary_confirm_action","gate":"confirm","inputs_map":{"confirm_token":"save-cast.confirm_token"}},
      {"id":"connect-project","tool":"kg_project_create","gate":"none"},
@@ -595,7 +595,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_mode_bindings_book   ON mode_bindings(book_
 INSERT INTO mode_bindings (tier, mode, inject_skills, inject_workflows) VALUES
   ('system','plan',  '{plan_forge}'::text[], '{}'::text[]),
   ('system','write', '{}'::text[],           '{vision-to-book}'::text[])
-ON CONFLICT (mode) WHERE tier = 'system' DO NOTHING;
+ON CONFLICT (mode) WHERE tier = 'system' DO UPDATE SET
+  inject_skills = EXCLUDED.inject_skills,
+  inject_workflows = EXCLUDED.inject_workflows,
+  seed_tool_categories = EXCLUDED.seed_tool_categories,
+  updated_at = now();
 `
 
 // Up applies the schema. Idempotent; safe to run on every boot.

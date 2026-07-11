@@ -20,10 +20,31 @@ def test_fills_missing_book_id():
 
 
 def test_does_not_override_a_model_supplied_value():
+    # A deliberate cross-book call must survive. The fixture is now a REAL uuid: the old one
+    # ("OTHER") was a placeholder, and a book_id is always a uuid — so it could not actually
+    # stand for the cross-book case it was written to protect, and it was the only thing
+    # asserting that a MISTRANSCRIBED uuid gets passed through to a 400 (see below).
     td = _tool("x", {"book_id": {"type": "string"}})
-    args = {"book_id": "OTHER"}
-    ss._inject_context_ids(args, td, book_id="B1", chapter_id=None, project_id=None)
-    assert args["book_id"] == "OTHER"  # respects a deliberate cross-book call
+    other = "019f0000-0000-7000-8000-000000000000"
+    args = {"book_id": other}
+    ss._inject_context_ids(
+        args, td, book_id="019f5239-3f0d-7ad7-8fff-edd7176d056e",
+        chapter_id=None, project_id=None,
+    )
+    assert args["book_id"] == other  # respects a deliberate cross-book call
+
+
+def test_overrides_a_MALFORMED_model_supplied_id():
+    # Measured 2026-07-11 (S06): gemma called glossary_propose_entities with the turn's real
+    # book_id plus one extra character ("…056e6") and the tool 400'd "book_id must be a UUID"
+    # — then repeated the identical corruption on a later turn. A mid-tier model cannot
+    # reliably transcribe a 36-char uuid. A malformed value cannot be a deliberate cross-book
+    # call, so the id the SERVER already knows wins.
+    td = _tool("x", {"book_id": {"type": "string"}})
+    real = "019f5239-3f0d-7ad7-8fff-edd7176d056e"
+    args = {"book_id": real + "6"}
+    ss._inject_context_ids(args, td, book_id=real, chapter_id=None, project_id=None)
+    assert args["book_id"] == real
 
 
 def test_only_injects_keys_the_tool_declares():

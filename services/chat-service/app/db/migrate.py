@@ -267,6 +267,18 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- WS-3 — the PINNED rail's step tools, captured at suspend time.
+-- The rail's TEXT rides the suspend for free (it is in the system message, which lives in
+-- `working`), but its TOOLS did not: the resume pass re-derives the tool surface from
+-- scratch and has no book_id to re-fetch the binding with, so the resumed turn read a
+-- recipe naming tools it could not call. W6's first confirm gate is step 3 of 12, so the
+-- flagship rail broke at its very first gate. NULL/absent ⇒ no pin (pre-WS-3 rows).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='pinned_step_tools') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN pinned_step_tools JSONB;
+  END IF;
+END $$;
+
 -- ══════════════════════════════════════════════════════════════════════
 -- RAID Wave C2 (DR-C2) — per-tool approval allowlist ("Always allow").
 -- In Write mode a Tier-A server tool NOT on the user's allowlist suspends
