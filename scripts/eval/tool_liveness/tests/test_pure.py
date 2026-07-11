@@ -640,7 +640,7 @@ def test_project_chain_uses_the_composition_project_not_the_kg_one():
     composition_create_work, never ids['project_id'] (which is the kg project)."""
     from tool_liveness.project_chain import authored_project_args
 
-    ids = {"book_id": "b-1", "project_id": "kg-project"}
+    ids = {"book_id": "b-1", "project_id": "kg-project", "chapter_id": "c-1"}
     state = {"composition_create_work": {"project_id": "composition-project"}}
     args = authored_project_args("composition_outline_node_create", ids, state)
     assert args["args"]["project_id"] == "composition-project", args
