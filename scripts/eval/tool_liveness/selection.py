@@ -98,8 +98,17 @@ async def _complete(client: Client, model_ref: str, prompt: str) -> str:
     return "".join(out)
 
 
+def _discoverable(tools: list[dict]) -> list[dict]:
+    """Drop `visibility: legacy` tools — production EXCLUDES them from the agent's
+    discoverable set (they stay callable only via an explicit per-session pin). Including
+    them as distractors makes the test unfaithful and manufactures misses against
+    already-deprecated siblings (e.g. `glossary_book_delete`, superseded by
+    `glossary_ontology_delete`). The proxy must see the set the agent actually sees."""
+    return [t for t in tools if (t.get("meta") or {}).get("visibility") != "legacy"]
+
+
 async def run(limit: int | None, only_service: str | None) -> list[dict]:
-    tools = await _list_tools()
+    tools = _discoverable(await _list_tools())
     all_names = {t["name"] for t in tools}
     catalog = _catalog_text(tools)
     probeable = [t for t in tools if _synonym_ask(t)

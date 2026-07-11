@@ -35,9 +35,11 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_ontology_upsert",
 		Description: "Create or update book- or user-tier ontology rows (genre, kind, or " +
-			"attribute) — one call may mix creates and updates freely. Omit base_version on " +
-			"an item to create it; include the current base_version to update it with " +
-			"optimistic locking. Accepts 1-50 items; each item succeeds or fails independently.",
+			"attribute) — WRITES IMMEDIATELY, no confirmation (Tier A). One call may mix " +
+			"creates and updates freely. Omit base_version on an item to create it; include " +
+			"the current base_version to update it with optimistic locking. Accepts 1-50 " +
+			"items; each item succeeds or fails independently. (For a human-confirmed proposal " +
+			"of a single new attribute instead, use glossary_propose_new_attribute.)",
 		InputSchema: ontologyUpsertSchema(),
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"add a kind", "add a genre", "add an attribute", "edit a kind", "rename a kind", "new entity type",
