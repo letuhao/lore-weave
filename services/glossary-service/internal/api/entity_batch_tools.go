@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -134,11 +135,26 @@ func (s *Server) toolProposeEntities(ctx context.Context, _ *mcp.CallToolRequest
 	// Per-item detail is preserved: the go-sdk still marshals `out` into
 	// structuredContent when the handler returns a non-nil result with err==nil.
 	if out.Summary.Created == 0 && out.Summary.Failed > 0 {
-		msg := "no entities were created — every proposed item failed (see structuredContent for each item's error)."
+		// Message discipline (review-impl): the chat-service agent loop DROPS
+		// structuredContent on an isError result, so the per-item Results never reach
+		// the agent — the message TEXT is all it receives. So (1) never point at
+		// structuredContent, (2) inline the DISTINCT failure reasons, and (3) report the
+		// real counts, not "every item failed" (which is false when some already existed).
+		reasons := distinctErrorReasons(out.Results)
+		msg := fmt.Sprintf("no entities were created — %d of %d item(s) failed",
+			out.Summary.Failed, len(in.Items))
+		if out.Summary.Skipped > 0 {
+			msg += fmt.Sprintf(" (%d already existed)", out.Summary.Skipped)
+		}
+		if len(reasons) > 0 {
+			msg += ". Reasons: " + strings.Join(reasons, "; ")
+		}
 		if allFailuresAreUnknownKind(out.Results) {
-			msg += " Each failure is an 'unknown kind': that category does not exist in this book yet. " +
-				"Create the categories first (glossary_adopt_standards to adopt the system kinds, or " +
+			msg += ". An 'unknown kind' means that category does not exist in this book yet — " +
+				"create the categories first (glossary_adopt_standards to adopt the system kinds, or " +
 				"glossary_propose_kinds for custom ones), then retry."
+		} else {
+			msg += "."
 		}
 		return &mcp.CallToolResult{
 			IsError: true,
@@ -146,6 +162,32 @@ func (s *Server) toolProposeEntities(ctx context.Context, _ *mcp.CallToolRequest
 		}, out, nil
 	}
 	return nil, out, nil
+}
+
+// distinctErrorReasons collects the DISTINCT error strings across the failed items,
+// preserving first-seen order and capping the count so a large heterogeneous batch
+// can't produce a giant message. This is what the caller actually reads (the chat
+// agent loop drops the per-item structuredContent on an isError result).
+func distinctErrorReasons(results []proposeEntityItemResult) []string {
+	const maxReasons = 5
+	seen := make(map[string]bool, maxReasons)
+	out := make([]string, 0, maxReasons)
+	extra := 0
+	for _, r := range results {
+		if r.Status != "error" || r.Error == "" || seen[r.Error] {
+			continue
+		}
+		seen[r.Error] = true
+		if len(out) < maxReasons {
+			out = append(out, r.Error)
+		} else {
+			extra++
+		}
+	}
+	if extra > 0 {
+		out = append(out, fmt.Sprintf("(+%d more)", extra))
+	}
+	return out
 }
 
 // allFailuresAreUnknownKind reports whether every errored item failed with an
