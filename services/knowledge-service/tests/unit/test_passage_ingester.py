@@ -870,9 +870,30 @@ async def test_ingest_keeps_passages_when_revision_missing_and_flag_false(monkey
 
 def _book_with_published(chapters, text="Arthur rode toward Camelot. " * 20):
     """book_client whose list_chapters returns `chapters` and whose per-chapter live
-    text yields one chunk (so each published chapter ingests one passage)."""
+    text yields one chunk (so each chapter ingests one passage).
+
+    review-impl: the returned rows are ENRICHED with the revision markers that the real
+    book-service chapter LIST projection always carries (published_revision_id +
+    kg_indexed_revision_id). The old fixtures omitted them entirely, so the backfill's
+    revision pin and canon derivation were never exercised — which is exactly how a
+    backfill that ingested LIVE DRAFT text and stamped it canon=True shipped green. A
+    fixture that is missing fields production always sends is not a simplification, it is
+    a blind spot.
+
+    A row that already declares its own markers (e.g. a draft-indexed chapter with
+    published_revision_id=None) is passed through untouched.
+    """
+    enriched = []
+    for ch in chapters:
+        ch = dict(ch)
+        if "kg_indexed_revision_id" not in ch and "published_revision_id" not in ch:
+            # Default shape: a normally-published chapter — both pointers at one revision.
+            rev = str(uuid4())
+            ch["published_revision_id"] = rev
+            ch["kg_indexed_revision_id"] = rev
+        enriched.append(ch)
     book = _mk_book_client(text=text)
-    book.list_chapters = AsyncMock(return_value=chapters)
+    book.list_chapters = AsyncMock(return_value=enriched)
     return book
 
 
@@ -928,6 +949,65 @@ async def test_backfill_ingests_every_kg_indexed_chapter(monkeypatch):
     # Published passages are canon.
     for call in upsert.await_args_list:
         assert call.kwargs["canon"] is True
+
+
+@pytest.mark.asyncio
+async def test_backfill_draft_indexed_chapter_is_pinned_and_NOT_canon(monkeypatch):
+    """review-impl P0 — THE TEST WHOSE ABSENCE LET THE BUG SHIP.
+
+    The sibling test above asserts the rule in its DOCSTRING ("the canon flag is
+    deliberately NOT re-keyed... flipping it would be the inverse bug") — but its fixture
+    contained only PUBLISHED rows, so the draft-indexed case was never executed. A prose
+    guard is not a guard.
+
+    What actually shipped: WS-0.6b re-keyed this backfill's enumeration to kg_indexed=True
+    (which now returns never-published, user-indexed DRAFTS) while leaving
+    `revision_id=None, canon=True`. So every draft-indexed chapter had its LIVE DRAFT text
+    embedded — including prose typed AFTER the index action — and stamped CANONICAL,
+    landing it in the default `surface=canon` search used for chat grounding.
+
+    Two properties, both required (spec §3.7 / P1-8):
+      - PIN the revision the user actually indexed (never the live draft).
+      - canon = (revision_id == published_revision_id) ⇒ False for a never-published chapter.
+    """
+    pinned = str(uuid4())
+    chapters = [{
+        "chapter_id": str(uuid4()),
+        "sort_order": 1,
+        "editorial_status": "draft",
+        "published_revision_id": None,      # NEVER published
+        "kg_indexed_revision_id": pinned,   # but explicitly added to the knowledge graph
+    }]
+    book = _book_with_published(chapters)
+    emb = _dyn_embed()
+    upsert = AsyncMock()
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+
+    await backfill_published_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID, book_id=BOOK_ID,
+        embedding_model="bge-m3", embedding_dim=1024,
+    )
+
+    assert upsert.await_count >= 1, "the draft-indexed chapter should still be ingested"
+    for call in upsert.await_args_list:
+        assert call.kwargs["canon"] is False, (
+            "a NEVER-PUBLISHED, user-indexed chapter's passages must be canon=False. "
+            "canon=True puts unreviewed draft prose into the DEFAULT surface=canon vector "
+            "search used for chat grounding — and surface=canon, the exact control that "
+            "exists to exclude it, can then no longer filter it out."
+        )
+
+    # And it must have been read at the PINNED revision, never the live draft.
+    fetch = book.get_chapter_revision_text
+    assert fetch.await_count >= 1, (
+        "the backfill must fetch the PINNED revision. revision_id=None reads the LIVE "
+        "DRAFT, so prose typed after the user's index action gets embedded too."
+    )
 
 
 @pytest.mark.asyncio

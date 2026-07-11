@@ -205,6 +205,90 @@ func TestIndex_UnchangedDraft_ReusesRevision_DB(t *testing.T) {
 	}
 }
 
+// review-impl regression: `reused_revision` means "the KG pointer did not move", NOT
+// "a chapter_revisions row with this body already existed".
+//
+// THE FIXTURE GAP THIS CLOSES: seedChapterWithBody plants a draft but NO revision row, so
+// the old (wrong) definition happened to return false on a first index and the tests were
+// green. Production is different — every create/import/PATCH-draft save plants exactly
+// such a revision row — so the FIRST real index reported `reused_revision: true` while it
+// moved the pointer, re-parsed scenes and enqueued a full LLM extraction. The Phase-0 live
+// smoke printed exactly that and it took an adversarial review to notice.
+//
+// This test reproduces the PRODUCTION shape: a revision row already exists beside the
+// draft. A first index must still report reused=false.
+func TestIndex_FirstIndex_WithPreexistingRevisionRow_IsNotReused_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	body := kgBody("prose that a real save already snapshotted")
+	bookID, chID := seedChapterWithBody(t, ctx, pool, owner, body)
+
+	// What every real save does: plant a revision row carrying the same body.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO chapter_revisions(chapter_id, body, body_format) VALUES($1,$2::jsonb,'json')`,
+		chID, body); err != nil {
+		t.Fatalf("seed pre-existing revision: %v", err)
+	}
+
+	res, err := s.indexChapter(ctx, owner, bookID, chID)
+	if err != nil {
+		t.Fatalf("index: %v", err)
+	}
+
+	if res.Reused {
+		t.Fatal("a FIRST index must report reused_revision=false even though a revision row " +
+			"already existed: the KG pointer MOVED (NULL -> rev), scenes were re-parsed, and " +
+			"a full LLM extraction was enqueued. Reporting 'reused' here tells every caller " +
+			"'no-op, nothing happened' while real work (and real spend) occurred.")
+	}
+	if _, _, kgRev, _ := kgChapterState(t, ctx, pool, chID); kgRev == nil {
+		t.Fatal("the pointer should have moved")
+	}
+	// And it DID emit, because the pointer moved.
+	if n := countEvent(outboxEventsFor(t, ctx, pool, chID), "chapter.kg_indexed"); n != 1 {
+		t.Fatalf("want 1 chapter.kg_indexed (the pointer moved), got %d", n)
+	}
+}
+
+// review-impl COST GATE: a true no-op re-index must emit NOTHING.
+//
+// The consumer's keep-LATEST upsert resets processed_at=NULL on conflict, so an
+// unconditional emit meant every redundant "Update knowledge" click on unchanged prose
+// re-armed the pending row and drove a FULL Pass-2 LLM re-extraction. Acceptance #10 says
+// re-indexing an unchanged revision costs nothing.
+func TestIndex_NoOpReindex_EmitsNoEventAndCostsNothing_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	bookID, chID := seedChapterWithBody(t, ctx, pool, owner, kgBody("unchanging prose"))
+
+	if _, err := s.indexChapter(ctx, owner, bookID, chID); err != nil {
+		t.Fatalf("first index: %v", err)
+	}
+	afterFirst := countEvent(outboxEventsFor(t, ctx, pool, chID), "chapter.kg_indexed")
+	if afterFirst != 1 {
+		t.Fatalf("first index should emit exactly 1 event, got %d", afterFirst)
+	}
+
+	second, err := s.indexChapter(ctx, owner, bookID, chID)
+	if err != nil {
+		t.Fatalf("second index: %v", err)
+	}
+	if !second.Reused {
+		t.Fatal("re-indexing unchanged prose must report reused_revision=true (a real no-op)")
+	}
+
+	afterSecond := countEvent(outboxEventsFor(t, ctx, pool, chID), "chapter.kg_indexed")
+	if afterSecond != 1 {
+		t.Fatalf("a no-op re-index emitted ANOTHER chapter.kg_indexed (%d total). The "+
+			"consumer's upsert resets processed_at on conflict, so that event re-arms the "+
+			"pending row and drives a FULL LLM re-extraction of the chapter — for zero "+
+			"change. Acceptance #10: re-indexing an unchanged revision must cost nothing.",
+			afterSecond)
+	}
+}
+
 // A CHANGED draft, by contrast, must pin a NEW revision and advance the pointer.
 func TestIndex_ChangedDraft_PinsNewRevision_DB(t *testing.T) {
 	s, pool := dbTestServer(t)
@@ -395,5 +479,35 @@ func TestPublish_DoesNotIndexExcludedChapter_DB(t *testing.T) {
 	if kgRev != nil {
 		t.Fatalf("publishing a kg_exclude'd chapter must NOT index it (got %v) — kg_exclude "+
 			"is the user's explicit 'keep this out of my knowledge graph'", *kgRev)
+	}
+
+	// ── review-impl P0: the POINTER is not the whole story ──
+	//
+	// The assertion above (which I shipped) checks the column and passes — but the column
+	// is not what puts a chapter in the graph. `chapter.published` is: knowledge-service's
+	// handle_chapter_published enqueues the extraction and ingests canon passages, and it
+	// CANNOT see kg_exclude (it is a book-service column). So publishing a chapter the
+	// user asked us to forget silently re-indexed it: pointer NULL, facts in the graph.
+	//
+	// The exclusion must therefore ride the EVENT.
+	var payload map[string]any
+	var raw []byte
+	if err := pool.QueryRow(ctx,
+		`SELECT payload FROM outbox_events WHERE aggregate_id=$1 AND event_type='chapter.published'
+		 ORDER BY created_at DESC LIMIT 1`, chID).Scan(&raw); err != nil {
+		t.Fatalf("read chapter.published payload: %v", err)
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	excl, ok := payload["kg_exclude"].(bool)
+	if !ok {
+		t.Fatalf("chapter.published payload has no kg_exclude field (%v). Without it, "+
+			"knowledge-service cannot know the chapter is excluded and will index it "+
+			"anyway — the pointer stays NULL while the facts land in the graph.", payload)
+	}
+	if !excl {
+		t.Fatal("chapter.published carried kg_exclude=false for an EXCLUDED chapter — " +
+			"knowledge-service will index it and the user's 'forget this' is silently undone")
 	}
 }

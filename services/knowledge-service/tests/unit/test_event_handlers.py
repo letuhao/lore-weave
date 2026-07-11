@@ -22,6 +22,21 @@ from app.events.handlers import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _not_kg_excluded(monkeypatch):
+    """review-impl: the KG-write handlers re-check the LIVE kg_exclude state against
+    book-service before writing (an at-least-once redelivery must not resurrect a chapter
+    the user has since forgotten). `is_chapter_kg_excluded` FAILS CLOSED, so without a stub
+    every handler test would skip its write.
+
+    Default: not excluded. Tests that want the exclusion path override this explicitly.
+    """
+    client = MagicMock()
+    client.is_chapter_kg_excluded = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.clients.book_client.get_book_client", lambda: client)
+    return client
+
+
 _USER = uuid4()
 _PROJECT = uuid4()
 _BOOK = uuid4()
@@ -186,9 +201,16 @@ def _published_event(revision_id=str(_REVISION), book_id=str(_BOOK)):
 
 def _book_client_with_sort(sort_order=7):
     """A book_client mock whose get_chapter_sort_orders (CM4 chapter_index
-    source) returns the chapter's sort_order awaitably."""
+    source) returns the chapter's sort_order awaitably.
+
+    review-impl: it MUST also carry `is_chapter_kg_excluded` — the KG-write handlers now
+    re-check the live exclusion state before writing (an at-least-once redelivery must not
+    resurrect a forgotten chapter). A mock that lags the real client's surface is exactly
+    what hides a contract change: without this the handler would await a bare MagicMock.
+    """
     bc = MagicMock()
     bc.get_chapter_sort_orders = AsyncMock(return_value={_CHAPTER: sort_order})
+    bc.is_chapter_kg_excluded = AsyncMock(return_value=False)
     return bc
 
 
@@ -455,6 +477,73 @@ async def test_chapter_kg_indexed_at_the_published_revision_is_canon(monkeypatch
     assert ingest.await_args.kwargs["canon"] is True
 
 
+# ── review-impl P0: an EXCLUDED chapter must never reach the graph, by ANY door ──
+
+
+@pytest.mark.asyncio
+async def test_publishing_an_excluded_chapter_does_not_index_it(monkeypatch):
+    """THE P0. Refusing to move the pointer in book-service is NOT enough.
+
+    `handle_chapter_published` is what enqueues the extraction and ingests canon passages,
+    and it cannot see kg_exclude (a book-service column). So publishing — or re-publishing
+    — a chapter the user asked us to forget silently re-indexed it: the pointer stayed
+    NULL while the facts landed in the graph. The exclusion must ride the EVENT.
+    """
+    ingest = AsyncMock()
+    monkeypatch.setattr("app.events.handlers._ingest_published_passages", ingest)
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    upsert = _patch_pending_repo(monkeypatch)
+
+    ev = _event("chapter.published", aggregate_id=str(_CHAPTER), payload={
+        "book_id": str(_BOOK), "revision_id": str(_REVISION), "kg_exclude": True,
+    })
+    await handle_chapter_published(ev, pool=pool)
+
+    upsert.assert_not_awaited(), (
+        "an excluded chapter must NOT be queued for extraction — the user removed it "
+        "from their knowledge graph"
+    )
+    ingest.assert_not_awaited(), "an excluded chapter must NOT get passages"
+
+
+@pytest.mark.asyncio
+async def test_a_redelivered_index_event_cannot_resurrect_a_forgotten_chapter(
+    monkeypatch, _not_kg_excluded,
+):
+    """review-impl: the payload alone is not enough — the bus is at-least-once.
+
+    A `chapter.kg_indexed` message can be redelivered and reclaimed AFTER the user
+    excluded the chapter. Acting on the (now stale) payload would RESURRECT forgotten
+    prose — facts, passages and a re-armed extraction — permanently, with no further event
+    to undo it. So the handler re-checks the LIVE state before writing.
+    """
+    _not_kg_excluded.is_chapter_kg_excluded = AsyncMock(return_value=True)  # excluded SINCE the emit
+
+    ingest = AsyncMock()
+    monkeypatch.setattr("app.events.handlers._ingest_published_passages", ingest)
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    upsert = _patch_pending_repo(monkeypatch)
+
+    # The stale payload still says "not excluded" — it was true when it was emitted.
+    await handle_chapter_kg_indexed(
+        _kg_indexed_event(revision_id=_REVISION, published_revision_id=None), pool=pool,
+    )
+
+    upsert.assert_not_awaited(), (
+        "a stale/redelivered event resurrected a chapter the user had forgotten — the "
+        "handler must re-check the LIVE kg_exclude state, not trust the payload"
+    )
+    ingest.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_chapter_published_still_ingests_as_canon(monkeypatch):
     """Regression: the publish path is unchanged by the WS-0.8 refactor."""
@@ -640,8 +729,17 @@ async def test_chapter_kg_excluded_retracts_graph_and_passages(monkeypatch):
 async def test_chapter_kg_excluded_passage_retract_independent_of_graph_failure(
     monkeypatch,
 ):
-    """R3-WARN#2: if the graph retract raises, the passage retract must STILL run,
-    else the user's retracted prose lingers in the semantic index."""
+    """R3-WARN#2 + review-impl P1.
+
+    TWO properties, and they are both load-bearing:
+      1. INDEPENDENCE — if the graph retract raises, the passage retract must STILL run,
+         else the user's retracted prose lingers in the semantic index.
+      2. IT MUST NOT ACK A FAILURE — the handler RE-RAISES at the end. Swallowing the
+         error and ACKing meant the user's "forget this chapter" silently never happened:
+         Neo4j blipped for one second and their facts stayed in the graph FOREVER, with
+         nothing left to trigger another attempt. Raising sends it to the consumer's
+         retry → DLQ path. Both retracts are idempotent, so redelivery is safe.
+    """
     from contextlib import asynccontextmanager
 
     pool, conn = _mock_pool()
@@ -664,11 +762,41 @@ async def test_chapter_kg_excluded_passage_retract_independent_of_graph_failure(
             "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
         )
 
-        # Must NOT raise (both steps swallow their own errors).
-        await handle_chapter_kg_excluded(_kg_excluded_event(), pool=pool)
+        # (2) A partially-failed RETRACTION must NOT be acked.
+        with pytest.raises(RuntimeError, match="retraction incomplete"):
+            await handle_chapter_kg_excluded(_kg_excluded_event(), pool=pool)
 
     remove_mock.assert_awaited_once()
-    delete_mock.assert_awaited_once()  # ran despite the graph-retract failure
+    # (1) It ran despite the graph-retract failure.
+    delete_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_chapter_kg_excluded_success_does_not_raise(monkeypatch):
+    """The happy path must still ACK cleanly — only a FAILED retraction retries."""
+    from contextlib import asynccontextmanager
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={"project_id": _PROJECT, "user_id": _USER})
+
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+
+        @asynccontextmanager
+        async def fake_session():
+            yield MagicMock()
+
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
+            AsyncMock(return_value=3),
+        )
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.passages.delete_passages_for_source",
+            AsyncMock(return_value=7),
+        )
+
+        await handle_chapter_kg_excluded(_kg_excluded_event(), pool=pool)  # no raise
 
 
 # ── K14.7: chapter.deleted ───────────────────────────────────────────

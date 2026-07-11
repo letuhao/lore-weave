@@ -190,6 +190,41 @@ async def _index_chapter_into_kg(
         logger.warning("%s non-UUID chapter_id: %s", source_event, chapter_id)
         return
 
+    # ── review-impl P0: the kg_exclude gate lives HERE, not only at the pointer ──
+    #
+    # kg_exclude is producer-side authoritative and knowledge-service cannot see the
+    # column, so book-service carries it in the payload. Refusing to move the pointer in
+    # book-service is NOT sufficient: THIS handler is what enqueues the extraction and
+    # ingests the canon passages. Without this gate, publishing (or re-publishing) a
+    # chapter the user asked us to forget silently re-indexes it — the pointer stays NULL
+    # while the facts land in the graph anyway.
+    #
+    # Fails CLOSED on the flag: only an explicit False/absent proceeds.
+    if bool(payload.get("kg_exclude")):
+        logger.info(
+            "%s SKIPPED for chapter=%s — the user excluded it from their knowledge graph "
+            "(kg_exclude=true). No extraction queued, no passages ingested.",
+            source_event, chapter_id,
+        )
+        return
+
+    # ── The payload alone is NOT enough (at-least-once redelivery) ──
+    # The bus can redeliver this message and have it reclaimed AFTER the user excluded
+    # the chapter. Acting on the stale payload would RESURRECT forgotten prose — facts,
+    # passages and a re-armed extraction — with no further event to undo it. So re-check
+    # the LIVE state. `is_chapter_kg_excluded` fails CLOSED (book-service unreachable ⇒
+    # treat as excluded): a skipped index is recoverable, an un-retractable resurrection
+    # is not.
+    from app.clients.book_client import get_book_client
+
+    if await get_book_client().is_chapter_kg_excluded(book_id, chapter_uuid):
+        logger.info(
+            "%s SKIPPED for chapter=%s — live re-check says the chapter is kg-excluded "
+            "(a stale/redelivered event must not resurrect forgotten prose).",
+            source_event, chapter_id,
+        )
+        return
+
     # Pull embedding config alongside project/user so the passage ingester
     # doesn't re-query the project row (mirrors the old chapter.saved lookup).
     project_row = await pool.fetchrow(
@@ -272,6 +307,27 @@ async def handle_chapter_kg_indexed(event: EventData, *, pool: asyncpg.Pool) -> 
     published_rev = _uuid(event.payload.get("published_revision_id"))
     revision_id = _uuid(event.payload.get("revision_id"))
     canon = published_rev is not None and published_rev == revision_id
+
+    # review-impl: the ONE surprising consequence, made LOUD rather than silent.
+    #
+    # A chapter published@A whose owner then indexes a NEWER draft@B: the knowledge layer
+    # reflects exactly one revision (B), and B is not the published text, so B's passages
+    # are canon=False. `ingest_chapter_passages` delete-then-upserts the chapter's whole
+    # passage set, so the chapter DROPS OUT of `surface=canon` reads even though it is
+    # still published at A.
+    #
+    # That is the honest consequence of "the knowledge layer reflects
+    # kg_indexed_revision_id", and it self-heals the moment the user publishes B. But it
+    # must never happen quietly — see RUN-STATE P-3 for the open question of whether A's
+    # canon passages should instead be PRESERVED alongside B's draft passages.
+    if published_rev is not None and not canon:
+        logger.warning(
+            "chapter.kg_indexed: chapter=%s is PUBLISHED at %s but was indexed at a "
+            "DIFFERENT revision %s — its passages now reflect the indexed (draft) text and "
+            "are canon=False, so the chapter leaves canon-only search until you publish "
+            "that revision. (RUN-STATE P-3)",
+            event.aggregate_id, published_rev, revision_id,
+        )
 
     await _index_chapter_into_kg(
         event, pool=pool, source_event="chapter.kg_indexed", canon=canon,
@@ -567,8 +623,14 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
         not-yet-drained extraction cannot re-canonize the chapter after the user
         excluded it (the race that would otherwise resurrect it minutes later).
 
-    The two Neo4j retracts are INDEPENDENT best-effort steps (own try/except) so one
-    failing cannot suppress the other (R3-WARN#2).
+    The two Neo4j retracts are INDEPENDENT steps (own try/except) so one failing cannot
+    suppress the other (R3-WARN#2) — but review-impl found that swallowing BOTH and then
+    letting the event ACK meant **a failed retraction was never retried**: the user asked
+    us to forget the chapter, Neo4j blipped for a second, and their facts stayed in the
+    graph FOREVER with nothing left to trigger another attempt. A privacy action must not
+    be best-effort. So the failures are collected and RE-RAISED at the end, which sends
+    the event down the consumer's retry → DLQ path (K14.8). Both retracts are idempotent,
+    so a redelivery is safe.
 
     Zero-evidence orphans are swept by the offline K11.9 reconciler, NOT here: this
     handler runs in the events consumer, OUTSIDE the one-active-job-per-project
@@ -612,9 +674,15 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
 
     from app.config import settings
     if not settings.neo4j_uri:
+        # No graph configured — the pending-row delete above IS the whole retraction here.
         return
 
-    # Graph retract (independent best-effort).
+    # review-impl P1: collect failures and RE-RAISE at the end. Each retract still runs
+    # independently (one failing must not suppress the other), but a swallowed failure
+    # followed by an ACK meant the user's "forget this" silently never happened.
+    retract_errors: list[str] = []
+
+    # Graph retract (independent; failure recorded, not swallowed).
     try:
         from app.db.neo4j import neo4j_session
         from app.db.neo4j_repos.provenance import remove_evidence_for_natural_key
@@ -648,16 +716,16 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
             "evidence_edges_removed=%d",
             chapter_id, project_id, removed,
         )
-    except Exception:
+    except Exception as exc:
+        retract_errors.append(f"graph: {type(exc).__name__}: {exc}")
         logger.warning(
-            "WS-0.8: chapter.kg_excluded graph retract failed for chapter=%s project=%s "
-            "— non-fatal",
+            "WS-0.8: chapter.kg_excluded graph retract FAILED for chapter=%s project=%s "
+            "— will retry via the consumer",
             chapter_id, project_id, exc_info=True,
         )
 
-    # Passage retract (INDEPENDENT best-effort: a graph-retract failure above must NOT
-    # suppress this, else the user's retracted prose lingers in the semantic index —
-    # R3-WARN#2).
+    # Passage retract (INDEPENDENT: a graph-retract failure above must NOT suppress this,
+    # else the user's retracted prose lingers in the semantic index — R3-WARN#2).
     try:
         from app.db.neo4j import neo4j_session
         from app.db.neo4j_repos.passages import delete_passages_for_source
@@ -674,11 +742,23 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
             "passages_deleted=%d",
             chapter_id, project_id, deleted,
         )
-    except Exception:
+    except Exception as exc:
+        retract_errors.append(f"passages: {type(exc).__name__}: {exc}")
         logger.warning(
-            "WS-0.8: chapter.kg_excluded passage retract failed for chapter=%s "
-            "project=%s — non-fatal",
+            "WS-0.8: chapter.kg_excluded passage retract FAILED for chapter=%s "
+            "project=%s — will retry via the consumer",
             chapter_id, project_id, exc_info=True,
+        )
+
+    # review-impl P1: a FAILED RETRACTION MUST NOT ACK. The user asked us to forget this
+    # chapter; if either half failed, their data is still in the graph. Raising sends the
+    # event down the consumer's retry → DLQ path (K14.8). Both retracts are idempotent, so
+    # the redelivery is safe. Swallowing here meant a transient Neo4j blip left forgotten
+    # prose in the graph permanently, with nothing left to trigger another attempt.
+    if retract_errors:
+        raise RuntimeError(
+            f"chapter.kg_excluded retraction incomplete for chapter={chapter_id} "
+            f"project={project_id}: {'; '.join(retract_errors)}"
         )
 
 

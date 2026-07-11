@@ -242,6 +242,34 @@ async def index_drafts(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="book_service_unavailable",
         )
 
+    # ── review-impl P1: honour kg_exclude ──
+    #
+    # This endpoint enumerates DRAFT chapters, and it was the one chapter enumerator never
+    # re-keyed onto the KG gate. So clicking "Index drafts" re-embedded and re-ingested
+    # :Passage nodes for a chapter the owner had explicitly EXCLUDED from their knowledge
+    # graph — silently undoing the retraction, and paying embedding cost on prose the user
+    # asked us to forget.
+    #
+    # kg_exclude ships on the chapter LIST projection (WS-0.6a), so we filter on it.
+    #
+    # An ABSENT field is treated as not-excluded, deliberately. That is not fail-open: a
+    # book-service old enough to omit the field has no kg_exclude CONCEPT, so no chapter
+    # can be excluded there and including everything is correct. Defaulting absent→True
+    # instead would filter out every chapter and turn this endpoint into a silent no-op on
+    # exactly that deployment.
+    #
+    # (This endpoint is superseded by publish-independent indexing — RUN-STATE P-2 tracks
+    # retiring it — but "redundant" is not "harmless", and it must not undo a retraction
+    # while it still exists.)
+    before = len(items)
+    items = [it for it in items if not it.get("kg_exclude")]
+    if (excluded := before - len(items)) > 0:
+        logger.info(
+            "index-drafts: skipped %d kg-excluded chapter(s) in book %s — the user "
+            "removed them from their knowledge graph",
+            excluded, book_id,
+        )
+
     # Inline imports mirror the event-handler pattern (avoid circular import at
     # module load before the Neo4j driver is wired).
     from app.db.neo4j import neo4j_session

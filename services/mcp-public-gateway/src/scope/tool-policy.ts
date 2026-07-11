@@ -187,12 +187,6 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   book_chapter_update_meta: { tier: 'write_auto', domains: ['book'] },
   book_chapter_restore_revision: { tier: 'write_auto', domains: ['book'] },
   book_chapter_save_draft: { tier: 'write_auto', domains: ['book'] },
-  // WS-0.4 — publish-independent KG indexing. Both carry domains ['book','knowledge']
-  // per the H-F rule (classify by the domains TOUCHED, not by the name prefix): they are
-  // book-prefixed, but their whole purpose is to write/retract the knowledge graph. A
-  // public key must hold BOTH domains to call them.
-  book_index_chapter: { tier: 'write_auto', domains: ['book', 'knowledge'] },
-  book_chapter_set_kg_exclude: { tier: 'write_auto', domains: ['book', 'knowledge'] },
   // glossary
   glossary_book_create: { tier: 'write_auto', domains: ['glossary'] },
   glossary_book_patch: { tier: 'write_auto', domains: ['glossary'] },
@@ -273,6 +267,22 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   // Non-priced W
   book_chapter_publish: { tier: 'write_confirm', domains: ['book'] },
   book_chapter_unpublish: { tier: 'write_confirm', domains: ['book'] },
+  // WS-0.4 — publish-independent KG indexing. domains ['book','knowledge'] per the H-F
+  // rule (classify by the domains TOUCHED, not the name prefix): they are book-prefixed,
+  // but their whole purpose is to write/retract the knowledge graph, so a public key must
+  // hold BOTH domains.
+  //
+  // review-impl: both are write_confirm at the PUBLIC edge, not write_auto.
+  //   book_chapter_set_kg_exclude is strictly MORE destructive than book_chapter_unpublish
+  //     (which is already confirm-gated): it retracts the chapter's ENTIRE graph evidence
+  //     and deletes its passages. Auto-executing it for a public key while gating the
+  //     lesser op was an inversion.
+  //   book_index_chapter enqueues a real Pass-2 LLM extraction on the user's BYOK model —
+  //     the same spend effect as book_chapter_publish, which is confirm-gated. Unattended
+  //     spend at the public edge should be a human decision.
+  // (The tools' own Tier-A meta is unchanged; this is the public-edge policy only.)
+  book_index_chapter: { tier: 'write_confirm', domains: ['book', 'knowledge'] },
+  book_chapter_set_kg_exclude: { tier: 'write_confirm', domains: ['book', 'knowledge'] },
   book_chapter_delete: { tier: 'write_confirm', domains: ['book'] },
   book_chapter_purge: { tier: 'write_confirm', domains: ['book'] },
   glossary_adopt_standards: { tier: 'write_confirm', domains: ['glossary'] },

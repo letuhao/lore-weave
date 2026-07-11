@@ -613,6 +613,37 @@ async def backfill_published_passages(
         # (per-chapter, never a book-level default) so a multi-source-language
         # book is tagged correctly; falls back to text detection in the ingester.
         declared_lang = item.get("original_language")
+
+        # ── review-impl P0 — PIN the revision and DERIVE canon ──
+        #
+        # This used to pass `revision_id=None, canon=True`, which was defensible when the
+        # enumeration was `editorial_status=published`: "live text == canon at setup time".
+        # WS-0.6b re-keyed the enumeration to kg_indexed=True, and that assumption died
+        # with it. The set now contains never-published, user-indexed DRAFT chapters, so:
+        #
+        #   revision_id=None -> ingest_chapter_passages reads the LIVE DRAFT, including
+        #                       prose typed AFTER the user's index action. The passages no
+        #                       longer correspond to the revision the graph facts were
+        #                       extracted from, and we pay embedding cost on text the user
+        #                       never asked us to index.
+        #   canon=True       -> stamps that unreviewed draft prose CANONICAL, so it is
+        #                       returned by the DEFAULT `surface=canon` vector search used
+        #                       for chat grounding, and cited as canon.
+        #
+        # Both are now derived from the row, matching handle_chapter_kg_indexed exactly
+        # (spec §3.7 / P1-8: canon = (revision_id == published_revision_id)).
+        rev = item.get("kg_indexed_revision_id") or item.get("published_revision_id")
+        if not rev:
+            logger.warning(
+                "D-KG-PASSAGE-BACKFILL: chapter=%s is enumerated but has NO pinned "
+                "revision — skipping rather than embedding its live draft as canon",
+                chapter_id,
+            )
+            skipped += 1
+            continue
+        published_rev = item.get("published_revision_id")
+        canon = bool(published_rev) and str(published_rev) == str(rev)
+
         try:
             res = await ingest_chapter_passages(
                 session,
@@ -625,8 +656,8 @@ async def backfill_published_passages(
                 chapter_index=chapter_index,
                 embedding_model=embedding_model,
                 embedding_dim=embedding_dim,
-                revision_id=None,  # live published text (== canon at setup time)
-                canon=True,
+                revision_id=UUID(str(rev)),
+                canon=canon,
                 source_lang=declared_lang,
                 pool=pool,
             )

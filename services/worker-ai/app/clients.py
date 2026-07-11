@@ -603,6 +603,13 @@ class ProviderRegistryClient:
 # ── BookClient ───────────────────────────────────────────────────────
 
 
+# book-service clamps chapter-list page size to 100 (parseLimitOffset). Asking for more
+# does not get more — it silently gets 100. So we page. The cap bounds a runaway loop on a
+# pathological book; hitting it is logged as an ERROR, never a silent truncation.
+_LIST_CHAPTERS_PAGE = 100
+_LIST_CHAPTERS_MAX = 5000
+
+
 class BookClient:
     """Calls book-service's internal API for chapter data."""
 
@@ -642,34 +649,59 @@ class BookClient:
         ``editorial_status`` is retained for the non-KG callers that legitimately ask the
         publish question.
 
+        ⚠️ PAGINATES (review-impl P1). This used to issue a single GET with `?limit=1000`
+        and no offset loop. book-service CLAMPS page size to 100 (parseLimitOffset), so
+        the whole-book rebuild silently enumerated only the FIRST 100 kg-indexed chapters
+        of a large book and reported SUCCESS — chapters 101+ never reached the graph, with
+        no error and no warning. A book at the hard cap is logged, never silently truncated.
+
         Returns None on failure.
         """
-        url = f"{self._base_url}/internal/books/{book_id}/chapters?limit=1000"
-        if editorial_status:
-            url += f"&editorial_status={editorial_status}"
-        if kg_indexed:
-            url += "&kg_indexed=true"
+        base = f"{self._base_url}/internal/books/{book_id}/chapters"
+        out: list[ChapterInfo] = []
+        offset = 0
         try:
-            resp = await self._http.get(url)
-            if resp.status_code != 200:
-                logger.warning("book-service chapters %d for %s", resp.status_code, book_id)
-                return None
-            data = resp.json()
-            return [
-                ChapterInfo(
-                    chapter_id=item["chapter_id"],
-                    title=item.get("title") or "",
-                    sort_order=item.get("sort_order", 0),
-                    # The revision the KG reflects. The fallback keeps publish-question
-                    # callers pinning the published revision exactly as before.
-                    revision_id=(
-                        item.get("kg_indexed_revision_id")
-                        or item.get("published_revision_id")
-                    ),
-                    editorial_status=item.get("editorial_status"),
+            while True:
+                url = f"{base}?limit={_LIST_CHAPTERS_PAGE}&offset={offset}"
+                if editorial_status:
+                    url += f"&editorial_status={editorial_status}"
+                if kg_indexed:
+                    url += "&kg_indexed=true"
+                resp = await self._http.get(url)
+                if resp.status_code != 200:
+                    logger.warning("book-service chapters %d for %s", resp.status_code, book_id)
+                    return None
+                data = resp.json()
+                items = data.get("items") or []
+                out.extend(
+                    ChapterInfo(
+                        chapter_id=item["chapter_id"],
+                        title=item.get("title") or "",
+                        sort_order=item.get("sort_order", 0),
+                        # The revision the KG reflects. The fallback keeps publish-question
+                        # callers pinning the published revision exactly as before.
+                        revision_id=(
+                            item.get("kg_indexed_revision_id")
+                            or item.get("published_revision_id")
+                        ),
+                        editorial_status=item.get("editorial_status"),
+                    )
+                    for item in items
                 )
-                for item in data.get("items", [])
-            ]
+                if len(items) < _LIST_CHAPTERS_PAGE:
+                    break  # last page
+                offset += _LIST_CHAPTERS_PAGE
+                if offset >= _LIST_CHAPTERS_MAX:
+                    # Bound a runaway loop / pathological book — but SAY SO. A silent
+                    # truncation here is the exact bug this pagination fixes.
+                    logger.error(
+                        "book-service chapters: book=%s hit the %d-chapter enumeration cap "
+                        "— the rebuild will be INCOMPLETE (chapters beyond the cap are not "
+                        "extracted)",
+                        book_id, _LIST_CHAPTERS_MAX,
+                    )
+                    break
+            return out
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("book-service chapters failed: %s", exc)
             return None

@@ -125,6 +125,24 @@ describe('KnowledgeIndexControl', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  it('review-impl: a chapter can be kept out BEFORE it is ever indexed', async () => {
+    // The opt-out used to be gated behind isIndexed. But publishing AUTO-indexes a
+    // chapter, so a user who wanted to keep one out of their knowledge graph had no way
+    // to say so in advance — they had to let it in, then take it out.
+    const { onChanged } = renderControl({ kgIndexedRevisionId: null, kgExclude: false });
+
+    const btn = screen.getByTestId('knowledge-forget-button');
+    expect(btn).toHaveTextContent('knowledge.keep_out'); // not "forget" — nothing to forget yet
+
+    fireEvent.click(btn);
+    fireEvent.click(await screen.findByRole('button', { name: 'knowledge.forget' }));
+
+    await waitFor(() =>
+      expect(h.setChapterKgExclude).toHaveBeenCalledWith('tok', 'b1', 'c1', true),
+    );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
   it('a dirty editor blocks indexing (it would pin the STALE server draft)', () => {
     renderControl({ kgIndexedRevisionId: null, kgExclude: false, dirty: true });
     expect(screen.getByTestId('knowledge-index-button')).toBeDisabled();

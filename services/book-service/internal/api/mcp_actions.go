@@ -589,10 +589,16 @@ VALUES($1,$2,$3,'publish',$4) RETURNING id`, chID, body, format, caller).Scan(&r
 	// PRODUCER-side authoritative (spec §3.7): when the user has asked to keep this
 	// chapter out of their knowledge graph, publishing it must NOT drag it back in,
 	// so we leave the pointer untouched.
-	if _, err := tx.Exec(ctx, `
+	// RETURNING kg_exclude: the emitted chapter.published must CARRY the exclusion, or
+	// knowledge-service (which cannot see this column) will index the chapter anyway.
+	// Refusing to move the pointer here is not enough — the EVENT is what drives the
+	// graph write. See the review-impl P0 note on the emit below.
+	var kgExcluded bool
+	if err := tx.QueryRow(ctx, `
 UPDATE chapters SET editorial_status='published', published_revision_id=$2,
   kg_indexed_revision_id=CASE WHEN kg_exclude THEN kg_indexed_revision_id ELSE $2 END,
-  draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1`, chID, revID); err != nil {
+  draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1
+RETURNING kg_exclude`, chID, revID).Scan(&kgExcluded); err != nil {
 		return uuid.Nil, reparseCounts{}, err
 	}
 	// 26 IX-2 step 3(b–d): same-Tx re-parse when the parse succeeded and describes
@@ -618,7 +624,15 @@ UPDATE chapters SET editorial_status='published', published_revision_id=$2,
 		slog.WarnContext(ctx, "mcp publish: re-parse skipped; index left stale for the sweeper",
 			"chapter_id", chID, "parse_ok", prep.ok, "draft_version_match", prep.draftVersion == curr)
 	}
-	if err := insertOutboxEvent(ctx, tx, "chapter.published", chID, map[string]any{"book_id": bookID, "chapter_id": chID, "revision_id": revID}); err != nil {
+	// review-impl P0: `kg_exclude` rides the payload. Refusing to set the pointer above
+	// does NOT keep an excluded chapter out of the graph — `handle_chapter_published` is
+	// what enqueues extraction and ingests canon passages, and it cannot see the column.
+	// Without this field, publishing a chapter the user asked us to forget silently
+	// re-indexes it. (We must not simply suppress the event: chapter.published has other
+	// consumers — glossary wiki-staleness among them — that still need it.)
+	if err := insertOutboxEvent(ctx, tx, "chapter.published", chID, map[string]any{
+		"book_id": bookID, "chapter_id": chID, "revision_id": revID, "kg_exclude": kgExcluded,
+	}); err != nil {
 		return uuid.Nil, reparseCounts{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

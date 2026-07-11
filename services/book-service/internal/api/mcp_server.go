@@ -185,13 +185,20 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"chapter'). Works on a DRAFT chapter — it does NOT publish, and publishing is "+
 			"not required. Pins the current draft as the revision the knowledge layer "+
 			"reflects, re-parses its scenes, and enqueues extraction. Re-indexing an "+
-			"unchanged draft reuses the existing revision and costs nothing "+
-			"(reused_revision=true). Refuses if the chapter is kg_exclude'd. "+
-			"Reverse: book_chapter_set_kg_exclude with kg_exclude=true.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
+			"unchanged draft is a NO-OP and costs nothing (reused_revision=true). Refuses "+
+			"if the chapter is kg_exclude'd. COSTS MONEY: this enqueues an LLM extraction "+
+			"on the user's own model. The graph is NOT updated when this call returns — a "+
+			"background job does the work. There is NO cheap undo (removing the chapter "+
+			"again via book_chapter_set_kg_exclude also destroys anything a previous "+
+			"publish contributed), so do not index speculatively.",
+		// review-impl P2: WithPaid + WithAsync. The tool enqueues a real Pass-2 LLM
+		// extraction on the user's BYOK model (paid), and the graph is only updated by a
+		// background drain (async). Without these the workflow step-runner treats it as a
+		// free, synchronous write and an agent will happily call it in a loop.
+		lwmcp.WithAsync(lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"index chapter", "add to knowledge", "add chapter to knowledge graph",
 			"remember this chapter", "extract knowledge from this chapter",
-		}),
+		}))),
 		s.toolBookIndexChapter)
 
 	addTool(srv, "book_chapter_set_kg_exclude",

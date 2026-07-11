@@ -351,6 +351,7 @@
     "not_indexed_badge": "Not in knowledge",
     "excluded_badge": "Kept out",
     "forget": "Forget this chapter",
+    "keep_out": "Keep out of knowledge",
     "allow": "Allow in knowledge",
     "save_first": "Save before adding to knowledge",
     "indexed_toast": "Added to your knowledge",

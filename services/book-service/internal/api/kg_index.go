@@ -84,11 +84,20 @@ func (s *Server) indexChapter(ctx context.Context, caller, bookID, chID uuid.UUI
 	// stamps passage `canon = (revision_id == published_revision_id)` (spec §3.7 / P1-8)
 	// and would otherwise need a cross-service call back to us to decide it.
 	var publishedRev *uuid.UUID
+	// priorKG is the pointer BEFORE this action. It is what tells us whether this index
+	// actually moves anything — see the `moved` computation below (review-impl P1).
+	var priorKG *uuid.UUID
+	// FOR UPDATE OF d, c — review-impl: locking only `d` (chapter_drafts) left
+	// published_revision_id and kg_exclude read OUTSIDE any lock on `chapters`, so a
+	// concurrent publish/unpublish/exclude between this SELECT and the UPDATE ~100 lines
+	// below could make the emitted event carry a stale published_revision_id (⇒ a wrong
+	// canon flag) or slip past the exclusion check. Lock both rows.
 	err = tx.QueryRow(ctx, `
-SELECT d.draft_version, d.body, d.draft_format, c.kg_exclude, c.published_revision_id
+SELECT d.draft_version, d.body, d.draft_format, c.kg_exclude, c.published_revision_id,
+       c.kg_indexed_revision_id
 FROM chapter_drafts d JOIN chapters c ON c.id = d.chapter_id
 WHERE d.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
-FOR UPDATE OF d`, chID, bookID).Scan(&curr, &body, &format, &kgExclude, &publishedRev)
+FOR UPDATE OF d, c`, chID, bookID).Scan(&curr, &body, &format, &kgExclude, &publishedRev, &priorKG)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return indexResult{}, errActionTargetGone
 	}
@@ -122,7 +131,6 @@ SELECT COALESCE((
 	// jsonb equality (not text equality) so insignificant whitespace/key-order differences
 	// in the stored JSON don't defeat the reuse.
 	var revID uuid.UUID
-	var reused bool
 	err = tx.QueryRow(ctx, `
 SELECT id FROM chapter_revisions
 WHERE chapter_id=$1 AND body = $2::jsonb
@@ -130,7 +138,9 @@ ORDER BY created_at DESC, id DESC
 LIMIT 1`, chID, body).Scan(&revID)
 	switch {
 	case err == nil:
-		reused = true
+		// A revision with this exact body already exists — reuse it rather than spamming
+		// a duplicate. NOTE this does NOT mean "nothing changed": every save plants a
+		// revision row next to the draft, so this branch is hit on a FIRST index too.
 	case errors.Is(err, pgx.ErrNoRows):
 		if ierr := tx.QueryRow(ctx, `
 INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
@@ -140,6 +150,22 @@ VALUES($1,$2,$3,'index',$4) RETURNING id`, chID, body, format, caller).Scan(&rev
 	default:
 		return indexResult{}, err
 	}
+
+	// ── review-impl P1: "did anything actually change?" is about the POINTER, not the
+	// revision row. ──
+	//
+	// `reused` used to mean "a chapter_revisions row with this body already existed" —
+	// but every create/import/PATCH-draft save plants exactly such a row, so it was TRUE
+	// even on a chapter's FIRST index. The API reported `reused_revision: true` (which
+	// every caller reads as "no-op, nothing to do") while the pointer moved, scenes were
+	// re-parsed, and a full LLM extraction was enqueued. The live smoke printed exactly
+	// that and I did not question it.
+	//
+	// The honest question is whether kg_indexed_revision_id MOVES. If it does not, this
+	// really is a no-op: the graph already reflects this revision, so we must not emit,
+	// must not re-arm extraction, and must not spend (acceptance #10).
+	moved := priorKG == nil || *priorKG != revID
+	reused := !moved
 
 	// (4) Advance the KG pointer. Publish is NOT touched — a draft chapter stays a draft.
 	// The kg_exclude re-check in the WHERE closes the window between the SELECT above and
@@ -185,22 +211,37 @@ WHERE id=$1 AND kg_exclude = false`, chID, revID)
 			"chapter_id", chID, "parse_ok", prep.ok, "draft_version_match", prep.draftVersion == curr)
 	}
 
-	// (6) The NEW event. Deliberately NOT chapter.saved (which fires on every autosave,
-	// carries only {book_id}, and is deliberately un-consumed by knowledge-service) and
-	// NOT chapter.published (a draft-indexed chapter is not published).
+	// (6) The NEW event — emitted ONLY when the pointer actually moved.
+	//
+	// Deliberately NOT chapter.saved (fires on every autosave, carries only {book_id},
+	// and is deliberately un-consumed by knowledge-service) and NOT chapter.published
+	// (a draft-indexed chapter is not published).
+	//
+	// review-impl P1 — the `moved` gate is a COST gate. The consumer's keep-LATEST upsert
+	// resets `processed_at = NULL` on conflict, so an unconditional emit meant every
+	// redundant "Update knowledge" click on unchanged prose re-armed the pending row and
+	// drove a full Pass-2 LLM re-extraction of the chapter. Acceptance #10 says re-indexing
+	// an unchanged revision costs nothing; without this gate it cost a full extraction.
 	//
 	// `published_revision_id` is carried so knowledge-service can stamp passage
 	// `canon = (revision_id == published_revision_id)` (spec §3.7 / P1-8) WITHOUT a
-	// cross-service call back to us. It is nullable: a never-published chapter emits
-	// null, and its passages are correctly ingested as canon=false — draft prose must
-	// not surface as canon.
-	if err := insertOutboxEvent(ctx, tx, "chapter.kg_indexed", chID, map[string]any{
-		"book_id":               bookID,
-		"chapter_id":            chID,
-		"revision_id":           revID,
-		"published_revision_id": publishedRev,
-	}); err != nil {
-		return indexResult{}, err
+	// cross-service call back to us. It is nullable: a never-published chapter emits null,
+	// and its passages are correctly ingested as canon=false.
+	if moved {
+		if err := insertOutboxEvent(ctx, tx, "chapter.kg_indexed", chID, map[string]any{
+			"book_id":               bookID,
+			"chapter_id":            chID,
+			"revision_id":           revID,
+			"published_revision_id": publishedRev,
+		}); err != nil {
+			return indexResult{}, err
+		}
+	} else {
+		// Not silent: say why nothing happened. A "success" with no work done must always
+		// explain itself, and the caller gets reused_revision=true to surface it.
+		slog.InfoContext(ctx, "index: no-op — the knowledge graph already reflects this "+
+			"revision; no event emitted, no extraction re-armed, no spend",
+			"chapter_id", chID, "revision_id", revID)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -261,12 +302,18 @@ func (s *Server) toolBookIndexChapter(ctx context.Context, _ *mcp.CallToolReques
 		return nil, indexChapterOut{}, errors.New("failed to index chapter")
 	}
 
-	// Tier-A must advertise its reverse. Un-indexing = kg_exclude (the retraction path),
-	// which is what actually removes the extracted facts again.
-	undo := undoResult("book_chapter_set_kg_exclude", map[string]any{
-		"book_id": bookID.String(), "chapter_id": chID.String(), "kg_exclude": true,
-	})
-	return undo, indexChapterOut{
+	// review-impl P2 — NO undo_hint here, deliberately.
+	//
+	// It used to advertise book_chapter_set_kg_exclude{kg_exclude:true} as the reverse.
+	// That is NOT an undo: it is strictly MORE destructive than the thing it claims to
+	// undo. Indexing adds one chapter's facts; kg_exclude retracts the chapter's ENTIRE
+	// graph evidence and DELETES all its passages — including anything a previous publish
+	// had contributed — and then keeps it out. An agent that dutifully "undoes" an
+	// accidental index would destroy knowledge the user never asked to lose.
+	//
+	// There is no cheap true inverse (we do not snapshot the pre-index graph state), so we
+	// advertise none. An honest absence beats a destructive lie.
+	return nil, indexChapterOut{
 		ChapterID:  chID.String(),
 		RevisionID: res.RevisionID.String(),
 		Reused:     res.Reused,

@@ -104,16 +104,19 @@ export function KnowledgeIndexControl({
         {isIndexed ? t('knowledge.reindex') : t('knowledge.add')}
       </button>
 
-      {isIndexed && (
-        <button
-          data-testid="knowledge-forget-button"
-          onClick={requestForget}
-          disabled={busy}
-          className="inline-flex items-center rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-        >
-          {t('knowledge.forget')}
-        </button>
-      )}
+      {/* review-impl: the opt-out is available BEFORE indexing too, not only after.
+          It used to be gated behind isIndexed — but publishing AUTO-indexes a chapter, so
+          a user who wanted to keep a chapter out of their knowledge graph had no way to
+          say so in advance. They had to let it in, then take it out. Now they can pre-empt
+          it: excluding an un-indexed chapter simply keeps it out. */}
+      <button
+        data-testid="knowledge-forget-button"
+        onClick={requestForget}
+        disabled={busy}
+        className="inline-flex items-center rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+      >
+        {isIndexed ? t('knowledge.forget') : t('knowledge.keep_out')}
+      </button>
 
       <ConfirmDialog
         open={forgetOpen}

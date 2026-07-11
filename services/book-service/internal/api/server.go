@@ -2436,11 +2436,15 @@ VALUES($1,$2,$3,'publish',$4) RETURNING id
 	// WS-0.3: publish also advances the KG pointer (see mcp_actions.go for the full
 	// rationale). kg_exclude is producer-side authoritative — publishing a chapter the
 	// user excluded from their knowledge graph must not silently re-index it.
-	if _, err := tx.Exec(r.Context(), `
+	// RETURNING kg_exclude — see the emit below (review-impl P0): the event, not the
+	// pointer, is what drives the graph write, so the exclusion must ride the payload.
+	var kgExcluded bool
+	if err := tx.QueryRow(r.Context(), `
 UPDATE chapters SET editorial_status='published', published_revision_id=$2,
        kg_indexed_revision_id=CASE WHEN kg_exclude THEN kg_indexed_revision_id ELSE $2 END,
        draft_revision_count=draft_revision_count+1, updated_at=now()
-WHERE id=$1`, chID, revID); err != nil {
+WHERE id=$1
+RETURNING kg_exclude`, chID, revID).Scan(&kgExcluded); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 		return
 	}
@@ -2475,8 +2479,14 @@ WHERE id=$1`, chID, revID); err != nil {
 		slog.WarnContext(r.Context(), "publish: re-parse skipped; index left stale for the sweeper",
 			"chapter_id", chID, "parse_ok", prep.ok, "draft_version_match", prep.draftVersion == curr)
 	}
+	// review-impl P0: carry kg_exclude. Not setting the pointer above does NOT keep an
+	// excluded chapter out of the knowledge graph — handle_chapter_published enqueues the
+	// extraction and ingests canon passages, and it cannot see the column. Without this,
+	// publishing a chapter the user asked us to forget silently re-indexes it.
 	if err := insertOutboxEvent(r.Context(), tx, "chapter.published", chID,
-		map[string]any{"book_id": bookID, "chapter_id": chID, "revision_id": revID}); err != nil {
+		map[string]any{
+			"book_id": bookID, "chapter_id": chID, "revision_id": revID, "kg_exclude": kgExcluded,
+		}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 		return
 	}
@@ -3468,13 +3478,13 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 // conformance-status read polls to compute dirtiness (prose_drift / index_stale)
 // without a stored dirty bit. Mirrors postInternalChapterSortOrders' contract:
 //
-//		Request:  { "chapter_ids": [uuid, ...] }
-//		Response: { "markers": { "<uuid>": { "published_revision_id": uuid|null,
-//		                                     "kg_indexed_revision_id": uuid|null,
-//		                                     "kg_exclude": bool,
-//		                                     "last_parsed_revision_id": uuid|null,
-//		                                     "parse_version": int,
-//		                                     "editorial_status": "draft"|"published" } } }
+//	Request:  { "chapter_ids": [uuid, ...] }
+//	Response: { "markers": { "<uuid>": { "published_revision_id": uuid|null,
+//	                                     "kg_indexed_revision_id": uuid|null,
+//	                                     "kg_exclude": bool,
+//	                                     "last_parsed_revision_id": uuid|null,
+//	                                     "parse_version": int,
+//	                                     "editorial_status": "draft"|"published" } } }
 //
 // WS-0.7 (spec 2026-07-11-publish-independent-kg-indexing §3.6, red-team P0-3):
 // kg_indexed_revision_id + kg_exclude are ADDITIVE fields, and they are what make the
@@ -3486,17 +3496,17 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 // published_revision_id(A)` ⇒ stale, while the sweeper sees `last_parsed(B) ==
 // kg_indexed(B)` ⇒ nothing to heal. The badge never clears.
 //
-//	  - Empty list → 200 with an empty markers map.
-//	  - Cap at 200 ids per call; oversized → 422.
-//	  - BOOK-SCOPED by the path {book_id}: ids not in that book (or not active) are
-//	    silently dropped — the query filters on book_id, so a caller passing a
-//	    wrong book_id gets no cross-book leak (the token authenticates the caller
-//	    service; the book_id scope is the tenancy defense at this layer, with the
-//	    E0 grant enforced upstream at composition's VIEW-gated status route).
-//	  - parse_version is the IX-4 CHAPTER SCALAR: MAX(parse_version) over the
-//	    chapter's ACTIVE scenes rows (0 when a chapter has none yet).
-//	  - Scan errors surface via scan_error_count (best-effort partial response);
-//	    iterator-level errors return 500.
+//   - Empty list → 200 with an empty markers map.
+//   - Cap at 200 ids per call; oversized → 422.
+//   - BOOK-SCOPED by the path {book_id}: ids not in that book (or not active) are
+//     silently dropped — the query filters on book_id, so a caller passing a
+//     wrong book_id gets no cross-book leak (the token authenticates the caller
+//     service; the book_id scope is the tenancy defense at this layer, with the
+//     E0 grant enforced upstream at composition's VIEW-gated status route).
+//   - parse_version is the IX-4 CHAPTER SCALAR: MAX(parse_version) over the
+//     chapter's ACTIVE scenes rows (0 when a chapter has none yet).
+//   - Scan errors surface via scan_error_count (best-effort partial response);
+//     iterator-level errors return 500.
 func (s *Server) postInternalChapterCanonMarkers(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {

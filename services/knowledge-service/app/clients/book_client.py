@@ -414,6 +414,52 @@ class BookClient:
             )
             return {}
 
+    async def is_chapter_kg_excluded(self, book_id: UUID, chapter_id: UUID) -> bool:
+        """review-impl — is this chapter CURRENTLY excluded from the knowledge graph?
+
+        The event payload carries `kg_exclude` as of EMIT time, which is not enough: our
+        bus is at-least-once, so a `chapter.kg_indexed` / `chapter.published` message can
+        be redelivered and reclaimed AFTER the user excluded the chapter. Acting on the
+        stale payload would RESURRECT a chapter the user asked us to forget — facts,
+        passages and a re-armed extraction, permanently, with no further event to undo it.
+
+        So the KG-write handlers re-check the live state. Uses the existing batch
+        canon-markers route (book-scoped; the internal token authenticates us).
+
+        FAILS CLOSED. If book-service is unreachable, or the chapter is absent from the
+        response, we return True = "treat as excluded" and skip the write. Rationale: a
+        skipped index is recoverable (the user clicks again, or the sweeper heals it); an
+        un-retractable resurrection of forgotten prose is not. Do NOT "helpfully" default
+        to False here.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/canon-markers"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(url, json={"chapter_ids": [str(chapter_id)]})
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d — treating chapter %s as kg-EXCLUDED "
+                    "(fail-closed), trace_id=%s",
+                    url, resp.status_code, chapter_id, tid,
+                )
+                return True
+            marker = (resp.json().get("markers") or {}).get(str(chapter_id))
+            if marker is None:
+                logger.warning(
+                    "chapter %s absent from canon-markers (deleted/trashed?) — treating as "
+                    "kg-EXCLUDED (fail-closed), trace_id=%s",
+                    chapter_id, tid,
+                )
+                return True
+            return bool(marker.get("kg_exclude"))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable checking kg_exclude for chapter %s: %s — "
+                "treating as EXCLUDED (fail-closed), trace_id=%s",
+                chapter_id, exc, tid,
+            )
+            return True
+
     async def get_chapter_sort_orders(
         self, chapter_ids: list[UUID],
     ) -> dict[UUID, int]:
