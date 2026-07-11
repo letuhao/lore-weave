@@ -799,6 +799,57 @@ def test_manifest_omits_effect_verified_when_not_earned():
     assert "effect_verified" not in m["tools"]["plain"], "lean: only annotate what was verified"
 
 
+# ── #1 build: reaching the fixture-buildable null residue ───────────────────────
+
+def test_project_chain_glossary_direct_and_array_tools():
+    from tool_liveness.project_chain import authored_project_args
+
+    ids = {"book_id": "b", "entity_id": "e"}
+    assert authored_project_args("glossary_propose_new_kind", ids, {})["code"] == "tle_probe_kind"
+    attr = authored_project_args("glossary_propose_new_attribute", ids, {})
+    assert attr["kind_code"] == "character" and attr["code"] == "tle_probe_attr"
+    # array-item shapes mapped from the Go structs
+    up = authored_project_args("glossary_ontology_upsert", ids, {})
+    assert up["items"][0] == {"level": "kind", "code": "tle_upsert_kind", "name": "TLE Upsert Kind"}
+    al = authored_project_args("glossary_propose_aliases", ids, {})
+    assert al["items"][0]["entity_id"] == "e" and al["items"][0]["aliases"]
+    batch = authored_project_args("glossary_propose_batch", ids, {})
+    assert batch["ops"][0]["type"] == "create_kinds" and batch["ops"][0]["params"]["kinds"]
+
+
+def test_project_chain_restore_revision_consumes_the_listed_revision():
+    from tool_liveness.project_chain import authored_project_args
+
+    ids = {"book_id": "b", "chapter_id": "c"}
+    assert authored_project_args("book_chapter_restore_revision", ids, {}) is None
+    state = {"book_list_revisions": {"revisions": [{"revision_id": "r1"}]}}
+    assert authored_project_args("book_chapter_restore_revision", ids, state)["revision_id"] == "r1"
+
+
+def test_project_chain_authoring_run_consumers_wrap_args_and_need_the_seed():
+    """The 3 authoring-run consumers use the composition `args` envelope and the seeded
+    run id; without a seeded authoring_run_id they skip (→ null, block nothing)."""
+    from tool_liveness.project_chain import authored_project_args
+
+    assert authored_project_args("composition_authoring_run_get", {"book_id": "b"}, {}) is None
+    ids = {"book_id": "b", "authoring_run_id": "run1"}
+    for tool in ("composition_authoring_run_get", "composition_authoring_run_gate",
+                 "composition_authoring_run_close"):
+        assert authored_project_args(tool, ids, {}) == {"args": {"book_id": "b", "run_id": "run1"}}
+
+
+def test_seed_authoring_run_uses_a_valid_level_and_is_book_scoped():
+    """authoring_runs.level has a CHECK ∈ {3,4}; the seed must use a valid one, and INSERT
+    only the columns keyed to the throwaway book (teardown_composition cleans it)."""
+    import inspect
+
+    from tool_liveness import project_chain
+
+    src = inspect.getsource(project_chain.seed_authoring_run)
+    assert "INSERT INTO authoring_runs" in src
+    assert ",3,'draft')" in src, "level must be 3 or 4 (CHECK constraint)"
+
+
 def test_teardown_composition_is_book_scoped_and_verifies_completeness():
     """A teardown keyed on anything broader than the created book id would delete another
     user's composition rows. And it must VERIFY nothing survives — an earlier version listed

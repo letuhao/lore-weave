@@ -36,8 +36,8 @@
       "proven": false
     },
     "book_chapter_restore_revision": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "book_chapter_save_draft": {
@@ -103,7 +103,37 @@
       "executes": true,
       "proven": false
     },
+    "book_scene_get": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "book_scene_list": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "book_search": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
     "book_set_cover": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "book_steering_delete": {
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
+      "proven": false
+    },
+    "book_steering_list": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "book_steering_set": {
       "status": "SWEEP-PASS",
       "executes": true,
       "proven": false
@@ -195,8 +225,8 @@
       "proven": false
     },
     "composition_authoring_run_close": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_authoring_run_create": {
@@ -205,13 +235,13 @@
       "proven": false
     },
     "composition_authoring_run_gate": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_authoring_run_get": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_authoring_run_list": {
@@ -260,6 +290,11 @@
       "proven": false
     },
     "composition_conformance_run": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "composition_conformance_status": {
       "status": "SWEEP-PASS",
       "executes": true,
       "proven": false
@@ -567,23 +602,23 @@
       "proven": false
     },
     "glossary_ontology_delete": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_ontology_upsert": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_propose_aliases": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_propose_batch": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_propose_entities": {
@@ -593,8 +628,8 @@
       "effect_verified": true
     },
     "glossary_propose_kinds": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_propose_merge": {
@@ -603,8 +638,8 @@
       "proven": false
     },
     "glossary_propose_new_attribute": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_propose_new_entity": {
@@ -614,7 +649,7 @@
     },
     "glossary_propose_new_kind": {
       "status": "RED",
-      "executes": null,
+      "executes": true,
       "proven": false
     },
     "glossary_propose_reassign_kind": {
@@ -633,8 +668,8 @@
       "proven": false
     },
     "glossary_propose_translation": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "glossary_search": {
@@ -838,8 +873,8 @@
       "proven": false
     },
     "memory_remember": {
-      "status": "SWEEP-PASS",
-      "executes": true,
+      "status": "SWEEP-INCONCLUSIVE",
+      "executes": null,
       "proven": false
     },
     "memory_search": {

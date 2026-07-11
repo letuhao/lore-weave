@@ -388,6 +388,9 @@ def main() -> int:
         ids["project_id"] = proj.get("project_id")
     except Exception as e:
         print(f"  (no kg project: {e}) — project-scoped tools will score inconclusive")
+    # Seed a throwaway authoring run so its get/gate/close consumers are reachable at $0.
+    from .project_chain import seed_authoring_run
+    seed_authoring_run(ids)
     print(f"fixture: {ids}")
 
     # Order the book/project creators before their consumers so a later tool can read the

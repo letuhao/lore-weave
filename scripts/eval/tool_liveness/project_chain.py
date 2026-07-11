@@ -43,6 +43,15 @@ PROJECT_SWEEP_ORDER: tuple[str, ...] = (
     "composition_motif_suggest_for_chapter",
     # rule consumer
     "composition_canon_rule_update",
+    # book-scoped glossary/book chains
+    "book_list_revisions",               # surfaces the fixture chapter's revision_id
+    "book_chapter_restore_revision",     # ← consumes it
+    "glossary_ontology_upsert",          # creates a book kind
+    "glossary_ontology_delete",          # ← mints a delete token for it
+    # authoring-run consumers of the seeded run (get/gate before close terminates it)
+    "composition_authoring_run_get",
+    "composition_authoring_run_gate",
+    "composition_authoring_run_close",   # ← transitions draft→closed, so LAST
     # deletes LAST — they destroy the id their siblings above need
     "composition_canon_rule_delete",
     "composition_outline_node_delete",
@@ -87,6 +96,63 @@ def authored_project_args(tool: str, ids: dict, state: dict) -> dict | None:
             # free-form scope_label instead.
             return {"book_id": book, "entity_id": entity_id,
                     "scope_label": "TLE swept"} if (book and entity_id) else None
+        case "glossary_propose_new_kind":
+            # Tier W: mints a confirm_token for a NEW book kind. `code` is the code being
+            # MINTED (not a lookup), so authored, not fill_args-refused.
+            return {"book_id": book, "code": "tle_probe_kind", "name": "TLE Probe Kind"} \
+                if book else None
+        case "glossary_propose_new_attribute":
+            # a NEW attribute (code+name) on an EXISTING kind — the fixture adopts
+            # character/location/item, so kind_code='character' is a live kind.
+            return {"book_id": book, "kind_code": "character",
+                    "code": "tle_probe_attr", "name": "TLE Probe Attr"} if book else None
+        case "book_chapter_restore_revision":
+            # the fixture chapter carries a seed revision; book_list_revisions (ordered
+            # before this) surfaces its id.
+            revs = (state.get("book_list_revisions") or {}).get("revisions") or []
+            rid = revs[0].get("revision_id") if revs else None
+            return {"book_id": book, "chapter_id": chapter_id, "revision_id": rid} \
+                if (book and chapter_id and rid) else None
+        # ── glossary array-payload tools (item shapes mapped from the Go structs) ──
+        case "glossary_ontology_upsert":
+            # Tier A, writes immediately. Omit base_version ⇒ CREATE a book kind.
+            return {"scope": "book", "book_id": book,
+                    "items": [{"level": "kind", "code": "tle_upsert_kind",
+                               "name": "TLE Upsert Kind"}]} if book else None
+        case "glossary_ontology_delete":
+            # Tier W: mints a confirm_token (we never redeem it). Targets the kind
+            # glossary_ontology_upsert created (ordered before this).
+            return {"scope": "book", "book_id": book,
+                    "items": [{"level": "kind", "code": "tle_upsert_kind"}]} if book else None
+        case "glossary_propose_aliases":
+            # Tier A draft. Needs an existing entity; the fixture seeds 'Aldric Vane'.
+            return {"book_id": book, "language_code": "en",
+                    "items": [{"entity_id": entity_id, "aliases": ["Aldric", "Vane"]}]} \
+                if (book and entity_id) else None
+        case "glossary_propose_translation":
+            return {"book_id": book, "language_code": "vi",
+                    "items": [{"entity_id": entity_id, "value": "Aldric Vane"}]} \
+                if (book and entity_id) else None
+        case "glossary_propose_kinds":
+            # Tier W: mints a confirm_token for a batch of kinds.
+            return {"book_id": book,
+                    "kinds": [{"code": "tle_kinds_kind", "name": "TLE Kinds Kind"}]} if book else None
+        case "glossary_propose_batch":
+            # Tier W: mints an execute_plan token. create_kinds is self-contained; every
+            # attribute needs a non-empty description (extraction instruction) — none here.
+            return {"book_id": book, "goal": "probe",
+                    "ops": [{"type": "create_kinds",
+                             "params": {"kinds": [{"code": "tle_batch_kind",
+                                                   "name": "TLE Batch Kind"}]},
+                             "rationale": "probe"}]} if book else None
+        case "composition_authoring_run_get" | "composition_authoring_run_gate" \
+                | "composition_authoring_run_close":
+            # the seeded authoring_runs row (see seed_authoring_run). get reads it, gate
+            # mints a token, close transitions draft→closed (ordered LAST so it doesn't
+            # close the run before gate/get run). These wrap args in the composition `args`
+            # envelope (like the other composition_* tools).
+            arun = ids.get("authoring_run_id")
+            return {"args": {"book_id": book, "run_id": arun}} if (book and arun) else None
         case "composition_get_outline_node":
             node = state.get("composition_outline_node_create") or {}
             nid = _id(node, "id", "node_id")
@@ -137,6 +203,36 @@ def authored_project_args(tool: str, ids: dict, state: dict) -> dict | None:
             return {"project_id": cproj, "node_id": node_id} if (cproj and node_id) else None
         case _:
             return None  # not in a chain → fill_args
+
+
+def seed_authoring_run(ids: dict) -> None:
+    """Seed a throwaway authoring_runs row so its get/gate/close consumers are reachable at
+    $0. authoring_run_create is Tier-W + a paid confirm (`budget_usd`), so nothing minted a
+    run for the sweep. But the row only needs a `plan_run_id`, which plan_propose_spec mints
+    synchronously in rules mode (free). Mint one, INSERT the run in `draft`, stash its id.
+    (Book-scoped, so teardown_composition cleans it with the rest.)"""
+    import uuid
+
+    from .mcp_direct import MCPDirect
+
+    book = ids.get("book_id")
+    if not book:
+        return
+    try:
+        plan = MCPDirect().call(
+            "plan_propose_spec",
+            {"book_id": book, "source_markdown": "# Arc One\n\nA hero sets out."})
+        plan_run_id = plan.get("run_id")
+        if not plan_run_id:
+            return
+        run_id = str(uuid.uuid4())
+        oracle.db_query(
+            config.DOMAIN_DB["composition"],
+            "INSERT INTO authoring_runs(run_id, created_by, book_id, plan_run_id, level, status) "
+            f"VALUES ('{run_id}','{config.USER_ID}','{book}','{plan_run_id}',3,'draft')")  # level ∈ {3,4}
+        ids["authoring_run_id"] = run_id
+    except Exception as e:  # non-fatal — the 3 consumers just stay null
+        print(f"  (no authoring-run seed: {type(e).__name__}: {e})")
 
 
 def teardown_composition(book_id: str) -> dict:
