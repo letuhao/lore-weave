@@ -30,6 +30,12 @@ type Config struct {
 	NotificationServiceInternalURL string
 	InternalServiceToken           string
 
+	// WS-1.0 (DECISIONS-SEALED PO-2) — the deployment KEK that WRAPS each user's DEK.
+	// auth-service stores only the wrapped blob; it never sees a user's content.
+	// Unset => GET /internal/users/{id}/dek fails CLOSED (503) rather than letting a
+	// deployment silently store diaries, assistant chat and facts in the clear.
+	DiaryEncryptionKey string
+
 	// Public MCP human-approval execute (P4 / OD-2): base URLs of the domain
 	// services whose POST /v1/<domain>/actions/confirm the approve handler replays
 	// an approved confirm token to, KEYED by the propose result's `domain`. Only a
@@ -92,6 +98,7 @@ func Load() (*Config, error) {
 		PublicAppURL:                   getEnv("PUBLIC_APP_URL", ""),
 		NotificationServiceInternalURL: getEnv("NOTIFICATION_SERVICE_INTERNAL_URL", ""),
 		InternalServiceToken:           os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		DiaryEncryptionKey:             os.Getenv("DIARY_ENCRYPTION_KEY"),
 		PublicMcpEnabled:               getBool("PUBLIC_MCP_ENABLED", false),
 		KMSAdminSigningKeyID:           os.Getenv("KMS_ADMIN_SIGNING_KEY_ID"),
 		KMSEndpoint:                    os.Getenv("KMS_ENDPOINT"),

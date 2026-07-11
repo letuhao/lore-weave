@@ -101,6 +101,17 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5174}
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # WS-1.0 (PO-2) — the deployment KEK that WRAPS each user's DEK. auth-service stores
+      # only the wrapped blob; consumers unwrap with the SAME key from their own env, so
+      # the plaintext key never crosses the network.
+      #
+      # ⚠️ PRODUCTION: this MUST come from a KMS/secret manager, never a compose default.
+      # Losing it makes every diary unrecoverable; leaking it plus a DB dump undoes the
+      # whole scheme. The dev default exists so the local stack boots — it is not a secret.
+      # Rotating it? Put the OLD value in DIARY_ENCRYPTION_KEYS_RETIRED or you will orphan
+      # every existing user's key.
+      DIARY_ENCRYPTION_KEY: ${DIARY_ENCRYPTION_KEY:-loreweave_local_dev_diary_kek_change_me}
+      DIARY_ENCRYPTION_KEYS_RETIRED: ${DIARY_ENCRYPTION_KEYS_RETIRED:-}
       # Q-GATE (public MCP): gate mcp_api_keys creation behind this flag (kill-switch).
       PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
       # D-PMCP-SELFCONFIRM-ROUTES — Tier-W confirm replay (self-confirm + human-approve)
