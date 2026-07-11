@@ -7,11 +7,13 @@ import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useAuth } from '@/auth';
 import { GroundingPanel } from '@/features/composition/components/GroundingPanel';
+import { useGlossaryRoster } from '@/features/composition/hooks/useGlossaryRoster';
 import type { OutlineNode } from '@/features/composition/types';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 import { useSceneInspector } from './useSceneInspector';
 import { useConformanceStatus } from './useConformanceStatus';
+import { EntityRefField } from './EntityRefField';
 
 const STATUSES: OutlineNode['status'][] = ['empty', 'outline', 'drafting', 'done'];
 const SOURCE_LABEL: Record<string, string> = { authored: 'Authored', decompiled: 'Mined', planforge: 'PlanForge' };
@@ -81,6 +83,9 @@ export function SceneInspectorPanel(props: IDockviewPanelProps) {
   const { accessToken } = useAuth();
   const sb = useSceneInspector(host.bookId ?? null);
   const conf = useConformanceStatus(host.bookId ?? null); // 26 IX-14 — the per-scene dirty chip
+  // 22-C3b — the book's glossary roster resolves pov/present/location ids → names (DOCK-2 no fork).
+  const roster = useGlossaryRoster(host.bookId ?? undefined, accessToken ?? null);
+  const rosterOptions = roster.data ?? [];
   const n = sb.node;
 
   if (!n) {
@@ -137,6 +142,22 @@ export function SceneInspectorPanel(props: IDockviewPanelProps) {
           value={n.beat_role ?? ''} onCommit={(v) => setF({ beat_role: v || null })} />
         <NumberField testid="scene-inspector-tension" label={t('panels.scene-inspector.f.tension', { defaultValue: 'Tension (0–100)' })}
           value={n.tension} min={0} max={100} onCommit={(v) => setF({ tension: v })} />
+      </Section>
+
+      {/* 22-C3b (F2) — cast & setting as glossary refs, not raw UUIDs. */}
+      <Section title={t('panels.scene-inspector.section.cast', { defaultValue: 'Cast & Setting' })}>
+        <EntityRefField mode="single" testid="scene-inspector-pov"
+          label={t('panels.scene-inspector.f.pov', { defaultValue: 'POV character' })}
+          value={n.pov_entity_id} roster={rosterOptions} rosterLoading={roster.isLoading}
+          onChange={(id) => setF({ pov_entity_id: id })} />
+        <EntityRefField mode="multi" testid="scene-inspector-present"
+          label={t('panels.scene-inspector.f.present', { defaultValue: 'Present characters' })}
+          value={n.present_entity_ids} roster={rosterOptions} rosterLoading={roster.isLoading}
+          onChange={(ids) => setF({ present_entity_ids: ids })} />
+        <EntityRefField mode="single" testid="scene-inspector-location"
+          label={t('panels.scene-inspector.f.location', { defaultValue: 'Location' })}
+          value={n.location_entity_id} roster={rosterOptions} rosterLoading={roster.isLoading}
+          onChange={(id) => setF({ location_entity_id: id })} />
       </Section>
 
       <Section title={t('panels.scene-inspector.section.craft', { defaultValue: 'Craft' })}>

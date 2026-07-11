@@ -26,6 +26,11 @@ vi.mock('../useConformanceStatus', () => ({
     loading: false, error: null, refresh: vi.fn(),
   }),
 }));
+// 22-C3b — the inspector loads the glossary roster for the ref pickers; mock it (TanStack query
+// would otherwise need a provider). Two book entities so pov/present/location resolve to names.
+vi.mock('@/features/composition/hooks/useGlossaryRoster', () => ({
+  useGlossaryRoster: () => ({ data: [{ id: 'e-anna', label: 'Anna' }, { id: 'e-bran', label: 'Bran' }], isLoading: false }),
+}));
 
 import { SceneInspectorPanel } from '../SceneInspectorPanel';
 
@@ -103,6 +108,19 @@ describe('SceneInspectorPanel (22-C3)', () => {
     state.mockReturnValue(baseState({ node: node(), error: 'changed elsewhere — reloaded' }));
     withHost(<SceneInspectorPanel {...dockProps()} />);
     expect(screen.getAllByTestId('scene-inspector-error')[0].textContent).toMatch(/changed elsewhere/);
+  });
+
+  it('22-C3b: renders the Cast & Setting refs and a POV pick OCC-patches pov_entity_id', () => {
+    state.mockReturnValue(baseState({ node: node({ pov_entity_id: 'e-anna', present_entity_ids: ['e-bran'], location_entity_id: null }) }));
+    withHost(<SceneInspectorPanel {...dockProps()} />);
+    // POV resolves to the roster name (not a raw id).
+    const pov = screen.getByTestId('scene-inspector-pov-select') as HTMLSelectElement;
+    expect(pov.value).toBe('e-anna');
+    // present shows a resolved chip (by testid — "Bran" also appears as <option> text elsewhere).
+    expect(screen.getByTestId('scene-inspector-present-chip').textContent).toContain('Bran');
+    // change POV → patches only that field.
+    fireEvent.change(pov, { target: { value: 'e-bran' } });
+    expect(patch).toHaveBeenCalledWith({ pov_entity_id: 'e-bran' });
   });
 
   it('26-F: shows the "canon moved" banner only when the scene\'s chapter is dirty', () => {

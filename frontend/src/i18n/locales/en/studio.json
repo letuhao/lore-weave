@@ -267,6 +267,7 @@
       "section": {
         "identity": "Identity",
         "intent": "Intent",
+        "cast": "Cast & Setting",
         "craft": "Craft",
         "grounding": "Grounding"
       },
@@ -277,12 +278,22 @@
         "synopsis": "Synopsis",
         "beat": "Beat role",
         "tension": "Tension (0–100)",
+        "pov": "POV character",
+        "present": "Present characters",
+        "location": "Location",
         "conflict": "Conflict",
         "outcome": "Outcome",
         "stakes": "Stakes",
         "storyTime": "Story time",
         "valueShift": "Value shift (−100…100)",
         "targetWords": "Target words"
+      },
+      "ref": {
+        "none": "— none —",
+        "add": "+ add",
+        "empty": "none",
+        "loading": "(loading…)",
+        "remove": "Remove {{name}}"
       },
       "status": {
         "empty": "Empty",
