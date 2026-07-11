@@ -459,6 +459,10 @@ def _project_prose(draft: dict, detail: str) -> dict:
     meta=require_meta(
         "R", "book",
         synonyms=["prose", "chapter text", "draft", "get prose", "read chapter"],
+        # Deprecated: a thin proxy over book_get_chapter (same loreweave_book.chapter_drafts
+        # row). Kept callable for the authoring toolset; hidden from agent discovery so the
+        # catalog has ONE chapter-read tool, not two identical ones.
+        visibility="legacy", superseded_by="book_get_chapter",
         tool_name="composition_get_prose",
     ),
 )
@@ -1215,6 +1219,10 @@ class _WriteProseArgs(ForbidExtra):
     meta=require_meta(
         "A", "book",
         synonyms=["write prose", "save draft", "edit chapter text", "update prose"],
+        # Deprecated: a thin proxy over book_chapter_save_draft (writes the same
+        # loreweave_book.chapter_drafts.body row, gated on the same draft_version). Kept
+        # callable; hidden from discovery so the catalog has ONE chapter-write tool.
+        visibility="legacy", superseded_by="book_chapter_save_draft",
         tool_name="composition_write_prose",
     ),
 )
@@ -1282,6 +1290,10 @@ def _book_error_result(exc: BookClientError) -> dict:
     meta=require_meta(
         "W", "book",
         synonyms=["publish chapter", "canonize", "make canon", "finalize chapter", "publish"],
+        # Deprecated: canonizes the same book-owned draft as book_chapter_publish (proxies
+        # POST /v1/books/.../publish). Kept callable; hidden from discovery so the catalog
+        # has ONE chapter-publish tool.
+        visibility="legacy", superseded_by="book_chapter_publish",
         tool_name="composition_publish",
     ),
 )
