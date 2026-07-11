@@ -1229,6 +1229,39 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- ── WS-1.2 · EGRESS GUARD #1: a diary can never be shared (spec 09, D16) ──
+--
+-- There are already TWO grant paths (invite-by-email and grant-by-user-id), and a third
+-- will appear. Guarding the handlers means the guard drifts the moment someone adds path
+-- four — and the failure is silent: a collaborator simply gains read access to a private
+-- diary, which looks exactly like a normal, intentional share.
+--
+-- So the lock lives in the DATABASE, where it covers every path that exists and every path
+-- anyone writes later. A diary is single-owner by construction.
+CREATE OR REPLACE FUNCTION fn_no_collaborators_on_diary()
+RETURNS TRIGGER AS $fn$
+DECLARE
+  _kind TEXT;
+BEGIN
+  SELECT kind INTO _kind FROM books WHERE id = NEW.book_id;
+  IF _kind = 'diary' THEN
+    RAISE EXCEPTION
+      'a diary cannot be shared: it is private to its owner by construction. '
+      '(book %, attempted collaborator %)', NEW.book_id, NEW.user_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER trg_no_collaborators_on_diary
+    BEFORE INSERT OR UPDATE ON book_collaborators
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_no_collaborators_on_diary();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE OR REPLACE FUNCTION fn_outbox_notify()
 RETURNS TRIGGER AS $fn$
 BEGIN

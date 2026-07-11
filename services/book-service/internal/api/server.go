@@ -701,9 +701,23 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 	// access_level is computed per row so the FE can distinguish owned vs shared.
 	// is_bible=false excludes the auto-created hidden world-bible container books
 	// (C20) — they anchor lore but must never appear in the user's library.
-	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false"
+	// ── WS-1.2 · EGRESS GUARD #7: the library/catalog listing (spec 09) ──
+	//
+	// The diary is hidden from the default library grid, reusing the SAME is_bible hiding
+	// precedent immediately above. It has its own surface (the Assistant); it is not a
+	// book you browse to among your novels, and a diary tile sitting in a shared-screen
+	// library is a real-world disclosure (a demo, a colleague looking over your shoulder).
+	//
+	// This is a LIST-level guard on purpose. The repo's paged-join lesson is that
+	// per-resource checks pass while the LIST leaks — filtering here is what actually
+	// keeps it out of the grid.
+	//
+	// NOTE for the shared branch: a diary can never be shared (see the collaborator and
+	// sharing guards), so the kind filter also makes the includeShared branch honest —
+	// a diary must not appear via someone else's grant either, however that grant arose.
+	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false AND b.kind<>'diary'"
 	if includeShared {
-		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false"
+		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.kind<>'diary'"
 	}
 	rows, err := s.pool.Query(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
@@ -921,6 +935,30 @@ func (s *Server) patchBook(w http.ResponseWriter, r *http.Request) {
 		paramIdx++
 	}
 	if v, ok := in["wiki_settings"]; ok {
+		// ── WS-1.2 · EGRESS GUARD #3: the wiki (spec 09 §Q3) ──
+		//
+		// This was the widest hole in the design. The public wiki gate reads
+		// books.wiki_settings.visibility == "public" — a JSONB blob PATCHable right here,
+		// keyed on NOTHING about the book's kind. Sharing-service's guard never runs on
+		// this path.
+		//
+		// So the attack is two clicks: let the assistant build a wiki article about every
+		// colleague named in your diary, then flip wiki_settings.visibility='public'. The
+		// platform would then serve AI-written biographies of real people — your coworkers,
+		// your manager — to the open internet, with no share step and no warning.
+		//
+		// A diary has no wiki. Not "a private wiki" — NO wiki. Refuse the mutation.
+		var kind string
+		if err := s.pool.QueryRow(r.Context(),
+			`SELECT kind FROM books WHERE id=$1`, bookID).Scan(&kind); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read book")
+			return
+		}
+		if kind == "diary" {
+			writeError(w, http.StatusForbidden, "BOOK_DIARY_NO_WIKI",
+				"a diary has no wiki — it is private and cannot be published")
+			return
+		}
 		raw, err := json.Marshal(v)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid wiki_settings")
@@ -2858,12 +2896,23 @@ func (s *Server) getBookProjection(w http.ResponseWriter, r *http.Request) {
 	var genreTags []string
 	var wikiSettings json.RawMessage
 	var extractionProfile json.RawMessage
+	// WS-1.2 (D16): `kind` rides the projection. Every downstream consumer of this
+	// contract (wiki, notifications, statistics, catalog, public-MCP) needs it to enforce
+	// the diary taint — without it they cannot even ASK whether the book is private.
+	var kind string
+	// COALESCE the nullable text columns. They were scanned into plain `string`, so ANY
+	// book with a NULL description/summary/original_language 500s this endpoint. Existing
+	// books happened to carry '' (the create paths always pass a value), which is why it
+	// never fired — but the diary provisioner inserts (owner, title, kind) only, so the
+	// very first diary would have made its own projection unreadable.
 	err = s.pool.QueryRow(r.Context(), `
-SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.created_at,
+SELECT b.id,b.owner_user_id,b.title,
+  COALESCE(b.description,''), COALESCE(b.original_language,''), COALESCE(b.summary,''),
+  b.lifecycle_state,b.created_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0),
-  b.genre_tags, b.wiki_settings, b.extraction_profile
+  b.genre_tags, b.wiki_settings, b.extraction_profile, b.kind
 FROM books b WHERE b.id=$1
-`, bookID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &createdAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile)
+`, bookID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &createdAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		ProjectionTotal.WithLabelValues(OutcomeNotFound).Inc()
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
@@ -2889,6 +2938,7 @@ FROM books b WHERE b.id=$1
 	ProjectionTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"book_id":            id,
+		"kind":               kind, // WS-1.2 (D16) — the diary taint; consumers guard on it
 		"owner_user_id":      owner,
 		"title":              title,
 		"description":        nullableString(desc),

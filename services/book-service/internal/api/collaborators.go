@@ -205,6 +205,29 @@ func (s *Server) getBookAccess(w http.ResponseWriter, r *http.Request) {
 	// to a grantee (lvl != none) so a non-grantee never gets an owner/existence oracle.
 	if lvl != GrantNone && owner != uuid.Nil {
 		resp["owner_user_id"] = owner.String()
+
+		// WS-1.2 (D16) — `kind` rides the access contract, behind the SAME grant gate.
+		//
+		// Every downstream egress surface (wiki, public-MCP, notifications, catalog,
+		// statistics) resolves access through here. Without `kind` they CANNOT enforce the
+		// diary taint even if they want to — they have no way to ask "is this private?".
+		// This is the enabling half of D16, exactly like the kg_indexed filter was the
+		// enabling half of publish-independent indexing.
+		//
+		// Gated behind lvl != GrantNone for the same reason owner_user_id is: an ungated
+		// `kind` would be an ORACLE — a stranger could probe any book id and learn which
+		// users keep a diary, which is itself sensitive.
+		// Best-effort: a consumer that does not receive `kind` simply cannot apply the
+		// taint, which is why the DB-level locks (share trigger, wiki guard, list filter)
+		// exist as well — the contract is defense-in-depth, not the only defense.
+		// (s.pool is nil in the pure-unit grant tests, which have no database at all.)
+		if s.pool != nil {
+			var kind string
+			if err := s.pool.QueryRow(r.Context(),
+				`SELECT kind FROM books WHERE id=$1`, bookID).Scan(&kind); err == nil {
+				resp["kind"] = kind
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
