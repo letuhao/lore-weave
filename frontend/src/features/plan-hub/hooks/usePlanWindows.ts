@@ -47,6 +47,16 @@ export interface PlanWindowsResult {
    * cursor comes back with it, so scrolling re-earns the rest. Truthful over clever.
    */
   reload: () => void;
+  /**
+   * H5 — OPTIMISTICALLY patch a loaded row (e.g. a chapter's `structure_node_id`, a scene's
+   * `parent_id`) so laneLayout re-places the card the instant the drag ends, instead of leaving it
+   * in its old slot for the round-trip + refetch (a visible snap-back-then-jump).
+   *
+   * This is a display-only anticipation of the server's answer, NOT a second source of truth: every
+   * move still settles with `reload()`, which overwrites whatever we guessed. A failed move
+   * therefore rolls itself back — we never have to undo the patch by hand.
+   */
+  patch: (nodeId: string, partial: Partial<SummaryNode>) => void;
   loading: boolean;
   error: string | null;
 }
@@ -182,6 +192,27 @@ export function usePlanWindows(
     for (const chapterId of loadedRef.current.chapters) void fetchChapter(chapterId, null);
   }, [fetchArc, fetchChapter]);
 
+  const patch = useCallback((nodeId: string, partial: Partial<SummaryNode>) => {
+    const apply = (slices: Record<string, WindowSlice>) => {
+      let touched = false;
+      const next: Record<string, WindowSlice> = {};
+      for (const [key, slice] of Object.entries(slices)) {
+        const i = slice.items.findIndex((it) => it.id === nodeId);
+        if (i < 0) {
+          next[key] = slice;
+          continue;
+        }
+        const items = [...slice.items];
+        items[i] = { ...items[i], ...partial };
+        next[key] = { ...slice, items };
+        touched = true;
+      }
+      return touched ? next : slices; // identity-stable when the node isn't loaded here
+    };
+    setArcSlices(apply);
+    setChapterSlices(apply);
+  }, []);
+
   const windows = useMemo(() => {
     const out: WindowNode[] = [];
     for (const s of Object.values(arcSlices)) out.push(...s.items.map(toWindowNode));
@@ -219,6 +250,7 @@ export function usePlanWindows(
     chapterHasMore,
     loadMoreChapter,
     reload,
+    patch,
     loading,
     error,
   };

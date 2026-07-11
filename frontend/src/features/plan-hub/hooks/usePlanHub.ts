@@ -123,6 +123,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     shellNodes: arcsQuery.data?.arcs ?? [],
     windowContent: windowsResult.content,
     reloadWindows: windowsResult.reload,
+    patchWindow: windowsResult.patch,
   });
 
   const loading = (enabled && arcsQuery.isLoading) || windowsResult.loading;
@@ -148,5 +149,6 @@ export function usePlanHub(bookId: string): PlanHubView {
     reorderChapter: moves.reorderChapter,
     moving: moves.moving,
     moveError: moves.moveError,
+    undo: moves.undo,
   };
 }

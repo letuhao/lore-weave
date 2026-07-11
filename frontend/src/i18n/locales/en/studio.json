@@ -1110,5 +1110,8 @@
       "label": "Popout Window",
       "desc": "Pop Compose out into its own OS window for a second monitor."
     }
+  },
+  "planHub": {
+    "undo": "Undo"
   }
 }

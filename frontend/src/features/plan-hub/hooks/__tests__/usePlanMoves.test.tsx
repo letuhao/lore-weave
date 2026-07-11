@@ -22,6 +22,11 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../api', () => api);
 
+// The Row-3 undo captures the chapter's CURRENT predecessor from the book's own order before the
+// write (the loaded windows can't see a collapsed arc's chapters).
+const books = vi.hoisted(() => ({ listChapters: vi.fn() }));
+vi.mock('@/features/books/api', () => ({ booksApi: books }));
+
 import { usePlanMoves } from '../usePlanMoves';
 import type { ArcListNode, SummaryNode } from '../../types';
 
@@ -42,6 +47,7 @@ function scene(over: Partial<SummaryNode> & { id: string }): SummaryNode {
 }
 
 const reloadWindows = vi.fn();
+const patchWindow = vi.fn();
 
 function mount(over: { shellNodes?: ArcListNode[]; windowContent?: Record<string, SummaryNode> } = {}) {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
@@ -56,6 +62,7 @@ function mount(over: { shellNodes?: ArcListNode[]; windowContent?: Record<string
         shellNodes: over.shellNodes ?? [],
         windowContent: over.windowContent ?? {},
         reloadWindows,
+        patchWindow,
       }),
     { wrapper },
   );
@@ -68,6 +75,11 @@ beforeEach(() => {
   api.moveArc.mockResolvedValue({ id: 'arc-x', parent_id: null, depth: 0 });
   api.getChildren.mockResolvedValue({ items: [], next_cursor: null });
   api.reorderBookChapter.mockResolvedValue({ book_id: BOOK, resynced: {} });
+  books.listChapters.mockResolvedValue({ items: [
+    { chapter_id: 'book-c1', sort_order: 1 },
+    { chapter_id: 'book-c2', sort_order: 2 },
+    { chapter_id: 'book-c3', sort_order: 3 },
+  ] });
 });
 
 describe('Row-1 — chapter → arc (assign-chapters)', () => {
@@ -286,5 +298,155 @@ describe('Row-3 — chapter → reading order (the MANUSCRIPT move)', () => {
     const { result } = mount({ windowContent });
     act(() => result.current.reorderChapter('c1', unit('c3', 'chapter')));
     await waitFor(() => expect(result.current.moveError).toMatch(/MIRROR_RESYNC_FAILED/));
+  });
+});
+
+describe('optimistic re-place + one-level undo', () => {
+  function chapterNode(over: Partial<SummaryNode> & { id: string }): SummaryNode {
+    return {
+      kind: 'chapter', parent_id: null, structure_node_id: 'arc-a', chapter_id: `book-${over.id}`,
+      title: over.id, status: 'draft', version: 1, story_order: 1000, rank: '0m', beat_role: null,
+      tension: null, pov_entity_id: null, present_entity_ids: [], present_entity_count: 0, ...over,
+    };
+  }
+
+  it('Row-1 re-places the card IMMEDIATELY (before the server answers)', () => {
+    const { result } = mount({ windowContent: { c1: chapterNode({ id: 'c1' }) } });
+    act(() => result.current.moveChapterToArc('c1', 'arc-b'));
+    // The card must not sit in its old lane for the round-trip + refetch.
+    expect(patchWindow).toHaveBeenCalledWith('c1', { structure_node_id: 'arc-b' });
+  });
+
+  it('Row-4 re-parents the scene card immediately', async () => {
+    const { result } = mount({ windowContent: { s1: scene({ id: 's1', parent_id: 'ch-1' }) } });
+    act(() => result.current.moveSceneToChapter('s1', 'ch-2'));
+    expect(patchWindow).toHaveBeenCalledWith('s1', { parent_id: 'ch-2' });
+  });
+
+  it('Row-1 undo re-assigns the chapter to the arc it CAME from', async () => {
+    const { result } = mount({ windowContent: { c1: chapterNode({ id: 'c1', structure_node_id: 'arc-a' }) } });
+    act(() => result.current.moveChapterToArc('c1', 'arc-b'));
+    await waitFor(() => expect(result.current.undo).not.toBeNull());
+    expect(result.current.undo!.label).toMatch(/chapter/i);
+
+    api.assignChapters.mockClear();
+    act(() => result.current.undo!.run());
+    await waitFor(() =>
+      expect(api.assignChapters).toHaveBeenCalledWith(BOOK, 'arc-a', ['c1'], 'tok'), // back to arc-a
+    );
+  });
+
+  it('Row-3 undo puts the chapter back after its PRE-MOVE predecessor, read from the book order', async () => {
+    // The predecessor cannot come from the loaded windows — the chapter before it may live in a
+    // collapsed arc that was never fetched. It is captured from the book's own order before the write.
+    const windowContent = { c3: chapterNode({ id: 'c3', story_order: 3000 }) };
+    // The book order BEFORE the move: c1, c2, c3 — so c3's predecessor is c2.
+    books.listChapters.mockResolvedValueOnce({ items: [
+      { chapter_id: 'book-c1', sort_order: 1 },
+      { chapter_id: 'book-c2', sort_order: 2 },
+      { chapter_id: 'book-c3', sort_order: 3 },
+    ] });
+    // ...and AFTER it (c3 dragged to the front) — what the undo's own lookup must see.
+    books.listChapters.mockResolvedValueOnce({ items: [
+      { chapter_id: 'book-c3', sort_order: 1 },
+      { chapter_id: 'book-c1', sort_order: 2 },
+      { chapter_id: 'book-c2', sort_order: 3 },
+    ] });
+
+    const { result } = mount({ windowContent });
+    act(() => result.current.reorderChapter('c3', null)); // drag it to the front
+    await waitFor(() => expect(result.current.undo).not.toBeNull());
+
+    api.reorderBookChapter.mockClear();
+    act(() => result.current.undo!.run());
+    await waitFor(() =>
+      expect(api.reorderBookChapter).toHaveBeenCalledWith(
+        BOOK,
+        { chapter_id: 'book-c3', after_chapter_id: 'book-c2' }, // it followed book-c2 before the move
+        'tok',
+      ),
+    );
+  });
+
+  it('a NEW move replaces the undo (one level, never a stack)', async () => {
+    const { result } = mount({ windowContent: { c1: chapterNode({ id: 'c1' }) } });
+    act(() => result.current.moveChapterToArc('c1', 'arc-b'));
+    await waitFor(() => expect(result.current.undo).not.toBeNull());
+    const first = result.current.undo;
+
+    act(() => result.current.moveChapterToArc('c1', 'arc-c'));
+    await waitFor(() => expect(result.current.undo).not.toBe(first));
+  });
+
+  it('a FAILED move offers no undo (there is nothing to reverse)', async () => {
+    api.assignChapters.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
+    const { result } = mount({ windowContent: { c1: chapterNode({ id: 'c1' }) } });
+    act(() => result.current.moveChapterToArc('c1', 'arc-b'));
+    await waitFor(() => expect(result.current.moveError).toBe('boom'));
+    expect(result.current.undo).toBeNull();
+    // and the optimistic patch is rolled back by the settle reload, not by hand
+    expect(reloadWindows).toHaveBeenCalled();
+  });
+});
+
+describe('Row-3 — the no-op check must use the BOOK order, not the loaded windows', () => {
+  it('still moves a chapter whose predecessor lives in a COLLAPSED arc (never a silent no-op)', async () => {
+    // Only c3 is loaded (its arc is expanded; c1/c2 sit in a collapsed one). A guard that compared
+    // against the loaded windows would see c3 as "already first" and swallow the drag — a silent
+    // failure. The real check runs server-side of the decision, against the book's own order.
+    books.listChapters.mockResolvedValue({ items: [
+      { chapter_id: 'book-c1', sort_order: 1 },
+      { chapter_id: 'book-c2', sort_order: 2 },
+      { chapter_id: 'book-c3', sort_order: 3 },
+    ] });
+    const { result } = mount({
+      windowContent: {
+        c3: {
+          kind: 'chapter', id: 'c3', parent_id: null, structure_node_id: 'arc-a',
+          chapter_id: 'book-c3', title: 'c3', status: 'draft', version: 1, story_order: 3000,
+          rank: '0m', beat_role: null, tension: null, pov_entity_id: null,
+          present_entity_ids: [], present_entity_count: 0,
+        } as SummaryNode,
+      },
+    });
+
+    act(() => result.current.reorderChapter('c3', null)); // drag it to the front
+    await waitFor(() =>
+      expect(api.reorderBookChapter).toHaveBeenCalledWith(
+        BOOK, { chapter_id: 'book-c3', after_chapter_id: null }, 'tok',
+      ),
+    );
+  });
+
+  it('a chapter dropped back into the slot it already holds writes nothing', async () => {
+    books.listChapters.mockResolvedValue({ items: [
+      { chapter_id: 'book-c1', sort_order: 1 },
+      { chapter_id: 'book-c2', sort_order: 2 },
+    ] });
+    const { result } = mount({
+      windowContent: {
+        c2: {
+          kind: 'chapter', id: 'c2', parent_id: null, structure_node_id: 'arc-a',
+          chapter_id: 'book-c2', title: 'c2', status: 'draft', version: 1, story_order: 2000,
+          rank: '0m', beat_role: null, tension: null, pov_entity_id: null,
+          present_entity_ids: [], present_entity_count: 0,
+        } as SummaryNode,
+        c1: {
+          kind: 'chapter', id: 'c1', parent_id: null, structure_node_id: 'arc-a',
+          chapter_id: 'book-c1', title: 'c1', status: 'draft', version: 1, story_order: 1000,
+          rank: '0m', beat_role: null, tension: null, pov_entity_id: null,
+          present_entity_ids: [], present_entity_count: 0,
+        } as SummaryNode,
+      },
+    });
+
+    // c2 already follows c1 — the book order says so, so no write and no undo offered.
+    act(() => result.current.reorderChapter('c2', {
+      id: 'c1', shape: 'chapter', laneId: 'arc-a', x: 0, y: 0, width: 128,
+      collapsed: false, storyOrder: 1000,
+    }));
+    await waitFor(() => expect(books.listChapters).toHaveBeenCalled());
+    expect(api.reorderBookChapter).not.toHaveBeenCalled();
+    expect(result.current.undo).toBeNull();
   });
 });

@@ -205,6 +205,9 @@ export interface PlanHubView {
   moving: boolean;
   /** The last move's failure (incl. the 412 "changed elsewhere — reloaded" recovery); null when ok. */
   moveError: string | null;
+  /** H5: the last successful move's INVERSE (one level), or null. Its arguments were captured before
+   *  the write — the server's answer no longer knows where the node came from. */
+  undo: { label: string; run: () => void } | null;
 }
 
 /** A camera pan request (H2.6/OQ-5). `seq` increments per request so re-focusing the SAME node

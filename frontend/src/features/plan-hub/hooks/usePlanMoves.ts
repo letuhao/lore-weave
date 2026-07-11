@@ -7,13 +7,20 @@
 // write's arguments are — because only it holds parent_id / rank / version. A canvas that decided
 // would have to re-derive server truth it doesn't have.
 //
-// Every move settles by RELOADING server truth (invalidate + reloadWindows) rather than patching the
-// cache optimistically: the server owns rank/story_order/depth (it renumbers, recomputes depth, and
-// bumps version), so a client-side guess would drift. The brief re-place flicker is the accepted v1
-// cost; optimistic re-place + undo are the deferred polish.
+// Every move settles by RELOADING server truth (invalidate + reloadWindows): the server owns
+// rank/story_order/depth (it renumbers, recomputes depth, bumps version), so the client must never
+// become a second source of truth. The optimistic `patchWindow` is display-only — it re-places the
+// card the instant the drag ends so it doesn't sit in its old slot for the round-trip, and the
+// settle overwrites it either way (which also means a FAILED move rolls itself back for free).
+//
+// UNDO is one level, and its inverse is captured BEFORE the write from state we already hold — the
+// server's answer no longer knows where the node came from. One level, not a stack: undoing an undo
+// is just another move, and a deep stack would let a user walk back through writes that later work
+// (or another collaborator) has already built on.
 import { useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { assignChapters, getChildren, moveArc, reorderBookChapter, reorderNode } from '../api';
+import { booksApi } from '@/features/books/api';
 import type { ArcListNode, NodePosition, SummaryNode } from '../types';
 
 const SIBLING_PAGE = 100;
@@ -55,6 +62,12 @@ async function lastSceneOf(
   return last?.id ?? null;
 }
 
+/** A one-level undo of the last successful move. `run` re-issues the INVERSE write. */
+export interface UndoableMove {
+  label: string;
+  run: () => void;
+}
+
 export interface PlanMoves {
   moveChapterToArc: (chapterId: string, arcId: string) => void;
   moveSceneToChapter: (sceneId: string, chapterId: string) => void;
@@ -63,6 +76,8 @@ export interface PlanMoves {
   reorderChapter: (chapterNodeId: string, afterUnit: NodePosition | null) => void;
   moving: boolean;
   moveError: string | null;
+  /** The last successful move's inverse, or null. Cleared when a new move starts (one level). */
+  undo: UndoableMove | null;
 }
 
 export function usePlanMoves(input: {
@@ -75,9 +90,18 @@ export function usePlanMoves(input: {
   /** Refetch the loaded windows. REQUIRED: they are not react-query, so invalidateQueries misses
    *  them, and they are precisely the rows a move mutates (see usePlanWindows.reload). */
   reloadWindows: () => void;
+  /** Optimistically re-place a loaded row so the card lands where the user dropped it, instead of
+   *  sitting in its old slot until the refetch returns. Display-only; `reloadWindows` overwrites it. */
+  patchWindow: (nodeId: string, partial: Partial<SummaryNode>) => void;
 }): PlanMoves {
-  const { bookId, token, shellNodes, windowContent, reloadWindows } = input;
+  const { bookId, token, shellNodes, windowContent, reloadWindows, patchWindow } = input;
   const qc = useQueryClient();
+
+  // ONE level of undo. Captured BEFORE each move from state we already hold, so the inverse is
+  // exact — never reconstructed from the server's answer (which no longer knows where the node was).
+  // A new move replaces it: undoing an undo is just another move, and a stack would let a user walk
+  // back through writes other people may have built on.
+  const [undo, setUndo] = useState<UndoableMove | null>(null);
 
   // ONE error slot for all three moves, cleared at the START of every move. Deriving it from the
   // three mutations' `error` fields instead would leave a stale banner up forever (react-query
@@ -103,6 +127,30 @@ export function usePlanMoves(input: {
     reloadWindows();
   }, [qc, reloadWindows]);
 
+  // The two inverses that need their own mutation (the others re-use the forward one with swapped
+  // arguments). They deliberately re-read `windowContent` at RUN time: by then the settle has
+  // reloaded, so the scene's `version` is the fresh one the OCC header needs.
+  const undoSceneMutation = useMutation({
+    mutationFn: (vars: { sceneId: string; chapterId: string; afterId: string | null }) => {
+      const scene = windowContent[vars.sceneId];
+      if (!scene) throw new Error('scene not loaded');
+      return reorderNode(
+        vars.sceneId,
+        { new_parent_id: vars.chapterId, after_id: vars.afterId },
+        scene.version,
+        token!,
+      );
+    },
+    onError: onFailed,
+    onSettled: settle,
+  });
+  const undoArcMutation = useMutation({
+    mutationFn: (vars: { arcId: string; parentId: string | null; afterId: string | null }) =>
+      moveArc(vars.arcId, { new_parent_arc_id: vars.parentId, after_id: vars.afterId }, token!),
+    onError: onFailed,
+    onSettled: settle,
+  });
+
   // ── Row-1: drag a chapter card into another lane → rebind its arc (structure_node_id). ──
   // The assign-chapters mirror is an idempotent, ADDITIVE bulk set (it updates only the passed ids;
   // it does not clear the arc's other members) and carries no OCC.
@@ -123,10 +171,19 @@ export function usePlanMoves(input: {
   const moveChapterToArc = useCallback(
     (chapterId: string, arcId: string) => {
       if (!token) return;
+      const from = windowContent[chapterId]?.structure_node_id ?? null;
       setMoveError(null);
-      chapterMutation.mutate({ chapterId, arcId });
+      // Re-place the card NOW; reloadWindows will overwrite this with the server's answer either way.
+      patchWindow(chapterId, { structure_node_id: arcId });
+      chapterMutation.mutate({ chapterId, arcId }, {
+        onSuccess: () => {
+          // The inverse only exists if we knew where it came from. An unplanned chapter (no arc)
+          // cannot be un-assigned by this route, so we offer no undo rather than a wrong one.
+          setUndo(from ? { label: 'Chapter moved', run: () => moveChapterToArc(chapterId, from) } : null);
+        },
+      });
     },
-    [token, chapterMutation],
+    [token, windowContent, patchWindow, chapterMutation],
   );
 
   // ── Row-4: drag a scene card onto another chapter → re-parent it. A versioned node write, so it
@@ -153,10 +210,27 @@ export function usePlanMoves(input: {
       const scene = windowContent[sceneId];
       // Unknown scene, or dropped back on its OWN chapter ⇒ no write (the canvas re-places the card).
       if (!scene || scene.parent_id === chapterId) return;
+      const fromChapter = scene.parent_id;
+      // Its predecessor in the OLD chapter — that chapter is necessarily EXPANDED (you just dragged
+      // a scene out of it), so its siblings are loaded and the inverse position is exact.
+      const oldSiblings = Object.values(windowContent)
+        .filter((n) => n.kind === 'scene' && n.parent_id === fromChapter && n.id !== sceneId)
+        .sort(byRank);
+      const oldPrev = oldSiblings.filter((n) => byRank(n, scene) < 0).pop()?.id ?? null;
+
       setMoveError(null);
-      sceneMutation.mutate({ sceneId, chapterId });
+      patchWindow(sceneId, { parent_id: chapterId });
+      sceneMutation.mutate({ sceneId, chapterId }, {
+        onSuccess: () => {
+          setUndo(
+            fromChapter
+              ? { label: 'Scene moved', run: () => undoSceneMutation.mutate({ sceneId, chapterId: fromChapter, afterId: oldPrev }) }
+              : null,
+          );
+        },
+      });
     },
-    [token, windowContent, sceneMutation],
+    [token, windowContent, patchWindow, sceneMutation, undoSceneMutation],
   );
 
   // ── Row-2: drag an ARC band onto another band → move it in the structure tree. The canvas reports
@@ -194,10 +268,26 @@ export function usePlanMoves(input: {
       for (let p = parentOf(targetId), hops = 0; p && hops < 8; p = parentOf(p), hops++) {
         if (p === arcId) return;
       }
+      const self = shellNodes.find((n) => n.id === arcId);
+      const oldParent = self?.parent_id ?? null;
+      const oldPrev = self
+        ? shellNodes
+            .filter((n) => n.parent_id === oldParent && n.id !== arcId && byRank(n, self) < 0)
+            .sort(byRank)
+            .pop()?.id ?? null
+        : null;
+
       setMoveError(null);
-      arcMutation.mutate({ arcId, targetId });
+      arcMutation.mutate({ arcId, targetId }, {
+        onSuccess: () => {
+          setUndo({
+            label: 'Arc moved',
+            run: () => undoArcMutation.mutate({ arcId, parentId: oldParent, afterId: oldPrev }),
+          });
+        },
+      });
     },
-    [token, shellNodes, arcMutation],
+    [token, shellNodes, arcMutation, undoArcMutation],
   );
 
   // ── Row-3: drag a chapter along its lane → move it in the book's READING order. ──
@@ -210,12 +300,29 @@ export function usePlanMoves(input: {
   //   • a drop that lands in the slot the chapter already occupies is a no-op (the server reorder is
   //     idempotent, so this is an optimization, never a correctness crutch).
   const reorderMutation = useMutation({
-    mutationFn: (vars: { chapterId: string; afterChapterId: string | null }) =>
-      reorderBookChapter(
+    mutationFn: async (vars: { chapterId: string; afterChapterId: string | null }) => {
+      // Capture the chapter's CURRENT predecessor for the undo, from the book's own order. The
+      // loaded windows are not enough: the chapter that precedes this one may belong to a collapsed
+      // arc and never have been fetched, and an undo that guessed would silently move the chapter
+      // somewhere it never was.
+      const before = await booksApi.listChapters(token!, bookId, { limit: 500 });
+      const seq = [...before.items].sort((a, b) => a.sort_order - b.sort_order);
+      const i = seq.findIndex((c) => c.chapter_id === vars.chapterId);
+      const previous = i > 0 ? seq[i - 1].chapter_id : null;
+
+      // The no-op check lives HERE, not in the caller, because only the book's own order can decide
+      // it. A caller comparing against the LOADED chapters would think a chapter whose predecessor
+      // sits in a collapsed arc is already first, and swallow a real move — a silent failure, which
+      // is far worse than the redundant (idempotent) write it was trying to avoid.
+      if (previous === vars.afterChapterId) return { previous, skipped: true };
+
+      await reorderBookChapter(
         bookId,
         { chapter_id: vars.chapterId, after_chapter_id: vars.afterChapterId },
         token!,
-      ),
+      );
+      return { previous, skipped: false };
+    },
     onError: onFailed,
     onSettled: settle,
   });
@@ -235,20 +342,20 @@ export function usePlanMoves(input: {
         return;
       }
 
-      // Already in that slot? The predecessor among the LOADED chapters is the best proxy the client
-      // has for "where it sits now"; being wrong only costs an idempotent round-trip, never a bad move.
-      const loaded = Object.values(windowContent)
-        .filter((n) => n.kind === 'chapter' && n.story_order != null)
-        .sort((a, b) => (a.story_order ?? 0) - (b.story_order ?? 0));
-      const idx = loaded.findIndex((n) => n.id === chapterNodeId);
-      const currentPrev = idx > 0 ? loaded[idx - 1].id : null;
-      if (currentPrev === (afterUnit?.id ?? null)) return;
-
       setMoveError(null);
-      reorderMutation.mutate({
-        chapterId: moved.chapter_id,
-        afterChapterId: afterNode?.chapter_id ?? null,
-      });
+      const chapterId = moved.chapter_id;
+      reorderMutation.mutate(
+        { chapterId, afterChapterId: afterNode?.chapter_id ?? null },
+        {
+          onSuccess: (data) => {
+            if (data.skipped) return; // it was already in that slot — nothing to undo
+            setUndo({
+              label: 'Chapter reordered',
+              run: () => reorderMutation.mutate({ chapterId, afterChapterId: data.previous }),
+            });
+          },
+        },
+      );
     },
     [token, windowContent, reorderMutation],
   );
@@ -262,7 +369,10 @@ export function usePlanMoves(input: {
       chapterMutation.isPending ||
       sceneMutation.isPending ||
       arcMutation.isPending ||
-      reorderMutation.isPending,
+      reorderMutation.isPending ||
+      undoSceneMutation.isPending ||
+      undoArcMutation.isPending,
     moveError,
+    undo,
   };
 }

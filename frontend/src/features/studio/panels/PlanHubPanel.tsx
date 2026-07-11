@@ -15,6 +15,7 @@
 // a rail focus pans the canvas to the node (focusNode = select + bump the focus seq). The reverse
 // publish (planHub.selection) is deferred — no consumer reads a Hub-selection bus slice yet.
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useStudioBusSelector, useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
@@ -24,6 +25,7 @@ import { PlanCanvas, PlanDrawer, PlanNavigatorRail } from '@/features/plan-hub/c
 
 export function PlanHubPanel(props: IDockviewPanelProps) {
   useStudioPanel('plan-hub', props.api);
+  const { t } = useTranslation('studio');
   const { bookId } = useStudioHost();
   const view = usePlanHub(bookId);
 
@@ -106,6 +108,23 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
             className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive shadow"
           >
             {view.moveError}
+          </div>
+        )}
+        {/* One-level UNDO of the last successful move. It matters most for Row-3, which mutates the
+            actual manuscript order — a mis-aimed drag should be one click to reverse, not a hunt
+            through the chapter list. Hidden while a move is in flight (the inverse would be aimed at
+            a layout the server is about to replace). */}
+        {view.undo && !view.moveError && !view.moving && (
+          <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-md border bg-background/95 px-3 py-1.5 text-xs shadow">
+            <span className="text-muted-foreground">{view.undo.label}</span>
+            <button
+              type="button"
+              data-testid="plan-hub-undo"
+              className="font-medium text-primary underline-offset-2 hover:underline"
+              onClick={() => view.undo?.run()}
+            >
+              {t('planHub.undo', 'Undo')}
+            </button>
           </div>
         )}
         {/* Always mounted — PlanDrawer self-hides on a null selection (never conditionally unmount a
