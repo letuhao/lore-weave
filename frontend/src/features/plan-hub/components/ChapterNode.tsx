@@ -1,23 +1,18 @@
-// Plan Hub v2 (24 H2.4) — the chapter card (render-only custom RF node). Title slot is a
-// storyOrder placeholder until H4 enriches the node; the badge row is a minimal reserved
-// slot reading only overlay scalars we already hold (canon/thread count + tension rollup).
+// Plan Hub v2 (24 H4) — the chapter card (render-only custom RF node). Title slot falls back to a
+// story-order label until the node's window loads; the badge row renders the ordered decorations
+// (canon deep-link · thread debt · pacing sparkline · motif chips) from the single precedence home.
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 
 import { cn } from '@/lib/utils';
 
-import {
-  chapterTension,
-  problemCount,
-  unionDotClass,
-  unionStateClass,
-  type PlanNodeData,
-} from './nodePresentation';
+import { NodeBadges } from './NodeBadges';
+import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, onToggle } = data;
-  const problems = problemCount(overlay, node.id);
-  const tension = chapterTension(overlay, node.id);
+  const { node, content, overlay, unionState, selected, onToggle, onOpenRef } = data;
+  // Chapters aren't in conformance.arcs ⇒ no drift badge (isArc:false); pacing IS chapter-keyed.
+  const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: true });
   const title = content?.title || `Ch ${node.storyOrder ?? '—'}`;
 
   return (
@@ -48,18 +43,7 @@ function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
           {node.collapsed ? '▸' : '▾'}
         </button>
       </div>
-      {/* Badge slot — canon/dirty/tension chips get their full wiring in H4; minimal now. */}
-      <div
-        data-testid={`plan-node-chapter-badges-${node.id}`}
-        className="mt-1 flex h-4 items-center gap-1"
-      >
-        {tension != null && (
-          <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">T{tension}</span>
-        )}
-        {problems > 0 && (
-          <span className="rounded bg-destructive/15 px-1 text-[10px] text-destructive">{problems}</span>
-        )}
-      </div>
+      <NodeBadges nodeId={node.id} badges={badges} onOpenRef={onOpenRef} />
       <Handle type="source" position={Position.Right} className="!border-0 !bg-transparent" />
     </div>
   );

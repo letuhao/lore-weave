@@ -1,16 +1,18 @@
-// Plan Hub v2 (24 H2.4) — the scene card (render-only custom RF node). Compact by design:
-// a scene branches under its chapter, so it stays smaller and quieter than a chapter card.
-// Scene tension lives on the SummaryNode (not on the canvas NodePosition contract yet), so
-// it is intentionally NOT shown here — it arrives with node enrichment in H4.
+// Plan Hub v2 (24 H4) — the scene card (render-only custom RF node). Compact by design: a scene
+// branches under its chapter, so it stays smaller/quieter than a chapter card. Its badge row is the
+// same ordered precedence as the chapter's but denser and WITHOUT the pacing sparkline — tension
+// rolls up per chapter (PH17), not per scene, so a scene shows only problems + motif chips.
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 
 import { cn } from '@/lib/utils';
 
-import { unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
+import { NodeBadges } from './NodeBadges';
+import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, unionState, selected } = data;
+  const { node, content, overlay, unionState, selected, onOpenRef } = data;
+  const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: false });
   const title = content?.title || `Sc ${node.storyOrder ?? '—'}`;
 
   return (
@@ -29,6 +31,7 @@ function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
         {/* Real scene title once its window loads; a story-order label until then. */}
         <span className="flex-1 truncate" title={title}>{title}</span>
       </div>
+      <NodeBadges nodeId={node.id} badges={badges} onOpenRef={onOpenRef} compact />
       <Handle type="source" position={Position.Right} className="!border-0 !bg-transparent" />
     </div>
   );

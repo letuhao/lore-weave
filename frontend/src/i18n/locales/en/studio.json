@@ -2,6 +2,11 @@
   "title": "Writing Studio",
   "back": "Back to books",
   "settings": "Book settings",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Loading…",
+    "empty": "No arcs yet."
+  },
   "welcome": {
     "tab": "Welcome",
     "title": "Writing Studio",

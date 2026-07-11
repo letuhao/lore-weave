@@ -100,11 +100,13 @@ func TestEntityNames_BadCursorReturns400(t *testing.T) {
 // ── DB integration test ─────────────────────────────────────────────
 
 // TestEntityNames_PaginatesAndWidensStatus seeds named entities across statuses
-// (active, draft, inactive) plus one soft-deleted "ghost", pages at limit=2, and
-// asserts:
+// (active, draft, inactive) plus one soft-deleted "ghost" and one term-keyed
+// terminology entity, pages at limit=2, and asserts:
 //   - the walk terminates: the final page has truncated=false + nil next_cursor
 //   - EVERY non-deleted named entity appears exactly once (draft + inactive
 //     included — the widened status filter), regardless of status
+//   - a term-keyed entity (identity under the 'term' attribute, not 'name') appears
+//     — the regression guard for the 'name'-only resolver drop bug
 //   - the soft-deleted entity NEVER appears (deleted_at IS NULL still holds)
 func TestEntityNames_PaginatesAndWidensStatus(t *testing.T) {
 	pool := openTestDB(t)
@@ -117,10 +119,15 @@ func TestEntityNames_PaginatesAndWidensStatus(t *testing.T) {
 
 	kindID := bookKindID(t, pool, bid, "character")
 	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
+	// A term-keyed kind (terminology) labels its identity under the 'term' attribute, NOT 'name'.
+	// The name map MUST resolve those too — the regression guard for the 'name'-only drop bug
+	// (the resolver mirrors loadEntityDetail's `code IN ('name','term')`).
+	termKindID := bookKindID(t, pool, bid, "terminology")
+	termAttrID := bookAttrID(t, pool, bid, termKindID, "term")
 
-	// seed inserts an entity with the given status + optional soft-delete tombstone,
-	// and (when name != "") a 'name' EAV value the handler resolves as display_name.
-	seed := func(name, status string, deleted bool) string {
+	// seedAs inserts an entity under (kindID, attrID) with the given status + optional soft-delete
+	// tombstone, and (when name != "") an EAV value under attrID the handler resolves as display_name.
+	seedAs := func(kindID, attrID uuid.UUID, name, status string, deleted bool) string {
 		var deletedAt any = nil
 		if deleted {
 			deletedAt = time.Now()
@@ -136,11 +143,14 @@ func TestEntityNames_PaginatesAndWidensStatus(t *testing.T) {
 		if name != "" {
 			if _, err := pool.Exec(ctx,
 				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
-				 VALUES($1,$2,'en',$3)`, eid, nameAttrID, name); err != nil {
+				 VALUES($1,$2,'en',$3)`, eid, attrID, name); err != nil {
 				t.Fatalf("seed name %q: %v", name, err)
 			}
 		}
 		return eid
+	}
+	seed := func(name, status string, deleted bool) string {
+		return seedAs(kindID, nameAttrID, name, status, deleted)
 	}
 
 	seeded := []string{
@@ -149,6 +159,9 @@ func TestEntityNames_PaginatesAndWidensStatus(t *testing.T) {
 		seed("InactiveE", "inactive", false), // non-active, non-deleted → MUST appear
 		seed("Active2", "active", false),
 		seed("Ghost", "active", true), // soft-deleted → MUST NOT appear
+		// A terminology entity whose identity lives ONLY in the 'term' EAV (no 'name'): with a
+		// 'name'-only resolver this row resolved to blank and was dropped. MUST appear now.
+		seedAs(termKindID, termAttrID, "QiTerm", "active", false),
 	}
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id = ANY($1)`, seeded)
@@ -207,13 +220,13 @@ func TestEntityNames_PaginatesAndWidensStatus(t *testing.T) {
 		}
 	}
 
-	// 4 non-deleted named entities, paged 2 at a time → at least 2 pages.
+	// 5 non-deleted named entities (incl. the term-keyed one), paged 2 at a time → ≥3 pages.
 	if pages < 2 {
-		t.Errorf("want ≥2 pages for 4 items at limit=2, got %d", pages)
+		t.Errorf("want ≥2 pages for 5 items at limit=2, got %d", pages)
 	}
 
 	sort.Strings(collected)
-	want := []string{"Active1", "Active2", "DraftE", "InactiveE"}
+	want := []string{"Active1", "Active2", "DraftE", "InactiveE", "QiTerm"}
 	if len(collected) != len(want) {
 		t.Fatalf("collected names: want %v, got %v", want, collected)
 	}

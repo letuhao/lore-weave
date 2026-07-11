@@ -1556,17 +1556,22 @@ func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 
 	// Peek-ahead: fetch limit+1 rows; the (limit+1)-th row (if present) confirms a
 	// further page and sets truncated + next_cursor without being emitted.
+	// display_name resolution MUST mirror the canonical label lookup used everywhere else in this
+	// file (loadEntityDetail Q1 + the list queries): the label attribute is keyed under EITHER
+	// 'name' OR 'term' (kinds differ — e.g. a glossary term entry labels under 'term'), so a
+	// `code = 'name'`-only filter silently drops every term-keyed entity from the name map
+	// (glossary-unmatched-attr-fallback bug class). Use the same correlated subquery + IN clause.
 	rows, err := s.pool.Query(r.Context(), `
-		SELECT e.entity_id, eav.original_value AS display_name,
+		SELECT e.entity_id,
+			COALESCE((
+				SELECT eav.original_value FROM entity_attribute_values eav
+				JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
+				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
+				ORDER BY (ad.code = 'name') DESC, ad.sort_order LIMIT 1
+			), '') AS display_name,
 			ek.code AS kind_code, ek.color AS kind_color, ek.icon AS kind_icon, ek.name AS kind_name
 		FROM glossary_entities e
 		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
-		LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
-			AND eav.attr_def_id = (
-				SELECT ba.attr_id FROM book_attributes ba
-				JOIN book_genres g ON g.genre_id = ba.genre_id
-				WHERE ba.kind_id = e.kind_id AND ba.code = 'name'
-				ORDER BY (g.code = 'universal') DESC, ba.sort_order LIMIT 1)
 		WHERE e.book_id = $1 AND e.deleted_at IS NULL
 		  AND ($2::uuid IS NULL OR e.entity_id > $2::uuid)
 		ORDER BY e.entity_id ASC
