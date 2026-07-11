@@ -660,7 +660,11 @@ async def generate(
                 final = ev
             else:
                 yield _sse(ev)
-        if final is not None:
+        # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED: an LLMError with NO content (a
+        # resolve failure metered at 0) still yields a terminal usage frame — but it
+        # is a FAILURE, not a completed zero-token job (a retry/idempotency layer must
+        # not treat it as done). Partial-content-then-error stays completed+truncated.
+        if final is not None and not (final.get("error") and not final["text"]):
             m = final["metering"]
             # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the model hit its max_tokens
             # cap. DISTINCT from `capped` (composition's own hard-cap abort, which
@@ -680,8 +684,11 @@ async def generate(
                         "capped": final.get("capped", False),
                         "truncated": truncated, "finish_reason": m.finish_reason})
         else:
-            await jobs.update_status(job.id, "failed")
-            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})
+            err = final.get("error") if final is not None else None
+            await jobs.update_status(
+                job.id, "failed", result={"error": err} if err else None)
+            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed",
+                        **({"error": err} if err else {})})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
@@ -854,7 +861,9 @@ async def selection_edit(
                 final = ev
             else:
                 yield _sse(ev)
-        if final is not None:
+        # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED (see draft-scene handler): an errored
+        # terminal frame with no content is a FAILURE, not a completed zero-token job.
+        if final is not None and not (final.get("error") and not final["text"]):
             m = final["metering"]
             await jobs.update_status(
                 job.id, "completed",
@@ -865,8 +874,11 @@ async def selection_edit(
                         "output_tokens": m.output_tokens, "measured": m.measured,
                         "finish_reason": m.finish_reason})
         else:
-            await jobs.update_status(job.id, "failed")
-            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})
+            err = final.get("error") if final is not None else None
+            await jobs.update_status(
+                job.id, "failed", result={"error": err} if err else None)
+            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed",
+                        **({"error": err} if err else {})})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 

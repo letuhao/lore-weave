@@ -11,8 +11,10 @@ import dataclasses
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from app.worker import job_consumer as jc
-from app.worker.operations import run_decompose, run_plan_pipeline
+from app.worker.operations import run_decompose, run_plan_pipeline, run_selection_edit
 
 
 def _llm_stub():
@@ -84,6 +86,42 @@ async def test_run_job_business_error_marks_failed(monkeypatch):
     assert repo.updates[0][0] == "running"
     assert repo.updates[-1][0] == "failed"
     assert "bad plan output" in repo.updates[-1][1]["error"]
+
+
+async def test_run_selection_edit_errored_no_content_raises(monkeypatch):
+    # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED (worker path): stream_draft always yields a
+    # terminal frame even after an LLMError, so `final is not None` — the errored-empty
+    # case must RAISE (→ job failed via the business-error path above), never return an
+    # empty completed edit.
+    async def errored_stream(sdk, **kw):
+        yield {"type": "error", "error": "model_ref could not be resolved"}
+        yield {"type": "usage", "text": "", "metering": SimpleNamespace(
+            input_tokens=10, output_tokens=0, measured=False, finish_reason=None),
+            "capped": False, "error": "model_ref could not be resolved"}
+
+    monkeypatch.setattr("app.engine.cowrite.stream_draft", errored_stream)
+    with pytest.raises(ValueError, match="model_ref could not be resolved"):
+        await run_selection_edit(SimpleNamespace(sdk=object()), input={
+            "user_id": "u", "messages": [{"role": "user", "content": "x"}],
+            "prompt_estimate": 10, "max_out": 100, "model_source": "user_model",
+            "model_ref": str(uuid4())})
+
+
+async def test_run_selection_edit_error_after_content_succeeds(monkeypatch):
+    # The taxonomy boundary: partial content then error keeps the prose (not a failure).
+    async def partial_then_error(sdk, **kw):
+        yield {"type": "token", "delta": "partial"}
+        yield {"type": "error", "error": "dropped"}
+        yield {"type": "usage", "text": "partial", "metering": SimpleNamespace(
+            input_tokens=10, output_tokens=2, measured=True, finish_reason=None),
+            "capped": False, "error": "dropped"}
+
+    monkeypatch.setattr("app.engine.cowrite.stream_draft", partial_then_error)
+    out = await run_selection_edit(SimpleNamespace(sdk=object()), input={
+        "user_id": "u", "messages": [{"role": "user", "content": "x"}],
+        "prompt_estimate": 10, "max_out": 100, "model_source": "user_model",
+        "model_ref": str(uuid4())})
+    assert out["text"] == "partial"
 
 
 async def test_run_job_unknown_operation_fails(monkeypatch):

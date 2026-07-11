@@ -280,6 +280,48 @@ def test_generate_done_surfaces_truncated(ctx, monkeypatch):
     assert '"truncated": true' in r.text and '"finish_reason": "length"' in r.text
 
 
+def test_generate_errored_no_content_marks_failed_not_completed(ctx, monkeypatch):
+    # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED: a resolve failure emits an error frame
+    # then a terminal usage frame with EMPTY text (stream_draft always terminates).
+    # The job MUST land 'failed' — never 'completed' with 0 tokens (which a retry/
+    # idempotency layer would treat as done).
+    c, _, _, _, jobs, _, _ = ctx
+
+    async def errored_stream(sdk, **kw):
+        yield {"type": "error", "error": "model_ref could not be resolved"}
+        yield {"type": "usage", "text": "",
+               "metering": DraftMetering(10, 0, False, finish_reason=None),
+               "capped": False, "error": "model_ref could not be resolved"}
+
+    monkeypatch.setattr("app.routers.engine.stream_draft", errored_stream)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
+    assert r.status_code == 200
+    assert any(s == "failed" for _, s, _ in jobs.updates)
+    assert not any(s == "completed" for _, s, _ in jobs.updates)
+    assert '"status": "failed"' in r.text
+    assert "model_ref could not be resolved" in r.text  # error surfaced to the client
+
+
+def test_generate_error_after_content_still_completes(ctx, monkeypatch):
+    # The taxonomy boundary: an error AFTER partial content keeps the drafted prose,
+    # so the job stays 'completed' (truncated territory), not failed — only the
+    # zero-content case flips to failed.
+    c, _, _, _, jobs, _, _ = ctx
+
+    async def partial_then_error(sdk, **kw):
+        yield {"type": "token", "delta": "partial"}
+        yield {"type": "error", "error": "dropped mid-flight"}
+        yield {"type": "usage", "text": "partial",
+               "metering": DraftMetering(10, 2, True, finish_reason=None),
+               "capped": False, "error": "dropped mid-flight"}
+
+    monkeypatch.setattr("app.routers.engine.stream_draft", partial_then_error)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
+    assert r.status_code == 200
+    assert any(s == "completed" for _, s, _ in jobs.updates)
+    assert not any(s == "failed" for _, s, _ in jobs.updates)
+
+
 def test_generate_reasoning_off_is_user_none(ctx):
     # explicit author override → reasoning_effort="none", source="user".
     c, *_, captured = ctx

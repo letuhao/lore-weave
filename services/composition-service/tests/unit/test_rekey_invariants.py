@@ -236,3 +236,55 @@ def test_settings_inventory_extractor_is_a_live_gate():
     found = _extract_manifest_setting_keys(synthetic)
     assert {"reader_font_size", "per_user_theme", "per_user_locale"} <= found, found
     assert found - PACKAGE_TIER_SETTINGS, "the synthetic per-user keys must trip the subset check"
+
+
+# ── Guard 2c — package_rekey DDL guards are SCHEMA-QUALIFIED (D-PKGREKEY-DDL-*) ──
+
+PACKAGE_REKEY = SERVICE_ROOT / "app" / "db" / "package_rekey.py"
+
+# An `information_schema.columns/constraint_column_usage` existence guard that omits a
+# `table_schema` predicate can be satisfied by a SAME-NAMED table in ANOTHER schema —
+# so the rekey's conditional DDL fires (or skips) off the wrong table. Every guard must
+# scope to `current_schema()` (search-path-correct). Each guard is a `FROM
+# information_schema.<view>` followed within a few lines by its WHERE clause.
+_INFO_SCHEMA_GUARD = re.compile(
+    r"FROM\s+information_schema\.\w+(?P<body>.*?)(?:\)\s*THEN|\)\s*\"\"\"|\)$)",
+    re.S,
+)
+
+
+def test_package_rekey_information_schema_guards_are_schema_qualified():
+    """D-PKGREKEY-DDL-SCHEMA-QUALIFIER: every information_schema existence guard in
+    package_rekey.py must filter `table_schema` (→ current_schema()), or a same-named
+    table in another schema could satisfy the guard and mis-fire the conditional DDL."""
+    text = PACKAGE_REKEY.read_text(encoding="utf-8")
+    guards = list(_INFO_SCHEMA_GUARD.finditer(text))
+    # A lint that matches nothing is not a gate.
+    assert len(guards) >= 8, (
+        f"expected ≥8 information_schema guards in package_rekey.py, found {len(guards)} "
+        "— the guard regex has drifted; re-derive it before trusting this test."
+    )
+    offenders = [
+        f"L{_lineno(text, g.start())}: {_line_at(text, g.start())}"
+        for g in guards
+        if "table_schema" not in g.group("body")
+    ]
+    assert not offenders, (
+        "D-PKGREKEY-DDL-SCHEMA-QUALIFIER: these information_schema guards omit a "
+        "`table_schema = current_schema()` filter, so a same-named table in another "
+        "schema could satisfy them and mis-fire the re-key DDL:\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_info_schema_guard_regex_is_a_live_gate():
+    """Negative control: the guard regex MUST flag an unqualified guard and MUST NOT
+    flag a qualified one."""
+    unq = ("IF EXISTS (SELECT 1 FROM information_schema.columns\n"
+           "           WHERE table_name = 't' AND column_name = 'c') THEN")
+    qual = ("IF EXISTS (SELECT 1 FROM information_schema.columns\n"
+            "           WHERE table_name = 't' AND column_name = 'c'\n"
+            "             AND table_schema = current_schema()) THEN")
+    mu = _INFO_SCHEMA_GUARD.search(unq)
+    mq = _INFO_SCHEMA_GUARD.search(qual)
+    assert mu and "table_schema" not in mu.group("body")   # unqualified → offender
+    assert mq and "table_schema" in mq.group("body")        # qualified → clean

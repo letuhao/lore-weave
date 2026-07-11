@@ -180,6 +180,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.constraint_column_usage
              WHERE table_name = 'style_profile' AND constraint_name = 'style_profile_pkey'
+               AND table_schema = current_schema()
                AND column_name IN ('user_id', 'created_by')) THEN
     ALTER TABLE style_profile DROP CONSTRAINT style_profile_pkey;
     ALTER TABLE style_profile ADD PRIMARY KEY (project_id, scope_type, scope_id);
@@ -189,6 +190,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.constraint_column_usage
              WHERE table_name = 'voice_profile' AND constraint_name = 'voice_profile_pkey'
+               AND table_schema = current_schema()
                AND column_name IN ('user_id', 'created_by')) THEN
     ALTER TABLE voice_profile DROP CONSTRAINT voice_profile_pkey;
     ALTER TABLE voice_profile ADD PRIMARY KEY (project_id, entity_id);
@@ -231,6 +233,7 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.constraint_column_usage
                  WHERE table_name = 'style_profile' AND constraint_name = 'style_profile_pkey'
+                   AND table_schema = current_schema()
                    AND column_name = 'user_id') THEN
     ALTER TABLE style_profile DROP CONSTRAINT IF EXISTS style_profile_pkey;
     ALTER TABLE style_profile ADD PRIMARY KEY (user_id, project_id, scope_type, scope_id);
@@ -240,6 +243,7 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.constraint_column_usage
                  WHERE table_name = 'voice_profile' AND constraint_name = 'voice_profile_pkey'
+                   AND table_schema = current_schema()
                    AND column_name = 'user_id') THEN
     ALTER TABLE voice_profile DROP CONSTRAINT IF EXISTS voice_profile_pkey;
     ALTER TABLE voice_profile ADD PRIMARY KEY (user_id, project_id, entity_id);
@@ -267,7 +271,8 @@ def _rename_sql_back(table: str, new: str) -> str:
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_name = '{table}' AND column_name = 'created_by') THEN
+             WHERE table_name = '{table}' AND column_name = 'created_by'
+               AND table_schema = current_schema()) THEN
     ALTER TABLE {table} RENAME COLUMN created_by TO {new};
   END IF;
 END $$;"""
@@ -345,7 +350,8 @@ async def _column_exists(conn: asyncpg.Connection, table: str, column: str) -> b
     return bool(
         await conn.fetchval(
             """SELECT EXISTS (SELECT 1 FROM information_schema.columns
-                              WHERE table_name = $1 AND column_name = $2)""",
+                              WHERE table_name = $1 AND column_name = $2
+                                AND table_schema = current_schema())""",
             table,
             column,
         )
@@ -592,6 +598,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns
              WHERE table_name = '{t}' AND column_name = 'book_id'
+               AND table_schema = current_schema()
                AND is_nullable = 'YES') THEN
     ALTER TABLE {t} ALTER COLUMN book_id SET NOT NULL;
   END IF;
@@ -608,7 +615,8 @@ def _rename_sql(table: str, old: str) -> str:
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_name = '{table}' AND column_name = '{old}') THEN
+             WHERE table_name = '{table}' AND column_name = '{old}'
+               AND table_schema = current_schema()) THEN
     ALTER TABLE {table} RENAME COLUMN {old} TO created_by;
   END IF;
 END $$;"""

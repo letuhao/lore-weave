@@ -569,6 +569,12 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
             final = ev
     if final is None:  # no usage frame → the stream produced nothing (terminal fail)
         raise ValueError("selection edit produced no output")
+    if final.get("error") and not final["text"]:
+        # D-ENGINE-ERRORED-JOB-MARKED-COMPLETED: stream_draft ALWAYS yields a terminal
+        # frame, even after an LLMError. An error with NO content is a failure, not a
+        # completed empty edit — raise so the worker marks the job failed (mirrors the
+        # inline draft-scene handler; partial-content-then-error keeps its text).
+        raise ValueError(f"selection edit failed: {final['error']}")
 
     m = final["metering"]
     return {
