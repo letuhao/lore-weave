@@ -316,11 +316,14 @@ class BookClient:
             resp = await self._http.get(url, params={"user_id": str(user_id)})
             if resp.status_code != 200:
                 return None
-            raw = resp.json().get("furthest_chapter_id")
+            body = resp.json()
+            raw = body.get("furthest_chapter_id") if isinstance(body, dict) else None
             if not raw:
                 return None  # 200 with null furthest_chapter_id = no position (fail-closed)
             return UUID(str(raw))
-        except (httpx.HTTPError, ValueError, KeyError) as exc:
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            # ValueError also covers a malformed chapter_id (UUID() raises) → None, so a
+            # garbled book-service response fails CLOSED rather than 500-ing a reader tool.
             logger.warning(
                 "book-service reading-position unavailable: %s, trace_id=%s", exc, tid,
             )

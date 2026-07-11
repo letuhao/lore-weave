@@ -128,6 +128,24 @@ async def test_get_reading_position_failure_is_none(bc: BookClient):
         assert await bc.get_reading_position(book_id, user_id) is None
 
 
+@pytest.mark.asyncio
+async def test_get_reading_position_garbled_body_is_none(bc: BookClient):
+    # A garbled book-service response must fail CLOSED (None), never 500 a reader
+    # tool: a malformed chapter_id (UUID() raises) and a non-dict JSON body (no
+    # .get) both collapse to None. /review-impl LOW.
+    book_id, user_id = uuid4(), uuid4()
+    with respx.mock() as mock:
+        mock.get(_reading_position_url(book_id)).mock(
+            return_value=httpx.Response(200, json={"furthest_chapter_id": "not-a-uuid"}),
+        )
+        assert await bc.get_reading_position(book_id, user_id) is None
+    with respx.mock() as mock:
+        mock.get(_reading_position_url(book_id)).mock(
+            return_value=httpx.Response(200, json=["unexpected", "list"]),
+        )
+        assert await bc.get_reading_position(book_id, user_id) is None
+
+
 # ── lexical_search (raw-search Phase 2) ──────────────────────────────
 
 
