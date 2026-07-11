@@ -229,8 +229,12 @@ class StructureRepo:
 
         Returned per node id: {span: {from_order, to_order} | None, is_contiguous, chapter_count}.
         `is_contiguous` is warn-only (BA6): the members' story_orders are a gap-free run — every
-        chapter ordered, all distinct, no gaps. `story_order` is book-unique so subtree distinct ==
-        the sum across leaves; the aggregate below is exact for the rollup."""
+        chapter ordered, all distinct, no gaps. The rollup does NOT assume `story_order` uniqueness —
+        it MEASURES `count(DISTINCT story_order)` over the subtree directly, so a duplicated order
+        still reads non-contiguous. Returns a row ONLY for keys of LIVE (non-archived) nodes, and
+        counts only live chapters — deliberately live-only (the Hub's default view). Callers that
+        render archived nodes (list_arcs?include_archived=true) get the empty block for them; that is
+        intended (an archived arc's warn-only metrics are not surfaced), never a computed value."""
         async with self._pool.acquire() as c:
             rows = await c.fetch(
                 """

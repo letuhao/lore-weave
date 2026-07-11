@@ -779,7 +779,9 @@ async def test_plan_hub_structure_axis_uses_keyset_index_at_scale(pool):
         await c.execute(seed, actor, project, book, arc, True, 400)
         await c.execute("ANALYZE outline_node")
 
-        # EXACTLY the first-page query OutlineRepo.list_children_by_structure builds.
+        # A hand-copy of the query SHAPE list_children_by_structure builds (kept in sync with
+        # outline.py). EXPLAIN proves the partial index is USABLE for this shape at scale; the real
+        # builder is exercised separately below so predicate drift can't hide behind the copy.
         explain = await c.fetchval(
             """
             EXPLAIN (FORMAT JSON)
@@ -804,6 +806,17 @@ async def test_plan_hub_structure_axis_uses_keyset_index_at_scale(pool):
     # … and the plan neither Seq-Scans outline_node nor sorts (the index supplies order).
     assert "Seq Scan" not in node_types, f"unexpected Seq Scan; plan={nodes}"
     assert "Sort" not in node_types, f"unexpected Sort (index should supply order); plan={nodes}"
+
+    # Exercise the REAL builder against the seeded schema — not just the inlined EXPLAIN copy — so
+    # a future drop of the `kind='chapter' AND NOT is_archived` predicate surfaces as a wrong result
+    # here, not only as a silent plan change in the hand-copy. Returns the first keyset page
+    # (limit+1) of the 4000 LIVE chapters under the arc; the 400 archived + 3000 sibling-arc rows
+    # must be excluded by the very predicate the EXPLAIN depends on.
+    page = await OutlineRepo(pool).list_children_by_structure(book, arc, limit=100)
+    assert len(page) == 101, f"expected the keyset page (limit+1), got {len(page)}"
+    assert all(n.kind == "chapter" and n.structure_node_id == arc and not n.is_archived for n in page)
+    # keyset order is (rank COLLATE "C", id) — the first page starts at the smallest rank.
+    assert page[0].rank == "00000001"
 
 
 async def test_structure_derived_blocks_rollup_and_contiguity(pool):
