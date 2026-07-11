@@ -161,33 +161,38 @@ function buildForest(shell: ArcShellNode[]): VBand[] {
 /**
  * Vertical pass: stack the forest into bands with (y, height). Post-order so a parent is sized
  * from its children. A leaf lane reserves a chapter strip + a scene strip so the layout is stable
- * regardless of whether scenes are loaded yet (no reflow on lazy scene load).
+ * regardless of whether scenes are loaded yet (no reflow on lazy scene load). A NON-leaf band that
+ * ALSO carries directly-bound chapters (a prologue on a saga, an interstitial on an arc that later
+ * grew sub-arcs — the schema/write-path allow a chapter to bind to any structure_node) reserves the
+ * SAME chapter+scene strip under its header, so its chapter card and scene branch never overlap each
+ * other or the child bands below (review: non-leaf-with-direct-chapters overlap).
  */
-function layoutBands(forest: VBand[], opts: LaneLayoutOptions): LaneBand[] {
+function layoutBands(forest: VBand[], carriers: Set<string>, opts: LaneLayoutOptions): LaneBand[] {
   const out: LaneBand[] = [];
+  const contentStrip = opts.laneHeight + opts.sceneRowHeight;
   let cursor = opts.padY;
 
   const place = (vb: VBand): number => {
     const top = cursor;
     if (vb.isLeaf) {
-      const height = opts.laneHeight + opts.sceneRowHeight;
       out.push({
         id: vb.node.id, kind: vb.node.kind, depth: vb.depth, title: vb.node.title,
-        y: top, height, chapterY: top, sceneY: top + opts.laneHeight,
+        y: top, height: contentStrip, chapterY: top, sceneY: top + opts.laneHeight,
         isLeaf: true, contiguous: vb.node.is_contiguous, segments: [], collapsed: false,
       });
-      cursor = top + height;
-      return height;
+      cursor = top + contentStrip;
+      return contentStrip;
     }
-    // Non-leaf: a header strip (also the row for any chapters bound directly to it), then children.
-    const headerTop = top;
+    // Non-leaf: a header strip; if it carries its own chapters, ALSO a content strip; then children.
+    const carries = carriers.has(vb.node.id);
+    const chapterY = top + opts.laneHeaderHeight;
     const bandEntry: LaneBand = {
       id: vb.node.id, kind: vb.node.kind, depth: vb.depth, title: vb.node.title,
-      y: top, height: 0, chapterY: headerTop, sceneY: headerTop,
+      y: top, height: 0, chapterY, sceneY: chapterY + opts.laneHeight,
       isLeaf: false, contiguous: vb.node.is_contiguous, segments: [], collapsed: false,
     };
     out.push(bandEntry);
-    cursor = top + opts.laneHeaderHeight;
+    cursor = top + opts.laneHeaderHeight + (carries ? contentStrip : 0);
     vb.children.forEach((child, i) => {
       if (i > 0) cursor += opts.laneGap;
       place(child);
@@ -252,7 +257,14 @@ export function laneLayout(
 ): LaneLayout {
   const opts = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
   const forest = buildForest(shell);
-  const bands = layoutBands(forest, opts);
+  const shellIds = new Set(shell.map((s) => s.id));
+  const chapters = windows.filter((n) => n.kind === 'chapter');
+  // Structure nodes that own >=1 loaded chapter — a NON-leaf one among these needs a content strip
+  // reserved (else a directly-bound chapter + its scenes overlap the header and the child bands).
+  const chapterCarriers = new Set(
+    chapters.map((c) => c.structure_node_id).filter((id): id is string => !!id && shellIds.has(id)),
+  );
+  const bands = layoutBands(forest, chapterCarriers, opts);
   const bandById = new Map(bands.map((b) => [b.id, b]));
 
   const collapsedArcsRaw = new Set(collapse.arcs ?? []);
@@ -262,7 +274,6 @@ export function laneLayout(
   const suppressed = new Set<string>();
   for (const a of rollupArcs) for (const d of descendantArcs(forest, a)) suppressed.add(d);
 
-  const chapters = windows.filter((n) => n.kind === 'chapter');
   const scenesByChapter = new Map<string, WindowNode[]>();
   for (const n of windows) {
     if (n.kind !== 'scene' || !n.parent_id) continue;

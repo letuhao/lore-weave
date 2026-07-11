@@ -40,14 +40,18 @@ export function SceneLinksSection({ projectId, token, sceneId }: { projectId: st
   const [kind, setKind] = useState<SceneLinkKind>('setup_payoff');
   const [label, setLabel] = useState('');
 
-  const titleOf = (id: string) => outlineQ.data?.find((n) => n.id === id)?.title ?? shortId(id);
+  // `||` (not `??`) so an empty-title scene (decompiled/imported leaves can have title='') degrades
+  // to a short-id like the picker below, never a blank label (review: titleOf consistency).
+  const titleOf = (id: string) => outlineQ.data?.find((n) => n.id === id)?.title || shortId(id);
   const links = linksQ.data ?? [];
   const outgoing = links.filter((l) => l.from_node_id === sceneId);
   const incoming = links.filter((l) => l.to_node_id === sceneId);
-  // A target may already be linked in EITHER direction — don't offer a same-direction dup.
-  const outgoingTo = new Set(outgoing.map((l) => l.to_node_id));
+  // Exclude a target only for the SAME kind — the BE uniqueness is (from,to,kind), so s1→s2
+  // setup_payoff and s1→s2 custom are both valid (review: don't over-exclude across kinds). A
+  // true same-kind dup that slips through is caught by the 409 handler below.
+  const outgoingSameKind = new Set(outgoing.filter((l) => l.kind === kind).map((l) => l.to_node_id));
   const targets = (outlineQ.data ?? []).filter(
-    (n) => n.kind === 'scene' && !n.is_archived && n.id !== sceneId && !outgoingTo.has(n.id),
+    (n) => n.kind === 'scene' && !n.is_archived && n.id !== sceneId && !outgoingSameKind.has(n.id),
   );
 
   const add = () => {
@@ -79,7 +83,9 @@ export function SceneLinksSection({ projectId, token, sceneId }: { projectId: st
 
   return (
     <div data-testid="scene-inspector-links" className="space-y-2">
-      {links.length === 0 && (
+      {/* Gate on THIS scene's edges, not the project-wide `links` — else the hint vanishes as soon
+          as the project has any link between two other scenes (review: scene-scoped empty state). */}
+      {outgoing.length === 0 && incoming.length === 0 && (
         <p className="text-[11px] text-muted-foreground">{t('panels.scene-inspector.links.empty', { defaultValue: 'No causal links yet.' })}</p>
       )}
       {outgoing.length > 0 && <ul className="space-y-1">{outgoing.map((l) => row(l, 'out'))}</ul>}

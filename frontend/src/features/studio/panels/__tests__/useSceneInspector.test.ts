@@ -74,6 +74,24 @@ describe('useSceneInspector', () => {
     await waitFor(() => expect(result.current.node?.version).toBe(9)); // reloaded fresh (inline reload)
   });
 
+  it('serializes rapid back-to-back edits so the 2nd sees the version the 1st bumped (no self-412 drop)', async () => {
+    // review fix: EntityRefField commits on every change; two Cast&Setting edits within one round-trip
+    // must chain against fresh versions instead of both sending If-Match v3 (which dropped the 2nd).
+    getNode.mockResolvedValue(node({ version: 3 }));
+    patchNode.mockImplementation(async (_id: string, p: Partial<OutlineNode>, _tok: string, ver: number) => node({ ...p, version: ver + 1 }));
+    const { result } = renderHook(() => useSceneInspector('book-1'));
+    await waitFor(() => expect(result.current.node?.version).toBe(3));
+    await act(async () => {
+      const p1 = result.current.patch({ pov_entity_id: 'X' });
+      const p2 = result.current.patch({ location_entity_id: 'Y' }); // fired before p1 resolves
+      await Promise.all([p1, p2]);
+    });
+    expect(patchNode).toHaveBeenNthCalledWith(1, 'n1', { pov_entity_id: 'X' }, 'tok', 3);
+    expect(patchNode).toHaveBeenNthCalledWith(2, 'n1', { location_entity_id: 'Y' }, 'tok', 4); // saw v4, not stale v3
+    expect(result.current.node?.version).toBe(5); // both edits landed, no drop, no false conflict
+    expect(result.current.error).toBeNull();
+  });
+
   it('a non-412 save error is surfaced without a version claim', async () => {
     getNode.mockResolvedValue(node({ version: 3 }));
     patchNode.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));

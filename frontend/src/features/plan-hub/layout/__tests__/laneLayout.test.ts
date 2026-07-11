@@ -147,6 +147,25 @@ describe('laneLayout — PH14 (24-H2.2)', () => {
     expect(after.lanes.map((b) => [b.id, b.y])).toEqual(before.lanes.map((b) => [b.id, b.y]));
   });
 
+  it('a chapter bound directly to a NON-leaf band reserves a content strip (no overlap with scenes or child bands)', () => {
+    // review: a prologue bound to the saga S itself (S is non-leaf: it has arc A1). Its card + scene
+    // branch must not collide with each other or overflow onto A1.
+    const shell = [
+      arc({ id: 'S', rank: 'a', kind: 'saga' }),
+      arc({ id: 'A1', parent_id: 'S', rank: 'a' }),
+    ];
+    const l = laneLayout(shell, [ch('c0', 'S', 0), scene('s0', 'c0', 0), ch('c1', 'A1', 1)]);
+    const S = laneOf(l, 'S')!, A1 = laneOf(l, 'A1')!;
+    const c0 = byId(l, 'c0')!, s0 = byId(l, 's0')!;
+    // the chapter sits below S's header; its scene sits below the chapter — distinct rows, no overlap.
+    expect(c0.y).toBe(S.chapterY);
+    expect(s0.y).toBe(S.sceneY);
+    expect(s0.y).toBeGreaterThan(c0.y);
+    // the chapter card (laneHeight tall) + its scene row are fully reserved ABOVE the child band A1.
+    expect(A1.y).toBeGreaterThanOrEqual(S.sceneY + D.sceneRowHeight);
+    expect(byId(l, 'c1')!.y).toBe(A1.chapterY);
+  });
+
   it('is deterministic — same inputs, identical output (memoizable)', () => {
     const shell = [arc({ id: 'A1', rank: 'a' }), arc({ id: 'A2', rank: 'b' })];
     const windows = [ch('c2', 'A2', 2), ch('c1', 'A1', 1)];

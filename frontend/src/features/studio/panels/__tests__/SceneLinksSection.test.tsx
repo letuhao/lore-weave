@@ -55,6 +55,35 @@ describe('SceneLinksSection (22-C3 Links)', () => {
     expect(screen.getByText(/No causal links yet/)).toBeInTheDocument();
   });
 
+  it('the empty state gates on THIS scene, not project-wide links (hint survives links elsewhere)', () => {
+    // review fix: the project has a link between two OTHER scenes; the inspected scene has none.
+    nodes.current = [node('s5', 'Focus'), node('s1', 'A'), node('s2', 'B')];
+    links.current = [link('l1', 's1', 's2')];
+    render(<SceneLinksSection projectId="p" token="t" sceneId="s5" />);
+    expect(screen.getByText(/No causal links yet/)).toBeInTheDocument();
+  });
+
+  it('an empty-title endpoint renders a short-id, never a blank label', () => {
+    // review fix: titleOf uses `||` so title==='' degrades to a short-id (like the picker).
+    nodes.current = [node('s1', 'Here'), node('deadbeef-0000-0000', '')];
+    links.current = [link('l1', 's1', 'deadbeef-0000-0000')];
+    render(<SceneLinksSection projectId="p" token="t" sceneId="s1" />);
+    expect(screen.getByTestId('scene-links-row').textContent).toContain('deadbeef…');
+  });
+
+  it('a scene already linked with a DIFFERENT kind is still offered (BE uniqueness is by kind)', () => {
+    // review fix: the picker excludes only same-kind targets, so a second distinct-kind edge is addable.
+    nodes.current = [node('s1', 'Here'), node('s2', 'There')];
+    links.current = [link('l1', 's1', 's2', 'setup_payoff')]; // an existing setup_payoff edge
+    render(<SceneLinksSection projectId="p" token="t" sceneId="s1" />);
+    // default kind = setup_payoff → s2 excluded; switch to custom → s2 becomes offerable.
+    let opts = Array.from((screen.getByTestId('scene-links-target') as HTMLSelectElement).options).map((o) => o.value);
+    expect(opts).not.toContain('s2');
+    fireEvent.change(screen.getByTestId('scene-links-kind'), { target: { value: 'custom' } });
+    opts = Array.from((screen.getByTestId('scene-links-target') as HTMLSelectElement).options).map((o) => o.value);
+    expect(opts).toContain('s2');
+  });
+
   it('the add-target picker excludes self and already-outgoing targets', () => {
     nodes.current = [node('s1', 'Self'), node('s2', 'Linked'), node('s3', 'Free')];
     links.current = [link('l1', 's1', 's2')]; // s2 already an outgoing target
