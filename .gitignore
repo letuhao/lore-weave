@@ -300,3 +300,8 @@ services/migration-orchestrator/migrate-drill
 tests/perf/roleplay-load/rpload
 
 docs/specs/2026-06-30-editor-compose-overhaul/poc/io/
+
+# Discoverability scenario eval scratch (run_discoverability_scenario.py temp output;
+# real runs are saved under docs/eval/discoverability/runs/)
+/scratch-s06*/
+/.stage1-wave1-report.json
