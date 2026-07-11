@@ -73,6 +73,14 @@ test.describe('Frontend-tools liveness (G4 — real browser executor)', () => {
 
   test.afterAll(async ({ request }) => {
     if (bookId) await trashBook(request, token, bookId).catch(() => {});
+    // Destroy the session (+ its seeded message) this spec created — otherwise every run
+    // leaks a 'fe-tools liveness' session into the test account.
+    if (sessionId) {
+      try {
+        queryDb('loreweave_chat', `DELETE FROM chat_messages WHERE session_id = '${sessionId}'`);
+        queryDb('loreweave_chat', `DELETE FROM chat_sessions WHERE session_id = '${sessionId}'`);
+      } catch { /* best effort */ }
+    }
   });
 
   test.beforeEach(async ({ page }) => {

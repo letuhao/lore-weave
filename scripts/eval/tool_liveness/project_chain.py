@@ -459,8 +459,9 @@ def seed_db_fixtures(ids: dict) -> None:
     #    {nodes:[],edges:[]} → executes (a foreign/missing world raises → null). ────────────
     try:
         wid = str(uuid.uuid4())
+        # the worlds PK is `id` (kg_world_query's `world_id` arg maps to it).
         oracle.db_query(config.DOMAIN_DB["book"],
-                        "INSERT INTO worlds(world_id, owner_user_id, name) "
+                        "INSERT INTO worlds(id, owner_user_id, name) "
                         f"VALUES ('{wid}','{user}','TLE World')")
         ids["world_id"] = wid
     except Exception as e:
@@ -505,16 +506,16 @@ def teardown_db_fixtures(ids: dict) -> dict:
     wid = ids.get("world_id")
     if wid:
         try:
-            oracle.db_query(config.DOMAIN_DB["book"], f"DELETE FROM worlds WHERE world_id='{wid}'")
+            oracle.db_query(config.DOMAIN_DB["book"], f"DELETE FROM worlds WHERE id='{wid}'")
             out["world"] = "ok"
         except Exception as e:
             out["world"] = f"FAILED: {e}"
     jid = ids.get("translation_job_id")
     if jid:
+        # child (chapter_translations) before parent (translation_jobs); both key on job_id.
         for tbl in ("chapter_translations", "translation_jobs"):
             try:
-                col = "job_id" if tbl == "translation_jobs" else "job_id"
-                oracle.db_query(_TRANSLATION_DB, f"DELETE FROM {tbl} WHERE {col}='{jid}'")
+                oracle.db_query(_TRANSLATION_DB, f"DELETE FROM {tbl} WHERE job_id='{jid}'")
             except Exception as e:
                 out[tbl] = f"FAILED: {e}"
         out.setdefault("translation", "ok")

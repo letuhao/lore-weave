@@ -201,31 +201,38 @@ throughout. The one COLD run proved the approval card appears when not allowlist
   share the same two proven code paths (documented in-spec); `ui_open_studio_panel`'s effect is
   already proven live by `studio-compose.spec` (the same `host.openPanel`).
 
-### Phase 3 (WS-D4 · null grind) — capability sweep 62 → **26** null, **0 broken**
-`186 → 193 executes:true · 0 executes:false · 26 null` (219 unique tools; manifest regenerated,
+### Phase 3 (WS-D4 · null grind) — capability sweep 62 → **25** null, **0 broken**
+`186 → 194 executes:true · 0 executes:false · 25 null` (219 unique tools; manifest regenerated,
 2 service copies byte-identical). Reached at **$0** via authored args + short creator chains + $0
 DB seeds: the **arc family** (8, via `composition_arc_create`), **authoring-run family** (6),
 **plan_\*** linters/checkpoint (4), **glossary book-standard** writes (4), **book steering**
 (set→delete), **jobs** (3), the **kg build chain** (`set_embedding_model`→`run_benchmark`→
-`build_graph`, on **local bge-m3** embeddings), **book_scene_get** + the **5 translation-version**
-tools (a seeded world/scene/completed-translation the creator is a paid/async job we don't run).
-All seeds are under the throwaway fixture and torn down (`teardown_db_fixtures` + the runtime
-composition/book teardown).
+`build_graph`, on **local bge-m3** embeddings), **kg_world_query** + **book_scene_get** + the **5
+translation-version** tools (a seeded world/scene/completed-translation whose creator is a paid/async
+job we don't run). All seeds are under the throwaway fixture and torn down (`teardown_db_fixtures`
++ the runtime composition/book teardown, both leak-verified).
 
-**The 26 residue — WAIVED with gate reasons (none blocks anything; `null` ≠ broken):**
+**The 25 residue — none blocks anything (`null` ≠ broken). Split honestly (anti-laziness rule):**
+
+**(a) DEFERRED — $0-buildable-next, deprioritized for budget (gate #2 structural: the sweep's
+one-call-per-tool shape needs a mid-sweep double-create hook these need):**
+
+| cluster | n | what it needs |
+|---|---|---|
+| kg node-chain (`entity_edge_timeline`, `propose_edge`, `triage_place_edge`, `triage_resolve`, `adopt_template`) | 5 | 2 KG nodes (`entities_to_nodes`, already `executes:True`) → propose_edge → triage; + a `list_templates` id |
+| motif links/bind (`motif_bind`, `_unbind`, `_link_create`, `_link_delete`) | 4 | a phase-1 motif + a 2nd phase-2 motif |
+| scene/outline chains (`scene_link_create`/`_delete`, `outline_node_restore`, `book_chapter_save_draft`) | 4 | a 2nd outline node / an archived node / a read `draft_version` |
+
+**(b) WAIVED — genuinely not $0 / policy / conscious (gate #4 blocked or #5 won't-fix):**
 
 | cluster | n | gate | reason |
 |---|---|---|---|
-| kg node-chain (`entity_edge_timeline`, `propose_edge`, `triage_place_edge`, `triage_resolve`, `adopt_template`) | 5 | #2 structural | need 2 real KG nodes + a listed system template — a `kg_create_node`×2 / `entities_to_nodes` chain (buildable next) |
-| kg schema-mutation (`schema_edit`, `sync_apply`, `triage_schema_write`) | 3 | #4 blocked | require an **adopted** project-scoped `graph_schemas` — adoption lands on a browser-JWT confirm the sweep can't drive |
-| motif links/bind (`motif_bind`, `_unbind`, `_link_create`, `_link_delete`) | 4 | #2 structural | need a phase-1 motif + a 2nd phase-2 motif (buildable next) |
-| scene/outline chains (`scene_link_create`/`_delete`, `outline_node_restore`, `book_chapter_save_draft`) | 4 | #2 structural | need a 2nd outline node / an archived node / a read `draft_version` (buildable next) |
-| generation-job polls (`composition_get_generation_job`, `_mine_job`) | 2 | #4 blocked | key on the **sweep-minted** composition `project_id` (not known at seed time) → a real generation job |
-| bespoke DB fixtures (`glossary_create_evidence`, `_propose_restore_revision`, `arc_apply`, `arc_import_analyze`, `kg_world_query`) | 5 | #2 structural | each needs a multi-FK seed (`entity_attribute_values`+`attr_def_id` / `entity_revisions` snapshot / `arc_templates` / `import_sources` / a `worlds` row the first attempt didn't land) |
-| genuinely un-$0 (`glossary_book_sync_apply`, `glossary_extract_entities_from_doc`, `catalog_get_book`) | 3 | #4 / policy | upstream-drift state / **paid**-marked (reachable $0 only by overriding the paid-skip) / needs a **public** book from sharing-service |
+| kg schema-mutation (`schema_edit`, `sync_apply`, `triage_schema_write`) | 3 | #4 | need an **adopted** project-scoped `graph_schemas` — adoption lands on a browser-JWT confirm the sweep can't drive |
+| generation-job polls (`get_generation_job`, `_mine_job`) | 2 | #4 | key on the **sweep-minted** composition `project_id` → a real (paid/async) generation job |
+| bespoke multi-FK (`glossary_create_evidence`, `_propose_restore_revision`, `arc_apply`, `arc_import_analyze`) | 4 | #4 | each needs a hand-authored multi-FK seed (`entity_attribute_values`+`attr_def_id` / `entity_revisions` snapshot / `arc_templates` / `import_sources`) — out of proportion to a non-blocking null |
+| genuinely un-$0 (`glossary_book_sync_apply`, `glossary_extract_entities_from_doc`, `catalog_get_book`) | 3 | #5 / policy | upstream-drift state / **paid**-marked / needs a **public** book from sharing-service |
 
-**Accounting:** 193/219 (88%) executes-proven + 26 WAIVED-with-reason = 100% accounted, **0 broken**.
-The first 13 (kg node-chain, motif, scene/outline) are *buildable-next* short chains (deferred as
-diminishing-returns on non-blocking nulls); the rest need bespoke multi-FK fixtures, a browser-JWT
-ontology adoption, or are paid/cross-service. CD4 stays **reject-on-`executes:false`** (0 tools);
-`null` never blocks (per the frozen phasing).
+**Accounting:** 194/219 (**89%**) executes-proven, **0 broken**. Of the 25 null, **13 are
+DEFERRED** ($0-buildable-next, honestly not "waived" — they're deprioritized, not can't-do) and
+**12 are WAIVED** with gate reasons. CD4 stays **reject-on-`executes:false`** (0 tools); `null`
+never blocks (per the frozen phasing).

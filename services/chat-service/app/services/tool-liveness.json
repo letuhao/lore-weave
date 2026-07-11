@@ -853,8 +853,8 @@
       "proven": false
     },
     "kg_world_query": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "lore_enrichment_auto_enrich": {
