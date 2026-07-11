@@ -75,7 +75,10 @@ export interface ChildrenPage {
   next_cursor: string | null;
 }
 
-/** Read surface #4 — `GET .../scene-links` (PH13). Sparse, whole-book, one call. */
+/** Read surface #4 — `GET .../scene-links` (PH13). Sparse, whole-book, one call.
+ *  `kind` MIRRORS the server's closed set — SoT: `LinkKind` in composition-service
+ *  `app/db/models.py` (the REST schema and the MCP tool both derive from it). Adding a kind
+ *  server-side without adding it here renders as the `custom` dashed style, silently. */
 export interface SceneLinkEdge {
   id: string;
   from_node_id: string;
@@ -231,4 +234,7 @@ export interface PlanCanvasProps {
    *  which band was hit; the controller decides nest-vs-sibling (it holds parent_id + rank).
    *  Omitted ⇒ bands aren't draggable. Saga bands never drag (a saga cannot be parented). */
   onMoveArc?: (arcId: string, targetId: string) => void;
+  /** H5: a move is in flight ⇒ freeze dragging. The lanes under the cursor are about to be replaced
+   *  by the server's answer, so a second drag would be aimed at a layout that no longer holds. */
+  busy?: boolean;
 }

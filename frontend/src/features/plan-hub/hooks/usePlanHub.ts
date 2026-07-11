@@ -5,14 +5,13 @@
 // rollup, v1; camera-focus default is a later phase) + selectedId. Calls laneLayout ONCE — the
 // single "where does a node go"; nothing here recomputes a position.
 import { useCallback, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
-import {
-  assignChapters, getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks, moveArc, reorderNode,
-} from '../api';
+import { getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
 import { laneLayout } from '../layout/laneLayout';
 import type { CollapseState, NodeContent, PlanHubView } from '../types';
 import { usePlanWindows } from './usePlanWindows';
+import { usePlanMoves } from './usePlanMoves';
 import { useActualState } from './useActualState';
 import { computeUnionState, toArcShellNode } from './planHubMappers';
 
@@ -114,113 +113,17 @@ export function usePlanHub(bookId: string): PlanHubView {
 
   const select = useCallback((id: string | null) => setSelectedId(id), []);
 
-  // ── H5 Row-1 (PH20): drag a chapter card into another lane → rebind its arc (structure_node_id).
-  // The assign-chapters mirror is an idempotent bulk set (no OCC). On success invalidate every
-  // plan-hub read for this book so the shell (chapter_count/span shift) + the windows + overlay
-  // refetch and laneLayout re-places the card in its new lane. A refetch (not an optimistic patch)
-  // keeps the source of truth server-side; the brief re-place is acceptable for v1 (optimistic is a
-  // later polish). A failed move surfaces via moveChapterError; the card snaps back on the next render.
-  const qc = useQueryClient();
-  const moveMutation = useMutation({
-    mutationFn: (vars: { chapterId: string; arcId: string }) =>
-      assignChapters(bookId, vars.arcId, [vars.chapterId], token!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['plan-hub'] }),
+  // ── H5 (PH20) writes — the three drag-to-move mutations live in usePlanMoves (which owns the
+  // interaction rules: nest-vs-sibling, the OCC append position, the no-op guards). It needs BOTH
+  // reload paths: the react-query invalidate for the shell, and windows.reload() for the hand-rolled
+  // window slices — the rows a move actually mutates (invalidateQueries cannot reach those).
+  const moves = usePlanMoves({
+    bookId,
+    token,
+    shellNodes: arcsQuery.data?.arcs ?? [],
+    windowContent: windowsResult.content,
+    reloadWindows: windowsResult.reload,
   });
-  const moveChapterToArc = useCallback(
-    (chapterId: string, arcId: string) => {
-      if (!token) return;
-      moveMutation.mutate({ chapterId, arcId });
-    },
-    [token, moveMutation],
-  );
-
-  // ── H5 Row-4 (PH20): drag a scene card onto another chapter → re-parent it. Unlike the arc rebind
-  // this IS a versioned node write, so it carries OCC: `If-Match: <version>` → a 412 means the scene
-  // changed elsewhere. We invalidate on SETTLED (success OR error) so a conflict reloads the true
-  // state — the SceneRail "changed elsewhere — reloaded" recovery, never a silent overwrite.
-  const windowContent = windowsResult.content;
-  const moveSceneMutation = useMutation({
-    mutationFn: (vars: { sceneId: string; chapterId: string }) => {
-      const scene = windowContent[vars.sceneId];
-      if (!scene) throw new Error('scene not loaded');
-      // Append AFTER the target chapter's last loaded scene. Byte-order rank compare matches the
-      // server's fractional-rank collation (rank COLLATE "C"); no scenes loaded ⇒ first child.
-      const siblings = Object.values(windowContent)
-        .filter((n) => n.kind === 'scene' && n.parent_id === vars.chapterId && n.id !== vars.sceneId)
-        .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.id < b.id ? -1 : 1));
-      const afterId = siblings.length ? siblings[siblings.length - 1].id : null;
-      return reorderNode(
-        vars.sceneId,
-        { new_parent_id: vars.chapterId, after_id: afterId },
-        scene.version,
-        token!,
-      );
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['plan-hub'] }),
-  });
-  const moveSceneToChapter = useCallback(
-    (sceneId: string, chapterId: string) => {
-      if (!token) return;
-      const scene = windowContent[sceneId];
-      // Unknown scene, or dropped back on its OWN chapter ⇒ no write (the canvas re-places it).
-      if (!scene || scene.parent_id === chapterId) return;
-      moveSceneMutation.mutate({ sceneId, chapterId });
-    },
-    [token, windowContent, moveSceneMutation],
-  );
-
-  // ── H5 Row-2 (PH20): drag an ARC band onto another band → move it in the structure tree. The
-  // CANVAS only reports which band was hit; the DECISION lives here because it needs the shell's
-  // parent_id/rank: a drop on a saga or a parent arc NESTS under it (append as its last child); a
-  // drop on a LEAF arc makes the dragged arc that leaf's next SIBLING. Cycle/depth>2/parented-saga
-  // are the server's rules (clean 4xx → moveError); we only guard the two cases that would make a
-  // guaranteed-pointless call: dropping an arc on itself, or into its own subtree.
-  const shellNodes = arcsQuery.data?.arcs ?? [];
-  const moveArcMutation = useMutation({
-    mutationFn: (vars: { arcId: string; targetId: string }) => {
-      const target = shellNodes.find((n) => n.id === vars.targetId);
-      if (!target) throw new Error('target arc not loaded');
-      const childrenOf = (id: string) => shellNodes.filter((n) => n.parent_id === id);
-      const byRank = <T extends { rank: string; id: string }>(a: T, b: T) =>
-        a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.id < b.id ? -1 : 1;
-
-      const kids = childrenOf(target.id);
-      const nest = target.kind === 'saga' || kids.length > 0;
-      const body = nest
-        ? {
-            // append as the target's LAST child (byte-order rank, matching the server's collation)
-            new_parent_arc_id: target.id,
-            after_id: kids.length ? [...kids].sort(byRank)[kids.length - 1].id : null,
-          }
-        : { new_parent_arc_id: target.parent_id, after_id: target.id }; // become the leaf's next sibling
-      return moveArc(vars.arcId, body, token!);
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['plan-hub'] }),
-  });
-  const moveArcTo = useCallback(
-    (arcId: string, targetId: string) => {
-      if (!token || arcId === targetId) return;
-      // Dropping an arc into its OWN subtree is a cycle — the server rejects it; skip the round-trip.
-      const parentOf = (id: string) => shellNodes.find((n) => n.id === id)?.parent_id ?? null;
-      for (let p = parentOf(targetId), hops = 0; p && hops < 8; p = parentOf(p), hops++) {
-        if (p === arcId) return;
-      }
-      moveArcMutation.mutate({ arcId, targetId });
-    },
-    [token, shellNodes, moveArcMutation],
-  );
-
-  // A failed move surfaces to the panel. A 412 is the OCC conflict (scene reorder): the reload
-  // already fired (onSettled), so the message says the canvas re-synced rather than lost the edit.
-  // An arc move has no version — its failures are the server's structural rules (cycle / depth>2).
-  const moveError = useMemo(() => {
-    const e = (moveSceneMutation.error ?? moveArcMutation.error ?? moveMutation.error) as
-      | (Error & { status?: number })
-      | null;
-    if (!e) return null;
-    if (e.status === 412) return 'That node changed elsewhere — the canvas reloaded. Try the move again.';
-    return e.message || 'Move failed.';
-  }, [moveSceneMutation.error, moveArcMutation.error, moveMutation.error]);
 
   const loading = (enabled && arcsQuery.isLoading) || windowsResult.loading;
   const error =
@@ -239,10 +142,10 @@ export function usePlanHub(bookId: string): PlanHubView {
     select,
     toggleArc,
     toggleChapter,
-    moveChapterToArc,
-    moveSceneToChapter,
-    moveArcTo,
-    moving: moveMutation.isPending || moveSceneMutation.isPending || moveArcMutation.isPending,
-    moveError,
+    moveChapterToArc: moves.moveChapterToArc,
+    moveSceneToChapter: moves.moveSceneToChapter,
+    moveArcTo: moves.moveArcTo,
+    moving: moves.moving,
+    moveError: moves.moveError,
   };
 }

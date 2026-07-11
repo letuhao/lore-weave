@@ -1,20 +1,36 @@
-// Plan Hub v2 (24 H2.4 / PH14) — the React Flow canvas. RENDER-ONLY: it consumes the fixed
-// PlanCanvasProps (the laneLayout result + decorations + callbacks) and maps them onto React
-// Flow nodes/edges. It NEVER decides a position — every {x,y,width} comes from laneLayout
-// (the one "where does a node go"); React Flow supplies mechanics only (pan/zoom/hit-test).
-// Fully controlled + read-only: no drag (H5, later), no internal selection (we own it via
-// data.selected), no useEffect (nodes/edges are pure useMemo of props).
+// Plan Hub v2 (24 H2.4 / PH14 / H5) — the React Flow canvas. It consumes the fixed PlanCanvasProps
+// (the laneLayout result + decorations + callbacks) and maps them onto React Flow nodes/edges. It
+// NEVER decides a RESTING position — every {x,y,width} comes from laneLayout (the one "where does a
+// node go"); React Flow supplies mechanics only (pan/zoom/hit-test/drag).
+//
+// H5 made the node list CONTROLLED-WITH-DRAG, which has two React Flow v11 rules that are easy to
+// get wrong (both shipped as live bugs once):
+//   1. With a `nodes` prop and NO `onNodesChange`, RF's store is never updated by a drag — the card
+//      does not move under the cursor at all (`hasDefaultNodes` is false, so triggerNodeChanges only
+//      forwards to the absent callback). So we hold RF's node list in useNodesState and RESET it from
+//      laneLayout whenever the layout changes. laneLayout stays the single source of resting
+//      position; RF owns only the transient drag offset. Resetting at drag-stop IS the snap-back.
+//   2. A per-node `draggable: true` does NOT override a global `nodesDraggable={false}` (it only
+//      gates DOWN) — so the global flag must be on whenever ANY kind is draggable.
+//
+// The drop TARGET is resolved from the CURSOR (screenToFlowPosition), not from the dragged node's
+// top-left corner. A corner-based hit-test is both asymmetric (a 13px nudge up crosses into the lane
+// above while the card still looks 90% inside its own) and dangerous (a 1px drag could re-parent a
+// scene under its neighbour). Cursor-based targeting is what the user means by "where I dropped it",
+// and it is inherently no-op-safe: the cursor starts inside the dragged element's own region.
 import { useCallback, useEffect, useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
   MarkerType,
   ReactFlowProvider,
+  useNodesState,
   useReactFlow,
   type Edge,
   type Node,
   type NodeDragHandler,
   type NodeMouseHandler,
+  type XYPosition,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -37,6 +53,9 @@ const nodeTypes = {
 
 const CONTENT_Z = 10;
 const FOCUS_ZOOM = 1;
+/** Pixels the pointer must travel before a press becomes a DRAG. RF's default is 0, which turns
+ *  every click — and every 1px twitch on a card — into a drag that fires a real structural write. */
+const DRAG_THRESHOLD_PX = 5;
 
 /**
  * Imperatively pans/zooms the viewport to a focused node (OQ-5). Rendered inside <ReactFlow>, so it
@@ -65,6 +84,28 @@ function CameraController({
   return null;
 }
 
+/**
+ * The drag's drop point in FLOW coordinates — i.e. where the CURSOR was released, projected into the
+ * same space laneLayout emits. Returns null when the event carries no pointer coords (a synthetic or
+ * keyboard-driven drag), so the caller can fall back to the node's own position.
+ *
+ * `screenToFlowPosition` is the v11.11 name; `project` is the older one. We accept either so the
+ * canvas doesn't silently lose cursor targeting on a React Flow bump (it would fall back to the
+ * corner probe and re-introduce the asymmetric hit-test).
+ */
+function cursorFlowPoint(
+  event: unknown,
+  rf: { screenToFlowPosition?: (p: XYPosition) => XYPosition; project?: (p: XYPosition) => XYPosition },
+): XYPosition | null {
+  const e = event as { clientX?: number; clientY?: number; changedTouches?: ArrayLike<Touch> };
+  const touch = e?.changedTouches?.[0];
+  const x = e?.clientX ?? touch?.clientX;
+  const y = e?.clientY ?? touch?.clientY;
+  if (typeof x !== 'number' || typeof y !== 'number') return null;
+  const toFlow = rf.screenToFlowPosition ?? rf.project;
+  return toFlow ? toFlow({ x, y }) : null;
+}
+
 function PlanCanvasInner(props: PlanCanvasProps) {
   const {
     layout,
@@ -82,12 +123,15 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     onMoveChapter,
     onMoveScene,
     onMoveArc,
+    busy,
   } = props;
 
   // H5: a node kind is draggable only when its move handler is wired (else the canvas is read-only).
-  const canDragChapter = !!onMoveChapter;
-  const canDragScene = !!onMoveScene;
-  const canDragArc = !!onMoveArc;
+  // A move already in flight freezes ALL dragging — the layout under the cursor is about to be
+  // replaced by server truth, so a second drag would be aimed at stale lanes.
+  const canDragChapter = !!onMoveChapter && !busy;
+  const canDragScene = !!onMoveScene && !busy;
+  const canDragArc = !!onMoveArc && !busy;
   const canDrag = canDragChapter || canDragScene || canDragArc;
 
   const rfNodes = useMemo<Node[]>(() => {
@@ -120,6 +164,17 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     return [...laneNodes, ...contentNodes];
   }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter]);
 
+  // RF's live node list. It exists ONLY so a drag can move the card under the cursor (see the header:
+  // a controlled `nodes` prop with no onNodesChange never updates the store, so nothing moves). It is
+  // reset from `rfNodes` — i.e. from laneLayout — on every layout change and at every drag stop, so
+  // laneLayout remains the single source of resting position and RF can never invent one.
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  useEffect(() => {
+    setNodes(rfNodes);
+  }, [rfNodes, setNodes]);
+
+  const rf = useReactFlow();
+
   const rfEdges = useMemo<Edge[]>(
     () =>
       edges.map((e) => ({
@@ -147,57 +202,67 @@ function PlanCanvasInner(props: PlanCanvasProps) {
 
   const onPaneClick = useCallback(() => onSelect(null), [onSelect]);
 
-  // H5 drop routing (pure hit-tests; React Flow snaps the card back on the next controlled render
-  // whenever the drop is a no-op):
-  //   • CHAPTER (Row-1) → the LEAF lane it landed in (leafLaneAtY). A DIFFERENT leaf arc rebinds it;
-  //     its own lane / a non-leaf gap / the tray is a no-op.
-  //   • SCENE (Row-4) → the CHAPTER card it landed on (chapterAtPoint). The controller decides
-  //     whether that's a real move (it owns the scene's current parent + version for OCC); a drop on
-  //     no chapter is a no-op.
-  //   • ARC BAND (Row-2) → the band it landed on (bandAtY, innermost). The controller decides
-  //     nest-vs-sibling (it holds the shell's parent_id + rank). Dropping on itself is a no-op.
+  // H5 drop routing. The drop point is the CURSOR in flow coordinates — see the file header for why
+  // the dragged node's corner is the wrong probe. Routing by kind:
+  //   • CHAPTER (Row-1) → the LEAF lane the cursor is over (leafLaneAtY). A DIFFERENT leaf arc
+  //     rebinds it; its own lane / a non-leaf gap / off-canvas is a no-op.
+  //   • SCENE (Row-4) → the CHAPTER card under the cursor (chapterAtPoint). The controller decides
+  //     whether that's a real move (it owns the scene's parent + version for OCC).
+  //   • ARC BAND (Row-2) → the band under the cursor (bandAtY, innermost). The controller decides
+  //     nest-vs-sibling (it holds the shell's parent_id + rank). Its own band is a no-op.
+  // Whatever we decide, the node list is RESET from laneLayout: on a no-op that's the snap-back, and
+  // on a real move it holds the resting position until the refetch re-places the card for real.
   const onNodeDragStop = useCallback<NodeDragHandler>(
-    (_, node) => {
-      // Bands carry the `lane:` prefix and are NOT in layout.nodes (they're the background layer).
-      if (node.id.startsWith(LANE_NODE_PREFIX)) {
-        if (!onMoveArc) return;
-        const arcId = node.id.slice(LANE_NODE_PREFIX.length);
-        const target = bandAtY(layout.lanes, node.position.y);
-        if (target && target.id !== arcId) onMoveArc(arcId, target.id);
-        return;
-      }
-      const np = layout.nodes.find((p) => p.id === node.id);
-      if (!np) return;
-      const { x, y } = node.position;
-      if (np.shape === 'chapter') {
-        if (!onMoveChapter) return;
-        const target = leafLaneAtY(layout.lanes, y);
-        if (target && target.id !== np.laneId) onMoveChapter(node.id, target.id);
-        return;
-      }
-      if (np.shape === 'scene') {
-        if (!onMoveScene) return;
-        const target = chapterAtPoint(layout.nodes, x, y);
-        if (target) onMoveScene(node.id, target.id);
+    (event, node) => {
+      const drop = cursorFlowPoint(event, rf) ?? node.position;
+      try {
+        // Bands carry the `lane:` prefix and are NOT in layout.nodes (they're the background layer).
+        if (node.id.startsWith(LANE_NODE_PREFIX)) {
+          if (!onMoveArc) return;
+          const arcId = node.id.slice(LANE_NODE_PREFIX.length);
+          const target = bandAtY(layout.lanes, drop.y);
+          if (target && target.id !== arcId) onMoveArc(arcId, target.id);
+          return;
+        }
+        const np = layout.nodes.find((p) => p.id === node.id);
+        if (!np) return;
+        if (np.shape === 'chapter') {
+          if (!onMoveChapter) return;
+          const target = leafLaneAtY(layout.lanes, drop.y);
+          if (target && target.id !== np.laneId) onMoveChapter(node.id, target.id);
+          return;
+        }
+        if (np.shape === 'scene') {
+          if (!onMoveScene) return;
+          const target = chapterAtPoint(layout.nodes, drop.x, drop.y);
+          if (target) onMoveScene(node.id, target.id);
+        }
+      } finally {
+        setNodes(rfNodes); // snap back to laneLayout truth (RF only ever owned the drag offset)
       }
     },
-    [onMoveChapter, onMoveScene, onMoveArc, layout],
+    [onMoveChapter, onMoveScene, onMoveArc, layout, rf, rfNodes, setNodes],
   );
 
   return (
     <div className="h-full w-full">
       <ReactFlow
-        nodes={rfNodes}
+        nodes={nodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
+        // Without onNodesChange a controlled RF never applies a drag to its store — the card would
+        // not move under the cursor at all (H5's live-caught bug #1). See the file header.
+        onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
         onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
         // React Flow v11: a per-node `draggable:true` does NOT override a global
         // `nodesDraggable={false}` (it only gates DOWN). So enable dragging globally when a move
-        // handler is wired, and let the per-node `draggable` flag (chapters true, bands/scenes/
-        // rollups false) select WHAT drags. Read-only canvas ⇒ canDrag false ⇒ nothing draggable.
+        // handler is wired, and let the per-node `draggable` flag (chapters/scenes true, bands via
+        // their header handle, rollups false) select WHAT drags. Read-only ⇒ nothing draggable.
         nodesDraggable={canDrag}
+        // RF's default is 0 — every click would be a 0px "drag" and every twitch a structural write.
+        nodeDragThreshold={DRAG_THRESHOLD_PX}
         nodesConnectable={false}
         elementsSelectable={false}
         fitView

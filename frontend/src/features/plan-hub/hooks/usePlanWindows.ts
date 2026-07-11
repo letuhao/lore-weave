@@ -34,6 +34,19 @@ export interface PlanWindowsResult {
   chapterHasMore: Record<string, boolean>;
   /** Fetch the next scene page of an expanded chapter's branch. */
   loadMoreChapter: (chapterId: string) => void;
+  /**
+   * H5 — re-fetch the FIRST page of every currently-loaded window. THE moves (chapter→lane,
+   * scene→chapter) mutate `structure_node_id` / `parent_id` / `version` on rows that live in THESE
+   * slices, and these slices are hand-rolled state, NOT react-query: a
+   * `qc.invalidateQueries(['plan-hub'])` refreshes the arc shell but CANNOT reach them. Without this
+   * the moved card keeps its pre-move lane/parent forever (the write looks silently ignored), and its
+   * stale `version` 412s the very next move of the same node. Callers invoke it alongside the
+   * invalidate on every move settle.
+   *
+   * Refetching page 1 (not every loaded page) resets a deep-scrolled lane to its first page; the
+   * cursor comes back with it, so scrolling re-earns the rest. Truthful over clever.
+   */
+  reload: () => void;
   loading: boolean;
   error: string | null;
 }
@@ -156,6 +169,19 @@ export function usePlanWindows(
     [chapterSlices, fetchChapter],
   );
 
+  // Which windows are loaded RIGHT NOW, for reload(). A ref (not the state) so `reload` keeps a
+  // stable identity — it lands in the move mutations' onSettled, and a new identity there would
+  // re-create every mutation on each page load.
+  const loadedRef = useRef<{ arcs: string[]; chapters: string[] }>({ arcs: [], chapters: [] });
+  useEffect(() => {
+    loadedRef.current = { arcs: Object.keys(arcSlices), chapters: Object.keys(chapterSlices) };
+  }, [arcSlices, chapterSlices]);
+
+  const reload = useCallback(() => {
+    for (const arcId of loadedRef.current.arcs) void fetchArc(arcId, null);
+    for (const chapterId of loadedRef.current.chapters) void fetchChapter(chapterId, null);
+  }, [fetchArc, fetchChapter]);
+
   const windows = useMemo(() => {
     const out: WindowNode[] = [];
     for (const s of Object.values(arcSlices)) out.push(...s.items.map(toWindowNode));
@@ -192,6 +218,7 @@ export function usePlanWindows(
     chapterLoading,
     chapterHasMore,
     loadMoreChapter,
+    reload,
     loading,
     error,
   };

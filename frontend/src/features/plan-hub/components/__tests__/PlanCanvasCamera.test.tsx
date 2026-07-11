@@ -10,17 +10,24 @@ import { describe, expect, it, vi } from 'vitest';
 
 const setCenter = vi.fn();
 
-vi.mock('reactflow', () => ({
-  __esModule: true,
-  default: ({ children }: { children?: ReactNode }) => <div data-testid="rf">{children}</div>,
-  Background: () => null,
-  Controls: () => null,
-  ReactFlowProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  useReactFlow: () => ({ setCenter }),
-  MarkerType: { ArrowClosed: 'arrowclosed' },
-  Position: { Left: 'left', Right: 'right' },
-  Handle: () => null,
-}));
+vi.mock('reactflow', async () => {
+  const React = await import('react');
+  return {
+    __esModule: true,
+    default: ({ children }: { children?: ReactNode }) => <div data-testid="rf">{children}</div>,
+    Background: () => null,
+    Controls: () => null,
+    ReactFlowProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    useReactFlow: () => ({ setCenter, screenToFlowPosition: (p: unknown) => p }),
+    useNodesState: (initial: unknown[]) => {
+      const [nodes, setNodes] = React.useState(initial);
+      return [nodes, setNodes, vi.fn()];
+    },
+    MarkerType: { ArrowClosed: 'arrowclosed' },
+    Position: { Left: 'left', Right: 'right' },
+    Handle: () => null,
+  };
+});
 
 import { PlanCanvas } from '../PlanCanvas';
 import type { LaneLayout, PlanCanvasProps } from '../../types';

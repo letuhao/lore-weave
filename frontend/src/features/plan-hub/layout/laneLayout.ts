@@ -400,6 +400,11 @@ export function laneLayout(
  * saga/parent can't own a chapter directly), so a drop over a non-leaf-only region returns null.
  * Leaf bands never overlap each other (they stack), so there is at most one hit. Pure + headless —
  * the whole drag hit-test is unit-testable without React Flow.
+ *
+ * A COLLAPSED lane (or one under a collapsed ancestor) is deliberately still a valid target: binding
+ * a chapter to a collapsed arc is a legitimate move, and the card correctly folds into that arc's
+ * rollup — the count on the rollup is where it went. Refusing the drop would break the common
+ * "file this chapter into that (collapsed) arc" gesture.
  */
 export function leafLaneAtY(lanes: LaneBand[], y: number): LaneBand | null {
   for (const lane of lanes) {

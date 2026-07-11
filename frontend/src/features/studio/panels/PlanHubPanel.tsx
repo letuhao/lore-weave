@@ -95,6 +95,7 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onMoveChapter={view.moveChapterToArc}
           onMoveScene={view.moveSceneToChapter}
           onMoveArc={view.moveArcTo}
+          busy={view.moving}
         />
         {/* A failed move (incl. the 412 "changed elsewhere — reloaded" OCC recovery) is surfaced,
             never swallowed — the canvas has already re-synced from the server underneath it. */}
