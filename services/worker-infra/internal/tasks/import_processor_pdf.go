@@ -177,7 +177,10 @@ RETURNING id
 			return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("insert revision: %w", err)
 		}
 		if _, err := tx.Exec(ctx,
-			`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
+			// WS-0.3 (spec §3.2): same as import_processor.go — worker-infra writes
+			// book-service's chapters table directly and must set the KG pointer, else
+			// PDF-imported books never reach the knowledge graph.
+			`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, kg_indexed_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
 			chapterID, importRevID); err != nil {
 			tx.Rollback(ctx)
 			return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("publish imported chapter: %w", err)

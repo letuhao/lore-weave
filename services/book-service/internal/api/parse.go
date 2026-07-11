@@ -288,7 +288,9 @@ RETURNING id
 			// `last_parsed_revision_id IS DISTINCT FROM published_revision_id`
 			// predicate, so it is never needlessly re-swept.
 			if _, err := tx.Exec(r.Context(),
-				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
+				// WS-0.3: a freshly-imported chapter is never kg_exclude'd (column defaults
+				// false), so the pointer is set unconditionally here.
+				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, kg_indexed_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
 				chapterID, importRevID); err != nil {
 				tx.Rollback(r.Context())
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",

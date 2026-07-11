@@ -301,7 +301,12 @@ RETURNING id
 				return count, fmt.Errorf("insert revision: %w", err)
 			}
 			if _, err := tx.Exec(ctx,
-				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
+				// WS-0.3 (spec §3.2): worker-infra writes book-service's `chapters` table
+				// DIRECTLY — a second service in the blast radius. It must set the KG pointer
+				// too, or every book imported through the async worker becomes invisible to
+				// the re-keyed reparse sweeper and never enters the knowledge graph.
+				// A freshly-imported chapter is never kg_exclude'd (column defaults false).
+				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, kg_indexed_revision_id=$2, last_parsed_revision_id=$2 WHERE id=$1`,
 				chapterID, importRevID); err != nil {
 				tx.Rollback(ctx)
 				return count, fmt.Errorf("publish imported chapter: %w", err)

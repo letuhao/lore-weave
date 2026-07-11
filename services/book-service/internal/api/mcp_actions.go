@@ -578,8 +578,14 @@ INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_use
 VALUES($1,$2,$3,'publish',$4) RETURNING id`, chID, body, format, caller).Scan(&revID); err != nil {
 		return uuid.Nil, reparseCounts{}, err
 	}
+	// WS-0.3: publish also advances the KG pointer, so today's behavior (publish ⇒
+	// indexed) is preserved exactly under the re-keyed sweeper. kg_exclude is
+	// PRODUCER-side authoritative (spec §3.7): when the user has asked to keep this
+	// chapter out of their knowledge graph, publishing it must NOT drag it back in,
+	// so we leave the pointer untouched.
 	if _, err := tx.Exec(ctx, `
 UPDATE chapters SET editorial_status='published', published_revision_id=$2,
+  kg_indexed_revision_id=CASE WHEN kg_exclude THEN kg_indexed_revision_id ELSE $2 END,
   draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1`, chID, revID); err != nil {
 		return uuid.Nil, reparseCounts{}, err
 	}

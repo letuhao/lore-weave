@@ -2391,8 +2391,12 @@ VALUES($1,$2,$3,'publish',$4) RETURNING id
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to snapshot revision")
 		return
 	}
+	// WS-0.3: publish also advances the KG pointer (see mcp_actions.go for the full
+	// rationale). kg_exclude is producer-side authoritative — publishing a chapter the
+	// user excluded from their knowledge graph must not silently re-index it.
 	if _, err := tx.Exec(r.Context(), `
 UPDATE chapters SET editorial_status='published', published_revision_id=$2,
+       kg_indexed_revision_id=CASE WHEN kg_exclude THEN kg_indexed_revision_id ELSE $2 END,
        draft_revision_count=draft_revision_count+1, updated_at=now()
 WHERE id=$1`, chID, revID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")

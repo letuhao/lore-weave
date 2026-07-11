@@ -389,7 +389,15 @@ RETURNING id
 			return
 		}
 		if _, err := tx.Exec(r.Context(),
-			`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2 WHERE id=$1`,
+			// WS-0.3 — THE dangerous writer (spec §3.2). This site auto-publishes WITHOUT
+			// setting last_parsed_revision_id and inserts no scenes rows: it relies entirely
+			// on the reparse sweeper to index it later. Once the sweeper is re-keyed onto
+			// kg_indexed_revision_id (WS-0.5), a bulk-imported book that never got the
+			// pointer would be INVISIBLE TO THE SWEEPER FOREVER → scenes never parsed →
+			// extraction_leaves has no scene to key on → KG extraction silently degrades.
+			// The WS-0.2 migration backfill hides this on existing books, so a smoke test
+			// on today's corpus would pass while every FUTURE import is broken.
+			`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2, kg_indexed_revision_id=$2 WHERE id=$1`,
 			chapterID, importRevID); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", fmt.Sprintf("publish chapter: %v", err))
 			return
