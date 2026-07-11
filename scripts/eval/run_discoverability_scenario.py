@@ -109,6 +109,15 @@ MAX_RESUMES_PER_TURN = int(os.environ.get("QG_MAX_RESUMES", "16"))
 # committing endpoint AND resumes. To fully apply a workflow headlessly we do the same:
 # commit the token, then resume. Domain -> committing endpoint (reachable in-container).
 AUTO_COMMIT = os.environ.get("QG_AUTO_COMMIT", "1") != "0"
+# Simulate the FE's auto-rendered confirm card (AssistantMessage.tsx): a class-C propose
+# tool mints a confirm_token in its RESULT, and the real GUI auto-renders an approve card
+# from that AUTHENTIC token EVEN IF the model never calls (or corrupts) the confirm tool —
+# "so a GUI-only user can approve, independent of the model." A headless driver has no such
+# net, so it UNDER-counts real-GUI success. With this on, at end of turn we commit any
+# minted-but-unconfirmed live token (= the user clicking the auto-card in a warm pass) to
+# measure the TRUE product success rate, not just the agent's tool-following. Off by default
+# (measures the agent); on to measure what a real user would experience.
+SIM_AUTORENDER = os.environ.get("QG_SIM_AUTORENDER", "0") != "0"
 _COMMIT_URLS = {
     "glossary": os.environ.get("QG_GLOSSARY_URL", "http://glossary-service:8088")
     + "/v1/glossary/actions/confirm",
@@ -372,6 +381,8 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
                 rec["resumed"] = "committed"
                 rec["ok"] = True                 # it applied — count it as effectful
                 rec["result"] = {"confirmed": True, "domain": _domain}
+                if carry is not None:
+                    carry.setdefault("committed", set()).add(confirm_token)
             else:
                 resume_body["outcome"] = "dismissed"
                 rec["resumed"] = "commit_failed"
@@ -386,6 +397,18 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
                 _drain(r2)
         except Exception:
             break
+
+    # Auto-render safety net (see SIM_AUTORENDER): the real GUI renders an approve card
+    # from any propose result's AUTHENTIC token even if the model never called confirm.
+    # In a warm pass the user clicks it → the effect lands. Replicate that so the headless
+    # rate reflects the real product, not just the agent's tool-following.
+    if SIM_AUTORENDER and carry is not None:
+        tok = carry.get("last_confirm_token")
+        committed = carry.setdefault("committed", set())
+        if tok and tok not in committed:
+            if _commit_domain_confirm(c, "glossary", tok):
+                committed.add(tok)
+                st["autorender_committed"] = st.get("autorender_committed", 0) + 1
 
     budget = st["budget"]
     text_parts = st["text_parts"]
