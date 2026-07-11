@@ -227,6 +227,8 @@ async def lifespan(app: FastAPI):
             handle_chat_turn,
             handle_chapter_published,
             handle_chapter_unpublished,
+            handle_chapter_kg_indexed,
+            handle_chapter_kg_excluded,
             handle_chapter_scenes_reparsed,
             handle_chapter_deleted,
             handle_chat_message_feedback,
@@ -250,6 +252,27 @@ async def lifespan(app: FastAPI):
         # handler was dropped); statistics-service still consumes it separately.
         dispatcher.register("chapter.published", handle_chapter_published)
         dispatcher.register("chapter.unpublished", handle_chapter_unpublished)
+        # WS-0.8 (spec 2026-07-11-publish-independent-kg-indexing §3.7/§3.8) — publishing
+        # no longer gates the knowledge graph. These two registrations are what make the
+        # feature EXIST: the dispatcher drops an unregistered event_type at DEBUG level,
+        # so without them book-service commits the pointer, re-parses the scenes, returns
+        # 200, the UI shows "indexed" — and the event is acked into the void. No
+        # extraction_pending row, no passages, nothing in the graph. A perfect silent
+        # success.
+        #
+        #   chapter.kg_indexed  — the user added a (possibly DRAFT) chapter to their KG.
+        #                         Mirrors chapter.published's two writes, but stamps
+        #                         passage canon = (revision_id == published_revision_id),
+        #                         so draft prose never becomes canon (§3.7 / P1-8).
+        #   chapter.kg_excluded — the user retracted a chapter ("forget this"). This is
+        #                         the retraction path that chapter.unpublished used to
+        #                         perform; unpublish is now an EDITORIAL act that must
+        #                         NOT destroy the user's index (§3.8 / acceptance #9).
+        #
+        # chapter.saved stays UNREGISTERED (see above): indexing is an explicit act,
+        # autosave is not.
+        dispatcher.register("chapter.kg_indexed", handle_chapter_kg_indexed)
+        dispatcher.register("chapter.kg_excluded", handle_chapter_kg_excluded)
         # IX-10 (spec 26 / RB-5) — book-service re-parsed a chapter's index
         # (publish path or sweeper); invalidate this book's extraction cache so
         # the graph re-derives from the fresh scenes (the F6 endpoint's logic,

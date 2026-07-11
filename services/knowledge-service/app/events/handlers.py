@@ -34,6 +34,8 @@ __all__ = [
     "handle_chat_message_feedback",
     "handle_chapter_published",
     "handle_chapter_unpublished",
+    "handle_chapter_kg_indexed",
+    "handle_chapter_kg_excluded",
     "handle_chapter_scenes_reparsed",
     "handle_chapter_deleted",
     "handle_glossary_entity_updated",
@@ -133,26 +135,38 @@ async def handle_chat_message_feedback(event: EventData, *, pool: asyncpg.Pool) 
         )
 
 
-async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> None:
-    """Canon Model CM3b/CM3c — chapter.published handler (canon = published).
+async def _index_chapter_into_kg(
+    event: EventData,
+    *,
+    pool: asyncpg.Pool,
+    source_event: str,
+    canon: bool,
+) -> None:
+    """The ONE per-chapter incremental KG-entry path, shared by chapter.published
+    (CM3b/CM3c) and chapter.kg_indexed (WS-0.8).
 
-    Two canon writes, both pinned to the PUBLISHED revision (NOT the live
-    draft), so only author-published content is canonized:
-      1. **Graph (Pass-2):** queue `extraction_pending` (keep-LATEST re-arm);
-         the worker-ai coalescing drainer (scope='chapters_pending') drains it,
-         fetches each chapter's revision text (CM3a), and extracts.
-      2. **CM3c — passages (L3 semantic):** ingest `:Passage` nodes from the
-         pinned revision text (moved here from `chapter.saved`). Best-effort,
-         inline (same cost profile as the old save-time ingest). On a transient
-         revision-fetch failure existing passages are kept (not wiped).
+    Two writes, both pinned to the revision the event names (NEVER the live draft):
+      1. **Graph (Pass-2):** queue `extraction_pending` (keep-LATEST re-arm); the
+         worker-ai coalescing drainer (scope='chapters_pending') drains it, fetches
+         each chapter's revision text (CM3a), and extracts.
+      2. **Passages (L3 semantic):** ingest `:Passage` nodes from the pinned revision
+         text. Best-effort, inline. A transient revision-fetch failure keeps existing
+         passages rather than wiping them.
 
-    Re-publish RE-ARMS the chapter at the new revision (keep-LATEST via
-    `upsert_chapter_pending`; passages delete-first → self-heal). Payload:
-    {book_id, chapter_id, revision_id}. Resolves project via book_id; skips
-    if the book has no knowledge project.
+    Re-publishing OR re-indexing RE-ARMS the chapter at the new revision (keep-LATEST
+    via `upsert_chapter_pending`; passages delete-first → self-heal). The upsert keys on
+    (project_id, event_id=chapter_id), so an index→publish→re-index sequence collapses to
+    ONE row armed at the newest revision — exactly what we want.
 
-    NOTE: graph-job creation is worker-side (it resolves the extraction model
-    config via run_snapshot); this handler only enqueues the graph work.
+    `canon` is the caller's call, and it is NOT the same question as "did this event
+    fire" (spec §3.7 / P1-8):
+      - chapter.published  ⇒ the pinned revision IS the published revision ⇒ canon=True
+      - chapter.kg_indexed ⇒ canon = (revision_id == published_revision_id), so a DRAFT
+        chapter the user indexed gets canon=False passages. Draft prose must not surface
+        as canon — raw_search maintains a deliberate draft/canon split.
+
+    NOTE: graph-job creation is worker-side (it resolves the extraction model config via
+    run_snapshot); this handler only enqueues the graph work.
     """
     payload = event.payload
     book_id = _uuid(payload.get("book_id"))
@@ -161,19 +175,19 @@ async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> N
 
     if not chapter_id or book_id is None:
         logger.warning(
-            "chapter.published missing chapter_id or book_id: %s", event.message_id
+            "%s missing chapter_id or book_id: %s", source_event, event.message_id
         )
         return
     if revision_id is None:
         logger.warning(
-            "chapter.published missing revision_id: %s — cannot pin canon revision",
-            event.message_id,
+            "%s missing revision_id: %s — cannot pin the revision to extract",
+            source_event, event.message_id,
         )
         return
 
     chapter_uuid = _uuid(chapter_id)
     if chapter_uuid is None:
-        logger.warning("chapter.published non-UUID chapter_id: %s", chapter_id)
+        logger.warning("%s non-UUID chapter_id: %s", source_event, chapter_id)
         return
 
     # Pull embedding config alongside project/user so the passage ingester
@@ -187,7 +201,7 @@ async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> N
     )
     if project_row is None:
         logger.debug(
-            "No knowledge project for book %s — skipping chapter.published", book_id
+            "No knowledge project for book %s — skipping %s", book_id, source_event
         )
         return
 
@@ -196,17 +210,17 @@ async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> N
     embedding_model = project_row["embedding_model"]
     embedding_dim = project_row["embedding_dimension"]
 
-    # 1. Graph (Pass-2): queue first — fast + the critical canon path.
+    # 1. Graph (Pass-2): queue first — fast + the critical path.
     repo = ExtractionPendingRepo(pool)
     await repo.upsert_chapter_pending(
-        user_id, project_id, chapter_uuid, revision_id,
+        user_id, project_id, chapter_uuid, revision_id, event_type=source_event,
     )
     logger.info(
-        "CM3b: chapter.published queued for extraction: chapter=%s revision=%s project=%s",
-        chapter_id, revision_id, project_id,
+        "%s queued for extraction: chapter=%s revision=%s project=%s canon=%s",
+        source_event, chapter_id, revision_id, project_id, canon,
     )
 
-    # 2. CM3c — passages (L3): ingest from the pinned revision. Best-effort.
+    # 2. Passages (L3): ingest from the pinned revision. Best-effort.
     await _ingest_published_passages(
         book_id=book_id,
         chapter_uuid=chapter_uuid,
@@ -216,6 +230,51 @@ async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> N
         embedding_model=embedding_model,
         embedding_dim=embedding_dim,
         pool=pool,
+        canon=canon,
+    )
+
+
+async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """Canon Model CM3b/CM3c — chapter.published handler.
+
+    A thin wrapper over the shared path. The pinned revision IS the published revision
+    by construction, so its passages are canon. Behavior is unchanged by WS-0.8.
+    """
+    await _index_chapter_into_kg(
+        event, pool=pool, source_event="chapter.published", canon=True,
+    )
+
+
+async def handle_chapter_kg_indexed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """WS-0.8 — chapter.kg_indexed handler ("the user added this chapter to their
+    knowledge graph").
+
+    Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.7.
+
+    WITHOUT THIS HANDLER THE WHOLE FEATURE IS A SILENT NO-OP: book-service commits the
+    pointer, re-parses the scenes, reports success, and shows the chapter as indexed —
+    and the event arrives here, matches no registration, gets logged at DEBUG, and is
+    acked into the void. No extraction_pending row, so worker-ai's incremental drain
+    enumerates nothing; no passages, so the chapter is invisible to L3 retrieval and to
+    chat grounding. The UI says "indexed"; the graph has nothing.
+
+    Payload: {book_id, chapter_id, revision_id, published_revision_id}. It is the SAME
+    shape chapter.published carries plus published_revision_id, which is what lets us
+    stamp the canon flag without calling back into book-service.
+
+    canon = (revision_id == published_revision_id) — spec §3.7 / P1-8. A never-published
+    chapter carries published_revision_id=null, so its passages ingest as canon=False.
+    Draft prose must NOT become canon passages.
+
+    We deliberately do NOT register chapter.saved (main.py says why: "so unreviewed draft
+    prose never canonizes"). Indexing is an explicit act; autosave is not.
+    """
+    published_rev = _uuid(event.payload.get("published_revision_id"))
+    revision_id = _uuid(event.payload.get("revision_id"))
+    canon = published_rev is not None and published_rev == revision_id
+
+    await _index_chapter_into_kg(
+        event, pool=pool, source_event="chapter.kg_indexed", canon=canon,
     )
 
 
@@ -229,13 +288,20 @@ async def _ingest_published_passages(
     embedding_model: str | None,
     embedding_dim: int | None,
     pool: asyncpg.Pool | None = None,
+    canon: bool = True,
 ) -> None:
-    """CM3c — ingest L3 passages for a published chapter at its pinned revision.
+    """CM3c — ingest L3 passages for a chapter at its pinned revision.
 
     Extracted from `handle_chapter_published` for testability. No C12a
-    chapter_range scope-gate (publish is an explicit per-chapter canon action →
+    chapter_range scope-gate (publish/index is an explicit per-chapter action →
     always ingest). Wholly best-effort: every failure path is non-fatal so the
     graph-queue (already written) is never blocked.
+
+    WS-0.8 — `canon` is now a PARAMETER, not an assumption. It defaults True (the
+    publish path, where the pinned revision IS the published revision). The
+    chapter.kg_indexed path passes `canon = (revision_id == published_revision_id)`,
+    so a DRAFT chapter the user indexed ingests as canon=False (spec §3.7 / P1-8) —
+    draft prose must not surface as canon in raw_search's `surface=canon` reads.
     """
     if not embedding_model or not embedding_dim:
         logger.debug(
@@ -283,6 +349,10 @@ async def _ingest_published_passages(
                 embedding_model=embedding_model,
                 embedding_dim=embedding_dim,
                 revision_id=revision_id,
+                # WS-0.8 (spec §3.7 / P1-8): canon = (revision_id == published_revision_id),
+                # decided by the caller. A draft chapter the user indexed ingests as
+                # canon=False — draft prose must not surface in `surface=canon` reads.
+                canon=canon,
                 # Transient pinned-revision-fetch failure must NOT wipe canon
                 # passages (R3-WARN#1) — keep what we have.
                 delete_stale_on_missing=False,
@@ -399,21 +469,31 @@ async def handle_translation_published(event: EventData, *, pool: asyncpg.Pool) 
 
 
 async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) -> None:
-    """Canon Model CM3b/CM3c — chapter.unpublished handler.
+    """chapter.unpublished — WS-0.8 REWRITE. It no longer retracts the knowledge graph.
 
-    Retracts the chapter's extracted canon from BOTH layers (canon=published
-    symmetry — unpublish removes what publish added):
-      - **Graph:** `remove_evidence_for_source` (decrements the per-target
-        evidence counter properly — unlike chapter.deleted's raw DETACH DELETE),
-        so re-publishing later cleanly re-extracts. Closes D-CM1-UNPUBLISH-RETRACT.
-      - **CM3c — passages (L3):** `delete_passages_for_source` so the semantic
-        index doesn't retain published-era passages after unpublish.
-    Zero-evidence orphans are swept by the periodic reconcile job, not here.
-    Both retracts are INDEPENDENT best-effort steps (own try) so one failing
-    doesn't suppress the other (R3-WARN#2).
+    Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.8 (red-team P1-9),
+    RUN-STATE D-R5.
 
-    Also drops any unprocessed pending row for the chapter so a queued-but-
-    not-yet-drained extraction doesn't re-canonize it.
+    ── What changed and why ──
+    This handler used to delete the chapter's facts AND its passages AND its pending row,
+    on the old `canon = published` symmetry ("unpublish removes what publish added").
+
+    That symmetry is gone. `publish` now means only "this is the canonical/shareable
+    version"; membership of the knowledge graph is decided by `kg_indexed_revision_id`.
+    So a user who clicked "Add to knowledge" and LATER unpublished for ordinary editorial
+    reasons would have SILENTLY LOST their knowledge graph for that chapter — while
+    book-service still (correctly) reports it as indexed. Retraction is `kg_exclude`'s
+    job now, and it has its own event + handler (`handle_chapter_kg_excluded`).
+
+    ── What it does instead ──
+    The chapter STAYS in the graph (facts, pending row, passages all survive), but it is
+    no longer canonical, so its passages are DEMOTED to `canon=False`. Deleting them
+    would destroy the user's index; leaving them `canon=True` would let unpublished prose
+    keep surfacing in `surface=canon` reads. Demotion is the only option that honours
+    both invariants (§3.7 + §3.8).
+
+    Best-effort: a demotion failure is non-fatal and self-heals on the next
+    publish/index, which re-ingests with the correct flag.
     """
     payload = event.payload
     book_id = _uuid(payload.get("book_id"))
@@ -438,8 +518,88 @@ async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) ->
     project_id = project_row["project_id"]
     user_id = project_row["user_id"]
 
-    # Drop any unprocessed pending row so a not-yet-drained publish doesn't
-    # re-canonize after unpublish (scoped by user for defense-in-depth).
+    from app.config import settings
+    if not settings.neo4j_uri:
+        return
+
+    # Demote — do NOT delete. The index request survives an editorial unpublish.
+    try:
+        from app.db.neo4j import neo4j_session
+        from app.db.neo4j_repos.passages import set_canon_for_source
+
+        async with neo4j_session() as session:
+            demoted = await set_canon_for_source(
+                session,
+                user_id=str(user_id),
+                source_type="chapter",
+                source_id=str(chapter_id),
+                canon=False,
+            )
+        logger.info(
+            "WS-0.8: chapter.unpublished DEMOTED passages to canon=false (index request "
+            "preserved): chapter=%s project=%s passages_demoted=%d",
+            chapter_id, project_id, demoted,
+        )
+    except Exception:
+        logger.warning(
+            "WS-0.8: chapter.unpublished canon demotion failed for chapter=%s project=%s "
+            "— non-fatal (self-heals on the next publish/index)",
+            chapter_id, project_id, exc_info=True,
+        )
+
+
+async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """WS-0.8 — chapter.kg_excluded ("keep this chapter OUT of my knowledge graph").
+
+    Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.8 (red-team P1-7).
+
+    THIS is the retraction path now — the job unpublish used to do. Without it the
+    `kg_exclude` toggle would be a LIE: facts and passages extracted from a chapter the
+    user later marks "forget this" would simply stay in the graph.
+
+    It retracts from BOTH layers, reusing the primitives that already exist and were
+    built for exactly this symmetry:
+      - **Graph:** `remove_evidence_for_natural_key` — drops evidence to 0, so the
+        chapter's nodes become invisible to the `evidence_count >= 1` reads.
+      - **Passages (L3):** `delete_passages_for_source` — the semantic index must not
+        retain prose the user retracted.
+      - **Queue:** deletes any unprocessed `extraction_pending` row, so a queued-but-
+        not-yet-drained extraction cannot re-canonize the chapter after the user
+        excluded it (the race that would otherwise resurrect it minutes later).
+
+    The two Neo4j retracts are INDEPENDENT best-effort steps (own try/except) so one
+    failing cannot suppress the other (R3-WARN#2).
+
+    Zero-evidence orphans are swept by the offline K11.9 reconciler, NOT here: this
+    handler runs in the events consumer, OUTSIDE the one-active-job-per-project
+    extraction lock, so a `cleanup_zero_evidence_nodes` call could race a concurrent
+    same-project extraction and delete an in-flight node in its merge→add_evidence window.
+    """
+    payload = event.payload
+    book_id = _uuid(payload.get("book_id"))
+    chapter_id = event.aggregate_id
+
+    if not chapter_id or book_id is None:
+        logger.warning(
+            "chapter.kg_excluded missing chapter_id or book_id: %s", event.message_id
+        )
+        return
+
+    project_row = await pool.fetchrow(
+        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+        book_id,
+    )
+    if project_row is None:
+        logger.debug(
+            "No knowledge project for book %s — skipping chapter.kg_excluded", book_id
+        )
+        return
+
+    project_id = project_row["project_id"]
+    user_id = project_row["user_id"]
+
+    # Drop any unprocessed pending row FIRST, so an in-flight extraction cannot
+    # re-canonize the chapter the user just excluded.
     await pool.execute(
         """
         DELETE FROM extraction_pending
@@ -484,19 +644,20 @@ async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) ->
                 source_id=str(chapter_id),
             )
         logger.info(
-            "CM3b: chapter.unpublished retracted canon: chapter=%s project=%s "
+            "WS-0.8: chapter.kg_excluded retracted graph evidence: chapter=%s project=%s "
             "evidence_edges_removed=%d",
             chapter_id, project_id, removed,
         )
     except Exception:
         logger.warning(
-            "CM3b: chapter.unpublished retract failed for chapter=%s project=%s — non-fatal",
+            "WS-0.8: chapter.kg_excluded graph retract failed for chapter=%s project=%s "
+            "— non-fatal",
             chapter_id, project_id, exc_info=True,
         )
 
-    # CM3c — passage retract (INDEPENDENT best-effort: a graph-retract failure
-    # above must NOT suppress this, else published-era passages linger in the
-    # semantic index after unpublish — R3-WARN#2).
+    # Passage retract (INDEPENDENT best-effort: a graph-retract failure above must NOT
+    # suppress this, else the user's retracted prose lingers in the semantic index —
+    # R3-WARN#2).
     try:
         from app.db.neo4j import neo4j_session
         from app.db.neo4j_repos.passages import delete_passages_for_source
@@ -509,13 +670,13 @@ async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) ->
                 source_id=str(chapter_id),
             )
         logger.info(
-            "CM3c: chapter.unpublished retracted passages: chapter=%s project=%s "
+            "WS-0.8: chapter.kg_excluded retracted passages: chapter=%s project=%s "
             "passages_deleted=%d",
             chapter_id, project_id, deleted,
         )
     except Exception:
         logger.warning(
-            "CM3c: chapter.unpublished passage retract failed for chapter=%s "
+            "WS-0.8: chapter.kg_excluded passage retract failed for chapter=%s "
             "project=%s — non-fatal",
             chapter_id, project_id, exc_info=True,
         )

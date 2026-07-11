@@ -80,11 +80,15 @@ func (s *Server) indexChapter(ctx context.Context, caller, bookID, chID uuid.UUI
 	var body json.RawMessage
 	var format string
 	var kgExclude bool
+	// publishedRev rides along so the emitted event can carry it: knowledge-service
+	// stamps passage `canon = (revision_id == published_revision_id)` (spec §3.7 / P1-8)
+	// and would otherwise need a cross-service call back to us to decide it.
+	var publishedRev *uuid.UUID
 	err = tx.QueryRow(ctx, `
-SELECT d.draft_version, d.body, d.draft_format, c.kg_exclude
+SELECT d.draft_version, d.body, d.draft_format, c.kg_exclude, c.published_revision_id
 FROM chapter_drafts d JOIN chapters c ON c.id = d.chapter_id
 WHERE d.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
-FOR UPDATE OF d`, chID, bookID).Scan(&curr, &body, &format, &kgExclude)
+FOR UPDATE OF d`, chID, bookID).Scan(&curr, &body, &format, &kgExclude, &publishedRev)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return indexResult{}, errActionTargetGone
 	}
@@ -184,8 +188,17 @@ WHERE id=$1 AND kg_exclude = false`, chID, revID)
 	// (6) The NEW event. Deliberately NOT chapter.saved (which fires on every autosave,
 	// carries only {book_id}, and is deliberately un-consumed by knowledge-service) and
 	// NOT chapter.published (a draft-indexed chapter is not published).
+	//
+	// `published_revision_id` is carried so knowledge-service can stamp passage
+	// `canon = (revision_id == published_revision_id)` (spec §3.7 / P1-8) WITHOUT a
+	// cross-service call back to us. It is nullable: a never-published chapter emits
+	// null, and its passages are correctly ingested as canon=false — draft prose must
+	// not surface as canon.
 	if err := insertOutboxEvent(ctx, tx, "chapter.kg_indexed", chID, map[string]any{
-		"book_id": bookID, "chapter_id": chID, "revision_id": revID,
+		"book_id":               bookID,
+		"chapter_id":            chID,
+		"revision_id":           revID,
+		"published_revision_id": publishedRev,
 	}); err != nil {
 		return indexResult{}, err
 	}

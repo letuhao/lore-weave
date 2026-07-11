@@ -370,6 +370,51 @@ async def set_source_lang_for_source(
     return int(record["tagged"]) if record else 0
 
 
+_SET_CANON_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.source_type = $source_type
+  AND p.source_id = $source_id
+SET p.canon = $canon,
+    p.updated_at = datetime()
+RETURN count(p) AS updated
+"""
+
+
+async def set_canon_for_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_type: str,
+    source_id: str,
+    canon: bool,
+) -> int:
+    """WS-0.8 — flip the `canon` flag on every existing :Passage of one source, WITHOUT
+    re-embedding (a pure property write).
+
+    Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.7/§3.8.
+
+    Needed because publishing and INDEXING are now independent. When a chapter is
+    UNPUBLISHED, it stays in the knowledge graph (its index request survives — §3.8 /
+    acceptance #9), but it is no longer canonical. Deleting its passages would destroy
+    the user's index; leaving them `canon=True` would let unpublished prose keep
+    surfacing in `surface=canon` reads. Demoting them is the only option that honours
+    both invariants.
+
+    Returns the count of passages updated.
+    """
+    result = await run_write(
+        session,
+        _SET_CANON_CYPHER,
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+        canon=canon,
+    )
+    record = await result.single()
+    return int(record["updated"]) if record else 0
+
+
 _GET_SOURCE_STATE_CYPHER = """
 MATCH (p:Passage)
 WHERE p.user_id = $user_id

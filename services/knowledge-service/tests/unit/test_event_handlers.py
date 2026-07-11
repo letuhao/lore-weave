@@ -14,6 +14,8 @@ from app.events.handlers import (
     handle_chat_message_feedback,
     handle_chapter_published,
     handle_chapter_unpublished,
+    handle_chapter_kg_indexed,
+    handle_chapter_kg_excluded,
     handle_chapter_deleted,
     handle_glossary_entity_updated,
     handle_translation_published,
@@ -356,16 +358,235 @@ def _unpublished_event():
     )
 
 
+def _kg_excluded_event():
+    return _event(
+        "chapter.kg_excluded",
+        aggregate_id=str(_CHAPTER),
+        payload={"book_id": str(_BOOK)},
+    )
+
+
+# ── WS-0.8: chapter.kg_indexed — the handler whose ABSENCE made the whole
+#            feature a silent no-op (spec §3.7) ──
+
+
 @pytest.mark.asyncio
-async def test_chapter_unpublished_retracts_graph_and_passages(monkeypatch):
-    """Symmetry: unpublish retracts BOTH the graph evidence AND the L3
-    passages (so the semantic index doesn't keep published-era passages)."""
+async def test_chapter_kg_indexed_queues_extraction(monkeypatch):
+    """THE HEADLINE. An indexed DRAFT chapter must actually enter the graph.
+
+    Without this handler, book-service commits the pointer, re-parses the scenes,
+    returns 200, and the UI shows "indexed" — while the event matches no registration,
+    is logged at DEBUG, and is acked into the void. No extraction_pending row ⇒
+    worker-ai's incremental drain enumerates nothing ⇒ zero facts. The UI says
+    "indexed"; the graph has nothing.
+    """
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": None, "embedding_dimension": None,
+    })
+    upsert = _patch_pending_repo(monkeypatch)
+
+    # A pure DRAFT index: never published.
+    await handle_chapter_kg_indexed(
+        _kg_indexed_event(revision_id=_REVISION, published_revision_id=None), pool=pool,
+    )
+
+    upsert.assert_awaited_once()
+    args = upsert.await_args.args
+    assert args[2] == _CHAPTER and args[3] == _REVISION, (
+        "the extraction must be queued at the INDEXED revision"
+    )
+    # Attributable: the pending row records which event armed it (the repo used to
+    # hardcode 'chapter.published').
+    assert upsert.await_args.kwargs.get("event_type") == "chapter.kg_indexed"
+
+
+@pytest.mark.asyncio
+async def test_chapter_kg_indexed_draft_ingests_passages_as_canon_false(monkeypatch):
+    """Spec §3.7 / P1-8 — the INVERSE bug guard.
+
+    canon = (revision_id == published_revision_id). A DRAFT chapter the user indexed has
+    NO published revision, so its passages must ingest as canon=False. Blindly copying
+    chapter.published's canon=True would surface unreviewed draft prose in every
+    `surface=canon` read — raw_search maintains a deliberate draft/canon split.
+    """
+    ingest = AsyncMock()
+    monkeypatch.setattr("app.events.handlers._ingest_published_passages", ingest)
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    _patch_pending_repo(monkeypatch)
+
+    await handle_chapter_kg_indexed(
+        _kg_indexed_event(revision_id=_REVISION, published_revision_id=None), pool=pool,
+    )
+
+    ingest.assert_awaited_once()
+    assert ingest.await_args.kwargs["canon"] is False, (
+        "a DRAFT chapter's passages must NOT be canon — draft prose must not surface "
+        "as canonical (spec §3.7 / P1-8)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_chapter_kg_indexed_at_the_published_revision_is_canon(monkeypatch):
+    """The other half of the rule: indexing a chapter AT its published revision means
+    the pinned prose IS the canon, so its passages are canon=True."""
+    ingest = AsyncMock()
+    monkeypatch.setattr("app.events.handlers._ingest_published_passages", ingest)
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    _patch_pending_repo(monkeypatch)
+
+    await handle_chapter_kg_indexed(
+        _kg_indexed_event(revision_id=_REVISION, published_revision_id=_REVISION),
+        pool=pool,
+    )
+
+    ingest.assert_awaited_once()
+    assert ingest.await_args.kwargs["canon"] is True
+
+
+@pytest.mark.asyncio
+async def test_chapter_published_still_ingests_as_canon(monkeypatch):
+    """Regression: the publish path is unchanged by the WS-0.8 refactor."""
+    ingest = AsyncMock()
+    monkeypatch.setattr("app.events.handlers._ingest_published_passages", ingest)
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    upsert = _patch_pending_repo(monkeypatch)
+
+    await handle_chapter_published(_published_event(), pool=pool)
+
+    assert ingest.await_args.kwargs["canon"] is True
+    assert upsert.await_args.kwargs.get("event_type") == "chapter.published"
+
+
+def _kg_indexed_event(revision_id=None, published_revision_id=None):
+    payload = {"book_id": str(_BOOK), "chapter_id": str(_CHAPTER)}
+    if revision_id is not None:
+        payload["revision_id"] = str(revision_id)
+    if published_revision_id is not None:
+        payload["published_revision_id"] = str(published_revision_id)
+    return _event(
+        "chapter.kg_indexed", aggregate_id=str(_CHAPTER), payload=payload,
+    )
+
+
+# ── WS-0.8: unpublish NO LONGER retracts (spec §3.8 / acceptance #9 / D-R5) ──
+
+
+@pytest.mark.asyncio
+async def test_chapter_unpublished_does_not_retract_the_knowledge_graph(monkeypatch):
+    """THE D-R5 LOCK. An EDITORIAL unpublish must NOT destroy the user's index.
+
+    Publishing no longer gates the knowledge graph, so the old `canon = published`
+    symmetry ("unpublish removes what publish added") is gone. A user who clicked
+    "Add to knowledge" and later unpublished for ordinary editorial reasons must not
+    silently lose their knowledge graph for that chapter — book-service still (correctly)
+    reports it as indexed. Retraction is kg_exclude's job now.
+
+    Instead the chapter's passages are DEMOTED to canon=False: it is still in the graph,
+    but it is no longer canonical.
+    """
     from contextlib import asynccontextmanager
 
     pool, conn = _mock_pool()
-    pool.fetchrow = AsyncMock(
-        return_value={"project_id": _PROJECT, "user_id": _USER}
+    pool.fetchrow = AsyncMock(return_value={"project_id": _PROJECT, "user_id": _USER})
+
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+
+        @asynccontextmanager
+        async def fake_session():
+            yield MagicMock()
+
+        remove_mock = AsyncMock(return_value=3)
+        delete_mock = AsyncMock(return_value=7)
+        set_canon_mock = AsyncMock(return_value=5)
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
+        )
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
+        )
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.passages.set_canon_for_source", set_canon_mock,
+        )
+
+        await handle_chapter_unpublished(_unpublished_event(), pool=pool)
+
+    remove_mock.assert_not_awaited(), (
+        "unpublish must NOT retract graph evidence — the user's 'add to knowledge' "
+        "request survives an editorial unpublish (spec §3.8 / acceptance #9)"
     )
+    delete_mock.assert_not_awaited(), (
+        "unpublish must NOT delete passages — that would destroy the user's index"
+    )
+    pool.execute.assert_not_awaited(), (
+        "unpublish must NOT drop the pending row — the queued extraction is still wanted"
+    )
+
+    # It DEMOTES instead: still indexed, no longer canonical.
+    set_canon_mock.assert_awaited_once()
+    ck = set_canon_mock.await_args.kwargs
+    assert ck["canon"] is False
+    assert ck["source_type"] == "chapter"
+    assert ck["source_id"] == str(_CHAPTER)
+    assert ck["user_id"] == str(_USER)
+
+
+@pytest.mark.asyncio
+async def test_chapter_unpublished_demotion_failure_is_non_fatal(monkeypatch):
+    """A demotion failure must not raise — it self-heals on the next publish/index."""
+    from contextlib import asynccontextmanager
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={"project_id": _PROJECT, "user_id": _USER})
+
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+
+        @asynccontextmanager
+        async def fake_session():
+            yield MagicMock()
+
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.passages.set_canon_for_source",
+            AsyncMock(side_effect=RuntimeError("neo4j transient")),
+        )
+
+        await handle_chapter_unpublished(_unpublished_event(), pool=pool)  # must not raise
+
+
+# ── WS-0.8: kg_excluded IS the retraction path now (spec §3.8 / P1-7) ──
+
+
+@pytest.mark.asyncio
+async def test_chapter_kg_excluded_retracts_graph_and_passages(monkeypatch):
+    """The retraction that unpublish used to perform now hangs off kg_exclude.
+
+    Without it the toggle would be a LIE: facts and passages extracted from a chapter
+    the user later marks "forget this" would simply stay in the graph.
+    """
+    from contextlib import asynccontextmanager
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={"project_id": _PROJECT, "user_id": _USER})
 
     with patch("app.config.settings") as ms:
         ms.neo4j_uri = "bolt://fake"
@@ -378,38 +599,36 @@ async def test_chapter_unpublished_retracts_graph_and_passages(monkeypatch):
         cleanup_mock = AsyncMock(return_value=MagicMock(total=2))
         delete_mock = AsyncMock(return_value=7)
         monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
-        # CM3b-RETRACT-FIX: handler now retracts via the NATURAL-KEY helper
-        # (hashes the source id) — the raw-id call removed zero edges.
+        # Retract by NATURAL KEY (the helper hashes the ExtractionSource id) — a raw-id
+        # call matches a hashed-id MATCH and removes ZERO edges.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
-            remove_mock,
+            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
-        # /review-impl MED: cleanup is deliberately NOT called here (it would
-        # race a concurrent same-project extraction outside the job lock).
+        # NO orphan sweep here: this handler runs OUTSIDE the one-active-job-per-project
+        # extraction lock, so cleanup could race a concurrent extraction and delete an
+        # in-flight node. The offline reconciler GCs them safely.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes",
-            cleanup_mock,
+            "app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", cleanup_mock,
         )
         monkeypatch.setattr(
             "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
         )
 
-        await handle_chapter_unpublished(_unpublished_event(), pool=pool)
+        await handle_chapter_kg_excluded(_kg_excluded_event(), pool=pool)
 
-    pool.execute.assert_awaited()  # pending row dropped
-    # CM3b-RETRACT-FIX regression-lock: the retract is called with the
-    # NATURAL KEY (user, project, source_type, source_id), so the helper can
-    # hash the right ExtractionSource id. The pre-fix bug passed the raw
-    # chapter_id straight to a hashed-id MATCH → zero edges removed.
+    # The pending row is dropped FIRST, so an in-flight extraction cannot re-canonize
+    # the chapter the user just excluded.
+    pool.execute.assert_awaited()
+
     remove_mock.assert_awaited_once()
     rk = remove_mock.await_args.kwargs
     assert rk["source_type"] == "chapter"
     assert rk["source_id"] == str(_CHAPTER)
     assert rk["user_id"] == str(_USER)
     assert rk["project_id"] == str(_PROJECT)
-    # /review-impl MED regression-lock: NO orphan sweep in the unpublish path
-    # (races concurrent extraction outside the job lock; reconciler GCs instead).
+
     cleanup_mock.assert_not_awaited()
+
     delete_mock.assert_awaited_once()
     dk = delete_mock.await_args.kwargs
     assert dk["source_type"] == "chapter"
@@ -418,18 +637,15 @@ async def test_chapter_unpublished_retracts_graph_and_passages(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_chapter_unpublished_passage_retract_independent_of_graph_failure(
+async def test_chapter_kg_excluded_passage_retract_independent_of_graph_failure(
     monkeypatch,
 ):
-    """R3-WARN#2: if the graph retract raises, the passage retract must
-    STILL run (independent best-effort steps), else published-era passages
-    linger after unpublish."""
+    """R3-WARN#2: if the graph retract raises, the passage retract must STILL run,
+    else the user's retracted prose lingers in the semantic index."""
     from contextlib import asynccontextmanager
 
     pool, conn = _mock_pool()
-    pool.fetchrow = AsyncMock(
-        return_value={"project_id": _PROJECT, "user_id": _USER}
-    )
+    pool.fetchrow = AsyncMock(return_value={"project_id": _PROJECT, "user_id": _USER})
 
     with patch("app.config.settings") as ms:
         ms.neo4j_uri = "bolt://fake"
@@ -441,17 +657,15 @@ async def test_chapter_unpublished_passage_retract_independent_of_graph_failure(
         remove_mock = AsyncMock(side_effect=RuntimeError("neo4j transient"))
         delete_mock = AsyncMock(return_value=7)
         monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
-        # CM3b-RETRACT-FIX: handler retracts via the natural-key helper now.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
-            remove_mock,
+            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
         monkeypatch.setattr(
             "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
         )
 
         # Must NOT raise (both steps swallow their own errors).
-        await handle_chapter_unpublished(_unpublished_event(), pool=pool)
+        await handle_chapter_kg_excluded(_kg_excluded_event(), pool=pool)
 
     remove_mock.assert_awaited_once()
     delete_mock.assert_awaited_once()  # ran despite the graph-retract failure

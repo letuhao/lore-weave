@@ -196,6 +196,7 @@ class ExtractionPendingRepo:
         project_id: UUID,
         chapter_id: UUID,
         revision_id: UUID,
+        event_type: str = "chapter.published",
     ) -> ExtractionPending | None:
         """Canon Model CM3b — queue (or re-arm) a chapter for graph
         extraction at its PINNED published revision.
@@ -218,10 +219,11 @@ class ExtractionPendingRepo:
           INSERT INTO extraction_pending
             (user_id, project_id, event_id, event_type,
              aggregate_type, aggregate_id, revision_id)
-          SELECT $1, $2, $3, 'chapter.published', 'chapter', $3, $4
+          SELECT $1, $2, $3, $5, 'chapter', $3, $4
           WHERE EXISTS (SELECT 1 FROM owned)
           ON CONFLICT (project_id, event_id) DO UPDATE
             SET revision_id = EXCLUDED.revision_id,
+                event_type  = EXCLUDED.event_type,
                 processed_at = NULL,
                 created_at = now()
           RETURNING {_SELECT_COLS}
@@ -230,7 +232,7 @@ class ExtractionPendingRepo:
         """
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
-                query, user_id, project_id, chapter_id, revision_id,
+                query, user_id, project_id, chapter_id, revision_id, event_type,
             )
         return _row_to_pending(row) if row else None
 
