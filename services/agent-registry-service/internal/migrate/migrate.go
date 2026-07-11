@@ -462,6 +462,33 @@ CREATE TABLE IF NOT EXISTS workflow_revisions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_workflow_revisions_wf ON workflow_revisions(workflow_id, created_at DESC);
+
+-- WS-5 (agent-discoverability spec §5 / Track C): seed the System-tier curated
+-- WORKFLOW CATALOG. Each row is a C3 steps object the chat-service step-runner
+-- (WS-2b) hands the agent as an explicit rail. The rail NAMES the tools in order so a
+-- mid-tier model FOLLOWS the sequence instead of reconstructing it — the measured S01
+-- failure was gemma proposing entities before any category existed ('unknown kind',
+-- silent loop). notes_md owns the plain-language vocabulary (no jargon reaches the
+-- user). System-tier: admin-seeded, read-only to users, world-visible. Idempotent.
+--
+-- W1 glossary-bootstrap — "set up my world": create the CATEGORIES a book tracks
+-- (kinds), in the correct order (adopt → confirm → read back), NEVER entities-first.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','glossary-bootstrap','Set up a book''s world categories',
+   'Set up the kinds of things a book tracks (characters, places, systems, terms…) — the starting structure for its lore, reviewed once before it is applied.',
+   -- surfaces EMPTY = visible on every surface. A book-scoped chat turn resolves the
+   -- runtime surface key "book" (not "chat"), so a ['chat'] filter would hide this exact
+   -- workflow on the turn that needs it. Empty means the registry surface filter is skipped.
+   '{}'::text[], '{}'::jsonb,
+   '[
+     {"id":"see-standards","tool":"glossary_list_system_standards","gate":"none"},
+     {"id":"adopt","tool":"glossary_adopt_standards","gate":"none"},
+     {"id":"apply","tool":"glossary_confirm_action","gate":"confirm","inputs_map":{"confirm_token":"adopt.confirm_token"}},
+     {"id":"read-back","tool":"glossary_book_ontology_read","gate":"none"}
+   ]'::jsonb,
+   E'Use this when the user wants to set up their book''s world/lore structure — "set up my world", "what should I track", "make me categories for my story". It creates the CATEGORIES a book tracks (internally: glossary kinds) — Characters, Locations, Cultivation/Power Systems, Organizations, Terms, and so on — NOT the individual people or terms (those come later, once the categories exist).\n\nCRITICAL ORDER — categories FIRST. Never try to add specific characters or terms before the categories exist: proposing an entity of a category that has not been created fails with "unknown kind" and you will loop. Follow the rail: (1) see the ready-made categories and genres, (2) adopt the ones that fit what the user described — this returns a confirmation to apply, it does not change anything yet, (3) the user confirms once and the categories are created, (4) read back and tell them, in plain words, what is now tracked.\n\nStep 2→3: glossary_adopt_standards returns a confirm_token; pass that exact token to glossary_confirm_action at step 3. Pick the genres that fit the story (e.g. a xianxia / cultivation / multi-world tale → the fantasy family plus the cultivation/power angle). If the user named a category the ready-made set lacks, you may add it with glossary_propose_kinds AFTER adopting — but adopt first.\n\nSPEAK PLAINLY the whole time. Say "categories", never "kinds"; "details to track", never "attributes". Never make the user type or understand a category code, a genre code, a token, or an id. At the confirm step, say in their words what you are about to set up — e.g. "I''ll set up Characters, Sects, Cultivation Systems, Techniques, Worlds, and Terms — apply this?" — and wait for their yes. If any step fails, stop and say plainly what did not work; never claim the world is set up when it is not.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO NOTHING;
 `
 
 // Up applies the schema. Idempotent; safe to run on every boot.

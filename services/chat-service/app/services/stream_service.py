@@ -3286,6 +3286,30 @@ async def stream_response(
             logger.warning("workflows fetch failed — no curated workflows this turn", exc_info=True)
             turn_workflows = []
 
+    # WS-5 — STEER a mid-tier model to USE an authored workflow rail. Advertising
+    # workflow_list is not enough: gemma had it advertised yet never called it and
+    # reconstructed the steps wrong (measured on S01 — proposed entities before any
+    # category existed). When the turn has curated workflows, name them and tell the
+    # agent to load + follow the matching one FIRST. General across every workflow;
+    # degrade-safe (empty string when there are none, so no directive is injected).
+    workflow_directive_block: str | None = None
+    if turn_workflows:
+        _wf_lines = "\n".join(
+            f"- {w.get('slug')}: {w.get('description') or w.get('title') or ''}".rstrip()
+            for w in turn_workflows
+            if w.get("slug")
+        )
+        if _wf_lines:
+            workflow_directive_block = (
+                "READY-MADE WORKFLOWS you can run for this book — ordered recipes for common "
+                "multi-step jobs:\n"
+                f"{_wf_lines}\n"
+                "If the user's request matches one of these (e.g. setting up / building / organizing "
+                "their world, glossary, or plan), call workflow_load(\"<slug>\") FIRST and then follow "
+                "its steps IN ORDER — do NOT improvise your own tool sequence for a job a workflow "
+                "already covers. Following the rail is how you avoid getting the order wrong."
+            )
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -3312,6 +3336,7 @@ async def stream_response(
         mode_nudge_block,    # RAID B2 (+ask-mode) — plan/ask mode nudge
         skill_meta_block,    # RAID C3 — L1 available-skills catalog
         group_directory_block,  # tool-catalog-simplification Part A — domain map for find_tools(group=...)
+        workflow_directive_block,  # WS-5 — prefer an authored workflow rail over improvising
         book_context_note,
     ]
     _system_content = build_system_message(
@@ -3368,7 +3393,9 @@ async def stream_response(
             # Category key stays "plan_nudge" (FE Inspector contract — see
             # token_budget.BREAKDOWN_CATEGORIES) though it now also carries the
             # ask-mode nudge; renaming the wire key isn't warranted for this fix.
-            "plan_nudge": estimate_tokens(mode_nudge_block),
+            # bundles the mode nudge + the WS-5 workflow-preference directive (both are
+            # just-in-time nudges; folded here to avoid a new FE Inspector wire key).
+            "plan_nudge": estimate_tokens(mode_nudge_block) + estimate_tokens(workflow_directive_block),
             "story_state": estimate_tokens(story_state_block),  # T4 — safety-net block (0 unless projected)
             "book_note": estimate_tokens(book_context_note),
             "attached_context": (

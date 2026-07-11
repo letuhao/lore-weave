@@ -104,6 +104,29 @@ REPORT_DATE = os.environ.get("QG_REPORT_DATE", "run")
 AUTO_APPROVE = os.environ.get("QG_AUTO_APPROVE", "1") != "0"
 APPROVE_OUTCOME = os.environ.get("QG_APPROVE_OUTCOME", "approved_always")
 MAX_RESUMES_PER_TURN = int(os.environ.get("QG_MAX_RESUMES", "16"))
+# Warm-pass COMMIT of a propose->confirm gate. glossary_confirm_action / confirm_action
+# suspend for the human to click Confirm; the FE then POSTs the token to the domain's
+# committing endpoint AND resumes. To fully apply a workflow headlessly we do the same:
+# commit the token, then resume. Domain -> committing endpoint (reachable in-container).
+AUTO_COMMIT = os.environ.get("QG_AUTO_COMMIT", "1") != "0"
+_COMMIT_URLS = {
+    "glossary": os.environ.get("QG_GLOSSARY_URL", "http://glossary-service:8088")
+    + "/v1/glossary/actions/confirm",
+}
+
+
+def _commit_domain_confirm(c: "httpx.Client", domain: str, token: str) -> bool:
+    """POST a confirm_token to the domain's committing endpoint (what the FE does on
+    Confirm). True on 2xx. Best-effort: any failure falls back to a dismissed resume."""
+    url = _COMMIT_URLS.get(domain)
+    if not url or not token:
+        return False
+    try:
+        r = c.post(url, json={"confirm_token": token},
+                   headers={"Authorization": f"Bearer {_bearer()}"}, timeout=60)
+        return 200 <= r.status_code < 300
+    except Exception:
+        return False
 
 _PLACEHOLDERS = {
     "<BOOK_ID>": os.environ.get("SKILL_BOOK_ID", ""),
@@ -237,10 +260,14 @@ def _is_empty_intent(name: str, args: dict) -> bool:
 
 def _send_turn(c: httpx.Client, sid: str, content: str, *,
                context: dict | None, enabled_skills: list[str],
-               permission_mode: str | None) -> dict:
+               permission_mode: str | None, carry: dict | None = None) -> dict:
     """POST a turn as the GUI does; drain the SSE; capture assistant text, the
     full tool records (name + args + result ok/error) correlated by toolCallId,
-    and the context budget."""
+    and the context budget.
+
+    ``carry`` persists cross-turn session state (the authentic confirm_token) — a
+    propose in one turn and its confirm in a later turn is a real pattern, and the
+    token must survive the turn boundary."""
     hdr = {"Authorization": f"Bearer {_bearer()}", "Accept": "text/event-stream"}
     hdr["x-loreweave-stream-format"] = os.environ.get("QG_STREAM_FORMAT", "agui")
     body: dict = {"content": content, "enabled_skills": enabled_skills}
@@ -250,7 +277,8 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
         body.update(context)  # {"book_context": {...}} etc.
 
     # shared accumulation across the initial stream + every resume (approve) stream
-    st = {"text_parts": [], "open_calls": {}, "order": [], "budget": None, "run_id": None}
+    st = {"text_parts": [], "open_calls": {}, "order": [], "budget": None,
+          "run_id": None, "last_confirm_token": (carry or {}).get("last_confirm_token")}
 
     def _drain(resp) -> None:
         resp.raise_for_status()
@@ -289,6 +317,17 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
                         st["open_calls"][cid]["ok"] = env.get("ok")
                         st["open_calls"][cid]["result"] = env.get("result")
                         st["open_calls"][cid]["error"] = env.get("error")
+                        # Capture the AUTHENTIC server-authored confirm_token from a
+                        # propose result (adopt/plan/…). A mid-tier model corrupts a
+                        # 519-char token when it copies it into the confirm_action arg
+                        # (right length + ends, one wrong middle char → 422). The real FE
+                        # commits with the token IT received from the card, never a
+                        # model-copied one — so we commit with this authentic token.
+                        _res = env.get("result")
+                        if isinstance(_res, dict) and _res.get("confirm_token"):
+                            st["last_confirm_token"] = _res["confirm_token"]
+                            if carry is not None:
+                                carry["last_confirm_token"] = _res["confirm_token"]
                     except Exception:
                         st["open_calls"][cid]["result"] = obj.get("content")
 
@@ -313,13 +352,37 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
         except Exception:
             pargs = {}
         is_appr = isinstance(pargs, dict) and pargs.get("kind") == "tool_approval"
-        outcome = APPROVE_OUTCOME if is_appr else "dismissed"
-        rec["resumed"] = outcome
+        tool_name = rec.get("tool", "")
+        _domain = (pargs.get("domain") if isinstance(pargs, dict) else None) or (
+            "glossary" if "glossary" in tool_name else "")
+        # Prefer the AUTHENTIC token captured from the propose result over the model's
+        # (often corrupted) copy in the confirm_action arg — this is what the real FE commits.
+        confirm_token = st.get("last_confirm_token") or (
+            pargs.get("confirm_token") if isinstance(pargs, dict) else None)
+        resume_body: dict = {"run_id": st["run_id"], "tool_call_id": pend_cid}
+        if is_appr:
+            # Tier-A approval card — the resume path executes server-side (approved_always).
+            resume_body["outcome"] = APPROVE_OUTCOME
+            rec["resumed"] = APPROVE_OUTCOME
+        elif AUTO_COMMIT and confirm_token and _domain in _COMMIT_URLS:
+            # propose->confirm gate — commit the token (as the FE does), then resume with
+            # the applied result so the flow completes and the effect actually lands.
+            if _commit_domain_confirm(c, _domain, confirm_token):
+                resume_body["result"] = {"confirmed": True, "domain": _domain}
+                rec["resumed"] = "committed"
+                rec["ok"] = True                 # it applied — count it as effectful
+                rec["result"] = {"confirmed": True, "domain": _domain}
+            else:
+                resume_body["outcome"] = "dismissed"
+                rec["resumed"] = "commit_failed"
+        else:
+            # a confirm/edit card we cannot honestly apply headlessly — dismiss it.
+            resume_body["outcome"] = "dismissed"
+            rec["resumed"] = "dismissed"
         resumes += 1
         try:
             with c.stream("POST", f"{BASE}/v1/chat/sessions/{sid}/tool-results",
-                          json={"run_id": st["run_id"], "tool_call_id": pend_cid, "outcome": outcome},
-                          headers=hdr, timeout=TURN_TIMEOUT) as r2:
+                          json=resume_body, headers=hdr, timeout=TURN_TIMEOUT) as r2:
                 _drain(r2)
         except Exception:
             break
@@ -724,11 +787,12 @@ def main() -> int:
             print(f"  - {sid_of:<10} session={sid[:8]} mode={perm} "
                   f"skills={enabled_skills} turns={len(s['turns'])}")
             records: list[dict] = []
+            carry: dict = {}  # cross-turn session state (authentic confirm_token)
             for i, turn in enumerate(s["turns"]):
                 utext = turn["user"] if isinstance(turn, dict) else str(turn)
                 mv = turn.get("movement") if isinstance(turn, dict) else None
                 t0 = time.time()
-                res = _send_turn(c, sid, utext, context=context,
+                res = _send_turn(c, sid, utext, context=context, carry=carry,
                                  enabled_skills=enabled_skills, permission_mode=perm)
                 dt = time.time() - t0
                 rec = {

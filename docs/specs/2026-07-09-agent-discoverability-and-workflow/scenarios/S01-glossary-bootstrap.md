@@ -88,6 +88,15 @@ for it. I want to review before it's applied.
   past the first suspend); warm = `user_tool_approvals` pre-seeded (what "always allow" writes). **Both
   failed for the same primary reason**, so the verdict is robust to the permission axis.
 
+### 7c. WS-5 rail landed 2026-07-11 — S01 flips ❌ → ~75% ✅
+
+The `glossary-bootstrap` System workflow + a steering directive make gemma call `workflow_load` and
+follow the rail (`list → adopt → confirm → read-back`) instead of the entities-first loop. Result:
+`book_kinds` 0 → **10–13** (character, location, **power_system**, …); ~3 of 4 fresh runs persist the
+world; jargon-free. Remaining ~25%: gemma stalls before the confirm (model reliability), plus a latent
+token-threading product question. Full write-up:
+[`docs/eval/discoverability/2026-07-11-ws5-glossary-bootstrap-workflow.md`](../../../eval/discoverability/2026-07-11-ws5-glossary-bootstrap-workflow.md).
+
 ### 7b. Partial fix landed 2026-07-11 — silent success (P0) fixed; scenario still ❌ (needs the rail)
 
 One of S01's two enablers is fixed: `glossary_propose_entities` no longer returns `ok:true` when every
