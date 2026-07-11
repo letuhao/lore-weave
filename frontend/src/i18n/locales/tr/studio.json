@@ -1000,5 +1000,13 @@
     "coverageDesc": "Kitap genelindeki vaatlerin kapsamı",
     "canonTitle": "Kanon sorunları",
     "canonDesc": "Onaylanmış çelişkiler"
+  },
+  "planHub": {
+    "undo": "Geri al"
+  },
+  "planNav": {
+    "title": "Plan",
+    "loading": "Yükleniyor…",
+    "empty": "Henüz ark yok."
   }
 }

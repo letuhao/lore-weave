@@ -1000,5 +1000,13 @@
     "coverageDesc": "全書承諾內容覆蓋率",
     "canonTitle": "設定矛盾",
     "canonDesc": "已確認的矛盾點"
+  },
+  "planHub": {
+    "undo": "復原"
+  },
+  "planNav": {
+    "title": "規劃",
+    "loading": "載入中…",
+    "empty": "尚無故事弧。"
   }
 }

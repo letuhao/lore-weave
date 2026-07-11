@@ -1000,5 +1000,13 @@
     "coverageDesc": "Liputan janji keseluruhan buku",
     "canonTitle": "Isu kanon",
     "canonDesc": "Percanggahan yang disahkan"
+  },
+  "planHub": {
+    "undo": "Buat asal"
+  },
+  "planNav": {
+    "title": "Pelan",
+    "loading": "Memuatkan…",
+    "empty": "Belum ada arka."
   }
 }

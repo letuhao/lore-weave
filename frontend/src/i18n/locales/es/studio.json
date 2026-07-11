@@ -1000,5 +1000,13 @@
     "coverageDesc": "Cobertura de la promesa de la obra completa",
     "canonTitle": "Problemas de canon",
     "canonDesc": "Contradicciones confirmadas"
+  },
+  "planHub": {
+    "undo": "Deshacer"
+  },
+  "planNav": {
+    "title": "Plan",
+    "loading": "Cargando…",
+    "empty": "Aún no hay arcos."
   }
 }

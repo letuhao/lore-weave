@@ -1000,5 +1000,13 @@
     "coverageDesc": "Couverture de la promesse globale du livre",
     "canonTitle": "Problèmes de canon",
     "canonDesc": "Contradictions confirmées"
+  },
+  "planHub": {
+    "undo": "Annuler"
+  },
+  "planNav": {
+    "title": "Plan",
+    "loading": "Chargement…",
+    "empty": "Aucun arc pour l’instant."
   }
 }

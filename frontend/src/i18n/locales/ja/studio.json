@@ -1000,5 +1000,13 @@
     "coverageDesc": "作品全体におけるプロットの網羅度",
     "canonTitle": "設定の矛盾",
     "canonDesc": "確認された矛盾点"
+  },
+  "planHub": {
+    "undo": "元に戻す"
+  },
+  "planNav": {
+    "title": "プラン",
+    "loading": "読み込み中…",
+    "empty": "アークはまだありません。"
   }
 }

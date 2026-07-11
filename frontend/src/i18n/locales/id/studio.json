@@ -1000,5 +1000,13 @@
     "coverageDesc": "Cakupan janji seluruh buku",
     "canonTitle": "Masalah kanon",
     "canonDesc": "Kontradiksi yang terkonfirmasi"
+  },
+  "planHub": {
+    "undo": "Urungkan"
+  },
+  "planNav": {
+    "title": "Rencana",
+    "loading": "Memuat…",
+    "empty": "Belum ada arc."
   }
 }

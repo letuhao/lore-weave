@@ -1000,5 +1000,13 @@
     "coverageDesc": "Mức độ đáp ứng các tình tiết hứa hẹn trong toàn bộ tác phẩm",
     "canonTitle": "Lỗi nguyên tác",
     "canonDesc": "Các mâu thuẫn đã được xác nhận"
+  },
+  "planHub": {
+    "undo": "Hoàn tác"
+  },
+  "planNav": {
+    "title": "Kế hoạch",
+    "loading": "Đang tải…",
+    "empty": "Chưa có arc nào."
   }
 }

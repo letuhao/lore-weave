@@ -1000,5 +1000,13 @@
     "coverageDesc": "Abdeckung des Versprechens des gesamten Buches",
     "canonTitle": "Kanon-Probleme",
     "canonDesc": "Bestätigte Widersprüche"
+  },
+  "planHub": {
+    "undo": "Rückgängig"
+  },
+  "planNav": {
+    "title": "Plan",
+    "loading": "Wird geladen…",
+    "empty": "Noch keine Handlungsbögen."
   }
 }

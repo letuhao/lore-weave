@@ -1000,5 +1000,13 @@
     "coverageDesc": "Cobertura da promessa do livro completo",
     "canonTitle": "Problemas de cânone",
     "canonDesc": "Contradições confirmadas"
+  },
+  "planHub": {
+    "undo": "Desfazer"
+  },
+  "planNav": {
+    "title": "Plano",
+    "loading": "Carregando…",
+    "empty": "Ainda não há arcos."
   }
 }

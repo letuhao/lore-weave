@@ -1000,5 +1000,13 @@
     "coverageDesc": "작품 전체의 약속된 서사 반영도",
     "canonTitle": "설정 오류",
     "canonDesc": "확인된 설정 충돌"
+  },
+  "planHub": {
+    "undo": "실행 취소"
+  },
+  "planNav": {
+    "title": "플랜",
+    "loading": "불러오는 중…",
+    "empty": "아직 아크가 없습니다."
   }
 }

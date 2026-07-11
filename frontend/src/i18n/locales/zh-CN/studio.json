@@ -1000,5 +1000,13 @@
     "coverageDesc": "全书承诺内容的覆盖程度",
     "canonTitle": "设定冲突",
     "canonDesc": "已确认的矛盾点"
+  },
+  "planHub": {
+    "undo": "撤销"
+  },
+  "planNav": {
+    "title": "规划",
+    "loading": "加载中…",
+    "empty": "暂无故事弧。"
   }
 }
