@@ -69,7 +69,7 @@ from app.clients.knowledge_client import (
     get_knowledge_client,
 )
 from app.config import settings
-from app.db.models import SceneExitState
+from app.db.models import LinkKind, SceneExitState
 from app.db.pool import get_pool
 from app.db.repositories import (
     ReferenceViolationError,
@@ -993,7 +993,9 @@ class _SceneLinkCreateArgs(ForbidExtra):
     project_id: str
     from_node_id: str
     to_node_id: str
-    kind: str = "setup_payoff"
+    # Closed set (mcp-tool-io IN-2): a Literal makes a mid-tier model's bad `kind` a clean 422 at the
+    # schema, not a 500 CheckViolation at the DB — same guard the REST mirror (outline.py) already has.
+    kind: LinkKind = "setup_payoff"
     label: str = ""
 
 

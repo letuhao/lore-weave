@@ -802,6 +802,22 @@ async def test_scene_link_create_returns_undo_hint():
     assert res["_meta"]["undo_hint"]["tool"] == "composition_scene_link_delete"
 
 
+def test_scene_link_create_kind_is_closed_set():
+    """H5/IN-2: the MCP arg `kind` is a Literal (setup_payoff|custom), so a bad value from a
+    weak model fails validation at the schema (422) instead of reaching the DB CHECK (500).
+    Mirrors the REST mirror's LinkKind guard."""
+    import app.mcp.server as srv
+    from pydantic import ValidationError
+
+    nid = str(PROJECT)  # any string id; only `kind` is under test here
+    # Valid values construct cleanly.
+    for k in ("setup_payoff", "custom"):
+        srv._SceneLinkCreateArgs(project_id=str(PROJECT), from_node_id=nid, to_node_id=nid, kind=k)
+    # A value outside the closed set is rejected at construction (Pydantic Literal → 422).
+    with pytest.raises(ValidationError):
+        srv._SceneLinkCreateArgs(project_id=str(PROJECT), from_node_id=nid, to_node_id=nid, kind="Setup")
+
+
 async def test_outline_node_update_undo_none_when_prior_was_null():
     """SC4-UNDO regression: setting a NULLABLE SC4 field (value_shift) from NULL→value has
     no faithful single-op reverse — the sparse update patch treats None as leave-unchanged
