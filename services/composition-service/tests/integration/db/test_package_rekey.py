@@ -203,7 +203,7 @@ async def _seed_legacy(c: asyncpg.Connection) -> dict:
         owner, deriv_project, deriv, uuid.uuid4(),
     )
     await c.execute(
-        "INSERT INTO decompose_commit (user_id, project_id, arc_id, idempotency_key, result) "
+        "INSERT INTO decompose_commit (user_id, project_id, structure_node_id, idempotency_key, result) "
         "VALUES ($1,$2,$3,'k1','{}'::jsonb)",
         owner, project, chap,
     )
@@ -304,13 +304,13 @@ async def test_t1_legacy_db_migrates_without_loss(legacy_pool):
         idem = await _indexdef(c, "idx_decompose_commit_idem")
         assert idem and "project_id" in idem and "idempotency_key" in idem and "user_id" not in idem
         await c.execute(
-            "INSERT INTO decompose_commit (created_by, project_id, book_id, arc_id, idempotency_key, result) "
+            "INSERT INTO decompose_commit (created_by, project_id, book_id, structure_node_id, idempotency_key, result) "
             "VALUES ($1,$2,$3,$4,'k1','{}'::jsonb)",
             seed["owner"], seed["deriv_project"], seed["book"], seed["deriv_chap"],
         )
         with pytest.raises(asyncpg.UniqueViolationError):
             await c.execute(
-                "INSERT INTO decompose_commit (created_by, project_id, book_id, arc_id, idempotency_key, result) "
+                "INSERT INTO decompose_commit (created_by, project_id, book_id, structure_node_id, idempotency_key, result) "
                 "VALUES ($1,$2,$3,$4,'k1','{}'::jsonb)",
                 seed["owner"], seed["project"], seed["book"], seed["chap"],
             )
@@ -634,7 +634,7 @@ async def test_t2_m0_7_refuses_cross_user_duplicate_decompose_keys(legacy_pool):
     async with legacy_pool.acquire() as c:
         seed = await _seed_legacy(c)
         await c.execute(  # same (project, key) as the owner's row, different actor
-            "INSERT INTO decompose_commit (user_id, project_id, arc_id, idempotency_key, result) "
+            "INSERT INTO decompose_commit (user_id, project_id, structure_node_id, idempotency_key, result) "
             "VALUES ($1,$2,$3,'k1','{}'::jsonb)",
             seed["grantee"], seed["project"], seed["chap"],
         )

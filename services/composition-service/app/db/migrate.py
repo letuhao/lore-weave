@@ -417,7 +417,9 @@ CREATE TABLE IF NOT EXISTS decompose_commit (
   project_id      UUID NOT NULL,
   book_id         UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
   idempotency_key TEXT NOT NULL,
-  arc_id          UUID NOT NULL,
+  -- 25 M4.4 (PM-10): arc_id → structure_node_id (the lift re-points legacy values through the map,
+  -- then renames the column; the CREATE carries the final name so a fresh DB matches).
+  structure_node_id UUID NOT NULL,
   result          JSONB NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -918,10 +920,14 @@ CREATE TABLE IF NOT EXISTS arc_template (
   summary       TEXT NOT NULL DEFAULT '',
   genre_tags    TEXT[] NOT NULL DEFAULT '{}',
   chapter_span  INT,
-  threads       JSONB NOT NULL DEFAULT '[]'::jsonb,       -- [{key,label}] parallel tracks
+  -- 25 M5.2 (BA5/BA10): threads→tracks, arc_roster→roster. The CREATE carries the FINAL names so a
+  -- fresh DB matches the post-Deploy-2 shape; a legacy DB (old columns) converges via M5.2's guarded
+  -- rename (arc_lift.py). The Pydantic/MCP field names stay threads/arc_roster (arc_template_repo
+  -- aliases tracks AS threads on read) until the full BA10 API rename.
+  tracks        JSONB NOT NULL DEFAULT '[]'::jsonb,       -- [{key,label}] parallel tracks (was threads)
   layout        JSONB NOT NULL DEFAULT '[]'::jsonb,       -- [{motif_code, motif_id, thread, span_start, span_end, ord, role_hints, triggers?}]
   pacing        JSONB NOT NULL DEFAULT '[]'::jsonb,
-  arc_roster    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  roster        JSONB NOT NULL DEFAULT '[]'::jsonb,       -- [{key, actant, label, constraints[]}] (was arc_roster)
   source        TEXT NOT NULL DEFAULT 'authored'
                   CHECK (source IN ('authored','mined','imported')),
   imported_derived BOOLEAN NOT NULL DEFAULT false,         -- B-3 taint: imported OR adopted-from-imported

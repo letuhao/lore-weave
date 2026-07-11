@@ -529,7 +529,7 @@ class OutlineRepo:
                         await c.execute(
                             """
                             INSERT INTO decompose_commit
-                              (created_by, project_id, book_id, idempotency_key, arc_id, result)
+                              (created_by, project_id, book_id, idempotency_key, structure_node_id, result)
                             SELECT $1, $2, w.book_id, $3, $4, $5::jsonb
                             FROM composition_work w
                             WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))

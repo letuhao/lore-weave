@@ -64,10 +64,21 @@ async def migrated_pool():
         await p.close()
 
 
+async def _to_legacy_shape(c: asyncpg.Connection) -> None:
+    """Put the fresh (final-shape) DB back into the PRE-Deploy-2 shape, so the seed + lift exercise
+    the REAL legacy→lifted transition (the column renames + the arc_id re-point). Mirrors
+    test_package_rekey's revert trick — the base CREATE carries the FINAL column names now, so a
+    fresh DB has tracks/roster/structure_node_id; rename them back to threads/arc_roster/arc_id."""
+    await c.execute("ALTER TABLE arc_template RENAME COLUMN tracks TO threads")
+    await c.execute("ALTER TABLE arc_template RENAME COLUMN roster TO arc_roster")
+    await c.execute("ALTER TABLE decompose_commit RENAME COLUMN structure_node_id TO arc_id")
+
+
 async def _seed_arc_tree(c: asyncpg.Connection) -> dict:
     """A book with a Work; a top arc holding a sub-arc; a chapter under EACH arc; a scene under the
     top chapter; a motif_application bound to the top arc (annotation = arc_template_id, the CASCADE
     neighbour); a decompose_commit on the top arc; an arc_template with threads/arc_roster."""
+    await _to_legacy_shape(c)
     actor, book, project = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     await c.execute(
         "INSERT INTO composition_work (project_id, created_by, book_id) VALUES ($1,$2,$3)",

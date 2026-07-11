@@ -35,14 +35,21 @@ import asyncpg
 from app.db.models import ArcTemplate, ArcTemplateCreateArgs, ArcTemplatePatchArgs
 from app.db.repositories import VersionMismatchError
 
+# 25 M5.2 (BA5) renamed the arc_template columns threads→tracks, arc_roster→roster. The Pydantic
+# model + MCP/API keep the field names threads/arc_roster (the full BA10 vocabulary rename across
+# the API is a separate refactor), so the SQL reads the new columns ALIASED back to the field names
+# and writes the new column names — one file, every contract stable (23-A7 reader code).
+_COL_FOR = {"threads": "tracks", "arc_roster": "roster"}  # model field → renamed DB column
+
 # embedding + raw embed cols deliberately excluded — projection is the model shape only.
 _SELECT_COLS = """
   id, owner_user_id, code, language, visibility, name, summary, genre_tags,
-  chapter_span, threads, layout, pacing, arc_roster, source, imported_derived,
+  chapter_span, tracks AS threads, layout, pacing, roster AS arc_roster, source, imported_derived,
   source_ref, source_version, embedding_model, embedding_dim, status, version,
   created_at, updated_at
 """
-# JSONB columns json.loads'd on read (asyncpg returns them as str).
+# JSONB columns json.loads'd on read (asyncpg returns them as str) — keyed by the RESULT dict
+# names (post-alias): threads/arc_roster.
 _JSONB_FIELDS = ("threads", "layout", "pacing", "arc_roster")
 # The read predicate (R1.1) — system | public | owned-by-caller. $1 = caller_id.
 _VISIBLE_PREDICATE = "(owner_user_id IS NULL OR visibility = 'public' OR owner_user_id = $1)"
@@ -101,7 +108,7 @@ class ArcTemplateRepo:
         query = f"""
         INSERT INTO arc_template
           (owner_user_id, code, language, visibility, name, summary, genre_tags,
-           chapter_span, threads, layout, pacing, arc_roster, source, status,
+           chapter_span, tracks, layout, pacing, roster, source, status,
            imported_derived)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
                 $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15)
@@ -143,14 +150,15 @@ class ArcTemplateRepo:
         params: list[Any] = [caller_id, arc_id]
         data = args.model_dump(exclude_unset=True)
         for field, value in data.items():
+            col = _COL_FOR.get(field, field)  # threads→tracks, arc_roster→roster (renamed columns)
             if field in ("threads", "layout", "arc_roster"):
                 value = _dump_models(getattr(args, field) or [])
             if field in _JSONB_FIELDS:
                 params.append(_jsonb(value) if value is not None else None)
-                sets.append(f"{field} = ${len(params)}::jsonb")
+                sets.append(f"{col} = ${len(params)}::jsonb")
             else:
                 params.append(value)
-                sets.append(f"{field} = ${len(params)}")
+                sets.append(f"{col} = ${len(params)}")
         if "summary" in data:
             sets.append("embedded_summary_hash = NULL")  # re-embed on next retrieve
         sets.append("version = version + 1")
@@ -272,7 +280,7 @@ class ArcTemplateRepo:
                 f"""
                 INSERT INTO arc_template
                   (owner_user_id, code, language, visibility, name, summary, genre_tags,
-                   chapter_span, threads, layout, pacing, arc_roster, source, source_ref,
+                   chapter_span, tracks, layout, pacing, roster, source, source_ref,
                    source_version, embedding, embedding_model, embedding_dim,
                    embedded_summary_hash, imported_derived)
                 VALUES ($1,$2,$3,'private',$4,$5,$6,$7,
@@ -295,7 +303,7 @@ class ArcTemplateRepo:
     # away). Mirrors motif_repo._CATALOG_COLS.
     _CATALOG_COLS = (
         "id", "code", "language", "name", "summary", "genre_tags", "chapter_span",
-        "threads", "source", "version", "updated_at",
+        "tracks AS threads", "source", "version", "updated_at",
     )
 
     async def list_public(
