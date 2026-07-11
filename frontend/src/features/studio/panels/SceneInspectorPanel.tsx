@@ -14,6 +14,7 @@ import { useStudioPanel } from './useStudioPanel';
 import { useSceneInspector } from './useSceneInspector';
 import { useConformanceStatus } from './useConformanceStatus';
 import { EntityRefField } from './EntityRefField';
+import { SceneLinksSection } from './SceneLinksSection';
 
 const STATUSES: OutlineNode['status'][] = ['empty', 'outline', 'drafting', 'done'];
 const SOURCE_LABEL: Record<string, string> = { authored: 'Authored', decompiled: 'Mined', planforge: 'PlanForge' };
@@ -174,6 +175,13 @@ export function SceneInspectorPanel(props: IDockviewPanelProps) {
         <NumberField testid="scene-inspector-targetwords" label={t('panels.scene-inspector.f.targetWords', { defaultValue: 'Target words' })}
           value={n.target_words} min={0} onCommit={(v) => setF({ target_words: v })} />
       </Section>
+
+      {/* 22-C3 Links — this scene's causal edges, reusing the Scene Graph's data (DOCK-2, no fork). */}
+      {sb.projectId && (
+        <Section title={t('panels.scene-inspector.section.links', { defaultValue: 'Links' })}>
+          <SceneLinksSection projectId={sb.projectId} token={accessToken ?? null} sceneId={n.id} />
+        </Section>
+      )}
 
       {/* Grounding — reuse the existing panel's data (DOCK-2, no fork). */}
       {sb.projectId && host.bookId && n.chapter_id && (

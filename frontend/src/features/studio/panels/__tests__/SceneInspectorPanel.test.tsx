@@ -31,6 +31,12 @@ vi.mock('../useConformanceStatus', () => ({
 vi.mock('@/features/composition/hooks/useGlossaryRoster', () => ({
   useGlossaryRoster: () => ({ data: [{ id: 'e-anna', label: 'Anna' }, { id: 'e-bran', label: 'Bran' }], isLoading: false }),
 }));
+// 22-C3 Links — the inspector renders SceneLinksSection (TanStack hooks); mock them (covered on its own).
+vi.mock('@/features/composition/hooks/useOutline', () => ({
+  useSceneLinks: () => ({ data: [] }),
+  useOutline: () => ({ data: [] }),
+  useOutlineMutations: () => ({ createSceneLink: { mutate: vi.fn(), isPending: false }, deleteSceneLink: { mutate: vi.fn() } }),
+}));
 
 import { SceneInspectorPanel } from '../SceneInspectorPanel';
 

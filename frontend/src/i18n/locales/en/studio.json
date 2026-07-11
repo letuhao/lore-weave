@@ -269,7 +269,21 @@
         "intent": "Intent",
         "cast": "Cast & Setting",
         "craft": "Craft",
+        "links": "Links",
         "grounding": "Grounding"
+      },
+      "links": {
+        "empty": "No causal links yet.",
+        "setup": "setup→payoff",
+        "custom": "custom",
+        "remove": "Remove link",
+        "target": "Link to scene",
+        "pick": "Link to…",
+        "kind": "Link kind",
+        "label": "label",
+        "add": "link",
+        "dup": "A link of that kind already exists between these scenes.",
+        "failed": "Could not create the link."
       },
       "f": {
         "title": "Title",
