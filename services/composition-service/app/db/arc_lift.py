@@ -78,6 +78,31 @@ async def run_arc_lift(conn: asyncpg.Connection) -> bool:
 # ── M4 — STRUCTURE LIFT ──────────────────────────────────────────────────────
 
 async def _m4_lift(conn: asyncpg.Connection) -> None:
+    # Pre-flight (review): structure_node caps nesting at depth 2 (saga→arc→sub-arc, CHECK 0..2 +
+    # the depth-guard trigger). A legacy outline_node arc tree is UNBOUNDED (plain self-FK, no depth
+    # guard), so a 4+-level chain would crash the trigger MID-INSERT and roll back the irreversible
+    # migration with an opaque error naming only NEW.depth. Detect + abort with the offending arc
+    # ids BEFORE any DDL, mirroring M5's pre-destructive guards.
+    too_deep = await conn.fetch(
+        """
+        WITH RECURSIVE arc_lvl AS (
+          SELECT id, 0 AS lvl FROM outline_node
+            WHERE kind = 'arc'
+              AND (parent_id IS NULL OR parent_id NOT IN (SELECT id FROM outline_node WHERE kind = 'arc'))
+          UNION ALL
+          SELECT o.id, l.lvl + 1 FROM outline_node o
+            JOIN arc_lvl l ON o.parent_id = l.id WHERE o.kind = 'arc'
+        )
+        SELECT id FROM arc_lvl WHERE lvl > 2
+        """
+    )
+    if too_deep:
+        ids = [str(r["id"]) for r in too_deep]
+        raise RuntimeError(
+            f"M4 refused: {len(too_deep)} arc(s) nest deeper than structure_node's saga→arc→sub-arc "
+            f"cap (depth > 2): {ids}. Flatten them (re-parent to depth ≤ 2) before the lift."
+        )
+
     # A real (not temp) table: M5.3 drops it by name, and it must survive between M4/M5 if
     # they are ever run as separate deploys. Idempotent create — a crashed M4 re-runs clean.
     await conn.execute("DROP TABLE IF EXISTS _arc_lift_map")
@@ -229,6 +254,26 @@ async def _m5_contract(conn: asyncpg.Connection) -> None:
         raise RuntimeError(
             f"M5 refused: {orphan_children} non-arc node(s) still parented to an arc (M4.2 re-point "
             "incomplete) — they would be CASCADE-deleted. Aborting before the destructive delete."
+        )
+
+    # scene_link (from/to) and scene_grounding_pins.outline_node_id are ALSO ON DELETE CASCADE to
+    # outline_node (like motif_application, which M4.3 re-anchored). A row referencing an arc node
+    # would be SILENTLY cascade-deleted by M5.1's arc DELETE. These are app-conventionally scene-only
+    # (the FK doesn't enforce kind), so any arc reference is anomalous — refuse rather than lose it
+    # silently (review: un-guarded CASCADE gap).
+    cascade_refs = await conn.fetchval(
+        """
+        SELECT (SELECT count(*) FROM scene_link
+                  WHERE from_node_id IN (SELECT id FROM outline_node WHERE kind = 'arc')
+                     OR to_node_id   IN (SELECT id FROM outline_node WHERE kind = 'arc'))
+             + (SELECT count(*) FROM scene_grounding_pins
+                  WHERE outline_node_id IN (SELECT id FROM outline_node WHERE kind = 'arc'))
+        """
+    )
+    if cascade_refs:
+        raise RuntimeError(
+            f"M5 refused: {cascade_refs} scene_link/scene_grounding_pins row(s) reference an arc node "
+            "and would be CASCADE-deleted by the arc delete. Resolve them before the destructive step."
         )
 
     # M5.1 — delete the lifted arc rows + swap the kind CHECK (BPS-4: beat AND arc both gone).

@@ -68,13 +68,15 @@ _VISIBLE_PREDICATE = "(owner_user_id IS NULL OR visibility = 'public' OR owner_u
 
 # arc retrieve projection (D-ARC-RETRIEVE) — the ArcTemplate model shape PLUS `embedding`
 # (loaded only for the bounded set; never returned). Mirrors arc_template_repo._SELECT_COLS.
+# 25 M5.2: threads→tracks, arc_roster→roster — alias back to the field names (as
+# arc_template_repo._SELECT_COLS does) so retrieve_arcs keeps working post-rename.
 _ARC_RETRIEVE_COLS = """
   id, owner_user_id, code, language, visibility, name, summary, genre_tags,
-  chapter_span, threads, layout, pacing, arc_roster, source, imported_derived,
+  chapter_span, tracks AS threads, layout, pacing, roster AS arc_roster, source, imported_derived,
   source_ref, source_version, embedding_model, embedding_dim, status, version,
   created_at, updated_at, embedded_summary_hash, embedding
 """
-_ARC_JSONB_FIELDS = ("threads", "layout", "pacing", "arc_roster")
+_ARC_JSONB_FIELDS = ("threads", "layout", "pacing", "arc_roster")  # RESULT dict keys (post-alias)
 # Cap inline NULL-vector back-fills per retrieve call so one cold suggest can't fan out an
 # unbounded number of embed round-trips (arcs are few; the rest rank on genre this call and
 # back-fill on the next).

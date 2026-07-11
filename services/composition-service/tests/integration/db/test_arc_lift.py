@@ -190,6 +190,47 @@ async def test_t7_lift_and_contract(migrated_pool):
         assert await c.fetchval("SELECT to_regclass('_arc_lift_map')") is None
 
 
+async def test_t7_deep_arc_nesting_is_refused_before_any_ddl(migrated_pool):
+    # review: structure_node caps depth at 2; a 4-level legacy arc chain would crash the depth-guard
+    # trigger MID-INSERT and roll back the irreversible migration with an opaque error. The M4
+    # pre-flight must refuse it up front, listing the offending arcs, before any DDL.
+    async with migrated_pool.acquire() as c:
+        await _to_legacy_shape(c)
+        actor, book, project = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        await c.execute("INSERT INTO composition_work (project_id, created_by, book_id) VALUES ($1,$2,$3)", project, actor, book)
+        parent = None
+        for i in range(4):  # depths 0,1,2,3 — one deeper than the cap
+            parent = await c.fetchval(
+                "INSERT INTO outline_node (created_by, project_id, book_id, parent_id, kind, rank, title) "
+                "VALUES ($1,$2,$3,$4,'arc',$5,$6) RETURNING id",
+                actor, project, book, parent, f"a{i}", f"L{i}",
+            )
+        with pytest.raises(RuntimeError, match=r"nest deeper"):
+            await run_arc_lift(c)
+        # refused BEFORE any DDL: no lift map, no structure_node rows, marker unset, arcs intact.
+        assert await c.fetchval("SELECT to_regclass('_arc_lift_map')") is None
+        assert await c.fetchval("SELECT count(*) FROM structure_node") == 0
+        assert await c.fetchval("SELECT count(*) FROM package_migration WHERE marker=$1", _LIFT_MARKER) == 0
+        assert await c.fetchval("SELECT count(*) FROM outline_node WHERE kind='arc'") == 4
+
+
+async def test_t7_arc_referencing_scene_link_is_refused(migrated_pool):
+    # review: scene_link.from/to_node_id is ON DELETE CASCADE — a link referencing an arc would be
+    # silently deleted by M5's arc DELETE. The M5 guard must refuse it (rolling back the whole lift).
+    async with migrated_pool.acquire() as c:
+        s = await _seed_arc_tree(c)
+        await c.execute(
+            "INSERT INTO scene_link (created_by, project_id, book_id, from_node_id, to_node_id) "
+            "VALUES ($1,$2,$3,$4,$5)",
+            s["actor"], s["project"], s["book"], s["top"], s["scene"],  # from the ARC (anomalous)
+        )
+        with pytest.raises(RuntimeError, match=r"scene_link/scene_grounding_pins"):
+            await run_arc_lift(c)
+        # the whole transaction rolled back — arcs NOT lifted, marker unset.
+        assert await c.fetchval("SELECT count(*) FROM structure_node") == 0
+        assert await c.fetchval("SELECT count(*) FROM package_migration WHERE marker=$1", _LIFT_MARKER) == 0
+
+
 async def test_t7_second_run_is_a_noop(migrated_pool):
     async with migrated_pool.acquire() as c:
         await _seed_arc_tree(c)
