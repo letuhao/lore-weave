@@ -10,6 +10,7 @@
 import type {
   ConformanceStatus,
   LaneBand,
+  NodeContent,
   NodePosition,
   NodeUnionState,
   PlanOverlay,
@@ -18,6 +19,9 @@ import type {
 /** RF `data` payload for a content node (chapter/scene/arc-rollup). */
 export interface PlanNodeData {
   node: NodePosition;
+  /** Display scalars (title/status/…); undefined until the node's window loads ⇒ fall back to a
+   *  story-order label. Arc-rollups get theirs from the shell (always present). */
+  content?: NodeContent;
   overlay: PlanOverlay | null;
   conformance: ConformanceStatus | null;
   /** PH12 two-truths union state; undefined until the join resolves (renders neutral). */

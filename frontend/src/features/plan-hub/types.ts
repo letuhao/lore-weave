@@ -142,6 +142,19 @@ export interface ActualScene {
 /** PH12 — the three node states from the two-truths join (spec vs manuscript). */
 export type NodeUnionState = 'planned-only' | 'written' | 'imported-unplanned';
 
+/** Display scalars a canvas node needs but `NodePosition` (layout-only) lacks — title/status/etc.
+ *  Keyed by node id in `PlanHubView.nodeContent`: arc/saga entries come from the shell (ArcListNode),
+ *  chapter/scene entries from the loaded summary windows (SummaryNode). `chapterId` feeds the bus
+ *  (node → active-chapter event) + the H3 drawer. Prose (goal/synopsis) is NOT here (PH10). */
+export interface NodeContent {
+  title: string;
+  status: string;
+  kind: string;
+  tension: number | null;
+  beatRole: string | null;
+  chapterId: string | null;
+}
+
 /** The controller ↔ canvas contract (H2). `usePlanHub` PRODUCES this; `PlanCanvas` and
  *  `PlanHubPanel` CONSUME it. Fixed here so the hooks slice and the components slice can be
  *  built in parallel against one interface (`css-var-duplicated-across-two-consumers-drifts`). */
@@ -156,6 +169,9 @@ export interface PlanHubView {
   conformance: ConformanceStatus | null;
   /** PH12 union state per node id (spec vs manuscript), for the three-state node styling. */
   unionState: Record<string, NodeUnionState>;
+  /** Display scalars (title/status/…) per node id — arc titles from the shell, chapter/scene
+   *  titles from the loaded windows. Absent id ⇒ the card falls back to a story-order label. */
+  nodeContent: Record<string, NodeContent>;
   loading: boolean;
   error: string | null;
   selectedId: string | null;
@@ -173,6 +189,7 @@ export interface PlanCanvasProps {
   overlay: PlanOverlay | null;
   conformance: ConformanceStatus | null;
   unionState: Record<string, NodeUnionState>;
+  nodeContent: Record<string, NodeContent>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onToggleArc: (arcId: string) => void;

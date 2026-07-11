@@ -15,9 +15,10 @@ import {
 } from './nodePresentation';
 
 function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, overlay, unionState, selected, onToggle } = data;
+  const { node, content, overlay, unionState, selected, onToggle } = data;
   const problems = problemCount(overlay, node.id);
   const tension = chapterTension(overlay, node.id);
+  const title = content?.title || `Ch ${node.storyOrder ?? '—'}`;
 
   return (
     <div
@@ -32,8 +33,8 @@ function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
       <Handle type="target" position={Position.Left} className="!border-0 !bg-transparent" />
       <div className="flex items-center gap-1.5">
         <span className={cn('h-2 w-2 shrink-0 rounded-full', unionDotClass(unionState))} />
-        {/* Title arrives with node enrichment (H4); storyOrder is the stable placeholder. */}
-        <span className="flex-1 truncate font-medium">Ch {node.storyOrder ?? '—'}</span>
+        {/* Real chapter title once the window loads; a story-order label until then. */}
+        <span className="flex-1 truncate font-medium" title={title}>{title}</span>
         <button
           type="button"
           data-testid={`plan-node-chapter-toggle-${node.id}`}

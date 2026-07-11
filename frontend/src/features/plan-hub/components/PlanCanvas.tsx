@@ -41,6 +41,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     overlay,
     conformance,
     unionState,
+    nodeContent,
     selectedId,
     onSelect,
     onToggleArc,
@@ -58,6 +59,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
       style: { width: n.width },
       data: {
         node: n,
+        content: nodeContent[n.id],
         overlay,
         conformance,
         unionState: unionState[n.id],
@@ -72,7 +74,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, selectedId, onToggleArc, onToggleChapter]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, onToggleArc, onToggleChapter]);
 
   const rfEdges = useMemo<Edge[]>(
     () =>

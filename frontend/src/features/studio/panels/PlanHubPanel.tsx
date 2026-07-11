@@ -33,6 +33,7 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         overlay={view.overlay}
         conformance={view.conformance}
         unionState={view.unionState}
+        nodeContent={view.nodeContent}
         selectedId={view.selectedId}
         onSelect={view.select}
         onToggleArc={view.toggleArc}

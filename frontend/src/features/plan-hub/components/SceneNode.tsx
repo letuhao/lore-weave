@@ -10,7 +10,8 @@ import { cn } from '@/lib/utils';
 import { unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, unionState, selected } = data;
+  const { node, content, unionState, selected } = data;
+  const title = content?.title || `Sc ${node.storyOrder ?? '—'}`;
 
   return (
     <div
@@ -25,8 +26,8 @@ function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
       <Handle type="target" position={Position.Left} className="!border-0 !bg-transparent" />
       <div className="flex items-center gap-1">
         <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', unionDotClass(unionState))} />
-        {/* Title + tension arrive with node enrichment (H4); storyOrder is the placeholder. */}
-        <span className="flex-1 truncate">Sc {node.storyOrder ?? '—'}</span>
+        {/* Real scene title once its window loads; a story-order label until then. */}
+        <span className="flex-1 truncate" title={title}>{title}</span>
       </div>
       <Handle type="source" position={Position.Right} className="!border-0 !bg-transparent" />
     </div>

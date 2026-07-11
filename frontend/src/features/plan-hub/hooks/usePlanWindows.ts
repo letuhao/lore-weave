@@ -8,21 +8,24 @@
 // arcs/chapters is dynamic, so a per-key useInfiniteQuery would break the rules of hooks.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getChildren } from '../api';
-import type { WindowNode } from '../types';
+import type { SummaryNode, WindowNode } from '../types';
 import { toWindowNode } from './planHubMappers';
 
 const CHILD_PAGE = 100; // the children route's keyset page size
 
 interface WindowSlice {
-  nodes: WindowNode[];
+  // The raw summary rows — title/status/tension live here; laneLayout gets the WindowNode subset.
+  items: SummaryNode[];
   cursor: string | null; // next_cursor of the last fetched page; null ⇒ last page reached
   loading: boolean;
 }
-const EMPTY_SLICE: WindowSlice = { nodes: [], cursor: null, loading: false };
+const EMPTY_SLICE: WindowSlice = { items: [], cursor: null, loading: false };
 
 export interface PlanWindowsResult {
   /** The flat loaded windows (expanded arcs' chapters + expanded chapters' scenes) for laneLayout. */
   windows: WindowNode[];
+  /** The raw summary rows by node id (title/status/tension/…), for the canvas node cards. */
+  content: Record<string, SummaryNode>;
   arcLoading: Record<string, boolean>;
   arcHasMore: Record<string, boolean>;
   /** Fetch the next chapter page of an expanded arc (infinite scroll along its lane). */
@@ -76,12 +79,11 @@ export function usePlanWindows(
       try {
         const page = await getChildren(bookId, { structureNodeId: arcId }, { cursor, limit: CHILD_PAGE, token });
         if (myGen !== gen.current) return;
-        const mapped = page.items.map(toWindowNode);
         setArcSlices((prev) => {
           const cur = prev[arcId] ?? EMPTY_SLICE;
           return {
             ...prev,
-            [arcId]: { nodes: cursor ? [...cur.nodes, ...mapped] : mapped, cursor: page.next_cursor, loading: false },
+            [arcId]: { items: cursor ? [...cur.items, ...page.items] : page.items, cursor: page.next_cursor, loading: false },
           };
         });
       } catch (e) {
@@ -101,12 +103,11 @@ export function usePlanWindows(
       try {
         const page = await getChildren(bookId, { parentId: chapterId }, { cursor, limit: CHILD_PAGE, token });
         if (myGen !== gen.current) return;
-        const mapped = page.items.map(toWindowNode);
         setChapterSlices((prev) => {
           const cur = prev[chapterId] ?? EMPTY_SLICE;
           return {
             ...prev,
-            [chapterId]: { nodes: cursor ? [...cur.nodes, ...mapped] : mapped, cursor: page.next_cursor, loading: false },
+            [chapterId]: { items: cursor ? [...cur.items, ...page.items] : page.items, cursor: page.next_cursor, loading: false },
           };
         });
       } catch (e) {
@@ -157,8 +158,18 @@ export function usePlanWindows(
 
   const windows = useMemo(() => {
     const out: WindowNode[] = [];
-    for (const s of Object.values(arcSlices)) out.push(...s.nodes);
-    for (const s of Object.values(chapterSlices)) out.push(...s.nodes);
+    for (const s of Object.values(arcSlices)) out.push(...s.items.map(toWindowNode));
+    for (const s of Object.values(chapterSlices)) out.push(...s.items.map(toWindowNode));
+    return out;
+  }, [arcSlices, chapterSlices]);
+
+  // The raw summary content by node id (title/status/tension/beat_role/chapter_id) — the canvas
+  // node cards read titles from here (NodePosition is layout-only). Chapter/scene ids never
+  // collide (distinct outline_node ids), so one flat map is safe.
+  const content = useMemo(() => {
+    const out: Record<string, SummaryNode> = {};
+    for (const s of Object.values(arcSlices)) for (const it of s.items) out[it.id] = it;
+    for (const s of Object.values(chapterSlices)) for (const it of s.items) out[it.id] = it;
     return out;
   }, [arcSlices, chapterSlices]);
 
@@ -174,6 +185,7 @@ export function usePlanWindows(
 
   return {
     windows,
+    content,
     arcLoading,
     arcHasMore,
     loadMoreArc,

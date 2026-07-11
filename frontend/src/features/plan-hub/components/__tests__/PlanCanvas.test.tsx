@@ -114,6 +114,7 @@ function makeProps(overrides: Partial<PlanCanvasProps> = {}): PlanCanvasProps {
     overlay: null,
     conformance: null,
     unionState: { 'ch-1': 'written', 'ch-2': 'planned-only' },
+    nodeContent: {},
     selectedId: null,
     onSelect: vi.fn(),
     onToggleArc: vi.fn(),
@@ -167,6 +168,21 @@ describe('PlanCanvas', () => {
 
     screen.getByTestId('plan-lane-toggle-arc-1').click();
     expect(onToggleArc).toHaveBeenCalledWith('arc-1');
+  });
+
+  it('renders a real chapter title from nodeContent, falling back to a story-order label', () => {
+    render(
+      <PlanCanvas
+        {...makeProps({
+          nodeContent: {
+            'ch-1': { title: 'The Summons', status: 'outline', kind: 'chapter', tension: null, beatRole: null, chapterId: 'c1' },
+          },
+        })}
+      />,
+    );
+    // ch-1 has content ⇒ its real title; ch-2 has none ⇒ the story-order placeholder.
+    expect(screen.getByTestId('plan-node-chapter-ch-1').textContent).toContain('The Summons');
+    expect(screen.getByTestId('plan-node-chapter-ch-2').textContent).toContain('Ch 3');
   });
 
   it('a chapter branch toggle calls onToggleChapter, not onSelect', () => {

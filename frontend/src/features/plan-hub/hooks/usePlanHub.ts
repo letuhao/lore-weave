@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
 import { laneLayout } from '../layout/laneLayout';
-import type { CollapseState, PlanHubView } from '../types';
+import type { CollapseState, NodeContent, PlanHubView } from '../types';
 import { usePlanWindows } from './usePlanWindows';
 import { useActualState } from './useActualState';
 import { computeUnionState, toArcShellNode } from './planHubMappers';
@@ -76,6 +76,22 @@ export function usePlanHub(bookId: string): PlanHubView {
     return computeUnionState(sceneNodeIds, actual.writtenNodeIds, actual.complete);
   }, [windowsResult.windows, actual.writtenNodeIds, actual.complete]);
 
+  // Display scalars per node id: arc titles from the shell + chapter/scene titles from the loaded
+  // windows (the window content wins on id collision — it never collides, arcs vs outline nodes).
+  const nodeContent = useMemo<Record<string, NodeContent>>(() => {
+    const out: Record<string, NodeContent> = {};
+    for (const a of arcsQuery.data?.arcs ?? []) {
+      out[a.id] = { title: a.title, status: a.status, kind: a.kind, tension: null, beatRole: null, chapterId: null };
+    }
+    for (const n of Object.values(windowsResult.content)) {
+      out[n.id] = {
+        title: n.title, status: n.status, kind: n.kind,
+        tension: n.tension, beatRole: n.beat_role, chapterId: n.chapter_id,
+      };
+    }
+    return out;
+  }, [arcsQuery.data, windowsResult.content]);
+
   const toggleArc = useCallback((arcId: string) => {
     setExpandedArcs((prev) => {
       const next = new Set(prev);
@@ -106,6 +122,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     overlay: overlayQuery.data ?? null,
     conformance: conformanceQuery.data ?? null,
     unionState,
+    nodeContent,
     loading,
     error,
     selectedId,

@@ -9,9 +9,10 @@ import { cn } from '@/lib/utils';
 import { arcDirty, type PlanNodeData } from './nodePresentation';
 
 function ArcRollupNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, conformance, selected, onToggle } = data;
+  const { node, content, conformance, selected, onToggle } = data;
   const dirty = arcDirty(conformance, node.id);
   const count = node.rollupCount ?? 0;
+  const countLabel = `${count} ${count === 1 ? 'chapter' : 'chapters'}`;
 
   return (
     <div
@@ -30,8 +31,13 @@ function ArcRollupNodeInner({ data }: NodeProps<PlanNodeData>) {
             title="conformance drift"
           />
         )}
-        <span className="flex-1 truncate font-medium">
-          {count} {count === 1 ? 'chapter' : 'chapters'}
+        {/* The arc title (from the shell) is primary; the chapter count is the rollup's secondary
+            line. Before the shell resolves for this node, the count alone still reads correctly. */}
+        <span className="flex-1 truncate font-medium" title={content?.title}>
+          {content?.title || countLabel}
+          {content?.title && (
+            <span className="ml-1 font-normal text-muted-foreground">· {countLabel}</span>
+          )}
         </span>
         <button
           type="button"
