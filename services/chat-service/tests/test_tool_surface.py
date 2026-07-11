@@ -43,18 +43,40 @@ class TestToolSurface:
         )
         assert out == hot
 
-    def test_assemble_auto_mode_includes_activated_workflow_tools(self):
-        # A multi-turn workflow persists its step tools to `activated_tools` even in
-        # auto mode; assemble MUST re-advertise them alongside the hot-seed, or the
-        # rail loses its tools after the loading turn (the S03 cross-turn drop).
+    def test_assemble_auto_mode_readvertises_only_current_workflow_tools(self):
+        # A multi-turn workflow's step tools persist in activated_tools; assemble MUST
+        # re-advertise them in auto mode (the S03 cross-turn drop) — BUT ONLY those that
+        # belong to a currently-visible workflow. A stale find_tools accumulation left in
+        # activated_tools by a prior curated phase MUST be dropped (review-impl leak fix).
         hot = {"glossary_search", "glossary_list"}
         out = assemble_initial_active_names(
             curated=False,
             enabled_tools=[],
-            activated_tools=["glossary_propose_status_change", "glossary_propose_merge"],
+            activated_tools=[
+                "glossary_propose_status_change",  # current workflow step tool
+                "glossary_propose_merge",          # current workflow step tool
+                "translation_start_job",           # STALE find_tools accumulation
+                "kg_build_graph",                  # STALE find_tools accumulation
+            ],
             hot_seed_names=hot,
+            workflow_step_tools={"glossary_propose_status_change", "glossary_propose_merge"},
         )
         assert out == hot | {"glossary_propose_status_change", "glossary_propose_merge"}
+        assert "translation_start_job" not in out
+        assert "kg_build_graph" not in out
+
+    def test_assemble_auto_mode_no_workflow_filter_stays_hot_seed_only(self):
+        # No workflow_step_tools supplied → strict original auto behavior: hot-seed only,
+        # activated_tools (whatever they are) NEVER leak. Defends the resume path, which
+        # does not pass the filter.
+        hot = {"glossary_search"}
+        out = assemble_initial_active_names(
+            curated=False,
+            enabled_tools=[],
+            activated_tools=["translation_start_job", "kg_build_graph"],
+            hot_seed_names=hot,
+        )
+        assert out == hot
 
     def test_assemble_curated_uses_pins_and_activated(self):
         out = assemble_initial_active_names(

@@ -3486,6 +3486,16 @@ async def stream_response(
                     editor=editor, book_scoped=book_scoped, studio=bool(studio_context)
                 )
                 from app.services.tool_surface import discovery_seed_for_surface
+                # The union of step tools across the turn's visible workflows — the ONLY
+                # activated_tools re-advertised in auto mode (so a persisted rail survives
+                # across turns, but stale find_tools accumulations from a prior curated
+                # phase do NOT leak into the auto surface). Empty when no workflows visible.
+                _wf_step_tools = {
+                    str(s.get("tool") or "")
+                    for wf in (turn_workflows or [])
+                    for s in (wf.get("steps") or [])
+                    if isinstance(s, dict) and s.get("tool")
+                }
                 discovery_seed_names = discovery_seed_for_surface(
                     catalog,
                     pins=tool_pins,
@@ -3494,6 +3504,7 @@ async def stream_response(
                     studio=bool(studio_context),
                     context_length=creds.context_length,
                     permission_mode=permission_mode,
+                    workflow_step_tools=_wf_step_tools,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪

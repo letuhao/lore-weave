@@ -216,6 +216,23 @@ def _is_silent_success(tc: dict) -> bool:
     return n_total > 0 and n_err == n_total
 
 
+def _mints_confirm_token(tc: dict) -> bool:
+    """True if this call's result carries a confirm_token — it PROPOSED/minted a pending
+    action (adopt_standards, propose_kinds, propose_status_change, propose_merge, plan_*,
+    …) and persisted NOTHING yet; the COMMIT (glossary_confirm_action) lands the effect.
+    A mint returns ok:true, so counting it as an effectful write would suppress the
+    false-persistence hard-red (a mid-tier agent that proposes then claims "done" without
+    ever committing). So a mint is NOT an effectful write."""
+    res = tc.get("result")
+    if isinstance(res, dict):
+        if res.get("confirm_token"):
+            return True
+        inner = res.get("result")
+        if isinstance(inner, dict) and inner.get("confirm_token"):
+            return True
+    return False
+
+
 def _substitute(obj):
     if isinstance(obj, str):
         return _PLACEHOLDERS.get(obj, obj)
@@ -492,7 +509,8 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
     async_jobs: list[dict] = []
     persist_claims_without_write: list[dict] = []
     unresolved_calls: list[dict] = []   # ok is None ⇒ START/ARGS/END with no RESULT
-    resumed_calls: list[dict] = []      # suspended, then auto-approved by the driver
+    resumed_calls: list[dict] = []      # suspended, then auto-approved/committed by the driver
+    commit_failed_calls: list[dict] = []  # a domain-confirm commit POST failed (real failure)
     silent_success_calls: list[dict] = []  # ok:true but every item errored
     cumulative_write_tools = 0
     max_consec = 0
@@ -520,11 +538,15 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
             if _is_empty_intent(name, args):
                 empty_intent += 1
             # A tool call that emitted START/ARGS/END but NO RESULT suspended the run
-            # on a client-side card. If the driver auto-approved it (resumed), the flow
-            # completed — not unresolved. Only a suspend we could NOT resume is unresolved
-            # (COLD-pass artifact, not a product verdict).
-            if tc.get("resumed"):
-                resumed_calls.append({"turn": turn, "tool": name, "outcome": tc["resumed"]})
+            # on a client-side card. If the driver resolved it (resumed), the flow
+            # completed — UNLESS the resolution was a FAILED commit, which is a real
+            # failed application (its own hard-red), NOT a completed resume. Only a
+            # suspend we could not resume at all is unresolved (COLD-pass artifact).
+            _resumed = tc.get("resumed")
+            if _resumed == "commit_failed":
+                commit_failed_calls.append({"turn": turn, "tool": name})
+            elif _resumed:
+                resumed_calls.append({"turn": turn, "tool": name, "outcome": _resumed})
             elif tc.get("ok") is None:
                 unresolved_calls.append({"turn": turn, "tool": name})
             # consecutive same-tool with same args (no state change proxy)
@@ -562,7 +584,7 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
                                              "sample_error": sample})
                 continue  # envelope-ok but zero effect — never credit as a write
             if (nm not in DISCOVERY_TOOLS and not _READONLY_RE.search(nm)
-                    and tc.get("ok") is True):
+                    and tc.get("ok") is True and not _mints_confirm_token(tc)):
                 cumulative_write_tools += 1
         # false-persistence candidate: a "saved/locked/permanent" claim while the
         # session has persisted NOTHING (zero effectful tool calls so far).
@@ -581,11 +603,14 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
 
     # per-movement rollup
     movements: dict[str, dict] = {}
+    _mv_prev_sig: dict[str, object] = {}  # per-movement consecutive-same-call tracking
+    _mv_consec: dict[str, int] = {}
     for rec in records:
         mv = rec.get("movement") or "-"
         m = movements.setdefault(mv, {
             "turns": 0, "tool_calls": 0, "discovery_calls": 0,
             "empty_intent": 0, "max_turn_s": 0.0, "ttfuo_s": None,
+            "max_consec": 0,
             "label": rec.get("movement_label", ""),
         })
         m["turns"] += 1
@@ -594,13 +619,24 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
         m["empty_intent"] += sum(1 for tc in rec["tools"]
                                  if _is_empty_intent(tc["tool"], tc.get("args") or {}))
         m["max_turn_s"] = max(m["max_turn_s"], rec["latency_s"])
+        # consecutive same-call run WITHIN this movement (review-impl: the per-movement
+        # thrash verdict must use a per-movement count, not the global max — else one
+        # thrashy movement marks every clean movement ❌ in the §11 table).
+        for tc in rec["tools"]:
+            sig = (tc["tool"], json.dumps(tc.get("args") or {}, sort_keys=True, ensure_ascii=False))
+            if sig == _mv_prev_sig.get(mv):
+                _mv_consec[mv] = _mv_consec.get(mv, 0) + 1
+            else:
+                _mv_consec[mv] = 1
+                _mv_prev_sig[mv] = sig
+            m["max_consec"] = max(m["max_consec"], _mv_consec[mv])
         if m["ttfuo_s"] is None and rec["assistant"].strip():
             m["ttfuo_s"] = rec["latency_s"]
 
     # auto no-thrash verdict per movement (purely instrumental — allowed to be auto)
     for mv, m in movements.items():
         thrash = (m["empty_intent"] > 0 or m["max_turn_s"] > THRESH_TURN_SECONDS
-                  or max_consec > THRESH_CONSEC_SAME_TOOL)
+                  or m["max_consec"] > THRESH_CONSEC_SAME_TOOL)
         heavy = m["discovery_calls"] > 4
         m["no_thrash"] = "❌" if thrash else ("⚠️" if heavy else "✅")
 
@@ -613,7 +649,8 @@ def _compute_metrics(records: list[dict], scenario: dict) -> dict:
         "async_jobs_without_status_read": sum(1 for j in async_jobs if not j["status_read_after"]),
         "effectful_tool_calls": cumulative_write_tools,   # 0 = persisted nothing
         "unresolved_tool_calls": unresolved_calls,        # suspended, NOT resumed
-        "resumed_tool_calls": resumed_calls,              # suspended, auto-approved (warm)
+        "resumed_tool_calls": resumed_calls,              # suspended, auto-approved/committed
+        "commit_failed_calls": commit_failed_calls,        # a domain-confirm commit POST failed
         "silent_success_calls": silent_success_calls,      # ok:true, all items errored
         "persist_claims_without_write": persist_claims_without_write,  # CANDIDATE false-"done"
         "jargon_candidates": jargon_candidates,           # CANDIDATES — judge confirms
@@ -666,6 +703,12 @@ def _render_report(scenario: dict, records: list[dict], metrics: dict,
             f"{len(metrics['silent_success_calls'])} SILENT-SUCCESS call(s) ({names}) — envelope "
             f"`ok:true` while every item inside errored. The agent gets no failure signal and retries; "
             f"nothing persists")
+    if metrics.get("commit_failed_calls"):
+        names = ", ".join(sorted({u["tool"] for u in metrics["commit_failed_calls"]}))
+        hard_reds.append(
+            f"{len(metrics['commit_failed_calls'])} FAILED-COMMIT call(s) ({names}) — the driver "
+            f"tried to commit a proposed action (warm approve) and the commit POST FAILED, so the "
+            f"effect did NOT land. A failed application, not a completed step")
     if metrics["unresolved_tool_calls"]:
         names = ", ".join(sorted({u["tool"] for u in metrics["unresolved_tool_calls"]}))
         hard_reds.append(

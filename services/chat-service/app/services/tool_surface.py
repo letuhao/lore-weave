@@ -163,6 +163,7 @@ def discovery_seed_for_surface(
     studio: bool = False,
     context_length: int | None = None,
     permission_mode: str = "write",
+    workflow_step_tools: set[str] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated)."""
     hot_domains = surface_hot_domains(
@@ -269,6 +270,7 @@ def discovery_seed_for_surface(
         enabled_tools=eff_pins,
         activated_tools=pins.activation_state["activated_tools"],
         hot_seed_names=raw_hot_seed,
+        workflow_step_tools=workflow_step_tools,
     )
     # CAT-4 Part D — a manually-pinned legacy tool rides every turn of THIS
     # session regardless of curated/auto mode; it bypasses find_tools entirely
@@ -337,19 +339,25 @@ def assemble_initial_active_names(
     enabled_tools: list[str],
     activated_tools: list[str],
     hot_seed_names: set[str],
+    workflow_step_tools: set[str] | None = None,
 ) -> set[str]:
     # Auto (non-curated) mode is per-turn discovery — the hot-seed re-seeds each turn
-    # and ad-hoc find_tools matches do NOT persist. But a WORKFLOW is an explicit,
-    # multi-step rail: workflow_load activates its step tools and persists them to
-    # `activated_tools` (stream_service, ungated by curated for exactly this reason).
-    # Those must stay advertised on LATER turns of the same rail, or a multi-turn
-    # workflow loses its tools the moment the loading turn ends (the S03 failure: the
-    # agent listed the pile in T0, but status_change/merge were gone by T1). Union them
-    # in — they are already token-budget-capped at persist time (ACTIVATED_TOOLS_TOKEN_
-    # BUDGET via merge_activated_tools), and empty for any session that never loaded a
-    # workflow, so this is a no-op except while a rail is in flight.
+    # and ad-hoc find_tools matches do NOT persist. The ONE exception: a WORKFLOW is an
+    # explicit multi-step rail whose step tools workflow_load persists to
+    # `activated_tools` (stream_service, ungated for exactly this reason) so they survive
+    # to later turns of the same rail (the S03 failure: the agent listed the pile in T0,
+    # but status_change/merge were gone by T1).
+    #
+    # review-impl: re-advertise ONLY the activated tools that belong to a CURRENTLY-VISIBLE
+    # workflow's steps — NEVER the whole persisted set. A session that was curated earlier
+    # (and accumulated find_tools/tool_load matches into activated_tools) then flipped to
+    # auto must NOT leak those ad-hoc accumulations into the auto surface. `workflow_step_
+    # tools` is the union of the turn's visible workflows' step tools; intersecting keeps
+    # in-flight rail tools and drops everything else. Default None → the original strict
+    # auto behavior (hot-seed only), so a caller that doesn't supply the filter can't leak.
     if not curated:
-        return set(hot_seed_names) | set(activated_tools)
+        wf = workflow_step_tools or set()
+        return set(hot_seed_names) | (set(activated_tools) & wf)
     return set(enabled_tools) | set(activated_tools)
 
 
