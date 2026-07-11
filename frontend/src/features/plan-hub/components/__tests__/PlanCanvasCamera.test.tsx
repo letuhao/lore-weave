@@ -98,3 +98,35 @@ describe('PlanCanvas camera (OQ-5)', () => {
     expect(setCenter).not.toHaveBeenCalled();
   });
 });
+
+describe('PlanCanvas camera — OQ-5 auto-expand (the node appears a render LATER)', () => {
+  it('pans as soon as the focused node APPEARS, not only on the frame it was requested', () => {
+    // Focusing a nested arc first expands its ancestors, and that layout change lands on a later
+    // render. The old camera checked once, found nothing, and gave up — so a rail click on any
+    // arc under a collapsed one highlighted the row but never moved the viewport.
+    setCenter.mockClear();
+    const empty = { ...makeLayout(), nodes: [] };
+    const props = makeProps({ layout: empty });
+    const { rerender } = render(<PlanCanvas {...props} focusTarget={null} />);
+
+    rerender(<PlanCanvas {...props} focusTarget={{ nodeId: 'ch-2', seq: 1 }} />);
+    expect(setCenter).not.toHaveBeenCalled(); // not rendered yet — no throw, no pan
+
+    // The expansion lands: the node now exists, with the SAME focus request outstanding.
+    rerender(<PlanCanvas {...makeProps()} focusTarget={{ nodeId: 'ch-2', seq: 1 }} />);
+    expect(setCenter).toHaveBeenCalledTimes(1);
+    expect(setCenter).toHaveBeenLastCalledWith(424, 48, expect.objectContaining({ zoom: expect.any(Number) }));
+  });
+
+  it('pans only ONCE per focus request (an unrelated layout change must not re-pan)', () => {
+    setCenter.mockClear();
+    const props = makeProps();
+    const { rerender } = render(<PlanCanvas {...props} focusTarget={{ nodeId: 'ch-1', seq: 1 }} />);
+    expect(setCenter).toHaveBeenCalledTimes(1);
+
+    // A new layout object (e.g. a window refetch) with the same focus request — the user is not
+    // asking to be moved again, so the viewport must stay where they left it.
+    rerender(<PlanCanvas {...makeProps()} focusTarget={{ nodeId: 'ch-1', seq: 1 }} />);
+    expect(setCenter).toHaveBeenCalledTimes(1);
+  });
+});

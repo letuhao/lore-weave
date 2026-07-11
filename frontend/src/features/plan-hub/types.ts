@@ -187,6 +187,9 @@ export interface PlanHubView {
   toggleArc: (arcId: string) => void;
   /** Hide/show a chapter's scene branch (loads the scene window on expand). */
   toggleChapter: (chapterId: string) => void;
+  /** OQ-5 — open an arc's ancestors so the arc becomes a RENDERED node. A nested arc under a
+   *  collapsed ancestor isn't drawn at all, so there is nothing for the camera to pan to. */
+  expandAncestorsOf: (nodeId: string) => void;
   /** H5 Row-1 (PH20): rebind a chapter to another arc (drag into its lane). Refetches on success. */
   moveChapterToArc: (chapterId: string, arcId: string) => void;
   /** H5 Row-4 (PH20): re-parent a scene under another chapter (drag onto its card). OCC'd on the

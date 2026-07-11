@@ -46,13 +46,17 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   // OQ-5 camera — a focus REQUEST (nodeId + monotonically bumped seq so re-focusing the same node
   // still pans). A rail row focus selects AND pans; a canvas click only selects (already in view).
   const [focusTarget, setFocusTarget] = useState<CameraFocusTarget | null>(null);
-  const { select } = view;
+  const { select, expandAncestorsOf } = view;
   const focusNode = useCallback(
     (nodeId: string) => {
+      // Open the ancestors FIRST: a nested arc under a collapsed one isn't drawn, so the camera
+      // would have nothing to pan to. The pan itself fires as soon as the node appears (the camera
+      // waits for it rather than giving up on the frame the request was made).
+      expandAncestorsOf(nodeId);
       setFocusTarget((prev) => ({ nodeId, seq: (prev?.seq ?? 0) + 1 }));
       select(nodeId);
     },
-    [select],
+    [select, expandAncestorsOf],
   );
 
   if (view.error) {

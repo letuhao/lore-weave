@@ -18,7 +18,7 @@
 // above while the card still looks 90% inside its own) and dangerous (a 1px drag could re-parent a
 // scene under its neighbour). Cursor-based targeting is what the user means by "where I dropped it",
 // and it is inherently no-op-safe: the cursor starts inside the dragged element's own region.
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -73,14 +73,18 @@ function CameraController({
 }) {
   const rf = useReactFlow();
   const seq = focusTarget?.seq ?? -1;
+  // The seq we have already panned for. Focusing a node ALSO expands its ancestors, and that layout
+  // change lands a render later — so the node usually does not exist on the frame the request was
+  // made. We therefore watch `nodes` too and pan as soon as the target appears, but only ONCE per
+  // request (without this latch, every unrelated layout change would re-pan the viewport).
+  const pannedFor = useRef(-1);
   useEffect(() => {
-    if (!focusTarget) return;
+    if (!focusTarget || pannedFor.current === seq) return;
     const n = nodes.find((p) => p.id === focusTarget.nodeId);
-    if (!n) return; // not currently rendered (arc collapsed) — best-effort, no throw
+    if (!n) return; // not rendered yet (or at all) — retry on the next layout, never throw
+    pannedFor.current = seq;
     rf.setCenter(n.x + n.width / 2, n.y + 20, { zoom: FOCUS_ZOOM, duration: 400 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pan is keyed on the focus REQUEST (seq),
-    // not on every nodes/rf identity change (which would re-pan on unrelated re-renders).
-  }, [seq]);
+  }, [seq, nodes, focusTarget, rf]);
   return null;
 }
 

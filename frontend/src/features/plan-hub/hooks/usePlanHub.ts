@@ -113,6 +113,28 @@ export function usePlanHub(bookId: string): PlanHubView {
 
   const select = useCallback((id: string | null) => setSelectedId(id), []);
 
+  // OQ-5 — open every ANCESTOR of an arc so the arc itself becomes a rendered node.
+  // An arc renders as a rollup card only when it is the OUTERMOST collapsed one: under a collapsed
+  // ancestor it is suppressed entirely (folded into that ancestor's rollup). So in the default
+  // all-collapsed view, a rail click on any nested arc had nothing to pan TO — the camera no-op'd and
+  // the row just highlighted. Opening the ancestors is what makes the target exist.
+  const expandAncestorsOf = useCallback(
+    (nodeId: string) => {
+      const byId = new Map(shell.map((n) => [n.id, n]));
+      const ancestors: string[] = [];
+      for (let p = byId.get(nodeId)?.parent_id ?? null, hops = 0; p && hops < 8; hops++) {
+        ancestors.push(p);
+        p = byId.get(p)?.parent_id ?? null;
+      }
+      if (!ancestors.length) return;
+      setExpandedArcs((prev) => {
+        if (ancestors.every((a) => prev.has(a))) return prev; // already open — keep the identity
+        return new Set([...prev, ...ancestors]);
+      });
+    },
+    [shell],
+  );
+
   // ── H5 (PH20) writes — the three drag-to-move mutations live in usePlanMoves (which owns the
   // interaction rules: nest-vs-sibling, the OCC append position, the no-op guards). It needs BOTH
   // reload paths: the react-query invalidate for the shell, and windows.reload() for the hand-rolled
@@ -143,6 +165,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     select,
     toggleArc,
     toggleChapter,
+    expandAncestorsOf,
     moveChapterToArc: moves.moveChapterToArc,
     moveSceneToChapter: moves.moveSceneToChapter,
     moveArcTo: moves.moveArcTo,
