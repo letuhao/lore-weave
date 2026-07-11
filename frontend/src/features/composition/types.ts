@@ -143,6 +143,26 @@ export type CommitDecomposePayload = {
   idempotency_key: string;
 };
 
+// 26 IX-14 — the ONE conformance staleness read contract (GET /books/{id}/conformance/status).
+// Per-arc freshness + a book-level index-stale rollup. A scene's "dirty" chip = its arc's
+// `dirty ∧ chapter ∈ stale_chapters` (spec 26 §debugger). Advisory, VIEW-gated, cheap (no LLM).
+export type ConformanceArc = {
+  structure_node_id: string;
+  title: string;
+  kind: string;
+  computed_at: string | null;   // null ⇒ never_run
+  deep: boolean;
+  dirty: boolean;
+  dirty_reasons: string[];       // e.g. 'never_run' | 'prose_drift' | 'roster_changed' | …
+  stale_chapters: string[];      // chapter_ids that drifted since the last snapshot
+  summary: Record<string, unknown> | null;
+};
+export type ConformanceStatus = {
+  book_id: string;
+  arcs: ConformanceArc[];
+  index: { stale_chapter_count: number };
+};
+
 export type OutlineNode = {
   id: string;
   project_id: string;

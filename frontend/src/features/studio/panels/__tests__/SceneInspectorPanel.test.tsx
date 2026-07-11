@@ -18,6 +18,14 @@ vi.mock('@/features/composition/components/GroundingPanel', () => ({
 }));
 const state = vi.fn<[], SceneInspectorState>();
 vi.mock('../useSceneInspector', () => ({ useSceneInspector: () => state() }));
+// 26 IX-14 — the inspector also reads conformance; mock it (default: nothing dirty).
+const dirtyChapters = { current: new Set<string>() };
+vi.mock('../useConformanceStatus', () => ({
+  useConformanceStatus: () => ({
+    status: null, dirtyChapters: dirtyChapters.current, staleChapterCount: 0,
+    loading: false, error: null, refresh: vi.fn(),
+  }),
+}));
 
 import { SceneInspectorPanel } from '../SceneInspectorPanel';
 
@@ -35,7 +43,7 @@ const baseState = (o: Partial<SceneInspectorState>): SceneInspectorState => ({
 function dockProps() { return { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps; }
 function withHost(ui: ReactNode) { return render(<StudioHostProvider bookId="book-1">{ui}</StudioHostProvider>); }
 
-beforeEach(() => { state.mockReset(); patch.mockClear(); });
+beforeEach(() => { state.mockReset(); patch.mockClear(); dirtyChapters.current = new Set(); });
 
 describe('SceneInspectorPanel (22-C3)', () => {
   it('shows the no-selection empty state when nothing is selected', () => {
@@ -95,5 +103,15 @@ describe('SceneInspectorPanel (22-C3)', () => {
     state.mockReturnValue(baseState({ node: node(), error: 'changed elsewhere — reloaded' }));
     withHost(<SceneInspectorPanel {...dockProps()} />);
     expect(screen.getAllByTestId('scene-inspector-error')[0].textContent).toMatch(/changed elsewhere/);
+  });
+
+  it('26-F: shows the "canon moved" banner only when the scene\'s chapter is dirty', () => {
+    state.mockReturnValue(baseState({ node: node({ chapter_id: 'ch1' }) }));
+    const { queryByTestId } = withHost(<SceneInspectorPanel {...dockProps()} />);
+    expect(queryByTestId('scene-inspector-dirty')).toBeNull(); // clean chapter → no banner
+
+    dirtyChapters.current = new Set(['ch1']);
+    withHost(<SceneInspectorPanel {...dockProps()} />);
+    expect(screen.getByTestId('scene-inspector-dirty')).toBeInTheDocument();
   });
 });

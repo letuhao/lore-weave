@@ -238,6 +238,8 @@
       "count": "{{n}} scenes",
       "workless": "No plan yet — scene intent (status, POV, tension) is unavailable until you create a plan for this book.",
       "intentUnavailable": "Scene plan is temporarily unavailable — showing the written prose only.",
+      "dirty": "canon moved",
+      "dirtyTitle": "Canon moved since the last conformance run",
       "anchorLost": "Anchor lost",
       "empty": "No scenes match.",
       "loadMore": "Load more",
@@ -261,6 +263,7 @@
       "guideBody": "The Scene Inspector is the detail pane for a single scene: select a scene (in the Scene Browser or the manuscript) and its full plan opens here — status, goal, synopsis, beat role, tension, and the craft fields (conflict, outcome, stakes, story time, value shift, target words) — all editable, with grounding pins folded in. Edits save immediately and are guarded against conflicting changes.",
       "none": "Select a scene to inspect its full plan.",
       "loading": "Loading…",
+      "dirty": "Canon moved since the last conformance run — this plan may be stale.",
       "section": {
         "identity": "Identity",
         "intent": "Intent",

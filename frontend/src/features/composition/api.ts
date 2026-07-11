@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  CanonIssue, DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  CanonIssue, ConformanceStatus, DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 import type { MotifBindingsResponse } from './motif/types';
 
@@ -206,6 +206,11 @@ export const compositionApi = {
   // BARE node path (like patchNode/archiveNode) — the gate derives scope from the row, no project prefix.
   getNode(nodeId: string, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/outline/nodes/${nodeId}`, { token });
+  },
+  // 26 IX-14 — the conformance staleness read contract (book-keyed, VIEW-gated). One wire shape for
+  // every surface (scene chips, Hub badges); advisory + cheap (no LLM). `arc_id` scopes to one arc.
+  getConformanceStatus(bookId: string, token: string): Promise<ConformanceStatus> {
+    return apiJson(`${BASE}/books/${bookId}/conformance/status`, { token });
   },
   // M3 (WS-B3 prose-persist-on-promote) — persist a promoted derivative scene's take
   // PROSE, scene-scoped, in the DERIVATIVE project (a synthetic completed job keyed by

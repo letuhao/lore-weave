@@ -11,6 +11,7 @@ import type { OutlineNode } from '@/features/composition/types';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 import { useSceneInspector } from './useSceneInspector';
+import { useConformanceStatus } from './useConformanceStatus';
 
 const STATUSES: OutlineNode['status'][] = ['empty', 'outline', 'drafting', 'done'];
 const SOURCE_LABEL: Record<string, string> = { authored: 'Authored', decompiled: 'Mined', planforge: 'PlanForge' };
@@ -79,6 +80,7 @@ export function SceneInspectorPanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   const { accessToken } = useAuth();
   const sb = useSceneInspector(host.bookId ?? null);
+  const conf = useConformanceStatus(host.bookId ?? null); // 26 IX-14 — the per-scene dirty chip
   const n = sb.node;
 
   if (!n) {
@@ -98,6 +100,12 @@ export function SceneInspectorPanel(props: IDockviewPanelProps) {
   return (
     <div data-testid="studio-scene-inspector-panel" className="flex h-full min-h-0 flex-col overflow-auto">
       {sb.error && <div data-testid="scene-inspector-error" className="border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">{sb.error}</div>}
+      {/* 26 IX-14 — this scene's chapter drifted since the last conformance run (arc dirty ∧ chapter stale). */}
+      {n.chapter_id && conf.dirtyChapters.has(n.chapter_id) && (
+        <div data-testid="scene-inspector-dirty" className="border-b bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+          {t('panels.scene-inspector.dirty', { defaultValue: 'Canon moved since the last conformance run — this plan may be stale.' })}
+        </div>
+      )}
 
       <Section title={t('panels.scene-inspector.section.identity', { defaultValue: 'Identity' })}>
         <TextField testid="scene-inspector-title" label={t('panels.scene-inspector.f.title', { defaultValue: 'Title' })}

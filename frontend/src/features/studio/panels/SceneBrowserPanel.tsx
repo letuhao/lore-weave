@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 import { useSceneBrowser } from './useSceneBrowser';
+import { useConformanceStatus } from './useConformanceStatus';
 import type { SceneUnionRow } from './sceneUnion';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -27,6 +28,7 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   const bookId = host.bookId ?? null;
   const sb = useSceneBrowser(bookId);
+  const conf = useConformanceStatus(bookId); // 26 IX-14 — per-chapter dirty (canon-moved) chips
 
   if (!bookId) {
     return (
@@ -133,6 +135,16 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
                     )}
                     <span className={cn(r.shape === 'index_only' && 'text-muted-foreground')}>{rowTitle(r)}</span>
                     <SceneStateBadge row={r} t={t} />
+                    {/* 26 IX-14 — canon moved since the last conformance run (amber, advisory). */}
+                    {r.chapterId && conf.dirtyChapters.has(r.chapterId) && (
+                      <span
+                        data-testid="scene-browser-dirty"
+                        title={t('panels.scene-browser.dirtyTitle', { defaultValue: 'Canon moved since the last conformance run' })}
+                        className="rounded bg-amber-500/15 px-1 py-0.5 text-[10px] text-amber-700 dark:text-amber-300"
+                      >
+                        {t('panels.scene-browser.dirty', { defaultValue: 'canon moved' })}
+                      </span>
+                    )}
                   </div>
                 </td>
                 {/* Intent columns grey out for index_only (no spec) rows. */}

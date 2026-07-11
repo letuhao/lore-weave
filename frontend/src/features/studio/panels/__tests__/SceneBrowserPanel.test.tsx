@@ -12,6 +12,14 @@ import type { SceneUnionRow } from '../sceneUnion';
 
 const state = vi.fn<[], SceneBrowserState>();
 vi.mock('../useSceneBrowser', () => ({ useSceneBrowser: () => state() }));
+// 26 IX-14 — the panel also reads conformance; mock it (default: nothing dirty).
+const dirtyChapters = { current: new Set<string>() };
+vi.mock('../useConformanceStatus', () => ({
+  useConformanceStatus: () => ({
+    status: null, dirtyChapters: dirtyChapters.current, staleChapterCount: 0,
+    loading: false, error: null, refresh: vi.fn(),
+  }),
+}));
 
 import { SceneBrowserPanel } from '../SceneBrowserPanel';
 
@@ -27,7 +35,7 @@ const baseState = (o: Partial<SceneBrowserState>): SceneBrowserState => ({
 function dockProps() { return { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps; }
 function withHost(ui: ReactNode) { return render(<StudioHostProvider bookId="book-1">{ui}</StudioHostProvider>); }
 
-beforeEach(() => state.mockReset());
+beforeEach(() => { state.mockReset(); dirtyChapters.current = new Set(); });
 
 describe('SceneBrowserPanel (22-C2)', () => {
   it('renders the three union shapes with distinct state badges', () => {
@@ -91,6 +99,18 @@ describe('SceneBrowserPanel (22-C2)', () => {
     withHost(<SceneBrowserPanel {...dockProps()} />);
     expect(screen.getByTestId('scene-browser-intent-unavailable')).toBeInTheDocument();
     expect(screen.getByTestId('scene-browser-row')).toBeInTheDocument(); // identity row survives
+  });
+
+  it('26-F: an amber "canon moved" chip renders only on rows whose chapter is dirty', () => {
+    dirtyChapters.current = new Set(['ch-stale']);
+    state.mockReturnValue(baseState({
+      rows: [
+        row({ key: 'a', shape: 'linked', chapterId: 'ch-stale', spec: { id: 'n1' } as SceneUnionRow['spec'] }),
+        row({ key: 'b', shape: 'linked', chapterId: 'ch-fresh', spec: { id: 'n2' } as SceneUnionRow['spec'] }),
+      ],
+    }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(screen.getAllByTestId('scene-browser-dirty')).toHaveLength(1); // only the stale-chapter row
   });
 
   it('22-C3: a spec-backed row is clickable-to-inspect; an index_only row is not', () => {
