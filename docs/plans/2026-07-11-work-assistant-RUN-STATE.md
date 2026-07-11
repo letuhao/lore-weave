@@ -105,7 +105,15 @@ commits without VERIFY/POST-REVIEW evidence. If I find myself wanting to bypass 
 | **WS-1.1** `books.kind` (the privacy lock) | ✅ | `kind` enum (novel/document/lore/diary) + CHECK + **BEFORE UPDATE trigger enforcing IMMUTABILITY in the DATABASE** — `kind='diary'` is what every egress guard keys on, so a mutable kind means a private diary can be flipped to a publishable novel; a convention would not hold. Explicit backfill `is_bible → 'lore'` (a DEFAULT never revisits existing rows) **in the same commit** that teaches `createWorldCore` to set `kind='lore'` — otherwise bibles created before/after the deploy are different kinds forever. **All 3 create paths set kind EXPLICITLY** (REST `createBook`, MCP `book_create`, `createWorldCore`). **5/5**: `TestBookKind_IsImmutable_DB` (the DB REFUSES diary→novel) · `..._OtherColumnsStillUpdatable` (the trigger guards ONE column, incl. a same-value self-assignment) · `..._ClosedSet` · `..._BackfilledBiblesAreLore` · **`TestEveryBookCreatePathSetsKindExplicitly`** (the T30 drift lock: a path that omits `kind` inherits `'novel'` — harmless for a novel, catastrophic for a diary born without its lock). book-service `go test ./... -p 1` **ok** (4 pkgs; the one migrate flake is the known parallel-DB deadlock DBT-2 — passes alone on a fresh DB). |
 | **WS-1.2** egress guards (D16 taint) | ✅ **partial — core paths locked; see §7 P-4 for the remainder** | The red team's CC-1: 5 of 7 paths were unguarded, and they are all **the same shape** — a derived/listing surface inheriting a permission enforced only at the authored store. **Locked (6/6 tests):** **#1 share** — a **DB TRIGGER** refuses any `book_collaborators` row on a diary (there are already TWO grant paths and a third will come; a handler guard drifts silently, and the failure looks like a normal share); **#3 wiki** — `PATCH /books/:id` refuses any `wiki_settings` mutation on a diary (**the widest hole**: let the assistant write articles about the colleagues in your diary, flip `visibility='public'`, and the platform serves AI-written biographies of real people to the internet — the public wiki gate reads a JSONB blob and knows nothing about `kind`); **#7 catalog** — the diary is filtered out of the library LIST (a **LIST-level** guard: the repo's own lesson is that per-resource checks pass while the LIST leaks); **the enabling contract** — `kind` now rides `getBookProjection` + `getBookAccess` (**gated behind a grant**, else it is an oracle: probe any book id and learn who keeps a diary). Consumers cannot enforce a taint on a field they never receive. **Also fixed a latent 500**: `getBookProjection` scanned nullable text into plain strings, so the very first diary (provisioned with no description) would have made its own projection unreadable. book-service `go test ./... -p 1` **ok** (the migrate flake is DBT-2; green alone on a fresh DB). |
 | **WS-1.3** schema + the D6 gate | ✅ | **book**: `chapters.{entry_date, journal_kind, diary_kept_at}` — `entry_date` is a **DATE with no tz semantics at the DB layer** (the distiller computes the local day BEFORE insert, so flying to another timezone cannot re-bucket history); **partial unique `(book_id, entry_date) WHERE journal_kind='primary' AND lifecycle_state='active'`** so "End my day" on a phone and a laptop converge instead of minting two entries (and it **exempts trashed rows**, or a deleted entry would block that day forever); `diary_kept_at` is an **orthogonal column, NOT a third `editorial_status`** — widening that CHECK would break the reparse sweeper's gate and the CM1 backfill. **knowledge**: `is_assistant` + **one-per-user partial unique** (provisioning is a retryable fan-out; two assistant projects = a silently split memory) + `chat_turn_extraction_enabled` **DEFAULT FALSE (fail-CLOSED)**. **The D6 gate is DERIVED and now ACTUALLY GATES**: `may_extract_chat_turn = NOT is_assistant AND chat_turn_extraction_enabled`. **It found a real bug**: `should_extract`'s result was computed and only **LOGGED** while the enqueue ran unconditionally — a decorative gate. So every turn of an 8-hour assistant session would have been extracted as trusted canon about the user's real colleagues, at ~100× the intended spend. **6/6 D6 tests, proven by EFFECT** (`test_assistant_turn_queues_NOTHING`), + an explicit backfill so existing projects keep extracting. knowledge **3803 passed**; book-service migrate+api **ok**. |
-| *(Phase 1 slices WS-1.4..1.11 appended as they land)* | | |
+| WS-1.4 provisioning (BFF fan-out) | 🅿️ | **NOT STARTED — see §7 P-5.** The foundations it needs are all in (DEK, `books.kind`, egress locks, `is_assistant` + one-per-user unique, the D6 gate). |
+| WS-1.5 work ontology + `flavorWorkCapture` | 🅿️ | NOT STARTED — §7 P-5 |
+| WS-1.6 capture-decision data path | 🅿️ | NOT STARTED — §7 P-5 |
+| WS-1.7 assistant session template | 🅿️ | NOT STARTED — §7 P-5 |
+| WS-1.8 distiller-lite (map-reduce) | 🅿️ | NOT STARTED — §7 P-5 |
+| WS-1.9 `chat_search_sessions` (+ the WS-1.0 blind index) | 🅿️ | NOT STARTED — §7 P-5. The blind-index primitive it needs **is built and tested** (WS-1.0). |
+| WS-1.10 FE shell + tail-first loading | 🅿️ | NOT STARTED — §7 P-5 |
+| WS-1.11 reflection-lite | 🅿️ | NOT STARTED — §7 P-5 |
+| **PHASE 2 · 3 · 4 · 5** (all slices) | 🅿️ | **NOT STARTED — §7 P-5.** Phase 2 (facts/erasure/amendment/spend), Phase 3 (scheduler), Phase 4 (voice), Phase 5 (coaching — itself gated behind 4 prerequisites that do not exist yet, R4). |
 
 ## 6. Decision register (every call I make, so the audit is free)
 
@@ -124,6 +132,7 @@ commits without VERIFY/POST-REVIEW evidence. If I find myself wanting to bypass 
 | # | Problem | What I tried | Why parked | Blocks what? |
 |---|---|---|---|---|
 | **P-1** | **campaign-service enumerates `editorial_status=published`** (`clients/book_client.py:74` `list_published_chapters`, used by `routers/campaigns.py:92,108`). The WS-0.6 sweep classified it a read-gate to re-key. **I did not re-key it.** | Read the code. It enumerates a book's chapters as a **campaign-ingest precondition** ("build my RPG campaign from this novel"). | **Gate #1 — out of scope, and it is a PRODUCT decision, not a mechanical fix.** *"Build my campaign from the canonical story"* is a defensible **publish** semantic (category B), not a knowledge-graph gate. The spec's §3.5 does not name it. Re-keying it would silently start pulling **unpublished drafts into campaigns** — a behavior change to someone else's feature that no one asked for. Doing that quietly is exactly the scope-creep this run is supposed to avoid. | Nothing in Phase 0. **PO decides:** should a campaign be buildable from *indexed drafts* (e.g. a `kind='diary'` book, which never publishes)? If yes → re-key + rename `list_published_chapters`→`list_indexed_chapters`. If no → add a comment saying publish-gating is *intentional* here, so the next sweep stops flagging it. |
+| **P-5** 🔴 | **The run ended with Phase 1 ~40% built (WS-1.0–1.3 done) and Phases 2–5 not started.** | Built Phase 0 end-to-end (9 slices, live-smoked, `/review-impl`-clean with 28 findings fixed), then WS-1.0 (encryption), WS-1.1 (`books.kind`), WS-1.2 (core egress locks), WS-1.3 (schema + the D6 gate). | **This is a SCOPE reality, not a technical blocker — and I am recording it as such rather than dressing it up as a defer.** None of the remaining slices is blocked: every one has a written spec, and the hard foundations they depend on are now in place and tested (per-user DEK + blind index + encrypted vectors · the immutable `kind` privacy lock · the DB-level egress locks · the `kind` contract on projection/access · `is_assistant` + one-per-user · the fail-closed D6 gate). What remains is **build volume**, not unknowns. The defer gate in CLAUDE.md does not have a "ran out of run" row, and I am not going to invent one. | Everything from WS-1.4 on. **Each remaining slice is independently shippable and the specs are written.** Recommended next order: **WS-1.4 provisioning** (it makes the assistant exist end-to-end and is immediately demoable) → WS-1.7 session → WS-1.8 distiller → WS-1.9 recall → WS-1.10 FE. |
 | **P-4** | **WS-1.2 egress paths NOT yet closed: #5 `memory_*` project leak · #6 content-free notifications · #4 public-MCP per-resource scoping · #2 sharing-service · export.** The core book-service locks (share trigger, wiki, catalog LIST, the `kind` contract) ARE in. | Built the enabling contract (`kind` on projection+access) that all of them need, plus the DB-level locks that hold regardless of consumer behavior. | **Gate #3 — naturally-next-phase.** These live in OTHER services (chat-service `memory_*`, notification-service, mcp-public-gateway, sharing-service) and several have no diary data to leak until WS-1.3–1.8 create it. Closing them now would be guarding a surface with nothing behind it, and they need the schema those slices add. | **Phase-1 exit.** They MUST be closed before any real diary content exists. The `kind` contract is already shipped, so each is now a small, local guard rather than a cross-service design problem. |
 | **P-3** | **A chapter published@A whose owner then indexes a newer draft@B loses its canon passages.** The knowledge layer reflects exactly ONE revision, and `ingest_chapter_passages` delete-then-upserts the chapter's whole passage set. B is not the published text ⇒ canon=False ⇒ the chapter drops out of `surface=canon` search **even though it is still published at A**. | Considered preserving A's canon passages alongside B's draft passages. That needs a per-revision passage set (today there is one set per (chapter, lang)) — a real schema/design change, not a patch. | **Gate #2 — large/structural.** It is the honest consequence of "the knowledge layer reflects `kg_indexed_revision_id`", it self-heals the moment the user publishes B, and it is now **LOUDLY logged** rather than silent (`handlers.py`). But whether the product *wants* it is a design call. | Nothing. **PO decides:** should indexing a newer draft on a published chapter (a) demote it out of canon search (today), (b) keep A's canon passages and add B's as draft passages, or (c) be refused outright? |
 | **P-2** | **`raw_search.py` `POST /books/{id}/index-drafts`** exists *only* because canon=published blocked drafts (its own docstring says so). Publish-independent indexing supersedes it. | Read it; the sweep recommends retiring it. | **Gate #1/#2 — out of scope + needs a deprecation path.** It has a live FE caller. Deleting an endpoint + its caller is a separate, reviewable change; leaving it is harmless (it is now merely redundant). | Nothing. Cleanup candidate for Phase 1 or a tidy-up track. |
@@ -155,13 +164,43 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 
 ## 10. Completeness ledger (the definition of "done" for the whole run)
 
-- [ ] Every phase built, `/review-impl`-clean
-- [ ] Every parked problem (§7) resolved or explicitly accepted by PO
-- [ ] Every debt (§8) paid or converted to a tracked defer with a gate reason
-- [ ] Every sealed decision (DECISIONS-SEALED) still true — or amended with a review-record line
-- [ ] The 5 "most likely to go wrong" items in the plan each have a passing test
+- [x] **Phase 0** built, live-smoked, `/review-impl`-clean (28 findings fixed, 0 deferred)
+- [ ] **Phases 1–5** — Phase 1 is ~40% (WS-1.0–1.3 ✅; WS-1.4–1.11 🅿️). Phases 2–5 not started. **§7 P-5.**
+- [ ] Every parked problem (§7) resolved or accepted by PO — **5 open: P-1…P-5** (P-1/P-3 need a PO *decision*, not code)
+- [x] Every debt (§8) tracked with a pay-off trigger — **DBT-1 PAID**; DBT-2/3/4 open with triggers
+- [x] Every sealed decision still true — **one amendment**: D6's `chat_turn_extraction_enabled` ships **DEFAULT FALSE** (the spec's `true` was fail-open on a privacy flag). Recorded in WS-1.3.
+- [x] The 5 "most likely to go wrong" items — **#1 (publish gate duplicated) FOUND: 29 read-gates across 6 services, all re-keyed + tested.** #2–#5 belong to unbuilt slices.
 - [ ] `docs/sessions/SESSION_HANDOFF.md` updated
-- [ ] Final audit written: decisions · drift · debt · deferred · completeness
+- [x] Final audit written (below)
+
+### FINAL AUDIT — 2026-07-12
+
+**Shipped:** 16 commits. **Phase 0 complete** (publish-independent KG indexing: 9 slices, 4→6 services,
+live-smoked on a real stack, `/review-impl`-clean). **Phase 1: WS-1.0–1.3** (envelope encryption + blind
+index + encrypted embeddings · the `books.kind` privacy lock · the core diary egress locks · the diary schema
++ the D6 fail-closed extraction gate).
+
+**What the process actually caught — the case for keeping the gates:**
+- The **6-modality sweep** found **29** duplicated "canon = published" read-gates across **6** services, where
+  the spec named ~5 — including two services (campaign, glossary) nobody had looked at. *"Grep before each
+  slice, don't trust the list"* earned its place.
+- **`/review-impl`** confirmed **28** findings including **2 P0s**, and *three of them sat underneath green
+  tests I had written for exactly those scenarios* (DR-6/7/8). Without the adversarial pass, Phase 0 would
+  have shipped: a chapter the user asked us to forget being re-indexed on publish; unreviewed draft prose
+  stamped **canon** and served into chat grounding; and a whole-book rebuild silently covering only the first
+  **100** chapters.
+- Building the **D6 gate** revealed that the existing chat-turn gate was **decorative** — its answer was
+  computed, logged, and then ignored while the enqueue ran anyway.
+
+**The uncomfortable pattern (§9 drift log, 8 entries):** every serious miss was the same shape — **I asserted
+a guard in a comment or a checklist, and tested the write instead of the effect.** DR-7 is the sharpest: the
+live smoke *printed* `reused_revision: true` on a chapter's first index, and I pasted it into the transcript
+as evidence of success. Evidence you paste is evidence you must read.
+
+**Needs a human decision (not code):** **P-1** (should a campaign be buildable from indexed *drafts*? — I
+refused to change another feature's semantics silently), **P-3** (publish@A + index-draft@B demotes a chapter
+out of canon search — self-healing and now loud, but is it *wanted*?), **P-4** (the remaining egress paths —
+a **Phase-1 exit requirement**, before any real diary content exists).
 
 ---
 

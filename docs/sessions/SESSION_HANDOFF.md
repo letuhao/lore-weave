@@ -1,5 +1,46 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ⭐ Track: WORK ASSISTANT — Phase 0 COMPLETE · Phase 1 ~40% (2026-07-12, branch `feat/context-budget-law`)
+
+> **Anchor:** [`docs/plans/2026-07-11-work-assistant-RUN-STATE.md`](../plans/2026-07-11-work-assistant-RUN-STATE.md) —
+> **read it FIRST**, then `git log --oneline -15`. It holds the slice board (§5), the decision/parked/debt/drift
+> registers (§6–§9) and the final audit (§10). *(The Track-C block below is a DIFFERENT, concurrent track — left intact.)*
+
+**PHASE 0 — publish-independent KG indexing: DONE, live-smoked, `/review-impl`-clean.**
+Publishing no longer gates the knowledge graph. `chapters.kg_indexed_revision_id` + `kg_exclude`; an explicit
+"add to knowledge" action (`chapter.kg_indexed`); the reparse sweeper, the whole-book rebuild, the passage
+backfill/ingester, the cost estimate, composition's `index_stale` and glossary's wiki-staleness all re-keyed.
+FE control + indexed-state badge. **A 6-modality sweep found 29 duplicated read-gates across 6 services where
+the spec named ~5** — including campaign-service and glossary-service, which nobody had looked at.
+
+**`/review-impl` confirmed 28 findings (2 P0) — all fixed. Three sat under GREEN TESTS I wrote myself:**
+publishing a `kg_exclude`'d chapter still indexed it (the pointer is not what puts a chapter in the graph — the
+EVENT is); both passage backfills stamped unreviewed **draft prose as canon** and one embedded the *live draft*;
+worker-ai silently rebuilt only the **first 100 chapters** of any book and reported success.
+
+**PHASE 1 — WS-1.0…1.3 shipped:**
+- **WS-1.0** envelope encryption (PO-2): per-user DEK wrapped by a deployment KEK, AES-GCM, retired-keyring so a
+  rotation cannot orphan a diary; **blind index** (HMAC tokens; 2- **and** 3-grams, or CJK search returns nothing);
+  **encrypted embeddings** + in-memory cosine (plaintext embeddings ≈ plaintext diary). Cross-language golden
+  vector: Python unwraps a DEK **Go** wrapped. DEK cascade-deletes with the user = the D18 crypto-shred.
+- **WS-1.1** `books.kind` — the **privacy lock**, immutability enforced by a **DB trigger** (not a convention).
+- **WS-1.2** core egress locks: a diary **cannot be shared** (DB trigger), **has no wiki** (the widest hole — it
+  would have served AI biographies of real colleagues to the internet), is **hidden from the library LIST**; and
+  `kind` now rides `getBookProjection`/`getBookAccess` so consumers *can* guard (gated behind a grant, else it is
+  an oracle).
+- **WS-1.3** diary schema + the **D6 gate**, which exposed that the existing chat-turn gate was **decorative**
+  (its answer was computed, logged, then ignored while the enqueue ran anyway).
+
+**▶ NEXT: WS-1.4 provisioning** (makes the assistant exist end-to-end; immediately demoable). Then 1.7 session →
+1.8 distiller → 1.9 recall → 1.10 FE. **All foundations are in and tested; what remains is build volume.**
+
+**⚠️ NEEDS A HUMAN DECISION (RUN-STATE §7):** **P-1** campaign-service (should a campaign be buildable from
+indexed *drafts*? — I refused to change another feature's semantics silently) · **P-3** publish@A + index-draft@B
+demotes a chapter out of canon search · **P-4** the remaining egress paths (`memory_*` leak, content-free
+notifications, public-MCP scoping) — a **Phase-1 EXIT requirement, before any real diary content exists**.
+
+---
+
 **Track C — WS-3 mode→capability binding (C6) SHIPPED; the S06 ASSENT GAP is closed, 2026-07-11** (branch `feat/context-budget-law`). Evidence: [`2026-07-11-ws3-mode-capability-binding.md`](../eval/discoverability/2026-07-11-ws3-mode-capability-binding.md) · plan [`2026-07-11-ws3-mode-capability-binding.md`](../plans/2026-07-11-ws3-mode-capability-binding.md).
 
 - **The measured bug WS-3 kills:** advertising a workflow does NOT work. S06 had the right workflow advertised **plus** a steering directive telling the agent to load one, and it still improvised — because a user co-writing a novel never *asks* ("set up my world"); they only **assent** to the agent's own offer (*"yeah do it"*). Recognising a workflow from an assent is a step a mid-tier model does not reliably take. **A PIN removes the step:** the rail is rendered into context from turn 1. Live proof, same turn, same model: baseline `find_tools → plan_propose_spec` (improvised) ⇒ WS-3 **`glossary_adopt_standards`** (runs the rail).
