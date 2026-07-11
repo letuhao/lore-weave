@@ -64,6 +64,18 @@ class NodeCreate(BaseModel):
     tension: int | None = None
     story_order: int | None = None
     synopsis: str = ""
+    # 22 SC4 — authored scene craft/setting. These MUST be declared: Pydantic's default
+    # extra='ignore' silently drops an undeclared key, so a REST create sending `conflict`/
+    # `target_words`/`location_entity_id` would no-op while the MCP tool (which HAS them) works —
+    # the "one repo method, two front doors" divergence (CF-9). `exit_state` stays MCP-only
+    # (SC12 mandates a validated envelope, not a free-form REST blob).
+    location_entity_id: UUID | None = None
+    story_time: str | None = None
+    conflict: str = ""
+    outcome: str = ""
+    stakes: str = ""
+    value_shift: int | None = None
+    target_words: int | None = None
 
 
 class NodePatch(BaseModel):
@@ -79,6 +91,17 @@ class NodePatch(BaseModel):
     tension: int | None = None
     story_order: int | None = None
     synopsis: str | None = None
+    # 22 SC4 — the scene-inspector's Craft + Cast&Setting edits and the bulk retarget-words go
+    # through THIS model; without these declarations they were silently dropped (extra='ignore')
+    # and the GUI edit no-op'd. The repo's _UPDATABLE_COLUMNS already writes them; only the REST
+    # mirror lagged. `exit_state` intentionally omitted (SC12 validated-envelope → MCP surface).
+    location_entity_id: UUID | None = None
+    story_time: str | None = None
+    conflict: str | None = None
+    outcome: str | None = None
+    stakes: str | None = None
+    value_shift: int | None = None
+    target_words: int | None = None
 
 
 class NodeReorder(BaseModel):
@@ -334,6 +357,10 @@ async def create_node(
             present_entity_ids=body.present_entity_ids, goal=body.goal,
             beat_role=body.beat_role, status=body.status, chapter_id=body.chapter_id,
             tension=body.tension, story_order=body.story_order, synopsis=body.synopsis,
+            # 22 SC4 — pass the craft/setting fields the REST mirror now accepts.
+            location_entity_id=body.location_entity_id, story_time=body.story_time,
+            conflict=body.conflict, outcome=body.outcome, stakes=body.stakes,
+            value_shift=body.value_shift, target_words=body.target_words,
             created_by=user_id,
         )
     except ReferenceViolationError as exc:

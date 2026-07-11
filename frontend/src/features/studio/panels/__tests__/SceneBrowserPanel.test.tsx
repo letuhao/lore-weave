@@ -191,14 +191,39 @@ describe('SceneBrowserPanel (22-C2)', () => {
     expect(bulk.apply).toHaveBeenCalledWith([{ id: 'n1', version: 1 }], { status: 'done' }); // only the visible one
   });
 
-  it('22-C2b: the bulk bar is hidden with no selection and shows the partial-failure result', () => {
+  it('22-C2b: a fractional target-words value (rounds to 0) is ignored, never zeroing scenes', () => {
+    bulk.selected = new Set(['n1']);
     state.mockReturnValue(baseState({ rows: [row({ key: 'a', shape: 'linked', spec: { id: 'n1', version: 1 } as SceneUnionRow['spec'] })] }));
-    const { queryByTestId, rerender } = withHost(<SceneBrowserPanel {...dockProps()} />);
-    expect(queryByTestId('scene-browser-bulkbar')).toBeNull(); // no selection → no bar
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    fireEvent.blur(screen.getByTestId('scene-browser-bulk-words'), { target: { value: '0.3' } });
+    expect(bulk.apply).not.toHaveBeenCalled(); // 0.3 → round 0 → ignored (would have zeroed target_words)
+    fireEvent.blur(screen.getByTestId('scene-browser-bulk-words'), { target: { value: '1200' } });
+    expect(bulk.apply).toHaveBeenCalledWith([{ id: 'n1', version: 1 }], { target_words: 1200 });
+  });
 
-    bulk.selected = new Set(['n1']); bulk.result = { ok: 3, conflicts: 1, failed: 0 };
-    rerender(<StudioHostProvider bookId="book-1"><SceneBrowserPanel {...dockProps()} /></StudioHostProvider>);
-    expect(screen.getByTestId('scene-browser-bulk-result').textContent).toMatch(/3 updated.*1 conflicted/);
+  it('22-C2b: the partial-failure result stays visible AFTER a run, when the selection is cleared', () => {
+    // review HIGH: runBulk sets result AND clears the selection in one commit. The tally must NOT
+    // be gated on the (now empty) selection — it renders as its own banner. Drives the REAL
+    // post-apply state (selected empty, result set), not the impossible selected+result pairing.
+    bulk.selected = new Set(); bulk.result = { ok: 3, conflicts: 1, failed: 0 };
+    state.mockReturnValue(baseState({ rows: [row({ key: 'a', shape: 'linked', spec: { id: 'n1', version: 1 } as SceneUnionRow['spec'] })] }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(screen.queryByTestId('scene-browser-bulkbar')).toBeNull(); // selection cleared → no action bar
+    expect(screen.getByTestId('scene-browser-bulk-result').textContent).toMatch(/3 updated.*1 conflicted/); // but the tally shows
+  });
+
+  it('22-C2b: the result banner is absent when there is no result (no stray banner)', () => {
+    state.mockReturnValue(baseState({ rows: [row({ key: 'a', shape: 'linked', spec: { id: 'n1', version: 1 } as SceneUnionRow['spec'] })] }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(screen.queryByTestId('scene-browser-bulk-result')).toBeNull();
+  });
+
+  it('22-C2b: a per-row select checkbox is labelled with its scene title (a11y)', () => {
+    state.mockReturnValue(baseState({
+      rows: [row({ key: 'a', shape: 'linked', spec: { id: 'n1', version: 1, title: 'The Duel' } as SceneUnionRow['spec'] })],
+    }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(screen.getByTestId('scene-browser-select-n1').getAttribute('aria-label')).toMatch(/The Duel/);
   });
 
   it('22-C3: a spec-backed row is clickable-to-inspect; an index_only row is not', () => {

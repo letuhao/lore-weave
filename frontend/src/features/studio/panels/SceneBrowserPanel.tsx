@@ -24,15 +24,17 @@ const BULK_STATUSES: OutlineNode['status'][] = ['empty', 'outline', 'drafting', 
 // 22-C2b — the bulk-action bar (module-level so it never remounts on a parent re-render). Shown
 // only when >=1 spec-backed row is selected; applies a status to all, trashes all, and reports the
 // honest partial-failure count from the last run.
-function BulkBar({ count, busy, result, onStatus, onWords, onTrash, onClear, t }: {
-  count: number; busy: boolean; result: BulkResult | null;
+function BulkBar({ count, busy, onStatus, onWords, onTrash, onClear, t }: {
+  count: number; busy: boolean;
   onStatus: (s: OutlineNode['status']) => void; onWords: (n: number) => void; onTrash: () => void; onClear: () => void;
   t: (k: string, o?: Record<string, unknown>) => string;
 }) {
   const commitWords = (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
     const el = e.currentTarget;
-    const n = Number(el.value);
-    if (el.value.trim() !== '' && Number.isFinite(n) && n > 0) { onWords(Math.round(n)); el.value = ''; }
+    // Round BEFORE the >0 guard, else 0<n<0.5 rounds to 0 and (now that the BE persists target_words)
+    // would zero every selected scene (review). A blank/non-positive/NaN value is ignored.
+    const n = Math.round(Number(el.value));
+    if (el.value.trim() !== '' && Number.isFinite(n) && n > 0) { onWords(n); el.value = ''; }
   };
   return (
     <div data-testid="scene-browser-bulkbar" className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-3 py-1.5 text-xs">
@@ -66,15 +68,29 @@ function BulkBar({ count, busy, result, onStatus, onWords, onTrash, onClear, t }
       <button type="button" data-testid="scene-browser-bulk-clear" onClick={onClear} className="text-muted-foreground hover:text-foreground">
         {t('panels.scene-browser.bulk.clear', { defaultValue: 'Clear' })}
       </button>
-      {result && (
-        <span data-testid="scene-browser-bulk-result" className={cn('ml-auto', (result.conflicts || result.failed) ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
-          {[
-            t('panels.scene-browser.bulk.updated', { defaultValue: '{{n}} updated', n: result.ok }),
-            result.conflicts ? t('panels.scene-browser.bulk.conflicted', { defaultValue: '{{n}} conflicted', n: result.conflicts }) : null,
-            result.failed ? t('panels.scene-browser.bulk.failed', { defaultValue: '{{n}} failed', n: result.failed }) : null,
-          ].filter(Boolean).join(' · ')}
-        </span>
-      )}
+    </div>
+  );
+}
+
+// The partial-failure tally. Rendered as its OWN banner, gated on `result != null` — NOT inside the
+// selection-gated BulkBar (review HIGH: runBulk sets result AND clears the selection in one commit,
+// so a result placed inside the bar unmounts the instant it is set — the honest tally was invisible).
+// It survives until the next toggle/setMany/clear, which all null the result in the hook.
+function BulkResult({ result, onDismiss, t }: {
+  result: BulkResult; onDismiss: () => void; t: (k: string, o?: Record<string, unknown>) => string;
+}) {
+  const noise = result.conflicts || result.failed;
+  return (
+    <div
+      data-testid="scene-browser-bulk-result"
+      className={cn('flex items-center gap-2 border-b px-3 py-1.5 text-xs', noise ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-primary/5 text-muted-foreground')}
+    >
+      <span>{[
+        t('panels.scene-browser.bulk.updated', { defaultValue: '{{n}} updated', n: result.ok }),
+        result.conflicts ? t('panels.scene-browser.bulk.conflicted', { defaultValue: '{{n}} conflicted', n: result.conflicts }) : null,
+        result.failed ? t('panels.scene-browser.bulk.failed', { defaultValue: '{{n}} failed', n: result.failed }) : null,
+      ].filter(Boolean).join(' · ')}</span>
+      <button type="button" data-testid="scene-browser-bulk-result-dismiss" onClick={onDismiss} className="ml-auto hover:text-foreground">×</button>
     </div>
   );
 }
@@ -134,13 +150,15 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
           made before a search filtered some rows out stays in the Set but drops out of the count). */}
       {selectedTargets.length > 0 && (
         <BulkBar
-          count={selectedTargets.length} busy={bulk.busy} result={bulk.result}
+          count={selectedTargets.length} busy={bulk.busy}
           onStatus={(s) => void bulk.apply(selectedTargets, { status: s })}
           onWords={(n) => void bulk.apply(selectedTargets, { target_words: n })}
           onTrash={() => void bulk.trash(selectedTargets)}
           onClear={bulk.clear} t={t}
         />
       )}
+      {/* Partial-failure tally — independent of the selection (which runBulk clears on completion). */}
+      {bulk.result && <BulkResult result={bulk.result} onDismiss={bulk.clear} t={t} />}
 
       {/* Work-less state (§GUI ②): identity renders; intent is greyed with a create-plan CTA. */}
       {sb.workless && (
@@ -221,7 +239,8 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
                       checked={bulk.selected.has(r.spec.id)}
                       onClick={(e) => e.stopPropagation()}
                       onChange={() => bulk.toggle(r.spec!.id)}
-                      aria-label={t('panels.scene-browser.bulk.selectRow', { defaultValue: 'Select scene' })}
+                      // Interpolate the scene title so a screen-reader user can tell rows apart (review a11y).
+                      aria-label={t('panels.scene-browser.bulk.selectRow', { defaultValue: 'Select scene: {{title}}', title: rowTitle(r) })}
                     />
                   )}
                 </td>

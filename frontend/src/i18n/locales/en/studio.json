@@ -259,7 +259,7 @@
       "bulk": {
         "count": "{{n}} selected",
         "selectAll": "Select all",
-        "selectRow": "Select scene",
+        "selectRow": "Select scene: {{title}}",
         "setStatus": "Set status…",
         "words": "Target words",
         "trash": "Trash",
