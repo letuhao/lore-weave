@@ -88,6 +88,16 @@ for it. I want to review before it's applied.
   past the first suspend); warm = `user_tool_approvals` pre-seeded (what "always allow" writes). **Both
   failed for the same primary reason**, so the verdict is robust to the permission axis.
 
+### 7b. Partial fix landed 2026-07-11 — silent success (P0) fixed; scenario still ❌ (needs the rail)
+
+One of S01's two enablers is fixed: `glossary_propose_entities` no longer returns `ok:true` when every
+item fails — it now returns `isError` with "adopt kinds first" guidance (root cause + live verify:
+[`docs/eval/discoverability/2026-07-11-fix-silent-success-propose-entities.md`](../../../eval/discoverability/2026-07-11-fix-silent-success-propose-entities.md);
+harness `silent_success_calls` 9→0). **But the scenario still fails:** mid-tier gemma reads the honest
+error and *still* retries entities instead of calling `glossary_adopt_standards`, so `book_kinds=0`. A
+mid-tier model needs the adopt→propose→confirm sequence **enforced by a rail (WS-5)**, not merely suggested
+by an error. The fix is a prerequisite (makes the loop detectable), not the cure.
+
 ## 8. Builder hint (NON-BINDING — not part of acceptance)
 
 > Implementers only; the assistant may reach §5 any way.

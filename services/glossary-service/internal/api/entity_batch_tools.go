@@ -124,7 +124,45 @@ func (s *Server) toolProposeEntities(ctx context.Context, _ *mcp.CallToolRequest
 			out.Summary.Failed++
 		}
 	}
+	// Silent-success guard (S01 live-eval): the batch is per-item independent, so a
+	// PARTIAL failure (something WAS created, or all remaining were skipped-because-
+	// they-exist) stays ok — the per-item errors live in Results. But if NOTHING was
+	// created AND at least one item genuinely errored, the envelope MUST report
+	// IsError. Otherwise a caller reads ok:true, never sees the hidden Failed count,
+	// and retries forever — the measured mid-tier loop was proposing entities of a
+	// kind that doesn't exist yet (`unknown kind`), 9× in one session, book untouched.
+	// Per-item detail is preserved: the go-sdk still marshals `out` into
+	// structuredContent when the handler returns a non-nil result with err==nil.
+	if out.Summary.Created == 0 && out.Summary.Failed > 0 {
+		msg := "no entities were created — every proposed item failed (see structuredContent for each item's error)."
+		if allFailuresAreUnknownKind(out.Results) {
+			msg += " Each failure is an 'unknown kind': that category does not exist in this book yet. " +
+				"Create the categories first (glossary_adopt_standards to adopt the system kinds, or " +
+				"glossary_propose_kinds for custom ones), then retry."
+		}
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{&mcp.TextContent{Text: msg}},
+		}, out, nil
+	}
 	return nil, out, nil
+}
+
+// allFailuresAreUnknownKind reports whether every errored item failed with an
+// "unknown kind" — the dominant silent-success cause — so the IsError message can
+// point the caller at the actual fix (adopt/create the kind first). Returns false
+// if there were no failures or any failure was for a different reason.
+func allFailuresAreUnknownKind(results []proposeEntityItemResult) bool {
+	sawFailure := false
+	for _, r := range results {
+		if r.Status == "error" {
+			sawFailure = true
+			if !strings.HasPrefix(r.Error, "unknown kind:") {
+				return false
+			}
+		}
+	}
+	return sawFailure
 }
 
 // proposeOneEntity resolves one item's kind then delegates to proposeNewEntity
