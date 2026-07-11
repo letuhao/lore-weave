@@ -827,13 +827,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_projects_one_assistant_per_user
 ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS chat_turn_extraction_enabled BOOLEAN NOT NULL DEFAULT false;
 
+-- One-row-per-step marker so a DATA backfill runs EXACTLY ONCE, not on every startup.
+-- (knowledge-service has no migration ledger; this mirrors book-service's
+-- canon_model_migration table, which exists for precisely this reason.)
+CREATE TABLE IF NOT EXISTS knowledge_data_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Explicit backfill: EXISTING projects were extracting chat turns unconditionally, so a
 -- DEFAULT false would silently switch that off for every current user. A DEFAULT never
 -- revisits existing rows, so this must be a real UPDATE. The assistant project is the ONE
 -- kind that stays off (its facts come from the confirmed daily entry — D6).
-UPDATE knowledge_projects
-   SET chat_turn_extraction_enabled = true
- WHERE is_assistant = false AND chat_turn_extraction_enabled = false;
+--
+-- ⚠️ MARKER-GATED, and that is the whole point — this is a USER SETTING, not a derived value.
+-- migrate.py runs on EVERY service start. An ungated UPDATE would therefore re-run forever
+-- and silently flip `chat_turn_extraction_enabled` back to TRUE for any user who had
+-- deliberately turned it OFF for one of their projects — a privacy toggle undone by a
+-- restart, with no event and nothing in any log.
+--
+-- This is the SAME bug the kg_indexed backfill was marker-gated to prevent (RUN-STATE D-R7),
+-- one slice later, after I had written the lesson down. A backfill that touches a column a
+-- HUMAN can change must run exactly once. See RUN-STATE DR-9.
+DO $ctx1$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM knowledge_data_migration WHERE id = 'chat_turn_extraction_backfill_v1') THEN
+    UPDATE knowledge_projects
+       SET chat_turn_extraction_enabled = true
+     WHERE is_assistant = false AND chat_turn_extraction_enabled = false;
+    INSERT INTO knowledge_data_migration (id) VALUES ('chat_turn_extraction_backfill_v1');
+  END IF;
+END $ctx1$;
 
 -- WS-0.1 (2026-07-11) — chapter-scoped cache invalidation.
 -- Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.3 (P0-4).
