@@ -106,6 +106,25 @@ export function reorderNode(
   );
 }
 
+/** H5 Row-3 write — move a chapter in the book's READING order (PH20). The only H5 gesture that
+ *  crosses a service seam: the x-axis is the manuscript's order, which **book-service owns**. This
+ *  composition route is the single entry point — it calls book-service's transactional renumber and
+ *  then rebuilds composition's `story_order` mirror (incl. the canon-rule anchors that ride the same
+ *  axis) so the client cannot leave the two halves inconsistent. Idempotent: re-issuing the same
+ *  move converges, which is what makes the retry-on-502 (MIRROR_RESYNC_FAILED) safe.
+ *  `after_chapter_id` is a BOOK chapter_id (not an outline node id); null ⇒ becomes chapter 1. */
+export function reorderBookChapter(
+  bookId: string,
+  body: { chapter_id: string; after_chapter_id: string | null },
+  token: string,
+): Promise<{ book_id: string; resynced: Record<string, number> }> {
+  return apiJson(`${COMP}/books/${bookId}/chapters/reorder`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
 /** H5 Row-1 write — attach chapter outline nodes to an arc (sets `structure_node_id`). The GUI
  *  mirror of `composition_arc_assign_chapters` (PH20); book-scoped both sides, EDIT-gated. Idempotent
  *  bulk set (no OCC/If-Match — not a versioned field write). Returns how many rows changed. */

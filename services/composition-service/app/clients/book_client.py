@@ -295,6 +295,26 @@ class BookClient:
         )
         return self._raise_for_status(resp)
 
+    async def reorder_chapters(
+        self, book_id: UUID, chapter_id: UUID, after_chapter_id: UUID | None, bearer: str,
+    ) -> dict[str, Any]:
+        """24 PH20 Row-3 — move a chapter in the book's READING order (book-service owns it).
+
+        Places `chapter_id` directly AFTER `after_chapter_id` (None ⇒ first). book-service does the
+        whole renumber in one transaction — it is the only thing that can, because the partial
+        UNIQUE slot index forbids writing a permutation row-by-row. Returns the new dense sequence.
+
+        A 400/404/409 is book-service's own rule (unknown chapter, an after_id from another book, a
+        non-active lifecycle) and is re-raised for the caller to relay verbatim, never flattened."""
+        resp = await self._request(
+            "POST", f"/v1/books/{book_id}/chapters/reorder", bearer,
+            json={
+                "chapter_id": str(chapter_id),
+                "after_chapter_id": str(after_chapter_id) if after_chapter_id else None,
+            },
+        )
+        return self._raise_for_status(resp)
+
     # book-service parseLimitOffset CLAMPS limit to 100 (server.go) — asking for
     # more silently returns 100, so a full listing must paginate by offset.
     _CHAPTERS_PAGE_LIMIT = 100

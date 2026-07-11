@@ -3401,9 +3401,21 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 //
 //		Request:  { "chapter_ids": [uuid, ...] }
 //		Response: { "markers": { "<uuid>": { "published_revision_id": uuid|null,
+//		                                     "kg_indexed_revision_id": uuid|null,
+//		                                     "kg_exclude": bool,
 //		                                     "last_parsed_revision_id": uuid|null,
 //		                                     "parse_version": int,
 //		                                     "editorial_status": "draft"|"published" } } }
+//
+// WS-0.7 (spec 2026-07-11-publish-independent-kg-indexing §3.6, red-team P0-3):
+// kg_indexed_revision_id + kg_exclude are ADDITIVE fields, and they are what make the
+// new staleness predicate expressible AT ALL on the consumer side. composition-service
+// hand-copies the sweeper's WHERE clause in Python to compute its `index_stale` badge;
+// without these two fields it literally cannot compute the post-WS-0.5 predicate, so it
+// would keep evaluating the OLD one and produce a PERMANENTLY-STUCK badge:
+// publish@A → index a draft@B → composition sees `published AND last_parsed(B) !=
+// published_revision_id(A)` ⇒ stale, while the sweeper sees `last_parsed(B) ==
+// kg_indexed(B)` ⇒ nothing to heal. The badge never clears.
 //
 //	  - Empty list → 200 with an empty markers map.
 //	  - Cap at 200 ids per call; oversized → 422.
@@ -3439,7 +3451,8 @@ func (s *Server) postInternalChapterCanonMarkers(w http.ResponseWriter, r *http.
 		return
 	}
 	rows, err := s.pool.Query(r.Context(), `
-SELECT c.id, c.published_revision_id, c.last_parsed_revision_id, c.editorial_status,
+SELECT c.id, c.published_revision_id, c.kg_indexed_revision_id, c.kg_exclude,
+       c.last_parsed_revision_id, c.editorial_status,
        COALESCE((SELECT MAX(parse_version) FROM scenes
                  WHERE chapter_id = c.id AND lifecycle_state = 'active'), 0) AS parse_version
 FROM chapters c
@@ -3454,15 +3467,22 @@ WHERE c.book_id = $1 AND c.id = ANY($2::uuid[]) AND c.lifecycle_state = 'active'
 	var scanErrors int
 	for rows.Next() {
 		var id uuid.UUID
-		var publishedRev, lastParsedRev *uuid.UUID
+		var publishedRev, kgIndexedRev, lastParsedRev *uuid.UUID
+		var kgExclude bool
 		var editorialStatus string
 		var parseVersion int
-		if err := rows.Scan(&id, &publishedRev, &lastParsedRev, &editorialStatus, &parseVersion); err != nil {
+		// NB: every column is scanned into a real target. A discarded scan error would
+		// zero the WHOLE row (pgx), so kg_exclude would read false on any scan hiccup —
+		// i.e. fail OPEN on a privacy flag. scanErrors++ + continue keeps that honest.
+		if err := rows.Scan(&id, &publishedRev, &kgIndexedRev, &kgExclude,
+			&lastParsedRev, &editorialStatus, &parseVersion); err != nil {
 			scanErrors++
 			continue
 		}
 		markers[id.String()] = map[string]any{
 			"published_revision_id":   publishedRev,
+			"kg_indexed_revision_id":  kgIndexedRev,
+			"kg_exclude":              kgExclude,
 			"last_parsed_revision_id": lastParsedRev,
 			"parse_version":           parseVersion,
 			"editorial_status":        editorialStatus,

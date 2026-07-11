@@ -431,14 +431,22 @@ async def test_outline_restore_recurses_subtree(pool):
 
 
 async def test_outline_reorder_within_siblings_renumbers_story_order(pool):
-    """T1.1c: reordering a scene after a later sibling rewrites its rank AND
-    dense-renumbers the chapter's scene story_order to match (reading order)."""
+    """T1.1c: reordering a scene after a later sibling rewrites its rank AND renumbers the
+    chapter's scene story_order to match (reading order).
+
+    The positions stay on the ONE global axis — the chapter's slot plus the scene's index
+    (chapter-major / scene-minor). They used to be renumbered to a chapter-LOCAL 0..n-1, which
+    collided with every other chapter's scenes and destroyed the global order the packer's
+    strictly-prior lenses and the canon windows key on."""
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE as S
+
     repo = OutlineRepo(pool)
     user, project, book = _ids()
     await _seed_work(pool, user, project, book)
     chapter = uuid.uuid4()
     arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
-    chap = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    chap = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id,
+                                  chapter_id=chapter, story_order=4 * S)  # book chapter 4
     s1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s1")
     s2 = await repo.create_node(project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s2")
     s3 = await repo.create_node(project, created_by=user, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s3")
@@ -448,20 +456,25 @@ async def test_outline_reorder_within_siblings_renumbers_story_order(pool):
     assert moved is not None
     scenes = await repo.scenes_for_chapter(project, chapter)  # ORDER BY story_order, rank
     assert [s.title for s in scenes] == ["s2", "s3", "s1"]
-    assert [s.story_order for s in scenes] == [0, 1, 2]  # dense, matches rank order
+    # Chapter 4's band — NOT 0,1,2 (which would collide with every other chapter's scenes).
+    assert [s.story_order for s in scenes] == [4 * S, 4 * S + 1, 4 * S + 2]
 
 
 async def test_outline_reorder_reparents_scene_across_chapters(pool):
-    """A scene dragged to another chapter inherits the new chapter's chapter_id
-    and is renumbered into the destination's reading order; the source chapter's
-    remaining scenes re-densify."""
+    """A scene dragged to another chapter inherits the new chapter's chapter_id and is renumbered
+    into the DESTINATION chapter's band; the source chapter's remaining scenes re-densify inside
+    ITS band. Both stay on the one global axis — the H5 Row-4 drag write path."""
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE as S
+
     repo = OutlineRepo(pool)
     user, project, book = _ids()
     await _seed_work(pool, user, project, book)
     chA, chB = uuid.uuid4(), uuid.uuid4()
     arc = await repo.create_node(project, created_by=user, kind="arc", title="arc")
-    cA = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chA)
-    cB = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id, chapter_id=chB)
+    cA = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id,
+                                chapter_id=chA, story_order=1 * S)   # book chapter 1
+    cB = await repo.create_node(project, created_by=user, kind="chapter", parent_id=arc.id,
+                                chapter_id=chB, story_order=2 * S)   # book chapter 2
     a1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=cA.id, chapter_id=chA, title="a1")
     a2 = await repo.create_node(project, created_by=user, kind="scene", parent_id=cA.id, chapter_id=chA, title="a2")
     b1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=cB.id, chapter_id=chB, title="b1")
@@ -470,9 +483,11 @@ async def test_outline_reorder_reparents_scene_across_chapters(pool):
     assert moved is not None
     assert moved.parent_id == cB.id and moved.chapter_id == chB  # inherited new chapter
     dest = await repo.scenes_for_chapter(project, chB)
-    assert [s.title for s in dest] == ["b1", "a1"] and [s.story_order for s in dest] == [0, 1]
+    # The moved scene lands in chapter 2's band, after b1 — not on a chapter-local 0,1.
+    assert [s.title for s in dest] == ["b1", "a1"]
+    assert [s.story_order for s in dest] == [2 * S, 2 * S + 1]
     src = await repo.scenes_for_chapter(project, chA)
-    assert [s.title for s in src] == ["a2"] and [s.story_order for s in src] == [0]  # re-densified
+    assert [s.title for s in src] == ["a2"] and [s.story_order for s in src] == [1 * S]  # re-densified
 
 
 async def test_outline_beat_role_allowed_on_scene_and_chapter_not_arc(pool):

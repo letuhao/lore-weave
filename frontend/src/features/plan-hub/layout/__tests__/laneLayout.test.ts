@@ -4,7 +4,7 @@
 // the PH21 unplanned tray) is a test — the canvas only supplies pan/zoom over these numbers.
 import { describe, expect, it } from 'vitest';
 import {
-  laneLayout, leafLaneAtY, chapterAtPoint, bandAtY, DEFAULT_LAYOUT_OPTIONS as D,
+  laneLayout, leafLaneAtY, chapterAtPoint, bandAtY, readingUnitBefore, DEFAULT_LAYOUT_OPTIONS as D,
   type ArcShellNode, type LaneBand, type NodePosition, type WindowNode,
 } from '../laneLayout';
 
@@ -358,5 +358,44 @@ describe('laneLayout — a collapsed arc\'s rollup interleaves on the RAW axis',
     const l = laneLayout(shell, [ch('c1', 'A1', 1 * STRIDE)], { arcs: ['A1', 'A2'] });
     expect(byId(l, 'A1')!.x).toBe(D.padX + 0 * D.cardPitch);
     expect(byId(l, 'A2')!.x).toBe(D.padX + 1 * D.cardPitch);
+  });
+});
+
+describe('readingUnitBefore — the Row-3 reorder drop target', () => {
+  const units: NodePosition[] = [
+    { id: 'c1', shape: 'chapter', laneId: 'A1', x: 24, y: 0, width: 128, collapsed: false, storyOrder: 1000 },
+    { id: 'A2', shape: 'arc-rollup', laneId: 'A2', x: 168, y: 50, width: 128, collapsed: true, storyOrder: 2000 },
+    { id: 'c3', shape: 'chapter', laneId: 'A1', x: 312, y: 0, width: 128, collapsed: false, storyOrder: 3000 },
+    { id: 's1', shape: 'scene', laneId: 'A1', x: 24, y: 90, width: 100, collapsed: false, storyOrder: 1000 },
+  ];
+
+  it('returns the last unit whose centre is left of the drop', () => {
+    // c3 spans 312..440, so its centre is 376: a drop at 350 is still LEFT of that centre, and the
+    // unit you landed after is A2 (centre 232). Only past 376 does c3 become the predecessor.
+    expect(readingUnitBefore(units, 400, 'c1')!.id).toBe('c3');
+    expect(readingUnitBefore(units, 350, 'c1')!.id).toBe('A2');
+    expect(readingUnitBefore(units, 250, 'c1')!.id).toBe('A2');
+  });
+
+  it('a drop before everything returns null (⇒ becomes the first chapter)', () => {
+    expect(readingUnitBefore(units, 10, 'c3')).toBeNull();
+  });
+
+  it('never returns the dragged chapter itself', () => {
+    expect(readingUnitBefore(units, 350, 'c3')!.id).toBe('A2');
+  });
+
+  it('scenes are not reading-order units — only chapters and rollups occupy a slot', () => {
+    const hit = readingUnitBefore(units, 200, 'c3');
+    expect(hit!.id).toBe('c1'); // s1 shares c1's x but must never be the predecessor
+    expect(hit!.shape).toBe('chapter');
+  });
+
+  it('REPORTS a collapsed arc rollup as the predecessor (the controller must see it and refuse)', () => {
+    // Skipping the rollup and silently returning c1 would place the chapter BEFORE that arc's
+    // hidden chapters — a manuscript move the user never asked for.
+    const hit = readingUnitBefore(units, 300, 'c3');
+    expect(hit!.id).toBe('A2');
+    expect(hit!.shape).toBe('arc-rollup');
   });
 });

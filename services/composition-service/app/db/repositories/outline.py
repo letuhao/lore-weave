@@ -26,6 +26,7 @@ from app.db.repositories import (
     AlreadyPlannedError, ReferenceViolationError, VersionMismatchError, outbox,
 )
 from app.db.repositories.rank import rank_after, rank_between
+from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE
 
 _SELECT_COLS = """
   id, created_by, project_id, book_id, parent_id, kind, rank, title, pov_entity_id,
@@ -418,6 +419,102 @@ class OutlineRepo:
                     c, project_id, book_id=book_id, created_by=created_by,
                     arc_title=arc_title, chapters=chapters,
                 )
+
+    async def resync_reading_order(
+        self, book_id: UUID, chapter_sorts: dict[UUID, int],
+    ) -> dict[str, int]:
+        """24 PH20 Row-3 — rebuild this book's reading-axis MIRROR from book-service's truth.
+
+        `chapter_sorts` is {book chapter_id -> sort_order}, the manuscript's own order. Composition
+        stores a DERIVED copy of that order as `outline_node.story_order`
+        (`sort_order * STORY_ORDER_CHAPTER_STRIDE` on a chapter, `+ i` on its i-th scene), because
+        the packer's strictly-prior lenses and the canon-rule windows key on it. Nothing keeps the
+        two in step — composition consumes no book events — so the mirror is rebuilt on demand, and
+        this is the ONLY writer of a chapter's slot outside the initial commit.
+
+        Three things move together, in ONE transaction, or the axis is left inconsistent:
+          1. every live chapter node → its book slot;
+          2. every one of its scenes → chapter slot + index-by-rank;
+          3. **canon_rule anchors** — `from_order`/`until_order` are positions on this very axis and
+             carry NO node FK (the story timeline IS their only anchor), so a renumber that ignored
+             them would silently re-point a rule at whatever chapter now sits in the old slot. They
+             are remapped through the old→new slot mapping, preserving any intra-chapter offset.
+
+        Idempotent (a no-op when the mirror already agrees) and safe to re-run — the client chains it
+        after a book reorder, so a retry after a partial failure must converge, not drift.
+
+        A chapter node whose `chapter_id` is not in `chapter_sorts` (trashed/purged upstream) is left
+        untouched: its position is no longer meaningful, and guessing one would be worse than stale.
+        """
+        stride = STORY_ORDER_CHAPTER_STRIDE
+        moved = {"chapters": 0, "scenes": 0, "canon_rules": 0}
+        async with self._pool.acquire() as c:
+            async with c.transaction():
+                rows = await c.fetch(
+                    """
+                    SELECT id, chapter_id, story_order FROM outline_node
+                     WHERE book_id = $1 AND kind = 'chapter' AND NOT is_archived
+                       AND chapter_id IS NOT NULL
+                    """,
+                    book_id,
+                )
+                # old slot -> new slot, for the canon remap. Only chapters that HAD a slot can be
+                # remapped from; a previously-unpositioned chapter simply gains one.
+                slot_map: dict[int, int] = {}
+                for r in rows:
+                    sort = chapter_sorts.get(r["chapter_id"])
+                    if sort is None:
+                        continue
+                    new_order = sort * stride
+                    old_order = r["story_order"]
+                    if old_order is not None and old_order != new_order:
+                        slot_map[old_order] = new_order
+                    if old_order != new_order:
+                        await c.execute(
+                            "UPDATE outline_node SET story_order = $2, updated_at = now() "
+                            "WHERE id = $1",
+                            r["id"], new_order,
+                        )
+                        moved["chapters"] += 1
+                    # Scenes always re-derive from the (possibly unchanged) chapter slot: a scene
+                    # drag may have left them on the wrong axis even when the chapter didn't move.
+                    scenes = await c.execute(
+                        """
+                        WITH ordered AS (
+                          SELECT id, (row_number() OVER (ORDER BY rank COLLATE "C", id) - 1) AS idx
+                            FROM outline_node
+                           WHERE parent_id = $1 AND kind = 'scene' AND NOT is_archived
+                        )
+                        UPDATE outline_node n
+                           SET story_order = $2 + o.idx, updated_at = now()
+                          FROM ordered o
+                         WHERE n.id = o.id AND n.story_order IS DISTINCT FROM ($2 + o.idx)
+                        """,
+                        r["id"], new_order,
+                    )
+                    moved["scenes"] += int(scenes.split()[-1]) if scenes else 0
+
+                # Canon anchors. A rule's boundary may sit at a scene-level offset inside a chapter
+                # (base + k), so remap the BASE and carry the offset across.
+                if slot_map:
+                    for col in ("from_order", "until_order"):
+                        anchors = await c.fetch(
+                            f"SELECT id, {col} AS v FROM canon_rule "
+                            f"WHERE book_id = $1 AND {col} IS NOT NULL AND NOT is_archived",
+                            book_id,
+                        )
+                        for a in anchors:
+                            old = int(a["v"])
+                            base, offset = (old // stride) * stride, old % stride
+                            new_base = slot_map.get(base)
+                            if new_base is None or new_base == base:
+                                continue
+                            await c.execute(
+                                f"UPDATE canon_rule SET {col} = $2 WHERE id = $1",
+                                a["id"], new_base + offset,
+                            )
+                            moved["canon_rules"] += 1
+        return moved
 
     async def commit_decomposed_tree(
         self, project_id: UUID, *,
@@ -1128,26 +1225,41 @@ class OutlineRepo:
     async def _renumber_scene_story_order(
         self, c: asyncpg.Connection, project_id: UUID, parent_id: UUID | None,
     ) -> None:
-        """Dense-renumber `story_order` (0..n-1, by fractional rank) for the
-        SCENE children of `parent_id` (T1.1c reorder). Keeps the reading axis
-        (story_order) in lockstep with the tree's `rank` order, so the FE's
-        story_order-first sort reflects a drag with no client renumber. No-op for
-        non-scene siblings (arcs/chapters have NULL story_order). NOT version-
-        bumped — story_order is a system-maintained ordinal, not a user field.
-        project_id-scoped: parent_id may be NULL (top level), so the project key
-        is what keeps the renumber inside this Work."""
+        """Renumber `story_order` for the SCENE children of `parent_id` (T1.1c reorder),
+        keeping the reading axis in lockstep with the tree's `rank` order so the FE's
+        story_order-first sort reflects a drag with no client renumber.
+
+        The scene's position is its CHAPTER's slot plus its index within the chapter
+        (`chapter.story_order + i`) — the ONE global reading axis, chapter-major /
+        scene-minor, shared with `plan.py`'s commit, `chapter_gen`, the packer's
+        strictly-prior lenses, and the canon-rule windows.
+
+        This previously renumbered scenes to a chapter-LOCAL `0..n-1`, which silently
+        collapsed a chapter's scenes onto the same low integers as every other chapter's
+        the moment anyone dragged a scene: the global order was destroyed, the packer's
+        "prior scenes" filter started matching across chapters, and canon windows
+        mis-fired. Two conventions on one column — this is the surviving one.
+
+        A chapter with no position of its own yields NULL (propagated) rather than a
+        fabricated 0 — an unknown slot must not claim to be the book's first.
+        NOT version-bumped — story_order is a system-maintained ordinal, not a user field.
+        project_id-scoped, so the renumber can never leave this Work."""
         await c.execute(
             """
-            WITH ordered AS (
-              SELECT id, (row_number() OVER (ORDER BY rank COLLATE "C", id) - 1) AS so
+            WITH base AS (
+              SELECT story_order AS b FROM outline_node
+               WHERE id = $2 AND project_id = $1
+            ), ordered AS (
+              SELECT id, (row_number() OVER (ORDER BY rank COLLATE "C", id) - 1) AS idx
               FROM outline_node
               WHERE project_id = $1 AND parent_id IS NOT DISTINCT FROM $2
                 AND kind = 'scene' AND NOT is_archived
             )
             UPDATE outline_node n
-            SET story_order = o.so, updated_at = now()
+            SET story_order = (SELECT b FROM base) + o.idx, updated_at = now()
             FROM ordered o
-            WHERE n.id = o.id AND n.project_id = $1 AND n.story_order IS DISTINCT FROM o.so
+            WHERE n.id = o.id AND n.project_id = $1
+              AND n.story_order IS DISTINCT FROM ((SELECT b FROM base) + o.idx)
             """,
             project_id, parent_id,
         )

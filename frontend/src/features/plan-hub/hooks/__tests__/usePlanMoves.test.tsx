@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   reorderNode: vi.fn(),
   moveArc: vi.fn(),
   getChildren: vi.fn(),
+  reorderBookChapter: vi.fn(),
 }));
 vi.mock('../../api', () => api);
 
@@ -66,6 +67,7 @@ beforeEach(() => {
   api.reorderNode.mockResolvedValue({ id: 's1', parent_id: 'ch-2', version: 4 });
   api.moveArc.mockResolvedValue({ id: 'arc-x', parent_id: null, depth: 0 });
   api.getChildren.mockResolvedValue({ items: [], next_cursor: null });
+  api.reorderBookChapter.mockResolvedValue({ book_id: BOOK, resynced: {} });
 });
 
 describe('Row-1 — chapter → arc (assign-chapters)', () => {
@@ -213,5 +215,76 @@ describe('the error banner', () => {
     expect(result.current.moveError).toBeNull();
     await waitFor(() => expect(api.assignChapters).toHaveBeenCalledTimes(2));
     expect(result.current.moveError).toBeNull(); // and it stays clear on success
+  });
+});
+
+describe('Row-3 — chapter → reading order (the MANUSCRIPT move)', () => {
+  const unit = (id: string, shape: 'chapter' | 'arc-rollup') =>
+    ({ id, shape, laneId: 'A1', x: 0, y: 0, width: 128, collapsed: false, storyOrder: 1000 }) as never;
+
+  function chapter(over: Partial<SummaryNode> & { id: string }): SummaryNode {
+    return {
+      kind: 'chapter', parent_id: null, structure_node_id: 'A1', chapter_id: `book-${over.id}`,
+      title: over.id, status: 'draft', version: 1, story_order: 1000, rank: '0m', beat_role: null,
+      tension: null, pov_entity_id: null, present_entity_ids: [], present_entity_count: 0, ...over,
+    };
+  }
+  const windowContent = {
+    c1: chapter({ id: 'c1', story_order: 1000 }),
+    c2: chapter({ id: 'c2', story_order: 2000 }),
+    c3: chapter({ id: 'c3', story_order: 3000 }),
+  };
+
+  it('sends the BOOK chapter ids — not the outline node ids', async () => {
+    const { result } = mount({ windowContent });
+    act(() => result.current.reorderChapter('c1', unit('c2', 'chapter')));
+    await waitFor(() =>
+      expect(api.reorderBookChapter).toHaveBeenCalledWith(
+        BOOK,
+        { chapter_id: 'book-c1', after_chapter_id: 'book-c2' }, // book-service speaks chapter_ids
+        'tok',
+      ),
+    );
+  });
+
+  it('a drop before everything makes it chapter 1 (after_chapter_id null)', async () => {
+    const { result } = mount({ windowContent });
+    act(() => result.current.reorderChapter('c3', null));
+    await waitFor(() =>
+      expect(api.reorderBookChapter).toHaveBeenCalledWith(
+        BOOK, { chapter_id: 'book-c3', after_chapter_id: null }, 'tok',
+      ),
+    );
+  });
+
+  it('REFUSES to move a chapter past a collapsed arc — and says why', () => {
+    // The rollup hides chapters we never loaded, so "after that arc" cannot be named to the server.
+    // Falling back to the last loaded chapter would place this chapter BEFORE the arc's hidden
+    // chapters — a silent, wrong move on the real manuscript.
+    const { result } = mount({ windowContent });
+    act(() => result.current.reorderChapter('c1', unit('A2', 'arc-rollup')));
+    expect(api.reorderBookChapter).not.toHaveBeenCalled();
+    expect(result.current.moveError).toMatch(/expand that arc/i);
+  });
+
+  it('a drop into the slot it already occupies writes nothing', () => {
+    const { result } = mount({ windowContent });
+    act(() => result.current.reorderChapter('c2', unit('c1', 'chapter'))); // c2 already follows c1
+    expect(api.reorderBookChapter).not.toHaveBeenCalled();
+  });
+
+  it('reloads the windows on settle — the story_order mirror just changed for EVERY chapter', async () => {
+    const { result } = mount({ windowContent });
+    act(() => result.current.reorderChapter('c1', unit('c3', 'chapter')));
+    await waitFor(() => expect(reloadWindows).toHaveBeenCalled());
+  });
+
+  it('surfaces a failed reorder (the manuscript may be reordered but the mirror stale)', async () => {
+    api.reorderBookChapter.mockRejectedValue(
+      Object.assign(new Error('MIRROR_RESYNC_FAILED'), { status: 502 }),
+    );
+    const { result } = mount({ windowContent });
+    act(() => result.current.reorderChapter('c1', unit('c3', 'chapter')));
+    await waitFor(() => expect(result.current.moveError).toMatch(/MIRROR_RESYNC_FAILED/));
   });
 });

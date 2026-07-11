@@ -462,6 +462,35 @@ export function chapterAtPoint(
 }
 
 /**
+ * 24 H5.3 — the chapter-REORDER drop target: the reading-order unit the drop lands AFTER.
+ *
+ * The x-axis is the book's reading order, and a "unit" is one slot on it — a chapter card OR a
+ * collapsed arc's rollup (which occupies exactly one slot no matter how many chapters it hides).
+ * Returns the last unit whose CENTRE is left of `x`, i.e. the one the dragged chapter would follow;
+ * null ⇒ dropped before everything ⇒ it becomes the first chapter.
+ *
+ * Returning the rollup rather than skipping it is deliberate: the controller must be able to SEE
+ * that the predecessor is a collapsed arc and refuse, because "after that arc" cannot be named to
+ * the server (the API takes an `after_chapter_id`, and the arc's chapters aren't loaded). Silently
+ * choosing the last loaded chapter instead would place the chapter BEFORE the collapsed arc's
+ * chapters — a move the user did not ask for, on the actual manuscript.
+ */
+export function readingUnitBefore(
+  nodes: NodePosition[],
+  x: number,
+  excludeId: string,
+): NodePosition | null {
+  let best: NodePosition | null = null;
+  for (const n of nodes) {
+    if (n.id === excludeId) continue;
+    if (n.shape !== 'chapter' && n.shape !== 'arc-rollup') continue;
+    if (n.x + n.width / 2 >= x) continue;
+    if (!best || n.x > best.x) best = n;
+  }
+  return best;
+}
+
+/**
  * 24 H5.2 — the arc-band drag drop target. The INNERMOST band whose vertical range contains `y`.
  * Bands NEST (a saga's band wraps its arcs'), so the deepest hit is the most specific target: a drop
  * over a nested arc targets that arc, not its saga. Returns null off every band. Pure + headless —

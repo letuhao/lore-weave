@@ -145,6 +145,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     moveChapterToArc: moves.moveChapterToArc,
     moveSceneToChapter: moves.moveSceneToChapter,
     moveArcTo: moves.moveArcTo,
+    reorderChapter: moves.reorderChapter,
     moving: moves.moving,
     moveError: moves.moveError,
   };

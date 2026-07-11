@@ -40,16 +40,23 @@ from app.db.models import (
     _ForbidExtra,
     _Key,
 )
+from app.clients.book_client import BookClient, BookClientError
 from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
+from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.structure import StructureConflictError, StructureRepo
-from app.deps import get_arc_template_repo, get_grant_client_dep
+from app.deps import (
+    get_arc_template_repo,
+    get_book_client_dep,
+    get_grant_client_dep,
+    get_outline_repo,
+)
 from app.engine.arc_apply import build_apply_plan
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
-from app.middleware.jwt_auth import get_current_user
+from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError
 from pydantic import BaseModel, Field
 
@@ -563,3 +570,69 @@ async def assign_arc_chapters(
         book_id, body.structure_node_id, body.chapter_node_ids,
     )
     return {"assigned": count, "structure_node_id": str(body.structure_node_id)}
+
+
+class ChapterReorder(BaseModel):
+    """24 PH20 Row-3 — move a chapter in the book's READING order."""
+
+    chapter_id: UUID          # book-service chapter_id (not the outline node id)
+    after_chapter_id: UUID | None = None   # null ⇒ make it the first chapter
+
+
+@router.post("/books/{book_id}/chapters/reorder", status_code=200)
+async def reorder_book_chapters(
+    book_id: UUID,
+    body: ChapterReorder,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    book: BookClient = Depends(get_book_client_dep),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Reorder a chapter in the manuscript, then rebuild composition's reading-axis mirror.
+
+    Row-3 ("drag a chapter along its lane") is NOT a composition-local move: the Hub's x-axis is the
+    book's reading order, which **book-service owns**. So this is the one gesture that crosses the
+    seam, and it is exposed as ONE route so the client cannot leave the two halves inconsistent:
+
+      1. book-service `POST /chapters/reorder` — the transactional renumber (it alone can permute the
+         partial-unique slot index);
+      2. `outline.resync_reading_order` — re-derive every chapter/scene `story_order` from the new
+         truth AND remap the canon-rule anchors that ride the same axis.
+
+    Both are individually idempotent, so a retry after a partial failure converges. If step 2 fails
+    the manuscript IS reordered and only the mirror is stale — we say so explicitly (502
+    MIRROR_RESYNC_FAILED) rather than reporting a clean success over a half-applied move
+    (`silent-success-is-a-bug`); re-issuing the same request repairs it.
+
+    EDIT on the book, enforced here AND again by book-service on the inner call.
+    """
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        await book.reorder_chapters(
+            book_id, body.chapter_id, body.after_chapter_id, bearer,
+        )
+    except BookClientError as exc:
+        # Surface book-service's own 400/404/409 verbatim — it owns the rules (a chapter that is
+        # not in the book, an after_id from another book, a non-active lifecycle).
+        status = exc.status if exc.status in (400, 403, 404, 409) else 502
+        raise HTTPException(status_code=status, detail={
+            "code": exc.code or "BOOK_SERVICE_UNAVAILABLE", "detail": str(exc),
+        }) from exc
+
+    try:
+        chapters = await book.list_chapters(book_id, bearer)
+        sorts = {
+            UUID(str(c["chapter_id"])): int(c["sort_order"])
+            for c in chapters
+            if c.get("chapter_id") is not None and c.get("sort_order") is not None
+        }
+        moved = await outline.resync_reading_order(book_id, sorts)
+    except BookClientError as exc:
+        raise HTTPException(status_code=502, detail={
+            "code": "MIRROR_RESYNC_FAILED",
+            "detail": ("the chapter WAS reordered, but composition's reading-axis mirror could not "
+                       "be rebuilt; re-issue this request to repair it"),
+            "cause": str(exc),
+        }) from exc
+    return {"book_id": str(book_id), "resynced": moved}

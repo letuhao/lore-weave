@@ -13,8 +13,8 @@
 // cost; optimistic re-place + undo are the deferred polish.
 import { useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { assignChapters, getChildren, moveArc, reorderNode } from '../api';
-import type { ArcListNode, SummaryNode } from '../types';
+import { assignChapters, getChildren, moveArc, reorderBookChapter, reorderNode } from '../api';
+import type { ArcListNode, NodePosition, SummaryNode } from '../types';
 
 const SIBLING_PAGE = 100;
 const MAX_SIBLING_PAGES = 20; // a chapter with >2000 scenes is not a real book; bound the walk
@@ -59,6 +59,8 @@ export interface PlanMoves {
   moveChapterToArc: (chapterId: string, arcId: string) => void;
   moveSceneToChapter: (sceneId: string, chapterId: string) => void;
   moveArcTo: (arcId: string, targetId: string) => void;
+  /** H5 Row-3: place a chapter after `afterUnit` in the book's READING order (null ⇒ first). */
+  reorderChapter: (chapterNodeId: string, afterUnit: NodePosition | null) => void;
   moving: boolean;
   moveError: string | null;
 }
@@ -198,11 +200,69 @@ export function usePlanMoves(input: {
     [token, shellNodes, arcMutation],
   );
 
+  // ── Row-3: drag a chapter along its lane → move it in the book's READING order. ──
+  // This is the one gesture that mutates the MANUSCRIPT (book-service owns chapter order), so it is
+  // the one where a mis-resolved target is genuinely destructive. Two guards live here:
+  //   • the predecessor must be a CHAPTER we can NAME to the server (`after_chapter_id` is a book
+  //     chapter_id). A collapsed arc's rollup hides chapters we haven't loaded, so "after that arc"
+  //     is unnameable — we REFUSE with a message rather than quietly using the last loaded chapter,
+  //     which would place this chapter BEFORE the collapsed arc's chapters (a move nobody asked for).
+  //   • a drop that lands in the slot the chapter already occupies is a no-op (the server reorder is
+  //     idempotent, so this is an optimization, never a correctness crutch).
+  const reorderMutation = useMutation({
+    mutationFn: (vars: { chapterId: string; afterChapterId: string | null }) =>
+      reorderBookChapter(
+        bookId,
+        { chapter_id: vars.chapterId, after_chapter_id: vars.afterChapterId },
+        token!,
+      ),
+    onError: onFailed,
+    onSettled: settle,
+  });
+  const reorderChapter = useCallback(
+    (chapterNodeId: string, afterUnit: NodePosition | null) => {
+      if (!token) return;
+      const moved = windowContent[chapterNodeId];
+      if (!moved?.chapter_id) return; // not loaded / not a manuscript chapter ⇒ nothing to reorder
+
+      if (afterUnit && afterUnit.shape !== 'chapter') {
+        setMoveError('Expand that arc before moving a chapter past it.');
+        return;
+      }
+      const afterNode = afterUnit ? windowContent[afterUnit.id] : null;
+      if (afterUnit && !afterNode?.chapter_id) {
+        setMoveError('Expand that arc before moving a chapter past it.');
+        return;
+      }
+
+      // Already in that slot? The predecessor among the LOADED chapters is the best proxy the client
+      // has for "where it sits now"; being wrong only costs an idempotent round-trip, never a bad move.
+      const loaded = Object.values(windowContent)
+        .filter((n) => n.kind === 'chapter' && n.story_order != null)
+        .sort((a, b) => (a.story_order ?? 0) - (b.story_order ?? 0));
+      const idx = loaded.findIndex((n) => n.id === chapterNodeId);
+      const currentPrev = idx > 0 ? loaded[idx - 1].id : null;
+      if (currentPrev === (afterUnit?.id ?? null)) return;
+
+      setMoveError(null);
+      reorderMutation.mutate({
+        chapterId: moved.chapter_id,
+        afterChapterId: afterNode?.chapter_id ?? null,
+      });
+    },
+    [token, windowContent, reorderMutation],
+  );
+
   return {
     moveChapterToArc,
     moveSceneToChapter,
     moveArcTo,
-    moving: chapterMutation.isPending || sceneMutation.isPending || arcMutation.isPending,
+    reorderChapter,
+    moving:
+      chapterMutation.isPending ||
+      sceneMutation.isPending ||
+      arcMutation.isPending ||
+      reorderMutation.isPending,
     moveError,
   };
 }

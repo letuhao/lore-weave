@@ -196,6 +196,11 @@ export interface PlanHubView {
    *  nest under a saga/parent arc, or become a leaf arc's next sibling. Cycle/depth are the
    *  server's rules (clean 4xx → moveError). */
   moveArcTo: (arcId: string, targetId: string) => void;
+  /** H5 Row-3 (PH20): move a chapter along the READING order (drag it within its own lane) — the one
+   *  gesture that mutates the MANUSCRIPT, since the x-axis is book-service's chapter order. `afterUnit`
+   *  is the reading-order unit it should follow (null ⇒ becomes chapter 1); a collapsed arc's rollup
+   *  is refused (its hidden chapters can't be named to the server). */
+  reorderChapter: (chapterNodeId: string, afterUnit: NodePosition | null) => void;
   /** A move is in flight (disable further drags / show a subtle busy state). */
   moving: boolean;
   /** The last move's failure (incl. the 412 "changed elsewhere — reloaded" recovery); null when ok. */
@@ -238,6 +243,10 @@ export interface PlanCanvasProps {
    *  which band was hit; the controller decides nest-vs-sibling (it holds parent_id + rank).
    *  Omitted ⇒ bands aren't draggable. Saga bands never drag (a saga cannot be parented). */
   onMoveArc?: (arcId: string, targetId: string) => void;
+  /** H5 Row-3: a chapter card was dragged WITHIN its own lane — i.e. along the reading order. The
+   *  canvas reports the unit it landed after (null ⇒ before everything); the controller decides
+   *  whether that's a real move and whether it can be named to the server. */
+  onReorderChapter?: (chapterNodeId: string, afterUnit: NodePosition | null) => void;
   /** H5: a move is in flight ⇒ freeze dragging. The lanes under the cursor are about to be replaced
    *  by the server's answer, so a second drag would be aimed at a layout that no longer holds. */
   busy?: boolean;

@@ -35,7 +35,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import type { CameraFocusTarget, NodePosition, PlanCanvasProps } from '../types';
-import { bandAtY, chapterAtPoint, leafLaneAtY } from '../layout/laneLayout';
+import { bandAtY, chapterAtPoint, leafLaneAtY, readingUnitBefore } from '../layout/laneLayout';
 import { ArcRollupNode } from './ArcRollupNode';
 import { ChapterNode } from './ChapterNode';
 import { buildLaneNodes, LaneBandNode, LANE_NODE_PREFIX } from './LaneBandLayer';
@@ -123,13 +123,14 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     onMoveChapter,
     onMoveScene,
     onMoveArc,
+    onReorderChapter,
     busy,
   } = props;
 
   // H5: a node kind is draggable only when its move handler is wired (else the canvas is read-only).
   // A move already in flight freezes ALL dragging — the layout under the cursor is about to be
   // replaced by server truth, so a second drag would be aimed at stale lanes.
-  const canDragChapter = !!onMoveChapter && !busy;
+  const canDragChapter = (!!onMoveChapter || !!onReorderChapter) && !busy;
   const canDragScene = !!onMoveScene && !busy;
   const canDragArc = !!onMoveArc && !busy;
   const canDrag = canDragChapter || canDragScene || canDragArc;
@@ -227,9 +228,17 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         const np = layout.nodes.find((p) => p.id === node.id);
         if (!np) return;
         if (np.shape === 'chapter') {
-          if (!onMoveChapter) return;
           const target = leafLaneAtY(layout.lanes, drop.y);
-          if (target && target.id !== np.laneId) onMoveChapter(node.id, target.id);
+          if (!target) return; // dropped off every lane
+          if (target.id !== np.laneId) {
+            // Row-1: a DIFFERENT lane ⇒ rebind the chapter's arc. Its reading position is untouched.
+            onMoveChapter?.(node.id, target.id);
+            return;
+          }
+          // Row-3: its OWN lane ⇒ the drag was horizontal, i.e. a move along the READING order.
+          // The controller decides whether that's a real move (and refuses to jump a collapsed arc,
+          // whose hidden chapters it cannot name to the server).
+          onReorderChapter?.(node.id, readingUnitBefore(layout.nodes, drop.x, node.id));
           return;
         }
         if (np.shape === 'scene') {
@@ -241,7 +250,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         setNodes(rfNodes); // snap back to laneLayout truth (RF only ever owned the drag offset)
       }
     },
-    [onMoveChapter, onMoveScene, onMoveArc, layout, rf, rfNodes, setNodes],
+    [onMoveChapter, onMoveScene, onMoveArc, onReorderChapter, layout, rf, rfNodes, setNodes],
   );
 
   return (
