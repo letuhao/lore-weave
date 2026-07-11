@@ -71,7 +71,20 @@ class UserFixture:
         self.user_id = r.json()["user_id"]
         self._seed_provider_model()
         self._seed_registry()
+        self._seed_motif_pair()
         return self
+
+    def _seed_motif_pair(self) -> None:
+        """Two user-tier motifs so composition_motif_link_create/_delete reach: a link needs
+        BOTH endpoints to be the caller's own motifs, and the sweep's one motif_create can mint
+        only one. book_id NULL ⇒ user-tier (no shared-book gate). Cleaned by _OWNED_ROWS (motif)."""
+        self.motif_link_a = str(uuid.uuid4())
+        self.motif_link_b = str(uuid.uuid4())
+        db = config.DOMAIN_DB["composition"]
+        for mid, code in ((self.motif_link_a, "tle-linkA"), (self.motif_link_b, "tle-linkB")):
+            oracle.db_query(db,
+                "INSERT INTO motif(id, owner_user_id, code, name) "
+                f"VALUES ('{mid}','{self.user_id}','{code}','TLE {code}')")
 
     def _seed_registry(self) -> None:
         """Seed one PUBLISHED skill + workflow so the registry read/edit tools are reachable.
@@ -189,6 +202,8 @@ USER_SWEEP_ORDER: tuple[str, ...] = (
     "composition_motif_link_list",
     "composition_motif_patch",
     "composition_motif_adopt",
+    "composition_motif_link_create",   # links the 2 seeded motifs → mints link.id
+    "composition_motif_link_delete",   # ← consumes it
     "composition_motif_archive",
     "registry_propose_skill",
     "registry_propose_workflow",
@@ -335,6 +350,15 @@ def authored_user_args(tool: str, fx: UserFixture, state: dict) -> dict | None:
                 "surfaces": ["chat"],
                 "steps": [{"id": "step-one", "tool": "book_list", "gate": "none"}],
             }
+        case "composition_motif_link_create":
+            # link the 2 seeded user-tier motifs (book_id omitted ⇒ user graph); mints link.id.
+            a, b = getattr(fx, "motif_link_a", None), getattr(fx, "motif_link_b", None)
+            return {"args": {"from_motif_id": a, "to_motif_id": b, "kind": "variant_of"}} \
+                if (a and b) else None
+        case "composition_motif_link_delete":
+            lid = (state.get("composition_motif_link_create") or {}).get("id") \
+                or (state.get("composition_motif_link_create") or {}).get("link_id")
+            return {"link_id": lid} if lid else None
         case "jobs_get":
             return {"service": "composition", "job_id": _FAKE_JOB_ID}
         case "jobs_cancel":

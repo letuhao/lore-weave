@@ -152,14 +152,17 @@ Remaining for WS-D3: probe every tool an authored C3 workflow can reference, so 
 being 10 rows. → **ND3**
 **Exit:** the ship gate is real. → **ND3** *(this is the actual "before we ship workflow" gate)*
 
-### WS-D4 · TLE P2 — full sweep *(size XL, grind)* — ✅ **62 → 25 null, 0 broken (2026-07-11)**
-All domain tools, batched per service. The capability sweep reached `194/219 executes:true · 0
-executes:false · 25 null` at $0; the 25 residue splits **13 DEFERRED** ($0-buildable-next) + **12
-WAIVED** with per-tool gate reasons (see [`TRACK-D-COMPLETION.md`](TRACK-D-COMPLETION.md) → Results).
-CD4 stays **reject-on-`executes:false`** (the "flip warn→reject" for `null` is the
-consciously-rejected WS-D5c tightening — `null` ≠ broken).
-**Exit:** matrix ≥95% non-RED **or** explicitly WAIVED/deferred with a reason — met via 89% proven,
-0 broken, and a gated residue.
+### WS-D4 · TLE P2 — full sweep *(size XL, grind)* — ✅ **62 → 13 null, 0 broken (2026-07-11)**
+All domain tools, batched per service. The capability sweep reached `211/224 executes:true · 0
+executes:false · 13 null` at $0; **all 13 residue are genuine WAIVES** with per-tool gate reasons
+(browser-JWT ontology / real async job / bespoke multi-FK seed / paid / cross-service / pre-existing
+draft — see [`TRACK-D-COMPLETION.md`](TRACK-D-COMPLETION.md) → Results). The prior "13 buildable-next"
+deferral was CLEARED this run (kg node-chain, motif links/bind, scene/outline chains all built; needed
+`kg_create_node` deployed). CD4 stays **reject-on-`executes:false`** (the "flip warn→reject" for
+`null` is the consciously-rejected WS-D5c tightening — `null` ≠ broken).
+**Exit:** matrix ≥95% non-RED **or** explicitly WAIVED with a reason — met via 94% proven, 0 broken,
+13 waived. Plus the Track-A gateway prefix-drop test now exists
+(`scripts/eval/tool_liveness/tests/test_federation_prefix.py`).
 
 > **⚠ Naming (WS-D5 collision, resolved 2026-07-11).** Two different deliverables shared "WS-D5":
 > **WS-D5a** = the *tool-description disambiguation* follow-up ([`WS-D5-followups.md`](WS-D5-followups.md),

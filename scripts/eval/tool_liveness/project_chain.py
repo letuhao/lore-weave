@@ -87,6 +87,20 @@ PROJECT_SWEEP_ORDER: tuple[str, ...] = (
     "kg_project_set_embedding_model",
     "kg_run_benchmark",
     "kg_build_graph",
+    # kg node-chain (reuse the 2 seeded KG nodes + a listed template); propose_edge mints the
+    # triage_id/signature the triage_* consume; list_templates surfaces the adopt source.
+    "kg_list_templates",
+    "kg_entity_edge_timeline",
+    "kg_propose_edge",
+    "kg_triage_place_edge",
+    "kg_triage_resolve",
+    "kg_adopt_template",
+    # composition scene/outline + motif chains (reuse the 2nd seeded project's nodes + motif)
+    "composition_scene_link_create",
+    "composition_scene_link_delete",
+    "composition_outline_node_restore",
+    "composition_motif_bind",
+    "composition_motif_unbind",
     # memory: remember mints a fact_id that forget consumes
     "memory_remember",
     "memory_forget",
@@ -403,6 +417,61 @@ def authored_project_args(tool: str, ids: dict, state: dict) -> dict | None:
                     "target_language": "en", "block_index": 0,
                     "block": {"type": "paragraph", "content": []}} \
                 if (book and chapter_id and vid) else None
+        # ── kg node-chain (reuse the 2 seeded KG nodes + kg_list_templates) ──────────
+        case "kg_create_node":
+            # Tier-A, idempotent. Authored args bypass the fill_args project_id auto-inject,
+            # so pass it explicitly.
+            kg = ids.get("project_id")
+            return {"name": "TLE probe node", "kind": "character", "project_id": kg} if kg else None
+        case "kg_entity_edge_timeline":
+            na = ids.get("kg_node_a")
+            return {"entity_id": na, "edge_type": "tle_rel"} if na else None
+        case "kg_propose_edge":
+            na, nb, kg = ids.get("kg_node_a"), ids.get("kg_node_b"), ids.get("project_id")
+            return {"source_entity_id": na, "target_entity_id": nb,
+                    "edge_type": "tle_rel", "project_id": kg} if (na and nb and kg) else None
+        case "kg_triage_place_edge":
+            tid = _id(state.get("kg_propose_edge") or {}, "triage_id", "id")
+            kg = ids.get("project_id")
+            return {"triage_id": tid, "project_id": kg} if (tid and kg) else None
+        case "kg_triage_resolve":
+            sig = _id(state.get("kg_propose_edge") or {}, "signature")
+            kg = ids.get("project_id")
+            # already-placed ⇒ structured refusal (still executes); dismiss is least-destructive.
+            return {"signature": sig, "action": "dismiss", "project_id": kg} if (sig and kg) else None
+        case "kg_adopt_template":
+            tmpls = state.get("kg_list_templates")
+            first = (tmpls[0] if isinstance(tmpls, list) and tmpls
+                     else (tmpls or {}).get("templates", [{}])[0] if isinstance(tmpls, dict) else {})
+            sid = (first or {}).get("schema_id") or (first or {}).get("id")
+            kg = ids.get("project_id")
+            return {"source_schema_id": sid, "project_id": kg} if (sid and kg) else None
+        # ── composition scene/outline chains (reuse the 2nd project + its nodes) ─────
+        case "composition_scene_link_create":
+            cp, na, nb = ids.get("cproj2"), ids.get("node_a"), ids.get("node_b")
+            return {"args": {"project_id": cp, "from_node_id": na, "to_node_id": nb,
+                             "kind": "setup_payoff"}} if (cp and na and nb) else None
+        case "composition_scene_link_delete":
+            cp = ids.get("cproj2")
+            lid = _id(state.get("composition_scene_link_create") or {}, "id", "link_id")
+            return {"project_id": cp, "link_id": lid} if (cp and lid) else None
+        case "composition_outline_node_restore":
+            cp, arch = ids.get("cproj2"), ids.get("node_archived")
+            return {"project_id": cp, "node_id": arch} if (cp and arch) else None
+        # ── composition motif bind/unbind (reuse the 2nd project's node + a motif) ───
+        case "composition_motif_bind":
+            cp, na, ma = ids.get("cproj2"), ids.get("node_a"), ids.get("motif_a")
+            return {"args": {"project_id": cp, "node_id": na, "motif_id": ma,
+                             "role_bindings": {}}} if (cp and na and ma) else None
+        case "composition_motif_unbind":
+            cp, na = ids.get("cproj2"), ids.get("node_a")
+            return {"project_id": cp, "node_id": na} if (cp and na) else None
+        case "book_chapter_save_draft":
+            # `body` is a block ARRAY (or null), not a doc object.
+            dv = ids.get("draft_version")
+            return {"book_id": book, "chapter_id": chapter_id, "base_version": dv,
+                    "body": [{"type": "paragraph", "content": []}]} \
+                if (book and chapter_id and dv is not None) else None
         case _:
             return None  # not in a chain → fill_args
 
@@ -499,6 +568,58 @@ def seed_db_fixtures(ids: dict) -> None:
         print(f"  (no translation seed: {type(e).__name__}: {e})")
 
 
+def seed_chain_extras(ids: dict) -> None:
+    """Mint the 2nd-of-a-pair targets the sweep's one-call-per-tool shape can't make inline:
+    2 KG nodes (for kg_propose_edge / entity_edge_timeline / triage), and a 2nd composition
+    project holding 2 outline nodes + an archived node + a motif (for scene_link / motif_bind /
+    outline_node_restore). Everything is book/project-scoped under the fixture book → cleaned by
+    the runtime composition/kg teardown. Failures are non-fatal (the consumers just stay null)."""
+    from .mcp_direct import MCPDirect
+
+    d = MCPDirect()
+    book, chapter, kg = ids.get("book_id"), ids.get("chapter_id"), ids.get("project_id")
+    # ── 2 KG nodes (kg_create_node is idempotent Tier-A; returns entity_id) ────────────────
+    if kg:
+        try:
+            a = d.call("kg_create_node", {"name": "TLE Node A", "kind": "character", "project_id": kg})
+            b = d.call("kg_create_node", {"name": "TLE Node B", "kind": "character", "project_id": kg})
+            ids["kg_node_a"] = a.get("entity_id") or a.get("id")
+            ids["kg_node_b"] = b.get("entity_id") or b.get("id")
+        except Exception as e:
+            print(f"  (no kg-node seed: {type(e).__name__}: {e})")
+    # ── a 2nd composition project with 2 nodes + an archived node + a motif ────────────────
+    if book and chapter:
+        try:
+            w = d.call("composition_create_work", {"book_id": book})
+            cp = w.get("project_id")
+            ids["cproj2"] = cp
+
+            def _node(title: str):
+                r = d.call("composition_outline_node_create", {"args": {
+                    "project_id": cp, "kind": "chapter", "chapter_id": chapter, "title": title}})
+                return r.get("id") or r.get("node_id")
+
+            ids["node_a"] = _node("TLE Node A")
+            ids["node_b"] = _node("TLE Node B")
+            arch = _node("TLE Archived")
+            d.call("composition_outline_node_delete", {"project_id": cp, "node_id": arch})
+            ids["node_archived"] = arch  # deleted ⇒ outline_node_restore has something to restore
+        except Exception as e:
+            print(f"  (no composition-extras seed: {type(e).__name__}: {e})")
+        try:
+            m = d.call("composition_motif_create", {"args": {"code": "tle-bind", "name": "TLE Bind Motif"}})
+            ids["motif_a"] = m.get("id") or m.get("motif_id")
+        except Exception as e:
+            print(f"  (no motif seed: {type(e).__name__}: {e})")
+        # book_chapter_save_draft needs base_version == the current chapter_drafts.draft_version.
+        try:
+            dv = oracle.db_query(config.DOMAIN_DB["book"],
+                                 f"SELECT draft_version FROM chapter_drafts WHERE chapter_id='{chapter}'")
+            ids["draft_version"] = int(dv.strip()) if dv and dv.strip().lstrip("-").isdigit() else 0
+        except Exception:
+            ids["draft_version"] = 0
+
+
 def teardown_db_fixtures(ids: dict) -> dict:
     """Delete every row seed_db_fixtures created (the world isn't book-CASCADEd; translation
     rows live in a different DB) — 'destroy what I created', both ways."""
@@ -519,6 +640,14 @@ def teardown_db_fixtures(ids: dict) -> dict:
             except Exception as e:
                 out[tbl] = f"FAILED: {e}"
         out.setdefault("translation", "ok")
+    # the seeded motif is USER-scoped (book_id NULL) → NOT cleaned by the book-scoped
+    # composition teardown; delete it by its owner+code so it doesn't accumulate per run.
+    try:
+        oracle.db_query(config.DOMAIN_DB["composition"],
+                        f"DELETE FROM motif WHERE owner_user_id='{config.USER_ID}' AND code='tle-bind'")
+        out["motif"] = "ok"
+    except Exception as e:
+        out["motif"] = f"FAILED: {e}"
     return out  # scenes are book-scoped → CASCADE-deleted with the book by fx.teardown()
 
 

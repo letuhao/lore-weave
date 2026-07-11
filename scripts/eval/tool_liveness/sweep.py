@@ -398,11 +398,14 @@ def main() -> int:
     except Exception as e:
         print(f"  (no kg project: {e}) — project-scoped tools will score inconclusive")
     # Seed a throwaway authoring run so its get/gate/close consumers are reachable at $0.
-    from .project_chain import seed_authoring_run, seed_db_fixtures
+    from .project_chain import seed_authoring_run, seed_db_fixtures, seed_chain_extras
     seed_authoring_run(ids)
     # Seed rows no $0 MCP creator can mint (a world, a scene, a completed translation) so
     # kg_world_query / book_scene_get / the 5 translation-version tools reach on owned targets.
     seed_db_fixtures(ids)
+    # Mint the 2nd-of-a-pair targets (2 KG nodes, a 2nd project with 2 nodes + an archived
+    # node + a motif) so the kg node-chain / scene-link / motif-bind / node-restore reach.
+    seed_chain_extras(ids)
     print(f"fixture: {ids}")
 
     # Order the book/project creators before their consumers so a later tool can read the

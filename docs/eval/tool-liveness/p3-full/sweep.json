@@ -7,7 +7,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -18,7 +18,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "source_markdown": "# Arc One\n\nA hero answers the call and sets out."
     }
   },
@@ -31,9 +31,9 @@
     "error": "",
     "args": {
       "args": {
-        "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
         "kind": "chapter",
-        "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
+        "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
         "title": "TLE node"
       }
     }
@@ -47,7 +47,7 @@
     "error": "",
     "args": {
       "args": {
-        "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
         "text": "TLE canon rule: the sky is green."
       }
     }
@@ -61,7 +61,7 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
       }
     }
   },
@@ -73,7 +73,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "name": "tle-rule",
       "body": "TLE steering probe"
     }
@@ -86,8 +86,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "run_id": "019f4fe5-28a3-7950-a3ca-b3f69445bb20"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "run_id": "019f5023-de52-7ffe-8e87-4980cac0b788"
     }
   },
   {
@@ -98,8 +98,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "run_id": "019f4fe5-28a3-7950-a3ca-b3f69445bb20"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "run_id": "019f5023-de52-7ffe-8e87-4980cac0b788"
     }
   },
   {
@@ -110,8 +110,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "run_id": "019f4fe5-28a3-7950-a3ca-b3f69445bb20",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "run_id": "019f5023-de52-7ffe-8e87-4980cac0b788",
       "user_message": "tighten the pacing"
     }
   },
@@ -123,8 +123,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "run_id": "019f4fe5-28a3-7950-a3ca-b3f69445bb20"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "run_id": "019f5023-de52-7ffe-8e87-4980cac0b788"
     }
   },
   {
@@ -135,8 +135,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "run_id": "019f4fe5-28a3-7950-a3ca-b3f69445bb20"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "run_id": "019f5023-de52-7ffe-8e87-4980cac0b788"
     }
   },
   {
@@ -147,8 +147,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "run_id": "019f4fe5-28a3-7950-a3ca-b3f69445bb20",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "run_id": "019f5023-de52-7ffe-8e87-4980cac0b788",
       "approved": false
     }
   },
@@ -160,8 +160,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "run_id": "019f4fe5-28a3-7950-a3ca-b3f69445bb20",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "run_id": "019f5023-de52-7ffe-8e87-4980cac0b788",
       "arc_id": "arc_1",
       "run_pipeline": false
     }
@@ -174,8 +174,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-      "node_id": "019f4fe5-28cd-709a-9e26-366ed3d69c65"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "node_id": "019f5023-de7e-7747-b73d-8357ed09cb4d"
     }
   },
   {
@@ -187,8 +187,8 @@
     "error": "",
     "args": {
       "args": {
-        "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-        "node_id": "019f4fe5-28cd-709a-9e26-366ed3d69c65",
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+        "node_id": "019f5023-de7e-7747-b73d-8357ed09cb4d",
         "title": "TLE node v2",
         "expected_version": 1
       }
@@ -203,8 +203,8 @@
     "error": "",
     "args": {
       "args": {
-        "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-        "node_id": "019f4fe5-28cd-709a-9e26-366ed3d69c65",
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+        "node_id": "019f5023-de7e-7747-b73d-8357ed09cb4d",
         "new_parent_id": null,
         "after_id": null
       }
@@ -218,8 +218,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-      "node_id": "019f4fe5-28cd-709a-9e26-366ed3d69c65"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "node_id": "019f5023-de7e-7747-b73d-8357ed09cb4d"
     }
   },
   {
@@ -231,8 +231,8 @@
     "error": "",
     "args": {
       "args": {
-        "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-        "rule_id": "019f4fe5-290e-7775-8764-6d05a65e09eb",
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+        "rule_id": "019f5023-dec0-710b-ada6-fbc0ca175f71",
         "text": "TLE canon rule v2.",
         "expected_version": 1
       }
@@ -246,7 +246,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "node_id": "019f4fe5-294e-76ef-bbd9-c94b1f9813ac"
+      "node_id": "019f5023-defe-7e47-bf84-73a5bfdc0a61"
     }
   },
   {
@@ -258,7 +258,7 @@
     "error": "",
     "args": {
       "args": {
-        "node_id": "019f4fe5-294e-76ef-bbd9-c94b1f9813ac",
+        "node_id": "019f5023-defe-7e47-bf84-73a5bfdc0a61",
         "title": "TLE arc v2",
         "expected_version": 1
       }
@@ -273,7 +273,7 @@
     "error": "",
     "args": {
       "args": {
-        "node_id": "019f4fe5-294e-76ef-bbd9-c94b1f9813ac",
+        "node_id": "019f5023-defe-7e47-bf84-73a5bfdc0a61",
         "new_parent_arc_id": null,
         "after_id": null
       }
@@ -288,8 +288,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "structure_node_id": "019f4fe5-294e-76ef-bbd9-c94b1f9813ac",
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "structure_node_id": "019f5023-defe-7e47-bf84-73a5bfdc0a61",
         "chapter_node_ids": []
       }
     }
@@ -302,7 +302,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "node_id": "019f4fe5-294e-76ef-bbd9-c94b1f9813ac"
+      "node_id": "019f5023-defe-7e47-bf84-73a5bfdc0a61"
     }
   },
   {
@@ -314,7 +314,7 @@
     "error": "",
     "args": {
       "args": {
-        "node_id": "019f4fe5-294e-76ef-bbd9-c94b1f9813ac",
+        "node_id": "019f5023-defe-7e47-bf84-73a5bfdc0a61",
         "code": "tle_arc_tmpl",
         "name": "TLE Arc Template"
       }
@@ -328,7 +328,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "node_id": "019f4fe5-294e-76ef-bbd9-c94b1f9813ac"
+      "node_id": "019f5023-defe-7e47-bf84-73a5bfdc0a61"
     }
   },
   {
@@ -339,7 +339,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "node_id": "019f4fe5-294e-76ef-bbd9-c94b1f9813ac"
+      "node_id": "019f5023-defe-7e47-bf84-73a5bfdc0a61"
     }
   },
   {
@@ -350,8 +350,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -362,9 +362,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
-      "revision_id": "019f4fe5-2316-7abb-bee5-d4720d4c7521"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
+      "revision_id": "019f5023-d385-7a9a-b774-df815ff9d1a5"
     }
   },
   {
@@ -375,7 +375,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -386,8 +386,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "scene_id": "db962dfc-90c9-4425-bf0a-e9e7d9483229"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "scene_id": "4759eb30-8405-416e-aa65-093f867ca967"
     }
   },
   {
@@ -398,7 +398,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "name": "tle-rule"
     }
   },
@@ -410,7 +410,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "kind": "character",
       "name": "TLE probe entity"
     }
@@ -423,7 +423,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "level": "kind",
       "code": "character",
       "name": "Character (TLE)"
@@ -437,7 +437,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "level": "kind",
       "code": "item"
     }
@@ -450,7 +450,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "level": "kind",
       "code": "character"
     }
@@ -464,7 +464,7 @@
     "error": "",
     "args": {
       "scope": "book",
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "items": [
         {
           "level": "kind",
@@ -483,7 +483,7 @@
     "error": "",
     "args": {
       "scope": "book",
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "items": [
         {
           "level": "kind",
@@ -501,8 +501,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57"
       }
     }
   },
@@ -515,8 +515,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57"
       }
     }
   },
@@ -529,8 +529,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "plan_run_id": "019f4fe5-28a3-7950-a3ca-b3f69445bb20",
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "plan_run_id": "019f5023-de52-7ffe-8e87-4980cac0b788",
         "budget_usd": 1,
         "pause_after_each_unit": true,
         "scope": [],
@@ -548,8 +548,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57"
       }
     }
   },
@@ -562,8 +562,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57"
       }
     }
   },
@@ -576,8 +576,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57"
       }
     }
   },
@@ -590,8 +590,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f",
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57",
         "unit_index": 0
       }
     }
@@ -605,8 +605,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f",
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57",
         "unit_index": 0
       }
     }
@@ -620,8 +620,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57"
       }
     }
   },
@@ -634,7 +634,7 @@
     "error": "",
     "args": {
       "embedding_model": "019e7f71-0271-722f-9c9c-3f049c0b26f4",
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -645,7 +645,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -658,7 +658,147 @@
     "args": {
       "llm_model": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
       "scope": "glossary_sync",
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
+    }
+  },
+  {
+    "tool": "kg_list_templates",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {}
+  },
+  {
+    "tool": "kg_entity_edge_timeline",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "entity_id": "d4949c218149aa76d0a2212e8376f5f2",
+      "edge_type": "tle_rel"
+    }
+  },
+  {
+    "tool": "kg_propose_edge",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "source_entity_id": "d4949c218149aa76d0a2212e8376f5f2",
+      "target_entity_id": "12995c0c0e9651895796f08fecb06a86",
+      "edge_type": "tle_rel",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
+    }
+  },
+  {
+    "tool": "kg_triage_place_edge",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "triage_id": "019f5024-08f6-7630-8be5-eb33fe69df9d",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
+    }
+  },
+  {
+    "tool": "kg_triage_resolve",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "signature": "propose_edge:tle_rel:d4949c218149aa76d0a2212e8376f5f2->12995c0c0e9651895796f08fecb06a86",
+      "action": "dismiss",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
+    }
+  },
+  {
+    "tool": "kg_adopt_template",
+    "tier": "W",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "source_schema_id": "019f2713-7496-7770-8cc3-1872055ab657",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
+    }
+  },
+  {
+    "tool": "composition_scene_link_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+        "from_node_id": "019f5023-da3b-7c38-8e76-a4659ec71e57",
+        "to_node_id": "019f5023-dad9-760b-8021-661a8a9b6332",
+        "kind": "setup_payoff"
+      }
+    }
+  },
+  {
+    "tool": "composition_scene_link_delete",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "link_id": "019f5024-09f5-7ccb-94df-fea43856078a"
+    }
+  },
+  {
+    "tool": "composition_outline_node_restore",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "node_id": "019f5023-db73-7838-a7eb-752140a28528"
+    }
+  },
+  {
+    "tool": "composition_motif_bind",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+        "node_id": "019f5023-da3b-7c38-8e76-a4659ec71e57",
+        "motif_id": "019f5023-dcc1-7438-aeb9-61954538caff",
+        "role_bindings": {}
+      }
+    }
+  },
+  {
+    "tool": "composition_motif_unbind",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "node_id": "019f5023-da3b-7c38-8e76-a4659ec71e57"
     }
   },
   {
@@ -671,7 +811,7 @@
     "args": {
       "fact_text": "TLE probe fact",
       "fact_type": "preference",
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -682,7 +822,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "fact_id": "ea0e2971d550ba085578a1ac22ec72a0"
+      "fact_id": "49383af587e92ae5db896427e6679eb3"
     }
   },
   {
@@ -693,8 +833,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-      "rule_id": "019f4fe5-290e-7775-8764-6d05a65e09eb"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "rule_id": "019f5023-dec0-710b-ada6-fbc0ca175f71"
     }
   },
   {
@@ -705,8 +845,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-      "node_id": "019f4fe5-28cd-709a-9e26-366ed3d69c65"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "node_id": "019f5023-de7e-7747-b73d-8357ed09cb4d"
     }
   },
   {
@@ -717,8 +857,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -729,7 +869,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "chapters": [
         {
           "title": "TLE Bulk Chapter",
@@ -746,7 +886,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "original_language": "tle-sweep"
     }
   },
@@ -758,8 +898,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -770,8 +910,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -782,16 +922,28 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
     "tool": "book_chapter_save_draft",
     "tier": "A",
-    "capability": "SKIP-NO-ARGS",
+    "capability": "SKIP-INCONCLUSIVE",
     "executes": null,
-    "why": "required arg needs authored/structured input"
+    "why": "rejected the call for a reason we cannot attribute to the tool",
+    "error": "validating \"arguments\": validating root: validating /properties/body: validating /properties/body/items: type: map[content:[] type:paragraph] has type \"object\", want \"integer\"",
+    "args": {
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
+      "base_version": 0,
+      "body": [
+        {
+          "type": "paragraph",
+          "content": []
+        }
+      ]
+    }
   },
   {
     "tool": "book_chapter_unpublish",
@@ -801,8 +953,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -813,8 +965,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
       "title": "TLE chapter v2"
     }
   },
@@ -837,7 +989,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -848,7 +1000,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -859,8 +1011,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -880,7 +1032,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -891,8 +1043,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -903,7 +1055,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -914,7 +1066,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "q": "tle-sweep"
     }
   },
@@ -926,7 +1078,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -937,7 +1089,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -948,7 +1100,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "description": "TLE sweep touched this"
     }
   },
@@ -960,7 +1112,7 @@
     "why": "rejected the call for a reason we cannot attribute to the tool",
     "error": "book not found",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -994,7 +1146,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1005,7 +1157,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1017,7 +1169,7 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
       }
     }
   },
@@ -1030,8 +1182,8 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-        "run_id": "068b1e3d-9260-4a03-9d38-9845cc1e6d3f"
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+        "run_id": "a233eb6e-a56e-4ae8-a26c-3db0eb5d3d57"
       }
     }
   },
@@ -1044,7 +1196,7 @@
     "error": "",
     "args": {
       "args": {
-        "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
         "scope": "chapter"
       }
     }
@@ -1057,7 +1209,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1069,7 +1221,7 @@
     "error": "",
     "args": {
       "args": {
-        "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
         "model_source": "user_model",
         "model_ref": "tle-sweep"
       }
@@ -1097,8 +1249,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -1109,8 +1261,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1121,7 +1273,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1132,19 +1284,12 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
     "tool": "composition_motif_adopt",
     "tier": "W",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input"
-  },
-  {
-    "tool": "composition_motif_bind",
-    "tier": "A",
     "capability": "SKIP-NO-ARGS",
     "executes": null,
     "why": "required arg needs authored/structured input"
@@ -1157,7 +1302,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1183,7 +1328,7 @@
     "error": "",
     "args": {
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
         "scope": "book"
       }
     }
@@ -1200,20 +1345,6 @@
     }
   },
   {
-    "tool": "composition_motif_unbind",
-    "tier": "A",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input"
-  },
-  {
-    "tool": "composition_outline_node_restore",
-    "tier": "A",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input"
-  },
-  {
     "tool": "composition_publish",
     "tier": "W",
     "capability": "PASS",
@@ -1221,23 +1352,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
-  },
-  {
-    "tool": "composition_scene_link_create",
-    "tier": "A",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input"
-  },
-  {
-    "tool": "composition_scene_link_delete",
-    "tier": "A",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input"
   },
   {
     "tool": "composition_write_prose",
@@ -1248,8 +1365,8 @@
     "error": "",
     "args": {
       "args": {
-        "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-        "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
+        "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+        "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
         "body": {},
         "expected_draft_version": 1
       }
@@ -1274,7 +1391,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1285,7 +1402,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "level": "genre",
       "name": "tle-sweep"
     }
@@ -1298,7 +1415,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1309,7 +1426,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1320,7 +1437,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "kind_code": "character",
       "add": [
         "universal"
@@ -1342,7 +1459,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1353,9 +1470,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -1373,8 +1490,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
     }
   },
   {
@@ -1385,8 +1502,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
     }
   },
   {
@@ -1397,8 +1514,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a",
       "name": "tle-sweep"
     }
   },
@@ -1410,8 +1527,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
     }
   },
   {
@@ -1422,8 +1539,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a",
       "scope_label": "TLE swept"
     }
   },
@@ -1435,8 +1552,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
     }
   },
   {
@@ -1447,8 +1564,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
     }
   },
   {
@@ -1459,8 +1576,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
     }
   },
   {
@@ -1471,7 +1588,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1482,8 +1599,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
     }
   },
   {
@@ -1494,8 +1611,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
     }
   },
   {
@@ -1506,7 +1623,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1526,7 +1643,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -1537,11 +1654,11 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "language_code": "en",
       "items": [
         {
-          "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e",
+          "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a",
           "aliases": [
             "Aldric",
             "Vane"
@@ -1558,7 +1675,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "goal": "probe",
       "ops": [
         {
@@ -1591,7 +1708,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "kinds": [
         {
           "code": "tle_kinds_kind",
@@ -1608,10 +1725,10 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "winner_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "winner_id": "019f5023-d40d-79cb-be1b-0053ff9b248a",
       "loser_ids": [
-        "019f4fe5-23b0-7866-8a1c-74bd3c532b37"
+        "019f5023-d414-7852-af72-748b8907e213"
       ]
     }
   },
@@ -1623,7 +1740,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "kind_code": "character",
       "code": "tle_probe_attr",
       "name": "TLE Probe Attr"
@@ -1637,7 +1754,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "code": "tle_probe_kind",
       "name": "TLE Probe Kind"
     }
@@ -1650,8 +1767,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a",
       "kind_code": "location"
     }
   },
@@ -1670,10 +1787,10 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "status": "active",
       "entity_ids": [
-        "019f4fe5-23a2-7e60-97f8-3204da4b591e"
+        "019f5023-d40d-79cb-be1b-0053ff9b248a"
       ]
     }
   },
@@ -1685,11 +1802,11 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "language_code": "vi",
       "items": [
         {
-          "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e",
+          "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a",
           "value": "Aldric Vane"
         }
       ]
@@ -1703,7 +1820,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "query": "tle-sweep"
     }
   },
@@ -1747,13 +1864,6 @@
     "args": {}
   },
   {
-    "tool": "kg_adopt_template",
-    "tier": "W",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input"
-  },
-  {
     "tool": "kg_build_wiki",
     "tier": "W",
     "capability": "PASS",
@@ -1761,20 +1871,21 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
       "model_ref": "tle-sweep"
     }
   },
   {
-    "tool": "kg_entity_edge_timeline",
-    "tier": "R",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected the call for a reason we cannot attribute to the tool",
-    "error": "Error executing tool kg_entity_edge_timeline: {\"message\": \"entity not found\"}",
+    "tool": "kg_create_node",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
     "args": {
-      "entity_id": "019f4fe5-23a2-7e60-97f8-3204da4b591e",
-      "edge_type": "tle-sweep"
+      "name": "TLE probe node",
+      "kind": "character",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1785,17 +1896,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
-  },
-  {
-    "tool": "kg_list_templates",
-    "tier": "R",
-    "capability": "PASS",
-    "executes": true,
-    "why": "returned successfully",
-    "error": "",
-    "args": {}
   },
   {
     "tool": "kg_multi_query",
@@ -1806,7 +1908,7 @@
     "error": "",
     "args": {
       "project_ids": [
-        "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+        "019f5023-d542-7e7a-b98b-e0c226d6f543"
       ]
     }
   },
@@ -1818,7 +1920,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1831,13 +1933,6 @@
     "args": {}
   },
   {
-    "tool": "kg_propose_edge",
-    "tier": "A",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input"
-  },
-  {
     "tool": "kg_propose_fact",
     "tier": "A",
     "capability": "PASS",
@@ -1845,7 +1940,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
       "fact_text": "tle-sweep",
       "fact_type": "decision"
     }
@@ -1865,7 +1960,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1876,7 +1971,7 @@
     "why": "rejected the call for a reason we cannot attribute to the tool",
     "error": "Error executing tool kg_sync_apply: {\"message\": \"this project has no adopted ontology to sync \\u2014 adopt a template first\"}",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
       "base_source_hash": "tle-sweep"
     }
   },
@@ -1888,7 +1983,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1899,27 +1994,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
-    }
-  },
-  {
-    "tool": "kg_triage_place_edge",
-    "tier": "W",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input"
-  },
-  {
-    "tool": "kg_triage_resolve",
-    "tier": "A",
-    "capability": "SKIP-INCONCLUSIVE",
-    "executes": null,
-    "why": "rejected the call for a reason we cannot attribute to the tool",
-    "error": "Error executing tool kg_triage_resolve: {\"message\": \"no pending triage items for this signature\"}",
-    "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
-      "signature": "tle-sweep",
-      "action": "map"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1930,7 +2005,7 @@
     "why": "rejected the call for a reason we cannot attribute to the tool",
     "error": "Error executing tool kg_triage_schema_write: {\"message\": \"this project has no adopted ontology to edit \\u2014 adopt a project schema first (the System template is read-only and admin-managed)\"}",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
       "signature": "tle-sweep",
       "action": "add_to_vocab"
     }
@@ -1943,7 +2018,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1954,7 +2029,30 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "world_id": "4a83879a-ff32-4c36-9416-d23a4f899feb"
+      "world_id": "6b11a353-a6ac-4d2c-a4ac-5aa23acc5976"
+    }
+  },
+  {
+    "tool": "lore_ask",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "query": "tle-sweep"
+    }
+  },
+  {
+    "tool": "lore_browse_entities",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1965,12 +2063,35 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
       "args": {
-        "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+        "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
         "embedding_model_ref": "tle-sweep",
         "generation_model_ref": "tle-sweep"
       }
+    }
+  },
+  {
+    "tool": "lore_entity",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
+      "entity_id": "019f5023-d40d-79cb-be1b-0053ff9b248a"
+    }
+  },
+  {
+    "tool": "lore_timeline",
+    "tier": "R",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -1981,7 +2102,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
       "entity_name": "tle-sweep"
     }
   },
@@ -1993,7 +2114,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
       "query": "tle-sweep"
     }
   },
@@ -2005,7 +2126,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc"
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543"
     }
   },
   {
@@ -2098,7 +2219,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-24da-7155-b830-fd54cd34e7fc",
+      "project_id": "019f5023-d542-7e7a-b98b-e0c226d6f543",
       "query": "tle-sweep"
     }
   },
@@ -2128,7 +2249,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -2139,7 +2260,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "job_id": "680771e1-d2b8-4381-836e-f49f2eb315d7",
+      "job_id": "9923d63e-84c2-48b1-bc1d-4a9e788a7d16",
       "action": "pause"
     }
   },
@@ -2151,7 +2272,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "job_id": "680771e1-d2b8-4381-836e-f49f2eb315d7"
+      "job_id": "9923d63e-84c2-48b1-bc1d-4a9e788a7d16"
     }
   },
   {
@@ -2162,8 +2283,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
     }
   },
   {
@@ -2174,9 +2295,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
-      "base_version_id": "60d47c7d-9e46-49bc-b816-8d3c9fd3f99c",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
+      "base_version_id": "b9e98240-b6c7-4f2f-8432-ca9aa7c4c9f2",
       "target_language": "en",
       "block_index": 0,
       "block": {
@@ -2193,8 +2314,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
       "target_language": "tle-sweep"
     }
   },
@@ -2206,9 +2327,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
-      "edited_from_version_id": "60d47c7d-9e46-49bc-b816-8d3c9fd3f99c",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
+      "edited_from_version_id": "b9e98240-b6c7-4f2f-8432-ca9aa7c4c9f2",
       "target_language": "en",
       "translated_body": "TLE edited"
     }
@@ -2221,8 +2342,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
       "target_language": "tle-sweep"
     }
   },
@@ -2234,9 +2355,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
-      "chapter_id": "019f4fe5-2314-7d71-8586-aa9b33cf4d26",
-      "version_id": "60d47c7d-9e46-49bc-b816-8d3c9fd3f99c"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
+      "chapter_id": "019f5023-d37f-7b7a-a0d6-e429aecd1ce4",
+      "version_id": "b9e98240-b6c7-4f2f-8432-ca9aa7c4c9f2"
     }
   },
   {
@@ -2247,9 +2368,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "chapter_ids": [
-        "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+        "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
       ]
     }
   },
@@ -2261,9 +2382,9 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9",
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb",
       "chapter_ids": [
-        "019f4fe5-2314-7d71-8586-aa9b33cf4d26"
+        "019f5023-d37f-7b7a-a0d6-e429aecd1ce4"
       ]
     }
   },
@@ -2275,7 +2396,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "book_id": "019f4fe5-2238-7be1-86ab-961635bcf5b9"
+      "book_id": "019f5023-d297-7696-a9af-8482dd86a7bb"
     }
   },
   {
@@ -2283,7 +2404,7 @@
     "source": "critical",
     "executes": true,
     "effect_verified": true,
-    "why": "returned the fixture book_id (019f4fe5-2238-7be1-86ab-961635bcf5b9)"
+    "why": "returned the fixture book_id (019f5023-d297-7696-a9af-8482dd86a7bb)"
   },
   {
     "tool": "glossary_adopt_standards",
@@ -2304,7 +2425,7 @@
     "source": "critical",
     "executes": true,
     "effect_verified": true,
-    "why": "entity 019f4fe5-7908-7ea7-a584-f3fe5f0e98f9 is in glossary_entities"
+    "why": "entity 019f5024-29b2-752d-9468-44bef6220cf6 is in glossary_entities"
   },
   {
     "tool": "settings_update_profile",
@@ -2314,7 +2435,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "display_name": "TLE Sweep 8f595911"
+      "display_name": "TLE Sweep 8ec3a2fc"
     },
     "as_throwaway_user": true
   },
@@ -2326,7 +2447,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "name": "TLE-user-sweep-8f595911",
+      "name": "TLE-user-sweep-8ec3a2fc",
       "project_type": "general"
     },
     "as_throwaway_user": true
@@ -2339,8 +2460,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-a476-7d66-b918-bbb8025e548c",
-      "code": "tle_8f595911",
+      "project_id": "019f5024-62f3-7102-a747-70cf392e2542",
+      "code": "tle_8ec3a2fc",
       "name": "TLE view"
     },
     "as_throwaway_user": true
@@ -2353,8 +2474,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "project_id": "019f4fe5-a476-7d66-b918-bbb8025e548c",
-      "code": "tle_8f595911"
+      "project_id": "019f5024-62f3-7102-a747-70cf392e2542",
+      "code": "tle_8ec3a2fc"
     },
     "as_throwaway_user": true
   },
@@ -2367,7 +2488,7 @@
     "error": "",
     "args": {
       "level": "kind",
-      "name": "TLE Kind 8f595911"
+      "name": "TLE Kind 8ec3a2fc"
     },
     "as_throwaway_user": true
   },
@@ -2380,9 +2501,9 @@
     "error": "",
     "args": {
       "level": "kind",
-      "code": "tle_kind_8f595911",
+      "code": "tle_kind_8ec3a2fc",
       "description": "patched by TLE sweep",
-      "base_version": "2026-07-11T06:37:57.937751Z"
+      "base_version": "2026-07-11T07:46:29.927995Z"
     },
     "as_throwaway_user": true
   },
@@ -2395,7 +2516,7 @@
     "error": "",
     "args": {
       "level": "kind",
-      "code": "tle_kind_8f595911"
+      "code": "tle_kind_8ec3a2fc"
     },
     "as_throwaway_user": true
   },
@@ -2408,7 +2529,7 @@
     "error": "",
     "args": {
       "level": "kind",
-      "code": "tle_kind_8f595911"
+      "code": "tle_kind_8ec3a2fc"
     },
     "as_throwaway_user": true
   },
@@ -2420,7 +2541,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "provider_credential_id": "68ad6eb7-d59e-4139-b877-82a5cedf57e5"
+      "provider_credential_id": "6e162bf9-6dc1-457c-ba65-9c1e4869bed3"
     },
     "as_throwaway_user": true
   },
@@ -2432,8 +2553,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "provider_credential_id": "68ad6eb7-d59e-4139-b877-82a5cedf57e5",
-      "provider_model_name": "tle-sweep-registered-8f595911",
+      "provider_credential_id": "6e162bf9-6dc1-457c-ba65-9c1e4869bed3",
+      "provider_model_name": "tle-sweep-registered-8ec3a2fc",
       "context_length": 8192
     },
     "as_throwaway_user": true
@@ -2446,8 +2567,8 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "user_model_id": "8a10a3d2-6e81-4f3a-86e5-a1113a7ac96c",
-      "alias": "TLE renamed 8f595911"
+      "user_model_id": "53e78c06-4f4c-4b38-a563-6d9d492948ed",
+      "alias": "TLE renamed 8ec3a2fc"
     },
     "as_throwaway_user": true
   },
@@ -2459,7 +2580,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "user_model_id": "8a10a3d2-6e81-4f3a-86e5-a1113a7ac96c",
+      "user_model_id": "53e78c06-4f4c-4b38-a563-6d9d492948ed",
       "value": true
     },
     "as_throwaway_user": true
@@ -2472,7 +2593,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "user_model_id": "8a10a3d2-6e81-4f3a-86e5-a1113a7ac96c",
+      "user_model_id": "53e78c06-4f4c-4b38-a563-6d9d492948ed",
       "value": true
     },
     "as_throwaway_user": true
@@ -2485,7 +2606,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "user_model_id": "8a10a3d2-6e81-4f3a-86e5-a1113a7ac96c"
+      "user_model_id": "53e78c06-4f4c-4b38-a563-6d9d492948ed"
     },
     "as_throwaway_user": true
   },
@@ -2498,8 +2619,8 @@
     "error": "",
     "args": {
       "args": {
-        "code": "tle-motif-8f595911",
-        "name": "TLE Motif 8f595911"
+        "code": "tle-motif-8ec3a2fc",
+        "name": "TLE Motif 8ec3a2fc"
       }
     },
     "as_throwaway_user": true
@@ -2512,7 +2633,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "motif_id": "019f4fe5-a75b-72af-b4d9-5f2b4081ebcc"
+      "motif_id": "019f5024-65d7-704a-b63f-b2ecefce5687"
     },
     "as_throwaway_user": true
   },
@@ -2524,7 +2645,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "motif_id": "019f4fe5-a75b-72af-b4d9-5f2b4081ebcc"
+      "motif_id": "019f5024-65d7-704a-b63f-b2ecefce5687"
     },
     "as_throwaway_user": true
   },
@@ -2537,7 +2658,7 @@
     "error": "",
     "args": {
       "args": {
-        "motif_id": "019f4fe5-a75b-72af-b4d9-5f2b4081ebcc",
+        "motif_id": "019f5024-65d7-704a-b63f-b2ecefce5687",
         "summary": "patched by TLE sweep",
         "expected_version": 1
       }
@@ -2553,8 +2674,36 @@
     "error": "",
     "args": {
       "args": {
-        "motif_id": "019f4fe5-a75b-72af-b4d9-5f2b4081ebcc"
+        "motif_id": "019f5024-65d7-704a-b63f-b2ecefce5687"
       }
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_link_create",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "args": {
+        "from_motif_id": "98c08c53-1bd3-4238-9485-32e2d592177e",
+        "to_motif_id": "9e5f005f-d7c2-4b26-9fda-33150fc3afdf",
+        "kind": "variant_of"
+      }
+    },
+    "as_throwaway_user": true
+  },
+  {
+    "tool": "composition_motif_link_delete",
+    "tier": "A",
+    "capability": "PASS",
+    "executes": true,
+    "why": "returned successfully",
+    "error": "",
+    "args": {
+      "link_id": "019f5024-670e-742f-be68-06a077edf085"
     },
     "as_throwaway_user": true
   },
@@ -2566,7 +2715,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "motif_id": "019f4fe5-a75b-72af-b4d9-5f2b4081ebcc"
+      "motif_id": "019f5024-65d7-704a-b63f-b2ecefce5687"
     },
     "as_throwaway_user": true
   },
@@ -2578,7 +2727,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "slug": "tle-sweep-8f595911",
+      "slug": "tle-sweep-8ec3a2fc",
       "description": "Throwaway skill proposed by the TLE capability sweep.",
       "body_md": "# TLE sweep\nThis proposal is deleted with its owner."
     },
@@ -2592,7 +2741,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "slug": "tle-wf-8f595911",
+      "slug": "tle-wf-8ec3a2fc",
       "title": "TLE sweep workflow",
       "description": "Throwaway workflow proposed by the TLE capability sweep.",
       "surfaces": [
@@ -2616,7 +2765,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "slug": "tle-skill-8f595911"
+      "slug": "tle-skill-8ec3a2fc"
     },
     "as_throwaway_user": true
   },
@@ -2628,7 +2777,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "slug": "tle-skill-8f595911",
+      "slug": "tle-skill-8ec3a2fc",
       "body_md": "# TLE\nupdated by the sweep"
     },
     "as_throwaway_user": true
@@ -2641,7 +2790,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "slug": "tle-skill-8f595911",
+      "slug": "tle-skill-8ec3a2fc",
       "enabled": true
     },
     "as_throwaway_user": true
@@ -2654,7 +2803,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "slug": "tle-wf-seed-8f595911"
+      "slug": "tle-wf-seed-8ec3a2fc"
     },
     "as_throwaway_user": true
   },
@@ -2666,7 +2815,7 @@
     "why": "returned successfully",
     "error": "",
     "args": {
-      "slug": "tle-wf-seed-8f595911",
+      "slug": "tle-wf-seed-8ec3a2fc",
       "title": "TLE workflow v2",
       "description": "Updated by the TLE capability sweep.",
       "steps": [
@@ -2703,22 +2852,6 @@
       "service": "knowledge",
       "job_id": "00000000-0000-4000-8000-000000000001"
     },
-    "as_throwaway_user": true
-  },
-  {
-    "tool": "composition_motif_link_create",
-    "tier": "A",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input",
-    "as_throwaway_user": true
-  },
-  {
-    "tool": "composition_motif_link_delete",
-    "tier": "A",
-    "capability": "SKIP-NO-ARGS",
-    "executes": null,
-    "why": "required arg needs authored/structured input",
     "as_throwaway_user": true
   },
   {

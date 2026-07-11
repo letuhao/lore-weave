@@ -201,38 +201,40 @@ throughout. The one COLD run proved the approval card appears when not allowlist
   share the same two proven code paths (documented in-spec); `ui_open_studio_panel`'s effect is
   already proven live by `studio-compose.spec` (the same `host.openPanel`).
 
-### Phase 3 (WS-D4 · null grind) — capability sweep 62 → **25** null, **0 broken**
-`186 → 194 executes:true · 0 executes:false · 25 null` (219 unique tools; manifest regenerated,
-2 service copies byte-identical). Reached at **$0** via authored args + short creator chains + $0
-DB seeds: the **arc family** (8, via `composition_arc_create`), **authoring-run family** (6),
-**plan_\*** linters/checkpoint (4), **glossary book-standard** writes (4), **book steering**
-(set→delete), **jobs** (3), the **kg build chain** (`set_embedding_model`→`run_benchmark`→
-`build_graph`, on **local bge-m3** embeddings), **kg_world_query** + **book_scene_get** + the **5
-translation-version** tools (a seeded world/scene/completed-translation whose creator is a paid/async
-job we don't run). All seeds are under the throwaway fixture and torn down (`teardown_db_fixtures`
-+ the runtime composition/book teardown, both leak-verified).
+### Phase 3 (WS-D4 · null grind) — capability sweep 62 → **13** null, **0 broken**
+`211 executes:true · 0 executes:false · 13 null` (224 catalog tools; manifest regenerated, 2 service
+copies byte-identical). Reached at **$0** via authored args + creator chains + $0 DB seeds + a
+pre-sweep `seed_chain_extras` (the "2nd-of-a-pair" targets the sweep's one-call-per-tool shape can't
+make inline): the **arc family** (8), **authoring-run family** (6), **plan_\*** (4), **glossary
+book-standard** (4), **book steering** (2), **jobs** (3), the **kg build chain** (set-model→
+benchmark→build_graph on **local bge-m3**), the **kg node-chain** (2 seeded KG nodes → `propose_edge`
+→ `triage_place_edge`/`_resolve`/`entity_edge_timeline`, + `adopt_template`), **kg_create_node**,
+the **scene/outline chains** (a 2nd project with 2 nodes + an archived node → `scene_link_create`/
+`_delete`/`outline_node_restore`), **motif bind/unbind** + the **motif-link pair** (2 seeded
+user-tier motifs), **kg_world_query** + **book_scene_get** + the **5 translation-version** tools.
+Every seed is under the throwaway fixture/user and **leak-verified** in teardown
+(`teardown_db_fixtures` reports `world/translation/motif: ok`; 0 probe rows survive).
 
-**The 25 residue — none blocks anything (`null` ≠ broken). Split honestly (anti-laziness rule):**
+**Both prior caveats cleared this run:** the 13 buildable-next chains were built (needed a
+deploy — `kg_create_node` shipped 2026-07-11 but the running knowledge-service image predated it;
+rebuilt), and the gateway prefix-drop test now exists (below).
 
-**(a) DEFERRED — $0-buildable-next, deprioritized for budget (gate #2 structural: the sweep's
-one-call-per-tool shape needs a mid-sweep double-create hook these need):**
-
-| cluster | n | what it needs |
-|---|---|---|
-| kg node-chain (`entity_edge_timeline`, `propose_edge`, `triage_place_edge`, `triage_resolve`, `adopt_template`) | 5 | 2 KG nodes (`entities_to_nodes`, already `executes:True`) → propose_edge → triage; + a `list_templates` id |
-| motif links/bind (`motif_bind`, `_unbind`, `_link_create`, `_link_delete`) | 4 | a phase-1 motif + a 2nd phase-2 motif |
-| scene/outline chains (`scene_link_create`/`_delete`, `outline_node_restore`, `book_chapter_save_draft`) | 4 | a 2nd outline node / an archived node / a read `draft_version` |
-
-**(b) WAIVED — genuinely not $0 / policy / conscious (gate #4 blocked or #5 won't-fix):**
+**The 13 residue — ALL genuine WAIVES; none blocks anything (`null` ≠ broken):**
 
 | cluster | n | gate | reason |
 |---|---|---|---|
 | kg schema-mutation (`schema_edit`, `sync_apply`, `triage_schema_write`) | 3 | #4 | need an **adopted** project-scoped `graph_schemas` — adoption lands on a browser-JWT confirm the sweep can't drive |
 | generation-job polls (`get_generation_job`, `_mine_job`) | 2 | #4 | key on the **sweep-minted** composition `project_id` → a real (paid/async) generation job |
-| bespoke multi-FK (`glossary_create_evidence`, `_propose_restore_revision`, `arc_apply`, `arc_import_analyze`) | 4 | #4 | each needs a hand-authored multi-FK seed (`entity_attribute_values`+`attr_def_id` / `entity_revisions` snapshot / `arc_templates` / `import_sources`) — out of proportion to a non-blocking null |
+| bespoke multi-FK (`glossary_create_evidence`, `_propose_restore_revision`, `arc_apply`, `arc_import_analyze`) | 4 | #4 | each needs a hand-authored multi-FK seed (`entity_attribute_values`+`attr_def_id` / `entity_revisions` snapshot / `arc_templates` / `import_sources`) |
+| pre-existing state (`book_chapter_save_draft`) | 1 | #4 | needs a `chapter_drafts` row at a matching `base_version` (the fixture chapter has none) |
 | genuinely un-$0 (`glossary_book_sync_apply`, `glossary_extract_entities_from_doc`, `catalog_get_book`) | 3 | #5 / policy | upstream-drift state / **paid**-marked / needs a **public** book from sharing-service |
 
-**Accounting:** 194/219 (**89%**) executes-proven, **0 broken**. Of the 25 null, **13 are
-DEFERRED** ($0-buildable-next, honestly not "waived" — they're deprioritized, not can't-do) and
-**12 are WAIVED** with gate reasons. CD4 stays **reject-on-`executes:false`** (0 tools); `null`
-never blocks (per the frozen phasing).
+**Accounting:** 211/224 (**94%**) executes-proven, **0 broken**, 13 WAIVED with gate reasons =
+100% accounted. CD4 stays **reject-on-`executes:false`** (0 tools); `null` never blocks.
+
+### Gateway prefix-drop test (Track-A gap) — ✅ built
+`scripts/eval/tool_liveness/tests/test_federation_prefix.py` — the general catch the concurrent
+book-service-scoped test didn't cover: it fetches each provider's own `/mcp` tools/list and asserts
+no (non-legacy) tool is absent from the gateway's federated catalog — the exact
+`world_*`/`lore_*`/`story_search` "served-but-not-federated" drop signature, with no prefix-map
+hardcoding. **Passes live** across all 5 providers; fails loudly on any future drop.

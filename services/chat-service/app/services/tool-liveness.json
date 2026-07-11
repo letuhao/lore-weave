@@ -355,8 +355,8 @@
       "proven": false
     },
     "composition_motif_bind": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_book_list": {
@@ -375,13 +375,13 @@
       "proven": false
     },
     "composition_motif_link_create": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_link_delete": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_motif_link_list": {
@@ -410,8 +410,8 @@
       "proven": false
     },
     "composition_motif_unbind": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_outline_node_create": {
@@ -430,8 +430,8 @@
       "proven": false
     },
     "composition_outline_node_restore": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_outline_node_update": {
@@ -445,13 +445,13 @@
       "proven": false
     },
     "composition_scene_link_create": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_scene_link_delete": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "composition_write_prose": {
@@ -728,8 +728,8 @@
       "proven": false
     },
     "kg_adopt_template": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_build_graph": {
@@ -742,9 +742,14 @@
       "executes": true,
       "proven": false
     },
+    "kg_create_node": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
     "kg_entity_edge_timeline": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_graph_query": {
@@ -783,8 +788,8 @@
       "proven": false
     },
     "kg_propose_edge": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_propose_fact": {
@@ -823,13 +828,13 @@
       "proven": false
     },
     "kg_triage_place_edge": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_triage_resolve": {
-      "status": "SWEEP-INCONCLUSIVE",
-      "executes": null,
+      "status": "SWEEP-PASS",
+      "executes": true,
       "proven": false
     },
     "kg_triage_schema_write": {
@@ -857,7 +862,27 @@
       "executes": true,
       "proven": false
     },
+    "lore_ask": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "lore_browse_entities": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
     "lore_enrichment_auto_enrich": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "lore_entity": {
+      "status": "SWEEP-PASS",
+      "executes": true,
+      "proven": false
+    },
+    "lore_timeline": {
       "status": "SWEEP-PASS",
       "executes": true,
       "proven": false
