@@ -284,8 +284,10 @@ async def stream_draft(
         finish_reason=finish_reason,
     )
     # `error` rides the terminal frame so the router can distinguish a real failure
-    # (an LLMError with NO content — a resolve failure metered at 0) from a clean
-    # finish. A mid-stream error AFTER partial content keeps `text` non-empty and is
-    # left to the router's completed+truncated path (the taxonomy call, D-ENGINE-*).
+    # (an LLMError with NO content — a resolve failure metered at 0 → the job is marked
+    # FAILED) from a clean finish. A mid-stream error AFTER partial content keeps `text`
+    # non-empty: the router keeps the partial work as `completed` but sets truncated=True
+    # and carries `error` (finish_reason is None on an error interruption, so the error is
+    # what marks it incomplete — the consumers OR it into `truncated`).
     yield {"type": "usage", "text": text, "metering": metering, "capped": capped,
            "error": error}

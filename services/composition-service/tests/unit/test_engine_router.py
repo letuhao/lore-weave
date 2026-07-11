@@ -320,6 +320,11 @@ def test_generate_error_after_content_still_completes(ctx, monkeypatch):
     assert r.status_code == 200
     assert any(s == "completed" for _, s, _ in jobs.updates)
     assert not any(s == "failed" for _, s, _ in jobs.updates)
+    # review MED: the cut-short draft must be flagged truncated + carry the error, not look clean.
+    completed_kw = next(kw for _, s, kw in jobs.updates if s == "completed")
+    assert completed_kw["result"]["truncated"] is True
+    assert completed_kw["result"]["error"] == "dropped mid-flight"
+    assert '"truncated": true' in r.text and "dropped mid-flight" in r.text
 
 
 def test_generate_reasoning_off_is_user_none(ctx):

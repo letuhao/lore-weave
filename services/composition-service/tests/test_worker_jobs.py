@@ -122,6 +122,10 @@ async def test_run_selection_edit_error_after_content_succeeds(monkeypatch):
         "prompt_estimate": 10, "max_out": 100, "model_source": "user_model",
         "model_ref": str(uuid4())})
     assert out["text"] == "partial"
+    # review MED: the worker path doesn't stream, so this result is the ONLY interruption signal —
+    # it must flag truncated + carry the error, not look like a clean edit.
+    assert out["truncated"] is True
+    assert out["error"] == "dropped"
 
 
 async def test_run_job_unknown_operation_fails(monkeypatch):

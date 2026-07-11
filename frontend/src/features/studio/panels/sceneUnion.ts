@@ -40,8 +40,18 @@ export type SceneUnionRow = {
  *
  * `specNodes` may include non-scene kinds (whole-outline reads) — only kind='scene', non-archived
  * nodes participate. Ordering: by (chapterId, sortOrder) with nulls last, stable by key.
+ *
+ * `specComplete` (default true) gates the `spec_only` pass. The spec side is loaded WHOLE, but the
+ * index side is keyset-paged — so until every index page is loaded, an unclaimed scene spec may be
+ * "unclaimed" only because its index scene is on a not-yet-loaded page, NOT because it is unwritten.
+ * Emitting it as spec_only then would falsely label a written+decompiled scene "not yet written"
+ * (the majority of a >100-scene book on first open). So the caller passes `specComplete=false` while
+ * more index pages remain; spec_only rows appear once the index is fully loaded. (Windowed spec
+ * paging — showing planned-unwritten scenes per-chapter mid-scroll — is the C2b follow-up.)
  */
-export function joinSceneRows(scenes: Scene[], specNodes: OutlineNode[]): SceneUnionRow[] {
+export function joinSceneRows(
+  scenes: Scene[], specNodes: OutlineNode[], specComplete = true,
+): SceneUnionRow[] {
   const sceneSpecs = specNodes.filter((n) => n.kind === 'scene' && !n.is_archived);
   const specById = new Map<string, OutlineNode>(sceneSpecs.map((n) => [n.id, n]));
   const claimedSpecIds = new Set<string>();
@@ -49,7 +59,11 @@ export function joinSceneRows(scenes: Scene[], specNodes: OutlineNode[]): SceneU
 
   for (const s of scenes) {
     const linkedSpec = s.source_scene_id ? specById.get(s.source_scene_id) ?? null : null;
-    if (linkedSpec) {
+    // A spec node already claimed by an earlier scene means TWO index rows point at one spec — a
+    // genuine anomaly (source_scene_id is a non-unique soft ref; a duplicated anchor heading yields
+    // it). Surface the second as an anchor-lost index_only row rather than emitting a colliding
+    // `linked` row with a duplicate React key (which corrupts row reconciliation).
+    if (linkedSpec && !claimedSpecIds.has(linkedSpec.id)) {
       claimedSpecIds.add(linkedSpec.id);
       rows.push({
         shape: 'linked', key: linkedSpec.id, index: s, spec: linkedSpec,
@@ -60,18 +74,21 @@ export function joinSceneRows(scenes: Scene[], specNodes: OutlineNode[]): SceneU
       rows.push({
         shape: 'index_only', key: `idx:${s.id}`, index: s, spec: null,
         chapterId: s.chapter_id, sortOrder: s.sort_order,
-        // a back-link that WAS set but no longer resolves = anchor lost (distinct from never-decompiled)
+        // a back-link that WAS set but doesn't resolve to an unclaimed spec = anchor lost
+        // (distinct from never-decompiled, where source_scene_id is null)
         anchorLost: s.source_scene_id != null,
       });
     }
   }
 
-  for (const n of sceneSpecs) {
-    if (claimedSpecIds.has(n.id)) continue;
-    rows.push({
-      shape: 'spec_only', key: n.id, index: null, spec: n,
-      chapterId: n.chapter_id, sortOrder: n.story_order ?? null, anchorLost: false,
-    });
+  if (specComplete) {
+    for (const n of sceneSpecs) {
+      if (claimedSpecIds.has(n.id)) continue;
+      rows.push({
+        shape: 'spec_only', key: n.id, index: null, spec: n,
+        chapterId: n.chapter_id, sortOrder: n.story_order ?? null, anchorLost: false,
+      });
+    }
   }
 
   return sortUnionRows(rows);

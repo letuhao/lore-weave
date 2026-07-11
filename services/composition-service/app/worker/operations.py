@@ -577,14 +577,23 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
         raise ValueError(f"selection edit failed: {final['error']}")
 
     m = final["metering"]
-    return {
+    # Partial-content-then-error: keep the drafted text but flag it truncated + carry the reason,
+    # so a polling FE sees the edit was cut short (the worker path doesn't stream, so this result
+    # is the ONLY interruption signal it gets — review MED).
+    stream_error = final.get("error")
+    out = {
         "text": final["text"], "input_tokens": m.input_tokens,
         "output_tokens": m.output_tokens, "measured": m.measured,
-        "finish_reason": m.finish_reason, "selection_edit": True,
+        "finish_reason": m.finish_reason,
+        "truncated": m.finish_reason == "length" or bool(stream_error),
+        "selection_edit": True,
         "grounding_available": input.get("grounding_available"),
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "persisted": False,
     }
+    if stream_error:
+        out["error"] = stream_error
+    return out
 
 
 async def run_plan_forge_propose(

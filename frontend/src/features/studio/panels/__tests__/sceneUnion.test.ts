@@ -73,6 +73,43 @@ describe('joinSceneRows — the three union shapes (22 §GUI)', () => {
     expect(rows.filter((r) => r.shape === 'linked')).toHaveLength(1);
     expect(rows.filter((r) => r.shape === 'spec_only')).toHaveLength(1); // n2 unclaimed
   });
+
+  it('two scenes anchored to the SAME node → one linked, the second demoted to anchor-lost (no dup key)', () => {
+    // Review MED: source_scene_id is a non-unique soft ref; a duplicated anchor heading can land two
+    // index scenes on one spec node. Must NOT emit two linked rows with the same key (React collision).
+    const rows = joinSceneRows(
+      [scene({ id: 'a', source_scene_id: 'n1', sort_order: 0 }), scene({ id: 'b', source_scene_id: 'n1', sort_order: 1 })],
+      [node({ id: 'n1' })],
+    );
+    const keys = rows.map((r) => r.key);
+    expect(new Set(keys).size).toBe(keys.length); // all keys unique — no React collision
+    expect(rows.filter((r) => r.shape === 'linked')).toHaveLength(1);
+    const demoted = rows.find((r) => r.shape === 'index_only');
+    expect(demoted?.anchorLost).toBe(true); // the 2nd claimant surfaced as a real anomaly
+  });
+});
+
+describe('joinSceneRows — specComplete gates spec_only (HIGH: no false "not yet written")', () => {
+  it('while the index is INCOMPLETE, an unclaimed spec is NOT labelled spec_only', () => {
+    // A written+decompiled scene whose index row is on an unloaded page must not be mislabelled.
+    const rows = joinSceneRows([], [node({ id: 'n1', title: 'Written but index not loaded yet' })], false);
+    expect(rows).toHaveLength(0); // suppressed until the index finishes loading
+  });
+
+  it('once the index is COMPLETE, a genuinely-unwritten spec appears as spec_only', () => {
+    const rows = joinSceneRows([], [node({ id: 'n1', title: 'Planned' })], true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].shape).toBe('spec_only');
+  });
+
+  it('linked/index_only rows are unaffected by specComplete=false', () => {
+    const rows = joinSceneRows(
+      [scene({ id: 's1', source_scene_id: 'n1' }), scene({ id: 's2', source_scene_id: null })],
+      [node({ id: 'n1' })],
+      false,
+    );
+    expect(rows.map((r) => r.shape).sort()).toEqual(['index_only', 'linked']);
+  });
 });
 
 describe('sortUnionRows — deterministic (chapter, order, key), nulls last', () => {

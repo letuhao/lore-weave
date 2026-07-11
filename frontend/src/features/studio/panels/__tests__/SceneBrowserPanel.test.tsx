@@ -19,8 +19,9 @@ const row = (o: Partial<SceneUnionRow>): SceneUnionRow => ({
   shape: 'linked', key: 'k', index: null, spec: null, chapterId: 'c', sortOrder: 0, anchorLost: false, ...o,
 });
 const baseState = (o: Partial<SceneBrowserState>): SceneBrowserState => ({
-  rows: [], loading: false, error: null, workless: false, projectId: 'p', total: 0,
-  hasMore: false, query: '', setQuery: vi.fn(), loadMore: vi.fn(), reload: vi.fn(), ...o,
+  rows: [], loading: false, ready: true, error: null, intentUnavailable: false,
+  workless: false, projectId: 'p', total: 0, hasMore: false, query: '',
+  setQuery: vi.fn(), loadMore: vi.fn(), reload: vi.fn(), ...o,
 });
 
 function dockProps() { return { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps; }
@@ -68,5 +69,27 @@ describe('SceneBrowserPanel (22-C2)', () => {
     state.mockReturnValue(baseState({ rows: [row({})], hasMore: true }));
     const { getByTestId } = withHost(<SceneBrowserPanel {...dockProps()} />);
     expect(getByTestId('scene-browser-load-more')).toBeInTheDocument();
+  });
+
+  it('shows a loading state (not the empty state) until ready, then the empty state', () => {
+    // Review MED: "No scenes match" must NOT flash while Work resolution is still settling.
+    state.mockReturnValue(baseState({ ready: false, rows: [] }));
+    const { rerender, queryByTestId, getByTestId } = withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(getByTestId('scene-browser-loading')).toBeInTheDocument();
+    expect(queryByTestId('scene-browser-empty')).toBeNull();
+
+    state.mockReturnValue(baseState({ ready: true, rows: [] }));
+    rerender(<StudioHostProvider bookId="book-1"><SceneBrowserPanel {...dockProps()} /></StudioHostProvider>);
+    expect(getByTestId('scene-browser-empty')).toBeInTheDocument();
+  });
+
+  it('shows the soft intent-unavailable note (identity rows still render) when composition is down', () => {
+    state.mockReturnValue(baseState({
+      intentUnavailable: true,
+      rows: [row({ shape: 'index_only', index: { title: 'Prose' } as SceneUnionRow['index'] })],
+    }));
+    withHost(<SceneBrowserPanel {...dockProps()} />);
+    expect(screen.getByTestId('scene-browser-intent-unavailable')).toBeInTheDocument();
+    expect(screen.getByTestId('scene-browser-row')).toBeInTheDocument(); // identity row survives
   });
 });

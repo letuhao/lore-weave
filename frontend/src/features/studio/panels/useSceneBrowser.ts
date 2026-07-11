@@ -16,8 +16,10 @@ const SCENE_PAGE = 100; // book-service clamps limit to 100; page at the clamp
 export type SceneBrowserState = {
   rows: SceneUnionRow[];
   loading: boolean;
-  error: string | null;
-  workless: boolean; // no composition Work → intent columns render as "needs a plan"
+  ready: boolean; // work resolution settled AND the first scene load has run — gates the empty state
+  error: string | null; // a BLOCKING failure (the identity read failed) — the panel can't render
+  intentUnavailable: boolean; // the intent side (composition) is unreachable; identity rows still render
+  workless: boolean; // settled with NO composition Work → intent columns render as "needs a plan"
   projectId: string | null;
   total: number | null;
   hasMore: boolean;
@@ -38,16 +40,22 @@ export function useSceneBrowser(bookId: string | null): SceneBrowserState {
     if (d?.status === 'candidates') return d.candidates[0]?.project_id ?? null;
     return null;
   }, [work.data]);
-  // "Work-less" is only true once resolution has SETTLED without a project — while it is still
-  // loading we are not yet workless (avoids a flash of the empty-state CTA on every open).
-  const workless = !work.isLoading && !projectId;
+  // Distinguish a genuine no-plan resolution from a TRANSIENT backend outage. `useWorkResolution`
+  // returns a distinct `unavailable` status (a normal 200 body) when the resolver can't reach its
+  // backend — that is NOT "no plan yet", so it must not show the create-plan CTA (a user could make
+  // a duplicate Work). Both settle without a projectId, so gate on the status, not just projectId.
+  const workStatus = work.data?.status;
+  const workUnavailable = !work.isLoading && workStatus === 'unavailable';
+  const workless = !work.isLoading && !projectId && !workUnavailable;
 
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [specNodes, setSpecNodes] = useState<OutlineNode[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false); // first fetch (success OR fail) has settled
   const [error, setError] = useState<string | null>(null);
+  const [intentUnavailable, setIntentUnavailable] = useState(false);
   const [query, setQuery] = useState('');
   // Generation guard: a load that resolves after a book/Work switch must not clobber newer state.
   const gen = useRef(0);
@@ -55,7 +63,8 @@ export function useSceneBrowser(bookId: string | null): SceneBrowserState {
   // Reset when the book or its resolved Work changes.
   useEffect(() => {
     gen.current += 1;
-    setScenes([]); setSpecNodes([]); setCursor(null); setTotal(null); setError(null);
+    setScenes([]); setSpecNodes([]); setCursor(null); setTotal(null);
+    setError(null); setIntentUnavailable(false); setInitialized(false);
   }, [bookId, projectId]);
 
   const fetchScenePage = useCallback(async (nextCursor: string | null) => {
@@ -63,25 +72,33 @@ export function useSceneBrowser(bookId: string | null): SceneBrowserState {
     const myGen = ++gen.current;
     setLoading(true);
     setError(null);
-    try {
-      // Identity side (book-service). Also load the whole spec ONCE (first page only) so
-      // spec_only rows ("planned, not written") appear — the spec is arcs/chapters/scenes,
-      // tens–hundreds for a normal book; windowed spec paging is the C2b follow-up.
-      const [page, outline] = await Promise.all([
-        booksApi.listScenes(token, bookId, { cursor: nextCursor, limit: SCENE_PAGE }),
-        !nextCursor && projectId ? compositionApi.getOutline(projectId, token) : Promise.resolve(null),
-      ]);
-      if (myGen !== gen.current) return; // a newer load/reset won
+    // Identity and intent are fetched INDEPENDENTLY (allSettled): the panel's headline promise is
+    // that book-service identity rows ALWAYS render, even when composition is down. A whole spec
+    // load (first page only) supplies spec_only rows; the index side keyset-pages. An intent-side
+    // failure must degrade to null intent, never blank the identity rows the panel exists to show.
+    const [pageRes, outlineRes] = await Promise.allSettled([
+      booksApi.listScenes(token, bookId, { cursor: nextCursor, limit: SCENE_PAGE }),
+      !nextCursor && projectId ? compositionApi.getOutline(projectId, token) : Promise.resolve(null),
+    ]);
+    if (myGen !== gen.current) return; // a newer load/reset won
+    if (pageRes.status === 'fulfilled') {
+      const page = pageRes.value;
       setScenes((prev) => (nextCursor ? [...prev, ...page.items] : page.items));
       setCursor(page.next_cursor);
       if (page.total != null) setTotal(page.total);
-      if (outline) setSpecNodes(outline.nodes);
-    } catch (e) {
-      if (myGen !== gen.current) return;
-      setError(e instanceof Error ? e.message : 'Failed to load scenes');
-    } finally {
-      if (myGen === gen.current) setLoading(false);
+    } else {
+      // The identity read failed — this IS blocking (there is nothing to render).
+      setError(pageRes.reason instanceof Error ? pageRes.reason.message : 'Failed to load scenes');
     }
+    if (outlineRes.status === 'fulfilled') {
+      if (outlineRes.value) setSpecNodes(outlineRes.value.nodes);
+      setIntentUnavailable(false);
+    } else {
+      // Intent-side failure: keep the identity rows, flag intent as unavailable (soft).
+      setIntentUnavailable(true);
+    }
+    setLoading(false);
+    setInitialized(true);
   }, [token, bookId, projectId]);
 
   // Initial load once resolution has settled (projectId known, or confirmed workless).
@@ -91,9 +108,14 @@ export function useSceneBrowser(bookId: string | null): SceneBrowserState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, bookId, projectId, work.isLoading]);
 
+  // `specComplete` is true only when every index page is loaded (cursor exhausted). Until then a
+  // spec whose index scene is on an unloaded page would be misread as "not yet written" — so the
+  // join suppresses spec_only rows while more pages remain (HIGH-fix). For a normal ≤100-scene
+  // book the first page exhausts the cursor, so spec_only appears immediately.
+  const specComplete = cursor == null && initialized;
   const rows = useMemo(
-    () => filterUnionRows(joinSceneRows(scenes, specNodes), query),
-    [scenes, specNodes, query],
+    () => filterUnionRows(joinSceneRows(scenes, specNodes, specComplete), query),
+    [scenes, specNodes, specComplete, query],
   );
 
   const loadMore = useCallback(() => {
@@ -102,8 +124,12 @@ export function useSceneBrowser(bookId: string | null): SceneBrowserState {
 
   const reload = useCallback(() => { void fetchScenePage(null); }, [fetchScenePage]);
 
+  // Empty state is honest only once resolution has settled AND the first load has run — otherwise
+  // "No scenes match" flashes for the whole Work-resolution RTT (loading is still false then).
+  const ready = !work.isLoading && (initialized || workless || workUnavailable);
+
   return {
-    rows, loading, error, workless, projectId, total,
+    rows, loading, ready, error, intentUnavailable, workless, projectId, total,
     hasMore: cursor != null, query, setQuery, loadMore, reload,
   };
 }

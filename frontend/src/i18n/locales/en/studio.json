@@ -237,6 +237,7 @@
       "search": "Search titles & prose…",
       "count": "{{n}} scenes",
       "workless": "No plan yet — scene intent (status, POV, tension) is unavailable until you create a plan for this book.",
+      "intentUnavailable": "Scene plan is temporarily unavailable — showing the written prose only.",
       "anchorLost": "Anchor lost",
       "empty": "No scenes match.",
       "loadMore": "Load more",

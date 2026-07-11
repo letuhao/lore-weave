@@ -71,6 +71,21 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
         </div>
       )}
 
+      {/* Intent side unreachable (composition down) — identity rows still render (soft, not blocking). */}
+      {sb.intentUnavailable && !sb.workless && (
+        <div
+          data-testid="scene-browser-intent-unavailable"
+          className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+        >
+          <FileWarning className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            {t('panels.scene-browser.intentUnavailable', {
+              defaultValue: 'Scene plan is temporarily unavailable — showing the written prose only.',
+            })}
+          </span>
+        </div>
+      )}
+
       {sb.error && (
         <div data-testid="scene-browser-error" className="border-b bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {sb.error}
@@ -129,7 +144,13 @@ export function SceneBrowserPanel(props: IDockviewPanelProps) {
           </tbody>
         </table>
 
-        {!sb.loading && sb.rows.length === 0 && (
+        {/* Loading until resolution+first load settle — avoids an empty-state flash for the whole RTT. */}
+        {!sb.ready && (
+          <div data-testid="scene-browser-loading" className="p-6 text-center text-sm text-muted-foreground">
+            {t('panels.scene-browser.loading', { defaultValue: 'Loading…' })}
+          </div>
+        )}
+        {sb.ready && !sb.loading && sb.rows.length === 0 && (
           <div data-testid="scene-browser-empty" className="p-6 text-center text-sm text-muted-foreground">
             {t('panels.scene-browser.empty', { defaultValue: 'No scenes match.' })}
           </div>

@@ -671,18 +671,24 @@ async def generate(
             # breaks BEFORE the DoneEvent so finish_reason stays None). Both mean the
             # output was cut — a consumer wanting "incomplete?" should treat
             # (capped OR truncated) as the signal; both are surfaced below.
-            truncated = m.finish_reason == "length"
-            await jobs.update_status(
-                job.id, "completed",
-                result={"text": final["text"], "input_tokens": m.input_tokens,
-                        "output_tokens": m.output_tokens, "measured": m.measured,
-                        "capped": final.get("capped", False),
-                        "truncated": truncated, "finish_reason": m.finish_reason},
-            )
+            # A mid-stream error AFTER partial content also lands here (we keep the
+            # partial work), but finish_reason is None on an error interruption — so OR
+            # in the error to mark it truncated + surface the reason, else the abruptly
+            # cut fragment renders as a clean, finished draft (review MED).
+            stream_error = final.get("error")
+            truncated = m.finish_reason == "length" or bool(stream_error)
+            result = {"text": final["text"], "input_tokens": m.input_tokens,
+                      "output_tokens": m.output_tokens, "measured": m.measured,
+                      "capped": final.get("capped", False),
+                      "truncated": truncated, "finish_reason": m.finish_reason}
+            if stream_error:
+                result["error"] = stream_error
+            await jobs.update_status(job.id, "completed", result=result)
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
                         "capped": final.get("capped", False),
-                        "truncated": truncated, "finish_reason": m.finish_reason})
+                        "truncated": truncated, "finish_reason": m.finish_reason,
+                        **({"error": stream_error} if stream_error else {})})
         else:
             err = final.get("error") if final is not None else None
             await jobs.update_status(
@@ -865,14 +871,21 @@ async def selection_edit(
         # terminal frame with no content is a FAILURE, not a completed zero-token job.
         if final is not None and not (final.get("error") and not final["text"]):
             m = final["metering"]
-            await jobs.update_status(
-                job.id, "completed",
-                result={"text": final["text"], "input_tokens": m.input_tokens,
-                        "output_tokens": m.output_tokens, "measured": m.measured,
-                        "finish_reason": m.finish_reason, "selection_edit": True})
+            # Partial-content-then-error keeps the work but must be flagged truncated + carry the
+            # reason (else the cut edit looks clean — review MED).
+            stream_error = final.get("error")
+            truncated = m.finish_reason == "length" or bool(stream_error)
+            result = {"text": final["text"], "input_tokens": m.input_tokens,
+                      "output_tokens": m.output_tokens, "measured": m.measured,
+                      "truncated": truncated, "finish_reason": m.finish_reason,
+                      "selection_edit": True}
+            if stream_error:
+                result["error"] = stream_error
+            await jobs.update_status(job.id, "completed", result=result)
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
-                        "finish_reason": m.finish_reason})
+                        "truncated": truncated, "finish_reason": m.finish_reason,
+                        **({"error": stream_error} if stream_error else {})})
         else:
             err = final.get("error") if final is not None else None
             await jobs.update_status(
