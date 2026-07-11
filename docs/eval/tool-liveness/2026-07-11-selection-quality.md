@@ -29,7 +29,24 @@ synonyms; the other 77 aren't probeable this way.)
 75% is a *floor* under the hardest conditions (all 223 siblings present). The 36 misses are
 where two tools' descriptions genuinely collide — the actionable output.
 
-## The misses, by pattern (each is a real description collision)
+## Post-fix live re-run (2026-07-11, after WS-D5a + container/gateway rebuild)
+
+The fixable subset shipped (synonyms specialized, `[Authoring workspace]`/`[Saved book]`
+surface tags added) and went live (rebuild the owning MCP server **and** restart `ai-gateway`
+— it caches the federated catalog). Live re-run: **112/146 discoverable (76%) · 34 miss.**
+
+- **Synonym fixes confirmed live:** `book_steering_set` and `registry_propose_skill` dropped
+  out of the miss list entirely — the over-generic "remember" no longer steals them.
+- **Net only 36→34, and that is the honest result:** the residue is dominated by (C)
+  inherent ambiguity — `composition_get_prose`/"chapter text", `composition_create_work`/"new
+  writing project", `book_chapter_save_draft`/"edit chapter text" still split because a book
+  *is* a writing project and both surfaces edit a chapter. Editing one description also shifts
+  every other classification slightly, so a few borderline tools surfaced as new misses. **~76%
+  is the floor** under the full-catalog stress test, set by genuine product-surface overlap,
+  not by bad prose. Driving it lower needs a product decision (merge/clarify the parallel
+  book/composition chapter surfaces), not more description tweaks.
+
+## The misses, by pattern (each is a real description collision) — pre-fix snapshot
 
 **1. `book_*` ⇄ `composition_*` — the dominant collision (12).** The book service and the
 composition service both own "chapter", "prose", and "structure" concepts, and their

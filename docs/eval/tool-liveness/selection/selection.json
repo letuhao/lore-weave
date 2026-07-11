@@ -148,7 +148,7 @@
   },
   {
     "tool": "book_search",
-    "ask": "where does it say",
+    "ask": "where in the book does it say",
     "verdict": "MISS",
     "picked": "story_search",
     "answer": "story_search"
@@ -176,10 +176,10 @@
   },
   {
     "tool": "book_steering_set",
-    "ask": "remember this rule",
-    "verdict": "MISS",
-    "picked": "memory_remember",
-    "answer": "memory_remember"
+    "ask": "remember this steering rule",
+    "verdict": "HIT",
+    "picked": "book_steering_set",
+    "answer": "book_steering_set"
   },
   {
     "tool": "book_update_meta",
@@ -262,8 +262,8 @@
     "tool": "composition_arc_move",
     "ask": "restructure book",
     "verdict": "MISS",
-    "picked": "composition_arc_apply",
-    "answer": "composition_arc_apply"
+    "picked": "composition_arc_list",
+    "answer": "composition_arc_list"
   },
   {
     "tool": "composition_arc_restore",
@@ -275,9 +275,9 @@
   {
     "tool": "composition_arc_suggest",
     "ask": "multi-chapter structure",
-    "verdict": "MISS",
-    "picked": "composition_arc_list",
-    "answer": "composition_arc_list"
+    "verdict": "HIT",
+    "picked": "composition_arc_suggest",
+    "answer": "composition_arc_suggest"
   },
   {
     "tool": "composition_arc_template_drift",
@@ -310,9 +310,9 @@
   {
     "tool": "composition_authoring_run_create",
     "ask": "draft chapters unattended",
-    "verdict": "HIT",
-    "picked": "composition_authoring_run_create",
-    "answer": "composition_authoring_run_create"
+    "verdict": "MISS",
+    "picked": "composition_authoring_run_start",
+    "answer": "composition_authoring_run_start"
   },
   {
     "tool": "composition_authoring_run_gate",
@@ -359,9 +359,9 @@
   {
     "tool": "composition_authoring_run_revert_all",
     "ask": "discard all drafted chapters",
-    "verdict": "MISS",
-    "picked": "book_chapter_delete",
-    "answer": "book_chapter_delete"
+    "verdict": "HIT",
+    "picked": "composition_authoring_run_revert_all",
+    "answer": "composition_authoring_run_revert_all"
   },
   {
     "tool": "composition_authoring_run_start",
@@ -492,9 +492,9 @@
   {
     "tool": "composition_motif_book_list",
     "ask": "collaborator motifs",
-    "verdict": "HIT",
-    "picked": "composition_motif_book_list",
-    "answer": "composition_motif_book_list"
+    "verdict": "MISS",
+    "picked": "(unrecognized)",
+    "answer": "book_motif_book_list"
   },
   {
     "tool": "composition_motif_create",
@@ -633,8 +633,8 @@
     "tool": "glossary_entity_delete",
     "ask": "clean up duplicate entity",
     "verdict": "MISS",
-    "picked": "glossary_propose_merge",
-    "answer": "glossary_propose_merge"
+    "picked": "glossary_list_merge_candidates",
+    "answer": "glossary_list_merge_candidates"
   },
   {
     "tool": "glossary_entity_rename",
@@ -813,10 +813,10 @@
   },
   {
     "tool": "registry_propose_skill",
-    "ask": "remember this as a skill",
-    "verdict": "MISS",
-    "picked": "memory_remember",
-    "answer": "memory_remember"
+    "ask": "author a reusable skill",
+    "verdict": "HIT",
+    "picked": "registry_propose_skill",
+    "answer": "registry_propose_skill"
   },
   {
     "tool": "registry_propose_workflow",

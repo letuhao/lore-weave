@@ -74,10 +74,16 @@ stale until the containers rebuild — see below):
   *is* a writing project and both surfaces edit a chapter. No prefix disambiguates a
   genuinely two-home request. This is the expected, accepted residue.
 
-**Deploy note:** the edits are committed to source (book-service Go, composition-service
-Python, agent-registry Go). The running MCP servers still federate the old text until those
-three containers are rebuilt — a deploy step, not a correctness gap. Re-run the full
-`selection.py` after the rebuild to record the new live miss count.
+**Deploy note (done 2026-07-11):** a tool-description/synonym change reaches the live
+federated catalog only after BOTH steps, in order:
+1. **Rebuild + restart the owning MCP-server container** (here: book / composition /
+   agent-registry) — recompiles the description into the server.
+2. **Restart `ai-gateway`** — it CACHES the federated `tools/list`; after only step 1 the
+   catalog still served the old text (verified). This is the gotcha: a description deploy is
+   not live until the gateway's cache is cleared.
+
+Both done; the edits are confirmed live in the catalog. Full `selection.py` re-run against
+the live catalog records the post-fix miss count (see `docs/eval/tool-liveness/selection/`).
 
 ---
 
