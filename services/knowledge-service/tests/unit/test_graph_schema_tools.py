@@ -109,14 +109,18 @@ def test_total_tool_count_is_memory_plus_lane_lf():
     (kg_project_create + kg_project_list, the W0 #4a discovery tool, +
     kg_project_set_embedding_model — the F6 setup step that used to exist only as a
     REST route behind the Build-KG dialog, which left kg_build_graph unreachable by an
-    agent) + 2 cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 32."""
+    agent) + 2 cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4)
+    + 4 W11-M2 reader tools (lore_ask/lore_browse_entities/lore_entity/lore_timeline)
+    = 36."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 32
+    assert len(TOOL_DEFINITIONS) == 36
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
     assert {"kg_project_create", "kg_project_list", "kg_project_set_embedding_model",
             "kg_build_graph", "kg_build_wiki", "kg_run_benchmark",
             "story_search"}.issubset(schema_names)
+    assert {"lore_ask", "lore_browse_entities", "lore_entity",
+            "lore_timeline"}.issubset(schema_names)
 
 
 def test_agent_can_reach_kg_build_graph_without_leaving_the_tool_surface():

@@ -1512,6 +1512,108 @@ async def kg_run_benchmark(
     return await _dispatch(ctx, "kg_run_benchmark", args)
 
 
+# ── W11-M2 reader "ask the lore" tools ────────────────────────────────
+# Spoiler-windowed reads for a reader's chat agent. The cutoff is SERVER-enforced
+# from the reader's OWN furthest-read chapter — there is deliberately no
+# before_chapter arg, so an agent cannot widen its own spoiler window. All Tier-R,
+# scope=project; a non-grantee gets a uniform "project not found" (anti-oracle).
+@mcp_server.tool(
+    name="lore_ask",
+    description=(
+        "Ask about a book's lore SPOILER-SAFELY on the reader's behalf. Returns a "
+        "spoiler-windowed evidence bundle — canon entities the reader has met + "
+        "manuscript passages — bounded to the reader's OWN furthest-read chapter (you "
+        "cannot widen it). Compose the answer from this evidence on your own model; if "
+        "window_available is false the reader's position couldn't be pinned so nothing "
+        "is shown."
+    ),
+    meta=require_meta("R", "project", tool_name="lore_ask"),
+)
+async def lore_ask(
+    ctx: MCPContext,
+    query: Annotated[
+        str,
+        "What the reader is asking — a name, a relationship, or 'what has happened so "
+        "far', in natural language.",
+    ],
+    limit: Annotated[
+        int, Field(ge=1, le=50), "Max passages + canon entities each (default 25)."
+    ] = 25,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"query": query, "limit": limit}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "lore_ask", args)
+
+
+@mcp_server.tool(
+    name="lore_browse_entities",
+    description=(
+        "List the CANON cast (characters, places, factions) the reader has met so far "
+        "— spoiler-windowed to their furthest-read chapter. A reader whose position "
+        "can't be pinned gets an empty list, never the whole cast."
+    ),
+    meta=require_meta("R", "project", tool_name="lore_browse_entities"),
+)
+async def lore_browse_entities(
+    ctx: MCPContext,
+    kind: Annotated[
+        str | None,
+        "Optional — restrict to one entity kind (e.g. 'character', 'location'). Omit "
+        "for the whole windowed cast.",
+    ] = None,
+    limit: Annotated[int, Field(ge=1, le=50), "Max entities (default/max 50)."] = 50,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"limit": limit}
+    if kind is not None:
+        args["kind"] = kind
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "lore_browse_entities", args)
+
+
+@mcp_server.tool(
+    name="lore_entity",
+    description=(
+        "One entity's spoiler-windowed status + known facts, bounded to the reader's "
+        "furthest-read chapter (facts established later are hidden)."
+    ),
+    meta=require_meta("R", "project", tool_name="lore_entity"),
+)
+async def lore_entity(
+    ctx: MCPContext,
+    entity_id: Annotated[
+        str, "The entity id returned by lore_browse_entities / lore_ask."
+    ],
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"entity_id": entity_id}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "lore_entity", args)
+
+
+@mcp_server.tool(
+    name="lore_timeline",
+    description=(
+        "The sequence of events up to the reader's position — spoiler-windowed so "
+        "later events are hidden. Empty when the reader's position can't be pinned."
+    ),
+    meta=require_meta("R", "project", tool_name="lore_timeline"),
+)
+async def lore_timeline(
+    ctx: MCPContext,
+    limit: Annotated[int, Field(ge=1, le=50), "Max events (default/max 50)."] = 50,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"limit": limit}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "lore_timeline", args)
+
+
 # ── MCP resources (RAID Wave C5) ──────────────────────────────────────
 # Read-only, project-scoped resources federated by ai-gateway (resources/read).
 # Both are URI TEMPLATES ({project_id}), so they are advertised via

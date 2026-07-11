@@ -506,6 +506,7 @@ _LIST_FACTS_FOR_ENTITY_BODY = """
 MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
 WHERE f.user_id = $user_id
   AND e.user_id = $user_id
+  AND ($project_id IS NULL OR f.project_id = $project_id)
   AND ($exclude_pending = false OR coalesce(f.pending_validation, false) = false)
   AND f.confidence >= $min_confidence
   AND f.valid_until IS NULL
@@ -532,6 +533,7 @@ async def list_facts_for_entity(
     user_id: str,
     entity_id: str,
     before_order: int | None = None,
+    project_id: str | None = None,
     min_confidence: float = 0.8,
     exclude_pending: bool = True,
     include_archived: bool = False,
@@ -562,6 +564,7 @@ async def list_facts_for_entity(
         user_id=user_id,
         entity_id=entity_id,
         before_order=before_order,
+        project_id=project_id,
         min_confidence=min_confidence,
         exclude_pending=exclude_pending,
         include_archived=include_archived,

@@ -632,6 +632,45 @@ async def existing_entity_node_ids(
     return {record["id"] async for record in result}
 
 
+# ── resolve_kg_entity_id_by_glossary_id (W11-M2 reader bridge) ─────────
+
+_KG_ID_BY_GLOSSARY_ID_CYPHER = """
+MATCH (e:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
+WHERE ($project_id IS NULL OR e.project_id = $project_id)
+  AND e.archived_at IS NULL
+RETURN e.id AS id
+LIMIT 1
+"""
+
+
+async def resolve_kg_entity_id_by_glossary_id(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    glossary_entity_id: str,
+) -> str | None:
+    """W11-M2 — map a GLOSSARY entity id (what the reader tools surface from the
+    canon cast) to its anchored KG `:Entity.id` (a canonical hash), so `lore_entity`
+    can read the entity's KG facts/status. Scoped to `user_id` (the owner) AND
+    `project_id` (the reader's granted book) — a glossary id from a DIFFERENT project
+    the owner happens to own resolves to None here, so the KG read can't cross the
+    grant boundary. Returns None when the canon entity has no KG anchor (→ the reader
+    gets canon-only, no KG facts) or the id doesn't belong to this project."""
+    if not glossary_entity_id:
+        return None
+    result = await run_read(
+        session,
+        _KG_ID_BY_GLOSSARY_ID_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        glossary_entity_id=glossary_entity_id,
+    )
+    async for record in result:
+        return record["id"]
+    return None
+
+
 # ── get_entity ────────────────────────────────────────────────────────
 
 

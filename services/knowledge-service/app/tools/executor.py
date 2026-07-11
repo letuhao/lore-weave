@@ -81,6 +81,9 @@ from app.tools.definitions import (
 from app.tools.build_tools import BUILD_TOOL_HANDLERS
 from app.tools.graph_schema_tools import GRAPH_SCHEMA_HANDLERS
 from app.tools.project_tools import PROJECT_TOOL_HANDLERS
+# W11-M2: imported AFTER graph_schema_tools so reader_tools' `_resolve_project_owner`
+# import resolves against an already-loaded module (no import cycle).
+from app.tools.reader_tools import READER_TOOL_HANDLERS
 
 logger = logging.getLogger(__name__)
 
@@ -722,6 +725,9 @@ _HANDLERS = {
     # Cost-gated job triggers (kg_build_graph) — mint a confirm-token; the human
     # confirms + the job starts in the confirm route (D-KG-LF-BUILDKG-MCP).
     **BUILD_TOOL_HANDLERS,
+    # W11-M2 reader "ask the lore" tools — spoiler-windowed reads, cutoff server-
+    # enforced from the reader's own position (lore_ask/browse/entity/timeline).
+    **READER_TOOL_HANDLERS,
 }
 
 

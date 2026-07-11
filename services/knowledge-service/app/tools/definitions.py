@@ -31,6 +31,7 @@ from app.tools.graph_schema_tools import (
 from app.tools.argbase import ProjectScopedArgs
 from app.tools.build_tools import BUILD_TOOL_ARG_MODELS
 from app.tools.project_tools import PROJECT_TOOL_ARG_MODELS
+from app.tools.reader_tools import READER_TOOL_ARG_MODELS
 
 __all__ = [
     "TOOL_NAMES",
@@ -184,6 +185,8 @@ ARG_MODELS: dict[str, type[BaseModel]] = {
     **PROJECT_TOOL_ARG_MODELS,
     # Cost-gated job triggers (kg_build_graph) — confirm-token mint.
     **BUILD_TOOL_ARG_MODELS,
+    # W11-M2 reader "ask the lore" tools — spoiler-windowed reads.
+    **READER_TOOL_ARG_MODELS,
 }
 
 TOOL_NAMES: tuple[str, ...] = tuple(ARG_MODELS)
@@ -554,6 +557,82 @@ TOOL_DEFINITIONS: list[dict] = [
         "sandbox (it never touches the real graph). Returns passed + gate_failures; a pass "
         "enables Build-KG for this embedding model.",
         {"project_id": _PROJECT_ID_PROP},
+        [],
+    ),
+    # ── W11-M2 reader "ask the lore" tools (spoiler-windowed; cutoff server-enforced) ──
+    _tool(
+        "lore_ask",
+        "Ask about a book's lore SPOILER-SAFELY on the reader's behalf. Returns a "
+        "spoiler-windowed evidence bundle — canon entities the reader has met + "
+        "manuscript passages — bounded to the reader's own furthest-read chapter (you "
+        "cannot widen it). Compose the answer from this evidence on your own model; if "
+        "window_available is false the reader's position couldn't be pinned so nothing "
+        "is shown.",
+        {
+            "query": {
+                "type": "string",
+                "description": "What the reader is asking — a name, a relationship, or "
+                "'what has happened so far', in natural language.",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "Max passages + canon entities each (default 25).",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        ["query"],
+    ),
+    _tool(
+        "lore_browse_entities",
+        "List the CANON cast (characters, places, factions) the reader has met so far "
+        "— spoiler-windowed to their furthest-read chapter. A reader whose position "
+        "can't be pinned gets an empty list, never the whole cast.",
+        {
+            "kind": {
+                "type": "string",
+                "description": "Optional — restrict to one entity kind (e.g. 'character', "
+                "'location'). Omit for the whole windowed cast.",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "Max entities (default/max 50).",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        [],
+    ),
+    _tool(
+        "lore_entity",
+        "One entity's spoiler-windowed status + known facts, bounded to the reader's "
+        "furthest-read chapter (facts established later are hidden).",
+        {
+            "entity_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "The entity id returned by lore_browse_entities / lore_ask.",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        ["entity_id"],
+    ),
+    _tool(
+        "lore_timeline",
+        "The sequence of events up to the reader's position — spoiler-windowed so "
+        "later events are hidden. Empty when the reader's position can't be pinned.",
+        {
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "Max events (default/max 50).",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
         [],
     ),
 ]
