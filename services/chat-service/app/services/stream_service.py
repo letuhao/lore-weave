@@ -3078,6 +3078,39 @@ async def stream_response(
     _session_enabled = list(session_row.get("enabled_tools") or []) if session_row else []
     _session_skills = list(session_row.get("enabled_skills") or []) if session_row else []
 
+    # The book this turn is scoped to (FE context). Hoisted ABOVE the skill/workflow
+    # resolution because the WS-3 mode binding is resolved per (user, book, mode) and its
+    # `inject_skills` must reach `resolve_skills_to_inject_async` below — it is re-used,
+    # not recomputed, by the book_context_note further down.
+    _ctx_book_id = (
+        (editor_context or {}).get("book_id")
+        or (book_context or {}).get("book_id")
+        or (studio_context or {}).get("book_id")
+    )
+
+    # WS-2b — fetch the curated workflows visible this turn (System + user + book), and
+    # WS-3 (C6) — the mode→capability binding, on the SAME call. Degrade-safe: any failure
+    # leaves turn_workflows empty AND the binding None (no workflow_list/_load advertised,
+    # no pin, no binding skills — the agent still has raw tools + discovery, i.e. exactly
+    # the pre-WS-2b/WS-3 behavior).
+    turn_workflows: list[dict] = []
+    mode_binding = None
+    if stream_format == "agui" and not disable_tools and kctx.tool_calling_enabled:
+        try:
+            from app.client.registry_workflows_client import get_workflows_client
+
+            _wf_surface = "admin" if _admin else ("editor" if _editor else ("book" if _book_scoped else "chat"))
+            _wfs = await get_workflows_client().get_workflows(
+                str(user_id), book_id=str(_ctx_book_id or ""), surface=_wf_surface,
+                mode=permission_mode,
+            )
+            turn_workflows = list(_wfs.workflows)
+            mode_binding = _wfs.mode_binding
+        except Exception:
+            logger.warning("workflows fetch failed — no curated workflows this turn", exc_info=True)
+            turn_workflows = []
+            mode_binding = None
+
     from app.services.tool_surface import resolve_session_tool_pins
     from app.services.agent_surface import AgentSurfaceTracker
 
@@ -3111,6 +3144,8 @@ async def stream_response(
         permission_mode=permission_mode,
         studio=_studio,
         intent_text=user_message_content,
+        # WS-3 (C6) — the binding's skills, additive + surface-filtered.
+        binding_skills=(mode_binding.inject_skills if mode_binding else None),
         user_id=user_id,
         model_source=model_source,
         model_ref=model_ref,
@@ -3168,11 +3203,6 @@ async def stream_response(
     # only their PRESENCE gated tool advertising — so the agent passed
     # "YOUR_BOOK_ID_HERE"/"none" and the tool 400'd ("book_id must be a UUID").
     # Carried inside the system message alongside the skills.
-    _ctx_book_id = (
-        (editor_context or {}).get("book_id")
-        or (book_context or {}).get("book_id")
-        or (studio_context or {}).get("book_id")
-    )
     _ctx_chapter_id = (
         (editor_context or {}).get("chapter_id")
         or (studio_context or {}).get("active_chapter_id")
@@ -3277,22 +3307,31 @@ async def stream_response(
             logger.warning("user skills fetch/inject failed — built-in skills only", exc_info=True)
             user_skills_block = None
 
-    # WS-2b — fetch the curated workflows visible this turn (System + user + book),
-    # degrade-safe: any failure leaves turn_workflows empty (no workflow_list/_load
-    # advertised, the agent still has raw tools + discovery). Same surface key as skills.
-    turn_workflows: list[dict] = []
-    if stream_format == "agui" and not disable_tools and kctx.tool_calling_enabled:
-        try:
-            from app.client.registry_workflows_client import get_workflows_client
+    # WS-3 (C6) — the PINNED rail. The mode binding may pin a workflow; a pinned rail is
+    # rendered straight into the prompt (same renderer workflow_load uses, so the two can
+    # never drift) and its step tools are pre-activated below. This is the S06 fix:
+    # advertising + a "load the matching workflow" directive was NOT enough, because the
+    # user never ASKS ("set up my world") — in a real co-writing session they only ASSENT
+    # to the agent's own offer ("yeah do it"), and recognising a workflow from an assent is
+    # a step a mid-tier model does not reliably take. A pin removes the step.
+    pinned_rail_text: str | None = None
+    pinned_step_tools: list[str] = []
+    _pinned_slugs: list[str] = []
+    if turn_workflows and mode_binding and mode_binding.inject_workflows:
+        from app.services.workflow_runner import pinned_rail_block
 
-            _wf_surface = "admin" if _admin else ("editor" if _editor else ("book" if _book_scoped else "chat"))
-            _wfs = await get_workflows_client().get_workflows(
-                str(user_id), book_id=str(_ctx_book_id or ""), surface=_wf_surface,
+        _visible = {w.get("slug") for w in turn_workflows if w.get("slug")}
+        _pinned_slugs = [s for s in mode_binding.inject_workflows if s in _visible]
+        # A pin naming a workflow that is not visible on THIS surface cannot run. Never a
+        # silent no-op (Agent Extensibility Standard) — say so, and carry on unpinned.
+        for _missing in [s for s in mode_binding.inject_workflows if s not in _visible]:
+            logger.warning(
+                "mode binding pins workflow %r, not visible on this surface — pin skipped", _missing,
             )
-            turn_workflows = list(_wfs.workflows)
-        except Exception:
-            logger.warning("workflows fetch failed — no curated workflows this turn", exc_info=True)
-            turn_workflows = []
+        if _pinned_slugs:
+            pinned_rail_text, pinned_step_tools = pinned_rail_block(
+                turn_workflows, _pinned_slugs,
+            )
 
     # WS-5 — STEER a mid-tier model to USE an authored workflow rail. Advertising
     # workflow_list is not enough: gemma had it advertised yet never called it and
@@ -3300,17 +3339,20 @@ async def stream_response(
     # category existed). When the turn has curated workflows, name them and tell the
     # agent to load + follow the matching one FIRST. General across every workflow;
     # degrade-safe (empty string when there are none, so no directive is injected).
+    # A PINNED workflow is excluded here: its full rail is already in context, so telling
+    # the agent to workflow_load it would be a wasted round-trip.
     workflow_directive_block: str | None = None
     if turn_workflows:
         _wf_lines = "\n".join(
             f"- {w.get('slug')}: {w.get('description') or w.get('title') or ''}".rstrip()
             for w in turn_workflows
-            if w.get("slug")
+            if w.get("slug") and w.get("slug") not in _pinned_slugs
         )
         if _wf_lines:
+            _other = "OTHER " if _pinned_slugs else ""
             workflow_directive_block = (
-                "READY-MADE WORKFLOWS you can run for this book — ordered recipes for common "
-                "multi-step jobs:\n"
+                f"{_other}READY-MADE WORKFLOWS you can run for this book — ordered recipes for "
+                "common multi-step jobs:\n"
                 f"{_wf_lines}\n"
                 "If the user's request matches one of these (e.g. setting up / building / organizing "
                 "their world, glossary, or plan), call workflow_load(\"<slug>\") FIRST and then follow "
@@ -3345,6 +3387,7 @@ async def stream_response(
         skill_meta_block,    # RAID C3 — L1 available-skills catalog
         group_directory_block,  # tool-catalog-simplification Part A — domain map for find_tools(group=...)
         workflow_directive_block,  # WS-5 — prefer an authored workflow rail over improvising
+        pinned_rail_text,    # WS-3 (C6) — the mode's PINNED rail, already in context
         book_context_note,
     ]
     _system_content = build_system_message(
@@ -3401,9 +3444,16 @@ async def stream_response(
             # Category key stays "plan_nudge" (FE Inspector contract — see
             # token_budget.BREAKDOWN_CATEGORIES) though it now also carries the
             # ask-mode nudge; renaming the wire key isn't warranted for this fix.
-            # bundles the mode nudge + the WS-5 workflow-preference directive (both are
-            # just-in-time nudges; folded here to avoid a new FE Inspector wire key).
-            "plan_nudge": estimate_tokens(mode_nudge_block) + estimate_tokens(workflow_directive_block),
+            # bundles the mode nudge + the WS-5 workflow-preference directive + the WS-3
+            # PINNED rail (all three are just-in-time steering; folded here to avoid a new
+            # FE Inspector wire key). The pinned rail is the largest of the three and is
+            # ALWAYS-ON for its mode, so it must be counted — an unaccounted always-on
+            # block is exactly what the Context Budget Law exists to catch.
+            "plan_nudge": (
+                estimate_tokens(mode_nudge_block)
+                + estimate_tokens(workflow_directive_block)
+                + estimate_tokens(pinned_rail_text)
+            ),
             "story_state": estimate_tokens(story_state_block),  # T4 — safety-net block (0 unless projected)
             "book_note": estimate_tokens(book_context_note),
             "attached_context": (
@@ -3505,6 +3555,8 @@ async def stream_response(
                     context_length=creds.context_length,
                     permission_mode=permission_mode,
                     workflow_step_tools=_wf_step_tools,
+                    binding_categories=(mode_binding.seed_tool_categories if mode_binding else None),
+                    pinned_step_tools=pinned_step_tools,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪

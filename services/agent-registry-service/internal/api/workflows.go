@@ -811,8 +811,18 @@ func (s *Server) internalWorkflows(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, wf)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"catalog_version": s.catalogVersion(r.Context()),
 		"workflows":       out,
-	})
+	}
+	// WS-3 (C6) — the mode→capability binding rides the SAME per-turn fetch the
+	// chat-service already makes (one hop, one degrade path: any failure ⇒ the client
+	// returns empty ⇒ no binding ⇒ exactly the pre-WS-3 behavior). Absent `mode` ⇒ the
+	// field is omitted entirely, so an older client is unaffected.
+	if mode := r.URL.Query().Get("mode"); mode != "" {
+		if b := s.resolveModeBinding(r.Context(), uid, bookID, mode); b != nil {
+			resp["mode_binding"] = b
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

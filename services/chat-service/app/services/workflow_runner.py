@@ -213,3 +213,87 @@ def workflow_load_result(
         "guidance": guidance,
     }
     return payload, tool_names
+
+
+# WS-3 (C6) — the PINNED rail.
+#
+# A binding may PIN a workflow for a mode. A pin renders that workflow's rail straight
+# into the system prompt (and pre-activates its step tools), so the agent never has to
+# *decide to load* it. This is the S06 fix: the agent had the right workflow advertised
+# and a directive telling it to load one, and still improvised — because the user never
+# ASKED ("set up my world"), they only ASSENTED to the agent's own offer ("yeah do it").
+# Recognising a workflow from an assent is a step a mid-tier model does not reliably
+# take; pinning removes the step.
+#
+# It reuses ``workflow_load_result`` verbatim — ONE rail format, so a pinned rail and a
+# loaded rail can never drift apart.
+def pinned_rail_block(
+    workflows: list[dict],
+    slugs: list[str],
+    async_tools: frozenset[str] = frozenset(),
+    *,
+    notes_char_cap: int = 3000,
+) -> tuple[str | None, list[str]]:
+    """Render the pinned workflows as ONE prompt block.
+
+    Returns ``(text, step_tool_names)``. A slug that resolves to no visible workflow is
+    SKIPPED (it cannot be run) and reported by the caller — never a silent no-op.
+    ``notes_char_cap`` bounds each rail's prose contribution (Context Budget Law: an
+    always-on block must have a ceiling).
+    """
+    rails: list[str] = []
+    tools: list[str] = []
+    for slug in slugs:
+        payload, step_tools = workflow_load_result(workflows, slug, async_tools)
+        if payload.get("not_found"):
+            continue
+        lines = [f'YOUR RECIPE (internal, slug "{payload["slug"]}"): {payload["title"]}']
+        if payload.get("description"):
+            lines.append(payload["description"])
+        lines.append("Steps, in order:")
+        for i, st in enumerate(payload["steps"], 1):
+            bits = [f'  {i}. {st["id"]} → {st["tool"]}']
+            if st.get("gate") != "none":
+                bits.append(f'[{st["gate"]}: the user must approve]')
+            if st.get("async_job"):
+                bits.append("[background job — NOT done when the tool returns]")
+            lines.append(" ".join(bits))
+        notes = str(payload.get("notes_md") or "").strip()
+        if notes:
+            if len(notes) > notes_char_cap:
+                notes = notes[:notes_char_cap].rstrip() + " …"
+            lines.append("How to run it:")
+            lines.append(notes)
+        for g in payload.get("guidance", []):
+            lines.append(f"- {g}")
+        rails.append("\n".join(lines))
+        for t in step_tools:
+            if t not in tools:
+                tools.append(t)
+    if not rails:
+        return None, []
+
+    header = (
+        "YOU HAVE A READY-MADE RECIPE FOR THIS JOB. Its ordered steps are below and its "
+        "tools are already available to you — you do NOT need to look it up or load it.\n"
+        "\n"
+        "RUN it when the user asks for the job it covers, AND — this is the case you keep "
+        "missing — when the user simply AGREES to an offer you made (\"yeah\", \"do it\", "
+        "\"sure\", \"go ahead\", \"please\"). Their yes refers to YOUR offer: honour it by "
+        "running these steps, not by inventing a different tool sequence.\n"
+        "\n"
+        "CALL THE TOOLS — DO NOT NARRATE THEM. Describing what you are *about to* do ("
+        "\"first I'll look at the categories, then I'll…\") is NOT doing it, and it leaves "
+        "the user with nothing. When a step is due, CALL its tool in that same turn, then "
+        "tell the user what CHANGED. Chain the steps you can: do not stop after one tool "
+        "and wait to be asked again.\n"
+        "\n"
+        "Do NOT redo a step you already completed in this conversation — look back at what "
+        "you have already called, and continue from the first step still outstanding.\n"
+        "\n"
+        "THE RECIPE IS PRIVATE. Never mention it, its name/slug, its steps, or the word "
+        "\"workflow\" to the user — they are a novelist, not an engineer. Speak only about "
+        "THEIR story: \"let me set up the categories your world tracks\", never \"I'll run "
+        "the vision-to-book workflow\".\n"
+    )
+    return header + "\n\n" + "\n\n".join(rails), tools

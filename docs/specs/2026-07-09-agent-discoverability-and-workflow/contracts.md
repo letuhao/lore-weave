@@ -123,17 +123,27 @@ static default; same `HOT_SEED_TOKEN_BUDGET` ceiling):
 mode_binding: {
   mode: "ask" | "write" | "plan",
   inject_skills: [ <skill code> ],
-  inject_workflows: [ <workflow slug> ],
-  seed_tool_categories: [ <C1 enum> ]
+  inject_workflows: [ <workflow slug> ],   # PINNED — rail rendered into context, step tools pre-activated
+  seed_tool_categories: [ <C1 enum> ],
+  disable_workflows: [ <workflow slug> ]   # subtractive veto, applied LAST (added 2026-07-11, WS-3)
 }
 ```
-Generalizes today's hardcoded `plan→plan_forge`. Effective binding = System default ∪ per-user ∪ per-book
-(tenancy resolution order).
+Generalizes today's hardcoded `plan→plan_forge` (which STAYS in chat-service as the degrade-safe fallback
+when the registry is unreachable). Effective binding = System default ∪ per-user ∪ per-book (tenancy
+resolution order), **minus the union of every tier's `disable_workflows`**.
 
 ---
 
 ### Change log
 - 2026-07-09 — initial freeze (all of C1–C6).
+- 2026-07-11 (**Track C / WS-3**) — **C6 += `disable_workflows`** + the meaning of `inject_workflows` is
+  pinned down as a **PIN** (render the rail into context + pre-activate its step tools), not merely
+  "advertise". Both changes are forced by measurement: a pure ∪ leaves a user unable to turn OFF a System
+  pin (a global flag wearing a setting's clothes — a translator must be able to drop the co-writer rail),
+  and advertising alone provably does NOT work (S06: the right workflow was advertised WITH a steering
+  directive and the agent still improvised, because the user only ever ASSENTS to the agent's own offer —
+  it never "asks"). Response shape gains `sources: {<tier>: {...}}` so the effective value and its source
+  tier are both visible. Shipped + live-proven: `docs/eval/discoverability/2026-07-11-ws3-mode-capability-binding.md`.
 - 2026-07-09 (**Track D**) — **C1 += `research`.** `glossary_web_search` is universal infrastructure
   misfiled under a domain prefix (required args = `query` only; the capability lives in
   provider-registry per the provider-gateway invariant; composition already clients it directly and

@@ -286,6 +286,11 @@ func (s *Server) Router() http.Handler {
 		r.Post("/proposals/{proposal_id}/reject", s.rejectProposal)
 
 		// Workflow proposals (WS-2a — same propose→approve/reject HITL spine)
+		// Mode → capability binding (WS-3 / C6) — a USER setting (own tier or a book
+		// they hold EDIT on); the System tier is seeded + read-only here.
+		r.Get("/mode-bindings/{mode}", s.getModeBinding)
+		r.Put("/mode-bindings/{mode}", s.putModeBinding)
+
 		r.Get("/workflow-proposals", s.listWorkflowProposals)
 		r.Get("/workflow-proposals/{proposal_id}", s.getWorkflowProposal)
 		r.Put("/workflow-proposals/{proposal_id}/approve", s.approveWorkflowProposal)

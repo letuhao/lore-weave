@@ -289,8 +289,17 @@ def resolve_skills_to_inject(
     admin: bool,
     permission_mode: str = "write",
     studio: bool = False,
+    binding_skills: list[str] | None = None,
 ) -> list[str]:
-    """Return skill codes to inject this turn (ordered, deduped)."""
+    """Return skill codes to inject this turn (ordered, deduped).
+
+    ``binding_skills`` (WS-3/C6 ``inject_skills``) is the mode→capability binding's
+    contribution. STRICTLY ADDITIVE and surface-filtered, exactly like the router's
+    additions: it can only GROW the result, never remove a skill the static path
+    selected. Default ``None`` ⇒ byte-identical behavior to before WS-3, which is what
+    keeps every existing caller (and the degrade path, when the registry is down)
+    unchanged.
+    """
     if stream_format != "agui" or disable_tools or not tool_calling_enabled:
         return []
 
@@ -323,10 +332,24 @@ def resolve_skills_to_inject(
     # RAID Wave B2 (07S §5b) — PLAN mode auto-injects the plan_forge skill on the
     # surfaces that allow it (book/editor), even when not pinned, so the model
     # knows the propose→validate→compile flow. Write/ask modes are unchanged.
+    #
+    # WS-3 note: the System-tier `plan` binding now expresses this same rule as DATA
+    # (mode_bindings: plan → inject_skills[plan_forge]). This hardcode STAYS as the
+    # degrade-safe fallback — the binding arrives over HTTP from agent-registry, and a
+    # registry outage must not silently strip plan mode of PlanForge. The two agree; the
+    # union below is idempotent.
     if permission_mode == "plan" and "plan_forge" not in out:
         pf = SYSTEM_SKILLS.get("plan_forge")
         if pf and _skill_visible(pf, active):
             out.append("plan_forge")
+
+    # WS-3 (C6) — the mode→capability binding's skills. Additive + surface-filtered.
+    for code in binding_skills or []:
+        if code in out:
+            continue
+        sk = SYSTEM_SKILLS.get(code)
+        if sk and _skill_visible(sk, active):
+            out.append(code)
     return out
 
 
@@ -345,6 +368,7 @@ async def resolve_skills_to_inject_async(
     user_id: str = "",
     model_source: str = "",
     model_ref: str = "",
+    binding_skills: list[str] | None = None,
 ) -> list[str]:
     """Async twin of ``resolve_skills_to_inject`` — the Intent→Skill Router
     (Part F / F2, docs/plans/2026-07-07-intent-skill-router.md; docs/specs/
@@ -387,6 +411,7 @@ async def resolve_skills_to_inject_async(
         admin=admin,
         permission_mode=permission_mode,
         studio=studio,
+        binding_skills=binding_skills,
     )
     # Same hard gate the sync function itself applies (stream_format/disable_tools/
     # tool_calling_enabled) — `base` is already [] in that case; short-circuiting

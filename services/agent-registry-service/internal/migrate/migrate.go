@@ -471,6 +471,14 @@ CREATE INDEX IF NOT EXISTS idx_workflow_revisions_wf ON workflow_revisions(workf
 -- silent loop). notes_md owns the plain-language vocabulary (no jargon reaches the
 -- user). System-tier: admin-seeded, read-only to users, world-visible. Idempotent.
 --
+-- Re-seeding semantics for System WORKFLOWS: DO UPDATE, not DO NOTHING. A System
+-- workflow is CODE-OWNED (admin-seeded, read-only to users), so this file is its source
+-- of truth and a deploy must be able to CORRECT it. DO NOTHING would mean an
+-- already-seeded row never picks up a fixed rail or fixed wording — the "a migration
+-- never revisits its default" trap, which already bit this effort once (a stale July-9
+-- glossary-bootstrap row silently shadowed the rewritten one). User/book-tier rows are
+-- untouched.
+--
 -- W1 glossary-bootstrap — "set up my world": create the CATEGORIES a book tracks
 -- (kinds), in the correct order (adopt → confirm → read back), NEVER entities-first.
 INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
@@ -488,7 +496,10 @@ INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, 
    ]'::jsonb,
    E'Use this when the user wants to set up their book''s world/lore structure — "set up my world", "what should I track", "make me categories for my story". It creates the CATEGORIES a book tracks (internally: glossary kinds) — Characters, Locations, Cultivation/Power Systems, Organizations, Terms, and so on — NOT the individual people or terms (those come later, once the categories exist).\n\nCRITICAL ORDER — categories FIRST. Never try to add specific characters or terms before the categories exist: proposing an entity of a category that has not been created fails with "unknown kind" and you will loop. Follow the rail: (1) see the ready-made categories and genres, (2) adopt the ones that fit what the user described — this returns a confirmation to apply, it does not change anything yet, (3) the user confirms once and the categories are created, (4) read back and tell them, in plain words, what is now tracked.\n\nStep 2→3: glossary_adopt_standards returns a confirm_token; pass that exact token to glossary_confirm_action at step 3. Pick the genres that fit the story (e.g. a xianxia / cultivation / multi-world tale → the fantasy family plus the cultivation/power angle). If the user named a category the ready-made set lacks, you may add it with glossary_propose_kinds AFTER adopting — but adopt first.\n\nSPEAK PLAINLY the whole time. Say "categories", never "kinds"; "details to track", never "attributes". Never make the user type or understand a category code, a genre code, a token, or an id. At the confirm step, say in their words what you are about to set up — e.g. "I''ll set up Characters, Sects, Cultivation Systems, Techniques, Worlds, and Terms — apply this?" — and wait for their yes. If any step fails, stop and say plainly what did not work; never claim the world is set up when it is not.',
    'published','system')
-ON CONFLICT (slug) WHERE tier = 'system' DO NOTHING;
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
 
 -- W3 entity-triage — "clean up the suggestions": drain the review pile (keep the real
 -- ones, throw out the junk, combine duplicates). The measured S03 failure was the agent
@@ -506,7 +517,85 @@ INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, 
    ]'::jsonb,
    E'Use this when the user wants to clean up / tidy / sort the suggested items in their book — "clean up the suggestions", "keep the good ones", "these are junk", "these two are the same person", "how many are left". The suggested items are the AI-proposed entries awaiting review (internally: draft entities tagged ai-suggested). The job: keep the real ones, throw out the junk, and combine duplicates, so the pile drains to a clean list the user trusts.\n\nEXACTLY WHICH TOOL DOES WHAT — use these, and ONLY these, for the cleanup:\n- glossary_list_ai_suggestions — show the pile. Each item comes back with its entity_id; you will pass those ids to the tools below. Never ask the user for an id.\n- glossary_propose_status_change — KEEP or THROW OUT items, in BATCHES. To keep: call it once with status="active" and entity_ids = all the real ones. To throw out: call it once with status="rejected" and entity_ids = all the junk ones. One confirmation covers the whole batch.\n- glossary_propose_merge — COMBINE duplicates. Call it with winner_id = the one entry to keep and loser_ids = the other entries that are the same thing (they must be the same category). The losers fold into the winner.\n- glossary_propose_reassign_kind — only if an item is filed under the wrong category (uncommon).\nDo NOT use glossary_propose_entity_edit or any rename/edit tool to keep, throw out, or combine — editing a name or a field is NOT triage and will not drain the pile. Renaming "Dracula" to "Count Dracula" does not merge them; use glossary_propose_merge. Do NOT create new items — this is a cleanup.\n\nRail: (1) list the pile and tell the user in plain terms what is there — how many, which look like real people/places, which look empty or junk, which look like the same thing twice; (2) keep the real ones (status_change → active) and throw out the junk (status_change → rejected); (3) combine duplicates (merge winner + losers); (4) list the pile again so the user SEES it shrank, and give an honest count.\n\nSPEAK PLAINLY to the user: say "suggestions" or "items", never "entities"/"drafts"; "keep"/"throw out"/"combine", never "status change"/"reject"/"merge candidate". Give honest counts (e.g. "kept 4, threw out 2, combined 2 into 1 — 5 left"), and never say the pile is clean while items still remain.',
    'published','system')
-ON CONFLICT (slug) WHERE tier = 'system' DO NOTHING;
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
+-- W6 vision-to-book — THE FLAGSHIP SPINE (S06). "I have a story in my head, help me
+-- write it": turn a told vision into a real foundation — world categories, the cast,
+-- how they connect, and an arc plan. This is the rail the write-mode binding PINS, so
+-- the steps sit in context from turn 1. The measured S06 failure was not a missing
+-- tool: glossary-bootstrap was advertised and the steering directive injected, and the
+-- agent STILL improvised (find_tools -> plan_propose_spec) because the user never ASKED
+-- ("yeah do it" — an assent to the agent's OWN offer). A pinned rail removes the need
+-- for the model to recognise a workflow at all. surfaces {book,editor}: a bookless chat
+-- turn must never carry a book-building rail.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','vision-to-book','Turn a story idea into a real book foundation',
+   'Take a story the user is describing and build its foundation — the world''s categories, the cast and key terms, how they connect, and a chapter-by-chapter plan — then draft the opening.',
+   '{book,editor}'::text[], '{}'::jsonb,
+   '[
+     {"id":"see-standards","tool":"glossary_list_system_standards","gate":"none"},
+     {"id":"adopt-categories","tool":"glossary_adopt_standards","gate":"none"},
+     {"id":"apply-categories","tool":"glossary_confirm_action","gate":"confirm","inputs_map":{"confirm_token":"adopt-categories.confirm_token"}},
+     {"id":"read-back","tool":"glossary_book_ontology_read","gate":"none"},
+     {"id":"capture-cast","tool":"glossary_extract_entities_from_doc","gate":"none"},
+     {"id":"save-cast","tool":"glossary_propose_entities","gate":"none"},
+     {"id":"apply-cast","tool":"glossary_confirm_action","gate":"confirm","inputs_map":{"confirm_token":"save-cast.confirm_token"}},
+     {"id":"connect-project","tool":"kg_project_create","gate":"none"},
+     {"id":"connect-people","tool":"kg_project_entities_to_nodes","gate":"none"},
+     {"id":"arc-plan","tool":"plan_propose_spec","gate":"none","async_job":true},
+     {"id":"draft-opening","tool":"book_chapter_create","gate":"none"},
+     {"id":"write-opening","tool":"book_chapter_save_draft","gate":"none"}
+   ]'::jsonb,
+   E'Use this whenever the user is BUILDING their book — telling you their story idea, their world, their characters — and wants it to become something real. It also covers the case where YOU offered to do this and they simply agreed ("yeah", "do it", "sure", "go ahead"): their yes refers to your offer, so run this rail rather than inventing your own sequence.\n\nWHAT IT DOES, in the user''s terms: (1) sets up the CATEGORIES their world tracks (characters, places, power systems, factions, terms), (2) captures the CAST and key terms they have told you about, (3) records HOW THEY CONNECT, (4) turns the story into a chapter-by-chapter PLAN, (5) drafts the opening.\n\nORDER IS LOAD-BEARING — categories BEFORE cast. Proposing a character before its category exists fails with "unknown kind" and you will loop. Never skip ahead to the plan just because it looks like the flashier tool: a plan with no world behind it leaves the user with nothing they can open and read.\n\nStep by step:\n- see-standards / adopt-categories / apply-categories: look at the ready-made categories, adopt the ones that fit what they described (a cultivation/xianxia tale wants Characters, Sects/Organizations, Cultivation Systems, Techniques, Worlds, Terms), then the user confirms ONCE and the categories are created. adopt returns a confirm_token — pass that exact token to glossary_confirm_action.\n- read-back: tell them, in plain words, what is now tracked.\n- capture-cast: feed glossary_extract_entities_from_doc the story AS THE USER TOLD IT (paste what they said — their own description of the people, places, and powers). It returns candidates.\n- save-cast / apply-cast: save the candidates with glossary_propose_entities (their category must be one you just created), then the user confirms once.\n- connect-project / connect-people: create the connections space and put the cast into it, so relationships can be tracked.\n- arc-plan: propose the story plan. This is a BACKGROUND job — it is NOT done when the tool returns. Watch it, and never tell the user the plan is ready before you have seen it finish.\n- draft-opening / write-opening: create the first chapter and save its draft prose. book_chapter_save_draft needs the version returned when the chapter was created.\n\nIf a step fails, STOP and say plainly what did not work. Never claim their world/plan/chapter exists when it does not.\n\nDO NOT NARRATE THE STEPS — RUN THEM. Saying "first I will look at the categories, then I will save them" is not doing it; it leaves the user with nothing. When a step is due, CALL its tool in the same turn, then tell them what CHANGED. Chain the steps you can rather than doing one and waiting to be asked again.
+
+SPEAK PLAINLY — this is the whole point. The user is a novelist, not an engineer. NEVER say to them: workflow, vision-to-book, glossary, ontology, entity, kind, attribute, schema, spec, NovelSystemSpec, PlanForge, pipeline, engine, job, token, or any tool name. This recipe is PRIVATE — never tell them you are running it or name it. Say instead: "the things your world tracks", "your cast", "the categories", "your story plan", "your opening chapter". Narrate what is happening to THEIR STORY, never what is happening to the system.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
+-- WS-3 (C6, agent-discoverability spec) — MODE -> CAPABILITY BINDING. A mode is not just
+-- a nudge: it selects a capability PROFILE (which skills are injected, which workflows are
+-- PINNED into context, which tool categories are hot-seeded). Same 3-tier tenancy as
+-- workflows/skills: System (admin-seeded default), per-user, per-book. The effective
+-- binding is the UNION of the three tiers, minus disable_workflows (the opt-out escape
+-- hatch — a union alone would leave a user unable to turn OFF a System pin, which would
+-- make this a global env-flag masquerading as a user setting).
+CREATE TABLE IF NOT EXISTS mode_bindings (
+  binding_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  tier TEXT NOT NULL CHECK (tier IN ('system','user','book')),
+  owner_user_id UUID,
+  book_id UUID,
+  mode TEXT NOT NULL CHECK (mode IN ('ask','write','plan')),
+  inject_skills TEXT[] NOT NULL DEFAULT '{}',
+  inject_workflows TEXT[] NOT NULL DEFAULT '{}',      -- PINNED: rail rendered into context, step tools pre-activated
+  seed_tool_categories TEXT[] NOT NULL DEFAULT '{}',
+  disable_workflows TEXT[] NOT NULL DEFAULT '{}',     -- subtractive opt-out, applied LAST
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT mode_bindings_scope_key CHECK (
+    (tier = 'system' AND owner_user_id IS NULL AND book_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL AND book_id IS NULL) OR
+    (tier = 'book'   AND book_id IS NOT NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_mode_bindings_owner ON mode_bindings(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_mode_bindings_book ON mode_bindings(book_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mode_bindings_system ON mode_bindings(mode) WHERE tier = 'system';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mode_bindings_user   ON mode_bindings(owner_user_id, mode) WHERE tier = 'user';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mode_bindings_book   ON mode_bindings(book_id, mode) WHERE tier = 'book';
+
+-- System defaults. plan: generalizes the hardcoded plan->plan_forge (the hardcode STAYS in
+-- chat-service as the degrade-safe fallback when the registry is unreachable). write: pins
+-- the flagship rail, so a user who never names a workflow still runs on one.
+INSERT INTO mode_bindings (tier, mode, inject_skills, inject_workflows) VALUES
+  ('system','plan',  '{plan_forge}'::text[], '{}'::text[]),
+  ('system','write', '{}'::text[],           '{vision-to-book}'::text[])
+ON CONFLICT (mode) WHERE tier = 'system' DO NOTHING;
 `
 
 // Up applies the schema. Idempotent; safe to run on every boot.

@@ -8,6 +8,7 @@ Empty pins preserve legacy hot-set + auto-discovery behaviour.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 
 from app.services.token_budget import estimate_tokens, scale_by_window
@@ -16,6 +17,8 @@ from app.services.tool_discovery import (
     surface_hot_domains,
     tool_name,
 )
+
+logger = logging.getLogger(__name__)
 
 ACTIVATED_TOOLS_CAP = 64
 
@@ -129,6 +132,43 @@ class SessionToolPins:
     pinned_legacy: list[str] = field(default_factory=list)
 
 
+def budget_rail_tools(
+    catalog: list[dict],
+    ordered_names: list[str],
+    *,
+    token_budget: int,
+) -> tuple[set[str], list[str]]:
+    """Budget a WORKFLOW RAIL's step tools, keeping them in DECLARED STEP ORDER.
+
+    Returns ``(kept, dropped)``.
+
+    Why not ``budget_names_by_tokens``: that one orders read-tools-first, then by
+    ascending schema size — correct for a surface hot-seed (advertise as many safe
+    tools as fit), but WRONG for a rail. A rail is an ordered recipe whose *write*
+    tools are the ones that persist anything; the read-first ordering would drop
+    exactly those under budget pressure, leaving the agent a rail naming tools it
+    cannot see — a silent no-op of the worst kind (it looks like it should work).
+    Step order is the author's priority order, so honor it: early steps survive, and
+    whatever gets dropped is REPORTED so the caller can log it rather than pretend.
+    """
+    defs = {tool_name(td): td for td in catalog}
+    kept: set[str] = set()
+    dropped: list[str] = []
+    used = 0
+    for nm in ordered_names:
+        td = defs.get(nm)
+        if td is None:
+            kept.add(nm)  # non-catalog (core/frontend) tools are counted elsewhere
+            continue
+        t = _tool_tokens(td)
+        if used + t > token_budget and used > 0:
+            dropped.append(nm)
+            continue
+        kept.add(nm)
+        used += t
+    return kept, dropped
+
+
 def resolve_session_tool_pins(
     session_row,
     *,
@@ -164,11 +204,22 @@ def discovery_seed_for_surface(
     context_length: int | None = None,
     permission_mode: str = "write",
     workflow_step_tools: set[str] | None = None,
+    binding_categories: list[str] | None = None,
+    pinned_step_tools: list[str] | None = None,
 ) -> set[str]:
-    """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated)."""
+    """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
+
+    ``binding_categories`` (WS-3/C6 ``seed_tool_categories``) are unioned into the
+    surface's hot domains — ADDITIVE, and they ride the SAME single
+    ``HOT_SEED_TOKEN_BUDGET`` ceiling as the surface's own domains (never a second,
+    independently-budgeted call: that is the additive-per-domain pattern that caused the
+    2026-07-06 context explosion).
+    """
     hot_domains = surface_hot_domains(
         editor=editor, book_scoped=book_scoped, studio=studio, permission_mode=permission_mode,
     )
+    if binding_categories:
+        hot_domains = set(hot_domains) | set(binding_categories)
     # FIX (context-explosion): token-budget the hot-seed instead of seeding the
     # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
     # session model with a larger real context_length via scale_by_window).
@@ -272,6 +323,23 @@ def discovery_seed_for_surface(
         hot_seed_names=raw_hot_seed,
         workflow_step_tools=workflow_step_tools,
     )
+    # WS-3 (C6) — a PINNED workflow's step tools ride EVERY turn, in both curated and
+    # auto mode. The rail is rendered into the prompt naming these tools by name; if they
+    # weren't advertised the agent would read a recipe it cannot execute (a silent
+    # no-op — the worst failure shape, since it looks like it should work). They are
+    # budgeted in DECLARED STEP ORDER (`budget_rail_tools`), so the early steps always
+    # survive and anything trimmed is reported rather than silently vanishing.
+    if pinned_step_tools:
+        kept, dropped = budget_rail_tools(
+            catalog, list(pinned_step_tools),
+            token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+        )
+        names = names | kept
+        if dropped:
+            logger.warning(
+                "pinned rail step tools dropped by the token budget: %s — the rail names "
+                "tools the agent cannot see", ", ".join(dropped),
+            )
     # CAT-4 Part D — a manually-pinned legacy tool rides every turn of THIS
     # session regardless of curated/auto mode; it bypasses find_tools entirely
     # (the whole point of the escape hatch is that the tool is otherwise

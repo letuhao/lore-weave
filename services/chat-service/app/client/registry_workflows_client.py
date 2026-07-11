@@ -28,6 +28,7 @@ from app.middleware.trace_id import current_trace_id
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "ModeBinding",
     "Workflows",
     "WorkflowsClient",
     "init_workflows_client",
@@ -37,16 +38,56 @@ __all__ = [
 
 
 @dataclass(frozen=True)
+class ModeBinding:
+    """WS-3 (C6) — the resolved mode → capability binding for this turn.
+
+    ``inject_workflows`` are PINNED: their rail is rendered into the prompt and their
+    step tools pre-activated, so the agent never has to *recognise* that a workflow
+    applies (the S06 assent gap). Empty everywhere = no binding = pre-WS-3 behavior.
+    """
+
+    mode: str = ""
+    inject_skills: list[str] = field(default_factory=list)
+    inject_workflows: list[str] = field(default_factory=list)
+    seed_tool_categories: list[str] = field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        return not (self.inject_skills or self.inject_workflows or self.seed_tool_categories)
+
+
+@dataclass(frozen=True)
 class Workflows:
     """Resolved workflows for one turn. Empty = no curated workflows (fallback)."""
 
     workflows: list[dict] = field(default_factory=list)
+    mode_binding: ModeBinding | None = None
 
     def by_slug(self, slug: str) -> dict | None:
         for wf in self.workflows:
             if wf.get("slug") == slug:
                 return wf
         return None
+
+
+def _str_list(v: object) -> list[str]:
+    """Keep only non-blank strings — a malformed registry row can never inject a
+    non-string into the prompt/seed path."""
+    if not isinstance(v, list):
+        return []
+    return [s.strip() for s in v if isinstance(s, str) and s.strip()]
+
+
+def _parse_mode_binding(data: dict) -> ModeBinding | None:
+    raw = data.get("mode_binding")
+    if not isinstance(raw, dict):
+        return None
+    mb = ModeBinding(
+        mode=str(raw.get("mode") or ""),
+        inject_skills=_str_list(raw.get("inject_skills")),
+        inject_workflows=_str_list(raw.get("inject_workflows")),
+        seed_tool_categories=_str_list(raw.get("seed_tool_categories")),
+    )
+    return None if mb.is_empty() else mb
 
 
 _EMPTY = Workflows()
@@ -73,8 +114,16 @@ class WorkflowsClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def get_workflows(self, user_id: str, *, book_id: str = "", surface: str = "") -> Workflows:
-        """GET /internal/workflows — returns Workflows on success, _EMPTY on ANY failure."""
+    async def get_workflows(
+        self, user_id: str, *, book_id: str = "", surface: str = "", mode: str = "",
+    ) -> Workflows:
+        """GET /internal/workflows — returns Workflows on success, _EMPTY on ANY failure.
+
+        ``mode`` (WS-3/C6) rides the SAME fetch: the registry resolves the mode→capability
+        binding server-side and returns it alongside. One hop, one degrade path — a
+        registry outage yields _EMPTY, i.e. no workflows AND no binding, which is exactly
+        the pre-WS-3 behavior.
+        """
         if not user_id:
             return _EMPTY
         params = {"user_id": user_id}
@@ -82,6 +131,8 @@ class WorkflowsClient:
             params["book_id"] = book_id
         if surface:
             params["surface"] = surface
+        if mode:
+            params["mode"] = mode
         tid = current_trace_id()
         headers = {"X-Trace-Id": tid} if tid else None
         try:
@@ -109,7 +160,7 @@ class WorkflowsClient:
             if isinstance(wf, dict) and wf.get("slug") and isinstance(wf.get("slug"), str)
             and isinstance(wf.get("steps"), list)
         ]
-        return Workflows(workflows=clean)
+        return Workflows(workflows=clean, mode_binding=_parse_mode_binding(data))
 
 
 _client: WorkflowsClient | None = None
