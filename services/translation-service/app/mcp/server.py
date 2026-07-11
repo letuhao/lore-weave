@@ -209,7 +209,7 @@ async def translation_coverage(
     meta=require_meta(
         "R", "book",
         synonyms=["segment status", "dirty segments", "what changed",
-                  "needs re-translation", "stale segments"],
+                  "which segments are outdated", "stale segments"],
         tool_name="translation_segment_status",
     ),
 )
@@ -533,7 +533,7 @@ async def translation_save_edited_version(
         undo_hint={"tool": "translation_patch_block",
                    "args": {"note": "re-patch the block with the prior text"}},
         synonyms=["fix block", "correct block", "patch translation",
-                  "edit one paragraph"],
+                  "correct one translated paragraph"],
         tool_name="translation_patch_block",
     ),
 )

@@ -290,8 +290,8 @@ def _mine_estimate(*, scope: str) -> dict[str, Any]:
     meta=require_meta(
         "R", "book",
         synonyms=[
-            "composition work", "writing project", "authoring context", "get work",
-            "compose", "resolve project id", "project id for book",
+            "composition work", "authoring context", "get work",
+            "resolve project id", "the book's authoring workspace",
         ],
         tool_name="composition_get_work",
     ),
@@ -2430,7 +2430,7 @@ async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> d
     ),
     meta=require_meta(
         "A", "user",
-        synonyms=["archive motif", "delete motif", "retire trope", "remove from library"],
+        synonyms=["archive motif", "delete motif", "retire trope", "remove a motif from my library"],
         tool_name="composition_motif_archive",
     ),
 )

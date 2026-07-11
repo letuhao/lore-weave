@@ -86,7 +86,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_provider_inventory",
 		Description: "List the upstream models a configured provider credential currently offers (its live inventory), so the user can pick one to register. Takes a provider_credential_id. No secrets returned.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"inventory", "available models", "provider models", "what models"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"inventory", "models this provider offers", "provider models", "what models"}),
 	}, s.toolProviderInventory)
 
 	// ── Tier R, PAID (universal web research — Track D CD5) ────────────────────
@@ -121,7 +121,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_set_favorite",
 		Description: "Mark a registered model as a favorite (or un-favorite it). Free and reversible.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"favorite", "star model", "pin model", "unfavorite"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"favorite", "mark model as favorite", "pin model", "unfavorite"}),
 	}, s.toolModelSetFavorite)
 
 	registerTool(srv, &mcp.Tool{
@@ -133,7 +133,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_set_default",
 		Description: "Set (or clear) the user's default model for a capability (rerank or embedding). Free and reversible — set it back to the previous default to undo.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"set default", "default model", "make default", "clear default"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"set default", "set my default model", "make default", "clear default"}),
 	}, s.toolModelSetDefault)
 
 	// ── Tier W (confirm_action; descriptor settings.model_delete) ──────────────
