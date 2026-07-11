@@ -11,18 +11,20 @@ import { NodeBadges } from './NodeBadges';
 import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, onOpenRef } = data;
+  const { node, content, overlay, unionState, selected, isHere, onOpenRef } = data;
   const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: false });
   const title = content?.title || `Sc ${node.storyOrder ?? '—'}`;
 
   return (
     <div
       data-testid={`plan-node-scene-${node.id}`}
+      data-here={isHere ? 'true' : undefined}
       style={{ width: node.width }}
       className={cn(
         'select-none rounded border px-1.5 py-1 text-[11px] shadow-sm',
         unionStateClass(unionState),
         selected && 'ring-2 ring-primary',
+        isHere && 'outline outline-2 outline-offset-2 outline-sky-500',
       )}
     >
       <Handle type="target" position={Position.Left} className="!border-0 !bg-transparent" />

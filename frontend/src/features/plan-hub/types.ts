@@ -182,7 +182,15 @@ export interface PlanHubView {
   toggleChapter: (chapterId: string) => void;
 }
 
-/** Props the React Flow canvas takes — a strict subset of PlanHubView (render-only). */
+/** A camera pan request (H2.6/OQ-5). `seq` increments per request so re-focusing the SAME node
+ *  still pans (a bare id wouldn't change ⇒ the effect wouldn't re-run). null ⇒ no pan pending. */
+export interface CameraFocusTarget {
+  nodeId: string;
+  seq: number;
+}
+
+/** Props the React Flow canvas takes — a strict subset of PlanHubView (render-only) + the H2.6
+ *  camera/here inputs. */
 export interface PlanCanvasProps {
   layout: LaneLayout;
   edges: SceneLinkEdge[];
@@ -194,4 +202,9 @@ export interface PlanCanvasProps {
   onSelect: (id: string | null) => void;
   onToggleArc: (arcId: string) => void;
   onToggleChapter: (chapterId: string) => void;
+  /** H2.6 "you are here": the node whose chapter is open in the editor (from the bus active-chapter
+   *  signal). Rendered with a distinct highlight, NOT the selection ring. undefined ⇒ none. */
+  activeNodeId?: string | null;
+  /** OQ-5 camera: when this changes (by `seq`), pan/zoom the canvas to center `nodeId`. */
+  focusTarget?: CameraFocusTarget | null;
 }

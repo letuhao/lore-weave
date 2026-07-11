@@ -185,6 +185,13 @@ describe('PlanCanvas', () => {
     expect(screen.getByTestId('plan-node-chapter-ch-2').textContent).toContain('Ch 3');
   });
 
+  it('marks the active (you-are-here) node with data-here and leaves others unmarked', () => {
+    render(<PlanCanvas {...makeProps({ activeNodeId: 'ch-1' })} />);
+    // ch-1 is the editor's active chapter ⇒ data-here="true"; ch-2 is not ⇒ attribute absent.
+    expect(screen.getByTestId('plan-node-chapter-ch-1').getAttribute('data-here')).toBe('true');
+    expect(screen.getByTestId('plan-node-chapter-ch-2').getAttribute('data-here')).toBeNull();
+  });
+
   it('a chapter branch toggle calls onToggleChapter, not onSelect', () => {
     const onToggleChapter = vi.fn();
     const onSelect = vi.fn();

@@ -1,25 +1,57 @@
-// 24 Plan Hub v2 (H2.1 + H3/H6 integrate) — the `plan-hub` dock panel: the whole package on the
-// graph canvas. Left NAVIGATOR RAIL (H6, the list rendering of the same arc shell) · center graph
-// CANVAS (React Flow, positions from the pure laneLayout — PH14) · right DETAIL DRAWER (H3, opens
-// over the canvas for the selected node). Logic lives in usePlanHub (the controller producing
-// PlanHubView); this file only wires the controller to the three regions and self-registers/titles
-// as a studio panel. Book-scoped (bookId from the studio host).
+// 24 Plan Hub v2 (H2.1 + H3/H6 integrate + H2.6 bus/camera) — the `plan-hub` dock panel: the whole
+// package on the graph canvas. Left NAVIGATOR RAIL (H6, the list rendering of the same arc shell) ·
+// center graph CANVAS (React Flow, positions from the pure laneLayout — PH14) · right DETAIL DRAWER
+// (H3, opens over the canvas for the selected node). Logic lives in usePlanHub (the controller
+// producing PlanHubView); this file wires the controller to the three regions, subscribes the studio
+// bus, and self-registers/titles as a studio panel. Book-scoped (bookId from the studio host).
 //
 // Selection is ONE piece of state (view.selectedId) shared across all three: a canvas node click, a
 // rail row click (onFocusNode), and the drawer all read/write it. A rail/canvas selection whose kind
 // is arc/saga resolves against the SAME shell the rail draws (rollup node id === structure_node id,
-// laneLayout); a chapter/scene resolves via the drawer's per-node fetch. Camera-pan to a focused node
-// is a later phase (OQ-5) — for now onFocusNode selects+opens the drawer without panning.
+// laneLayout); a chapter/scene resolves via the drawer's per-node fetch.
+//
+// H2.6 bus: subscribe the editor's active-chapter signal (focusManuscriptUnit publishes it — verified
+// in StudioHostProvider) → a "you are here" highlight on the node whose chapterId matches. OQ-5 camera:
+// a rail focus pans the canvas to the node (focusNode = select + bump the focus seq). The reverse
+// publish (planHub.selection) is deferred — no consumer reads a Hub-selection bus slice yet.
+import { useCallback, useMemo, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
-import { useStudioHost } from '../host/StudioHostProvider';
+import { useStudioBusSelector, useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 import { usePlanHub } from '@/features/plan-hub/hooks/usePlanHub';
+import type { CameraFocusTarget } from '@/features/plan-hub/types';
 import { PlanCanvas, PlanDrawer, PlanNavigatorRail } from '@/features/plan-hub/components';
 
 export function PlanHubPanel(props: IDockviewPanelProps) {
   useStudioPanel('plan-hub', props.api);
   const { bookId } = useStudioHost();
   const view = usePlanHub(bookId);
+
+  // H2.6 — the editor's active chapter (book-service chapter_id) off the bus. Map it to the Hub node
+  // whose loaded content carries that chapterId; null when nothing's open or its window isn't loaded.
+  const activeChapterId = useStudioBusSelector((s) => s.activeChapterId);
+  const activeNodeId = useMemo(() => {
+    if (!activeChapterId) return null;
+    // Match the CHAPTER node only — the editor's active unit is a chapter, and only chapter nodes
+    // carry a chapter_id (scenes' is null); the kind guard also immunises against any scene-side
+    // denormalisation of chapter_id from picking a scene over its chapter.
+    const hit = Object.entries(view.nodeContent).find(
+      ([, c]) => c.kind === 'chapter' && c.chapterId === activeChapterId,
+    );
+    return hit ? hit[0] : null;
+  }, [activeChapterId, view.nodeContent]);
+
+  // OQ-5 camera — a focus REQUEST (nodeId + monotonically bumped seq so re-focusing the same node
+  // still pans). A rail row focus selects AND pans; a canvas click only selects (already in view).
+  const [focusTarget, setFocusTarget] = useState<CameraFocusTarget | null>(null);
+  const { select } = view;
+  const focusNode = useCallback(
+    (nodeId: string) => {
+      setFocusTarget((prev) => ({ nodeId, seq: (prev?.seq ?? 0) + 1 }));
+      select(nodeId);
+    },
+    [select],
+  );
 
   if (view.error) {
     return (
@@ -38,9 +70,10 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-plan-hub-panel" className="flex h-full w-full min-h-0">
-      {/* H6 — left navigator rail (the same arc shell, react-query DEDUPES the getArcs call). */}
+      {/* H6 — left navigator rail (the same arc shell, react-query DEDUPES the getArcs call). A row
+          click focuses the node on the canvas (pan) — never opens the editor (PH25). */}
       <div className="flex w-48 min-w-0 flex-shrink-0 flex-col border-r bg-muted/20">
-        <PlanNavigatorRail bookId={bookId} onFocusNode={view.select} selectedId={view.selectedId} />
+        <PlanNavigatorRail bookId={bookId} onFocusNode={focusNode} selectedId={view.selectedId} />
       </div>
 
       {/* center graph + the H3 drawer overlay. `relative` so the drawer's `absolute right-0` pins to
@@ -57,6 +90,8 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onSelect={view.select}
           onToggleArc={view.toggleArc}
           onToggleChapter={view.toggleChapter}
+          activeNodeId={activeNodeId}
+          focusTarget={focusTarget}
         />
         {/* Always mounted — PlanDrawer self-hides on a null selection (never conditionally unmount a
             stateful child). onClose clears the selection, which also drops the rail/canvas highlight. */}

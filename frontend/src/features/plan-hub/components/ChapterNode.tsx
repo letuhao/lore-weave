@@ -10,7 +10,7 @@ import { NodeBadges } from './NodeBadges';
 import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, onToggle, onOpenRef } = data;
+  const { node, content, overlay, unionState, selected, isHere, onToggle, onOpenRef } = data;
   // Chapters aren't in conformance.arcs ⇒ no drift badge (isArc:false); pacing IS chapter-keyed.
   const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: true });
   const title = content?.title || `Ch ${node.storyOrder ?? '—'}`;
@@ -18,11 +18,14 @@ function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
   return (
     <div
       data-testid={`plan-node-chapter-${node.id}`}
+      data-here={isHere ? 'true' : undefined}
       style={{ width: node.width }}
       className={cn(
         'select-none rounded-md border px-2 py-1.5 text-xs shadow-sm',
         unionStateClass(unionState),
         selected && 'ring-2 ring-primary',
+        // "You are here" — a distinct sky outline that composes with the selection ring (both can hold).
+        isHere && 'outline outline-2 outline-offset-2 outline-sky-500',
       )}
     >
       <Handle type="target" position={Position.Left} className="!border-0 !bg-transparent" />

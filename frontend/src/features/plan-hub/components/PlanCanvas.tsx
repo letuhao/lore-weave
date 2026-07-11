@@ -4,19 +4,20 @@
 // (the one "where does a node go"); React Flow supplies mechanics only (pan/zoom/hit-test).
 // Fully controlled + read-only: no drag (H5, later), no internal selection (we own it via
 // data.selected), no useEffect (nodes/edges are pure useMemo of props).
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
   MarkerType,
   ReactFlowProvider,
+  useReactFlow,
   type Edge,
   type Node,
   type NodeMouseHandler,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import type { NodePosition, PlanCanvasProps } from '../types';
+import type { CameraFocusTarget, NodePosition, PlanCanvasProps } from '../types';
 import { ArcRollupNode } from './ArcRollupNode';
 import { ChapterNode } from './ChapterNode';
 import { buildLaneNodes, LaneBandNode, LANE_NODE_PREFIX } from './LaneBandLayer';
@@ -33,6 +34,34 @@ const nodeTypes = {
 };
 
 const CONTENT_Z = 10;
+const FOCUS_ZOOM = 1;
+
+/**
+ * Imperatively pans/zooms the viewport to a focused node (OQ-5). Rendered inside <ReactFlow>, so it
+ * can call useReactFlow(). This is a legitimate useEffect: it SYNCHRONIZES an external imperative
+ * API (React Flow's setCenter) with declarative state (focusTarget) — not event-handling. The `seq`
+ * key means re-focusing the same node still pans. A node not in the current layout (collapsed away)
+ * is a no-op — the pan is best-effort, never throws.
+ */
+function CameraController({
+  focusTarget,
+  nodes,
+}: {
+  focusTarget?: CameraFocusTarget | null;
+  nodes: NodePosition[];
+}) {
+  const rf = useReactFlow();
+  const seq = focusTarget?.seq ?? -1;
+  useEffect(() => {
+    if (!focusTarget) return;
+    const n = nodes.find((p) => p.id === focusTarget.nodeId);
+    if (!n) return; // not currently rendered (arc collapsed) — best-effort, no throw
+    rf.setCenter(n.x + n.width / 2, n.y + 20, { zoom: FOCUS_ZOOM, duration: 400 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pan is keyed on the focus REQUEST (seq),
+    // not on every nodes/rf identity change (which would re-pan on unrelated re-renders).
+  }, [seq]);
+  return null;
+}
 
 function PlanCanvasInner(props: PlanCanvasProps) {
   const {
@@ -46,6 +75,8 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     onSelect,
     onToggleArc,
     onToggleChapter,
+    activeNodeId,
+    focusTarget,
   } = props;
 
   const rfNodes = useMemo<Node[]>(() => {
@@ -64,6 +95,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         conformance,
         unionState: unionState[n.id],
         selected: n.id === selectedId,
+        isHere: activeNodeId != null && n.id === activeNodeId,
         onToggle:
           n.shape === 'arc-rollup'
             ? () => onToggleArc(n.id)
@@ -74,7 +106,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, onToggleArc, onToggleChapter]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, onToggleArc, onToggleChapter]);
 
   const rfEdges = useMemo<Edge[]>(
     () =>
@@ -120,6 +152,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
       >
         <Background />
         <Controls showInteractive={false} />
+        <CameraController focusTarget={focusTarget} nodes={layout.nodes} />
       </ReactFlow>
     </div>
   );

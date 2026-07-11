@@ -32,6 +32,9 @@ export interface PlanNodeData {
   /** PH12 two-truths union state; undefined until the join resolves (renders neutral). */
   unionState?: NodeUnionState;
   selected: boolean;
+  /** H2.6 "you are here": this node's chapter is the one open in the editor (bus active-chapter).
+   *  A distinct highlight from `selected` — the two can be true at once. */
+  isHere?: boolean;
   /** chapter ⇒ toggle scene branch; arc-rollup ⇒ expand the lane; scene ⇒ undefined. */
   onToggle?: () => void;
   /** H4.1 canon deep-link seam (PH18). When wired by the orchestrator, the canon badge becomes a
