@@ -70,3 +70,22 @@ export function getConformanceStatus(
     { token },
   );
 }
+
+/** H5 Row-1 write — attach chapter outline nodes to an arc (sets `structure_node_id`). The GUI
+ *  mirror of `composition_arc_assign_chapters` (PH20); book-scoped both sides, EDIT-gated. Idempotent
+ *  bulk set (no OCC/If-Match — not a versioned field write). Returns how many rows changed. */
+export function assignChapters(
+  bookId: string,
+  structureNodeId: string,
+  chapterNodeIds: string[],
+  token: string,
+): Promise<{ assigned: number; structure_node_id: string }> {
+  return apiJson<{ assigned: number; structure_node_id: string }>(
+    `${COMP}/books/${bookId}/arcs/assign-chapters`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ structure_node_id: structureNodeId, chapter_node_ids: chapterNodeIds }),
+    },
+  );
+}

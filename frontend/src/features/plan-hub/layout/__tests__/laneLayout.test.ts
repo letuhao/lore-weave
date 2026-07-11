@@ -4,8 +4,8 @@
 // the PH21 unplanned tray) is a test — the canvas only supplies pan/zoom over these numbers.
 import { describe, expect, it } from 'vitest';
 import {
-  laneLayout, DEFAULT_LAYOUT_OPTIONS as D,
-  type ArcShellNode, type WindowNode,
+  laneLayout, leafLaneAtY, DEFAULT_LAYOUT_OPTIONS as D,
+  type ArcShellNode, type LaneBand, type WindowNode,
 } from '../laneLayout';
 
 const arc = (o: Partial<ArcShellNode> & { id: string }): ArcShellNode => ({
@@ -190,3 +190,33 @@ describe('laneLayout — PH14 (24-H2.2)', () => {
     expect(l.unplanned.every((n) => n.laneId === null)).toBe(true);
   });
 });
+
+describe('leafLaneAtY — H5 drag drop-target (24-H5.1)', () => {
+  // A saga band (non-leaf, y 0..300) containing two leaf arc lanes stacked inside it.
+  const band = (o: Partial<LaneBand> & { id: string; y: number; height: number; isLeaf: boolean }): LaneBand => ({
+    kind: 'arc', depth: 1, title: o.id, chapterY: o.y + 8, sceneY: o.y + 40,
+    contiguous: true, segments: [], collapsed: false, ...o,
+  });
+  const lanes: LaneBand[] = [
+    band({ id: 'saga', kind: 'saga', depth: 0, y: 0, height: 300, isLeaf: false }),
+    band({ id: 'arc-a', y: 10, height: 130, isLeaf: true }),
+    band({ id: 'arc-b', y: 150, height: 130, isLeaf: true }),
+  ];
+
+  it('returns the LEAF lane whose band contains y', () => {
+    expect(leafLaneAtY(lanes, 40)?.id).toBe('arc-a');   // inside arc-a
+    expect(leafLaneAtY(lanes, 200)?.id).toBe('arc-b');  // inside arc-b
+  });
+  it('never returns a non-leaf (saga) band even though it also contains y', () => {
+    // y=5 is inside the saga band but outside both leaf arcs → no leaf target.
+    expect(leafLaneAtY(lanes, 5)).toBeNull();
+  });
+  it('returns null for a y in no leaf band (a gap between lanes / off the canvas)', () => {
+    expect(leafLaneAtY(lanes, 145)).toBeNull(); // gap between arc-a (ends 140) and arc-b (starts 150)
+    expect(leafLaneAtY(lanes, 999)).toBeNull();
+  });
+  it('is half-open [y, y+height): the exact bottom edge belongs to the next lane', () => {
+    expect(leafLaneAtY(lanes, 140)).toBeNull();        // arc-a bottom edge, not inside
+    expect(leafLaneAtY(lanes, 150)?.id).toBe('arc-b'); // arc-b top edge, inside
+  });
+})

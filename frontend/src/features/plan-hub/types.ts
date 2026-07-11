@@ -180,6 +180,10 @@ export interface PlanHubView {
   toggleArc: (arcId: string) => void;
   /** Hide/show a chapter's scene branch (loads the scene window on expand). */
   toggleChapter: (chapterId: string) => void;
+  /** H5 Row-1 (PH20): rebind a chapter to another arc (drag into its lane). Refetches on success. */
+  moveChapterToArc: (chapterId: string, arcId: string) => void;
+  /** A move is in flight (disable further drags / show a subtle busy state). */
+  moving: boolean;
 }
 
 /** A camera pan request (H2.6/OQ-5). `seq` increments per request so re-focusing the SAME node
@@ -207,4 +211,7 @@ export interface PlanCanvasProps {
   activeNodeId?: string | null;
   /** OQ-5 camera: when this changes (by `seq`), pan/zoom the canvas to center `nodeId`. */
   focusTarget?: CameraFocusTarget | null;
+  /** H5 Row-1: a chapter card was dragged into another arc's lane — rebind it (structure_node_id).
+   *  Omitted ⇒ chapters aren't draggable (read-only canvas). */
+  onMoveChapter?: (chapterId: string, arcId: string) => void;
 }

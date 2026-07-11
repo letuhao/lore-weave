@@ -5,9 +5,9 @@
 // rollup, v1; camera-focus default is a later phase) + selectedId. Calls laneLayout ONCE — the
 // single "where does a node go"; nothing here recomputes a position.
 import { useCallback, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
-import { getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
+import { assignChapters, getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
 import { laneLayout } from '../layout/laneLayout';
 import type { CollapseState, NodeContent, PlanHubView } from '../types';
 import { usePlanWindows } from './usePlanWindows';
@@ -112,6 +112,26 @@ export function usePlanHub(bookId: string): PlanHubView {
 
   const select = useCallback((id: string | null) => setSelectedId(id), []);
 
+  // ── H5 Row-1 (PH20): drag a chapter card into another lane → rebind its arc (structure_node_id).
+  // The assign-chapters mirror is an idempotent bulk set (no OCC). On success invalidate every
+  // plan-hub read for this book so the shell (chapter_count/span shift) + the windows + overlay
+  // refetch and laneLayout re-places the card in its new lane. A refetch (not an optimistic patch)
+  // keeps the source of truth server-side; the brief re-place is acceptable for v1 (optimistic is a
+  // later polish). A failed move surfaces via moveChapterError; the card snaps back on the next render.
+  const qc = useQueryClient();
+  const moveMutation = useMutation({
+    mutationFn: (vars: { chapterId: string; arcId: string }) =>
+      assignChapters(bookId, vars.arcId, [vars.chapterId], token!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['plan-hub'] }),
+  });
+  const moveChapterToArc = useCallback(
+    (chapterId: string, arcId: string) => {
+      if (!token) return;
+      moveMutation.mutate({ chapterId, arcId });
+    },
+    [token, moveMutation],
+  );
+
   const loading = (enabled && arcsQuery.isLoading) || windowsResult.loading;
   const error =
     (arcsQuery.error instanceof Error ? arcsQuery.error.message : null) ?? windowsResult.error ?? null;
@@ -129,5 +149,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     select,
     toggleArc,
     toggleChapter,
+    moveChapterToArc,
+    moving: moveMutation.isPending,
   };
 }

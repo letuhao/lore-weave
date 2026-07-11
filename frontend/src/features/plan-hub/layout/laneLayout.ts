@@ -393,3 +393,17 @@ export function laneLayout(
   const height = (bands.length ? Math.max(...bands.map((b) => b.y + b.height)) : opts.padY) + opts.padY;
   return { lanes: bands, nodes, unplanned, width, height };
 }
+
+/**
+ * 24 H5.1 — drag drop-target resolution. The LEAF lane whose vertical band contains `y` (flow
+ * coordinates): the arc a chapter dropped at `y` would bind to. Only LEAF lanes carry chapters (a
+ * saga/parent can't own a chapter directly), so a drop over a non-leaf-only region returns null.
+ * Leaf bands never overlap each other (they stack), so there is at most one hit. Pure + headless —
+ * the whole drag hit-test is unit-testable without React Flow.
+ */
+export function leafLaneAtY(lanes: LaneBand[], y: number): LaneBand | null {
+  for (const lane of lanes) {
+    if (lane.isLeaf && y >= lane.y && y < lane.y + lane.height) return lane;
+  }
+  return null;
+}

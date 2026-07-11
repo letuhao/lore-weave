@@ -13,11 +13,13 @@ import ReactFlow, {
   useReactFlow,
   type Edge,
   type Node,
+  type NodeDragHandler,
   type NodeMouseHandler,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import type { CameraFocusTarget, NodePosition, PlanCanvasProps } from '../types';
+import { leafLaneAtY } from '../layout/laneLayout';
 import { ArcRollupNode } from './ArcRollupNode';
 import { ChapterNode } from './ChapterNode';
 import { buildLaneNodes, LaneBandNode, LANE_NODE_PREFIX } from './LaneBandLayer';
@@ -77,7 +79,11 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     onToggleChapter,
     activeNodeId,
     focusTarget,
+    onMoveChapter,
   } = props;
+
+  // H5 Row-1: only chapters are draggable, and only when a move handler is wired (else read-only).
+  const canDrag = !!onMoveChapter;
 
   const rfNodes = useMemo<Node[]>(() => {
     const laneNodes = buildLaneNodes(layout.lanes, layout.width, onToggleArc);
@@ -85,7 +91,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
       id: n.id,
       type: n.shape,
       position: { x: n.x, y: n.y },
-      draggable: false,
+      draggable: canDrag && n.shape === 'chapter',
       zIndex: CONTENT_Z,
       style: { width: n.width },
       data: {
@@ -106,7 +112,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, onToggleArc, onToggleChapter]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDrag, onToggleArc, onToggleChapter]);
 
   const rfEdges = useMemo<Edge[]>(
     () =>
@@ -135,6 +141,20 @@ function PlanCanvasInner(props: PlanCanvasProps) {
 
   const onPaneClick = useCallback(() => onSelect(null), [onSelect]);
 
+  // H5 Row-1: on drop, resolve the LEAF lane the card landed in (leafLaneAtY, pure). A move to a
+  // DIFFERENT leaf arc than the card's current lane rebinds it; a drop onto its own lane, a non-leaf
+  // gap, or the tray is a no-op (React Flow snaps the card back on the next controlled render).
+  const onNodeDragStop = useCallback<NodeDragHandler>(
+    (_, node) => {
+      if (!onMoveChapter) return;
+      const np = layout.nodes.find((p) => p.id === node.id);
+      if (!np || np.shape !== 'chapter') return;
+      const target = leafLaneAtY(layout.lanes, node.position.y);
+      if (target && target.id !== np.laneId) onMoveChapter(node.id, target.id);
+    },
+    [onMoveChapter, layout],
+  );
+
   return (
     <div className="h-full w-full">
       <ReactFlow
@@ -142,8 +162,13 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         edges={rfEdges}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
+        onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
-        nodesDraggable={false}
+        // React Flow v11: a per-node `draggable:true` does NOT override a global
+        // `nodesDraggable={false}` (it only gates DOWN). So enable dragging globally when a move
+        // handler is wired, and let the per-node `draggable` flag (chapters true, bands/scenes/
+        // rollups false) select WHAT drags. Read-only canvas ⇒ canDrag false ⇒ nothing draggable.
+        nodesDraggable={canDrag}
         nodesConnectable={false}
         elementsSelectable={false}
         fitView

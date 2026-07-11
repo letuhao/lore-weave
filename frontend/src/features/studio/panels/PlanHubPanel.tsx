@@ -92,6 +92,7 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onToggleChapter={view.toggleChapter}
           activeNodeId={activeNodeId}
           focusTarget={focusTarget}
+          onMoveChapter={view.moveChapterToArc}
         />
         {/* Always mounted — PlanDrawer self-hides on a null selection (never conditionally unmount a
             stateful child). onClose clears the selection, which also drops the rail/canvas highlight. */}
