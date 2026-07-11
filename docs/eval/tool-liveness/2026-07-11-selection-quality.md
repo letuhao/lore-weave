@@ -50,13 +50,30 @@ legacy` tools as distractors, but production *excludes* legacy from discovery �
 had been manufacturing misses against already-deprecated siblings. Fixed.
 
 **Faithful re-run (legacy excluded, proxies hidden): 112/143 discoverable (78%) · 31 miss.**
-The remaining 31 are, in order: **inherent ambiguity** (two real tools for one phrase —
-"chapter text", "rename chapter", get-vs-list pairs), which no prose fixes; and a handful of
-**over-generic synonyms** ("remove from library", "default model", "project id for book")
-where a targeted synonym edit would help. Note the destructive near-misses (e.g. "remove
-from library" → `book_delete`) are **confirm-gated** — a wrong destructive pick proposes a
-card the human must approve, so the tier system catches it; these are UX-confusion, not
-data-loss.
+Then a batch of **7 over-generic synonym fixes** (3 services) cleared the last clearly-fixable
+ones → **118/143 discoverable (82%) · 25 miss**. Notably the two **spend-routing** misses were
+fixed: `translation_segment_status` "needs re-translation" (had routed to the retranslate
+ACTION that spends) → "which segments are outdated"; `translation_patch_block` "edit one
+paragraph" (→ `composition_generate`) → "correct one translated paragraph". Plus
+`composition_motif_archive` "remove from library" (→ `book_delete`) → a motif-specific phrase,
+and the settings set/get/favorite confusions.
+
+**The remaining 25 are the floor** — and they are NOT description bugs:
+- **inherent two-home ambiguity** — "chapter text", "rename chapter", "new writing project"
+  (a book *is* a writing project); no prose separates a genuinely two-home request.
+- **get / list / create adjacency** — `arc_get`↔`arc_list`, `authoring_run_get`↔`_list`,
+  `get_work`↔`create_work`, `registry_get_workflow`↔`list_workflows`; the model picks a sibling
+  in the same family (recoverable).
+- **the model being right** — "clean up duplicate entity" → `list_merge_candidates` (you merge
+  duplicates, not delete them).
+- **unavoidably-vague phrases** — "restructure book", "compose pattern", "flesh out entities".
+
+## Session trajectory
+
+`75% (36 miss) → 76% (34, synonym+tag) → 78% (31, dedup+harness) → 82% (25, synonym batch)`.
+82% is the floor under the full-catalog stress test; the residue is genuine product overlap
+(get/list/create families, two chapter representations) that only a design change moves —
+not wording. Destructive near-misses are confirm-gated (UX confusion, not data-loss).
 
 ## Post-fix live re-run (2026-07-11, after WS-D5a + container/gateway rebuild)
 

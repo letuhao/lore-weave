@@ -442,10 +442,10 @@
   },
   {
     "tool": "composition_get_work",
-    "ask": "project id for book",
+    "ask": "the book's authoring workspace",
     "verdict": "MISS",
-    "picked": "book_list",
-    "answer": "book_list"
+    "picked": "composition_create_work",
+    "answer": "composition_create_work"
   },
   {
     "tool": "composition_list_canon_rules",
@@ -470,10 +470,10 @@
   },
   {
     "tool": "composition_motif_archive",
-    "ask": "remove from library",
-    "verdict": "MISS",
-    "picked": "book_delete",
-    "answer": "book_delete"
+    "ask": "remove a motif from my library",
+    "verdict": "HIT",
+    "picked": "composition_motif_archive",
+    "answer": "composition_motif_archive"
   },
   {
     "tool": "composition_motif_bind",
@@ -876,17 +876,17 @@
   },
   {
     "tool": "settings_model_set_default",
-    "ask": "default model",
-    "verdict": "MISS",
-    "picked": "settings_get_defaults",
-    "answer": "settings_get_defaults"
+    "ask": "set my default model",
+    "verdict": "HIT",
+    "picked": "settings_model_set_default",
+    "answer": "settings_model_set_default"
   },
   {
     "tool": "settings_model_set_favorite",
-    "ask": "star model",
-    "verdict": "MISS",
-    "picked": "settings_list_models",
-    "answer": "settings_list_models"
+    "ask": "mark model as favorite",
+    "verdict": "HIT",
+    "picked": "settings_model_set_favorite",
+    "answer": "settings_model_set_favorite"
   },
   {
     "tool": "settings_model_update",
@@ -897,10 +897,10 @@
   },
   {
     "tool": "settings_provider_inventory",
-    "ask": "available models",
-    "verdict": "MISS",
-    "picked": "settings_list_models",
-    "answer": "settings_list_models"
+    "ask": "models this provider offers",
+    "verdict": "HIT",
+    "picked": "settings_provider_inventory",
+    "answer": "settings_provider_inventory"
   },
   {
     "tool": "settings_update_profile",
@@ -939,10 +939,10 @@
   },
   {
     "tool": "translation_patch_block",
-    "ask": "edit one paragraph",
-    "verdict": "MISS",
-    "picked": "composition_generate",
-    "answer": "composition_generate"
+    "ask": "correct one translated paragraph",
+    "verdict": "HIT",
+    "picked": "translation_patch_block",
+    "answer": "translation_patch_block"
   },
   {
     "tool": "translation_retranslate_dirty",
@@ -960,10 +960,10 @@
   },
   {
     "tool": "translation_segment_status",
-    "ask": "needs re-translation",
-    "verdict": "MISS",
-    "picked": "translation_retranslate_dirty",
-    "answer": "translation_retranslate_dirty"
+    "ask": "which segments are outdated",
+    "verdict": "HIT",
+    "picked": "translation_segment_status",
+    "answer": "translation_segment_status"
   },
   {
     "tool": "translation_set_active_version",
