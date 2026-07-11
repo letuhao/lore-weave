@@ -202,6 +202,9 @@ func (s *Server) newMCPServer() *mcp.Server {
 	// mcp_actions.go.
 	s.registerActionProposeTools(srv)
 
+	// ── W10-M1 world-container tools (Tier-R reads + Tier-A create/move) ──
+	s.registerWorldTools(srv)
+
 	return srv
 }
 

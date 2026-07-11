@@ -75,31 +75,11 @@ func (s *Server) createWorld(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	var worldID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-INSERT INTO worlds(owner_user_id, name, description)
-VALUES($1,$2,$3)
-RETURNING id
-`, ownerID, in.Name, nullableDescription(in.Description)).Scan(&worldID); err != nil {
+	// world + hidden bible book + sort_order-0 bible chapter (shared with the
+	// world_create MCP tool via createWorldCore, so both paths provision identically).
+	worldID, _, _, err := s.createWorldCore(ctx, tx, ownerID, in.Name, in.Description)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create world")
-		return
-	}
-
-	// The world's bible book: a standalone book attached to this world, holding
-	// the hidden sort_order-0 bible chapter. It is grouped INTO the world it
-	// anchors (world_id set), so the world is non-empty from creation.
-	var bibleBookID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-INSERT INTO books(owner_user_id, title, description, world_id, is_bible)
-VALUES($1,$2,$3,$4,true)
-RETURNING id
-`, ownerID, in.Name+" — World Bible", "Auto-created world bible (hidden).", worldID).Scan(&bibleBookID); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create world bible book")
-		return
-	}
-
-	if _, err := provisionBibleChapter(ctx, tx, bibleBookID, ownerID); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to provision world bible chapter")
 		return
 	}
 

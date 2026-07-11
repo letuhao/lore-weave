@@ -196,6 +196,7 @@ func (s *Server) Router() http.Handler {
 		// G4 (W2) — world membership for the knowledge-service world-rollup
 		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
 		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
+		r.Get("/worlds/{world_id}/bible", s.getInternalWorldBible)               // W10-M1 world→bible resolution (world-native lore authoring)
 		r.Get("/books/{book_id}/reading-position", s.getInternalReadingPosition) // W11 reader spoiler cutoff (§4.1)
 		r.Get("/book/jobs", s.reconcileImportJobs)                               // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal)    // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
@@ -3385,23 +3386,23 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 // conformance-status read polls to compute dirtiness (prose_drift / index_stale)
 // without a stored dirty bit. Mirrors postInternalChapterSortOrders' contract:
 //
-//	Request:  { "chapter_ids": [uuid, ...] }
-//	Response: { "markers": { "<uuid>": { "published_revision_id": uuid|null,
-//	                                     "last_parsed_revision_id": uuid|null,
-//	                                     "parse_version": int,
-//	                                     "editorial_status": "draft"|"published" } } }
+//		Request:  { "chapter_ids": [uuid, ...] }
+//		Response: { "markers": { "<uuid>": { "published_revision_id": uuid|null,
+//		                                     "last_parsed_revision_id": uuid|null,
+//		                                     "parse_version": int,
+//		                                     "editorial_status": "draft"|"published" } } }
 //
-//   - Empty list → 200 with an empty markers map.
-//   - Cap at 200 ids per call; oversized → 422.
-//   - BOOK-SCOPED by the path {book_id}: ids not in that book (or not active) are
-//     silently dropped — the query filters on book_id, so a caller passing a
-//     wrong book_id gets no cross-book leak (the token authenticates the caller
-//     service; the book_id scope is the tenancy defense at this layer, with the
-//     E0 grant enforced upstream at composition's VIEW-gated status route).
-//   - parse_version is the IX-4 CHAPTER SCALAR: MAX(parse_version) over the
-//     chapter's ACTIVE scenes rows (0 when a chapter has none yet).
-//   - Scan errors surface via scan_error_count (best-effort partial response);
-//     iterator-level errors return 500.
+//	  - Empty list → 200 with an empty markers map.
+//	  - Cap at 200 ids per call; oversized → 422.
+//	  - BOOK-SCOPED by the path {book_id}: ids not in that book (or not active) are
+//	    silently dropped — the query filters on book_id, so a caller passing a
+//	    wrong book_id gets no cross-book leak (the token authenticates the caller
+//	    service; the book_id scope is the tenancy defense at this layer, with the
+//	    E0 grant enforced upstream at composition's VIEW-gated status route).
+//	  - parse_version is the IX-4 CHAPTER SCALAR: MAX(parse_version) over the
+//	    chapter's ACTIVE scenes rows (0 when a chapter has none yet).
+//	  - Scan errors surface via scan_error_count (best-effort partial response);
+//	    iterator-level errors return 500.
 func (s *Server) postInternalChapterCanonMarkers(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {

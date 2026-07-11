@@ -43,13 +43,19 @@ describe('parseProviders (C-GW env-driven registry)', () => {
     expect(ps[0]).toEqual({ name: 'myprov', mcpUrl: 'http://m:9000/mcp', prefix: 'my_' });
   });
 
-  it('resolves knowledge extraPrefixes (kg_, story_) by name so kg_* + story_* tools are allowed (HIGH-1)', () => {
+  it('resolves knowledge extraPrefixes (kg_, story_, lore_) by name so kg_* + story_* + lore_* tools are allowed (HIGH-1; lore_ = W11-M2 reader tools)', () => {
     const ps = parseProviders('knowledge=http://k:8092/mcp', jest.fn());
     expect(ps[0].prefix).toBe('memory_');
-    expect(ps[0].extraPrefixes).toEqual(['kg_', 'story_']);
+    expect(ps[0].extraPrefixes).toEqual(['kg_', 'story_', 'lore_']);
     // defaults path carries the same extras
     const def = parseProviders(undefined, jest.fn());
-    expect(def[0].extraPrefixes).toEqual(['kg_', 'story_']);
+    expect(def[0].extraPrefixes).toEqual(['kg_', 'story_', 'lore_']);
+  });
+
+  it('resolves book extraPrefixes (world_) so the W10-M1 world-container tools are federated, not dropped', () => {
+    const ps = parseProviders('book=http://b:8082/mcp', jest.fn());
+    expect(ps[0].prefix).toBe('book_');
+    expect(ps[0].extraPrefixes).toEqual(['world_']);
   });
 
   it('resolves composition extraPrefixes (plan_) for PlanForge MCP tools', () => {
