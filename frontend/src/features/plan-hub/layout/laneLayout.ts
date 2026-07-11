@@ -427,3 +427,18 @@ export function chapterAtPoint(
   }
   return null;
 }
+
+/**
+ * 24 H5.2 — the arc-band drag drop target. The INNERMOST band whose vertical range contains `y`.
+ * Bands NEST (a saga's band wraps its arcs'), so the deepest hit is the most specific target: a drop
+ * over a nested arc targets that arc, not its saga. Returns null off every band. Pure + headless —
+ * the canvas reports only WHICH band was hit; the controller (which holds the shell's parent_id /
+ * rank) decides whether that means "nest under it" or "become its next sibling".
+ */
+export function bandAtY(lanes: LaneBand[], y: number): LaneBand | null {
+  let hit: LaneBand | null = null;
+  for (const b of lanes) {
+    if (y >= b.y && y < b.y + b.height && (!hit || b.depth > hit.depth)) hit = b;
+  }
+  return hit;
+}

@@ -16,8 +16,13 @@ import type { LaneBandData } from './nodePresentation';
  *  arc-rollup CONTENT node of a collapsed arc; prefixing keeps RF node ids unique. */
 export const LANE_NODE_PREFIX = 'lane:';
 
+/** H5 Row-2 — the band's DRAG HANDLE. The band body stays pointer-transparent (so the pane still
+ *  pans through it and node clicks aren't stolen), so React Flow is told to start an arc-band drag
+ *  ONLY from the header strip via this class (node.dragHandle). */
+export const LANE_DRAG_HANDLE_CLASS = 'plan-lane-handle';
+
 function LaneBandInner({ data }: NodeProps<LaneBandData>) {
-  const { band, onToggleArc } = data;
+  const { band, onToggleArc, draggable } = data;
 
   return (
     <div
@@ -28,7 +33,14 @@ function LaneBandInner({ data }: NodeProps<LaneBandData>) {
         band.collapsed && 'opacity-70',
       )}
     >
-      <div className="pointer-events-auto flex w-max max-w-full items-center gap-1 rounded-br-md rounded-tl-md border-b border-r border-border/50 bg-background/80 px-2 py-0.5 text-[11px] font-medium">
+      <div
+        data-testid={`plan-lane-header-${band.id}`}
+        className={cn(
+          'pointer-events-auto flex w-max max-w-full items-center gap-1 rounded-br-md rounded-tl-md border-b border-r border-border/50 bg-background/80 px-2 py-0.5 text-[11px] font-medium',
+          // Only an ARC band drags (a saga cannot be parented — the server rejects it).
+          draggable && `${LANE_DRAG_HANDLE_CLASS} cursor-grab active:cursor-grabbing`,
+        )}
+      >
         <button
           type="button"
           data-testid={`plan-lane-toggle-${band.id}`}
@@ -67,18 +79,26 @@ export function buildLaneNodes(
   lanes: LaneBand[],
   width: number,
   onToggleArc: (arcId: string) => void,
+  draggableArcs = false,
 ): Node<LaneBandData>[] {
-  return lanes.map((band) => ({
-    id: `${LANE_NODE_PREFIX}${band.id}`,
-    type: 'lane-band',
-    position: { x: 0, y: band.y },
-    data: { band, onToggleArc },
-    draggable: false,
-    selectable: false,
-    connectable: false,
-    deletable: false,
-    focusable: false,
-    zIndex: band.depth,
-    style: { width, height: band.height, pointerEvents: 'none' },
-  }));
+  return lanes.map((band) => {
+    // H5 Row-2: only ARC bands drag. A saga can never be given a parent (the server rejects it), so
+    // dragging one could only ever fail — don't offer the affordance.
+    const draggable = draggableArcs && band.kind === 'arc';
+    return {
+      id: `${LANE_NODE_PREFIX}${band.id}`,
+      type: 'lane-band',
+      position: { x: 0, y: band.y },
+      data: { band, onToggleArc, draggable },
+      draggable,
+      // Drag starts ONLY on the header strip — the body stays pointer-transparent so the pane pans.
+      dragHandle: draggable ? `.${LANE_DRAG_HANDLE_CLASS}` : undefined,
+      selectable: false,
+      connectable: false,
+      deletable: false,
+      focusable: false,
+      zIndex: band.depth,
+      style: { width, height: band.height, pointerEvents: 'none' },
+    };
+  });
 }

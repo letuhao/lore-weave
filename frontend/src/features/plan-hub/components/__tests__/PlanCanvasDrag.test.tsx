@@ -139,3 +139,45 @@ describe('PlanCanvas scene drag-to-reparent (H5 Row-4)', () => {
     expect(() => captured.onNodeDragStop!({}, { id: 's1', position: { x: 260, y: 30 } })).not.toThrow();
   });
 });
+
+describe('PlanCanvas arc-band drag (H5 Row-2)', () => {
+  beforeEach(() => { captured.onNodeDragStop = undefined; });
+
+  it('dropping an arc band on ANOTHER band reports that band as the target (controller decides nest/sibling)', () => {
+    const onMoveArc = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveArc })} />);
+    // The band's RF node id carries the `lane:` prefix; arc-a dropped into arc-b's band (y 150..280).
+    captured.onNodeDragStop!({}, { id: 'lane:arc-a', position: { x: 0, y: 200 } });
+    expect(onMoveArc).toHaveBeenCalledWith('arc-a', 'arc-b');
+  });
+
+  it('dropping a band back on ITSELF is a no-op', () => {
+    const onMoveArc = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveArc })} />);
+    captured.onNodeDragStop!({}, { id: 'lane:arc-a', position: { x: 0, y: 40 } }); // still inside arc-a
+    expect(onMoveArc).not.toHaveBeenCalled();
+  });
+
+  it('a band dropped off every band is a no-op', () => {
+    const onMoveArc = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveArc })} />);
+    captured.onNodeDragStop!({}, { id: 'lane:arc-a', position: { x: 0, y: 999 } });
+    expect(onMoveArc).not.toHaveBeenCalled();
+  });
+
+  it('a band drag never fires the chapter/scene handlers (prefix routing)', () => {
+    const onMoveArc = vi.fn();
+    const onMoveChapter = vi.fn();
+    const onMoveScene = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveArc, onMoveChapter, onMoveScene })} />);
+    captured.onNodeDragStop!({}, { id: 'lane:arc-a', position: { x: 0, y: 200 } });
+    expect(onMoveArc).toHaveBeenCalledWith('arc-a', 'arc-b');
+    expect(onMoveChapter).not.toHaveBeenCalled();
+    expect(onMoveScene).not.toHaveBeenCalled();
+  });
+
+  it('without an onMoveArc handler a band drop is a no-op (read-only bands)', () => {
+    render(<PlanCanvas {...makeProps()} />);
+    expect(() => captured.onNodeDragStop!({}, { id: 'lane:arc-a', position: { x: 0, y: 200 } })).not.toThrow();
+  });
+});

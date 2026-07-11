@@ -8,7 +8,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import {
-  assignChapters, getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks, reorderNode,
+  assignChapters, getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks, moveArc, reorderNode,
 } from '../api';
 import { laneLayout } from '../layout/laneLayout';
 import type { CollapseState, NodeContent, PlanHubView } from '../types';
@@ -169,16 +169,58 @@ export function usePlanHub(bookId: string): PlanHubView {
     [token, windowContent, moveSceneMutation],
   );
 
-  // A failed move surfaces to the panel. A 412 is the OCC conflict: the reload already fired
-  // (onSettled), so the message tells the user the canvas re-synced rather than lost their edit.
+  // ── H5 Row-2 (PH20): drag an ARC band onto another band → move it in the structure tree. The
+  // CANVAS only reports which band was hit; the DECISION lives here because it needs the shell's
+  // parent_id/rank: a drop on a saga or a parent arc NESTS under it (append as its last child); a
+  // drop on a LEAF arc makes the dragged arc that leaf's next SIBLING. Cycle/depth>2/parented-saga
+  // are the server's rules (clean 4xx → moveError); we only guard the two cases that would make a
+  // guaranteed-pointless call: dropping an arc on itself, or into its own subtree.
+  const shellNodes = arcsQuery.data?.arcs ?? [];
+  const moveArcMutation = useMutation({
+    mutationFn: (vars: { arcId: string; targetId: string }) => {
+      const target = shellNodes.find((n) => n.id === vars.targetId);
+      if (!target) throw new Error('target arc not loaded');
+      const childrenOf = (id: string) => shellNodes.filter((n) => n.parent_id === id);
+      const byRank = <T extends { rank: string; id: string }>(a: T, b: T) =>
+        a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.id < b.id ? -1 : 1;
+
+      const kids = childrenOf(target.id);
+      const nest = target.kind === 'saga' || kids.length > 0;
+      const body = nest
+        ? {
+            // append as the target's LAST child (byte-order rank, matching the server's collation)
+            new_parent_arc_id: target.id,
+            after_id: kids.length ? [...kids].sort(byRank)[kids.length - 1].id : null,
+          }
+        : { new_parent_arc_id: target.parent_id, after_id: target.id }; // become the leaf's next sibling
+      return moveArc(vars.arcId, body, token!);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['plan-hub'] }),
+  });
+  const moveArcTo = useCallback(
+    (arcId: string, targetId: string) => {
+      if (!token || arcId === targetId) return;
+      // Dropping an arc into its OWN subtree is a cycle — the server rejects it; skip the round-trip.
+      const parentOf = (id: string) => shellNodes.find((n) => n.id === id)?.parent_id ?? null;
+      for (let p = parentOf(targetId), hops = 0; p && hops < 8; p = parentOf(p), hops++) {
+        if (p === arcId) return;
+      }
+      moveArcMutation.mutate({ arcId, targetId });
+    },
+    [token, shellNodes, moveArcMutation],
+  );
+
+  // A failed move surfaces to the panel. A 412 is the OCC conflict (scene reorder): the reload
+  // already fired (onSettled), so the message says the canvas re-synced rather than lost the edit.
+  // An arc move has no version — its failures are the server's structural rules (cycle / depth>2).
   const moveError = useMemo(() => {
-    const e = (moveSceneMutation.error ?? moveMutation.error) as
+    const e = (moveSceneMutation.error ?? moveArcMutation.error ?? moveMutation.error) as
       | (Error & { status?: number })
       | null;
     if (!e) return null;
     if (e.status === 412) return 'That node changed elsewhere — the canvas reloaded. Try the move again.';
     return e.message || 'Move failed.';
-  }, [moveSceneMutation.error, moveMutation.error]);
+  }, [moveSceneMutation.error, moveArcMutation.error, moveMutation.error]);
 
   const loading = (enabled && arcsQuery.isLoading) || windowsResult.loading;
   const error =
@@ -199,7 +241,8 @@ export function usePlanHub(bookId: string): PlanHubView {
     toggleChapter,
     moveChapterToArc,
     moveSceneToChapter,
-    moving: moveMutation.isPending || moveSceneMutation.isPending,
+    moveArcTo,
+    moving: moveMutation.isPending || moveSceneMutation.isPending || moveArcMutation.isPending,
     moveError,
   };
 }

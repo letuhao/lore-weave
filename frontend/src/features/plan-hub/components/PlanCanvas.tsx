@@ -19,7 +19,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import type { CameraFocusTarget, NodePosition, PlanCanvasProps } from '../types';
-import { chapterAtPoint, leafLaneAtY } from '../layout/laneLayout';
+import { bandAtY, chapterAtPoint, leafLaneAtY } from '../layout/laneLayout';
 import { ArcRollupNode } from './ArcRollupNode';
 import { ChapterNode } from './ChapterNode';
 import { buildLaneNodes, LaneBandNode, LANE_NODE_PREFIX } from './LaneBandLayer';
@@ -81,15 +81,17 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     focusTarget,
     onMoveChapter,
     onMoveScene,
+    onMoveArc,
   } = props;
 
   // H5: a node kind is draggable only when its move handler is wired (else the canvas is read-only).
   const canDragChapter = !!onMoveChapter;
   const canDragScene = !!onMoveScene;
-  const canDrag = canDragChapter || canDragScene;
+  const canDragArc = !!onMoveArc;
+  const canDrag = canDragChapter || canDragScene || canDragArc;
 
   const rfNodes = useMemo<Node[]>(() => {
-    const laneNodes = buildLaneNodes(layout.lanes, layout.width, onToggleArc);
+    const laneNodes = buildLaneNodes(layout.lanes, layout.width, onToggleArc, canDragArc);
     const contentNodes: Node<PlanNodeData>[] = layout.nodes.map((n: NodePosition) => ({
       id: n.id,
       type: n.shape,
@@ -116,7 +118,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, onToggleArc, onToggleChapter]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter]);
 
   const rfEdges = useMemo<Edge[]>(
     () =>
@@ -152,8 +154,18 @@ function PlanCanvasInner(props: PlanCanvasProps) {
   //   • SCENE (Row-4) → the CHAPTER card it landed on (chapterAtPoint). The controller decides
   //     whether that's a real move (it owns the scene's current parent + version for OCC); a drop on
   //     no chapter is a no-op.
+  //   • ARC BAND (Row-2) → the band it landed on (bandAtY, innermost). The controller decides
+  //     nest-vs-sibling (it holds the shell's parent_id + rank). Dropping on itself is a no-op.
   const onNodeDragStop = useCallback<NodeDragHandler>(
     (_, node) => {
+      // Bands carry the `lane:` prefix and are NOT in layout.nodes (they're the background layer).
+      if (node.id.startsWith(LANE_NODE_PREFIX)) {
+        if (!onMoveArc) return;
+        const arcId = node.id.slice(LANE_NODE_PREFIX.length);
+        const target = bandAtY(layout.lanes, node.position.y);
+        if (target && target.id !== arcId) onMoveArc(arcId, target.id);
+        return;
+      }
       const np = layout.nodes.find((p) => p.id === node.id);
       if (!np) return;
       const { x, y } = node.position;
@@ -169,7 +181,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         if (target) onMoveScene(node.id, target.id);
       }
     },
-    [onMoveChapter, onMoveScene, layout],
+    [onMoveChapter, onMoveScene, onMoveArc, layout],
   );
 
   return (

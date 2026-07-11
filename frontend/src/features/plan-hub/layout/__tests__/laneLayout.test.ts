@@ -4,7 +4,7 @@
 // the PH21 unplanned tray) is a test — the canvas only supplies pan/zoom over these numbers.
 import { describe, expect, it } from 'vitest';
 import {
-  laneLayout, leafLaneAtY, chapterAtPoint, DEFAULT_LAYOUT_OPTIONS as D,
+  laneLayout, leafLaneAtY, chapterAtPoint, bandAtY, DEFAULT_LAYOUT_OPTIONS as D,
   type ArcShellNode, type LaneBand, type NodePosition, type WindowNode,
 } from '../laneLayout';
 
@@ -248,5 +248,30 @@ describe('chapterAtPoint — H5 Row-4 scene drop-target (24-H5.4)', () => {
   });
   it('returns null when the point is off every card', () => {
     expect(chapterAtPoint(nodes, 999, 999)).toBeNull();
+  });
+})
+
+describe('bandAtY — H5 Row-2 arc-band drop target (24-H5.2)', () => {
+  const band = (o: Partial<LaneBand> & { id: string; y: number; height: number; depth: number }): LaneBand => ({
+    kind: 'arc', title: o.id, chapterY: o.y + 8, sceneY: o.y + 40, isLeaf: true,
+    contiguous: true, segments: [], collapsed: false, ...o,
+  });
+  // A saga band (depth 0, y 0..300) WRAPPING two nested arc bands — the real nesting geometry.
+  const lanes: LaneBand[] = [
+    band({ id: 'saga', kind: 'saga', depth: 0, y: 0, height: 300, isLeaf: false }),
+    band({ id: 'arc-a', depth: 1, y: 30, height: 120 }),
+    band({ id: 'arc-b', depth: 1, y: 160, height: 120 }),
+  ];
+
+  it('returns the INNERMOST band containing y — a nested arc wins over its wrapping saga', () => {
+    expect(bandAtY(lanes, 60)?.id).toBe('arc-a');
+    expect(bandAtY(lanes, 200)?.id).toBe('arc-b');
+  });
+  it('falls back to the saga where only IT covers y (its header strip / the inter-arc gap)', () => {
+    expect(bandAtY(lanes, 10)?.id).toBe('saga');  // above arc-a, inside the saga
+    expect(bandAtY(lanes, 155)?.id).toBe('saga'); // the gap between arc-a and arc-b
+  });
+  it('returns null off every band', () => {
+    expect(bandAtY(lanes, 999)).toBeNull();
   });
 })

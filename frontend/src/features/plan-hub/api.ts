@@ -71,6 +71,23 @@ export function getConformanceStatus(
   );
 }
 
+/** H5 Row-2 write — move an ARC in the structure tree (the `composition_arc_move` mirror, PH20).
+ *  Places `arcId` under `new_parent_arc_id` (null = a root) AFTER `after_id` (null = first). The
+ *  server computes the fractional rank AND recomputes the moved subtree's `depth` in one txn; a
+ *  cycle, a depth>2, a cross-book parent, or a parented saga come back as a clean 4xx conflict
+ *  (never a 500), so the client need not re-implement those rules. No OCC — a structural move is
+ *  guarded by the DB's constraints, not a row version. */
+export function moveArc(
+  arcId: string,
+  body: { new_parent_arc_id: string | null; after_id: string | null },
+  token: string,
+): Promise<{ id: string; parent_id: string | null; depth: number }> {
+  return apiJson<{ id: string; parent_id: string | null; depth: number }>(
+    `${COMP}/arcs/${arcId}/move`,
+    { method: 'POST', token, body: JSON.stringify(body) },
+  );
+}
+
 /** H5 Row-4 write — re-parent / re-rank an outline node (the drag-reorder mirror, PH20). Places
  *  `nodeId` under `newParentId` directly AFTER `afterId` (null = first child); the server computes
  *  the fractional rank, inherits the new chapter's `chapter_id` for a re-parented scene, and

@@ -185,6 +185,10 @@ export interface PlanHubView {
   /** H5 Row-4 (PH20): re-parent a scene under another chapter (drag onto its card). OCC'd on the
    *  scene's version (If-Match → 412 reload). A drop on its OWN chapter is a no-op. */
   moveSceneToChapter: (sceneId: string, chapterId: string) => void;
+  /** H5 Row-2 (PH20): move an ARC in the structure tree by dropping its band on another band —
+   *  nest under a saga/parent arc, or become a leaf arc's next sibling. Cycle/depth are the
+   *  server's rules (clean 4xx → moveError). */
+  moveArcTo: (arcId: string, targetId: string) => void;
   /** A move is in flight (disable further drags / show a subtle busy state). */
   moving: boolean;
   /** The last move's failure (incl. the 412 "changed elsewhere — reloaded" recovery); null when ok. */
@@ -223,4 +227,8 @@ export interface PlanCanvasProps {
    *  The canvas only resolves the TARGET; the controller decides whether it's a real move (it owns
    *  the scene's current parent + version). Omitted ⇒ scenes aren't draggable. */
   onMoveScene?: (sceneId: string, chapterId: string) => void;
+  /** H5 Row-2: an ARC band was dragged (by its header) onto another band. The canvas reports only
+   *  which band was hit; the controller decides nest-vs-sibling (it holds parent_id + rank).
+   *  Omitted ⇒ bands aren't draggable. Saga bands never drag (a saga cannot be parented). */
+  onMoveArc?: (arcId: string, targetId: string) => void;
 }

@@ -47,6 +47,8 @@ export interface PlanNodeData {
 export interface LaneBandData {
   band: LaneBand;
   onToggleArc: (arcId: string) => void;
+  /** H5 Row-2: this band can be dragged (by its header) to move the arc. Sagas never drag. */
+  draggable?: boolean;
 }
 
 /**
