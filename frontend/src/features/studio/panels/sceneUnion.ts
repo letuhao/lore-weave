@@ -72,7 +72,7 @@ export function joinSceneRows(
       });
     } else {
       rows.push({
-        shape: 'index_only', key: `idx:${s.id}`, index: s, spec: null,
+        shape: 'index_only', key: `idx:${s.scene_id}`, index: s, spec: null,
         chapterId: s.chapter_id, sortOrder: s.sort_order,
         // a back-link that WAS set but doesn't resolve to an unclaimed spec = anchor lost
         // (distinct from never-decompiled, where source_scene_id is null)

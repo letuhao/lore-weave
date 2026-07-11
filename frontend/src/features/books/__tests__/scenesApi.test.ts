@@ -42,7 +42,7 @@ describe('booksApi.listScenes (22-C1)', () => {
   it('Scene type carries the identity/join fields (compile-time contract)', () => {
     // A NULL source_scene_id is the "written, not decompiled" union-row shape (BPS-13).
     const s: Scene = {
-      id: 's1', book_id: 'b1', chapter_id: 'c1', sort_order: 0, title: null,
+      scene_id: 's1', book_id: 'b1', chapter_id: 'c1', sort_order: 0, title: null,
       path: '/0', leaf_text: 'x', content_hash: 'h', source_scene_id: null,
       parse_version: 1, lifecycle_state: 'active',
     };

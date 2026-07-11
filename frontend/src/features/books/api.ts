@@ -73,7 +73,10 @@ export type ChapterPage = {
 // composition's spec (`source_scene_id → outline_node.id`); NULL ⇒ "written, not decompiled"
 // (or anchor lost) — the union row shape the scene-browser renders (spec 22 §GUI, BPS-13).
 export type Scene = {
-  id: string;
+  // book-service's public scene list names the identity `scene_id` (NOT `id`) — the row's PK is
+  // exposed under that key so it never collides with `source_scene_id` (the spec node it links to).
+  // Matching the wire name here is load-bearing: a mismatch renders every row with a `undefined` key.
+  scene_id: string;
   book_id: string;
   chapter_id: string;
   sort_order: number;

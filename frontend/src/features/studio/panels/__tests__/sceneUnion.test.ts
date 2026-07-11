@@ -4,7 +4,7 @@ import type { Scene } from '@/features/books/api';
 import type { OutlineNode } from '@/features/composition/types';
 
 const scene = (o: Partial<Scene>): Scene => ({
-  id: 'sc', book_id: 'b', chapter_id: 'ch1', sort_order: 0, title: null, path: '/0',
+  scene_id: 'sc', book_id: 'b', chapter_id: 'ch1', sort_order: 0, title: null, path: '/0',
   leaf_text: '', content_hash: 'h', source_scene_id: null, parse_version: 1,
   lifecycle_state: 'active', ...o,
 });
@@ -17,26 +17,37 @@ const node = (o: Partial<OutlineNode>): OutlineNode => ({
 describe('joinSceneRows — the three union shapes (22 §GUI)', () => {
   it('linked: an index row whose source_scene_id resolves to a live spec node', () => {
     const rows = joinSceneRows(
-      [scene({ id: 's1', source_scene_id: 'n1' })],
+      [scene({ scene_id: 's1', source_scene_id: 'n1' })],
       [node({ id: 'n1', title: 'Opening' })],
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].shape).toBe('linked');
     expect(rows[0].key).toBe('n1');
-    expect(rows[0].index?.id).toBe('s1');
+    expect(rows[0].index?.scene_id).toBe('s1');
     expect(rows[0].spec?.id).toBe('n1');
     expect(rows[0].anchorLost).toBe(false);
   });
 
+  it('index_only key is keyed on scene_id (the wire field), never undefined (live-smoke regression)', () => {
+    // A real cross-service bug the browser smoke caught: book-service returns the id as `scene_id`,
+    // so keying on a non-existent `.id` produced `idx:undefined` for EVERY row → React key collision.
+    const rows = joinSceneRows(
+      [scene({ scene_id: 'sc-a', source_scene_id: null }), scene({ scene_id: 'sc-b', source_scene_id: null })],
+      [],
+    );
+    expect(rows.map((r) => r.key)).toEqual(['idx:sc-a', 'idx:sc-b']);
+    expect(rows.every((r) => !r.key.includes('undefined'))).toBe(true);
+  });
+
   it('index_only (never decompiled): a scene with source_scene_id NULL, anchorLost=false', () => {
-    const rows = joinSceneRows([scene({ id: 's1', source_scene_id: null })], []);
+    const rows = joinSceneRows([scene({ scene_id: 's1', source_scene_id: null })], []);
     expect(rows[0].shape).toBe('index_only');
     expect(rows[0].spec).toBeNull();
     expect(rows[0].anchorLost).toBe(false); // never-decompiled ≠ anchor-lost (BPS-13)
   });
 
   it('index_only (anchor lost): source_scene_id set but resolves to nothing → anchorLost=true', () => {
-    const rows = joinSceneRows([scene({ id: 's1', source_scene_id: 'gone' })], []);
+    const rows = joinSceneRows([scene({ scene_id: 's1', source_scene_id: 'gone' })], []);
     expect(rows[0].shape).toBe('index_only');
     expect(rows[0].anchorLost).toBe(true);
   });
@@ -50,7 +61,7 @@ describe('joinSceneRows — the three union shapes (22 §GUI)', () => {
 
   it('a never-decompiled book renders ENTIRELY as index_only', () => {
     const rows = joinSceneRows(
-      [scene({ id: 'a', chapter_id: 'c', sort_order: 0 }), scene({ id: 'b', chapter_id: 'c', sort_order: 1 })],
+      [scene({ scene_id: 'a', chapter_id: 'c', sort_order: 0 }), scene({ scene_id: 'b', chapter_id: 'c', sort_order: 1 })],
       [],
     );
     expect(rows.every((r) => r.shape === 'index_only')).toBe(true);
@@ -67,7 +78,7 @@ describe('joinSceneRows — the three union shapes (22 §GUI)', () => {
 
   it('a spec node is claimed by only ONE linked row (no double-count)', () => {
     const rows = joinSceneRows(
-      [scene({ id: 's1', source_scene_id: 'n1' })],
+      [scene({ scene_id: 's1', source_scene_id: 'n1' })],
       [node({ id: 'n1' }), node({ id: 'n2', story_order: 1 })],
     );
     expect(rows.filter((r) => r.shape === 'linked')).toHaveLength(1);
@@ -78,7 +89,7 @@ describe('joinSceneRows — the three union shapes (22 §GUI)', () => {
     // Review MED: source_scene_id is a non-unique soft ref; a duplicated anchor heading can land two
     // index scenes on one spec node. Must NOT emit two linked rows with the same key (React collision).
     const rows = joinSceneRows(
-      [scene({ id: 'a', source_scene_id: 'n1', sort_order: 0 }), scene({ id: 'b', source_scene_id: 'n1', sort_order: 1 })],
+      [scene({ scene_id: 'a', source_scene_id: 'n1', sort_order: 0 }), scene({ scene_id: 'b', source_scene_id: 'n1', sort_order: 1 })],
       [node({ id: 'n1' })],
     );
     const keys = rows.map((r) => r.key);
@@ -104,7 +115,7 @@ describe('joinSceneRows — specComplete gates spec_only (HIGH: no false "not ye
 
   it('linked/index_only rows are unaffected by specComplete=false', () => {
     const rows = joinSceneRows(
-      [scene({ id: 's1', source_scene_id: 'n1' }), scene({ id: 's2', source_scene_id: null })],
+      [scene({ scene_id: 's1', source_scene_id: 'n1' }), scene({ scene_id: 's2', source_scene_id: null })],
       [node({ id: 'n1' })],
       false,
     );
@@ -125,7 +136,7 @@ describe('sortUnionRows — deterministic (chapter, order, key), nulls last', ()
 
 describe('filterUnionRows — client-side text over both truths', () => {
   const rows = joinSceneRows(
-    [scene({ id: 's1', source_scene_id: 'n1', leaf_text: 'a dragon roared' })],
+    [scene({ scene_id: 's1', source_scene_id: 'n1', leaf_text: 'a dragon roared' })],
     [node({ id: 'n1', title: 'Opening', synopsis: 'the hero arrives' }), node({ id: 'n2', title: 'Quiet', story_order: 1 })],
   );
   it('matches spec title/synopsis', () => {

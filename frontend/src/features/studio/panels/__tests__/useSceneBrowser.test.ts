@@ -21,7 +21,7 @@ vi.mock('@/features/composition/api', () => ({ compositionApi: { getOutline: (..
 import { useSceneBrowser } from '../useSceneBrowser';
 
 const scene = (o: Partial<Scene>): Scene => ({
-  id: 's', book_id: 'b', chapter_id: 'c', sort_order: 0, title: null, path: '/0', leaf_text: '',
+  scene_id: 's', book_id: 'b', chapter_id: 'c', sort_order: 0, title: null, path: '/0', leaf_text: '',
   content_hash: 'h', source_scene_id: null, parse_version: 1, lifecycle_state: 'active', ...o,
 });
 const node = (o: Partial<OutlineNode>): OutlineNode => ({
@@ -40,7 +40,7 @@ beforeEach(() => {
 describe('useSceneBrowser — review fixes', () => {
   it('keeps the book-service identity rows when the intent (getOutline) call fails', async () => {
     workData = found('proj-1');
-    listScenes.mockResolvedValue({ items: [scene({ id: 's1', source_scene_id: null })], next_cursor: null, total: 1 });
+    listScenes.mockResolvedValue({ items: [scene({ scene_id: 's1', source_scene_id: null })], next_cursor: null, total: 1 });
     getOutline.mockRejectedValue(new Error('composition down'));
 
     const { result } = renderHook(() => useSceneBrowser('book-1'));
@@ -81,7 +81,7 @@ describe('useSceneBrowser — review fixes', () => {
     workData = found('proj-1');
     // page 1 has a cursor (more to load) — the whole spec is loaded, but 1 index scene is unlinked
     listScenes.mockResolvedValueOnce({
-      items: [scene({ id: 's1', source_scene_id: 'n1' })], next_cursor: 'c2', total: 3,
+      items: [scene({ scene_id: 's1', source_scene_id: 'n1' })], next_cursor: 'c2', total: 3,
     });
     getOutline.mockResolvedValue({ nodes: [node({ id: 'n1' }), node({ id: 'n2', story_order: 1 })], scene_links: [] });
 
