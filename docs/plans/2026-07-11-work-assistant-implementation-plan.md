@@ -51,18 +51,11 @@ request. → **`/review-impl`** → commit.
 
 ---
 
-## PHASE 0.5 — Platform privacy holes (recommended: ship independently)
+## ~~PHASE 0.5~~ — dissolved into Phase 1 (PO-1)
 
-These are **live today**, independent of the assistant. They are also **prerequisites for D16**.
-
-| WS | Scope | Gate |
-|---|---|---|
-| **WS-P.1** | **Public MCP gateway resource scoping.** Domain-only scoping means a `domain:book` key reads any book. Add a resource dimension; LIST/SEARCH results filter, not just per-resource fetch. | live-smoke with a real MCP key |
-| **WS-P.2** | **Wiki guards.** `wiki_settings` PATCH · `generateWikiStubs` · `entity_enrichments` · `checkWikiPublic` fail-closed. (Today: a JSONB flag makes per-entity AI-written articles servable **unauthenticated**.) | consumed-by-effect per path |
-| **WS-P.3** | **`memory_*` project scoping.** `memory_recall_entity`/`memory_timeline` fall back to **all** the user's projects; `get_entity_with_relations` has **no** project filter. | a session scoped to book B returns **zero** book-A entities |
-| **WS-P.4** | **`getBookAccess` existence oracle** — it leaks `lifecycle_state` unconditionally; a purpose-built `resolveAccess` exists and is unused. **Fix-now, one line.** | unit |
-
-→ **`/review-impl`** (security-flavored) → commit.
+The platform privacy holes ship as **WS-1.2**, not as a separate track.
+⚠️ **Accepted risk:** they are **live today**. If Phase 1 slips, **re-raise this** — a security fix should not
+be hostage to a feature schedule. See [`DECISIONS-SEALED`](../specs/2026-07-11-work-assistant-mode/DECISIONS-SEALED.md) PO-1.
 
 ---
 
@@ -73,8 +66,9 @@ These are **live today**, independent of the assistant. They are also **prerequi
 
 | WS | Scope | Spec | Risk |
 |---|---|---|---|
+| **WS-1.0** 🔴 | **Envelope encryption + blind index (PO-2).** Per-user DEK (KEK in KMS; AES-GCM, the `usage_logs` precedent). Encrypts: diary chapter bodies · `chat_messages.content` for assistant sessions · KG `:Fact.fact_text` for the assistant project. **Ships FIRST** — retrofitting encryption after data exists is far more expensive. ⚠️ It **breaks the GIN trigram index** ⇒ `chat_search_sessions` becomes a **blind index** (HMAC-keyed tokens; accepted leak: token frequency). Embeddings stay plaintext = the recorded residual exposure. **Does NOT hide the diary from a running-server operator** — honest disclosure ships alongside. | [`DECISIONS-SEALED`](../specs/2026-07-11-work-assistant-mode/DECISIONS-SEALED.md) PO-2 | **HIGH / M–L** |
 | **WS-1.1** | **`books.kind`** — enum + CHECK + `is_bible→lore` backfill + **DB trigger immutability** + all **4** create paths (incl. `createWorldCore` = `'lore'`, same commit as the backfill). | [`03`](../specs/2026-07-11-work-assistant-mode/03-book-kinds-diary-gui.md) | M |
-| **WS-1.2** | **Egress guards (D16)** — collaborators · sharing PATCH · **wiki ×4** · **public-MCP** · notifications · **library/catalog hide** · export. Contract: `kind` on `getBookAccess`+`getBookProjection` (gated behind `lvl != GrantNone`). | [`09`](../specs/2026-07-11-work-assistant-mode/09-settings-consent-privacy.md) | **HIGH** |
+| **WS-1.2** | **Egress guards (D16) + the folded platform holes (PO-1)** — collaborators · sharing PATCH · **wiki ×4** · **public-MCP resource scoping** · **`memory_*` project leak** · **`getBookAccess` oracle** · notifications · **library/catalog hide** · export. Contract: `kind` on `getBookAccess`+`getBookProjection` (gated behind `lvl != GrantNone`). | [`09`](../specs/2026-07-11-work-assistant-mode/09-settings-consent-privacy.md) | **HIGH** |
 | **WS-1.3** | **Schema** — `chapters.{entry_date, journal_kind, diary_kept_at}` + partial unique · `knowledge_projects.{is_assistant}` + one-per-user · **derived fail-closed** extraction gate · `user_chat_ai_prefs.assistant` (+ session override; **widen the category whitelist AND the Pydantic model together**) · **timezone** in auth `user_preferences` · **`chat_messages.local_date`** (write-time) · pg_trgm (**outside the DDL string**, no CONCURRENTLY). | [`01`](../specs/2026-07-11-work-assistant-mode/01-data-architecture.md) | M |
 | **WS-1.4** | **Provisioning** — BFF fan-out with the user's JWT; idempotency keys; **extraction bootstrap** (else the drain silently no-ops); tz confirm; **self entity**; consent never side-effect-enabled; **`provision_status`** for partial failure. | [`02`](../specs/2026-07-11-work-assistant-mode/02-assistant-mode-session.md) | M |
 | **WS-1.5** | **Work ontology + `flavorWorkCapture`** — System-tier seed as a **new ledger entry**; flavor resolved server-side from `kind`; **Minh-vs-Minh disambiguation item**; no `preference` facts about third parties; special-category deny-list. | [`05`](../specs/2026-07-11-work-assistant-mode/05-work-capture-ontology.md) | **HIGH** |
@@ -154,13 +148,18 @@ PHASE 3 (scheduler)  →  PHASE 4 (voice)  →  PHASE 5 (coaching)
 4. **WS-2.4** — the ordinal/`:ABOUT`/date-filter fix. If recall still returns nothing, **the feature has no value**; smoke it end-to-end early.
 5. **WS-2.7** — erasure. The tests must assert **absence** (row gone, node gone, rebuild doesn't resurrect), never "invisible".
 
-## Open PO decisions (needed before the phase that consumes them)
+## PO decisions — **SEALED** 2026-07-11
 
-| # | Decision | Needed by |
+All resolved in [`DECISIONS-SEALED.md`](../specs/2026-07-11-work-assistant-mode/DECISIONS-SEALED.md)
+(4 PO answers + 23 technical calls). The four that changed this plan:
+
+| # | Decision | Effect on the plan |
 |---|---|---|
-| 1 | Trust-tier auto-accept across the 3 review gates (touches the LOCKED write-gating law) | P2 (WS-2.5) |
-| 2 | Retention defaults (proposed: 90-day raw sessions; diary + KG until user-deleted) | P2 (WS-2.7) |
-| 3 | BL-15 amendment wording for the 5th onboarding intent | P1 (WS-1.10) |
-| 4 | **Operator disclosure copy** — and does it gate provisioning? | P1 (WS-1.4) |
-| 5 | **Envelope encryption** for diary content — it constrains the KG/embedding schema, so decide **before** P3 | P3 |
-| 6 | Do the wiki + public-MCP guards ship as their own track (Phase 0.5)? | now |
+| PO-1 | Platform privacy holes **fold into Phase 1** | Phase 0.5 dissolved → **WS-1.2**. Accepted risk: the holes are live until P1 lands |
+| PO-2 | **Envelope encryption is a P1 requirement** | **New WS-1.0, ships first.** Search becomes a **blind index**. Residual risk (running-server operator; plaintext embeddings) recorded, not papered over |
+| PO-3 | **Earn-trust auto-accept + version control** | Amends the LOCKED write-gating law. **D17 (memory amendment) is promoted** — it *is* the revert mechanism, so **auto-accept cannot ship before it** |
+| PO-4 | **Keep everything until deleted** | **D18 erasure becomes a release requirement**, not P2 polish — it is now the *only* minimization story. Backup-resurrection must be solved |
+
+**Still open (does not block Phase 0):** embedding exposure — accept plaintext embeddings for the assistant
+project (keep semantic recall), or drop semantic recall for the diary (lexical + KG only).
+See `DECISIONS-SEALED` Part D.
