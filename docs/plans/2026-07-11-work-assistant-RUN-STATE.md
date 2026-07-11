@@ -36,12 +36,24 @@ survives compaction and can be re-set verbatim. ⚠️ The `/goal` evaluator **r
 cannot run commands or read files**, so the condition is deliberately written to force proof *into* the
 transcript.
 
+### The WHOLE-RUN goal (set 2026-07-12 — supersedes the Phase-0-only goal below)
+
+```
+/goal ALL PHASES (0,1,2,3,4,5) of docs/plans/2026-07-11-work-assistant-implementation-plan.md are COMPLETE, or every remaining item is parked in RUN-STATE §7 with a reason. This is a long unattended run: the human is asleep and will review in the morning. Work continuously through the phases in order; do NOT stop between slices or between phases. Done means ALL of: (1) every slice of every phase is marked ✅ in docs/plans/2026-07-11-work-assistant-RUN-STATE.md §5 with a real evidence string, or 🅿️ parked in §7; (2) for each phase, the transcript contains the ACTUAL PASTED OUTPUT of that phase's test runs and its exit-criteria checks (the phase-exit bullets in the plan) — pasting output is mandatory, and claiming a check passed without pasting its output does NOT satisfy this condition; (3) /review-impl has been run on EVERY phase and every finding is FIXED (not deferred) and committed; (4) the transcript shows `git log --oneline` after each phase; (5) RUN-STATE §6-§9 registers (decisions/parked/debt/drift) are kept current as you go, and §10 completeness ledger is filled in at the end; (6) a final audit is written covering decisions · drift · debt · deferred · completeness. RULES FOR THIS RUN: after any compaction, re-read docs/plans/2026-07-11-work-assistant-RUN-STATE.md FIRST, then `git log --oneline -15`, then continue — never re-derive a sealed decision from memory. Never `git add -A` (this checkout is shared with concurrent agent sessions; enumerate files). Commit each slice promptly — do not leave a cross-cutting file (server.go, migrate.go) dirty across a long step. If you cannot solve something, park it in §7 and MOVE ON to other work — blocked is not stopped. Make all ordinary technical decisions yourself and record them in §6. Stop and ask ONLY if (a) an action is destructive/irreversible or would risk real user data, or (b) a SEALED decision in docs/specs/2026-07-11-work-assistant-mode/DECISIONS-SEALED.md turns out to be wrong and needs redesign. Otherwise keep going until every phase is done or parked.
+```
+
+**Why one goal for all phases:** the per-phase goal worked, but it ends at a phase boundary and needs a
+human to re-set it. This one carries the run overnight. The evaluator still reads the transcript only, so
+the condition is written to force proof *into* the transcript (pasted output, `git log`), and the RUN-STATE
+file remains the real anchor across compaction.
+
+<details><summary>The original Phase-0-only goal (superseded, kept for the record)</summary>
+
 ```
 /goal Phase 0 of docs/plans/2026-07-11-work-assistant-implementation-plan.md is COMPLETE. Done means ALL of: (1) every slice WS-0.1..WS-0.9 is marked ✅ in docs/plans/2026-07-11-work-assistant-RUN-STATE.md §5 with a real evidence string; (2) the transcript contains the ACTUAL PASTED OUTPUT of the test runs and the live-smokes from §5 of docs/specs/2026-07-11-publish-independent-kg-indexing.md — specifically: a draft chapter that is never published gets indexed into the KG; autosave triggers ZERO extraction jobs; a single index click leaves the other 199 chapters' extraction_leaves intact; the whole-book rebuild enumerates draft-indexed chapters; and composition's index_stale is false after publish@A + index-draft@B; (3) /review-impl has been run on the phase and every finding is FIXED (not deferred), with the fixes committed; (4) the transcript shows `git log --oneline` with the commits; (5) RUN-STATE §6-§9 registers are updated. Claiming a check passed without pasting its output does NOT satisfy this condition. If you cannot solve something, park it in RUN-STATE §7 and continue with other slices — do not stop. Stop and ask ONLY if an action is destructive/irreversible or a sealed decision turns out to be wrong. Or stop after 60 turns.
 ```
 
-**Subsequent phases:** re-set `/goal` per phase, same shape (evidence pasted into the transcript, findings
-fixed not deferred, registers updated, turn-bounded).
+</details>
 
 ## 3. Standing invariants (the bar — never lower these silently)
 
