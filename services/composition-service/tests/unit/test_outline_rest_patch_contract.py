@@ -51,6 +51,16 @@ def test_nodepatch_covers_every_writable_column_except_the_mcp_only_envelope():
     )
 
 
+def test_arcpatch_covers_the_structure_repo_writable_columns():
+    # The sibling write mirror (arc router → structure repo). Currently correct; this locks it so
+    # widening the structure repo without touching ArcPatch reds instead of silently no-op'ing the
+    # Hub's arc edits (the same class as the NodePatch bug).
+    from app.db.repositories.structure import _UPDATABLE_COLUMNS as _ARC_UPDATABLE
+    from app.routers.arc import ArcPatch
+    missing = _ARC_UPDATABLE - set(ArcPatch.model_fields)
+    assert not missing, f"ArcPatch drops writable arc columns {sorted(missing)} (silent-no-op class)"
+
+
 def test_nodecreate_also_accepts_the_sc4_craft_fields():
     create_fields = set(NodeCreate.model_fields)
     for f in ("location_entity_id", "story_time", "conflict", "outcome", "stakes",
