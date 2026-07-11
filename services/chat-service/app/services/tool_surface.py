@@ -338,8 +338,18 @@ def assemble_initial_active_names(
     activated_tools: list[str],
     hot_seed_names: set[str],
 ) -> set[str]:
+    # Auto (non-curated) mode is per-turn discovery — the hot-seed re-seeds each turn
+    # and ad-hoc find_tools matches do NOT persist. But a WORKFLOW is an explicit,
+    # multi-step rail: workflow_load activates its step tools and persists them to
+    # `activated_tools` (stream_service, ungated by curated for exactly this reason).
+    # Those must stay advertised on LATER turns of the same rail, or a multi-turn
+    # workflow loses its tools the moment the loading turn ends (the S03 failure: the
+    # agent listed the pile in T0, but status_change/merge were gone by T1). Union them
+    # in — they are already token-budget-capped at persist time (ACTIVATED_TOOLS_TOKEN_
+    # BUDGET via merge_activated_tools), and empty for any session that never loaded a
+    # workflow, so this is a no-op except while a rail is in flight.
     if not curated:
-        return set(hot_seed_names)
+        return set(hot_seed_names) | set(activated_tools)
     return set(enabled_tools) | set(activated_tools)
 
 

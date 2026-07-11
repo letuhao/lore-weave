@@ -1666,7 +1666,15 @@ async def _stream_with_tools(
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
                         )
                         active_tool_names.update(names_to_activate)
-                        if curated and activation_state is not None:
+                        # Persist the step tools REGARDLESS of curated mode. A workflow is an
+                        # explicit multi-turn rail; its tools must survive to later turns even
+                        # in a naive (non-curated) session, or a multi-turn workflow loses its
+                        # step tools after the loading turn (the S03 drain failure). Unlike the
+                        # ad-hoc find_tools path (still curated-gated below — an unranked
+                        # enumeration must not accrete across turns), workflow_load activates a
+                        # SMALL, author-declared, already-token-budgeted set, so persisting it
+                        # in auto mode is safe. assemble_initial_active_names re-advertises it.
+                        if activation_state is not None:
                             # Persist the FULL requested step-tool set (like tool_load) —
                             # merge_activated_tools re-budgets across the cumulative union,
                             # so passing the this-turn-capped subset would permanently drop

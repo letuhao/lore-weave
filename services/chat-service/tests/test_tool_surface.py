@@ -43,6 +43,19 @@ class TestToolSurface:
         )
         assert out == hot
 
+    def test_assemble_auto_mode_includes_activated_workflow_tools(self):
+        # A multi-turn workflow persists its step tools to `activated_tools` even in
+        # auto mode; assemble MUST re-advertise them alongside the hot-seed, or the
+        # rail loses its tools after the loading turn (the S03 cross-turn drop).
+        hot = {"glossary_search", "glossary_list"}
+        out = assemble_initial_active_names(
+            curated=False,
+            enabled_tools=[],
+            activated_tools=["glossary_propose_status_change", "glossary_propose_merge"],
+            hot_seed_names=hot,
+        )
+        assert out == hot | {"glossary_propose_status_change", "glossary_propose_merge"}
+
     def test_assemble_curated_uses_pins_and_activated(self):
         out = assemble_initial_active_names(
             curated=True,
