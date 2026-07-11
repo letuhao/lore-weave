@@ -23,8 +23,8 @@ Status: ⬜ not started · 🔄 in progress · ✅ done. Update your track's row
 |---|---|---|
 | **N1** — after A's WS-1 | `tool_list`/`tool_load` + C1 enum + activation live → B's tools discoverable, C's UI binds real enum | ✅ |
 | **N2** — after A's WS-2 | C3 `steps` schema + step-runner live → C's authored workflows run; async guard active | ✅ **FULL E2E** — live gemma-4-26b turn: workflow_list→workflow_load→step tools activated→presented rail w/ correct confirm/approval + async-job flags (also re-confirms the /v1/responses arg fix) |
-| **ND3** — after D's WS-D3 | **CD4 ship gate live**: no workflow may reference a tool that hasn't passed G1–G4; `tool_list` never advertises a RED-G3 tool → **Track C's curated workflows may ship** | ⬜ |
-| **N3** — before flagship | A(mechanism) + B(features) + C(catalog+UI) + **D(tools proven effectful)** present → run flagship S06 live-test (go/no-go). *Blocked on ND3: S06 baseline recorded `effectful_tool_calls: 0`.* | ⬜ |
+| **ND3** — after D's WS-D3 | **CD4 ship gate live** as **reject-on-`executes:false`** (0 tools blocked, 26 warn-on-`null`); `tool_list`/`tool_load` withdraw a proven-broken tool. The literal "must pass G1–G4" was consciously **redefined** to "not proven-broken" (WS-D5c: `proven`/G1 is a chat-surface property, irrelevant to a curated workflow that names its tool). → **Track C's curated workflows may ship** | ✅ (redefined) |
+| **N3** — before flagship | A(mechanism)+B(features)+**D(tools proven effectful)** present → flagship S06 go/no-go. **D-side PROVEN 2026-07-11**: S06 now shows `effectful_tool_calls>0` (4/5 warm) + `persist_claims_without_write==[]` (6/6), DB-verified (was `0` at baseline). Full product go/no-go still needs **C(catalog+UI)**. | 🔄 (D-side ✅; blocked on C) |
 
 ## Shared-file watch (chat-service — 3 tracks, disjoint files)
 

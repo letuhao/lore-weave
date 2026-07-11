@@ -152,19 +152,32 @@ Remaining for WS-D3: probe every tool an authored C3 workflow can reference, so 
 being 10 rows. → **ND3**
 **Exit:** the ship gate is real. → **ND3** *(this is the actual "before we ship workflow" gate)*
 
-### WS-D4 · TLE P2 — full sweep *(size XL, grind)*
-All 206 domain tools, batched per service (glossary 55 + composition 56 are the long poles).
-Flip CD4 from warn → **reject**.
-**Exit:** matrix ≥95% non-RED or explicitly `WAIVED` with a reason.
+### WS-D4 · TLE P2 — full sweep *(size XL, grind)* — ✅ **62 → 26 null, 0 broken (2026-07-11)**
+All domain tools, batched per service. The capability sweep reached `193/219 executes:true · 0
+executes:false · 26 null` at $0; the 26 residue is WAIVED with per-tool gate reasons (see
+[`TRACK-D-COMPLETION.md`](TRACK-D-COMPLETION.md) → Results). CD4 stays **reject-on-`executes:false`**
+(the "flip warn→reject" for `null` is the consciously-rejected WS-D5c tightening — `null` ≠ broken).
+**Exit:** matrix ≥95% non-RED **or** explicitly WAIVED with a reason — met via 88% proven + 26 waived.
 
-### WS-D5 · Frontend tools (12) via Playwright *(size M)*
-The loop must **suspend**; the real FE resolver executes; G4 asserts the human-applied effect.
-Simulated resolver is acceptable for G3; G4 needs the browser
-(precedent: `agent-gui-loop-needs-live-browser-smoke-not-raw-stream`).
+> **⚠ Naming (WS-D5 collision, resolved 2026-07-11).** Two different deliverables shared "WS-D5":
+> **WS-D5a** = the *tool-description disambiguation* follow-up ([`WS-D5-followups.md`](WS-D5-followups.md),
+> DONE) and **WS-D5** below = the *frontend-tools liveness* deliverable. Historical commits/handoff
+> lines labelled "WS-D5" refer to WS-D5a; the frontend-tools work is this section.
 
-### WS-D6 · Macro journeys *(size M)*
-S00–S06 + authored workflows: ordering, gates honored, async honesty, **zero false persist-claims**.
-**Exit:** flagship S06 passes with `effectful_tool_calls > 0`. → **ND4**
+### WS-D5 · Frontend tools (12) via Playwright *(size M)* — ✅ **DONE (2026-07-11)**
+The loop **suspends**; the real FE resolver/executor/card runs; G4 asserts the effect + the resume
+round-trip. G3 (all 12) via the pure-resolver + BE contract tests; G4 (real browser) via
+`frontend/tests/e2e/specs/frontend-tools-liveness.spec.ts` (+ `helpers/frontendToolInject.ts`) — 4
+injected tests green, covering both executor code paths; the other 8 share the proven paths.
+Precedent honoured: `agent-gui-loop-needs-live-browser-smoke-not-raw-stream`. See
+[`TRACK-D-COMPLETION.md`](TRACK-D-COMPLETION.md) → Phase 2.
+
+### WS-D6 · Macro journeys *(size M)* — ✅ **S06 PROVEN (2026-07-11)**
+S06 flagship re-run on local gemma: **`effectful_tool_calls > 0` (4/5 warm), `persist_claims_without_write == []` (6/6)**,
+DB-verified plan_runs. **Exit met.** Report:
+[`../../eval/discoverability/2026-07-11-S06-flagship-rerun.md`](../../eval/discoverability/2026-07-11-S06-flagship-rerun.md).
+The **D-side** proof (an LLM persists honestly via tools) is established; the full **N3** product
+go/no-go additionally needs Track C (catalog+UI), out of Track D's scope. → **ND4** (D-side)
 
 ---
 

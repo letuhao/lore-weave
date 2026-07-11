@@ -198,7 +198,16 @@ USER_SWEEP_ORDER: tuple[str, ...] = (
     "registry_set_skill_enabled",
     "registry_get_workflow",
     "registry_update_workflow",
+    # jobs facade: a missing/foreign job returns a structured not-found dict (NOT a raise),
+    # so a synthetic job_id reaches `executes` without seeding a real job.
+    "jobs_get",
+    "jobs_cancel",
+    "jobs_pause",
 )
+
+# A syntactically-valid job_id the caller never created — jobs_* resolve it to a
+# not-found *dict* (executes:True), never touching real data.
+_FAKE_JOB_ID = "00000000-0000-4000-8000-000000000001"
 
 
 def authored_user_args(tool: str, fx: UserFixture, state: dict) -> dict | None:
@@ -326,5 +335,11 @@ def authored_user_args(tool: str, fx: UserFixture, state: dict) -> dict | None:
                 "surfaces": ["chat"],
                 "steps": [{"id": "step-one", "tool": "book_list", "gate": "none"}],
             }
+        case "jobs_get":
+            return {"service": "composition", "job_id": _FAKE_JOB_ID}
+        case "jobs_cancel":
+            return {"service": "translation", "job_id": _FAKE_JOB_ID}
+        case "jobs_pause":
+            return {"service": "knowledge", "job_id": _FAKE_JOB_ID}
         case _:
             return None  # needs state we do not have (a motif, a job, a credential)

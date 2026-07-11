@@ -487,13 +487,25 @@ def test_authored_user_args_supplies_the_field_settings_update_profile_needs():
 
 
 def test_authored_user_args_returns_none_for_tools_needing_state_we_lack():
-    """A motif id, a job id — the throwaway user has none, and we do not chain a creator for
-    them. Returning None keeps the tool at `executes: null`, which blocks nothing."""
+    """A motif id, a 2nd motif, a credential — the throwaway user has none until built, and we
+    do not chain a creator for them. Returning None keeps the tool at `executes: null`."""
     from tool_liveness.user_fixture import UserFixture, authored_user_args
 
     fx = UserFixture()  # unbuilt: no seeded credential / model
-    for tool in ("composition_motif_archive", "jobs_cancel", "settings_model_register"):
+    for tool in ("composition_motif_archive", "composition_motif_link_create", "settings_model_register"):
         assert authored_user_args(tool, fx, {}) is None, tool
+
+
+def test_jobs_tools_reach_via_a_synthetic_not_found_id():
+    """jobs_get/cancel/pause resolve a missing/foreign job to a structured NOT-FOUND dict
+    (executes:True), never touching real data — so a synthetic job_id reaches them at $0
+    without seeding a real job. They must NOT depend on any fixture state."""
+    from tool_liveness.user_fixture import UserFixture, authored_user_args
+
+    fx = UserFixture()  # unbuilt on purpose
+    for tool in ("jobs_get", "jobs_cancel", "jobs_pause"):
+        args = authored_user_args(tool, fx, {})
+        assert args and args.get("job_id") and args.get("service"), tool
 
 
 def test_credential_gated_tools_use_the_seeded_credential_and_model():

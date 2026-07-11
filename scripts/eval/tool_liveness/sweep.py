@@ -398,8 +398,11 @@ def main() -> int:
     except Exception as e:
         print(f"  (no kg project: {e}) — project-scoped tools will score inconclusive")
     # Seed a throwaway authoring run so its get/gate/close consumers are reachable at $0.
-    from .project_chain import seed_authoring_run
+    from .project_chain import seed_authoring_run, seed_db_fixtures
     seed_authoring_run(ids)
+    # Seed rows no $0 MCP creator can mint (a world, a scene, a completed translation) so
+    # kg_world_query / book_scene_get / the 5 translation-version tools reach on owned targets.
+    seed_db_fixtures(ids)
     print(f"fixture: {ids}")
 
     # Order the book/project creators before their consumers so a later tool can read the
@@ -441,6 +444,8 @@ def main() -> int:
             except Exception as e:
                 print(f"teardown: FAILED to delete kg project {ids['project_id']}: {e}")
         print(f"teardown: composition {teardown_composition(fx.book_id)}")
+        from .project_chain import teardown_db_fixtures
+        print(f"teardown: db-fixtures {teardown_db_fixtures(ids)}")
         print(f"teardown: {fx.teardown()}")
 
     # ── Phase 2: the user/none-scoped Tier-A writes ────────────────────────────────
