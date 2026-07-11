@@ -734,6 +734,78 @@ async def test_plan_hub_h1_read_surfaces_live_sql(pool):
         assert isinstance(await fetch(book), list)
 
 
+def _plan_node_names(plan: dict):
+    """Flatten an EXPLAIN (FORMAT JSON) plan tree into (node_type, index_name?) tuples."""
+    out = [(plan.get("Node Type"), plan.get("Index Name"))]
+    for child in plan.get("Plans", []) or []:
+        out.extend(_plan_node_names(child))
+    return out
+
+
+async def test_plan_hub_structure_axis_uses_keyset_index_at_scale(pool):
+    """24 H8.1 — the PERF DoD: the ARC-axis children window
+    (`list_children_by_structure`) must ride `idx_outline_node_structure_keyset`
+    (an Index Scan giving order + the partial predicate), NEVER degrade to a
+    Seq Scan + Sort, at a book-sized chapter count. This is the by-effect proof
+    that the query repeats `AND kind='chapter' AND NOT is_archived` VERBATIM so the
+    PARTIAL index matches (Postgres won't infer it from the CHECK — regression guard
+    for postgres-partial-index-on-conflict-predicate-must-match on the READ side)."""
+    actor = uuid.uuid4()
+    book = uuid.uuid4()
+    project = uuid.uuid4()
+    arc = uuid.uuid4()          # the target arc
+    other_arc = uuid.uuid4()    # a sibling arc — noise so a Seq Scan would read irrelevant rows
+
+    async with pool.acquire() as c:
+        for a in (arc, other_arc):
+            await c.execute(
+                "INSERT INTO structure_node (id, book_id, kind, rank, title) "
+                "VALUES ($1, $2, 'arc', '00000001', 'Arc')",
+                a, book,
+            )
+        # 4000 live chapters under the target arc + 3000 under a sibling arc + 400 archived
+        # under the target (excluded by the partial predicate) → a Seq Scan would touch ~7400
+        # rows and sort; the index reads the first LIMIT+1 in order and stops.
+        seed = """
+            INSERT INTO outline_node
+              (created_by, project_id, book_id, kind, rank, chapter_id, structure_node_id,
+               is_archived, title, status)
+            SELECT $1, $2, $3, 'chapter', lpad(g::text, 8, '0'), gen_random_uuid(), $4,
+                   $5, 'Ch '||g, 'outline'
+            FROM generate_series(1, $6) g
+        """
+        await c.execute(seed, actor, project, book, arc, False, 4000)
+        await c.execute(seed, actor, project, book, other_arc, False, 3000)
+        await c.execute(seed, actor, project, book, arc, True, 400)
+        await c.execute("ANALYZE outline_node")
+
+        # EXACTLY the first-page query OutlineRepo.list_children_by_structure builds.
+        explain = await c.fetchval(
+            """
+            EXPLAIN (FORMAT JSON)
+            SELECT id FROM outline_node
+            WHERE structure_node_id = $1 AND book_id = $2
+              AND kind = 'chapter' AND NOT is_archived
+            ORDER BY rank COLLATE "C", id
+            LIMIT 101
+            """,
+            arc, book,
+        )
+
+    plan = (json.loads(explain) if isinstance(explain, str) else explain)[0]["Plan"]
+    nodes = _plan_node_names(plan)
+    node_types = [n for n, _ in nodes]
+    index_names = [idx for _, idx in nodes if idx]
+
+    # The keyset index is used …
+    assert "idx_outline_node_structure_keyset" in index_names, (
+        f"structure-axis query did NOT use the keyset index; plan={nodes}"
+    )
+    # … and the plan neither Seq-Scans outline_node nor sorts (the index supplies order).
+    assert "Seq Scan" not in node_types, f"unexpected Seq Scan; plan={nodes}"
+    assert "Sort" not in node_types, f"unexpected Sort (index should supply order); plan={nodes}"
+
+
 async def test_outline_reparent_guards(pool):
     """D-COMP-M2-XREF-OWNERSHIP: update_node blocks self-parent, cross-PROJECT
     parent, and descendant (cycle) reparents; a valid reparent succeeds."""
