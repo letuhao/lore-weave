@@ -220,6 +220,39 @@ async def test_decompiled_scene_re_run_matches_and_stamps_provenance(pool):
     assert (r2.created, r2.matched, r2.skipped_authored) == (0, 1, 0)
 
 
+async def test_archived_decompiled_node_rerun_does_not_collide(pool):
+    """26 IX-11 regression: the partial unique index on (book_id, decompile_key) must
+    share the decompiler's `NOT is_archived` probe predicate. A decompiled scene the
+    user soft-DELETES (archives) keeps its decompile_key; because the idempotency probe
+    skips archived rows, a re-run mints a FRESH node — which must NOT collide with the
+    archived tombstone (an index without the archived exemption throws UniqueViolation and
+    aborts the whole book's decompile). Pins: re-run after archive => created==1, no raise."""
+    project, book, actor = await _canonical_work(pool)
+    ch = uuid.uuid4()
+    outline = OutlineRepo(pool)
+    scenes = [ParsedScene(chapter_id=ch, sort_order=0, title="leaf")]
+    r1 = await materialize_scenes(pool, WorksRepo(pool), outline, book_id=book,
+                                  scenes=scenes, created_by=actor)
+    assert r1.created == 1
+    async with pool.acquire() as c:
+        minted = await c.fetchval(
+            "SELECT id FROM outline_node WHERE project_id=$1 AND kind='scene'", project)
+        # soft-delete it (the composition_node_archive path), key retained
+        await c.execute("UPDATE outline_node SET is_archived = true WHERE id = $1", minted)
+
+    # re-run must re-mint a fresh LIVE node, not raise on the archived tombstone
+    r2 = await materialize_scenes(pool, WorksRepo(pool), outline, book_id=book,
+                                  scenes=scenes, created_by=actor)
+    assert r2.created == 1, "a re-run after archive must re-mint, not collide"
+    assert await _scene_count(pool, project) == 1  # one LIVE node; tombstone excluded
+    async with pool.acquire() as c:
+        # tombstone + fresh mint coexist, both keyed 'C:0' — the index permits it
+        keyed = await c.fetchval(
+            "SELECT count(*) FROM outline_node WHERE book_id=$1 AND decompile_key=$2",
+            book, f"{ch}:0")
+    assert keyed == 2
+
+
 async def test_no_canonical_work_is_guarded_gracefully(pool):
     book, actor = uuid.uuid4(), uuid.uuid4()  # NO composition_work for this book
     scenes = [ParsedScene(chapter_id=uuid.uuid4(), sort_order=0, title="orphan")]

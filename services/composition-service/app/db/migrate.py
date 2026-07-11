@@ -1201,10 +1201,27 @@ BEGIN
       CHECK (source IN ('authored','decompiled','planforge'));
   END IF;
 END $$;
--- IX-11 idempotency: one decompiled node per (book, decompile_key). Partial so authored
--- nodes (decompile_key NULL) are exempt.
+-- IX-11 idempotency: one LIVE decompiled node per (book, decompile_key). The predicate
+-- MUST mirror the decompiler's own idempotency probe, which filters `NOT is_archived`
+-- (scene_decompile.materialize_scenes): an archived (soft-deleted) node is invisible to
+-- the probe, so a re-run mints a fresh leaf — the index must therefore exempt archived
+-- tombstones too, else that re-mint collides with the tombstone and aborts the whole
+-- decompile (reconcile-by-truth-mirror-producer-predicate). Partial so authored nodes
+-- (decompile_key NULL) are also exempt.
+-- Self-heal a DB that already built the index WITHOUT the archived exemption (an
+-- IF NOT EXISTS create can't replace a differing predicate — drop the stale one first).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE indexname = 'uq_outline_node_decompile_key'
+      AND indexdef NOT ILIKE '%is_archived%'
+  ) THEN
+    DROP INDEX uq_outline_node_decompile_key;
+  END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_outline_node_decompile_key
-  ON outline_node(book_id, decompile_key) WHERE decompile_key IS NOT NULL;
+  ON outline_node(book_id, decompile_key) WHERE decompile_key IS NOT NULL AND NOT is_archived;
 
 -- 23 (M1.3) · bound-arc provenance: replaces annotations->>'arc_template_id'
 -- (backfilled + annotation key dropped in 25 M4, deploy 2).
