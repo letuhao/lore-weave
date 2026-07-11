@@ -197,6 +197,7 @@ func (s *Server) Router() http.Handler {
 		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
 		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
 		r.Get("/worlds/{world_id}/bible", s.getInternalWorldBible)               // W10-M1 world→bible resolution (world-native lore authoring)
+		r.Post("/worlds/maps/{map_id}/image", s.uploadWorldMapImage)             // W10-M2 map base-image upload (owner-scoped by ?user_id)
 		r.Get("/books/{book_id}/reading-position", s.getInternalReadingPosition) // W11 reader spoiler cutoff (§4.1)
 		r.Get("/book/jobs", s.reconcileImportJobs)                               // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal)    // raw-search Phase 2 (lexical leg for the knowledge orchestrator)

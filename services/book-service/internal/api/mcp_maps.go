@@ -1,16 +1,16 @@
 package api
 
 // W10-M2 — world-map MCP tools (agent-native map authoring). A world map is a
-// worldbuilder's reference map: a base image (uploaded separately) with pins
-// (markers) and regions placed at relative [0,1] coords, optionally linked to a
-// glossary `location` entity (a SOFT cross-service UUID). Maps are WORLD-scoped and
-// OWNER-scoped (worlds have no E0 sharing), so every tool authenticates via the
-// envelope identity (mcpUserID) and filters `owner_user_id`. Writes are Tier-A
-// DIRECT (scope=none) — like the world tools; a delete/undo surface
-// (world_map_delete/remove_marker/remove_region) is a planned follow-on, so these
-// writes are additive and NOT yet reversible via a tool. Tool names carry the
-// `world_` prefix so ai-gateway federates them (the book provider's second allowed
-// namespace, EXTRA_PREFIX_MAP).
+// worldbuilder's reference map: a base image (uploaded via POST
+// /internal/worlds/maps/{map_id}/image — see maps_image.go) with pins (markers) and
+// regions placed at relative [0,1] coords, optionally linked to a glossary `location`
+// entity (a SOFT cross-service UUID). Maps are WORLD-scoped and OWNER-scoped (worlds
+// have no E0 sharing), so every tool authenticates via the envelope identity
+// (mcpUserID) and filters `owner_user_id`. Writes are Tier-A DIRECT (scope=none) and
+// REVERSIBLE: world_map_delete undoes a create (CASCADE-dropping markers + regions +
+// best-effort blob), and world_map_remove_marker / world_map_remove_region undo the
+// add_* tools. Tool names carry the `world_` prefix so ai-gateway federates them (the
+// book provider's second allowed namespace, EXTRA_PREFIX_MAP).
 
 import (
 	"context"
@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/minio/minio-go/v7"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	lwmcp "github.com/loreweave/loreweave_mcp"
@@ -65,14 +66,25 @@ func parseOptionalEntityID(raw string) (*uuid.UUID, error) {
 
 // ── world_map_create ─────────────────────────────────────────────────────────
 type worldMapCreateIn struct {
-	WorldID string `json:"world_id" jsonschema:"the world this map belongs to (UUID; you must own it)"`
-	Name    string `json:"name" jsonschema:"the map's name, e.g. 'The Northern Realms'"`
+	WorldID  string `json:"world_id" jsonschema:"the world this map belongs to (UUID; you must own it)"`
+	Name     string `json:"name" jsonschema:"the map's name, e.g. 'The Northern Realms'"`
+	ImageRef string `json:"image_ref,omitempty" jsonschema:"optional MinIO object key of an already-uploaded base image (the value returned by the map-image upload route); omit to attach the image later"`
 }
 type worldMapDetail struct {
 	MapID          string  `json:"map_id"`
 	WorldID        string  `json:"world_id"`
 	Name           string  `json:"name"`
 	ImageObjectKey *string `json:"image_object_key"`
+	ImageURL       *string `json:"image_url,omitempty"`
+}
+
+// withImageURL fills ImageURL from ImageObjectKey (a resolved, publicly-servable URL)
+// so callers get a ready-to-render link, not just a raw storage key.
+func (s *Server) withImageURL(d *worldMapDetail) {
+	if d.ImageObjectKey != nil && *d.ImageObjectKey != "" {
+		u := s.mediaURL(*d.ImageObjectKey)
+		d.ImageURL = &u
+	}
 }
 type worldMapCreateOut struct {
 	Map worldMapDetail `json:"map"`
@@ -99,15 +111,19 @@ func (s *Server) toolWorldMapCreate(ctx context.Context, _ *mcp.CallToolRequest,
 	if !worldOK {
 		return nil, worldMapCreateOut{}, errors.New("world not found")
 	}
+	imageRef := strings.TrimSpace(in.ImageRef)
 	var mapID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `
-INSERT INTO world_maps(owner_user_id, world_id, name) VALUES($1,$2,$3) RETURNING id`,
-		ownerID, worldID, name).Scan(&mapID); err != nil {
+INSERT INTO world_maps(owner_user_id, world_id, name, image_object_key) VALUES($1,$2,$3,$4) RETURNING id`,
+		ownerID, worldID, name, nullableString(imageRef)).Scan(&mapID); err != nil {
 		return nil, worldMapCreateOut{}, errors.New("failed to create map")
 	}
-	return nil, worldMapCreateOut{Map: worldMapDetail{
-		MapID: mapID.String(), WorldID: worldID.String(), Name: name,
-	}}, nil
+	d := worldMapDetail{MapID: mapID.String(), WorldID: worldID.String(), Name: name}
+	if imageRef != "" {
+		d.ImageObjectKey = &imageRef
+		s.withImageURL(&d)
+	}
+	return nil, worldMapCreateOut{Map: d}, nil
 }
 
 // ── world_map_add_marker ─────────────────────────────────────────────────────
@@ -255,6 +271,7 @@ SELECT id, world_id, name, image_object_key FROM world_maps WHERE id=$1 AND owne
 	}
 	d.MapID = mapID.String()
 	d.WorldID = worldID.String()
+	s.withImageURL(&d)
 
 	out := mapGetOut{Map: d, Markers: []markerOut{}, Regions: []regionOut{}}
 	// A sub-query / scan / iteration error is a TOOL FAILURE, not an empty result —
@@ -343,10 +360,105 @@ WHERE world_id=$1 AND owner_user_id=$2 ORDER BY created_at DESC`, worldID, owner
 		if rows.Scan(&id, &wid, &d.Name, &d.ImageObjectKey) == nil {
 			d.MapID = id.String()
 			d.WorldID = wid.String()
+			s.withImageURL(&d)
 			maps = append(maps, d)
 		}
 	}
 	return nil, mapListOut{Maps: maps}, nil
+}
+
+// ── world_map_delete ─────────────────────────────────────────────────────────
+type mapDeleteIn struct {
+	MapID string `json:"map_id" jsonschema:"the map to delete (UUID; you must own it). CASCADE-removes its markers + regions."`
+}
+type mapDeleteOut struct {
+	Deleted bool `json:"deleted"`
+}
+
+func (s *Server) toolWorldMapDelete(ctx context.Context, _ *mcp.CallToolRequest, in mapDeleteIn) (*mcp.CallToolResult, mapDeleteOut, error) {
+	ownerID, ok := mcpUserID(ctx)
+	if !ok {
+		return nil, mapDeleteOut{}, errMissingIdentity
+	}
+	mapID, err := uuid.Parse(in.MapID)
+	if err != nil {
+		return nil, mapDeleteOut{}, errors.New("map_id must be a UUID")
+	}
+	// One owner-scoped read confirms ownership AND grabs the image key for blob
+	// cleanup — a foreign/missing map returns the uniform "map not found" (no oracle).
+	var imageKey *string
+	err = s.pool.QueryRow(ctx, `SELECT image_object_key FROM world_maps WHERE id=$1 AND owner_user_id=$2`, mapID, ownerID).Scan(&imageKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapDeleteOut{}, errors.New("map not found")
+	}
+	if err != nil {
+		return nil, mapDeleteOut{}, errors.New("failed to resolve map")
+	}
+	// FK ON DELETE CASCADE drops markers + regions with the row.
+	if _, err := s.pool.Exec(ctx, `DELETE FROM world_maps WHERE id=$1 AND owner_user_id=$2`, mapID, ownerID); err != nil {
+		return nil, mapDeleteOut{}, errors.New("failed to delete map")
+	}
+	// Best-effort blob cleanup: the row is already gone, so a storage hiccup must NOT
+	// fail the delete (a stray object is swept, never surfaced as a tool error).
+	if imageKey != nil && *imageKey != "" && s.minio != nil {
+		_ = s.minio.RemoveObject(ctx, mediaBucket, *imageKey, minio.RemoveObjectOptions{})
+	}
+	return nil, mapDeleteOut{Deleted: true}, nil
+}
+
+// ── world_map_remove_marker / world_map_remove_region ─────────────────────────
+type mapRemoveMarkerIn struct {
+	MarkerID string `json:"marker_id" jsonschema:"the marker to remove (UUID; on a map you own)"`
+}
+type mapRemoveRegionIn struct {
+	RegionID string `json:"region_id" jsonschema:"the region to remove (UUID; on a map you own)"`
+}
+type mapRemoveOut struct {
+	Removed bool `json:"removed"`
+}
+
+func (s *Server) toolWorldMapRemoveMarker(ctx context.Context, _ *mcp.CallToolRequest, in mapRemoveMarkerIn) (*mcp.CallToolResult, mapRemoveOut, error) {
+	ownerID, ok := mcpUserID(ctx)
+	if !ok {
+		return nil, mapRemoveOut{}, errMissingIdentity
+	}
+	markerID, err := uuid.Parse(in.MarkerID)
+	if err != nil {
+		return nil, mapRemoveOut{}, errors.New("marker_id must be a UUID")
+	}
+	// Owner-scoped via a JOIN to world_maps.owner_user_id — a foreign/missing marker
+	// deletes 0 rows → uniform "marker not found" (no cross-owner existence oracle).
+	tag, err := s.pool.Exec(ctx, `
+DELETE FROM map_markers m USING world_maps wm
+WHERE m.id=$1 AND m.map_id=wm.id AND wm.owner_user_id=$2`, markerID, ownerID)
+	if err != nil {
+		return nil, mapRemoveOut{}, errors.New("failed to remove marker")
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, mapRemoveOut{}, errors.New("marker not found")
+	}
+	return nil, mapRemoveOut{Removed: true}, nil
+}
+
+func (s *Server) toolWorldMapRemoveRegion(ctx context.Context, _ *mcp.CallToolRequest, in mapRemoveRegionIn) (*mcp.CallToolResult, mapRemoveOut, error) {
+	ownerID, ok := mcpUserID(ctx)
+	if !ok {
+		return nil, mapRemoveOut{}, errMissingIdentity
+	}
+	regionID, err := uuid.Parse(in.RegionID)
+	if err != nil {
+		return nil, mapRemoveOut{}, errors.New("region_id must be a UUID")
+	}
+	tag, err := s.pool.Exec(ctx, `
+DELETE FROM map_regions rg USING world_maps wm
+WHERE rg.id=$1 AND rg.map_id=wm.id AND wm.owner_user_id=$2`, regionID, ownerID)
+	if err != nil {
+		return nil, mapRemoveOut{}, errors.New("failed to remove region")
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, mapRemoveOut{}, errors.New("region not found")
+	}
+	return nil, mapRemoveOut{Removed: true}, nil
 }
 
 // registerMapTools registers the W10-M2 world-map MCP tools.
@@ -354,7 +466,9 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 	addTool(srv, "world_map_create",
 		"Create a map in a world you own (a base image with pins + regions). Returns "+
 			"the map_id; add pins with world_map_add_marker and areas with "+
-			"world_map_add_region. The base image is uploaded separately.",
+			"world_map_add_region, and delete it with world_map_delete. Pass image_ref if "+
+			"you already have an uploaded base-image key; otherwise the image is uploaded "+
+			"afterward via the map-image upload route.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"new map", "create map", "world map"}),
 		s.toolWorldMapCreate)
 
@@ -380,4 +494,22 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 		"List the maps in a world you own.",
 		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"maps", "list maps", "world maps"}),
 		s.toolWorldMapList)
+
+	addTool(srv, "world_map_delete",
+		"Delete a map you own — removes the map, its base image, and all its markers + "+
+			"regions. Undoes world_map_create.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"delete map", "remove map"}),
+		s.toolWorldMapDelete)
+
+	addTool(srv, "world_map_remove_marker",
+		"Remove a marker from a map you own. Undoes world_map_add_marker (re-add it with "+
+			"the same label + coords to restore).",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove pin", "delete marker"}),
+		s.toolWorldMapRemoveMarker)
+
+	addTool(srv, "world_map_remove_region",
+		"Remove a region from a map you own. Undoes world_map_add_region (re-add it with "+
+			"the same polygon to restore).",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove region", "delete area"}),
+		s.toolWorldMapRemoveRegion)
 }
