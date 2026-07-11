@@ -407,3 +407,23 @@ export function leafLaneAtY(lanes: LaneBand[], y: number): LaneBand | null {
   }
   return null;
 }
+
+/**
+ * 24 H5.4 — the scene-drag drop target. The CHAPTER card whose hit box contains the point (flow
+ * coords): the chapter a scene dropped there would re-parent under. The box is the card's x-extent
+ * by the lane's chapter-row strip (`laneHeight`) — generous vertically so a drop anywhere on the
+ * card's row lands, which matters because a dragged card's reported position is its top-left.
+ * Chapters never overlap in x within a lane, so at most one hit. Pure + headless.
+ */
+export function chapterAtPoint(
+  nodes: NodePosition[],
+  x: number,
+  y: number,
+  hitHeight: number = DEFAULT_LAYOUT_OPTIONS.laneHeight,
+): NodePosition | null {
+  for (const n of nodes) {
+    if (n.shape !== 'chapter') continue;
+    if (x >= n.x && x < n.x + n.width && y >= n.y && y < n.y + hitHeight) return n;
+  }
+  return null;
+}

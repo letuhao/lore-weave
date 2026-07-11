@@ -7,7 +7,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
-import { assignChapters, getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
+import {
+  assignChapters, getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks, reorderNode,
+} from '../api';
 import { laneLayout } from '../layout/laneLayout';
 import type { CollapseState, NodeContent, PlanHubView } from '../types';
 import { usePlanWindows } from './usePlanWindows';
@@ -132,6 +134,52 @@ export function usePlanHub(bookId: string): PlanHubView {
     [token, moveMutation],
   );
 
+  // ── H5 Row-4 (PH20): drag a scene card onto another chapter → re-parent it. Unlike the arc rebind
+  // this IS a versioned node write, so it carries OCC: `If-Match: <version>` → a 412 means the scene
+  // changed elsewhere. We invalidate on SETTLED (success OR error) so a conflict reloads the true
+  // state — the SceneRail "changed elsewhere — reloaded" recovery, never a silent overwrite.
+  const windowContent = windowsResult.content;
+  const moveSceneMutation = useMutation({
+    mutationFn: (vars: { sceneId: string; chapterId: string }) => {
+      const scene = windowContent[vars.sceneId];
+      if (!scene) throw new Error('scene not loaded');
+      // Append AFTER the target chapter's last loaded scene. Byte-order rank compare matches the
+      // server's fractional-rank collation (rank COLLATE "C"); no scenes loaded ⇒ first child.
+      const siblings = Object.values(windowContent)
+        .filter((n) => n.kind === 'scene' && n.parent_id === vars.chapterId && n.id !== vars.sceneId)
+        .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.id < b.id ? -1 : 1));
+      const afterId = siblings.length ? siblings[siblings.length - 1].id : null;
+      return reorderNode(
+        vars.sceneId,
+        { new_parent_id: vars.chapterId, after_id: afterId },
+        scene.version,
+        token!,
+      );
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['plan-hub'] }),
+  });
+  const moveSceneToChapter = useCallback(
+    (sceneId: string, chapterId: string) => {
+      if (!token) return;
+      const scene = windowContent[sceneId];
+      // Unknown scene, or dropped back on its OWN chapter ⇒ no write (the canvas re-places it).
+      if (!scene || scene.parent_id === chapterId) return;
+      moveSceneMutation.mutate({ sceneId, chapterId });
+    },
+    [token, windowContent, moveSceneMutation],
+  );
+
+  // A failed move surfaces to the panel. A 412 is the OCC conflict: the reload already fired
+  // (onSettled), so the message tells the user the canvas re-synced rather than lost their edit.
+  const moveError = useMemo(() => {
+    const e = (moveSceneMutation.error ?? moveMutation.error) as
+      | (Error & { status?: number })
+      | null;
+    if (!e) return null;
+    if (e.status === 412) return 'That node changed elsewhere — the canvas reloaded. Try the move again.';
+    return e.message || 'Move failed.';
+  }, [moveSceneMutation.error, moveMutation.error]);
+
   const loading = (enabled && arcsQuery.isLoading) || windowsResult.loading;
   const error =
     (arcsQuery.error instanceof Error ? arcsQuery.error.message : null) ?? windowsResult.error ?? null;
@@ -150,6 +198,8 @@ export function usePlanHub(bookId: string): PlanHubView {
     toggleArc,
     toggleChapter,
     moveChapterToArc,
-    moving: moveMutation.isPending,
+    moveSceneToChapter,
+    moving: moveMutation.isPending || moveSceneMutation.isPending,
+    moveError,
   };
 }

@@ -182,8 +182,13 @@ export interface PlanHubView {
   toggleChapter: (chapterId: string) => void;
   /** H5 Row-1 (PH20): rebind a chapter to another arc (drag into its lane). Refetches on success. */
   moveChapterToArc: (chapterId: string, arcId: string) => void;
+  /** H5 Row-4 (PH20): re-parent a scene under another chapter (drag onto its card). OCC'd on the
+   *  scene's version (If-Match → 412 reload). A drop on its OWN chapter is a no-op. */
+  moveSceneToChapter: (sceneId: string, chapterId: string) => void;
   /** A move is in flight (disable further drags / show a subtle busy state). */
   moving: boolean;
+  /** The last move's failure (incl. the 412 "changed elsewhere — reloaded" recovery); null when ok. */
+  moveError: string | null;
 }
 
 /** A camera pan request (H2.6/OQ-5). `seq` increments per request so re-focusing the SAME node
@@ -214,4 +219,8 @@ export interface PlanCanvasProps {
   /** H5 Row-1: a chapter card was dragged into another arc's lane — rebind it (structure_node_id).
    *  Omitted ⇒ chapters aren't draggable (read-only canvas). */
   onMoveChapter?: (chapterId: string, arcId: string) => void;
+  /** H5 Row-4: a scene card was dropped onto a chapter card — re-parent it under that chapter.
+   *  The canvas only resolves the TARGET; the controller decides whether it's a real move (it owns
+   *  the scene's current parent + version). Omitted ⇒ scenes aren't draggable. */
+  onMoveScene?: (sceneId: string, chapterId: string) => void;
 }

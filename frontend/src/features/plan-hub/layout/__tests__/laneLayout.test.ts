@@ -4,8 +4,8 @@
 // the PH21 unplanned tray) is a test — the canvas only supplies pan/zoom over these numbers.
 import { describe, expect, it } from 'vitest';
 import {
-  laneLayout, leafLaneAtY, DEFAULT_LAYOUT_OPTIONS as D,
-  type ArcShellNode, type LaneBand, type WindowNode,
+  laneLayout, leafLaneAtY, chapterAtPoint, DEFAULT_LAYOUT_OPTIONS as D,
+  type ArcShellNode, type LaneBand, type NodePosition, type WindowNode,
 } from '../laneLayout';
 
 const arc = (o: Partial<ArcShellNode> & { id: string }): ArcShellNode => ({
@@ -218,5 +218,35 @@ describe('leafLaneAtY — H5 drag drop-target (24-H5.1)', () => {
   it('is half-open [y, y+height): the exact bottom edge belongs to the next lane', () => {
     expect(leafLaneAtY(lanes, 140)).toBeNull();        // arc-a bottom edge, not inside
     expect(leafLaneAtY(lanes, 150)?.id).toBe('arc-b'); // arc-b top edge, inside
+  });
+})
+
+describe('chapterAtPoint — H5 Row-4 scene drop-target (24-H5.4)', () => {
+  // Two chapter cards on one lane's chapter row (y=28), plus a scene on the scene row (y=112).
+  const np = (o: Partial<NodePosition> & { id: string; shape: NodePosition['shape']; x: number; y: number }): NodePosition =>
+    ({ laneId: 'arc-a', width: D.cardWidth, collapsed: false, storyOrder: 1, ...o });
+  const nodes: NodePosition[] = [
+    np({ id: 'c1', shape: 'chapter', x: 24, y: 28 }),
+    np({ id: 'c2', shape: 'chapter', x: 200, y: 28 }),
+    np({ id: 's1', shape: 'scene', x: 24, y: 112 }),
+  ];
+
+  it('returns the chapter whose card box contains the drop point', () => {
+    expect(chapterAtPoint(nodes, 60, 40)?.id).toBe('c1');
+    expect(chapterAtPoint(nodes, 240, 60)?.id).toBe('c2');
+  });
+  it('the hit box spans the chapter ROW strip (laneHeight), so a drop low on the card still lands', () => {
+    expect(chapterAtPoint(nodes, 60, 28 + D.laneHeight - 1)?.id).toBe('c1');
+    expect(chapterAtPoint(nodes, 60, 28 + D.laneHeight)).toBeNull(); // past the row → miss
+  });
+  it('a drop in the horizontal gap BETWEEN two chapter cards hits neither', () => {
+    // c1 ends at 24+128=152; c2 starts at 200 → 170 is the gutter.
+    expect(chapterAtPoint(nodes, 170, 40)).toBeNull();
+  });
+  it('never returns a non-chapter node (a scene is not a re-parent target)', () => {
+    expect(chapterAtPoint(nodes, 60, 112)).toBeNull(); // over the scene row
+  });
+  it('returns null when the point is off every card', () => {
+    expect(chapterAtPoint(nodes, 999, 999)).toBeNull();
   });
 })

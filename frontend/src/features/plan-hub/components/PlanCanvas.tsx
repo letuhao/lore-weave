@@ -19,7 +19,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import type { CameraFocusTarget, NodePosition, PlanCanvasProps } from '../types';
-import { leafLaneAtY } from '../layout/laneLayout';
+import { chapterAtPoint, leafLaneAtY } from '../layout/laneLayout';
 import { ArcRollupNode } from './ArcRollupNode';
 import { ChapterNode } from './ChapterNode';
 import { buildLaneNodes, LaneBandNode, LANE_NODE_PREFIX } from './LaneBandLayer';
@@ -80,10 +80,13 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     activeNodeId,
     focusTarget,
     onMoveChapter,
+    onMoveScene,
   } = props;
 
-  // H5 Row-1: only chapters are draggable, and only when a move handler is wired (else read-only).
-  const canDrag = !!onMoveChapter;
+  // H5: a node kind is draggable only when its move handler is wired (else the canvas is read-only).
+  const canDragChapter = !!onMoveChapter;
+  const canDragScene = !!onMoveScene;
+  const canDrag = canDragChapter || canDragScene;
 
   const rfNodes = useMemo<Node[]>(() => {
     const laneNodes = buildLaneNodes(layout.lanes, layout.width, onToggleArc);
@@ -91,7 +94,8 @@ function PlanCanvasInner(props: PlanCanvasProps) {
       id: n.id,
       type: n.shape,
       position: { x: n.x, y: n.y },
-      draggable: canDrag && n.shape === 'chapter',
+      draggable:
+        (n.shape === 'chapter' && canDragChapter) || (n.shape === 'scene' && canDragScene),
       zIndex: CONTENT_Z,
       style: { width: n.width },
       data: {
@@ -112,7 +116,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDrag, onToggleArc, onToggleChapter]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, onToggleArc, onToggleChapter]);
 
   const rfEdges = useMemo<Edge[]>(
     () =>
@@ -141,18 +145,31 @@ function PlanCanvasInner(props: PlanCanvasProps) {
 
   const onPaneClick = useCallback(() => onSelect(null), [onSelect]);
 
-  // H5 Row-1: on drop, resolve the LEAF lane the card landed in (leafLaneAtY, pure). A move to a
-  // DIFFERENT leaf arc than the card's current lane rebinds it; a drop onto its own lane, a non-leaf
-  // gap, or the tray is a no-op (React Flow snaps the card back on the next controlled render).
+  // H5 drop routing (pure hit-tests; React Flow snaps the card back on the next controlled render
+  // whenever the drop is a no-op):
+  //   • CHAPTER (Row-1) → the LEAF lane it landed in (leafLaneAtY). A DIFFERENT leaf arc rebinds it;
+  //     its own lane / a non-leaf gap / the tray is a no-op.
+  //   • SCENE (Row-4) → the CHAPTER card it landed on (chapterAtPoint). The controller decides
+  //     whether that's a real move (it owns the scene's current parent + version for OCC); a drop on
+  //     no chapter is a no-op.
   const onNodeDragStop = useCallback<NodeDragHandler>(
     (_, node) => {
-      if (!onMoveChapter) return;
       const np = layout.nodes.find((p) => p.id === node.id);
-      if (!np || np.shape !== 'chapter') return;
-      const target = leafLaneAtY(layout.lanes, node.position.y);
-      if (target && target.id !== np.laneId) onMoveChapter(node.id, target.id);
+      if (!np) return;
+      const { x, y } = node.position;
+      if (np.shape === 'chapter') {
+        if (!onMoveChapter) return;
+        const target = leafLaneAtY(layout.lanes, y);
+        if (target && target.id !== np.laneId) onMoveChapter(node.id, target.id);
+        return;
+      }
+      if (np.shape === 'scene') {
+        if (!onMoveScene) return;
+        const target = chapterAtPoint(layout.nodes, x, y);
+        if (target) onMoveScene(node.id, target.id);
+      }
     },
-    [onMoveChapter, layout],
+    [onMoveChapter, onMoveScene, layout],
   );
 
   return (

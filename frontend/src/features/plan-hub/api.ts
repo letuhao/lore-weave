@@ -71,6 +71,24 @@ export function getConformanceStatus(
   );
 }
 
+/** H5 Row-4 write — re-parent / re-rank an outline node (the drag-reorder mirror, PH20). Places
+ *  `nodeId` under `newParentId` directly AFTER `afterId` (null = first child); the server computes
+ *  the fractional rank, inherits the new chapter's `chapter_id` for a re-parented scene, and
+ *  renumbers scene `story_order` — all in ONE transaction. OCC is the existing `If-Match: <version>`
+ *  header convention (PH20/F-H3): a stale version is a 412 NODE_VERSION_CONFLICT, which the caller
+ *  recovers from by reloading (the SceneRail precedent) — never a silent overwrite. */
+export function reorderNode(
+  nodeId: string,
+  body: { new_parent_id: string | null; after_id: string | null },
+  version: number,
+  token: string,
+): Promise<{ id: string; parent_id: string | null; version: number }> {
+  return apiJson<{ id: string; parent_id: string | null; version: number }>(
+    `${COMP}/outline/nodes/${nodeId}/reorder`,
+    { method: 'POST', token, headers: { 'If-Match': String(version) }, body: JSON.stringify(body) },
+  );
+}
+
 /** H5 Row-1 write — attach chapter outline nodes to an arc (sets `structure_node_id`). The GUI
  *  mirror of `composition_arc_assign_chapters` (PH20); book-scoped both sides, EDIT-gated. Idempotent
  *  bulk set (no OCC/If-Match — not a versioned field write). Returns how many rows changed. */

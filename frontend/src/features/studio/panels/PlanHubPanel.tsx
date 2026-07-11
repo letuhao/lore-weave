@@ -93,7 +93,18 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           activeNodeId={activeNodeId}
           focusTarget={focusTarget}
           onMoveChapter={view.moveChapterToArc}
+          onMoveScene={view.moveSceneToChapter}
         />
+        {/* A failed move (incl. the 412 "changed elsewhere — reloaded" OCC recovery) is surfaced,
+            never swallowed — the canvas has already re-synced from the server underneath it. */}
+        {view.moveError && (
+          <div
+            data-testid="plan-hub-move-error"
+            className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive shadow"
+          >
+            {view.moveError}
+          </div>
+        )}
         {/* Always mounted — PlanDrawer self-hides on a null selection (never conditionally unmount a
             stateful child). onClose clears the selection, which also drops the rail/canvas highlight. */}
         <PlanDrawer

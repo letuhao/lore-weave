@@ -37,6 +37,7 @@ function makeLayout(): LaneLayout {
     lanes: [band('arc-a', 0, true), band('arc-b', 150, true)],
     nodes: [
       { id: 'c1', shape: 'chapter', laneId: 'arc-a', x: 40, y: 8, width: 128, collapsed: false, storyOrder: 1 },
+      { id: 'c2', shape: 'chapter', laneId: 'arc-a', x: 240, y: 8, width: 128, collapsed: false, storyOrder: 2 },
       { id: 's1', shape: 'scene', laneId: 'arc-a', x: 40, y: 40, width: 100, collapsed: false, storyOrder: 1 },
     ],
     unplanned: [], width: 400, height: 320,
@@ -86,5 +87,55 @@ describe('PlanCanvas drag-to-rebind (H5 Row-1)', () => {
     render(<PlanCanvas {...makeProps()} />);
     // onNodeDragStop is still wired but no-ops without the callback; invoking it must not throw.
     expect(() => captured.onNodeDragStop!({}, { id: 'c1', position: { x: 40, y: 200 } })).not.toThrow();
+  });
+});
+
+describe('PlanCanvas scene drag-to-reparent (H5 Row-4)', () => {
+  beforeEach(() => { captured.onNodeDragStop = undefined; });
+
+  it('dropping a scene onto a chapter card re-parents it under that chapter', () => {
+    const onMoveScene = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveScene })} />);
+    // s1 dropped over c2's card box (x 240..368, y 8..8+laneHeight).
+    captured.onNodeDragStop!({}, { id: 's1', position: { x: 260, y: 30 } });
+    expect(onMoveScene).toHaveBeenCalledWith('s1', 'c2');
+  });
+
+  it('the canvas resolves the TARGET only — it fires even for the scene\'s own chapter, and the controller no-ops', () => {
+    const onMoveScene = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveScene })} />);
+    // Dropped back over c1 (its own chapter): the canvas has no parent knowledge, so it still
+    // reports the target; usePlanHub.moveSceneToChapter is what skips the write.
+    captured.onNodeDragStop!({}, { id: 's1', position: { x: 60, y: 30 } });
+    expect(onMoveScene).toHaveBeenCalledWith('s1', 'c1');
+  });
+
+  it('a scene dropped on NO chapter card (a gutter / empty canvas) is a no-op', () => {
+    const onMoveScene = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveScene })} />);
+    captured.onNodeDragStop!({}, { id: 's1', position: { x: 200, y: 30 } }); // gutter between c1 and c2
+    expect(onMoveScene).not.toHaveBeenCalled();
+    captured.onNodeDragStop!({}, { id: 's1', position: { x: 60, y: 300 } }); // far below any chapter row
+    expect(onMoveScene).not.toHaveBeenCalled();
+  });
+
+  it('a chapter drag never fires the scene handler, and vice versa (kind routing)', () => {
+    const onMoveChapter = vi.fn();
+    const onMoveScene = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveChapter, onMoveScene })} />);
+    captured.onNodeDragStop!({}, { id: 'c1', position: { x: 40, y: 200 } }); // chapter → arc-b lane
+    expect(onMoveChapter).toHaveBeenCalledWith('c1', 'arc-b');
+    expect(onMoveScene).not.toHaveBeenCalled();
+
+    onMoveChapter.mockClear();
+    captured.onNodeDragStop!({}, { id: 's1', position: { x: 260, y: 30 } }); // scene → c2
+    expect(onMoveScene).toHaveBeenCalledWith('s1', 'c2');
+    expect(onMoveChapter).not.toHaveBeenCalled();
+  });
+
+  it('without an onMoveScene handler a scene drop is a no-op (read-only scenes)', () => {
+    const onMoveChapter = vi.fn();
+    render(<PlanCanvas {...makeProps({ onMoveChapter })} />);
+    expect(() => captured.onNodeDragStop!({}, { id: 's1', position: { x: 260, y: 30 } })).not.toThrow();
   });
 });
