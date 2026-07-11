@@ -445,6 +445,21 @@ class KgProjectEntitiesToNodesArgs(ProjectScopedArgs):
     entity_ids: list[str] | None = Field(default=None, max_length=1000)
 
 
+class KgCreateNodeArgs(ProjectScopedArgs):
+    """`kg_create_node` — manually create ONE knowledge-graph entity node (a
+    character, place, faction, item, …). Tier-A: idempotent (the same name+kind
+    upserts the existing node) + reversible. Use this BEFORE `kg_propose_edge` when a
+    relationship's endpoint isn't in the graph yet — an edge whose endpoints aren't
+    nodes is parked and later fails at confirm. Returns the node's entity_id to use
+    as an edge endpoint."""
+
+    name: str = Field(min_length=1, max_length=200, description="the entity's name")
+    kind: str = Field(
+        min_length=1, max_length=100,
+        description="the entity kind, e.g. 'character', 'location', 'faction', 'item'",
+    )
+
+
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
@@ -460,6 +475,7 @@ GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     "kg_propose_fact": KgProposeFactArgs,
     "kg_propose_edge": KgProposeEdgeArgs,
     "kg_project_entities_to_nodes": KgProjectEntitiesToNodesArgs,  # WS-4B: A, deterministic projection
+    "kg_create_node": KgCreateNodeArgs,  # W10-M1: A, manual single-node create (unblocks kg_propose_edge)
     "kg_view_upsert": KgViewUpsertArgs,
     "kg_view_delete": KgViewDeleteArgs,
     "kg_triage_resolve": KgTriageResolveArgs,
@@ -804,6 +820,30 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             "project_id": _PROJECT_ID_PROP,
         },
         [],
+    ),
+    _tool(
+        "kg_create_node",
+        "Manually create ONE knowledge-graph entity node (a character, place, "
+        "faction, item, …). Use this BEFORE kg_propose_edge when a relationship's "
+        "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
+        "parked and later fails. Idempotent: the same name+kind returns the existing "
+        "node. Returns the entity_id to use as an edge endpoint.",
+        {
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "the entity's name",
+            },
+            "kind": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "the entity kind, e.g. 'character', 'location', 'faction', 'item'",
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        ["name", "kind"],
     ),
     _tool(
         "kg_view_upsert",
@@ -1643,6 +1683,37 @@ async def _handle_kg_project_entities_to_nodes(
     return out
 
 
+async def _handle_kg_create_node(ctx: "ToolContext", args: KgCreateNodeArgs) -> dict:
+    """A (reversible, idempotent). Manually mint ONE :Entity node so an agent can
+    give kg_propose_edge a real endpoint (an edge whose endpoints aren't nodes is
+    parked, then fails). Runs under the project OWNER (resolve-to-owner, EDIT grant),
+    so a collaborator resolves the grant but the write is still owner-scoped."""
+    from app.tools.executor import ToolExecutionError
+    from app.db.neo4j_repos.entities import merge_entity
+
+    owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
+    name = args.name.strip()
+    kind = args.kind.strip()
+    if not name or not kind:
+        raise ToolExecutionError("name and kind must both be non-empty")
+    async with neo4j_session() as session:
+        entity = await merge_entity(
+            session,
+            user_id=str(owner),
+            project_id=str(ctx.project_id),
+            name=name,
+            kind=kind,
+            source_type="manual",
+            provenance="human_authored",
+        )
+    return {
+        "entity_id": entity.id,
+        "name": entity.name,
+        "kind": entity.kind,
+        "note": "node ready — pass entity_id as a subject/object endpoint to kg_propose_edge",
+    }
+
+
 async def _handle_kg_view_upsert(ctx: "ToolContext", args: KgViewUpsertArgs) -> dict:
     # W (reversible, owner==caller). Views are per-user; the caller owns their
     # views even in a shared project, so this enforces owner==caller (the repo
@@ -2004,6 +2075,7 @@ GRAPH_SCHEMA_HANDLERS = {
     "kg_propose_fact": _handle_kg_propose_fact,
     "kg_propose_edge": _handle_kg_propose_edge,
     "kg_project_entities_to_nodes": _handle_kg_project_entities_to_nodes,
+    "kg_create_node": _handle_kg_create_node,
     "kg_view_upsert": _handle_kg_view_upsert,
     "kg_view_delete": _handle_kg_view_delete,
     "kg_triage_resolve": _handle_kg_triage_resolve,

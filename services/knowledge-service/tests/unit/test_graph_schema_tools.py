@@ -69,6 +69,7 @@ _LANE_LF_TOOLS = {
     "kg_propose_fact",
     "kg_propose_edge",
     "kg_project_entities_to_nodes",
+    "kg_create_node",
     "kg_view_upsert",
     "kg_view_delete",
     "kg_triage_resolve",
@@ -111,9 +112,10 @@ def test_total_tool_count_is_memory_plus_lane_lf():
     REST route behind the Build-KG dialog, which left kg_build_graph unreachable by an
     agent) + 2 cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4)
     + 4 W11-M2 reader tools (lore_ask/lore_browse_entities/lore_entity/lore_timeline)
-    = 36."""
+    + 1 W10-M1 kg_create_node (manual single-node create)
+    = 37."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 36
+    assert len(TOOL_DEFINITIONS) == 37
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
     assert {"kg_project_create", "kg_project_list", "kg_project_set_embedding_model",
@@ -1470,3 +1472,61 @@ async def test_kg_world_query_unify_by_name_wired(monkeypatch):
     assert res.success, res.error
     assert seen["method"] == "by_name"
     assert res.result["unify_method"] == "by_name"
+
+
+# ── W10-M1 kg_create_node (manual single-node create) ────────────────────────
+@pytest.mark.asyncio
+async def test_kg_create_node_creates_and_returns_endpoint_id(monkeypatch):
+    ctx = _ctx()  # caller == owner
+
+    @asynccontextmanager
+    async def _fake_session(**_):
+        yield object()
+
+    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    me = AsyncMock(return_value=SimpleNamespace(id="kg-sha", name="Kai", kind="character"))
+    monkeypatch.setattr("app.db.neo4j_repos.entities.merge_entity", me)
+
+    res = await execute_tool(ctx, "kg_create_node", {"name": "  Kai  ", "kind": "character"})
+    assert res.success
+    assert res.result["entity_id"] == "kg-sha"
+    _, kwargs = me.call_args
+    assert kwargs["name"] == "Kai"                 # trimmed
+    assert kwargs["kind"] == "character"
+    assert kwargs["source_type"] == "manual"
+    assert kwargs["user_id"] == str(_OWNER)        # ran as the OWNER
+
+
+@pytest.mark.asyncio
+async def test_kg_create_node_non_grantee_anti_oracle():
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.NONE)
+    ctx = _ctx(user_id=uuid4(), projects_repo=repo, grant_client=grant)
+    res = await execute_tool(ctx, "kg_create_node", {"name": "X", "kind": "character"})
+    assert not res.success
+    assert "project not found" in res.error.lower()  # no existence oracle
+
+
+@pytest.mark.asyncio
+async def test_kg_create_node_resolves_to_owner_not_caller(monkeypatch):
+    reader = uuid4()
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # grantee can write
+    ctx = _ctx(user_id=reader, projects_repo=repo, grant_client=grant)
+
+    @asynccontextmanager
+    async def _fake_session(**_):
+        yield object()
+
+    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    me = AsyncMock(return_value=SimpleNamespace(id="kg-1", name="Kai", kind="character"))
+    monkeypatch.setattr("app.db.neo4j_repos.entities.merge_entity", me)
+
+    res = await execute_tool(ctx, "kg_create_node", {"name": "Kai", "kind": "character"})
+    assert res.success
+    _, kwargs = me.call_args
+    assert kwargs["user_id"] == str(_OWNER)  # the write ran as OWNER, never the grantee

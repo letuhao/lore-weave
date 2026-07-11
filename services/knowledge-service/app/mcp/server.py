@@ -1110,6 +1110,31 @@ async def kg_project_entities_to_nodes(
 
 
 @mcp_server.tool(
+    name="kg_create_node",
+    description=(
+        "Manually create ONE knowledge-graph entity node (a character, place, "
+        "faction, item, …). Use this BEFORE kg_propose_edge when a relationship's "
+        "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
+        "parked and later fails. Idempotent: the same name+kind returns the existing "
+        "node. Returns the entity_id to use as an edge endpoint."
+    ),
+    meta=require_meta("A", "project", tool_name="kg_create_node"),
+)
+async def kg_create_node(
+    ctx: MCPContext,
+    name: Annotated[str, "the entity's name"],
+    kind: Annotated[
+        str, "the entity kind, e.g. 'character', 'location', 'faction', 'item'"
+    ],
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {"name": name, "kind": kind}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_create_node", args)
+
+
+@mcp_server.tool(
     name="kg_view_upsert",
     description=(
         "Create or replace one of the caller's saved views (a named lens of "
