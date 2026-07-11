@@ -6,11 +6,12 @@ import (
 )
 
 type Config struct {
-	HTTPAddr               string
-	DatabaseURL            string
-	JWTSecret              string
-	BookServiceInternalURL string
-	InternalServiceToken   string
+	HTTPAddr                   string
+	DatabaseURL                string
+	JWTSecret                  string
+	BookServiceInternalURL     string
+	GlossaryServiceInternalURL string
+	InternalServiceToken       string
 }
 
 func Load() (*Config, error) {
@@ -19,7 +20,11 @@ func Load() (*Config, error) {
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		BookServiceInternalURL: os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
-		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		// W11-M3 public lore route. Optional: a deploy that doesn't set it (or when
+		// glossary is unreachable) makes the /unlisted/{token}/lore route degrade to
+		// 503, but the service still starts. Default = the compose service URL.
+		GlossaryServiceInternalURL: getEnv("GLOSSARY_SERVICE_INTERNAL_URL", "http://glossary-service:8088"),
+		InternalServiceToken:       os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

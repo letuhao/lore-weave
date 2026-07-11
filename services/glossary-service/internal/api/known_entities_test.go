@@ -179,6 +179,61 @@ func TestKnownEntities_ReturnsEntityID(t *testing.T) {
 	}
 }
 
+// W11-M3 — a soft-deleted entity must NEVER appear in known-entities. Soft-delete
+// is a pure `SET deleted_at` (status stays 'active', alive stays true, chapter links
+// survive), so without the `deleted_at IS NULL` filter an author-DELETED canon entity
+// would leak — and the public lore route serves this stream to anonymous readers.
+func TestKnownEntities_ExcludesSoftDeleted(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-000000000002"
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	kindID := bookKindID(t, pool, bid, "character")
+	nameAttrID := bookAttrID(t, pool, bid, kindID, "name")
+
+	var eid string
+	pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
+		bid, kindID).Scan(&eid)
+	pool.Exec(ctx,
+		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'en','Villain')`,
+		eid, nameAttrID)
+	for _, idx := range []int{1, 2} {
+		pool.Exec(ctx,
+			`INSERT INTO chapter_entity_links(entity_id,chapter_id,chapter_title,chapter_index,relevance) VALUES($1,gen_random_uuid(),'Ch',$2,'major')`,
+			eid, idx)
+	}
+	// Soft-delete: leaves status='active', alive=true, links intact — the exact
+	// state that leaks without the deleted_at filter.
+	pool.Exec(ctx, `UPDATE glossary_entities SET deleted_at=now() WHERE entity_id=$1`, eid)
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM chapter_entity_links WHERE entity_id=$1`, eid)
+		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id=$1`, eid)
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
+	})
+
+	srv, token := newKnownEntitiesServer(t)
+	srv.pool = pool
+	req := httptest.NewRequest(http.MethodGet,
+		"/internal/books/"+bookID+"/known-entities?min_frequency=1&status=active", nil)
+	req.Header.Set("X-Internal-Token", token)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var resp []map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v — body=%s", err, w.Body.String())
+	}
+	if len(resp) != 0 {
+		t.Fatalf("soft-deleted active entity MUST be excluded (public canon leak), got %d: %+v", len(resp), resp)
+	}
+}
+
 // ── D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM + D-ANCHOR-PRELOAD-50-CAP ────────
 
 // TestKnownEntities_InvalidStatusReturns400 — `status` used to be accepted and
@@ -222,12 +277,12 @@ func knownEntitiesGet(t *testing.T, srv *Server, token, bookID, query string) []
 
 // TestKnownEntities_ProseLessStatusAndPaging is the DB regression for the three
 // bugs /review-impl found in the WS-4B graph projection's glossary read:
-//   1. min_frequency default 2 hid every entity of a PROSE-LESS book (0 chapter
-//      links) — the exact scenario the projection exists for. min_frequency=0 must
-//      return them (even 1 would not: the chapter join is a LEFT JOIN, COUNT=0).
-//   2. `status` was never read → every caller's status=active was a silent no-op.
-//   3. `limit` defaulted to 50 with no `offset`, so a bigger glossary was silently
-//      truncated. offset must page deterministically (stable ORDER BY tiebreak).
+//  1. min_frequency default 2 hid every entity of a PROSE-LESS book (0 chapter
+//     links) — the exact scenario the projection exists for. min_frequency=0 must
+//     return them (even 1 would not: the chapter join is a LEFT JOIN, COUNT=0).
+//  2. `status` was never read → every caller's status=active was a silent no-op.
+//  3. `limit` defaulted to 50 with no `offset`, so a bigger glossary was silently
+//     truncated. offset must page deterministically (stable ORDER BY tiebreak).
 func TestKnownEntities_ProseLessStatusAndPaging(t *testing.T) {
 	pool := openTestDB(t)
 	ctx := context.Background()

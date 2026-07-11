@@ -270,6 +270,13 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	args = append(args, bookID)
 	argIdx++
 
+	// Never surface soft-deleted entities. Soft-delete is a pure `SET deleted_at`
+	// (it leaves status/alive untouched and does NOT cascade chapter_entity_links),
+	// so without this a deleted `status='active'` entity still passes the frequency
+	// HAVING — and the W11-M3 public lore route would serve author-removed content to
+	// anonymous readers. Mirrors every sibling entity read (entity_handler.go).
+	conditions = append(conditions, "e.deleted_at IS NULL")
+
 	if alive {
 		conditions = append(conditions, "e.alive = true")
 	}
