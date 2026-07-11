@@ -1,0 +1,103 @@
+import { describe, it, expect } from 'vitest';
+import { joinSceneRows, filterUnionRows, sortUnionRows, type SceneUnionRow } from '../sceneUnion';
+import type { Scene } from '@/features/books/api';
+import type { OutlineNode } from '@/features/composition/types';
+
+const scene = (o: Partial<Scene>): Scene => ({
+  id: 'sc', book_id: 'b', chapter_id: 'ch1', sort_order: 0, title: null, path: '/0',
+  leaf_text: '', content_hash: 'h', source_scene_id: null, parse_version: 1,
+  lifecycle_state: 'active', ...o,
+});
+const node = (o: Partial<OutlineNode>): OutlineNode => ({
+  id: 'n', project_id: 'p', parent_id: null, kind: 'scene', rank: 'a', title: '',
+  chapter_id: 'ch1', story_order: 0, status: 'outline', synopsis: '', version: 1,
+  is_archived: false, beat_role: null, ...o,
+});
+
+describe('joinSceneRows — the three union shapes (22 §GUI)', () => {
+  it('linked: an index row whose source_scene_id resolves to a live spec node', () => {
+    const rows = joinSceneRows(
+      [scene({ id: 's1', source_scene_id: 'n1' })],
+      [node({ id: 'n1', title: 'Opening' })],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].shape).toBe('linked');
+    expect(rows[0].key).toBe('n1');
+    expect(rows[0].index?.id).toBe('s1');
+    expect(rows[0].spec?.id).toBe('n1');
+    expect(rows[0].anchorLost).toBe(false);
+  });
+
+  it('index_only (never decompiled): a scene with source_scene_id NULL, anchorLost=false', () => {
+    const rows = joinSceneRows([scene({ id: 's1', source_scene_id: null })], []);
+    expect(rows[0].shape).toBe('index_only');
+    expect(rows[0].spec).toBeNull();
+    expect(rows[0].anchorLost).toBe(false); // never-decompiled ≠ anchor-lost (BPS-13)
+  });
+
+  it('index_only (anchor lost): source_scene_id set but resolves to nothing → anchorLost=true', () => {
+    const rows = joinSceneRows([scene({ id: 's1', source_scene_id: 'gone' })], []);
+    expect(rows[0].shape).toBe('index_only');
+    expect(rows[0].anchorLost).toBe(true);
+  });
+
+  it('spec_only: a scene spec node no index row points at → "not yet written"', () => {
+    const rows = joinSceneRows([], [node({ id: 'n1', title: 'Planned' })]);
+    expect(rows[0].shape).toBe('spec_only');
+    expect(rows[0].index).toBeNull();
+    expect(rows[0].spec?.id).toBe('n1');
+  });
+
+  it('a never-decompiled book renders ENTIRELY as index_only', () => {
+    const rows = joinSceneRows(
+      [scene({ id: 'a', chapter_id: 'c', sort_order: 0 }), scene({ id: 'b', chapter_id: 'c', sort_order: 1 })],
+      [],
+    );
+    expect(rows.every((r) => r.shape === 'index_only')).toBe(true);
+    expect(rows).toHaveLength(2);
+  });
+
+  it('non-scene and archived spec nodes never participate', () => {
+    const rows = joinSceneRows(
+      [],
+      [node({ id: 'ch', kind: 'chapter' }), node({ id: 'arc', kind: 'arc' }), node({ id: 'gone', is_archived: true })],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('a spec node is claimed by only ONE linked row (no double-count)', () => {
+    const rows = joinSceneRows(
+      [scene({ id: 's1', source_scene_id: 'n1' })],
+      [node({ id: 'n1' }), node({ id: 'n2', story_order: 1 })],
+    );
+    expect(rows.filter((r) => r.shape === 'linked')).toHaveLength(1);
+    expect(rows.filter((r) => r.shape === 'spec_only')).toHaveLength(1); // n2 unclaimed
+  });
+});
+
+describe('sortUnionRows — deterministic (chapter, order, key), nulls last', () => {
+  it('orders by chapter then story_order, null order sinks', () => {
+    const rows: SceneUnionRow[] = [
+      { shape: 'spec_only', key: 'z', index: null, spec: null, chapterId: 'ch1', sortOrder: null, anchorLost: false },
+      { shape: 'linked', key: 'a', index: null, spec: null, chapterId: 'ch1', sortOrder: 2, anchorLost: false },
+      { shape: 'linked', key: 'b', index: null, spec: null, chapterId: 'ch0', sortOrder: 5, anchorLost: false },
+    ];
+    expect(sortUnionRows(rows).map((r) => r.key)).toEqual(['b', 'a', 'z']);
+  });
+});
+
+describe('filterUnionRows — client-side text over both truths', () => {
+  const rows = joinSceneRows(
+    [scene({ id: 's1', source_scene_id: 'n1', leaf_text: 'a dragon roared' })],
+    [node({ id: 'n1', title: 'Opening', synopsis: 'the hero arrives' }), node({ id: 'n2', title: 'Quiet', story_order: 1 })],
+  );
+  it('matches spec title/synopsis', () => {
+    expect(filterUnionRows(rows, 'hero').map((r) => r.key)).toEqual(['n1']);
+  });
+  it('matches index leaf_text', () => {
+    expect(filterUnionRows(rows, 'dragon').map((r) => r.key)).toEqual(['n1']);
+  });
+  it('empty query returns all', () => {
+    expect(filterUnionRows(rows, '  ')).toHaveLength(2);
+  });
+});

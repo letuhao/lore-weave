@@ -229,6 +229,31 @@
         "desc": "Chunk a PDF into chapters, with optional AI captioning for images"
       }
     },
+    "scene-browser": {
+      "title": "Scene Browser",
+      "desc": "Browse every scene in this book — the parsed prose and its authored plan, side by side",
+      "guideBody": "The Scene Browser lists every scene across the whole book by joining two truths: the prose actually written (from book-service) and the authored intent/plan (from composition). A scene can be written-and-planned (normal), planned-but-not-yet-written, or written-but-not-yet-decompiled into a plan — so an imported book's scenes show here even before you make a plan.",
+      "noBook": "Open a book to browse its scenes.",
+      "search": "Search titles & prose…",
+      "count": "{{n}} scenes",
+      "workless": "No plan yet — scene intent (status, POV, tension) is unavailable until you create a plan for this book.",
+      "anchorLost": "Anchor lost",
+      "empty": "No scenes match.",
+      "loadMore": "Load more",
+      "loading": "Loading…",
+      "col": {
+        "num": "#",
+        "scene": "Scene",
+        "status": "Status",
+        "tension": "Tension",
+        "words": "Words"
+      },
+      "badge": {
+        "notWritten": "not yet written",
+        "notPlanned": "not planned",
+        "anchorLost": "anchor lost"
+      }
+    },
     "chapter-browser": {
       "title": "Chapter Browser",
       "desc": "Sort, filter, search and bulk-act across this book's chapters",
