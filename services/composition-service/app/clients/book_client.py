@@ -171,8 +171,16 @@ class BookClient:
         self, book_id: UUID, chapter_ids: list[UUID],
     ) -> dict[str, dict[str, Any]]:
         """26 IX-9 — batch chapter canon/index markers for the conformance-staleness
-        read: `{chapter_id: {published_revision_id, last_parsed_revision_id,
-        parse_version, editorial_status}}` (parse_version = the IX-4 chapter scalar).
+        read: `{chapter_id: {published_revision_id, kg_indexed_revision_id, kg_exclude,
+        last_parsed_revision_id, parse_version, editorial_status}}`
+        (parse_version = the IX-4 chapter scalar).
+
+        WS-0.7: `kg_indexed_revision_id` + `kg_exclude` are what make the post-WS-0.5
+        staleness predicate expressible here at all. `_dirty_reasons` mirrors the
+        book-service sweeper's WHERE clause in Python, and the sweeper now keys on the
+        KG pointer — so without these two fields this service would keep evaluating the
+        OLD predicate and render a permanently-stuck `index_stale` badge on any chapter
+        that is published@A but indexed@B.
         Calls book-service's INTERNAL batch route
         `POST /internal/books/{book_id}/chapters/canon-markers` (B5, mirrors
         `/internal/chapters/sort-orders` — ≤200 ids, partial responses,

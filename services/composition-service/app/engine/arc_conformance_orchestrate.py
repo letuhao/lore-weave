@@ -261,6 +261,13 @@ async def assemble_input_manifest(
         m = markers.get(str(cid)) or {}
         chapters.append({
             "chapter_id": str(cid),
+            # WS-0.7: kg_indexed_revision_id is what _dirty_reasons compares against
+            # (the revision the scenes the report binds to were parsed from). It MUST be
+            # recorded here — record only published_revision_id and every subsequent
+            # status poll would compare a present marker against an absent record and
+            # report prose_drift forever, re-running the token-costly conformance job.
+            # published_revision_id stays for provenance/back-compat with old readers.
+            "kg_indexed_revision_id": m.get("kg_indexed_revision_id"),
             "published_revision_id": m.get("published_revision_id"),
             "parse_version": m.get("parse_version"),
         })
@@ -311,21 +318,41 @@ def _dirty_reasons(
     """Compute an arc's dirty reasons + its stale chapter ids from the snapshot's
     manifest vs the current markers + recomputed fingerprints (IX-9). Never writes."""
     manifest = snap.input_manifest or {}
-    recorded = {str(c.get("chapter_id")): c.get("published_revision_id")
-                for c in (manifest.get("chapters") or [])}
     reasons: list[str] = []
 
-    # prose_drift ⇔ ∃ recorded member chapter whose current published_revision_id
-    # differs (a publish, an unpublish, or a delete since the snapshot). COMP-STALE-1:
-    # collect the drifted chapters (do NOT break) — the scene-inspector chip is
-    # `arc.dirty AND chapter IN stale_chapters` (IX-14), so a prose-drifted chapter
-    # must be IN stale_chapters or it renders false-fresh. On the normal publish path
-    # (IX-2 re-parses in-Tx → index fresh immediately) prose_drift is the ONLY signal,
-    # so omitting the drifted chapters hides every real drift.
+    # WS-0.7 — both drift signals are re-keyed onto kg_indexed_revision_id (the revision
+    # the knowledge layer + the scene index reflect), NOT published_revision_id.
+    # Spec: docs/specs/2026-07-11-publish-independent-kg-indexing.md §3.6 (red-team P0-3).
+    #
+    # Why: the conformance report binds motifs to SCENES, and scenes are now parsed from
+    # the INDEXED revision (which may be a draft the user explicitly indexed). Keying the
+    # drift signals on published_revision_id would report against a revision the report
+    # was never computed from.
+    #
+    # LEGACY MANIFEST FALLBACK (cost-motivated, deliberate): snapshots written before
+    # WS-0.7 recorded only `published_revision_id`. If the new key is ABSENT we fall back
+    # to it. For every pre-WS-0.7 chapter that is legitimate: the WS-0.2 migration seeded
+    # kg_indexed_revision_id := published_revision_id, so the two are equal on the legacy
+    # corpus and the comparison is identical. Without this fallback every existing arc
+    # would read as drifted on first status poll and re-run its LLM-judged, token-costly
+    # conformance job — a mass spend event triggered by a deploy.
+    def _recorded_kg(c: dict) -> Any:
+        if "kg_indexed_revision_id" in c:
+            return c.get("kg_indexed_revision_id")
+        return c.get("published_revision_id")  # legacy snapshot
+
+    recorded = {str(c.get("chapter_id")): _recorded_kg(c)
+                for c in (manifest.get("chapters") or [])}
+
+    # prose_drift ⇔ ∃ recorded member chapter whose current kg_indexed_revision_id
+    # differs (a publish, a re-index, an unpublish, an exclusion, or a delete since the
+    # snapshot). COMP-STALE-1: collect the drifted chapters (do NOT break) — the
+    # scene-inspector chip is `arc.dirty AND chapter IN stale_chapters` (IX-14), so a
+    # prose-drifted chapter must be IN stale_chapters or it renders false-fresh.
     drifted: list[str] = []
-    for cid_str, rec_pub in recorded.items():
+    for cid_str, rec_kg in recorded.items():
         cur = markers.get(cid_str) or {}
-        if _norm(cur.get("published_revision_id")) != _norm(rec_pub):
+        if _norm(cur.get("kg_indexed_revision_id")) != _norm(rec_kg):
             drifted.append(cid_str)
     if drifted:
         reasons.append("prose_drift")
@@ -334,14 +361,26 @@ def _dirty_reasons(
     if _spec_fingerprints(arc, member_rows, binding_rows) != (manifest.get("spec") or {}):
         reasons.append("spec_drift")
 
-    # index_stale ⇔ ∃ PUBLISHED member chapter whose index lags the canon (repeats the
-    # sweeper's own WHERE clause, so the badge never fires on a chapter the sweeper
-    # cannot heal — a draft-indexed / unpublished chapter is NOT stale). Advisory.
+    # index_stale ⇔ ∃ member chapter whose scene index lags the revision the knowledge
+    # layer reflects. This REPEATS THE SWEEPER'S OWN (post-WS-0.5) PREDICATE, so the badge
+    # can never fire on a chapter the sweeper is unable to heal — the invariant this block
+    # has always been about, now stated against the right pointer.
+    #
+    # The old form (`editorial_status == 'published' AND last_parsed != published_rev`)
+    # produced a PERMANENTLY-STUCK badge once indexing decoupled from publishing:
+    # publish@A → index draft@B ⇒ composition saw `published AND last_parsed(B) !=
+    # published(A)` ⇒ stale, while the sweeper saw `last_parsed(B) == kg_indexed(B)` ⇒
+    # nothing to heal. The arc's conformance report stayed dirty forever.
+    #
+    # kg_exclude'd chapters are NOT stale: the sweeper skips them by design, so a badge
+    # firing on one could never clear either.
     index_stale: list[str] = []
     for cid in chapter_ids:
         m = markers.get(str(cid)) or {}
-        if m.get("editorial_status") == "published" and \
-                _norm(m.get("last_parsed_revision_id")) != _norm(m.get("published_revision_id")):
+        kg_rev = m.get("kg_indexed_revision_id")
+        if kg_rev is None or m.get("kg_exclude"):
+            continue
+        if _norm(m.get("last_parsed_revision_id")) != _norm(kg_rev):
             index_stale.append(str(cid))
     if index_stale:
         reasons.append("index_stale")

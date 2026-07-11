@@ -119,19 +119,27 @@ async def test_persist_conformance_state_round_trips(pool):
                             created_by=created_by, arc_id=arc_id, chapter_id=ch)
 
     arc = await StructureRepo(pool).get(arc_id)
+    # WS-0.7: the fake must mirror the REAL canon-markers response, which now also
+    # carries kg_indexed_revision_id + kg_exclude. A mock that encodes the OLD contract
+    # would hide the very drift this change is about (mocked-client-hides-server-side
+    # -defaults). On a normally-published chapter the two pointers are equal.
     book = _FakeBook({str(ch): {
-        "published_revision_id": rev, "last_parsed_revision_id": rev,
+        "published_revision_id": rev, "kg_indexed_revision_id": rev,
+        "kg_exclude": False, "last_parsed_revision_id": rev,
         "parse_version": 3, "editorial_status": "published"}})
 
     manifest = await persist_conformance_state(
         pool=pool, book_client=book, book_id=book_id, arc=arc,
         report=_report(), deep=True, generation_job_id=job_id)
 
-    # the manifest was assembled from the canon-markers read (published_revision_id +
-    # the IX-4 chapter-scalar parse_version) + the spec fingerprints.
+    # the manifest was assembled from the canon-markers read + the spec fingerprints.
+    # WS-0.7: it now RECORDS kg_indexed_revision_id — the pin _dirty_reasons compares
+    # against (the revision the scenes the report binds to were parsed from).
+    # published_revision_id is kept for provenance/back-compat.
     assert manifest["v"] == 1
     assert manifest["chapters"] == [
-        {"chapter_id": str(ch), "published_revision_id": rev, "parse_version": 3}]
+        {"chapter_id": str(ch), "kg_indexed_revision_id": rev,
+         "published_revision_id": rev, "parse_version": 3}]
     assert set(manifest["spec"]) == {
         "structure_node_version", "outline_fingerprint", "bindings_fingerprint"}
     assert manifest["spec"]["outline_fingerprint"].startswith("sha256:")
@@ -169,7 +177,8 @@ async def test_status_never_run_then_fresh_then_prose_drift(pool):
     # editorial published, index fresh (last_parsed == published) so index_stale never
     # muddies the prose_drift assertion.
     book = _FakeBook({str(ch): {
-        "published_revision_id": r1, "last_parsed_revision_id": r1,
+        "published_revision_id": r1, "kg_indexed_revision_id": r1, "kg_exclude": False,
+        "last_parsed_revision_id": r1,
         "parse_version": 1, "editorial_status": "published"}})
 
     # never_run — no snapshot yet.
@@ -197,7 +206,8 @@ async def test_status_never_run_then_fresh_then_prose_drift(pool):
     # The index is FRESH here (last_parsed == published), so this is the NORMAL publish
     # path (IX-2 re-parses in-Tx): prose_drift is the only signal, index_stale is empty.
     book.markers[str(ch)] = {
-        "published_revision_id": r2, "last_parsed_revision_id": r2,
+        "published_revision_id": r2, "kg_indexed_revision_id": r2, "kg_exclude": False,
+        "last_parsed_revision_id": r2,
         "parse_version": 2, "editorial_status": "published"}
     st = await compute_conformance_status(pool=pool, book_client=book, book_id=book_id)
     a = st["arcs"][0]
@@ -211,7 +221,8 @@ async def test_status_never_run_then_fresh_then_prose_drift(pool):
 
     # a lagging index (last_parsed behind published) → index_stale + the rollup.
     book.markers[str(ch)] = {
-        "published_revision_id": r2, "last_parsed_revision_id": r1,
+        "published_revision_id": r2, "kg_indexed_revision_id": r2, "kg_exclude": False,
+        "last_parsed_revision_id": r1,
         "parse_version": 2, "editorial_status": "published"}
     st = await compute_conformance_status(pool=pool, book_client=book, book_id=book_id)
     a = st["arcs"][0]
