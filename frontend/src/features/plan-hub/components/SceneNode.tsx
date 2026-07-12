@@ -11,7 +11,7 @@ import { NodeBadges } from './NodeBadges';
 import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, isHere, onOpenRef, resolveEntity } = data;
+  const { node, content, overlay, unionState, selected, isHere, onOpenRef, resolveEntity , matched } = data;
   // PH26 — a scene's cast is the whole point of the chips: `present_entity_ids` is a SCENE field.
   const badges = orderNodeBadges({
     overlay, nodeId: node.id, showTension: false, content, resolveEntity,
@@ -27,6 +27,8 @@ function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
         'select-none rounded border px-1.5 py-1 text-[11px] shadow-sm',
         unionStateClass(unionState),
         selected && 'ring-2 ring-primary',
+        // PH15 find — a match is RINGED, not isolated. Non-matches stay exactly where they were.
+        matched && 'ring-2 ring-yellow-500',
         isHere && 'outline outline-2 outline-offset-2 outline-sky-500',
       )}
     >

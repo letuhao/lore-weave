@@ -9,6 +9,8 @@ export { PlanNavigatorRail } from './PlanNavigatorRail';
 export { PlanEmptyState } from './PlanEmptyState';
 export { PlanDrawerEdit, NODE_STATUSES } from './PlanDrawerEdit';
 export { UnplannedTray } from './UnplannedTray';
+export { PlanToolbar } from './PlanToolbar';
+export type { PlanViewMode } from './PlanToolbar';
 export { NodeBadges } from './NodeBadges';
 export { PacingSparkline } from './PacingSparkline';
 export type { PlanNodeData, LaneBandData, NodeBadge } from './nodePresentation';

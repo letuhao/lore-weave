@@ -90,6 +90,19 @@ function CameraController({
   return null;
 }
 
+/** PH15 "Fit" — re-frame the whole graph. Imperative RF API synchronised with a monotonic signal, so
+ *  clicking Fit twice re-fits twice. Rendered inside <ReactFlow> so it can call useReactFlow(). */
+function FitController({ signal }: { signal?: number }) {
+  const rf = useReactFlow();
+  const done = useRef(-1);
+  useEffect(() => {
+    if (signal === undefined || done.current === signal) return;
+    done.current = signal;
+    rf.fitView({ duration: 300 });
+  }, [signal, rf]);
+  return null;
+}
+
 /**
  * The drag's drop point in FLOW coordinates — i.e. where the CURSOR was released, projected into the
  * same space laneLayout emits. Returns null when the event carries no pointer coords (a synthetic or
@@ -136,6 +149,8 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     onLinkScenes,
     onUnlinkScenes,
     resolveEntity,
+    fitSignal,
+    matchedIds,
     busy,
   } = props;
 
@@ -191,6 +206,10 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         // PH26 — the name map, so a card can render its cast chips (and tell a BROKEN reference
         // from one merely not paged in). Absent ⇒ no cast chips, never a row of raw UUIDs.
         resolveEntity,
+        // PH15 toolbar find — this node's title matches the query. A HIGHLIGHT, not a filter:
+        // PH14 says an insert must shift, never reshuffle, and hiding non-matches would re-lay the
+        // whole canvas out from under the user.
+        matched: matchedIds ? matchedIds.has(n.id) : undefined,
         onToggle:
           n.shape === 'arc-rollup'
             ? () => onToggleArc(n.id)
@@ -201,7 +220,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc, onOpenRef, resolution, resolveEntity]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc, onOpenRef, resolution, resolveEntity, matchedIds]);
 
   // RF's live node list. It exists ONLY so a drag can move the card under the cursor (see the header:
   // a controlled `nodes` prop with no onNodesChange never updates the store, so nothing moves). It is
@@ -356,6 +375,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         <Background />
         <Controls showInteractive={false} />
         <CameraController focusTarget={focusTarget} nodes={layout.nodes} />
+        <FitController signal={fitSignal} />
       </ReactFlow>
     </div>
   );

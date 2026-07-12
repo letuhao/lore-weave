@@ -26,8 +26,10 @@ import {
   PlanDrawer,
   PlanEmptyState,
   PlanNavigatorRail,
+  PlanToolbar,
   UnplannedTray,
 } from '@/features/plan-hub/components';
+import type { PlanViewMode } from '@/features/plan-hub/components/PlanToolbar';
 
 export function PlanHubPanel(props: IDockviewPanelProps) {
   useStudioPanel('plan-hub', props.api);
@@ -60,6 +62,35 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     },
     [openPanel, bookId],
   );
+
+  // ── PH15 toolbar state ──────────────────────────────────────────────────────────────────────
+  const [search, setSearch] = useState('');
+  const [fitSignal, setFitSignal] = useState(0);
+  // PH22 ✅ P-10: v1 is narrative-only. The state exists (and the other two buttons are visible +
+  // disabled) so the mode is a real, discoverable concept rather than a silently absent one.
+  const [viewMode, setViewMode] = useState<PlanViewMode>('narrative');
+
+  // A FIND, not a filter: matched nodes are ringed and everything stays exactly where it was.
+  // Filtering would re-lay the canvas out under the user, which PH14 forbids ("an insert must shift,
+  // never reshuffle"). Empty query ⇒ undefined ⇒ the cards render no find state at all.
+  const matchedIds = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return undefined;
+    const hits = new Set<string>();
+    for (const [id, c] of Object.entries(view.nodeContent)) {
+      if (c.title?.toLowerCase().includes(q)) hits.add(id);
+    }
+    return hits;
+  }, [search, view.nodeContent]);
+
+  // The book-wide problem total (canon + open threads), for the toolbar counter. The overlay's
+  // by_node map rolls counts up onto arcs too, so summing every entry would double-count; sum only
+  // the ROOT structure nodes' subtree totals... which we don't have. Simplest honest total: sum the
+  // LEAF entries (nodes that carry refs), which is exactly what the overlay attributes per node.
+  const problemCount = useMemo(() => {
+    const by = view.overlay?.problems.by_node ?? {};
+    return Object.values(by).reduce((n, p) => n + p.refs.length, 0);
+  }, [view.overlay]);
 
   // OQ-5 camera — a focus REQUEST (nodeId + monotonically bumped seq so re-focusing the same node
   // still pans). A rail row focus selects AND pans; a canvas click only selects (already in view).
@@ -133,11 +164,32 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         <PlanNavigatorRail bookId={bookId} onFocusNode={focusNode} selectedId={view.selectedId} />
       </div>
 
-      {/* center column: graph + the H3 drawer overlay, with the PH21 tray docked beneath. The
-          canvas gets `relative` so the drawer's `absolute right-0` pins to THAT region and not the
-          window (the dockview fixed-positioning bug); the tray sits OUTSIDE it, in normal flow, so
-          it never overlaps the drawer. */}
+      {/* center column: TOOLBAR + graph + the H3 drawer overlay, with the PH21 tray docked beneath.
+          The canvas gets `relative` so the drawer's `absolute right-0` pins to THAT region and not
+          the window (the dockview fixed-positioning bug); the toolbar and tray sit OUTSIDE it, in
+          normal flow, so neither overlaps the drawer. */}
       <div className="flex min-w-0 flex-1 flex-col">
+      <PlanToolbar
+        search={search}
+        onSearch={setSearch}
+        onFit={() => setFitSignal((n) => n + 1)}
+        onProblems={() => openPanel('quality', { focus: true, params: { bookId } })}
+        // OQ-7 ✅ P-13: "Ask AI" is NOT a canvas-native plan agent — it is the Compose chat, opened
+        // with the current selection as its subject. Null with nothing selected: there'd be no
+        // subject to ask ABOUT, and the button says so rather than opening an empty chat.
+        onAskAi={
+          view.selectedId
+            ? () =>
+                openPanel('compose', {
+                  focus: true,
+                  params: { bookId, subjectNodeId: view.selectedId },
+                })
+            : null
+        }
+        view={viewMode}
+        onView={setViewMode}
+        problemCount={problemCount}
+      />
       <div className="relative min-w-0 flex-1">
         <PlanCanvas
           layout={view.layout}
@@ -162,6 +214,8 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onLinkScenes={view.linkScenes}
           onUnlinkScenes={view.unlinkScenes}
           resolveEntity={view.resolveEntity}
+          fitSignal={fitSignal}
+          matchedIds={matchedIds}
           busy={view.moving}
         />
         {/* PH21 — a HUD notice for the UNASSIGNED strip (spec chapters bound to no arc — the normal

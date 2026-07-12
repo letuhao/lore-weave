@@ -49,6 +49,8 @@ export interface PlanNodeData {
   hiddenEdges?: number;
   /** PH26 — resolve a cast entity id to a name / missing / unknown. Absent ⇒ no cast chips. */
   resolveEntity?: (entityId: string) => EntityResolution;
+  /** PH15 — this node matches the toolbar's find query. undefined ⇒ no query is active. */
+  matched?: boolean;
 }
 
 /** RF `data` payload for a background swimlane band. */

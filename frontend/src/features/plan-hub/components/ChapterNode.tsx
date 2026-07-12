@@ -10,7 +10,7 @@ import { NodeBadges } from './NodeBadges';
 import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, isHere, onToggle, onOpenRef, hiddenEdges, resolveEntity } =
+  const { node, content, overlay, unionState, selected, isHere, onToggle, onOpenRef, hiddenEdges, resolveEntity , matched } =
     data;
   // Chapters aren't in conformance.arcs ⇒ no drift badge (isArc:false); pacing IS chapter-keyed.
   const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: true, content, resolveEntity });
@@ -25,6 +25,8 @@ function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
         'select-none rounded-md border px-2 py-1.5 text-xs shadow-sm',
         unionStateClass(unionState),
         selected && 'ring-2 ring-primary',
+        // PH15 find — a match is RINGED, not isolated. Non-matches stay exactly where they were.
+        matched && 'ring-2 ring-yellow-500',
         // "You are here" — a distinct sky outline that composes with the selection ring (both can hold).
         isHere && 'outline outline-2 outline-offset-2 outline-sky-500',
       )}

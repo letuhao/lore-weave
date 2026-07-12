@@ -363,6 +363,11 @@ export interface PlanCanvasProps {
   onUnlinkScenes?: (linkId: string) => void;
   /** PH26 — resolve a cast entity id (read surface #6). Omitted ⇒ no cast chips. */
   resolveEntity?: (entityId: string) => EntityResolution;
+  /** PH15 — bump to re-frame the whole graph ("Fit"). Monotonic, so two clicks fit twice. */
+  fitSignal?: number;
+  /** PH15 — nodes matching the toolbar's find query. HIGHLIGHTED, never filtered (PH14: an insert
+   *  must shift, never reshuffle — hiding non-matches would re-lay the canvas out under the user). */
+  matchedIds?: Set<string>;
   /** H5: a move is in flight ⇒ freeze dragging. The lanes under the cursor are about to be replaced
    *  by the server's answer, so a second drag would be aimed at a layout that no longer holds. */
   busy?: boolean;

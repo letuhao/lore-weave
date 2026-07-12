@@ -1129,6 +1129,18 @@
       "unassignedStrip": "{{count}} chapter in no arc — drag it into a lane",
       "unassignedStrip_other": "{{count}} chapters in no arc — drag them into a lane",
       "untitled": "Untitled"
+    },
+    "loading": "Loading the plan…",
+    "toolbar": {
+      "search": "Find a node…",
+      "fit": "Fit",
+      "problems": "Problems",
+      "askAi": "Ask AI",
+      "askAiHint": "Select a node to ask about it",
+      "viewNarrative": "Narrative",
+      "viewTimeline": "Timeline",
+      "viewWorldmap": "World map",
+      "viewSoon": "Coming in a later phase"
     }
   }
 }
