@@ -330,6 +330,16 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Track C P-1 (the step-runner) — carry the rail's book across the suspend so the RESUME
+-- pass can re-fetch the pinned workflows + re-probe and KEEP DRIVING the rail past its
+-- confirm gate. Without it the rail dead-ends at the confirm (assent turn drives to the
+-- confirm → suspend → resume had no book_id → stall). NULL/absent ⇒ no rail (pre-P-1 rows).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='book_id') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN book_id UUID;
+  END IF;
+END $$;
+
 -- ══════════════════════════════════════════════════════════════════════
 -- RAID Wave C2 (DR-C2) — per-tool approval allowlist ("Always allow").
 -- In Write mode a Tier-A server tool NOT on the user's allowlist suspends

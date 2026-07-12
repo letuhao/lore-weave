@@ -38,6 +38,13 @@ from app.storage.minio_client import delete_object, ensure_bucket
 
 logger = logging.getLogger(__name__)
 
+# Optional per-deploy log level for the app loggers (default WARNING). Set LOG_LEVEL=INFO to
+# surface the step-runner's per-hop decisions when diagnosing a rail run.
+import os as _os
+_lvl = _os.getenv("LOG_LEVEL", "").upper()
+if _lvl in ("DEBUG", "INFO", "WARNING", "ERROR"):
+    logging.getLogger("app").setLevel(getattr(logging, _lvl))
+
 async def _audio_cleanup_loop():
     """Periodically delete expired voice audio segments. Config via AUDIO_TTL_HOURS + AUDIO_CLEANUP_INTERVAL_HOURS."""
     from app.db.pool import get_pool

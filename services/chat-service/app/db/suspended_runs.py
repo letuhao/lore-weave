@@ -44,6 +44,12 @@ class SuspendedRun:
     # gate is a confirm (vision-to-book step 3 of 12) hits that on its very first gate. A rail that
     # looks runnable but cannot run is the worst failure shape there is.
     pinned_step_tools: list[str] | None = None
+    # P-1 step-runner — the rail's book, carried across the suspend so the RESUME pass can
+    # re-fetch the pinned workflows + re-probe the book and KEEP DRIVING the rail. Without it
+    # the rail dead-ends at its confirm gate: the assent turn drives up to the confirm, the
+    # turn suspends, and the resumed turn (which had no book_id) could not continue — measured
+    # as S06 stalling at 2/5 (categories + cast land, connections/plan/chapters never do).
+    book_id: str | None = None
 
 
 async def save_suspended_run(
@@ -63,6 +69,7 @@ async def save_suspended_run(
     user_message_content: str,
     permission_mode: str = "write",
     pinned_step_tools: list[str] | None = None,
+    book_id: str | None = None,
 ) -> None:
     await pool.execute(
         """
@@ -70,14 +77,15 @@ async def save_suspended_run(
           (run_id, session_id, owner_user_id, message_id, working,
            pending_tool_call, input_tokens, output_tokens, model_source,
            model_ref, parent_message_id, user_message_content, permission_mode,
-           pinned_step_tools)
-        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)
+           pinned_step_tools, book_id)
+        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
         """,
         run_id, session_id, owner_user_id, message_id,
         json.dumps(working), json.dumps(pending_tool_call),
         input_tokens, output_tokens, model_source, model_ref,
         parent_message_id, user_message_content, permission_mode,
         json.dumps(list(pinned_step_tools or [])),
+        book_id,
     )
 
 
@@ -103,7 +111,7 @@ async def load_suspended_run(
         SELECT run_id, session_id, owner_user_id, message_id, working,
                pending_tool_call, input_tokens, output_tokens, model_source,
                model_ref, parent_message_id, user_message_content,
-               permission_mode, pinned_step_tools
+               permission_mode, pinned_step_tools, book_id
         FROM chat_suspended_runs
         WHERE run_id = $1 AND owner_user_id = $2 AND expires_at > now()
         """,
@@ -126,6 +134,7 @@ async def load_suspended_run(
         user_message_content=row["user_message_content"],
         permission_mode=str(row["permission_mode"] or "write"),
         pinned_step_tools=_str_list(_parse_json(row["pinned_step_tools"])),
+        book_id=str(row["book_id"]) if row["book_id"] else None,
     )
 
 

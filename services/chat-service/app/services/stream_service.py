@@ -499,6 +499,49 @@ REPEAT_READ_CAP = 2
 RAIL_REDRIVE_CAP = 8
 
 
+async def _compute_rail_drive_context(
+    pool, user_id: str, book_id: str, permission_mode: str, session_id: str, knowledge_client,
+):
+    """Fetch the pinned workflows + grant + turn-start counts + async set for a book, so the
+    RESUME path can keep DRIVING the rail past a confirm suspend (the fresh path computes this
+    inline). Returns ``(rail_specs, grant_ok, turn_start_counts, async_tools)`` or the inert
+    ``([], False, None, frozenset())`` on any failure — the resume then simply does not drive.
+    """
+    try:
+        from app.client.grant_client import GrantLevel, get_grant_client
+        from app.client.registry_workflows_client import get_workflows_client
+        from app.db.tool_call_history import succeeded_tool_counts
+
+        wfs = await get_workflows_client().get_workflows(
+            str(user_id), book_id=str(book_id), surface="book", mode=permission_mode,
+        )
+        binding = wfs.mode_binding
+        if not (binding and binding.inject_workflows):
+            return [], False, None, frozenset()
+        visible = {w.get("slug") for w in wfs.workflows if w.get("slug")}
+        pinned = [s for s in binding.inject_workflows if s in visible]
+        if not pinned:
+            return [], False, None, frozenset()
+        lvl, _ = await get_grant_client().resolve_access(UUID(str(book_id)), UUID(str(user_id)))
+        if lvl < GrantLevel.VIEW:
+            return [], False, None, frozenset()
+        counts = await succeeded_tool_counts(pool, str(session_id))
+        catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
+        async_tools = frozenset(
+            n for n, td in _catalog_index(catalog).items() if tool_async(td)
+        ) if catalog else frozenset()
+        rail_specs = []
+        for slug in pinned:
+            wf = next((w for w in wfs.workflows if w.get("slug") == slug), None)
+            steps = wf.get("steps") if isinstance(wf, dict) else None
+            if isinstance(steps, list) and steps:
+                rail_specs.append((slug, steps))
+        return rail_specs, True, counts, async_tools
+    except Exception:  # noqa: BLE001 — the driver is never load-bearing
+        logger.warning("resume rail-drive context failed — rail not driven on resume", exc_info=True)
+        return [], False, None, frozenset()
+
+
 async def _maybe_redrive_rail(
     rail_specs, book_id, user_id, turn_start_counts, turn_succeeded,
     async_tools, nudged_out: set[str],
@@ -1100,6 +1143,10 @@ async def _stream_with_tools(
     rail_grant_ok: bool = False,
     rail_turn_start_counts=None,
     rail_async_tools: frozenset[str] = frozenset(),
+    # True on a RESUME that suspended mid-rail: the rail is definitionally in flight, so the
+    # driver may fire even though this turn's only action was the (frontend) confirm — which
+    # executes off the backend chokepoint and so is not in turn_succeeded.
+    rail_in_flight: bool = False,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -1601,7 +1648,11 @@ async def _stream_with_tools(
                     and rail_redrive_count < RAIL_REDRIVE_CAP
                     and not last_iter
                     and write_passes < max_iterations - 1
-                    and (set(turn_succeeded) & _rail_all_step_tools)
+                    # In flight = a rail tool succeeded THIS turn (the model chose to start it),
+                    # OR this is a resume that suspended mid-rail (the confirm executes off the
+                    # backend chokepoint, so it never lands in turn_succeeded — but the rail is
+                    # unambiguously in flight, so the driver must be allowed to continue it).
+                    and (rail_in_flight or (set(turn_succeeded) & _rail_all_step_tools))
                 ):
                     _redrive = await _maybe_redrive_rail(
                         rail_specs, rail_book_id, user_id,
@@ -4197,6 +4248,7 @@ async def _emit_chat_turn(
     rail_grant_ok: bool = False,
     rail_turn_start_counts=None,
     rail_async_tools: frozenset[str] = frozenset(),
+    rail_in_flight: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -4520,6 +4572,7 @@ async def _emit_chat_turn(
                 rail_grant_ok=rail_grant_ok,
                 rail_turn_start_counts=rail_turn_start_counts,
                 rail_async_tools=rail_async_tools,
+                rail_in_flight=rail_in_flight,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -4608,13 +4661,24 @@ async def _emit_chat_turn(
         if suspend_state is not None:
             run_id = str(uuid4())
             pending = suspend_state["pending_tool_call"]
+            # P-1 — strip the step-runner's synthetic nudges before persisting: they are
+            # ephemeral driver messages ("[SYSTEM DIRECTIVE …]"), never part of the real
+            # conversation, and must not leak into the resumed context or history.
+            _susp_working = [
+                m for m in suspend_state["working"]
+                if not (
+                    m.get("role") == "user"
+                    and isinstance(m.get("content"), str)
+                    and m["content"].startswith("[SYSTEM DIRECTIVE")
+                )
+            ]
             await save_suspended_run(
                 pool,
                 run_id=run_id,
                 session_id=session_id,
                 owner_user_id=user_id,
                 message_id=msg_id,
-                working=suspend_state["working"],
+                working=_susp_working,
                 pending_tool_call=pending,
                 input_tokens=suspend_state["input_tokens"],
                 output_tokens=suspend_state["output_tokens"],
@@ -4629,6 +4693,8 @@ async def _emit_chat_turn(
                 # to re-fetch the binding, and the agent reads a recipe naming tools it
                 # cannot call. W6's first confirm gate is step 3 of 12.
                 pinned_step_tools=pinned_step_tools,
+                # P-1 — carry the rail's book so the resume can keep driving past the confirm.
+                book_id=(context_ids or {}).get("book_id"),
             )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
@@ -5377,6 +5443,16 @@ async def resume_stream_response(
     # Delete the suspended run up front — the 2nd pass owns the turn now.
     await delete_suspended_run(pool, run_id)
 
+    # P-1 step-runner — if this suspend carried a rail book, re-fetch the rail context so the
+    # resumed turn KEEPS DRIVING the rail (e.g. after a categories confirm applies, drive on to
+    # the cast, connections, plan, draft). Without this the rail stalls at the confirm (measured
+    # 2/5). Degrade-safe: no book / any failure ⇒ inert, resume behaves as before.
+    _r_rail_specs, _r_rail_grant, _r_rail_counts, _r_rail_async = [], False, None, frozenset()
+    if settings.rail_driver_enabled and susp.book_id:
+        _r_rail_specs, _r_rail_grant, _r_rail_counts, _r_rail_async = await _compute_rail_drive_context(
+            pool, user_id, susp.book_id, susp.permission_mode, session_id, knowledge_client,
+        )
+
     async for line in _emit_chat_turn(
         session_id=session_id,
         user_message_content=susp.user_message_content,
@@ -5424,6 +5500,16 @@ async def resume_stream_response(
         permission_mode=susp.permission_mode,
         pre_tool_chunks=pre_tool_chunks,
         is_resume=True,  # P3 review H1 — resume runs stateless over the full saved context
+        # P-1 step-runner — keep driving the rail on the resumed turn. context_ids carries the
+        # rail's book (also lets arg-injection fill book_id on the resumed writes).
+        context_ids={"book_id": susp.book_id} if susp.book_id else None,
+        rail_specs=_r_rail_specs or None,
+        rail_grant_ok=_r_rail_grant,
+        rail_turn_start_counts=_r_rail_counts,
+        rail_async_tools=_r_rail_async,
+        # A resume that carried a rail book suspended mid-rail → the rail is in flight, so the
+        # driver may continue it even though this turn's only action was the (frontend) confirm.
+        rail_in_flight=bool(_r_rail_specs),
     ):
         yield line
 
