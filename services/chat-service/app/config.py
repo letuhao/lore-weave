@@ -16,7 +16,22 @@ class Settings(BaseSettings):
     audio_cleanup_interval_hours: int = 4  # How often to run cleanup
     internal_service_token: str
     statistics_service_internal_url: str = "http://statistics-service:8089"
-    composition_service_internal_url: str = "http://composition-service:8092"
+    # composition-service listens on 8093 (infra/docker-compose.yml PORT: "8093"), not 8092.
+    # This default said 8092 and no env var overrode it, so EVERY chat-service call to
+    # composition-service has been a ConnectError — and its only consumer
+    # (CompositionClient.get_book_model_roles) is degrade-safe by contract, returning {} on
+    # any failure. So the Book tier of the Chat & AI settings cascade (D-CHATAI-M1B) has
+    # silently never applied, and nothing ever said a word. Found by the Track C book-state
+    # probe, which is the first consumer that LOGS a dead source instead of shrugging.
+    composition_service_internal_url: str = "http://composition-service:8093"
+
+    # Track C Phase 2 — the rail driver (server-side book-state grounding in the pinned
+    # rail). A deploy-time kill switch, NOT a user setting: it gates an always-on prompt
+    # block, and a prompt regression is invisible to every unit test in the repo. Default
+    # ON; set RAIL_DRIVER_ENABLED=0 to run the pinned rail ungrounded (the pre-Phase-2
+    # behavior) — which is also how the A/B control run is measured.
+    rail_driver_enabled: bool = True
+
     redis_url: str = "redis://redis:6379"
     port: int = 8090
 

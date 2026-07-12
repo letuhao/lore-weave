@@ -1532,6 +1532,28 @@ BEGIN
       ALTER COLUMN canon_capture_enabled SET DEFAULT false;
   END IF;
 END$$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- book_id lookup index — the per-chat-turn KG-state probe.
+--
+-- GET /internal/books/{book_id}/kg-state (app/routers/internal_kg_state.py) is
+-- called ONCE PER CHAT TURN by chat-service and resolves the newest live project
+-- for a book. Until now NOTHING indexed knowledge_projects.book_id — the only
+-- indexes are on user_id and extraction_status — so every book_id lookup was a
+-- seq scan. Tolerable for the existing low-frequency callers (internal_timeline,
+-- the extraction handlers); NOT tolerable on the chat hot path.
+--
+-- Partial + covering:
+--   * `book_id IS NOT NULL` — 'code'/'general' projects carry a NULL book_id and
+--     can never match this lookup; excluding them keeps the index small.
+--   * `NOT is_archived` — mirrors idx_knowledge_projects_user; the probe only
+--     ever wants live projects.
+--   * `created_at DESC` as the second key serves the ORDER BY directly, so the
+--     "newest project for this book" read is an index-only top-1, no sort.
+-- ═══════════════════════════════════════════════════════════════
+CREATE INDEX IF NOT EXISTS idx_knowledge_projects_book_active
+  ON knowledge_projects(book_id, created_at DESC)
+  WHERE book_id IS NOT NULL AND NOT is_archived;
 """
 
 

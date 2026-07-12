@@ -260,12 +260,20 @@ def pinned_rail_block(
     async_tools: frozenset[str] = frozenset(),
     *,
     notes_char_cap: int = NOTES_CHAR_CAP,
+    progress_by_slug: "dict[str, str] | None" = None,
 ) -> tuple[str | None, list[str]]:
     """Render the pinned workflows as ONE prompt block.
 
     Returns ``(text, step_tool_names)``. A slug that resolves to no visible workflow is
     SKIPPED (it cannot be run) and reported by the caller — never a silent no-op.
+
+    ``progress_by_slug`` (Track C Phase 2) is the RAIL DRIVER's rendered block for each
+    slug: where the user actually is, computed server-side from the book's artifacts + the
+    session's real tool-call history, and what the single next action is. Absent (or a
+    slug missing from it) ⇒ the rail renders exactly as before, so a failed probe degrades
+    to the pre-Phase-2 behavior instead of breaking the turn.
     """
+    progress_by_slug = progress_by_slug or {}
     rails: list[str] = []
     tools: list[str] = []
     used = 0
@@ -310,6 +318,13 @@ def pinned_rail_block(
             lines.append(notes)
         for g in payload.get("guidance", []):
             lines.append(f"- {g}")
+        # The rail driver's block goes LAST — recency matters in a long system prompt, and
+        # this is the part the model must actually act on. Everything above is the recipe;
+        # this is where it currently stands and what to do next.
+        prog = progress_by_slug.get(slug)
+        if prog:
+            lines.append("")
+            lines.append(prog)
         rail_text = "\n".join(lines)
         rails.append(rail_text)
         used += len(rail_text)
@@ -318,6 +333,29 @@ def pinned_rail_block(
                 tools.append(t)
     if not rails:
         return None, []
+
+    # The memory clause points AT the progress block, so it may only be promised when a
+    # progress block was actually rendered. Telling the model "the truth is computed below,
+    # follow it" and then shipping no such block leaves it chasing a section that does not
+    # exist — a dangling instruction is worse than no instruction, because the model will
+    # invent something to satisfy it.
+    grounded = any(slug in progress_by_slug for slug in slugs)
+    memory_clause = (
+        (
+            "You do NOT have to remember where you got to. Below each recipe, \"WHERE THE "
+            "BOOK ACTUALLY IS\" and \"YOUR NEXT ACTION\" are computed fresh from the book "
+            "itself and from what you really called — they are the truth. Follow them. If "
+            "they say a step is done, it is done, even if you do not remember doing it; if "
+            "they say the effect never landed, then it did not land, even if the tool said "
+            "\"success\".\n"
+        )
+        if grounded
+        else (
+            "Do NOT redo a step you already completed in this conversation — look back at "
+            "what you have already called, and continue from the first step still "
+            "outstanding.\n"
+        )
+    )
 
     header = (
         "YOU HAVE A READY-MADE RECIPE FOR THIS JOB. Its ordered steps are below and its "
@@ -334,9 +372,8 @@ def pinned_rail_block(
         "tell the user what CHANGED. Chain the steps you can: do not stop after one tool "
         "and wait to be asked again.\n"
         "\n"
-        "Do NOT redo a step you already completed in this conversation — look back at what "
-        "you have already called, and continue from the first step still outstanding.\n"
-        "\n"
+        + memory_clause
+        + "\n"
         "THE RECIPE IS PRIVATE. Never mention it, its name/slug, its steps, or the word "
         "\"workflow\" to the user — they are a novelist, not an engineer. Speak only about "
         "THEIR story: \"let me set up the categories your world tracks\", never \"I'll run "

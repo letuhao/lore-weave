@@ -54,6 +54,15 @@ func RegisterTool[In, Out any](
 	wrapped := func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		res, out, err := h(ctx, req, in)
 		if err == nil {
+			// THE RESULT-SIZE GATE (see result_size.go). Every Go MCP tool in this repo
+			// registers through here, so this is the one place that can guarantee no tool
+			// ships a payload its caller cannot hold. A 44KB result already cost this project
+			// a flagship scenario — the model looped, every unit test stayed green, and the
+			// tool "worked". Fail it loudly at the source instead.
+			if sizeErr := checkResultSize(t.Name, out); sizeErr != nil {
+				var zero Out
+				return nil, zero, sizeErr
+			}
 			if res == nil {
 				res = &mcp.CallToolResult{}
 			}

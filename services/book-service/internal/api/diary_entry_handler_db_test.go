@@ -329,3 +329,66 @@ func TestKeepDiaryEntry_NonOwnerIsRefused_DB(t *testing.T) {
 		t.Fatal("a non-owner must not have kept the entry")
 	}
 }
+
+// ── D-R18 — GET /v1/books/{id}/diary/stats (OWNER-ONLY diary stats) ──
+
+func getDiaryStats(t *testing.T, s *Server, bookID, caller uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/v1/books/"+bookID.String()+"/diary/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+mcpJWT(t, caller))
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	return rr
+}
+
+func TestDiaryStats_CountsOwnerEntries_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+
+	// Two days, one with a supplement → 3 entries across 2 distinct days.
+	_ = postDiaryEntry(t, s, diary, map[string]any{"owner_user_id": owner.String(), "entry_date": "2026-05-01", "body": "day one"}, true)
+	_ = postDiaryEntry(t, s, diary, map[string]any{"owner_user_id": owner.String(), "entry_date": "2026-05-01", "body": "extra", "journal_kind": "supplement"}, true)
+	_ = postDiaryEntry(t, s, diary, map[string]any{"owner_user_id": owner.String(), "entry_date": "2026-05-03", "body": "day three"}, true)
+
+	rr := getDiaryStats(t, s, diary, owner)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stats = %d, want 200. body=%s", rr.Code, rr.Body.String())
+	}
+	var out struct {
+		EntryCount   int    `json:"entry_count"`
+		DistinctDays int    `json:"distinct_days"`
+		FirstDate    string `json:"first_entry_date"`
+		LastDate     string `json:"last_entry_date"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &out)
+	if out.EntryCount != 3 || out.DistinctDays != 2 {
+		t.Fatalf("entry_count=%d distinct_days=%d, want 3/2", out.EntryCount, out.DistinctDays)
+	}
+	if out.FirstDate != "2026-05-01" || out.LastDate != "2026-05-03" {
+		t.Fatalf("first/last = %q/%q, want 2026-05-01/2026-05-03", out.FirstDate, out.LastDate)
+	}
+}
+
+func TestDiaryStats_NonOwnerCannotRead_DB(t *testing.T) {
+	// D-R18's REQUIRED no-cross-user-leak proof: only the OWNER sees their diary stats. A diary is
+	// never shared, so a stranger resolves to a non-owner grant → authBook refuses (no leak).
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	stranger := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+	_ = postDiaryEntry(t, s, diary, map[string]any{"owner_user_id": owner.String(), "entry_date": "2026-05-01", "body": "private"}, true)
+
+	s.resolveBook = func(_ context.Context, _ uuid.UUID, user uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		if user == owner {
+			return GrantOwner, owner, "active", nil
+		}
+		return GrantNone, owner, "active", nil
+	}
+	rr := getDiaryStats(t, s, diary, stranger)
+	if rr.Code != http.StatusForbidden && rr.Code != http.StatusNotFound {
+		t.Fatalf("non-owner diary stats = %d, want 403/404 (no cross-user leak)", rr.Code)
+	}
+}

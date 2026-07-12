@@ -304,6 +304,50 @@ WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='act
 	})
 }
 
+// diaryStats — D-R18 (human decision, amends D-R16) — the diary surfaces stats to the OWNER ONLY.
+// This is an OWNER-SCOPED read over the diary's own chapters (entry count, words, day span), NOT the
+// shared statistics-service aggregate — the diary write still emits no chapter.created (D-R16), so a
+// private diary never enters any cross-user / trending surface. authBook(GrantOwner) is the leak
+// guard: a non-owner (a diary can't be shared anyway) is refused, so no other user ever sees these.
+func (s *Server) diaryStats(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	_, _, _, ok = s.authBook(w, r, bookID, GrantOwner)
+	if !ok {
+		return
+	}
+	// diary-only: journal_kind IS NOT NULL is what makes a chapter a diary entry (a novel chapter
+	// has NULL) — so this never counts non-diary content even if pointed at another book kind.
+	var entryCount, distinctDays int
+	var totalWords int64
+	var firstDate, lastDate *time.Time
+	err := s.pool.QueryRow(r.Context(), `
+SELECT count(*)                                            AS entry_count,
+       count(DISTINCT entry_date)                         AS distinct_days,
+       COALESCE(sum(word_count), 0)::bigint               AS total_words,
+       min(entry_date)                                    AS first_date,
+       max(entry_date)                                    AS last_date
+FROM chapters
+WHERE book_id=$1 AND journal_kind IS NOT NULL AND lifecycle_state='active'`,
+		bookID).Scan(&entryCount, &distinctDays, &totalWords, &firstDate, &lastDate)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary stats")
+		return
+	}
+	out := map[string]any{
+		"entry_count": entryCount, "distinct_days": distinctDays, "total_words": totalWords,
+	}
+	if firstDate != nil {
+		out["first_entry_date"] = firstDate.Format("2006-01-02")
+	}
+	if lastDate != nil {
+		out["last_entry_date"] = lastDate.Format("2006-01-02")
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // txQuotaOK checks the owner has room for `delta` more bytes, writing a 507 and returning false
 // if not. Uses the tx so the read is consistent with the pending write.
 func (s *Server) txQuotaOK(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, owner uuid.UUID, delta int64) bool {

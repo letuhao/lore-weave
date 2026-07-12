@@ -202,6 +202,13 @@ func (s *Server) Router() http.Handler {
 		r.Get("/book/jobs", s.reconcileImportJobs)                               // Unified Job Control Plane reconcile source (book-import, D-JOBS-BOOK-IMPORT-UNWIRED)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal)    // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
+		// chat-service calls this ONCE PER TURN: "how many chapters, and how many
+		// actually hold prose?" — one query, no paging. Deliberately NOT served by
+		// /chapters above: that route clamps limit to 100 (a >100-chapter book would
+		// have to be paged just to count) and its word_count_estimate only reads
+		// chapter_drafts, so an IMPORTED book (prose in chapter_raw_objects) reports
+		// 0 words per chapter and would look empty. See prose_state.go.
+		r.Get("/books/{book_id}/prose-state", s.getInternalBookProseState)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
 		r.Get("/books/{book_id}/chapters/{chapter_id}/blocks", s.getInternalChapterBlocks) // T2 translation segmentation — per-block rows
 		// P2 (hierarchical extraction T3) — knowledge-service consumes these
@@ -306,6 +313,9 @@ func (s *Server) Router() http.Handler {
 			// B2 (spec 03/06 §Q6) — REVIEW→KEEP a draft diary entry (owner-only, diary-only).
 			// Sets diary_kept_at so a re-distill of the day no longer clobbers the kept primary.
 			r.Post("/diary/entries/{chapter_id}/keep", s.keepDiaryEntry)
+			// D-R18 — OWNER-ONLY diary stats (entry count / words / day span). NOT the shared
+			// statistics aggregate (the diary stays out of every cross-user surface, D-R16).
+			r.Get("/diary/stats", s.diaryStats)
 
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)

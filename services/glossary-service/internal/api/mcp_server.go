@@ -14,7 +14,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/loreweave/glossary-service/internal/domain"
 	"github.com/loreweave/grantclient"
 	lwmcp "github.com/loreweave/loreweave_mcp"
 )
@@ -47,9 +46,11 @@ func (s *Server) mcpHandler() http.Handler {
 	// glossary_book_ontology_read.
 	lwmcp.RegisterTool(srv, &mcp.Tool{
 		Name: "glossary_list_system_standards",
-		Description: "List the SYSTEM standards catalogue (entity kinds + their attribute " +
-			"definitions) — the templates a book can adopt. Use to learn what standards exist " +
-			"BEFORE scaffolding a book. For what a specific book ALREADY has, use glossary_book_ontology_read.",
+		Description: "List the SYSTEM standards catalogue — the entity kinds a book can adopt, " +
+			"by CODE. Use once to learn what exists BEFORE scaffolding a book, then pass the codes " +
+			"you want to glossary_adopt_standards; each kind's attributes come down with it. " +
+			"Calling this twice returns the identical list. For what a specific book ALREADY has, " +
+			"use glossary_book_ontology_read.",
 		// Global System-standards read, no scope key (not book/user scoped) ⇒ ScopeNone.
 		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, nil),
 	}, s.toolListKinds)
@@ -302,8 +303,37 @@ type getEntityToolOut struct {
 }
 
 type listKindsToolIn struct{}
+
+// standardKind — the COMPACT view of a System standard, and the only thing an agent needs
+// in order to answer the one question this tool exists to answer: "which of these do I
+// adopt?" You adopt BY CODE (glossary_adopt_standards takes genre/kind codes), and the
+// attribute definitions come down with the kind automatically when you do.
+//
+// It used to return domain.EntityKind — every kind with every attribute definition inlined,
+// each carrying its own UUID, auto_fill_prompt, translation_hint, sort_order, is_active…
+// **44,254 characters. 86% of it was `default_attributes` (114 objects the model cannot act
+// on).** That is ~11k tokens — a THIRD of a turn's entire budget — for one read.
+//
+// The cost was not theoretical. Measured live: gemma called this tool TWENTY-FOUR times in a
+// single S01 run and built nothing. Each call buried the previous call's answer deeper in the
+// window, so the model could never see what it had already fetched, so it fetched it again.
+// A tool whose result cannot fit in the context of the agent that calls it is not a tool the
+// agent can use — it is a context bomb with a friendly description.
+//
+// 44,254 chars → ~1,500. Same decision, 3% of the cost.
+type standardKind struct {
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	GenreTags   []string `json:"genre_tags,omitempty"`
+	// AttributeCount, not the attributes: enough for the agent to know the kind carries a
+	// schema, without shipping the schema it never reads.
+	AttributeCount int `json:"attribute_count"`
+}
+
 type listKindsToolOut struct {
-	Kinds []domain.EntityKind `json:"kinds"`
+	Kinds []standardKind `json:"kinds"`
+	Note  string         `json:"note,omitempty"`
 }
 
 // ── tool handlers ─────────────────────────────────────────────────────────────
@@ -402,14 +432,33 @@ func (s *Server) toolListKinds(ctx context.Context, _ *mcp.CallToolRequest, _ li
 	if err != nil {
 		return nil, listKindsToolOut{}, errors.New("failed to load kinds")
 	}
-	// /review-impl MED-1: loadKinds' EntityCount is a GLOBAL (cross-book)
-	// aggregate — both a cross-tenant info leak and misleading for a single-book
-	// assistant (the LLM would read it as "this book's count"). Strip it; the
-	// schema (kinds + attributes) is what the assistant needs, not counts.
-	for i := range kinds {
-		kinds[i].EntityCount = 0
+	// Project down to the compact view (see standardKind). Two things are deliberately
+	// dropped here:
+	//   * EntityCount — /review-impl MED-1: loadKinds' count is a GLOBAL, cross-book
+	//     aggregate. A cross-tenant leak, and misleading to a single-book assistant, which
+	//     would read it as "this book's count".
+	//   * DefaultAttributes — 86% of the old payload and unusable by the caller: you adopt a
+	//     standard by CODE, and its attributes come down with it.
+	out := make([]standardKind, 0, len(kinds))
+	for _, k := range kinds {
+		desc := ""
+		if k.Description != nil {
+			desc = *k.Description
+		}
+		out = append(out, standardKind{
+			Code:           k.Code,
+			Name:           k.Name,
+			Description:    desc,
+			GenreTags:      k.GenreTags,
+			AttributeCount: len(k.Attributes),
+		})
 	}
-	return nil, listKindsToolOut{Kinds: kinds}, nil
+	return nil, listKindsToolOut{
+		Kinds: out,
+		Note: "Adopt these by CODE with glossary_adopt_standards (pass the kind/genre codes). " +
+			"Each kind's attribute definitions come with it — you do not need to fetch or " +
+			"re-state them.",
+	}, nil
 }
 
 // ── Tier-W: propose a new entity (draft) ─────────────────────────────────────

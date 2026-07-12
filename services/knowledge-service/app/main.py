@@ -33,6 +33,7 @@ from app.routers import (
     internal_job_control,
     internal_enrichment,
     internal_extraction,
+    internal_kg_state,
     internal_parse,
     internal_parse_pdf,
     internal_summarize,
@@ -754,6 +755,7 @@ app.include_router(internal_dispatch.router)
 app.include_router(internal_job_control.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
+app.include_router(internal_kg_state.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_parse_pdf.router)
 app.include_router(internal_summarize.router)

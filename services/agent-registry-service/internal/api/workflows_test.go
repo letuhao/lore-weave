@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -137,5 +138,70 @@ func TestStepsToJSON_DefaultsGate(t *testing.T) {
 	b := stepsToJSON([]workflowStepIn{{ID: "s1", Tool: "t"}})
 	if !strings.Contains(string(b), `"gate":"none"`) {
 		t.Fatalf("empty gate should default to none, got %s", b)
+	}
+}
+
+// ── Track C Phase 2 — done_when (the rail driver's artifact predicate) ───────
+
+func TestDoneWhen_Valid(t *testing.T) {
+	for _, expr := range []string{
+		"cast > 0", "categories >= 1", "plan>0", "  prose  >  0  ",
+		"connections > 3", "chapters >= 10",
+	} {
+		w := baseWorkflow()
+		w.Steps[0].DoneWhen = expr
+		if msg, ok := validateWorkflow(w); !ok {
+			t.Fatalf("expected %q to be a valid done_when, got: %s", expr, msg)
+		}
+	}
+}
+
+func TestDoneWhen_RejectsAnythingOutsideTheClosedGrammar(t *testing.T) {
+	// An unparseable predicate can never mark a step done, so the agent would redo that
+	// step forever while the author got a cheerful 200. Reject it at the write.
+	for _, expr := range []string{
+		"entities > 0",         // not a known key (the key is `cast`)
+		"cast",                 // no operator
+		"cast > ",              // no threshold
+		"cast < 5",             // unsupported operator
+		"cast > 0; DROP TABLE", // not an eval surface, and never will be
+		"len(cast) > 0",
+	} {
+		w := baseWorkflow()
+		w.Steps[0].DoneWhen = expr
+		if msg, ok := validateWorkflow(w); ok {
+			t.Fatalf("expected %q to be REJECTED, but it validated (msg=%q)", expr, msg)
+		}
+	}
+}
+
+// The drop-on-serialize trap: `steps` round-trips through json.Unmarshal into
+// []workflowStepIn, so a field that is not declared on the struct is SILENTLY dropped on
+// the way out to chat-service. done_when would then be authored, stored, and invisible —
+// the rail driver would never see it and would silently fall back to the call log. This
+// test fails if anyone removes the struct field.
+func TestDoneWhen_SurvivesTheStepsRoundTrip(t *testing.T) {
+	raw := []byte(`[{"id":"save-cast","tool":"glossary_propose_entities","gate":"none","done_when":"cast > 0"}]`)
+	var steps []workflowStepIn
+	if err := json.Unmarshal(raw, &steps); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(steps) != 1 || steps[0].DoneWhen != "cast > 0" {
+		t.Fatalf("done_when was DROPPED by the steps round-trip: %+v", steps)
+	}
+	// Re-serialize and decode again. (Assert on the DECODED value, not the raw bytes:
+	// encoding/json HTML-escapes ">" to >, which is transparent to any JSON parser —
+	// a byte-level assertion here would fail for a reason that has nothing to do with the
+	// field surviving.)
+	out, err := json.Marshal(steps)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back []workflowStepIn
+	if err := json.Unmarshal(out, &back); err != nil {
+		t.Fatalf("re-unmarshal: %v", err)
+	}
+	if len(back) != 1 || back[0].DoneWhen != "cast > 0" {
+		t.Fatalf("done_when did not survive re-serialization: %s", out)
 	}
 }

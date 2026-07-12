@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -48,7 +49,26 @@ type workflowStepIn struct {
 	// fallback for steps that omit it, so a new async tool the heuristic doesn't know is
 	// still honored when the author marks it. Pointer so "unset" is distinct from false.
 	AsyncJob *bool `json:"async_job,omitempty" jsonschema:"true if this step starts a background job (queued, not done on return)"`
+	// DoneWhen (Track C Phase 2 — the rail driver) — the OBSERVABLE artifact that proves
+	// this step actually landed, as a predicate over the book's state:
+	// "<key> > <n>" with key in {categories, cast, connections, plan, chapters, prose}.
+	//
+	// This is what lets the consumer answer "where is the user?" from the BOOK instead of
+	// from the model's memory — and, critically, refuse to be fooled by a tool that
+	// returned "success" and wrote nothing (the flagship's signature failure: the cast
+	// landed 0/0/0/0 across four runs while the calls all looked fine). A step with no
+	// done_when falls back to the session's real tool-call log.
+	//
+	// NOTE this field MUST exist on the struct: `steps` round-trips through
+	// json.Unmarshal into []workflowStepIn, so an authored key that is not declared here
+	// is SILENTLY DROPPED on the way out and the consumer never sees it.
+	DoneWhen string `json:"done_when,omitempty" jsonschema:"artifact predicate proving the step landed: '<key> > <n>', key in categories|cast|connections|plan|chapters|prose"`
 }
+
+// validDoneWhen — the closed grammar for a step's done_when. Parsed, never evaluated.
+// A free-string predicate would be a setting that reads back as effective and does
+// nothing (the write-only-behavior bug), so it is rejected at the write.
+var doneWhenRe = regexp.MustCompile(`^\s*(categories|cast|connections|plan|chapters|prose)\s*(>=|>)\s*\d+\s*$`)
 
 type proposeWorkflowIn struct {
 	Slug        string            `json:"slug" jsonschema:"lowercase a-z0-9- slug, 2-64 chars (unique per tier)"`
@@ -163,6 +183,14 @@ func validateWorkflow(in *workflowInput) (string, bool) {
 		}
 		if msg, ok := validateRepeat(st.Repeat, in.Inputs); !ok {
 			return where + " ('" + st.ID + "'): " + msg, false
+		}
+		// Track C Phase 2 — done_when is a CLOSED grammar, enforced here. An unparseable
+		// predicate cannot mark a step done, so accepting one would ship a step that can
+		// never be recognised as complete: the agent would redo it forever, and the author
+		// would get a cheerful 200 telling them it was fine.
+		if strings.TrimSpace(st.DoneWhen) != "" && !doneWhenRe.MatchString(st.DoneWhen) {
+			return where + " ('" + st.ID + "'): done_when must be '<key> > <n>' with key in " +
+				"categories|cast|connections|plan|chapters|prose (got '" + st.DoneWhen + "')", false
 		}
 	}
 	return "", true

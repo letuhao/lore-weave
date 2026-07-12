@@ -473,6 +473,16 @@ PLANNER_CALLS_PER_TURN_CAP = 1
 # as the #18 planner hard-stop.
 BLANK_TOOL_ARGS_CAP = 2
 
+# Track C Phase 2 — how many times the SAME read, with the SAME args, may SUCCEED in one turn
+# before further identical calls are short-circuited. 1 = you get the answer once; asking again
+# returns the identical bytes and only pushes the first copy further out of the window.
+#
+# H7 caps runaway WRITES. Nothing capped a runaway READ, on the theory that a read is harmless.
+# Measured live: gemma called `glossary_list_system_standards` 24 times in one S01 run — a
+# 44,000-char result (~11k tokens) EACH — and built nothing. A read that eats a third of the
+# context window is not harmless.
+REPEAT_READ_CAP = 1
+
 # The stable substring across every live-observed instance of this error
 # (from the domain service's own JSON-schema validator) — a required
 # property (e.g. `query`, `intent`) is missing from the call's arguments.
@@ -1150,6 +1160,19 @@ async def _stream_with_tools(
         # tool calls, SHARED across find_tools-blank-intent and any generic
         # backend tool's validation failure (see BLANK_TOOL_ARGS_CAP above).
         blank_tool_args_streak = 0
+        # Track C Phase 2 — the REPEATED-READ breaker. H7's cap bounds runaway WRITES; there
+        # was nothing at all bounding a runaway READ, because a read is "harmless". It is not:
+        # measured on a live S06/S01 run, gemma called `glossary_list_system_standards`
+        # TWENTY-FOUR times in one scenario. Its result is 44,000 chars (~11k tokens) — a
+        # THIRD of the turn's whole budget, per call — so each repeat both wasted a pass and
+        # crowded the context that would have carried the answer, and the model, unable to
+        # see what it had already fetched, fetched it again. The run made 24 tool calls and
+        # built nothing.
+        #
+        # Same tool + same args + already succeeded ⇒ the answer is ALREADY in context. Feed
+        # that back as an error instead of re-running it (no silent no-op: the model is told
+        # exactly why, and told to use what it has).
+        read_call_counts: dict[str, int] = {}
         # Hard safety bound on TOTAL passes (reads + writes + discovery) so a
         # pathological find_tools/read loop can't spin forever even though those
         # don't count against the write budget.
@@ -2496,6 +2519,48 @@ async def _stream_with_tools(
                     }
                     break
 
+                # ── Track C Phase 2 — the REPEATED-READ breaker ────────────────────────
+                # A read the model has ALREADY made, with the SAME arguments, that ALREADY
+                # succeeded. Its answer is sitting in the context right now. Re-running it
+                # cannot tell the model anything it does not have — it can only burn a pass
+                # and push the earlier copy of the same answer further out of the window.
+                #
+                # Measured, live: 24 identical `glossary_list_system_standards` calls in one
+                # S01 run, whose result is 44,000 chars (~11k tokens) EACH. The model could
+                # not see what it had already fetched, so it fetched it again, and the very
+                # act of fetching it crowded out the fetch before it. Zero artifacts built.
+                # H7 bounds runaway WRITES; nothing bounded a runaway READ, on the theory
+                # that a read is harmless. A read that eats a third of the context window is
+                # not harmless.
+                # READS ONLY. A repeated WRITE is not a loop — six `book_create` calls with
+                # the same title create six books. Only a read is idempotent enough that
+                # asking twice is provably pointless, and only a Tier-R tool is a read.
+                _read_key = (
+                    f"{c['name']}::{json.dumps(args_obj, sort_keys=True, default=str)}"
+                    if tier == "R" else None
+                )
+                if _read_key is not None and read_call_counts.get(_read_key, 0) >= REPEAT_READ_CAP:
+                    _repeat_err = (
+                        f"You have already called '{c['name']}' with these exact arguments "
+                        f"{read_call_counts[_read_key]} time(s) this turn and it SUCCEEDED — "
+                        "its result is already above, in this conversation. Calling it again "
+                        "returns the identical answer and tells you nothing new. STOP calling "
+                        "it. Read the result you already have, and take the NEXT step."
+                    )
+                    logger.info(
+                        "repeated-read breaker: %s called %d× with identical args — short-circuited",
+                        c["name"], read_call_counts[_read_key],
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content({"error": _repeat_err}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": _repeat_err,
+                    }}
+                    continue
+
                 # D-BLANK-TOOL-ARGS-LOOP — same cap as the find_tools breaker
                 # above, generalized to ANY backend tool: once the turn has
                 # already hit BLANK_TOOL_ARGS_CAP blank/invalid-args failures
@@ -2559,6 +2624,18 @@ async def _stream_with_tools(
                 )
                 ok = bool(envelope.get("success"))
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
+                # Track C Phase 2 — count SUCCESSFUL identical reads so the repeated-read
+                # breaker above can short-circuit the next one. Only successes count: a call
+                # that FAILED has not put its answer in the context, so retrying it (with
+                # fixed args) is legitimate and must not be blocked.
+                if ok and _read_key is not None:
+                    read_call_counts[_read_key] = read_call_counts.get(_read_key, 0) + 1
+                elif ok:
+                    # A WRITE landed: the world just changed, so every earlier read is now
+                    # potentially STALE and re-reading it is legitimate again. Clearing the
+                    # counters here is what keeps the breaker from blocking the read-after-write
+                    # that a rail depends on (adopt the categories -> read them back).
+                    read_call_counts.clear()
                 if ok or _MISSING_REQUIRED_ARGS_MARKER not in str(envelope.get("error") or ""):
                     blank_tool_args_streak = 0
                 else:
@@ -3487,8 +3564,60 @@ async def stream_response(
                 "mode binding pins workflow %r, not visible on this surface — pin skipped", _missing,
             )
         if _pinned_slugs:
+            # ── Track C Phase 2 — the RAIL DRIVER ────────────────────────────────────
+            # A pinned rail alone still lost the flagship: the model was handed a 12-step
+            # recipe and asked to hold it across a 17-turn conversation while doing the
+            # emotional work of a co-writing scene, and it dropped it (measured: cast
+            # 0/0/0/0 across four identical runs). So compute where the user ACTUALLY is —
+            # from the book's own artifacts and from the tool calls the SERVER recorded —
+            # and hand the model one named next action instead of asking it to remember.
+            #
+            # Wholly best-effort: any failure ⇒ no progress block ⇒ the rail renders exactly
+            # as it did pre-Phase-2. Grounding must never be able to break a turn.
+            _progress_by_slug: dict[str, str] = {}
+            # Deploy-time kill switch. This block edits an ALWAYS-ON system prompt on every
+            # write-mode book turn, and a prompt regression is invisible to every unit test
+            # in the repo — so it needs an off switch that does not require a code change,
+            # and an A/B control that does not require one either. (Settings standard: a
+            # deploy-time ceiling/kill-switch is exactly the sanctioned use of an env flag —
+            # it gates infrastructure, not a per-user choice.)
+            if _ctx_book_id and settings.rail_driver_enabled:
+                try:
+                    from app.db.tool_call_history import succeeded_tools
+                    from app.services.book_state_probe import probe_book_state
+                    from app.services.rail_progress import (
+                        compute_rail_progress,
+                        render_progress_block,
+                    )
+
+                    _bstate, _ran = await asyncio.gather(
+                        probe_book_state(str(_ctx_book_id), str(user_id)),
+                        succeeded_tools(pool, str(session_id)),
+                    )
+                    if _bstate.any_known or _ran:
+                        for _slug in _pinned_slugs:
+                            _wf = next(
+                                (w for w in turn_workflows if w.get("slug") == _slug), None
+                            )
+                            _steps = _wf.get("steps") if isinstance(_wf, dict) else None
+                            if not isinstance(_steps, list) or not _steps:
+                                continue
+                            _prog = compute_rail_progress(_slug, _steps, _bstate, _ran)
+                            _progress_by_slug[_slug] = render_progress_block(_prog)
+                            logger.info(
+                                "rail %s: %d/%d steps done, next=%s (book=%s)",
+                                _slug,
+                                sum(1 for s in _prog.steps if s.done),
+                                len(_prog.steps),
+                                _prog.next_step.tool if _prog.next_step else "—",
+                                _ctx_book_id,
+                            )
+                except Exception:  # noqa: BLE001 — grounding is never load-bearing
+                    logger.warning("rail progress unavailable — rail runs ungrounded", exc_info=True)
+
             pinned_rail_text, pinned_step_tools = pinned_rail_block(
                 turn_workflows, _pinned_slugs, _turn_async_tools,
+                progress_by_slug=_progress_by_slug,
             )
 
     # WS-5 — STEER a mid-tier model to USE an authored workflow rail. Advertising
