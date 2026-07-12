@@ -116,7 +116,17 @@ export interface PlanOverlay {
     pinned_version: number;
     live_version: number;
   }[];
-  unplanned_chapters: { chapter_id: string; title: string; sort_order: number }[];
+  /** PH21 tray — the shared server-side coverage diff (28 OQ-4/NC-1: ONE computation,
+   *  also feeding `composition_diagnostics`). **OPTIONAL on purpose**: when the
+   *  manuscript spine is unreadable the server OMITS the key and sends `warnings`
+   *  instead. `[]` means "nothing unplanned"; `undefined` means "we don't know" — do
+   *  NOT collapse the two (absent ≠ zero). */
+  unplanned_chapters?: { chapter_id: string; title: string; sort_order: number }[];
+  /** EXACT, even when the list above is capped at 200. */
+  unplanned_count?: number;
+  unplanned_capped?: boolean;
+  /** Present ⇒ some part of the payload is degraded (today: the tray only). */
+  warnings?: string[];
 }
 
 /** Read surface #7 — `GET .../conformance/status` (26 IX-14, PH18). Per-arc dirty

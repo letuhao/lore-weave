@@ -292,6 +292,34 @@ class OutlineRepo:
             )
         return {r["chapter_id"] for r in rows}
 
+    async def planned_chapter_ids(self, book_id: UUID) -> set[UUID]:
+        """The manuscript chapters this book's SPEC covers — every active chapter
+        node's `chapter_id` (24 H1.3's coverage diff; the planned half).
+
+        Book-keyed, not Work-keyed (BPS-1/BA8: the package is per-book, and the
+        Hub has no Work gate — PH9). The complement against book-service's active
+        chapter spine is the PH21 "unplanned chapters" tray. Lives here because
+        `outline_node` is this repo's table; the diff itself is
+        ``app/services/coverage.py`` — the ONE computation 24 H1.3 and 28 AN-4
+        share (28 OQ-4/NC-1).
+
+        `chapter_id IS NOT NULL` is not redundant defensiveness: today the
+        `outline_chapter_required` CHECK forces it non-null on chapter nodes, but
+        27-V2-A3 swaps that CHECK so a chapter can be PLANNED before its prose
+        exists. Such a node covers no manuscript chapter, so it must contribute
+        nothing to the planned set — and it already does, by this predicate.
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                SELECT DISTINCT chapter_id FROM outline_node
+                WHERE book_id = $1 AND kind = 'chapter'
+                  AND NOT is_archived AND chapter_id IS NOT NULL
+                """,
+                book_id,
+            )
+        return {r["chapter_id"] for r in rows}
+
     async def scenes_for_chapter(
         self, project_id: UUID, chapter_id: UUID,
     ) -> list[OutlineNode]:

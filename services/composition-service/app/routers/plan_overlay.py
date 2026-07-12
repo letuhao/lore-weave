@@ -12,15 +12,23 @@ InsufficientGrant=403). Book-scoped throughout; no Work gate (PH9).
 Boundaries this slice HOLDS (24 §Ownership):
   • drift/staleness is NOT here — it rides ``26`` IX-14's ``/conformance/status``
     (read surface #7, PH18/OQ-8). This payload carries canon + thread-debt only.
-  • ``unplanned_chapters`` needs book-service (the manuscript chapter spine) which
-    composition-service cannot join cheaply (SC11 rejects a cross-service server
-    join). Returned ``[]``; the FE computes the tray client-side from read surface
-    #5 (book scenes) vs the spec nodes (PH12/PH21). Documented in the return
-    contract + this slice's uncertainties — never faked.
+  • ``unplanned_chapters`` IS here, and is computed SERVER-side by the shared
+    ``app/services/coverage.py`` helper (28 OQ-4/NC-1: "one composition-side helper
+    shared by 24 H1.3's overlay and AN-4"). An earlier cut of this route returned a
+    hardcoded ``[]`` on the reading that SC11 forbade the cross-service read — it
+    does not: SC11 rejects a per-node **server join** for the two-truths canvas
+    render (thousands of nodes), while this is ONE bounded set-difference over the
+    chapter spine via the existing internal book client (the ``pack.py`` precedent,
+    28 F-A7). A client-side tray could also never have satisfied AN-4, since an MCP
+    tool cannot compose an FE computation.
+  • If the manuscript spine is unreadable the key is **ABSENT + a warning** — never
+    ``[]``, which would render as "nothing unplanned" (absent ≠ zero; the same law
+    OQ-8 applies to drift).
 
 The response is bounded + partiality-flagged (OUT-5): refs are capped across the
 whole payload at ``_REFS_CAP`` and ``problems.refs_capped`` reports truncation;
-per-node counts stay EXACT (never silently truncated).
+the tray caps at ``UNPLANNED_CAP`` with ``unplanned_capped`` + an EXACT
+``unplanned_count``. Per-node counts stay EXACT (never silently truncated).
 """
 
 from __future__ import annotations
@@ -32,13 +40,16 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
 
+from app.clients.book_client import BookClient
 from app.db.pool import get_pool
+from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.plan_overlay import PlanOverlayRepo
-from app.deps import get_grant_client_dep
+from app.deps import get_book_client_dep, get_grant_client_dep, get_outline_repo
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
-from app.middleware.jwt_auth import get_current_user
+from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError
+from app.services.coverage import Coverage, compute_coverage
 
 router = APIRouter(prefix="/v1/composition")
 
@@ -104,6 +115,7 @@ def _build_overlay(
     structure_parent_rows: list[dict[str, Any]],
     tension_rows: list[dict[str, Any]],
     motif_rows: list[dict[str, Any]],
+    coverage: Coverage,
 ) -> dict[str, Any]:
     """Assemble the bounded plan-overlay response from the raw repo rows. PURE —
     no I/O — so the shape, the ~50-ref cap, and the empty-book case are unit-tested
@@ -189,15 +201,22 @@ def _build_overlay(
         for r in motif_rows
     ]
 
-    return {
+    out: dict[str, Any] = {
         "problems": {"by_node": by_node, "refs_capped": refs_capped},
         "tension_rollup": tension_rollup,
         "motif_chips": motif_chips,
-        # PH21/OQ-8: the manuscript spine lives in book-service; SC11 forbids the
-        # cross-service server join here. The FE derives the tray from read surface
-        # #5 vs the spec nodes. Empty (never faked).
-        "unplanned_chapters": [],
     }
+
+    # PH21 tray — the shared coverage diff (28 OQ-4). When the manuscript spine is
+    # unreadable the key is OMITTED and a warning rides instead: an empty list would
+    # tell the FE "nothing is unplanned", which is a lie about an unknown.
+    if coverage.degraded:
+        out["warnings"] = [coverage.warning]
+    else:
+        out["unplanned_chapters"] = coverage.unplanned
+        out["unplanned_count"] = coverage.unplanned_count
+        out["unplanned_capped"] = coverage.unplanned_capped
+    return out
 
 
 # ── route ────────────────────────────────────────────────────────────────────
@@ -207,18 +226,22 @@ def _build_overlay(
 async def get_plan_overlay(
     book_id: UUID,
     user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
     grant: GrantClient = Depends(get_grant_client_dep),
     repo: PlanOverlayRepo = Depends(get_plan_overlay_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    book: BookClient = Depends(get_book_client_dep),
 ) -> dict[str, Any]:
     """The Hub's decorations layer in one book-wide call (read surface #3). VIEW on
     the book. Canon + open-thread problems keyed by node (with an arc-subtree
     rollup), a derived per-chapter tension rollup, motif lockfile chips, and the
-    (empty here) unplanned tray — see the module docstring for the boundaries this
-    route holds (no drift/staleness; unplanned tray is FE-derived)."""
+    PH21 unplanned-chapters tray (the shared coverage diff) — see the module
+    docstring for the boundaries this route holds (drift/staleness is NOT here)."""
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
     canon = await repo.fetch_canon_anchors(book_id)
     threads = await repo.fetch_open_threads(book_id)
     parents = await repo.fetch_structure_parents(book_id)
     tension = await repo.fetch_tension_rollup(book_id)
     motifs = await repo.fetch_motif_chips(book_id)
-    return _build_overlay(canon, threads, parents, tension, motifs)
+    coverage = await compute_coverage(book_id, bearer, book=book, outline=outline)
+    return _build_overlay(canon, threads, parents, tension, motifs, coverage)
