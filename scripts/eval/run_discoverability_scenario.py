@@ -155,9 +155,13 @@ DISCOVERY_TOOLS = {
 # to precede any completion claim (async honesty, F7).
 ASYNC_JOB_TOOLS = {
     "plan_propose_spec", "kg_build_graph", "kg_build_wiki",
-    "composition_generate", "glossary_extract_entities_from_doc",
+    "composition_generate",
     "translation_start", "translation_run",
 }
+# NOTE: glossary_extract_entities_from_doc was here but is SYNCHRONOUS in the product
+# (the vision-to-book rail authors it `async_job:false`; it returns candidates inline with
+# no job handle). Listing it here flagged a sync tool as an unpolled async job — a false
+# §4 violation. A genuinely-async call is still caught by the `or job_ids` check below.
 # Result keys that carry an async job/operation handle.
 _JOB_ID_KEYS = ("job_id", "operation_id", "task_id", "run_id", "arc_id")
 # A later call whose name hints it read a status (used to credit async honesty).

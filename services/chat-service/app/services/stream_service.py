@@ -2403,6 +2403,20 @@ async def _stream_with_tools(
                     chapter_id=(context_ids or {}).get("chapter_id"),
                     project_id=(context_ids or {}).get("project_id"),
                 )
+                # A pinned rail's arc-plan wants a SYNCHRONOUS plan (mode="rules"): the rail
+                # builds the whole book foundation in one assent, and a mid-tier model cannot
+                # reliably watch a background llm-plan job — so it fires the async job and
+                # leaves it unpolled (a §4 "async left unpolled" failure) and the rail never
+                # reaches draft-opening. rules mode lands the plan synchronously (spec artifact,
+                # status=proposed) so the driver continues to the draft. Scoped to a rail step
+                # only; the dedicated Plan Hub still offers rich llm planning. gemma passed
+                # mode="llm" despite the rail notes, so this is enforced, not just advised.
+                if (
+                    c["name"] == "plan_propose_spec"
+                    and c["name"] in _rail_all_step_tools
+                    and args_obj.get("mode") != "rules"
+                ):
+                    args_obj["mode"] = "rules"
                 # A2A phase-2: compose_prose → stream the composer model inline
                 # and return its prose as the tool result. Usage is summed into
                 # the turn (design D10) so both models are billed.
