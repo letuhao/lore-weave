@@ -400,14 +400,22 @@ async def distill_day(
             outcome.map_failures += 1
         all_facts.extend(facts)
 
+    # ANY map-chunk failure (partial OR total) means the day is INCOMPLETE — retry the WHOLE day,
+    # even if some chunks did yield facts (review MED-1). Writing an entry from only the surviving
+    # chunks and returning it as terminal `written` would silently DROP the failed chunks' part of
+    # the day, and a review→keep would freeze that partial entry forever. Map is idempotent and the
+    # write seam REPLACEs an un-kept draft, so a re-distill converges on the COMPLETE entry once the
+    # provider recovers. Checked BEFORE the facts guard so a partial outage is never mistaken for a
+    # complete (or low-signal) day.
+    if outcome.map_failures:
+        outcome.error = "map_failed"
+        outcome.retryable = True
+        outcome.facts_found = len(all_facts)  # surface what we DID get, for diagnostics
+        return outcome
+
     if not all_facts:
-        # Distinguish a genuinely low-signal day (write NO entry, §Q11) from a COMPUTE failure that
-        # merely produced no facts (a provider outage) — the latter is RETRYABLE, never a silent drop.
-        if outcome.map_failures:
-            outcome.error = "map_failed"
-            outcome.retryable = True
-        else:
-            outcome.no_entry_reason = "low_signal"
+        # No failures + no facts → a genuinely low-signal day: write NO entry (§Q11), never a stub.
+        outcome.no_entry_reason = "low_signal"
         return outcome
     outcome.facts_found = len(all_facts)
 

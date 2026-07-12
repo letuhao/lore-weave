@@ -119,6 +119,33 @@ async def test_a_map_outage_is_a_RETRYABLE_error_not_a_dropped_day():
     assert out.map_failures == 1
 
 
+async def test_a_PARTIAL_map_outage_retries_the_whole_day_not_a_partial_entry():
+    # Review MED-1: a day of 2 chunks where ONE map call fails but the other yields facts must NOT
+    # write a partial entry as terminal 'written' (that silently drops the failed chunk's part of
+    # the day). map_failures>0 → retryable, even though some facts were extracted.
+    class PartialFail:
+        def __init__(self):
+            self.map_calls = 0
+
+        async def __call__(self, prompt):
+            if "FACTS:" in prompt and "MESSAGES:" not in prompt:
+                return json.dumps({"summary": "must not reach reduce"})
+            self.map_calls += 1
+            if self.map_calls == 2:  # the SECOND chunk's map call fails
+                raise RuntimeError("provider timeout on chunk 2")
+            return json.dumps({"facts": [{"kind": "decision", "text": "chunk-1 fact", "provenance": "user"}]})
+
+    llm = PartialFail()
+    # Two ~8000-char messages → two chunks (WINDOW_CHARS=12000), so chunk 2's map call fails.
+    msgs = _msgs(("user", "a" * 8000), ("user", "b" * 8000))
+    out = await d.distill_day(msgs, "en", llm)
+    assert llm.map_calls == 2 and out.chunks_processed == 2
+    assert out.entry is None, "a partial outage must NOT write an entry from only the surviving chunks"
+    assert out.no_entry_reason is None
+    assert out.error == "map_failed" and out.retryable is True
+    assert out.map_failures == 1 and out.facts_found == 1  # 1 chunk failed; 1 fact survived (diagnostics)
+
+
 async def test_a_reduce_outage_is_a_RETRYABLE_error_not_a_dropped_day():
     # Facts extracted fine, but the reduce CALL fails → retryable, never a fabricated no-entry.
     async def llm(prompt):

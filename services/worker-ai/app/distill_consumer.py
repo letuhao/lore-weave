@@ -7,9 +7,13 @@ LLM pipeline (map-reduce), so it is exempt from the MCP-first invariant — a Re
 right shape, mirroring the summary/extraction consumers.
 
 Retry contract (BaseTerminalConsumer): `distill_and_write` returns a status dict; a RETRYABLE
-compute/transport error leaves the message un-acked (the base redelivers, then poison-acks after
-max_retries); every terminal state (written / no_entry / oversized / kept / non-retryable error)
-acks. A malformed message is acked (dropped) so the PEL never grows on poison.
+compute/transport error leaves the message un-acked; every terminal state (written / no_entry /
+oversized / kept / non-retryable error) acks. A malformed message is acked (dropped) so the PEL
+never grows on poison. ⚠️ REDELIVERY TIMING (review LOW-3): the running loop reads only NEW
+messages (`>`); an un-acked message is re-processed on the next worker RESTART's PEL drain, not
+promptly on a live stack (no `sweep_once` override, no DLQ). So a retryable distill error is
+retried on restart, and the catch-up SWEEP (P-10, built next) is what will re-drive an un-journaled
+day live. The message is never DROPPED — just not promptly re-tried.
 """
 
 from __future__ import annotations
