@@ -69,12 +69,28 @@ describe('ToolApprovalCard', () => {
     );
   });
 
+  it('Never allow resumes denied_always (D3 — persistent deny from the card)', async () => {
+    render(<ToolApprovalCard record={approvalRecord()} />);
+    fireEvent.click(screen.getByText('toolApproval.never_allow'));
+    await waitFor(() =>
+      expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'denied_always'),
+    );
+  });
+
   it('a decision is single-shot — the buttons collapse to a status line', async () => {
     render(<ToolApprovalCard record={approvalRecord()} />);
     fireEvent.click(screen.getByText('toolApproval.deny'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('toolApproval.approve_once')).toBeNull();
     expect(screen.getByText('toolApproval.denied')).toBeInTheDocument();
+  });
+
+  it('Never allow collapses to an undoable status line', async () => {
+    render(<ToolApprovalCard record={approvalRecord()} />);
+    fireEvent.click(screen.getByText('toolApproval.never_allow'));
+    await waitFor(() => expect(submitToolResult).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('toolApproval.never_allow')).toBeNull();
+    expect(screen.getByText('toolApproval.never_allowed')).toBeInTheDocument();
   });
 });
 

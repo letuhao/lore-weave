@@ -921,6 +921,86 @@ class TestApprovalResume:
         assert json.loads(tool_msg["content"]) == {"error": "denied by user"}
 
     @pytest.mark.asyncio
+    async def test_denied_always_persists_a_deny_and_never_executes(self):
+        """D3 (PO sign-off) — "Never allow" ON THE CARD: the resume persists a standing
+        DENY (so the tool never prompts again) AND executes nothing this call. Distinct
+        from one-shot `denied`, which blocks only this call."""
+        pool = self._pool()
+        kc = self._kc()
+        set_decision_mock = AsyncMock()
+        scripts = [[tok("Understood — I won't use that tool."), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.set_tool_decision", set_decision_mock), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_approval_suspended())), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in _resume(pool, kc, "denied_always"):
+                pass
+
+        # a standing deny was persisted for the mutation kind (the card carried no
+        # approval_kinds → defaults to ["mutation"])
+        set_decision_mock.assert_awaited_once_with(
+            pool, str(TEST_USER_ID), "book_create", "mutation", "deny"
+        )
+        # and NOTHING executed — the model is told "denied by user"
+        kc.mcp_execute_tool.assert_not_awaited()
+        msgs = _FakeClient.instances[0].requests[0].messages
+        tool_msg = next(m for m in msgs if m.get("role") == "tool"
+                        and m.get("tool_call_id") == "c1")
+        assert json.loads(tool_msg["content"]) == {"error": "denied by user"}
+
+    @pytest.mark.asyncio
+    async def test_denied_always_persists_all_kinds_despite_a_partial_standing_deny(self):
+        """D3 /review-impl defect: a paid card carries spend+mutation. If the user had
+        already denied ONLY mutation in Settings, clicking "Never allow" on the stale card
+        must STILL persist the SPEND deny — the standing-deny re-check must not downgrade
+        denied_always to one-shot 'denied' (which would suppress its persist block and drop
+        the other kinds, so the complete refusal the user clicked silently evaporates)."""
+        pool = self._pool()
+        kc = self._kc()
+        set_decision_mock = AsyncMock()
+        susp = _approval_suspended()
+        susp.pending_tool_call["args"]["approval_kinds"] = ["spend", "mutation"]  # a paid card
+
+        async def _get_decision(_pool, _user, _tool, kind="mutation"):
+            return "deny" if kind == "mutation" else None  # only mutation pre-denied
+
+        scripts = [[tok("ok"), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.get_tool_decision",
+                   AsyncMock(side_effect=_get_decision)), \
+             patch("app.services.stream_service.set_tool_decision", set_decision_mock), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=susp)), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in _resume(pool, kc, "denied_always"):
+                pass
+
+        denied_kinds = {c.args[3] for c in set_decision_mock.await_args_list}
+        assert denied_kinds == {"spend", "mutation"}, "both kinds must be denied, not just the pre-existing one"
+        kc.mcp_execute_tool.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_denied_always_still_refuses_when_persist_fails(self):
+        """A failed deny-persist must NOT flip the refusal into an execution — the user
+        said never; the worst outcome is running it anyway on a DB blip."""
+        pool = self._pool()
+        kc = self._kc()
+        set_decision_mock = AsyncMock(side_effect=RuntimeError("db down"))
+        scripts = [[tok("ok"), done("stop")]]
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.set_tool_decision", set_decision_mock), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_approval_suspended())), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in _resume(pool, kc, "denied_always"):
+                pass
+        kc.mcp_execute_tool.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_unknown_outcome_on_approval_treated_as_denied(self):
         """Fail-closed on the approval decision itself: an unrecognized outcome
         never executes the write."""

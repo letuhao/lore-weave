@@ -390,6 +390,76 @@ class TestToolPermissionsRoutes:
         assert pool.rows == {}
 
     @pytest.mark.asyncio
+    async def test_unknown_tool_is_422_when_the_catalog_is_available(self, perm_client):
+        """D7 (PO sign-off) — a decision on a tool that is not in the live catalog is a
+        422, so a typo cannot persist a permission the gate will never read."""
+        from unittest.mock import AsyncMock, MagicMock
+        ac, pool = perm_client
+        fake_kc = MagicMock()
+        fake_kc.get_tool_definitions = AsyncMock(return_value=[
+            {"type": "function", "function": {"name": "book_create"}},
+            {"type": "function", "function": {"name": "glossary_search"}},
+        ])
+        with patch("app.client.knowledge_client.get_knowledge_client", return_value=fake_kc):
+            r = await ac.put("/v1/chat/tool-permissions/definitely_not_a_tool",
+                             json={"kind": "mutation", "decision": "deny"})
+        assert r.status_code == 422, r.text
+        assert "unknown tool" in r.json()["detail"]
+        assert pool.rows == {}, "a rejected write must persist nothing"
+
+    @pytest.mark.asyncio
+    async def test_known_tool_is_accepted_when_the_catalog_is_available(self, perm_client):
+        """The membership check must not reject a REAL tool — the catalog carries it."""
+        from unittest.mock import AsyncMock, MagicMock
+        ac, pool = perm_client
+        fake_kc = MagicMock()
+        fake_kc.get_tool_definitions = AsyncMock(return_value=[
+            {"type": "function", "function": {"name": "book_create"}},
+        ])
+        with patch("app.client.knowledge_client.get_knowledge_client", return_value=fake_kc):
+            r = await ac.put("/v1/chat/tool-permissions/book_create",
+                             json={"kind": "mutation", "decision": "deny"})
+        assert r.status_code == 200, r.text
+        assert r.json()["decision"] == "deny"
+
+    @pytest.mark.asyncio
+    async def test_write_still_succeeds_when_the_catalog_is_unavailable(self, perm_client):
+        """Fail-OPEN on an unavailable catalog: get_tool_definitions returns [] on any
+        fetch failure, and a gateway blip must not brick a user's ability to DENY a tool
+        (the safety action). We 422 a known-unknown, never a can't-check."""
+        from unittest.mock import AsyncMock, MagicMock
+        ac, pool = perm_client
+        fake_kc = MagicMock()
+        fake_kc.get_tool_definitions = AsyncMock(return_value=[])  # [] == unavailable
+        with patch("app.client.knowledge_client.get_knowledge_client", return_value=fake_kc):
+            r = await ac.put("/v1/chat/tool-permissions/some_tool",
+                             json={"kind": "mutation", "decision": "deny"})
+        assert r.status_code == 200, r.text
+        # and a hard catalog error also fails open (never blocks the consent write)
+        fake_kc.get_tool_definitions = AsyncMock(side_effect=RuntimeError("gateway down"))
+        with patch("app.client.knowledge_client.get_knowledge_client", return_value=fake_kc):
+            r = await ac.put("/v1/chat/tool-permissions/another_tool",
+                             json={"kind": "mutation", "decision": "deny"})
+        assert r.status_code == 200, r.text
+
+    @pytest.mark.asyncio
+    async def test_revoke_does_not_require_catalog_membership(self, perm_client, user_id):
+        """Revoke stays lenient — you must be able to withdraw a decision for a tool that
+        has since left the catalog, without the catalog being reachable at all."""
+        from unittest.mock import AsyncMock, MagicMock
+        ac, pool = perm_client
+        # seed a deny under the ROUTE's user (the token owner), then revoke it with a
+        # catalog that would reject the name
+        await tool_approvals.set_tool_decision(pool, user_id, "gone_tool", "mutation", "deny")
+        fake_kc = MagicMock()
+        fake_kc.get_tool_definitions = AsyncMock(return_value=[
+            {"type": "function", "function": {"name": "book_create"}},
+        ])
+        with patch("app.client.knowledge_client.get_knowledge_client", return_value=fake_kc):
+            r = await ac.delete("/v1/chat/tool-permissions/gone_tool?kind=mutation")
+        assert r.status_code == 204, r.text
+
+    @pytest.mark.asyncio
     async def test_the_owner_comes_from_the_token_not_the_request(self, perm_client, user_id):
         """Tenancy: the caller cannot name the user whose permissions it edits. A
         consent surface that took the owner from the body would be a worse defect than

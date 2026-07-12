@@ -375,9 +375,11 @@
     "approve_once": "Approve once",
     "always_allow": "Always allow",
     "deny": "Deny",
+    "never_allow": "Never allow",
     "approved": "Approved — running ✓",
     "always_allowed": "Always allowed — running ✓",
-    "denied": "Denied"
+    "denied": "Denied",
+    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
   },
   "rack": {
     "label": "Context",

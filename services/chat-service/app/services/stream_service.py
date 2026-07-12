@@ -4972,18 +4972,30 @@ async def _emit_chat_turn(
                     caching=_caching,
                 )
 
+                # WS-2.9 (spec 09 §Q6) — a "don't remember this" turn (grounding OFF) is flagged so the
+                # distiller's day-window read excludes it. Persist the flag on BOTH the assistant reply
+                # and its parent user message (the user's own words are the sensitive half).
+                _exclude_mem = bool(canon_capture_ctx and not canon_capture_ctx.grounding_enabled)
                 await conn.execute(
                     """
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown, response_id)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13)
+                       context_breakdown, response_id, exclude_from_memory)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14)
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
-                    json.dumps(_ctx_payload), _final_response_id,
+                    json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
                 )
+                if _exclude_mem and parent_message_id:
+                    # The parent user message was persisted earlier (POST /messages) without knowing the
+                    # turn's grounding choice; back-fill the flag so the user's own words are excluded too.
+                    await conn.execute(
+                        "UPDATE chat_messages SET exclude_from_memory = true "
+                        "WHERE message_id = $1 AND owner_user_id = $2",
+                        parent_message_id, user_id,
+                    )
 
                 # Extract and persist output artifacts
                 artifacts = extract_outputs(final_text)
@@ -5338,7 +5350,7 @@ async def resume_stream_response(
         _appr = _approval_args if isinstance(_approval_args, dict) else {}
         _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
         _tool_args = _appr.get("args") if isinstance(_appr.get("args"), dict) else {}
-        _decision = outcome if outcome in ("approved_once", "approved_always", "denied") else "denied"
+        _decision = outcome if outcome in ("approved_once", "approved_always", "denied", "denied_always") else "denied"
 
         # Track C WS-3 — the resume path is the ONE execution site that does not run
         # through the in-loop gate, so it must re-check the standing decision itself. A
@@ -5356,22 +5368,30 @@ async def resume_stream_response(
             logger.warning(
                 "resume: standing-decision read failed for %s", _tool_name, exc_info=True
             )
-        if _standing_deny and _decision != "denied":
+        # denied_always is EXCLUDED from this downgrade: it is strictly MORE restrictive
+        # than an existing partial deny (it persists a deny on every kind the card carried),
+        # so downgrading it to one-shot "denied" would suppress its persist block and drop
+        # the other kinds — e.g. a paid tool already mutation-denied would never get its
+        # SPEND deny, and the "Never allow" the user clicked silently evaporates for spend.
+        # It never executes regardless (absent from the approve set below), so keeping it
+        # only ADDS the missing deny rows.
+        if _standing_deny and _decision not in ("denied", "denied_always"):
             logger.info(
                 "resume: %s was blocked by a standing deny — ignoring stale outcome %r",
                 _tool_name, _decision,
             )
             _decision = "denied"
 
+        # The consent kinds the card carried (both approved_always and denied_always
+        # persist a standing row per kind). Legacy DR-C2 cards carry no `approval_kinds`
+        # → default to ["mutation"] (the mutation kind persists via the legacy 2-arg call
+        # shape, kept identical so existing allowlist rows/tests are unaffected).
+        _appr_kinds = _appr.get("approval_kinds")
+        if not isinstance(_appr_kinds, list) or not _appr_kinds:
+            _appr_kinds = ["mutation"]
         if _decision == "approved_always":
-            # S-SPEND — persist a SEPARATE allowlist row per required consent kind
-            # (a paid Tier-A always-allow persists BOTH spend and mutation). Legacy
-            # DR-C2 cards carry no `approval_kinds` → default to ["mutation"], and the
-            # mutation kind persists via the legacy 2-arg call shape (kept identical so
-            # the existing allowlist rows/tests are unaffected).
-            _appr_kinds = _appr.get("approval_kinds")
-            if not isinstance(_appr_kinds, list) or not _appr_kinds:
-                _appr_kinds = ["mutation"]
+            # S-SPEND — persist a SEPARATE allow row per required consent kind (a paid
+            # Tier-A always-allow persists BOTH spend and mutation).
             for _k in _appr_kinds:
                 try:
                     if _k == "mutation":
@@ -5383,6 +5403,21 @@ async def resume_stream_response(
                     # means they may be prompted again — still execute.
                     logger.warning(
                         "always-allow persist failed for %s (kind=%s) — executing anyway",
+                        _tool_name, _k, exc_info=True,
+                    )
+        elif _decision == "denied_always":
+            # D3 (PO sign-off) — "Never allow" ON THE CARD: persist a standing DENY per
+            # consent kind the card carried, then fall through to the denied path below
+            # (feed the model "denied by user", execute NOTHING). Denying the mutation
+            # kind alone already blocks the tool (D6: any deny row blocks), but a paid
+            # tool's card carries spend too, so deny every kind for a complete refusal.
+            # A failed persist only means the user may be prompted again — never execute.
+            for _k in _appr_kinds:
+                try:
+                    await set_tool_decision(pool, user_id, _tool_name, _k, "deny")
+                except Exception:
+                    logger.warning(
+                        "never-allow persist failed for %s (kind=%s)",
                         _tool_name, _k, exc_info=True,
                     )
         if _decision in ("approved_once", "approved_always"):

@@ -96,6 +96,37 @@ def _validate(tool_name: str, kind: str, decision: str | None = None) -> None:
         )
 
 
+async def _assert_known_tool(user_id: str, tool_name: str) -> None:
+    """D7 (PO sign-off) — reject a standing decision on a tool that is not in the live
+    catalog with a 422, so a typo does not persist a permission the gate will never read.
+
+    Membership is the FEDERATED catalog (ai-gateway ``/mcp tools/list``, per-user overlay,
+    60s-cached) — the only tools that reach the consent gate. Deliberately fail-OPEN on an
+    UNAVAILABLE catalog: ``get_tool_definitions`` returns ``[]`` on any fetch failure, and a
+    momentary gateway blip must not brick a user's ability to DENY a tool (the safety action).
+    So we 422 only when the catalog is known AND the tool is genuinely absent from it — a
+    known-unknown — not when we simply could not check."""
+    from app.client.knowledge_client import get_knowledge_client
+
+    try:
+        defs = await get_knowledge_client().get_tool_definitions(user_id)
+    except Exception:  # noqa: BLE001 — never let a catalog blip block a consent write
+        logger.warning("tool-permissions: catalog fetch failed; skipping membership check", exc_info=True)
+        return
+    if not defs:  # empty ⇒ unavailable (get_tool_definitions swallows failures to []), not "no tools"
+        return
+    names = {
+        (d.get("function") or {}).get("name")
+        for d in defs
+        if isinstance(d, dict)
+    }
+    if tool_name not in names:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown tool {tool_name!r} — it is not in the current tool catalog",
+        )
+
+
 @router.get("", response_model=ToolPermissionList)
 async def list_permissions(
     user_id: str = Depends(get_current_user),
@@ -126,6 +157,11 @@ async def set_permission(
     """Set a standing decision: ``allow`` (pre-approve, never prompt) or ``deny``
     ("Never allow" — the gate blocks the call outright instead of prompting)."""
     _validate(tool_name, body.kind, body.decision)
+    # D7 — reject a decision on a tool that is not in the live catalog (a typo would
+    # persist a permission the gate never reads). Applies to BOTH allow and deny on the
+    # WRITE path only; revoke stays lenient (you must be able to withdraw a decision for
+    # a tool that has since left the catalog).
+    await _assert_known_tool(user_id, tool_name)
     await set_tool_decision(pool, user_id, tool_name, body.kind, body.decision)
     logger.info(
         "tool permission set: user=%s tool=%s kind=%s decision=%s",
