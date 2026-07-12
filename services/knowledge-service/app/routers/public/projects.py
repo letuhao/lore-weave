@@ -447,6 +447,48 @@ async def create_project(
     return project
 
 
+class AssistantProjectCreate(BaseModel):
+    """WS-1.4 — the body of POST /v1/knowledge/projects/assistant."""
+
+    book_id: UUID
+    name: str = "Work Assistant"
+
+
+@router.post(
+    "/assistant",
+    response_model=Project,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_200_OK: {
+            "model": Project,
+            "description": "Existing assistant project returned (idempotent)",
+        },
+    },
+)
+async def provision_assistant_project(
+    body: AssistantProjectCreate,
+    response: Response,
+    user_id: UUID = Depends(get_current_user),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+    grant: GrantClient = Depends(get_grant_client),
+) -> Project:
+    """WS-1.4 (spec 02 §Q2.2) — get-or-create the user's ONE assistant knowledge project,
+    bound to their diary book. ``is_assistant=true`` + ``chat_turn_extraction_enabled=false``
+    (fail-closed D6: the assistant's facts come once a day from the confirmed entry, never
+    per chat turn).
+
+    The diary must be OWNED by the caller — a non-owner is denied uniformly (404, no oracle),
+    exactly like create_project's book-binding path. This prevents binding the assistant's
+    memory to someone else's book."""
+    if await grant.resolve_grant(body.book_id, user_id) != GrantLevel.OWNER:
+        raise _not_found()
+    project, created = await repo.get_or_create_assistant_project(
+        user_id, body.book_id, body.name
+    )
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return project
+
+
 @router.get("/{project_id}", response_model=Project)
 async def get_project(
     project_id: UUID,

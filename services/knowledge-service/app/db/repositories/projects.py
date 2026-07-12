@@ -229,6 +229,12 @@ class ProjectsRepo:
                     WHERE user_id = $1 AND project_type = 'book'
                       AND book_id = $2 AND NOT is_archived
                       AND NOT is_derivative
+                      -- WS-1.4: the assistant project is a project_type='book' bound to the
+                      -- diary book; it must NEVER be handed back to a normal book-project
+                      -- flow (which would treat the assistant's memory as a novel's KG,
+                      -- wrong partition + wrong extraction semantics). Same guard as
+                      -- NOT is_derivative, for the same "shares a book_id" reason.
+                      AND NOT is_assistant
                     ORDER BY created_at ASC
                     LIMIT 1
                     """,
@@ -302,6 +308,68 @@ class ProjectsRepo:
                     embedding_model, embedding_dimension,
                 )
                 return _row_to_project(row)
+
+    async def get_or_create_assistant_project(
+        self, user_id: UUID, book_id: UUID, name: str = "Work Assistant"
+    ) -> tuple[Project, bool]:
+        """WS-1.4 (spec 02 §Q2.2) — resolve (or create) the user's ONE assistant
+        knowledge project, bound to their diary book. Returns ``(project, created)``.
+
+        ``is_assistant=true`` marks it as the assistant's memory. The one-per-user
+        partial unique (``uq_knowledge_projects_one_assistant_per_user``) means two
+        concurrent provisions (two devices, a retried BFF call) converge on ONE project
+        instead of splitting the assistant's memory into two graphs; the per-(user)
+        advisory lock makes the get-or-create race-safe within a single Tx window.
+
+        ``chat_turn_extraction_enabled=FALSE``, explicitly and fail-closed (D6): the
+        assistant's facts come once a day from the CONFIRMED diary entry
+        (``chapter.kg_indexed``), never per chat turn. Extracting every turn as trusted
+        canon about the user's real colleagues, at ~100x spend, is exactly the bug the
+        D6 gate exists to stop — so this path must not inherit the normal project's
+        opt-in ``true``."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                    _PROJECT_BOOK_LOCK_NS, f"assistant:{user_id}",
+                )
+                existing = await conn.fetchrow(
+                    f"""
+                    SELECT {_SELECT_COLS} FROM knowledge_projects
+                    WHERE user_id = $1 AND is_assistant AND NOT is_archived
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    """,
+                    user_id,
+                )
+                if existing is not None:
+                    # Idempotent book-binding: bind the diary book if a prior provision
+                    # created the assistant project book-less (or before the diary
+                    # existed). Never REBIND to a different book — the assistant belongs
+                    # to exactly one diary; a differing book_id is a caller bug, refused
+                    # by leaving the existing binding intact.
+                    if existing["book_id"] is None and book_id is not None:
+                        existing = await conn.fetchrow(
+                            f"""
+                            UPDATE knowledge_projects
+                            SET book_id = $3, updated_at = now()
+                            WHERE user_id = $1 AND project_id = $2
+                            RETURNING {_SELECT_COLS}
+                            """,
+                            user_id, existing["project_id"], book_id,
+                        )
+                    return _row_to_project(existing), False
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO knowledge_projects
+                      (user_id, name, project_type, book_id, is_assistant,
+                       chat_turn_extraction_enabled)
+                    VALUES ($1, $2, 'book', $3, true, false)
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    user_id, name, book_id,
+                )
+                return _row_to_project(row), True
 
     async def list(
         self,
@@ -492,6 +560,9 @@ class ProjectsRepo:
         FROM knowledge_projects
         WHERE book_id = $1 AND project_type = 'book' AND NOT is_archived
           AND NOT is_derivative
+          -- WS-1.4: never resolve the diary's assistant project as a normal book
+          -- project (same "shares a book_id" reason as NOT is_derivative).
+          AND NOT is_assistant
         ORDER BY created_at
         LIMIT 1
         """
