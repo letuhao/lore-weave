@@ -1,0 +1,137 @@
+"""WS-1.8 (spec 06) — the distiller ORCHESTRATOR (read -> distill -> write).
+
+Proves the read/distill/write flow and every terminal status with fake clients + a fake model, so
+no branch depends on a live stack: written, low-signal no_entry, giant-paste oversized, a kept-day
+supplement signal, a day-window transport failure, and a write failure. Also proves the write
+receives the rendered entry body (not raw messages) and that `truncated` propagates.
+"""
+
+from __future__ import annotations
+
+import json
+
+from app import distill_job
+from app.distiller import GIANT_PASTE_CHARS
+
+
+class FakeChat:
+    def __init__(self, messages, truncated=False, fail=False):
+        self._messages = messages
+        self._truncated = truncated
+        self._fail = fail
+        self.calls: list[dict] = []
+
+    async def get_day_window(self, *, user_id, book_id, local_date, limit):
+        self.calls.append({"user_id": user_id, "book_id": book_id, "local_date": local_date, "limit": limit})
+        if self._fail:
+            return None
+        return self._messages, self._truncated
+
+
+class FakeBook:
+    def __init__(self, result=None):
+        self._result = result if result is not None else {"chapter_id": "ch-1", "created": True}
+        self.writes: list[dict] = []
+
+    async def write_diary_entry(self, **kwargs):
+        self.writes.append(kwargs)
+        return self._result
+
+
+class FakeLLM:
+    """Answers map calls ('MESSAGES:') with canned facts, reduce ('FACTS:') with a canned entry."""
+
+    def __init__(self, map_facts, reduce_obj=None):
+        self._map_facts = map_facts
+        self._reduce_obj = reduce_obj or {"summary": "A good day.", "decisions": ["Ship v2."]}
+
+    async def __call__(self, prompt: str) -> str:
+        if "FACTS:" in prompt and "MESSAGES:" not in prompt:
+            return json.dumps(self._reduce_obj)
+        return json.dumps({"facts": self._map_facts})
+
+
+def _msg(role, content, tools=None):
+    return {"role": role, "content": content, "tool_names": tools or []}
+
+
+async def test_written_flow_passes_rendered_body_to_the_write_seam():
+    chat = FakeChat([_msg("user", "Met Minh about the redesign.")], truncated=True)
+    book = FakeBook()
+    llm = FakeLLM(map_facts=[{"kind": "decision", "text": "Ship v2.", "provenance": "user"}])
+
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=llm, chat_client=chat, book_client=book,
+    )
+
+    assert out["status"] == "written"
+    assert out["chapter_id"] == "ch-1"
+    assert out["facts_found"] == 1
+    assert out["truncated"] is True  # propagated from the read
+    # The write got the RENDERED entry body (sections), never the raw messages.
+    assert len(book.writes) == 1
+    w = book.writes[0]
+    assert w["book_id"] == "b1" and w["owner_user_id"] == "u1"
+    assert w["entry_date"] == "2026-03-10" and w["entry_zone"] == "UTC"
+    assert w["journal_kind"] == "primary" and w["language"] == "en"
+    assert "A good day." in w["body"] and "## Decisions" in w["body"]
+    assert "Met Minh" not in w["body"]  # the transcript is NOT copied into the entry
+
+
+async def test_low_signal_day_writes_nothing():
+    chat = FakeChat([_msg("user", "ok"), _msg("user", "sure")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[]), chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "no_entry" and out["reason"] == "low_signal"
+    assert book.writes == []  # never wrote a stub
+
+
+async def test_giant_paste_is_reported_oversized_and_not_written():
+    big = _msg("user", "x" * (GIANT_PASTE_CHARS + 1))
+    chat = FakeChat([big])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "nope"}]),
+        chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "oversized" and out["reason"] == "giant_paste"
+    assert book.writes == []
+
+
+async def test_day_window_unavailable_is_retryable_error_not_an_empty_entry():
+    chat = FakeChat([], fail=True)
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[]), chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "error" and out["reason"] == "day_window_unavailable"
+    assert out["retryable"] is True
+    assert book.writes == []  # a read failure must NEVER produce an entry
+
+
+async def test_kept_day_returns_kept_so_caller_supplements():
+    chat = FakeChat([_msg("user", "Met Minh.")])
+    book = FakeBook(result={"kept": True})
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "kept"
+
+
+async def test_write_failure_is_a_retryable_error():
+    chat = FakeChat([_msg("user", "Met Minh.")])
+    book = FakeBook(result={"error": "HTTP 503", "retryable": True})
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "error" and out["reason"] == "write_failed" and out["retryable"] is True

@@ -556,6 +556,29 @@ class ChatClient:
             logger.warning("chat-service turn-text failed: %s", exc)
             return None
 
+    async def get_day_window(
+        self, *, user_id: str | UUID, book_id: str | UUID, local_date: str, limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], bool] | None:
+        """WS-1.8 (spec 06 §Q10) — GET /internal/chat/messages/day-window → the distiller's input:
+        one user's assistant-session messages for one local day (raw dicts + a `truncated` flag).
+        Returns None on transport / non-200 (the job retries), else (messages, truncated). The
+        assistant-only + window-cap filtering is enforced SERVER-side; this is a thin reader."""
+        url = f"{self._base_url}/internal/chat/messages/day-window"
+        params = {
+            "user_id": str(user_id), "book_id": str(book_id),
+            "local_date": local_date, "limit": str(limit),
+        }
+        try:
+            resp = await self._http.get(url, params=params)
+            if resp.status_code != 200:
+                logger.warning("chat-service day-window %d for %s/%s", resp.status_code, user_id, local_date)
+                return None
+            data = resp.json()
+            return list(data.get("messages") or []), bool(data.get("truncated"))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("chat-service day-window failed: %s", exc)
+            return None
+
 
 # ── ProviderRegistryClient ───────────────────────────────────────────
 
@@ -705,6 +728,47 @@ class BookClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("book-service chapters failed: %s", exc)
             return None
+
+    async def write_diary_entry(
+        self,
+        *,
+        book_id: str | UUID,
+        owner_user_id: str | UUID,
+        entry_date: str,
+        entry_zone: str,
+        body: str,
+        title: str | None = None,
+        journal_kind: str = "primary",
+        language: str = "en",
+    ) -> dict[str, Any] | None:
+        """WS-1.8 (spec 06 §Q10) — POST /internal/books/{id}/diary/entry, the distiller's write
+        seam. Returns the parsed body on 200/201 (created or replaced). A 409 DIARY_ENTRY_KEPT is
+        surfaced as {'kept': True} so the caller can re-run as a supplement; any other non-2xx /
+        transport error → {'error': ...} (the job logs + retries). Never raises."""
+        url = f"{self._base_url}/internal/books/{book_id}/diary/entry"
+        payload = {
+            "owner_user_id": str(owner_user_id),
+            "entry_date": entry_date,
+            "entry_zone": entry_zone,
+            "body": body,
+            "title": title or "",
+            "journal_kind": journal_kind,
+            "language": language,
+        }
+        try:
+            resp = await self._http.post(url, json=payload)
+        except httpx.HTTPError as exc:
+            logger.warning("book-service diary-entry HTTP error: %s", exc)
+            return {"error": f"HTTP error: {exc}", "retryable": True}
+        if resp.status_code in (200, 201):
+            try:
+                return resp.json()
+            except ValueError:
+                return {"error": "bad json"}
+        if resp.status_code == 409 and "DIARY_ENTRY_KEPT" in resp.text:
+            return {"kept": True}
+        logger.warning("book-service diary-entry %d: %s", resp.status_code, resp.text[:200])
+        return {"error": f"HTTP {resp.status_code}", "retryable": is_retryable_status(resp.status_code)}
 
     async def get_chapter_hierarchy(
         self, book_id: UUID, chapter_id: str,
