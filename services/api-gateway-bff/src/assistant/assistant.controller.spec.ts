@@ -36,6 +36,7 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     process.env.GLOSSARY_SERVICE_URL = 'http://glossary:8203';
     process.env.AUTH_SERVICE_URL = 'http://auth:8201';
     process.env.INTERNAL_SERVICE_TOKEN = 'itok';
+    process.env.CHAT_SERVICE_URL = 'http://chat:8090';
     controller = new AssistantController();
   });
   afterEach(() => {
@@ -45,6 +46,7 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     delete process.env.GLOSSARY_SERVICE_URL;
     delete process.env.AUTH_SERVICE_URL;
     delete process.env.INTERNAL_SERVICE_TOKEN;
+    delete process.env.CHAT_SERVICE_URL;
     (global as any).fetch = undefined;
   });
 
@@ -215,5 +217,83 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     expect(out.provisioned).toBe(false);
     expect(out.provision_status.diary_book).toBe('error:0');
     expect(out.provision_status.self_entity).toBe('skipped:no_diary');
+  });
+});
+
+describe('AssistantController — end-day (A1 public distill trigger)', () => {
+  let controller: AssistantController;
+
+  beforeEach(() => {
+    process.env.JWT_SECRET = TEST_SECRET;
+    process.env.INTERNAL_SERVICE_TOKEN = 'itok';
+    process.env.CHAT_SERVICE_URL = 'http://chat:8090';
+    controller = new AssistantController();
+  });
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+    delete process.env.INTERNAL_SERVICE_TOKEN;
+    delete process.env.CHAT_SERVICE_URL;
+    (global as any).fetch = undefined;
+  });
+
+  const validBody = { book_id: 'diary-1', model_source: 'user_model', model_ref: 'model-uuid-1' };
+
+  it('401 on a missing bearer — never touches chat', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.endDay(validBody, undefined), 401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('400 when book_id / model_ref are missing — never touches chat', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.endDay({ book_id: 'diary-1' }, bearer('u1')), 400);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('forwards to chat internal distill with the SERVER-DERIVED user_id + internal token, NO entry_date', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(202, { enqueued: true, entry_date: '2026-07-12', message_id: '1-0' }));
+    (global as any).fetch = f;
+
+    const out = await controller.endDay(
+      { ...validBody, language: 'vi', entry_zone: 'Asia/Ho_Chi_Minh' },
+      bearer('user-42'),
+    );
+
+    expect(f).toHaveBeenCalledTimes(1);
+    const [url, init] = f.mock.calls[0];
+    expect(url).toBe('http://chat:8090/internal/chat/assistant/distill');
+    expect(init.method).toBe('POST');
+    // Internal token, NOT the user JWT (parity with the ontology adopt).
+    expect(init.headers['x-internal-token']).toBe('itok');
+    expect(init.headers.authorization).toBeUndefined();
+    const sent = JSON.parse(init.body);
+    // user_id is server-derived from the token's sub, never a client field.
+    expect(sent.user_id).toBe('user-42');
+    expect(sent.book_id).toBe('diary-1');
+    expect(sent.model_source).toBe('user_model');
+    expect(sent.model_ref).toBe('model-uuid-1');
+    expect(sent.language).toBe('vi');
+    expect(sent.entry_zone).toBe('Asia/Ho_Chi_Minh');
+    // D-R14 / LOW-4: the gateway must NOT forward a calendar day — chat stamps it server-side.
+    expect(sent.entry_date).toBeUndefined();
+
+    expect(out).toEqual({ enqueued: true, entry_date: '2026-07-12', message_id: '1-0' });
+  });
+
+  it('surfaces the downstream status (a 503 enqueue failure is not masked as 500)', async () => {
+    (global as any).fetch = jest
+      .fn()
+      .mockResolvedValueOnce(resp(503, { detail: 'failed to enqueue distill: redis down' }));
+    const err = await expectStatus(controller.endDay(validBody, bearer('u1')), 503);
+    expect(err.getResponse()).toBe('failed to enqueue distill: redis down');
+  });
+
+  it('a 400 bad model_ref from chat surfaces as 400', async () => {
+    (global as any).fetch = jest.fn().mockResolvedValueOnce(resp(400, { detail: 'unknown model_ref' }));
+    await expectStatus(controller.endDay(validBody, bearer('u1')), 400);
   });
 });

@@ -50,6 +50,24 @@ interface ProvisionResult {
   provision_status: ProvisionStatus;
 }
 
+// A1 / WS-1.10 — the public "End my day" trigger body. The FE supplies the diary book + the
+// distill model (Q8 server-side model resolution is a follow-up). `entry_date` is DELIBERATELY
+// NOT accepted here: the chat internal route stamps today server-side (D-R14 / internal.py LOW-4 —
+// a client-controlled calendar day could overwrite/mis-bucket a historical entry).
+interface EndDayBody {
+  book_id?: string;
+  model_source?: string;
+  model_ref?: string;
+  language?: string;
+  entry_zone?: string;
+}
+
+interface EndDayResult {
+  enqueued: boolean;
+  entry_date?: string;
+  message_id?: string;
+}
+
 const PROVISION_STEP_TIMEOUT_MS = 15_000;
 
 @Controller('v1/assistant')
@@ -61,32 +79,8 @@ export class AssistantController {
     @Body() body: ProvisionBody,
     @Headers('authorization') authorization?: string,
   ): Promise<ProvisionResult> {
-    // 1. Authenticate — validate the user's JWT; identity is server-derived from `sub`.
-    const token = (authorization ?? '').replace(/^Bearer\s+/i, '').trim();
-    if (!token) {
-      throw new HttpException('missing bearer token', 401);
-    }
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      this.logger.error('assistant-provision rejected: JWT_SECRET not configured');
-      throw new HttpException('server_error', 500);
-    }
-    let decoded: { exp?: number; sub?: string };
-    try {
-      // Pin the algorithm — a valid JWT here provisions real cross-service resources.
-      decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { exp?: number; sub?: string };
-    } catch {
-      throw new HttpException('invalid_token', 401);
-    }
-    // REQUIRE exp (parity with book-service WithExpirationRequired + the knowledge verifier —
-    // jsonwebtoken has no built-in "require exp", so assert it here) AND a `sub` (the work-
-    // ontology adopt is a token-gated internal call that needs the user_id server-derived from
-    // the token, never a body field). A token missing either fails clean at 401 rather than
-    // half-failing downstream.
-    if (typeof decoded.exp !== 'number' || typeof decoded.sub !== 'string' || !decoded.sub) {
-      throw new HttpException('invalid_token', 401);
-    }
-    const userId = decoded.sub;
+    // 1. Authenticate — validate the user's JWT; identity is server-derived from `sub` (SEC-1).
+    const { userId, token } = this.requireAuth(authorization);
 
     const bookUrl = process.env.BOOK_SERVICE_URL;
     const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
@@ -193,6 +187,91 @@ export class AssistantController {
       project_id: projectId,
       provision_status: status,
     };
+  }
+
+  // A1 / WS-1.10 — the public "End my day" trigger. The FE cannot call chat-service's
+  // X-Internal-Token-only `/internal/chat/assistant/distill` directly, so the BFF fronts it:
+  // validate the user's JWT, derive `user_id` from `sub` (SEC-1 — never a body field), and forward
+  // to the internal distill enqueue with the platform token. entry_date is OMITTED so chat stamps
+  // today server-side (D-R14). Returns the 202 enqueue result (entry_date + message_id) so the FE
+  // can poll for the day's diary entry to review.
+  @Post('end-day')
+  async endDay(
+    @Body() body: EndDayBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<EndDayResult> {
+    const { userId } = this.requireAuth(authorization);
+
+    const bookId = (body?.book_id ?? '').trim();
+    const modelSource = (body?.model_source ?? '').trim();
+    const modelRef = (body?.model_ref ?? '').trim();
+    if (!bookId || !modelSource || !modelRef) {
+      throw new HttpException('book_id, model_source and model_ref are required', 400);
+    }
+
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!chatUrl || !internalToken) {
+      this.logger.error('assistant-end-day rejected: CHAT_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // Forward with the SERVER-DERIVED user_id + the platform token. No entry_date → chat defaults
+    // to today in entry_zone (server-authoritative day bucketing, D-R14).
+    const distill = await this.postInternal(
+      `${chatUrl}/internal/chat/assistant/distill`,
+      internalToken,
+      {
+        user_id: userId,
+        book_id: bookId,
+        model_source: modelSource,
+        model_ref: modelRef,
+        language: (body?.language ?? 'en').trim() || 'en',
+        entry_zone: (body?.entry_zone ?? 'UTC').trim() || 'UTC',
+      },
+    );
+    if (!distill.ok) {
+      // Surface the real downstream status (400 bad model_ref, 503 enqueue failure) rather than a
+      // blanket 500, so the home strip can tell "retry" from "fix your model".
+      const detail =
+        (typeof distill.body?.detail === 'string' && distill.body.detail) ||
+        'failed to enqueue end-of-day distill';
+      throw new HttpException(detail, distill.status >= 400 ? distill.status : 502);
+    }
+    return {
+      enqueued: distill.body?.enqueued === true,
+      entry_date: distill.body?.entry_date,
+      message_id: distill.body?.message_id,
+    };
+  }
+
+  /**
+   * Validate the caller's JWT and return the server-derived identity + the raw token to forward.
+   * Identity is NEVER a client body field (SEC-1). Mirrors the book-service/knowledge verifiers:
+   * pin HS256, require `exp` (jsonwebtoken has no built-in "require exp") AND a `sub`. Throws
+   * 401 (missing/invalid/exp-less) or 500 (JWT_SECRET unconfigured) — the exact contract the
+   * provisioning + end-day handlers depend on.
+   */
+  private requireAuth(authorization?: string): { userId: string; token: string } {
+    const token = (authorization ?? '').replace(/^Bearer\s+/i, '').trim();
+    if (!token) {
+      throw new HttpException('missing bearer token', 401);
+    }
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      this.logger.error('assistant auth rejected: JWT_SECRET not configured');
+      throw new HttpException('server_error', 500);
+    }
+    let decoded: { exp?: number; sub?: string };
+    try {
+      decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { exp?: number; sub?: string };
+    } catch {
+      throw new HttpException('invalid_token', 401);
+    }
+    if (typeof decoded.exp !== 'number' || typeof decoded.sub !== 'string' || !decoded.sub) {
+      throw new HttpException('invalid_token', 401);
+    }
+    return { userId: decoded.sub, token };
   }
 
   /**
