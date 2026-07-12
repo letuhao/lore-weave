@@ -133,6 +133,17 @@ async def _propose_pass_seed(
             pass_id, run.id, exc_info=True,
         )
         return None
+    if proposal is None:
+        # A RE-RUN whose entities are all already seeded. Returning None means `record_pass` leaves
+        # `bootstrap_proposal_id` UNTOUCHED — so the previously APPLIED proposal stays pointed at,
+        # acceptance still works, and the roster join still resolves. Overwriting it with a fresh
+        # empty proposal is what used to break both.
+        logger.info(
+            "plan_pass: pass '%s' (run %s) proposed no NEW glossary entities — keeping the "
+            "existing seed proposal",
+            pass_id, run.id,
+        )
+        return None
     logger.info(
         "plan_pass: pass '%s' (run %s) opened glossary seed proposal %s with %d entit(ies)",
         pass_id, run.id, proposal.id, len(proposal.diff.get("new_glossary_entities", [])),

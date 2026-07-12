@@ -29,13 +29,20 @@ run against it.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from app.engine.plan_forge.normalize import post_normalize_spec
 
+logger = logging.getLogger(__name__)
+
 #: `**Key:** value` — the one convention this format leans on. Everything else is plain markdown.
 _FIELD = r"\*\*{key}[^:]*:\*\*\s*(.+)"
+
+#: A story has a handful of state variables. `_var_deltas` runs every declared code against every
+#: line of every event — O(lines x codes) — and `source_markdown` is unbounded on the way in.
+_MAX_VARIABLES = 24
 
 
 def _section(doc: dict[str, Any], kind: str) -> dict[str, Any] | None:
@@ -171,6 +178,17 @@ def _variable_defs(var_body: str) -> list[dict[str, Any]]:
     current: dict[str, Any] | None = None
 
     for raw in lines:
+        # A story has a handful of state variables. This cap is not about taste — `_var_deltas` runs
+        # every declared code against every line of every event, so the parse is O(lines × codes),
+        # and `source_markdown` has no length limit on the way in. Without a bound, a document that
+        # declares thousands of `CODE = …` lines turns the compile into a CPU sink.
+        if len(defs) >= _MAX_VARIABLES:
+            logger.warning(
+                "propose: the document declares more than %d state variables — parsing the first "
+                "%d and ignoring the rest",
+                _MAX_VARIABLES, _MAX_VARIABLES,
+            )
+            break
         # A DECLARATION starts at column 0:   CODE = Name   [range]
         # Anything indented under it is a rule ABOUT it. (`PA  = Perfection_Addiction  [0 → 100+]`
         # followed by `      ↑ mỗi lần đạt "hoàn mỹ"` — which is exactly how the POC document, and

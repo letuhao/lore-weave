@@ -830,28 +830,29 @@ async def _resolve_cast_entity_ids(
     if not members:
         return members
 
-    entry = dict(run.pass_state.get("cast") or {})
-    proposal_id = entry.get("bootstrap_proposal_id")
-    if not proposal_id:
-        return members
-
+    # Union the ids across EVERY applied proposal for this book — not just the one this pass points
+    # at. A glossary entity id is a fact about the BOOK, not about the proposal that happened to mint
+    # it. Re-run `cast` and the LLM adds one new character: the re-run's proposal contains only the
+    # NEW one, and reading it alone would leave every character from the first batch un-resolved —
+    # so the scenes would quietly lose the cast that was already correctly seeded.
     try:
-        proposal = await PlanBootstrapProposalsRepo(pool).get_for_book(
-            book_id, UUID(str(proposal_id)),
-        )
+        proposals = await PlanBootstrapProposalsRepo(pool).list_active_for_book(book_id)
     except Exception:  # noqa: BLE001 — advisory join; a read failure must not fail the pass
-        logger.warning("roster join: could not load the cast seed proposal", exc_info=True)
-        return members
-    if proposal is None or proposal.status != "applied":
-        # The seed is not applied yet, so there ARE no ids. For `cast` itself that is fine (it is a
-        # blocking checkpoint the human has not passed); for anything downstream, PF-5 already
-        # refused. Either way: no ids, and no pretending.
+        logger.warning("roster join: could not load the seed proposals", exc_info=True)
         return members
 
     by_name: dict[str, str] = {}
-    for row in (proposal.applied_results or {}).values():
-        if isinstance(row, dict) and row.get("name") and row.get("entity_id"):
-            by_name[str(row["name"]).strip().casefold()] = str(row["entity_id"])
+    for proposal in proposals:
+        # Only an APPLIED proposal has minted ids. A pending one is a request, not a fact.
+        if proposal.status != "applied":
+            continue
+        for row in (proposal.applied_results or {}).values():
+            if isinstance(row, dict) and row.get("name") and row.get("entity_id"):
+                by_name[str(row["name"]).strip().casefold()] = str(row["entity_id"])
+    if not by_name:
+        # Nothing applied yet ⇒ there ARE no ids. For `cast` itself that is fine (it is a blocking
+        # checkpoint the human has not passed); for anything downstream, PF-5 already refused.
+        return members
 
     resolved = 0
     out: list[dict[str, Any]] = []

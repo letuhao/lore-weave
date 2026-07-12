@@ -271,3 +271,153 @@ async def test_NO_binding_means_NO_cast_line_rather_than_an_empty_one():
 
     frame = await gather_arc(_FakeStructureRepo({}), uuid4(), story_order=None)
     assert "Cast bindings:" not in frame
+
+
+# ── B-R2 · /review-impl findings ─────────────────────────────────────────────────────────────────
+
+def test_the_AGENT_CANNOT_FORCE_PAST_A_BLOCKING_CHECKPOINT():
+    """HIGH. The MCP tool's own description promises the model that `cast` and `beats` are
+    checkpoints "a human must accept" — and the first version of the tool then handed it `force`.
+
+    An agent that hits a 409 listing its blockers does not stop. Being helpful is what it is FOR, and
+    retrying with `force=true` is the obvious next move. PF-6 exists so the AUTHOR decides who the
+    characters are and what shape the story takes; a bypass the model can reach for on its own is
+    not a checkpoint, it is a speed bump.
+
+    The gate is enforced by ABSENCE — not by a prompt asking the model to behave. A human at the GUI
+    still has `force` (the service and the HTTP route both take it); the agent does not.
+    """
+    import inspect
+
+    from app.mcp import server
+
+    tool_src = inspect.getsource(server.plan_run_pass)
+    assert "force:" not in tool_src, "`force` is exposed to the AGENT — PF-6 is bypassable"
+    assert "force=False" in tool_src, "the tool must pin force=False, not pass a caller value"
+
+    # …and the human's surface DOES keep it (this is not a capability removal)
+    from app.services.plan_forge_service import PlanForgeService
+
+    assert "force" in inspect.signature(PlanForgeService.run_pass).parameters
+
+
+def test_plan_run_pass_declares_that_it_SPENDS_MONEY():
+    """[MCP Tool `_meta` Completeness Law] `paid` governs MONEY; `tier` governs mutation. A pass is a
+    full LLM call. A spender that does not declare it looks FREE to every consumer that reads the
+    catalog to decide whether a call needs the user's say-so."""
+    import inspect
+
+    from app.mcp import server
+
+    src = inspect.getsource(server)
+    block = src[src.index('name="plan_run_pass"') : src.index("async def plan_run_pass")]
+    assert "paid=True" in block
+
+
+def test_a_RERUN_of_cast_does_NOT_open_an_EMPTY_seed_proposal():
+    """HIGH. `list_active_for_book` counts APPLIED proposals as claiming their entities, so
+    re-running `cast` after its seed was applied dedups to ZERO new entities.
+
+    An empty proposal would then (1) overwrite `bootstrap_proposal_id`, so (2) accepting cast
+    REFUSES — its new proposal is `pending` — and the author has to approve and apply an EMPTY diff
+    to proceed, after which (3) its `applied_results` is `{}`, the roster join resolves no ids, and
+    every scene silently loses its cast.
+
+    Re-running a pass is this compiler's entire selling point. It must not be the thing that breaks
+    it."""
+    import inspect
+
+    from app.services.bootstrap_service import BootstrapService
+
+    src = inspect.getsource(BootstrapService.propose_seed)
+    assert "if not new_glossary_entities:" in src
+    assert "return None" in src
+    # …and the caller leaves the prior pointer alone (record_pass ignores a None field)
+    from app.worker import job_consumer
+
+    hook = inspect.getsource(job_consumer._propose_pass_seed)
+    assert "if proposal is None:" in hook
+    assert "keeping the" in hook
+
+
+def test_the_id_JOINS_union_across_ALL_applied_proposals():
+    """HIGH (the other half). An entity id is a fact about the BOOK, not about the proposal that
+    happened to mint it.
+
+    Re-run `cast` and the LLM adds one new character: that re-run's proposal contains only the NEW
+    one. Reading it alone would leave every character from the first batch unresolved — the scenes
+    would quietly lose the cast that was already correctly seeded, and the roster would SHRINK on a
+    re-run."""
+    import inspect
+
+    from app.services.plan_forge_service import PlanForgeService
+    from app.worker.operations import _resolve_cast_entity_ids
+
+    for src in (
+        inspect.getsource(_resolve_cast_entity_ids),
+        inspect.getsource(PlanForgeService._roster_ids_by_name),
+    ):
+        assert "list_active_for_book(book_id)" in src
+        assert 'proposal.status != "applied"' in src   # …and only APPLIED ones have minted ids
+        assert "get_for_book(book_id, UUID(str(proposal_id)))" not in src   # not the single pointer
+
+
+def test_the_variable_parser_is_CAPPED():
+    """MED. `source_markdown` has no max_length, and `_var_deltas` runs every declared code against
+    every line of every event — O(lines × codes). A document declaring thousands of `CODE = …` lines
+    turns a compile into a CPU sink."""
+    from app.engine.plan_forge.propose import _MAX_VARIABLES, _variable_defs
+
+    body = "\n".join(f"V{i} = Var{i}   [0 -> 10]" for i in range(_MAX_VARIABLES + 40))
+    assert len(_variable_defs(body)) == _MAX_VARIABLES
+
+
+def test_ENQUEUEING_a_pass_marks_it_RUNNING_so_the_ledger_describes_the_PRESENT():
+    """HIGH. A RE-RUN was invisible, and it silently ate the author's acceptance.
+
+    Nothing wrote to the pass entry between "job enqueued" and "finalize hook lands" ~30s later. So
+    for the whole duration of a re-run the ledger still reported the PREVIOUS run's `completed` +
+    `accepted`, while the artifact it named was being replaced.
+
+    The live smoke showed the cost. A caller polls `status`, sees `completed` immediately (it never
+    changed), and ACCEPTS — then the re-run's finalize hook writes `decision: pending` on top,
+    because a new cast has not been reviewed by anyone. The acceptance is silently discarded, `world`
+    then refuses with `blockers: ['cast']`, and the ledger shows cast `completed` + `pending` with no
+    account of how it got there. Two 200s from the accept endpoint, and the human's decision gone.
+
+    `running` fixes all three lies at once: the poll sees the truth, `is_fresh` (which requires
+    `completed`) keeps anything downstream from running against a pass mid-flight, and `_review_pass`
+    refuses to accept it."""
+    import inspect
+
+    from app.services.plan_forge_service import PlanForgeService
+
+    src = inspect.getsource(PlanForgeService.run_pass)
+    enqueue = src.index("await enqueue_job(")
+    mark = src.index('record_pass(run, pass_id, status="running"')
+    assert mark < enqueue, "the pass must be marked running BEFORE the job can be picked up"
+    assert "job_id=job.id" in src
+
+
+def test_a_RUNNING_pass_cannot_be_ACCEPTED_and_nothing_downstream_can_run():
+    """The two consequences that make `running` load-bearing rather than cosmetic."""
+    from uuid import uuid4
+
+    from app.db.models import PlanRun
+    from app.services import plan_pass_service as pps
+
+    pkg = uuid4()
+    run = PlanRun(
+        id=uuid4(), created_by=uuid4(), book_id=uuid4(), status="compiled", mode="rules",
+        pass_state={"cast": {"status": "running", "decision": "accepted",
+                             "artifact_id": str(uuid4()), "input_fingerprint": "sha256:x"}},
+    )
+    # a pass being re-run is NOT fresh, whatever its decision says
+    assert pps.is_fresh(run, "cast", package_artifact_id=pkg) is False
+    # …so nothing that depends on it may run
+    assert "cast" in pps.blockers_for(run, "world", package_artifact_id=pkg)
+    # …and the checkpoint refuses it (status != completed)
+    src = inspect.getsource(
+        __import__("app.services.plan_forge_service", fromlist=["x"]).PlanForgeService._review_pass,
+    )
+    assert 'if entry.get("status") != "completed":' in src

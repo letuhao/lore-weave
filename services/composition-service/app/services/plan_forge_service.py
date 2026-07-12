@@ -790,28 +790,28 @@ class PlanForgeService:
         through the knowledge-gateway roster, never glossary (INV-KAL). The apply step is what
         minted the ids, and it recorded them.
         """
-        entry = dict(run.pass_state.get("cast") or {})
-        proposal_id = entry.get("bootstrap_proposal_id")
-        if not proposal_id:
-            return {}
-        proposal = await self._proposals.get_for_book(book_id, UUID(str(proposal_id)))
-        if proposal is None or proposal.status != "applied":
-            return {}
+        # EVERY applied proposal for this book, not just the one `cast` points at — an id is a fact
+        # about the BOOK, not about the proposal that minted it. A re-run of `cast` that adds one
+        # character produces a proposal containing only that character; reading it alone would leave
+        # every previously-seeded role UNBOUND, and the roster would shrink on a re-run.
         out: dict[str, UUID] = {}
-        # `applied_results` is keyed by the proposal's item key; each value is the row apply()
-        # recorded from glossary-service — {entity_id, kind_code, name, status}. That row is where
-        # the id was MINTED, which is why we read it here rather than asking glossary (INV-KAL:
-        # composition reads cast through the knowledge-gateway roster, never glossary directly).
-        for row in (proposal.applied_results or {}).values():
-            if not isinstance(row, dict):
+        for proposal in await self._proposals.list_active_for_book(book_id):
+            if proposal.status != "applied":
                 continue
-            name = (row.get("name") or "").strip()
-            eid = row.get("entity_id")
-            if name and eid:
-                try:
-                    out[name.casefold()] = UUID(str(eid))
-                except (ValueError, TypeError):
+            # `applied_results` is keyed by the proposal's item key; each value is the row apply()
+            # recorded from glossary-service — {entity_id, kind_code, name, status}. That row is
+            # where the id was MINTED, which is why we read it here rather than asking glossary
+            # (INV-KAL: composition reads cast through the roster, never glossary directly).
+            for row in (proposal.applied_results or {}).values():
+                if not isinstance(row, dict):
                     continue
+                name = (row.get("name") or "").strip()
+                eid = row.get("entity_id")
+                if name and eid:
+                    try:
+                        out[name.casefold()] = UUID(str(eid))
+                    except (ValueError, TypeError):
+                        continue
         return out
 
     async def handoff_autofix(
@@ -1129,7 +1129,7 @@ class PlanForgeService:
         enqueued against may have changed underneath it.
         """
         from app.services.plan_pass_service import (
-            PACKAGE_KIND, PASS_REGISTRY, UpstreamStale, blockers_for, derive_view,
+            PACKAGE_KIND, PASS_REGISTRY, UpstreamStale, blockers_for, derive_view, record_pass,
         )
 
         if pass_id not in PASS_REGISTRY:
@@ -1170,6 +1170,26 @@ class PlanForgeService:
             operation="plan_pass", mode="auto", status="pending",
             input=pass_input,
         )
+
+        # MARK THE PASS `running` THE MOMENT IT IS ENQUEUED — the ledger must describe the PRESENT.
+        #
+        # Without this, a RE-RUN is invisible: the entry still carries the PREVIOUS run's
+        # `completed` + `accepted`, because nothing writes to it again until the finalize hook lands
+        # 30 seconds later. So for the whole duration of a re-run the ledger reports a pass that is
+        # done and approved, while the artifact it names is being replaced.
+        #
+        # The live smoke showed what that costs. A caller polls `status`, sees `completed`
+        # instantly (it never changed), and accepts — and then the re-run's finalize hook writes
+        # `decision: pending` on top, because a NEW cast has not been reviewed by anyone. Their
+        # acceptance is silently discarded, `world` refuses with `blockers: ['cast']`, and the ledger
+        # says cast is `completed` and `pending` with no explanation of how it got there.
+        #
+        # `running` also makes the freshness derivation honest: `is_fresh` requires `completed`, so
+        # nothing downstream can run against a pass that is mid-flight, and `_review_pass` refuses to
+        # accept it ("has not completed"). One field, and all three lies stop.
+        state = record_pass(run, pass_id, status="running", job_id=job.id)
+        await self._runs.update_run(book_id, run_id, pass_state=state)
+
         if settings.composition_worker_enabled:
             await enqueue_job(
                 settings.redis_url, job_id=str(job.id),

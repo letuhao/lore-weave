@@ -189,8 +189,11 @@ class BootstrapService:
         run_id: UUID,
         pass_id: str,
         entities: list[dict[str, Any]],
-    ) -> PlanBootstrapProposal:
+    ) -> PlanBootstrapProposal | None:
         """A glossary-ONLY bootstrap proposal built from a PASS artifact (27 PF-7).
+
+        Returns **None** when every entity is already claimed by an active (or applied) proposal —
+        i.e. there is nothing to ask the human about. See the empty-diff branch at the bottom.
 
         Why this exists rather than the pass seeding the glossary directly: **one approval
         mechanism, not two.** The glossary is the author's canon. A compiler pass that wrote into it
@@ -252,6 +255,28 @@ class BootstrapService:
                 "name": name, "kind_code": kind,
                 "attributes": e.get("attributes") or {},
             })
+
+        if not new_glossary_entities:
+            # NOTHING NEW TO OFFER ⇒ NO PROPOSAL. This is the re-run case, and creating a row here
+            # was a bug with a long tail.
+            #
+            # `list_active_for_book` counts APPLIED proposals as claiming their entities, so
+            # re-running `cast` after its seed was applied dedups to zero — and an empty proposal
+            # would then: (1) overwrite `pass_state.cast.bootstrap_proposal_id`, so (2) accepting
+            # cast REFUSES (the new proposal is `pending`) and the author has to approve and apply an
+            # EMPTY diff to proceed, after which (3) its `applied_results` is `{}`, the roster join
+            # resolves no ids, and every scene silently loses its cast.
+            #
+            # Returning None leaves the caller's `record_pass(bootstrap_proposal_id=None)` to leave
+            # the field UNTOUCHED — so the already-applied proposal stays pointed at, and the
+            # re-run is the no-op it should be. Re-running a pass is this compiler's whole selling
+            # point; it must not be the thing that breaks it.
+            logger.info(
+                "propose_seed: book=%s run=%s pass=%s — all %d entit(ies) are already claimed by "
+                "an active proposal; no new proposal opened",
+                book_id, run_id, pass_id, len(entities),
+            )
+            return None
 
         diff = {"new_chapters": [], "new_glossary_entities": new_glossary_entities}
         record = await self._proposals.create(created_by, book_id, run_id, diff=diff)

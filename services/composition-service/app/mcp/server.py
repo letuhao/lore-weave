@@ -3569,7 +3569,10 @@ async def plan_compile(
     meta=require_meta(
         "A", "book",
         synonyms=["run pass", "run compiler pass", "plan cast", "plan the scenes", "next pass"],
-        async_job=True, tool_name="plan_run_pass",
+        # A pass is a full LLM call. `paid` governs MONEY (orthogonal to `tier`, which governs
+        # mutation) — a spender that does not declare it looks free to every consumer that reads the
+        # catalog to decide whether a call needs the user's say-so.
+        async_job=True, paid=True, tool_name="plan_run_pass",
     ),
 )
 async def plan_run_pass(
@@ -3585,9 +3588,19 @@ async def plan_run_pass(
         "Optional per-pass knobs (k_ceiling, max_select…). Fingerprinted WITH the pass: changing "
         "one stales exactly that pass and everything downstream.",
     ] = None,
-    force: Annotated[
-        bool, "Run even when an upstream is stale/unaccepted. The ONLY escape from the PF-5 gate.",
-    ] = False,
+    # ⚠ THERE IS NO `force` HERE, AND THERE MUST NOT BE.
+    #
+    # The service and the HTTP route both take `force` — a human, at the GUI, may override the PF-5
+    # gate on their own book. The AGENT may not, and the first version of this tool exposed it.
+    #
+    # That single argument defeated the one guarantee this design makes. The description above tells
+    # the model "`cast` and `beats` are BLOCKING checkpoints that a human must accept" — and then
+    # handed it the key. An agent that hits a 409 listing its blockers does not stop; being helpful
+    # is what it is for, and retrying with `force=true` is the obvious next move. PF-6 exists so the
+    # author decides who the characters ARE and what SHAPE the story takes; a bypass the model can
+    # reach for on its own is not a checkpoint, it is a speed bump.
+    #
+    # So the gate is enforced by ABSENCE, not by a prompt asking the model to behave.
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
@@ -3595,7 +3608,7 @@ async def plan_run_pass(
     try:
         return await _plan_svc().run_pass(
             tc.user_id, bid, UUID(run_id), pass_id,
-            model_ref=_opt_uuid(model_ref), params=params or {}, force=force,
+            model_ref=_opt_uuid(model_ref), params=params or {}, force=False,
         )
     except UpstreamStale as exc:
         # The gate doing its job. The agent gets the BLOCKERS, not a bare failure — so its next move
