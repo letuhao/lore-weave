@@ -26,6 +26,35 @@ import type { ArcListNode, NodePosition, SummaryNode } from '../types';
 const SIBLING_PAGE = 100;
 const MAX_SIBLING_PAGES = 20; // a chapter with >2000 scenes is not a real book; bound the walk
 
+/** book-service CLAMPS `limit` to 100 (server.go parseLimitOffset) — asking for more silently
+ *  returns 100, so a whole-book listing MUST page by offset. */
+const CHAPTER_PAGE = 100;
+const MAX_CHAPTER_PAGES = 200; // 20k chapters
+
+/**
+ * The book's chapter ids in READING order, paged in FULL.
+ *
+ * Do not ask for `{limit: 500}` and trust it: book-service clamps to 100, so a >100-chapter book
+ * came back truncated with no signal. Row-3's undo derives the moved chapter's PREVIOUS neighbour
+ * from this sequence, so a chapter past #100 looked ABSENT — which collapsed to `previous = null`,
+ * i.e. "it used to be the book's first chapter". Two consequences, both on the one gesture that
+ * mutates the real manuscript: a drop at the head was swallowed as a no-op, and clicking Undo
+ * MOVED THE CHAPTER TO POSITION 1. Page it in full, and let the caller fail loudly if the chapter
+ * still isn't found rather than guess a position.
+ */
+async function bookChapterOrder(bookId: string, token: string): Promise<string[]> {
+  const rows: { chapter_id: string; sort_order: number }[] = [];
+  for (let page = 0; page < MAX_CHAPTER_PAGES; page++) {
+    const res = await booksApi.listChapters(token, bookId, {
+      limit: CHAPTER_PAGE,
+      offset: page * CHAPTER_PAGE,
+    });
+    rows.push(...res.items);
+    if (res.items.length < CHAPTER_PAGE) break;
+  }
+  return rows.sort((a, b) => a.sort_order - b.sort_order).map((c) => c.chapter_id);
+}
+
 /** Byte-order rank compare (id tiebreak) — matches the server's `rank COLLATE "C", id` ordering. */
 function byRank<T extends { rank: string; id: string }>(a: T, b: T): number {
   if (a.rank < b.rank) return -1;
@@ -305,10 +334,13 @@ export function usePlanMoves(input: {
       // loaded windows are not enough: the chapter that precedes this one may belong to a collapsed
       // arc and never have been fetched, and an undo that guessed would silently move the chapter
       // somewhere it never was.
-      const before = await booksApi.listChapters(token!, bookId, { limit: 500 });
-      const seq = [...before.items].sort((a, b) => a.sort_order - b.sort_order);
-      const i = seq.findIndex((c) => c.chapter_id === vars.chapterId);
-      const previous = i > 0 ? seq[i - 1].chapter_id : null;
+      const seq = await bookChapterOrder(bookId, token!);
+      const i = seq.indexOf(vars.chapterId);
+      // Not in the book's order at all (archived/purged under us, or a truncated read). NEVER fall
+      // through to `previous = null` — that reads as "it was the first chapter" and would send the
+      // undo to position 1.
+      if (i < 0) throw new Error('That chapter is no longer in the book — the canvas reloaded.');
+      const previous = i > 0 ? seq[i - 1] : null;
 
       // The no-op check lives HERE, not in the caller, because only the book's own order can decide
       // it. A caller comparing against the LOADED chapters would think a chapter whose predecessor

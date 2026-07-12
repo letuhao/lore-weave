@@ -450,3 +450,65 @@ describe('Row-3 — the no-op check must use the BOOK order, not the loaded wind
     expect(result.current.undo).toBeNull();
   });
 });
+
+describe('Row-3 — the book order must be PAGED (book-service clamps limit to 100)', () => {
+  function ch(i: number) {
+    return { chapter_id: `book-c${i}`, sort_order: i };
+  }
+  /**
+   * A LIVE 250-chapter book: served in 100-row pages exactly as book-service does, and the reorder
+   * endpoint actually permutes it. A static mock would return the pre-move order to the undo's own
+   * lookup, so the undo would correctly conclude "already in place" and the test would prove nothing.
+   */
+  function pagedBook() {
+    let order = Array.from({ length: 250 }, (_, k) => `book-c${k + 1}`);
+    books.listChapters.mockImplementation((_t: string, _b: string, p: { limit: number; offset: number }) =>
+      Promise.resolve({
+        items: order
+          .map((id, i) => ({ chapter_id: id, sort_order: i + 1 }))
+          .slice(p.offset, p.offset + p.limit),
+      }),
+    );
+    api.reorderBookChapter.mockImplementation((_b: string, body: { chapter_id: string; after_chapter_id: string | null }) => {
+      const rest = order.filter((id) => id !== body.chapter_id);
+      const at = body.after_chapter_id ? rest.indexOf(body.after_chapter_id) + 1 : 0;
+      order = [...rest.slice(0, at), body.chapter_id, ...rest.slice(at)];
+      return Promise.resolve({ book_id: BOOK, resynced: {} });
+    });
+    return { at: (i: number) => order[i], indexOf: (id: string) => order.indexOf(id) };
+  }
+  const node = (id: string, order: number): SummaryNode => ({
+    kind: 'chapter', id, parent_id: null, structure_node_id: 'arc-a', chapter_id: `book-${id}`,
+    title: id, status: 'draft', version: 1, story_order: order * 1000, rank: '0m', beat_role: null,
+    tension: null, pov_entity_id: null, present_entity_ids: [], present_entity_count: 0,
+  });
+
+  it('finds a chapter BEYOND the first page, and undoes it to its true predecessor', async () => {
+    // The bug: booksApi.listChapters was called with {limit: 500}, which book-service clamps to 100.
+    // Chapter 150 was therefore absent from the list ⇒ findIndex -1 ⇒ previous=null ⇒ "it used to be
+    // chapter 1" ⇒ clicking Undo moved it to the FRONT OF THE MANUSCRIPT.
+    const book = pagedBook();
+    const { result } = mount({ windowContent: { c150: node('c150', 150) } });
+
+    act(() => result.current.reorderChapter('c150', null)); // drag it to the front
+    await waitFor(() => expect(result.current.undo).not.toBeNull());
+    // It PAGED: 250 chapters ⇒ 3 requests (100, 100, 50). A single {limit:500} call would have been
+    // clamped to 100 and never seen chapter 150 at all.
+    expect(books.listChapters.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(book.indexOf('book-c150')).toBe(0); // it really did move to the front
+
+    act(() => result.current.undo!.run());
+    await waitFor(() => expect(book.indexOf('book-c150')).toBe(149)); // back to chapter 150
+    expect(book.at(148)).toBe('book-c149');
+    expect(book.at(150)).toBe('book-c151'); // and its neighbours are intact
+  });
+
+  it('a chapter that is NOT in the book order fails loudly — never silently to position 1', async () => {
+    pagedBook();
+    const { result } = mount({ windowContent: { gone: node('gone', 9) } }); // book-gone isn't listed
+    act(() => result.current.reorderChapter('gone', null));
+    await waitFor(() => expect(result.current.moveError).toMatch(/no longer in the book/i));
+    expect(api.reorderBookChapter).not.toHaveBeenCalled();
+    expect(result.current.undo).toBeNull();
+  });
+});
