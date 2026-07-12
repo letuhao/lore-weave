@@ -1,0 +1,168 @@
+// WS-1.4 — the Work Assistant provisioning orchestrator (spec 02 §Q2).
+//
+// This is the FIRST fan-out handler in the BFF (everything else is reverse-proxy). It
+// provisions the assistant by calling the PUBLIC service APIs with the USER'S OWN JWT —
+// so every downstream route owner-keys/grant-checks the caller itself, and we invent no new
+// internal write surface (book-service /internal is read-only).
+//
+// Trust model (mirrors ToolsController): the FE presents its Bearer JWT; we validate it here
+// and derive the identity from `sub` (SEC-1 — identity is NEVER a client body field). We then
+// forward that SAME Bearer to the public endpoints.
+//
+// Partial-failure is a first-class outcome (T39): convergence-under-concurrency is not
+// atomicity-under-failure. We return a `provision_status` the home strip reads and re-drives
+// on every /assistant open, rather than pretending an all-or-nothing transaction across four
+// services. The diary book is the ANCHOR (everything binds to it); if it cannot be made,
+// nothing else is attempted.
+//
+// Scope note: this wires the two DURABLE cross-service resources whose idempotent get-or-create
+// endpoints exist today — the diary book (WS-1.4a) and the assistant knowledge project
+// (WS-1.4b). "Today's session" is created by the ChatView on first open (it, not the server,
+// knows the user's chosen model); the self-entity (WS-1.5), consent opt-in, and timezone
+// confirm (D9) are surfaced as explicit PENDING steps — never silently omitted, never
+// auto-enabled.
+
+import { Body, Controller, Headers, HttpException, Logger, Post } from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
+
+interface ProvisionBody {
+  title?: string;
+}
+
+interface ProvisionStatus {
+  diary_book: string; // 'ok' | 'trashed' | 'error:<status>'
+  assistant_project: string; // 'ok' | 'skipped:no_diary' | 'error:<status>'
+  // Steps that depend on not-yet-built slices — surfaced, never silently dropped:
+  todays_session: string; // the ChatView creates it on first open (needs the user's model)
+  self_entity: string; // WS-1.5 (work ontology + is_self seed)
+  consent: string; // user opt-in only — NEVER auto-enabled as a provisioning side effect
+  timezone: string; // D9 — explicit user confirm, never auto-set from the client zone
+}
+
+interface ProvisionResult {
+  provisioned: boolean; // the durable core (diary + assistant project) is ready
+  book_id?: string;
+  project_id?: string;
+  provision_status: ProvisionStatus;
+}
+
+const PROVISION_STEP_TIMEOUT_MS = 15_000;
+
+@Controller('v1/assistant')
+export class AssistantController {
+  private readonly logger = new Logger(AssistantController.name);
+
+  @Post('provision')
+  async provision(
+    @Body() body: ProvisionBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<ProvisionResult> {
+    // 1. Authenticate — validate the user's JWT; identity is server-derived from `sub`.
+    const token = (authorization ?? '').replace(/^Bearer\s+/i, '').trim();
+    if (!token) {
+      throw new HttpException('missing bearer token', 401);
+    }
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      this.logger.error('assistant-provision rejected: JWT_SECRET not configured');
+      throw new HttpException('server_error', 500);
+    }
+    try {
+      // Pin the algorithm — a valid JWT here provisions real cross-service resources.
+      jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
+    } catch {
+      throw new HttpException('invalid_token', 401);
+    }
+
+    const bookUrl = process.env.BOOK_SERVICE_URL;
+    const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
+    if (!bookUrl || !knowledgeUrl) {
+      this.logger.error('assistant-provision rejected: BOOK/KNOWLEDGE service URL not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    const authHeader = `Bearer ${token}`;
+    const status: ProvisionStatus = {
+      diary_book: 'pending',
+      assistant_project: 'pending',
+      todays_session: 'deferred:created_on_first_open',
+      self_entity: 'pending:WS-1.5',
+      consent: 'pending:user_opt_in',
+      timezone: 'pending:user_confirm',
+    };
+
+    // 2. Diary book (the anchor) — idempotent get-or-create.
+    const diary = await this.postJson(`${bookUrl}/v1/books/diary`, authHeader, {
+      title: body?.title,
+    });
+    if (diary.ok && typeof diary.body?.book_id === 'string') {
+      status.diary_book = 'ok';
+    } else if (diary.status === 409 && diary.body?.code === 'BOOK_DIARY_TRASHED') {
+      // E14 — a trashed diary must be resolved by the user (restore vs start fresh) before
+      // we provision anything onto it. Surface it; do not fork or resurrect.
+      status.diary_book = 'trashed';
+      status.assistant_project = 'skipped:no_diary';
+      return { provisioned: false, provision_status: status };
+    } else {
+      status.diary_book = `error:${diary.status}`;
+      status.assistant_project = 'skipped:no_diary';
+      return { provisioned: false, provision_status: status };
+    }
+    const bookId: string = diary.body.book_id;
+
+    // 3. Assistant knowledge project — bound to the diary, idempotent.
+    const proj = await this.postJson(
+      `${knowledgeUrl}/v1/knowledge/projects/assistant`,
+      authHeader,
+      { book_id: bookId },
+    );
+    let projectId: string | undefined;
+    if (proj.ok && typeof proj.body?.project_id === 'string') {
+      status.assistant_project = 'ok';
+      projectId = proj.body.project_id;
+    } else {
+      // The diary exists but the project failed — a real, visible half-state (T39). The home
+      // strip re-drives on the next open; this get-or-create is idempotent, so the retry is safe.
+      status.assistant_project = `error:${proj.status}`;
+    }
+
+    return {
+      provisioned: status.diary_book === 'ok' && status.assistant_project === 'ok',
+      book_id: bookId,
+      project_id: projectId,
+      provision_status: status,
+    };
+  }
+
+  /**
+   * POST JSON to a public service endpoint, forwarding the user's Bearer. Never throws on an
+   * HTTP or transport error — provisioning treats a failed step as a recorded half-state, not
+   * an exception, so one service being down does not abort the whole orchestration. A transport
+   * failure is reported as status 0.
+   */
+  private async postJson(
+    url: string,
+    authHeader: string,
+    body: unknown,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: authHeader },
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
+  }
+}
