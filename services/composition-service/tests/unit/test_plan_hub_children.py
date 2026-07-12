@@ -31,6 +31,10 @@ _SUMMARY_KEYS = {
     "id", "kind", "parent_id", "structure_node_id", "chapter_id", "title", "status",
     "version", "story_order", "rank", "beat_role", "tension", "pov_entity_id",
     "present_entity_ids", "present_entity_count",
+    # SC11 amendment Phase 3 — the written verdict. PH10's field list is CLOSED, so this set IS
+    # the contract: adding a field here is a deliberate amendment, and removing `written` by
+    # accident turns this red instead of silently blanking the canvas's written/unwritten state.
+    "written",
 }
 
 
@@ -392,3 +396,46 @@ def test_scene_links_empty_book(client):
     r = c.get(f"/v1/composition/books/{BOOK}/scene-links")
     assert r.status_code == 200
     assert r.json() == {"scene_links": []}
+
+
+# ── SC11 amendment Phase 3 — the written verdict on the canvas payload ──────────────────────
+
+def test_the_summary_payload_carries_the_WRITTEN_VERDICT():
+    """The amendment's whole payoff, at the wire.
+
+    `written` is a MAINTAINED column (reconciled from book-service's scenes.source_scene_id), so the
+    canvas gets the verdict as a FIELD on a request it already makes — no sixth call, no client-side
+    join, no page-walk of the scene index. PH9 caps the cold open at ≤5 requests; this REFUNDS one.
+    """
+    unwritten = _summary_projection(_node(kind="scene"))
+    assert unwritten["written"] is False
+
+    n = _node(kind="scene")
+    n.written_scene_id = uuid4()
+    assert _summary_projection(n)["written"] is True
+
+
+def test_the_canvas_gets_a_BOOL_never_the_scene_id():
+    """PH10's discipline is "L1 refs and badge scalars, never content". The canvas renders a STATE;
+    shipping the manuscript's scene id onto a payload that paints thousands of nodes would put a
+    foreign identifier on the hot wire for no one to use. The drawer's `detail=full` fetch carries
+    the id for the ONE node that needs it."""
+    n = _node(kind="scene")
+    n.written_scene_id = uuid4()
+    proj = _summary_projection(n)
+    assert proj["written"] is True
+    assert "written_scene_id" not in proj
+    assert "written_at" not in proj
+
+
+def test_written_is_INDEPENDENT_of_status():
+    """PH16 locks a two-chip desired-vs-actual header, and this is why. `status` is the AUTHOR'S
+    INTENT; `written` is a manuscript FACT. An author marking a scene 'done' must NOT make an
+    unwritten scene render as written — that is the drift bug BPS-3 deleted structure_node.pacing
+    to prevent."""
+    n = _node(kind="scene")
+    n.status = "done"           # the author says it is done…
+    n.written_scene_id = None   # …but no prose exists
+    proj = _summary_projection(n)
+    assert proj["status"] == "done"
+    assert proj["written"] is False, "author intent leaked into a manuscript fact"

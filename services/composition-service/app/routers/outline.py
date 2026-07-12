@@ -286,6 +286,23 @@ def _summary_projection(node: Any) -> dict[str, Any]:
         "pov_entity_id": str(node.pov_entity_id) if node.pov_entity_id else None,
         "present_entity_ids": [str(e) for e in present[:_PRESENT_ENTITY_CAP]],
         "present_entity_count": len(present),
+        # ── SC11 amendment Phase 3 — the WRITTEN VERDICT rides the payload it already sends ──
+        #
+        # PH10's field list is CLOSED, so this is a deliberate amendment to it, and the reason it
+        # is admissible is that it costs NOTHING at the read budget: it is a field on a request the
+        # Hub already makes, not a sixth call. PH9 caps the cold open at ≤5 requests; this REFUNDS
+        # one — `useActualState` used to page book-service's scene index per loaded chapter, and
+        # that read is now gone entirely.
+        #
+        # A BOOL, not the scene id. The canvas renders a state, not a link: shipping the id would
+        # put a manuscript identifier on a payload whose whole discipline (PH10) is "L1 refs and
+        # badge scalars, never content". The drawer's `detail=full` fetch carries the id for the
+        # one node that needs it.
+        #
+        # `written_scene_id` is a MAINTAINED COLUMN (Phase 1), not a join — so this is not the
+        # cross-service read SC11 forbids. It is a column read, and it is the whole point of the
+        # amendment: the fact is derived ONCE, on write, by the service that already knows it.
+        "written": node.written_scene_id is not None,
     }
 
 

@@ -174,6 +174,18 @@ class OutlineNode(BaseModel):
     stakes: str = ""
     target_words: int | None = None     # > 0
     exit_state: dict[str, Any] | None = None
+    # ── SC11 amendment — the WRITTEN VERDICT (Phase 1). NOT authored: MAINTAINED. ──
+    # "Is there prose behind this spec node?" reconciled from book-service's
+    # `scenes.source_scene_id` (the sole authored anchor — DA-3 still holds, this is its
+    # regenerable inverse). Distinct from `status`, which is the AUTHOR'S INTENT: PH16 locks a
+    # two-chip desired-vs-actual header, and fusing them would mean marking a scene 'done' makes
+    # an UNWRITTEN scene render as written.
+    # `written_chapter_id` is WHICH CHAPTER'S PROSE backs it — NOT the node's own `chapter_id`.
+    # They come apart (a copied anchor; a planned node has chapter_id NULL), and a reconcile keyed
+    # on the wrong one either flaps forever or can never clear.
+    written_scene_id: UUID | None = None
+    written_chapter_id: UUID | None = None
+    written_at: datetime | None = None
     # 26 IX-11 — provenance: 'authored' (human) · 'decompiled' (import) · 'planforge'.
     # The inspector/Hub render a "mined" badge; the decompiler never overwrites 'authored'.
     source: str = "authored"

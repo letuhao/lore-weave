@@ -40,6 +40,10 @@ _SELECT_COLS = """
   story_order, synopsis, structure_node_id,
   location_entity_id, story_time, conflict, outcome, value_shift, stakes,
   target_words, exit_state, source,
+  -- SC11 Phase 1/3 — the written verdict. A MAINTAINED column (reconciled from
+  -- book-service's scenes.source_scene_id), never authored. Selected here so the PH10
+  -- summary projection can ship `written` without a second query.
+  written_scene_id, written_chapter_id, written_at,
   version, is_archived, created_at, updated_at
 """
 
