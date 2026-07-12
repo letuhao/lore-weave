@@ -1,7 +1,7 @@
 // WS-1.10 — the Work Assistant API layer. Assistant-specific control-plane calls; entity/chapter
 // reads reuse glossaryApi / chatApi from their own features (no duplication).
 import { apiJson } from '@/api';
-import type { DiaryEntriesResponse, EndDayResult, ProvisionResult } from './types';
+import type { DiaryEntriesResponse, DiaryPendingFact, EndDayResult, ProvisionResult } from './types';
 
 export interface EndDayPayload {
   book_id: string;
@@ -48,6 +48,29 @@ export const assistantApi = {
   keepDiaryEntry(token: string, bookId: string, chapterId: string) {
     return apiJson<{ chapter_id: string; kept: boolean; diary_kept_at: string }>(
       `/v1/books/${bookId}/diary/entries/${chapterId}/keep`,
+      { method: 'POST', token },
+    );
+  },
+
+  /** WS-2.5 — the diary FACT inbox: every pending fact the user owns, oldest-first. The diary's
+   *  distilled facts are session-less, so we list WITHOUT a session_id filter (which the chat memory
+   *  card uses); the server returns all the caller's pending facts, JWT-scoped. */
+  listDiaryFacts(token: string) {
+    return apiJson<DiaryPendingFact[]>('/v1/knowledge/pending-facts', { token });
+  },
+
+  /** WS-2.5 — CONFIRM a pending diary fact → promoted to the KG (dated, subject-linked, recallable). */
+  confirmDiaryFact(token: string, pendingFactId: string) {
+    return apiJson<unknown>(
+      `/v1/knowledge/pending-facts/${encodeURIComponent(pendingFactId)}/confirm`,
+      { method: 'POST', token },
+    );
+  },
+
+  /** WS-2.5 — REJECT a pending diary fact → deleted + tombstoned (not re-proposed next distill). */
+  rejectDiaryFact(token: string, pendingFactId: string) {
+    return apiJson<void>(
+      `/v1/knowledge/pending-facts/${encodeURIComponent(pendingFactId)}/reject`,
       { method: 'POST', token },
     );
   },

@@ -5,8 +5,10 @@ import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
 import { useAssistant } from '../context/AssistantContext';
 import { useCaptureRail } from '../hooks/useCaptureRail';
+import { useDiaryFactInbox } from '../hooks/useDiaryFactInbox';
 import { useEndOfDay } from '../hooks/useEndOfDay';
 import { CaptureRail } from './CaptureRail';
+import { DiaryFactInbox } from './DiaryFactInbox';
 import { EndOfDayReview } from './EndOfDayReview';
 
 export function AssistantHomeStrip() {
@@ -14,6 +16,7 @@ export function AssistantHomeStrip() {
   const { bookId, projectId, consentEnabled, consentSaving, setConsent } = useAssistant();
   const rail = useCaptureRail(bookId);
   const eod = useEndOfDay(bookId);
+  const inbox = useDiaryFactInbox();
 
   const firstName = (user?.display_name || user?.email || '').split(/[ @]/)[0];
 
@@ -77,7 +80,8 @@ export function AssistantHomeStrip() {
         data-testid="assistant-end-day"
         disabled={eod.status === 'distilling'}
         onClick={() => {
-          void eod.trigger();
+          // End-the-day distills the day AND diverts its facts to the inbox, so refresh both surfaces.
+          void eod.trigger().then(() => inbox.refetch());
           void rail.refresh();
         }}
         className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium disabled:opacity-50"
@@ -91,6 +95,16 @@ export function AssistantHomeStrip() {
         error={eod.error}
         keeping={eod.keeping}
         onKeep={eod.keep}
+      />
+
+      {/* WS-2.5 — the diary fact inbox: keep/dismiss the facts the distiller diverted for review. */}
+      <DiaryFactInbox
+        facts={inbox.facts}
+        isLoading={inbox.isLoading}
+        error={inbox.error}
+        pendingId={inbox.pendingId}
+        onConfirm={inbox.confirm}
+        onReject={inbox.reject}
       />
     </aside>
   );

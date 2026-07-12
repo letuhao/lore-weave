@@ -46,3 +46,21 @@ export interface DiaryEntriesResponse {
   entries: DiaryEntry[];
   count: number;
 }
+
+/** WS-2.5 — one pending diary fact awaiting the user's confirm/reject (the fact inbox). Mirrors
+ *  knowledge-service's PendingFact model incl. the WS-2.2 structured fields (nullable — a coarse fact
+ *  carries only fact_text; a structured one carries the subject/predicate/object trio + event_date). */
+export interface DiaryPendingFact {
+  pending_fact_id: string;
+  user_id: string;
+  project_id: string | null;
+  session_id: string | null;
+  fact_type: 'decision' | 'preference' | 'milestone' | 'negation' | 'statement';
+  fact_text: string;
+  created_at: string;
+  subject?: string | null;
+  predicate?: string | null;
+  object?: string | null;
+  event_date?: string | null;
+  provenance?: string | null;
+}
