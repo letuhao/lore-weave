@@ -213,7 +213,10 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 ## 10. Completeness ledger (the definition of "done" for the whole run)
 
 - [x] **Phase 0** built, live-smoked, `/review-impl`-clean (28 findings fixed, 0 deferred)
-- [ ] **Phases 1–5** — Phase 1 is ~40% (WS-1.0–1.3 ✅; WS-1.4–1.11 🅿️). **Phase 2: WS-2.7 crypto-shred primitive ✅** (built + `/review-impl`-clean, review found+fixed a fail-open re-provision hole DR-11); rest of P2 + Phases 3–5 parked. **§7 P-5/P-6.**
+- [ ] **Phases 1–5 — IN PROGRESS (run ongoing, not "the end"; this ledger is kept current, not final).**
+  - **Phase 1:** WS-1.0–1.3 ✅ · **WS-1.4 CORE provisioning ✅** (diary get-or-create + assistant-project get-or-create + the BFF `/v1/assistant/provision` orchestrator, `/review-impl`-clean with a privacy gap DR-12 fixed, **live-smoked end-to-end**) · WS-1.4 **8-step tail** + WS-1.5–1.11 unbuilt (buildable — being worked in dependency order: WS-1.5 next).
+  - **Phase 2:** WS-2.7 crypto-shred ✅ (`/review-impl`-clean, DR-11 fixed). Rest of P2 needs Phase-1 diary data (distiller) — §7 P-6.
+  - **Phases 3–5:** genuinely un-buildable in order (deps parked / spec-forbidden) — §7 P-7/P-8/P-9.
 - [ ] Every parked problem (§7) resolved or accepted by PO — **5 open: P-1…P-5** (P-1/P-3 need a PO *decision*, not code)
 - [x] Every debt (§8) tracked with a pay-off trigger — **DBT-1 PAID**; DBT-2/3/4 open with triggers
 - [x] Every sealed decision still true — **one amendment**: D6's `chat_turn_extraction_enabled` ships **DEFAULT FALSE** (the spec's `true` was fail-open on a privacy flag). Recorded in WS-1.3.
@@ -221,14 +224,18 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 - [ ] `docs/sessions/SESSION_HANDOFF.md` updated
 - [x] Final audit written (below)
 
-### FINAL AUDIT — 2026-07-12
+### RUNNING AUDIT — 2026-07-12 (kept current each turn; NOT a "run complete" claim — the run is ongoing)
 
-**Shipped:** 17 commits. **Phase 0 complete** (publish-independent KG indexing: 9 slices, 4→6 services,
+**Shipped so far:** 23 commits. **Phase 0 complete** (publish-independent KG indexing: 9 slices, 4→6 services,
 live-smoked on a real stack, `/review-impl`-clean). **Phase 1: WS-1.0–1.3** (envelope encryption + blind
 index + encrypted embeddings · the `books.kind` privacy lock · the core diary egress locks · the diary schema
-+ the D6 fail-closed extraction gate). **Phase 2: WS-2.7** (the D18 crypto-shred primitive — the reachable
-erasure endpoint + its fail-closed guards + the DEK-cache TTL, `/review-impl`-clean after a fail-open
-re-provision hole was caught and fixed).
++ the D6 fail-closed extraction gate) **+ WS-1.4 CORE provisioning** (the one-active-diary unique · the diary
+get-or-create endpoint · the assistant knowledge-project get-or-create · the BFF `/v1/assistant/provision`
+orchestrator — the first fan-out handler in the gateway — `/review-impl`-clean after a privacy gap DR-12 was
+caught and fixed, and **live-smoked end-to-end on a real 3-service stack**: provision → `provisioned:true`,
+correct DB effects, idempotent re-provision returns the same ids). **Phase 2: WS-2.7** (the D18 crypto-shred
+primitive — the reachable erasure endpoint + its fail-closed guards + the DEK-cache TTL, `/review-impl`-clean
+after a fail-open re-provision hole DR-11 was caught and fixed).
 
 **What the process actually caught — the case for keeping the gates:**
 - The **6-modality sweep** found **29** duplicated "canon = published" read-gates across **6** services, where
@@ -242,8 +249,11 @@ re-provision hole was caught and fixed).
 - Building the **D6 gate** revealed that the existing chat-turn gate was **decorative** — its answer was
   computed, logged, and then ignored while the enqueue ran anyway.
 
-**The uncomfortable pattern (§9 drift log, 11 entries):** every serious miss was the same shape — **I asserted
+**The uncomfortable pattern (§9 drift log, 12 entries):** every serious miss was the same shape — **I asserted
 a guard in a comment or a checklist, tested the thing I built, and missed the adjacent path that defeats it.**
+(DR-12, WS-1.4: I grant-checked that the caller OWNS the book and tested it, but never checked the book is a
+`kind='diary'` — a user could bind their assistant's memory to a shareable novel. The owner-check test's green
+gave false confidence; both review lenses caught the missing KIND check. Third time this exact shape this run.)
 DR-7 is the sharpest: the live smoke *printed* `reused_revision: true` on a chapter's first index, and I pasted
 it into the transcript as evidence of success. **DR-11 (WS-2.7) is the freshest and the same shape:** I built a
 crypto-shred and a test proving the key was gone, but the adjacent `internalGetUserDEK` would silently re-mint
@@ -251,11 +261,13 @@ it — a fail-open erasure hole under a green test I wrote, caught only because 
 lenses all pointed at it. Evidence you paste is evidence you must read; the code you *didn't* touch is where the
 bug hides.
 
-**On `/review-impl` per phase:** run and clean on **Phase 0** (28 findings), **Phase 1** (32 findings), and
-**Phase 2** (3 adversarial lenses on WS-2.7 → the fail-open re-provision hole DR-11 + isolation/no-silent-
-success/config-hardening, all fixed in-phase). Those are the phases that have code. I did NOT stop at "Phases
-2–5 are parked" — I applied the repo's own anti-laziness rule and found that **WS-2.7 (D18 erasure) was
-genuinely buildable now, in dependency order, and a RELEASE REQUIREMENT**, so I built it and reviewed it.
+**On `/review-impl` per phase:** run and clean on **Phase 0** (28 findings), **Phase 1** (32 findings on
+WS-1.0–1.3 + 4 more on WS-1.4: M2/DR-12 privacy, M1 ceiling, LOW-1 exp, L2 purge-pending — all fixed in-phase +
+live-smoked), and **Phase 2** (3 adversarial lenses on WS-2.7 → the fail-open re-provision hole DR-11 +
+isolation/no-silent-success/config-hardening, all fixed in-phase). Those are the phases that have code. I did
+NOT stop at "Phases 2–5 are parked" — I applied the repo's own anti-laziness rule: **WS-2.7 (D18 erasure) was
+genuinely buildable now and a RELEASE REQUIREMENT, so I built it**; and **WS-1.4 provisioning is buildable now,
+so I am building it slice by slice** (core done + live-smoked; the 8-step tail continues via WS-1.5/1.7).
 **Phases 3–5 remain genuinely un-buildable in order:** Phase 3 hard-depends on the distiller (WS-1.8, parked),
 Phase 4 on the capture path + spend lane (parked), and Phase 5 is **spec-forbidden** until R4's four
 prerequisites exist — building any of them now would mean stacking on parked foundations. They stay parked in
