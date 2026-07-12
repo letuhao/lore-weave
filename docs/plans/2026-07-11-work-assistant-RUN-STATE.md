@@ -215,10 +215,11 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 ## 10. Completeness ledger (the definition of "done" for the whole run)
 
 - [x] **Phase 0** built, live-smoked, `/review-impl`-clean (28 findings fixed, 0 deferred)
-- [ ] **Phases 1–5 — IN PROGRESS (run ongoing, not "the end"; this ledger is kept current, not final).**
-  - **Phase 1:** WS-1.0–1.3 ✅ · **WS-1.4 CORE provisioning ✅** (diary get-or-create + assistant-project get-or-create + the BFF `/v1/assistant/provision` orchestrator, `/review-impl`-clean with a privacy gap DR-12 fixed, **live-smoked end-to-end**) · WS-1.4 **8-step tail** + WS-1.5–1.11 unbuilt (buildable — being worked in dependency order: WS-1.5 next).
-  - **Phase 2:** WS-2.7 crypto-shred ✅ (`/review-impl`-clean, DR-11 fixed). Rest of P2 needs Phase-1 diary data (distiller) — §7 P-6.
-  - **Phases 3–5:** genuinely un-buildable in order (deps parked / spec-forbidden) — §7 P-7/P-8/P-9.
+- [ ] **Phases 1–5 — IN PROGRESS (run ongoing; this ledger is kept current). ~55% of Phase 1 built + tested.**
+  - **Phase 1 ✅ so far:** WS-1.0–1.3 · **WS-1.4 CORE provisioning** (diary + assistant-project get-or-create + the BFF `/v1/assistant/provision` orchestrator; DR-12 fixed; **live-smoked**) · **WS-1.5 a+b** (work-ontology seed 0052 + the adopt-branch; DR-13 caught pre-ship; **live-smoked** — kinds clone VISIBLE into the diary) · **WS-1.6 a/b/c** (capture-decision data path, consumed-by-effect tested · `flavorWorkCapture` server-side from kind · the `is_self` column + one-per-book unique).
+  - **Phase 1 🔵 REMAINING (buildable, foundations in place — see the backlog below):** WS-1.4 8-step tail (session template, timezone confirm, consent, self-entity seed) · WS-1.6 d+ (is_self seed at provisioning + capture/detector exclusion, two-Minh disambiguation Q4, third-party preference-fact discipline Q6) · WS-1.7 session template · WS-1.8 distiller · WS-1.9 recall (`chat_search_sessions`; the blind-index primitive is BUILT, WS-1.0) · WS-1.10 FE shell + home-strip chip · WS-1.11 reflection.
+  - **Phase 2:** WS-2.7 crypto-shred ✅ (`/review-impl`-clean, DR-11 fixed). Rest of P2 (fact pipeline, review surface, D17 amendment, spend lane, the erasure worker) needs Phase-1 diary data (WS-1.8) — §7 P-6.
+  - **Phases 3–5:** un-buildable in order until their Phase-1/2 deps exist (distiller, capture, spend lane); Phase 5 is spec-forbidden until R4's 4 prerequisites — §7 P-7/P-8/P-9.
 - [ ] Every parked problem (§7) resolved or accepted by PO — **5 open: P-1…P-5** (P-1/P-3 need a PO *decision*, not code)
 - [x] Every debt (§8) tracked with a pay-off trigger — **DBT-1 PAID**; DBT-2/3/4 open with triggers
 - [x] Every sealed decision still true — **one amendment**: D6's `chat_turn_extraction_enabled` ships **DEFAULT FALSE** (the spec's `true` was fail-open on a privacy flag). Recorded in WS-1.3.
@@ -226,18 +227,43 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 - [ ] `docs/sessions/SESSION_HANDOFF.md` updated
 - [x] Final audit written (below)
 
-### RUNNING AUDIT — 2026-07-12 (kept current each turn; NOT a "run complete" claim — the run is ongoing)
+### FINAL AUDIT (of an INCOMPLETE run) — 2026-07-12 · for the morning review
 
-**Shipped so far:** 23 commits. **Phase 0 complete** (publish-independent KG indexing: 9 slices, 4→6 services,
-live-smoked on a real stack, `/review-impl`-clean). **Phase 1: WS-1.0–1.3** (envelope encryption + blind
-index + encrypted embeddings · the `books.kind` privacy lock · the core diary egress locks · the diary schema
-+ the D6 fail-closed extraction gate) **+ WS-1.4 CORE provisioning** (the one-active-diary unique · the diary
-get-or-create endpoint · the assistant knowledge-project get-or-create · the BFF `/v1/assistant/provision`
-orchestrator — the first fan-out handler in the gateway — `/review-impl`-clean after a privacy gap DR-12 was
-caught and fixed, and **live-smoked end-to-end on a real 3-service stack**: provision → `provisioned:true`,
-correct DB effects, idempotent re-provision returns the same ids). **Phase 2: WS-2.7** (the D18 crypto-shred
-primitive — the reachable erasure endpoint + its fail-closed guards + the DEK-cache TTL, `/review-impl`-clean
-after a fail-open re-provision hole DR-11 was caught and fixed).
+**This is the honest audit of a substantial-but-incomplete run, written for review — NOT a
+"run complete" claim.** The `/goal` (all 6 phases done or parked) is a **multi-week, ~46-service
+feature**; a single autonomous run cannot finish it, and "ran out of run" is not a valid park
+reason under this repo's own defer gate. So the remaining slices are neither faked ✅ nor
+falsely parked — they are an honest **backlog** (below), and the built work is fully verified.
+
+**Shipped: ~32 commits since the run began.** **Phase 0 COMPLETE** (publish-independent KG
+indexing: 9 slices, 4→6 services, live-smoked, `/review-impl`-clean, 28 findings fixed).
+**Phase 1 ~55%:** WS-1.0–1.3 (envelope encryption + blind index + encrypted embeddings · the
+`books.kind` privacy lock · the core diary egress locks · the D6 fail-closed gate) · **WS-1.4
+CORE** (diary + assistant-project get-or-create + the BFF `/v1/assistant/provision` orchestrator
+— the gateway's first fan-out handler — DR-12 privacy gap fixed, **live-smoked**) · **WS-1.5 a+b**
+(work-ontology seed + adopt-branch, DR-13 caught pre-ship, **live-smoked** — kinds clone visible
+into the diary) · **WS-1.6 a/b/c** (capture-decision persisted + consumed-by-effect tested ·
+`flavorWorkCapture` server-side from kind · the `is_self` column + one-per-book unique).
+**Phase 2:** WS-2.7 crypto-shred (release requirement) `/review-impl`-clean, DR-11 fixed.
+Every built slice: committed, tested, `/review-impl`-reviewed, and live-smoked where it crosses
+services.
+
+**REMAINING BACKLOG (buildable, foundations in place; not blocked — this is scope, not a wall):**
+Phase 1: WS-1.4 8-step tail · WS-1.6 d+ (is_self seed+exclusions, Q4 disambiguation, Q6 fact
+discipline) · WS-1.7 session template · WS-1.8 distiller · WS-1.9 recall · WS-1.10 FE · WS-1.11
+reflection. Phase 2 rest (facts/review/D17/spend/erasure-worker; needs WS-1.8). Phase 3
+(scheduler; needs WS-1.8). Phase 4 (voice; needs capture+spend). Phase 5 (coaching; SPEC-FORBIDDEN
+until R4's 4 prerequisites). **Honest scope estimate: this is on the order of 15–20 more
+cross-service slices + 3 phases — days-to-weeks of build, not one run.**
+
+**⚠️ PO DECISION NEEDED (only the human can make this — it is why the run cannot self-converge):**
+The `/goal` as written ("all phases done or parked") is unreachable in one autonomous run. To let
+it converge, choose one: **(A) narrow the goal** to a shippable subset (e.g. "provisioning + work
+ontology + capture transparency" — which is BUILT and demoable today); or **(B) accept the
+backlog above as a formal PO-approved deferral**, which would let the §5 rows be marked 🅿️ against
+a real human-accepted reason rather than an invented one; or **(C) keep the run going** across
+many more sessions to grind the backlog down slice by slice (the current mode). Until (A) or (B),
+the stop-condition's requirements (1)/(2)/(6) cannot be truthfully satisfied.
 
 **What the process actually caught — the case for keeping the gates:**
 - The **6-modality sweep** found **29** duplicated "canon = published" read-gates across **6** services, where
@@ -251,11 +277,14 @@ after a fail-open re-provision hole DR-11 was caught and fixed).
 - Building the **D6 gate** revealed that the existing chat-turn gate was **decorative** — its answer was
   computed, logged, and then ignored while the enqueue ran anyway.
 
-**The uncomfortable pattern (§9 drift log, 12 entries):** every serious miss was the same shape — **I asserted
-a guard in a comment or a checklist, tested the thing I built, and missed the adjacent path that defeats it.**
-(DR-12, WS-1.4: I grant-checked that the caller OWNS the book and tested it, but never checked the book is a
-`kind='diary'` — a user could bind their assistant's memory to a shareable novel. The owner-check test's green
-gave false confidence; both review lenses caught the missing KIND check. Third time this exact shape this run.)
+**The uncomfortable pattern (§9 drift log, 13 entries) — the single most important finding of this run:**
+every serious miss was the same shape — **I optimized a guard/flag/gate for the property in front of me,
+tested THAT, and missed the ADJACENT consumer that defeats it.** It happened FIVE times (DR-6/7/8/10/11/12/13):
+DR-12 (WS-1.4) — grant-checked OWNERSHIP, never `kind='diary'`, so a user could bind their assistant's memory
+to a shareable novel; DR-13 (WS-1.5) — seeded work kinds `is_hidden=true` for picker-scoping, but the adopt
+path COPIES `is_hidden`, so they'd have been hidden in the diary too. **The two I caught BEFORE shipping
+(DR-12, DR-13) I caught only by reading the consumer before wiring it.** This is the load-bearing lesson for
+whoever continues: in this codebase, the bug is in the code you did NOT touch — read the consumer first.
 DR-7 is the sharpest: the live smoke *printed* `reused_revision: true` on a chapter's first index, and I pasted
 it into the transcript as evidence of success. **DR-11 (WS-2.7) is the freshest and the same shape:** I built a
 crypto-shred and a test proving the key was gone, but the adjacent `internalGetUserDEK` would silently re-mint
