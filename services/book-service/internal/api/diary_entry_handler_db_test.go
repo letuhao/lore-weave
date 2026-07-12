@@ -465,6 +465,72 @@ func TestListDiaryEntries_ReturnsBodyAndDateNewestFirst_DB(t *testing.T) {
 	}
 }
 
+// ── D-R27 — DELETE /internal/books/{book_id}/diary/erase (hard row-delete of the diary) ──
+
+func eraseDiaryBook(t *testing.T, s *Server, bookID, userID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodDelete,
+		"/internal/books/"+bookID.String()+"/diary/erase?user_id="+userID.String(), nil)
+	req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	return rr
+}
+
+func TestEraseDiaryBook_HardDeletesBookAndChapters_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+	rr := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-05-01", "body": "Met Minh about the budget.",
+	}, true)
+	chID := entryChapterID(t, rr)
+
+	// Erase.
+	er := eraseDiaryBook(t, s, diary, owner)
+	if er.Code != http.StatusOK {
+		t.Fatalf("erase = %d, want 200. body=%s", er.Code, er.Body.String())
+	}
+
+	// The book row is GONE (hard-deleted, not soft-trashed).
+	var nBooks int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM books WHERE id=$1`, diary).Scan(&nBooks)
+	if nBooks != 0 {
+		t.Fatalf("book rows after erase = %d, want 0 (hard-deleted)", nBooks)
+	}
+	// The chapter + its content cascade-deleted (ON DELETE CASCADE).
+	var nCh, nRaw int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM chapters WHERE book_id=$1`, diary).Scan(&nCh)
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM chapter_raw_objects WHERE chapter_id=$1`, chID).Scan(&nRaw)
+	if nCh != 0 || nRaw != 0 {
+		t.Fatalf("after erase: chapters=%d raw_objects=%d, want 0/0 (cascade)", nCh, nRaw)
+	}
+}
+
+func TestEraseDiaryBook_RefusesForeignOwnerAndNonDiary_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	stranger := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+	novel := seedBookOfKind(t, ctx, pool, owner, "novel")
+
+	// A STRANGER's user_id must not delete the owner's diary (owner-scoped in the DELETE predicate).
+	_ = eraseDiaryBook(t, s, diary, stranger)
+	var n int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM books WHERE id=$1`, diary).Scan(&n)
+	if n != 1 {
+		t.Fatalf("stranger erased the owner's diary (rows=%d, want 1) — CROSS-TENANT DELETE", n)
+	}
+	// A NOVEL (kind<>'diary') is never hard-deleted through this route (the kind='diary' guard).
+	_ = eraseDiaryBook(t, s, novel, owner)
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM books WHERE id=$1`, novel).Scan(&n)
+	if n != 1 {
+		t.Fatalf("the diary-erase route deleted a NOVEL (rows=%d, want 1) — kind guard failed", n)
+	}
+}
+
 func TestListDiaryEntries_NonOwnerCannotRead_DB(t *testing.T) {
 	// Same no-cross-user-leak posture as diaryStats: a diary is never shared, so a non-owner is
 	// refused — the entries' bodies never leak to another user.

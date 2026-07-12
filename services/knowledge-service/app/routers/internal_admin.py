@@ -20,8 +20,12 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 
+from uuid import UUID
+
 from app.config import settings
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.passages import delete_all_passages_for_project
+from app.db.repositories.projects import ProjectsRepo
 from app.db.neo4j_helpers import (
     drop_summary_index,
     list_summary_vector_indexes,
@@ -44,6 +48,25 @@ router = APIRouter(
     tags=["Internal", "Admin"],
     dependencies=[Depends(require_internal_token)],
 )
+
+
+@router.delete("/assistant/erase")
+async def erase_assistant_knowledge(
+    user_id: UUID = Query(...),
+    project_id: UUID = Query(...),
+) -> dict:
+    """D-R27 (human-authorized erasure) — delete a user's ASSISTANT knowledge project + its ENTIRE
+    semantic index. Removes the `knowledge_projects` row (Postgres, owner-scoped + summary cascade in
+    one tx) AND every `:Passage` node for (user, project) in Neo4j — the diary's chapter + chat
+    passages the retriever would otherwise still surface. Both stores are tenant-scoped on
+    (user_id, project_id), so this can only reach the caller's own project. Internal-token."""
+    pool = get_knowledge_pool()
+    project_deleted = await ProjectsRepo(pool).delete(user_id, project_id)
+    async with neo4j_session() as session:
+        passages_deleted = await delete_all_passages_for_project(
+            session, user_id=str(user_id), project_id=str(project_id),
+        )
+    return {"project_deleted": bool(project_deleted), "passages_deleted": passages_deleted}
 
 
 class OrphanIndex(BaseModel):

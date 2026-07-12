@@ -29,6 +29,25 @@ import (
 // BEFORE seeding self, so this is a caller-ordering error, surfaced distinctly (409).
 var errNoColleagueKindForSelf = errors.New("diary has no 'colleague' kind — adopt the work ontology first")
 
+// internalEraseBookEntities — D-R27 (human-authorized erasure) — HARD-delete EVERY glossary entity
+// of a diary book (the captured people/projects — "Minh", "Acme Corp" — plus the seeded self-entity),
+// cascading to their evidence/aliases/revisions via ON DELETE CASCADE. This is a hard row-delete (not
+// the `deleted_at` soft-delete), so after erasure the diary's captured entities are ROW-GONE.
+// Internal-token; book-scoped — the assistant-erase orchestrator (gateway) resolved the caller's OWN
+// diary book_id (same trust model as internalSeedSelfEntity / internalAdoptBookKinds). Idempotent.
+func (s *Server) internalEraseBookEntities(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	ct, err := s.pool.Exec(r.Context(), `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_CONFLICT", "failed to erase entities")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted_entities": ct.RowsAffected()})
+}
+
 func (s *Server) internalSeedSelfEntity(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {

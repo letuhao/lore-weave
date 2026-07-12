@@ -238,6 +238,9 @@ func (s *Server) Router() http.Handler {
 		// owner-scoped, idempotent primary-per-day diary entry. Internal-token (the worker
 		// has no user JWT); the (book, owner) pair is verified to be the caller's own diary.
 		r.Post("/books/{book_id}/diary/entry", s.upsertDiaryEntry)
+		// D-R27 — the assistant-erase orchestrator (gateway) HARD-deletes a user's diary book +
+		// all its content (ON DELETE CASCADE). Internal-token; owner+diary guarded in the DELETE.
+		r.Delete("/books/{book_id}/diary/erase", s.eraseDiaryBook)
 	})
 
 	r.Route("/v1/books", func(r chi.Router) {

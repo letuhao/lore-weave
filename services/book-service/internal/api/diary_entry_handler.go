@@ -396,6 +396,37 @@ WHERE book_id=$1 AND journal_kind IS NOT NULL AND lifecycle_state='active'`,
 	writeJSON(w, http.StatusOK, out)
 }
 
+// eraseDiaryBook — D-R27 (human-authorized 2026-07-12) — the IMMEDIATE ROW-DELETE erasure of a
+// user's diary. HARD-deletes the diary `books` row, which ON DELETE CASCADE removes ALL its content:
+// chapters → chapter_drafts / chapter_revisions / chapter_raw_objects / chapter_blocks / scenes, plus
+// book_collaborators / book_cover_assets / etc. After this the diary content is genuinely ROW-GONE
+// (not soft-trashed), and a re-provision mints a FRESH empty diary — nothing to resurrect from the
+// book side. Internal-token + owner-scoped by ?user_id; `kind='diary'` guard so this route can NEVER
+// hard-delete a novel or another user's book (a non-diary/foreign id → 0 rows → erased:false).
+// (Backup-resistant crypto-shred stays P-12 — this is the immediate-absence half only.)
+func (s *Server) eraseDiaryBook(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	owner, err := uuid.Parse(strings.TrimSpace(r.URL.Query().Get("user_id")))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "user_id required")
+		return
+	}
+	// Owner + diary guarded IN the DELETE predicate: a foreign or non-diary book matches 0 rows and
+	// is left untouched (never a cross-tenant or novel delete). Idempotent — re-erase → erased:false.
+	ct, err := s.pool.Exec(r.Context(),
+		`DELETE FROM books WHERE id=$1 AND owner_user_id=$2 AND kind='diary'`, bookID, owner)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to erase diary")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"book_id": bookID.String(), "erased": ct.RowsAffected() > 0, "deleted_books": ct.RowsAffected(),
+	})
+}
+
 // listDiaryEntries — WS-1.10 (spec 02/03) — the OWNER-ONLY list of the diary's entries for the
 // assistant home timeline + the end-of-day review. Owner-scoped + diary-only (journal_kind IS NOT
 // NULL) — the same leak posture as diaryStats: a diary is never shared and never enters a

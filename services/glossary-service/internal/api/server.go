@@ -234,6 +234,9 @@ func (s *Server) Router() http.Handler {
 		// WS-1.6 (spec 05 §Q5) — get-or-create the user's is_self identity entity in their
 		// diary (the assistant provisioner calls this after adopt-kinds).
 		r.Post("/books/{book_id}/self-entity", s.internalSeedSelfEntity)
+		// D-R27 — the assistant-erase orchestrator (gateway) HARD-deletes all captured entities of a
+		// diary (the flip side of self-entity/adopt-kinds). Internal-token; book-scoped.
+		r.Delete("/books/{book_id}/entities", s.internalEraseBookEntities)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

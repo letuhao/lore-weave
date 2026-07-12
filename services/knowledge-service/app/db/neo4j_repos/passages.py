@@ -32,6 +32,7 @@ __all__ = [
     "passage_canonical_id",
     "upsert_passage",
     "delete_passages_for_source",
+    "delete_all_passages_for_project",
     "find_passages_by_vector",
     "find_passages_by_fulltext",
     "PASSAGE_CJK_FT_INDEX",
@@ -314,6 +315,34 @@ WITH p, p.id AS id
 DETACH DELETE p
 RETURN count(id) AS deleted
 """
+
+
+_DELETE_ALL_FOR_PROJECT_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id AND p.project_id = $project_id
+WITH p, p.id AS id
+DETACH DELETE p
+RETURN count(id) AS deleted
+"""
+
+
+async def delete_all_passages_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+) -> int:
+    """D-R27 (erasure) — DETACH DELETE every `:Passage` node of one (user, project). Tenant-scoped
+    on BOTH keys, so it can only reach the caller's own project's semantic index (the diary's chapter
+    + chat passages). Returns the count deleted."""
+    result = await run_write(
+        session,
+        _DELETE_ALL_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    return int(record["deleted"]) if record else 0
 
 
 async def delete_passages_for_source(

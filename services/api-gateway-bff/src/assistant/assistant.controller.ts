@@ -22,7 +22,7 @@
 // confirm (D9) are surfaced as explicit PENDING steps — never silently omitted, never
 // auto-enabled.
 
-import { Body, Controller, Headers, HttpException, Logger, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Headers, HttpException, Logger, Post } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 
 interface ProvisionBody {
@@ -66,6 +66,19 @@ interface EndDayResult {
   enqueued: boolean;
   entry_date?: string;
   message_id?: string;
+}
+
+// D-R27 (human-authorized) — the immediate-row-delete erasure result. Per-service delete counts so
+// the caller can prove "row gone". Backup-resistant crypto-shred stays a separate goal (P-12).
+interface EraseResult {
+  erased: boolean;
+  book_id?: string;
+  deleted: {
+    diary_book?: unknown;
+    chat_sessions?: unknown;
+    knowledge?: unknown;
+    glossary?: unknown;
+  };
 }
 
 const PROVISION_STEP_TIMEOUT_MS = 15_000;
@@ -243,6 +256,101 @@ export class AssistantController {
       entry_date: distill.body?.entry_date,
       message_id: distill.body?.message_id,
     };
+  }
+
+  // D-R27 (human-authorized) — the ASSISTANT DATA ERASURE. Immediate ROW-DELETE (not soft-trash) of
+  // the user's whole diary footprint across four services, so the diary content is genuinely gone AND
+  // a re-index cannot resurrect it (the distiller's SOURCE — the assistant chat messages — is deleted,
+  // so a re-distill of any day finds nothing). Backup-resistant crypto-shred stays P-12.
+  //
+  // SEC-1: identity is server-derived from the JWT, and the diary book + assistant project are
+  // RESOLVED SERVER-SIDE from the user's own account (via the idempotent get-or-create, which just
+  // returns an existing diary) — never a client-supplied id, so a caller can only erase their OWN
+  // diary. The glossary erase deletes by book_id alone, which is why the book_id MUST be the
+  // server-resolved one, not a body field.
+  @Delete('data')
+  async eraseData(@Headers('authorization') authorization?: string): Promise<EraseResult> {
+    const { userId, token } = this.requireAuth(authorization);
+    const authHeader = `Bearer ${token}`;
+
+    const bookUrl = process.env.BOOK_SERVICE_URL;
+    const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
+    const glossaryUrl = process.env.GLOSSARY_SERVICE_URL;
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!bookUrl || !knowledgeUrl || !glossaryUrl || !chatUrl || !internalToken) {
+      this.logger.error('assistant-erase rejected: a service URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // Resolve the user's OWN diary book + assistant project server-side (idempotent get → returns the
+    // existing diary; does not spuriously create for a user who has one).
+    const diary = await this.postJson(`${bookUrl}/v1/books/diary`, authHeader, {});
+    const bookId = diary.ok && typeof diary.body?.book_id === 'string' ? diary.body.book_id : undefined;
+    if (!bookId) {
+      return { erased: false, deleted: {} }; // no diary → nothing to erase (idempotent)
+    }
+    const proj = await this.postJson(`${knowledgeUrl}/v1/knowledge/projects/assistant`, authHeader, {
+      book_id: bookId,
+    });
+    const projectId = proj.ok && typeof proj.body?.project_id === 'string' ? proj.body.project_id : undefined;
+
+    const deleted: EraseResult['deleted'] = {};
+    const uid = encodeURIComponent(userId);
+    // Erase DERIVED data first (captured entities · KG project+passages · assistant chat+messages),
+    // then the diary book (the anchor) LAST. Each call is scoped to the server-derived user_id and the
+    // server-resolved book/project.
+    deleted.glossary = (await this.deleteInternal(`${glossaryUrl}/internal/books/${bookId}/entities`, internalToken)).body;
+    if (projectId) {
+      deleted.knowledge = (
+        await this.deleteInternal(
+          `${knowledgeUrl}/internal/admin/assistant/erase?user_id=${uid}&project_id=${encodeURIComponent(projectId)}`,
+          internalToken,
+        )
+      ).body;
+    }
+    deleted.chat_sessions = (
+      await this.deleteInternal(
+        `${chatUrl}/internal/chat/assistant/data?user_id=${uid}&book_id=${encodeURIComponent(bookId)}`,
+        internalToken,
+      )
+    ).body;
+    const bookErase = await this.deleteInternal(
+      `${bookUrl}/internal/books/${bookId}/diary/erase?user_id=${uid}`,
+      internalToken,
+    );
+    deleted.diary_book = bookErase.body;
+
+    return {
+      erased: bookErase.ok && bookErase.body?.erased === true,
+      book_id: bookId,
+      deleted,
+    };
+  }
+
+  /** DELETE a token-gated /internal endpoint (D-R27 erasure). Never-throw, report-status contract. */
+  private async deleteInternal(
+    url: string,
+    internalToken: string,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'x-internal-token': internalToken },
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
   }
 
   /**

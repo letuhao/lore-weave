@@ -236,6 +236,33 @@ async def trigger_distill(body: DistillTrigger) -> dict:
     return {"enqueued": True, "entry_date": entry_date.isoformat(), "message_id": msg_id}
 
 
+@router.delete("/assistant/data", dependencies=[Depends(require_internal_token)])
+async def erase_assistant_data(
+    user_id: UUID = Query(...),
+    book_id: UUID | None = Query(None, description="restrict to one diary book's assistant sessions"),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """D-R27 (human-authorized) — HARD-delete a user's ASSISTANT chat sessions (+ their messages, via
+    ON DELETE CASCADE on chat_messages/chat_session_blocks/chat_suspended_runs). The distiller re-reads
+    these messages (the day-window) to rebuild a diary entry, so erasing them is precisely what makes
+    the erasure 're-index CAN'T resurrect': after this, a re-distill of ANY day finds no source
+    messages → empty_day → no entry. SCOPED to `session_kind='assistant'` (a user's normal chat is
+    NEVER touched) + `owner_user_id`; optionally to one diary `book_id`. Internal-token only."""
+    if book_id is not None:
+        result = await db.execute(
+            "DELETE FROM chat_sessions WHERE owner_user_id=$1 AND session_kind='assistant' AND book_id=$2",
+            str(user_id), str(book_id),
+        )
+    else:
+        result = await db.execute(
+            "DELETE FROM chat_sessions WHERE owner_user_id=$1 AND session_kind='assistant'",
+            str(user_id),
+        )
+    # asyncpg returns a status string like "DELETE 3".
+    deleted = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
+    return {"deleted_sessions": deleted}
+
+
 @telemetry_router.get("/tool-health", dependencies=[Depends(require_internal_token)])
 async def tool_health(
     days: int = Query(default=7, ge=1, le=90),
