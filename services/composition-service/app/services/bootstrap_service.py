@@ -263,6 +263,42 @@ class BootstrapService:
         )
         return record
 
+    async def _stamp_planned_node(
+        self, book_id: UUID, event_id: str, chapter_id: Any,
+    ) -> None:
+        """27 V2-E3 — join the planned node to the chapter that now exists.
+
+        Idempotent and NON-CLOBBERING: `chapter_id IS NULL` in the WHERE. A node already bound to a
+        chapter keeps it — a re-applied proposal (the resume path) must not re-point a node at a
+        second, newly-created chapter and orphan the first.
+
+        ADVISORY. A failure here must not fail the apply: the chapter has ALREADY been created in
+        book-service, and raising would roll back nothing (it is a different database) while leaving
+        the proposal `failed` and the user staring at a chapter that exists. So it logs loudly and
+        the node stays NULL — recoverable, and honestly reported as "planned", which is what the
+        Hub will show until someone re-links.
+        """
+        if not chapter_id:
+            return
+        try:
+            pool = self._runs._pool
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE outline_node
+                       SET chapter_id = $1, updated_at = now()
+                     WHERE book_id = $2 AND plan_event_id = $3
+                       AND chapter_id IS NULL AND NOT is_archived
+                    """,
+                    UUID(str(chapter_id)), book_id, event_id,
+                )
+        except Exception:  # noqa: BLE001 — advisory: the chapter is already created
+            logger.warning(
+                "bootstrap apply: could not stamp outline_node.chapter_id for book=%s event=%s "
+                "chapter=%s — the node stays 'planned, not yet written' until it is re-linked",
+                book_id, event_id, chapter_id, exc_info=True,
+            )
+
     async def get(
         self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal | None:
@@ -351,6 +387,19 @@ class BootstrapService:
                     title=ch["title"], original_language=original_language,
                 )
                 result: dict[str, Any] = {"chapter_id": created.get("chapter_id"), "title": ch["title"]}
+                # 27 V2-E3 — STAMP THE PLANNED NODE.
+                #
+                # The linker deliberately writes `outline_node.chapter_id = NULL` — "planned, not
+                # yet written" — because at compile time the manuscript chapter does not exist. THIS
+                # is the moment it starts existing, and it is the only moment at which the plan node
+                # and the real chapter can be joined.
+                #
+                # Without this stamp the two halves never meet: the Plan Hub's two-truths view can
+                # never resolve a planned chapter to a written one, so a fully-drafted book would go
+                # on reporting every chapter as "planned, not yet written", forever. And nothing
+                # would look broken — the nodes are all there, the chapters are all there, and the
+                # only thing missing is the pointer between them.
+                await self._stamp_planned_node(book_id, event_id, created.get("chapter_id"))
                 if ch.get("drafting_guide"):
                     # §6 M3 [C]/[D]: carried through verbatim from PROPOSE (computed
                     # once, from an already-completed pipeline job — never

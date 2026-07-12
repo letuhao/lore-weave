@@ -148,7 +148,10 @@ def test_the_package_is_required_when_the_pass_reads_it():
     from app.worker.operations import run_plan_pass
 
     src = inspect.getsource(run_plan_pass)
-    assert "if spec.reads_package:" in src
+    # NOTE the shape: the package is loaded UNCONDITIONALLY (see the test below — the gate has to
+    # recompute the upstreams' fingerprints, and they may read it); it is only an ERROR when a pass
+    # that genuinely reads it has none.
+    assert "if spec.reads_package and package_art is None:" in src
     assert "compile first" in src
 
 
@@ -194,3 +197,95 @@ def test_the_pass_runner_reads_the_package_through_the_ONE_constant_and_the_ONE_
     assert "latest_artifact(book_id, run_id, PACKAGE_KIND)" in src
     assert "package_body(package_art.content)" in src
     assert '"planning_package"' not in src
+
+
+def test_the_worker_ALWAYS_loads_the_package_even_for_a_pass_that_does_not_read_it():
+    """THE bug the full seven-pass live smoke found — and nothing else could have.
+
+    `character_arcs` has `reads_package=False`, so the worker skipped loading the package. But it
+    DEPENDS on `cast` and `beats`, which both DO read it. The PF-5 gate then recomputed those
+    upstreams' fingerprints with `package_artifact_id=None`, so they could not possibly match what
+    they had recorded, and they read as STALE.
+
+    Result: the SERVICE said the pass was runnable (HTTP 200, job enqueued) and the WORKER then
+    refused it — "upstream ['cast', 'beats'] is stale or not accepted" — about two passes the ledger
+    showed as fresh and accepted. Two components answering the same question with different inputs.
+
+    The package is a property of the RUN, not of the pass being run.
+    """
+    from app.worker.operations import run_plan_pass
+
+    src = inspect.getsource(run_plan_pass)
+    load = src.index("package_art = await runs.latest_artifact(book_id, run_id, PACKAGE_KIND)")
+    gate = src.index("assert_runnable(")
+    assert load < gate, "the package must be loaded BEFORE the gate that recomputes upstreams"
+    # …unconditionally: not nested under `if spec.reads_package`
+    assert "if spec.reads_package:\n        package_art = await" not in src
+    # …and it is still an ERROR when a pass that DOES read it has none
+    assert "if spec.reads_package and package_art is None:" in src
+
+
+def test_input_pointers_still_omits_the_package_for_a_pass_that_does_not_read_it():
+    """The other half. Always LOADING the package must not mean always FINGERPRINTING it — a pass
+    that does not read the package must not go stale when the package changes."""
+    from uuid import uuid4
+
+    from app.db.models import PlanRun
+    from app.services.plan_pass_service import input_pointers
+
+    run = PlanRun(
+        id=uuid4(), created_by=uuid4(), book_id=uuid4(), status="compiled", mode="rules",
+        pass_state={
+            "cast": {"status": "completed", "artifact_id": str(uuid4())},
+            "beats": {"status": "completed", "artifact_id": str(uuid4())},
+        },
+    )
+    pkg = uuid4()
+    # character_arcs reads_package=False ⇒ only its two deps
+    assert len(input_pointers(run, "character_arcs", package_artifact_id=pkg)) == 2
+    assert str(pkg) not in input_pointers(run, "character_arcs", package_artifact_id=pkg)
+    # cast reads_package=True ⇒ the package IS its only input
+    assert input_pointers(run, "cast", package_artifact_id=pkg) == [str(pkg)]
+
+
+# ── the roster join (PF-8b / H3) ─────────────────────────────────────────────────────────────────
+
+def test_the_CAST_IS_JOINED_TO_ITS_GLOSSARY_IDS_before_any_pass_reads_it():
+    """The `cast` artifact holds NAMES. The glossary `entity_id`s do not exist until the human has
+    applied the seed proposal (PF-7). So somebody has to join them, and it has to happen before pass
+    6 runs.
+
+    Without it, `grounded_decompose`'s `cast_index` — which keys on `entity_id` — is EMPTY, every
+    scene comes back with `present_entity_ids: []`, and the linker writes scene nodes with no cast
+    on them. The 7-pass live smoke showed exactly that (`present=0` on every scene) while the plan
+    looked complete in every other respect: the characters were in the glossary, the roster was bound
+    to the arc, and the scenes simply had nobody in them."""
+    from app.worker.operations import run_plan_pass
+
+    src = inspect.getsource(run_plan_pass)
+    join = src.index("_resolve_cast_entity_ids(")
+    adapter = src.index("PASS_ADAPTERS[pass_id](ctx)")
+    assert join < adapter, "the cast must be resolved BEFORE the adapter reads it"
+
+
+def test_an_UNRESOLVABLE_cast_member_keeps_its_name_and_gets_NO_invented_id():
+    """Degrade-safe and honest. A member we cannot resolve is absent from `cast_index`, so pass 6
+    falls back to `present_entity_names_unresolved` — the field that exists precisely to say "this
+    character is in the scene and I cannot tell you which glossary entity they are".
+
+    Inventing an id would be worse: the scene would point at an entity that is not that person."""
+    from app.worker.operations import _resolve_cast_entity_ids
+
+    src = inspect.getsource(_resolve_cast_entity_ids)
+    assert "out.append(dict(m))" in src            # kept, un-enriched
+    assert "present_entity_names_unresolved" in src  # …and the reason why is written down
+
+
+def test_the_join_reads_the_APPLIED_proposal_not_glossary_directly():
+    """INV-KAL. The apply step is what MINTED the ids and recorded them; composition reads the cast
+    through the roster, never glossary."""
+    from app.worker.operations import _resolve_cast_entity_ids
+
+    src = inspect.getsource(_resolve_cast_entity_ids)
+    assert "applied_results" in src
+    assert 'proposal.status != "applied"' in src

@@ -712,13 +712,22 @@ async def run_plan_pass(
     # The package is an INPUT (it is what `compile()` produced). A pass that reads it and does not
     # fingerprint it is fresh forever — re-compiling with a different arc or genre would leave
     # `motifs`/`cast` (which have no pass dependencies) pointing at a plan that no longer exists.
-    package_art = None
-    if spec.reads_package:
-        package_art = await runs.latest_artifact(book_id, run_id, PACKAGE_KIND)
-        if package_art is None:
-            raise ValueError(
-                f"pass '{pass_id}' reads the planning package, but this run has none — compile first",
-            )
+    #
+    # ALWAYS LOAD IT — even for a pass that does not read it. The package is a property of the RUN,
+    # not of the pass being run, and the PF-5 gate below has to recompute the fingerprints of this
+    # pass's UPSTREAMS, which may well read it.
+    #
+    # Loading it only when `spec.reads_package` was a real bug, and only the full seven-pass smoke
+    # could find it: `character_arcs` reads_package=False, but it depends on `cast` and `beats`,
+    # which both DO. So their freshness was recomputed with `package_artifact_id=None`, their
+    # fingerprints could not match what they had recorded, and they read as STALE — the worker
+    # refused a pass that the service had just said (HTTP 200) was runnable. The two disagreed
+    # because they were answering the question with different inputs.
+    package_art = await runs.latest_artifact(book_id, run_id, PACKAGE_KIND)
+    if spec.reads_package and package_art is None:
+        raise ValueError(
+            f"pass '{pass_id}' reads the planning package, but this run has none — compile first",
+        )
     package_id = package_art.id if package_art else None
 
     params = dict(input.get("params") or {})
@@ -754,6 +763,20 @@ async def run_plan_pass(
 
     fp = fingerprint(input_artifact_ids=pointers, params=params)
 
+    # THE ROSTER JOIN (27 PF-8b / H3). The `cast` artifact holds NAMES — the glossary `entity_id`s
+    # do not exist until the human has applied the seed proposal (PF-7). So before any pass reads the
+    # cast, resolve each member to the id that proposal minted.
+    #
+    # Without this, `grounded_decompose`'s `cast_index` is EMPTY (it keys on `entity_id`, and there
+    # is none), every scene comes back with `present_entity_ids: []`, and the linker writes scene
+    # nodes with no cast on them. The live 7-pass smoke showed it plainly — `present=0` on every
+    # scene — while the plan looked complete in every other respect. Absent, silently.
+    if "cast" in inputs:
+        inputs["cast"] = {
+            **inputs["cast"],
+            "cast": await _resolve_cast_entity_ids(pool, book_id, run, inputs["cast"]),
+        }
+
     retriever = None
     if pass_id == "motifs":
         from app.db.repositories.motif_retrieve import MotifRetriever
@@ -785,3 +808,63 @@ async def run_plan_pass(
         "input_artifact_ids": pointers,
         "params": params,
     }
+
+
+async def _resolve_cast_entity_ids(
+    pool: asyncpg.Pool, book_id: UUID, run, cast_artifact: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """The roster join: cast NAME → glossary `entity_id`, from the APPLIED seed proposal.
+
+    Read from the proposal's `applied_results` rather than asking glossary directly — that is where
+    the ids were MINTED, and composition reads the cast through the knowledge-gateway roster, never
+    glossary (INV-KAL).
+
+    Degrade-safe and HONEST: a member we cannot resolve keeps its name and gets NO `entity_id`. It
+    is then absent from `cast_index`, so pass 6 falls back to `present_entity_names_unresolved` —
+    which is exactly the field that exists to say "this character is in the scene and I could not
+    tell you which glossary entity they are". Inventing an id would be worse than admitting it.
+    """
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    members = list(cast_artifact.get("cast") or [])
+    if not members:
+        return members
+
+    entry = dict(run.pass_state.get("cast") or {})
+    proposal_id = entry.get("bootstrap_proposal_id")
+    if not proposal_id:
+        return members
+
+    try:
+        proposal = await PlanBootstrapProposalsRepo(pool).get_for_book(
+            book_id, UUID(str(proposal_id)),
+        )
+    except Exception:  # noqa: BLE001 — advisory join; a read failure must not fail the pass
+        logger.warning("roster join: could not load the cast seed proposal", exc_info=True)
+        return members
+    if proposal is None or proposal.status != "applied":
+        # The seed is not applied yet, so there ARE no ids. For `cast` itself that is fine (it is a
+        # blocking checkpoint the human has not passed); for anything downstream, PF-5 already
+        # refused. Either way: no ids, and no pretending.
+        return members
+
+    by_name: dict[str, str] = {}
+    for row in (proposal.applied_results or {}).values():
+        if isinstance(row, dict) and row.get("name") and row.get("entity_id"):
+            by_name[str(row["name"]).strip().casefold()] = str(row["entity_id"])
+
+    resolved = 0
+    out: list[dict[str, Any]] = []
+    for m in members:
+        name = str(m.get("name") or "").strip()
+        eid = by_name.get(name.casefold())
+        if eid:
+            resolved += 1
+            out.append({**m, "entity_id": eid})
+        else:
+            out.append(dict(m))
+    logger.info(
+        "roster join: book=%s resolved %d/%d cast member(s) to glossary entities",
+        book_id, resolved, len(members),
+    )
+    return out

@@ -26,6 +26,7 @@ human resolves them. The adapter's job ends at the artifact — it does not deci
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -330,7 +331,12 @@ def _decompose_to_artifact(result: Any) -> dict[str, Any]:
                     for s in cs.scenes
                 ],
                 "warning": cs.warning,
-                "exit_state": cs.exit_state.model_dump(mode="json") if cs.exit_state else None,
+                # `ChapterExitState` is a DATACLASS, not a pydantic model — `.model_dump()` raised
+                # `AttributeError` here, and because that is an INFRA error the message was un-ACKed
+                # and REDELIVERED three times before the pass finally died. The unit round-trip test
+                # missed it for the most ordinary reason there is: its fixture set `exit_state=None`,
+                # so the one field that broke was the one field it never exercised.
+                "exit_state": dataclasses.asdict(cs.exit_state) if cs.exit_state else None,
             }
             for cs in result.chapters
         ],

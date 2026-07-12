@@ -36,6 +36,8 @@ def test_the_adapter_map_is_ordered_like_the_registry():
 # ── the scene_plan round-trip (passes 6 ⇄ 7) ─────────────────────────────────────────────────────
 
 def _result() -> DecomposeResult:
+    from app.engine.plan import ChapterExitState
+
     return DecomposeResult(
         arc_title="Arc 1",
         chapters=[
@@ -53,6 +55,17 @@ def _result() -> DecomposeResult:
                     ),
                 ],
                 warning=None,
+                # An earlier version of this fixture left `exit_state=None` — and the LIVE run then
+                # died on `'ChapterExitState' object has no attribute 'model_dump'` (it is a
+                # DATACLASS, not a pydantic model). The round-trip test claimed LOSSLESS while never
+                # once exercising the field that broke. A fixture that omits the hard case is a test
+                # that passes for the wrong reason.
+                exit_state=ChapterExitState(
+                    characters=["Ha now distrusts the court"],
+                    world=["the gate is watched"],
+                    plot=["the summons is a trap"],
+                    advances=["ha_enters_court"],
+                ),
             ),
             ChapterScenes(
                 chapter=ChapterPlan(
@@ -75,6 +88,13 @@ def test_the_scene_plan_round_trip_is_LOSSLESS():
     art = _decompose_to_artifact(_result())
     back = _artifact_to_decompose(art)
     assert _decompose_to_artifact(back) == art  # fixed point ⇒ nothing was lost
+
+    # …and the exit_state specifically, because it is a DATACLASS while everything around it is
+    # pydantic, and that difference is what killed the live run. Asserted explicitly, so nobody can
+    # quietly weaken the fixture back to `exit_state=None` and re-open the hole.
+    es = art["chapters"][0]["exit_state"]
+    assert es is not None and es["characters"] == ["Ha now distrusts the court"]
+    assert back.chapters[0].exit_state.advances == ["ha_enters_court"]
 
     orig = _result()
     assert back.arc_title == orig.arc_title
