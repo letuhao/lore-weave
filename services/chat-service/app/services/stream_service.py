@@ -1004,6 +1004,27 @@ def _filter_tools_for_ask(
     return out
 
 
+def _unwrap_wrapped_args(args_obj: dict, tool_def: dict | None) -> dict:
+    """Undo a mid-tier model's habit of wrapping the whole payload in a lone envelope key.
+
+    If ``args_obj`` is exactly ``{"args": {...}}`` (or ``{"arguments": {...}}``) and the tool's
+    real schema does NOT declare that property, return the inner dict. A no-op otherwise —
+    including for a tool that legitimately has an ``args``/``arguments`` parameter, so this can
+    never eat a real field."""
+    if not isinstance(args_obj, dict) or len(args_obj) != 1:
+        return args_obj
+    key = next(iter(args_obj))
+    if key not in ("args", "arguments"):
+        return args_obj
+    inner = args_obj[key]
+    if not isinstance(inner, dict):
+        return args_obj
+    props = (((tool_def or {}).get("function") or {}).get("parameters") or {}).get("properties") or {}
+    if key in props:
+        return args_obj  # the tool REALLY has this param — do not unwrap
+    return inner
+
+
 def _inject_context_ids(
     args_obj: dict,
     tool_def: dict | None,
@@ -2290,6 +2311,16 @@ async def _stream_with_tools(
                     }
                     break
                 args_obj = _parse_tool_args(c["arguments"])
+                # gemma arg-wrapping repair — a mid-tier model sometimes wraps the WHOLE
+                # payload in a single {"args": {...}} envelope (measured live: it sent
+                # glossary_extract_entities_from_doc {"args":{"book_id":…,"source_markdown":…}}
+                # against a FLAT schema, so book_id was hidden and the tool got nothing → the
+                # cast never landed). Unwrap a lone "args" (or "arguments") wrapper when the
+                # tool's real schema does NOT declare that property. General across every
+                # backend tool, and a no-op for a well-formed call.
+                args_obj = _unwrap_wrapped_args(
+                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
+                )
                 # S02 fix — fill the session's known context-ids (book_id/chapter_id/project_id)
                 # into this backend tool's args when it declares them and the model left them
                 # blank. Done BEFORE the blank-args cap + dispatch so a would-be
