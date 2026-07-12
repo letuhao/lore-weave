@@ -344,7 +344,7 @@ class TestPermissionModeThreading:
 
         assert loop_mock.call_args.kwargs["permission_mode"] == "ask"
         # The allowlist read is wired in as a callable (DB stays out of the loop).
-        assert loop_mock.call_args.kwargs["approval_check"] is not None
+        assert loop_mock.call_args.kwargs["decision_check"] is not None
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -358,7 +358,7 @@ def _run_modes(
     knowledge_client,
     tools=None,
     permission_mode="write",
-    approval_check=None,
+    decision_check=None,
     discovery_catalog=None,
     discovery_seed_names=None,
 ):
@@ -373,7 +373,7 @@ def _run_modes(
         session_id=TEST_SESSION_ID,
         project_id="proj-1",
         permission_mode=permission_mode,
-        approval_check=approval_check,
+        decision_check=decision_check,
         discovery_catalog=discovery_catalog,
         discovery_seed_names=discovery_seed_names,
     )
@@ -534,17 +534,19 @@ class TestWriteApprovalGate:
     async def test_unapproved_tier_a_suspends_with_approval_payload(self):
         kc = AsyncMock()
         kc.get_catalog_meta = MagicMock(return_value={})
-        check = AsyncMock(return_value=False)
+        check = AsyncMock(return_value=None)
         scripts = [_book_create_pass()]
         with _patch_client(scripts):
             chunks = await _drain(_run_modes(
                 scripts, knowledge_client=kc, permission_mode="write",
-                approval_check=check,
+                decision_check=check,
                 discovery_catalog=_catalog(),
                 discovery_seed_names=set(ALL_CATALOG_NAMES),
             ))
         kc.mcp_execute_tool.assert_not_awaited()
-        check.assert_awaited_once_with("book_create")
+        # the mutation decision gated the card. (WS-3 also reads both axes up-front for
+        # the standing-refusal check, so this is no longer the only await.)
+        assert ("book_create",) in [c.args for c in check.await_args_list]
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
         pending = suspends[0]["suspend"]["pending_tool_call"]
@@ -566,12 +568,12 @@ class TestWriteApprovalGate:
         kc = AsyncMock()
         kc.get_catalog_meta = MagicMock(return_value={})
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={"book_id": "b1"})
-        check = AsyncMock(return_value=True)
+        check = AsyncMock(return_value="allow")
         scripts = [_book_create_pass(), [tok("created"), done("stop")]]
         with _patch_client(scripts):
             chunks = await _drain(_run_modes(
                 scripts, knowledge_client=kc, permission_mode="write",
-                approval_check=check,
+                decision_check=check,
                 discovery_catalog=_catalog(),
                 discovery_seed_names=set(ALL_CATALOG_NAMES),
             ))
@@ -579,9 +581,17 @@ class TestWriteApprovalGate:
         assert not [c for c in chunks if "suspend" in c]
 
     @pytest.mark.asyncio
-    async def test_allowlist_read_error_fails_open(self):
-        """DR-C2 reversibility: a store READ failure degrades to today's
-        behavior (execute) — a DB blip must not brick tool calling."""
+    async def test_allowlist_read_error_degrades_to_a_prompt_never_to_a_grant(self):
+        """Track C WS-3 — a DELIBERATE change to DR-C2's original fail-OPEN.
+
+        DR-C2 made an unreadable allowlist degrade to *execute*, reasoning that a DB blip
+        must not brick tool calling. That is no longer safe: the SAME read now carries the
+        user's standing REFUSAL, so "assume allow on error" would let a transient fault run
+        a tool the user permanently denied.
+
+        An unreadable decision is UNKNOWN — and unknown must resolve to ASK, never to run.
+        The original intent survives (a card is raised; tool calling is not bricked); what
+        is gone is the ability of a DB error to invent a grant nobody gave."""
         kc = AsyncMock()
         kc.get_catalog_meta = MagicMock(return_value={})
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
@@ -590,19 +600,27 @@ class TestWriteApprovalGate:
         with _patch_client(scripts):
             chunks = await _drain(_run_modes(
                 scripts, knowledge_client=kc, permission_mode="write",
-                approval_check=check,
+                decision_check=check,
                 discovery_catalog=_catalog(),
                 discovery_seed_names=set(ALL_CATALOG_NAMES),
             ))
-        kc.mcp_execute_tool.assert_awaited_once()
-        assert not [c for c in chunks if "suspend" in c]
+        kc.mcp_execute_tool.assert_not_awaited()          # NOT executed on a read error
+        suspends = [c for c in chunks if "suspend" in c]
+        assert len(suspends) == 1                          # …it asks instead
+        assert suspends[0]["suspend"]["pending_tool_call"]["args"]["kind"] == "tool_approval"
 
     @pytest.mark.asyncio
-    async def test_tier_r_never_consults_the_allowlist(self):
+    async def test_tier_r_never_raises_a_card_but_is_still_checked_for_a_refusal(self):
+        """A Tier-R tool never raises an approval CARD (the prompt is tier+mode scoped).
+
+        But it IS consulted for a standing refusal — Track C WS-3. The first cut scoped
+        the deny read to the prompt's own conditions, so a Tier-R tool the user had blocked
+        in Settings kept running while the panel said "Never runs". A refusal is not a
+        prompt: it must hold wherever the tool can execute."""
         kc = AsyncMock()
         kc.get_catalog_meta = MagicMock(return_value={})
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
-        check = AsyncMock(return_value=False)
+        check = AsyncMock(return_value=None)
         scripts = [
             [
                 tool_frag(index=0, id="c1", name="glossary_search"),
@@ -612,18 +630,75 @@ class TestWriteApprovalGate:
             [tok("done"), done("stop")],
         ]
         with _patch_client(scripts):
-            await _drain(_run_modes(
+            chunks = await _drain(_run_modes(
                 scripts, knowledge_client=kc, permission_mode="write",
-                approval_check=check,
+                decision_check=check,
                 discovery_catalog=_catalog(),
                 discovery_seed_names=set(ALL_CATALOG_NAMES),
             ))
-        check.assert_not_awaited()
-        kc.mcp_execute_tool.assert_awaited_once()
+        check.assert_awaited()                             # the refusal WAS checked
+        assert not [c for c in chunks if "suspend" in c]   # but no card was raised
+        kc.mcp_execute_tool.assert_awaited_once()          # and with no deny on file, it runs
 
     @pytest.mark.asyncio
-    async def test_no_approval_check_preserves_legacy_behavior(self):
-        """approval_check=None (any caller not wired for C2) → Tier-A
+    async def test_a_denied_tier_r_tool_is_blocked(self):
+        """The bug the review caught, as a test: a Tier-R tool is blockable, and the block
+        is honored — even though a Tier-R tool never raises an approval card."""
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        check = AsyncMock(return_value="deny")
+        scripts = [
+            [
+                tool_frag(index=0, id="c1", name="glossary_search"),
+                tool_frag(index=0, arguments_delta="{}"),
+                done("tool_calls"),
+            ],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run_modes(
+                scripts, knowledge_client=kc, permission_mode="write",
+                decision_check=check,
+                discovery_catalog=_catalog(),
+                discovery_seed_names=set(ALL_CATALOG_NAMES),
+            ))
+        kc.mcp_execute_tool.assert_not_awaited()           # blocked
+        assert not [c for c in chunks if "suspend" in c]   # and never nagged about
+        errs = [c["tool_call"]["error"] for c in chunks if "tool_call" in c]
+        assert any("Never allow" in (e or "") for e in errs)
+
+    @pytest.mark.asyncio
+    async def test_a_denied_tier_a_tool_is_blocked_in_plan_mode(self):
+        """Plan mode lets Tier-A `plan_*` tools through the mode filter by design — so it
+        was the other silent hole: the deny read only ran in WRITE mode, so a blocked
+        planning tool executed anyway."""
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        check = AsyncMock(return_value="deny")
+        scripts = [
+            [
+                tool_frag(index=0, id="c1", name="plan_propose_spec"),
+                tool_frag(index=0, arguments_delta="{}"),
+                done("tool_calls"),
+            ],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run_modes(
+                scripts, knowledge_client=kc, permission_mode="plan",
+                decision_check=check,
+                discovery_catalog=_catalog(),
+                discovery_seed_names=set(ALL_CATALOG_NAMES),
+            ))
+        kc.mcp_execute_tool.assert_not_awaited()
+        errs = [c["tool_call"]["error"] for c in chunks if "tool_call" in c]
+        assert any("Never allow" in (e or "") for e in errs)
+
+    @pytest.mark.asyncio
+    async def test_no_decision_check_preserves_legacy_behavior(self):
+        """decision_check=None (any caller not wired for C2) → Tier-A
         auto-commits exactly as before."""
         kc = AsyncMock()
         kc.get_catalog_meta = MagicMock(return_value={})
@@ -632,7 +707,7 @@ class TestWriteApprovalGate:
         with _patch_client(scripts):
             chunks = await _drain(_run_modes(
                 scripts, knowledge_client=kc, permission_mode="write",
-                approval_check=None,
+                decision_check=None,
                 discovery_catalog=_catalog(),
                 discovery_seed_names=set(ALL_CATALOG_NAMES),
             ))

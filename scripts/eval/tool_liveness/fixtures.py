@@ -93,19 +93,44 @@ class Fixture:
     # Spec §4 Tier-A note: pre-allowlist `user_tool_approvals` so the run doesn't
     # stall. `user_tool_approvals(user_id, tool_name)` lives in loreweave_chat.
     def allowlist_tools(self, tools: list[str]) -> None:
+        """Pre-grant the Tier-A tools this run needs, and REMEMBER what was there before.
+
+        The naive version (INSERT ... ON CONFLICT DO NOTHING, then DELETE on teardown)
+        destroyed rows it never created: a pre-existing decision silently absorbed the
+        INSERT and was then deleted on the way out. Since Track C WS-3 a row can be a
+        standing **deny**, so that teardown could quietly erase a user's "Never allow" —
+        an eval fixture revoking a real safety decision. Snapshot, then restore.
+        """
         db = "loreweave_chat"
         self._allowlisted = list(tools)
+        self._allowlist_prior: dict[str, str | None] = {}
         for t in tools:
+            rows = oracle.db_query(
+                db, "SELECT decision FROM user_tool_approvals WHERE "
+                    f"user_id='{config.USER_ID}' AND tool_name='{t}'")
+            prior = rows[0][0] if rows and rows[0] and rows[0][0] else None
+            self._allowlist_prior[t] = prior
             oracle.db_query(
-                db, "INSERT INTO user_tool_approvals (user_id, tool_name) VALUES "
-                    f"('{config.USER_ID}', '{t}') ON CONFLICT DO NOTHING")
+                db, "INSERT INTO user_tool_approvals (user_id, tool_name, decision) VALUES "
+                    f"('{config.USER_ID}', '{t}', 'allow') "
+                    "ON CONFLICT (user_id, tool_name) DO UPDATE SET decision='allow'")
 
     def _clear_allowlist(self) -> None:
+        prior = getattr(self, "_allowlist_prior", {})
         for t in getattr(self, "_allowlisted", []):
             try:
-                oracle.db_query(
-                    "loreweave_chat", "DELETE FROM user_tool_approvals WHERE "
-                    f"user_id='{config.USER_ID}' AND tool_name='{t}'")
+                was = prior.get(t)
+                if was is None:
+                    # we created it → remove it
+                    oracle.db_query(
+                        "loreweave_chat", "DELETE FROM user_tool_approvals WHERE "
+                        f"user_id='{config.USER_ID}' AND tool_name='{t}'")
+                else:
+                    # it predated us → put the user's own decision back, verbatim
+                    oracle.db_query(
+                        "loreweave_chat", "UPDATE user_tool_approvals SET "
+                        f"decision='{was}' WHERE user_id='{config.USER_ID}' "
+                        f"AND tool_name='{t}'")
             except Exception:
                 pass
 

@@ -75,7 +75,7 @@ def _run_plan(
     knowledge_client,
     tools=None,
     permission_mode="plan",
-    approval_check=None,
+    decision_check=None,
     discovery_catalog=None,
     discovery_seed_names=None,
 ):
@@ -90,7 +90,7 @@ def _run_plan(
         session_id=TEST_SESSION_ID,
         project_id="proj-1",
         permission_mode=permission_mode,
-        approval_check=approval_check,
+        decision_check=decision_check,
         discovery_catalog=discovery_catalog,
         discovery_seed_names=discovery_seed_names,
     )
@@ -273,7 +273,7 @@ class TestPlanDefenseInDepth:
         kc.get_catalog_meta = MagicMock(return_value={})
         kc.mcp_execute_tool.return_value = _envelope(
             success=True, result={"run_id": "pr-1"})
-        check = AsyncMock(return_value=False)  # would gate in write mode
+        check = AsyncMock(return_value=None)  # would gate in write mode
         scripts = [
             [
                 tool_frag(index=0, id="c1", name="plan_propose_spec"),
@@ -284,12 +284,16 @@ class TestPlanDefenseInDepth:
         ]
         with _patch_client(scripts):
             chunks = await _drain(_run_plan(
-                scripts, knowledge_client=kc, approval_check=check,
+                scripts, knowledge_client=kc, decision_check=check,
                 discovery_catalog=_catalog_with_plan(),
                 discovery_seed_names=set(ALL_PLAN_ACTIVE),
             ))
         kc.mcp_execute_tool.assert_awaited_once()
-        check.assert_not_awaited()  # the write-mode gate never consults
+        # The write-mode approval CARD never fires in plan mode (planning artifacts are
+        # the mode's whole point and are reversible plan_runs rows). Track C WS-3: the
+        # standing REFUSAL is still read — plan-mode Tier-A was one of the two silent holes
+        # where a tool the user had blocked in Settings kept running — but with no decision
+        # on file it neither prompts nor blocks, so the tool executes exactly as before.
         assert not [c for c in chunks if "suspend" in c]
         tc = [c["tool_call"] for c in chunks if "tool_call" in c][0]
         assert tc["ok"] is True and tc["tool"] == "plan_propose_spec"

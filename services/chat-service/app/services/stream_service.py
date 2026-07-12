@@ -48,7 +48,7 @@ from app.db.suspended_runs import (
     load_suspended_run,
     save_suspended_run,
 )
-from app.db.tool_approvals import approve_tool, is_tool_approved
+from app.db.tool_approvals import approve_tool, get_tool_decision, set_tool_decision
 from app.db.conversation_search import (
     CONVERSATION_SEARCH_NAME,
     CONVERSATION_SEARCH_TOOL,
@@ -1009,7 +1009,7 @@ async def _stream_with_tools(
     # same flat cap). None (e.g. the sub-agent nested call) ⇒ the flat default.
     context_length: int | None = None,
     permission_mode: str = "write",
-    approval_check=None,
+    decision_check=None,
     hooks: list[dict] | None = None,
     subagent_tool: dict | None = None,
     subagent_defs: dict[str, dict] | None = None,
@@ -1044,13 +1044,21 @@ async def _stream_with_tools(
       through returns a tool-result error, never executes.
     * write — today's surface, PLUS the prompt-once gate: a Tier-A server tool
       not on the user's allowlist suspends the run with a ``tool_approval``
-      pending card. ``approval_check`` is an async ``(tool_name, kind='mutation')
-      -> bool``; the MUTATION read fails OPEN (a DB blip must not brick tool
-      calling). Track D S-SPEND adds an ORTHOGONAL, mode-independent SPEND gate on
-      the same card machinery: a PAID tool (``_meta.paid``) that is not spend-
-      allowlisted suspends regardless of tier OR mode (a paid Tier-R read prompts,
-      including in ask mode); its read fails CLOSED (spend is irreversible). A paid
-      Tier-A tool raises ONE card carrying both required consent kinds.
+      pending card. ``decision_check`` is an async ``(tool_name, kind='mutation')
+      -> 'allow' | 'deny' | None``; the MUTATION read fails OPEN (a DB blip must
+      not brick tool calling). Track D S-SPEND adds an ORTHOGONAL, mode-independent
+      SPEND gate on the same card machinery: a PAID tool (``_meta.paid``) that is not
+      spend-allowlisted suspends regardless of tier OR mode (a paid Tier-R read
+      prompts, including in ask mode); its read fails CLOSED (spend is irreversible).
+      A paid Tier-A tool raises ONE card carrying both required consent kinds.
+
+      Track C WS-3 — ``decision_check`` returns a DECISION, not a bool, because a
+      standing ``deny`` ("Never allow") must BLOCK the call rather than prompt for it:
+      re-raising a card for a tool the user permanently refused is the same consent
+      defect the deny-list exists to fix. It is deliberately NOT named
+      ``approval_check`` any more — a leftover ``bool(await approval_check(...))``
+      would read the string ``"deny"`` as TRUE and silently invert a refusal into a
+      grant, so the rename makes any un-migrated caller fail loudly instead.
     * plan (RAID B2, 07S §5b) — the ask surface PLUS the PlanForge ``plan_*``
       tools. ``plan_*`` tools run WITHOUT the C2 Tier-A approval prompt (the
       gate is write-mode-only by design — planning artifacts are the mode's
@@ -1925,7 +1933,7 @@ async def _stream_with_tools(
                         session_id=session_id,
                         project_id=project_id,
                         caller_max_iterations=max_iterations,
-                        approval_check=approval_check,
+                        decision_check=decision_check,
                         hooks=hooks,
                         effective_limit=effective_limit,
                         subagent_depth=subagent_depth,
@@ -1983,6 +1991,59 @@ async def _stream_with_tools(
                     payload_as = surface_tracker.tool_running(c["name"])
                     if payload_as is not None:
                         yield {"agent_surface": payload_as}
+
+                # ── Track C WS-3 — the STANDING REFUSAL ("Never allow") ──────────────
+                # Deliberately evaluated FIRST, for EVERY tool, before any other arm can
+                # execute or suspend. A refusal is not a prompt: it must hold wherever the
+                # tool could run, so it must NOT be nested inside the tier/mode conditions
+                # that gate the approval CARD.
+                #
+                # The first cut of this slice made exactly that mistake — the deny read sat
+                # inside `if tier == "A" and permission_mode == "write"`, so a Tier-R tool, a
+                # plan-mode `plan_*` tool, and a frontend tool were all listed in the panel
+                # under "Blocked — never runs" while the agent went on calling them. That is
+                # the very write-only-behavior bug this slice exists to kill, wearing the
+                # deny hat. Ordering matters as much as the check: it sits above the frontend
+                # -tool suspend, the H7 volume cap and the hook's require_approval arm,
+                # because a card the user can click "Always allow" on would otherwise let one
+                # click silently overwrite a permanent refusal.
+                #
+                # ANY deny row blocks the tool, whatever kind it was recorded under: the user
+                # was shown the words "Never allow", and a consent surface must mean them.
+                _denied_kinds: list[str] = []
+                if decision_check is not None:
+                    for _dk in ("mutation", "spend"):
+                        try:
+                            if await decision_check(c["name"], _dk) == "deny":
+                                _denied_kinds.append(_dk)
+                        except Exception:
+                            # An unreadable decision is UNKNOWN, never "refused" — a DB blip
+                            # must not hard-block tool calling. (The ALLOW side degrades
+                            # separately, below.)
+                            logger.warning(
+                                "standing-decision read failed for %s (kind=%s) — not treating as denied",
+                                c["name"], _dk, exc_info=True,
+                            )
+                if _denied_kinds:
+                    _deny_err = (
+                        f"'{c['name']}' is blocked: you chose 'Never allow' for it. It was "
+                        "NOT run. Do not ask to run it again — either achieve the goal another "
+                        "way, or tell the user they can re-enable it in Settings → Tool permissions."
+                    )
+                    logger.info(
+                        "tool %s blocked by a standing deny (kinds=%s)", c["name"], _denied_kinds
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content({"error": _deny_err}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": _parse_tool_args(c["arguments"]), "ok": False,
+                        "result": None, "error": _deny_err,
+                    }}
+                    continue
+
                 if is_frontend_tool(c["name"]):
                     suspended_call = {
                         "id": c["id"],
@@ -2308,30 +2369,45 @@ async def _stream_with_tools(
                 # raises ONE card enumerating BOTH required consents (strictly more
                 # informative than two prompts) and, on always-allow, persists a SEPARATE
                 # allowlist row per kind — a "may write" grant is never a "may spend" grant.
+                # Track C WS-3 — this is now ONLY the PROMPT arm. The standing REFUSAL is
+                # evaluated far above (before the frontend-tool suspend, the H7 cap and the
+                # hook arm), because a deny must hold everywhere a tool can run, whereas a
+                # prompt is legitimately scoped to tier + mode. Each check yields
+                # 'allow' (standing grant — proceed silently) or None/anything else
+                # (undecided — raise the card); 'deny' can no longer reach here.
                 _required_kinds: list[str] = []
-                if approval_check is not None:
+                if decision_check is not None:
                     _gate_def = (cat_index if discovery else plain_index).get(c["name"], {})
                     if tool_paid(_gate_def):
                         try:
-                            _spend_ok = bool(await approval_check(c["name"], "spend"))
+                            _spend_d = await decision_check(c["name"], "spend")
                         except Exception:
                             logger.warning(
                                 "spend-approval read failed for %s — failing CLOSED (prompt)",
                                 c["name"], exc_info=True,
                             )
-                            _spend_ok = False  # irreversible spend → prompt on doubt
-                        if not _spend_ok:
+                            _spend_d = None  # irreversible spend → prompt on doubt
+                        if _spend_d != "allow":
                             _required_kinds.append("spend")
                     if tier == "A" and permission_mode == "write":
                         try:
-                            _mut_ok = bool(await approval_check(c["name"]))
+                            _mut_d = await decision_check(c["name"])
                         except Exception:
+                            # DR-C2 originally failed OPEN here (a DB blip must not brick
+                            # tool calling). That degrade is no longer safe as written: the
+                            # SAME read now also carries the user's standing refusal, so
+                            # "assume allow on error" would let a transient DB fault EXECUTE
+                            # a tool the user permanently denied. An unreadable decision is
+                            # UNKNOWN — and unknown must resolve to ASK, never to run.
+                            # Prompting still honors the original intent (a card is raised,
+                            # tool calling is not bricked); it merely refuses to invent a
+                            # grant nobody gave.
                             logger.warning(
-                                "tool-approval allowlist read failed for %s — failing open",
+                                "tool-approval allowlist read failed for %s — degrading to a prompt",
                                 c["name"], exc_info=True,
                             )
-                            _mut_ok = True  # reversible write → fail open
-                        if not _mut_ok:
+                            _mut_d = None
+                        if _mut_d != "allow":
                             _required_kinds.append("mutation")
 
                 if _required_kinds:
@@ -2602,7 +2678,7 @@ async def _run_subagent_call(
     session_id: str,
     project_id: str | None,
     caller_max_iterations: int,
-    approval_check,
+    decision_check,
     hooks: list[dict] | None,
     effective_limit: int | None,
     subagent_depth: int,
@@ -2669,7 +2745,7 @@ async def _run_subagent_call(
             project_id=project_id,
             max_iterations=min(caller_max_iterations, SUBAGENT_MAX_ITERATIONS),
             permission_mode=clamp_permission_mode(caller_permission_mode),
-            approval_check=approval_check,
+            decision_check=decision_check,
             hooks=hooks,                     # the caller's hooks still apply
             effective_limit=effective_limit,
             allowed_tool_names=allowed,      # execute-time whitelist
@@ -3915,8 +3991,10 @@ async def _emit_chat_turn(
     # the loop as a callable so _stream_with_tools stays DB-free. ``kind`` selects the
     # consent axis ("mutation" | "spend"); each is a separate row. The loop decides
     # how to degrade on a read error (mutation fails OPEN, spend fails CLOSED).
-    async def _approval_check(tool_name: str, kind: str = "mutation") -> bool:
-        return await is_tool_approved(pool, user_id, tool_name, kind)
+    # Track C WS-3 — returns the standing DECISION ('allow' | 'deny' | None), so ONE
+    # read answers both "may it run?" and "has the user forbidden it?".
+    async def _decision_check(tool_name: str, kind: str = "mutation") -> str | None:
+        return await get_tool_decision(pool, user_id, tool_name, kind)
 
     # P4 REG-P4-03 — resolve the user's declarative hooks once per turn (degrade-safe
     # []). pre_turn inject_text hooks are folded into the system prompt now (steering
@@ -4066,7 +4144,7 @@ async def _emit_chat_turn(
                 compact_target=_compact_target,
                 context_length=creds.context_length,
                 permission_mode=permission_mode,
-                approval_check=_approval_check,
+                decision_check=_decision_check,
                 hooks=_turn_hooks,
                 subagent_tool=_subagent_tool,
                 subagent_defs=_subagent_defs_map,
@@ -4752,6 +4830,30 @@ async def resume_stream_response(
         _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
         _tool_args = _appr.get("args") if isinstance(_appr.get("args"), dict) else {}
         _decision = outcome if outcome in ("approved_once", "approved_always", "denied") else "denied"
+
+        # Track C WS-3 — the resume path is the ONE execution site that does not run
+        # through the in-loop gate, so it must re-check the standing decision itself. A
+        # card can sit suspended indefinitely; if the user opened Settings in the
+        # meantime and blocked the tool, the stale card must not still execute it — and
+        # clicking "Always allow" on it must not silently overwrite the refusal they just
+        # made. The refusal is the LATER, more deliberate act; it wins.
+        _standing_deny = False
+        try:
+            for _k in ("mutation", "spend"):
+                if await get_tool_decision(pool, user_id, _tool_name, _k) == "deny":
+                    _standing_deny = True
+                    break
+        except Exception:  # unreadable ⇒ unknown, not refused (never hard-block on a blip)
+            logger.warning(
+                "resume: standing-decision read failed for %s", _tool_name, exc_info=True
+            )
+        if _standing_deny and _decision != "denied":
+            logger.info(
+                "resume: %s was blocked by a standing deny — ignoring stale outcome %r",
+                _tool_name, _decision,
+            )
+            _decision = "denied"
+
         if _decision == "approved_always":
             # S-SPEND — persist a SEPARATE allowlist row per required consent kind
             # (a paid Tier-A always-allow persists BOTH spend and mutation). Legacy

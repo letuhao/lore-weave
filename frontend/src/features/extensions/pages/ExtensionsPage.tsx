@@ -12,11 +12,12 @@ import { PluginsView } from '../components/PluginsView';
 import { SubagentsView } from '../components/SubagentsView';
 import { ActivityView } from '../components/ActivityView';
 import { AdminIngestView } from '../components/AdminIngestView';
+import { PermissionsView } from '../components/PermissionsView';
 import { useIsAdmin } from '../adminGate';
 import { ExtensionScopeProvider, useExtensionScope } from '../context/ExtensionScope';
 import { BookPicker } from '@/components/shared/BookPicker';
 
-type Tab = 'skills' | 'mcp' | 'commands' | 'subagents' | 'plugins' | 'proposals' | 'activity' | 'ingest';
+type Tab = 'skills' | 'mcp' | 'commands' | 'subagents' | 'plugins' | 'permissions' | 'proposals' | 'activity' | 'ingest';
 
 // D-REG-BOOK-TIER-FE — pick a book to manage its book-tier extensions (or "My" for the
 // user's own). Bound to the shared scope; every capability hook reads it.
@@ -91,6 +92,11 @@ function ExtensionsPageInner() {
           className={`rounded-md px-3 py-1.5 ${tab === 'plugins' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
         >{t('tabs.plugins')}</button>
         <button
+          onClick={() => setTab('permissions')}
+          data-testid="ext-page-tab-permissions"
+          className={`rounded-md px-3 py-1.5 ${tab === 'permissions' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+        >{t('tabs.permissions')}</button>
+        <button
           onClick={() => setTab('proposals')}
           data-testid="ext-page-tab-proposals"
           className={`rounded-md px-3 py-1.5 ${tab === 'proposals' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
@@ -113,6 +119,8 @@ function ExtensionsPageInner() {
       <div className={tab === 'commands' ? '' : 'hidden'}><CommandsHooksView /></div>
       <div className={tab === 'subagents' ? '' : 'hidden'}><SubagentsView /></div>
       <div className={tab === 'plugins' ? '' : 'hidden'}><PluginsView /></div>
+      {/* keep-mounted — owns the block-a-tool form's draft state. */}
+      <div className={tab === 'permissions' ? '' : 'hidden'}><PermissionsView /></div>
       {tab === 'proposals' && <ProposalsView />}
       {/* keep-mounted (CLAUDE.md: never conditionally unmount stateful components) —
           ActivityView owns kind/range filter state, so hide it, don't unmount it. */}

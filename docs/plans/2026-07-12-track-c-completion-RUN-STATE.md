@@ -77,11 +77,40 @@ numbers and continue. A partial, honestly-measured flagship beats a stalled run.
 
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| 1.1 | `list_approvals` + `revoke_approval` in `app/db/tool_approvals.py` (owner-scoped) | [ ] | |
-| 1.2 | `GET /v1/chat/tool-approvals` + `DELETE /v1/chat/tool-approvals/{tool}` (JWT, owner derived from token — never the body) | [ ] | |
-| 1.3 | FE panel: list granted tools, revoke one, **deny** (a persistent "never allow") | [ ] | |
-| 1.4 | Consumed-by-effect test: revoke ⇒ the next Tier-A call **suspends for approval again** (assert the behavior, not the row) | [ ] | |
-| 1.5 | `/review-impl` + fix | [ ] | |
+| 1.1 | `list_tool_decisions` + `revoke_tool_decision` + `get/set_tool_decision` in `app/db/tool_approvals.py` (owner-scoped) | [x] | new `decision` column ('allow'\|'deny') makes the two mutually exclusive on the existing PK; `_split_key` decodes the namespaced spend key back to (tool, kind) |
+| 1.2 | `GET/PUT/DELETE /v1/chat/tool-permissions[/{tool}]` (JWT, owner from token — never the body) | [x] | **live through the gateway**: grant→200, list→visible, deny→200, revoke→**204**, re-revoke→**404** (no silent success), bogus enum→**422** |
+| 1.3 | FE panel: list granted, revoke, **deny** (persistent "never allow") + block-a-tool-never-prompted-for | [x] | `PermissionsView` + `useToolPermissions` (MVC); new Extensions tab; 7 FE tests green; tsc clean |
+| 1.4 | Consumed-by-effect: revoke ⇒ next Tier-A call **suspends again**; deny ⇒ call **blocked, never prompts** | [x] | drives the REAL `_stream_with_tools` loop, not a mock. **Negative control passed**: reverting `is_tool_approved` to existence-checking AND disabling the deny branch both go RED; revert → green |
+| 1.5 | `/review-impl` + fix | [x] | 41 agents · **35 raised → 27 confirmed, 8 refuted** · **1 HIGH** (found independently by 4 of the 6 reviewers) + 8 MED + 5 LOW, **all fixed in-phase**. Negative control on the fix: re-introducing the exact bug turns 4 tests red; revert → 59 green |
+
+**The HIGH the review caught — I shipped the very bug this slice exists to kill.** I nested
+the deny read *inside the prompt-eligibility conditions* (`if tier == "A" and permission_mode
+== "write"` / `if tool_paid(...)`). A refusal is not a prompt: the result was that a Tier-R
+tool, a plan-mode `plan_*` tool, and a frontend tool were all **listed in my own panel under
+"Blocked — never runs" while the agent went on calling them**. My free-text "Block a tool" box
+actively invited it, defaulting to the `mutation` axis. That is a *stored-but-unread setting on
+a consent surface* — `D-C-ALLOWLIST-WRITE-ONLY` reintroduced wearing the deny hat, in the
+commit that closes `D-C-ALLOWLIST-WRITE-ONLY`. A reviewer reproduced it against the real loop.
+**Fixed by hoisting the refusal above every execution path** (the frontend-tool suspend, the H7
+volume cap, the hook's `require_approval` arm, and the tier/mode gate), because a card the user
+can click "Always allow" on would otherwise let one click silently overwrite a permanent refusal.
+
+Other confirmed fixes: the mutation fail-OPEN degrade **turned a DENY into an ALLOW on any DB
+read error** (now degrades to *prompt* — unknown must resolve to ask, never to run) · the resume
+path never re-checked the decision, so a **stale approval card executed a since-denied tool and
+`approved_always` overwrote the refusal** · `tool_name` was unvalidated, so `spend::web_search`
+**forged a consent on an axis the caller never named** · an omitted `decision` **silently
+created a GRANT** · the panel's free-text box let a typo create a phantom "Never runs" for a
+tool that does not exist (now catalog-backed) · a stale-response race could repaint the consent
+list with a decision the user had already changed · the eval fixture **deleted decisions it did
+not create — it could erase a user's standing DENY** · the consent copy shipped English-only
+(now all 18 locales).
+
+**The defect, made visible.** The live smoke's first call is the whole argument for this
+slice: the test account was already carrying **36 standing "Always allow" grants** —
+including `glossary_entity_delete` and `glossary_ontology_delete` — accumulated across
+three days of eval runs. Every one of them was invisible and permanent. Nobody granted
+them on purpose; they were clicked through, once, and then owned the account forever.
 
 ### Phase 2 — the flagship blocker: nothing DRIVES the rail (the DoD)
 > Post-WS-3 the mechanism is done: discovery is dead (0 `find_tools`), the assent lands on the rail, the step
@@ -111,7 +140,7 @@ numbers and continue. A partial, honestly-measured flagship beats a stalled run.
 | # | Slice | Status | Evidence |
 |---|---|---|---|
 | 4.1 | S00a `tool_list` deterministic · S00b `tool_load` progressive · S00c workflow runner honors gates | [ ] | |
-| 4.2 | S00d mode→capability binding (the mechanism shipped — this is its *scenario*) · S00e permission UI (needs Phase 1) | [ ] | |
+| 4.2 | S00d mode→capability binding (the mechanism shipped — this is its *scenario*) · **S00e permission UI — MUST block a real tool call in a real LLM turn** (Phase 1 proved the mechanism + the HTTP surface; it did NOT prove the journey — see drift DR3) | [ ] | |
 | 4.3 | S07 end-to-end build-a-book · S06b compose deep-dive | [ ] | |
 | 4.4 | `/review-impl` + fix | [ ] | |
 
@@ -139,7 +168,13 @@ numbers and continue. A partial, honestly-measured flagship beats a stalled run.
 
 | # | Decision | Reasoning | Reversible? | Flag |
 |---|---|---|---|---|
-| | | | | |
+| D1 | **Model deny as a `decision` COLUMN on `user_tool_approvals`, not a second table.** | allow and deny are mutually exclusive answers to one question. One row per (user, tool, kind) on the existing PK makes contradiction *unrepresentable*; two tables would let both exist and force a precedence rule nobody would remember. Pre-existing rows were all grants, so the `DEFAULT 'allow'` backfill is exactly right. | yes (drop column) | |
+| D2 | **Rename `approval_check` → `decision_check` instead of keeping the name and widening the return type.** | The return went `bool` → `'allow'\|'deny'\|None`. A leftover `bool(await approval_check(...))` would evaluate the string `"deny"` as **True** and silently invert a refusal into a grant — the worst possible failure for a consent gate. Renaming makes every un-migrated caller a loud `TypeError`. Cost: touched ~20 test sites. | yes | |
+| D3 | **The approval CARD keeps its one-shot "Deny"; the persistent deny-list lives in the panel.** | The spec locates deny in the management surface ("the Claude-Code `/permissions` analogue"). Adding a 4th button to the card is an FE contract change to a component the concurrent session may be touching, for a capability the panel already provides in full. | yes (additive) | ⚠ NEEDS-PO-REVIEW — the natural moment to say "never" is when you are being *asked*. If you want "Never allow" on the card itself, it is ~8 lines of backend (`denied_always` outcome) + a button. |
+| D4 | ~~Deny fails OPEN on a DB read error.~~ **REVERSED by /review-impl.** An unreadable decision now degrades to a **PROMPT**, never to a grant. | My original reasoning was wrong and the review proved it: the *same* read now carries the user's standing refusal, so "assume allow on error" lets a transient DB fault **execute a tool the user permanently denied**. An unreadable decision is UNKNOWN — and unknown must resolve to *ask*, never to *run*. DR-C2's original intent survives (a card is raised; tool calling is not bricked); what is gone is a DB error's ability to invent a grant nobody gave. | yes | This intentionally changes DR-C2's documented fail-OPEN. Cost: inside a subagent (which cannot raise a card) a DB blip now returns an error instead of auto-committing — correct, but noted. |
+| D6 | **ANY deny row blocks the tool, whatever consent axis it was recorded under.** | The alternative (mutation-deny blocks always, spend-deny blocks only paid tools) leaves a dead corner: a spend-deny on a free tool would be a setting that GETs back as effective and does nothing — the exact write-only-behavior bug. The user was shown the words "Never allow"; a consent surface must mean them. Follows through to the UI: the block form has **no axis selector** (a block is tool-level), so nobody can pick the axis that does nothing. | yes | |
+| D7 | **The tool-name is validated against the real catalog in the FE (picker), not in the PUT route.** | A route that hard-depends on knowledge-service being up to save a *setting* is a worse failure mode than a typo, and a deny on a not-yet-existing tool is legitimately useful. The route enforces the charset invariant (`::` rejected — that one is a real forgery vector); the panel prevents the typo at source. | yes | ⚠ NEEDS-PO-REVIEW — a reviewer wanted a 422 on an unknown tool at the route. I judged the availability cost higher than the benefit. |
+| D5 | **Left the concurrent session's RED test alone** (`test_stream_service_story04::test_emit_chat_turn_persists_dirty_activation_state`). | Proven not mine: my diff adds **zero** lines to that write path, and the failing assertion is against SQL introduced by *their* commit `3f3856e92` (`persist_capture_status` now lands after the `activated_tools` write; the test asserts on the LAST `pool.execute`). Shared-checkout invariant #9: flag, don't touch. | n/a | 🚩 flagged to PO — theirs to fix (one-line: assert over the call list, not the last call) |
 
 ## 7. Parked register (blocked → a Deferred row, NOT a stop)
 
@@ -160,7 +195,13 @@ numbers and continue. A partial, honestly-measured flagship beats a stalled run.
 
 | # | Where I nearly lowered the bar | What I did instead |
 |---|---|---|
-| | | |
+| DR1 | **I wrote the deny tests, saw them pass, and almost moved on.** A passing test proves nothing about whether it *could* fail. | Ran a real negative control: reverted `is_tool_approved` to the legacy existence-check AND disabled the `_denied_kinds` branch. Both went RED; revert → green. Only then did I count them. |
+| DR2 | **My live smoke silently mutated the shared test account.** `book_create` was a *pre-existing* grant; my revoke step deleted it. I had already typed the summary sentence "fixture clean" before noticing the baseline count was 36 and my final read said 35. | Restored it (back to 36, 0 denies). Left un-fixed, a later S06 run would have suspended on `book_create` and I would have burned an hour debugging a ghost I created. |
+| DR3 | **I nearly accepted "the unit test drives the real loop" as sufficient proof for the deny gate**, and skipped a live agent-loop check. | Kept the unit proof (it *is* the real loop + a negative control), but did NOT let it stand in for the live scenario: **S00e** ("view / revoke / deny an allowlisted tool") is now an explicit Phase-4 slice that must block a real tool call in a real LLM turn. The mechanism is proven; the *journey* is not, and I am not calling it proven. |
+| DR4 | **The FE error path was a real bug my own test caught**, and my first instinct was that the test was too fussy. | It wasn't: `refresh()` clears `error` on entry, so setting the error *before* the resync wiped the only signal the user gets that their revoke failed. They would have seen the old row and assumed it was fine. Fixed the ordering. |
+| DR5 | **The biggest one: I was about to commit Phase 1 as "done" with the HIGH still in it.** My own tests were green, my own live smoke was green, my negative control passed — and the deny gate was still unenforced for every tool that does not raise a card. I had *written* the invariant "no silent no-op / a stored-but-unread setting is a bug" at the top of this very file, and then shipped one. | The `/review-impl` is what caught it — 4 of 6 reviewers independently, one reproducing it against the real loop. This is the whole argument for the per-phase review being **mandatory and self-invoked** rather than a thing I do when I feel unsure. I felt *certain*. Green tests measured what I thought to check; the review measured what I forgot to. |
+| DR6 | **I nearly "fixed" 5 red tests by bending them to the new behavior without asking whether the behavior was right.** They failed because they asserted the OLD contract (`check.assert_not_awaited()` for Tier-R; "fails open" on a DB error). | Stopped and re-derived each one from the requirement, not from the diff. Two were legitimately obsolete (the refusal *must* now be read for every tool). One — `test_allowlist_read_error_fails_open` — encoded a contract I was *deliberately reversing*, so I rewrote it under a name that states the new rule and says why, rather than quietly deleting the assertion. |
+| DR7 | **A concurrent session committed my in-flight migration inside one of their commits** (`689bd8498`, "fix(distiller): audit findings") — they staged `migrate.py` wholesale while my `decision` column sat in the working tree. | Nothing to undo (the code is correct and in history), but it is the shared-checkout hazard biting in the *other* direction, and it is why I hand-staged this commit file-by-file instead of by directory. Their day-window/session tests are currently red from their own in-flight edits; I flagged them and did not touch them. |
 
 ## 10. Completeness ledger (filled at the end — the honest scorecard)
 
