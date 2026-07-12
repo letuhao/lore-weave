@@ -760,18 +760,21 @@ async def get_entity_by_id_any_owner(
 _FIND_BY_NAME_CYPHER_ALL = """
 CALL {
   WITH $user_id AS user_id, $project_id AS project_id,
-       $canonical_name AS canonical_name
+       $canonical_name AS canonical_name, $exclude_project_ids AS exclude_project_ids
   MATCH (e:Entity)
   WHERE e.user_id = user_id
     AND e.canonical_name = canonical_name
     AND (project_id IS NULL OR e.project_id = project_id)
+    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
   RETURN e
   UNION
-  WITH $user_id AS user_id, $project_id AS project_id, $name AS name
+  WITH $user_id AS user_id, $project_id AS project_id, $name AS name,
+       $exclude_project_ids AS exclude_project_ids
   MATCH (e:Entity)
   WHERE e.user_id = user_id
     AND name IN e.aliases
     AND (project_id IS NULL OR e.project_id = project_id)
+    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
   RETURN e
 }
 RETURN e
@@ -931,20 +934,23 @@ async def get_most_connected_entity(
 _FIND_BY_NAME_CYPHER_ACTIVE = """
 CALL {
   WITH $user_id AS user_id, $project_id AS project_id,
-       $canonical_name AS canonical_name
+       $canonical_name AS canonical_name, $exclude_project_ids AS exclude_project_ids
   MATCH (e:Entity)
   WHERE e.user_id = user_id
     AND e.canonical_name = canonical_name
     AND e.archived_at IS NULL
     AND (project_id IS NULL OR e.project_id = project_id)
+    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
   RETURN e
   UNION
-  WITH $user_id AS user_id, $project_id AS project_id, $name AS name
+  WITH $user_id AS user_id, $project_id AS project_id, $name AS name,
+       $exclude_project_ids AS exclude_project_ids
   MATCH (e:Entity)
   WHERE e.user_id = user_id
     AND name IN e.aliases
     AND e.archived_at IS NULL
     AND (project_id IS NULL OR e.project_id = project_id)
+    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
   RETURN e
 }
 RETURN e
@@ -959,6 +965,7 @@ async def find_entities_by_name(
     project_id: str | None,
     name: str,
     include_archived: bool = False,
+    exclude_project_ids: list[str] | None = None,
 ) -> list[Entity]:
     """Find entities matching a display name within a user's namespace.
 
@@ -970,6 +977,10 @@ async def find_entities_by_name(
     `project_id=None` means "search across all projects for this
     user" (cross-project alias resolution). When set, filters to
     one project and uses the `entity_user_project` index.
+
+    D16 (spec 07 §Q4) — `exclude_project_ids` removes matches from those projects even under the
+    all-projects fallback. The memory_* tools pass the user's ASSISTANT project ids here when a
+    session has no explicit project, so a novel-writing session can never surface work-diary entities.
     """
     canonical_name = canonicalize_entity_name(name)
     cypher = (
@@ -982,6 +993,7 @@ async def find_entities_by_name(
         project_id=project_id,
         name=name,
         canonical_name=canonical_name,
+        exclude_project_ids=list(exclude_project_ids or []),
     )
     return [_node_to_entity(record["e"]) async for record in result]
 

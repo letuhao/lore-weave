@@ -511,6 +511,16 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
     return out
 
 
+async def _diary_exclusion(ctx: ToolContext) -> list[str]:
+    """D16 (spec 07 §Q4) — the project ids a project-less memory read must EXCLUDE. With an explicit
+    project the scope is already correct (nothing to exclude); with none, the all-projects fallback would
+    surface the user's ASSISTANT (work-diary) entities into e.g. a novel-writing session, so we exclude
+    the user's assistant projects. Empty list when there is no assistant project or a project is scoped."""
+    if ctx.project_id is not None:
+        return []
+    return await ctx.projects_repo.list_assistant_project_ids(ctx.user_id)
+
+
 async def _handle_memory_recall_entity(
     ctx: ToolContext, args: MemoryRecallEntityArgs
 ) -> dict:
@@ -520,12 +530,14 @@ async def _handle_memory_recall_entity(
     # body to shed, so no `detail` lever (spec §6b small/single-object exemption).
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
+    exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
     async with neo4j_session() as session:
         matches = await find_entities_by_name(
             session,
             user_id=str(ctx.user_id),
             project_id=project_id,
             name=args.entity_name,
+            exclude_project_ids=exclude,
         )
         if not matches:
             return {"found": False, "entity_name": args.entity_name}
@@ -563,6 +575,7 @@ async def _handle_memory_timeline(
 ) -> dict:
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
+    exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
     async with neo4j_session() as session:
         participant_candidates: list[str] | None = None
         if args.entity_name:
@@ -571,6 +584,7 @@ async def _handle_memory_timeline(
                 user_id=str(ctx.user_id),
                 project_id=project_id,
                 name=args.entity_name,
+                exclude_project_ids=exclude,
             )
             if not matches:
                 # Entity not found ⇒ empty candidate list ⇒ zero events

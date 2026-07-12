@@ -888,3 +888,38 @@ async def test_story_search_missing_deps_is_tool_error():
     res = await execute_tool(_story_ctx(with_deps=False), "story_search", {"query": "q"})
     assert not res.success
     assert "not available" in (res.error or "")
+
+
+# ── D16 (spec 07 §Q4) — a non-assistant session must never surface diary entities ─────────────────
+
+@pytest.mark.asyncio
+async def test_diary_exclusion_is_empty_when_a_project_is_scoped(monkeypatch):
+    # With an explicit project the scope is already correct — exclude nothing, and DON'T even query PG.
+    from app.tools.executor import _diary_exclusion
+    ctx = _ctx(project_id=_PROJECT)
+    ctx.projects_repo.list_assistant_project_ids = AsyncMock(
+        side_effect=AssertionError("must not query assistant projects when a project is scoped"))
+    assert await _diary_exclusion(ctx) == []
+
+
+@pytest.mark.asyncio
+async def test_diary_exclusion_returns_assistant_ids_when_projectless(monkeypatch):
+    from app.tools.executor import _diary_exclusion
+    ctx = _ctx(project_id=None)
+    ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
+    assert await _diary_exclusion(ctx) == ["assistant-proj-1"]
+
+
+@pytest.mark.asyncio
+async def test_memory_recall_entity_excludes_diary_projects_when_projectless(monkeypatch):
+    # THE leak test: a projectless (novel-writing) session recalling an entity must pass the user's
+    # assistant project ids as exclude_project_ids, so a work-diary entity can't be resolved.
+    fe = AsyncMock(return_value=[])
+    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    ctx = _ctx(project_id=None)
+    ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
+    res = await execute_tool(ctx, "memory_recall_entity", {"entity_name": "Sarah"})
+    assert res.success and res.result["found"] is False
+    # the exclusion was threaded to the repo read (not the all-projects fallback)
+    assert fe.await_args.kwargs["exclude_project_ids"] == ["assistant-proj-1"]
+    assert fe.await_args.kwargs["project_id"] is None

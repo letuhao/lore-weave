@@ -861,3 +861,16 @@ class ProjectsRepo:
                 )
         cache.invalidate_l1(user_id, project_id)
         return True
+
+    async def list_assistant_project_ids(self, user_id: UUID) -> "list[str]":
+        """D16 (spec 07 §Q4) — the ids of the user's ASSISTANT (diary) projects, as strings for a Neo4j
+        param. The memory_* read tools pass these as `exclude_project_ids` when a session has no explicit
+        project, so the all-projects fallback can never surface work-diary entities into a novel-writing
+        session. Normally 0 or 1 row (one assistant per user), so this is a cheap indexed lookup."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT project_id FROM knowledge_projects "
+                "WHERE user_id = $1 AND is_assistant AND NOT is_archived",
+                user_id,
+            )
+        return [str(r["project_id"]) for r in rows]
