@@ -117,7 +117,14 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + evidence · `🅿️` pa
 
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| B0 | **25 M-step registration (NC-4 pre-build gate)** — 27-V2-A3's `outline_chapter_required` → `outline_chapter_written_kinds` swap is **non-additive** and MUST register as a numbered M-step in `25` before building (mints M6) | [ ] | |
+| B0 | **25 M-step registration (NC-4 pre-build gate)** | [x] | **ALREADY SATISFIED — verified, not assumed.** `25` §M6 exists (added at the 2026-07-10 integration): *"M6.1 · 27 A3: drop `outline_chapter_required`, re-add inverted as `outline_chapter_written_kinds` … ships with 27 V2-A · MUST land before 27 V2-E's first link insert."* The gate requires the *registration* to exist before building; it does. My board wrongly said it "mints M6". |
+
+**Phase B ground truth (verified against the LIVE DB + migrate.py, 2026-07-12 — not from docs):**
+| Fact | State |
+|---|---|
+| `outline_chapter_required` CHECK | ⛔ **still the OLD one** (`migrate.py:212`) — M6.1 is REGISTERED but NOT IMPLEMENTED. This is B1's first job, and it **blocks B4** (every skeleton-link insert violates the old CHECK). |
+| `pass_state` table | ⛔ **absent** (`to_regclass` → NULL) — Stage 6 genuinely unbuilt, as the run-start audit said. |
+| `genre_tags` | ✅ present on `motif` + `arc_template` (pre-existing; 27's own plumbing is still B2). |
 | B1 | **27-V2-A** — `pass_state`/`genre_tags`, CHECK swaps, provenance columns + partial uniques, the A3 swap | [ ] | |
 | B2 | **27-V2-B ∥ V2-C** — contracts unfixturing (PF-14/BPS-21) + `genre_tags` plumbing ∥ pass runner + `world_plan.py` + pass-4 hoist + adapters | [ ] | |
 | B3 | **27-V2-D** — `propose_seed` quarantine wiring + checkpoint extension + `roster_bindings` write (PF-13) | [ ] | |
