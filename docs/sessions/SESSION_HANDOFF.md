@@ -1,5 +1,72 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ⭐ Track: WRITING STUDIO — TOOL↔GUI GAP (specs 30–38) — **AUDIT + SPECS DONE, BUILD NOT PLANNED** (2026-07-12, branch `feat/context-budget-law`, HEAD `9262ed53e`)
+
+> **Anchor:** [`docs/specs/2026-07-01-writing-studio/30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md`](../specs/2026-07-01-writing-studio/30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md)
+> — **§0 = the 4 SEALED PO decisions (do not re-litigate from memory) · §4 = the authoritative per-spec
+> status of 00–29 · §5 = the gap register · §7 = the waves.**
+> *(The three track blocks below are DIFFERENT, concurrent tracks — left intact.)*
+
+**The law it enforces (GG-1):** *every backend capability a user owns must have a human surface. The
+agent is an accelerant on the user's own capabilities — never the only door to them.*
+
+**What landed (docs only — zero code):**
+- **The audit.** 37 agents across inventory → join → adversarial-refute → completeness-critic. **22
+  verified gaps: 18 CONFIRMED · 4 PARTIAL · 0 refuted** (every refuted sub-claim is parked in §10 so it
+  is never re-raised). Also found **3 FE calls that 404 in production today** (§3.3) and 10 of
+  composition's 31 tables reachable **only** from the legacy page spec 16 is slated to delete — so
+  **GG-4: retiring `ChapterEditorPage` before the ports land DELETES shipped features.**
+- **The master plan (30)** — waves 0–8 + the spec-29 parallel lane, 19 backend prereqs, and **4 SEALED
+  PO decisions**: PO-1 amend spec 28's AN-12 (its *architecture* stands: no new panel) · **PO-2
+  G-WORKFLOWS → Track C** · PO-3 retire `ui_show_panel` into `ui_open_studio_panel` · PO-4 **all specs +
+  drafts before any implementation plan**.
+- **Specs 31–38 + 11 HTML drafts** (`design-drafts/screens/studio/`) — PO-4 is now satisfied.
+- `00_OVERVIEW`'s index + Debt stack and `00C`'s queue refreshed against §4 (they were actively
+  misleading: 00C's Q-2 *"Agent Mode 0% frontend"* was **flatly false** — the panel is in the catalog
+  **and** the agent enum; **cleared**).
+
+### ▶ NEXT for this track
+
+**The implementation plan is NOT written** (PO-4 held it until the specs+drafts existed — they now do).
+**The next step is to PLAN the build**, starting with **Wave 0 — FOUNDATIONS** (30 §7; no panels, all
+landmines under every other wave):
+
+1. **X-1** — `AddModelCta` DOCK-7 teardown, fixed at the **shared component** (not the ~8 call sites).
+2. **X-2** — `CATEGORY_ORDER` is missing `'quality'` (`indexOf` → -1 ⇒ it sorts **first**, not last).
+3. **X-4** — the **Lane-B effect registry covers none of the new domains** (~15 handlers: canon_rule,
+   motif, arc, plan_*, authoring_run, world_map, kg_create_node…) — without it every agent write leaves
+   the new panel stale.
+4. **X-5** — retire `ui_show_panel` (PO-3) + intercept `ui_watch_job` (it tears the dock down today).
+5. **X-7** — the **`gather_motifs` packer lens** (21-G1): `pack()` reads **zero** motif data. Wave 3 is
+   HARD-GATED on it, or it ships a beautiful editor for a field nothing consumes.
+6. **The 3 live 404s** (§3.3) + the 4th the 34 review found (`_execute_arc_import`'s unreadable job).
+
+Then Wave 1 (spec 31, cheapest+highest value) — or the **spec-29 translation lane**, which collides with
+nothing. **G-WORKFLOWS was handed to Track C (PO-2)** — its P-5 claims the workflow rack/binding UI. ⚠
+Hand Track C this fact: `registry_propose_workflow`'s own description says the user approves *"in the
+UI"* and **there is no UI**, so an agent calling it today writes a row **no human can ever approve**.
+
+### Deferred (from plan 30 — consciously parked, each with its gate reason)
+
+| ID | What | Gate |
+|---|---|---|
+| **D-STUDIO-07S-COMPACTION-BREAKER** | 🔴 **P1 — a real defect, not a gap.** 07S has **no microcompact tier, no `hard_truncate`, and no `compaction_failed` breaker** (0 grep hits) — while **Agent Mode's L3/L4 autonomous runs are SHIPPED and running**, and 07S §3/§10 make that breaker **MANDATORY for headless runs**. An unattended run can therefore fail compaction with nothing to stop it. **Raise it, scope it, build it.** | #2 large/structural (needs its own slice + design), **not** "later" |
+| **D-STUDIO-HOOKS-10** | Spec **10 · agent lifecycle hooks — 0% built** (a service, a table, an orchestrator, a sandbox, a manifest format, a settings UI; zero grep hits). **XL.** The single biggest unbuilt block in 00–11. | #2 large/structural — needs its own track, not a wave |
+| **D-ARC-DECOMPILER** | Spec **26-D3** — the arc decompiler: the only path to a spec tree for an **imported** book with no plan. | #2 large/structural |
+| **D-PLANFORGE-PROPOSE-BLIND** | Spec **21-G2** — PlanForge `propose.py` takes no `existing_state`: proposing a plan for a book with 200 chapters **ignores all of them**. | #2 — a real engine change; not in any wave |
+| **D-WIKI-INVERSE-GAP** | **GG-2 (the inverse law):** `wiki` + `wiki-editor` panels exist and glossary-service registers **zero `wiki_*` MCP tools** — the agent cannot help with the wiki at all. | #3 naturally-next-phase — no wave owns it yet |
+
+<details><summary>Numbers, and where the audit says it is uncertain</summary>
+
+75 composition MCP tools (17 AGENT-ONLY) · 155 REST routes (~22 with no FE consumer) · 31 tables (10
+LEGACY-ONLY, 2 WRITE-ONLY) · 68 catalog panels (agent enum **57 == 57** openable — **zero drift**) · 12
+frontend tools (2 defective). ⚠ **The "173 tools / 23 no-GUI" scoreboard is a FLOOR, not a total**:
+provider-registry's 14 MCP tools and catalog-service's 2 were **never swept** (§3.4 — closing them is
+Wave 0's X-9), and provider-registry registers `web_search` **unprefixed**, which the repo's own
+namespacing law says **shadows**.
+
+</details>
+
 ## ⭐ Track: BOOK-PACKAGE CLUSTER (specs 22–28) — **COMPLETE** (2026-07-12, branch `feat/context-budget-law`)
 
 > **Anchor:** [`docs/plans/2026-07-12-book-package-RUN-STATE.md`](../plans/2026-07-12-book-package-RUN-STATE.md) —
@@ -168,7 +235,7 @@ notifications, public-MCP scoping) — a **Phase-1 EXIT requirement, before any 
 - **Verify (post-review):** chat-service **1418** green (+31) · agent-registry api + migrate green (incl. the lint's negative control) · both migrations applied on a real stack.
 - **Deferred (tracked) — RE-VERIFIED against code 2026-07-11:** (a) ~~`D-WS3-RESUME-PIN`~~ **CLEARED** — fixed by /review-impl (it was a HIGH, not a defer: the rail's TEXT survived the suspend while its TOOLS did not). (b) ~~`D-WS3-BOOK-TIER-PIN`~~ **CLEARED** — fixed by /review-impl (`workflowVisibleInBook`; the reviewers showed it was worse than I logged: it ALSO let a private workflow be pinned into a shared book). (c) `D-WS3-BINDING-GUI` — **still open**: the binding is API-addressable (`GET/PUT /v1/agent-registry/mode-bindings/{mode}`) but has no settings panel, so a user cannot turn the co-writer rail off without an API call (gate #2: a settings surface, not a knob).
 
-**▶ NEXT (Track C) — 2026-07-12 (updated):** **P-1 step-runner is BUILT + its `/review-impl` folded (12→10, incl. 1 HIGH: `STOP_UNKNOWN` + a dead stat cache capped the rail; fixed by wiring `reconcile_project_stats` — proven `connections` `None`→`4`), and P-3 is DONE (WS-5 catalog now 10/10 rails: W5/W9/W6/W7/W12 authored+seeded+advertised, review-clean `c59d9ccf9`).** Commits this run: `3ad8f9898` (step-runner review fixes), `13202bacb` (S06 numbers), `c59d9ccf9` (catalog). **S06 measured + PARKED with numbers: r2=2/5, r3b=1/5** — categories reliable (8–13), cast variable (r2=4/r3b=0), connections/plan/chapters 0. **The ONE remaining hard blocker is `connect-project`:** in the live gemma rail `kg_project_create` consent-approves but no project row persists, while the identical call + consent-resume SUCCEED when reproduced by hand in-container (3 reproductions). **NEXT:** (1) the connect-project live-trace (stored `pending_tool_call.id` vs harness resume `tool_call_id`; a rail re-drive minting an un-resumed call) — the one thing between 2/5 and 4–5/5; then **P-4** (prioritise **S00e**, no fixture, doesn't hit the blocker), **P-5** (FE surfaces — binding UI + rack cheapest). Full record + PO packet: RUN-STATE §7/§10/§11. Everything below is the SUPERSEDED pre-run diagnosis, kept for the record.
+**▶ NEXT (Track C) — 2026-07-13 (updated): S06 PASSES the ≥4/5 artifact DoD — 4/5 in 3/3 consecutive fresh-empty-book runs.** The connect-project blocker (parked at 2/5 for three sessions) was an **eval-HARNESS run_id bug (DR21), not a product gap** — the harness resumed with the stale `RUN_STARTED.runId` instead of each suspend's own `pendingToolCall.runId`, so every consent resume "expired" and `kg_project_create` never executed. Found by instrumenting the live seam; fixed the harness + hardened the product against gemma's `project_id=[uuid]` list-wrap (DR22, `_coerce_listed_scalar_ids`). Pasted SQL, 3 runs: **4/5·4/5·4/5** (categories·cast·connections·plan; chapters 0), `persist_claims=[]`, no jargon leak. Commit `55e537e0d`. Earlier this track: step-runner + review fixes (`3ad8f9898`), WS-5 catalog 10/10 (`c59d9ccf9`), D3/D7 PO sign-off (`72b5fc895`). **RESIDUAL (parked, RUN-STATE §7 P-1):** the `async-poll` §4 gate + the 5th artifact (drafted chapter) — the driver's `STOP_ASYNC` stops after the async arc-plan and doesn't drive draft-opening; a bounded next-session driver enhancement (drive-past-async on artifact progress) takes 4/5→5/5 and closes the last gate. **Also parked:** P-4 (scenarios — prioritise S00e), P-5 (FE surfaces). Full record + PO packet: RUN-STATE §7/§10/§11. Everything below is the SUPERSEDED pre-run diagnosis, kept for the record.
 
 <details><summary>Superseded pre-run diagnosis (2026-07-11)</summary>
 
