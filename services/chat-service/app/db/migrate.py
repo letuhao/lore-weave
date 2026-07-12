@@ -235,6 +235,25 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- WS-1.8 / DBT-11 (spec 01) — chat_messages.local_date: the LOCAL calendar day a message
+-- belongs to, stamped at write-time so the distiller can bucket "one day's" messages without
+-- re-deriving the day later (which would let a timezone change silently re-bucket history).
+-- D-R14: populated SERVER-side from the user's prefs.timezone with a UTC fallback. This
+-- migration adds the column + the UTC-fallback DEFAULT for new rows; the timezone-aware
+-- override (resolve prefs.timezone in the message-write path) is the follow-up. Existing rows
+-- stay NULL (no wrong backfill to today's date) — the distiller reads recent messages, which
+-- carry the default; a NULL old row falls back to created_at::date at read time.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='local_date') THEN
+    ALTER TABLE chat_messages ADD COLUMN local_date DATE;
+    ALTER TABLE chat_messages ALTER COLUMN local_date SET DEFAULT ((now() AT TIME ZONE 'UTC')::date);
+  END IF;
+END $$;
+
+-- The distiller's per-day query: a user's messages for one local day, newest last.
+CREATE INDEX IF NOT EXISTS idx_chat_messages_local_date
+  ON chat_messages (owner_user_id, local_date, sequence_num) WHERE local_date IS NOT NULL;
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be
