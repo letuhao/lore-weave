@@ -24,6 +24,7 @@ import {
   Monitor,
   Sparkles,
   Library,
+  NotebookPen,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { useSidebar } from '@/providers/SidebarProvider';
@@ -41,6 +42,7 @@ const mainNav: NavItem[] = [
   { to: '/onboarding/new', icon: Sparkles, labelKey: 'nav.startNew', auth: true },
   { to: '/books', icon: BookOpen, labelKey: 'nav.workspace', auth: true },
   { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat', auth: true },
+  { to: '/assistant', icon: NotebookPen, labelKey: 'nav.assistant', auth: true },
   { to: '/roleplay', icon: GraduationCap, labelKey: 'nav.roleplay', auth: true },
   // K8.1-R1: `to` is `/knowledge` (not `/knowledge/projects`) so NavLink's
   // `startsWith(to + '/')` match keeps the entry active across all

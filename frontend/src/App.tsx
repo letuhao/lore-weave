@@ -21,6 +21,7 @@ import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
 import { TrashPage } from '@/pages/TrashPage';
 import { ChatPage } from '@/pages/ChatPage';
+import { AssistantPage } from '@/features/assistant/components/AssistantPage';
 import { RoleplayPage } from '@/features/roleplay/pages/RoleplayPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
@@ -140,6 +141,9 @@ export function App() {
           <Route element={<RequireAuth><ChatLayout /></RequireAuth>}>
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:sessionId" element={<ChatPage />} />
+            {/* WS-1.10 — the Work Assistant: reuses the chat surface + a home strip,
+                bound to the user's private diary book. Same layout chrome as chat. */}
+            <Route path="/assistant" element={<AssistantPage />} />
             {/* Roleplay practice — reuses the chat turn loop + voice; scripts +
                 start come from roleplay-service (/v1/roleplay). Interview is a
                 preset genre. /interview redirects (kept for old links). */}

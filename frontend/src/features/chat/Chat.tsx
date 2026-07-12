@@ -32,6 +32,10 @@ interface ChatProps {
   /** M2 (D-T5.4-CHAT-HOIST): pop-out — force the worker path (a pop-out window has no
    *  windowing host of its own, but must share the opener's in-flight turn). */
   forceShared?: boolean;
+  /** T-4 / WS-1.10: when 'assistant', a session auto-created here is stamped
+   *  session_kind='assistant' (the discriminator recall + capture gate on). Omit
+   *  everywhere else → the server defaults to 'chat'. */
+  sessionKind?: 'chat' | 'assistant';
   className?: string;
 }
 
@@ -44,7 +48,7 @@ interface ChatProps {
  * hook owns which session is active and binds it to the book's knowledge
  * project so the assistant has the book's lore/memory.
  */
-export function Chat({ bookId, editorContext, studioContext, composeMode, actionBar, windowingEnabled, forceShared, className }: ChatProps) {
+export function Chat({ bookId, editorContext, studioContext, composeMode, actionBar, windowingEnabled, forceShared, sessionKind, className }: ChatProps) {
   // Glossary-assistant P3: any book-scoped chat (incl. the editor) advertises the
   // glossary edit-existing tool. The editor also passes editorContext (chapter
   // prose tool); a glossary-page/reader chat passes only bookContext.
@@ -68,14 +72,14 @@ export function Chat({ bookId, editorContext, studioContext, composeMode, action
           bookContext={bookContext}
           displayLanguage={apiDisplayLanguage}
         >
-          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} composeMode={composeMode} />
+          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} composeMode={composeMode} sessionKind={sessionKind} />
         </ChatStreamProvider>
       </ChatLiveStateProvider>
     </ChatSessionProvider>
   );
 }
 
-function EmbeddedChat({ bookId, actionBar, className, composeMode }: ChatProps) {
+function EmbeddedChat({ bookId, actionBar, className, composeMode, sessionKind }: ChatProps) {
   const {
     sessions,
     sessionsLoading,
@@ -124,12 +128,15 @@ function EmbeddedChat({ bookId, actionBar, className, composeMode }: ChatProps) 
           void createSession({
             model_source: 'user_model',
             model_ref: modelRef,
-            title: 'New Chat',
+            title: sessionKind === 'assistant' ? 'Work Assistant' : 'New Chat',
             system_prompt: systemPrompt,
             // D-COMPOSE-SESSION-RESTORE: tag at creation so this book's next
             // Compose open can find it again (JSON.stringify drops `undefined`
             // when there's no bookId — e.g. a non-book embedded host).
             book_id: bookId,
+            // T-4 / WS-1.10: stamp the assistant discriminator so recall + capture
+            // gate on it (undefined for a normal chat → server defaults to 'chat').
+            session_kind: sessionKind,
           });
         }}
       />

@@ -38,6 +38,12 @@ export interface ChatSession {
   // project_id — a book with no knowledge project yet still gets a durable
   // book_id so its session (and chosen model) can be found again on reopen.
   book_id?: string | null;
+  // T-4 / WS-1.10: the session discriminator — 'assistant' for a Work Assistant session,
+  // 'chat' (default) for everything else. Recall + work-capture gate on it.
+  session_kind?: 'chat' | 'assistant';
+  // WS-1.6: the last persisted per-turn capture decision ({fire, reason}) so the assistant
+  // home strip can render capture visibly ON/OFF with a reason. null = never evaluated.
+  capture_status?: { fire: boolean; reason: string } | null;
   // Track B B1(2) — multi-KG: the session's grounding project SET (world +
   // member books) unioned into one memory block. Empty = the legacy
   // single-project (project_id) path. ≥2 → the "multi" memory mode.
@@ -418,6 +424,9 @@ export interface CreateSessionPayload {
   // can be found again on the next Compose open regardless of whether a
   // knowledge project exists for the book.
   book_id?: string;
+  // T-4 / WS-1.10: the Work Assistant creates 'assistant' sessions (the discriminator
+  // recall + capture gate on); every other host omits it → server defaults to 'chat'.
+  session_kind?: 'chat' | 'assistant';
 }
 
 export interface PatchSessionPayload {
