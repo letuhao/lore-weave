@@ -207,22 +207,24 @@ def test_confirm_cross_user_or_missing_returns_404(monkeypatch):
 
 
 def test_reject_deletes_row_returns_204():
+    # WS-2.2 (audit): the FE reject goes through repo.reject (delete + tombstone), NOT a plain delete,
+    # so a dismissed diary fact is not re-proposed on the next distill.
     pf = _pending_fact()
     repo = AsyncMock()
-    repo.delete = AsyncMock(return_value=True)
+    repo.reject = AsyncMock(return_value=True)
     client = _make_client(repo)
 
     resp = client.post(
         f"/v1/knowledge/pending-facts/{pf.pending_fact_id}/reject"
     )
     assert resp.status_code == 204
-    repo.delete.assert_awaited_once_with(_TEST_USER, pf.pending_fact_id)
+    repo.reject.assert_awaited_once_with(_TEST_USER, pf.pending_fact_id)
 
 
 def test_reject_cross_user_or_missing_returns_404():
-    """repo.delete returns False for a cross-user / missing id → 404."""
+    """repo.reject returns False for a cross-user / missing id → 404."""
     repo = AsyncMock()
-    repo.delete = AsyncMock(return_value=False)
+    repo.reject = AsyncMock(return_value=False)
     client = _make_client(repo)
 
     resp = client.post(f"/v1/knowledge/pending-facts/{uuid4()}/reject")

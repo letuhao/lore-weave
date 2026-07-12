@@ -51,36 +51,21 @@ router = APIRouter(
 )
 
 
-@router.delete("/assistant/erase")
-async def erase_assistant_knowledge(
-    user_id: UUID = Query(...),
-    project_id: UUID = Query(...),
-) -> dict:
-    """D-R27 (human-authorized erasure) — delete a user's ASSISTANT knowledge project + its ENTIRE
-    semantic index. Removes every `:Passage` node for (user, project) in Neo4j AND the
-    `knowledge_projects` row (Postgres, owner-scoped + summary cascade in one tx). Both stores are
-    tenant-scoped on (user_id, project_id), so this can only reach the caller's own project.
-
-    ORDER (erase review MED-3): the Neo4j passages are deleted FIRST, the PG project row LAST. The
-    project_id is what identifies the passages, so if we deleted the PG row first and the Neo4j delete
-    then failed, a re-erase would get-or-create a DIFFERENT project_id and the orphaned passages (raw
-    diary text) would never be reclaimed. Deleting Neo4j first means a failure leaves the PG project
-    intact → a re-erase re-resolves the SAME project_id → retries the passage delete. Internal-token."""
-    pool = get_knowledge_pool()
+async def _erase_one_assistant_project(pool, user_id: UUID, project_id: UUID) -> dict:
+    """Erase ONE assistant project + its entire semantic index. Neo4j passages FIRST, PG rows LAST (erase
+    review MED-3): the project_id identifies the passages, so a PG-first delete that then failed on Neo4j
+    would strand the raw diary passages under a project_id nothing can re-resolve. Also clears the
+    pending-facts inbox + rejection tombstones (they hold decryptable diary fact text, no FK cascade)."""
     async with neo4j_session() as session:
         passages_deleted = await delete_all_passages_for_project(
             session, user_id=str(user_id), project_id=str(project_id),
         )
-    # WS-2.2 — the pending-facts inbox + its rejection tombstones hold decryptable diary fact text; erase
-    # must reach them too (they carry no FK to the project, so the PG project delete won't cascade them).
     async with pool.acquire() as conn:
         pf = await conn.execute(
-            "DELETE FROM knowledge_pending_facts WHERE user_id=$1 AND project_id=$2",
-            user_id, project_id,
+            "DELETE FROM knowledge_pending_facts WHERE user_id=$1 AND project_id=$2", user_id, project_id,
         )
         await conn.execute(
-            "DELETE FROM knowledge_rejected_facts WHERE user_id=$1 AND project_id=$2",
-            user_id, project_id,
+            "DELETE FROM knowledge_rejected_facts WHERE user_id=$1 AND project_id=$2", user_id, project_id,
         )
     pending_facts_deleted = int(pf.split()[-1]) if pf else 0
     project_deleted = await ProjectsRepo(pool).delete(user_id, project_id)
@@ -88,6 +73,34 @@ async def erase_assistant_knowledge(
         "project_deleted": bool(project_deleted),
         "passages_deleted": passages_deleted,
         "pending_facts_deleted": pending_facts_deleted,
+    }
+
+
+@router.delete("/assistant/erase")
+async def erase_assistant_knowledge(
+    user_id: UUID = Query(...),
+    project_id: UUID | None = Query(None),
+) -> dict:
+    """D-R27 (human-authorized erasure) — delete a user's ASSISTANT knowledge + its ENTIRE semantic index
+    (Neo4j `:Passage` nodes + the `knowledge_projects` row + the pending/rejected fact inboxes). Every
+    store is tenant-scoped on (user_id, project_id), so this only reaches the caller's own data.
+
+    project_id is OPTIONAL (audit HIGH-2): when omitted, ALL of the user's assistant projects are resolved
+    by the `is_assistant` flag (via `list_assistant_project_ids`) and each is erased. The gateway erase
+    calls it WITHOUT a project_id — so the KG erase runs by user_id alone, independent of whether the diary
+    BOOK still exists. A book-keyed project resolution that fails after the book is deleted used to skip
+    this leg while still reporting `erased:true`, leaving decryptable diary passages + fact text behind."""
+    pool = get_knowledge_pool()
+    if project_id is not None:
+        targets = [project_id]
+    else:
+        targets = [UUID(p) for p in await ProjectsRepo(pool).list_assistant_project_ids(user_id)]
+    results = [await _erase_one_assistant_project(pool, user_id, pid) for pid in targets]
+    return {
+        "projects_erased": len(results),
+        "project_deleted": any(r["project_deleted"] for r in results),
+        "passages_deleted": sum(r["passages_deleted"] for r in results),
+        "pending_facts_deleted": sum(r["pending_facts_deleted"] for r in results),
     }
 
 
@@ -120,11 +133,15 @@ def _parse_iso_date(value: str | None) -> date | None:
         return None
 
 
-def _diary_fact_dedup_key(project_id: object, kind: str, text: str, fact: _DiaryFactIn) -> str:
-    """A STABLE dedup identity for a distilled fact. When the structured trio is present, key on the
-    normalized (subject, predicate, object) so an LLM re-phrasing of the SAME fact across re-distills
-    collides (the semantic-dedup fix — fact_text alone drifts with wording). Else fall back to the
-    coarse fact_text. Normalization: casefold + collapse whitespace, so "The Q3 Budget" == "q3 budget"."""
+def _diary_fact_dedup_key(project_id: object, kind: str, text: str, fact: _DiaryFactIn, day: str) -> str:
+    """A STABLE, PER-DAY dedup identity for a distilled fact. When the structured trio is present, key on
+    the normalized (subject, predicate, object) so an LLM re-phrasing of the SAME fact across re-distills
+    collides (the semantic-dedup fix — fact_text alone drifts with wording). Else fall back to the coarse
+    fact_text. Normalization: casefold + collapse whitespace, so "The Q3 Budget" == "q3 budget".
+
+    `day` (the fact's effective ISO date) is part of the key so dedup + the rejection tombstone are
+    per-DAY (audit MED-2): the same (Alice, said, budget) on Mon and Fri are DISTINCT facts — a Friday
+    re-affirmation isn't silently dropped, and rejecting Monday's doesn't tombstone Friday's forever."""
     def _norm(s: str | None) -> str:
         return " ".join((s or "").split()).casefold()
 
@@ -132,7 +149,7 @@ def _diary_fact_dedup_key(project_id: object, kind: str, text: str, fact: _Diary
         basis = f"spo:{_norm(fact.subject)}|{_norm(fact.predicate)}|{_norm(fact.object)}"
     else:
         basis = f"text:{_norm(kind)}|{_norm(text)}"
-    return hashlib.sha256(f"{project_id}:{basis}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{project_id}:{day}:{basis}".encode("utf-8")).hexdigest()
 
 
 @router.post("/assistant/queue-facts")
@@ -158,7 +175,16 @@ async def queue_diary_facts(body: _QueueDiaryFactsIn) -> dict:
                 continue
             date_sfx = f" ({body.entry_date})" if body.entry_date else ""
             fact_text = f"[{(f.kind or 'event').strip()}] {text}{date_sfx}"
-            dedup_key = _diary_fact_dedup_key(project.project_id, f.kind, text, f)
+            # asyncpg encodes a ::date param as a Python date (not a str) BEFORE the cast, so parse the ISO
+            # string here. Parse EACH candidate independently (audit MED-3): `_parse_iso_date(f.event_date)
+            # or _parse_iso_date(body.entry_date)` — a non-ISO f.event_date ("yesterday") must NOT swallow
+            # the valid entry_date fallback (memory: asyncpg-timestamptz-param-needs-datetime).
+            event_date = _parse_iso_date(f.event_date) or _parse_iso_date(body.entry_date)
+            # The dedup/tombstone identity is PER-DAY (audit MED-2): include the effective date so the same
+            # s/p/o on two different days are distinct facts (a re-affirmation isn't dropped; a Monday
+            # reject doesn't tombstone Friday's). '' when no date at all → collapses to a single bucket.
+            day_key = event_date.isoformat() if event_date is not None else ""
+            dedup_key = _diary_fact_dedup_key(project.project_id, f.kind, text, f, day_key)
             # Tombstone gate: a fact the user rejected must not re-appear on the next distill. Skip BEFORE
             # the insert so a re-nag never even touches the inbox. (Keyed identically to the dedup so a
             # reject and a re-queue can never disagree on identity.)
@@ -170,10 +196,6 @@ async def queue_diary_facts(body: _QueueDiaryFactsIn) -> dict:
             if tomb is not None:
                 skipped_tombstoned += 1
                 continue
-            # asyncpg encodes a ::date param as a Python date (not a str) BEFORE the cast, so parse the
-            # ISO string here; a malformed/absent date degrades to NULL rather than 500-ing the queue
-            # (memory: asyncpg-timestamptz-param-needs-datetime).
-            event_date = _parse_iso_date(f.event_date or body.entry_date)
             row = await conn.fetchrow(
                 """
                 INSERT INTO knowledge_pending_facts
@@ -247,31 +269,13 @@ class _RejectDiaryFactIn(BaseModel):
 
 @router.post("/assistant/reject-fact")
 async def reject_diary_fact(body: _RejectDiaryFactIn) -> dict:
-    """WS-2.2 (rejection tombstone) — the user dismisses a proposed diary fact. Reject is a hard DELETE of
-    the pending row, but we FIRST write a `knowledge_rejected_facts` tombstone on its dedup_key so the next
-    "End my day" does NOT re-propose the exact fact the user just dismissed. Owner-scoped: the DELETE and
-    the tombstone both filter on the caller's user_id, so one user can never reject/tombstone another's
-    fact. Idempotent: rejecting an already-gone fact is a no-op (rejected=0), and the tombstone upserts."""
-    pool = get_knowledge_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            row = await conn.fetchrow(
-                "DELETE FROM knowledge_pending_facts "
-                "WHERE pending_fact_id=$1 AND user_id=$2 "
-                "RETURNING project_id, dedup_key",
-                body.pending_fact_id, body.user_id,
-            )
-            if row is None:
-                return {"rejected": 0, "tombstoned": False}  # not found / not owned — nothing to do
-            # A legacy row (no dedup_key) can't be tombstoned by key; it's still deleted.
-            if row["project_id"] is not None and row["dedup_key"]:
-                await conn.execute(
-                    "INSERT INTO knowledge_rejected_facts (user_id, project_id, dedup_key) "
-                    "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                    body.user_id, row["project_id"], row["dedup_key"],
-                )
-                return {"rejected": 1, "tombstoned": True}
-    return {"rejected": 1, "tombstoned": False}
+    """WS-2.2 (rejection tombstone) — the user dismisses a proposed diary fact. Delegates to the SINGLE
+    reject-with-tombstone repo path (shared with the public FE reject route, so the two can never drift):
+    it deletes the pending row and writes a `knowledge_rejected_facts` tombstone on its dedup_key so the
+    next "End my day" does NOT re-propose the dismissed fact. Owner-scoped + idempotent."""
+    from app.db.repositories.pending_facts import PendingFactsRepo
+    rejected = await PendingFactsRepo(get_knowledge_pool()).reject(body.user_id, body.pending_fact_id)
+    return {"rejected": 1 if rejected else 0, "tombstoned": rejected}
 
 
 class OrphanIndex(BaseModel):

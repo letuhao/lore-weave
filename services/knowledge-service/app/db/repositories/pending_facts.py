@@ -135,7 +135,8 @@ class PendingFactsRepo:
         """Delete one pending fact. Returns True if a row was removed,
         False if it did not exist or belongs to another user.
 
-        Used by both confirm (after merge_fact) and reject."""
+        Used by confirm (after merge_fact). For REJECT use `reject` — it
+        also writes the tombstone."""
         query = """
         DELETE FROM knowledge_pending_facts
         WHERE user_id = $1 AND pending_fact_id = $2
@@ -143,3 +144,28 @@ class PendingFactsRepo:
         async with self._pool.acquire() as conn:
             status = await conn.execute(query, user_id, pending_fact_id)
         return _rows_changed(status) >= 1
+
+    async def reject(self, user_id: UUID, pending_fact_id: UUID) -> bool:
+        """WS-2.2 (rejection tombstone) — reject-with-tombstone, the SINGLE reject path for both the
+        public FE drain route and the internal admin route (audit MED: a public reject that only DELETEs
+        re-nags the user, because the next distill re-proposes the dismissed fact). Deletes the pending
+        row and, when it carried a dedup_key (a diary fact), writes a `knowledge_rejected_facts` tombstone
+        on the SAME key so the fact stays dismissed. Owner-scoped. Idempotent (ON CONFLICT DO NOTHING).
+        Returns True if a row was removed."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    "DELETE FROM knowledge_pending_facts "
+                    "WHERE user_id = $1 AND pending_fact_id = $2 "
+                    "RETURNING project_id, dedup_key",
+                    user_id, pending_fact_id,
+                )
+                if row is None:
+                    return False
+                if row["project_id"] is not None and row["dedup_key"]:
+                    await conn.execute(
+                        "INSERT INTO knowledge_rejected_facts (user_id, project_id, dedup_key) "
+                        "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                        user_id, row["project_id"], row["dedup_key"],
+                    )
+        return True

@@ -556,35 +556,46 @@ def _fact(**kw):
     return _DiaryFactIn(**kw)
 
 
+_D = "2026-06-15"  # a shared day for the within-day dedup tests
+
+
 def test_dedup_key_is_stable_across_text_rephrasing_when_spo_present():
-    # Same subject/predicate/object, DIFFERENT free text + case/whitespace → SAME key (semantic dedup).
+    # Same subject/predicate/object + SAME day, DIFFERENT free text + case/whitespace → SAME key.
     a = _fact(text="Minh froze the Q3 budget until billing ships.",
               subject="Minh", predicate="froze", object="the Q3 budget")
     b = _fact(text="The Q3 budget was frozen by Minh pending the billing revamp.",
               subject="  minh ", predicate="FROZE", object="The  Q3   Budget")
-    k1 = _diary_fact_dedup_key("proj-1", a.kind, a.text.strip(), a)
-    k2 = _diary_fact_dedup_key("proj-1", b.kind, b.text.strip(), b)
-    assert k1 == k2, "a re-phrasing of the same s/p/o fact must dedup"
+    k1 = _diary_fact_dedup_key("proj-1", a.kind, a.text.strip(), a, _D)
+    k2 = _diary_fact_dedup_key("proj-1", b.kind, b.text.strip(), b, _D)
+    assert k1 == k2, "a re-phrasing of the same s/p/o fact on the same day must dedup"
+
+
+def test_dedup_key_is_per_day():
+    # audit MED-2: the SAME s/p/o on TWO different days is a DISTINCT fact (a re-affirmation isn't
+    # dropped; a Monday reject doesn't tombstone Friday's). Different day → different key.
+    a = _fact(subject="Alice", predicate="said", object="the budget is frozen")
+    assert _diary_fact_dedup_key("p", "decision", "x", a, "2026-06-15") != \
+           _diary_fact_dedup_key("p", "decision", "x", a, "2026-06-19")
 
 
 def test_dedup_key_differs_for_different_object():
     a = _fact(subject="Minh", predicate="froze", object="the Q3 budget")
     b = _fact(subject="Minh", predicate="froze", object="the Q4 budget")
-    assert _diary_fact_dedup_key("p", "decision", "x", a) != _diary_fact_dedup_key("p", "decision", "x", b)
+    assert _diary_fact_dedup_key("p", "decision", "x", a, _D) != _diary_fact_dedup_key("p", "decision", "x", b, _D)
 
 
 def test_dedup_key_is_project_scoped():
     a = _fact(subject="Minh", predicate="froze", object="the Q3 budget")
-    assert _diary_fact_dedup_key("proj-1", "decision", "x", a) != _diary_fact_dedup_key("proj-2", "decision", "x", a)
+    assert _diary_fact_dedup_key("proj-1", "decision", "x", a, _D) != _diary_fact_dedup_key("proj-2", "decision", "x", a, _D)
 
 
 def test_dedup_key_falls_back_to_text_when_no_spo():
-    # No structured trio → key on (kind, text). Same text → same; different text → different.
+    # No structured trio → key on (kind, text). Same text → same; different text → different (same day).
     a = _fact(kind="event", text="Shipped the release.")
     b = _fact(kind="event", text="Shipped the release.")
     c = _fact(kind="event", text="Something else entirely.")
-    assert _diary_fact_dedup_key("p", a.kind, a.text, a) == _diary_fact_dedup_key("p", b.kind, b.text, b)
-    assert _diary_fact_dedup_key("p", a.kind, a.text, a) != _diary_fact_dedup_key("p", c.kind, c.text, c)
+    assert _diary_fact_dedup_key("p", a.kind, a.text, a, _D) == _diary_fact_dedup_key("p", b.kind, b.text, b, _D)
+    assert _diary_fact_dedup_key("p", a.kind, a.text, a, _D) != _diary_fact_dedup_key("p", c.kind, c.text, c, _D)
 
 
 def test_dedup_key_text_fallback_when_subject_but_no_object():
@@ -592,7 +603,7 @@ def test_dedup_key_text_fallback_when_subject_but_no_object():
     # collide two unrelated subject-only facts under an empty-object key.
     a = _fact(text="A", subject="Minh")
     b = _fact(text="B", subject="Minh")
-    assert _diary_fact_dedup_key("p", "decision", "A", a) != _diary_fact_dedup_key("p", "decision", "B", b)
+    assert _diary_fact_dedup_key("p", "decision", "A", a, _D) != _diary_fact_dedup_key("p", "decision", "B", b, _D)
 
 
 def test_parse_iso_date_tolerates_garbage_and_none():

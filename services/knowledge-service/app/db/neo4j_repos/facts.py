@@ -36,7 +36,7 @@ from typing import Any, Literal, get_args
 from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
-from app.db.neo4j_repos.canonical import canonicalize_text
+from app.db.neo4j_repos.canonical import canonicalize_entity_name, canonicalize_text
 from app.db.neo4j_repos.temporal import (
     MAINTAIN_FACT_CHAIN_CYPHER,
     ORDINAL_OPEN_CEILING,
@@ -511,9 +511,9 @@ WHERE f.user_id = $user_id
   AND ($event_date_from IS NULL OR f.event_date_iso >= $event_date_from)
   AND ($event_date_to   IS NULL OR f.event_date_iso <= $event_date_to)
   AND (
-    $subject_name IS NULL OR EXISTS {
+    $subject_canonical IS NULL OR EXISTS {
       MATCH (f)-[:ABOUT]->(e:Entity)
-      WHERE e.user_id = $user_id AND toLower(e.canonical_name) = toLower($subject_name)
+      WHERE e.user_id = $user_id AND e.canonical_name = $subject_canonical
     }
   )
 RETURN f
@@ -536,9 +536,16 @@ async def recall_facts(
     """WS-2.4 — the diary's date-filtered recall read. Returns active facts in [event_date_from,
     event_date_to] (truncated-ISO string compare, the :Event idiom), newest-first, optionally narrowed
     to those ABOUT `subject_name`. project_id is required — recall never spans all of a user's projects
-    (D16: a novel-writing session must not surface work facts)."""
+    (D16: a novel-writing session must not surface work facts).
+
+    The subject is matched by CANONICAL name: `subject_name` is run through the SAME
+    `canonicalize_entity_name` that stored `e.canonical_name` at promote time (strips honorifics +
+    punctuation, NFKC-casefolds, CJK-folds), so "Dr. Smith" / "田中様" / "Q3-Budget" recall the entity
+    they were stored under. A raw toLower compare (the pre-fix behavior) silently missed every titled,
+    punctuated, or non-Latin name (audit MED)."""
     if not project_id:
         raise ValueError("recall_facts requires an explicit project_id (D16 — no all-projects recall)")
+    subject_canonical = canonicalize_entity_name(subject_name) if subject_name else None
     result = await run_read(
         session,
         _RECALL_FACTS_CYPHER,
@@ -546,7 +553,7 @@ async def recall_facts(
         project_id=project_id,
         event_date_from=event_date_from,
         event_date_to=event_date_to,
-        subject_name=(subject_name or None),
+        subject_canonical=(subject_canonical or None),
         min_confidence=min_confidence,
         limit=limit,
     )

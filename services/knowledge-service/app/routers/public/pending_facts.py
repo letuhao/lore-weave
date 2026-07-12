@@ -172,9 +172,11 @@ async def reject_pending_fact(
     user_id: UUID = Depends(get_current_user),
     repo: PendingFactsRepo = Depends(get_pending_facts_repo),
 ) -> None:
-    """Reject a pending fact: delete the queue row, write nothing.
+    """Reject a pending fact: delete the queue row AND (for a diary fact) write a rejection tombstone so
+    the next "End my day" does not re-propose it (WS-2.2). This is the FE's drain path, so it MUST
+    tombstone — a plain delete re-nags the user (audit MED: the public and internal reject diverged).
 
     404 if the id is not the caller's (or does not exist)."""
-    deleted = await repo.delete(user_id, pending_fact_id)
+    deleted = await repo.reject(user_id, pending_fact_id)
     if not deleted:
         raise _not_found()

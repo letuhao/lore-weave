@@ -607,6 +607,7 @@ async def _handle_memory_timeline(
             participant_candidates=participant_candidates,
             limit=args.limit,
             offset=0,
+            exclude_project_ids=exclude,  # D16 — the timeline must also drop diary events (audit HIGH-1)
         )
 
     items = [

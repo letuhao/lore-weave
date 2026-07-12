@@ -338,3 +338,34 @@ def test_fact_types_tuple_stays_in_lockstep_with_the_literal():
     from typing import get_args
     assert set(fm.FACT_TYPES) == set(get_args(fm.FactType))
     assert "statement" in fm.FACT_TYPES
+
+
+def test_recall_cypher_matches_subject_by_canonical_name_not_raw_lower():
+    # audit MED: the :ABOUT subject is matched by CANONICAL name (honorific/punctuation/CJK folded), not a
+    # raw toLower — else "Dr. Smith" (stored canonical "smith") is unrecallable. The Cypher must compare
+    # e.canonical_name = $subject_canonical, and recall_facts must canonicalize the input.
+    q = fm._RECALL_FACTS_CYPHER
+    assert "e.canonical_name = $subject_canonical" in q
+    assert "toLower(e.canonical_name)" not in q  # the buggy raw-lower compare is gone
+
+
+@pytest.mark.asyncio
+async def test_recall_facts_canonicalizes_the_subject_name_before_matching(monkeypatch):
+    # Prove recall_facts runs the subject through canonicalize_entity_name (so "Dr. Smith" → "smith")
+    # and binds it as $subject_canonical — the same transform that stored e.canonical_name at promote.
+    captured = {}
+
+    class _Res:
+        def __aiter__(self):
+            async def _gen():
+                if False:
+                    yield None
+            return _gen()
+
+    async def _fake_run_read(session, cypher, **params):
+        captured.update(params)
+        return _Res()
+
+    monkeypatch.setattr(fm, "run_read", _fake_run_read)
+    await fm.recall_facts(MagicMock(), user_id="u1", project_id="p1", subject_name="Dr. Smith")
+    assert captured["subject_canonical"] == "smith", captured.get("subject_canonical")

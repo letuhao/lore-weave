@@ -923,3 +923,23 @@ async def test_memory_recall_entity_excludes_diary_projects_when_projectless(mon
     # the exclusion was threaded to the repo read (not the all-projects fallback)
     assert fe.await_args.kwargs["exclude_project_ids"] == ["assistant-proj-1"]
     assert fe.await_args.kwargs["project_id"] is None
+
+
+# ── D16 (audit) — the EXCLUSION Cypher itself has a regression test, not just the executor threading ──
+# The mock-based tests above prove the executor PASSES exclude_project_ids; these prove the Cypher
+# actually FILTERS on it. A refactor that drops the clause but keeps the kwarg would pass the mock tests
+# yet silently reopen the diary→novel leak (the mocked-client-hides-server-filters bug class).
+
+def test_find_entities_cypher_carries_the_diary_exclusion_predicate():
+    from app.db.neo4j_repos import entities as em
+    for cypher in (em._FIND_BY_NAME_CYPHER_ACTIVE, em._FIND_BY_NAME_CYPHER_ALL):
+        assert "exclude_project_ids" in cypher
+        assert "NOT coalesce(e.project_id, '') IN exclude_project_ids" in cypher
+
+
+def test_events_filter_cypher_carries_the_diary_exclusion_predicate():
+    # audit HIGH-1 regression: memory_timeline reads through _LIST_EVENTS_FILTER_WHERE — it MUST carry the
+    # same exclusion, or a projectless timeline leaks diary events even though entity-resolution is guarded.
+    from app.db.neo4j_repos import events as ev
+    assert "exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
+    assert "NOT coalesce(e.project_id, '') IN $exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
