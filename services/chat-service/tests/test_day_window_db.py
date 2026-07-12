@@ -57,13 +57,14 @@ async def _ins_session(c, owner, book_id, session_kind="chat"):
 
 
 async def _ins_msg(c, sid, owner, seq, day, *, role="user", content="hi",
-                   is_error=False, created_at=None, tool_calls=None):
+                   is_error=False, created_at=None, tool_calls=None, exclude_from_memory=False):
     await c.execute(
         "INSERT INTO chat_messages "
-        "(session_id, owner_user_id, role, content, sequence_num, local_date, is_error, created_at, tool_calls) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, now()), $9::jsonb)",
+        "(session_id, owner_user_id, role, content, sequence_num, local_date, is_error, created_at, "
+        " tool_calls, exclude_from_memory) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, now()), $9::jsonb, $10)",
         str(sid), str(owner), role, content, seq, day, is_error, created_at,
-        json.dumps(tool_calls) if tool_calls is not None else None,
+        json.dumps(tool_calls) if tool_calls is not None else None, exclude_from_memory,
     )
 
 
@@ -100,7 +101,7 @@ async def world(pool):
         # a diary-BOOK-bound but chat-KIND session — excluded by the session_kind discriminator:
         await _ins_msg(c, s_diary_chat, userA, 0, DAY_X, content="DIARY-BOOK but CHAT kind", created_at=t(9, 50))
     try:
-        yield {"userA": userA, "userB": userB, "bookD": bookD}
+        yield {"userA": userA, "userB": userB, "bookD": bookD, "s_diary1": s_diary1}
     finally:
         async with pool.acquire() as c:
             for sid in sessions:
@@ -130,6 +131,20 @@ async def test_returns_only_this_users_assistant_messages_for_the_day(pool, worl
     assert out["message_count"] == 3
     assert out["truncated"] is False
     assert out["local_date"] == "2026-03-10"
+
+
+async def test_dont_remember_turn_is_excluded_from_the_day_window(pool, world):
+    # WS-2.9 (spec 09 §Q6) — a message flagged exclude_from_memory (a "don't remember this" / grounding-off
+    # turn) is NOT distilled: the day-window read must drop it, or the escape hatch leaks into the diary.
+    async with pool.acquire() as c:
+        await _ins_msg(c, world["s_diary1"], world["userA"], 50, DAY_X,
+                       content="SECRET do-not-remember", created_at=datetime(2026, 3, 10, 13, 0, tzinfo=timezone.utc),
+                       exclude_from_memory=True)
+    out = await day_window(user_id=world["userA"], book_id=world["bookD"], local_date=DAY_X, limit=5000, db=pool)
+    contents = [m["content"] for m in out["messages"]]
+    assert "SECRET do-not-remember" not in contents, "a don't-remember turn leaked into the day-window"
+    # the ordinary turns are unaffected
+    assert contents == ["09:00 first", "10:00 second", "11:00 third"]
 
 
 async def test_tool_names_surface_for_the_self_feeding_guard(pool, world):

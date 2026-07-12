@@ -159,6 +159,8 @@ async def day_window(
           AND ($2::uuid IS NULL OR s.book_id = $2)
           AND m.local_date = $3
           AND m.is_error = false
+          -- WS-2.9 (spec 09 §Q6) — a "don't remember this" turn (grounding off) is NOT distilled.
+          AND m.exclude_from_memory = false
         ORDER BY m.created_at, m.sequence_num
         LIMIT $4
         """,

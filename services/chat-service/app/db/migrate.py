@@ -275,6 +275,12 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_chat_messages_local_date
   ON chat_messages (owner_user_id, local_date, sequence_num) WHERE local_date IS NOT NULL;
 
+-- WS-2.9 (spec 09 §Q6) — the per-turn "don't remember this" escape hatch. When a user turns grounding
+-- OFF for a turn, that turn must not be captured in real time (already true) AND must not be distilled
+-- into the diary (the leak this closes — the distiller read the whole day regardless). A message flagged
+-- here is EXCLUDED from the day-window read. DEFAULT false keeps every existing message rememberable.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS exclude_from_memory BOOLEAN NOT NULL DEFAULT false;
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be
