@@ -1218,6 +1218,19 @@ END $bible$;
 
 CREATE INDEX IF NOT EXISTS idx_books_kind ON books(owner_user_id, kind);
 
+-- ONE active diary book per user (WS-1.4 provisioning step 1, spec 02 §Q2.1). Provisioning
+-- is a retryable, concurrent fan-out (two devices open /assistant at once, a BFF call is
+-- retried); its get-or-create matches on (owner_user_id, kind='diary', active). Without a
+-- DB-level unique, two concurrent provisions race into TWO diary books and the user's
+-- assistant memory silently splits in half — the exact split-brain the knowledge-side
+-- one-per-user is_assistant unique prevents. Partial + active-only so a TRASHED diary
+-- (E14: restore-vs-reprovision) does not block making a fresh one (the
+-- partial-unique-must-exempt-tombstones lesson). Any ON CONFLICT targeting this must repeat
+-- the predicate EXACTLY (the partial-index/ON-CONFLICT-predicate lesson).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_books_one_active_diary_per_user
+  ON books(owner_user_id)
+  WHERE kind = 'diary' AND lifecycle_state = 'active';
+
 -- kind is IMMUTABLE. Changing a book's kind would strip its privacy lock (diary -> novel
 -- makes a private diary publishable). To get a different kind, create a different book.
 CREATE OR REPLACE FUNCTION fn_books_kind_immutable()
