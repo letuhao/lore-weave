@@ -1,0 +1,234 @@
+"""28 AN-2/AN-3/AN-4 — the agent's three read surfaces.
+
+These tools exist because a weak model would not stitch 3-6 calls across three services to answer
+"what is this book, and what is wrong with it" — it simply did not try. So the two properties that
+decide whether they work are not "do they return data" but:
+
+  1. **They stay cheap.** A tool that blows the budget is a tool the agent stops calling. The
+     146K-token `composition_list_outline` incident is the precedent, and AN-2's whole shape
+     (counts + one-liners, never prose) is the response to it.
+  2. **They never fake a zero.** These are ORIENTATION reads: the agent acts on them. "0 unplanned
+     chapters" and "I could not reach book-service" lead to opposite actions, and only one is true.
+"""
+
+from __future__ import annotations
+
+import inspect
+import json
+
+import pytest
+
+from app.services.agent_native import (
+    REFERENCE_SOURCES,
+    SEVERITY,
+    Block,
+    Diagnostic,
+    Diagnostics,
+    arc_line,
+    cap_arcs,
+)
+
+
+# ── absent ≠ zero (the law all three live under) ─────────────────────────────────────────────────
+
+def test_a_DEGRADED_block_OMITS_its_key_rather_than_shipping_a_zero():
+    """The single most-repeated bug class in this repo, at the tool layer.
+
+    `{"unplanned_chapter_count": 0}` renders as "nothing is unplanned". A MISSING key forces the
+    consumer to branch — which is exactly right, because we genuinely do not know. An agent that
+    reads a faked 0 does not degrade its answer, it INVERTS it: it concludes the book is fully
+    planned and moves on."""
+    out: dict = {}
+    warnings: list[str] = []
+
+    Block.failed("book-service is unreachable").into(out, "manuscript", warnings)
+    assert "manuscript" not in out          # ABSENT, not 0
+    assert warnings == ["book-service is unreachable"]
+
+    Block({"chapter_count": 0}).into(out, "manuscript", warnings)
+    assert out["manuscript"] == {"chapter_count": 0}   # a REAL zero is still a zero
+
+
+def test_Block_failed_REQUIRES_a_reason():
+    """A degraded block with no warning is a silent failure wearing a different hat."""
+    assert inspect.signature(Block.failed).parameters["warning"].default is inspect.Parameter.empty
+
+
+# ── AN-2: the tree is ORIENTATION, and it must stay cheap ────────────────────────────────────────
+
+def test_the_arc_tree_is_CAPPED_and_SAYS_it_capped():
+    """A silent truncation reads as "this book has 50 arcs" — a different claim from "here are 50 of
+    them". `arcs_capped` is the difference between a fact and a lie."""
+    arcs = [_FakeArc(f"Arc {i}") for i in range(80)]
+    shown, capped = cap_arcs(arcs)
+    assert len(shown) == 50 and capped is True
+
+    shown, capped = cap_arcs(arcs[:10])
+    assert len(shown) == 10 and capped is False
+
+
+def test_an_arc_line_is_a_LINE_never_prose():
+    """AN-2's whole shape. The moment a summary or a goal gets in here, the tool is content, not
+    orientation, and it stops being callable on a real book."""
+    a = _FakeArc("The Iron Court", status="drafting")
+    line = arc_line(a, chapters=12)
+    assert len(line) <= 120
+    assert "The Iron Court" in line and "12 ch" in line
+
+
+def test_the_package_tree_STAYS_UNDER_BUDGET_on_a_10k_chapter_book():
+    """THE reason this tool exists (AN-2: "hard-capped ~2-4K tokens on a 10k-chapter book").
+
+    The 146K-token `composition_list_outline` incident is what happens when orientation and content
+    share one tool. If the tree grew with the book, the agent would stop calling it on exactly the
+    books that need it most."""
+    payload = {
+        "book_id": "0" * 36,
+        "work": {"project_id": "0" * 36, "title": "A Very Long Novel"},
+        "spec": {
+            "arc_count": 400,
+            "arcs": [arc_line(_FakeArc(f"Arc {i} — a fairly long arc title here"), chapters=25)
+                     for i in range(50)],          # capped at 50
+            "arcs_capped": True,
+        },
+        "manuscript": {"chapter_count": 10_000},   # a COUNT, not the chapters
+        "index": {"stale_chapter_count": 4200, "arcs_dirty": 39, "arcs_never_run": 12},
+        "coverage": {"unplanned_chapter_count": 900, "spine_truncated": False},
+        "runs": {"recent": [{"id": "0" * 36, "status": "compiled", "mode": "llm"}] * 5},
+    }
+    # ~4 chars/token is the standard rough estimate; 4K tokens ⇒ ~16K chars.
+    chars = len(json.dumps(payload))
+    assert chars < 16_000, f"the package tree is {chars} chars — orientation must stay cheap"
+
+
+# ── AN-3: a closed set, and exact counts ─────────────────────────────────────────────────────────
+
+def test_the_reference_sources_are_a_CLOSED_SET_of_eight():
+    """A closed-set arg gets an enum, or a weak model sends `"outline"` and gets a silent no-op —
+    the Frontend-Tool-Contract bug this repo shipped once."""
+    assert len(REFERENCE_SOURCES) == 8
+    assert set(REFERENCE_SOURCES) == {
+        "outline_pov", "outline_present", "scene_pov", "scene_present",
+        "structure_roster", "motif_application", "canon_rule", "narrative_thread",
+    }
+
+
+def test_an_UNKNOWN_source_RAISES_rather_than_returning_zero_hits():
+    """`(0, [])` for a typo reads as "this entity is used nowhere" — the worst possible lie for a
+    find-references tool, because the agent's next move on that answer is to DELETE something."""
+    from app.db.repositories.entity_references import EntityReferencesRepo
+
+    src = inspect.getsource(EntityReferencesRepo.find)
+    assert "raise ValueError(f\"unknown reference source: {source}\")" in src
+
+
+def test_the_repo_is_NOT_called_ReferencesRepo():
+    """One name, one concept. `ReferencesRepo` already exists and means the author's REFERENCE SHELF
+    (a research library with embeddings + cosine search). Hanging an entity-backlink query off it
+    would put two unrelated concepts behind one name — the exact drift the MCP Tool I/O standard's
+    one-name-one-concept rule exists to stop. (28's shorthand says `ReferencesRepo.find_by_entity`;
+    the shorthand is wrong, and following it would have been the bug.)"""
+    from app.db.repositories.entity_references import EntityReferencesRepo
+    from app.db.repositories.references import ReferencesRepo
+
+    assert EntityReferencesRepo is not ReferencesRepo
+    assert hasattr(ReferencesRepo, "search")          # the shelf's cosine search
+    assert not hasattr(ReferencesRepo, "find_by_entity")
+
+
+def test_the_narrative_thread_source_joins_through_the_NODE():
+    """`narrative_thread` has NO entity column. A promise is opened AT A NODE, so an entity's threads
+    are the promises opened where that entity appears. A genuine join — not a stand-in — and it is
+    the question an author actually asks: "what did I promise in her scenes?"."""
+    from app.db.repositories.entity_references import EntityReferencesRepo
+
+    src = inspect.getsource(EntityReferencesRepo._narrative_thread)
+    assert "JOIN outline_node n ON n.id = t.opened_at_node" in src
+    assert "n.pov_entity_id = $2 OR n.present_entity_ids @> ARRAY[$2::uuid]" in src
+
+
+def test_scenes_and_chapters_split_by_KIND_not_by_a_second_table():
+    """There is no `scenes` table in this database — the prose scenes live in book-service. But
+    `outline_node` holds BOTH, told apart by `kind`. That is what AN-1 means by "the outline
+    pov/present pair splits", and it is what keeps the tool composition-scoped (AN-3: no federation
+    in v1)."""
+    from app.db.repositories.entity_references import _NODE_KIND
+
+    assert _NODE_KIND == {
+        "outline_pov": "chapter", "outline_present": "chapter",
+        "scene_pov": "scene", "scene_present": "scene",
+    }
+
+
+# ── AN-4: compose, never recompute; and never spend ──────────────────────────────────────────────
+
+def test_diagnostics_COMPOSES_the_engines_and_computes_NOTHING_new():
+    """26 IX-14's consumer note is the law: ONE server-side computation, four consumers. A second
+    staleness implementation here would be a second source of truth that drifts the moment either
+    side is touched — the CSS-var duplication lesson, in SQL."""
+    from app.mcp import server
+
+    src = inspect.getsource(server.composition_diagnostics)
+    assert "compute_conformance_status(" in src   # (1) IX-14's helper, not a re-derivation
+    assert "canon_issues(" in src                 # (2) F-A5's repo
+    assert "list_open(" in src                    # (3) BA15's query
+    assert "compute_coverage(" in src             # (5) the SAME diff 24 H1.3 renders
+
+
+def test_diagnostics_NEVER_SPENDS():
+    """A read that silently RAN conformance would collapse the spend gate (07S: reversibility
+    determines autonomy — a read must stay a read). The refresh action is `composition_conformance_
+    run` (Tier-W), and the tool's job is to POINT AT it, not to call it."""
+    from app.mcp import server
+
+    src = inspect.getsource(server.composition_diagnostics)
+    assert "conformance_run(" not in src
+    assert "composition_conformance_run" in src   # …it names the Tier-W action instead
+    # and it is registered as a READ
+    block = inspect.getsource(server)
+    meta = block[block.index('name="composition_diagnostics"'):][:900]
+    assert 'require_meta(\n        "R"' in meta or '"R", "book"' in meta
+
+
+def test_the_severity_map_is_FIXED_not_computed():
+    """A diagnostics tool that ranked by its own judgement would be a second opinion competing with
+    the engines that produced the findings."""
+    assert SEVERITY["canon_contradiction"] == "error"
+    assert SEVERITY["conformance_dirty"] == "warn"
+    assert SEVERITY["open_thread_debt"] == "info"
+
+
+def test_diagnostics_ranks_error_then_warn_then_info_and_caps_ROWS_not_COUNTS():
+    """OUT-5. The agent reasons about the NUMBER ("is this book in trouble?") and only samples the
+    rows to act. Capping the count would make it reason about a lie."""
+    d = Diagnostics()
+    for i in range(30):
+        d.add(Diagnostic(kind="open_thread_debt", severity="info", title=f"info {i}"))
+    d.add(Diagnostic(kind="canon_contradiction", severity="error", title="the error"))
+    d.add(Diagnostic(kind="conformance_dirty", severity="warn", title="the warning"))
+
+    out = d.ranked(cap=5)
+    assert out["items"][0]["severity"] == "error"
+    assert out["items"][1]["severity"] == "warn"
+    assert len(out["items"]) == 5
+    assert out["refs_capped"] is True
+    # …the COUNTS are exact and uncapped
+    assert out["total"] == 32
+    assert out["counts"]["open_thread_debt"] == 30
+
+
+def test_a_source_that_FAILS_becomes_a_WARNING_not_a_missing_problem():
+    """The nastiest failure mode a problems panel has: a source dies, and the book looks HEALTHIER
+    than it is. Silence must never read as "no problems here"."""
+    d = Diagnostics()
+    d.warnings.append("canon contradictions could not be read")
+    out = d.ranked()
+    assert out["total"] == 0
+    assert out["warnings"] == ["canon contradictions could not be read"]
+
+
+class _FakeArc:
+    def __init__(self, title: str, *, status: str = "", kind: str = "arc") -> None:
+        self.title = title
+        self.status = status
+        self.kind = kind

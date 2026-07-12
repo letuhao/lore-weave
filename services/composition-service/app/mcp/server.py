@@ -70,6 +70,7 @@ from app.clients.knowledge_client import (
 )
 from app.config import settings
 from app.db.models import LinkKind, PlanPassId, SceneExitState
+from app.services.agent_native import ReferenceSource, resolve_scope
 from app.services.plan_pass_service import UpstreamStale
 from app.db.pool import get_pool
 from app.db.repositories import (
@@ -81,6 +82,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
+from app.db.repositories.entity_references import EntityReferencesRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -3683,6 +3685,370 @@ async def plan_link(
         raise uniform_not_accessible()
     except ValueError as exc:
         return {"success": False, "error": "cannot link", "detail": str(exc)[:300]}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 28 AN-2/AN-3/AN-4 — THE AGENT'S THREE READ SURFACES.
+#
+# The gap layer 28 AN-1 enumerates, and nothing more: an `ls -R`, a find-references, and a problems
+# panel. All three are Tier-R and all three COMPOSE — they call the code that already owns each
+# number rather than deriving it again (26 IX-14's consumer note is the law: one computation, four
+# consumers).
+#
+# They exist because the agent was stitching 3-6 calls across three services to answer "what is this
+# book and what is wrong with it", and a weak model simply did not try. One cheap orientation read
+# is the highest-leverage anti-thrash lever there is — and the 146K-token `composition_list_outline`
+# incident is what happens when orientation and CONTENT share one tool, so these return counts and
+# one-liners, never prose. Drill-down stays with the per-layer list tools.
+
+
+@mcp_server.tool(
+    name="composition_package_tree",
+    description=(
+        "The book at a glance — the agent's `ls -R`. ONE cheap read that replaces the 3-6 call "
+        "stitch across composition, book-service and glossary: the spec tree (arcs, one line each), "
+        "the manuscript spine (chapter counts), planning-run state, index/conformance freshness, and "
+        "the planned-vs-written coverage gap. Summary-shaped and hard-capped — it is ORIENTATION, "
+        "not content. To read an arc's actual nodes use composition_list_outline / "
+        "composition_arc_list; for the plan's passes use plan_pass_status. A block that could not be "
+        "computed is ABSENT with a warning, never a zero. VIEW required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["package tree", "book overview", "what is in this book", "book structure",
+                  "ls", "orient me", "show me the book", "book at a glance"],
+        tool_name="composition_package_tree",
+    ),
+)
+async def composition_package_tree(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+) -> dict:
+    from app.services.agent_native import Block, arc_line, cap_arcs
+
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.VIEW)
+
+    pool = get_pool()
+    # Canonical-Work scoping (PM-3/PM-4, 25 OQ-2) — a DERIVATIVE's rows never merge into the
+    # source's tree. `resolve_scope` also tolerates a book whose Work is still PENDING: the spec
+    # tree is BOOK-keyed, so it answers regardless, and only the project-keyed blocks go absent.
+    work, pid = await resolve_scope(WorksRepo(pool), bid)
+
+    out: dict[str, Any] = {"book_id": str(bid)}
+    warnings: list[str] = []
+    if work is not None:
+        out["work"] = {"project_id": str(pid), "status": work.status}
+    else:
+        warnings.append("this book has no composition work yet — nobody has planned it")
+
+    # ── spec/ — the arc tree, one line per arc ────────────────────────────────────────────
+    try:
+        arcs = await StructureRepo(pool).list_tree(bid)
+        shown, capped = cap_arcs(arcs)
+        spec = Block({
+            "arc_count": len(arcs),
+            "arcs": [arc_line(a) for a in shown],
+            "arcs_capped": capped,
+        })
+    except Exception:  # noqa: BLE001 — one block degrades; the tree still orients
+        logger.warning("package_tree: spec block failed", exc_info=True)
+        spec = Block.failed("the spec tree could not be read")
+    spec.into(out, "spec", warnings)
+
+    # ── manuscript/ — the chapter spine, from book-service (the pack.py precedent) ─────────
+    try:
+        from app.clients.book_client import BookClientError, get_book_client
+
+        chapters = await get_book_client().list_chapters(
+            bid, mint_service_bearer(tc.user_id, settings.jwt_secret),
+            limit=100_000, raise_on_404=True,
+        )
+        manuscript = Block({"chapter_count": len(chapters)})
+    except Exception as exc:  # noqa: BLE001
+        # ABSENT, not zero. "0 chapters" and "book-service is unreachable" lead an agent to
+        # OPPOSITE actions, and only one of them is true.
+        logger.warning("package_tree: manuscript block failed: %s", exc)
+        manuscript = Block.failed(
+            "the manuscript spine is unavailable (book-service unreachable) — "
+            "chapter counts and the coverage gap are OMITTED, not zero",
+        )
+    manuscript.into(out, "manuscript", warnings)
+
+    # ── .index/ — COMPOSES 26 IX-14's ONE staleness computation, never a re-derivation ─────
+    try:
+        from app.clients.book_client import get_book_client
+        from app.engine.arc_conformance_orchestrate import compute_conformance_status
+
+        status = await compute_conformance_status(
+            pool=pool, book_client=get_book_client(), book_id=bid,
+        )
+        index = Block({
+            "stale_chapter_count": status["index"]["stale_chapter_count"],
+            "arcs_dirty": sum(1 for a in status["arcs"] if a.get("dirty")),
+            "arcs_never_run": sum(
+                1 for a in status["arcs"] if "never_run" in (a.get("dirty_reasons") or [])
+            ),
+        })
+    except Exception:  # noqa: BLE001
+        logger.warning("package_tree: index block failed", exc_info=True)
+        index = Block.failed("index/conformance freshness could not be computed")
+    index.into(out, "index", warnings)
+
+    # ── coverage — the SAME diff 24 H1.3 renders in the PH21 tray (one implementation) ─────
+    if "manuscript" in out:
+        try:
+            from app.clients.book_client import get_book_client
+            from app.services.coverage import compute_coverage
+
+            cov = await compute_coverage(
+                bid, mint_service_bearer(tc.user_id, settings.jwt_secret),
+                book=get_book_client(), outline=OutlineRepo(pool),
+            )
+            if cov.degraded:
+                warnings.append(cov.warning or "the coverage diff degraded")
+            else:
+                out["coverage"] = {
+                    "unplanned_chapter_count": cov.unplanned_count,
+                    "unplanned_capped": cov.unplanned_capped,
+                    "spine_truncated": cov.spine_truncated,
+                }
+        except Exception:  # noqa: BLE001
+            logger.warning("package_tree: coverage block failed", exc_info=True)
+            warnings.append("the planned-vs-written coverage diff could not be computed")
+
+    # ── .runs/ — the planning runs ────────────────────────────────────────────────────────
+    try:
+        from app.db.repositories.plan_runs import PlanRunsRepo
+
+        # `list_for_book` returns (rows, next_cursor) — a TUPLE. Unpacking it as a list gave
+        # `'list' object has no attribute 'id'`, which the block caught and turned into an honest
+        # warning rather than a fake empty `runs` — the degrade posture doing its job while I had
+        # the shape wrong.
+        rows, _cursor = await PlanRunsRepo(pool).list_for_book(bid, limit=5)
+        out["runs"] = {
+            "recent": [
+                {"id": str(r.id), "status": r.status, "mode": r.mode}
+                for r in (rows or [])
+            ],
+        }
+    except Exception:  # noqa: BLE001
+        logger.warning("package_tree: runs block failed", exc_info=True)
+        warnings.append("the planning-runs block could not be read")
+
+    if warnings:
+        out["warnings"] = warnings
+    return out
+
+
+@mcp_server.tool(
+    name="composition_find_references",
+    description=(
+        "Find-references for an entity, across the SPEC layer: which outline nodes have it as POV or "
+        "present, which scenes, which arc rosters bind it, which motif applications and canon rules "
+        "and narrative threads name it. Returns EXACT counts per source plus a capped sample of rows. "
+        "Composition-scope: for the PROSE side also call glossary_list_chapter_links / "
+        "glossary_get_entity_evidence, and for the GRAPH side kg_entity_edge_timeline — this tool "
+        "does not federate to them. VIEW required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["find references", "where is this character used", "who uses this entity",
+                  "backlinks", "usages", "where does X appear"],
+        tool_name="composition_find_references",
+    ),
+)
+async def composition_find_references(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    entity_id: Annotated[str, "The glossary entity (UUID)."],
+    sources: Annotated[
+        list[ReferenceSource] | None,
+        "Which sources to search. Omit for all eight.",
+    ] = None,
+    limit: Annotated[int, "Max rows per source (counts stay exact)."] = 20,
+) -> dict:
+    from app.services.agent_native import REFERENCE_SOURCES
+
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.VIEW)
+
+    pool = get_pool()
+    _work, pid = await resolve_scope(WorksRepo(pool), bid)
+
+    eid = UUID(entity_id)
+    want = tuple(sources) if sources else REFERENCE_SOURCES
+    cap = max(1, min(int(limit or 20), 100))
+
+    repo = EntityReferencesRepo(pool)
+    out_sources: dict[str, Any] = {}
+    for src in want:
+        try:
+            count, refs = await repo.find(
+                src, book_id=bid, project_id=pid or bid, entity_id=eid, limit=cap,
+            )
+        except Exception:  # noqa: BLE001 — one source degrades; the rest still answer
+            logger.warning("find_references: source %s failed", src, exc_info=True)
+            out_sources[src] = {"error": "this source could not be read"}
+            continue
+        out_sources[src] = {
+            # EXACT — the agent reasons about the number, and only samples the rows.
+            "count": count,
+            "refs": refs,
+            "has_more": count > len(refs),
+        }
+    return {
+        "book_id": str(bid),
+        "entity_id": str(eid),
+        "sources": out_sources,
+        "_meta": {
+            "note": (
+                "Composition scope only. The prose side is glossary_list_chapter_links + "
+                "glossary_get_entity_evidence; the graph side is kg_entity_edge_timeline."
+            ),
+        },
+    }
+
+
+@mcp_server.tool(
+    name="composition_diagnostics",
+    description=(
+        "The problems panel: everything wrong with this book, ranked error → warn → info. Canon "
+        "contradictions, conformance that is dirty or never run, index staleness, chapters written "
+        "with no plan, and open thread debt. READ-ONLY and cheap — it never calls an LLM and never "
+        "runs conformance. To refresh a dirty arc, call composition_conformance_run (which spends). "
+        "Counts are exact; rows are capped. VIEW required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["diagnostics", "problems", "what is wrong", "issues", "what needs fixing",
+                  "problems panel", "health check"],
+        tool_name="composition_diagnostics",
+    ),
+)
+async def composition_diagnostics(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    limit: Annotated[int, "Max item rows (counts stay exact)."] = 25,
+) -> dict:
+    from app.services.agent_native import SEVERITY, Diagnostic, Diagnostics
+
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.VIEW)
+
+    pool = get_pool()
+    _work, pid = await resolve_scope(WorksRepo(pool), bid)
+
+    diag = Diagnostics()
+    if pid is None:
+        # Absent, not zero. Without a project we cannot read canon issues, thread debt or motif
+        # applications — and "no problems found" over sources we never queried is the single most
+        # dangerous thing a problems panel can say.
+        diag.warnings.append(
+            "this book has no composition work — canon issues, thread debt and motif "
+            "applications were NOT checked (absent, not zero)",
+        )
+
+    # (1) conformance + index staleness — COMPOSES IX-14's one computation
+    try:
+        from app.clients.book_client import get_book_client
+        from app.engine.arc_conformance_orchestrate import compute_conformance_status
+
+        status = await compute_conformance_status(
+            pool=pool, book_client=get_book_client(), book_id=bid,
+        )
+        for arc in status["arcs"]:
+            reasons = arc.get("dirty_reasons") or []
+            if "never_run" in reasons:
+                kind = "conformance_never_run"
+            elif arc.get("dirty"):
+                kind = "conformance_dirty"
+            else:
+                continue
+            diag.add(Diagnostic(
+                kind=kind, severity=SEVERITY[kind],
+                title=f'arc "{arc.get("title") or "(untitled)"}" — {", ".join(reasons) or "dirty"}',
+                detail="run composition_conformance_run to refresh it",
+                node_ref={"kind": "arc", "id": arc["structure_node_id"],
+                          "title": arc.get("title")},
+                at=arc.get("computed_at"),
+            ))
+        stale = status["index"]["stale_chapter_count"]
+        if stale:
+            diag.add(Diagnostic(
+                kind="index_stale", severity=SEVERITY["index_stale"],
+                title=f"{stale} chapter(s) have a stale prose index",
+                detail="the sweeper heals these; re-indexing refreshes the canon windows",
+            ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: conformance source failed", exc_info=True)
+        diag.warnings.append("conformance + index staleness could not be computed")
+
+    # (2) canon contradictions — F-A5's repo finally gets an agent-reachable caller
+    try:
+        if pid is None:
+            raise LookupError("no project")
+        for issue in await OutlineRepo(pool).canon_issues(pid):
+            violations = issue.get("violations") or []
+            diag.add(Diagnostic(
+                kind="canon_contradiction", severity=SEVERITY["canon_contradiction"],
+                title=f'{len(violations)} canon violation(s) in "{issue.get("scene_title") or "a scene"}"',
+                detail="; ".join(
+                    str(v.get("detail") or v.get("rule") or v)[:120] for v in violations[:2]
+                ),
+                node_ref={"kind": "scene", "id": issue["scene_id"],
+                          "title": issue.get("scene_title")},
+                at=issue.get("created_at"),
+            ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: canon source failed", exc_info=True)
+        diag.warnings.append("canon contradictions could not be read")
+
+    # (3) open thread debt (BA15)
+    try:
+        if pid is None:
+            raise LookupError("no project")
+        threads = await NarrativeThreadRepo(pool).list_open(pid, limit=100)
+        if threads:
+            diag.add(Diagnostic(
+                kind="open_thread_debt", severity=SEVERITY["open_thread_debt"],
+                title=f"{len(threads)} open promise(s) still unpaid",
+                detail="; ".join((t.summary or "")[:60] for t in threads[:3]),
+            ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: thread source failed", exc_info=True)
+        diag.warnings.append("open thread debt could not be read")
+
+    # (5) unplanned chapters — the SAME coverage diff 24 H1.3 renders (one implementation)
+    try:
+        from app.clients.book_client import get_book_client
+        from app.services.coverage import compute_coverage
+
+        cov = await compute_coverage(
+            bid, mint_service_bearer(tc.user_id, settings.jwt_secret),
+            book=get_book_client(), outline=OutlineRepo(pool),
+        )
+        if cov.degraded:
+            # Absent, not zero. "0 unplanned chapters" is a claim we cannot make.
+            diag.warnings.append(
+                cov.warning or "the planned-vs-written diff degraded — unplanned chapters UNKNOWN",
+            )
+        else:
+            for ch in cov.unplanned[:limit]:
+                diag.add(Diagnostic(
+                    kind="unplanned_chapter", severity=SEVERITY["unplanned_chapter"],
+                    title=f'chapter "{ch.get("title") or "(untitled)"}" is written but not planned',
+                    node_ref={"kind": "chapter", "id": str(ch.get("chapter_id") or ""),
+                              "title": ch.get("title")},
+                ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: coverage source failed", exc_info=True)
+        diag.warnings.append("the planned-vs-written diff could not be computed")
+
+    return {"book_id": str(bid), **diag.ranked(cap=max(1, min(int(limit or 25), 100)))}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

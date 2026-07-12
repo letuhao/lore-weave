@@ -102,6 +102,8 @@ EXPECTED_TOOLS = {
     # `plan_run_pass` refuses with its blockers named, and only `plan_review_checkpoint` (which a
     # human drives) clears a blocking pass.
     "plan_run_pass", "plan_pass_status", "plan_link",
+    # 28 AN-2/AN-3/AN-4 — the agent's three read surfaces (the gap layer AN-1 enumerates).
+    "composition_package_tree", "composition_find_references", "composition_diagnostics",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_outline_node",
