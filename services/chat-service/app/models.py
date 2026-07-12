@@ -335,6 +335,10 @@ class ChatSession(BaseModel):
     # FE consumes both: the GET response sets the initial badge, the
     # SSE stream updates it on each turn.
     memory_mode: str = "no_project"
+    # WS-1.6 (spec 05 §Q7) — the last persisted per-turn capture decision
+    # ({"fire": bool, "reason": str}) so the assistant home strip can render capture
+    # visibly ON/OFF with a reason on GET. None until the first post-turn write.
+    capture_status: dict[str, Any] | None = None
     enabled_tools: list[str] = Field(default_factory=list)
     enabled_skills: list[str] = Field(default_factory=list)
     activated_tools: list[str] = Field(default_factory=list)

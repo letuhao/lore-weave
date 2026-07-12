@@ -38,7 +38,7 @@ from loreweave_llm import (
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.client.known_entities_client import get_known_entities_client
-from app.services.canon_capture import CaptureContext, maybe_capture_canon
+from app.services.canon_capture import CaptureContext, maybe_capture_canon, persist_capture_status
 from app.services.context_autodetect import resolve_context_pressure
 from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.services.injection_defense import neutralize_injection
@@ -4579,7 +4579,7 @@ async def _emit_chat_turn(
         # `_capture_book_id` is the book knowledge-service resolved from the session's own
         # project — never the FE-supplied `_ctx_book_id`. None on a multi-project turn:
         # capture writes into ONE book's inbox and a union of projects has no single book.
-        maybe_capture_canon(
+        _capture_decision = maybe_capture_canon(
             ctx=canon_capture_ctx,
             user_id=str(user_id),
             assistant_turn_count=current_count,
@@ -4590,6 +4590,10 @@ async def _emit_chat_turn(
             # with no `user_default_models` row, which is the common case.
             model_ref=model_ref if model_source == "user_model" else None,
         )
+        # WS-1.6 (spec 05 §Q7) — persist the decision so the assistant home strip can render
+        # capture visibly ON/OFF *with a reason*, not just trust it is on. Best-effort +
+        # awaited (a single indexed UPDATE at turn-end); persist swallows its own errors.
+        await persist_capture_status(pool, session_id, _capture_decision)
 
         # Log usage async (non-blocking)
         if post_finish_state["last_usage"]:

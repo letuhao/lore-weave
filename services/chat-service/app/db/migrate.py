@@ -224,6 +224,17 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- WS-1.6 (spec 05 §Q7) — the per-turn capture decision, PERSISTED so the assistant home
+-- strip can show capture visibly ON or OFF *with a reason* ({"fire": bool, "reason": str}).
+-- The decision was computed + logged every turn but discarded by the caller; a status that is
+-- computed-but-not-surfaced is exactly the silent-no-op "collecting" chip this repo shipped
+-- twice. NULL until the first post-turn write.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='capture_status') THEN
+    ALTER TABLE chat_sessions ADD COLUMN capture_status JSONB;
+  END IF;
+END $$;
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be

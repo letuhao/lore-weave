@@ -32,6 +32,7 @@ Design notes worth keeping:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 
@@ -46,7 +47,32 @@ __all__ = [
     "should_capture",
     "run_canon_capture",
     "maybe_capture_canon",
+    "persist_capture_status",
 ]
+
+
+async def persist_capture_status(pool, session_id, decision: "CaptureDecision") -> None:
+    """WS-1.6 (spec 05 §Q7) — persist the per-turn capture decision on the session so the
+    assistant home strip can render capture visibly ON or OFF *with a reason*
+    ({"fire": bool, "reason": str}).
+
+    The decision was computed and logged every turn but discarded by the caller. A status
+    that is computed-but-not-surfaced is the silent-no-op "collecting" chip this repo has
+    shipped twice — the home strip must be able to READ it, not just trust that capture is on.
+
+    Best-effort, like capture itself (runs after RUN_FINISHED): a persist failure must never
+    surface to the user or delay the next turn.
+    """
+    try:
+        await pool.execute(
+            "UPDATE chat_sessions SET capture_status = $2::jsonb WHERE session_id = $1::uuid",
+            str(session_id),
+            json.dumps({"fire": decision.fire, "reason": decision.reason}),
+        )
+    except Exception:  # noqa: BLE001 — best-effort; never break the turn
+        logger.warning(
+            "failed to persist capture_status for session %s", session_id, exc_info=True
+        )
 
 # asyncio only holds a WEAK reference to a running task. A capture can run for
 # `canon_capture_timeout_s` (90s by default), so a bare `create_task(...)` whose Task object

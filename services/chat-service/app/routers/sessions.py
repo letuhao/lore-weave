@@ -49,6 +49,11 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
     gp = r["generation_params"]
     if isinstance(gp, str):
         gp = json.loads(gp)
+    # WS-1.6 — the persisted per-turn capture decision (JSONB → dict). asyncpg may hand it
+    # back as a str; parse it so the home strip reads {"fire", "reason"}, not a raw string.
+    cap = r.get("capture_status")
+    if isinstance(cap, str):
+        cap = json.loads(cap)
     project_id = r.get("project_id")
     project_ids = list(r.get("project_ids") or [])
     # K-CLEAN-5 (D-K8-04): derive initial memory_mode from the project link.
@@ -83,6 +88,7 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         book_id=r.get("book_id"),
         project_ids=project_ids,
         memory_mode=memory_mode,
+        capture_status=cap,
         composer_model_source=r.get("composer_model_source"),
         composer_model_ref=r.get("composer_model_ref"),
         planner_model_source=r.get("planner_model_source"),
