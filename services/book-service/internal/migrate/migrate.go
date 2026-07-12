@@ -1279,6 +1279,11 @@ ALTER TABLE chapters ADD COLUMN IF NOT EXISTS entry_date DATE;
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS journal_kind TEXT
   CHECK (journal_kind IS NULL OR journal_kind IN ('primary','supplement'));
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS diary_kept_at TIMESTAMPTZ;
+-- WS-1.8 (spec 06 §Q3/T21) — the IANA zone in effect when entry_date was computed, stored for
+-- auditability. entry_date has no timezone semantics at the DB layer (the distiller resolves the
+-- local day before the insert); entry_zone records WHICH zone produced it so a later zone change
+-- is auditable and a spring-forward/DST question can be answered. NULL for pre-WS-1.8 entries.
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS entry_zone TEXT;
 
 -- ONE primary entry per day, per book. The predicate must repeat EXACTLY in any
 -- ON CONFLICT that targets it (the repo's partial-index/ON-CONFLICT lesson), and it must

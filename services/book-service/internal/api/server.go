@@ -227,6 +227,10 @@ func (s *Server) Router() http.Handler {
 		// contract (200-id cap, partial responses) but is book-scoped by the path.
 		r.Post("/books/{book_id}/chapters/canon-markers", s.postInternalChapterCanonMarkers)
 		r.Patch("/imports/{import_id}", s.updateImportJobStatus)
+		// WS-1.8 (spec 06 §Q10) — the journal distiller's ONLY write seam: draft-only,
+		// owner-scoped, idempotent primary-per-day diary entry. Internal-token (the worker
+		// has no user JWT); the (book, owner) pair is verified to be the caller's own diary.
+		r.Post("/books/{book_id}/diary/entry", s.upsertDiaryEntry)
 	})
 
 	r.Route("/v1/books", func(r chi.Router) {
