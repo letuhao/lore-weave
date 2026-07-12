@@ -587,3 +587,21 @@ ON CONFLICT (code) WHERE owner_user_id IS NULL DO NOTHING;
 async def run_migrations(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
         await conn.execute(DDL)
+    # B1 / spec 07 §Q3 (T31) — a pg_trgm GIN index accelerates chat_search_sessions' ILIKE '%…%'
+    # cross-session recall (the existing GIN is English tsvector, useless for VI/CJK names). CREATE
+    # EXTENSION + the index run OUTSIDE the main DDL as BEST-EFFORT: a role lacking CREATE-EXTENSION
+    # privilege must NOT abort the migration (chat-service would fail to start). Recall still works
+    # without the index (a scan); this is purely a performance optimization. No CONCURRENTLY inside
+    # the transactional migrator.
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    for stmt in (
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "CREATE INDEX IF NOT EXISTS idx_chat_messages_content_trgm "
+        "ON chat_messages USING gin (content gin_trgm_ops)",
+    ):
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute(stmt)
+        except Exception:  # noqa: BLE001 — best-effort; recall degrades to a scan, never a failed boot
+            _log.warning("best-effort trigram index step skipped (recall falls back to a scan): %s", stmt)
