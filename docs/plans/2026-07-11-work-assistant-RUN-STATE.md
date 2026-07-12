@@ -11,10 +11,44 @@
 
 ---
 
+## ▶ ACTIVE GOAL v2 (set 2026-07-12) — the USABLE, SAFE, END-TO-END MVP
+
+**Phase 1 AND Phase 2 COMPLETE and LIVE-PROVEN end-to-end, then Phases 3–4 as turns allow (Phase 5 stays
+parked — spec-forbidden).** The anti-uselessness gate: not done until the WHOLE LOOP live-smokes on a rebuilt
+stack with pasted proof — **provision → chat → consent ON → capture lands a work entity (home strip, with a
+reason) → "End my day" → reviewable diary entry (correct `entry_date`) → recall answers "what did I tell you
+about ‹X›" → erase the account, diary content PROVEN GONE.** + P-1/P-3 built, D-R18 (owner-only diary stats)
+built, `/review-impl` per phase, a final independent audit. Full goal text in the /goal hook.
+
+**Human decisions locked this session:** D-R17 (D6 fail-closed CONFIRMED) · D-R18 (diary stats → OWNER only) ·
+D-R19 (P-1: campaigns index drafts + diary guard) · D-R20 (P-3: keep-both, per-revision passages) · D-R21
+(Q4 → with WS-1.10). **T-4 ratified → `session_kind` (D-R15 reversed).**
+
+### BUILD ORDER (dependency-correct — backend backbone first so it's testable before the FE ties it together)
+
+| # | Track | What | Unblocks |
+|---|---|---|---|
+| **A1** | backbone | **Distiller LIVE TRIGGER (P-10):** an "End my day" path that runs `distill_and_write` on a rebuilt stack (endpoint + worker path; model-home resolution). | "End my day" produces a real entry |
+| **A2** | backbone | **Consent toggle** — a server-side setting to flip `chat_turn_extraction_enabled` (fail-closed default, D-R17), CONSUMED by the D6 gate + surfaced. | capture can go live |
+| **A3** | backbone | **Assistant "today's session"** create with `session_kind='assistant'` + diary `book_id` (WS-1.4 step 8). | chat + capture + day-window all resolve |
+| **A4** | backbone | **Timezone confirm + tz-aware `local_date`** population (D-R14 (i)+(ii), DBT-11). | correct `entry_date` bucketing |
+| **B1** | recall | **WS-1.9** `chat_search_sessions` + chat-service's first MCP server (federated `chat_` prefix). | recall leg of the loop |
+| **B2** | review | **Diary GUI / review surface** (spec 03) — review + KEEP an entry (sets `diary_kept_at`). | the review leg |
+| **B3** | erasure | **Erasure worker (DBT-8/9)** — call the crypto-shred + delete content rows across services (release req). | erase leg (ABSENCE proof) |
+| **C** | FE | **WS-1.10 FE shell** — chat, home-strip chip, consent toggle, "End my day", entry review, recall; browser-smoked. + WS-1.7 session template + WS-1.11 reflection + Q4/P-11 (D-R21). | the user surface; the E2E |
+| **D** | Phase 2 | fact pipeline (facts from entries) · D17 amendment · spend lane WS-2.8 · is_self(f) · Q6. | memory depth |
+| **E** | products | **P-1** (draft campaigns + diary guard, D-R19) · **P-3** (keep-both passages, D-R20). | the two PO decisions |
+| **F** | stats | **D-R18** owner-only diary stats + no-cross-user-leak test. | the amended stats decision |
+
+**E2E live smoke (goal condition 2) needs A + B + C.** Start at **A1**.
+
+---
+
 ## 1. The goal (one sentence)
 
 **Ship the Work Assistant end to end — Phase 0 → Phase 5 — with every slice `/review-impl`-clean, every
-deferred item closed before "done", and no silent lowering of the bar.**
+deferred item closed before "done", and no silent lowering of the bar.** (Superseded operationally by the
+**ACTIVE GOAL v2** block above — v1 was the overnight Phase-0/1 run; v2 is the current usable-MVP goal.)
 
 ## 2. Autonomy contract (agreed with PO 2026-07-11)
 
@@ -165,7 +199,12 @@ WS-1.x slice that finishes it. The gate is **honestly PARTIAL**, matching the ho
 | **D-R7** | The WS-0.2 backfill is **marker-gated once-only** (`kg_indexed_backfill_v1` in `canon_model_migration`), not an idempotent every-boot UPDATE. | This is a **privacy** property, not startup-cost hygiene. `kg_exclude` retraction (§3.8) clears the pointer on a chapter the user removed from their KG — but that chapter is *still* `published` with a pinned `published_revision_id`. An ungated re-run would re-set the pointer on the next restart and silently pull it back into the graph: **a privacy decision undone by a reboot.** The `kg_exclude = false` guard inside the UPDATE is belt-and-braces; the marker is the real defense (it also makes behavior independent of restart timing). Proven live by `TestKGIndexedBackfillIsMarkerGatedAndCannotResurrectAnExcludedChapter`. | Yes |
 | **D-R14** | **`chat_messages.local_date` is populated SERVER-side in the message-write path** from the user's `prefs.timezone` (cached per-stream) with a **UTC fallback** until the zone is set. Shipped so far: the column + UTC-fallback `DEFAULT` + index; the tz-aware override is the follow-up. | Server-authoritative — a client-passed local date is user-controllable and would let a caller mis-bucket history (T21). It degrades safely: UTC bucketing until the WS-1.4 confirm sets the zone, never blocking a write. Stamping at write-time (not deriving the day at distill time) is what stops a later timezone change from re-bucketing history into duplicate entries. | Yes |
 | **D-R15** ❌ **REVERSED (2026-07-12)** — the completeness audit found this silently overrode sealed T-4; the human ratified T-4, so the explicit **`chat_sessions.session_kind` column** is now the discriminator (the day-window read filters `session_kind='assistant'`; `book_id` is an optional extra scope). Original (now-reverted) decision below. | **The assistant-session discriminator is `chat_sessions.book_id = the diary book`, NOT a new `session_kind` column** (spec 02 §Q1 left this to PLAN). The day-window read filters on `book_id`. | The `book_id` column already exists and WS-1.4 already establishes the diary; the session-create path (WS-1.7/1.10) stamps it. A second `session_kind` marker would be **two sources of truth** for "is this the assistant?" that can drift (the one-name-for-one-concept rule). `book_id` IS the binding. | Yes (add `session_kind` later if a session ever needs to be assistant-bound without a diary — not the case today). |
-| **D-R16** | **The distiller's diary-entry write does NOT emit `chapter.created`.** | I checked the only consumer (statistics-service `handleChapterCreated`): it reads `book_id` only (no content — no KG/content leak) and refreshes a chapter **count**, enrolling the book into the reading/statistics aggregates meant for browsable novels. The diary is deliberately OUTSIDE those aggregates (the same principle as the WS-1.2 egress guards that hide it from the library grid), so emitting the event would quietly enrol a private diary into a stats surface. The KG index of a diary entry is a separate explicit step (Phase 2 fact path), never an auto-consequence of the write. | Yes |
+| **D-R16** (amended by D-R18) | **The distiller's diary-entry write does NOT emit `chapter.created`** (so it stays out of the SHARED reading/statistics aggregates meant for browsable novels). ⚠️ **The human amended the "no stats at all" part → D-R18:** the diary DOES surface stats, but to the OWNER only. | statistics-service `handleChapterCreated` enrols a book into cross-user reading/stats aggregates; the diary must not enter those. But the owner wants their own diary metrics — resolved by a SEPARATE owner-scoped path (D-R18), not by emitting the shared event. | Yes |
+| **D-R17** ✅ human-confirmed | **D6 stays fail-closed: `chat_turn_extraction_enabled` DEFAULT FALSE.** The assistant captures a user's real colleagues only after EXPLICIT consent. | Human ratified (2026-07-12) the override of the spec's default-ON. A privacy flag that fails open is a bug; opt-IN is correct. | No — sealed by human. |
+| **D-R18** ✅ human-decided (amends D-R16) | **The diary surfaces stats to the OWNER ONLY**, via an owner-scoped path — NEVER a cross-user / trending / leaderboard aggregate. Requires a test proving no cross-user leak. | Human chose "include in the user's own stats" over "keep out of all stats". The privacy line: the owner sees their own entry-count/words/streak; no other user and no shared surface ever sees the diary. Implementation: a private owner-scoped diary-stats read, not the shared `chapter.created`→statistics path (which D-R16 still correctly avoids). | Yes |
+| **D-R19** ✅ human-decided (P-1) | **Campaigns (batch translation) enumerate INDEXED drafts, not published-only** — for platform consistency with the WS-0.6 publish-independent KG work. **MANDATORY pairing:** a `kind='diary'` exclusion guard so a private diary is never batch-translated/shipped to a provider. | Human chose "support drafts". The re-key (`editorial_status=published` → `kg_indexed`) + rename `list_published_chapters`→`list_indexed_chapters` MUST ship with the diary guard (campaign-service predates the diary + has no kind check — an egress hole otherwise). | Yes |
+| **D-R20** ✅ human-decided (P-3) | **Indexing a newer draft on a published chapter KEEPS BOTH** — A's canon passages AND B's draft passages side by side (canon search sees A; `surface=all` sees B). | Human chose "keep both" over demote/refuse. Needs a schema change: a passage set keyed PER-REVISION, not per-chapter (today `ingest_chapter_passages` delete-then-upserts the whole chapter set). Larger/structural but the correct foundation. | Yes (schema) |
+| **D-R21** ✅ human-decided (Q4 timing) | **The two-Minh disambiguation guard (P-11) is built WITH WS-1.10**, when work-capture is live and testable end-to-end (not defensively-now). | Human chose "with WS-1.10". Latent until then (capture fail-closed); building it against the real live path validates it properly. | Yes |
 
 ## 7. Parked problems (blocked ≠ stopped — PO reviews these)
 
