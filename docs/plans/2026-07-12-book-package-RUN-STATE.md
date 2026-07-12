@@ -126,7 +126,13 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + evidence · `🅿️` pa
 | `plan_run.pass_state` / `.genre_tags` | ⛔ **absent.** ⚠️ Evidence correction: `pass_state` is a **JSONB COLUMN on `plan_run`**, not a table — my run-start check probed `to_regclass('pass_state')`, which can only ever return NULL. Right conclusion, wrong evidence. Re-verified against `information_schema.columns`: `plan_run` = id/created_by/book_id/work_id/status/mode/model_ref/source_checksum/source_markdown/active_job_id/error_detail/checkpoint_state/created_at/updated_at. No pass_state, no genre_tags. |
 | provenance columns (PF-9/PF-10) | ⛔ **absent** — `structure_node.plan_run_id`/`plan_arc_id` and `outline_node.plan_run_id`/`plan_event_id` all missing. V2-A2 unbuilt. |
 | `genre_tags` | ✅ present on `motif` + `arc_template` (pre-existing; 27's own plumbing is still B2). |
-| B1 | **27-V2-A** — `pass_state`/`genre_tags`, CHECK swaps, provenance columns + partial uniques, the A3 swap | [ ] | |
+| B1 | **27-V2-A** — `pass_state`/`genre_tags`, CHECK swaps, provenance columns + partial uniques, the A3 swap | [x] | `a4558ed44` · **LIVE-PROVEN in the DB**: pass_state/genre_tags on plan_run · provenance cols + both partial UNIQUEs (tombstone-exempt) · **`outline_chapter_required` GONE → `outline_chapter_written_kinds`** (M6.1). Proved the effect both ways: chapter w/ `chapter_id NULL` INSERTs; arc w/ a chapter_id is rejected by name. **This unblocks B4.** 1890 pass / 251 skip (+12 schema-contract tests: the model Literals are compared to the CHECK sets, which nothing in CI did). |
+
+> **▶ RESUME HERE (next context): B2.** B0 ✅ (gate already registered in 25 §M6, verified) · B1 ✅ (schema live).
+> **B2 = 27-V2-B ∥ V2-C** — contracts unfixturing (PF-14) + `genre_tags` plumbing ∥ the pass runner
+> (`app/services/plan_pass_service.py`, NEW: pass registry + fingerprinting + derived freshness),
+> `app/engine/world_plan.py` (NEW — mirror `cast_plan.py`), the pass-4 hoist, and the artifact-I/O
+> adapters for passes 1/2/5/6/7. Spec: `27_planforge_v2_compiler.md` §V2-B (L510-516) + §V2-C (L517-525).
 | B2 | **27-V2-B ∥ V2-C** — contracts unfixturing (PF-14/BPS-21) + `genre_tags` plumbing ∥ pass runner + `world_plan.py` + pass-4 hoist + adapters | [ ] | |
 | B3 | **27-V2-D** — `propose_seed` quarantine wiring + checkpoint extension + `roster_bindings` write (PF-13) | [ ] | |
 | B4 | **27-V2-E (incl. E2b)** — the link step: skeleton link at compile + scene link at pass-6/7 + bootstrap `chapter_id` stamp; linkers stamp `source='planforge'` | [ ] | |
