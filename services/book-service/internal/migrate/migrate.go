@@ -1199,9 +1199,22 @@ ALTER TABLE books ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'novel'
 -- Explicit backfill: a DEFAULT never revisits existing rows (the
 -- add-column-if-not-exists-never-revisits-a-bad-default class). Pre-existing world-bibles
 -- must become 'lore' HERE, in the same migration that teaches createWorldCore to set
--- kind='lore' — otherwise pre-migration bibles are lore and post-migration ones are novel,
--- and the two are indistinguishable forever after.
-UPDATE books SET kind = 'lore' WHERE is_bible = true AND kind = 'novel';
+-- kind='lore' — otherwise pre-migration bibles are lore and post-migration ones are novel.
+--
+-- ⚠️ MARKER-GATED (review-impl Phase 1). This UPDATE is a novel->lore transition, and the
+-- kind-immutability trigger created just below it FORBIDS exactly that. On the first boot
+-- the trigger does not exist yet, so the backfill runs cleanly. But schemaSQL runs on
+-- EVERY boot, and from the second boot the trigger is already installed — so if a single
+-- is_bible+novel row ever exists at that moment (an old-code bible, a manual insert, a
+-- restored partial backup), this UPDATE would fire the trigger, RAISE, and abort the whole
+-- migration → the service will not start. Gating it once removes the landmine entirely and
+-- matches every other data backfill in this file.
+DO $bible$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM canon_model_migration WHERE id = 'kind_is_bible_lore_backfill_v1') THEN
+    UPDATE books SET kind = 'lore' WHERE is_bible = true AND kind = 'novel';
+    INSERT INTO canon_model_migration (id) VALUES ('kind_is_bible_lore_backfill_v1');
+  END IF;
+END $bible$;
 
 CREATE INDEX IF NOT EXISTS idx_books_kind ON books(owner_user_id, kind);
 
