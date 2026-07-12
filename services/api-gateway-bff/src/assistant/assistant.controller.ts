@@ -304,31 +304,24 @@ export class AssistantController {
     deleted.chat_sessions = chat.body;
     allOk = allOk && chat.ok;
 
+    // 2. DERIVED — the KG assistant project(s) + passages + pending/rejected fact inboxes. Scope by
+    //    user_id ONLY (audit HIGH-2): knowledge-service resolves the user's assistant projects by the
+    //    `is_assistant` flag, so this ALWAYS runs and ALWAYS counts toward `allOk` — even if the diary
+    //    book was already gone (a book-keyed project resolution used to fail-open here, skipping the KG
+    //    delete while still reporting erased:true, leaving decryptable diary passages + fact text).
+    const kn = await this.deleteInternal(`${knowledgeUrl}/internal/admin/assistant/erase?user_id=${uid}`, internalToken);
+    deleted.knowledge = kn.body;
+    allOk = allOk && kn.ok;
+
     let bookErased = false;
     if (bookId) {
-      // Resolve the KG project_id BEFORE deleting the book (the get-or-create is keyed on book_id, so
-      // resolving it after the book row is gone fails and leaks the project row). Uses the caller's
-      // OWN JWT. Done here, up front; the actual KG delete runs in the DERIVED phase below.
-      const proj = await this.postJson(`${knowledgeUrl}/v1/knowledge/projects/assistant`, authHeader, { book_id: bookId });
-      const projectId = proj.ok && typeof proj.body?.project_id === 'string' ? proj.body.project_id : undefined;
-
-      // 2. SOURCE + OWNERSHIP GATE — the diary book (owner+kind='diary' verified IN the DELETE).
+      // 3. SOURCE + OWNERSHIP GATE — the diary book (owner+kind='diary' verified IN the DELETE).
       //    `bookErased` proves the resolved book_id really is THIS user's diary, which is what lets
       //    the un-owner-scoped glossary leg (below) run safely (review MED-4).
       const bookErase = await this.deleteInternal(`${bookUrl}/internal/books/${bookId}/diary/erase?user_id=${uid}`, internalToken);
       deleted.diary_book = bookErase.body;
       bookErased = bookErase.ok && bookErase.body?.erased === true;
       allOk = allOk && bookErase.ok;
-
-      // 3. DERIVED — the KG project + its passages (project_id resolved above, before the book delete).
-      if (projectId) {
-        const kn = await this.deleteInternal(
-          `${knowledgeUrl}/internal/admin/assistant/erase?user_id=${uid}&project_id=${encodeURIComponent(projectId)}`,
-          internalToken,
-        );
-        deleted.knowledge = kn.body;
-        allOk = allOk && kn.ok;
-      }
 
       // 4. DERIVED — the captured glossary entities. glossary_entities is book-scoped only (no owner
       //    column), so we ONLY run it once the book erase above has PROVEN this book_id is the
@@ -341,8 +334,9 @@ export class AssistantController {
     }
 
     return {
-      // erased == every attempted leg succeeded. A user with no diary still gets erased:true once the
-      // (only) chat leg succeeds — there was genuinely nothing else. With a diary, ALL legs must pass.
+      // erased == every attempted leg succeeded. The chat + knowledge legs (by user_id) always run; a
+      // diary book, when present, must also erase. A user with no diary still gets erased:true once the
+      // user_id-scoped legs succeed — there was genuinely nothing else.
       erased: allOk && (!bookId || bookErased),
       book_id: bookId,
       deleted,
