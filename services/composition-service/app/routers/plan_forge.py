@@ -13,8 +13,10 @@ from app.deps import get_grant_client_dep, get_plan_forge_service
 from app.grant_client import GrantClient, GrantLevel
 from app.middleware.jwt_auth import get_current_user
 from app.packer.pack import OwnershipError
+from app.db.models import PlanPassId
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.services.plan_forge_service import PlanForgeService
+from app.services.plan_pass_service import UpstreamStale
 
 router = APIRouter(prefix="/v1/composition")
 
@@ -61,6 +63,20 @@ class PlanCompileRequest(BaseModel):
     arc_id: str
     run_pipeline: bool = False
     model_ref: UUID | None = None
+
+
+class PlanPassRequest(BaseModel):
+    """27 V2-C2. `pass_id` is a CLOSED SET, so it is typed as one — an agent that sends `"motif"`
+    (the id I myself drifted to once; see DR-06) gets a 422 naming the seven legal values, not a
+    silent no-op or a 500 three layers down."""
+
+    model_ref: UUID | None = None
+    #: Per-pass knobs (k_ceiling, max_select…). Fingerprinted WITH the pass: changing one stales
+    #: exactly that pass and everything downstream, with zero invalidation writes.
+    params: dict[str, Any] = Field(default_factory=dict)
+    #: PF-5's only escape. An explicit per-call argument, never an env flag — two users planning two
+    #: books would want different answers, so it is a choice, not platform config.
+    force: bool = False
 
 
 class NovelSystemSpecPatch(BaseModel):
@@ -196,6 +212,36 @@ async def refine_plan_run(
     if mode == "async":
         return JSONResponse(status_code=202, content=payload)
     return payload
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/passes/{pass_id}/run")
+async def run_plan_pass_route(
+    book_id: UUID,
+    run_id: UUID,
+    pass_id: PlanPassId,
+    body: PlanPassRequest,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """Run ONE compiler pass (27 V2-C2). Returns the job envelope + the run's DERIVED pass view
+    (cursor / blocked_at / per-pass freshness) — all computed at serialization, never stored."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        return await svc.run_pass(
+            user_id, book_id, run_id, pass_id,
+            model_ref=body.model_ref, params=body.params, force=body.force,
+        )
+    except UpstreamStale as exc:
+        # 409, not 400: the request is well-formed and will succeed once the upstream is accepted.
+        # The blockers ride along, so the caller learns WHICH pass to fix rather than guessing.
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "UPSTREAM_STALE", "pass_id": exc.pass_id,
+                    "blockers": exc.blockers, "message": str(exc)},
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/books/{book_id}/plan/runs/{run_id}/interpret")

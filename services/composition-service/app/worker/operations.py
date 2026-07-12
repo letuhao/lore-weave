@@ -663,3 +663,125 @@ async def run_plan_forge_refine(
         fidelity_before=input.get("fidelity_before"),
         fidelity_after=input.get("fidelity_after"),
     )
+
+
+# ── 27 V2-C2 · the `plan_pass` worker op ─────────────────────────────────────────────────────────
+async def run_plan_pass(
+    pool: asyncpg.Pool, llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run ONE compiler pass to its artifact (27 V2-C2).
+
+    This op does the LLM compute and returns the artifact; it writes NOTHING. The finalize hook
+    (`_finalize_plan_pass_job`) persists the artifact and records the pass in `pass_state` — the
+    same split every other PlanForge op uses, and the reason a crashed worker cannot leave a pass
+    half-recorded.
+
+    The two things it must get right:
+
+    **Inputs resolve BY POINTER** (PF-3). We compute the pass's input pointers from the run's
+    CURRENT `pass_state`, load exactly those artifacts by id, and fingerprint exactly those ids. So
+    the fingerprint we record is the one a later freshness check will recompute — if we resolved
+    inputs one way and fingerprinted another, every pass would read as permanently stale.
+
+    **A blocked pass does not run.** `assert_runnable` raises `UpstreamStale` (a ValueError ⇒ a
+    BUSINESS error ⇒ the job fails cleanly and is ACKed) rather than burning tokens on a plan whose
+    upstream a human has not accepted yet.
+    """
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.services.plan_pass_adapters import PASS_ADAPTERS, PassContext
+    from app.services.plan_pass_service import (
+        PACKAGE_KIND, PASS_REGISTRY, assert_runnable, fingerprint, input_pointers, package_body,
+    )
+
+    book_id = UUID(str(input["book_id"]))
+    run_id = UUID(str(input["run_id"]))
+    pass_id = str(input["pass_id"])
+    if pass_id not in PASS_REGISTRY:
+        raise ValueError(f"unknown pass_id: {pass_id}")
+    model_ref = input.get("model_ref") or ""
+    if not model_ref:
+        raise ValueError("model_ref required")
+
+    spec = PASS_REGISTRY[pass_id]
+    runs = PlanRunsRepo(pool)
+    run = await runs.get_for_book(book_id, run_id)
+    if run is None:
+        raise ValueError(f"plan run {run_id} not found for book {book_id}")
+
+    # The package is an INPUT (it is what `compile()` produced). A pass that reads it and does not
+    # fingerprint it is fresh forever — re-compiling with a different arc or genre would leave
+    # `motifs`/`cast` (which have no pass dependencies) pointing at a plan that no longer exists.
+    package_art = None
+    if spec.reads_package:
+        package_art = await runs.latest_artifact(book_id, run_id, PACKAGE_KIND)
+        if package_art is None:
+            raise ValueError(
+                f"pass '{pass_id}' reads the planning package, but this run has none — compile first",
+            )
+    package_id = package_art.id if package_art else None
+
+    params = dict(input.get("params") or {})
+    force = bool(input.get("force"))
+    assert_runnable(run, pass_id, force=force, package_artifact_id=package_id)
+
+    pointers = input_pointers(run, pass_id, package_artifact_id=package_id)
+    loaded = await runs.artifacts_by_ids(book_id, run_id, pointers)
+
+    # Resolve each upstream pass's body by ITS artifact pointer, keyed by the PASS that produced it.
+    # Keying by KIND would collide: pass 7 re-emits `scene_plan`.
+    inputs: dict[str, Any] = {}
+    missing: list[str] = []
+    for dep in spec.depends_on:
+        dep_entry = run.pass_state.get(dep) or {}
+        dep_art_id = str(
+            dep_entry.get("artifact_id") if isinstance(dep_entry, dict)
+            else getattr(dep_entry, "artifact_id", "") or "",
+        )
+        art = loaded.get(dep_art_id)
+        if art is None:
+            # Not "empty" — MISSING. `assert_runnable` should already have refused, so reaching
+            # here means the pointer names an artifact that is gone (or another book's). Fail
+            # loudly: silently running a pass with an absent input produces a plan that looks
+            # complete and is built on nothing.
+            missing.append(dep)
+            continue
+        inputs[dep] = art.content
+    if missing:
+        raise ValueError(
+            f"pass '{pass_id}' cannot resolve its input artifact(s): {', '.join(missing)}",
+        )
+
+    fp = fingerprint(input_artifact_ids=pointers, params=params)
+
+    retriever = None
+    if pass_id == "motifs":
+        from app.db.repositories.motif_retrieve import MotifRetriever
+
+        retriever = MotifRetriever(pool)
+
+    ctx = PassContext(
+        llm=llm, user_id=user_id, book_id=book_id,
+        project_id=UUID(str(input.get("project_id") or run.work_id or book_id)),
+        model_source=input.get("model_source", "user_model"), model_ref=model_ref,
+        package=package_body(package_art.content) if package_art else {},
+        inputs=inputs,
+        genre_tags=list(run.genre_tags or []),
+        source_language=str(input.get("source_language") or "auto"),
+        params=params, retriever=retriever,
+        trace_id=input.get("trace_id"), cancel_check=cancel_check,
+    )
+    body = await PASS_ADAPTERS[pass_id](ctx)
+
+    return {
+        "status": "completed",
+        "pass_id": pass_id,
+        "output_kind": spec.output_kind,
+        "artifact": body,
+        # Recorded verbatim into `pass_state` by the finalize hook. The fingerprint is over the
+        # SAME pointers we just resolved, and the params are stored WITH the pass so a later
+        # freshness check recomputes with them (a caller that had to remember them would forget).
+        "input_fingerprint": fp,
+        "input_artifact_ids": pointers,
+        "params": params,
+    }

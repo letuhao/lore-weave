@@ -24,6 +24,7 @@ from app.clients.knowledge_client import get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.engine.plan_forge.llm import PlanForgeLLMError
+from app.services.plan_pass_service import UpstreamStale
 from app.worker.events import COMPOSITION_JOBS_STREAM, COMPOSITION_WORKER_GROUP
 from app.worker.operations import (
     SUPPORTED_OPERATIONS,
@@ -52,7 +53,14 @@ logger = logging.getLogger("composition.worker.job_consumer")
 
 #: business failures the compute raises — a bad LLM output / upstream error is a
 #: TERMINAL job outcome (mark failed + ACK), NOT an infra error to redeliver.
-_BUSINESS_ERRORS = (UnsupportedOperationError, ValueError, KeyError, PlanForgeLLMError)
+_BUSINESS_ERRORS = (
+    UnsupportedOperationError, ValueError, KeyError, PlanForgeLLMError,
+    # 27 PF-5. "Your upstream is stale/unaccepted" is the most ORDINARY condition in the compiler —
+    # it is the gate doing its job, not an infrastructure fault. It must fail the job cleanly and
+    # ACK. Left out of this tuple it would propagate as infra, the message would be un-ACKed, and
+    # the broker would redeliver a pass that is *correctly* refusing to run — forever.
+    UpstreamStale,
+)
 
 _ACTIVE = ("pending", "running")
 
@@ -83,6 +91,63 @@ async def _finalize_plan_forge_job(
         job.created_by, UUID(str(book_id_raw)), UUID(str(run_id_raw)),
         job_for_apply, result,
     )
+
+
+async def _finalize_plan_pass_job(
+    pool: asyncpg.Pool, job, result: dict, terminal_status: str,
+) -> None:
+    """27 V2-C2 — persist a finished pass: save its artifact, then record it in `pass_state`.
+
+    Ordering matters. We save the artifact FIRST and only then point `pass_state` at it, so a crash
+    between the two leaves an orphan artifact that nothing references — the pass simply reads as
+    "not done" and a re-run redoes it (costing tokens, not correctness). The other order would
+    record a pointer to an artifact that does not exist, and every downstream pass would resolve
+    its input to nothing while the ledger insisted the pass was complete.
+
+    A FAILED pass records `status:"failed"` and NO artifact pointer. `record_pass` leaves untouched
+    fields alone, so a failure never wipes the pointer a previous successful run recorded — the last
+    good artifact stays resolvable, and freshness (which is derived) reports the truth on its own.
+    """
+    inp = job.input or {}
+    if _worker_op(job) != "plan_pass":
+        return
+    run_id_raw, book_id_raw = inp.get("run_id"), inp.get("book_id")
+    pass_id = result.get("pass_id") or inp.get("pass_id")
+    if not run_id_raw or not book_id_raw or not pass_id:
+        return
+
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.services.plan_pass_service import default_decision, record_pass
+
+    runs = PlanRunsRepo(pool)
+    book_id, run_id = UUID(str(book_id_raw)), UUID(str(run_id_raw))
+    run = await runs.get_for_book(book_id, run_id)
+    if run is None:
+        logger.warning("plan_pass finalize: run %s not found for book %s", run_id, book_id)
+        return
+
+    if terminal_status != "completed":
+        state = record_pass(
+            run, pass_id, status="failed", job_id=job.id,
+            params=result.get("params") or inp.get("params") or {},
+        )
+        await runs.update_run(book_id, run_id, pass_state=state)
+        return
+
+    artifact = await runs.save_artifact(
+        job.created_by, run_id, result["output_kind"], result.get("artifact") or {},
+    )
+    state = record_pass(
+        run, pass_id, status="completed", artifact_id=artifact.id, job_id=job.id,
+        input_fingerprint=result.get("input_fingerprint"),
+        params=result.get("params") or {},
+        # Advisory ⇒ `auto` (accepted, still reviewable). BLOCKING (`cast`, `beats`) ⇒ `pending`:
+        # the pass is DONE, but the compiler stops here until a human decides. That is PF-6, and it
+        # is the difference between "the plan proceeded" and "the plan proceeded past the two
+        # questions only the author can answer".
+        decision=default_decision(pass_id),
+    )
+    await runs.update_run(book_id, run_id, pass_state=state)
 
 
 async def run_job(
@@ -129,6 +194,7 @@ async def run_job(
             result={"error": str(exc)},
         )
         await _finalize_plan_forge_job(pool, job, {"error": str(exc)}, "failed")
+        await _finalize_plan_pass_job(pool, job, {"error": str(exc)}, "failed")
         return "failed"
 
     # W5 (D-MOTIF-CONFORMANCE-ENGINE-WIRING): an op may return a critic-merge patch
@@ -140,6 +206,7 @@ async def run_job(
         UUID(job_id), "completed", result=result, critic=critic_patch,
     )
     await _finalize_plan_forge_job(pool, job, result, "completed")
+    await _finalize_plan_pass_job(pool, job, result, "completed")
     return "completed"
 
 
@@ -218,6 +285,13 @@ async def _run_operation(
     if op == "plan_forge_refine":
         return await run_plan_forge_refine(
             llm, user_id=str(job.created_by), input=job.input or {}, cancel_check=cancel_check)
+    if op == "plan_pass":
+        # 27 V2-C2 — one op, seven passes (`input['pass_id']`). The compute is here; the artifact
+        # + `pass_state` write is in `_finalize_plan_pass_job`.
+        from app.worker.operations import run_plan_pass
+        return await run_plan_pass(
+            pool, llm, user_id=str(job.created_by), input=job.input or {},
+            cancel_check=cancel_check)
     # ── Wave-2 motif ops (W2-F0 frozen dispatch seam) ─────────────────────────────
     # The Tier-W confirm effects (routers/actions.py) already stamp the full input
     # envelope; each handler lives in its WS-owned engine module (lazy import keeps

@@ -89,6 +89,29 @@ PASS_REGISTRY: dict[str, PassSpec] = {
 assert tuple(PASS_REGISTRY) == PASS_ORDER, "registry order must equal the declared pass order"
 
 
+#: The artifact kind `compile()` writes the planning package under. ONE name, ONE home.
+#:
+#: I first wrote `"planning_package"` here — which is not a member of `PlanArtifactKind` at all, so
+#: the lookup could never match, and EVERY package-reading pass was unrunnable with a message that
+#: blamed the user ("compile first") for something they had already done. Only the live smoke could
+#: see it: the type is a `Literal`, but at runtime it is just a string, and no unit test ran the
+#: worker against a real row. That is the same closed-set drift as DR-06, twice in one run — hence
+#: the constant, and the test that pins it to the Literal.
+PACKAGE_KIND: PlanArtifactKind = "package"
+
+
+def package_body(artifact_content: dict[str, Any]) -> dict[str, Any]:
+    """The planning package itself, out of the `package` artifact that WRAPS it.
+
+    `compile()` stores `{"planning_package": {...}, <other compiled keys>}` — so the artifact's
+    content is NOT the package; the package is one key inside it. An adapter handed the wrapper
+    would read every field as absent and plan a book with no premise, no arc, and no chapters —
+    and, being degrade-safe, would report that as a perfectly successful empty plan.
+    """
+    inner = artifact_content.get("planning_package")
+    return inner if isinstance(inner, dict) else {}
+
+
 class UpstreamStale(Exception):
     """A pass was asked to run while an upstream pass is stale or unaccepted (PF-5).
 

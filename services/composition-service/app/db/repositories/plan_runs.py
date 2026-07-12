@@ -262,6 +262,29 @@ class PlanRunsRepo:
             row = await c.fetchrow(query, run_id, book_id, kind)
         return _row_artifact(row) if row else None
 
+    async def artifacts_by_ids(
+        self, book_id: UUID, run_id: UUID, ids: list[UUID | str],
+    ) -> dict[str, PlanArtifact]:
+        """The pass runner's input resolver: fetch artifacts BY ID (PF-3's pointer rule), keyed by
+        `str(id)`. Never "the latest of kind X" — pass 7 re-emits `scene_plan`, so a latest-by-kind
+        read would hand it its own output as its input.
+
+        Scoped through the parent run join, exactly like `latest_artifact`: `plan_artifact` has no
+        `book_id`, so an id arriving from a worker's job input MUST be validated against the book
+        that owns its run. An id that belongs to another book simply is not returned — the caller
+        then sees a missing pointer and degrades, rather than reading across a tenancy boundary.
+        """
+        if not ids:
+            return {}
+        query = f"""
+        SELECT {_SELECT_ARTIFACT} FROM plan_artifact a
+        JOIN plan_run r ON r.id = a.run_id
+        WHERE a.run_id = $1 AND r.book_id = $2 AND a.id = ANY($3::uuid[])
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, run_id, book_id, [UUID(str(i)) for i in ids])
+        return {str(r["id"]): _row_artifact(r) for r in rows}
+
     async def latest_link_report(
         self, book_id: UUID, run_id: UUID, target: str,
     ) -> PlanArtifact | None:

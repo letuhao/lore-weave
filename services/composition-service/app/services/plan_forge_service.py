@@ -706,6 +706,95 @@ class PlanForgeService:
                     gaps.append({"path": r["rule"], "severity": "warn", "message": r.get("detail", "")})
         return {"gaps": gaps, "fidelity_score": fidelity_score}
 
+    # ── 27 V2-C2 — run ONE compiler pass ────────────────────────────────────────────────────
+    async def run_pass(
+        self,
+        created_by: UUID,
+        book_id: UUID,
+        run_id: UUID,
+        pass_id: str,
+        *,
+        model_ref: UUID | None,
+        params: dict[str, Any] | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Enqueue `pass_id` for this run. Returns the job envelope; the artifact and the
+        `pass_state` entry land via the worker's finalize hook (27 V2-C2).
+
+        The PF-5 gate is checked HERE as well as in the worker — not belt-and-braces, but two
+        different jobs. Here it gives the caller a synchronous 409 with the actual blockers, so a
+        user (or an agent) learns *why* immediately instead of polling a job that was always going
+        to fail. In the worker it is the real gate: by the time the job runs, the state it was
+        enqueued against may have changed underneath it.
+        """
+        from app.services.plan_pass_service import (
+            PACKAGE_KIND, PASS_REGISTRY, UpstreamStale, blockers_for, derive_view,
+        )
+
+        if pass_id not in PASS_REGISTRY:
+            raise ValueError(f"unknown pass_id: {pass_id}")
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            raise ValueError("run not found")
+
+        package = await self._runs.latest_artifact(book_id, run_id, PACKAGE_KIND)
+        if PASS_REGISTRY[pass_id].reads_package and package is None:
+            raise ValueError(
+                f"pass '{pass_id}' reads the planning package, but this run has none — compile first",
+            )
+        package_id = package.id if package else None
+
+        if not force:
+            blockers = blockers_for(run, pass_id, package_artifact_id=package_id)
+            if blockers:
+                # ONE name for one concept — the worker raises this same type.
+                raise UpstreamStale(pass_id, blockers)
+
+        work = await self._ensure_work(book_id, created_by=created_by)
+        project_id = _work_project_id(work)
+        pass_input: dict[str, Any] = {
+            "worker_op": "plan_pass",
+            "run_id": str(run_id),
+            "book_id": str(book_id),
+            "project_id": str(project_id),
+            "pass_id": pass_id,
+            "model_ref": str(model_ref),
+            "model_source": "user_model",
+            "params": dict(params or {}),
+            "force": force,
+        }
+        job, _ = await self._jobs.create(
+            project_id,
+            created_by=created_by,
+            operation="plan_pass", mode="auto", status="pending",
+            input=pass_input,
+        )
+        if settings.composition_worker_enabled:
+            await enqueue_job(
+                settings.redis_url, job_id=str(job.id),
+                user_id=str(created_by), project_id=str(project_id),
+            )
+        else:
+            # Worker off (dev): run it inline so the pass is not silently a no-op. A job row that
+            # sits `pending` forever with nobody to run it IS the silent-success bug — the API
+            # said 202 and nothing ever happened.
+            from app.worker.job_consumer import run_job
+
+            if self._llm is None:
+                raise RuntimeError("LLM client required when worker disabled")
+            await run_job(
+                self._runs._pool, self._llm, job_id=str(job.id), user_id=str(created_by),
+            )
+            job = await self._jobs.get(job.id) or job
+
+        run_after = await self._runs.get_for_book(book_id, run_id) or run
+        return {
+            "job_id": str(job.id),
+            "status": job.status,
+            "pass_id": pass_id,
+            **derive_view(run_after, package_artifact_id=package_id),
+        }
+
     async def compile(
         self,
         created_by: UUID,
