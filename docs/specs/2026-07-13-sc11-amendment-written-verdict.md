@@ -1,6 +1,13 @@
 # SC11 Amendment — the written-verdict is MAINTAINED, not derived
 
-> **Status: PROPOSAL — awaiting PO sign-off.** SC11 is a **LOCKED** decision
+> ## ✅ SHIPPED 2026-07-13 — all 5 phases built, live-proven, committed.
+>
+> `3e0dbca3b` P0 · `7f6c921ce` P1 · `515b3676b` P2 · `12ee4d1f2` P3 · `4bffd2cbe` P4
+>
+> The PO accepted §10 Q1 (BPS-11 answered a narrower question than SC11's sentence). Q2–Q4 were
+> decided during the build and are recorded in §11 below.
+>
+> **Original status line:** ~~PROPOSAL — awaiting PO sign-off.~~ SC11 is a **LOCKED** decision
 > ([`22_scene_model_and_crud.md:239`](2026-07-01-writing-studio/22_scene_model_and_crud.md), under *Locked decisions*)
 > and BPS-11 is sealed in [`00A:340`](2026-07-01-writing-studio/00A_BOOK_PACKAGE_STRUCTURE.md). Nothing here is
 > enacted. Author: agent, 2026-07-13. Origin: the PO's rule — *"the GUI is a projection of data state:
@@ -304,3 +311,97 @@ move together, or neither.**
 - **PH16's two-chip header stands** — that is *why* `status` is not reused (§4.1).
 - **"A Work-less book still browses"** stands: no Work ⇒ no `outline_node` ⇒ no verdict ⇒ the columns grey
   out exactly as SC11 requires.
+
+
+---
+
+## 11. Build audit (2026-07-13) — what it cost, and what it caught
+
+### It shipped, and the chain is live
+
+`PATCH /draft` → `POST /publish` → book-service writes `scenes.source_scene_id` and emits
+`chapter.scenes_linked` → worker-infra's relay ships it to `loreweave:events:chapter` →
+composition's **first domain-event consumer** re-reads that chapter → **`outline_node.written_scene_id`
+stamps itself** → the canvas payload carries `written: true`. Delete the chapter → **it clears itself.**
+Live-smoked end to end across four services, twice.
+
+**`useActualState` is deleted.** 130 lines: a generation guard against book-switch races, a
+fetch-dedupe set, per-chapter completeness tracking, a `MAX_PAGES` page-walk bound, and an error
+channel the caller was obliged to surface. The cold-open budget test now **forbids** `listScenes`
+outright — not at cold open, not on expand, not ever.
+
+### THE CENSUS WAS WRONG. TWICE. That is the finding.
+
+This spec said `scenes.source_scene_id` is written in **three** places. It is written in **seven**.
+
+| Found by | Missed writer |
+|---|---|
+| the Phase-0 **DB test** | `server.go` — **PUBLISH**, the most common re-parse there is |
+| the Phase-0 **DB test** | `reparse_sweeper.go` — the IX-3 sweeper, which re-links a book **in the background with no user action at all** |
+| **`/review-impl`** | worker-infra's HTML/txt import INSERT |
+| **`/review-impl`** | worker-infra's PDF import INSERT |
+
+The last two are the subtle ones and the worst: they set the link from a parser-recovered anchor, and
+the IX-12 write-back **only fills NULLs** — so a scene that arrives *already anchored* is never
+touched by it. That is the **round-trip case**: export your book, re-import it, every scene arrives
+linked, nothing announces them, and **the entire re-imported book renders as unwritten.**
+
+I wrote the census that would have caused that. Twice. Two source-level drift-locks (one per service,
+no DB so they can never skip) now pin it — an eighth writer added without its event turns them red.
+
+### The three bugs `/review-impl` and the live smoke found in MY code
+
+**1 · The CLEAR was keyed on the wrong column** *(HIGH, Phase 1)*. I cleared by `outline_node.chapter_id`
+— which chapter the node *belongs* to — instead of which chapter's **prose backs it**. Two things I
+assumed and verified **false** against the live DB:
+
+- **Nothing constrains** `scenes.source_scene_id` to a node of the same chapter. Copy prose (with its
+  anchor) into another chapter and the two chapters **fight** over the node — B clears it, A restores
+  it. **The mirror never converges;** which answer you get depends on which chapter published last.
+- **`chapter_id` is NULL on a *planned* node** — 7 of 7 in the live DB. A chapter-scoped CLEAR could
+  never reach one, and the sweeper skipped NULLs too. A stale link there was **permanent**.
+
+Fixed with `written_chapter_id`. Plus `clear_orphans`, because a row the CLEAR cannot reach is not a
+regenerable cache — it is a second source of truth.
+
+**2 · `reconcile_book` would have stored nothing** *(MED, Phase 1)*. It read scenes through
+`fetch_book_scenes`, whose `ParsedScene` **drops the scene's own id** — and the id *is*
+`written_scene_id`. It had **no test at all**, which is exactly how that survived.
+
+**3 · The field is `scene_id`, not `id`** *(Phase 2 — and only the live smoke could find it)*.
+`fetch_scene_links` read `it.get("id")`, got `None` for every row, silently produced **zero links**,
+and the mirror reconciled cleanly to **empty on every publish**. No error. No exception. `linked=0`,
+which reads exactly like *"this chapter has no linked prose."*
+
+**Every unit test still passed.** All of them fed dicts with the `"id"` key **I had invented.**
+A mock encodes your assumption; it cannot contradict it. The only thing that exposed it was the
+column failing to stamp on a real publish.
+
+### The guarantee moved; it was not deleted
+
+The four completeness-gate tests guarded a real, previously-shipped bug class. They are **replaced**,
+not removed:
+
+- the client no longer holds a partial answer to mis-judge — `written` is a settled boolean;
+- the server **refuses to produce a verdict from a partial read at all** (`fetch_scene_links` raises;
+  the reconcile is one atomic statement against the full set);
+- and a degraded read **never clears the mirror** — *"I could not look"* is not *"there is no prose"*,
+  which would blank a written book on a transient blip.
+
+### Decisions taken during the build (§10 Q2–Q4)
+
+- **Q2 — eventual consistency: accepted.** Nothing gates on the verdict (no publish, spend, or delete).
+  Keep it that way.
+- **Q3 — both clients migrated together**, as required. The Plan Hub's `completeChapters` gate and the
+  Scene Browser's `specComplete` gate were **two different client mechanisms guarding one fact.** That
+  *was* the drift. Both are gone.
+- **Q4 — Phase 0 shipped first and standalone**, as its own commit. It was a live latent bug regardless
+  of whether the rest landed.
+
+### ⚠ Debt
+
+**The dispatcher is duplicated.** knowledge-service has an `EventDispatcher` class; composition now has
+its own small one (campaign-service uses an `if`-chain — a third shape). `BaseProjectionConsumer` is
+already in the `loreweave_jobs` SDK; the dispatcher should follow it. Not done here because
+knowledge-service is under active concurrent development and this run was forbidden from touching it.
+**SDK-First: ≥2 users ⇒ SDK.**

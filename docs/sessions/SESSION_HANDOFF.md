@@ -1,5 +1,51 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ⭐ Track: SC11 AMENDMENT — the written-verdict is MAINTAINED, not derived — **SHIPPED** (2026-07-13)
+
+> **Spec + full build audit:** [`docs/specs/2026-07-13-sc11-amendment-written-verdict.md`](../specs/2026-07-13-sc11-amendment-written-verdict.md)
+> `3e0dbca3b` P0 · `7f6c921ce` P1 · `515b3676b` P2 · `12ee4d1f2` P3 · `4bffd2cbe` P4
+
+**"Is there prose behind this spec node?" is now a COLUMN, maintained on write.** It used to be
+derived on the client — **twice**, in two features, with two different partial-read guards — and it
+was invisible to agents (it lived in a `useState` and died with the panel).
+
+The chain is live across four services: `PATCH /draft` → `POST /publish` → book-service writes
+`scenes.source_scene_id` + emits `chapter.scenes_linked` → worker-infra relays it → **composition's
+first domain-event consumer** re-reads that chapter → `outline_node.written_scene_id` **stamps
+itself** → the canvas payload carries `written`. Delete the chapter → **it clears itself.**
+
+**`useActualState` is deleted** (130 lines of generation guards, dedupe sets, completeness tracking
+and page-walk bounds). The cold-open budget test now **forbids** `listScenes` outright.
+
+### ⚠ The two things worth reading before touching this
+
+**1 · The writer census was wrong TWICE.** The spec said `scenes.source_scene_id` is written in
+**three** places. It is written in **seven**. The DB test found PUBLISH and the IX-3 sweeper (which
+re-links a book *in the background*); `/review-impl` found the two worker-infra import INSERTs — and
+those are the nasty ones, because the IX-12 write-back **only fills NULLs**, so a re-imported book
+arrives already-anchored, nothing announces it, and **the whole book renders unwritten**. Two
+source-level drift-locks now pin the census. **An eighth writer without its event turns them red.**
+
+**2 · `written_scene_id` is a REGENERABLE CACHE, not a second anchor.** DA-3 says *"the index points
+at the spec, never the reverse"* — so a back-pointer on `outline_node` **looks** like a violation and
+the next agent will be tempted to delete it. It is not: book-service always wins, and the sweeper
+rebuilds it from `scenes.source_scene_id`. The DDL comment and a test both say so. **Deleting it would
+silently restore the client-side derivation.**
+
+### ▶ NEXT for this track
+
+1. **Debt — the event dispatcher is duplicated.** knowledge-service has an `EventDispatcher` class;
+   composition now has its own; campaign-service uses an `if`-chain. `BaseProjectionConsumer` already
+   lives in the `loreweave_jobs` SDK and the dispatcher should follow it (**SDK-First: ≥2 users ⇒
+   SDK**). Not done here: knowledge-service is under active concurrent development.
+2. **The backfill has not been RUN on existing books.** `written_verdict_service.backfill_all` is
+   built, tested (idempotent + keyset-resumable + never-clears-on-a-degraded-read) and ready, but no
+   production run has happened. New/edited chapters self-heal via the event; **old untouched books
+   will render unwritten until it runs.**
+3. **`P-08`** (from the book-package cluster) is still open — the planning tools are federated but not
+   in `ALWAYS_ON_CORE`, so the agent never discovers them (`discovery_calls_total: 0`).
+
+
 ## ⭐ Track: WRITING STUDIO — TOOL↔GUI GAP (specs 30–38) — **AUDIT + SPECS DONE, BUILD NOT PLANNED** (2026-07-12, branch `feat/context-budget-law`, HEAD `9262ed53e`)
 
 > **Anchor:** [`docs/specs/2026-07-01-writing-studio/30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md`](../specs/2026-07-01-writing-studio/30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md)
