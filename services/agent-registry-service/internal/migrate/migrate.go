@@ -522,6 +522,49 @@ ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
   status = EXCLUDED.status, updated_at = now();
 
+-- W2 (agent-discoverability WS-5) — populate-from-seed-doc. The user pastes freeform notes
+-- (their cast, places, powers, terms) and wants them turned into real, reviewable glossary
+-- entries. All backing tools verified present in the live catalog 2026-07-12 (grepped, not
+-- trusted from the audit): glossary_extract_entities_from_doc (sync) + glossary_propose_
+-- entities (sync, mints the review drafts). done_when "cast > 0" grounds save on the SSOT.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','populate-from-notes','Turn pasted notes into glossary entries',
+   'Take a chunk of notes the user pastes — their characters, places, powers, terms — and turn it into real, reviewable entries in the book''s glossary.',
+   '{book,editor}'::text[], '{}'::jsonb,
+   '[
+     {"id":"read-back","tool":"glossary_book_ontology_read","gate":"none"},
+     {"id":"extract","tool":"glossary_extract_entities_from_doc","gate":"none","async_job":false},
+     {"id":"save","tool":"glossary_propose_entities","gate":"none","done_when":"cast > 0"}
+   ]'::jsonb,
+   E'Use this when the user PASTES notes and wants them captured — "here are my characters", "add these to the glossary", "turn my notes into entries". The job: read their notes, pull out the people/places/powers/terms, and save them as review drafts the user can then approve.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- glossary_book_ontology_read — first, see which CATEGORIES the book already has, so each item you save is filed under a category that exists. If the book has no categories yet, set those up first (that is a different job — the world-setup recipe).\n- glossary_extract_entities_from_doc — feed it the user''s notes VERBATIM (paste exactly what they wrote). It returns candidate items with a suggested category + attributes. It writes nothing.\n- glossary_propose_entities — save the candidates. Each item''s category MUST be one the book already has (from the ontology read). They are saved as review drafts, not canon — there is no separate confirm step.\n\nORDER MATTERS: read the categories BEFORE saving, or a save under a category that does not exist fails with "unknown kind" and you will loop.\n\nSPEAK PLAINLY: say "entries" or "items", never "entities"; "categories", never "kinds"/"ontology". After saving, tell the user in plain words what landed ("saved 6 characters and 2 places as drafts for you to review") — and never claim something saved that did not.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
+-- W4 (agent-discoverability WS-5) — build the knowledge graph from a populated glossary.
+-- Backing tools verified present 2026-07-12: kg_project_create (sync) + kg_project_entities_
+-- to_nodes (sync) + kg_build_graph (ASYNC — starts an extraction job; the async_job flag
+-- tells the agent to watch it, not treat it done on return). done_when "connections > 0"
+-- grounds the projection on the SSOT.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','kg-build','Map how the cast connects',
+   'Take a book that already has its cast in the glossary and build the connection map — who relates to whom, what belongs where — so relationships can be tracked and explored.',
+   '{book,editor}'::text[], '{}'::jsonb,
+   '[
+     {"id":"read-back","tool":"glossary_book_ontology_read","gate":"none"},
+     {"id":"make-space","tool":"kg_project_create","gate":"none"},
+     {"id":"place-cast","tool":"kg_project_entities_to_nodes","gate":"none","done_when":"connections > 0"},
+     {"id":"build","tool":"kg_build_graph","gate":"none","async_job":true}
+   ]'::jsonb,
+   E'Use this when the book already HAS its cast recorded and the user wants to see how it connects — "map the relationships", "build the knowledge graph", "how does everyone connect". The job: create the connection space, put the recorded cast into it as nodes, then build the graph over it.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- glossary_book_ontology_read — first, confirm the book actually has cast recorded. If the glossary is empty there is nothing to connect: say so and offer to capture the cast first (a different job). Never build a graph over an empty glossary.\n- kg_project_create — create (or get) the connection space that anchors this book''s graph. Idempotent — safe if it already exists.\n- kg_project_entities_to_nodes — place the book''s recorded glossary entries into the space as nodes. This is what makes "connections" exist.\n- kg_build_graph — start building the graph over those nodes. This is a BACKGROUND job: it is NOT done when the tool returns. Watch it, and never tell the user the map is ready before you have seen the job finish.\n\nORDER MATTERS: make the space, then place the cast, then build — building before the cast is placed produces an empty graph.\n\nSPEAK PLAINLY: say "connection map" or "how they connect", never "knowledge graph"/"nodes"/"projection". Tell the user what happened in their terms ("placed your 12 characters and started mapping how they connect — I will tell you when it finishes"), and never claim the map is built before the job actually completes.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
 -- the flagship vision-to-book rail — THE FLAGSHIP SPINE (S06). "I have a story in my head, help me
 -- write it": turn a told vision into a real foundation — world categories, the cast,
 -- how they connect, and an arc plan. This is the rail the write-mode binding PINS, so

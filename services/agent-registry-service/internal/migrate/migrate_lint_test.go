@@ -79,7 +79,10 @@ func legalAfterLiteral(after string) bool {
 
 func TestSchemaSQL_HasTheSystemWorkflowSeeds(t *testing.T) {
 	// A rail that never seeds is a pin that never fires.
-	for _, slug := range []string{"glossary-bootstrap", "entity-triage", "vision-to-book"} {
+	for _, slug := range []string{
+		"glossary-bootstrap", "entity-triage", "vision-to-book",
+		"populate-from-notes", "kg-build",
+	} {
 		if !strings.Contains(schemaSQL, "'"+slug+"'") {
 			t.Errorf("System workflow %q is not seeded", slug)
 		}
