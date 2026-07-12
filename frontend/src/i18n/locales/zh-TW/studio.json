@@ -999,7 +999,19 @@
     "coverageTitle": "故事覆蓋範圍",
     "coverageDesc": "全書承諾內容覆蓋率",
     "canonTitle": "設定矛盾",
-    "canonDesc": "已確認的矛盾點"
+    "canonDesc": "已確認的矛盾點",
+    "canonFromRules": "違反規則 ({{n}})",
+    "canonRuleError": "無法載入正典規則違規項目 — 請再試一次。",
+    "canonRuleGone": "已不存在的規則",
+    "canonRuleUnnamed": "該規則",
+    "canonRuleFocused": "優先顯示您來源規則的違規項目 ({{n}})：「{{rule}}」",
+    "canonRuleFocusedEmpty": "您來源的規則目前沒有未解決的違規項目 — 雖然已在此建立錨點，但尚未有任何內容違反規則。",
+    "canonFocused": "優先顯示您來源的章節 (找到 {{n}} 個)。",
+    "canonFocusedEmpty": "您來源的章節在此處沒有任何正典設定發現。",
+    "canonUnavailable": "無法連線至共同寫作者服務 — 以下內容不包含生成時的設定集檢索結果。",
+    "canonNoWork": "此書尚未建立共同作者工作階段，因此尚未執行生成時的設定檢查。目前僅顯示知識擷取結果。",
+    "canonRuleFocusUnknown": "無法檢查您來源的規則 — 由於共同作者通道不可用，因此此結果並非完全通過檢查。",
+    "canonRulesCapped": "顯示 {{total}} 個失效規則中最新的 {{shown}} 個。"
   },
   "planHub": {
     "undo": "復原"

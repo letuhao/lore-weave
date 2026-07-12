@@ -999,7 +999,19 @@
     "coverageTitle": "Cobertura da história",
     "coverageDesc": "Cobertura da promessa do livro completo",
     "canonTitle": "Problemas de cânone",
-    "canonDesc": "Contradições confirmadas"
+    "canonDesc": "Contradições confirmadas",
+    "canonFromRules": "Regras quebradas ({{n}})",
+    "canonRuleError": "Não foi possível carregar as violações das regras canônicas — tente novamente.",
+    "canonRuleGone": "Uma regra que não existe mais",
+    "canonRuleUnnamed": "aquela regra",
+    "canonRuleFocused": "Mostrando primeiro as violações da regra de onde você veio ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "A regra de onde você veio não possui violações abertas — ela está ancorada aqui, mas nada a quebrou ainda.",
+    "canonFocused": "Mostrando primeiro o capítulo de onde você veio ({{n}} encontro(s)).",
+    "canonFocusedEmpty": "O capítulo de onde você veio não possui achados canônicos aqui.",
+    "canonUnavailable": "Não foi possível acessar o serviço de coescrita — as descobertas de cânone em tempo de geração NÃO estão incluídas abaixo.",
+    "canonNoWork": "Este livro ainda não possui uma sessão de coescrita, portanto, as verificações de cânone em tempo de geração não foram executadas. Apenas os resultados de extração de conhecimento são exibidos.",
+    "canonRuleFocusUnknown": "A regra da qual você veio não pôde ser verificada — a trilha de coescrita está indisponível, portanto, isto não é um atestado de conformidade.",
+    "canonRulesCapped": "Exibindo as {{shown}} mais recentes de um total de {{total}} regras violadas."
   },
   "planHub": {
     "undo": "Desfazer"

@@ -59,6 +59,11 @@ REFERENCE_SOURCES: tuple[str, ...] = (
 #: judgement would be a second opinion competing with the engines that produced the findings.
 SEVERITY: dict[str, str] = {
     "canon_contradiction": "error",
+    # 24 PH18 — the RULE lane. DISTINCT from `canon_contradiction`, which is the ENTITY-continuity
+    # lane ("a gone character is acting") and carries no rule id. Without this the agent's problems
+    # panel could not see a broken author-declared rule at all, while the human's canon panel could
+    # — two truths for "what is wrong with this book".
+    "broken_canon_rule": "error",
     "prose_deleted_spec_node": "error",
     "conformance_never_run": "warn",
     "conformance_dirty": "warn",

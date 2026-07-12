@@ -999,7 +999,19 @@
     "coverageTitle": "Độ bao phủ cốt truyện",
     "coverageDesc": "Mức độ đáp ứng các tình tiết hứa hẹn trong toàn bộ tác phẩm",
     "canonTitle": "Lỗi nguyên tác",
-    "canonDesc": "Các mâu thuẫn đã được xác nhận"
+    "canonDesc": "Các mâu thuẫn đã được xác nhận",
+    "canonFromRules": "Vi phạm quy tắc ({{n}})",
+    "canonRuleError": "Không thể tải các vi phạm quy tắc chính thống — vui lòng thử lại.",
+    "canonRuleGone": "Một quy tắc không còn tồn tại",
+    "canonRuleUnnamed": "quy tắc đó",
+    "canonRuleFocused": "Đang hiển thị các vi phạm của quy tắc bạn vừa rời khỏi trước ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "Quy tắc bạn vừa rời khỏi không có vi phạm nào đang mở — nó được neo tại đây, nhưng chưa có gì vi phạm nó.",
+    "canonFocused": "Hiển thị chương bạn vừa đọc trước tiên ({{n}} kết quả tìm thấy).",
+    "canonFocusedEmpty": "Chương bạn vừa rời khỏi không có phát hiện chính thống nào ở đây.",
+    "canonUnavailable": "Không thể kết nối với dịch vụ đồng tác giả — các kết quả đối chiếu tại thời điểm tạo sẽ KHÔNG được bao gồm dưới đây.",
+    "canonNoWork": "Cuốn sách này chưa có phiên làm việc với đồng tác giả, vì vậy các bước kiểm tra tính nhất quán (canon) trong quá trình tạo chưa được thực hiện. Chỉ có các kết quả trích xuất kiến thức được hiển thị.",
+    "canonRuleFocusUnknown": "Quy tắc bạn vừa tham chiếu không thể kiểm tra được — luồng đồng tác giả hiện không khả dụng, vì vậy đây không phải là kết quả kiểm tra hoàn tất.",
+    "canonRulesCapped": "Đang hiển thị {{shown}} quy tắc vi phạm gần đây nhất trong tổng số {{total}}."
   },
   "planHub": {
     "undo": "Hoàn tác"

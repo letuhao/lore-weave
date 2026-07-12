@@ -4024,6 +4024,33 @@ async def composition_diagnostics(
         logger.warning("diagnostics: canon source failed", exc_info=True)
         diag.warnings.append("canon contradictions could not be read")
 
+    # (2b) BROKEN CANON RULES — the critic lane (24 PH18). Source (2) above is the ENTITY lane and
+    # carries no rule id, so without this the agent could not see a violated author-declared rule at
+    # ALL, while the human's quality-canon panel now can. A problems panel that silently omits a
+    # whole class of problem is worse than no panel: the reader believes the count.
+    try:
+        if pid is None:
+            raise LookupError("no project")
+        rv = await OutlineRepo(pool).rule_violations(pid)
+        for item in rv["items"]:
+            rule = item.get("rule_text") or "a rule that no longer exists"
+            diag.add(Diagnostic(
+                kind="broken_canon_rule", severity=SEVERITY["broken_canon_rule"],
+                title=f'canon rule broken: "{rule[:80]}"',
+                detail=(item.get("why") or item.get("span") or "")[:120],
+                node_ref={"kind": "scene", "id": item["scene_id"],
+                          "title": item.get("scene_title")},
+                at=item.get("created_at"),
+            ))
+        if rv["capped"]:
+            # OUT-5: never let a truncation read as completeness.
+            diag.warnings.append(
+                f"showing {len(rv['items'])} of {rv['count']} broken canon rules"
+            )
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: rule-violation source failed", exc_info=True)
+        diag.warnings.append("broken canon rules could not be read")
+
     # (3) open thread debt (BA15)
     try:
         if pid is None:

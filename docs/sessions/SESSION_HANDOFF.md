@@ -30,8 +30,47 @@ the point: **a confident wrong answer is the worst failure mode there is.** It o
 the linker finally tried to write the compiler's output somewhere real (BPS-18: *an emitted artifact
 with no linker is a bug*).
 
+### D-04 RESOLVED (2026-07-12) — PH18's rule deep-link was never impossible
+
+The PO asked to see the canon data model, and the model said I was wrong. A generation job carries
+**two** verdicts, written by two engines into two columns:
+
+| | `result.canon.violations[]` | `critic.violations[]` |
+|---|---|---|
+| asks | "is a character marked **gone** still acting?" | "which author-declared **rule** does this contradict?" |
+| keyed by | `entity_id` — `canon_check` never loads `canon_rule` at all | **`rule_id`** — `judge_prose` is handed the active rules; `_filter_violations` DROPS any item lacking one |
+| surfaced as | `CanonIssue` → what the panel listed | **nothing, until now** |
+
+The rule→violation link **already existed** — the panel just surfaced the wrong lane, and there was
+already a `POST /jobs/{id}/dismiss-violation` addressing violations BY RULE. Shipped option B: a new
+`GET /works/{pid}/rule-violations` + a third lane in `QualityCanonPanel` + `PlanHubPanel` forwarding
+`focusRuleId` instead of discarding it. **PH18 was never a spec amendment. It was a small build I
+mis-scoped by reading one object and generalising to the system** (RUN-STATE DR-26).
+
+### ⚠ And the review found a worse one — a panel that lied
+
+`QualityCanonPanel` rendered **"No canon issues found."** whenever the composition Work did not
+resolve — pending backfill, absent, **or composition-service simply DOWN**. Both its queries are
+`enabled: !!projectId`, so they never ran, resolved to `[]` with no error, and `empty` computed true.
+Its 3 sibling quality panels already guard this (`QualityNoWorkState`); canon never adopted it. **Not
+hypothetical: all 8 Works in the dev DB are `pending_project_backfill`, so it was lying about every
+book.** One test had even pinned the false-clean as correct. Fixed + 5 regression tests (DR-27).
+
+**Also fixed in-phase:** `rule_violations` was unbounded (now capped 200 + exact count + `capped`
+flag — `pagination-cap-lint` misses a route with no `limit` param to clamp); `composition_diagnostics`
+gained source **(2b)**, so the agent can see a broken canon rule too.
+
 ### ▶ NEXT for this track
 
+0. **⚠ PO-DECIDE — SC11/PH12 vs "the FE is a projection of data state".** The PO's rule and SC11 point
+   opposite ways. `useActualState` derives *"has this scene been drafted?"* — **a fact an agent would
+   obviously ask** — client-side, and it costs ~130 lines of generation-guards, per-chapter completeness
+   tracking and page-walk bounds to stay correct. The same relation (spec↔manuscript) is already
+   computed **server-side** in two other places (`compute_coverage`, `compute_prose_deleted`), both
+   agent-reachable. Proposed test: **fact vs view** — *"would an agent ever ask this?"* yes ⇒ BE.
+   Proposed resolution: **amend SC11, don't overturn it** — keep "no per-node server join at render
+   time", add "a derived FACT about the relation is one bulk anti-join, server-side" (the shape
+   `compute_coverage` already ships). **Not actioned — SC11 is LOCKED; this is the PO's call.**
 1. **`P-07` — the S06 flagship replay** (the pillar's ship signal, 27 H4 / 28 AN-D3). **Blocked
    externally, not by code:** a concurrent session was redeploying `chat-service` and every redeploy
    401'd the 17-turn eval mid-run (reached turn 8/17, 4 tool calls, 0 empty-intent — the harness and

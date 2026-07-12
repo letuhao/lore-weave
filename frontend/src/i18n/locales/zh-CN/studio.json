@@ -999,7 +999,19 @@
     "coverageTitle": "故事覆盖范围",
     "coverageDesc": "全书承诺内容的覆盖程度",
     "canonTitle": "设定冲突",
-    "canonDesc": "已确认的矛盾点"
+    "canonDesc": "已确认的矛盾点",
+    "canonFromRules": "违反规则 ({{n}})",
+    "canonRuleError": "无法加载设定规则冲突 —— 请重试。",
+    "canonRuleGone": "已失效的规则",
+    "canonRuleUnnamed": "该规则",
+    "canonRuleFocused": "优先显示你所在章节的规则冲突 ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "你所在的章节没有未解决的冲突 —— 该规则已在此锚定，但目前尚未被违反。",
+    "canonFocused": "优先显示您所在的章节 (找到 {{n}} 个)。",
+    "canonFocusedEmpty": "你所在的章节在此处没有设定冲突。",
+    "canonUnavailable": "无法连接至共同创作服务 — 以下内容不包含生成时的设定校验结果。",
+    "canonNoWork": "本书尚未开启共同创作会话，因此未进行生成时的设定检查。目前仅显示知识提取结果。",
+    "canonRuleFocusUnknown": "由于无法访问共同创作通道，无法对您来源的规则进行检查，因此此结果并非最终确定的健康状态。",
+    "canonRulesCapped": "在 {{total}} 条违规规则中，仅显示最近的 {{shown}} 条。"
   },
   "planHub": {
     "undo": "撤销"

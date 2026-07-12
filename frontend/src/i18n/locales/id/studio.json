@@ -999,7 +999,19 @@
     "coverageTitle": "Cakupan cerita",
     "coverageDesc": "Cakupan janji seluruh buku",
     "canonTitle": "Masalah kanon",
-    "canonDesc": "Kontradiksi yang terkonfirmasi"
+    "canonDesc": "Kontradiksi yang terkonfirmasi",
+    "canonFromRules": "Aturan yang dilanggar ({{n}})",
+    "canonRuleError": "Tidak dapat memuat pelanggaran aturan kanon — coba lagi.",
+    "canonRuleGone": "Aturan yang tidak lagi ada",
+    "canonRuleUnnamed": "aturan itu",
+    "canonRuleFocused": "Menampilkan pelanggaran dari aturan asal Anda terlebih dahulu ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "Aturan asal Anda tidak memiliki pelanggaran terbuka — aturan ini tertanam di sini, tetapi belum ada yang melanggarnya.",
+    "canonFocused": "Menampilkan bab asal Anda terlebih dahulu ({{n}} temuan).",
+    "canonFocusedEmpty": "Bab asal Anda tidak memiliki temuan kanon di sini.",
+    "canonUnavailable": "Tidak dapat terhubung ke layanan co-writer — temuan kanon saat waktu pembuatan TIDAK disertakan di bawah ini.",
+    "canonNoWork": "Buku ini belum memiliki sesi penulis pendamping, sehingga pemeriksaan kanon saat pembuatan belum dijalankan. Hanya temuan ekstraksi pengetahuan yang ditampilkan.",
+    "canonRuleFocusUnknown": "Aturan asal Anda tidak dapat diperiksa — jalur penulis pendamping tidak tersedia, jadi ini bukan merupakan laporan kondisi yang bersih.",
+    "canonRulesCapped": "Menampilkan {{shown}} aturan terlanggar terbaru dari {{total}} aturan."
   },
   "planHub": {
     "undo": "Urungkan"

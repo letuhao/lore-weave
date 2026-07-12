@@ -506,6 +506,29 @@ async def get_canon_issues(
     return {"items": items}
 
 
+@router.get("/works/{project_id}/rule-violations")
+async def get_rule_violations(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Studio Quality tab (`quality-canon` panel): every open violation of an
+    author-declared CANON RULE, as judged by the critic — the lane that carries a
+    `rule_id`, which is what the Plan Hub's canon badge deep-links on (24 PH18).
+
+    DELIBERATELY a separate route from `/canon-issues`, not a second key on it:
+    that endpoint is the ENTITY-continuity lane and carries no rule id. Two
+    engines, two verdicts, two names — conflating them is what made the deep-link
+    look impossible. Gates the book grant (VIEW) first.
+
+    Bounded at `RULE_VIOLATIONS_CAP` with an EXACT `count` + a `capped` flag, so a
+    truncation is never silent (OUT-5)."""
+    await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
+    return await outline.rule_violations(project_id)
+
+
 @router.post("/works/{project_id}/outline/nodes", status_code=201)
 async def create_node(
     project_id: UUID,

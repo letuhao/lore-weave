@@ -999,7 +999,19 @@
     "coverageTitle": "Cobertura de la historia",
     "coverageDesc": "Cobertura de la promesa de la obra completa",
     "canonTitle": "Problemas de canon",
-    "canonDesc": "Contradicciones confirmadas"
+    "canonDesc": "Contradicciones confirmadas",
+    "canonFromRules": "Reglas incumplidas ({{n}})",
+    "canonRuleError": "No se pudieron cargar las infracciones de la regla canónica; inténtalo de nuevo.",
+    "canonRuleGone": "Una regla que ya no existe",
+    "canonRuleUnnamed": "esa regla",
+    "canonRuleFocused": "Mostrando primero las infracciones de la regla de la que vienes ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "La regla de la que vienes no tiene infracciones abiertas; está anclada aquí, pero aún no se ha incumplido nada.",
+    "canonFocused": "Mostrando primero el capítulo de procedencia ({{n}} hallazgo(s)).",
+    "canonFocusedEmpty": "El capítulo del que vienes no tiene hallazgos canónicos aquí.",
+    "canonUnavailable": "No se pudo conectar con el servicio de coescritor; los hallazgos del canon generados en tiempo real NO se incluyen a continuación.",
+    "canonNoWork": "Este libro aún no tiene sesiones de coescritura, por lo que no se han ejecutado las comprobaciones de canon durante la generación. Solo se muestran los hallazgos de la extracción de conocimientos.",
+    "canonRuleFocusUnknown": "No se pudo verificar la regla de origen: el carril de coescritura no está disponible, por lo que esto no constituye un certificado de conformidad.",
+    "canonRulesCapped": "Mostrando las {{shown}} reglas rotas más recientes de un total de {{total}}."
   },
   "planHub": {
     "undo": "Deshacer"

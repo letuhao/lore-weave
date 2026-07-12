@@ -691,7 +691,19 @@
     "coverageTitle": "Story coverage",
     "coverageDesc": "Whole-book promise coverage",
     "canonTitle": "Canon issues",
-    "canonDesc": "Confirmed contradictions"
+    "canonDesc": "Confirmed contradictions",
+    "canonFromRules": "Broken rules ({{n}})",
+    "canonRuleError": "Could not load canon-rule violations — try again.",
+    "canonRuleGone": "A rule that no longer exists",
+    "canonRuleUnnamed": "that rule",
+    "canonRuleFocused": "Showing violations of the rule you came from first ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "The rule you came from has no open violations — it is anchored here, but nothing has broken it yet.",
+    "canonFocused": "Showing the chapter you came from first ({{n}} finding(s)).",
+    "canonFocusedEmpty": "The chapter you came from has no canon findings here.",
+    "canonUnavailable": "Could not reach the co-writer service — generation-time canon findings are NOT included below.",
+    "canonNoWork": "This book has no co-writer session yet, so generation-time canon checks have not run. Only knowledge-extraction findings are shown.",
+    "canonRuleFocusUnknown": "The rule you came from could not be checked — the co-writer lane is unavailable, so this is not a clean bill of health.",
+    "canonRulesCapped": "Showing the {{shown}} most recent of {{total}} broken rules."
   },
   "sidebar": {
     "collapse": "Collapse"

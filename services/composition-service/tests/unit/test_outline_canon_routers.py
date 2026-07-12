@@ -54,6 +54,7 @@ class StubOutline:
         self.gate = {"chapter_id": "c", "scenes_total": 2, "scenes_done": 2, "can_publish": True}
         self.commit_aware_called = False
         self.canon_issues_result = []
+        self.rule_violations_result = {"items": [], "count": 0, "capped": False}
     async def get_node(self, n, **kw): return self.node
     async def list_tree(self, p, **kw): return self.tree
     async def create_node(self, p, **kw):
@@ -69,6 +70,7 @@ class StubOutline:
         return self.update_result
     async def chapter_scene_gate(self, p, ch): return self.gate
     async def canon_issues(self, p): return self.canon_issues_result
+    async def rule_violations(self, p, **kw): return self.rule_violations_result
     async def archive_node(self, n): return self.archive_result
     async def restore_node(self, n): return self.restore_result
     async def reorder_node(self, n, **kw):
@@ -268,6 +270,43 @@ def test_canon_issues_404_when_work_missing(ctx):
     c, works, _, _, _ = ctx
     works.work = None
     assert c.get(f"/v1/composition/works/{PROJECT}/canon-issues").status_code == 404
+
+
+# ── Studio Quality tab: the RULE lane (24 PH18 / D-04 B) ──
+# A SEPARATE route from /canon-issues on purpose: two engines, two verdicts, two names.
+
+def test_rule_violations_returns_items(ctx):
+    c, _, outline, _, _ = ctx
+    outline.rule_violations_result = {
+        "items": [
+            {"scene_id": str(NODE), "scene_title": "Scene A", "chapter_id": str(uuid.uuid4()),
+             "job_id": str(uuid.uuid4()), "created_at": "2026-07-12T00:00:00+00:00",
+             "rule_id": str(uuid.uuid4()), "rule_text": "Magic always costs HP",
+             "span": "she cast it freely", "why": "no cost paid"},
+        ],
+        "count": 7, "capped": True,
+    }
+    r = c.get(f"/v1/composition/works/{PROJECT}/rule-violations")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["items"]) == 1 and body["items"][0]["rule_text"] == "Magic always costs HP"
+    # OUT-5: the route must RELAY the partiality, not flatten it away.
+    assert body["count"] == 7 and body["capped"] is True
+
+
+def test_rule_violations_empty_returns_empty_items(ctx):
+    c, _, outline, _, _ = ctx
+    outline.rule_violations_result = {"items": [], "count": 0, "capped": False}
+    r = c.get(f"/v1/composition/works/{PROJECT}/rule-violations")
+    assert r.status_code == 200 and r.json()["items"] == []
+
+
+def test_rule_violations_404_when_work_missing(ctx):
+    # The grant gate is the same as every other work-scoped read — a book you cannot
+    # VIEW must not leak its canon findings.
+    c, works, _, _, _ = ctx
+    works.work = None
+    assert c.get(f"/v1/composition/works/{PROJECT}/rule-violations").status_code == 404
 
 
 def test_patch_status_done_routes_through_commit_aware(ctx):

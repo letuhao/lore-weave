@@ -999,7 +999,19 @@
     "coverageTitle": "ストーリーの網羅性",
     "coverageDesc": "作品全体におけるプロットの網羅度",
     "canonTitle": "設定の矛盾",
-    "canonDesc": "確認された矛盾点"
+    "canonDesc": "確認された矛盾点",
+    "canonFromRules": "ルール違反 ({{n}})",
+    "canonRuleError": "設定ルールの違反を読み込めませんでした。もう一度お試しください。",
+    "canonRuleGone": "既に存在しないルール",
+    "canonRuleUnnamed": "そのルール",
+    "canonRuleFocused": "前の章に関連するルールの違反を優先的に表示しています ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "前の章に関連するルールに違反はありません。この章に設定されていますが、まだ違反は発生していません。",
+    "canonFocused": "前の章を最初に表示しています（{{n}}件のヒット）",
+    "canonFocusedEmpty": "前の章には、ここに関連する設定（カノン）の記述がありません。",
+    "canonUnavailable": "共同執筆サービスに接続できませんでした。生成時の設定（Canon）の検索結果は以下には含まれません。",
+    "canonNoWork": "この書籍にはまだ共同執筆セッションがないため、生成時の設定（Canon）チェックは実行されていません。知識抽出の結果のみが表示されます。",
+    "canonRuleFocusUnknown": "参照元のルールを確認できませんでした。共同執筆レーンが利用できないため、これは「問題なし」という証明ではありません。",
+    "canonRulesCapped": "違反しているルールのうち、最新の {{shown}} 件を表示しています（全 {{total}} 件中）"
   },
   "planHub": {
     "undo": "元に戻す"

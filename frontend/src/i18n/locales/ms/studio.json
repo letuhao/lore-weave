@@ -999,7 +999,19 @@
     "coverageTitle": "Liputan cerita",
     "coverageDesc": "Liputan janji keseluruhan buku",
     "canonTitle": "Isu kanon",
-    "canonDesc": "Percanggahan yang disahkan"
+    "canonDesc": "Percanggahan yang disahkan",
+    "canonFromRules": "Peraturan yang dilanggar ({{n}})",
+    "canonRuleError": "Tidak dapat memuatkan pelanggaran peraturan kanon — cuba lagi.",
+    "canonRuleGone": "Peraturan yang tidak lagi wujud",
+    "canonRuleUnnamed": "peraturan itu",
+    "canonRuleFocused": "Menunjukkan pelanggaran bagi peraturan yang anda datangi terlebih dahulu ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "Peraturan yang anda datangi tidak mempunyai sebarang pelanggaran terbuka — ia ditetapkan di sini, tetapi belum ada apa-apa yang melanggarnya.",
+    "canonFocused": "Menunjukkan bab asal anda terlebih dahulu ({{n}} penemuan).",
+    "canonFocusedEmpty": "Bab yang anda datangi tidak mempunyai penemuan kanon di sini.",
+    "canonUnavailable": "Tidak dapat menghubungi perkhidmatan penulis bersama — penemuan kanon semasa penjanaan TIDAK disertakan di bawah.",
+    "canonNoWork": "Buku ini belum mempunyai sesi penulis bersama, jadi semakan kanon semasa penjanaan belum dijalankan. Hanya penemuan pengekstrakan pengetahuan sahaja yang dipaparkan.",
+    "canonRuleFocusUnknown": "Peraturan asal anda tidak dapat disemak — lorong penulis bersama tidak tersedia, jadi ini bukan pengesahan status yang bersih.",
+    "canonRulesCapped": "Memaparkan {{shown}} daripada {{total}} peraturan yang dilanggar yang terkini."
   },
   "planHub": {
     "undo": "Buat asal"

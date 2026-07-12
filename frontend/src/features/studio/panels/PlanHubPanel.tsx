@@ -57,16 +57,11 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
 
   // PH18 deep-links — a problem ref opens its OWNING lens, FOCUSED on the offending row. Routed
   // through openPanel, never navigate() (PH24/DOCK-7).
-  //
-  // ⚠ The spec says "canon badge → quality-canon filtered TO THE RULE". That is not possible: the
-  // overlay's canon ref is a `canon_rule.id`, and QualityCanonPanel lists `CanonIssue` rows, which
-  // carry scene_id / chapter_id / violations[] and NO rule id at all. Different id spaces. Passing
-  // the rule id would open the panel and match nothing — a link that looks like it worked, which is
-  // the very bug class this deep-link was added to fix.
-  //   canon  → focus the node's CHAPTER (what the panel can actually resolve, and what the user
-  //            means: "show me the canon problems around here")
+  //   canon  → focus the RULE (`canon_rule.id`), which the panel's critic lane keys on, PLUS the
+  //            node's chapter, which its entity-continuity lane keys on. The two lanes answer
+  //            different questions and neither id alone reaches both.
   //   thread → focus the THREAD id directly (narrative_thread.id IS what the promises panel lists)
-  // Recorded in RUN-STATE §6 as D-04.
+  // Recorded in RUN-STATE §6 as D-04 (PO approved option B: surface the rule-keyed lane).
   const openRef = useCallback(
     (ref: PlanOverlayRef, nodeId: string) => {
       if (ref.kind === 'thread') {
@@ -74,7 +69,10 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         return;
       }
       const chapterId = view.nodeContent[nodeId]?.chapterId ?? null;
-      openPanel('quality-canon', { focus: true, params: { bookId, focusChapterId: chapterId } });
+      openPanel('quality-canon', {
+        focus: true,
+        params: { bookId, focusRuleId: ref.id, focusChapterId: chapterId },
+      });
     },
     [openPanel, bookId, view.nodeContent],
   );

@@ -999,7 +999,19 @@
     "coverageTitle": "스토리 커버리지",
     "coverageDesc": "작품 전체의 약속된 서사 반영도",
     "canonTitle": "설정 오류",
-    "canonDesc": "확인된 설정 충돌"
+    "canonDesc": "확인된 설정 충돌",
+    "canonFromRules": "위반된 규칙 ({{n}})",
+    "canonRuleError": "설정 규칙 위반 사항을 불러올 수 없습니다. 다시 시도해 주세요.",
+    "canonRuleGone": "더 이상 존재하지 않는 규칙",
+    "canonRuleUnnamed": "해당 규칙",
+    "canonRuleFocused": "이전 챕터에서 가져온 규칙의 위반 사항을 먼저 표시합니다 ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "이전 챕터에서 가져온 규칙에 아직 위반 사항이 없습니다. 이 규칙은 여기에 고정되어 있지만, 아직 어긋난 부분은 없습니다.",
+    "canonFocused": "이전 장을 먼저 표시합니다 ({{n}}개 발견됨).",
+    "canonFocusedEmpty": "이전 챕터에서 가져온 설정에 일치하지 않는 내용이 없습니다.",
+    "canonUnavailable": "공동 집필 서비스를 불러올 수 없습니다. 생성 시점의 설정(canon) 결과가 아래에 포함되지 않습니다.",
+    "canonNoWork": "이 책은 아직 공동 집필 세션이 없어 생성 시점의 캐논(설정) 검사를 수행하지 않았습니다. 지식 추출 결과만 표시됩니다.",
+    "canonRuleFocusUnknown": "이전 규칙을 확인할 수 없습니다. 공동 집필 레인이 비활성화되어 있어, 이 결과가 완벽한 상태임을 보장하지 않습니다.",
+    "canonRulesCapped": "위반된 규칙 {{total}}개 중 최근 {{shown}}개를 표시합니다."
   },
   "planHub": {
     "undo": "실행 취소"

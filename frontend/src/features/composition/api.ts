@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  CanonIssue, ConformanceStatus, DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  CanonIssue, ConformanceStatus, DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, RuleViolationItem, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 import type { MotifBindingsResponse } from './motif/types';
 
@@ -593,6 +593,14 @@ export const compositionApi = {
   // Read-only; mirrors the publish-gate's canon predicate but itemized, not counted.
   getCanonIssues(projectId: string, token: string): Promise<{ items: CanonIssue[] }> {
     return apiJson(`${BASE}/works/${projectId}/canon-issues`, { token });
+  },
+  // 24 PH18 — the RULE-keyed lane (critic verdicts), distinct from getCanonIssues'
+  // entity-continuity lane. This is the one a canon deep-link can filter on.
+  // Bounded: `count` is EXACT and `capped` says the list is short of it (OUT-5).
+  getRuleViolations(
+    projectId: string, token: string,
+  ): Promise<{ items: RuleViolationItem[]; count: number; capped: boolean }> {
+    return apiJson(`${BASE}/works/${projectId}/rule-violations`, { token });
   },
 };
 

@@ -1703,6 +1703,160 @@ async def test_canon_issues_synthetic_prose_job_does_not_mask(pool):
     assert len(issues) == 1 and issues[0]["job_id"] == str(j1.id)
 
 
+# ──────────── rule_violations — the RULE lane (24 PH18 / RUN-STATE D-04 option B) ────────────
+# The sibling of canon_issues, and the point of the whole decision: `critic.violations[]` carries a
+# `rule_id`, `result.canon.violations[]` does not. Only this lane can answer "show me violations of
+# rule X", which is what the Plan Hub's canon badge deep-links on.
+
+
+async def _scene_with_critic(pool, repo, jobs, project, user, chapter, critic, *, title="Scene A"):
+    """Seed one scene whose latest completed job carries the given critic verdict."""
+    s = await repo.create_node(project, created_by=user, kind="scene", chapter_id=chapter, title=title)
+    j, _ = await jobs.create(project, created_by=user, operation="draft_scene",
+                             outline_node_id=s.id, mode="auto", status="running", input={})
+    await jobs.update_status(j.id, "completed", result={"text": "x"}, critic=critic)
+    return s, j
+
+
+async def test_rule_violations_joins_the_rule_text_and_is_flat_per_violation(pool):
+    """One scene breaking TWO rules yields TWO rows — flat, because a deep-link targets a RULE."""
+    repo, jobs, rules = OutlineRepo(pool), GenerationJobsRepo(pool), CanonRulesRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    r1 = await rules.create(project, "Magic always costs HP", created_by=user)
+    r2 = await rules.create(project, "Nobody crosses the Wall alive", created_by=user)
+    chapter = uuid.uuid4()
+    await _scene_with_critic(pool, repo, jobs, project, user, chapter, {
+        "coherence": 4,
+        "violations": [
+            {"rule_id": str(r1.id), "violated": True, "span": "she cast it freely", "why": "no cost paid"},
+            {"rule_id": str(r2.id), "violated": True, "span": "he walked through", "why": "crossed the Wall"},
+        ],
+    })
+
+    res = await repo.rule_violations(project)
+    items = res["items"]
+    assert len(items) == 2 and res["count"] == 2 and res["capped"] is False
+    by_rule = {i["rule_id"]: i for i in items}
+    assert by_rule[str(r1.id)]["rule_text"] == "Magic always costs HP"
+    assert by_rule[str(r1.id)]["why"] == "no cost paid"
+    assert by_rule[str(r2.id)]["rule_text"] == "Nobody crosses the Wall alive"
+    assert by_rule[str(r1.id)]["chapter_id"] == str(chapter)
+    assert by_rule[str(r1.id)]["scene_title"] == "Scene A"
+
+
+async def test_rule_violations_excludes_dismissed_and_not_violated(pool):
+    """`dismissed` is set by POST /jobs/{id}/dismiss-violation — its whole job is to silence a
+    finding, so a dismissed row must not come back. `violated: false` is the judge itself saying
+    no. Everything else stands: an ABSENT `violated` still counts (default-open — a malformed
+    verdict must not quietly clear the book)."""
+    repo, jobs, rules = OutlineRepo(pool), GenerationJobsRepo(pool), CanonRulesRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    r = await rules.create(project, "Magic costs HP", created_by=user)
+    await _scene_with_critic(pool, repo, jobs, project, user, uuid.uuid4(), {
+        "violations": [
+            {"rule_id": str(r.id), "violated": True, "dismissed": True, "why": "dismissed by the author"},
+            {"rule_id": str(r.id), "violated": False, "why": "judge said no"},
+            {"rule_id": str(r.id), "why": "no `violated` key at all"},  # default-open
+        ],
+    })
+
+    res = await repo.rule_violations(project)
+    assert [i["why"] for i in res["items"]] == ["no `violated` key at all"]
+    assert res["count"] == 1, "the EXACT count must match the filtered list"
+
+
+async def test_rule_violations_keeps_an_unattributable_finding_rather_than_dropping_it(pool):
+    """A rule_id is LLM output. It may be paraphrased into nonsense, or name a rule the author has
+    since archived. Either way the FINDING is real: the judge saw a contradiction. Dropping the row
+    would render the panel clean over a book that isn't — so it comes back with rule_text=None.
+
+    It also proves the query does not cast that untrusted string to uuid: 'not-a-uuid' would blow
+    the whole statement up, taking every OTHER violation in the book with it."""
+    repo, jobs, rules = OutlineRepo(pool), GenerationJobsRepo(pool), CanonRulesRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    archived = await rules.create(project, "A rule the author retired", created_by=user)
+    await rules.archive(project, archived.id)
+    live = await rules.create(project, "A live rule", created_by=user)
+
+    await _scene_with_critic(pool, repo, jobs, project, user, uuid.uuid4(), {
+        "violations": [
+            {"rule_id": "not-a-uuid", "violated": True, "why": "the judge invented an id"},
+            {"rule_id": str(uuid.uuid4()), "violated": True, "why": "a well-formed id for no rule"},
+            {"rule_id": str(archived.id), "violated": True, "why": "breaks a retired rule"},
+            {"rule_id": str(live.id), "violated": True, "why": "breaks a live rule"},
+        ],
+    })
+
+    res = await repo.rule_violations(project)
+    items = res["items"]
+    assert len(items) == 4, "an unattributable violation is still a real finding"
+    resolved = {i["why"]: i["rule_text"] for i in items}
+    assert resolved["breaks a live rule"] == "A live rule"
+    assert resolved["the judge invented an id"] is None
+    assert resolved["a well-formed id for no rule"] is None
+    assert resolved["breaks a retired rule"] is None, "an archived rule no longer resolves"
+
+
+async def test_rule_violations_newer_job_supersedes_and_synthetic_prose_does_not_mask(pool):
+    """Same two predicates as canon_issues: DISTINCT ON the node's LATEST completed job, and a
+    synthetic promoted_scene_prose job (which runs no critic) must never shadow a real verdict."""
+    repo, jobs, rules = OutlineRepo(pool), GenerationJobsRepo(pool), CanonRulesRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    r = await rules.create(project, "Magic costs HP", created_by=user)
+    s, _ = await _scene_with_critic(pool, repo, jobs, project, user, uuid.uuid4(), {
+        "violations": [{"rule_id": str(r.id), "violated": True, "why": "first pass"}],
+    })
+    assert [i["why"] for i in (await repo.rule_violations(project))["items"]] == ["first pass"]
+
+    # the author's own prose overwrite carries no critic — the finding must SURVIVE it.
+    await jobs.upsert_promoted_scene_prose(project, s.id, "the author's take", created_by=user)
+    assert [i["why"] for i in (await repo.rule_violations(project))["items"]] == ["first pass"]
+
+    # ...but a genuine re-draft that comes back clean DOES clear it.
+    j2, _ = await jobs.create(project, created_by=user, operation="draft_scene",
+                              outline_node_id=s.id, mode="auto", status="running", input={})
+    await jobs.update_status(j2.id, "completed", result={"text": "y"}, critic={"violations": []})
+    assert (await repo.rule_violations(project))["items"] == []
+
+
+async def test_rule_violations_caps_the_list_but_the_count_stays_exact(pool):
+    """Rows are FLAT per (scene x violation) and each carries the rule's full text, so a long book
+    multiplies out. The list is capped — but `count` is EXACT and `capped` is True, so the reader
+    can SEE the truncation. A silent truncation reads as completeness, which is the lie."""
+    repo, jobs, rules = OutlineRepo(pool), GenerationJobsRepo(pool), CanonRulesRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    r = await rules.create(project, "Magic costs HP", created_by=user)
+    await _scene_with_critic(pool, repo, jobs, project, user, uuid.uuid4(), {
+        "violations": [
+            {"rule_id": str(r.id), "violated": True, "why": f"v{i}"} for i in range(10)
+        ],
+    })
+
+    res = await repo.rule_violations(project, limit=4)
+    assert len(res["items"]) == 4, "the list obeys the cap"
+    assert res["count"] == 10, "the count is EXACT, not the capped length"
+    assert res["capped"] is True
+
+    full = await repo.rule_violations(project, limit=50)
+    assert len(full["items"]) == 10 and full["count"] == 10 and full["capped"] is False
+
+
+async def test_rule_violations_empty_book_and_null_critic_return_empty(pool):
+    """A job with NO critic at all (critic column NULL) must yield nothing, not explode on the
+    jsonb_array_elements — the COALESCE is load-bearing."""
+    repo, jobs = OutlineRepo(pool), GenerationJobsRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    assert (await repo.rule_violations(uuid.uuid4()))["items"] == []
+    await _scene_with_critic(pool, repo, jobs, project, user, uuid.uuid4(), None)
+    assert (await repo.rule_violations(project))["items"] == []
+
+
 # ──────────────────── generation_correction (V1 flywheel slice 1) ────────────────────
 
 import json as _json  # noqa: E402

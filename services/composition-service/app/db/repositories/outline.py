@@ -28,6 +28,12 @@ from app.db.repositories import (
 from app.db.repositories.rank import rank_after, rank_between
 from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE
 
+# 24 PH18 — `rule_violations` rows are FLAT per (scene x violation) and each carries the rule's
+# full text, so a long book multiplies out fast. Bounded like every other list here
+# (`coverage.UNPLANNED_CAP`, `plan_overlay._REFS_CAP`); the COUNT stays exact so the truncation is
+# always visible (OUT-5: never silent-truncate).
+RULE_VIOLATIONS_CAP = 200
+
 _SELECT_COLS = """
   id, created_by, project_id, book_id, parent_id, kind, rank, title, pov_entity_id,
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
@@ -1243,6 +1249,123 @@ class OutlineRepo:
             }
             for r in rows
         ]
+
+    async def rule_violations(self, project_id: UUID, *, limit: int = RULE_VIOLATIONS_CAP) -> dict[str, Any]:
+        """Book-wide canon-RULE violations (Studio Quality tab, `quality-canon` panel; 24 PH18).
+
+        The SIBLING of `canon_issues`, and the distinction is the whole point.
+        A generation job carries TWO independent verdicts, written by two engines
+        into two columns:
+
+          * `result.canon.violations[]` — entity continuity ("a character marked
+            gone is acting"). Keyed by `entity_id`. `canon_check` never loads the
+            `canon_rule` table at all, so these rows carry NO rule id — which is
+            why `canon_issues` cannot answer "show me violations of rule X".
+          * `critic.violations[]` — THIS one. `judge_prose` is handed the active
+            rules and its output contract requires a `rule_id` per violation
+            (`critic._filter_violations` drops any item lacking one).
+
+        So the rule→violation link the Plan Hub's canon badge needs already exists;
+        it lives here. Flat — one item per (scene, violation) — because a deep-link
+        targets a RULE and one scene may violate several.
+
+        `rule_id` is LLM output. It is compared as TEXT and never cast to uuid: a
+        judge that paraphrases an id must not take the query down. A violation whose
+        rule does not resolve (hallucinated id, or the author archived the rule) is
+        returned with `rule_text: None`, NEVER dropped — silently dropping every
+        unattributable finding would render the panel clean when it is not.
+
+        BOUNDED + partiality-flagged (OUT-5 / Performance Standard "bounded results"),
+        the same shape `plan_overlay` (`_REFS_CAP`/`refs_capped`) and `coverage`
+        (`UNPLANNED_CAP`/`unplanned_capped`) already use two files away. Rows are FLAT
+        per (scene x violation) and each carries the rule's full text, so a long book
+        multiplies out fast. The COUNT stays exact even when the list is capped — a
+        truncation the reader cannot see is worse than no list at all."""
+        async with self._pool.acquire() as c:
+            total = await c.fetchval(
+                """
+                WITH latest AS (
+                  SELECT DISTINCT ON (j.outline_node_id)
+                    j.outline_node_id, j.critic
+                  FROM generation_job j
+                  JOIN outline_node n2 ON n2.id = j.outline_node_id
+                  WHERE j.project_id = $1 AND n2.project_id = $1
+                    AND n2.kind = 'scene' AND NOT n2.is_archived
+                    AND j.status = 'completed'
+                    AND j.operation <> 'promoted_scene_prose'
+                  ORDER BY j.outline_node_id, j.created_at DESC, j.id DESC
+                )
+                SELECT count(*)
+                FROM latest
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  COALESCE(latest.critic -> 'violations', '[]'::jsonb)
+                ) AS e(value)
+                WHERE (e.value -> 'violated')  IS DISTINCT FROM 'false'::jsonb
+                  AND (e.value -> 'dismissed') IS DISTINCT FROM 'true'::jsonb
+                """,
+                project_id,
+            )
+            rows = await c.fetch(
+                """
+                WITH latest AS (
+                  SELECT DISTINCT ON (j.outline_node_id)
+                    j.outline_node_id, j.id AS job_id, j.critic, j.created_at
+                  FROM generation_job j
+                  JOIN outline_node n2 ON n2.id = j.outline_node_id
+                  WHERE j.project_id = $1 AND n2.project_id = $1
+                    AND n2.kind = 'scene' AND NOT n2.is_archived
+                    AND j.status = 'completed'
+                    -- Same exclusion as canon_issues/chapter_scene_gate: a synthetic
+                    -- prose-persist job runs no critic and must never shadow a real one.
+                    AND j.operation <> 'promoted_scene_prose'
+                  ORDER BY j.outline_node_id, j.created_at DESC, j.id DESC
+                ), v AS (
+                  SELECT latest.outline_node_id, latest.job_id, latest.created_at,
+                         e.value AS violation
+                  FROM latest
+                  CROSS JOIN LATERAL jsonb_array_elements(
+                    COALESCE(latest.critic -> 'violations', '[]'::jsonb)
+                  ) AS e(value)
+                  -- jsonb comparison, not ::boolean — a malformed judge value must
+                  -- degrade to "still a violation", never throw. Default-open on
+                  -- `violated` (absent ⇒ it IS one) and default-closed on `dismissed`
+                  -- (only an explicit human dismiss silences a finding).
+                  WHERE (e.value -> 'violated')  IS DISTINCT FROM 'false'::jsonb
+                    AND (e.value -> 'dismissed') IS DISTINCT FROM 'true'::jsonb
+                )
+                SELECT
+                  n.id AS scene_id, n.title AS scene_title, n.chapter_id,
+                  v.job_id, v.created_at,
+                  v.violation ->> 'rule_id' AS rule_id,
+                  v.violation ->> 'span'    AS span,
+                  v.violation ->> 'why'     AS why,
+                  cr.text AS rule_text
+                FROM v
+                JOIN outline_node n
+                  ON n.id = v.outline_node_id AND n.project_id = $1
+                LEFT JOIN canon_rule cr
+                  ON cr.id::text = v.violation ->> 'rule_id'
+                 AND cr.project_id = $1 AND cr.active AND NOT cr.is_archived
+                ORDER BY v.created_at DESC
+                LIMIT $2
+                """,
+                project_id, limit,
+            )
+        items = [
+            {
+                "scene_id": str(r["scene_id"]),
+                "scene_title": r["scene_title"],
+                "chapter_id": str(r["chapter_id"]) if r["chapter_id"] else None,
+                "job_id": str(r["job_id"]),
+                "created_at": r["created_at"].isoformat(),
+                "rule_id": r["rule_id"],
+                "rule_text": r["rule_text"],
+                "span": r["span"] or "",
+                "why": r["why"] or "",
+            }
+            for r in rows
+        ]
+        return {"items": items, "count": int(total or 0), "capped": int(total or 0) > len(items)}
 
     async def archive_node(self, node_id: UUID) -> OutlineNode | None:
         """Soft-archive a node AND its descendants (PO decision — no orphaned-

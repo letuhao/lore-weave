@@ -1,63 +1,41 @@
-// Studio Quality tab — `quality-canon`: book-wide itemized canon issues. NEW
-// component (no old-workspace precedent) merging TWO backend sources that were
-// each real but never itemized/book-wide before this feature (see the plan
-// doc's reality map):
-//   - composition-service: confirmed contradictions from a scene's latest
-//     auto-generation (`GET /works/{id}/canon-issues`).
-//   - knowledge-service: confirmed contradictions flagged during KG extraction
-//     (`GET /extraction/projects/{id}/canon-flags`) — closes D-KG-CANON-FLAG-
-//     REVIEW-UI (previously only visible interleaved in raw job logs).
-// Clicking a row that resolves to a chapter jumps there via the existing
-// `focusManuscriptUnit` host action (no new bus event needed).
+// Studio Quality tab — `quality-canon`: book-wide canon problems, merging THREE backend lenses
+// (see useQualityCanon for what each one asks):
+//   - composition critic      -> violations of an author-declared canon RULE (keyed by rule_id).
+//   - composition canon-check -> entity continuity (a "gone" character still acting).
+//   - knowledge extraction    -> contradictions flagged while building the KG.
+// Logic lives in useQualityCanon; this file renders. Clicking a row that resolves to a chapter
+// jumps there via the existing `focusManuscriptUnit` host action.
 import type { IDockviewPanelProps } from 'dockview-react';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { Skeleton } from '@/components/shared';
-import { compositionApi } from '@/features/composition/api';
-import { useWorkResolution } from '@/features/composition/hooks/useWork';
-import type { CanonIssue } from '@/features/composition/types';
-import { knowledgeApi, type CanonFlag } from '@/features/knowledge/api';
-import { useBookKnowledgeProject } from '@/features/knowledge/hooks/useBookKnowledgeProject';
+import type { CanonIssue, RuleViolationItem } from '@/features/composition/types';
+import type { CanonFlag } from '@/features/knowledge/api';
 import { useStudioHost } from '../host/StudioHostProvider';
+import { useQualityCanon, type CanonFocusParams, type QualityCanonView } from './useQualityCanon';
 import { useStudioPanel } from './useStudioPanel';
 
-/** 24 PH18 — the Plan Hub's canon badge deep-links here with the offending node's CHAPTER.
- *  NOT with the canon RULE id: the overlay's ref is a `canon_rule.id`, and the rows below are
- *  `CanonIssue`s, which carry scene_id/chapter_id/violations[] and no rule id at all — different id
- *  spaces. Passing the rule would open this panel and match nothing: a link that LOOKS like it
- *  worked, which is the exact bug the deep-link exists to fix. */
-interface CanonFocusParams {
-  focusChapterId?: string | null;
-}
+type T = (k: string, o?: Record<string, unknown>) => string;
+
+const BANNER = 'rounded p-2 text-[11px]';
+const WARN = `${BANNER} bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300`;
+const INFO = `${BANNER} bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300`;
+const FOCUS = `${BANNER} bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-300`;
+const ROW = 'flex items-start justify-between gap-2 rounded border p-2 text-[11px]';
+const HIT = 'border-sky-400 bg-sky-50 ring-2 ring-sky-400 dark:border-sky-700 dark:bg-sky-950/40';
+const BAD = 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/40';
 
 export function QualityCanonPanel(props: IDockviewPanelProps) {
   useStudioPanel('quality-canon', props.api);
-  const focusChapterId = (props.params as CanonFocusParams | undefined)?.focusChapterId ?? null;
   const { t } = useTranslation('studio');
   const host = useStudioHost();
   const { accessToken } = useAuth();
+  const v = useQualityCanon(host.bookId, accessToken, props.params as CanonFocusParams | undefined);
 
-  const work = useWorkResolution(host.bookId, accessToken);
-  const compositionProjectId = work.data?.status === 'found' ? work.data.work?.project_id ?? null : null;
-  const compositionIssuesQ = useQuery({
-    queryKey: ['studio', 'quality-canon', 'composition', compositionProjectId],
-    queryFn: () => compositionApi.getCanonIssues(compositionProjectId!, accessToken!),
-    enabled: !!compositionProjectId && !!accessToken,
-  });
+  const jump = (id: string | null | undefined) => id && host.focusManuscriptUnit(id);
+  const jumpLabel = t('quality.jumpToChapter', { defaultValue: 'Open chapter' });
 
-  const { projectId: knowledgeProjectId, isLoading: knowledgeProjectLoading } = useBookKnowledgeProject(host.bookId);
-  const canonFlagsQ = useQuery({
-    queryKey: ['studio', 'quality-canon', 'knowledge', knowledgeProjectId],
-    queryFn: () => knowledgeApi.listCanonFlags(knowledgeProjectId!, accessToken!),
-    enabled: !!knowledgeProjectId && !!accessToken,
-  });
-
-  const loading = work.isLoading || knowledgeProjectLoading
-    || (!!compositionProjectId && compositionIssuesQ.isLoading)
-    || (!!knowledgeProjectId && canonFlagsQ.isLoading);
-
-  if (loading) {
+  if (v.loading) {
     return (
       <div data-testid="quality-canon-loading" className="space-y-3 p-4">
         <Skeleton className="h-6 w-48" />
@@ -66,139 +44,189 @@ export function QualityCanonPanel(props: IDockviewPanelProps) {
     );
   }
 
-  const allIssues = compositionIssuesQ.data?.items ?? [];
-  // A deep-link FOCUSES: the matching rows are highlighted and hoisted to the top, but nothing is
-  // hidden — the panel is still the whole canon lens. And if the focused chapter has no findings we
-  // SAY SO, rather than showing an unchanged list that silently pretends the link did something.
-  const compositionIssues = focusChapterId
-    ? [...allIssues].sort((a, b) =>
-        Number(b.chapter_id === focusChapterId) - Number(a.chapter_id === focusChapterId))
-    : allIssues;
-  const focusHits = focusChapterId
-    ? allIssues.filter((i: CanonIssue) => i.chapter_id === focusChapterId).length
-    : 0;
-  const canonFlags = canonFlagsQ.data?.flags ?? [];
-  // /review-impl: a fetch error must never render as "no issues" — that's a false-negative
-  // (the checker didn't run, it isn't clean) — so `empty` is gated on neither source having
-  // errored, and each error gets its own visible banner instead of silently vanishing.
-  const hasError = compositionIssuesQ.isError || canonFlagsQ.isError;
-  const empty = !hasError && compositionIssues.length === 0 && canonFlags.length === 0;
-
-  const jumpToChapter = (chapterId: string | null | undefined) => {
-    if (chapterId) host.focusManuscriptUnit(chapterId);
-  };
-
   return (
     <div data-testid="studio-quality-canon-panel" className="flex h-full min-h-0 flex-col gap-3 overflow-auto p-3 text-sm">
-      {focusChapterId && (
-        <div
-          data-testid="quality-canon-focus"
-          className="rounded bg-sky-50 p-2 text-[11px] text-sky-800 dark:bg-sky-950 dark:text-sky-300"
-        >
-          {focusHits > 0
-            ? t('quality.canonFocused', {
-                defaultValue: 'Showing the chapter you came from first ({{n}} finding(s)).',
-                n: focusHits,
-              })
-            : t('quality.canonFocusedEmpty', {
-                defaultValue:
-                  'The chapter you came from has no canon findings here — the rule is anchored there, but nothing has violated it yet.',
-              })}
-        </div>
-      )}
+      <FocusBanner v={v} t={t as T} />
+
       <p className="text-[11px] text-neutral-400">
+        {/* Text deliberately UNCHANGED: `scripts/i18n_translate.py` gap-fills only — it keeps a
+            valid existing translation — so editing an `en` string that already has 17 translations
+            leaves those 17 permanently stale. The new lane announces itself through the translated
+            "Broken rules (N)" section header instead. */}
         {t('quality.canonIntro', {
           defaultValue: 'Advisory — confirmed contradictions with content marked gone/changed earlier in the book. Nothing here is applied automatically.',
         })}
       </p>
 
-      {compositionIssuesQ.isError && (
-        <div data-testid="quality-canon-composition-error" className="rounded bg-amber-50 p-2 text-[11px] text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+      {/* UNCONSULTED != CLEAN. Composition's two lanes never ran, so we say so rather than
+          rendering an empty list that reads as "this book is fine". */}
+      {v.compositionUnavailable && (
+        <div data-testid="quality-canon-unavailable" className={WARN}>
+          {t('quality.canonUnavailable', { defaultValue: 'Could not reach the co-writer service — generation-time canon findings are NOT included below.' })}
+        </div>
+      )}
+      {v.noWork && (
+        <div data-testid="quality-canon-no-work" className={INFO}>
+          {t('quality.canonNoWork', { defaultValue: 'This book has no co-writer session yet, so generation-time canon checks have not run. Only knowledge-extraction findings are shown.' })}
+        </div>
+      )}
+      {v.ruleError && (
+        <div data-testid="quality-canon-rule-error" className={WARN}>
+          {t('quality.canonRuleError', { defaultValue: 'Could not load canon-rule violations — try again.' })}
+        </div>
+      )}
+      {v.compositionError && (
+        <div data-testid="quality-canon-composition-error" className={WARN}>
           {t('quality.canonCompositionError', { defaultValue: 'Could not load canon issues from generation — try again.' })}
         </div>
       )}
-      {canonFlagsQ.isError && (
-        <div data-testid="quality-canon-extraction-error" className="rounded bg-amber-50 p-2 text-[11px] text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+      {v.extractionError && (
+        <div data-testid="quality-canon-extraction-error" className={WARN}>
           {t('quality.canonExtractionError', { defaultValue: 'Could not load canon flags from knowledge extraction — try again.' })}
         </div>
       )}
 
-      {empty && (
+      {v.empty && (
         <div data-testid="quality-canon-empty" className="p-4 text-center text-neutral-500">
           {t('quality.canonEmpty', { defaultValue: 'No canon issues found.' })}
         </div>
       )}
 
-      {compositionIssues.length > 0 && (
-        <section data-testid="quality-canon-composition-section" className="flex flex-col gap-1">
-          <h3 className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
-            {t('quality.canonFromGeneration', { defaultValue: 'From generation ({{n}})', n: compositionIssues.length })}
-          </h3>
-          <ul className="flex flex-col gap-1">
-            {compositionIssues.map((issue: CanonIssue) => (
-              <li
-                key={issue.scene_id}
-                data-testid="quality-canon-composition-item"
-                data-focused={issue.chapter_id === focusChapterId ? 'true' : undefined}
-                className={`flex items-start justify-between gap-2 rounded border p-2 text-[11px] ${
-                  issue.chapter_id === focusChapterId
-                    ? 'border-sky-400 bg-sky-50 ring-2 ring-sky-400 dark:border-sky-700 dark:bg-sky-950/40'
-                    : 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/40'
-                }`}
-              >
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-medium text-rose-700 dark:text-rose-300">{issue.scene_title || t('quality.untitledScene', { defaultValue: 'Untitled scene' })}</span>
-                  {issue.violations.map((v, i) => (
-                    <span key={i} className="text-rose-600 dark:text-rose-400">⚠ {v.why || v.name}</span>
-                  ))}
-                </div>
-                {issue.chapter_id && (
-                  <button
-                    type="button"
-                    data-testid="quality-canon-jump"
-                    className="shrink-0 rounded bg-rose-600 px-2 py-0.5 text-white"
-                    onClick={() => jumpToChapter(issue.chapter_id)}
-                  >
-                    {t('quality.jumpToChapter', { defaultValue: 'Open chapter' })}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
+      {/* OUT-5 — a truncation the reader cannot see reads as completeness. */}
+      {v.ruleCapped && (
+        <div data-testid="quality-canon-rules-capped" className={INFO}>
+          {t('quality.canonRulesCapped', {
+            defaultValue: 'Showing the {{shown}} most recent of {{total}} broken rules.',
+            shown: v.ruleViolations.length, total: v.ruleCount,
+          })}
+        </div>
       )}
 
-      {canonFlags.length > 0 && (
-        <section data-testid="quality-canon-extraction-section" className="flex flex-col gap-1">
-          <h3 className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
-            {t('quality.canonFromExtraction', { defaultValue: 'From knowledge extraction ({{n}})', n: canonFlags.length })}
-          </h3>
-          <ul className="flex flex-col gap-1">
-            {canonFlags.map((flag: CanonFlag) => {
-              const chapterId = flag.context.source_type === 'chapter' ? String(flag.context.source_id ?? '') : null;
-              return (
-                <li
-                  key={flag.log_id}
-                  data-testid="quality-canon-extraction-item"
-                  className="flex items-start justify-between gap-2 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] dark:border-amber-900 dark:bg-amber-950/40"
-                >
-                  <span className="text-amber-700 dark:text-amber-300">⚠ {flag.message}</span>
-                  {chapterId && (
-                    <button
-                      type="button"
-                      data-testid="quality-canon-jump"
-                      className="shrink-0 rounded bg-amber-600 px-2 py-0.5 text-white"
-                      onClick={() => jumpToChapter(chapterId)}
-                    >
-                      {t('quality.jumpToChapter', { defaultValue: 'Open chapter' })}
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+      {v.ruleViolations.length > 0 && (
+        <Section testId="quality-canon-rules-section" title={t('quality.canonFromRules', { defaultValue: 'Broken rules ({{n}})', n: v.ruleCount })}>
+          {v.ruleViolations.map((r, i) => (
+            <RuleRow key={`${r.job_id}:${r.rule_id ?? 'unattributed'}:${i}`} r={r}
+                     focused={!!v.focusRuleId && r.rule_id === v.focusRuleId}
+                     onJump={() => jump(r.chapter_id)} jumpLabel={jumpLabel} t={t as T} />
+          ))}
+        </Section>
+      )}
+
+      {v.canonIssues.length > 0 && (
+        <Section testId="quality-canon-composition-section" title={t('quality.canonFromGeneration', { defaultValue: 'From generation ({{n}})', n: v.canonIssues.length })}>
+          {v.canonIssues.map((issue) => (
+            <IssueRow key={issue.scene_id} issue={issue}
+                      focused={!!v.focusChapterId && issue.chapter_id === v.focusChapterId}
+                      onJump={() => jump(issue.chapter_id)} jumpLabel={jumpLabel} t={t as T} />
+          ))}
+        </Section>
+      )}
+
+      {v.canonFlags.length > 0 && (
+        <Section testId="quality-canon-extraction-section" title={t('quality.canonFromExtraction', { defaultValue: 'From knowledge extraction ({{n}})', n: v.canonFlags.length })}>
+          {v.canonFlags.map((flag) => <FlagRow key={flag.log_id} flag={flag} onJump={jump} jumpLabel={jumpLabel} />)}
+        </Section>
       )}
     </div>
+  );
+}
+
+/** A deep-link says what it focused — and ADMITS when it matched nothing. But it may only claim
+ *  "nothing has broken this rule" if the rule lane actually ran; otherwise that is a false-clean. */
+function FocusBanner({ v, t }: { v: QualityCanonView; t: T }) {
+  if (v.focusRuleId) {
+    return (
+      <div data-testid="quality-canon-rule-focus" className={FOCUS}>
+        {v.ruleFocusHits > 0
+          ? t('quality.canonRuleFocused', {
+              defaultValue: 'Showing violations of the rule you came from first ({{n}}): “{{rule}}”',
+              n: v.ruleFocusHits,
+              rule: v.focusRuleText ?? t('quality.canonRuleUnnamed', { defaultValue: 'that rule' }),
+            })
+          : v.compositionUnknown
+            ? t('quality.canonRuleFocusUnknown', { defaultValue: 'The rule you came from could not be checked — the co-writer lane is unavailable, so this is not a clean bill of health.' })
+            : t('quality.canonRuleFocusedEmpty', { defaultValue: 'The rule you came from has no open violations — it is anchored here, but nothing has broken it yet.' })}
+      </div>
+    );
+  }
+  if (!v.focusChapterId) return null;
+  return (
+    <div data-testid="quality-canon-focus" className={FOCUS}>
+      {v.chapterFocusHits > 0
+        ? t('quality.canonFocused', { defaultValue: 'Showing the chapter you came from first ({{n}} finding(s)).', n: v.chapterFocusHits })
+        : v.compositionUnknown
+          ? t('quality.canonRuleFocusUnknown', { defaultValue: 'The rule you came from could not be checked — the co-writer lane is unavailable, so this is not a clean bill of health.' })
+          : t('quality.canonFocusedEmpty', { defaultValue: 'The chapter you came from has no canon findings here.' })}
+    </div>
+  );
+}
+
+function RuleRow({ r, focused, onJump, jumpLabel, t }: {
+  r: RuleViolationItem; focused: boolean; onJump: () => void; jumpLabel: string; t: T;
+}) {
+  return (
+    <li data-testid="quality-canon-rule-item" data-focused={focused ? 'true' : undefined}
+        className={`${ROW} ${focused ? HIT : BAD}`}>
+      <div className="flex flex-col gap-0.5">
+        {/* An unresolved rule (archived, or an id the judge paraphrased) is labelled as such — the
+            finding is REAL, and hiding it would fake a clean book. */}
+        <span className="font-medium text-rose-700 dark:text-rose-300">
+          {r.rule_text ?? t('quality.canonRuleGone', { defaultValue: 'A rule that no longer exists' })}
+        </span>
+        <span className="text-rose-600 dark:text-rose-400">⚠ {r.why || r.span}</span>
+        <span className="text-neutral-500">{r.scene_title || t('quality.untitledScene', { defaultValue: 'Untitled scene' })}</span>
+      </div>
+      {r.chapter_id && <JumpButton onClick={onJump} tone="bg-rose-600" label={jumpLabel} />}
+    </li>
+  );
+}
+
+function IssueRow({ issue, focused, onJump, jumpLabel, t }: {
+  issue: CanonIssue; focused: boolean; onJump: () => void; jumpLabel: string; t: T;
+}) {
+  return (
+    <li data-testid="quality-canon-composition-item" data-focused={focused ? 'true' : undefined}
+        className={`${ROW} ${focused ? HIT : BAD}`}>
+      <div className="flex flex-col gap-0.5">
+        <span className="font-medium text-rose-700 dark:text-rose-300">
+          {issue.scene_title || t('quality.untitledScene', { defaultValue: 'Untitled scene' })}
+        </span>
+        {issue.violations.map((vi, i) => (
+          <span key={i} className="text-rose-600 dark:text-rose-400">⚠ {vi.why || vi.name}</span>
+        ))}
+      </div>
+      {issue.chapter_id && <JumpButton onClick={onJump} tone="bg-rose-600" label={jumpLabel} />}
+    </li>
+  );
+}
+
+function FlagRow({ flag, onJump, jumpLabel }: {
+  flag: CanonFlag; onJump: (id: string) => void; jumpLabel: string;
+}) {
+  const chapterId = flag.context.source_type === 'chapter' ? String(flag.context.source_id ?? '') : null;
+  return (
+    <li data-testid="quality-canon-extraction-item"
+        className={`${ROW} border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40`}>
+      <span className="text-amber-700 dark:text-amber-300">⚠ {flag.message}</span>
+      {chapterId && <JumpButton onClick={() => onJump(chapterId)} tone="bg-amber-600" label={jumpLabel} />}
+    </li>
+  );
+}
+
+function Section({ title, testId, children }: { title: string; testId: string; children: React.ReactNode }) {
+  return (
+    <section data-testid={testId} className="flex flex-col gap-1">
+      <h3 className="text-xs font-medium text-neutral-600 dark:text-neutral-300">{title}</h3>
+      <ul className="flex flex-col gap-1">{children}</ul>
+    </section>
+  );
+}
+
+function JumpButton({ onClick, tone, label }: { onClick: () => void; tone: string; label: string }) {
+  return (
+    <button type="button" data-testid="quality-canon-jump"
+            className={`shrink-0 rounded px-2 py-0.5 text-white ${tone}`} onClick={onClick}>
+      {label}
+    </button>
   );
 }

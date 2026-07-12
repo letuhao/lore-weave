@@ -999,7 +999,19 @@
     "coverageTitle": "Hikaye kapsamı",
     "coverageDesc": "Kitap genelindeki vaatlerin kapsamı",
     "canonTitle": "Kanon sorunları",
-    "canonDesc": "Onaylanmış çelişkiler"
+    "canonDesc": "Onaylanmış çelişkiler",
+    "canonFromRules": "İhlal edilen kurallar ({{n}})",
+    "canonRuleError": "Kanon kuralı ihlalleri yüklenemedi — tekrar deneyin.",
+    "canonRuleGone": "Artık mevcut olmayan bir kural",
+    "canonRuleUnnamed": "o kural",
+    "canonRuleFocused": "Öncelikle geldiğiniz kuralın ihlalleri gösteriliyor ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "Geldiğiniz kuralın açık bir ihlali yok — buraya sabitlenmiş durumda ancak henüz bir kural ihlali gerçekleşmedi.",
+    "canonFocused": "Önce geldiğiniz bölümü gösteriliyor ({{n}} bulgu).",
+    "canonFocusedEmpty": "Geldiğiniz bölümde buraya dair herhangi bir kanon bulgusu yok.",
+    "canonUnavailable": "Ortak yazar servisine ulaşılamadı — oluşturma anındaki kanon bulguları aşağıya DAHİL EDİLMEMİŞTİR.",
+    "canonNoWork": "Bu kitabın henüz bir ortak yazar oturumu bulunmadığı için oluşturma süreci kanon kontrolleri çalıştırılmadı. Sadece bilgi çıkarma bulguları gösteriliyor.",
+    "canonRuleFocusUnknown": "Geldiğiniz kural kontrol edilemedi — ortak yazar şeridi kullanılamıyor, bu nedenle bu bir temiz sağlık raporu değildir.",
+    "canonRulesCapped": "{{total}} ihlal edilen kuraldan en güncel {{shown}} tanesi gösteriliyor."
   },
   "planHub": {
     "undo": "Geri al"

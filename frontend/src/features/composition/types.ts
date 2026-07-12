@@ -81,6 +81,26 @@ export type CanonIssue = {
   violations: Array<{ entity_id?: string; name?: string; why?: string; span?: string; kind?: string }>;
 };
 
+// 24 PH18 — an open violation of an author-declared CANON RULE, from the critic
+// lane (`generation_job.critic.violations[]`). The SIBLING of CanonIssue, and the
+// difference is load-bearing: CanonIssue is the ENTITY-continuity lane and carries
+// no rule id at all, so it can never answer "show me violations of rule X". This
+// one can — it is what the Plan Hub's canon badge deep-links on.
+// `rule_text` is null when the rule no longer resolves (the author archived it, or
+// the judge paraphrased its id). The row is still REAL and is never dropped —
+// hiding every unattributable finding would render the panel falsely clean.
+export type RuleViolationItem = {
+  scene_id: string;
+  scene_title: string;
+  chapter_id: string | null;
+  job_id: string;
+  created_at: string;
+  rule_id: string | null;
+  rule_text: string | null;
+  span: string;
+  why: string;
+};
+
 // T0.1 — narrative-thread (promise/foreshadow) ledger row. Advisory (D4); the
 // `open` set is the author's unpaid-promise debt. Mirrors composition-service
 // NarrativeThread (app/db/models.py).

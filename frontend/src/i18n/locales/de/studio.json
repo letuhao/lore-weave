@@ -999,7 +999,19 @@
     "coverageTitle": "Story-Abdeckung",
     "coverageDesc": "Abdeckung des Versprechens des gesamten Buches",
     "canonTitle": "Kanon-Probleme",
-    "canonDesc": "Bestätigte Widersprüche"
+    "canonDesc": "Bestätigte Widersprüche",
+    "canonFromRules": "Verletzte Regeln ({{n}})",
+    "canonRuleError": "Verletzungen der Kanon-Regeln konnten nicht geladen werden – bitte erneut versuchen.",
+    "canonRuleGone": "Eine Regel, die nicht mehr existiert",
+    "canonRuleUnnamed": "diese Regel",
+    "canonRuleFocused": "Zeige zuerst Verletzungen der Regel, aus der Sie kommen ({{n}}): „{{rule}}“",
+    "canonRuleFocusedEmpty": "Die Regel, aus der Sie kommen, weist keine offenen Verletzungen auf – sie ist hier verankert, aber es wurde noch nichts dagegen verstoßen.",
+    "canonFocused": "Das Kapitel, aus dem Sie kommen, wird zuerst angezeigt ({{n}} Fund(e)).",
+    "canonFocusedEmpty": "Das Kapitel, aus dem Sie kommen, enthält hier keine Kanon-Fundstellen.",
+    "canonUnavailable": "Der Co-Writer-Dienst konnte nicht erreicht werden — Ergebnisse aus dem Kanon zum Zeitpunkt der Generierung sind unten NICHT enthalten.",
+    "canonNoWork": "Dieses Buch hat noch keine Co-Autor-Sitzung, daher wurden die Canon-Prüfungen während der Generierung noch nicht durchgeführt. Es werden nur Ergebnisse der Wissensextraktion angezeigt.",
+    "canonRuleFocusUnknown": "Die Regel, von der Sie kommen, konnte nicht geprüft werden – der Co-Autor-Pfad ist nicht verfügbar, daher handelt es sich hierbei nicht um eine Bestätigung der Korrektheit.",
+    "canonRulesCapped": "Es werden die {{shown}} aktuellsten von {{total}} verletzten Regeln angezeigt."
   },
   "planHub": {
     "undo": "Rückgängig"

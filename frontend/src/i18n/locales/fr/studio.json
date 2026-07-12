@@ -999,7 +999,19 @@
     "coverageTitle": "Couverture de l'histoire",
     "coverageDesc": "Couverture de la promesse globale du livre",
     "canonTitle": "Problèmes de canon",
-    "canonDesc": "Contradictions confirmées"
+    "canonDesc": "Contradictions confirmées",
+    "canonFromRules": "Règles enfreintes ({{n}})",
+    "canonRuleError": "Impossible de charger les violations de la règle canonique — réessayez.",
+    "canonRuleGone": "Une règle qui n'existe plus",
+    "canonRuleUnnamed": "cette règle",
+    "canonRuleFocused": "Affichage prioritaire des violations de la règle d'origine ({{n}}) : « {{rule}} »",
+    "canonRuleFocusedEmpty": "La règle d'origine n'a aucune violation ouverte — elle est ancrée ici, mais rien ne l'a encore enfreinte.",
+    "canonFocused": "Affichage prioritaire du chapitre d'origine ({{n}} trouvée(s)).",
+    "canonFocusedEmpty": "Le chapitre d'où vous venez n'a aucune donnée canonique ici.",
+    "canonUnavailable": "Impossible de contacter le service de co-écriture — les éléments du canon générés lors de la rédaction ne sont PAS inclus ci-dessous.",
+    "canonNoWork": "Ce livre n'a pas encore de session de co-écriture, les vérifications de cohérence lors de la génération n'ont donc pas été effectuées. Seuls les résultats de l'extraction de connaissances sont affichés.",
+    "canonRuleFocusUnknown": "La règle dont vous venez n'a pas pu être vérifiée — la voie de co-écriture est indisponible, il ne s'agit donc pas d'une validation complète.",
+    "canonRulesCapped": "Affichage des {{shown}} dernières règles enfreintes sur {{total}}."
   },
   "planHub": {
     "undo": "Annuler"

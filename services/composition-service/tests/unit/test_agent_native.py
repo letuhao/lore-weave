@@ -260,13 +260,19 @@ def test_EVERY_declared_severity_kind_is_ACTUALLY_EMITTED_by_a_source():
         )
 
 
-def test_all_FIVE_of_AN4s_sources_are_queried():
-    """AN-4 names five, and four is not five. The one I dropped was the ERROR-severity one."""
+def test_all_of_AN4s_sources_are_queried_INCLUDING_the_rule_lane():
+    """AN-4 names five, and four is not five. The one I dropped was the ERROR-severity one.
+
+    (2b) is the SIXTH, added with 24 PH18: canon has TWO lanes, and source (2) only reads the
+    ENTITY one (`canon_issues` — "a gone character is acting", no rule id). Without (2b) an agent
+    asking "what is wrong with this book" could not see a broken author-declared RULE at all, while
+    the human's quality-canon panel could. Same silent-gap class as the HIGH above, one lane over."""
     from app.mcp import server
 
     src = inspect.getsource(server.composition_diagnostics)
-    for n in (1, 2, 3, 4, 5):
+    for n in ("1", "2", "2b", "3", "4", "5"):
         assert f"# ({n})" in src, f"AN-4 source ({n}) is not queried"
+    assert "rule_violations(" in src, "the RULE lane must be READ, not just declared"
 
 
 def test_prose_deleted_REFUSES_to_answer_over_a_TRUNCATED_spine():
