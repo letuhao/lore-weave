@@ -1,5 +1,55 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ⭐ Track: BOOK-PACKAGE CLUSTER (specs 22–28) — **COMPLETE** (2026-07-12, branch `feat/context-budget-law`)
+
+> **Anchor:** [`docs/plans/2026-07-12-book-package-RUN-STATE.md`](../plans/2026-07-12-book-package-RUN-STATE.md) —
+> §5 slice board · §6 decisions · §7 parked · §8 debt · §9 drift · §10 completeness ledger · §11 final audit.
+> *(The Work-Assistant and Track-C blocks below are DIFFERENT, concurrent tracks — left intact.)*
+
+**All of 00B is built and live-proven, except one externally-blocked eval.** A book now goes from a
+braindump to a linked, cast-populated, scene-level plan with a manuscript under it — and an agent can
+orient in it, search it, and be told what is wrong with it.
+
+- **Stage 7 · `24` Plan Hub** — the ACTION half (`b904b3a74`, `09f2d29b1`).
+- **Stage 6 · `27` PlanForge v2** — the seven-pass compiler. **LIVE: `pass_cursor 7/7`**, both human
+  checkpoints honoured, the glossary seeded through the bootstrap quarantine (PF-7), the roster bound
+  onto the spec (PF-13), 6 scenes linked with tension **and** resolved cast, bootstrap stamping 2/2
+  planned nodes (E3). Re-running a pass stales everything downstream with **zero invalidation writes**.
+- **Stage 8 · `28` agent-native** — `composition_package_tree` (the agent's `ls -R`, **~138 tokens** on a
+  real book), `composition_find_references` (the inverse query composition never had), and
+  `composition_diagnostics` (the problems panel). All three live over the real MCP transport.
+
+**2067 tests pass.** Four `/review-impl` passes found **9 HIGH — every one mine**; all fixed in-phase.
+
+### ⚠ The one thing to read before touching the compiler
+
+`propose.py` (rules mode) spent its entire life returning **one specific Vietnamese novel's**
+characters, planner-variables, forbids and arc titles for *every* book anyone planned — and it never
+failed, never returned empty, and never looked wrong. It is fixed (`2c0a44a30`), and the lesson is
+the point: **a confident wrong answer is the worst failure mode there is.** It only surfaced because
+the linker finally tried to write the compiler's output somewhere real (BPS-18: *an emitted artifact
+with no linker is a bug*).
+
+### ▶ NEXT for this track
+
+1. **`P-07` — the S06 flagship replay** (the pillar's ship signal, 27 H4 / 28 AN-D3). **Blocked
+   externally, not by code:** a concurrent session was redeploying `chat-service` and every redeploy
+   401'd the 17-turn eval mid-run (reached turn 8/17, 4 tool calls, 0 empty-intent — the harness and
+   the new tools work). Re-run when the stack is quiet:
+   ```
+   JWT_SECRET=<chat-service env> QG_BASE=http://localhost:8212    QG_MODEL_REF=019ebb72-27a2-72f3-a42d-d2d0e0ded179    QG_SCENARIOS=scripts/eval/discoverability_scenarios/S06-flagship.json    QG_OUT=docs/eval/discoverability/runs/2026-07-12-S06-v2-gate    python scripts/eval/run_discoverability_scenario.py
+   ```
+   The *structural* property its gate names ("the plan movement ends with linked structure") is
+   already live-proven; what stays unproven is whether the AGENT discovers and drives the new tools.
+2. **`⚠ PO-DECIDE` (D-04)** — 24 PH18 asks for a canon deep-link "filtered to the rule". That is
+   **impossible against the data model** (`CanonIssue` rows carry no rule id). I deep-linked by the
+   node's CHAPTER and flagged it. Rule-level filtering needs a `rule_id` on `CanonIssue` — a `26`
+   change, and PH18 becomes a spec amendment.
+3. **New debt:** `DBT-10` (request bodies are unbounded — a body cap belongs at the router layer for
+   every large-text field), `DBT-11` (a service-wide `paid` audit — Track D's), `DBT-09` (book delete
+   does not cascade to composition's spec rows — cross-service, real, outside this cluster).
+
+
 ## ⭐ Track: WORK ASSISTANT — Phase 0 COMPLETE · Phase 1 ~40% (2026-07-12, branch `feat/context-budget-law`)
 
 > **Anchor:** [`docs/plans/2026-07-11-work-assistant-RUN-STATE.md`](../plans/2026-07-11-work-assistant-RUN-STATE.md) —

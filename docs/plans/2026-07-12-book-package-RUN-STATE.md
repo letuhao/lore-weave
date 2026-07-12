@@ -204,7 +204,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + evidence · `🅿️` pa
 | DBT-06 | **`23`-C3 arc inspector does not exist** — the Hub drawer's arc variant is an honest minimal summary rather than a fork | `PlanDrawer.tsx:191` | #4 genuinely-upstream |
 | DBT-07 | **FE test files are EXCLUDED from typecheck** (`tsconfig.json` excludes `__tests__`/`*.test.*`). So a contract change cannot red a test that mocks the old shape — the `fixtures-can-seed-a-field-the-writer-never-sets` class, repo-wide. Measured: enabling it yields **1869 errors**, nearly all missing `@testing-library/jest-dom` matcher types in that config. | `frontend/tsconfig.json` | #2 structural — needs a jest-dom types wire-up + a sweep across EVERY feature, in a checkout shared with concurrent sessions. Out of scope for the book-package cluster. |
 | DBT-09 | **Deleting a BOOK does not cascade to composition's spec rows.** Observed live: `DELETE /v1/books/{id}` → 204, and this book's `structure_node` / `outline_node` / `plan_run` / `composition_work` rows all SURVIVE (cross-DB, no FK — by design, §1.4). My smoke's orphans had to be reaped by hand. Nothing consumes a `book.deleted` event. | cross-service | #2 structural — needs a `book.deleted` consumer + reaper in composition. Real, but outside this cluster. |
-| DBT-08 | **`composition_find_references` (28 AN-3) is the drawer's References facet.** Built in Phase C; the facet now names that blocker instead of the stale "loads in H4". | `PlanDrawer.tsx` | #3 naturally-next-phase (Phase C) |
+| ~~DBT-08~~ | ~~**`composition_find_references` (28 AN-3) is the drawer's References facet.**~~ **CLEARED** -- the tool shipped in Phase C (`a3abc05a6`) and is live-proven. The FE facet can now call it. | `PlanDrawer.tsx` | -- |
+| DBT-10 | **`_var_deltas` is O(lines x declared-codes) and `source_markdown` has no `max_length`.** The parser is capped at 24 variables (B-R2 MED-5), which bounds it -- but the FIELD is still unbounded on the way in, so a multi-megabyte braindump is accepted and parsed. | `routers/plan_forge.py:34` | #2 structural -- a body cap belongs at the gateway/router layer for EVERY large-text field, not one-off here |
+| DBT-11 | **No composition tool declares `paid` except `plan_run_pass`.** `plan_propose_spec`, `plan_apply_revision` and `plan_compile(run_pipeline=true)` all spend real LLM money and are undeclared (pre-existing; the `_meta` Completeness Law is status PROPOSED). I declared it on the tool I ADDED rather than silently matching the omission. | `mcp/server.py` | #1 out of scope -- a service-wide `paid` audit belongs with Track D's WS-D0/D1, not this cluster |
 
 ## 9. Drift log — the near-misses, recorded honestly
 
@@ -228,6 +230,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + evidence · `🅿️` pa
 | DR-15 | **`plan_forge_service` had no module logger at all**, so `_bind_roster`'s log line 500'd the request — *after* every write had committed. Same class as DR-14: the caller saw a failure for work that had entirely succeeded. | The live smoke | Added the logger. Two instances of "500 after commit" in one slice is the tell that I was not thinking about what the caller SEES when a late line throws. |
 | DR-16 | **I parked P-06 as "the rules parser can't plan a generic book" — the truth was far worse.** It did not fail on an unseen book; it **silently returned a plan for a DIFFERENT book**: another novel's state variables, its protagonist's personality, its plot-secret forbids, its arc titles. Every downstream pass then planned faithfully against that charter. I had even *seen* the symptom and not recognised it — my own B4 smoke's arc came back titled "Arc 1", and I read that as the parser echoing my markdown when it was the HARDCODE. A confident wrong answer is the worst failure mode there is: it does not crash, it does not return empty. | Actually READING `propose.py` when I sat down to sever it, rather than trusting my own park note | Fixed in B5. And the parked note itself was the drift: a park is a claim about *what is wrong*, and mine was wrong. **Re-read the code before trusting a park you wrote yourself.** |
 | DR-17 | **The validator was checking the fixture against itself.** `arc2_discovery` asserted `arc_kind == "discovery"` — a value the PROPOSER hardcoded. The rule could not fail, for any document, ever. A tautology dressed as a golden criterion, sitting in the suite looking like coverage. | Severing the proposer made it go red — which is the only reason anyone would ever have noticed | It is advisory now, and what gates compile is structural (`spec_has_arc`, `spec_has_events`). A rule whose subject is a constant is not a test. |
+| DR-25 | **My C-R "fix" was itself a regression, and I caught it during the DoD recheck.** AN-2's text says the `.runs/` block is owner-keyed and a non-owner must get it "absent + a warning… **until** 25 OQ-3's VIEW resolution lands" — so at C-R I owner-filtered it and called it a MED. But **OQ-3 HAS landed**: 00B §1.4 records it shipped, in the same breath as "also unblocks 28-AN-2's `runs` block", and its decision is *default VIEW*. `list_for_book` has carried no owner predicate ever since. So I "fixed" against a sentence written BEFORE the thing it was waiting for, re-narrowing a scope the spec had deliberately widened and hiding a collaborator's legitimate view of their own book's planning history. | The Phase-D per-pillar DoD recheck, reading 00B's status stamps against my own diff | Reverted. **A doc sentence is a claim about the world AT THE TIME IT WAS WRITTEN — check the world.** This is DR-16's lesson exactly, and I walked into it a second time, in the review that was supposed to be the catch-net. |
 | DR-23 | **Five bugs in Phase C, every one found by the LIVE MCP smoke and none reachable from a unit test.** The tools 404'd a book whose Work was still PENDING backfill (`resolve_by_book` excludes it BY DESIGN, and its own docstring says len==0 must fall through, not deny -- a book with a pending Work still HAS a spec tree, because `structure_node`/`outline_node` are book-keyed). The MCP envelope carries NO user JWT, so every book-service read needed the service-bearer seam. `CompositionWork` has no `title`. `canon_rule`'s column is `text`, not `rule_text`. `list_for_book` returns a (rows, cursor) TUPLE. **Four of the five surfaced as honest WARNINGS rather than silent zeros** -- the absent-not-zero posture catching my own bugs while I had the field names wrong, which is exactly what it is for. | The live smoke, through the real MCP transport | Fixed. And the reason to drive the REAL transport rather than the python function: `tools/list` advertising is itself a contract (AN-10), and a tool that works in-process but 404s over MCP is not a tool. |
 | DR-24 | **I declared an ERROR-severity diagnostic kind and never emitted it.** `SEVERITY` carried `prose_deleted_spec_node` while no source produced it, so the problems panel silently never checked the highest-severity class it has -- and an agent asking "what is wrong with this book" got a confident answer with a hole in it. **A problems panel with a silent gap is worse than no panel: the reader believes the count.** The dead map entry was the only visible tell. | `/review-impl` (C-R), counting AN-4's five sources against the four I had written | The test now binds the severity map to the emitters: a kind cannot be declared and forgotten, nor emitted without a severity. |
 | DR-18 | **The SERVICE and the WORKER disagreed about whether a pass could run.** `character_arcs` has `reads_package=False`, so the worker skipped loading the package -- but it DEPENDS on `cast` and `beats`, which both read it, so their fingerprints were recomputed with `package_artifact_id=None`, could not match, and read as STALE. The service returned 200 and enqueued the job; the worker then refused it, naming two upstreams the ledger showed as fresh and accepted. Two components answering one question with different inputs. | The full 7-pass live smoke -- nothing smaller reaches a pass that does not read the package but depends on ones that do | The package is a property of the RUN, not of the pass being run. Always loaded. |
@@ -237,14 +240,99 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + evidence · `🅿️` pa
 | DR-22 | **My own smoke's failure was a bug in the SMOKE, and I nearly "fixed" the code for it.** `character_arcs`/`scenes` came back blank, so I assumed a missing `motifs` run. Wrong twice: the real cause was that a re-run never marks a pass `running`, so my poll saw the PREVIOUS run's `completed` instantly and accepted mid-flight. Had I trusted my first theory I would have shipped a script change and left a real HIGH in the product. | Refusing to accept my own hand-wave, and writing a diagnostic that printed EVERY http code | Diagnose, do not theorise. The blank status was the evidence; my explanation for it was not. |
 | DR-05 | **`/review-impl` found 3 HIGH — and two were bugs I created *while fixing* other bugs.** `useBookChapters` re-introduced the exact cold-open budget violation A11 had removed, **one commit later**, with the budget test green (it summed the allowed calls and never asserted the forbidden ones). And A4/A5's "the deep-link seam was dead" fixed the canvas half while the *consumer* half — the panels reading `props.params` — was equally dead. **Fixing a bug class in one place is not fixing the bug class.** | The review, not me | All 14 findings fixed in-phase (see `09f2d29b1`). The budget test now asserts what must NOT fire, not only what may. |
 
-## 10. Completeness ledger — filled at the end
+## 10. Completeness ledger
 
-| Pillar | DoD (00B §6) | Met? | Evidence |
+**Verified 2026-07-12 against the LIVE DB + the live MCP surface — not against this file's own notes.**
+(DR-16 is why: a park note is a *claim*, and mine was wrong. Every row below was re-checked by query.)
+
+| Pillar | DoD (00B §6) | Met? | Evidence (live) |
 |---|---|---|---|
-| `22` scene seam | | | |
-| `23` book architecture | | | |
-| `24` plan hub | | | |
-| `25` migration | | | |
-| `26` indexing | | | |
-| `27` compiler | | | |
-| `28` agent-native | | | |
+| `22` scene seam | scene index reads; `source_scene_id` filter | ✅ pre-existing | `loreweave_book.scenes` carries `book_id` + `source_scene_id` |
+| `23` book architecture | `structure_node` spec tree; BA12 packer reach; roster_bindings | ✅ | `structure_node.roster_bindings` present; **PF-13 proven BY EFFECT** — change the binding ⇒ the PACKED PROMPT changes |
+| `24` plan hub | the ACTION half + the audit's fix-now tier | ✅ **Phase A** | 13 slices, `/review-impl` (3H/7M/4L), live smoke. `b904b3a74` + `09f2d29b1` |
+| `25` migration | the lift; the M-steps | ✅ | legacy `arc` table **GONE**; **M6.1 swap live** (`outline_chapter_written_kinds`) — which is what makes a "planned, not yet written" node insertable at all |
+| `26` indexing | `arc_conformance_state`; IX-14's ONE staleness computation | ✅ | table present; **IX-14's helper is COMPOSED by 3 consumers** (its route, AN-2's `.index/`, AN-4's source 1) — never re-derived |
+| `27` compiler | the 7-pass compiler, checkpoints, the link step | ✅ **Phase B** | `pass_state`+`genre_tags` live; 4/4 provenance cols; **LIVE: `pass_cursor 7/7`**, both human checkpoints, glossary through the quarantine, 6 scenes linked with tension + resolved cast, E3 stamps 2/2 |
+| `28` agent-native | the 3 composition R tools | ✅ **Phase C** | all 3 **ADVERTISED in `tools/list`** and live-called over the real MCP transport; `package_tree` 553 chars/~138 tok |
+
+**The one thing NOT met:** the **S06 flagship replay** (27 H4 / 28 AN-D3) — 🅿️ **P-07**, blocked
+externally (a concurrent session redeploying `chat-service` under the run). What it would ADD over
+what is proven is the *agent-discoverability* leg: does the model FIND and DRIVE these tools. The
+structural property its gate names — "the plan movement ends with linked structure" — is live-proven
+by H3.
+
+---
+
+## 11. Final audit
+
+### What shipped
+
+The book-package cluster is **built and live-proven end to end**. A book can now be taken from a
+braindump to a linked, cast-populated, scene-level plan with a manuscript under it — and an agent can
+orient in it, search it, and be told what is wrong with it.
+
+Ten commits: `b904b3a74` `09f2d29b1` (A) · `a4558ed44` `b0eafe205` `e813f7200` `f5ca7ecf8`
+`51707e29f` `6ef793f3f` `2c0a44a30` `47bddd8d9` `b99b38b6b` (B) · `a3abc05a6` `54ae6c72a` (C).
+**2067 tests pass**, 251 skipped.
+
+### The four `/review-impl` passes found 9 HIGH — and every one was mine
+
+| | The finding | Why it matters |
+|---|---|---|
+| A-R | 3 HIGH (incl. a budget violation I re-introduced ONE COMMIT after fixing it) | fixing a bug class in one place is not fixing the bug class |
+| B-R | 3 HIGH — PF-11 reclaimed the author's edit one compile later; **my first fix was itself wrong**; a no-op compile bumped every version | a 2-compile smoke shows a GREEN `preserved_user_edit: 1` while the human is overwritten on the 3rd |
+| B-R2 | 3 HIGH — **the agent could FORCE past the human's checkpoint**; re-running a pass broke the compiler; a re-run silently ATE the author's acceptance | I wrote a tool description promising the model it could not skip a checkpoint, and handed it `force` in the same commit |
+| C-R | 1 HIGH — the problems panel silently skipped its **ERROR-severity** source | a panel with a silent gap is worse than no panel: the reader believes the count |
+
+### What the LIVE smokes caught that a green suite could not
+
+**Fourteen bugs.** Every one of them passed unit tests.
+
+The pattern is not subtle, and it is the single most useful thing this run produced:
+
+- **DR-07** — 1965 tests green, and exactly ONE test invoked `compile()`. It was in the *integration*
+  suite, which is among the **251 SKIPPED**. I nearly took that green as proof.
+- **DR-19** — a test named "LOSSLESS round-trip" whose fixture set the one field that broke to `None`.
+- **DR-18** — the service said a pass was runnable and the worker refused it. Two components
+  answering one question with different inputs; nothing smaller than the full 7-pass chain reaches it.
+- **DR-20** — the scenes had **nobody in them**, and everything else looked perfect.
+
+### Decisions (§6) — 7, of which 1 is ⚠ PO-DECIDE
+
+`D-04` is the one the PO should look at: 24 PH18 asks for a canon deep-link "filtered to the rule",
+and that is **impossible against the data model** (`CanonIssue` rows carry no rule id). I deep-linked
+by the node's CHAPTER — the lens that *can* resolve — and flagged it. If you want rule-level
+filtering, `CanonIssue` needs a `rule_id`, and PH18 becomes a spec amendment.
+
+`D-06`/`D-07` are places the SPEC's shorthand was wrong and following it would have been the bug
+(`ReferencesRepo` already means something else; there is no `scenes` table in composition).
+
+### Drift (§9) — 24 entries. **This is the honest part.**
+
+Six of them are cases where I was the bug: a closed-set value I drifted **twice** (DR-06, DR-12); a
+fix that was itself wrong (DR-08); a bug class I fixed in one place and not the sibling (DR-09); a
+guarantee I stated in a prompt and then handed the model the key to (DR-21); a park note that was a
+*claim*, and wrong — the parser did not "fail on a generic book", it **silently planned a different
+one** (DR-16).
+
+And DR-22: my own smoke's ❌ was a bug in the SMOKE, and I nearly "fixed" the code for it. Refusing
+my own hand-wave and writing a diagnostic that printed every HTTP code is what found the real HIGH.
+
+### Debt (§8) — 3 new, all gate-eligible
+
+`DBT-10` (unbounded request body — belongs at the router layer for every large-text field, not
+one-off), `DBT-11` (a service-wide `paid` audit — Track D's), and `DBT-09` (book delete does not
+cascade to composition — cross-service, real, outside this cluster).
+
+### Parked (§7) — 1
+
+`P-07`, the S06 replay. External, precisely scoped, with the exact command to re-run it.
+
+### The one thing I would tell the next agent
+
+**Read `propose.py` before trusting anything it produced.** The compiler was, for its entire life,
+returning one specific Vietnamese novel's characters, variables, forbids and arc titles for *every*
+book anyone planned in rules mode — and it never failed, never returned empty, and never looked
+wrong. A confident wrong answer is the worst failure mode there is, and the only reason it surfaced
+is that the linker (BPS-18: *an emitted artifact with no linker is a bug*) finally tried to write the
+compiler's output somewhere real.

@@ -294,17 +294,33 @@ def test_a_node_with_a_NULL_chapter_id_is_NOT_prose_deleted():
     assert "chapter_id IS NOT NULL" in src
 
 
-def test_the_runs_block_is_OWNER_scoped_and_SAYS_when_it_withheld():
-    """MED. AN-2, verbatim: the `.runs/` tables are OWNER-keyed today (25 F10), and a non-owner gets
-    the block absent + a warning until 25 OQ-3's VIEW resolution lands. I shipped it to every VIEW
-    grantee — quietly handing a collaborator the owner's planning history. The E0 grant is on the
-    BOOK; it was never a grant over the owner's runs."""
+def test_the_runs_block_is_VIEW_scoped_NOT_owner_scoped():
+    """The C-R finding I got BACKWARDS, and the correction is the more interesting half.
+
+    AN-2's text says the `.runs/` tables are owner-keyed and a non-owner must get the block "absent +
+    a warning… UNTIL 25 OQ-3's VIEW resolution lands". So at C-R I owner-filtered the block.
+
+    But OQ-3 HAS landed. 00B §1.4 records it shipped — in the same breath as "also unblocks 28-AN-2's
+    `runs` block" — and OQ-3's decision is *default VIEW*. `PlanRunsRepo.list_for_book` has carried no
+    owner predicate ever since. So the sentence I "fixed" against was written BEFORE the thing it was
+    waiting for, and my fix re-narrowed a scope the spec had deliberately widened — hiding a
+    collaborator's legitimate view of their own book's planning history.
+
+    A doc sentence is a claim about the world AT THE TIME IT WAS WRITTEN. Check the world. (DR-16,
+    and I walked into it twice.)"""
+    import inspect as _i
+
+    from app.db.repositories.plan_runs import PlanRunsRepo
     from app.mcp import server
 
-    src = inspect.getsource(server.composition_package_tree)
-    assert "r.created_by == tc.user_id" in src
-    assert "owner-keyed" in src          # …and it TELLS the caller it withheld, rather than
-    assert "are NOT shown" in src        #    silently returning a shorter list
+    # the REPO read is book-scoped, not owner-scoped — that IS OQ-3, in the code
+    repo_src = _i.getsource(PlanRunsRepo.list_for_book)
+    assert 'where = ["book_id = $1"]' in repo_src
+    assert "owner_user_id" not in repo_src
+
+    # …so the tool must not re-narrow it
+    src = _i.getsource(server.composition_package_tree)
+    assert "r.created_by == tc.user_id" not in src
 
 
 def test_the_entity_reference_sources_carry_NO_project_id():

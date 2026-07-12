@@ -3827,21 +3827,25 @@ async def composition_package_tree(
         # warning rather than a fake empty `runs` — the degrade posture doing its job while I had
         # the shape wrong.
         rows, _cursor = await PlanRunsRepo(pool).list_for_book(bid, limit=5)
-        # AN-2, verbatim: the `.runs/` tables are OWNER-KEYED today (25 F10). They are served to a
-        # non-owner grantee only under 25 OQ-3's VIEW resolution — and until that lands, a non-owner
-        # gets the block ABSENT + a warning. I shipped it to every VIEW grantee, which quietly hands
-        # a collaborator the owner's planning history; the E0 grant is on the BOOK, and it was never
-        # a grant over the owner's runs.
-        mine = [r for r in (rows or []) if r.created_by == tc.user_id]
-        if len(mine) < len(rows or []):
-            warnings.append(
-                "some planning runs on this book belong to another user and are NOT shown "
-                "(the .runs/ tables are owner-keyed until 25 OQ-3's VIEW resolution lands)",
-            )
+        # The `.runs/` block is VIEW-scoped, NOT owner-scoped — and getting here took two wrong turns
+        # worth recording.
+        #
+        # AN-2's text says the `.runs/` tables are owner-keyed and a non-owner must get the block
+        # "absent + a warning… until 25 OQ-3's VIEW resolution lands". So at C-R I owner-filtered it.
+        # That was WRONG: OQ-3 HAS landed — 00B §1.4 records it shipped, in the same breath as "also
+        # unblocks 28-AN-2's `runs` block", and OQ-3's decision is *default VIEW*. `list_for_book`
+        # has carried no owner predicate ever since.
+        #
+        # So the sentence I "fixed" against was written BEFORE the thing it was waiting for. Filtering
+        # here would re-narrow a scope the spec deliberately widened, and hide a collaborator's
+        # legitimate view of the book's own planning history. The E0 VIEW gate above IS the gate.
+        #
+        # (The lesson is DR-16's, and I walked into it twice: a doc sentence is a claim about the
+        # world at the time it was written. Check the world.)
         out["runs"] = {
             "recent": [
                 {"id": str(r.id), "status": r.status, "mode": r.mode}
-                for r in mine
+                for r in (rows or [])
             ],
         }
     except Exception:  # noqa: BLE001
