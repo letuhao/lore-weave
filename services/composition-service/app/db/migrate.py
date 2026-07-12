@@ -1280,6 +1280,13 @@ CREATE INDEX IF NOT EXISTS idx_plan_run_owner_book
   ON plan_run(created_by, book_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_plan_run_checksum
   ON plan_run(created_by, book_id, source_checksum);
+-- Both indexes above LEAD with created_by — a leftover from the pre-OQ-3 per-user
+-- key. Post re-key `created_by` is a plain actor stamp (stored, never filtered on)
+-- and every read filters on book_id ALONE, which a created_by-leading index cannot
+-- serve. This book-leading index is what actually makes the book-keyed reads
+-- indexed — incl. the per-chat-turn plan-state probe (run count + latest status).
+CREATE INDEX IF NOT EXISTS idx_plan_run_book_created
+  ON plan_run(book_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS plan_artifact (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -1294,6 +1301,88 @@ CREATE TABLE IF NOT EXISTS plan_artifact (
 );
 CREATE INDEX IF NOT EXISTS idx_plan_artifact_run_kind
   ON plan_artifact(run_id, kind, created_at DESC);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 27 V2-A — the PlanForge v2 multi-pass compiler's schema (Stage 6 / 00B §6.1).
+--
+-- A1 · the pass ledger + the genre input.
+-- `pass_state` is ONE key per pass_id: {status, decision, artifact_id, job_id,
+-- input_fingerprint, bootstrap_proposal_id?, decided_by, decided_at}. Derived
+-- values (fresh|stale, pass_cursor, blocked_at) are computed at SERIALIZATION and
+-- never stored — a stored derivation is a second source of truth that goes stale
+-- the moment an input changes (the whole reason PF-3 keys freshness on an input
+-- fingerprint rather than a flag).
+ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS pass_state JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS genre_tags JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- The two CHECK swaps. Both are ADDITIVE in effect (they only WIDEN the allowed
+-- set), but a CHECK cannot be widened in place — it must be dropped and re-added.
+-- Per `migration-check-constraint-must-backfill-all-historical-blocks`, the re-add
+-- must carry EVERY historical value, not just the new ones: dropping one silently
+-- makes existing rows unwritable.
+ALTER TABLE plan_run DROP CONSTRAINT IF EXISTS plan_run_status_chk;
+ALTER TABLE plan_run ADD CONSTRAINT plan_run_status_chk CHECK (
+  status IN ('pending', 'proposed', 'checkpoint', 'validated', 'compiled', 'failed',
+             -- v2: a run whose passes are staged but not yet compiled into a package.
+             'planned')
+);
+
+ALTER TABLE plan_artifact DROP CONSTRAINT IF EXISTS plan_artifact_kind_chk;
+ALTER TABLE plan_artifact ADD CONSTRAINT plan_artifact_kind_chk CHECK (
+  kind IN (
+    -- v1 kinds — every one of them still writable (see the backfill-all rule above).
+    'document', 'analyze', 'spec', 'graph', 'package', 'llm_io', 'validation_report',
+    -- v2: one artifact kind per compiler pass (PF-3), plus the two reports.
+    'motif_plan', 'cast_plan', 'world_plan', 'beat_plan', 'char_arc_plan', 'scene_plan',
+    'heal_report', 'link_report'
+  )
+);
+
+-- A2 · PROVENANCE (PF-9/PF-10) — which run, and which node WITHIN that run's plan,
+-- produced this row. The partial UNIQUE is what makes the linker IDEMPOTENT: a
+-- re-run of the same pass re-links the same plan node onto the same row instead of
+-- minting a duplicate.
+--
+-- `NOT is_archived` is in the predicate on purpose (partial-unique-index-must-exempt-
+-- soft-delete-tombstones): without it, archiving a linked node and re-linking would
+-- collide with its own tombstone and the re-link would fail forever.
+ALTER TABLE structure_node ADD COLUMN IF NOT EXISTS plan_run_id UUID;
+ALTER TABLE structure_node ADD COLUMN IF NOT EXISTS plan_arc_id  TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_structure_node_plan_prov
+  ON structure_node(book_id, plan_run_id, plan_arc_id)
+  WHERE plan_run_id IS NOT NULL AND plan_arc_id IS NOT NULL AND NOT is_archived;
+
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS plan_run_id   UUID;
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS plan_event_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_outline_node_plan_prov
+  ON outline_node(book_id, plan_run_id, plan_event_id)
+  WHERE plan_run_id IS NOT NULL AND plan_event_id IS NOT NULL AND NOT is_archived;
+
+-- A3 · THE ONE NON-ADDITIVE CHANGE — registered as 25 M6.1 (the NC-4 pre-build gate).
+--
+-- The old CHECK required `chapter_id IS NOT NULL` for chapter AND scene kinds. It was
+-- written when every outline row was born FROM an existing manuscript chapter. The
+-- compiler links planned nodes BEFORE any manuscript chapter exists (bootstrap stamps
+-- chapter_id later), so under the old CHECK **every skeleton-link and scene-link insert
+-- fails**. This blocks V2-E entirely; it is not a nicety.
+--
+-- Re-added INVERTED, with a new NAME for the new semantics (DA-10 — one name, one
+-- concept; keeping `outline_chapter_required` for a rule that no longer requires
+-- anything would be a lie in the schema). NULL chapter_id now means "PLANNED, NOT YET
+-- WRITTEN" — surfaced by BPS-13's affordance, never silent.
+--
+-- PRE-FLIGHT, per `migration-check-constraint-must-backfill-all-historical-blocks`:
+-- the new CHECK forbids a chapter_id on any kind OTHER than chapter/scene. No writer
+-- sets one today, but a stray historical row would make the ADD CONSTRAINT fail (or,
+-- worse, be silently skipped by a NOT VALID). NULL any such row in the SAME transaction
+-- first, so the constraint is provable rather than hoped-for.
+UPDATE outline_node SET chapter_id = NULL
+ WHERE chapter_id IS NOT NULL AND kind NOT IN ('chapter', 'scene');
+
+ALTER TABLE outline_node DROP CONSTRAINT IF EXISTS outline_chapter_required;
+ALTER TABLE outline_node DROP CONSTRAINT IF EXISTS outline_chapter_written_kinds;
+ALTER TABLE outline_node ADD CONSTRAINT outline_chapter_written_kinds
+  CHECK (chapter_id IS NULL OR kind IN ('chapter', 'scene'));
 
 -- ── authoring_runs (RAID Wave D2, DR-D): the autonomous authoring-run entity —
 -- the §10 dial's level-3/4 run row. One row per gated autonomous drafting run

@@ -586,11 +586,50 @@ class ImportSource(BaseModel):
     created_at: datetime | None = None
 
 
-PlanRunStatus = Literal["pending", "proposed", "checkpoint", "validated", "compiled", "failed"]
-PlanRunMode = Literal["rules", "llm"]
-PlanArtifactKind = Literal[
-    "document", "analyze", "spec", "graph", "package", "llm_io", "validation_report",
+# 27 V2-A1: `planned` = the passes are staged but not yet compiled into a package.
+# These MIRROR `plan_run_status_chk` / `plan_artifact_kind_chk` in migrate.py. A value the
+# DB accepts but this Literal rejects is a silent 422 on a legal row; a value this accepts
+# but the DB rejects is a 500 on write. Change one, change both — there is no gate that
+# would catch the drift for you.
+PlanRunStatus = Literal[
+    "pending", "proposed", "checkpoint", "validated", "compiled", "failed", "planned",
 ]
+PlanRunMode = Literal["rules", "llm"]
+
+# One id per compiler pass (PF-3). The `pass_state` ledger is keyed by these.
+PlanPassId = Literal["motif", "cast", "world", "beat", "char_arc", "scene", "heal", "link"]
+
+PlanArtifactKind = Literal[
+    # v1 — still writable (a CHECK re-add that drops a historical value makes existing rows
+    # unwritable; the same rule applies to the model that mirrors it).
+    "document", "analyze", "spec", "graph", "package", "llm_io", "validation_report",
+    # v2 — one artifact kind per pass, plus the two reports (27 V2-A1).
+    "motif_plan", "cast_plan", "world_plan", "beat_plan", "char_arc_plan", "scene_plan",
+    "heal_report", "link_report",
+]
+
+PassStatus = Literal["pending", "running", "completed", "failed"]
+PassDecision = Literal["pending", "accepted", "rejected", "auto"]
+
+
+class PassEntry(BaseModel):
+    """One `pass_state` entry (27 V2-A1). Keyed by `pass_id` on `PlanRun.pass_state`.
+
+    NOTE what is NOT here: `fresh`/`stale`, `pass_cursor`, `blocked_at`. Those are DERIVED at
+    serialization from `input_fingerprint` vs the run's current inputs, and storing them would
+    make them a second source of truth that goes stale the instant an input changes — which is
+    the entire reason PF-3 keys freshness on a fingerprint rather than a flag.
+    """
+
+    status: PassStatus = "pending"
+    decision: PassDecision = "pending"
+    artifact_id: UUID | None = None
+    job_id: UUID | None = None
+    input_fingerprint: str | None = None
+    # passes 2/3 only (PF-7) — the glossary seed proposal this pass is waiting on.
+    bootstrap_proposal_id: UUID | None = None
+    decided_by: Literal["user", "auto"] | None = None
+    decided_at: datetime | None = None
 
 
 class PlanRun(BaseModel):
@@ -606,6 +645,9 @@ class PlanRun(BaseModel):
     active_job_id: UUID | None = None
     error_detail: str | None = None
     checkpoint_state: dict[str, Any] = Field(default_factory=dict)
+    # 27 V2-A1 — the pass ledger (one key per pass_id) + the genre input (PF-15).
+    pass_state: dict[str, PassEntry] = Field(default_factory=dict)
+    genre_tags: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

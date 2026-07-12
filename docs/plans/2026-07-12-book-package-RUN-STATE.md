@@ -123,7 +123,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + evidence · `🅿️` pa
 | Fact | State |
 |---|---|
 | `outline_chapter_required` CHECK | ⛔ **still the OLD one** (`migrate.py:212`) — M6.1 is REGISTERED but NOT IMPLEMENTED. This is B1's first job, and it **blocks B4** (every skeleton-link insert violates the old CHECK). |
-| `pass_state` table | ⛔ **absent** (`to_regclass` → NULL) — Stage 6 genuinely unbuilt, as the run-start audit said. |
+| `plan_run.pass_state` / `.genre_tags` | ⛔ **absent.** ⚠️ Evidence correction: `pass_state` is a **JSONB COLUMN on `plan_run`**, not a table — my run-start check probed `to_regclass('pass_state')`, which can only ever return NULL. Right conclusion, wrong evidence. Re-verified against `information_schema.columns`: `plan_run` = id/created_by/book_id/work_id/status/mode/model_ref/source_checksum/source_markdown/active_job_id/error_detail/checkpoint_state/created_at/updated_at. No pass_state, no genre_tags. |
+| provenance columns (PF-9/PF-10) | ⛔ **absent** — `structure_node.plan_run_id`/`plan_arc_id` and `outline_node.plan_run_id`/`plan_event_id` all missing. V2-A2 unbuilt. |
 | `genre_tags` | ✅ present on `motif` + `arc_template` (pre-existing; 27's own plumbing is still B2). |
 | B1 | **27-V2-A** — `pass_state`/`genre_tags`, CHECK swaps, provenance columns + partial uniques, the A3 swap | [ ] | |
 | B2 | **27-V2-B ∥ V2-C** — contracts unfixturing (PF-14/BPS-21) + `genre_tags` plumbing ∥ pass runner + `world_plan.py` + pass-4 hoist + adapters | [ ] | |
