@@ -600,6 +600,121 @@ ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
   status = EXCLUDED.status, updated_at = now();
 
+-- W5 (agent-discoverability WS-5) — translation-pass. "Keep my translation current." The audit's
+-- translation_run/canon_check names were WRONG (verified 2026-07-12: they do not exist); the
+-- REAL tools are translation_coverage (sync, reports what is untranslated/stale) + translation_
+-- retranslate_dirty (ASYNC — enqueues the re-translation of the stale/missing units). No probe
+-- artifact tracks translation, so these steps are call-verified (no done_when), exactly like a read.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','translation-pass','Translate what is new or changed',
+   'Look at what in the book is not yet translated (or has changed since it was), and bring the translation up to date.',
+   '{book,editor}'::text[], '{}'::jsonb,
+   '[
+     {"id":"assess","tool":"translation_coverage","gate":"none"},
+     {"id":"translate","tool":"translation_retranslate_dirty","gate":"none","async_job":true}
+   ]'::jsonb,
+   E'Use this when the user wants the translation brought up to date — "translate the new chapters", "update the translation", "what still needs translating". The job: see what is missing or out of date, then translate exactly those parts.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- translation_coverage — first, see what is untranslated or has drifted since it was last translated. This reads only; it changes nothing. Tell the user plainly what it found ("3 chapters have no translation yet, and 1 changed since it was translated").\n- translation_retranslate_dirty — translate exactly those out-of-date parts. This is a BACKGROUND job: it is NOT done when the tool returns. Watch it, and never tell the user the translation is finished before you have seen the job complete.\n\nORDER MATTERS: check coverage first, so you translate only what actually needs it instead of re-translating the whole book.\n\nSPEAK PLAINLY: say "translation" and "chapters", never "coverage"/"dirty units"/"retranslate job". Tell the user what changed in their terms ("started translating the 3 new chapters — I will tell you when it is done"), and never claim it finished before the job actually completes.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
+-- W9 (agent-discoverability WS-5) — canon-check. "Does my story stay consistent?" Real tools
+-- (verified 2026-07-12): composition_list_canon_rules (sync) + composition_conformance_run (ASYNC —
+-- a background check, poll with composition_get_mine_job) + composition_conformance_status (sync,
+-- reads the result). No probe artifact for consistency, so the steps are call-verified.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','canon-check','Check the story for contradictions',
+   'Check the book against the consistency rules it has recorded — names, timelines, established facts — and report what does not line up.',
+   '{book,editor,studio}'::text[], '{}'::jsonb,
+   '[
+     {"id":"see-rules","tool":"composition_list_canon_rules","gate":"none"},
+     {"id":"check","tool":"composition_conformance_run","gate":"none","async_job":true},
+     {"id":"results","tool":"composition_conformance_status","gate":"none"}
+   ]'::jsonb,
+   E'Use this when the user wants to know whether the story holds together — "check for contradictions", "does this stay consistent", "did I break continuity". The job: run the book against its recorded consistency rules and tell the user, plainly, what conflicts.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- composition_list_canon_rules — first, see which consistency rules the book actually has. If there are none, say so and offer to set some up (a different job); never report "all consistent" when nothing was checked.\n- composition_conformance_run — run the check. This is a BACKGROUND job: it is NOT done when the tool returns. Watch it (poll composition_get_mine_job) and do not report results before it finishes.\n- composition_conformance_status — read the finished result and summarise the real conflicts.\n\nORDER MATTERS: confirm there are rules to check against BEFORE running, or a clean result is meaningless.\n\nSPEAK PLAINLY: say "consistency rules" and "contradictions", never "canon rules"/"conformance run"/"job". Tell the user what was found in their terms ("checked against your 8 rules — two things conflict: ...") and never claim it is consistent before the check has actually run.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
+-- W6 (agent-discoverability WS-5) — chapter-compose. "Write this chapter." Real tools (verified
+-- 2026-07-12): composition_get_outline_node (sync, reads what the chapter is meant to cover) +
+-- book_get_chapter (sync, reads the target chapter + its current draft_version) + book_chapter_
+-- save_draft (sync, writes the chapter's draft text). The write step is book_chapter_save_draft ON
+-- PURPOSE — composition_write_prose is a DEPRECATED, discovery-hidden thin proxy over it, so the
+-- rail must name the ONE canonical chapter-write tool. NO done_when on the draft step: the probe's
+-- "prose" is a BOOK-LEVEL absolute count, so on this rail's own use case (drafting a chapter of a
+-- book that ALREADY has written chapters) prose>0 is already true and the rail would declare itself
+-- done without drafting anything (the absolute-count-vs-per-item trap the /review-impl caught). The
+-- grammar has no per-chapter prose predicate, so the step is call-verified — safe here because
+-- book_chapter_save_draft is sync and returns new_draft_version on success (no silent-success).
+-- book_get_chapter is REQUIRED before the write: save_draft hard-needs the chapter's own
+-- draft_version as base_version, which the outline node (a DIFFERENT entity) does not carry.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','chapter-compose','Draft this chapter',
+   'Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.',
+   '{book,editor,studio}'::text[], '{}'::jsonb,
+   '[
+     {"id":"outline","tool":"composition_get_outline_node","gate":"none"},
+     {"id":"get-chapter","tool":"book_get_chapter","gate":"none"},
+     {"id":"draft","tool":"book_chapter_save_draft","gate":"none"}
+   ]'::jsonb,
+   E'Use this when the user wants a specific chapter written — "draft chapter 3", "write this next part", "put down a first version of this scene". The job: read what the chapter is meant to cover, read the chapter itself, then write its draft.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- composition_get_outline_node — first, read what this chapter is meant to cover (its place in the plan). If the chapter has no place in the plan yet, say so and offer to plan it first; do not invent a chapter with no anchor.\n- book_get_chapter — read the target chapter to get its CURRENT draft version. You MUST pass that chapter''s own draft_version as base_version to the next step — NOT the outline''s version (they are different things); passing the wrong one fails with a version conflict.\n- book_chapter_save_draft — write the DRAFT text for the chapter, using the draft_version you just read. It saves a draft, not a published chapter, and returns the new version on success.\n\nORDER MATTERS: read the plan, then read the chapter for its version, THEN draft — skipping the chapter read leaves you guessing the version and the save fails.\n\nSPEAK PLAINLY: say "chapter" and "draft", never "outline node"/"draft version"/"compose". Tell the user what happened in their terms ("drafted the opening of chapter 3 — have a read and tell me what to change") and never claim a chapter is written before its text is saved.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
+-- W7 (agent-discoverability WS-5) — build-a-book. "Plan my whole book." Real tools (verified
+-- 2026-07-12): plan_propose_spec (mode=llm ASYNC — proposes the arc plan) + composition_arc_suggest
+-- (sync) + composition_outline_node_create (sync, builds the chapter outline). done_when "plan > 0"
+-- grounds the plan step on the SSOT.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','build-a-book','Turn the idea into a book plan',
+   'Take a book that has its world and cast and turn it into a real plan — the story arc and a chapter-by-chapter outline the user can build from.',
+   '{book,editor,studio}'::text[], '{}'::jsonb,
+   '[
+     {"id":"plan","tool":"plan_propose_spec","gate":"none","async_job":true,"done_when":"plan > 0"},
+     {"id":"arcs","tool":"composition_arc_suggest","gate":"none"},
+     {"id":"outline","tool":"composition_outline_node_create","gate":"none"}
+   ]'::jsonb,
+   E'Use this when the user wants their book structured — "plan the whole book", "how should the story go", "give me a chapter outline". The job: propose the story plan, shape its arcs, and lay out the chapters.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- plan_propose_spec — propose the overall plan for the book. This is a BACKGROUND job when it runs the model: it is NOT done when the tool returns. Watch it, and do not present the plan before it has actually finished. done_when the plan exists.\n- composition_arc_suggest — suggest the story arcs the plan implies (the rise, the turn, the resolution).\n- composition_outline_node_create — lay out the chapters as an outline the user can open and build from.\n\nORDER MATTERS: propose the plan first, then its arcs, then the chapter outline — an outline with no plan behind it leaves the user with a list and no story.\n\nSPEAK PLAINLY: say "plan", "arcs", "chapters", never "spec"/"outline node"/"job". Tell the user what happened in their terms ("here is the shape of the book — three arcs across twelve chapters") and never claim the plan is ready before the job has actually completed.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
+-- W12 (agent-discoverability WS-5) — autonomous-drafting. "Draft the next chapters for me." Real
+-- tools (verified 2026-07-12): composition_authoring_run_create (sync, sets up the run OVER AN
+-- APPROVED PLAN — needs a plan_run_id, so an approved plan must exist first) + composition_
+-- authoring_run_start (COST-GATED — returns a confirm_token, SPENDS tokens; ASYNC server-side
+-- driver that drafts chapters) + composition_authoring_run_get (sync, watch progress). gate stays
+-- "none" — the cost-gate/confirm suspension is intrinsic to the start tool, exactly like the
+-- flagship's paid steps. NO done_when: the drafted units land in the run and become book "prose"
+-- only on acceptance, and prose is a book-level absolute count anyway (already >0 on a non-empty
+-- book — same trap as W6), so every step is call-verified and the async watch step is the honest
+-- completion signal, not a probe artifact.
+INSERT INTO workflows (tier, slug, title, description, surfaces, inputs, steps, notes_md, status, source) VALUES
+  ('system','autonomous-drafting','Draft the next chapters for me',
+   'Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review — for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.',
+   '{book,editor,studio}'::text[], '{}'::jsonb,
+   '[
+     {"id":"set-up","tool":"composition_authoring_run_create","gate":"none"},
+     {"id":"draft","tool":"composition_authoring_run_start","gate":"none","async_job":true},
+     {"id":"watch","tool":"composition_authoring_run_get","gate":"none"}
+   ]'::jsonb,
+   E'Use this when the user wants the book to keep drafting on its own — "just write the next few chapters", "draft ahead", "keep going without me". The job: set up the run, start it (it SPENDS money, so the user must approve first), and watch it draft.\n\nPREREQUISITE: this drafts from an approved story plan. If the book has no plan yet, STOP and offer to plan it first (the plan rail) — do not start a drafting run with nothing to draft from.\n\nEXACTLY WHICH TOOL DOES WHAT:\n- composition_authoring_run_create — set up the run over the approved plan: which chapters, and whether to pause after each for review. Nothing drafts yet.\n- composition_authoring_run_start — start the drafting. This SPENDS money and asks the user to approve before anything runs — never claim it started before that approval lands. It is a BACKGROUND process that drafts chapter after chapter; it is NOT done when the tool returns.\n- composition_authoring_run_get — watch the progress and tell the user what has been drafted so far. A drafted part becomes part of the book only once it is accepted.\n\nORDER MATTERS: set up, then get approval to start, then watch — never start spending before the user has said yes.\n\nSPEAK PLAINLY: say "drafting", "chapters", "pause to review", never "authoring run"/"units"/"tokens"/"job". Tell the user what is happening in their terms ("drafting chapters 4 through 8 now, pausing after each so you can read them") and never claim chapters are written before their text is actually saved.',
+   'published','system')
+ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
+  title = EXCLUDED.title, description = EXCLUDED.description, surfaces = EXCLUDED.surfaces,
+  inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
+  status = EXCLUDED.status, updated_at = now();
+
 -- WS-3 (C6, agent-discoverability spec) — MODE -> CAPABILITY BINDING. A mode is not just
 -- a nudge: it selects a capability PROFILE (which skills are injected, which workflows are
 -- PINNED into context, which tool categories are hot-seeded). Same 3-tier tenancy as
