@@ -10,13 +10,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { ModelPicker } from '@/components/model-picker';
-import { Skeleton } from '@/components/shared';
 import { booksApi } from '@/features/books/api';
 import { QualityReportSection } from '@/features/composition/components/QualityReportSection';
-import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
-import { QualityNoWorkState } from './QualityNoWorkState';
+import { QualityWorkGate } from './QualityNoWorkState';
+import { useQualityWork } from './useQualityWork';
 
 const CHAPTER_PICKER_LIMIT = 500;
 
@@ -25,7 +24,9 @@ export function QualityCriticPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
   const host = useStudioHost();
   const { accessToken } = useAuth();
-  const resolution = useWorkResolution(host.bookId, accessToken);
+  // `unavailable` (composition-service is DOWN) must NOT render as "no co-writer session yet" —
+  // unconsulted is not empty. See useQualityWork / RUN-STATE DR-27.
+  const work = useQualityWork(host.bookId, accessToken);
   const [modelRef, setModelRef] = useState('');
   const [chapterId, setChapterId] = useState('');
 
@@ -35,19 +36,7 @@ export function QualityCriticPanel(props: IDockviewPanelProps) {
     enabled: !!accessToken,
   });
 
-  if (resolution.isLoading) {
-    return (
-      <div data-testid="quality-critic-loading" className="space-y-3 p-4">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
-  }
-
-  const projectId = resolution.data?.status === 'found' ? resolution.data.work?.project_id : null;
-  if (!projectId) {
-    return <QualityNoWorkState testId="quality-critic-no-work" />;
-  }
+  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-critic" />;
 
   const chapters = chaptersQ.data?.items ?? [];
 
@@ -88,7 +77,7 @@ export function QualityCriticPanel(props: IDockviewPanelProps) {
         />
       </div>
       {chapterId ? (
-        <QualityReportSection projectId={projectId} chapterId={chapterId} token={accessToken} modelRef={modelRef} />
+        <QualityReportSection projectId={work.projectId} chapterId={chapterId} token={accessToken} modelRef={modelRef} />
       ) : (
         <div data-testid="quality-critic-no-chapter" className="p-4 text-center text-neutral-500">
           {t('quality.pickChapterHint', { defaultValue: 'Pick a chapter above to analyze its quality.' })}

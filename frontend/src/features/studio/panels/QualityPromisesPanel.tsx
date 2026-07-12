@@ -7,11 +7,10 @@
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useAuth } from '@/auth';
 import { ThreadsPanel } from '@/features/composition/components/ThreadsPanel';
-import { useWorkResolution } from '@/features/composition/hooks/useWork';
-import { Skeleton } from '@/components/shared';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
-import { QualityNoWorkState } from './QualityNoWorkState';
+import { QualityWorkGate } from './QualityNoWorkState';
+import { useQualityWork } from './useQualityWork';
 
 /** 24 PH18 — the Plan Hub's thread badge deep-links here with the `narrative_thread.id`, which IS
  *  what this panel lists (unlike the canon lens, whose rows carry no rule id). */
@@ -24,25 +23,14 @@ export function QualityPromisesPanel(props: IDockviewPanelProps) {
   const focusThreadId = (props.params as PromisesFocusParams | undefined)?.focusThreadId ?? null;
   const host = useStudioHost();
   const { accessToken } = useAuth();
-  const resolution = useWorkResolution(host.bookId, accessToken);
-
-  if (resolution.isLoading) {
-    return (
-      <div data-testid="quality-promises-loading" className="space-y-3 p-4">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
-  }
-
-  const projectId = resolution.data?.status === 'found' ? resolution.data.work?.project_id : null;
-  if (!projectId) {
-    return <QualityNoWorkState testId="quality-promises-no-work" />;
-  }
+  // `unavailable` (composition-service is DOWN) must NOT render as "no co-writer session yet" —
+  // unconsulted is not empty. See useQualityWork / RUN-STATE DR-27.
+  const work = useQualityWork(host.bookId, accessToken);
+  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-promises" />;
 
   return (
     <div data-testid="studio-quality-promises-panel" className="h-full min-h-0 overflow-auto">
-      <ThreadsPanel projectId={projectId} token={accessToken} enabled focusThreadId={focusThreadId} />
+      <ThreadsPanel projectId={work.projectId} token={accessToken} enabled focusThreadId={focusThreadId} />
     </div>
   );
 }

@@ -6,7 +6,7 @@
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
-import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useQualityWork } from './useQualityWork';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 
@@ -22,12 +22,21 @@ export function QualityHubPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
   const host = useStudioHost();
   const { accessToken } = useAuth();
-  const resolution = useWorkResolution(host.bookId, accessToken);
-  const hasWork = resolution.data?.status === 'found' && !!resolution.data.work?.project_id;
+  // The hub fronts all four quality panels, so the same rule applies here: telling the user to
+  // "start composing a chapter first" when composition-service is simply DOWN is a wrong answer,
+  // not a nudge — and it invites a duplicate Work. One gate, shared with the panels themselves.
+  const work = useQualityWork(host.bookId, accessToken);
 
   return (
     <div data-testid="studio-quality-hub-panel" className="h-full min-h-0 overflow-auto p-4">
-      {!resolution.isLoading && !hasWork && (
+      {work.kind === 'unavailable' && (
+        <p data-testid="quality-hub-unavailable" className="mb-3 text-xs text-amber-700 dark:text-amber-300">
+          {t('quality.hubUnavailable', {
+            defaultValue: 'Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. This is NOT a clean bill of health.',
+          })}
+        </p>
+      )}
+      {work.kind === 'no-work' && (
         <p data-testid="quality-hub-no-work" className="mb-3 text-xs text-neutral-500">
           {t('quality.hubNoWorkHint', {
             defaultValue: 'Promises, critic scores, and story coverage need a co-writer session — start composing a chapter first. Canon issues below still work either way.',

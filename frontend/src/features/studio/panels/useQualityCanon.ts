@@ -19,7 +19,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { compositionApi } from '@/features/composition/api';
-import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useQualityWork } from './useQualityWork';
 import type { CanonIssue, RuleViolationItem } from '@/features/composition/types';
 import { knowledgeApi, type CanonFlag } from '@/features/knowledge/api';
 import { useBookKnowledgeProject } from '@/features/knowledge/hooks/useBookKnowledgeProject';
@@ -74,8 +74,10 @@ export function useQualityCanon(
   const focusRuleId = params?.focusRuleId ?? null;
   const focusChapterId = params?.focusChapterId ?? null;
 
-  const work = useWorkResolution(bookId, accessToken);
-  const projectId = work.data?.status === 'found' ? work.data.work?.project_id ?? null : null;
+  // ONE gate (useQualityWork) — it knows `unavailable` from `no-work`, and that `candidates` means
+  // Works EXIST. This hook used to re-derive that, and got `candidates` wrong.
+  const work = useQualityWork(bookId, accessToken);
+  const projectId = work.kind === 'ready' ? work.projectId : null;
   const enabled = !!projectId && !!accessToken;
 
   const rulesQ = useQuery({
@@ -130,9 +132,8 @@ export function useQualityCanon(
   //   any other non-`found` = this book has no Work yet  -> UNKNOWN (nothing has run)
   // The sibling quality panels (promises/critic/coverage) already render QualityNoWorkState here.
   // The knowledge-extraction lane is INDEPENDENT of the Work and still renders either way.
-  const workStatus = work.data?.status ?? null;
-  const compositionUnavailable = !work.isLoading && (work.isError || workStatus === 'unavailable');
-  const noWork = !work.isLoading && !compositionUnavailable && workStatus !== 'found';
+  const compositionUnavailable = work.kind === 'unavailable';
+  const noWork = work.kind === 'no-work';
   const compositionUnknown = compositionUnavailable || noWork;
 
   // A fetch error must NEVER render as "no issues" either — same false-negative, louder.
@@ -143,7 +144,7 @@ export function useQualityCanon(
 
   return {
     loading:
-      work.isLoading ||
+      work.kind === 'loading' ||
       knowledgeProjectLoading ||
       (!!projectId && (rulesQ.isLoading || issuesQ.isLoading)) ||
       (!!knowledgeProjectId && flagsQ.isLoading),

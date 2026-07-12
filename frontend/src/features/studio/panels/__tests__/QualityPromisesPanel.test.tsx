@@ -57,4 +57,15 @@ describe('QualityPromisesPanel', () => {
     expect(stub).toHaveAttribute('data-token', 'tok');
     expect(stub).toHaveAttribute('data-enabled', 'true');
   });
+
+  // /review-impl (D-04 follow-up) — `unavailable` means composition-service is DOWN. Rendering the
+  // no-work sentence there tells the user "start composing a chapter first" when the data may well
+  // exist and we simply could not look. Unconsulted is not empty. RUN-STATE DR-27.
+  it('composition-service UNAVAILABLE is an ERROR, never the no-work empty state', () => {
+    useWorkResolution.mockReturnValue({ isLoading: false, data: { status: 'unavailable', work: null } });
+    withHost('b1');
+    expect(screen.getByTestId('quality-promises-unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('quality-promises-no-work')).toBeNull();
+    expect(screen.queryByTestId('stub-threads-panel')).toBeNull();
+  });
 });

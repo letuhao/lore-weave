@@ -703,7 +703,9 @@
     "canonUnavailable": "Could not reach the co-writer service — generation-time canon findings are NOT included below.",
     "canonNoWork": "This book has no co-writer session yet, so generation-time canon checks have not run. Only knowledge-extraction findings are shown.",
     "canonRuleFocusUnknown": "The rule you came from could not be checked — the co-writer lane is unavailable, so this is not a clean bill of health.",
-    "canonRulesCapped": "Showing the {{shown}} most recent of {{total}} broken rules."
+    "canonRulesCapped": "Showing the {{shown}} most recent of {{total}} broken rules.",
+    "workUnavailable": "Could not reach the co-writer service, so this book’s quality data could not be loaded. This is NOT a clean bill of health — try again shortly.",
+    "hubUnavailable": "Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. This is NOT a clean bill of health."
   },
   "sidebar": {
     "collapse": "Collapse"

@@ -8,7 +8,7 @@ import { useAuth } from '@/auth';
 import { booksApi, type Scene } from '@/features/books/api';
 import { compositionApi } from '@/features/composition/api';
 import type { OutlineNode } from '@/features/composition/types';
-import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useQualityWork } from './useQualityWork';
 import { joinSceneRows, filterUnionRows, type SceneUnionRow } from './sceneUnion';
 
 const SCENE_PAGE = 100; // book-service clamps limit to 100; page at the clamp
@@ -32,21 +32,18 @@ export type SceneBrowserState = {
 export function useSceneBrowser(bookId: string | null): SceneBrowserState {
   const { accessToken } = useAuth();
   const token = accessToken ?? null;
-  const work = useWorkResolution(bookId ?? '', token);
-
-  const projectId = useMemo(() => {
-    const d = work.data;
-    if (d?.status === 'found') return d.work?.project_id ?? null;
-    if (d?.status === 'candidates') return d.candidates[0]?.project_id ?? null;
-    return null;
-  }, [work.data]);
-  // Distinguish a genuine no-plan resolution from a TRANSIENT backend outage. `useWorkResolution`
-  // returns a distinct `unavailable` status (a normal 200 body) when the resolver can't reach its
-  // backend — that is NOT "no plan yet", so it must not show the create-plan CTA (a user could make
-  // a duplicate Work). Both settle without a projectId, so gate on the status, not just projectId.
-  const workStatus = work.data?.status;
-  const workUnavailable = !work.isLoading && workStatus === 'unavailable';
-  const workless = !work.isLoading && !projectId && !workUnavailable;
+  // Distinguish a genuine no-plan resolution from a TRANSIENT backend outage: `unavailable` is NOT
+  // "no plan yet", so it must not show the create-plan CTA (a user could make a duplicate Work).
+  // Both settle without a projectId, so gate on the STATUS, not just projectId.
+  //
+  // That reasoning — first written here — is now `useQualityWork`, the ONE gate. This hook was its
+  // only correct implementation; the quality panels each re-derived it and got `candidates` wrong.
+  // Three copies of one rule is what SDK-First exists to stop, so this adopts the shared gate.
+  const work = useQualityWork(bookId ?? '', token);
+  const projectId = work.kind === 'ready' ? work.projectId : null;
+  const workUnavailable = work.kind === 'unavailable';
+  const workless = work.kind === 'no-work';
+  const workLoading = work.kind === 'loading';
 
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [specNodes, setSpecNodes] = useState<OutlineNode[]>([]);
@@ -103,10 +100,10 @@ export function useSceneBrowser(bookId: string | null): SceneBrowserState {
 
   // Initial load once resolution has settled (projectId known, or confirmed workless).
   useEffect(() => {
-    if (!token || !bookId || work.isLoading) return;
+    if (!token || !bookId || workLoading) return;
     void fetchScenePage(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, bookId, projectId, work.isLoading]);
+  }, [token, bookId, projectId, workLoading]);
 
   // `specComplete` is true only when every index page is loaded (cursor exhausted). Until then a
   // spec whose index scene is on an unloaded page would be misread as "not yet written" — so the
@@ -126,7 +123,7 @@ export function useSceneBrowser(bookId: string | null): SceneBrowserState {
 
   // Empty state is honest only once resolution has settled AND the first load has run — otherwise
   // "No scenes match" flashes for the whole Work-resolution RTT (loading is still false then).
-  const ready = !work.isLoading && (initialized || workless || workUnavailable);
+  const ready = !workLoading && (initialized || workless || workUnavailable);
 
   return {
     rows, loading, ready, error, intentUnavailable, workless, projectId, total,

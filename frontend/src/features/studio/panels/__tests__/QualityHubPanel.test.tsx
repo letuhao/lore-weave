@@ -61,4 +61,13 @@ describe('QualityHubPanel', () => {
     // The cards still render — canon issues don't need a composition Work.
     expect(screen.getByTestId('quality-hub-card-quality-canon')).toBeInTheDocument();
   });
+
+  // /review-impl MED — the hub fronts all four quality panels, so it carried the same collapse:
+  // `unavailable` (composition-service DOWN) rendered the "start composing a chapter first" hint.
+  it('composition-service UNAVAILABLE shows an error, never the "go compose" hint', () => {
+    useWorkResolution.mockReturnValue({ isLoading: false, data: { status: 'unavailable', work: null } });
+    withHost('b1', <QualityHubPanel {...dockProps()} />);
+    expect(screen.getByTestId('quality-hub-unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('quality-hub-no-work')).toBeNull();
+  });
 });

@@ -10,34 +10,23 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { ModelPicker } from '@/components/model-picker';
-import { Skeleton } from '@/components/shared';
 import { BookPromiseCoverageSection } from '@/features/composition/components/BookPromiseCoverageSection';
-import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
-import { QualityNoWorkState } from './QualityNoWorkState';
+import { QualityWorkGate } from './QualityNoWorkState';
+import { useQualityWork } from './useQualityWork';
 
 export function QualityCoveragePanel(props: IDockviewPanelProps) {
   useStudioPanel('quality-coverage', props.api);
   const { t } = useTranslation('studio');
   const host = useStudioHost();
   const { accessToken } = useAuth();
-  const resolution = useWorkResolution(host.bookId, accessToken);
+  // `unavailable` (composition-service is DOWN) must NOT render as "no co-writer session yet" —
+  // unconsulted is not empty. See useQualityWork / RUN-STATE DR-27.
+  const work = useQualityWork(host.bookId, accessToken);
   const [modelRef, setModelRef] = useState('');
 
-  if (resolution.isLoading) {
-    return (
-      <div data-testid="quality-coverage-loading" className="space-y-3 p-4">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
-  }
-
-  const projectId = resolution.data?.status === 'found' ? resolution.data.work?.project_id : null;
-  if (!projectId) {
-    return <QualityNoWorkState testId="quality-coverage-no-work" />;
-  }
+  if (work.kind !== 'ready') return <QualityWorkGate state={work} testIdPrefix="quality-coverage" />;
 
   return (
     <div data-testid="studio-quality-coverage-panel" className="flex h-full min-h-0 flex-col gap-2 overflow-auto p-3 text-sm">
@@ -48,7 +37,7 @@ export function QualityCoveragePanel(props: IDockviewPanelProps) {
         placeholder={t('quality.pickModel', { defaultValue: 'Pick a model to analyze with…' })}
         compact
       />
-      <BookPromiseCoverageSection projectId={projectId} token={accessToken} modelRef={modelRef} />
+      <BookPromiseCoverageSection projectId={work.projectId} token={accessToken} modelRef={modelRef} />
     </div>
   );
 }
