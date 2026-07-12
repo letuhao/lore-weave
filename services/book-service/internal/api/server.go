@@ -2644,6 +2644,13 @@ RETURNING kg_exclude`, chID, revID).Scan(&kgExcluded); err != nil {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 				return
 			}
+			// SC11-amendment Phase 0 — writer #2, and THE call site the census missed. Publish
+			// is the most common re-parse of all, and a re-parse re-resolves every scene's
+			// anchor, so the spec back-links may have moved. Same tx, same counts.changed() guard.
+			if err := emitScenesLinked(r.Context(), tx, bookID, chID); err != nil {
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+				return
+			}
 		}
 	} else {
 		slog.WarnContext(r.Context(), "publish: re-parse skipped; index left stale for the sweeper",

@@ -298,18 +298,32 @@ RETURNING id
 				return
 			}
 
+			// SC11-amendment Phase 0: did THIS import actually recover any spec back-link?
+			// A link-less import (the common case — the parser only recovers an anchor from
+			// an already-exported `data-scene-id`) must NOT fire a link event: the mirror has
+			// nothing to reconcile, and a no-op event is noise the relay pays for. The IX-12
+			// decompile write-back is what links a plain import, and it emits its own.
+			anyLinked := false
+
 			for _, sc := range ch.Scenes {
 				// 22-A5: set book_id (the chapter's book — the SC1 direct scope) AND
 				// source_scene_id (the SC7 `data-scene-id` anchor back-link, when the
 				// parser recovered one) at INSERT, closing the A1 write-path gap.
+				//
+				// Resolve ONCE: `sceneSourceSceneIDArg` parses, and it is the same value that
+				// decides both the bind and whether this import linked anything at all.
+				ssid := sceneSourceSceneIDArg(sc.SourceSceneID)
 				_, err := tx.Exec(r.Context(),
 					`INSERT INTO scenes(chapter_id, book_id, sort_order, path, leaf_text, content_hash, source_scene_id, parse_version) VALUES($1, $2, $3, $4, $5, $6, $7, 1)`,
-					chapterID, bookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, sceneSourceSceneIDArg(sc.SourceSceneID))
+					chapterID, bookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, ssid)
 				if err != nil {
 					tx.Rollback(r.Context())
 					writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
 						fmt.Sprintf("insert scene: %v", err))
 					return
+				}
+				if ssid != nil {
+					anyLinked = true
 				}
 			}
 
@@ -319,6 +333,16 @@ RETURNING id
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
 					"failed to commit chapter")
 				return
+			}
+			// In the SAME tx as the INSERTs above (INV-O12): if the emit cannot be written the
+			// links must not exist either, or composition's mirror never learns of them.
+			if anyLinked {
+				if err := emitScenesLinked(r.Context(), tx, bookID, chapterID); err != nil {
+					tx.Rollback(r.Context())
+					writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
+						"failed to commit chapter")
+					return
+				}
 			}
 			if err := tx.Commit(r.Context()); err != nil {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",

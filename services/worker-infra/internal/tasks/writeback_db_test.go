@@ -120,3 +120,74 @@ func TestWriteBackSceneLinks_RecoveredAnchorWins_AndIdempotent(t *testing.T) {
 		t.Fatalf("re-run changed the written id: got %v", got)
 	}
 }
+
+// ── SC11-amendment Phase 0 — WRITER #3 emits `chapter.scenes_linked` ─────────────────────────
+//
+// This is the write that CREATES the spec back-link for a plain import: the parser recovers no
+// anchor, so parse.go inserts every scene with a NULL source_scene_id, and it is THIS write-back
+// that fills them. Before Phase 0 it emitted NOTHING — so a mirror built on these events would
+// render a decompiled book as ENTIRELY UNWRITTEN. A confident, wrong, whole-book answer.
+//
+// The negative half is equally load-bearing: a re-run that links nothing must emit nothing.
+// `writeBackSceneLinks` is idempotent by design (the `AND source_scene_id IS NULL` predicate), so
+// without a rows-affected guard every retry of an already-linked book would wake the consumer for
+// no reason.
+
+func scenesLinkedEvents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, chapterID uuid.UUID) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM outbox_events WHERE aggregate_id=$1 AND event_type='chapter.scenes_linked'`,
+		chapterID).Scan(&n); err != nil {
+		t.Fatalf("count scenes_linked: %v", err)
+	}
+	return n
+}
+
+func TestWriteBackSceneLinks_EmitsScenesLinked_AndNotOnANoOpRerun(t *testing.T) {
+	pool := bookTestPool(t)
+	ctx := context.Background()
+
+	var bookID, chapterID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO books(owner_user_id,title) VALUES($1,'ix12-evt') RETURNING id`, uuid.New()).Scan(&bookID); err != nil {
+		t.Fatalf("seed book: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM books WHERE id=$1`, bookID) })
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO chapters(book_id,original_filename,original_language,content_type,sort_order,storage_key,lifecycle_state,editorial_status)
+		 VALUES($1,'c.txt','en','text/plain',1,'k','active','published') RETURNING id`, bookID).Scan(&chapterID); err != nil {
+		t.Fatalf("seed chapter: %v", err)
+	}
+
+	// A plain import: the scene has NO recovered anchor. This is the book that would render
+	// entirely unwritten if this write-back stayed silent.
+	nullScene := seedScene(t, ctx, pool, bookID, chapterID, 0, nil)
+
+	if n := scenesLinkedEvents(t, ctx, pool, chapterID); n != 0 {
+		t.Fatalf("precondition: %d scenes_linked before the write-back", n)
+	}
+
+	node := uuid.New()
+	srv := mappingServer(t, chapterID, map[int]uuid.UUID{0: node})
+	defer srv.Close()
+	proc := &ImportProcessor{BookDB: pool, materializeClient: NewMaterializeClient(srv.URL, "tok")}
+
+	proc.writeBackSceneLinks(ctx, bookID.String(), uuid.New().String())
+
+	// The link landed…
+	if got := sceneSourceID(t, ctx, pool, nullScene); got == nil || *got != node {
+		t.Fatalf("write-back did not link the scene: want %s, got %v", node, got)
+	}
+	// …AND it announced itself. This is the whole of Phase 0.
+	if n := scenesLinkedEvents(t, ctx, pool, chapterID); n != 1 {
+		t.Fatalf("want exactly 1 chapter.scenes_linked after the IX-12 write-back, got %d — "+
+			"a decompiled book would render as entirely unwritten", n)
+	}
+
+	// A re-run links nothing new (the IS NULL predicate excludes the now-linked row) and must
+	// therefore emit nothing new. Rows-affected is the guard.
+	proc.writeBackSceneLinks(ctx, bookID.String(), uuid.New().String())
+	if n := scenesLinkedEvents(t, ctx, pool, chapterID); n != 1 {
+		t.Fatalf("a NO-OP re-run emitted scenes_linked again (total %d) — the emit must ride rows-affected", n)
+	}
+}

@@ -206,6 +206,13 @@ FOR UPDATE`, t.chapterID, t.indexedRev).Scan(&locked)
 		if err := emitScenesReparsed(ctx, tx, t.bookID, t.chapterID, t.indexedRev, counts.ParseVersion); err != nil {
 			return err
 		}
+		// SC11-amendment Phase 0 — writer #2, 4th call site. The IX-3 sweeper HEALS a stale
+		// index, and healing re-resolves every scene's anchor: the spec back-links may have
+		// moved without any user action at all. If the sweeper stayed silent, a book could be
+		// re-linked in the background and the mirror would never hear about it.
+		if err := emitScenesLinked(ctx, tx, t.bookID, t.chapterID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

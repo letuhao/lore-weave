@@ -205,6 +205,14 @@ WHERE id=$1 AND kg_exclude = false`, chID, revID)
 			if err := emitScenesReparsed(ctx, tx, bookID, chID, revID, counts.ParseVersion); err != nil {
 				return indexResult{}, err
 			}
+			// SC11-amendment Phase 0 — writer #2 of `scenes.source_scene_id`. A re-parse
+			// re-resolves every scene's anchor (`desiredSourceSceneID`), so the spec back-links
+			// may have moved. Same tx, same `counts.changed()` guard. A SEPARATE event type from
+			// scenes_reparsed on purpose: that one drives knowledge's extraction cache, and
+			// widening its meaning would change another service's behaviour by side-effect.
+			if err := emitScenesLinked(ctx, tx, bookID, chID); err != nil {
+				return indexResult{}, err
+			}
 		}
 	} else {
 		slog.WarnContext(ctx, "index: re-parse skipped; index left stale for the sweeper",

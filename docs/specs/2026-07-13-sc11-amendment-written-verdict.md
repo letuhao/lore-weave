@@ -153,18 +153,41 @@ aggregate*, and *already guarded by `counts.changed()`* ([`kg_index.go:199-208`]
 — a no-op reparse does not fire it. knowledge-service already consumes it
 ([`main.py:281`](../../services/knowledge-service/app/main.py)).
 
-### 5.2 ⚠ The gap: `source_scene_id` is written in **three** places; only two emit
+### 5.2 ⚠ The gap — and the census was wrong TWICE. There are **six** writer sites, not three.
 
-| Writer | File | Emits? |
-|---|---|---|
-| Import/parse | [`parse.go:303-306`](../../services/book-service/internal/api/parse.go) (in tx) | emits `chapter.created` at `:316` — **not** a scenes event |
-| Re-parse | [`reparse.go:224/235`](../../services/book-service/internal/api/reparse.go) (caller's tx) | ✅ `chapter.scenes_reparsed` |
-| **IX-12 decompile write-back** | [`import_processor.go:380-381`](../../services/worker-infra/internal/tasks/import_processor.go) — `UPDATE scenes SET source_scene_id=$1 WHERE … AND source_scene_id IS NULL`, **best-effort, outside book-service's tx** | ❌ **nothing** |
+**This section originally said "three places." It was wrong, and the way it was wrong is the lesson.**
+Phase 0's own DB test found a fourth; `/review-impl` then found a fifth and a sixth. Every miss was the
+same shape: *I generalised a census from the first places I looked.*
 
-**The third one is the important one** — it is the write that *creates the link* for a decompiled book, and
-it emits nothing. Any design that stamps `written_scene_id` from events must cover all three, or a
-decompiled book renders as entirely unwritten. **This gap exists today and is invisible** precisely because
-nobody consumes the link as an event.
+| # | Writer | File | Emitted before Phase 0? |
+|---|---|---|---|
+| 1 | `.txt` import INSERT | [`parse.go`](../../services/book-service/internal/api/parse.go) | ❌ only `chapter.created` |
+| 2 | Re-parse — **PUBLISH** | [`server.go`](../../services/book-service/internal/api/server.go) | ✅ `scenes_reparsed` (the most common re-parse of all; **missed by the first census**) |
+| 3 | Re-parse — kg-index / mcp-publish | `kg_index.go`, `mcp_actions.go` | ✅ `scenes_reparsed` |
+| 4 | Re-parse — **the IX-3 sweeper** | [`reparse_sweeper.go`](../../services/book-service/internal/api/reparse_sweeper.go) | ✅ `scenes_reparsed` (**re-links a book in the BACKGROUND, with no user action at all** — missed by the first census) |
+| 5 | **worker-infra HTML/txt import INSERT** | [`import_processor.go`](../../services/worker-infra/internal/tasks/import_processor.go) | ❌ **nothing** |
+| 6 | **worker-infra PDF import INSERT** | [`import_processor_pdf.go`](../../services/worker-infra/internal/tasks/import_processor_pdf.go) | ❌ **nothing** |
+| 7 | **IX-12 decompile write-back** | `import_processor.go` — best-effort `UPDATE … WHERE source_scene_id IS NULL` | ❌ **nothing** |
+
+**Two failure modes, both whole-book-wrong:**
+
+- **(7)** creates the link for a *decompiled* book. Silent ⇒ a decompiled book renders entirely unwritten.
+- **(5)/(6)** are the **ROUND-TRIP** case, and they are the subtler one: a user exports their book and
+  re-imports it, so every scene arrives with its `data-scene-id` anchor *already set*. The IX-12
+  write-back at (7) **only fills NULLs** — so it never touches them, and never emits. The links exist and
+  nothing announces them. **The re-imported book renders entirely unwritten.**
+
+**All seven now emit `chapter.scenes_linked`**, in the same tx as the write (INV-O12), each behind a
+no-op guard (`anyLinked` / `counts.changed()` / rows-affected). Two source-level drift-lock tests — one
+per service — pin the census so an eighth writer cannot ship silent.
+
+### 5.2b The link also breaks when the SCENE VANISHES — a Phase 2 requirement, not a Phase 0 gap
+
+A chapter trash/purge deletes its scenes without ever touching `source_scene_id`, and a spec node that
+*was* written becomes unwritten. Phase 0 needs no new emit for this: **`chapter.trashed` and
+`chapter.deleted` already exist**. But **Phase 2's consumer MUST handle them** and clear
+`written_scene_id`, or the mirror will keep claiming prose that no longer exists. (The Phase 1 reconcile
+sweeper is the backstop, not the primary path.)
 
 ### 5.3 composition-service needs its **first** domain-event consumer
 

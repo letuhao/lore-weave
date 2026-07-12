@@ -619,6 +619,10 @@ RETURNING kg_exclude`, chID, revID).Scan(&kgExcluded); err != nil {
 			if err := emitScenesReparsed(ctx, tx, bookID, chID, revID, counts.ParseVersion); err != nil {
 				return uuid.Nil, reparseCounts{}, err
 			}
+			// SC11-amendment Phase 0 — writer #2 of `scenes.source_scene_id` (see kg_index.go).
+			if err := emitScenesLinked(ctx, tx, bookID, chID); err != nil {
+				return uuid.Nil, reparseCounts{}, err
+			}
 		}
 	} else {
 		slog.WarnContext(ctx, "mcp publish: re-parse skipped; index left stale for the sweeper",

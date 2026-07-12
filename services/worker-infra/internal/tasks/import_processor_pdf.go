@@ -186,15 +186,30 @@ RETURNING id
 			return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("publish imported chapter: %w", err)
 		}
 
+		anyLinked := false
 		for _, sc := range ch.Scenes {
 			// 22-A5: set book_id (SC1) AND source_scene_id (SC7 anchor, when present)
 			// at INSERT — closes the A1 window for the PDF import branch too.
+			ssid := sceneSourceSceneIDArg(sc.SourceSceneID)
 			if _, err := tx.Exec(ctx,
 				`INSERT INTO scenes(chapter_id, book_id, sort_order, path, leaf_text, content_hash, source_scene_id, parse_version) VALUES($1, $2, $3, $4, $5, $6, $7, 1)`,
-				chapterID, payload.BookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, sceneSourceSceneIDArg(sc.SourceSceneID),
+				chapterID, payload.BookID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash, ssid,
 			); err != nil {
 				tx.Rollback(ctx)
 				return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("insert scene: %w", err)
+			}
+			if ssid != nil {
+				anyLinked = true
+			}
+		}
+
+		// SC11-amendment Phase 0 — WRITER #4. Same reason as the HTML/txt path: a scene born with an
+		// anchor is never touched by the IX-12 write-back (it only fills NULLs), so without this the
+		// link exists and nothing announces it. Same tx as the INSERTs (INV-O12).
+		if anyLinked {
+			if err := emitScenesLinkedTx(ctx, tx, payload.BookID, chapterID); err != nil {
+				tx.Rollback(ctx)
+				return t.countPdfChapters(ctx, payload.JobID), fmt.Errorf("emit scenes_linked: %w", err)
 			}
 		}
 
