@@ -74,8 +74,14 @@ async def fetch_scene_links(
                 raise BookSceneFetchError(resp.status_code, resp.text[:200])
             body = resp.json()
             for it in body.get("items", []) or []:
+                # ⚠ book-service names the scene's own id `scene_id`, NOT `id`. I read `id`, got
+                # None for every row, silently produced ZERO links — and every unit test still
+                # passed, because they fed dicts with the `"id"` key I had invented. The mirror
+                # reconciled cleanly to empty on every publish. Only the live smoke caught it:
+                # the column simply never stamped. (`id` is kept as a fallback so a future
+                # response shape that DOES use it cannot silently regress to zero links again.)
                 out.append({
-                    "id": it.get("id"),
+                    "id": it.get("scene_id") or it.get("id"),
                     "chapter_id": it.get("chapter_id"),
                     "source_scene_id": it.get("source_scene_id"),
                 })

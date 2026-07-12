@@ -14,6 +14,7 @@ import logging
 from app.config import settings
 from app.db.pool import close_pool, create_pool, get_pool
 from app.logging_config import setup_logging
+from app.events.consumer import CHAPTER_STREAM, CompositionEventConsumer
 from app.worker.job_consumer import CompositionJobConsumer
 
 setup_logging(settings.log_level)  # P2·A2a — shared JSON logging (composition-service)
@@ -39,11 +40,26 @@ async def _main() -> None:
             batch=20,
         )
     )
+
+    # SC11 Phase 2 — composition's FIRST domain-event consumer. book-service says "this chapter's
+    # spec back-links may have changed"; we re-read that chapter and reconcile the written-verdict
+    # mirror. Runs alongside the job consumer, on its own stream + group.
+    mirror = CompositionEventConsumer(
+        settings.redis_url, pool,
+        book_base_url=settings.book_internal_url,
+        jwt_secret=settings.jwt_secret,
+        consumer_name="worker-1",
+    )
+    mirror_task = asyncio.create_task(mirror.run())
+    logger.info("written-verdict mirror: consuming %s", CHAPTER_STREAM)
+
     try:
         await consumer.run()
     finally:
         sweeper.cancel()
+        mirror_task.cancel()
         await consumer.close()
+        await mirror.close()
         await close_pool()
 
 
