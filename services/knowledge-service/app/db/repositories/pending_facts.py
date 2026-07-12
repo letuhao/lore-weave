@@ -34,7 +34,8 @@ __all__ = ["PendingFactsRepo"]
 # RETURNING and the read queries can't drift.
 _SELECT_COLS = """
   pending_fact_id, user_id, project_id, session_id,
-  fact_type, fact_text, created_at
+  fact_type, fact_text, created_at,
+  subject, predicate, object, event_date, provenance
 """
 
 

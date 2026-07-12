@@ -164,13 +164,18 @@ def test_all_create_statements_are_idempotent():
     # Every CREATE must use IF NOT EXISTS or be wrapped in a DO $$ block.
     import re
 
+    # Strip `-- ...` line comments FIRST — a comment mentioning "CREATE TABLE" in prose (e.g. "the
+    # CREATE TABLE above only runs on a fresh DB") is not a statement and must not trip the scan
+    # (the hygiene-grep-matches-comments false-positive class).
+    ddl_no_comments = re.sub(r"--[^\n]*", "", DDL)
+
     bare_create_table = re.findall(
-        r"CREATE TABLE (?!IF NOT EXISTS)", DDL
+        r"CREATE TABLE (?!IF NOT EXISTS)", ddl_no_comments
     )
     assert bare_create_table == [], f"non-idempotent CREATE TABLE: {bare_create_table}"
 
     bare_create_index = re.findall(
-        r"CREATE (?:UNIQUE )?INDEX (?!IF NOT EXISTS)", DDL
+        r"CREATE (?:UNIQUE )?INDEX (?!IF NOT EXISTS)", ddl_no_comments
     )
     assert bare_create_index == [], f"non-idempotent CREATE INDEX: {bare_create_index}"
 
@@ -476,8 +481,9 @@ def test_pending_facts_table_present():
 def test_pending_facts_schema_shape():
     """K21-C (design D5) — scoped columns: pending_fact_id UUID PK
     (uuidv7), user_id UUID NOT NULL, project_id UUID nullable
-    (no-project chats can queue), session_id TEXT NOT NULL, fact_type
-    TEXT NOT NULL, fact_text TEXT NOT NULL, created_at TIMESTAMPTZ."""
+    (no-project chats can queue), session_id TEXT NULLABLE (WS-2.1 — a
+    DIARY fact has no chat session), fact_type TEXT NOT NULL, fact_text
+    TEXT NOT NULL, created_at TIMESTAMPTZ."""
     import re
     m = re.search(
         r"CREATE TABLE IF NOT EXISTS knowledge_pending_facts\s*\((.*?)\);",
@@ -489,17 +495,25 @@ def test_pending_facts_schema_shape():
     assert "user_id          UUID NOT NULL" in body
     # project_id nullable — a no-project chat can still queue a fact.
     assert "project_id       UUID," in body
-    assert "session_id       TEXT NOT NULL" in body
+    # WS-2.1 — session_id is NULLABLE now (a diary fact has no session). It must NOT be NOT NULL.
+    assert "session_id       TEXT," in body
+    assert "session_id       TEXT NOT NULL" not in body
     assert "fact_type        TEXT NOT NULL" in body
     assert "fact_text        TEXT NOT NULL" in body
     assert "created_at       TIMESTAMPTZ NOT NULL DEFAULT now()" in body
+    # WS-2.2 — the structured s/p/o + event_date + provenance + dedup + tombstone are added by later
+    # ALTER/CREATE statements (outside this CREATE TABLE body, which only runs on a fresh DB).
+    assert "ADD COLUMN IF NOT EXISTS subject" in DDL
+    assert "ADD COLUMN IF NOT EXISTS event_date  DATE" in DDL
+    assert "ADD COLUMN IF NOT EXISTS provenance" in DDL
+    assert "CREATE TABLE IF NOT EXISTS knowledge_rejected_facts" in DDL
 
 
 def test_pending_facts_fact_type_check_constraint():
     """K21-C — fact_type CHECK locks the vocabulary in sync with the
     Neo4j FactType closed enum + the PendingFact Pydantic model. A
     drift would let an unknown type reach merge_fact's own validation
-    and 500."""
+    and 500. WS-2.1 added 'statement' (the diary's coarse fact kind)."""
     import re
     m = re.search(
         r"CREATE TABLE IF NOT EXISTS knowledge_pending_facts\s*\((.*?)\);",
@@ -508,9 +522,11 @@ def test_pending_facts_fact_type_check_constraint():
     assert m is not None
     body = m.group(1)
     assert (
-        "CHECK (fact_type IN ('decision','preference','milestone','negation'))"
+        "CHECK (fact_type IN ('decision','preference','milestone','negation','statement'))"
         in body
     )
+    # The idempotent widen (for an already-migrated DB) must ADD the same 5-value CHECK.
+    assert "'negation','statement'))" in DDL
 
 
 def test_pending_facts_no_cross_db_fk():

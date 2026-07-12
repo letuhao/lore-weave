@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
@@ -328,3 +328,9 @@ class PendingFact(BaseModel):
     fact_type: FactType
     fact_text: str
     created_at: datetime
+    # WS-2.2 (structured s/p/o) — optional; a coarse legacy fact carries only fact_text.
+    subject: str | None = None
+    predicate: str | None = None
+    object: str | None = None
+    event_date: date | None = None
+    provenance: str | None = None

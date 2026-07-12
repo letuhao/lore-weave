@@ -194,7 +194,18 @@ async def distill_and_write(
                 user_id=user_id,
                 book_id=book_id,
                 entry_date=entry_date,
-                facts=[{"kind": f.kind, "text": f.text} for f in outcome.facts],
+                facts=[
+                    {
+                        "kind": f.kind, "text": f.text, "provenance": f.provenance,
+                        # WS-2.2 — forward the structured trio + event_date when the map step extracted
+                        # them (omit-when-None keeps the coarse-fact wire shape unchanged).
+                        **({"subject": f.subject} if f.subject else {}),
+                        **({"predicate": f.predicate} if f.predicate else {}),
+                        **({"object": f.object} if f.object else {}),
+                        **({"event_date": f.event_date} if f.event_date else {}),
+                    }
+                    for f in outcome.facts
+                ],
             )
             facts_queued = int(res.get("queued", 0)) if isinstance(res, dict) else 0
         except Exception:  # noqa: BLE001 — enrichment only; never fail a written day on the inbox.

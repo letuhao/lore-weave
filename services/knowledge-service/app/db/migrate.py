@@ -770,6 +770,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_pending_facts_dedup
   ON knowledge_pending_facts(user_id, project_id, dedup_key)
   WHERE dedup_key IS NOT NULL;
 
+-- WS-2.2 (structured s/p/o) — recall must answer "what did <person> SAY about <topic>", which needs the
+-- fact decomposed: subject (who/what it is about — the :ABOUT anchor at promote time), predicate, object,
+-- and the event_date (the day it is true of, distinct from created_at). provenance separates what the USER
+-- said from a QUOTED third party (a pasted email) so the review UI and recall never mis-attribute. All
+-- nullable: a coarse legacy statement fact carries only fact_text; a structured one carries the trio too.
+-- The dedup_key is derived from the trio when present (stable across LLM re-phrasings), else from fact_text.
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS subject     TEXT;
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS predicate   TEXT;
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS object      TEXT;
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS event_date  DATE;
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS provenance  TEXT;
+
+-- WS-2.2 (rejection tombstone) — today reject is a hard DELETE, so the very next distill re-proposes the
+-- exact fact the user just dismissed (a re-nagging loop). A tombstone remembers the dismissal by the SAME
+-- dedup_key the queue uses, so the queue skips a tombstoned fact. Scoped per (user, project, dedup_key);
+-- keyed identically to the pending dedup so a promote/queue and a reject can never disagree on identity.
+CREATE TABLE IF NOT EXISTS knowledge_rejected_facts (
+  user_id      UUID NOT NULL,
+  project_id   UUID NOT NULL,   -- diary facts are always project-scoped; PK forbids NULL anyway
+  dedup_key    TEXT NOT NULL,
+  rejected_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, dedup_key)
+);
+
 -- List path: WHERE user_id=$1 [AND session_id=$2] ORDER BY created_at.
 -- The optional session filter is a column equality, so a composite
 -- (user_id, created_at) index serves both the all-sessions list and

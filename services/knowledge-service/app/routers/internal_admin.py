@@ -14,7 +14,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
 import redis.asyncio as aioredis
@@ -71,13 +71,35 @@ async def erase_assistant_knowledge(
         passages_deleted = await delete_all_passages_for_project(
             session, user_id=str(user_id), project_id=str(project_id),
         )
+    # WS-2.2 — the pending-facts inbox + its rejection tombstones hold decryptable diary fact text; erase
+    # must reach them too (they carry no FK to the project, so the PG project delete won't cascade them).
+    async with pool.acquire() as conn:
+        pf = await conn.execute(
+            "DELETE FROM knowledge_pending_facts WHERE user_id=$1 AND project_id=$2",
+            user_id, project_id,
+        )
+        await conn.execute(
+            "DELETE FROM knowledge_rejected_facts WHERE user_id=$1 AND project_id=$2",
+            user_id, project_id,
+        )
+    pending_facts_deleted = int(pf.split()[-1]) if pf else 0
     project_deleted = await ProjectsRepo(pool).delete(user_id, project_id)
-    return {"project_deleted": bool(project_deleted), "passages_deleted": passages_deleted}
+    return {
+        "project_deleted": bool(project_deleted),
+        "passages_deleted": passages_deleted,
+        "pending_facts_deleted": pending_facts_deleted,
+    }
 
 
 class _DiaryFactIn(BaseModel):
     kind: str
     text: str
+    # WS-2.2 (structured s/p/o) — optional; a coarse fact carries only text, a structured one the trio.
+    subject: str | None = None
+    predicate: str | None = None
+    object: str | None = None
+    event_date: str | None = None  # ISO 'YYYY-MM-DD'; the day the fact is true of
+    provenance: str | None = None  # 'user' | 'quoted_third_party'
 
 
 class _QueueDiaryFactsIn(BaseModel):
@@ -87,17 +109,48 @@ class _QueueDiaryFactsIn(BaseModel):
     facts: list[_DiaryFactIn]
 
 
+def _parse_iso_date(value: str | None) -> date | None:
+    """Parse an ISO 'YYYY-MM-DD' into a date for an asyncpg ::date bind, tolerating None/garbage (→ None
+    rather than a 500). A trailing time component (an ISO datetime) is accepted by taking the date part."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def _diary_fact_dedup_key(project_id: object, kind: str, text: str, fact: _DiaryFactIn) -> str:
+    """A STABLE dedup identity for a distilled fact. When the structured trio is present, key on the
+    normalized (subject, predicate, object) so an LLM re-phrasing of the SAME fact across re-distills
+    collides (the semantic-dedup fix — fact_text alone drifts with wording). Else fall back to the
+    coarse fact_text. Normalization: casefold + collapse whitespace, so "The Q3 Budget" == "q3 budget"."""
+    def _norm(s: str | None) -> str:
+        return " ".join((s or "").split()).casefold()
+
+    if fact.subject and fact.object:
+        basis = f"spo:{_norm(fact.subject)}|{_norm(fact.predicate)}|{_norm(fact.object)}"
+    else:
+        basis = f"text:{_norm(kind)}|{_norm(text)}"
+    return hashlib.sha256(f"{project_id}:{basis}".encode("utf-8")).hexdigest()
+
+
 @router.post("/assistant/queue-facts")
 async def queue_diary_facts(body: _QueueDiaryFactsIn) -> dict:
-    """WS-2.1/2.3 — the assistant's DIVERT-TO-INBOX fact write. A distilled day's facts are queued into
-    the pending-facts INBOX (never `pending_validation=False`; the diary's facts are human-gated, D4),
-    resolving the user's assistant project by (user, book). Each fact lands as `fact_type='statement'`
-    with the kind + entry_date encoded in `fact_text`; `session_id` is None (a diary fact has no chat
-    session — WS-2.1 made the column nullable). Internal-token. The structured s/p/o + dedup key are
-    WS-2.2; a re-distill of the same day re-queues (dedup lands with WS-2.2)."""
+    """WS-2.1/2.3/2.2 — the assistant's DIVERT-TO-INBOX fact write. A distilled day's facts are queued
+    into the pending-facts INBOX (never `pending_validation=False`; the diary's facts are human-gated,
+    D4), resolving the user's assistant project by (user, book). Each fact lands as `fact_type='statement'`
+    with the kind + entry_date encoded in `fact_text`, PLUS the WS-2.2 structured s/p/o + event_date +
+    provenance columns when the distiller extracted them. `session_id` is None (a diary fact has no chat
+    session). Internal-token.
+
+    Two idempotency guards (WS-2.2): the `dedup_key` (semantic when the trio is present, else text-based)
+    makes a re-distill of the SAME day a no-op via ON CONFLICT DO NOTHING; a `knowledge_rejected_facts`
+    tombstone on the same key makes a fact the user already DISMISSED stay dismissed (no re-nag loop)."""
     pool = get_knowledge_pool()
     project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
     queued = 0
+    skipped_tombstoned = 0
     async with pool.acquire() as conn:
         for f in body.facts:
             text = (f.text or "").strip()
@@ -105,24 +158,76 @@ async def queue_diary_facts(body: _QueueDiaryFactsIn) -> dict:
                 continue
             date_sfx = f" ({body.entry_date})" if body.entry_date else ""
             fact_text = f"[{(f.kind or 'event').strip()}] {text}{date_sfx}"
-            # WS-2.2 dedup — a stable key over (project, fact_text) so a re-distill of the SAME day
-            # doesn't duplicate the fact in the inbox. ON CONFLICT DO NOTHING repeats the partial
-            # index's predicate (memory: an ON CONFLICT must match the partial-unique's WHERE).
-            dedup_key = hashlib.sha256(f"{project.project_id}:{fact_text}".encode("utf-8")).hexdigest()
+            dedup_key = _diary_fact_dedup_key(project.project_id, f.kind, text, f)
+            # Tombstone gate: a fact the user rejected must not re-appear on the next distill. Skip BEFORE
+            # the insert so a re-nag never even touches the inbox. (Keyed identically to the dedup so a
+            # reject and a re-queue can never disagree on identity.)
+            tomb = await conn.fetchval(
+                "SELECT 1 FROM knowledge_rejected_facts "
+                "WHERE user_id=$1 AND project_id=$2 AND dedup_key=$3",
+                body.user_id, project.project_id, dedup_key,
+            )
+            if tomb is not None:
+                skipped_tombstoned += 1
+                continue
+            # asyncpg encodes a ::date param as a Python date (not a str) BEFORE the cast, so parse the
+            # ISO string here; a malformed/absent date degrades to NULL rather than 500-ing the queue
+            # (memory: asyncpg-timestamptz-param-needs-datetime).
+            event_date = _parse_iso_date(f.event_date or body.entry_date)
             row = await conn.fetchrow(
                 """
                 INSERT INTO knowledge_pending_facts
-                  (user_id, project_id, session_id, fact_type, fact_text, dedup_key)
-                VALUES ($1, $2, NULL, 'statement', $3, $4)
+                  (user_id, project_id, session_id, fact_type, fact_text, dedup_key,
+                   subject, predicate, object, event_date, provenance)
+                VALUES ($1, $2, NULL, 'statement', $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (user_id, project_id, dedup_key) WHERE dedup_key IS NOT NULL
                 DO NOTHING
                 RETURNING pending_fact_id
                 """,
                 body.user_id, project.project_id, fact_text, dedup_key,
+                f.subject, f.predicate, f.object, event_date, (f.provenance or "user"),
             )
             if row is not None:  # None ⇒ a duplicate was skipped
                 queued += 1
-    return {"queued": queued, "project_id": str(project.project_id)}
+    return {
+        "queued": queued,
+        "skipped_tombstoned": skipped_tombstoned,
+        "project_id": str(project.project_id),
+    }
+
+
+class _RejectDiaryFactIn(BaseModel):
+    user_id: UUID
+    pending_fact_id: UUID
+
+
+@router.post("/assistant/reject-fact")
+async def reject_diary_fact(body: _RejectDiaryFactIn) -> dict:
+    """WS-2.2 (rejection tombstone) — the user dismisses a proposed diary fact. Reject is a hard DELETE of
+    the pending row, but we FIRST write a `knowledge_rejected_facts` tombstone on its dedup_key so the next
+    "End my day" does NOT re-propose the exact fact the user just dismissed. Owner-scoped: the DELETE and
+    the tombstone both filter on the caller's user_id, so one user can never reject/tombstone another's
+    fact. Idempotent: rejecting an already-gone fact is a no-op (rejected=0), and the tombstone upserts."""
+    pool = get_knowledge_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "DELETE FROM knowledge_pending_facts "
+                "WHERE pending_fact_id=$1 AND user_id=$2 "
+                "RETURNING project_id, dedup_key",
+                body.pending_fact_id, body.user_id,
+            )
+            if row is None:
+                return {"rejected": 0, "tombstoned": False}  # not found / not owned — nothing to do
+            # A legacy row (no dedup_key) can't be tombstoned by key; it's still deleted.
+            if row["project_id"] is not None and row["dedup_key"]:
+                await conn.execute(
+                    "INSERT INTO knowledge_rejected_facts (user_id, project_id, dedup_key) "
+                    "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                    body.user_id, row["project_id"], row["dedup_key"],
+                )
+                return {"rejected": 1, "tombstoned": True}
+    return {"rejected": 1, "tombstoned": False}
 
 
 class OrphanIndex(BaseModel):

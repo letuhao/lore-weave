@@ -540,3 +540,66 @@ def test_filter_reload_invalid_max_items_per_batch_returns_422(client: TestClien
         json={"model_ref": "x", "max_items_per_batch": 0},
     )
     assert resp.status_code == 422
+
+
+# ── WS-2.2 (structured s/p/o) — the semantic dedup key ─────────────────────────
+# The distiller re-runs on every "End my day" at temperature > 0, so it re-phrases the SAME fact
+# across runs. A text-only dedup key drifts with wording (double-queues); the structured s/p/o key
+# is stable, so a re-phrased-but-same fact collides. These prove the helper directly (pure fn).
+
+from app.routers.internal_admin import _DiaryFactIn, _diary_fact_dedup_key  # noqa: E402
+
+
+def _fact(**kw):
+    kw.setdefault("kind", "decision")
+    kw.setdefault("text", "")
+    return _DiaryFactIn(**kw)
+
+
+def test_dedup_key_is_stable_across_text_rephrasing_when_spo_present():
+    # Same subject/predicate/object, DIFFERENT free text + case/whitespace → SAME key (semantic dedup).
+    a = _fact(text="Minh froze the Q3 budget until billing ships.",
+              subject="Minh", predicate="froze", object="the Q3 budget")
+    b = _fact(text="The Q3 budget was frozen by Minh pending the billing revamp.",
+              subject="  minh ", predicate="FROZE", object="The  Q3   Budget")
+    k1 = _diary_fact_dedup_key("proj-1", a.kind, a.text.strip(), a)
+    k2 = _diary_fact_dedup_key("proj-1", b.kind, b.text.strip(), b)
+    assert k1 == k2, "a re-phrasing of the same s/p/o fact must dedup"
+
+
+def test_dedup_key_differs_for_different_object():
+    a = _fact(subject="Minh", predicate="froze", object="the Q3 budget")
+    b = _fact(subject="Minh", predicate="froze", object="the Q4 budget")
+    assert _diary_fact_dedup_key("p", "decision", "x", a) != _diary_fact_dedup_key("p", "decision", "x", b)
+
+
+def test_dedup_key_is_project_scoped():
+    a = _fact(subject="Minh", predicate="froze", object="the Q3 budget")
+    assert _diary_fact_dedup_key("proj-1", "decision", "x", a) != _diary_fact_dedup_key("proj-2", "decision", "x", a)
+
+
+def test_dedup_key_falls_back_to_text_when_no_spo():
+    # No structured trio → key on (kind, text). Same text → same; different text → different.
+    a = _fact(kind="event", text="Shipped the release.")
+    b = _fact(kind="event", text="Shipped the release.")
+    c = _fact(kind="event", text="Something else entirely.")
+    assert _diary_fact_dedup_key("p", a.kind, a.text, a) == _diary_fact_dedup_key("p", b.kind, b.text, b)
+    assert _diary_fact_dedup_key("p", a.kind, a.text, a) != _diary_fact_dedup_key("p", c.kind, c.text, c)
+
+
+def test_dedup_key_text_fallback_when_subject_but_no_object():
+    # A partial trio (subject only, no object) is NOT enough to anchor — fall back to text so we don't
+    # collide two unrelated subject-only facts under an empty-object key.
+    a = _fact(text="A", subject="Minh")
+    b = _fact(text="B", subject="Minh")
+    assert _diary_fact_dedup_key("p", "decision", "A", a) != _diary_fact_dedup_key("p", "decision", "B", b)
+
+
+def test_parse_iso_date_tolerates_garbage_and_none():
+    from datetime import date as _date
+    from app.routers.internal_admin import _parse_iso_date
+    assert _parse_iso_date("2026-07-12") == _date(2026, 7, 12)
+    assert _parse_iso_date("2026-07-12T09:30:00Z") == _date(2026, 7, 12)  # datetime → date part
+    assert _parse_iso_date(None) is None
+    assert _parse_iso_date("") is None
+    assert _parse_iso_date("not-a-date") is None
