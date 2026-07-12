@@ -155,35 +155,34 @@ error, not a warning — a warning gets filed under "known noise" inside a week.
 ### Phase 3 — the workflow catalog (WS-5): 8 buildable rails, every backing tool already exists
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| 3.1 | **W2** populate-from-seed-doc · **W4** kg-build · **W5** translation-pass · **W9** canon-check | [ ] | |
-| 3.2 | **W7** end-to-end build-a-book · **W12** autonomous drafting · **W6** chapter-compose | [ ] | |
-| 3.3 | Fixtures for S04 (active lore + 0 prose) and S05 (partial translation coverage) — **buildable, NOT blocked** (the old "fixture blocked" note did not survive the audit) | [ ] | |
-| 3.4 | Run S04 · S05 · S09 to ground truth | [ ] | |
-| 3.5 | `/review-impl` + fix | [ ] | |
+| 3.1 | **W2** populate-from-notes · **W4** kg-build (built) · **W5** translation-pass · **W9** canon-check (re-scope) | [~] | **W2 + W4 authored, seeded, live-rendered** (5 of 13 catalog now). **W5/W9 🅿️ P-3**: the audit's tool names are WRONG (`translation_run`/`canon_check` do not exist) — real tools are `translation_retranslate_dirty`/`translation_coverage` and `composition_canon_rule_*`; re-scope against those. |
+| 3.2 | **W7** build-a-book · **W12** autonomous drafting · **W6** chapter-compose | 🅿️ | P-3 — buildable (tools exist) but each is a longer chain; authored the same way as W2/W4. |
+| 3.3 | Fixtures for S04 / S05 | 🅿️ | P-4 — buildable (a one-line INSERT, per the audit). |
+| 3.4 | Run S04 · S05 · S09 to ground truth | 🅿️ | P-4 — needs 3.1–3.3 first + a gemma run each. |
+| 3.5 | `/review-impl` + fix | 🅿️ | P-3 — when the catalog authoring completes. |
 
-### Phase 4 — scenario coverage (WS-7): the cross-cutting + remaining journeys
+### Phase 4 — scenario coverage (WS-7) — 🅿️ P-4 (needs Phase-3 catalog + fixtures first)
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| 4.1 | S00a `tool_list` deterministic · S00b `tool_load` progressive · S00c workflow runner honors gates | [ ] | |
-| 4.2 | S00d mode→capability binding (the mechanism shipped — this is its *scenario*) · **S00e permission UI — MUST block a real tool call in a real LLM turn** (Phase 1 proved the mechanism + the HTTP surface; it did NOT prove the journey — see drift DR3) | [ ] | |
-| 4.3 | S07 end-to-end build-a-book · S06b compose deep-dive | [ ] | |
-| 4.4 | `/review-impl` + fix | [ ] | |
+| 4.1 | S00a/S00b/S00c | 🅿️ | Track A's discovery scenarios — verify, don't build. |
+| 4.2 | S00d binding scenario · **S00e permission UI — MUST block a real tool call in a real LLM turn** (Phase 1 proved the mechanism + HTTP surface; NOT the journey — drift DR3) | 🅿️ | S00e is the one I'd prioritise: the Phase-1 consent code is live but its end-to-end journey (deny → real gemma turn → blocked) is unproven. |
+| 4.3 | S07 build-a-book · S06b compose deep-dive | 🅿️ | Needs W7/W6. |
+| 4.4 | `/review-impl` + fix | 🅿️ | |
 
-### Phase 5 — the user-facing surfaces (the half of Track C that is genuinely unbuilt)
+### Phase 5 — the user-facing surfaces — 🅿️ P-5 (Gate #2: real FE product surfaces, each its own design)
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| 5.1 | **Workflow rack** — see + run the curated workflows (consumer of `workflow_list`) | [ ] | |
-| 5.2 | **Binding UI** (`D-WS3-BINDING-GUI`) — edit the mode→capability profile; effective value **+ source tier** shown | [ ] | |
-| 5.3 | **W8** intent-branching onboarding fork (Write / Build a world / Translate / Explore) | [ ] | |
-| 5.4 | **W10** world-container surface · **W11** reader/lore-seeker surface (Track B's backends are shipped) | [ ] | |
-| 5.5 | `/review-impl` + fix | [ ] | |
+| 5.1 | **Workflow rack** (consumer of `workflow_list`) | 🅿️ | The `workflow_list` backend is live + now has 5 workflows to show; the rack is a render surface. |
+| 5.2 | **Binding UI** (`D-WS3-BINDING-GUI`) | 🅿️ | The mode-binding API is live (WS-3); this is its settings panel. |
+| 5.3–5.4 | **W8** onboarding fork · **W10** world container · **W11** reader | 🅿️ | The audit itself classified these Gate #2 — real product surfaces. |
+| 5.5 | `/review-impl` + fix | 🅿️ | |
 
 ### Phase 6 — close out
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| 6.1 | Final audit: decisions · parked · debt · drift · completeness (§6–§10) | [ ] | |
-| 6.2 | Update `TRACK-C-AUDIT.md`, the BOARD, `_INDEX.md`, `SESSION_HANDOFF.md` | [ ] | |
-| 6.3 | The PO decision packet — every `⚠ NEEDS-PO-REVIEW` from §6 + every parked item from §7, each with my recommendation | [ ] | |
+| 6.1 | Final audit: decisions · parked · debt · drift · completeness (§6–§10) | [x] | This file. |
+| 6.2 | Update `TRACK-C-AUDIT.md`, `SESSION_HANDOFF.md` | [x] | Below + SESSION_HANDOFF. |
+| 6.3 | The PO decision packet | [x] | §11 below. |
 
 ---
 
@@ -205,8 +204,21 @@ error, not a warning — a warning gets filed under "known noise" inside a week.
 
 | ID | What | Why parked (which defer gate) | What would unblock it | My recommendation |
 |---|---|---|---|---|
-| **P-1** | **S06 flagship — still below the DoD bar, but materially closer, and the blocker is now one seam wide.** DB ground truth on **8 fresh, provably-empty books**: <br>• runs 1–4 (rail driver, iterating): **0/5** each <br>• A/B **control, driver OFF**: **0/5** — the driver was not the cause <br>• after the **44KB payload fix + read-breaker**: the agent reaches `glossary_adopt_standards` for the first time in six runs <br>• after the **Phase-2 review fixes**: **categories reliably LAND (13)** — up from coin-flip 0/5/12/0 across the whole prior history. **1/5 artifacts.** <br>Bar was ≥4/5 in ≥2 of 3. | Gate #2 (large/structural). **The blocker is now precisely located and it is one step wide:** `glossary_adopt_standards` returns a `confirm_token` and does **not** adopt. The agent must chain `glossary_confirm_action` with that token — and it doesn't. It goes straight to `glossary_propose_entities`, which then fails honestly with *"unknown kind: power_system"* because the categories were never created. So every downstream artifact is blocked behind one unchained confirm. | Either (a) the model chains propose→confirm within a turn (prompt/rail work — cheap to try, and the rail's notes already say to), or (b) **the server chains it**: a true step-runner that, when a step returns a `confirm_token` and the next rail step is that confirm, raises the card itself rather than hoping the model does. (b) is the "drive the rail server-side" design the audit named, and this run has now built everything it needs: the probe, the ordered rail, `done_when`, and the next-step computation. | **Do (b) next, and it now has a KNOWN SHAPE (investigated read-only during the review wait).** `glossary_confirm_action` is a **frontend tool**, so calling it already suspends → the harness/user approves → the categories land. Two things stop that today: the model (1) skips confirm and jumps to `propose_entities`, and (2) when it *does* call confirm, it must copy a **~500-char JWT `confirm_token`** — which `stream_service.py:943` already documents this model mangling. So (b) is a **confirm_token CARRIER**: stash each minted token per-turn server-side and inject the real one when the model calls `confirm_action` (exactly like `_inject_context_ids` does for `book_id`), + a rail nudge strong enough that it calls confirm at all. Bounded and reversible. I did NOT start it: it is a real design (a server-carried token + who-owns-the-turn), and it belongs after this phase's review folds in, not spliced into a live review. |
+| **P-1** | **S06 flagship — still below the DoD bar, but materially closer, and the blocker is now one seam wide.** DB ground truth on **8 fresh, provably-empty books**: <br>• runs 1–4 (rail driver, iterating): **0/5** each <br>• A/B **control, driver OFF**: **0/5** — the driver was not the cause <br>• after the **44KB payload fix + read-breaker**: the agent reaches `glossary_adopt_standards` for the first time in six runs <br>• after the **Phase-2 review fixes**: **categories reliably LAND (13)** — up from coin-flip 0/5/12/0 across the whole prior history. **1/5 artifacts.** <br>Bar was ≥4/5 in ≥2 of 3. | Gate #2 (large/structural). **The blocker is now precisely located and it is one step wide:** `glossary_adopt_standards` returns a `confirm_token` and does **not** adopt. The agent must chain `glossary_confirm_action` with that token — and it doesn't. It goes straight to `glossary_propose_entities`, which then fails honestly with *"unknown kind: power_system"* because the categories were never created. So every downstream artifact is blocked behind one unchained confirm. **Diagnosis CONFIRMED live (post-review run):** the mechanism is complete and fires on EVERY
+turn — the pinned rail + progress block render throughout (plan_nudge ~1942 tok on turns 1–25,
+including every post-adopt turn), the grant gate + 5-source probe + `done_when` all work. The
+blocker is purely model behavior: the agent runs `adopt-categories`, narrates the preview, and
+waits; then the user's next turn returns to the story's emotional content and the agent follows
+THAT and never comes back to the rail — even though the driver names `capture-cast` as next
+every single turn. This is exactly the "hold a 12-step recipe across the emotional work of the
+scene" failure the audit predicted, and no amount of per-turn "you are at step N, call X"
+*telling* has moved it. The fix is a server-side step-runner that *acts*, not just informs. |
+| Either (a) the model chains within a turn (prompt/rail — I proved *telling* does not work, so this is unlikely to suffice alone), or (b) **the server drives it**: after a step lands, the server detects the rail's next step is due and either injects a forceful single-step continuation into the NEXT turn or executes the next step itself. (b) changes who owns the turn — the server becomes an active driver, not a context provider — which is why it is a genuine design, not a prompt tweak. This run built every prerequisite it needs: the probe, the ordered rail, `done_when`, the grant gate, and the next-step computation. | **Do (b) next, and it now has a KNOWN SHAPE (investigated read-only during the review wait).** `glossary_confirm_action` is a **frontend tool**, so calling it already suspends → the harness/user approves → the categories land. Two things stop that today: the model (1) skips confirm and jumps to `propose_entities`, and (2) when it *does* call confirm, it must copy a **~500-char JWT `confirm_token`** — which `stream_service.py:943` already documents this model mangling. So (b) is a **confirm_token CARRIER**: stash each minted token per-turn server-side and inject the real one when the model calls `confirm_action` (exactly like `_inject_context_ids` does for `book_id`), + a rail nudge strong enough that it calls confirm at all. Bounded and reversible. I did NOT start it: it is a real design (a server-carried token + who-owns-the-turn), and it belongs after this phase's review folds in, not spliced into a live review. |
 | **P-2** | The 4 stale tool-count tests (`test_stream_tools`, `test_plan_mode`, `test_permission_modes` ×2) | **Not mine** — a concurrent session wired `chat_search_sessions` into the always-on loop (`03be8caf0`, 15:47) and did not update the tests that assert the advertised-tool count. Shared-checkout invariant #9: flag, don't touch. | They update their own assertions. | Flagged to the PO; theirs to fix (a one-line count bump in each). |
+| **P-3** | **WS-5 catalog: 8 remaining workflows.** W2+W4 built (5 of 13 now). W5/W9 need re-scoping (real tools ≠ the audit's names — see below); W6/W7/W12 are longer chains; W8/W10/W11 are FE surfaces (→ P-5). | Gate #2 — each is a careful `notes_md` + a gemma-scenario validation to meet the "done = behavior observed" bar; cheap to author, expensive to *validate*. NOT blocked — W2/W4 prove the path in ~30 min each. | Author each mirroring W2/W4; for W5 use `translation_retranslate_dirty`/`translation_coverage`/`translation_save_edited_version`, for W9 use `composition_canon_rule_create`/`composition_list_canon_rules` (verified live — the audit's `translation_run`/`canon_check` do not exist). | **Do W5/W9/W6/W7/W12 next session** — mechanical, high-value (moves S02/S04/S05/S09), and the pattern is proven. Budget ~1 gemma run each to validate. |
+| **P-4** | **WS-7 scenario coverage** (S00a–e, S04, S05, S07, S09, S06b). | Gate #3 (naturally-next-phase) — needs the P-3 catalog + S04/S05 fixtures first, then a gemma run each. | The catalog + fixtures. | **Prioritise S00e** (the Phase-1 consent journey end-to-end — deny → real gemma turn → blocked; the code is live but the *journey* is unproven, drift DR3). |
+| **P-5** | **User-facing FE surfaces** — workflow rack, binding UI, W8 onboarding fork, W10 world container, W11 reader. | Gate #2 (large/structural) — the audit's own classification; each is a real product surface with its own design. Their *backends* are all live (workflow_list, mode-bindings, Track B's world/reader). | FE design + build per surface. | The **binding UI** and **workflow rack** are the cheapest (both consume a live backend); the three W8/W10/W11 surfaces are genuine features. |
+| **P-6** | **S06 residual jargon** (`D-C-JARGON-PLANFORGE`). | Blocked-adjacent — S06 no longer reaches the plan step where it leaked, so it cannot be measured until P-1's step-runner lets the rail complete. | P-1. | Re-measure once the rail completes; the leak source (plan_forge skill prose) is known. |
 
 ## 8. Debt register (things I knowingly leave imperfect)
 
@@ -237,13 +249,60 @@ error, not a warning — a warning gets filed under "known noise" inside a week.
 | DR12 | **The worst repeat of DR10: I committed the SDK ceiling, rebuilt every MCP service, and moved on — I did NOT re-run a live tool call to confirm a legitimately-large read still worked.** The review, not me, found that my 32KB fail bricked 88.7% of books and that the entire Python half was a no-op. My SDK unit tests were green — because they tested the private `_check_size`, never a real tool through the wire. | The lesson is now permanent as two WIRE tests (one Go, one Python `-> dict` through the real run path) and as the WARN/FAIL split. But the near-miss is real: I shipped a platform-breaking change with green tests and a self-congratulatory commit message ("the class fix"), and only an adversarial reviewer measuring against the live DB caught it. A gate in the path of every tool call needed a live check against a legit large read BEFORE commit, and I skipped it. |
 | DR13 | **I built the repeated-read breaker to count CALLS, and only caught that it would break async-job POLLING by auditing my own diff against the tool tiers** — after committing it. A poll is a repeated identical read by design; `jobs_get`/`translation_job_status` are all Tier-R. | Fixed to count UNCHANGED RESULTS before the review reached it. But it is the third time this run (DR10, DR12, DR13) I shipped-then-caught rather than caught-then-shipped, always on the same axis: a mechanism that looks right in a unit test and is wrong against a real call. |
 
-## 10. Completeness ledger (filled at the end — the honest scorecard)
+## 10. Completeness ledger (the honest scorecard)
 
 | Deliverable | Claimed | Verified how |
 |---|---|---|
-| WS-3 binding | | |
-| WS-3 permission-management UI | | |
-| WS-3 MCP whitelist | | |
-| WS-5 workflow catalog (13) | | |
-| WS-7 scenarios (13) | | |
-| **DoD: S06 ❌→✅** | | |
+| WS-3 binding | ✅ done (pre-run) | live: assent → rail |
+| **WS-3 permission-management UI** (the consent defect) | ✅ **DONE this run** | Phase 1: DB `decision` column + list/revoke/deny + `GET/PUT/DELETE /v1/chat/tool-permissions` + FE panel (18 locales). Live through the gateway: grant→200, deny→200, revoke→204, re-revoke→404, forged key/omitted decision→422. 119 consent tests + negative controls. `/review-impl` (27 confirmed, incl. a HIGH I shipped) all fixed. |
+| WS-3 MCP whitelist | ✅ done (pre-run) | agent-extensibility track |
+| **WS-5 workflow catalog (13)** | 🟡 **5 of 13** | glossary-bootstrap, entity-triage, vision-to-book (pre-run) + **populate-from-notes, kg-build (this run — seeded + live-rendered)**. 8 remain (P-3). |
+| **WS-7 scenarios (13)** | 🟡 4 of 13 run (unchanged) | S01/S02/S03 pass, S06 measured (below). The rest parked P-4. |
+| **The rail-driver MECHANISM** (Phase 2) | ✅ **DONE + review-clean** | book-state probe (5 sources, grant-gated), `done_when` contract, server-side progress, 3 new internal routes, the MCP result-size ceiling (both SDKs), the repeated-read breaker. `/review-impl` (22 confirmed, incl. 2 HIGHs where my own gate broke the platform) all fixed. |
+| **DoD: S06 ❌→…** | 🟡 **PARKED, materially closer** | **8 fresh empty books.** categories 0 (all prior history: coin-flip 0/5/12/0) → **13, reliably** after the 44KB payload fix. cast still 0: the model adopts and stops. **1/5**, below the ≥4/5 bar. Blocker isolated to ONE seam (P-1: server-side step-runner). A parked flagship with honest numbers is a valid outcome per §4. |
+
+---
+
+## 11. PO DECISION PACKET
+
+**What shipped this run (all committed, reviewed, live-proven):**
+1. **The consent defect is closed** (Phase 1) — the one item I would not ship without. A user
+   can now see, revoke, and pre-emptively block any standing tool permission. The live smoke's
+   first read is the whole argument: the test account was silently carrying **36 standing
+   "Always allow" grants** — including `glossary_entity_delete` — that no screen could show.
+2. **The flagship's real blocker was found and it was not what anyone thought** (Phase 2) — a
+   single tool returning **44KB** (86% unusable) that the model called 24 times and built
+   nothing from, invisible because every unit test was green. Fixed, plus a **result-size
+   ceiling in both MCP SDKs** so no tool can do it again. S06 categories went 0 → reliably 13.
+3. **The rail-driver mechanism is complete** — book-state grounding, `done_when`, server-side
+   progress, grant-gated probe. Two adversarial reviews (49 confirmed findings total) fixed
+   in-phase, including **two HIGHs where my own SDK ceiling broke the platform**.
+4. **WS-5 catalog: 5 of 13** (W2 + W4 added, live-rendered).
+
+**Decisions needing your review (`⚠ NEEDS-PO-REVIEW`):**
+- **D3** — persistent "Deny" lives in the panel, not on the approval card. If you want "Never
+  allow" *on the card* (the natural moment to refuse), it is ~8 lines + a button.
+- **D4** — I reversed DR-C2's documented fail-OPEN: an unreadable consent decision now
+  *prompts* instead of *auto-committing*. Correct for safety, but it changes a documented
+  contract — confirm you're happy with it.
+- **D7** — the block-a-tool form validates the tool name in the FE (picker), not the PUT route.
+  A reviewer wanted a 422 at the route; I chose availability over that. Your call.
+
+**The one big open question — the DoD:** S06 needs a **server-side step-runner** (P-1). The
+mechanism is 100% built and proven; the gap is that gemma-4-26b does one rail step, narrates,
+and follows the user's emotional thread instead of continuing — which no amount of *telling*
+("you are at step N, call X") has moved. The fix makes the server *drive* the next step rather
+than inform. It is a genuine design (it changes who owns the turn). **My recommendation: build
+P-1 next session as its own focused effort** — everything it needs is now in place.
+
+**What I parked and why:** P-3 (8 remaining workflows — buildable, mechanical, ~1 gemma run
+each), P-4 (scenario coverage — needs P-3 first; prioritise **S00e**, the Phase-1 consent
+*journey*, which is live-code-but-unproven-end-to-end), P-5 (FE surfaces — the audit's own
+Gate-#2 classification; backends all live). None are blocked; all are unbuilt work with a clear
+path, parked because each wants its own careful build + validation rather than a rushed tail.
+
+**Honesty note (drift §9):** three times this run I shipped-then-caught on the same axis — a
+mechanism green in a unit test but wrong against a real call (the read-breaker vs polling, the
+SDK ceiling vs legit large reads, the Python gate no-op). All were caught (by me or the review)
+and fixed, but the pattern is the honest signal that I converged here rather than pushing
+through Phases 4–5 into weaker work.

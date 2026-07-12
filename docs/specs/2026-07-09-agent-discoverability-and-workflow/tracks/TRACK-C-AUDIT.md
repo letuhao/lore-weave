@@ -1,3 +1,21 @@
+# Track C — completeness audit (2026-07-11, **updated 2026-07-12 post-run**)
+
+> **2026-07-12 UPDATE.** A long autonomous run advanced Track C substantially. The full
+> account is [`docs/plans/2026-07-12-track-c-completion-RUN-STATE.md`](../../../../plans/2026-07-12-track-c-completion-RUN-STATE.md)
+> (§10 ledger + §11 PO packet). Headlines:
+> - **The consent defect (`D-C-ALLOWLIST-WRITE-ONLY`) is CLOSED** — view / revoke / deny +
+>   the backend that never existed. Two adversarial reviews, all findings fixed.
+> - **The flagship's real blocker was found**: a 44KB tool payload (86% unusable) the model
+>   called 24× and built nothing from. Fixed, + a result-size ceiling in both MCP SDKs.
+>   S06 categories went **0 (coin-flip) → reliably 13**; still 1/5 (the model adopts and
+>   stops), **parked P-1** = a server-side step-runner (a genuine design).
+> - **WS-5 catalog: 3 → 5** (populate-from-notes, kg-build). W5/W9's audit tool-names below
+>   were **wrong** (`translation_run`/`canon_check` do not exist) — re-scope P-3.
+> - The rail-driver mechanism (book-state grounding, `done_when`, grant-gated probe) is
+>   complete. Still parked: 8 workflows (P-3), scenario coverage (P-4), FE surfaces (P-5).
+
+---
+
 # Track C — completeness audit (2026-07-11)
 
 **Method:** every claim below was **verified against code/DB**, not read off a status doc. (A debt list
