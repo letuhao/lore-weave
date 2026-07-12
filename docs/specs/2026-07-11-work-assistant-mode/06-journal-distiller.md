@@ -123,7 +123,7 @@ stored per message), and the distiller prompt **excludes assistant-quoted journa
 
 The worker has **no user JWT** and book-service `/internal` is **read-only** today. → a new **internal-token,
 owner-scoped, draft-only** chapter-write route + a **day-window** internal chat-messages read
-(`GET /internal/chat/messages/day-window`, filtered `session_kind=assistant` **server-side**, window-capped).
+(`GET /internal/chat/messages/day-window`, filtered to assistant sessions **server-side**, window-capped). **⚠️ AS-BUILT (D-R15, amends sealed T-4 — pending human ratification):** the built read filters `s.book_id = the diary` (the assistant-session discriminator), NOT a `session_kind` column. See DECISIONS-SEALED T-4.
 
 ## Q11. Acceptance
 

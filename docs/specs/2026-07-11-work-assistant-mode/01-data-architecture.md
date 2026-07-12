@@ -78,7 +78,7 @@ clone/adopt into per-book tier, per the User Boundaries law). The diary book is 
 - `chat_sessions`: an **assistant-session marker** (a `session_kind` column, or derive from `book_id`=diary — decide in §8) + **`capture_status`** to persist the per-turn `CaptureDecision` (today stdout-only and discarded — PUX-5) for the home-strip chip.
 - `chat_search_sessions` MCP tool → chat-service becomes an **MCP host** (new infra) + `chat_`-prefixed ai-gateway registration (namespacing lesson). Owner-scoped (authenticated id only), default `session_scope='assistant'`, capped excerpts wrapped data-not-instructions.
 - **Indexes:** `CREATE EXTENSION pg_trgm` (outside the DDL tx, book-service's pattern) + GIN trigram on `chat_messages(content)` (the existing english-tsvector index is useless for VI/CJK); + `idx_chat_messages(owner_user_id, created_at)` for the day-window/catch-up sweep. **Build `CONCURRENTLY`** — this table is expected to grow large, and the migrate house-style is non-concurrent (ACCESS EXCLUSIVE lock).
-- New `GET /internal/chat/messages/day-window` (owner + ts range, filtered `session_kind=assistant`) for the distiller.
+- New `GET /internal/chat/messages/day-window` (owner + local_date, filtered to assistant sessions) for the distiller. **AS-BUILT (D-R15, amends T-4 — pending ratification):** filters `s.book_id = the diary`, not a `session_kind` column.
 - `GET .../messages` gains `after_seq` + a **tail-default** (last N) mode — API only, no DDL (D12/EDGE-2).
 - Send path: `pg_advisory_xact_lock(hashtext(session_id))` around seq-assign + retry-once on unique violation (EDGE-5) — no DDL.
 
