@@ -137,14 +137,18 @@ async def distill_and_write(
         giant_paste_threshold=giant_paste_threshold, window=window,
     )
 
-    if outcome.oversized_message is not None:
-        # §T38 — a giant paste: don't digest, tell the caller to offer attach-as-document.
-        return {"status": "oversized", "reason": "giant_paste", "entry_date": entry_date,
-                "truncated": truncated}
+    # §T38 — any giant paste(s) are diverted (offer to attach as a document), INDEPENDENT of whether
+    # the rest of the day produced an entry. Surface the count so the home strip can make the offer.
+    oversized_n = len(outcome.oversized_messages)
+
     if outcome.entry is None:
+        if oversized_n and outcome.no_entry_reason == "only_oversized":
+            # The day was ONLY a giant paste — nothing to journal, just the attach-offer.
+            return {"status": "oversized", "reason": "giant_paste", "entry_date": entry_date,
+                    "oversized_count": oversized_n, "truncated": truncated}
         # §Q11 — a low-signal / empty day writes NO entry, with the reason surfaced.
         return {"status": "no_entry", "reason": outcome.no_entry_reason, "entry_date": entry_date,
-                "chunks": outcome.chunks_processed, "truncated": truncated}
+                "oversized_count": oversized_n, "chunks": outcome.chunks_processed, "truncated": truncated}
 
     written = await book_client.write_diary_entry(
         book_id=book_id, owner_user_id=user_id, entry_date=entry_date, entry_zone=entry_zone,
@@ -163,5 +167,6 @@ async def distill_and_write(
         "entry_date": entry_date,
         "facts_found": outcome.facts_found,
         "chunks": outcome.chunks_processed,
+        "oversized_count": oversized_n,  # a paste alongside a real day is diverted, not lost
         "truncated": truncated,
     }

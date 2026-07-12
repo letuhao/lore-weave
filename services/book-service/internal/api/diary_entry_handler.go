@@ -271,9 +271,14 @@ RETURNING id`,
 // if not. Uses the tx so the read is consistent with the pending write.
 func (s *Server) txQuotaOK(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, owner uuid.UUID, delta int64) bool {
 	var used, quota int64
-	_ = tx.QueryRow(ctx,
+	// ensureQuotaRow (called before the tx) guarantees the row exists, so a read error here is a
+	// genuine DB fault — fail CLOSED (500) rather than let a zeroed used/quota skip the cap.
+	if err := tx.QueryRow(ctx,
 		`SELECT used_bytes, quota_bytes FROM user_storage_quota WHERE owner_user_id=$1`, owner).
-		Scan(&used, &quota)
+		Scan(&used, &quota); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read quota")
+		return false
+	}
 	if quota > 0 && used+delta > quota {
 		writeError(w, http.StatusInsufficientStorage, "STORAGE_QUOTA_EXCEEDED", "quota exceeded")
 		return false

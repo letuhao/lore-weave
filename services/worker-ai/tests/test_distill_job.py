@@ -90,7 +90,7 @@ async def test_low_signal_day_writes_nothing():
     assert book.writes == []  # never wrote a stub
 
 
-async def test_giant_paste_is_reported_oversized_and_not_written():
+async def test_a_day_of_only_a_giant_paste_is_oversized_and_not_written():
     big = _msg("user", "x" * (GIANT_PASTE_CHARS + 1))
     chat = FakeChat([big])
     book = FakeBook()
@@ -100,7 +100,23 @@ async def test_giant_paste_is_reported_oversized_and_not_written():
         chat_client=chat, book_client=book,
     )
     assert out["status"] == "oversized" and out["reason"] == "giant_paste"
+    assert out["oversized_count"] == 1
     assert book.writes == []
+
+
+async def test_a_giant_paste_alongside_a_real_day_still_writes_the_entry():
+    # The T38 fix at the orchestrator level: a real day + a paste → the entry IS written and the
+    # paste is surfaced (oversized_count) for the attach-offer, not dropped.
+    big = _msg("user", "x" * (GIANT_PASTE_CHARS + 1))
+    chat = FakeChat([_msg("user", "Met Minh."), big])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "written" and out["oversized_count"] == 1
+    assert len(book.writes) == 1
 
 
 async def test_day_window_unavailable_is_retryable_error_not_an_empty_entry():

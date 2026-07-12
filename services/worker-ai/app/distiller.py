@@ -104,12 +104,14 @@ class EntryDraft:
 
 @dataclass
 class DistillOutcome:
-    """The distiller's result. Exactly one of `entry` / `no_entry_reason` / `oversized_message` is
-    meaningful, so a caller never mistakes a low-signal day or a giant paste for a real entry."""
+    """The distiller's result. `entry` and `oversized_messages` are INDEPENDENT: a day can both
+    produce a real entry (from the conversation) AND surface a giant paste to attach (§T38) — the
+    paste is diverted, not allowed to suppress the day. `no_entry_reason` is set only when there is
+    no entry, so a caller never mistakes a low-signal day for a real entry."""
 
     entry: EntryDraft | None = None
-    no_entry_reason: str | None = None  # 'low_signal' | 'empty_day' — write NO entry (§Q11)
-    oversized_message: str | None = None  # a giant paste to offer as a document instead (§T38)
+    no_entry_reason: str | None = None  # 'low_signal' | 'empty_day' | 'only_oversized' — no entry (§Q11)
+    oversized_messages: list[str] = field(default_factory=list)  # giant pastes to attach, not digest (§T38)
     chunks_processed: int = 0
     facts_found: int = 0
 
@@ -132,13 +134,22 @@ def filter_for_distill(messages: list[DayMessage]) -> list[DayMessage]:
     return out
 
 
-def find_oversized_message(messages: list[DayMessage], threshold: int = GIANT_PASTE_CHARS) -> str | None:
-    """§T38: return the first message whose single content exceeds `threshold` (a giant paste the
-    chunker has nothing to split on). The caller offers to attach it as a document, not digest it."""
+def partition_oversized(
+    messages: list[DayMessage], threshold: int = GIANT_PASTE_CHARS,
+) -> tuple[list[DayMessage], list[str]]:
+    """§T38: split messages into (normal, oversized-contents). An oversized message is a giant paste
+    the chunker has nothing to split on and that can cost more than the whole day — it is DIVERTED
+    (offered to attach as a document) while the rest of the day still distills. Returning only the
+    first oversized (and dropping the day) would silently lose a productive day that happened to
+    contain one big paste."""
+    normal: list[DayMessage] = []
+    oversized: list[str] = []
     for m in messages:
         if len(m.content) > threshold:
-            return m.content
-    return None
+            oversized.append(m.content)
+        else:
+            normal.append(m)
+    return normal, oversized
 
 
 def chunk_day(messages: list[DayMessage], window: int = WINDOW_CHARS) -> list[list[DayMessage]]:
@@ -181,9 +192,18 @@ _MAP_INSTRUCTIONS = (
 )
 
 
+def _escape_envelope(text: str) -> str:
+    """Neutralize the envelope delimiters so pasted content cannot CLOSE its <message> fence and
+    smuggle a fake <message role="system"> or a bare instruction OUTSIDE the DATA envelope (§Q7).
+    HTML-escaping the angle brackets keeps the text readable to the model as (escaped) data. This
+    is the structural half of the injection guard; the JSON-only parser is the other half."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def build_map_prompt(chunk: list[DayMessage]) -> str:
     envelopes = "\n".join(
-        f"<message role=\"{m.role}\">\n{m.content}\n</message>" for m in chunk
+        f"<message role=\"{_escape_envelope(m.role)}\">\n{_escape_envelope(m.content)}\n</message>"
+        for m in chunk
     )
     return f"{_MAP_INSTRUCTIONS}\n\nMESSAGES:\n{envelopes}"
 
@@ -203,20 +223,43 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
         return obj if isinstance(obj, dict) else None
     except (ValueError, TypeError):
         pass
-    start, depth = text.find("{"), 0
+    span = _first_balanced_object(text)
+    if span is None:
+        return None
+    try:
+        obj = json.loads(span)
+        return obj if isinstance(obj, dict) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _first_balanced_object(text: str) -> str | None:
+    """Return the first balanced {...} span, tracking STRING state so a brace inside a string value
+    (e.g. a summary that mentions "the map[k]} bug") does not falsely close the object early."""
+    start = text.find("{")
     if start < 0:
         return None
+    depth = 0
+    in_str = False
+    esc = False
     for i in range(start, len(text)):
-        if text[i] == "{":
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
             depth += 1
-        elif text[i] == "}":
+        elif c == "}":
             depth -= 1
             if depth == 0:
-                try:
-                    obj = json.loads(text[start : i + 1])
-                    return obj if isinstance(obj, dict) else None
-                except (ValueError, TypeError):
-                    return None
+                return text[start : i + 1]
     return None
 
 
@@ -318,23 +361,29 @@ async def distill_day(
     if not kept:
         return DistillOutcome(no_entry_reason="empty_day")
 
-    oversized = find_oversized_message(kept, giant_paste_threshold)
-    if oversized is not None:
-        # Don't digest a giant paste (§T38) — surface it so the caller offers attach-as-document.
-        return DistillOutcome(oversized_message=oversized)
+    # §T38 — divert giant pastes (offer to attach) but keep distilling the rest of the day.
+    normal, oversized = partition_oversized(kept, giant_paste_threshold)
+    outcome = DistillOutcome(oversized_messages=oversized)
+    if not normal:
+        # Nothing but the paste(s) — no entry, but surface the attach-offer.
+        outcome.no_entry_reason = "only_oversized" if oversized else "empty_day"
+        return outcome
 
-    chunks = chunk_day(kept, window)
+    chunks = chunk_day(normal, window)
+    outcome.chunks_processed = len(chunks)
     all_facts: list[DistillFact] = []
     for chunk in chunks:
         all_facts.extend(await map_chunk(chunk, llm))
 
     if not all_facts:
         # A day with no extractable facts writes NO entry (§Q11) — never a stub.
-        return DistillOutcome(no_entry_reason="low_signal", chunks_processed=len(chunks))
+        outcome.no_entry_reason = "low_signal"
+        return outcome
+    outcome.facts_found = len(all_facts)
 
     entry = await reduce_entry(all_facts, language, llm)
     if entry is None:
-        return DistillOutcome(
-            no_entry_reason="low_signal", chunks_processed=len(chunks), facts_found=len(all_facts)
-        )
-    return DistillOutcome(entry=entry, chunks_processed=len(chunks), facts_found=len(all_facts))
+        outcome.no_entry_reason = "low_signal"
+        return outcome
+    outcome.entry = entry
+    return outcome

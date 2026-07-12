@@ -117,6 +117,14 @@ async def get_turn_text(message_id: UUID, db: asyncpg.Pool = Depends(get_db)) ->
 # session join). Ordered chronologically ACROSS sessions (created_at, then sequence_num) because a
 # single local day may span several assistant sessions. Per-message `tool_names` are returned so
 # the map step can apply the self-feeding guard (§Q9 — skip assistant turns that quoted recall).
+#
+# TRUST BOUNDARY (review Finding 5): the assistant-only property is "messages in sessions bound to
+# the passed book_id". Cross-USER reads are fully blocked (owner_user_id filter). The book being a
+# kind='diary' is NOT re-verified here — chat-service has no cross-DB view of book kinds, and a
+# book-service round-trip on every day-window read would be disproportionate. This is safe because
+# the ONLY caller is the trusted internal distiller, which always passes the user's diary; and the
+# diary-kind enforcement lives authoritatively at the WRITE seam (book-service rejects an entry to
+# any non-diary/other-owner book), so even a mis-triggered read cannot cause a wrong entry to persist.
 DAY_WINDOW_DEFAULT_LIMIT = 5000
 DAY_WINDOW_MAX_LIMIT = 50000
 
