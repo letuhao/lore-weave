@@ -292,6 +292,33 @@ class OutlineRepo:
             )
         return {r["chapter_id"] for r in rows}
 
+    async def linked_chapter_nodes(self, book_id: UUID) -> list[dict[str, Any]]:
+        """Every active spec node that CLAIMS a manuscript chapter (26 IX-13's half).
+
+        The mirror of `planned_chapter_ids`: that one returns the id SET for the coverage diff; this
+        returns the NODES, because IX-13's finding is about the node — the author has to re-link or
+        archive it, so they need to know which one it is.
+
+        `chapter_id IS NOT NULL` is the whole predicate: a node with a NULL chapter_id is "planned,
+        not yet written" (27's linker writes exactly that), which is a perfectly healthy state and
+        emphatically not a dangling pointer.
+        """
+        query = """
+        SELECT id, title, kind, chapter_id, story_order
+          FROM outline_node
+         WHERE book_id = $1 AND chapter_id IS NOT NULL AND NOT is_archived
+         ORDER BY story_order NULLS LAST
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, book_id)
+        return [
+            {
+                "id": str(r["id"]), "title": r["title"], "kind": r["kind"],
+                "chapter_id": str(r["chapter_id"]),
+            }
+            for r in rows
+        ]
+
     async def planned_chapter_ids(self, book_id: UUID) -> set[UUID]:
         """The manuscript chapters this book's SPEC covers — every active chapter
         node's `chapter_id` (24 H1.3's coverage diff; the planned half).

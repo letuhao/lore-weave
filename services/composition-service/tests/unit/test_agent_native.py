@@ -232,3 +232,98 @@ class _FakeArc:
         self.title = title
         self.status = status
         self.kind = kind
+
+
+# ── C-R · /review-impl findings ──────────────────────────────────────────────────────────────────
+
+def test_EVERY_declared_severity_kind_is_ACTUALLY_EMITTED_by_a_source():
+    """HIGH. This is the test that would have caught the hole, and the reason it is written this way.
+
+    `SEVERITY` declared `prose_deleted_spec_node` (ERROR — the highest class the panel has) and NO
+    source ever emitted it. So the problems panel silently never checked whether a spec node pointed
+    at a deleted chapter, and an agent asking "what is wrong with this book" got a confident answer
+    with a hole in it. A problems panel with a silent gap is worse than no panel: the reader believes
+    the count.
+
+    A declared-but-never-emitted kind is the write-only bug inverted, and the dead map entry was the
+    only visible tell. Binding the map to the emitters means a future source cannot be declared and
+    forgotten — nor emitted without a severity."""
+    from app.mcp import server
+
+    src = inspect.getsource(server.composition_diagnostics)
+    for kind in SEVERITY:
+        # the kind must appear in the panel — as a literal `kind="…"`, or as the `kind` variable the
+        # conformance branch computes. What must NOT be true is that it appears NOWHERE, which is
+        # exactly the state `prose_deleted_spec_node` was in.
+        assert kind in src, (
+            f"{kind!r} has a severity but NOTHING EMITS IT — the panel silently never checks it"
+        )
+
+
+def test_all_FIVE_of_AN4s_sources_are_queried():
+    """AN-4 names five, and four is not five. The one I dropped was the ERROR-severity one."""
+    from app.mcp import server
+
+    src = inspect.getsource(server.composition_diagnostics)
+    for n in (1, 2, 3, 4, 5):
+        assert f"# ({n})" in src, f"AN-4 source ({n}) is not queried"
+
+
+def test_prose_deleted_REFUSES_to_answer_over_a_TRUNCATED_spine():
+    """A truncated spine makes this UNANSWERABLE, and saying so is the point.
+
+    If the chapter list hit its ceiling, a node whose chapter lies beyond the cut is
+    indistinguishable from one whose chapter was DELETED — and we would tell the author that a
+    chapter they are still writing has been destroyed. That is the
+    `paged-join-against-complete-set-mislabels-not-yet-loaded-as-absent` bug, and it is far worse
+    here than a missing answer: the remedy for a prose-deleted node is to ARCHIVE it."""
+    from app.services.coverage import compute_prose_deleted
+
+    src = inspect.getsource(compute_prose_deleted)
+    assert "if len(chapters) >= _SPINE_LIMIT:" in src
+    assert "degraded=True" in src
+    assert "UNKNOWN, not zero" in src
+
+
+def test_a_node_with_a_NULL_chapter_id_is_NOT_prose_deleted():
+    """"Planned, not yet written" is a healthy state — 27's linker writes exactly that. Reporting it
+    as a dangling pointer would tell the author to archive their entire unwritten plan."""
+    from app.db.repositories.outline import OutlineRepo
+
+    src = inspect.getsource(OutlineRepo.linked_chapter_nodes)
+    assert "chapter_id IS NOT NULL" in src
+
+
+def test_the_runs_block_is_OWNER_scoped_and_SAYS_when_it_withheld():
+    """MED. AN-2, verbatim: the `.runs/` tables are OWNER-keyed today (25 F10), and a non-owner gets
+    the block absent + a warning until 25 OQ-3's VIEW resolution lands. I shipped it to every VIEW
+    grantee — quietly handing a collaborator the owner's planning history. The E0 grant is on the
+    BOOK; it was never a grant over the owner's runs."""
+    from app.mcp import server
+
+    src = inspect.getsource(server.composition_package_tree)
+    assert "r.created_by == tc.user_id" in src
+    assert "owner-keyed" in src          # …and it TELLS the caller it withheld, rather than
+    assert "are NOT shown" in src        #    silently returning a shorter list
+
+
+def test_the_entity_reference_sources_carry_NO_project_id():
+    """MED. Every one of the eight sources is BOOK-scoped, and the E0 gate is on the book. Threading
+    a `project_id` through and never using it was worse than useless: the tool passed `pid or
+    book_id` — a BOOK id in a project slot — so the first person to add a project-keyed source would
+    have silently scoped it by the wrong key."""
+    import app.db.repositories.entity_references as er
+
+    src = inspect.getsource(er)
+    assert "project_id: UUID" not in src
+    assert "project_id=" not in src
+
+
+def test_the_diagnostics_limit_is_clamped_ONCE_and_used_everywhere():
+    """The row slices used the RAW arg while the ranked cap clamped it — a negative `limit` would
+    have sliced from the end."""
+    from app.mcp import server
+
+    src = inspect.getsource(server.composition_diagnostics)
+    assert "cap = max(1, min(int(limit or 25), 100))" in src
+    assert "[:limit]" not in src

@@ -3827,10 +3827,21 @@ async def composition_package_tree(
         # warning rather than a fake empty `runs` — the degrade posture doing its job while I had
         # the shape wrong.
         rows, _cursor = await PlanRunsRepo(pool).list_for_book(bid, limit=5)
+        # AN-2, verbatim: the `.runs/` tables are OWNER-KEYED today (25 F10). They are served to a
+        # non-owner grantee only under 25 OQ-3's VIEW resolution — and until that lands, a non-owner
+        # gets the block ABSENT + a warning. I shipped it to every VIEW grantee, which quietly hands
+        # a collaborator the owner's planning history; the E0 grant is on the BOOK, and it was never
+        # a grant over the owner's runs.
+        mine = [r for r in (rows or []) if r.created_by == tc.user_id]
+        if len(mine) < len(rows or []):
+            warnings.append(
+                "some planning runs on this book belong to another user and are NOT shown "
+                "(the .runs/ tables are owner-keyed until 25 OQ-3's VIEW resolution lands)",
+            )
         out["runs"] = {
             "recent": [
                 {"id": str(r.id), "status": r.status, "mode": r.mode}
-                for r in (rows or [])
+                for r in mine
             ],
         }
     except Exception:  # noqa: BLE001
@@ -3875,9 +3886,9 @@ async def composition_find_references(
     bid = UUID(book_id)
     await _gate(tc, bid, GrantLevel.VIEW)
 
+    # No Work resolution here: all eight sources are BOOK-scoped, and the E0 gate above is the
+    # book gate. Resolving a project we would never use was how a book_id ended up in a project slot.
     pool = get_pool()
-    _work, pid = await resolve_scope(WorksRepo(pool), bid)
-
     eid = UUID(entity_id)
     want = tuple(sources) if sources else REFERENCE_SOURCES
     cap = max(1, min(int(limit or 20), 100))
@@ -3886,9 +3897,7 @@ async def composition_find_references(
     out_sources: dict[str, Any] = {}
     for src in want:
         try:
-            count, refs = await repo.find(
-                src, book_id=bid, project_id=pid or bid, entity_id=eid, limit=cap,
-            )
+            count, refs = await repo.find(src, book_id=bid, entity_id=eid, limit=cap)
         except Exception:  # noqa: BLE001 — one source degrades; the rest still answer
             logger.warning("find_references: source %s failed", src, exc_info=True)
             out_sources[src] = {"error": "this source could not be read"}
@@ -3941,6 +3950,10 @@ async def composition_diagnostics(
 
     pool = get_pool()
     _work, pid = await resolve_scope(WorksRepo(pool), bid)
+
+    # Clamp ONCE. The row slices below used the RAW arg while the ranked cap clamped it — a
+    # negative `limit` would have sliced from the end.
+    cap = max(1, min(int(limit or 25), 100))
 
     diag = Diagnostics()
     if pid is None:
@@ -4022,6 +4035,37 @@ async def composition_diagnostics(
         logger.warning("diagnostics: thread source failed", exc_info=True)
         diag.warnings.append("open thread debt could not be read")
 
+    # (4) prose-deleted spec nodes — 26 IX-13. The INVERSE of the coverage diff: a spec node whose
+    # chapter has been deleted. ERROR severity, and it was MISSING from the first cut of this tool —
+    # `SEVERITY` declared the kind and nothing ever emitted it, so the panel quietly never checked
+    # the highest-severity class it has. A problems panel with a silent hole is worse than no panel:
+    # the agent reads "1 problem" and believes it.
+    try:
+        from app.clients.book_client import get_book_client
+        from app.services.coverage import compute_prose_deleted
+
+        pd = await compute_prose_deleted(
+            bid, mint_service_bearer(tc.user_id, settings.jwt_secret),
+            book=get_book_client(), outline=OutlineRepo(pool),
+        )
+        if pd.degraded:
+            diag.warnings.append(pd.warning)
+        else:
+            for n in pd.nodes[:cap]:
+                diag.add(Diagnostic(
+                    kind="prose_deleted_spec_node", severity=SEVERITY["prose_deleted_spec_node"],
+                    title=f'"{n.get("title") or "(untitled)"}" points at a chapter that no longer exists',
+                    detail=(
+                        "the spec SURVIVES a prose delete (IX-13) — re-link it to a chapter, or "
+                        "archive it. It is never auto-archived."
+                    ),
+                    node_ref={"kind": n.get("kind") or "chapter", "id": n["id"],
+                              "title": n.get("title")},
+                ))
+    except Exception:  # noqa: BLE001
+        logger.warning("diagnostics: prose-deleted source failed", exc_info=True)
+        diag.warnings.append("prose-deleted spec nodes could not be checked")
+
     # (5) unplanned chapters — the SAME coverage diff 24 H1.3 renders (one implementation)
     try:
         from app.clients.book_client import get_book_client
@@ -4037,7 +4081,7 @@ async def composition_diagnostics(
                 cov.warning or "the planned-vs-written diff degraded — unplanned chapters UNKNOWN",
             )
         else:
-            for ch in cov.unplanned[:limit]:
+            for ch in cov.unplanned[:cap]:
                 diag.add(Diagnostic(
                     kind="unplanned_chapter", severity=SEVERITY["unplanned_chapter"],
                     title=f'chapter "{ch.get("title") or "(untitled)"}" is written but not planned',
@@ -4048,7 +4092,7 @@ async def composition_diagnostics(
         logger.warning("diagnostics: coverage source failed", exc_info=True)
         diag.warnings.append("the planned-vs-written diff could not be computed")
 
-    return {"book_id": str(bid), **diag.ranked(cap=max(1, min(int(limit or 25), 100)))}
+    return {"book_id": str(bid), **diag.ranked(cap=cap)}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

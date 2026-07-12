@@ -39,6 +39,13 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
+#: NO `project_id` ANYWHERE IN THIS FILE, deliberately. Every one of the eight sources is
+#: BOOK-scoped (`outline_node`, `structure_node`, `motif_application`, `canon_rule` and
+#: `narrative_thread` all carry `book_id`), and the E0 gate is on the book. Threading a project_id
+#: through and never using it was worse than useless: the tool was passing `pid or book_id` — a BOOK
+#: id in a project slot — so the first person to add a project-keyed source would have silently
+#: scoped it by the wrong key.
+#:
 #: Chapters and scenes are the same table, told apart by `kind`.
 _NODE_KIND = {
     "outline_pov": "chapter", "outline_present": "chapter",
@@ -51,7 +58,7 @@ class EntityReferencesRepo:
         self._pool = pool
 
     async def find(
-        self, source: str, *, book_id: UUID, project_id: UUID, entity_id: UUID, limit: int,
+        self, source: str, *, book_id: UUID, entity_id: UUID, limit: int,
     ) -> tuple[int, list[dict[str, Any]]]:
         """`(exact_count, capped_refs)` for ONE source.
 
@@ -73,7 +80,7 @@ class EntityReferencesRepo:
             raise ValueError(f"unknown reference source: {source}")
         if source in _NODE_KIND:
             return await fn(book_id, entity_id, limit, kind=_NODE_KIND[source], source=source)
-        return await fn(book_id, project_id, entity_id, limit)
+        return await fn(book_id, entity_id, limit)
 
     # ── outline_node — chapters AND scenes, split by kind ────────────────────────────────────
     async def _pov(
@@ -111,7 +118,7 @@ class EntityReferencesRepo:
 
     # ── structure_node.roster_bindings — {role_key: entity_id} ───────────────────────────────
     async def _structure_roster(
-        self, book_id: UUID, project_id: UUID, entity_id: UUID, limit: int,
+        self, book_id: UUID, entity_id: UUID, limit: int,
     ) -> tuple[int, list[dict[str, Any]]]:
         """PF-13's symbol table, read the other way round: which arcs cast this person, and as what?
 
@@ -136,7 +143,7 @@ class EntityReferencesRepo:
 
     # ── motif_application.role_bindings ──────────────────────────────────────────────────────
     async def _motif_application(
-        self, book_id: UUID, project_id: UUID, entity_id: UUID, limit: int,
+        self, book_id: UUID, entity_id: UUID, limit: int,
     ) -> tuple[int, list[dict[str, Any]]]:
         q = """
         SELECT a.id, a.motif_id, a.created_at, b.key AS role_key
@@ -159,7 +166,7 @@ class EntityReferencesRepo:
 
     # ── canon_rule.entity_id ─────────────────────────────────────────────────────────────────
     async def _canon_rule(
-        self, book_id: UUID, project_id: UUID, entity_id: UUID, limit: int,
+        self, book_id: UUID, entity_id: UUID, limit: int,
     ) -> tuple[int, list[dict[str, Any]]]:
         async with self._pool.acquire() as c:
             count = await c.fetchval(
@@ -184,7 +191,7 @@ class EntityReferencesRepo:
 
     # ── narrative_thread — via the NODE the promise was opened at ────────────────────────────
     async def _narrative_thread(
-        self, book_id: UUID, project_id: UUID, entity_id: UUID, limit: int,
+        self, book_id: UUID, entity_id: UUID, limit: int,
     ) -> tuple[int, list[dict[str, Any]]]:
         q = """
         SELECT t.id, t.summary, t.status, t.priority, t.created_at
