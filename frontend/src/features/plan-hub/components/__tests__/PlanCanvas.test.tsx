@@ -106,7 +106,19 @@ function makeLayout(): LaneLayout {
 
 function makeProps(overrides: Partial<PlanCanvasProps> = {}): PlanCanvasProps {
   const edges: SceneLinkEdge[] = [
-    { id: 'edge-1', from_node_id: 'ch-1', to_node_id: 'ch-2', kind: 'setup_payoff', label: null },
+    {
+      id: 'edge-1',
+      from_node_id: 'ch-1',
+      to_node_id: 'ch-2',
+      kind: 'setup_payoff',
+      label: null,
+      // PH13 endpoint ancestry. Both ends are rendered here, so resolution short-circuits on the
+      // nodes themselves — but the fixture carries the real wire shape rather than a stale subset.
+      from_chapter_node_id: null,
+      to_chapter_node_id: null,
+      from_arc_id: 'arc-1',
+      to_arc_id: 'arc-1',
+    },
   ];
   return {
     layout: makeLayout(),
@@ -234,6 +246,51 @@ describe('PlanCanvas', () => {
     expect(onOpenRef).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'canon', id: 'rule-9' }),
     );
+  });
+
+  // PH13 — an edge into a COLLAPSED arc must render as a stub, never vanish.
+  //
+  // Before this, the canvas handed React Flow `target: 's-hidden'` — a node not in the list — and RF
+  // dropped the edge silently: a setup with no payoff, and nothing saying a payoff existed.
+  it('stubs an edge into a collapsed arc instead of dropping it', () => {
+    const edges: SceneLinkEdge[] = [
+      {
+        id: 'edge-stub',
+        from_node_id: 'ch-1',
+        to_node_id: 's-hidden', // NOT rendered — it lives inside the collapsed arc
+        kind: 'setup_payoff',
+        label: null,
+        from_chapter_node_id: null,
+        to_chapter_node_id: 'ch-hidden', // also not rendered
+        from_arc_id: 'arc-1',
+        to_arc_id: 'roll-1', // the collapsed arc's rollup IS on screen
+      },
+    ];
+    const { container } = render(<PlanCanvas {...makeProps({ edges })} />);
+    // The edge still exists, re-anchored onto the rollup card.
+    expect(container.querySelectorAll('.react-flow__edge').length).toBe(1);
+    expect(screen.getByTestId('rf__edge-edge-stub')).toBeInTheDocument();
+  });
+
+  it('badges edges folded INSIDE a collapsed arc rather than losing them', () => {
+    const edges: SceneLinkEdge[] = [
+      {
+        id: 'edge-inside',
+        from_node_id: 's-a',
+        to_node_id: 's-b', // both ends inside the SAME collapsed arc
+        kind: 'setup_payoff',
+        label: null,
+        from_chapter_node_id: null,
+        to_chapter_node_id: null,
+        from_arc_id: 'roll-1',
+        to_arc_id: 'roll-1',
+      },
+    ];
+    const { container } = render(<PlanCanvas {...makeProps({ edges })} />);
+    // A self-loop onto one card would be noise, so no edge is drawn…
+    expect(container.querySelectorAll('.react-flow__edge').length).toBe(0);
+    // …but the rollup ACCOUNTS for it. Silently dropping it is the bug PH13 names.
+    expect(screen.getByTestId('plan-node-edges-roll-1').textContent).toContain('1');
   });
 
   it('without onOpenRef the canon badge stays a plain chip (the designed fallback)', () => {

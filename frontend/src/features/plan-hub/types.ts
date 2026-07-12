@@ -89,6 +89,17 @@ export interface SceneLinkEdge {
   to_node_id: string;
   kind: 'setup_payoff' | 'custom';
   label: string | null;
+  /**
+   * Each endpoint's ANCESTRY — its parent chapter node and its arc lane (PH13). The client cannot
+   * derive these: a COLLAPSED arc never loads its chapter window, so its scenes never arrive, and an
+   * unloaded endpoint's lane is simply unknowable here. Without them the canvas hands React Flow an
+   * edge naming a node that doesn't exist and RF drops it in silence — the exact failure PH13 names.
+   * null ⇒ the endpoint node is gone or unparented; the edge then has no lane to stub into.
+   */
+  from_chapter_node_id: string | null;
+  to_chapter_node_id: string | null;
+  from_arc_id: string | null;
+  to_arc_id: string | null;
 }
 
 /** Read surface #3 — `GET .../plan-overlay` (PH18/17/19/21). Decorations, bounded +

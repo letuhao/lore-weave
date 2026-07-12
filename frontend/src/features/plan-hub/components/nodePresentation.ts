@@ -42,6 +42,10 @@ export interface PlanNodeData {
    *  button that opens the fired rule; when absent the badge degrades to a plain count chip (never a
    *  dead button — the `silent-success` bug class). See the TODO on `orderNodeBadges` for the wiring. */
   onOpenRef?: (ref: PlanOverlayRef) => void;
+  /** PH13 — scene-links folded INSIDE this card (both endpoints collapsed into it, or its partner is
+   *  off-screen). Badged so a collapsed card accounts for the edges it swallowed rather than letting
+   *  them vanish. 0 ⇒ no badge. */
+  hiddenEdges?: number;
 }
 
 /** RF `data` payload for a background swimlane band. */

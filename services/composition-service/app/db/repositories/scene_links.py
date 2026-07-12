@@ -25,6 +25,14 @@ _SELECT_COLS = """
   id, created_by, project_id, from_node_id, to_node_id, kind, label, created_at
 """
 
+# The same columns, table-qualified — `list_by_book` joins outline_node (which also has
+# `id`, `project_id`, `created_by`, `created_at`), so the bare list above would be an
+# ambiguous-column error.
+_SELECT_COLS_SL = """
+  sl.id, sl.created_by, sl.project_id, sl.from_node_id, sl.to_node_id,
+  sl.kind, sl.label, sl.created_at
+"""
+
 
 def _row_to_link(row: asyncpg.Record) -> SceneLink:
     return SceneLink.model_validate(dict(row))
@@ -83,20 +91,48 @@ class SceneLinksRepo:
             rows = await c.fetch(query, project_id)
         return [_row_to_link(r) for r in rows]
 
-    async def list_by_book(self, book_id: UUID) -> list[SceneLink]:
+    async def list_by_book(self, book_id: UUID) -> list[dict]:
         """24 PH13/H1.4 — every scene-link edge of a BOOK in one call (mirrors
         list_by_project but keyed on `book_id`, the Hub's tenancy scope — BPS-8).
         scene_link edges are sparse by design ("ONLY non-derivable edges"), so a
         whole-book fetch is cheap (F-H7). Served by idx_scene_link_book. Access is
-        decided BEFORE the repo, at the E0 VIEW gate on `book_id`."""
+        decided BEFORE the repo, at the E0 VIEW gate on `book_id`.
+
+        Each endpoint carries its ANCESTRY — the parent chapter node and the arc:
+
+            {from,to}_chapter_node_id · {from,to}_arc_id
+
+        PH13 requires an edge whose endpoint is collapsed to render as a STUB into the
+        collapsed node, "never silently dropped". The canvas cannot do that from the raw
+        row: a collapsed arc never loads its chapter window, so its scenes are not loaded
+        either, and the client has NO WAY to learn which lane an unloaded endpoint lives
+        in. React Flow then gets an edge naming a node that does not exist and drops it
+        without a word — exactly the silent truncation PH13 forbids. The ancestry is one
+        cheap join here; on the client it is unknowable.
+
+        `structure_node_id` lives only on chapters (the `outline_structure_kind` CHECK), so
+        a scene's arc rides its parent chapter's — the COALESCE pattern `plan_overlay`'s
+        thread query already uses. An endpoint that is itself a chapter carries its own.
+        Returns plain dicts (not `SceneLink`) because the ancestry is a JOIN-derived
+        projection, not columns of the row.
+        """
         query = f"""
-        SELECT {_SELECT_COLS} FROM scene_link
-        WHERE book_id = $1
-        ORDER BY created_at, id
+        SELECT {_SELECT_COLS_SL},
+               f.parent_id AS from_chapter_node_id,
+               t.parent_id AS to_chapter_node_id,
+               COALESCE(f.structure_node_id, fc.structure_node_id) AS from_arc_id,
+               COALESCE(t.structure_node_id, tc.structure_node_id) AS to_arc_id
+        FROM scene_link sl
+        LEFT JOIN outline_node f  ON f.id = sl.from_node_id
+        LEFT JOIN outline_node fc ON fc.id = f.parent_id
+        LEFT JOIN outline_node t  ON t.id = sl.to_node_id
+        LEFT JOIN outline_node tc ON tc.id = t.parent_id
+        WHERE sl.book_id = $1
+        ORDER BY sl.created_at, sl.id
         """
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, book_id)
-        return [_row_to_link(r) for r in rows]
+        return [dict(r) for r in rows]
 
     async def delete(self, project_id: UUID, link_id: UUID) -> bool:
         """Hard-delete an edge. Returns False on a missing id or an edge outside

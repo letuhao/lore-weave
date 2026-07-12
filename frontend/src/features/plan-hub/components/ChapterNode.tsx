@@ -10,7 +10,8 @@ import { NodeBadges } from './NodeBadges';
 import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, isHere, onToggle, onOpenRef } = data;
+  const { node, content, overlay, unionState, selected, isHere, onToggle, onOpenRef, hiddenEdges } =
+    data;
   // Chapters aren't in conformance.arcs ⇒ no drift badge (isArc:false); pacing IS chapter-keyed.
   const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: true });
   const title = content?.title || `Ch ${node.storyOrder ?? '—'}`;
@@ -33,6 +34,17 @@ function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
         <span className={cn('h-2 w-2 shrink-0 rounded-full', unionDotClass(unionState))} />
         {/* Real chapter title once the window loads; a story-order label until then. */}
         <span className="flex-1 truncate font-medium" title={title}>{title}</span>
+        {/* PH13 — scene-links whose other end is hidden (inside this collapsed chapter, or off in a
+            collapsed arc). Counted here so the edge is accounted for rather than silently dropped. */}
+        {!!hiddenEdges && (
+          <span
+            data-testid={`plan-node-edges-${node.id}`}
+            title={`${hiddenEdges} scene link(s) not drawn — the other end is collapsed`}
+            className="rounded bg-sky-500/20 px-1 text-[10px] text-sky-700 dark:text-sky-300"
+          >
+            ⇄{hiddenEdges}
+          </span>
+        )}
         <button
           type="button"
           data-testid={`plan-node-chapter-toggle-${node.id}`}

@@ -371,19 +371,40 @@ async def list_book_scene_links(
 ) -> dict[str, Any]:
     """24 H1.4 / PH13 — every scene-link edge of the book in one call (read surface #4:
     the graph canvas's native edges). Sparse by design (F-H7), so a whole-book fetch is
-    cheap. Projected to the PH13 wire shape `{id, from_node_id, to_node_id, kind, label}`
-    — the actor/scope columns (`created_by`/`project_id`/`created_at`) stay off the
-    canvas contract. Gates VIEW on the book (BPS-8) BEFORE the repo."""
+    cheap. Gates VIEW on the book (BPS-8) BEFORE the repo.
+
+    Wire shape `{id, from_node_id, to_node_id, kind, label}` PLUS each endpoint's ANCESTRY
+    (`{from,to}_chapter_node_id`, `{from,to}_arc_id`). The actor/scope columns
+    (`created_by`/`project_id`/`created_at`) stay off the canvas contract.
+
+    The ancestry is what makes PH13's stub connectors possible AT ALL. An edge into a
+    COLLAPSED arc has an endpoint the client never loaded (a collapsed arc doesn't fetch
+    its chapter window, so its scenes never arrive) — so the canvas cannot know which lane
+    to draw the stub into, hands React Flow an edge naming a node that doesn't exist, and
+    RF drops it silently. That is the exact failure PH13 forbids. One join here; unknowable
+    on the client.
+    """
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
     links = await scene_links.list_by_book(book_id)
+
+    def _opt(v: Any) -> str | None:
+        return str(v) if v is not None else None
+
     return {
         "scene_links": [
             {
-                "id": str(link.id),
-                "from_node_id": str(link.from_node_id),
-                "to_node_id": str(link.to_node_id),
-                "kind": link.kind,
-                "label": link.label,
+                "id": str(link["id"]),
+                "from_node_id": str(link["from_node_id"]),
+                "to_node_id": str(link["to_node_id"]),
+                "kind": link["kind"],
+                "label": link["label"],
+                # Ancestry — NULL when the endpoint node is gone or unparented. The canvas
+                # then has no lane to stub into and counts the edge as unresolvable rather
+                # than pretending it isn't there.
+                "from_chapter_node_id": _opt(link.get("from_chapter_node_id")),
+                "to_chapter_node_id": _opt(link.get("to_chapter_node_id")),
+                "from_arc_id": _opt(link.get("from_arc_id")),
+                "to_arc_id": _opt(link.get("to_arc_id")),
             }
             for link in links
         ]

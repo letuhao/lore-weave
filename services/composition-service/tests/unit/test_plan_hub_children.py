@@ -70,8 +70,11 @@ def _node(
     })
 
 
-def _link(kind: str = "setup_payoff", label: str = "") -> SceneLink:
-    return SceneLink.model_validate({
+def _link(kind: str = "setup_payoff", label: str = "", **anc) -> dict:
+    """A raw `list_by_book` row. It is a DICT, not a SceneLink: the endpoint ancestry
+    (`{from,to}_chapter_node_id` / `{from,to}_arc_id`) is a JOIN-derived projection, not a
+    column of the row, so the repo returns the joined shape."""
+    row = {
         "id": uuid4(),
         "created_by": USER,
         "project_id": PROJECT,
@@ -79,7 +82,13 @@ def _link(kind: str = "setup_payoff", label: str = "") -> SceneLink:
         "to_node_id": uuid4(),
         "kind": kind,
         "label": label,
-    })
+        "from_chapter_node_id": None,
+        "to_chapter_node_id": None,
+        "from_arc_id": None,
+        "to_arc_id": None,
+    }
+    row.update(anc)
+    return row
 
 
 class _FakeOutline:
@@ -352,9 +361,29 @@ def test_scene_links_book_wire_shape(client):
     assert len(body["scene_links"]) == 2
     # exactly the PH13 wire keys — actor/scope columns stay off the canvas contract.
     for row in body["scene_links"]:
-        assert set(row.keys()) == {"id", "from_node_id", "to_node_id", "kind", "label"}
+        assert set(row.keys()) == {
+            "id", "from_node_id", "to_node_id", "kind", "label",
+            "from_chapter_node_id", "to_chapter_node_id", "from_arc_id", "to_arc_id",
+        }
     assert body["scene_links"][0]["kind"] == "setup_payoff"
     assert body["scene_links"][1]["label"] == "echo"
+
+
+def test_scene_links_carry_endpoint_ancestry(client):
+    """PH13's stub connectors are IMPOSSIBLE without this. A collapsed arc never loads its
+    chapter window, so its scenes never arrive — the canvas cannot learn which lane an
+    unloaded endpoint lives in, hands React Flow an edge naming a node that doesn't exist,
+    and RF drops it silently. The ancestry is one join here and unknowable on the client."""
+    c, holder = client
+    chap, arc = uuid4(), uuid4()
+    holder["links"] = _FakeSceneLinks([
+        _link("setup_payoff", "", from_chapter_node_id=chap, from_arc_id=arc),
+    ])
+    row = c.get(f"/v1/composition/books/{BOOK}/scene-links").json()["scene_links"][0]
+    assert row["from_chapter_node_id"] == str(chap)
+    assert row["from_arc_id"] == str(arc)
+    # a NULL endpoint stays null — the canvas must be able to tell "no lane" from a lane.
+    assert row["to_arc_id"] is None
 
 
 def test_scene_links_empty_book(client):

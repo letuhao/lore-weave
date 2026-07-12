@@ -36,6 +36,7 @@ import 'reactflow/dist/style.css';
 
 import type { CameraFocusTarget, NodePosition, PlanCanvasProps } from '../types';
 import { bandAtY, chapterAtPoint, leafLaneAtY, readingUnitBefore } from '../layout/laneLayout';
+import { resolveEdges } from '../layout/edgeResolve';
 import { ArcRollupNode } from './ArcRollupNode';
 import { ChapterNode } from './ChapterNode';
 import { buildLaneNodes, LaneBandNode, LANE_NODE_PREFIX } from './LaneBandLayer';
@@ -142,6 +143,15 @@ function PlanCanvasInner(props: PlanCanvasProps) {
   const canDragArc = !!onMoveArc && !busy;
   const canDrag = canDragChapter || canDragScene || canDragArc;
 
+  // PH13 — resolve each endpoint onto the RENDERED node set before React Flow ever sees it.
+  //
+  // The canvas used to map from/to straight through. An endpoint inside a collapsed arc is not in
+  // the node list, so RF silently discarded the edge: the user saw a setup with no payoff, and no
+  // hint that a payoff existed. `resolveEdges` walks each endpoint's server-supplied ancestry to the
+  // nearest visible ancestor (scene → chapter card → arc rollup) and reports what it could NOT place,
+  // so a collapsed card can badge the edges hiding inside it. Never a silent drop.
+  const resolution = useMemo(() => resolveEdges(edges, layout.nodes), [edges, layout.nodes]);
+
   const rfNodes = useMemo<Node[]>(() => {
     const laneNodes = buildLaneNodes(
       layout.lanes, layout.width, onToggleArc, canDragArc, arcPagination, onLoadMoreArc,
@@ -167,6 +177,10 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         // canvas simply never put it in `data`, so the whole chain resolved to `undefined` and every
         // canon badge was a plain, unclickable chip. The seam existed; nothing fed it.
         onOpenRef,
+        // PH13 — how many scene-links are folded INSIDE this card (both endpoints collapsed into
+        // it, or its partner is off-screen). The card badges the number so the edge is accounted
+        // for rather than vanishing.
+        hiddenEdges: resolution.hiddenByNode[n.id] ?? 0,
         onToggle:
           n.shape === 'arc-rollup'
             ? () => onToggleArc(n.id)
@@ -177,7 +191,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc, onOpenRef]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc, onOpenRef, resolution]);
 
   // RF's live node list. It exists ONLY so a drag can move the card under the cursor (see the header:
   // a controlled `nodes` prop with no onNodesChange never updates the store, so nothing moves). It is
@@ -192,18 +206,24 @@ function PlanCanvasInner(props: PlanCanvasProps) {
 
   const rfEdges = useMemo<Edge[]>(
     () =>
-      edges.map((e) => ({
+      resolution.edges.map(({ edge: e, source, target, stub }) => ({
         id: e.id,
-        source: e.from_node_id,
-        target: e.to_node_id,
+        source,
+        target,
         type: 'default',
         label: e.label ?? undefined,
-        data: { kind: e.kind },
-        // setup_payoff = solid directional; custom = dashed (+ its label). (PH13)
-        style: e.kind === 'custom' ? { strokeDasharray: '4 4' } : undefined,
+        data: { kind: e.kind, stub },
+        // setup_payoff = solid directional; custom = dashed (+ its label) (PH13). A STUB — one whose
+        // endpoint is folded into a collapsed card — is dimmed and always dashed, so "this goes
+        // somewhere you can't see" is visually distinct from a fully-drawn edge.
+        style: stub
+          ? { strokeDasharray: '2 3', opacity: 0.55 }
+          : e.kind === 'custom'
+            ? { strokeDasharray: '4 4' }
+            : undefined,
         markerEnd: e.kind === 'setup_payoff' ? { type: MarkerType.ArrowClosed } : undefined,
       })),
-    [edges],
+    [resolution],
   );
 
   const onNodeClick = useCallback<NodeMouseHandler>(
