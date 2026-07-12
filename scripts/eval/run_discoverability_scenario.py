@@ -94,6 +94,8 @@ OUT = Path(os.environ.get("QG_OUT", "/tmp/ds-out"))
 ONLY = {s for s in os.environ.get("QG_ONLY", "").split(",") if s}
 SCEN_PATH = Path(os.environ["QG_SCENARIOS"])
 TURN_TIMEOUT = int(os.environ.get("QG_TURN_TIMEOUT", "600"))
+# Host-vs-container clock skew tolerance for the minted `iat` (see _bearer).
+_IAT_SKEW_S = int(os.environ.get("QG_IAT_SKEW_S", "120"))
 REPORT_DATE = os.environ.get("QG_REPORT_DATE", "run")
 # Auto-approve suspended calls (the WARM pass, headless). A propose->confirm /
 # Tier-A approval flow suspends on a card a human clicks; with no human the run
@@ -245,7 +247,26 @@ def _substitute(obj):
 
 def _bearer() -> str:
     now = int(time.time())
-    return jwt.encode({"sub": USER, "iat": now, "exp": now + 3600}, SECRET, algorithm="HS256")
+    # `iat` is BACKDATED, and that is load-bearing — it is why this eval used to die mid-run with a
+    # flaky 401 {"detail":"invalid token"}.
+    #
+    # This harness runs on the HOST and mints a token for a service in a CONTAINER. Those are two
+    # different clocks: measured Docker-Desktop drift here was ~1.3%/s, so the host crosses from
+    # behind the container to AHEAD of it within a couple of minutes. The moment it does,
+    # `iat = host_now` sits in the CONTAINER's future and PyJWT raises ImmatureSignatureError — a
+    # subclass of InvalidTokenError, so `loreweave_authn` reports the generic "invalid token", NOT
+    # "token expired". Hence: intermittent, un-debuggable-from-the-message, and fatal several turns
+    # into a long run (the earlier failures were at turns 2 and 8).
+    #
+    # It also explains a WRONG diagnosis this repo carried for a while: the 401s seemed to correlate
+    # with another session redeploying chat-service. They did — but backwards. Restarting the
+    # container RESYNCS its clock, which temporarily HID the drift. The redeploy was the cure, not
+    # the cause (RUN-STATE DR-31).
+    #
+    # A server-minted token (auth-service) has no such problem — one clock. Only a host-side minter
+    # does, so the skew tolerance belongs HERE, not in the platform verifier.
+    return jwt.encode({"sub": USER, "iat": now - _IAT_SKEW_S, "exp": now + 3600},
+                      SECRET, algorithm="HS256")
 
 
 def _budget_total(frame: dict | None) -> int | None:
