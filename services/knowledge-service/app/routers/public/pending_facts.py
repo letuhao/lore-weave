@@ -139,7 +139,9 @@ async def _promote_pending_fact(session, user_id: UUID, pending: PendingFact) ->
             source_type=_TOOL_FACT_SOURCE_TYPE,
             confidence=_TOOL_FACT_CONFIDENCE,
             auto_created=True,
-            provenance="user_authored",
+            # The diary is the user's own words → the recognized 'human_authored' provenance (NOT an
+            # invented 'user_authored', which no downstream provenance filter would recognize).
+            provenance="human_authored",
         )
         subject_id = entity.id
         valid_from_ordinal = days_since_epoch(pending.event_date)
