@@ -9,6 +9,7 @@ aggregated from chat_messages.tool_calls so MCP-reliability work is measurable.
 """
 
 import json
+from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -102,6 +103,84 @@ async def get_turn_text(message_id: UUID, db: asyncpg.Pool = Depends(get_db)) ->
     if (row["content"] or "").strip():
         parts.append(row["content"].strip())
     return {"found": True, "text": "\n\n".join(parts)}
+
+
+# WS-1.8 (spec 06 §Q10) — the distiller's day-window read. The map-reduce worker has no user
+# JWT, so it fetches a day's assistant conversation over the internal-token trust boundary. Two
+# safety properties are enforced HERE, server-side, not left to the caller:
+#   1. ASSISTANT-ONLY (spec 02 §Q1 discriminator): filtered to sessions bound to the caller-named
+#      diary `book_id`. A user's novel/roleplay chats (a different book_id, or NULL) are never
+#      returned — the distiller cannot accidentally journal non-assistant conversation.
+#   2. WINDOW-CAPPED: `limit`-bounded with a hard ceiling, and `truncated` signalled, so an
+#      enormous day can never stream unbounded rows into the worker (T20/T38 cost containment).
+# owner_user_id is required and filtered on the message row itself (defense in depth alongside the
+# session join). Ordered chronologically ACROSS sessions (created_at, then sequence_num) because a
+# single local day may span several assistant sessions. Per-message `tool_names` are returned so
+# the map step can apply the self-feeding guard (§Q9 — skip assistant turns that quoted recall).
+DAY_WINDOW_DEFAULT_LIMIT = 5000
+DAY_WINDOW_MAX_LIMIT = 50000
+
+
+@router.get("/messages/day-window", dependencies=[Depends(require_internal_token)])
+async def day_window(
+    user_id: UUID = Query(...),
+    book_id: UUID = Query(..., description="the diary book — the assistant-session discriminator"),
+    local_date: date = Query(..., description="the LOCAL calendar day to distill (chat_messages.local_date)"),
+    limit: int = Query(default=DAY_WINDOW_DEFAULT_LIMIT, ge=1, le=DAY_WINDOW_MAX_LIMIT),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Return one user's assistant-session messages for one local day, chronologically, capped.
+
+    Non-error messages only (an error turn is not journalable content). `truncated=true` means the
+    day exceeded `limit` — the returned window is the OLDEST `limit` messages (ORDER BY … LIMIT), so
+    a huge day degrades to a bounded prefix rather than failing; the caller decides how to proceed
+    (period-digest / attach-as-document paths live in the worker, spec §Q4/§T38)."""
+    rows = await db.fetch(
+        """
+        SELECT m.message_id, m.session_id, m.role, m.content, m.sequence_num,
+               m.local_date, m.created_at,
+               (
+                 SELECT array_agg(tc->>'tool')
+                 FROM jsonb_array_elements(COALESCE(m.tool_calls, '[]'::jsonb)) AS tc
+                 WHERE tc->>'tool' IS NOT NULL
+               ) AS tool_names
+        FROM chat_messages m
+        JOIN chat_sessions s ON s.session_id = m.session_id
+        WHERE m.owner_user_id = $1
+          AND s.book_id = $2
+          AND m.local_date = $3
+          AND m.is_error = false
+        ORDER BY m.created_at, m.sequence_num
+        LIMIT $4
+        """,
+        str(user_id),
+        str(book_id),
+        local_date,
+        limit + 1,  # fetch one extra to detect truncation without a second COUNT query
+    )
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+    messages = [
+        {
+            "message_id": str(r["message_id"]),
+            "session_id": str(r["session_id"]),
+            "role": r["role"],
+            "content": r["content"] or "",
+            "sequence_num": r["sequence_num"],
+            "local_date": r["local_date"].isoformat() if r["local_date"] else None,
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            "tool_names": list(r["tool_names"]) if r["tool_names"] else [],
+        }
+        for r in rows
+    ]
+    return {
+        "user_id": str(user_id),
+        "book_id": str(book_id),
+        "local_date": local_date.isoformat(),
+        "message_count": len(messages),
+        "truncated": truncated,
+        "messages": messages,
+    }
 
 
 @telemetry_router.get("/tool-health", dependencies=[Depends(require_internal_token)])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -119,3 +120,59 @@ async def test_tool_health_requires_internal_token(client):
     assert (await client.get("/internal/tool-health")).status_code == 401
     r = await client.get("/internal/tool-health", headers={"X-Internal-Token": "wrong"})
     assert r.status_code == 401
+
+
+# ── WS-1.8 (spec 06 §Q10) — GET /internal/chat/messages/day-window ───────────
+
+_DW = "/internal/chat/messages/day-window"
+
+
+def _dw_params(**over):
+    p = {"user_id": str(uuid4()), "book_id": str(uuid4()), "local_date": "2026-03-10"}
+    p.update(over)
+    return p
+
+
+@pytest.mark.asyncio
+async def test_day_window_requires_internal_token(client):
+    # The guard fires before any DB access — no token / wrong token → 401.
+    assert (await client.get(_DW, params=_dw_params())).status_code == 401
+    r = await client.get(_DW, params=_dw_params(), headers={"X-Internal-Token": "wrong"})
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_day_window_limit_is_bounded(client, mock_pool):
+    # A caller cannot ask for an unbounded window: limit is clamped to [1, 50000].
+    mock_pool.fetch = AsyncMock(return_value=[])
+    assert (await client.get(_DW, params=_dw_params(limit=0), headers=_AUTH)).status_code == 422
+    assert (await client.get(_DW, params=_dw_params(limit=50001), headers=_AUTH)).status_code == 422
+    # Required params are enforced (a missing book_id can't silently widen the scope).
+    bad = {"user_id": str(uuid4()), "local_date": "2026-03-10"}  # no book_id
+    assert (await client.get(_DW, params=bad, headers=_AUTH)).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_day_window_shape_and_truncation_via_mock(client, mock_pool):
+    # Even with the dev DB down, prove the handler's shaping: fetch returns limit+1 rows → the
+    # extra is dropped and truncated=true; tool_names/timestamps are serialized as JSON-safe.
+    now = datetime(2026, 3, 10, 9, 0, tzinfo=timezone.utc)
+
+    def row(seq, tools):
+        return FakeRecord({
+            "message_id": uuid4(), "session_id": uuid4(), "role": "user",
+            "content": f"m{seq}", "sequence_num": seq, "local_date": date(2026, 3, 10),
+            "created_at": now, "tool_names": tools,
+        })
+
+    # limit=2 → handler fetches 3; returning 3 signals truncation.
+    mock_pool.fetch = AsyncMock(return_value=[row(0, ["glossary_recall"]), row(1, None), row(2, None)])
+    r = await client.get(_DW, params=_dw_params(limit=2), headers=_AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["message_count"] == 2  # the +1 probe row is dropped
+    assert body["truncated"] is True
+    assert body["messages"][0]["tool_names"] == ["glossary_recall"]
+    assert body["messages"][1]["tool_names"] == []  # NULL tool_calls → empty list, not null
+    assert body["messages"][0]["local_date"] == "2026-03-10"
+    assert body["messages"][0]["created_at"].startswith("2026-03-10T09:00")
