@@ -161,6 +161,7 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onOpenRef={openRef}
           onLinkScenes={view.linkScenes}
           onUnlinkScenes={view.unlinkScenes}
+          resolveEntity={view.resolveEntity}
           busy={view.moving}
         />
         {/* PH21 — a HUD notice for the UNASSIGNED strip (spec chapters bound to no arc — the normal

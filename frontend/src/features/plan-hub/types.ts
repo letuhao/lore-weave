@@ -3,6 +3,7 @@
 // (ArcShellNode / WindowNode / CollapseState) are OWNED by layout/laneLayout.ts and
 // re-exported here so a consumer imports one place. Prose never reaches the canvas
 // (PH10) — the `detail=summary` projection is scalars + L1 refs only.
+import type { EntityResolution } from './hooks/useEntityNames';
 import type {
   ArcShellNode,
   WindowNode,
@@ -200,6 +201,12 @@ export interface NodeContent {
   tension: number | null;
   beatRole: string | null;
   chapterId: string | null;
+  /** PH23/PH26 — the cast, SERVER-capped to 3 (exactly what a card may render). It has been on the
+   *  wire since H1.1 (`SummaryNode.present_entity_ids`); the NodeContent map simply dropped it, so
+   *  the cast chips had no data source and could not be built. */
+  castIds: string[];
+  /** EXACT roster size — drives the `+N` overflow. Never the length of the capped list. */
+  castCount: number;
 }
 
 /** The controller ↔ canvas contract (H2). `usePlanHub` PRODUCES this; `PlanCanvas` and
@@ -242,6 +249,9 @@ export interface PlanHubView {
   linkScenes: (fromNodeId: string, toNodeId: string) => void;
   /** H5 Row-5 (PH20) — delete a scene-link edge by id. */
   unlinkScenes: (linkId: string) => void;
+  /** PH26 — the entity-names map (read surface #6): resolve a cast id to a name, or say honestly
+   *  whether it is MISSING (map complete) or merely UNKNOWN (map incomplete). */
+  resolveEntity: (entityId: string) => EntityResolution;
   /** PH21 CTA — run the SC6 decompiler (`materialize-scenes`) on this book. */
   extract: {
     run: () => void;
@@ -345,6 +355,8 @@ export interface PlanCanvasProps {
   /** H5 Row-5 (PH20) — an edge was clicked; delete that scene link. A STUB edge is never deletable
    *  (its other end is collapsed out of view — deleting from a half-drawn line is a trap). */
   onUnlinkScenes?: (linkId: string) => void;
+  /** PH26 — resolve a cast entity id (read surface #6). Omitted ⇒ no cast chips. */
+  resolveEntity?: (entityId: string) => EntityResolution;
   /** H5: a move is in flight ⇒ freeze dragging. The lanes under the cursor are about to be replaced
    *  by the server's answer, so a second drag would be aimed at a layout that no longer holds. */
   busy?: boolean;

@@ -11,8 +11,11 @@ import { NodeBadges } from './NodeBadges';
 import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function SceneNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, isHere, onOpenRef } = data;
-  const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: false });
+  const { node, content, overlay, unionState, selected, isHere, onOpenRef, resolveEntity } = data;
+  // PH26 — a scene's cast is the whole point of the chips: `present_entity_ids` is a SCENE field.
+  const badges = orderNodeBadges({
+    overlay, nodeId: node.id, showTension: false, content, resolveEntity,
+  });
   const title = content?.title || `Sc ${node.storyOrder ?? '—'}`;
 
   return (

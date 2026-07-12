@@ -135,6 +135,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     onOpenRef,
     onLinkScenes,
     onUnlinkScenes,
+    resolveEntity,
     busy,
   } = props;
 
@@ -187,6 +188,9 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         // it, or its partner is off-screen). The card badges the number so the edge is accounted
         // for rather than vanishing.
         hiddenEdges: resolution.hiddenByNode[n.id] ?? 0,
+        // PH26 — the name map, so a card can render its cast chips (and tell a BROKEN reference
+        // from one merely not paged in). Absent ⇒ no cast chips, never a row of raw UUIDs.
+        resolveEntity,
         onToggle:
           n.shape === 'arc-rollup'
             ? () => onToggleArc(n.id)
@@ -197,7 +201,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc, onOpenRef, resolution]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc, onOpenRef, resolution, resolveEntity]);
 
   // RF's live node list. It exists ONLY so a drag can move the card under the cursor (see the header:
   // a controlled `nodes` prop with no onNodesChange never updates the store, so nothing moves). It is

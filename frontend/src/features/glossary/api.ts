@@ -249,8 +249,18 @@ export const glossaryApi = {
    *  badge name map. The backend endpoint is now KEYSET-paginated (F-H9/PH26) and
    *  returns ALL non-deleted entities (draft/inactive/active), not just active —
    *  so we follow next_cursor until truncated=false and accumulate every page.
-   *  Callers still receive the same flat EntityNameEntry[] (paging is internal). */
-  async listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
+   *
+   *  `complete` is the load-bearing half for PH26. The safety cap below can, in
+   *  principle, stop paging with entities still unread — and then an id that is
+   *  ABSENT from the map means "we didn't fetch it", not "it doesn't exist". The
+   *  Hub renders those two completely differently (a MISSING-entity warning chip vs
+   *  a neutral unresolved one), so collapsing them would make it accuse the user's
+   *  glossary of losing an entity it merely hadn't loaded — the
+   *  `paged-join-against-complete-set-mislabels-not-yet-loaded-as-absent` bug class. */
+  async listEntityNamesWithMeta(
+    bookId: string,
+    token: string,
+  ): Promise<{ items: EntityNameEntry[]; complete: boolean }> {
     const acc: EntityNameEntry[] = [];
     let cursor: string | null = null;
     // Safety cap: 500/page × 500 pages = 250k entities before we bail (never hit
@@ -263,10 +273,19 @@ export const glossaryApi = {
         { token },
       );
       if (res.items?.length) acc.push(...res.items);
-      if (!res.truncated || !res.next_cursor) break;
+      // Exhausted ⇒ the map is the WHOLE book's entity set.
+      if (!res.truncated || !res.next_cursor) return { items: acc, complete: true };
       cursor = res.next_cursor;
     }
-    return acc;
+    // Fell out of the loop ⇒ the cap tripped ⇒ there is more we never read.
+    return { items: acc, complete: false };
+  },
+
+  /** The names alone — for consumers (editor decoration, the compose picker) that only ever look ids
+   *  UP and never reason about an ABSENT one. ONE implementation: it delegates. */
+  async listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
+    const { items } = await glossaryApi.listEntityNamesWithMeta(bookId, token);
+    return items;
   },
 
   deleteEntity(bookId: string, entityId: string, token: string): Promise<void> {

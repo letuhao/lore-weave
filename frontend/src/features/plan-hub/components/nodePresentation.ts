@@ -7,6 +7,7 @@
 // storyOrder/rollupCount) — it carries NO title/status/tension. Titles + rich per-node
 // scalars arrive with node enrichment in H4; here the label is the stable storyOrder
 // placeholder and scalars are read ONLY from the overlay/conformance surfaces we already hold.
+import type { EntityResolution } from '../hooks/useEntityNames';
 import type {
   ArcPagination,
   ConformanceStatus,
@@ -46,6 +47,8 @@ export interface PlanNodeData {
    *  off-screen). Badged so a collapsed card accounts for the edges it swallowed rather than letting
    *  them vanish. 0 ⇒ no badge. */
   hiddenEdges?: number;
+  /** PH26 — resolve a cast entity id to a name / missing / unknown. Absent ⇒ no cast chips. */
+  resolveEntity?: (entityId: string) => EntityResolution;
 }
 
 /** RF `data` payload for a background swimlane band. */
@@ -162,8 +165,13 @@ export type NodeBadge =
   | { kind: 'dirty' }
   | { kind: 'threads'; count: number }
   | { kind: 'tension'; value: number }
+  /** PH26 — one cast member. `resolution` distinguishes a name we HAVE, a reference that is genuinely
+   *  BROKEN (the map is complete and the id isn't in it), and one we simply haven't paged in. */
+  | { kind: 'cast'; entityId: string; resolution: EntityResolution }
   | { kind: 'motif'; chip: MotifChip; stale: boolean }
-  | { kind: 'overflow'; count: number };
+  /** `of` discriminates the two overflow sources — cast AND motif can both overflow on one card, and
+   *  without it they collide on the React key and the tooltip lies about which is truncated. */
+  | { kind: 'overflow'; count: number; of: 'cast' | 'motif' };
 
 /**
  * THE single badge-precedence home (PH23). Produces the ordered, capped decoration list a card
@@ -173,10 +181,11 @@ export type NodeBadge =
  * the pacing slot (per-chapter only — the overlay rollup is chapter-keyed, PH17). Absent data adds no
  * badge (absent ≠ zero — `fe-status-default-fallback-signals-backend-field-omission`).
  *
- * CAST (H4.4 / PH23's 3-cast cap): deliberately NOT emitted — `NodeContent` carries no
- * `present_entity_ids` (only SummaryNode does, server-capped to 3). Rendering a cast chip here would
- * be inventing data; it needs `present_entity_ids` threaded into `NodeContent` (a small contract add
- * for a later round) plus the PH26 entity-names map. `CAST_CHIP_CAP` is reserved for that.
+ * CAST (H4.4 / PH23's 3-cast cap): emitted from `content.castIds` — server-capped to 3, which is
+ * exactly what a card may render — with `content.castCount` driving the `+N`. The ids had been on the
+ * wire since H1.1; the NodeContent map dropped them, so the chips had no data source at all. Names
+ * resolve through the PH26 entity-names map (`resolveEntity`); an UNRESOLVED id renders as a missing
+ * warning ONLY when that map is complete (absent ≠ missing).
  *
  * CANON DEEP-LINK (H4.1/PH18): the badge carries the fired rule's `ref`, and NodeBadges renders it
  * as a button when `onOpenRef` is present. The seam is a CALLBACK, not a URL — resolveStudioLink has
@@ -194,8 +203,14 @@ export function orderNodeBadges(input: {
   nodeId: string;
   isArc?: boolean;
   showTension?: boolean;
+  /** PH26 — the node's cast + the resolver. Omitted ⇒ no cast chips (a read-only/rail context). */
+  content?: NodeContent;
+  resolveEntity?: (entityId: string) => EntityResolution;
 }): NodeBadge[] {
-  const { overlay, conformance = null, nodeId, isArc = false, showTension = false } = input;
+  const {
+    overlay, conformance = null, nodeId, isArc = false, showTension = false,
+    content, resolveEntity,
+  } = input;
   const badges: NodeBadge[] = [];
   const { canon, threads } = problemBreakdown(overlay, nodeId);
 
@@ -207,12 +222,25 @@ export function orderNodeBadges(input: {
     if (t != null) badges.push({ kind: 'tension', value: t });
   }
 
+  // PH23 cast chips (≤3 — the server already capped the ids to exactly that). We render a chip only
+  // when we can resolve it OR when we can honestly say the reference is broken; with no resolver we
+  // render nothing rather than a row of raw UUIDs.
+  if (content && resolveEntity) {
+    for (const id of content.castIds.slice(0, CAST_CHIP_CAP)) {
+      badges.push({ kind: 'cast', entityId: id, resolution: resolveEntity(id) });
+    }
+    // The +N is driven by the EXACT roster size, not the capped list — a 9-person scene must read
+    // "+6", not "+0" (the count is exact on the wire precisely so this can be true).
+    const extra = content.castCount - Math.min(content.castIds.length, CAST_CHIP_CAP);
+    if (extra > 0) badges.push({ kind: 'overflow', count: extra, of: 'cast' });
+  }
+
   const motifs = motifChipsFor(overlay, nodeId);
   for (const chip of motifs.slice(0, MOTIF_CHIP_CAP)) {
     badges.push({ kind: 'motif', chip, stale: chip.live_version > chip.pinned_version });
   }
   if (motifs.length > MOTIF_CHIP_CAP) {
-    badges.push({ kind: 'overflow', count: motifs.length - MOTIF_CHIP_CAP });
+    badges.push({ kind: 'overflow', count: motifs.length - MOTIF_CHIP_CAP, of: 'motif' });
   }
   return badges;
 }

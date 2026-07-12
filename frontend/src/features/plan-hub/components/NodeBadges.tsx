@@ -88,6 +88,39 @@ function NodeBadgesInner({ nodeId, badges, onOpenRef, compact }: NodeBadgesProps
             );
           case 'tension':
             return <PacingSparkline key="tension" nodeId={nodeId} value={b.value} />;
+          case 'cast': {
+            // PH26's three states. `missing` is an ACCUSATION (this reference is broken) and is only
+            // ever reachable when the entity-names map is COMPLETE — with a partial map, an absent id
+            // means "not paged in yet", which renders neutrally. Never a silent blank.
+            const r = b.resolution;
+            const isMissing = r.state === 'missing';
+            const label =
+              r.state === 'resolved' ? r.name : isMissing ? 'missing entity' : '…';
+            return (
+              <span
+                key={`cast-${b.entityId}`}
+                data-testid={`plan-badge-cast-${nodeId}-${b.entityId}`}
+                data-cast-state={r.state}
+                title={
+                  isMissing
+                    ? `This scene references an entity that is not in the glossary (${b.entityId})`
+                    : label
+                }
+                className={cn(
+                  chip,
+                  'max-w-[5rem] truncate',
+                  isMissing
+                    ? 'bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-200'
+                    : r.state === 'unknown'
+                      ? 'bg-muted text-muted-foreground/60'
+                      : 'bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-200',
+                )}
+              >
+                {isMissing && <span className="mr-0.5">⚠</span>}
+                {label}
+              </span>
+            );
+          }
           case 'motif':
             return (
               <span
@@ -113,9 +146,9 @@ function NodeBadgesInner({ nodeId, badges, onOpenRef, compact }: NodeBadgesProps
           case 'overflow':
             return (
               <span
-                key="overflow"
-                data-testid={`plan-badge-overflow-${nodeId}`}
-                title={`${b.count} more motif${b.count === 1 ? '' : 's'}`}
+                key={`overflow-${b.of}`}
+                data-testid={`plan-badge-overflow-${b.of}-${nodeId}`}
+                title={`${b.count} more ${b.of === 'cast' ? 'cast member' : 'motif'}${b.count === 1 ? '' : 's'}`}
                 className={cn(chip, 'bg-muted text-muted-foreground')}
               >
                 +{b.count}

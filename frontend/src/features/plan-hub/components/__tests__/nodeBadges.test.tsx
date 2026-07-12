@@ -111,7 +111,9 @@ describe('NodeBadges (render)', () => {
     expect(screen.getByTestId('plan-badge-motif-ch-1-m2')).toBeInTheDocument();
     // The third motif is not a chip — it collapses into the +N overflow.
     expect(screen.queryByTestId('plan-badge-motif-ch-1-m3')).not.toBeInTheDocument();
-    expect(screen.getByTestId('plan-badge-overflow-ch-1')).toHaveTextContent('+1');
+    // The overflow testid names its SOURCE: cast and motif can both overflow on one card, and
+    // without the discriminator they collided on the React key and the tooltip lied about which.
+    expect(screen.getByTestId('plan-badge-overflow-motif-ch-1')).toHaveTextContent('+1');
   });
 
   it('canon is a deep-link button ONLY when onOpenRef is wired; a plain chip otherwise', () => {

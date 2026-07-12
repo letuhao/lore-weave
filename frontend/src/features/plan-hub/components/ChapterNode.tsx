@@ -10,10 +10,10 @@ import { NodeBadges } from './NodeBadges';
 import { orderNodeBadges, unionDotClass, unionStateClass, type PlanNodeData } from './nodePresentation';
 
 function ChapterNodeInner({ data }: NodeProps<PlanNodeData>) {
-  const { node, content, overlay, unionState, selected, isHere, onToggle, onOpenRef, hiddenEdges } =
+  const { node, content, overlay, unionState, selected, isHere, onToggle, onOpenRef, hiddenEdges, resolveEntity } =
     data;
   // Chapters aren't in conformance.arcs ⇒ no drift badge (isArc:false); pacing IS chapter-keyed.
-  const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: true });
+  const badges = orderNodeBadges({ overlay, nodeId: node.id, showTension: true, content, resolveEntity });
   const title = content?.title || `Ch ${node.storyOrder ?? '—'}`;
 
   return (

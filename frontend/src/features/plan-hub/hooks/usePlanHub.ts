@@ -14,6 +14,7 @@ import { usePlanWindows } from './usePlanWindows';
 import { usePlanMoves } from './usePlanMoves';
 import { useActualState } from './useActualState';
 import { useExtractPlan } from './useExtractPlan';
+import { useEntityNames } from './useEntityNames';
 import { computeUnionState, toArcShellNode } from './planHubMappers';
 
 export function usePlanHub(bookId: string): PlanHubView {
@@ -63,6 +64,9 @@ export function usePlanHub(bookId: string): PlanHubView {
   // Only an OPEN arc/chapter loads its window; a collapsed arc's rollup comes from the shell.
   const windowsResult = usePlanWindows(bookId, token, expandedArcIds, expandedChapterIds);
   const actual = useActualState(bookId, token);
+  // Read surface #6 (PH26) — the book-wide entity-names map behind the cast chips. One cached load;
+  // it is one of the five cold-open reads the PH9 budget already accounts for.
+  const entityNames = useEntityNames(bookId);
 
   // Translate the opened sets into laneLayout's CollapseState (which tracks the COLLAPSED ids).
   const collapse = useMemo<CollapseState>(() => {
@@ -87,12 +91,18 @@ export function usePlanHub(bookId: string): PlanHubView {
   const nodeContent = useMemo<Record<string, NodeContent>>(() => {
     const out: Record<string, NodeContent> = {};
     for (const a of arcsQuery.data?.arcs ?? []) {
-      out[a.id] = { title: a.title, status: a.status, kind: a.kind, tension: null, beatRole: null, chapterId: null };
+      out[a.id] = {
+        title: a.title, status: a.status, kind: a.kind, tension: null, beatRole: null,
+        chapterId: null, castIds: [], castCount: 0,
+      };
     }
     for (const n of Object.values(windowsResult.content)) {
       out[n.id] = {
         title: n.title, status: n.status, kind: n.kind,
         tension: n.tension, beatRole: n.beat_role, chapterId: n.chapter_id,
+        // PH26 — the cast the server already capped to 3, plus the EXACT count for the +N chip.
+        castIds: n.present_entity_ids ?? [],
+        castCount: n.present_entity_count ?? 0,
       };
     }
     return out;
@@ -239,6 +249,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     loadMoreArc: windowsResult.loadMoreArc,
     linkScenes: moves.linkScenes,
     unlinkScenes: moves.unlinkScenes,
+    resolveEntity: entityNames.resolve,
     extract,
     notices,
     loading,
