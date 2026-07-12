@@ -369,7 +369,26 @@ generation-guards, per-chapter completeness tracking and page-walk bounds to sta
 spec↔manuscript relation is already computed **server-side** in two other places
 (`compute_coverage`, `compute_prose_deleted`), both agent-reachable.
 
-Proposed test: **fact vs view** — *"would an agent ever ask this?"* yes ⇒ BE.
-Proposed resolution: **amend SC11, don't overturn it** — keep *"no per-node server join at render
-time"*, add *"a derived FACT about the relation is one bulk anti-join, server-side"* (the shape
-`compute_coverage` already ships). **Not actioned: SC11 is LOCKED.**
+**→ Written up as a full amendment proposal (PO sign-off pending):
+[`docs/specs/2026-07-13-sc11-amendment-written-verdict.md`](../specs/2026-07-13-sc11-amendment-written-verdict.md).**
+
+Two things changed once I read the code rather than reasoned from the principle:
+
+1. **I withdraw the "bulk anti-join, server-side" proposal I made above.** `BookClient` pages at 100
+   rows/request, so a whole-book scene anti-join is ~1000 sequential HTTP calls inside composition —
+   **the very read H8.1's budget rejected, just moved to the server.** It trades a client page-walk
+   for a server one.
+   **The right answer is to not derive it on read at all — MAINTAIN IT ON WRITE.** book-service
+   already knows the link when it writes `scenes.source_scene_id`. The verdict becomes a column.
+2. **The amendment does not overturn BPS-11.** BPS-11 asked only about server-side **`status`/`pov`
+   FILTERS** (authored intent). SC11's *sentence* generalised past its own question. The
+   written-verdict is a **manuscript fact**, not a filter and not intent — so the amendment scopes
+   SC11's sentence back to what BPS-11 actually decided, and leaves the intent join exactly as locked.
+
+The strongest evidence is that we already compute this fact **twice, client-side, in two features,
+with two different completeness-guards** (`computeUnionState` + `sceneUnion`) — and one of them needed
+a HIGH-severity fix to get its guard right. **The drift is already here; it is just invisible because
+both copies happen to be correct.** The proposal also surfaces a **live latent bug** found while
+scoping it: the IX-12 decompile write-back sets `source_scene_id` and **emits nothing**, so a
+decompiled book would render as entirely unwritten under any event-driven design (proposal §5.2,
+Phase 0 — worth fixing regardless of whether the amendment ships).

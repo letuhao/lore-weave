@@ -80,7 +80,14 @@ cluster, whose tools are built, advertised and effectful.
 
 ### ▶ NEXT for this track
 
-0. **⚠ PO-DECIDE — SC11/PH12 vs "the FE is a projection of data state".** The PO's rule and SC11 point
+0. **⚠ PO-DECIDE — SC11/PH12 → the amendment is WRITTEN and awaiting sign-off:**
+   [`docs/specs/2026-07-13-sc11-amendment-written-verdict.md`](../specs/2026-07-13-sc11-amendment-written-verdict.md).
+   *Maintain the written-verdict on write (a column), don't derive it on read — by either side.* It does
+   **not** overturn BPS-11 (which asked only about `status`/`pov` FILTERS). It also surfaces a **live
+   latent bug** worth fixing on its own: the IX-12 decompile write-back sets `scenes.source_scene_id` and
+   **emits no event** (§5.2 / Phase 0).
+   *(original note below)*
+0b. **⚠ PO-DECIDE — SC11/PH12 vs "the FE is a projection of data state".** The PO's rule and SC11 point
    opposite ways. `useActualState` derives *"has this scene been drafted?"* — **a fact an agent would
    obviously ask** — client-side, and it costs ~130 lines of generation-guards, per-chapter completeness
    tracking and page-walk bounds to stay correct. The same relation (spec↔manuscript) is already
