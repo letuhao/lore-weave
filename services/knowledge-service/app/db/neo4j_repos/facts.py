@@ -59,7 +59,7 @@ __all__ = [
 
 # Closed enum per KSA §5.1. New types require both a code change
 # and an extraction-side pattern, so a Literal is fine.
-FactType = Literal["decision", "preference", "milestone", "negation"]
+FactType = Literal["decision", "preference", "milestone", "negation", "statement"]
 FACT_TYPES: tuple[str, ...] = ("decision", "preference", "milestone", "negation")
 
 

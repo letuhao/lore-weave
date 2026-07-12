@@ -113,6 +113,12 @@ class _DiaryWriter(Protocol):
     ) -> dict[str, Any] | None: ...
 
 
+class _FactQueuer(Protocol):
+    async def queue_diary_facts(
+        self, *, user_id: str, book_id: str, entry_date: str, facts: list[dict],
+    ) -> dict[str, Any]: ...
+
+
 async def distill_and_write(
     *,
     user_id: str,
@@ -123,6 +129,7 @@ async def distill_and_write(
     llm: LLMCall,
     chat_client: _ChatReader,
     book_client: _DiaryWriter,
+    knowledge_client: "_FactQueuer | None" = None,
     limit: int = 5000,
     giant_paste_threshold: int = GIANT_PASTE_CHARS,
     window: int = WINDOW_CHARS,
@@ -177,11 +184,28 @@ async def distill_and_write(
         # A post-confirm day: the primary is kept; the caller re-runs as a supplement (§Q6).
         return {"status": "kept", "entry_date": entry_date}
 
+    # WS-2.3 — divert the day's facts into the KG pending-facts INBOX (human-gated; never trusted).
+    # BEST-EFFORT: the entry is already durably written, so a queue failure must NOT fail the distill
+    # or drop the day — the facts are a reviewable enrichment, retried on the next distill of this day.
+    facts_queued = 0
+    if knowledge_client is not None and outcome.facts:
+        try:
+            res = await knowledge_client.queue_diary_facts(
+                user_id=user_id,
+                book_id=book_id,
+                entry_date=entry_date,
+                facts=[{"kind": f.kind, "text": f.text} for f in outcome.facts],
+            )
+            facts_queued = int(res.get("queued", 0)) if isinstance(res, dict) else 0
+        except Exception:  # noqa: BLE001 — enrichment only; never fail a written day on the inbox.
+            logger.warning("distill: failed to queue diary facts to the KG inbox (entry stands)", exc_info=True)
+
     return {
         "status": "written",
         "chapter_id": written.get("chapter_id"),
         "entry_date": entry_date,
         "facts_found": outcome.facts_found,
+        "facts_queued": facts_queued,
         "chunks": outcome.chunks_processed,
         "oversized_count": oversized_n,  # a paste alongside a real day is diverted, not lost
         "truncated": truncated,

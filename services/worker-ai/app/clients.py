@@ -203,6 +203,24 @@ class KnowledgeClient:
         if self._summarize_http is not self._http:
             await self._summarize_http.aclose()
 
+    async def queue_diary_facts(
+        self,
+        *,
+        user_id: str,
+        book_id: str,
+        entry_date: str,
+        facts: list[dict],
+    ) -> dict:
+        """WS-2.3 — divert a distilled day's facts into knowledge-service's pending-facts INBOX. The
+        entry is already written by the time this runs, so a failure here is BEST-EFFORT (the facts
+        are a reviewable enrichment, not the diary entry) — the caller swallows it."""
+        resp = await self._http.post(
+            f"{self._base_url}/internal/admin/assistant/queue-facts",
+            json={"user_id": user_id, "book_id": book_id, "entry_date": entry_date, "facts": facts},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     async def persist_pass2(
         self,
         *,

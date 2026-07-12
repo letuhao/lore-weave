@@ -51,6 +51,18 @@ class FakeLLM:
         return json.dumps({"facts": self._map_facts})
 
 
+class FakeKnowledge:
+    def __init__(self, fail=False):
+        self._fail = fail
+        self.calls: list[dict] = []
+
+    async def queue_diary_facts(self, *, user_id, book_id, entry_date, facts):
+        self.calls.append({"user_id": user_id, "book_id": book_id, "entry_date": entry_date, "facts": facts})
+        if self._fail:
+            raise RuntimeError("inbox down")
+        return {"queued": len(facts)}
+
+
 def _msg(role, content, tools=None):
     return {"role": role, "content": content, "tool_names": tools or []}
 
@@ -77,6 +89,39 @@ async def test_written_flow_passes_rendered_body_to_the_write_seam():
     assert w["journal_kind"] == "primary" and w["language"] == "en"
     assert "A good day." in w["body"] and "## Decisions" in w["body"]
     assert "Met Minh" not in w["body"]  # the transcript is NOT copied into the entry
+
+
+async def test_written_flow_queues_facts_to_the_kg_inbox():
+    # WS-2.3: after the entry is written, the day's facts are DIVERTED to the pending-facts inbox.
+    chat = FakeChat([_msg("user", "Met Minh; froze the Q3 budget.")])
+    book = FakeBook()
+    know = FakeKnowledge()
+    llm = FakeLLM(map_facts=[
+        {"kind": "decision", "text": "froze the Q3 budget", "provenance": "user"},
+        {"kind": "person", "text": "Minh", "provenance": "user"},
+    ])
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=llm, chat_client=chat, book_client=book, knowledge_client=know,
+    )
+    assert out["status"] == "written" and out["facts_queued"] == 2
+    assert len(know.calls) == 1
+    c = know.calls[0]
+    assert c["user_id"] == "u1" and c["book_id"] == "b1" and c["entry_date"] == "2026-03-10"
+    assert {f["kind"] for f in c["facts"]} == {"decision", "person"}
+
+
+async def test_fact_queue_failure_does_not_fail_the_written_day():
+    # BEST-EFFORT: the entry is already durably written, so an inbox failure must NOT fail the distill
+    # or lose the day — the facts are a reviewable enrichment, retried on the next distill.
+    chat = FakeChat([_msg("user", "Froze the budget.")])
+    book = FakeBook()
+    llm = FakeLLM(map_facts=[{"kind": "decision", "text": "froze the budget", "provenance": "user"}])
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=llm, chat_client=chat, book_client=book, knowledge_client=FakeKnowledge(fail=True),
+    )
+    assert out["status"] == "written" and out["facts_queued"] == 0  # entry stands; inbox failure swallowed
 
 
 async def test_low_signal_day_writes_nothing():

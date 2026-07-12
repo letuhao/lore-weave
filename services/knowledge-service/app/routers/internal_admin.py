@@ -25,6 +25,7 @@ from uuid import UUID
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import delete_all_passages_for_project
+from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.neo4j_helpers import (
     drop_summary_index,
@@ -72,6 +73,46 @@ async def erase_assistant_knowledge(
         )
     project_deleted = await ProjectsRepo(pool).delete(user_id, project_id)
     return {"project_deleted": bool(project_deleted), "passages_deleted": passages_deleted}
+
+
+class _DiaryFactIn(BaseModel):
+    kind: str
+    text: str
+
+
+class _QueueDiaryFactsIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    entry_date: str | None = None
+    facts: list[_DiaryFactIn]
+
+
+@router.post("/assistant/queue-facts")
+async def queue_diary_facts(body: _QueueDiaryFactsIn) -> dict:
+    """WS-2.1/2.3 — the assistant's DIVERT-TO-INBOX fact write. A distilled day's facts are queued into
+    the pending-facts INBOX (never `pending_validation=False`; the diary's facts are human-gated, D4),
+    resolving the user's assistant project by (user, book). Each fact lands as `fact_type='statement'`
+    with the kind + entry_date encoded in `fact_text`; `session_id` is None (a diary fact has no chat
+    session — WS-2.1 made the column nullable). Internal-token. The structured s/p/o + dedup key are
+    WS-2.2; a re-distill of the same day re-queues (dedup lands with WS-2.2)."""
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    repo = PendingFactsRepo(pool)
+    queued = 0
+    for f in body.facts:
+        text = (f.text or "").strip()
+        if not text:
+            continue
+        date_sfx = f" ({body.entry_date})" if body.entry_date else ""
+        await repo.queue(
+            body.user_id,
+            project_id=project.project_id,
+            session_id=None,
+            fact_type="statement",
+            fact_text=f"[{(f.kind or 'event').strip()}] {text}{date_sfx}",
+        )
+        queued += 1
+    return {"queued": queued, "project_id": str(project.project_id)}
 
 
 class OrphanIndex(BaseModel):

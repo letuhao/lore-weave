@@ -136,6 +136,7 @@ class DistillOutcome:
     oversized_messages: list[str] = field(default_factory=list)  # giant pastes to attach, not digest (§T38)
     chunks_processed: int = 0
     facts_found: int = 0
+    facts: list[DistillFact] = field(default_factory=list)  # WS-2.3: the extracted facts, for the KG inbox
     error: str | None = None  # 'map_failed' | 'reduce_failed' — a RETRYABLE compute failure, NOT a no-entry
     retryable: bool = False
     map_failures: int = 0  # how many chunks' map calls FAILED (a partial-outage signal for the caller)
@@ -475,6 +476,7 @@ async def distill_day(
         outcome.no_entry_reason = "model_no_output" if blank_completions else "low_signal"
         return outcome
     outcome.facts_found = len(all_facts)
+    outcome.facts = list(all_facts)  # WS-2.3: carry the facts so the caller can queue them to the KG inbox
 
     try:
         entry = await reduce_entry(all_facts, language, llm)

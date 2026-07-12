@@ -728,12 +728,38 @@ CREATE TABLE IF NOT EXISTS knowledge_pending_facts (
   pending_fact_id  UUID PRIMARY KEY DEFAULT uuidv7(),
   user_id          UUID NOT NULL,                    -- no FK (cross-DB)
   project_id       UUID,                             -- nullable: no-project chats
-  session_id       TEXT NOT NULL,
+  session_id       TEXT,                             -- WS-2.1: nullable — a diary fact has no session
   fact_type        TEXT NOT NULL
-    CHECK (fact_type IN ('decision','preference','milestone','negation')),
+    -- WS-2.1: 'statement' is the diary's fact kind (the distiller's coarse facts land here). The
+    -- narrower chat-memory kinds stay for the memory_remember path.
+    CHECK (fact_type IN ('decision','preference','milestone','negation','statement')),
   fact_text        TEXT NOT NULL,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- WS-2.1 — bring EXISTING knowledge_pending_facts rows up to the new shape (the CREATE TABLE above
+-- only runs on a fresh DB). Idempotent: widen the fact_type CHECK to include 'statement' and drop the
+-- session_id NOT NULL so a diary fact (no session) can queue. (Memory: a new enum value must widen
+-- the CHECK via DROP-then-ADD, and NOT NULL must be dropped explicitly — the CREATE TABLE won't.)
+DO $$
+BEGIN
+  -- Replace whatever fact_type CHECK exists (the inline auto-name) with the widened one.
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_pending_facts_fact_type_check') THEN
+    ALTER TABLE knowledge_pending_facts DROP CONSTRAINT knowledge_pending_facts_fact_type_check;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_pending_facts_fact_type_ck') THEN
+    ALTER TABLE knowledge_pending_facts
+      ADD CONSTRAINT knowledge_pending_facts_fact_type_ck
+      CHECK (fact_type IN ('decision','preference','milestone','negation','statement'));
+  END IF;
+  -- Drop the legacy session_id NOT NULL (diary facts have no session).
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'knowledge_pending_facts' AND column_name = 'session_id' AND is_nullable = 'NO'
+  ) THEN
+    ALTER TABLE knowledge_pending_facts ALTER COLUMN session_id DROP NOT NULL;
+  END IF;
+END$$;
 
 -- List path: WHERE user_id=$1 [AND session_id=$2] ORDER BY created_at.
 -- The optional session filter is a column equality, so a composite

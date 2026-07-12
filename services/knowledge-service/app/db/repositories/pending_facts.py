@@ -62,7 +62,7 @@ class PendingFactsRepo:
         user_id: UUID,
         *,
         project_id: UUID | None,
-        session_id: str,
+        session_id: str | None,
         fact_type: FactType,
         fact_text: str,
     ) -> PendingFact:

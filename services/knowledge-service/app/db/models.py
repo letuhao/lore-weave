@@ -18,7 +18,7 @@ ScopeType = Literal["global", "project", "session", "entity"]
 # app/db/neo4j_repos/facts.py. Kept as a local Literal (same pattern
 # as ProjectType / ScopeType) so app.db.models stays free of any
 # neo4j_repos import.
-FactType = Literal["decision", "preference", "milestone", "negation"]
+FactType = Literal["decision", "preference", "milestone", "negation", "statement"]
 
 # Names are stripped of surrounding whitespace and must contain at least
 # one non-whitespace character. Max 200 chars, chat-service convention.
@@ -324,7 +324,7 @@ class PendingFact(BaseModel):
     pending_fact_id: UUID
     user_id: UUID
     project_id: UUID | None = None
-    session_id: str
+    session_id: str | None = None  # WS-2.1: a DIARY fact has no chat session
     fact_type: FactType
     fact_text: str
     created_at: datetime

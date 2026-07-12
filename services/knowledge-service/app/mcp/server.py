@@ -1008,7 +1008,7 @@ async def kg_propose_fact(
     ctx: MCPContext,
     fact_text: Annotated[str, "The fact to propose, as a clear statement."],
     fact_type: Annotated[
-        Literal["decision", "preference", "milestone", "negation"],
+        Literal["decision", "preference", "milestone", "negation", "statement"],
         "decision = a choice made; preference = a standing like/dislike; "
         "milestone = a notable achievement; negation = something NOT true.",
     ],

@@ -26,7 +26,7 @@ from loreweave_jobs import BaseTerminalConsumer
 from app.distill_job import distill_and_write, make_distill_llm
 
 if TYPE_CHECKING:
-    from app.clients import BookClient, ChatClient
+    from app.clients import BookClient, ChatClient, KnowledgeClient
     from app.llm_client import LLMClient
 
 __all__ = ["DistillConsumer", "DISTILL_STREAM_NAME", "run_one_distill_message"]
@@ -65,6 +65,7 @@ async def run_one_distill_message(
     book_client: "BookClient",
     llm_client: "LLMClient",
     fields: dict,
+    knowledge_client: "KnowledgeClient | None" = None,
     message_id: str = "(distill)",
 ) -> bool:
     """Decode one `assistant.distill` message + run the pipeline. Returns True to ACK.
@@ -98,6 +99,7 @@ async def run_one_distill_message(
         llm=llm,
         chat_client=chat_client,
         book_client=book_client,
+        knowledge_client=knowledge_client,
     )
     status = result.get("status")
     if status == "error" and result.get("retryable"):
@@ -133,6 +135,7 @@ class DistillConsumer(BaseTerminalConsumer):
         consumer_group: str,
         consumer_name: str | None = None,
         block_ms: int = 5000,
+        knowledge_client: "KnowledgeClient | None" = None,
     ) -> None:
         self.group = consumer_group  # runtime group — set before the base validates it
         self.block_ms = block_ms
@@ -140,11 +143,12 @@ class DistillConsumer(BaseTerminalConsumer):
         self._chat = chat_client
         self._book = book_client
         self._llm = llm_client
+        self._knowledge = knowledge_client  # WS-2.3 — divert diary facts to the KG inbox (optional)
 
     async def handle(self, fields: dict) -> None:
         should_ack = await run_one_distill_message(
             chat_client=self._chat, book_client=self._book, llm_client=self._llm,
-            fields=fields, message_id="(distill)",
+            knowledge_client=self._knowledge, fields=fields, message_id="(distill)",
         )
         if not should_ack:
             raise _DistillRetryable()  # retryable → base leaves it un-acked for redelivery
