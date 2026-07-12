@@ -2,9 +2,10 @@ package migrate
 
 // WS-1.5 (spec 05 §Q2) — the System-tier WORK ontology seed (ledger step 0052).
 //
-// What must hold: the 7 work kinds exist after the migration chain; they are HIDDEN + NOT
-// default (so a novelist's kind picker never shows them); each has the minimal name/aliases/
-// description attrs; and the whole thing is idempotent (a second chain run adds no duplicates).
+// What must hold: the 7 work kinds exist after the migration chain; they are NON-default +
+// NOT hidden (DR-13 — adopt copies is_hidden into the book tier, so a hidden template would
+// hide them in the diary); each is universal-linked with name/aliases/description attrs; none
+// are in the default kind set; and the whole thing is idempotent (a 2nd chain run adds none).
 //
 // Runs on its own ephemeral DB. Needs GLOSSARY_TEST_DB_URL.
 
@@ -21,7 +22,7 @@ import (
 
 var workKindCodes = []string{"colleague", "project", "meeting", "decision", "task", "jargon", "org"}
 
-func TestSeedWorkKinds_HiddenSystemTemplate_Idempotent(t *testing.T) {
+func TestSeedWorkKinds_VisibleNonDefault_Idempotent(t *testing.T) {
 	dbURL := os.Getenv("GLOSSARY_TEST_DB_URL")
 	if dbURL == "" {
 		t.Skip("GLOSSARY_TEST_DB_URL not set")
@@ -76,10 +77,13 @@ func TestSeedWorkKinds_HiddenSystemTemplate_Idempotent(t *testing.T) {
 		return n
 	}
 
-	// All 7 work kinds present, and HIDDEN + NOT default (so no novelist picker shows them).
+	// All 7 work kinds present, and NON-default + NOT hidden (DR-13). NOT hidden matters:
+	// adoptBookOntologyCore copies is_hidden into book_kinds, so a hidden template would clone
+	// hidden and the diary user would never see the work kinds. Novel pickers stay clean via
+	// is_default=false + adopt-only-what-you-request, not via is_hidden.
 	for _, code := range workKindCodes {
-		if n := scalar(`SELECT count(*) FROM system_kinds WHERE code=$1 AND is_hidden AND NOT is_default`, code); n != 1 {
-			t.Fatalf("work kind %q not seeded as a hidden non-default system template (count=%d)", code, n)
+		if n := scalar(`SELECT count(*) FROM system_kinds WHERE code=$1 AND NOT is_hidden AND NOT is_default`, code); n != 1 {
+			t.Fatalf("work kind %q not seeded as a visible non-default system kind (count=%d)", code, n)
 		}
 		// Each is linked to the universal genre and has the minimal name/aliases/description
 		// attrs in the tiered system_attributes table (post-G4 model).
@@ -101,12 +105,12 @@ func TestSeedWorkKinds_HiddenSystemTemplate_Idempotent(t *testing.T) {
 		t.Fatalf("ledger did not record 0052_seed_work_kinds (count=%d)", n)
 	}
 
-	// A NOVELIST'S picker (default, non-hidden kinds) must NOT contain any work kind — the
-	// whole point of seeding them hidden.
+	// The DEFAULT kind set (what a novel adopts by default) must NOT contain any work kind —
+	// they are is_default=false, adopted only into a diary on request.
 	if n := scalar(
-		`SELECT count(*) FROM system_kinds WHERE code = ANY($1) AND is_default AND NOT is_hidden`,
+		`SELECT count(*) FROM system_kinds WHERE code = ANY($1) AND is_default`,
 		workKindCodes); n != 0 {
-		t.Fatalf("%d work kind(s) leaked into the default/visible picker — they must be hidden templates", n)
+		t.Fatalf("%d work kind(s) leaked into the DEFAULT kind set — they must be is_default=false", n)
 	}
 
 	// Idempotent: a second chain run adds no duplicate kinds or attrs.
