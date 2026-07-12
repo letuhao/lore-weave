@@ -44,9 +44,11 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # gate. NOT NULL, so — like tool_calling_enabled — deliberately
      # absent from _NULLABLE_UPDATE_COLUMNS; explicit None is skipped.
      "memory_remember_confirm",
-     # WS-4C Half A: per-project canon auto-capture toggle. NOT NULL
-     # DEFAULT true, so — like tool_calling_enabled — deliberately absent
-     # from _NULLABLE_UPDATE_COLUMNS; an explicit None is skipped.
+     # WS-4C Half A: per-project canon auto-capture CONSENT toggle. NOT NULL
+     # DEFAULT **false** (fail-closed — corrected from a once-shipped `true`;
+     # migrate.py:1520/1532 heals+resets it) — do NOT "fix" this to true. Like
+     # tool_calling_enabled it is deliberately absent from _NULLABLE_UPDATE_COLUMNS;
+     # an explicit None is skipped.
      "canon_capture_enabled",
      # P2 (D6): opt-in raw-response retention. NOT NULL DEFAULT false;
      # FE follow-up D-P2-FE-SAVE-RAW will expose a toggle. PATCH updates

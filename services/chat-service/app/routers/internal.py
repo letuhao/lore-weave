@@ -202,7 +202,12 @@ class DistillTrigger(BaseModel):
     model_source: str
     model_ref: UUID
     language: str = "en"
-    entry_date: date | None = None  # default: today in entry_zone (server-computed)
+    # entry_date is OPTIONAL for internal/catch-up use (the P-10 sweep distills a specific past day
+    # and computes that date SERVER-side). ⚠️ CONTRACT (review LOW-4): when the public "End my day"
+    # is wired, the gateway MUST compute entry_date server-side and NEVER forward a user-supplied
+    # value — a client-controlled calendar day could overwrite/mis-bucket a historical entry. Today
+    # this route is X-Internal-Token-only with no public caller, so it is a contract note, not a hole.
+    entry_date: date | None = None  # default: today in entry_zone (server-computed on omission)
     entry_zone: str = "UTC"         # A4 will resolve the user's IANA zone from prefs.timezone
 
 

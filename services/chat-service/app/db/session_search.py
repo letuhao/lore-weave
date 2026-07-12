@@ -87,10 +87,13 @@ async def search_assistant_messages(
     limit: int = 8,
 ) -> list[SessionHit]:
     """Recall across the user's ASSISTANT-session messages (T-4: `session_kind='assistant'`), most
-    recent first. Owner-scoped (tenancy). ILIKE substring — a recall query is almost always a NAME
-    (`Lâm`, `万古`), which English FTS stems/tokenizes wrong (spec §Q3: the EN tsvector is useless
-    for VI/CJK); a literal substring finds the exact mention. `limit` is capped so recall can never
-    dump the whole history back into context."""
+    recent first. Owner-scoped (tenancy). **USER-role messages only** (review LOW-5): recall answers
+    "what did *I tell you*" — the user's own statements — so we exclude assistant-role turns; this
+    keeps the "your own past words" framing honest AND avoids re-surfacing a prior assistant message
+    that quoted injected/recalled content (a self-feeding vector the distiller guards separately).
+    ILIKE substring — a recall query is almost always a NAME (`Lâm`, `万古`), which English FTS
+    stems/tokenizes wrong (spec §Q3: the EN tsvector is useless for VI/CJK); a literal substring
+    finds the exact mention. `limit` is capped so recall can never dump the whole history back."""
     q = (query or "").strip()
     if not q:
         return []
@@ -103,6 +106,7 @@ async def search_assistant_messages(
         JOIN chat_sessions s ON s.session_id = m.session_id
         WHERE m.owner_user_id = $1
           AND s.session_kind = 'assistant'
+          AND m.role = 'user'
           AND m.branch_id = 0
           AND m.is_error = false AND m.content IS NOT NULL AND m.content <> ''
           AND m.content ILIKE '%' || $2 || '%' ESCAPE '\\'
