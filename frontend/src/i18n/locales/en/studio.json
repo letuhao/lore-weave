@@ -1112,6 +1112,23 @@
     }
   },
   "planHub": {
-    "undo": "Undo"
+    "undo": "Undo",
+    "empty": {
+      "title": "No plan for this book yet",
+      "body": "The Plan Hub shows the spec — arcs, chapters, scenes. This book has none yet. It will never be invented from your manuscript: extract it, or write one.",
+      "extractCta": "Extract the plan from the manuscript",
+      "extracting": "Extracting…",
+      "planCta": "Plan from scratch",
+      "extractNote": "Extracting reads the scenes already parsed from your chapters and turns each into a spec node. Grouping them into arcs is a separate AI step — ask the agent for it. Until then the extracted chapters sit in the “Unassigned” strip.",
+      "nothingParsed": "Nothing to extract — this book has no parsed scenes yet. Parse or import the chapters first, then extract."
+    },
+    "node": {
+      "unplannedTray": "Unplanned chapters",
+      "unplannedUnknown": "Unplanned chapters: unknown (the manuscript could not be read)",
+      "unplannedCapped": "…and {{n}} more (list capped)",
+      "unassignedStrip": "{{count}} chapter in no arc — drag it into a lane",
+      "unassignedStrip_other": "{{count}} chapters in no arc — drag them into a lane",
+      "untitled": "Untitled"
+    }
   }
 }

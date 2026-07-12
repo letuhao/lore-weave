@@ -813,6 +813,48 @@ class OutlineRepo:
             rows = await c.fetch(query, *args)
         return [_row_to_node(r) for r in rows]
 
+    async def list_unassigned_chapters(
+        self,
+        book_id: UUID,
+        *,
+        after: tuple[str, UUID] | None = None,
+        limit: int = 100,
+    ) -> list[OutlineNode]:
+        """24 PH21 — the UNASSIGNED axis: chapter nodes bound to no arc
+        (`structure_node_id IS NULL`).
+
+        Neither existing axis can reach these rows: the ARC axis needs an arc, and the
+        PARENT axis needs a `parent_id` — which the 25 M4 lift set to NULL on every
+        chapter. So they were unreachable by the Hub entirely, which matters because it
+        is the NORMAL post-decompile state: `materialize-scenes` mints chapter + scene
+        nodes with no arc (arc grouping is the separate LLM step), and a freshly
+        extracted plan would have rendered as an empty canvas.
+
+        This is an explicit, NAMED axis — not "omitted ⇒ everything". The OQ-4 law it
+        must not violate is *no silent whole-book fetch*; this returns only the arc-less
+        subset, keyset-paged like its siblings. Same `book_id` tenancy scope, same
+        `(rank, id)` byte-order keyset, same limit+1 has-more probe."""
+        args: list[Any] = [book_id]
+        keyset_pred = ""
+        if after is not None:
+            after_rank, after_id = after
+            args.extend([after_rank, after_id])
+            keyset_pred = (
+                f' AND (rank COLLATE "C" > ${len(args) - 1}'
+                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
+            )
+        args.append(limit + 1)
+        query = f"""
+        SELECT {_SELECT_COLS} FROM outline_node
+        WHERE book_id = $1 AND structure_node_id IS NULL
+          AND kind = 'chapter' AND NOT is_archived{keyset_pred}
+        ORDER BY rank COLLATE "C", id
+        LIMIT ${len(args)}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, *args)
+        return [_row_to_node(r) for r in rows]
+
     async def list_children_by_parent_book(
         self,
         book_id: UUID,

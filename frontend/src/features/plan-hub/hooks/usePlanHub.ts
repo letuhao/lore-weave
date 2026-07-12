@@ -13,6 +13,7 @@ import type { CollapseState, NodeContent, PlanHubView } from '../types';
 import { usePlanWindows } from './usePlanWindows';
 import { usePlanMoves } from './usePlanMoves';
 import { useActualState } from './useActualState';
+import { useExtractPlan } from './useExtractPlan';
 import { computeUnionState, toArcShellNode } from './planHubMappers';
 
 export function usePlanHub(bookId: string): PlanHubView {
@@ -148,17 +149,41 @@ export function usePlanHub(bookId: string): PlanHubView {
     patchWindow: windowsResult.patch,
   });
 
+  // PH21 CTA — the decompiler. Lives here (not in the panel) so the panel stays a view.
+  const extract = useExtractPlan(bookId, token, windowsResult.reload);
+
   const loading = (enabled && arcsQuery.isLoading) || windowsResult.loading;
   const error =
     (arcsQuery.error instanceof Error ? arcsQuery.error.message : null) ?? windowsResult.error ?? null;
 
+  // PH21 — "this book has no spec at all". Both halves must have ANSWERED, not merely be absent:
+  //   • the arc shell resolved with zero arcs, AND
+  //   • the unassigned window resolved with zero chapters (with no arcs, that is the ONLY window
+  //     that can hold a chapter node — nothing else is loadable).
+  // Gating on `isSuccess` (not `!data`) is what keeps this from flashing the empty state — and,
+  // worse, offering to EXTRACT a plan — over a book whose reads simply haven't landed yet.
+  const specEmpty =
+    arcsQuery.isSuccess &&
+    shell.length === 0 &&
+    windowsResult.unassignedLoaded &&
+    layout.unassigned.length === 0;
+
+  // PH21 tray. `undefined` on the wire ⇒ the coverage diff could not be computed (book-service
+  // unreadable) ⇒ null here ⇒ the tray renders "unknown", never an empty (green-looking) tray.
+  const overlay = overlayQuery.data ?? null;
+  const unplanned = overlay?.unplanned_chapters ?? null;
+
   return {
     layout,
     edges: sceneLinksQuery.data?.scene_links ?? [],
-    overlay: overlayQuery.data ?? null,
+    overlay,
     conformance: conformanceQuery.data ?? null,
     unionState,
     nodeContent,
+    specEmpty,
+    unplanned,
+    unplannedCount: overlay?.unplanned_count ?? unplanned?.length ?? 0,
+    extract,
     loading,
     error,
     selectedId,

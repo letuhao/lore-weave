@@ -103,6 +103,14 @@ export interface PlanOverlayProblemNode {
   threads_open: number;
   refs: PlanOverlayRef[];
 }
+/** A MANUSCRIPT chapter with no spec node (PH21). It has no canvas node — that is the whole
+ *  point — so it is addressed by its book-service `chapter_id`, not an outline-node id. */
+export interface UnplannedChapter {
+  chapter_id: string;
+  title: string;
+  sort_order: number;
+}
+
 export interface PlanOverlay {
   problems: {
     by_node: Record<string, PlanOverlayProblemNode>;
@@ -121,7 +129,7 @@ export interface PlanOverlay {
    *  manuscript spine is unreadable the server OMITS the key and sends `warnings`
    *  instead. `[]` means "nothing unplanned"; `undefined` means "we don't know" — do
    *  NOT collapse the two (absent ≠ zero). */
-  unplanned_chapters?: { chapter_id: string; title: string; sort_order: number }[];
+  unplanned_chapters?: UnplannedChapter[];
   /** EXACT, even when the list above is capped at 200. */
   unplanned_count?: number;
   unplanned_capped?: boolean;
@@ -189,6 +197,28 @@ export interface PlanHubView {
   /** Display scalars (title/status/…) per node id — arc titles from the shell, chapter/scene
    *  titles from the loaded windows. Absent id ⇒ the card falls back to a story-order label. */
   nodeContent: Record<string, NodeContent>;
+  /**
+   * PH21 — the book has NO spec at all (no arcs, no chapter nodes), so the Hub shows the empty
+   * state with its two CTAs instead of a blank canvas. `false` while we are still finding out:
+   * we must never claim "no plan" over an unfinished read (absent ≠ empty). The Hub NEVER
+   * synthesises a graph from chapters — inferring structure is the decompiler's explicit job.
+   */
+  specEmpty: boolean;
+  /**
+   * PH21 tray — MANUSCRIPT chapters with no spec node (the shared server-side coverage diff).
+   * `null` ⇒ NOT COMPUTED (the manuscript spine was unreadable): render "unknown", never an
+   * empty tray. Distinct from `layout.unassigned`, which is spec chapters with no ARC.
+   */
+  unplanned: UnplannedChapter[] | null;
+  /** EXACT count even when the tray list is server-capped at 200. */
+  unplannedCount: number;
+  /** PH21 CTA — run the SC6 decompiler (`materialize-scenes`) on this book. */
+  extract: {
+    run: () => void;
+    extracting: boolean;
+    result: { scenes_total: number; created: number; chapters: number; detail: string | null } | null;
+    error: string | null;
+  };
   loading: boolean;
   error: string | null;
   selectedId: string | null;

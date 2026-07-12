@@ -294,6 +294,7 @@ async def list_book_outline_children(
     book_id: UUID,
     structure_node_id: UUID | None = None,
     parent_id: UUID | None = None,
+    unassigned: bool = False,
     cursor: str | None = None,
     limit: int = 100,
     detail: _ChildDetail = "summary",
@@ -302,29 +303,39 @@ async def list_book_outline_children(
     grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """24 H1.1 — the Plan Hub's lazy children window, keyed on `book_id` (PH9/PH11).
-    Two axes, MUTUALLY EXCLUSIVE and exactly one REQUIRED (OQ-4, critical):
+    THREE axes, MUTUALLY EXCLUSIVE and exactly one REQUIRED (OQ-4, critical):
 
       • `structure_node_id` — the ARC axis: the chapters attached to an arc
         (`structure_node`). After the 25 M4 lift chapters carry `parent_id NULL`, so an
         omitted parent MUST NOT be read as "top-level" — that would return every chapter
         in the book. There is NO "omitted = all chapters" behavior anywhere here.
       • `parent_id` — the CHAPTER axis: the scenes under a chapter node.
+      • `unassigned=true` — the UNASSIGNED axis (24 PH21): chapter nodes bound to NO arc
+        (`structure_node_id IS NULL`). Neither other axis can reach these — the arc axis
+        needs an arc and the parent axis needs a `parent_id` the M4 lift nulled — yet they
+        are the NORMAL post-decompile state (`materialize-scenes` mints chapters with no
+        arc; grouping them is the separate LLM step). Without this axis a freshly
+        extracted plan renders as an empty canvas.
 
-    Neither axis, or BOTH, → 400 (never a silent whole-book fetch). Keyset-paged by
-    (rank, id) via the shared opaque cursor codec (malformed → 400, never a page-1
-    reset); limit clamped 1..200. `detail=summary` (default) ships the PH10 L1-ref
+    Zero axes, or more than one, → 400 (never a silent whole-book fetch). Note
+    `unassigned=true` is an EXPLICIT, named axis — the OQ-4 law it respects is "no silent
+    whole-book fetch", and this returns only the arc-less subset, keyset-paged.
+
+    Keyset-paged by (rank, id) via the shared opaque cursor codec (malformed → 400, never
+    a page-1 reset); limit clamped 1..200. `detail=summary` (default) ships the PH10 L1-ref
     projection — prose stays off the canvas; `detail=full` returns the whole node (the
     drawer's per-node fetch). Gates VIEW on the book (BPS-8) BEFORE the repo."""
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
-    # OQ-4 omitted-parent semantics: exactly one axis. `(a is None) == (b is None)` is
-    # True when BOTH are None (neither given) or BOTH set — either is a 400. This is the
-    # guard the contract test pins: a structure_node_id-absent / parent_id-omitted call
-    # can never return chapter-kind rows, because it never reaches the repo.
-    if (structure_node_id is None) == (parent_id is None):
+    # Exactly one axis. Counting beats the old pairwise `(a is None) == (b is None)` — it
+    # stays correct as axes are added, and it still guarantees the contract test's core
+    # claim: a call naming NO axis can never return chapter-kind rows (it never reaches
+    # the repo), so there is no path to a whole-book fetch.
+    axes = sum([structure_node_id is not None, parent_id is not None, unassigned])
+    if axes != 1:
         raise HTTPException(status_code=400, detail={
             "code": "OUTLINE_CHILDREN_AXIS_REQUIRED",
-            "detail": "exactly one of structure_node_id (arc axis) or parent_id "
-                      "(chapter axis) is required",
+            "detail": "exactly one of structure_node_id (arc axis), parent_id "
+                      "(chapter axis), or unassigned=true (arc-less chapters) is required",
         })
     limit = max(1, min(limit, 200))
     after = _decode_child_cursor(cursor) if cursor else None
@@ -332,6 +343,8 @@ async def list_book_outline_children(
         nodes = await outline.list_children_by_structure(
             book_id, structure_node_id, after=after, limit=limit,
         )
+    elif unassigned:
+        nodes = await outline.list_unassigned_chapters(book_id, after=after, limit=limit)
     else:
         assert parent_id is not None  # exclusivity guard above guarantees it
         nodes = await outline.list_children_by_parent_book(

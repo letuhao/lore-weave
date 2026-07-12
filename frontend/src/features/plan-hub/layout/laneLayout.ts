@@ -133,9 +133,22 @@ export interface NodePosition {
 
 export interface LaneLayout {
   lanes: LaneBand[];
+  /** Every drawn node — lane chapters + scenes + arc rollups AND the unassigned strip below. */
   nodes: NodePosition[];
-  /** Chapters with no (or an unknown) `structure_node_id` — the PH21 "Unplanned" tray, off the lanes. */
-  unplanned: NodePosition[];
+  /**
+   * SPEC chapter nodes bound to no arc lane (`structure_node_id` null, or naming an arc the shell
+   * doesn't have). They ARE part of `nodes` — this is a labelled VIEW of the same objects, so the
+   * strip can be titled and counted without a second render pass.
+   *
+   * NOT the PH21 tray. That tray is the other direction — MANUSCRIPT chapters with no spec node at
+   * all, which by definition have no canvas node to draw; it rides `overlay.unplanned_chapters`
+   * (the shared coverage diff). Two different sets: this one is "planned but un-filed", that one is
+   * "written but unplanned". They were both called `unplanned` once, which is exactly the one-name-
+   * two-concepts drift DA-10 bans.
+   */
+  unassigned: NodePosition[];
+  /** Top of the unassigned strip (for its label), or null when nothing is unassigned. */
+  unassignedY: number | null;
   width: number;
   height: number;
 }
@@ -306,7 +319,7 @@ export function laneLayout(
   const placedChapters: WindowNode[] = [];
   for (const ch of chapters) {
     const laneId = ch.structure_node_id;
-    if (!laneId || !bandById.has(laneId)) continue; // unplanned → tray, handled below
+    if (!laneId || !bandById.has(laneId)) continue; // no arc lane → the unassigned strip, below
     if (suppressed.has(laneId)) continue; // under a collapsed arc → folded into its rollup
     units.push({ order: orderKey(ch.story_order), tie: ch.id, kind: 'chapter', node: ch });
     placedChapters.push(ch);
@@ -404,22 +417,47 @@ export function laneLayout(
   }
   for (const arcId of rollupArcs) { const b = bandById.get(arcId); if (b) b.collapsed = true; }
 
-  // ---- unplanned chapters (PH21 tray): no lane, laid on their own order line, off the canvas y ----
-  const unplanned: NodePosition[] = chapters
+  // ---- UNASSIGNED chapters: spec nodes bound to no arc lane, in a strip BELOW every band ----
+  //
+  // These used to be computed into a `unplanned` array that nothing ever rendered — so a chapter with
+  // no arc was INVISIBLE on the canvas: the user could not see it, and therefore could not drag it
+  // into a lane to fix it. (It is also the normal post-decompile state: materialize-scenes mints
+  // chapter+scene nodes with no arc until the arc analysis runs.) They now render in their own strip,
+  // which makes them draggable into a real lane through the ordinary Row-1 path.
+  //
+  // The strip is deliberately NOT a LaneBand: `leafLaneAtY`/`bandAtY` only see real arcs, so a drop
+  // into the strip finds no lane and no-ops (snap-back). You can drag OUT of unassigned, never INTO
+  // it — un-filing a chapter is not an interaction the spec has.
+  const bandsBottom = bands.length ? Math.max(...bands.map((b) => b.y + b.height)) : opts.padY;
+  const unassignedY = chapters.some((ch) => !ch.structure_node_id || !bandById.has(ch.structure_node_id))
+    ? bandsBottom + opts.laneGap
+    : null;
+  const unassigned: NodePosition[] = chapters
     .filter((ch) => !ch.structure_node_id || !bandById.has(ch.structure_node_id))
     .sort((a, b) => orderKey(a.story_order) - orderKey(b.story_order) || byRank(a, b))
     .map((ch, i) => ({
-      id: ch.id, shape: 'chapter', laneId: null, x: opts.padX + i * opts.cardPitch, y: 0,
-      width: opts.cardWidth, collapsed: collapsedChapters.has(ch.id), storyOrder: ch.story_order,
+      id: ch.id,
+      shape: 'chapter',
+      laneId: null,
+      x: opts.padX + i * opts.cardPitch,
+      // Same in-band geometry a lane card uses (band top + header), so the strip reads as a lane.
+      y: (unassignedY ?? 0) + opts.laneHeaderHeight,
+      width: opts.cardWidth,
+      collapsed: collapsedChapters.has(ch.id),
+      storyOrder: ch.story_order,
     }));
+  // ONE list for the canvas — the strip's cards are ordinary nodes (that is what makes them
+  // draggable + hit-testable); `unassigned` above is a labelled view of the same objects.
+  nodes.push(...unassigned);
 
   // Width/height are the true content extent so React Flow's viewport + minimap never clip a card.
   // Scenes branch PAST the last chapter slot (baseX + i·scenePitch), so width must measure the
   // rightmost NODE edge, not just the chapter/rollup slot count.
-  const rightmost = [...nodes, ...unplanned].reduce((m, n) => Math.max(m, n.x + n.width), 0);
+  const rightmost = nodes.reduce((m, n) => Math.max(m, n.x + n.width), 0);
   const width = (rightmost || opts.padX) + opts.padX;
-  const height = (bands.length ? Math.max(...bands.map((b) => b.y + b.height)) : opts.padY) + opts.padY;
-  return { lanes: bands, nodes, unplanned, width, height };
+  const bottom = unassignedY === null ? bandsBottom : unassignedY + opts.laneHeight;
+  const height = bottom + opts.padY;
+  return { lanes: bands, nodes, unassigned, unassignedY, width, height };
 }
 
 /**

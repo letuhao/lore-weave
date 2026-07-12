@@ -71,8 +71,10 @@ export function toActualScene(s: Scene): ActualScene {
  *     manuscript index is still paging, a not-yet-loaded scene would be mislabelled "planned-only"
  *     (the paged-join-mislabels-absent bug class); until complete such a node gets NO entry and the
  *     canvas renders it neutrally.
- *   • 'imported-unplanned' (a manuscript scene with no spec node) is NOT emitted here — it is the
- *     PH21 tray, surfaced via laneLayout.unplanned.
+ *   • 'imported-unplanned' (a MANUSCRIPT unit with no spec node) is NOT emitted here — it cannot be:
+ *     this map is keyed by spec-node id, and such a unit has no spec node. It is the PH21 tray, and
+ *     it rides `overlay.unplanned_chapters` (the shared server-side coverage diff, 28 OQ-4).
+ *     NOT `laneLayout.unassigned` — that is the opposite set (spec chapters with no ARC).
  * Absent from the map ⇒ unknown/neutral, never a false verdict (absent ≠ written, absent ≠ planned).
  */
 export function computeUnionState(

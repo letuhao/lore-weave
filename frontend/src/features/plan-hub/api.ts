@@ -24,16 +24,19 @@ export async function getArcs(bookId: string, token: string): Promise<{ arcs: Ar
   return { arcs: res.nodes ?? res.arcs ?? [] };
 }
 
-/** Read surface #2 — one keyset page of the children window. Exactly one axis:
- *  `structureNodeId` (chapters under an arc) OR `parentId` (scenes under a chapter).
- *  The route 400s on neither/both (OQ-4). `detail=summary` is the canvas default. */
+/** Read surface #2 — one keyset page of the children window. Exactly ONE axis:
+ *  `structureNodeId` (chapters under an arc), `parentId` (scenes under a chapter), or
+ *  `unassigned` (PH21 — chapters bound to no arc: the normal post-decompile state, which
+ *  neither other axis can reach). The route 400s on zero or >1 axis (OQ-4 — there is no
+ *  "omitted = whole book" anywhere). `detail=summary` is the canvas default. */
 export function getChildren(
   bookId: string,
-  axis: { structureNodeId: string } | { parentId: string },
+  axis: { structureNodeId: string } | { parentId: string } | { unassigned: true },
   opts: { cursor?: string | null; limit?: number; token: string },
 ): Promise<ChildrenPage> {
   const p = new URLSearchParams();
   if ('structureNodeId' in axis) p.set('structure_node_id', axis.structureNodeId);
+  else if ('unassigned' in axis) p.set('unassigned', 'true');
   else p.set('parent_id', axis.parentId);
   if (opts.cursor) p.set('cursor', opts.cursor);
   if (opts.limit) p.set('limit', String(opts.limit));
@@ -68,6 +71,39 @@ export function getConformanceStatus(
   return apiJson<ConformanceStatus>(
     `${COMP}/books/${bookId}/conformance/status`,
     { token },
+  );
+}
+
+/** Result of the SC6 decompiler (`MaterializeResult.to_dict`). `work_resolved: false` with
+ *  `scenes_total > 0` is the graceful no-Work guard — REPORTED, never a silent 200-with-zero. */
+export interface MaterializeScenesResult {
+  book_id: string;
+  work_resolved: boolean;
+  project_id: string | null;
+  scenes_total: number;
+  created: number;
+  matched: number;
+  skipped_authored: number;
+  chapters: number;
+  detail: string | null;
+}
+
+/** PH21 empty-state CTA #1 — "Extract the plan from the manuscript" (the DECOMPILER, 22 SC6).
+ *  Upserts one spec node per parsed scene leaf (+ their chapter nodes), keyed on the book.
+ *  DETERMINISTIC and $0 — no LLM — which is why it is a direct EDIT-gated call and not a
+ *  propose→confirm priced endpoint (`materialize_scenes_v1`, the OQ-9 GUI mirror).
+ *
+ *  It extracts SCENES, not ARCS. Grouping chapters into arcs is the separate LLM step
+ *  (`composition_arc_import_analyze`), which is a Tier-W MCP tool by design — agentic logic
+ *  reachable only through the agent (MCP-first invariant), never a bespoke HTTP endpoint. So the
+ *  freshly-minted chapters land UNASSIGNED (no arc lane) and the Hub says so. */
+export function materializeScenes(
+  bookId: string,
+  token: string,
+): Promise<MaterializeScenesResult> {
+  return apiJson<MaterializeScenesResult>(
+    `${COMP}/books/${bookId}/materialize-scenes`,
+    { method: 'POST', token },
   );
 }
 

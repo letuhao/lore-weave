@@ -30,7 +30,8 @@ describe('laneLayout — PH14 (24-H2.2)', () => {
     const l = laneLayout([], []);
     expect(l.lanes).toEqual([]);
     expect(l.nodes).toEqual([]);
-    expect(l.unplanned).toEqual([]);
+    expect(l.unassigned).toEqual([]);
+    expect(l.unassignedY).toBeNull();
   });
 
   it('lane bands are rank-ordered and depth is recomputed from the tree, not trusted from the shell', () => {
@@ -185,13 +186,37 @@ describe('laneLayout — PH14 (24-H2.2)', () => {
     expect(l.width).toBeGreaterThanOrEqual(rightmostScene);
   });
 
-  it('PH21: a chapter with no (or unknown) structure_node_id lands in the unplanned tray, off the lanes', () => {
+  it('PH21: a chapter with no (or unknown) structure_node_id goes to the UNASSIGNED strip, not a lane', () => {
     const shell = [arc({ id: 'A1', rank: 'a' })];
     const windows = [ch('c1', 'A1', 1), ch('u1', null, 2), ch('u2', 'GHOST', 3)];
     const l = laneLayout(shell, windows);
-    expect(chapterNodes(l).map((n) => n.id)).toEqual(['c1']); // only the planned chapter is on a lane
-    expect(l.unplanned.map((n) => n.id)).toEqual(['u1', 'u2']);
-    expect(l.unplanned.every((n) => n.laneId === null)).toBe(true);
+    expect(l.unassigned.map((n) => n.id)).toEqual(['u1', 'u2']);
+    expect(l.unassigned.every((n) => n.laneId === null)).toBe(true);
+    // only the arc-bound chapter is ON a lane…
+    expect(chapterNodes(l).filter((n) => n.laneId !== null).map((n) => n.id)).toEqual(['c1']);
+  });
+
+  it('UNASSIGNED chapters are RENDERED (they are in `nodes`) — else you cannot see or fix them', () => {
+    // They used to be computed into an array nothing drew, so an arc-less chapter was invisible on
+    // the canvas: unseeable, and therefore un-draggable into a lane. Being in `nodes` is what makes
+    // the ordinary Row-1 drag work on them.
+    const l = laneLayout([arc({ id: 'A1', rank: 'a' })], [ch('c1', 'A1', 1), ch('u1', null, 2)]);
+    expect(l.nodes.map((n) => n.id)).toContain('u1');
+    expect(l.unassigned[0]).toBe(l.nodes.find((n) => n.id === 'u1')); // the SAME object, not a copy
+  });
+
+  it('the unassigned strip sits BELOW every lane band, and the canvas grows to hold it', () => {
+    const l = laneLayout([arc({ id: 'A1', rank: 'a' })], [ch('c1', 'A1', 1), ch('u1', null, 2)]);
+    const bandsBottom = Math.max(...l.lanes.map((b) => b.y + b.height));
+    expect(l.unassignedY).not.toBeNull();
+    expect(l.unassignedY!).toBeGreaterThanOrEqual(bandsBottom);
+    expect(l.height).toBeGreaterThan(l.unassignedY!); // not clipped
+  });
+
+  it('no unassigned chapters ⇒ unassignedY is null (nothing to label)', () => {
+    const l = laneLayout([arc({ id: 'A1', rank: 'a' })], [ch('c1', 'A1', 1)]);
+    expect(l.unassigned).toEqual([]);
+    expect(l.unassignedY).toBeNull();
   });
 });
 

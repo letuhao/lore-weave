@@ -6,6 +6,8 @@ export { ArcRollupNode } from './ArcRollupNode';
 export { LaneBandNode, buildLaneNodes, LANE_NODE_PREFIX } from './LaneBandLayer';
 export { PlanDrawer } from './PlanDrawer';
 export { PlanNavigatorRail } from './PlanNavigatorRail';
+export { PlanEmptyState } from './PlanEmptyState';
+export { UnplannedTray } from './UnplannedTray';
 export { NodeBadges } from './NodeBadges';
 export { PacingSparkline } from './PacingSparkline';
 export type { PlanNodeData, LaneBandData, NodeBadge } from './nodePresentation';

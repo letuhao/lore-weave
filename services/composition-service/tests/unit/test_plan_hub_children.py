@@ -87,6 +87,7 @@ class _FakeOutline:
         self.nodes = nodes
         self.structure_calls: list[dict] = []
         self.parent_calls: list[dict] = []
+        self.unassigned_calls: list[dict] = []
 
     async def list_children_by_structure(self, book_id, structure_node_id, *, after=None, limit=100):
         self.structure_calls.append({
@@ -100,6 +101,14 @@ class _FakeOutline:
             "book_id": book_id, "parent_id": parent_id, "after": after, "limit": limit,
         })
         return self.nodes
+
+    async def list_unassigned_chapters(self, book_id, *, after=None, limit=100):
+        self.unassigned_calls.append({"book_id": book_id, "after": after, "limit": limit})
+        return self.nodes
+
+    @property
+    def any_calls(self) -> list[dict]:
+        return [*self.structure_calls, *self.parent_calls, *self.unassigned_calls]
 
 
 class _FakeSceneLinks:
@@ -151,7 +160,7 @@ def test_neither_axis_is_400_and_never_hits_repo(client):
     assert r.json()["detail"]["code"] == "OUTLINE_CHILDREN_AXIS_REQUIRED"
     # the critical guard: an omitted-axis call NEVER reaches the repo, so it can
     # never return chapter-kind rows (the F-H1/OQ-4 root-semantics-flip bug).
-    assert repo.structure_calls == [] and repo.parent_calls == []
+    assert repo.any_calls == []
 
 
 def test_both_axes_is_400(client):
@@ -163,7 +172,48 @@ def test_both_axes_is_400(client):
         f"?structure_node_id={uuid4()}&parent_id={uuid4()}"
     )
     assert r.status_code == 400
+    assert repo.any_calls == []
+
+
+# ── PH21 UNASSIGNED axis (arc-less chapters — the post-decompile state) ──────────
+
+def test_unassigned_axis_serves_arcless_chapters(client):
+    c, holder = client
+    repo = _FakeOutline([_node(kind="chapter", structure_node_id=None)])
+    holder["outline"] = repo
+    r = c.get(f"/v1/composition/books/{BOOK}/outline/children?unassigned=true")
+    assert r.status_code == 200
+    assert len(r.json()["items"]) == 1
+    # it takes its OWN axis — neither sibling can reach an arc-less chapter.
+    assert len(repo.unassigned_calls) == 1
+    assert repo.unassigned_calls[0]["book_id"] == BOOK
     assert repo.structure_calls == [] and repo.parent_calls == []
+
+
+def test_unassigned_is_still_exactly_one_axis(client):
+    """`unassigned=true` is an EXPLICIT axis, not a modifier — combining it with another
+    is the same 400 as naming two axes. This is what keeps OQ-4's "no silent whole-book
+    fetch" law true as the axis count grows."""
+    c, holder = client
+    repo = _FakeOutline([_node(kind="chapter")])
+    holder["outline"] = repo
+    r = c.get(
+        f"/v1/composition/books/{BOOK}/outline/children"
+        f"?unassigned=true&structure_node_id={uuid4()}"
+    )
+    assert r.status_code == 400
+    assert repo.any_calls == []
+
+
+def test_unassigned_false_is_not_an_axis(client):
+    """`unassigned=false` must not count as "an axis was given" — that would make a bare
+    `?unassigned=false` a zero-axis call that somehow passed the guard."""
+    c, holder = client
+    repo = _FakeOutline([_node(kind="chapter")])
+    holder["outline"] = repo
+    r = c.get(f"/v1/composition/books/{BOOK}/outline/children?unassigned=false")
+    assert r.status_code == 400
+    assert repo.any_calls == []
 
 
 # ── PH10 detail=summary projection ───────────────────────────────────────────────

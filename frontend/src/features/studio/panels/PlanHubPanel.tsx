@@ -21,12 +21,18 @@ import { useStudioBusSelector, useStudioHost } from '../host/StudioHostProvider'
 import { useStudioPanel } from './useStudioPanel';
 import { usePlanHub } from '@/features/plan-hub/hooks/usePlanHub';
 import type { CameraFocusTarget } from '@/features/plan-hub/types';
-import { PlanCanvas, PlanDrawer, PlanNavigatorRail } from '@/features/plan-hub/components';
+import {
+  PlanCanvas,
+  PlanDrawer,
+  PlanEmptyState,
+  PlanNavigatorRail,
+  UnplannedTray,
+} from '@/features/plan-hub/components';
 
 export function PlanHubPanel(props: IDockviewPanelProps) {
   useStudioPanel('plan-hub', props.api);
   const { t } = useTranslation('studio');
-  const { bookId } = useStudioHost();
+  const { bookId, openPanel, focusManuscriptUnit } = useStudioHost();
   const view = usePlanHub(bookId);
 
   // H2.6 — the editor's active chapter (book-service chapter_id) off the bus. Map it to the Hub node
@@ -70,6 +76,24 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     );
   }
 
+  // PH21 — the book has no spec at all. Offer the two honest verbs (extract / plan) instead of a
+  // blank canvas. `specEmpty` is false until BOTH reads have answered, so this never flashes over a
+  // book whose plan simply hasn't loaded (absent ≠ empty). "Plan from scratch" opens the PlanForge
+  // panel via the host — zero navigate() (PH24/DOCK-7).
+  if (view.specEmpty) {
+    return (
+      <div data-testid="studio-plan-hub-panel" className="h-full w-full">
+        <PlanEmptyState
+          onExtract={view.extract.run}
+          onPlanFromScratch={() => openPanel('planner', { focus: true })}
+          extracting={view.extract.extracting}
+          result={view.extract.result}
+          error={view.extract.error}
+        />
+      </div>
+    );
+  }
+
   // The selected node's kind routes the drawer's facet set + which backend it reads (arc/saga from
   // the shell, chapter/scene via getNode). nodeContent is keyed by node id for every drawn node.
   const selectedKind = view.selectedId ? view.nodeContent[view.selectedId]?.kind ?? null : null;
@@ -82,8 +106,11 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         <PlanNavigatorRail bookId={bookId} onFocusNode={focusNode} selectedId={view.selectedId} />
       </div>
 
-      {/* center graph + the H3 drawer overlay. `relative` so the drawer's `absolute right-0` pins to
-          THIS region, not the window (dockview-panel-fixed-positioning bug). */}
+      {/* center column: graph + the H3 drawer overlay, with the PH21 tray docked beneath. The
+          canvas gets `relative` so the drawer's `absolute right-0` pins to THAT region and not the
+          window (the dockview fixed-positioning bug); the tray sits OUTSIDE it, in normal flow, so
+          it never overlaps the drawer. */}
+      <div className="flex min-w-0 flex-1 flex-col">
       <div className="relative min-w-0 flex-1">
         <PlanCanvas
           layout={view.layout}
@@ -104,6 +131,23 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onReorderChapter={view.reorderChapter}
           busy={view.moving}
         />
+        {/* PH21 — a HUD notice for the UNASSIGNED strip (spec chapters bound to no arc — the normal
+            post-decompile state). Their cards render in a strip below the lanes and drag into a lane
+            through the ordinary Row-1 path; this just says how many there are, since the strip can
+            be scrolled out of view on a tall canvas. NOT the unplanned tray — that is the other
+            direction (manuscript chapters with no spec node) and docks below. */}
+        {view.layout.unassigned.length > 0 && (
+          <div
+            data-testid="plan-hub-unassigned-notice"
+            className="pointer-events-none absolute left-3 top-3 z-20 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 shadow"
+          >
+            {t('planHub.node.unassignedStrip', {
+              count: view.layout.unassigned.length,
+              defaultValue: '{{count}} chapter in no arc — drag it into a lane',
+              defaultValue_other: '{{count}} chapters in no arc — drag them into a lane',
+            })}
+          </div>
+        )}
         {/* A failed move (incl. the 412 "changed elsewhere — reloaded" OCC recovery) is surfaced,
             never swallowed — the canvas has already re-synced from the server underneath it. */}
         {view.moveError && (
@@ -138,6 +182,17 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           kind={selectedKind}
           bookId={bookId}
           onClose={() => view.select(null)}
+        />
+      </div>
+
+        {/* PH21 — manuscript chapters no spec node covers. Drift made visible, never auto-planned.
+            Self-hides when there are none AND we know it; renders "unknown" when the coverage diff
+            could not be computed. A row opens the chapter in the EDITOR — the unplanned chapter has
+            no spec node to select, so the only truthful destination is where it actually lives. */}
+        <UnplannedTray
+          chapters={view.unplanned}
+          total={view.unplannedCount}
+          onOpenChapter={(chapterId) => focusManuscriptUnit(chapterId)}
         />
       </div>
     </div>

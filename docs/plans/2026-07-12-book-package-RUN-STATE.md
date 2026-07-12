@@ -86,7 +86,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + evidence · `🅿️` pa
 
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| A1 | **24-H1.3 coverage-diff helper** — the real `unplanned_chapters` (book chapters ∌ spec nodes). ONE implementation, exported for 28-AN-4. **Unblocks Stage C.** | [ ] | |
+| A1 | **24-H1.3 coverage-diff helper** — the real `unplanned_chapters` (book chapters ∌ spec nodes). ONE implementation, exported for 28-AN-4. **Unblocks Stage C.** | [x] | `03f02533d` · `app/services/coverage.py`; 1856 pass / 248 skip; degraded ⇒ key ABSENT + warning (absent≠zero), proven at helper AND route |
 | A2 | **PH21 unplanned tray + empty state** — render `layout.unplanned` (computed, unit-tested, never drawn); 2 CTAs (`materialize-scenes` route already exists) | [ ] | |
 | A3 | **Window pagination is unreachable** — `loadMoreArc`/`hasMore` exported, never consumed ⇒ an arc renders only its first 100 chapters and 101+ are **unmovable** | [ ] | |
 | A4 | **Fix-now debt tier** — actual-state read failure silently neutralises the 3-state treatment; drawer's Canon/References/Critic stubs (overlay is already in memory); no cold-open loading state; stale "404 until 26 ships" comments; `refs_capped` computed + never surfaced | [ ] | |
@@ -142,6 +142,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + evidence · `🅿️` pa
 | # | Decision | Why | Reversible | Flag |
 |---|---|---|---|---|
 | D-01 | **Phase order A → B → C** (finish 24, then 27, then 28) rather than 00B's literal 6 → 7 → 8 | Stage 7 is half-built (finish what's started, don't leave a half-feature), and A1 unblocks C. No dependency is violated: 24's prereqs are Stage 3 + 26-C, and 28-AN-A needs A1, not 27. | Yes | |
+| D-02 | **The coverage diff is computed SERVER-side** in composition-service (`app/services/coverage.py`), reading book-service's spine via the existing internal book client — *not* client-side as H1.3's first cut assumed. | 28 OQ-4/NC-1 seals it as "one composition-side helper shared by 24 H1.3's overlay and AN-4", and an MCP tool (`composition_diagnostics`) **cannot** compose an FE computation — a client-only tray makes Phase C unbuildable. SC11 only bars the **per-node** two-truths server JOIN (thousands of nodes); this is one bounded set-difference, exactly the `pack.py` cross-service read AN-2 blesses. | Yes (the FE could still re-derive it) | |
+| D-03 | **Degraded coverage OMITS `unplanned_chapters` rather than sending `[]`**, and the FE type is optional so consumers must branch. | `[]` renders as "nothing unplanned" — a green-looking zero over an unknown. This is the `fe-status-default-fallback` bug class and the same absent≠zero law 24 OQ-8 already applies to drift. Cost: every consumer must handle `undefined`. | Yes | |
 
 ## 7. Parked / blocked register — blocked ≠ stopped
 

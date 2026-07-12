@@ -13,6 +13,17 @@ import { toWindowNode } from './planHubMappers';
 
 const CHILD_PAGE = 100; // the children route's keyset page size
 
+/**
+ * The UNASSIGNED window (PH21) rides the arc-slice machinery under a sentinel key, so it inherits
+ * paging, `reload()` and `patch()` for free instead of growing a fourth parallel state shape.
+ * It is a real uuid-shaped impossibility, so it can never collide with an arc id.
+ *
+ * It loads on EVERY book open (an arc-less chapter belongs to no arc, so no expand can reveal it),
+ * but it loads in an effect — i.e. AFTER paint, like every other chapter window (PH11). The ≤5
+ * cold-open budget counts the paint-blocking reads, which this is not.
+ */
+export const UNASSIGNED_KEY = 'unassigned:no-arc';
+
 interface WindowSlice {
   // The raw summary rows — title/status/tension live here; laneLayout gets the WindowNode subset.
   items: SummaryNode[];
@@ -57,6 +68,13 @@ export interface PlanWindowsResult {
    * therefore rolls itself back — we never have to undo the patch by hand.
    */
   patch: (nodeId: string, partial: Partial<SummaryNode>) => void;
+  /**
+   * Has the UNASSIGNED window come back yet? The PH21 empty state ("no plan — extract one?")
+   * turns on "there are no chapter nodes anywhere", and with zero arcs this is the only window
+   * that could hold one. Answering that question from `absent` rather than `answered` would flash
+   * an offer to EXTRACT a plan over a book whose plan simply hadn't loaded — absent ≠ empty.
+   */
+  unassignedLoaded: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -76,6 +94,10 @@ export function usePlanWindows(
   const [arcSlices, setArcSlices] = useState<Record<string, WindowSlice>>({});
   const [chapterSlices, setChapterSlices] = useState<Record<string, WindowSlice>>({});
   const [error, setError] = useState<string | null>(null);
+  // Set ONLY when the unassigned window comes back SUCCESSFULLY. A failed fetch leaves it false:
+  // a failure means we do not KNOW whether the book has un-filed chapters, and "don't know" must
+  // not read as "there are none" (which would offer to extract a plan that may already exist).
+  const [unassignedLoaded, setUnassignedLoaded] = useState(false);
 
   // Generation guard: a page that resolves after a book switch must not clobber newer state.
   const gen = useRef(0);
@@ -92,6 +114,7 @@ export function usePlanWindows(
     setArcSlices({});
     setChapterSlices({});
     setError(null);
+    setUnassignedLoaded(false);
   }, [bookId]);
 
   const fetchArc = useCallback(
@@ -100,7 +123,9 @@ export function usePlanWindows(
       const myGen = gen.current;
       setArcSlices((prev) => ({ ...prev, [arcId]: { ...(prev[arcId] ?? EMPTY_SLICE), loading: true } }));
       try {
-        const page = await getChildren(bookId, { structureNodeId: arcId }, { cursor, limit: CHILD_PAGE, token });
+        const axis =
+          arcId === UNASSIGNED_KEY ? ({ unassigned: true } as const) : { structureNodeId: arcId };
+        const page = await getChildren(bookId, axis, { cursor, limit: CHILD_PAGE, token });
         if (myGen !== gen.current) return;
         setArcSlices((prev) => {
           const cur = prev[arcId] ?? EMPTY_SLICE;
@@ -109,6 +134,7 @@ export function usePlanWindows(
             [arcId]: { items: cursor ? [...cur.items, ...page.items] : page.items, cursor: page.next_cursor, loading: false },
           };
         });
+        if (arcId === UNASSIGNED_KEY) setUnassignedLoaded(true);
       } catch (e) {
         if (myGen !== gen.current) return;
         setError(e instanceof Error ? e.message : 'Failed to load chapters');
@@ -143,9 +169,12 @@ export function usePlanWindows(
   );
 
   // Auto-load the first page of each newly-expanded arc / chapter (synchronisation, not an event).
+  // The UNASSIGNED window is always in this set: its chapters hang off no arc, so no expand gesture
+  // could ever request them — without this they are simply never fetched and the strip renders
+  // empty on a book whose plan is entirely un-filed (exactly the post-decompile state).
   useEffect(() => {
     if (!token || !bookId) return;
-    for (const arcId of expandedArcIds) {
+    for (const arcId of [UNASSIGNED_KEY, ...expandedArcIds]) {
       if (!requestedArcs.current.has(arcId)) {
         requestedArcs.current.add(arcId);
         void fetchArc(arcId, null);
@@ -251,6 +280,7 @@ export function usePlanWindows(
     loadMoreChapter,
     reload,
     patch,
+    unassignedLoaded,
     loading,
     error,
   };
