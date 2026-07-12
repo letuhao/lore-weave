@@ -303,6 +303,26 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 
 ### FINAL AUDIT — the run reached the /goal's PARK-COMPLETION terminal state — 2026-07-12 · for the morning review
 
+> **▶ UPDATE (2026-07-13, Phase-2 continuation) — PHASE 2 CORE built + reviewed + AUDITED.**
+> This run built + live-proved 7 Phase-2 slices (WS-2.1/2.2/2.3/2.4/D16/2.7/2.9), ran `/review-impl` on the
+> phase (1 MED provenance-drift fixed, 5931ebbcb), parked the 4 genuinely-large remainder (WS-2.5/2.6/2.8/
+> 2.10) in §7 P-6 with concrete gate-#2 build-scopes, and ran the **FINAL INDEPENDENT MULTI-AGENT AUDIT**
+> (goal cond 8): 3 parallel adversarial auditors (privacy/tenancy · fact-pipeline correctness · completeness/
+> drift). **Verdict: no false ✅, all 4 parks honestly gate-#2 (not lazy "blocked").** Findings — **2 HIGH +
+> 5 MED, ALL FIXED + committed + regression-tested, key ones live-proven:** **HIGH-1** memory_timeline
+> bypassed D16 (exclusion reached find_entities but not list_events_filtered → a projectless timeline leaked
+> diary events) → threaded exclude_project_ids through list_events_filtered + a Cypher source-scan test
+> (26a90f579). **HIGH-2** erase reported erased:true while diary passages + pending/rejected fact text
+> survived when the book-keyed KG-project resolution failed → KG erase now runs by user_id alone (resolves
+> assistant projects via is_assistant), always counting toward allOk (a2592b33f; +2 BFF regression tests).
+> **MED** recall matched subject by raw toLower not canonical_name (titled/CJK names unrecallable) → LIVE:
+> "Dr. Smith"(→canon "smith") recall count 1. **MED** dedup/tombstone key omitted event_date (a Friday
+> re-affirmation dropped; a reject tombstoned an s/p/o forever) → per-day key, LIVE: same s/p/o on 2 days
+> both queue. **MED** _parse_iso_date short-circuited the entry_date fallback on a non-ISO date. **MED** the
+> PUBLIC reject (the FE path) didn't tombstone → consolidated both reject routes onto one repo method.
+> **§10 goal-condition ledger: (1)✅ slices ✅-or-🅿️ · (2)✅ E2E pasted · (3)✅ /review-impl per phase · (4)✅
+> git log · (5)✅ registers+ledger · (6)✅ P-1/P-3/D-R18 · (7)✅ D-R16/D-R18 no-leak · (8)✅ final audit.**
+>
 > **▶ UPDATE (later this run, post-E2E + multi-agent audit) — Phase 1 is now COMPLETE + LIVE-PROVEN, not just park-complete.**
 > Since the narrative below was written, the run went further than "every slice ✅-or-🅿️": it **built the WS-1.10 FE**,
 > **closed the 2 backend gaps** the FE needed (public `end-day` trigger + diary-entries list), **shipped all 3 PO product
