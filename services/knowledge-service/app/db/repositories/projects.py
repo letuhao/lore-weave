@@ -773,6 +773,25 @@ class ProjectsRepo:
             )
         return _row_to_project(row) if row else None
 
+    async def set_canon_capture_consent(
+        self, user_id: UUID, project_id: UUID, *, enabled: bool,
+    ) -> Project | None:
+        """A2 / D-R17 — the per-turn work-capture CONSENT toggle (`canon_capture_enabled`). The
+        column is fail-closed by DEFAULT false; this is the user turning capture ON/OFF. Owner-
+        scoped (None if not owned / not found). The chat-service capture gate reads this via
+        `project_enables`, so the effect lands on the NEXT turn — E8: "consent off mid-day stops
+        capture next tick". The effective value is still AND(deploy_ceiling, this) — a deployment
+        kill-switch can force it off regardless (surfaced by the capabilities read)."""
+        query = f"""
+        UPDATE knowledge_projects
+        SET canon_capture_enabled = $3, updated_at = now()
+        WHERE user_id = $1 AND project_id = $2
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, user_id, project_id, enabled)
+        return _row_to_project(row) if row else None
+
     async def archive(
         self, user_id: UUID, project_id: UUID
     ) -> Project | None:

@@ -118,3 +118,45 @@ async def test_assistant_flag_off_for_a_normal_project(pool):
     row = await _flags(pool, normal.project_id)
     assert row["is_assistant"] is False
     assert row["chat_turn_extraction_enabled"] is True
+
+
+# ── A2 / D-R17 — the per-turn work-capture CONSENT toggle (canon_capture_enabled) ──
+
+
+async def _consent(pool, project_id):
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT canon_capture_enabled FROM knowledge_projects WHERE project_id = $1",
+            project_id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_capture_consent_defaults_fail_closed_then_toggles_by_effect(pool):
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    proj, _ = await repo.get_or_create_assistant_project(user, book)
+
+    # Fail-closed by column DEFAULT (D-R17): a fresh assistant project captures NOTHING.
+    assert await _consent(pool, proj.project_id) is False
+
+    # Consent ON — proven by EFFECT (the flag the chat gate reads flips true).
+    updated = await repo.set_canon_capture_consent(user, proj.project_id, enabled=True)
+    assert updated is not None
+    assert await _consent(pool, proj.project_id) is True
+
+    # Consent OFF again (E8: off mid-day stops capture next tick).
+    await repo.set_canon_capture_consent(user, proj.project_id, enabled=False)
+    assert await _consent(pool, proj.project_id) is False
+
+
+@pytest.mark.asyncio
+async def test_capture_consent_is_owner_scoped(pool):
+    # A different user cannot flip the owner's consent — the setter is WHERE user_id=$1.
+    repo = ProjectsRepo(pool)
+    owner, stranger, book = uuid4(), uuid4(), uuid4()
+    proj, _ = await repo.get_or_create_assistant_project(owner, book)
+
+    result = await repo.set_canon_capture_consent(stranger, proj.project_id, enabled=True)
+    assert result is None, "a non-owner set must not match (owner-scoped)"
+    assert await _consent(pool, proj.project_id) is False, "the owner's consent stayed OFF"

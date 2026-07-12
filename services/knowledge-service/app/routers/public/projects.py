@@ -626,6 +626,30 @@ async def patch_project(
     return updated
 
 
+class CaptureConsentUpdate(BaseModel):
+    """A2 — the per-turn work-capture consent toggle body. Closed set (bool)."""
+
+    enabled: bool
+
+
+@router.put("/{project_id}/capture-consent", response_model=Project)
+async def put_capture_consent(
+    project_id: UUID,
+    body: CaptureConsentUpdate,
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+) -> Project:
+    """A2 / D-R17 (spec 09) — the per-turn WORK-CAPTURE CONSENT toggle (`canon_capture_enabled`).
+    OWNER-only: it is the user's own consent to have their real colleagues/projects captured, so a
+    mere collaborator must not flip it. Fail-closed by default; this turns it on/off. Consumed by
+    the chat-service capture gate via `project_enables` — the effective value is
+    AND(deploy_ceiling, this), and turning it off stops capture on the next turn (E8). Idempotent."""
+    updated = await repo.set_canon_capture_consent(user_id, project_id, enabled=body.enabled)
+    if updated is None:
+        raise _not_found()
+    return updated
+
+
 @router.put("/{project_id}/extraction-config", response_model=Project)
 async def put_extraction_config(
     project_id: UUID,
