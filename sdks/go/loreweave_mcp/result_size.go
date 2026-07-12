@@ -30,20 +30,29 @@ import (
 // would be filed under "known noise" within a week; an error gets the tool fixed. The tool
 // author sees it the first time they call it, with the size and the ceiling in the message.
 //
-// Two thresholds:
-//   - WARN  (LW_MCP_RESULT_WARN_BYTES,  default 8,000)  — logged. "This is getting big."
-//   - MAX   (LW_MCP_RESULT_MAX_BYTES,   default 32,000) — the tool call FAILS.
+// Two thresholds, and the split between them is the whole design — learned from a review
+// that caught the first cut breaking the platform:
+//   - WARN (LW_MCP_RESULT_WARN_BYTES, default 8,000)   — LOGGED, every time, never fatal.
+//     THIS is the "find broken tools" mechanism the human asked for. It is how the 44KB
+//     glossary bomb was found. It fires on legitimate-but-chunky reads too, and that is
+//     correct: a chunky read is worth a human's glance even when it is not a bug.
+//   - MAX (LW_MCP_RESULT_MAX_BYTES, default 512,000)   — the tool call FAILS.
 //
-// The default MAX is set to catch bombs without breaking a legitimately large read (a
-// chapter's prose is a real result that can run tens of KB). It should be RATCHETED DOWN as
-// tools are fixed — the goal is that no tool ever needs half of it.
+// The first cut set MAX to 32,000 and it was WRONG: a review measured that 88.7% of real
+// books exceed 32KB on `glossary_book_ontology_read` ALONE, and a single ~5,300-word chapter
+// blows it on `book_get_chapter` — both LEGITIMATE full-content reads. A blanket 32KB
+// hard-fail with "do not retry" does not find broken tools; it bricks the flagship. Size
+// cannot separate "a bloated payload of unused structure" (a bomb) from "a large blob of the
+// exact content requested" (legitimate) — the 44KB bomb was SMALLER than a 117KB legitimate
+// ontology. So the hard FAIL is a catastrophe backstop only (a query that forgot its LIMIT,
+// a list that should have paginated), set well above any legitimate single read; the WARN,
+// not the FAIL, is what surfaces bloat for a human to fix.
 //
-// Escape hatch: a tool that genuinely must return a large payload sets `LW_MCP_RESULT_MAX_BYTES`
-// for its own service, or paginates. There is deliberately no per-tool opt-out flag: an
-// opt-out is how the 44KB payload would have survived this check too.
+// Escape hatch: a service that legitimately must exceed even 512KB sets LW_MCP_RESULT_MAX_BYTES.
+// No per-tool opt-out flag — an opt-out is how the 44KB payload would have dodged the WARN too.
 const (
 	defaultResultWarnBytes = 8_000
-	defaultResultMaxBytes  = 32_000
+	defaultResultMaxBytes  = 512_000
 )
 
 func envInt(key string, def int) int {

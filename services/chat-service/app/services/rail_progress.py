@@ -175,16 +175,23 @@ def compute_rail_progress(
         if holds is not None:
             artifact[i] = holds
 
-    # The furthest point the pipeline has DEMONSTRABLY reached. A rail is a pipeline, so a
-    # later artifact is proof the earlier plumbing already ran — you cannot be holding 3187
-    # cast members without having created the categories they are filed under.
+    # The furthest point the pipeline has CONTIGUOUSLY reached from the start. A rail is a
+    # pipeline, so an unbroken run of present artifacts is proof the plumbing up to that point
+    # ran — you cannot be holding 3187 cast members without the categories they are filed
+    # under. This is what lets a NEW session on an EXISTING book resume mid-rail instead of
+    # being told to start from step 1 on a book that already has 31 categories.
     #
-    # This is what fixes the case that exposed the naive rule: open a NEW chat session on an
-    # EXISTING book and the call log is empty, so every read/confirm step looks "not done"
-    # and the agent gets told to start from step 1 — on a book with 31 categories and 3187
-    # entities already in it. Telling it to re-run the opening steps of a half-built book is
-    # worse than telling it nothing.
-    last_artifact_done = max((i for i, ok in artifact.items() if ok), default=0)
+    # CONTIGUOUS is load-bearing, and the review caught why. The first cut used
+    # max(any TRUE artifact), which jumped OVER a proven-ABSENT one: a book with chapters but
+    # 0 categories marked `adopt-categories` (the confirm_token producer) "done — do not
+    # repeat", then named its confirm as the next action — a deadlock, because the token it
+    # needs comes from the step now forbidden. Stopping at the first proven-absent artifact
+    # means a gap in the pipeline resets the resume point to before the gap, where it belongs.
+    last_artifact_done = 0
+    for i in sorted(artifact):
+        if not artifact[i]:
+            break
+        last_artifact_done = i
 
     # A `confirm` gate exists only to apply the step before it, and it names that step in
     # its inputs_map (e.g. apply-cast ← save-cast.confirm_token). It is therefore done
@@ -204,11 +211,24 @@ def compute_rail_progress(
                 confirms[i] = by_id[src]
                 break
 
+    # Call-log doneness CONSUMES occurrences in step order, so a rail that uses the same tool
+    # in two steps needs TWO successes to mark both done — not one, which a bare
+    # `tool in succeeded_tools` would (a review finding). `succeeded_tools` may be a set (each
+    # tool counts once) or a Counter (true per-tool counts); Counter() accepts both.
+    from collections import Counter
+
+    remaining: Counter = Counter(succeeded_tools)
+
+    def _consume(tool: str) -> bool:
+        if remaining[tool] > 0:
+            remaining[tool] -= 1
+            return True
+        return False
+
     out: list[StepProgress] = []
     for i, st in enumerate(steps, 1):
         tool = str(st.get("tool") or "")
         step_id = str(st.get("id") or f"step-{i}")
-        ran = tool in succeeded_tools
 
         if i in artifact:
             if artifact[i]:
@@ -224,13 +244,13 @@ def compute_rail_progress(
             # It declared an artifact but the book could not be reached this turn. Fall back
             # to the call log rather than guess: guessing "done" skips a step, guessing "not
             # done" redoes one.
-            done = ran
-            reason = f"book-state unknown (probe failed); {'the tool ran' if ran else 'the tool has not run'}"
+            done = _consume(tool)
+            reason = f"book-state unknown (probe failed); {'the tool ran' if done else 'the tool has not run'}"
         elif i in confirms:
             src = confirms[i]
-            done = out[src - 1].done if src <= len(out) else ran
+            done = out[src - 1].done if src <= len(out) else _consume(tool)
             reason = f"confirms {steps[src - 1].get('id')}, which is {'done' if done else 'not done'}"
-        elif ran:
+        elif _consume(tool):
             done, reason = True, "the tool ran successfully"
         elif i < last_artifact_done:
             done = True
@@ -246,11 +266,14 @@ def compute_rail_progress(
 
 # ── rendering ────────────────────────────────────────────────────────────────
 
+# The labels must say what the NUMBER actually is, not what the step is about. "connections"
+# is the KG node count (how many cast members are in the connection map), and "plan" is a
+# plan-existence flag, not a count of plans — a review caught both misreporting their unit.
 _STATE_LABELS = {
     "categories": "world categories",
     "cast": "characters/places saved",
-    "connections": "connections mapped",
-    "plan": "arc plan",
+    "connections": "cast members placed in the connection map",
+    "plan": "arc plan started (1 = yes)",
     "chapters": "chapters",
     "prose": "chapters with writing in them",
 }

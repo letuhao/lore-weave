@@ -204,9 +204,12 @@ class TestPinnedRailCarriesTheProgress:
             progress_by_slug={"vision-to-book": prog},
         )
         assert text is not None
-        assert "YOUR NEXT ACTION" in text
+        # Strings ONLY render_progress_block emits — never the header. (The header's memory
+        # clause used to quote "YOUR NEXT ACTION", so asserting that let the test pass even
+        # when the block itself never rendered — review finding #10.)
+        assert "YOUR PLACE IN THE RECIPE: step" in text
+        assert "do NOT repeat these" in text
         assert "glossary_propose_entities" in text
-        assert "WHERE THE BOOK ACTUALLY IS" in text
         # the step tools are still activated (the pin's other job)
         assert "glossary_propose_entities" in tools
 
@@ -281,8 +284,13 @@ class TestPipelineSemantics:
         state = BookState(categories=12, cast=0, connections=0, plan=0, chapters=1, prose=1)
         p = compute_rail_progress("vision-to-book", VISION_STEPS, state, set())
 
+        # the cast step is NOT done (cast=0), even though a later artifact (chapters) exists
         assert next(s for s in p.steps if s.step_id == "save-cast").done is False
-        assert p.next_step.step_id == "save-cast"
+        # …and the resume point is the first outstanding step, which the CONTIGUOUS backfill
+        # correctly puts BEFORE the gap (read-back → capture-cast → save-cast), not by leaping
+        # straight to save-cast over the capture step that feeds it.
+        assert p.next_step.index < next(s.index for s in p.steps if s.step_id == "save-cast")
+        assert not p.next_step.done
 
 
 # ── the driver answers WHERE, never WHEN (the live-run regression) ───────────
@@ -369,3 +377,36 @@ class TestTheDriverStatesWhereNeverWhen:
         )
         assert "resume HERE" in text
         assert "not at step 1" in text
+
+
+# ── same-tool-twice: the call log must be CONSUMED, not just membership-tested ─
+
+class TestCallLogConsumesOccurrences:
+    """A review finding: a rail that uses the same tool in two steps was marking BOTH done
+    the moment the FIRST succeeded, because doneness was `tool in succeeded_tools` (set
+    membership). It must consume one success per step."""
+
+    STEPS = [
+        {"id": "confirm-a", "tool": "confirm_action"},
+        {"id": "confirm-b", "tool": "confirm_action"},
+    ]
+
+    def test_one_success_marks_only_the_first_of_two_same_tool_steps(self):
+        from collections import Counter
+        state = BookState()  # no artifacts — pure call-log path
+        p = compute_rail_progress("x", self.STEPS, state, Counter({"confirm_action": 1}))
+        assert p.steps[0].done is True
+        assert p.steps[1].done is False
+        assert p.next_step.step_id == "confirm-b"
+
+    def test_two_successes_mark_both(self):
+        from collections import Counter
+        p = compute_rail_progress("x", self.STEPS, BookState(), Counter({"confirm_action": 2}))
+        assert all(s.done for s in p.steps)
+        assert p.all_done
+
+    def test_a_plain_set_still_works_each_tool_once(self):
+        # backward-compat: a set input treats each tool as one success (Counter(set) → 1 each)
+        p = compute_rail_progress("x", self.STEPS, BookState(), {"confirm_action"})
+        assert p.steps[0].done is True
+        assert p.steps[1].done is False

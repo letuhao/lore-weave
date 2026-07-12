@@ -118,18 +118,19 @@ def test_book_without_project_returns_200_not_404(monkeypatch):
         "book_id": _BOOK,
         "has_projection": False,
         "project_id": None,
-        "entity_count": 0,
-        "fact_count": 0,
-        "event_count": 0,
+        "entity_count": None,
+        "fact_count": None,
+        "event_count": None,
         "extraction_status": None,
     }
 
 
 # ── (c) NULL stat_* columns coalesce to 0 (never crash) ───────────────────────
 
-def test_null_stat_columns_coalesce_to_zero(monkeypatch):
-    """A project the stats job has not touched yet. The SQL COALESCEs, but the
-    response builder must zero-fill too — a None here must not 500 the chat turn."""
+def test_null_stat_columns_read_as_UNKNOWN_not_zero(monkeypatch):
+    """A project whose stats job has not run. The counters read as None (UNKNOWN), NOT 0 —
+    reporting an uncomputed cache as "0 connections" deadlocked the flagship rail, whose
+    connect-people step is done_when connections>0. UNKNOWN lets the consumer fall back."""
     project_id = uuid4()
     _patch_pool(
         monkeypatch,
@@ -140,11 +141,11 @@ def test_null_stat_columns_coalesce_to_zero(monkeypatch):
     assert resp.status_code == 200
     assert resp.json() == {
         "book_id": _BOOK,
-        "has_projection": True,  # the project exists — its counters are just unset
+        "has_projection": True,  # the project exists — its counters are just uncomputed
         "project_id": str(project_id),
-        "entity_count": 0,
-        "fact_count": 0,
-        "event_count": 0,
+        "entity_count": None,
+        "fact_count": None,
+        "event_count": None,
         "extraction_status": None,
     }
 

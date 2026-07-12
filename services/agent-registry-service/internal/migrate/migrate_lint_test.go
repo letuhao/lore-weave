@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -140,6 +141,30 @@ func TestSchemaSQL_SeededWorkflowNotesFitTheConsumerCap(t *testing.T) {
 				"vocabulary/honesty rules live. Shorten it (or raise both constants together).",
 				n, notesSeedBudgetChars)
 		}
+	}
+}
+
+// The done_when grammar is enforced at the agent-authoring path (validateWorkflow), but the
+// SEED path — the ONLY path shipping a done_when today, on vision-to-book — bypasses that
+// validation entirely (it INSERTs the JSON literal straight into the table). So a typo in a
+// seeded done_when would ship a predicate the chat-service consumer cannot parse, silently
+// falling every step back to the call log — a stored-but-unread contract. Lint the seed here
+// against the SAME closed grammar the writer enforces (mirrors doneWhenRe in workflows.go).
+func TestSchemaSQL_SeededDoneWhenMatchesTheClosedGrammar(t *testing.T) {
+	seedDoneWhenRe := regexp.MustCompile(`"done_when"\s*:\s*"([^"]*)"`)
+	grammar := regexp.MustCompile(`^\s*(categories|cast|connections|plan|chapters|prose)\s*(>=|>)\s*\d+\s*$`)
+	found := 0
+	for _, m := range seedDoneWhenRe.FindAllStringSubmatch(schemaSQL, -1) {
+		found++
+		if !grammar.MatchString(m[1]) {
+			t.Errorf("seeded done_when %q does not match the closed grammar "+
+				"'<key> > <n>' (key in categories|cast|connections|plan|chapters|prose) — the "+
+				"chat-service consumer would silently ignore it and fall back to the call log.", m[1])
+		}
+	}
+	if found == 0 {
+		t.Error("no seeded done_when found — the vision-to-book rail should carry several; " +
+			"if the seed was refactored, update this lint rather than letting it pass vacuously.")
 	}
 }
 

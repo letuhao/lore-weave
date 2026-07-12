@@ -39,9 +39,16 @@ import os
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["patch_convert_result", "ResultTooLargeError", "result_max_bytes", "result_warn_bytes"]
+__all__ = [
+    "patch_convert_result",
+    "patch_tool_run_size_gate",
+    "ResultTooLargeError",
+    "result_max_bytes",
+    "result_warn_bytes",
+]
 
 _PATCHED_ATTR = "_loreweave_compact_content_patched"
+_SIZE_PATCHED_ATTR = "_loreweave_result_size_patched"
 _PLACEHOLDER_TEXT = "ok — see structuredContent for the full result"
 
 
@@ -68,8 +75,14 @@ _PLACEHOLDER_TEXT = "ok — see structuredContent for the full result"
 # Deliberately a HARD ERROR, deliberately ON BY DEFAULT: a warning would be filed under
 # "known noise" inside a week; an error gets the tool fixed. Ratchet MAX down as tools are
 # fixed — no tool should ever need half of it.
+# See the Go SDK's result_size.go for the full rationale. WARN (8KB) is the "find broken
+# tools" mechanism — logged every time, never fatal. MAX (512KB) is a catastrophe backstop
+# only: a review measured 88.7% of real books exceed 32KB on a LEGITIMATE ontology read, so a
+# low hard-fail bricks the flagship rather than finding bombs. Size cannot separate a bloated
+# payload from a large-but-requested one, so the hard fail sits well above any legit single
+# read; the WARN surfaces bloat for a human.
 _DEFAULT_WARN_BYTES = 8_000
-_DEFAULT_MAX_BYTES = 32_000
+_DEFAULT_MAX_BYTES = 512_000
 
 
 def _env_int(key: str, default: int) -> int:
@@ -186,14 +199,64 @@ def patch_convert_result() -> bool:
             # return the original untouched rather than guess.
             return converted
         _unstructured, structured = converted
-        # THE RESULT-SIZE GATE. Every structured Python MCP tool result flows through
-        # convert_result, so this is the one place that can guarantee no Python tool ships a
-        # payload its caller cannot hold. Raises ResultTooLargeError → the call fails loudly
-        # with a message that tells the agent not to retry and tells the author what to fix.
-        _check_size(getattr(self, "name", None) or "unknown_tool", structured)
         return [TextContent(type="text", text=_PLACEHOLDER_TEXT)], structured
 
     convert_result.__wrapped__ = original
     setattr(cls, _PATCHED_ATTR, True)
     cls.convert_result = convert_result
+    return True
+
+
+def patch_tool_run_size_gate() -> bool:
+    """Enforce the result-size ceiling on ``FastMCP Tool.run``.
+
+    WHY NOT convert_result (where the first cut put it): a review proved that path is a
+    DEAD END for the size check. Every MCP tool in this repo is annotated ``-> dict`` (bare
+    dict, not ``dict[str, Any]``), which FastMCP routes to a branch where ``output_schema``
+    stays ``None`` — so the convert_result gate returned early on literally every tool, in
+    all 5 Python MCP services. A guard that never runs is worse than none: it reads as
+    protection. (The same is true of the audit-#9 dedup on that path — separate follow-up.)
+
+    ``Tool.run`` is the correct choke point: it sees EVERY result regardless of schema, and
+    it carries ``self.name``, so the log line and the error can actually name the offending
+    tool. Same defensive posture as ``patch_convert_result`` — never raises on a patch
+    failure; a size check that cannot install must not stop a service from starting.
+
+    Idempotent (sentinel on the class). Returns True if applied/already applied.
+    """
+    try:
+        from mcp.server.fastmcp.tools.base import Tool
+    except Exception:
+        logger.warning(
+            "loreweave_mcp: could not import FastMCP Tool — skipping the result-size gate; "
+            "oversized tool results will NOT be caught.",
+            exc_info=True,
+        )
+        return False
+
+    if getattr(Tool, _SIZE_PATCHED_ATTR, False):
+        return True
+    if not hasattr(Tool, "run"):
+        logger.warning("loreweave_mcp: FastMCP Tool.run not found — result-size gate skipped.")
+        return False
+
+    original_run = Tool.run
+
+    async def run(self, arguments, context=None, convert_result=False):  # noqa: ANN001
+        result = await original_run(self, arguments, context=context, convert_result=convert_result)
+        # Check the RAW payload the tool produced. When convert_result is True the SDK has
+        # wrapped it, but the structured half is still the same object graph — measuring the
+        # tool's own return value is the honest size and keeps this independent of the
+        # wrapper's shape across mcp versions.
+        try:
+            _check_size(getattr(self, "name", None) or "unknown_tool", result)
+        except ResultTooLargeError:
+            raise
+        except Exception:  # noqa: BLE001 — a gate failure must never break a working tool
+            logger.warning("result-size gate errored (ignored)", exc_info=True)
+        return result
+
+    run.__wrapped__ = original_run
+    setattr(Tool, _SIZE_PATCHED_ATTR, True)
+    Tool.run = run
     return True

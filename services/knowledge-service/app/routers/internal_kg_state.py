@@ -51,19 +51,27 @@ router = APIRouter(
 # knowledge project over its life (a re-extraction creates a fresh one); the
 # most recent live one is the projection chat should reason about.
 #
-# COALESCE guards the stat_* columns: they are NOT NULL DEFAULT 0 today, but a
-# row that predates the K10.3 ALTER — or any future nullable stat column — must
-# read as 0 rather than blow up the chat turn. Defence in depth: the response
-# builder below zero-fills too (see _count).
+# The stat_* columns are a CACHE maintained by the stats_updater job — they are 0 not only
+# for an empty projection but also for one the job has never touched. Reporting an
+# uncomputed cache as "0 connections" deadlocks the flagship rail: its `connect-people` step
+# is done_when "connections > 0", which an always-0 counter can never satisfy. So distinguish
+# "computed and empty" (0) from "never computed" (NULL = UNKNOWN, which the consumer falls
+# back from) via stat_updated_at — the column that is set exactly when the job runs.
+#
+# The is_derivative / is_assistant guard mirrors the service's own get_by_book (projects.py)
+# — a derived/assistant scratch project is not the book's real KG and must not be reported as
+# its connection state.
 _KG_STATE_SQL = """
 SELECT project_id,
        extraction_status,
-       COALESCE(stat_entity_count, 0) AS entity_count,
-       COALESCE(stat_fact_count,   0) AS fact_count,
-       COALESCE(stat_event_count,  0) AS event_count
+       CASE WHEN stat_updated_at IS NULL THEN NULL ELSE stat_entity_count END AS entity_count,
+       CASE WHEN stat_updated_at IS NULL THEN NULL ELSE stat_fact_count   END AS fact_count,
+       CASE WHEN stat_updated_at IS NULL THEN NULL ELSE stat_event_count  END AS event_count
   FROM knowledge_projects
  WHERE book_id = $1
    AND NOT is_archived
+   AND NOT is_derivative
+   AND NOT is_assistant
  ORDER BY created_at DESC
  LIMIT 1
 """
@@ -76,17 +84,19 @@ class KgStateResponse(BaseModel):
     book_id: str
     has_projection: bool = False
     project_id: str | None = None
-    entity_count: int = 0
-    fact_count: int = 0
-    event_count: int = 0
+    # None = the stats cache was never computed for this project (UNKNOWN, NOT zero) — the
+    # consumer must not read it as "0 connections" and re-drive a projection that exists.
+    entity_count: int | None = None
+    fact_count: int | None = None
+    event_count: int | None = None
     extraction_status: str | None = None
 
 
-def _count(value: Any) -> int:
-    """Zero-fill a possibly-NULL cached counter (a project the stats job has not
-    touched yet). Explicit None check — ``or 0`` would also swallow a real 0, and
-    we want an unexpected non-int to fail loudly rather than silently read 0."""
-    return 0 if value is None else int(value)
+def _count(value: Any) -> int | None:
+    """Pass a cached counter through, preserving NULL as UNKNOWN. A project whose stats job
+    has not run reports None (not 0), so the caller can tell "computed empty" from "not yet
+    computed". An unexpected non-int still fails loudly rather than silently reading 0."""
+    return None if value is None else int(value)
 
 
 @router.get("/{book_id}/kg-state", response_model=KgStateResponse)

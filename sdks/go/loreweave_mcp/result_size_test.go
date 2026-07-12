@@ -18,30 +18,41 @@ func TestResultSize_UnderTheCeilingPasses(t *testing.T) {
 	}
 }
 
-// The one that matters. `glossary_list_system_standards` shipped a 44,254-byte result: 86%
-// of it attribute definitions the caller could not act on. gemma called it 24 times in one
-// run and built nothing — each call pushed the previous answer out of the window, so the
-// model never saw what it had already fetched. Every unit test was green.
-func TestResultSize_TheFortyFourKilobyteBombIsRejected(t *testing.T) {
-	err := checkResultSize("glossary_list_system_standards", bigOut{Blob: strings.Repeat("x", 44_254)})
+// The 44KB bomb is BELOW the catastrophe ceiling — a review proved a low hard-fail bricks
+// 88.7% of books on LEGITIMATE ontology reads. It is caught by the WARN (the "find broken
+// tools" mechanism), which is exactly how it was found and then fixed. A GENUINE runaway
+// still hard-fails.
+func TestResultSize_ARunawayFailsWithAnActionableMessage(t *testing.T) {
+	// 44KB: below the 512KB ceiling → no error (WARN only).
+	if err := checkResultSize("glossary_list_system_standards", bigOut{Blob: strings.Repeat("x", 44_254)}); err != nil {
+		t.Fatalf("44KB is below the catastrophe ceiling and must not hard-fail (WARN only), got: %v", err)
+	}
+	// A true runaway (unbounded list) DOES fail.
+	err := checkResultSize("some_unbounded_list", bigOut{Blob: strings.Repeat("x", 600_000)})
 	if err == nil {
-		t.Fatal("a 44KB tool result must be REJECTED — this is the exact payload that made the " +
-			"agent loop 24 times and build nothing")
+		t.Fatal("a 600KB result must be REJECTED — no legitimate single read is this large")
 	}
 	var tooLarge *ErrResultTooLarge
 	if !asErrResultTooLarge(err, &tooLarge) {
 		t.Fatalf("want *ErrResultTooLarge, got %T", err)
 	}
-	if tooLarge.Tool != "glossary_list_system_standards" {
+	if tooLarge.Tool != "some_unbounded_list" {
 		t.Fatalf("the error must name the offending tool, got %q", tooLarge.Tool)
 	}
-	// The message has to be actionable for BOTH readers: the agent (do not retry) and the
-	// human (fix the tool).
 	msg := err.Error()
 	for _, want := range []string{"BUG IN THE TOOL", "Do not retry", "paginate"} {
 		if !strings.Contains(msg, want) {
-			t.Fatalf("the error must say %q — it is read by the model AND by whoever fixes the tool.\ngot: %s", want, msg)
+			t.Fatalf("the error must say %q.\ngot: %s", want, msg)
 		}
+	}
+}
+
+// The HIGH the review caught: a blanket 32KB fail broke glossary_book_ontology_read for
+// 88.7% of real books (up to 117KB of LEGITIMATE ontology). That must NOT hard-fail.
+func TestResultSize_ALegitimateLargeReadIsNotBricked(t *testing.T) {
+	if err := checkResultSize("glossary_book_ontology_read", bigOut{Blob: strings.Repeat("x", 117_000)}); err != nil {
+		t.Fatalf("a 117KB legitimate ontology read must not be hard-failed (it is 88.7%% of "+
+			"real books) — the gate would brick the flagship. got: %v", err)
 	}
 }
 
@@ -90,15 +101,15 @@ func TestResultSizeGate_FiresThroughTheRealToolCallPath(t *testing.T) {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.0.1"}, nil)
 	RegisterTool(srv, &mcp.Tool{Name: "context_bomb"},
 		func(ctx context.Context, req *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, bombOut, error) {
-			// the exact size the real glossary tool shipped
-			return nil, bombOut{Blob: strings.Repeat("x", 44_254)}, nil
+			// a genuine runaway, above the catastrophe ceiling
+			return nil, bombOut{Blob: strings.Repeat("x", 600_000)}, nil
 		})
 	cs := connectInMemory(t, srv)
 	defer cs.Close()
 
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "context_bomb"})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Fatal("a 44KB tool result went straight through the real call path — the gate is " +
+		t.Fatal("a 600KB tool result went straight through the real call path — the gate is " +
 			"NOT wired into RegisterTool. This is the bug that cost a flagship scenario.")
 	}
 }

@@ -334,28 +334,41 @@ def pinned_rail_block(
     if not rails:
         return None, []
 
-    # The memory clause points AT the progress block, so it may only be promised when a
-    # progress block was actually rendered. Telling the model "the truth is computed below,
-    # follow it" and then shipping no such block leaves it chasing a section that does not
-    # exist — a dangling instruction is worse than no instruction, because the model will
-    # invent something to satisfy it.
-    grounded = any(slug in progress_by_slug for slug in slugs)
-    memory_clause = (
-        (
+    # The memory clause points AT the progress block, so it may only promise what was
+    # actually rendered — on TWO axes:
+    #  1. It must name the REAL headings. render_progress_block emits "WHERE THE BOOK ACTUALLY
+    #     IS" and "YOUR PLACE IN THE RECIPE"; an earlier cut of the clause said "YOUR NEXT
+    #     ACTION", a section that never exists — a dangling instruction the model resolves by
+    #     inventing something to satisfy it.
+    #  2. It must not claim "from the book itself" when the book-state probe FAILED. When the
+    #     probe returns nothing, the block still renders from the call log alone (no snapshot),
+    #     and swearing that a tool "wrote nothing per the book" when the book was never read is
+    #     the exact false-grounding this whole mechanism exists to prevent.
+    book_grounded = any(
+        "WHERE THE BOOK ACTUALLY IS" in progress_by_slug.get(s, "") for s in slugs
+    )
+    progress_present = any(s in progress_by_slug for s in slugs)
+    if book_grounded:
+        memory_clause = (
             "You do NOT have to remember where you got to. Below each recipe, \"WHERE THE "
-            "BOOK ACTUALLY IS\" and \"YOUR NEXT ACTION\" are computed fresh from the book "
-            "itself and from what you really called — they are the truth. Follow them. If "
-            "they say a step is done, it is done, even if you do not remember doing it; if "
+            "BOOK ACTUALLY IS\" and \"YOUR PLACE IN THE RECIPE\" are computed fresh from the "
+            "book itself and from what you really called — they are the truth. Follow them. "
+            "If they say a step is done, it is done, even if you do not remember doing it; if "
             "they say the effect never landed, then it did not land, even if the tool said "
             "\"success\".\n"
         )
-        if grounded
-        else (
+    elif progress_present:
+        memory_clause = (
+            "You do NOT have to remember where you got to. \"YOUR PLACE IN THE RECIPE\" below "
+            "is computed from the tools you actually called this session — follow it, and do "
+            "not repeat a step it lists as already done.\n"
+        )
+    else:
+        memory_clause = (
             "Do NOT redo a step you already completed in this conversation — look back at "
             "what you have already called, and continue from the first step still "
             "outstanding.\n"
         )
-    )
 
     header = (
         "YOU HAVE A READY-MADE RECIPE FOR THIS JOB. Its ordered steps are below and its "

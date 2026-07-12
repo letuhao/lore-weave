@@ -43,32 +43,33 @@ type proseStateQuerier interface {
 }
 
 // proseStateSQL counts a book's active chapters and, in the same pass, how many of
-// them actually carry prose (draft body OR imported raw body). One statement, one
+// them actually carry prose (draft text OR imported raw body). One statement, one
 // round-trip; the two EXISTS are correlated semi-joins, not per-chapter queries.
 //
-// Both counts are count(*) aggregates, which return 0 (never NULL) over an empty
-// input, so the zero-chapter book scans cleanly into plain ints — no NULL-into-
-// non-pointer hazard, and no row is silently zeroed.
+// Draft prose is read from chapter_blocks.text_content — the trigger-maintained
+// (fn_extract_chapter_blocks) PLAIN-TEXT projection of the Tiptap draft body, with an
+// index on chapter_id. The first cut jsonb_path_query'd the raw draft JSONB per chapter,
+// which detoasts and walks every body: a review measured 2.28s on a 10k-chapter book,
+// OVER the probe's own 2s timeout, so the source would fail on a large manuscript exactly
+// when it matters. The projection exists precisely to avoid that scan; using it is an
+// indexed semi-join. (Trade-off accepted: a legacy chapter whose blocks were never
+// backfilled would under-count as "no prose" — a small, degrading error, far better than
+// a hard timeout that returns UNKNOWN for the whole source.)
 //
-// Emptiness is tested with ~ '[^[:space:]]' ("contains at least one non-whitespace
-// character"), NOT btrim(x) <> ''. Single-arg btrim trims ONLY spaces — a blank
-// chapter whose body is "\n" survives it as "\n" <> '' and would be counted as prose
-// (caught by prose_state_db_test.go against real PG; a mock cannot see this). The
-// regex is also the faithful SQL analogue of the strings.TrimSpace(prose) == "" check
-// the publish-time guard performs in Go.
+// Both counts are count(*) aggregates, which return 0 (never NULL) over an empty input,
+// so a zero-chapter book scans cleanly into plain ints — no NULL-into-non-pointer hazard.
+//
+// Emptiness is tested with ~ '[^[:space:]]' ("contains a non-whitespace character"), NOT
+// btrim(x) <> '' — single-arg btrim trims only spaces, so a "\n"-only body would count as
+// prose (caught by prose_state_db_test.go against real PG; a mock cannot see it).
 const proseStateSQL = `
 SELECT
   count(*) AS total,
   count(*) FILTER (
     WHERE EXISTS (
-            SELECT 1 FROM chapter_drafts d
-            WHERE d.chapter_id = c.id
-              AND (
-                    COALESCE((SELECT string_agg(t #>> '{}', '')
-                              FROM jsonb_path_query(d.body, '$.content[*]._text') AS x(t)), '')
-                 || COALESCE((SELECT string_agg(t #>> '{}', '')
-                              FROM jsonb_path_query(d.body, '$.**.text') AS y(t)), '')
-                  ) ~ '[^[:space:]]'
+            SELECT 1 FROM chapter_blocks b
+            WHERE b.chapter_id = c.id
+              AND b.text_content ~ '[^[:space:]]'
           )
        OR EXISTS (
             SELECT 1 FROM chapter_raw_objects r

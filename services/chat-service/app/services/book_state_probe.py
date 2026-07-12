@@ -79,9 +79,12 @@ async def _connections(book_id: str) -> int | None:
     if d is None:
         return None
     if not d.get("has_projection"):
-        return 0
+        return 0  # confirmed: no projection exists yet
     n = d.get("entity_count")
-    return int(n) if isinstance(n, int) else 0
+    # UNKNOWN, not zero, when the stats cache was never computed (n is null) or the shape is
+    # unexpected — matching every sibling source. A confirmed 0 here would tell the rail the
+    # connection step never landed and send the agent to re-drive a projection that exists.
+    return int(n) if isinstance(n, int) else None
 
 
 async def _plan(book_id: str, caller_user_id: str) -> int | None:
@@ -92,13 +95,17 @@ async def _plan(book_id: str, caller_user_id: str) -> int | None:
     )
     if d is None:
         return None
-    # "Has an arc plan" means a SPEC artifact exists — a plan_run that never produced one is
-    # a started-and-abandoned attempt, and calling that "done" would march the agent past the
-    # step that actually writes the plan.
-    if d.get("has_spec"):
-        n = d.get("run_count")
-        return int(n) if isinstance(n, int) and n > 0 else 1
-    return 0
+    # A plan-EXISTENCE flag (1/0), not a count of runs — "has an arc plan" means a SPEC
+    # artifact exists. A plan_run that never produced a spec is a started-and-abandoned
+    # attempt, and calling that "done" would march the agent past the step that writes the
+    # plan. Return 0 only when the route positively says so; an unexpected shape is UNKNOWN
+    # (None), matching every sibling source, never a manufactured zero.
+    hs = d.get("has_spec")
+    if hs is True:
+        return 1
+    if hs is False:
+        return 0
+    return None
 
 
 async def _chapters_and_prose(book_id: str) -> tuple[int | None, int | None]:

@@ -491,6 +491,12 @@ BLANK_TOOL_ARGS_CAP = 2
 # never trips this; only a read that keeps handing back the byte-identical answer does.
 REPEAT_READ_CAP = 2
 
+
+class _ProbeAccessDenied(Exception):
+    """The caller has no grant on the pinned rail's book — skip the book-state probe and run
+    the rail ungrounded. A sentinel, so the caller distinguishes 'no access' (expected, quiet)
+    from a real probe error (logged)."""
+
 # The stable substring across every live-observed instance of this error
 # (from the domain service's own JSON-schema validator) — a required
 # property (e.g. `query`, `intent`) is missing from the call's arguments.
@@ -2655,11 +2661,14 @@ async def _stream_with_tools(
                         read_call_results[_read_key] = (_fp, _seen[1] + 1)   # same answer again
                     else:
                         read_call_results[_read_key] = (_fp, 0)              # new answer → reset
-                elif ok:
-                    # A WRITE landed: the world just changed, so every earlier read is now
-                    # potentially STALE and re-reading it is legitimate again. Clearing here is
-                    # what keeps the breaker from blocking the read-after-write a rail depends
-                    # on (adopt the categories → read them back).
+                elif ok and tier == "A":
+                    # A tool that actually COMMITTED (Tier-A auto-write) changed the world, so
+                    # every earlier read is now potentially stale and re-reading it is
+                    # legitimate again. Only Tier-A: a Tier-W/S "propose" writes NOTHING (it
+                    # mints a confirm_token), so clearing on it would let the exact loop shape
+                    # the breaker exists for — propose → read → propose → read — reset itself
+                    # forever. The real write those proposals cause lands later, via the
+                    # confirm path, and clears the ledger then.
                     read_call_results.clear()
                 if ok or _MISSING_REQUIRED_ARGS_MARKER not in str(envelope.get("error") or ""):
                     blank_tool_args_streak = 0
@@ -3608,16 +3617,33 @@ async def stream_response(
             # it gates infrastructure, not a per-user choice.)
             if _ctx_book_id and settings.rail_driver_enabled:
                 try:
-                    from app.db.tool_call_history import succeeded_tools
+                    from app.client.grant_client import GrantLevel, get_grant_client
+                    from app.db.tool_call_history import succeeded_tool_counts
                     from app.services.book_state_probe import probe_book_state
                     from app.services.rail_progress import (
                         compute_rail_progress,
                         render_progress_block,
                     )
 
+                    # /review-impl HIGH — `_ctx_book_id` is CLIENT-SUPPLIED (book_context in
+                    # the request body). The probe fans it out to five internal routes, four
+                    # of which do not grant-check the caller. So verify access ONCE here
+                    # before the probe runs — one check closes all five sources. Fails CLOSED
+                    # (a book-service blip → NONE → no probe), which is correct: an
+                    # unverifiable book must not have its state read into the prompt.
+                    _lvl, _ = await get_grant_client().resolve_access(
+                        UUID(str(_ctx_book_id)), UUID(str(user_id))
+                    )
+                    if _lvl < GrantLevel.VIEW:
+                        logger.info(
+                            "rail progress: caller %s has no grant on book %s — probe skipped",
+                            user_id, _ctx_book_id,
+                        )
+                        raise _ProbeAccessDenied
+
                     _bstate, _ran = await asyncio.gather(
                         probe_book_state(str(_ctx_book_id), str(user_id)),
-                        succeeded_tools(pool, str(session_id)),
+                        succeeded_tool_counts(pool, str(session_id)),
                     )
                     if _bstate.any_known or _ran:
                         for _slug in _pinned_slugs:
@@ -3637,6 +3663,8 @@ async def stream_response(
                                 _prog.next_step.tool if _prog.next_step else "—",
                                 _ctx_book_id,
                             )
+                except _ProbeAccessDenied:
+                    pass  # no grant → run the rail ungrounded (the pre-Phase-2 behavior)
                 except Exception:  # noqa: BLE001 — grounding is never load-bearing
                     logger.warning("rail progress unavailable — rail runs ungrounded", exc_info=True)
 
