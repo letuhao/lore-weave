@@ -135,3 +135,67 @@ async def test_write_failure_is_a_retryable_error():
         chat_client=chat, book_client=book,
     )
     assert out["status"] == "error" and out["reason"] == "write_failed" and out["retryable"] is True
+
+
+# ── the SDK LLM adapter (the provider-gateway path) ───────────────────────────
+
+
+class _FakeJob:
+    def __init__(self, status, result=None, error=None):
+        self.status = status
+        self.result = result
+        self.error = error
+
+
+class FakeSubmitter:
+    def __init__(self, job):
+        self._job = job
+        self.calls: list[dict] = []
+
+    async def submit_and_wait(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._job
+
+
+async def test_distill_llm_adapter_sends_a_chat_job_and_returns_the_content():
+    sub = FakeSubmitter(_FakeJob("completed", result={"messages": [{"role": "assistant", "content": "hi there"}]}))
+    call = distill_job.make_distill_llm(sub, user_id="u1", model_source="user_model", model_ref="m1")
+    text = await call("some prompt")
+    assert text == "hi there"
+    k = sub.calls[0]
+    assert k["operation"] == "chat" and k["model_ref"] == "m1" and k["user_id"] == "u1"
+    assert k["input"]["messages"][0]["content"] == "some prompt"
+    assert k["input"]["chat_template_kwargs"]["thinking"] is False  # anti-reasoning-burn
+
+
+async def test_distill_llm_adapter_raises_on_a_failed_job():
+    sub = FakeSubmitter(_FakeJob("failed", error="LLM_CIRCUIT_OPEN"))
+    call = distill_job.make_distill_llm(sub, user_id="u1", model_source="user_model", model_ref="m1")
+    try:
+        await call("x")
+    except RuntimeError as e:
+        assert "failed" in str(e)
+    else:
+        raise AssertionError("a non-completed job must raise so the day degrades, not fabricates")
+
+
+async def test_distill_llm_adapter_end_to_end_with_the_core():
+    # The adapter + the pure core together: a fake submitter that answers map vs reduce by prompt.
+    class RoutingSubmitter:
+        async def submit_and_wait(self, **kwargs):
+            prompt = kwargs["input"]["messages"][0]["content"]
+            if "FACTS:" in prompt and "MESSAGES:" not in prompt:
+                body = json.dumps({"summary": "Distilled via the gateway path."})
+            else:
+                body = json.dumps({"facts": [{"kind": "event", "text": "a real fact", "provenance": "user"}]})
+            return _FakeJob("completed", result={"messages": [{"content": body}]})
+
+    llm = distill_job.make_distill_llm(RoutingSubmitter(), user_id="u1", model_source="user_model", model_ref="m1")
+    chat = FakeChat([_msg("user", "Something happened today.")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=llm, chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "written"
+    assert "Distilled via the gateway path." in book.writes[0]["body"]

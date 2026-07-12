@@ -28,6 +28,68 @@ from app.distiller import (
 
 logger = logging.getLogger(__name__)
 
+# The distiller's reduce needs a raised budget (§Q4); the map's fact list can be sizable on a busy
+# chunk. One generous default keeps a busy day from truncating; the trigger layer can tune it.
+DISTILL_MAX_TOKENS = 2000
+
+
+class _LLMSubmitter(Protocol):
+    async def submit_and_wait(
+        self, *, user_id: str, operation: str, model_source: str, model_ref: str,
+        input: dict[str, Any], trace_id: str | None = ...,
+    ) -> Any: ...
+
+
+def _chat_text(result: dict[str, Any] | None) -> str:
+    """Extract the assistant text from a completed chat job's result. The provider-registry chat
+    result carries content at result['messages'][0]['content'] (NOT result['content'])."""
+    result = result or {}
+    messages = result.get("messages") or []
+    if messages and isinstance(messages[0], dict):
+        return messages[0].get("content") or ""
+    return result.get("content") or ""
+
+
+def make_distill_llm(
+    llm_client: _LLMSubmitter,
+    *,
+    user_id: str,
+    model_source: str,
+    model_ref: str,
+    max_tokens: int = DISTILL_MAX_TOKENS,
+    trace_id: str | None = None,
+) -> LLMCall:
+    """Adapt the worker-ai LLMClient (→ provider-registry, the sanctioned gateway) into the pure
+    core's `LLMCall`. The distiller's prompt is a single user message; the map/reduce instructions
+    are embedded in it and the map wraps content in a DATA envelope, so no separate system message
+    is needed. Raises on a non-completed job so map_chunk/reduce_entry degrade (a failed map chunk
+    contributes no facts; a failed reduce writes no entry) rather than fabricating output.
+
+    thinking=False suppresses reasoning mode on thinking-capable local models (the burns-max-tokens
+    trap) — harmless when the model has no such flag."""
+
+    async def _call(prompt: str) -> str:
+        job = await llm_client.submit_and_wait(
+            user_id=user_id,
+            operation="chat",
+            model_source=model_source,
+            model_ref=model_ref,
+            input={
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "text"},
+                "temperature": 0.2,
+                "max_tokens": max_tokens,
+                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
+            },
+            trace_id=trace_id,
+        )
+        status = getattr(job, "status", None)
+        if status != "completed":
+            raise RuntimeError(f"distill chat job status={status} error={getattr(job, 'error', None)}")
+        return _chat_text(getattr(job, "result", None))
+
+    return _call
+
 
 class _ChatReader(Protocol):
     async def get_day_window(
