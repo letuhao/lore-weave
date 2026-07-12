@@ -392,3 +392,97 @@ func TestDiaryStats_NonOwnerCannotRead_DB(t *testing.T) {
 		t.Fatalf("non-owner diary stats = %d, want 403/404 (no cross-user leak)", rr.Code)
 	}
 }
+
+// ── WS-1.10 — GET /v1/books/{id}/diary/entries (OWNER-ONLY list for the home timeline + review) ──
+
+func listDiaryEntries(t *testing.T, s *Server, bookID, caller uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/v1/books/"+bookID.String()+"/diary/entries", nil)
+	req.Header.Set("Authorization", "Bearer "+mcpJWT(t, caller))
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	return rr
+}
+
+type diaryEntryRow struct {
+	ChapterID   string `json:"chapter_id"`
+	EntryDate   string `json:"entry_date"`
+	Body        string `json:"body"`
+	JournalKind string `json:"journal_kind"`
+	Kept        bool   `json:"kept"`
+	WordCount   int    `json:"word_count"`
+}
+
+func TestListDiaryEntries_ReturnsBodyAndDateNewestFirst_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+
+	_ = postDiaryEntry(t, s, diary, map[string]any{"owner_user_id": owner.String(), "entry_date": "2026-05-01", "body": "the earlier day"}, true)
+	rr2 := postDiaryEntry(t, s, diary, map[string]any{"owner_user_id": owner.String(), "entry_date": "2026-05-03", "body": "Met Minh about the Q3 budget freeze."}, true)
+	newestID := entryChapterID(t, rr2)
+
+	rr := listDiaryEntries(t, s, diary, owner)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list = %d, want 200. body=%s", rr.Code, rr.Body.String())
+	}
+	var out struct {
+		Entries []diaryEntryRow `json:"entries"`
+		Count   int             `json:"count"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v (body=%s)", err, rr.Body.String())
+	}
+	if out.Count != 2 || len(out.Entries) != 2 {
+		t.Fatalf("count=%d entries=%d, want 2/2", out.Count, len(out.Entries))
+	}
+	// Newest-first: the 05-03 entry leads, and it carries the correct entry_date + the real body
+	// (so the review can render + PROVE the date in one call), and it is NOT yet kept.
+	first := out.Entries[0]
+	if first.EntryDate != "2026-05-03" {
+		t.Fatalf("newest entry_date=%q, want 2026-05-03", first.EntryDate)
+	}
+	if first.ChapterID != newestID {
+		t.Fatalf("newest chapter_id=%q, want %q", first.ChapterID, newestID)
+	}
+	if !strings.Contains(first.Body, "Minh about the Q3 budget") {
+		t.Fatalf("newest body=%q, want it to contain the distilled prose", first.Body)
+	}
+	if first.Kept {
+		t.Fatalf("a freshly-distilled entry must not be kept until the user keeps it")
+	}
+
+	// After a KEEP (B2), the entry reads back kept=true — the review reflects the change.
+	kr := keepDiaryEntry(t, s, diary, uuid.MustParse(newestID), owner)
+	if kr.Code != http.StatusOK {
+		t.Fatalf("keep = %d, want 200. body=%s", kr.Code, kr.Body.String())
+	}
+	rr = listDiaryEntries(t, s, diary, owner)
+	_ = json.Unmarshal(rr.Body.Bytes(), &out)
+	if !out.Entries[0].Kept {
+		t.Fatalf("after keep, the newest entry must read kept=true")
+	}
+}
+
+func TestListDiaryEntries_NonOwnerCannotRead_DB(t *testing.T) {
+	// Same no-cross-user-leak posture as diaryStats: a diary is never shared, so a non-owner is
+	// refused — the entries' bodies never leak to another user.
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	stranger := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+	_ = postDiaryEntry(t, s, diary, map[string]any{"owner_user_id": owner.String(), "entry_date": "2026-05-01", "body": "private prose"}, true)
+
+	s.resolveBook = func(_ context.Context, _ uuid.UUID, user uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		if user == owner {
+			return GrantOwner, owner, "active", nil
+		}
+		return GrantNone, owner, "active", nil
+	}
+	rr := listDiaryEntries(t, s, diary, stranger)
+	if rr.Code != http.StatusForbidden && rr.Code != http.StatusNotFound {
+		t.Fatalf("non-owner diary entries = %d, want 403/404 (no cross-user leak)", rr.Code)
+	}
+}

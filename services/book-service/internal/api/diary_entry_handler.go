@@ -348,6 +348,75 @@ WHERE book_id=$1 AND journal_kind IS NOT NULL AND lifecycle_state='active'`,
 	writeJSON(w, http.StatusOK, out)
 }
 
+// listDiaryEntries — WS-1.10 (spec 02/03) — the OWNER-ONLY list of the diary's entries for the
+// assistant home timeline + the end-of-day review. Owner-scoped + diary-only (journal_kind IS NOT
+// NULL) — the same leak posture as diaryStats: a diary is never shared and never enters a
+// cross-user surface, so authBook(GrantOwner) is the guard. Newest-first, and it returns the entry
+// BODY inline (from chapter_raw_objects) so the review renders + PROVES the entry_date in one call.
+// `kept` reflects diary_kept_at (B2 review→keep). Bounded to the most recent 100 entries (a review
+// only ever needs the latest few); if a diary ever grows past that, add keyset paging.
+func (s *Server) listDiaryEntries(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	_, _, _, ok = s.authBook(w, r, bookID, GrantOwner)
+	if !ok {
+		return
+	}
+	rows, err := s.pool.Query(r.Context(), `
+SELECT c.id, c.entry_date, COALESCE(c.entry_zone,'UTC'), COALESCE(c.title,''),
+       COALESCE(c.word_count,0), c.journal_kind, c.diary_kept_at, c.draft_updated_at,
+       COALESCE(ro.body_text,'')
+FROM chapters c
+LEFT JOIN chapter_raw_objects ro ON ro.chapter_id = c.id
+WHERE c.book_id=$1 AND c.journal_kind IS NOT NULL AND c.lifecycle_state='active'
+ORDER BY c.entry_date DESC, c.draft_updated_at DESC NULLS LAST
+LIMIT 100`, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list diary entries")
+		return
+	}
+	defer rows.Close()
+	entries := make([]map[string]any, 0, 16)
+	for rows.Next() {
+		var id uuid.UUID
+		var entryDate time.Time
+		var zone, title, journalKind, body string
+		var wordCount int
+		var keptAt, draftUpdated *time.Time
+		// Scan EVERY column into a real target (never `_ = rows.Scan()` — a discarded scan
+		// error zeroes the whole row; pgx-discarded-scan bug class).
+		if err := rows.Scan(&id, &entryDate, &zone, &title, &wordCount, &journalKind,
+			&keptAt, &draftUpdated, &body); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary entry row")
+			return
+		}
+		e := map[string]any{
+			"chapter_id":   id.String(),
+			"entry_date":   entryDate.Format("2006-01-02"),
+			"entry_zone":   zone,
+			"title":        title,
+			"word_count":   wordCount,
+			"journal_kind": journalKind,
+			"kept":         keptAt != nil,
+			"body":         body,
+		}
+		if keptAt != nil {
+			e["diary_kept_at"] = keptAt.Format(time.RFC3339)
+		}
+		if draftUpdated != nil {
+			e["draft_updated_at"] = draftUpdated.Format(time.RFC3339)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to iterate diary entries")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entries": entries, "count": len(entries)})
+}
+
 // txQuotaOK checks the owner has room for `delta` more bytes, writing a 507 and returning false
 // if not. Uses the tx so the read is consistent with the pending write.
 func (s *Server) txQuotaOK(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, owner uuid.UUID, delta int64) bool {

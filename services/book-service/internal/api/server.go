@@ -316,6 +316,9 @@ func (s *Server) Router() http.Handler {
 			// D-R18 — OWNER-ONLY diary stats (entry count / words / day span). NOT the shared
 			// statistics aggregate (the diary stays out of every cross-user surface, D-R16).
 			r.Get("/diary/stats", s.diaryStats)
+			// WS-1.10 — OWNER-ONLY diary entries list (newest-first, body inline) for the
+			// assistant home timeline + the end-of-day review. Diary-only; never a shared surface.
+			r.Get("/diary/entries", s.listDiaryEntries)
 
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)
