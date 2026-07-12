@@ -103,6 +103,11 @@ func (s *Server) Router() http.Handler {
 			// Provisions on first read, idempotently — there is no separate "enable
 			// encryption" step that could be skipped and leave content in the clear.
 			r.Get("/users/{user_id}/dek", http.HandlerFunc(s.internalGetUserDEK))
+			// WS-2.7 (D18 / PO-4) — the crypto-shred. Irreversibly destroys the user's
+			// wrapped DEK so content encrypted under it cannot be recovered, even from a
+			// backup. The explicit erasure worker calls this AFTER removing the content
+			// rows; it is intentionally NOT the account soft-delete path (see user_dek.go).
+			r.Delete("/users/{user_id}/dek", http.HandlerFunc(s.internalDeleteUserDEK))
 			r.Get("/users/{user_id}/full-profile", http.HandlerFunc(s.internalGetFullProfile))
 			r.Patch("/users/{user_id}/full-profile", http.HandlerFunc(s.internalUpdateFullProfile))
 			// Public MCP credential resolve — the mcp-public-gateway edge turns an

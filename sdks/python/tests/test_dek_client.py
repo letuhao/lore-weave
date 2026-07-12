@@ -187,3 +187,63 @@ async def test_cache_is_bounded():
         assert len(c._cache) == 3
     finally:
         await c.aclose()
+
+
+@pytest.mark.asyncio
+async def test_cache_entry_expires_after_the_ttl_and_is_refetched():
+    """DBT-6: the cache now has a TTL. A hit inside the TTL is served from cache (the hot
+    path stays cheap); once it expires it is re-fetched, so a key change eventually
+    propagates without a process restart."""
+    ring = _ring()
+    now = {"t": 1000.0}
+    calls = {"n": 0}
+    c = DEKClient("http://auth", "itok", ring, ttl_s=60.0, _clock=lambda: now["t"])
+    c._http = httpx.AsyncClient(
+        transport=httpx.MockTransport(_serve_dek(ring, new_dek(), count=calls)),
+        headers={"X-Internal-Token": "itok"},
+    )
+    uid = uuid4()
+    try:
+        await c.get(uid)  # fetch #1 → cached, expires at 1060
+        now["t"] = 1059.0
+        await c.get(uid)  # still fresh → cache hit, no fetch
+        assert calls["n"] == 1, "a DEK inside its TTL must be served from cache"
+        now["t"] = 1061.0  # past the TTL
+        await c.get(uid)  # expired → re-fetch
+        assert calls["n"] == 2, "an expired DEK must be re-fetched, never served stale forever"
+    finally:
+        await c.aclose()
+
+
+@pytest.mark.asyncio
+async def test_the_ttl_bounds_how_long_a_shredded_key_keeps_decrypting():
+    """The reason the TTL exists. forget() is the prompt eviction path, but if an erasure
+    (D18) elsewhere never calls it — or a concurrent worker cached the key just before the
+    shred — the destroyed key must not linger forever. Within one TTL the client stops using
+    it and picks up whatever auth now serves (a fresh key, or a fail-closed error)."""
+    ring = _ring()
+    now = {"t": 0.0}
+    old, fresh = new_dek(), new_dek()
+    served = {"dek": old}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        wrapped, ref = wrap_dek(ring, served["dek"], _uid_from(request))
+        return httpx.Response(200, json={"wrapped_dek": wrapped, "key_ref": ref})
+
+    c = DEKClient("http://auth", "itok", ring, ttl_s=30.0, _clock=lambda: now["t"])
+    c._http = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), headers={"X-Internal-Token": "itok"},
+    )
+    uid = uuid4()
+    try:
+        assert await c.get(uid) == old
+        # The user's key is crypto-shredded and re-provisioned; NOBODY called forget().
+        served["dek"] = fresh
+        assert await c.get(uid) == old, "inside the TTL the cached key is still used (expected)"
+        now["t"] = 31.0  # one TTL later
+        assert await c.get(uid) == fresh, (
+            "past the TTL the client must pick up the new key — never keep decrypting with "
+            "the shredded one"
+        )
+    finally:
+        await c.aclose()

@@ -26,7 +26,9 @@ already unavoidably in memory whenever we decrypt — but do not pretend otherwi
 from __future__ import annotations
 
 import logging
+import time
 from collections import OrderedDict
+from collections.abc import Callable
 from uuid import UUID
 
 import httpx
@@ -58,6 +60,8 @@ class DEKClient:
         *,
         max_cached: int = 512,
         timeout_s: float = 5.0,
+        ttl_s: float = 300.0,
+        _clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._base = auth_base_url.rstrip("/")
         self._keyring = keyring
@@ -65,8 +69,15 @@ class DEKClient:
             timeout=httpx.Timeout(timeout_s),
             headers={"X-Internal-Token": internal_token},
         )
-        self._cache: OrderedDict[UUID, DEK] = OrderedDict()
+        # value = (dek, expires_at_monotonic). The TTL is a SAFETY BACKSTOP for erasure and
+        # rotation: forget() is the prompt path, but if an erasure elsewhere forgets to call
+        # it (or races a concurrent worker that already cached the key), a shredded/rotated
+        # key must not linger forever letting this process decrypt content that is supposed
+        # to be gone. A bounded lifetime bounds that window without an auth round-trip per op.
+        self._cache: OrderedDict[UUID, tuple[DEK, float]] = OrderedDict()
         self._max = max_cached
+        self._ttl_s = ttl_s
+        self._clock = _clock
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -76,7 +87,7 @@ class DEKClient:
 
         Call this on erasure (D18) and on a KEK rotation. A stale cached DEK for a user
         whose key was destroyed would let this process keep decrypting content that is
-        supposed to be unrecoverable.
+        supposed to be unrecoverable. The TTL is the backstop; this is the prompt path.
         """
         self._cache.pop(user_id, None)
 
@@ -88,8 +99,13 @@ class DEKClient:
         """
         cached = self._cache.get(user_id)
         if cached is not None:
-            self._cache.move_to_end(user_id)
-            return cached
+            dek, expires_at = cached
+            if self._clock() < expires_at:
+                self._cache.move_to_end(user_id)
+                return dek
+            # Expired → treat as a miss and re-fetch. If the key was shredded, the re-fetch
+            # will mint a NEW one (or fail closed), never resurrect the old plaintext.
+            self._cache.pop(user_id, None)
 
         url = f"{self._base}/internal/users/{user_id}/dek"
         try:
@@ -132,7 +148,7 @@ class DEKClient:
                 f"value must be in the retired keyring."
             ) from exc
 
-        self._cache[user_id] = dek
+        self._cache[user_id] = (dek, self._clock() + self._ttl_s)
         self._cache.move_to_end(user_id)
         while len(self._cache) > self._max:
             self._cache.popitem(last=False)

@@ -125,6 +125,20 @@ func Load() (*Config, error) {
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
+	// DIARY_ENCRYPTION_KEY may be empty — a deployment that stores no private content, in
+	// which case the DEK read fails closed at REQUEST time (503), never at boot. But when it
+	// IS set it is the ENTIRE confidentiality boundary for diary/assistant/facts, so hold it
+	// to the same bar as JWT_SECRET: ≥32 chars, and never the SAME value as JWT_SECRET (a
+	// shared secret means one leak breaks both auth and content-at-rest). Mirrors the
+	// admin-secret distinctness guard below. (Review WS-2.7 finding-6.)
+	if c.DiaryEncryptionKey != "" {
+		if len(c.DiaryEncryptionKey) < 32 {
+			return nil, fmt.Errorf("DIARY_ENCRYPTION_KEY must be at least 32 characters when set")
+		}
+		if c.DiaryEncryptionKey == c.JWTSecret {
+			return nil, fmt.Errorf("DIARY_ENCRYPTION_KEY must differ from JWT_SECRET (separate confidentiality boundary)")
+		}
+	}
 	c.DomainConfirmServiceURLs = loadDomainConfirmURLs()
 
 	// Admin-JWT issuance (074/075). Feature is off unless a KMS signing key is

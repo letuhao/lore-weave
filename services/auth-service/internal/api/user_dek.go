@@ -29,6 +29,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -77,6 +78,29 @@ func (s *Server) internalGetUserDEK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fail-CLOSED before minting: never provision a fresh DEK for a non-active account.
+	// This endpoint provisions on read, so WITHOUT this guard a straggler read AFTER erasure
+	// — an at-least-once redelivered event, a lagging worker whose cache expired — would
+	// silently re-mint a usable key for a user whose data was supposed to be gone, resurrecting
+	// encryptable content and defeating the crypto-shred. An active user re-provisioning after
+	// erasing their *history* is legitimate (they keep using the assistant with a fresh key);
+	// a DELETED/erased account acquiring a new key is not. (Review WS-2.7 H2.)
+	var status string
+	switch e := s.pool.QueryRow(ctx,
+		`SELECT account_status FROM users WHERE id = $1`, userID).Scan(&status); {
+	case errors.Is(e, pgx.ErrNoRows):
+		// No such user — do not fabricate a key for a phantom id (a typo'd erasure target).
+		writeErr(w, http.StatusNotFound, "AUTH_NOT_FOUND", "user not found")
+		return
+	case e != nil:
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "failed to read user status")
+		return
+	case status != "active":
+		writeErr(w, http.StatusConflict, "AUTH_DEK_ACCOUNT_INACTIVE",
+			"cannot provision a DEK for a non-active account")
+		return
+	}
+
 	// First use → mint one. ON CONFLICT DO NOTHING + re-read makes this safe under a
 	// concurrent double-provision (two services encrypting for the same user at once):
 	// exactly one row wins and BOTH callers return the SAME key. Minting two DEKs for one
@@ -113,6 +137,57 @@ ON CONFLICT (user_id) DO NOTHING`, userID, newWrapped, newRef); err != nil {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user_id": userID.String(), "wrapped_dek": wrapped, "key_ref": keyRef,
 	})
+}
+
+// internalDeleteUserDEK — DELETE /internal/users/{user_id}/dek
+//
+// The D18 crypto-shred (T23), made REACHABLE. HARD-deletes the user's wrapped DEK so every
+// byte of content encrypted under it — diary bodies, assistant chat, private facts —
+// becomes permanently unrecoverable, INCLUDING from a restored backup: the ciphertext may
+// survive a restore, but the only key that opens it is gone. A soft delete cannot tell this
+// story (the DEK, and therefore the content, would come back with the row).
+//
+// This is DELIBERATELY a distinct endpoint, NOT wired into the account soft-delete
+// (`DELETE /v1/account`, which keeps a recovery window). Shredding the key on a *recoverable*
+// deletion would make "recoverable" a lie. Irreversible crypto-shred belongs to the explicit
+// "erase my data forever" flow — the WS-2.7 erasure worker, which is NOT YET BUILT. TODAY this
+// endpoint has NO caller: it is the reachable primitive. DBT-8 tracks wiring it into the GDPR
+// erasure orchestrator (services/admin-cli/internal/commands/erasure.go, whose Eraser today
+// shreds only the SEPARATE PII KEK and never this DEK) after the cross-service content-row
+// deletion that must precede a shred. (D-R8.)
+//
+// IDEMPOTENT: erasure is driven by a retryable purge worker, so shredding an already-absent
+// DEK is success (204), never 404 — a retry after a partial failure must CONVERGE, not error.
+//
+// NO KEK REQUIRED (unlike the read, which fails closed at 503 without one): deleting a row
+// needs no key, and a shred must succeed even when the KEK is misconfigured — you never want
+// "I can't find the key" to block "destroy the key." (D-R9.)
+//
+// TOKEN-GATED like the read: an anonymous caller must not be able to crypto-shred a user's
+// key — that is a trivial, irreversible denial-of-data attack.
+func (s *Server) internalDeleteUserDEK(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+	tag, err := s.pool.Exec(r.Context(),
+		`DELETE FROM user_deks WHERE user_id = $1`, userID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "failed to shred dek")
+		return
+	}
+	// No-silent-success (standing invariant #5): a shred that removed NOTHING is suspicious —
+	// an erasure fired at the WRONG id destroys nothing while the caller records success. WARN
+	// on a 0-row shred with a message that does NOT claim a key was destroyed, so a
+	// mis-targeted erasure is visible in the record instead of masquerading as a completed
+	// shred; INFO only when a key was actually crypto-shredded. (Review WS-2.7 M3/finding4.)
+	if tag.RowsAffected() == 0 {
+		slog.Warn("dek shred removed no row (already absent, or a wrong user_id)", "user_id", userID)
+	} else {
+		slog.Info("user dek crypto-shredded", "user_id", userID, "rows_shredded", tag.RowsAffected())
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ── crypto (mirrors sdks/python/loreweave_crypto so both sides read one format) ──
