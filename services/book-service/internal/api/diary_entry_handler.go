@@ -396,6 +396,37 @@ WHERE book_id=$1 AND journal_kind IS NOT NULL AND lifecycle_state='active'`,
 	writeJSON(w, http.StatusOK, out)
 }
 
+// getInternalDiaryBook — D-R27 (erase review MED-1) — resolve a user's diary book_id for ANY
+// lifecycle (active / trashed / purge_pending) WITHOUT creating one. The erase orchestrator needs
+// this: the get-or-create diary endpoint 409s on a TRASHED diary, which made erasing a trashed diary
+// a silent no-op (the derived data survived). This read never creates, so it also fixes the
+// "erase spuriously creates then deletes an empty diary" smell. Internal-token; owner-scoped by
+// ?user_id; 404 when the user has no diary at all.
+func (s *Server) getInternalDiaryBook(w http.ResponseWriter, r *http.Request) {
+	owner, err := uuid.Parse(strings.TrimSpace(r.URL.Query().Get("user_id")))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "user_id required")
+		return
+	}
+	var bookID uuid.UUID
+	var lifecycle string
+	// Prefer the ACTIVE diary; fall back to a trashed/purge_pending one so erasure still reaches it.
+	err = s.pool.QueryRow(r.Context(), `
+SELECT id, lifecycle_state FROM books
+WHERE owner_user_id=$1 AND kind='diary'
+ORDER BY (lifecycle_state='active') DESC, created_at DESC
+LIMIT 1`, owner).Scan(&bookID, &lifecycle)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "no diary for user")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to resolve diary")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"book_id": bookID.String(), "lifecycle": lifecycle})
+}
+
 // eraseDiaryBook — D-R27 (human-authorized 2026-07-12) — the IMMEDIATE ROW-DELETE erasure of a
 // user's diary. HARD-deletes the diary `books` row, which ON DELETE CASCADE removes ALL its content:
 // chapters → chapter_drafts / chapter_revisions / chapter_raw_objects / chapter_blocks / scenes, plus

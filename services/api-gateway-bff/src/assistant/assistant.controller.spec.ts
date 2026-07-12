@@ -327,47 +327,81 @@ describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  it('resolves the OWN diary/project, then hard-deletes across all 4 services with internal token + server-derived user_id', async () => {
+  it('resolves the diary (any lifecycle, no create), then hard-deletes source-first across 4 services with internal token + server-derived id', async () => {
     const f = jest
       .fn()
-      .mockResolvedValueOnce(resp(200, { book_id: 'diary-1' })) // 1. resolve diary (idempotent get)
-      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' })) // 2. resolve assistant project
-      .mockResolvedValueOnce(resp(200, { deleted_entities: 5 })) // 3. glossary erase
-      .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 12 })) // 4. knowledge erase
-      .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 })) // 5. chat erase
-      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 })); // 6. diary book erase (LAST)
+      .mockResolvedValueOnce(resp(200, { book_id: 'diary-1', lifecycle: 'active' })) // 1. GET resolver
+      .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 })) // 2. chat erase (SOURCE, book_id=None)
+      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 })) // 3. book erase (SOURCE + gate)
+      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' })) // 4. resolve KG project (user JWT)
+      .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 12 })) // 5. knowledge erase
+      .mockResolvedValueOnce(resp(200, { deleted_entities: 5 })); // 6. glossary erase (gated by bookErased)
     (global as any).fetch = f;
 
     const out = await controller.eraseData(bearer('user-42'));
 
     expect(f).toHaveBeenCalledTimes(6);
-    // The diary + project are resolved with the USER's Bearer (idempotent get-or-create).
-    expect(f.mock.calls[0][0]).toBe('http://book:8205/v1/books/diary');
-    expect(f.mock.calls[0][1].headers.authorization).toBe(bearer('user-42'));
-    // Erase order: glossary → knowledge → chat → book (anchor LAST). All INTERNAL token, no user JWT.
-    const [gUrl, gInit] = f.mock.calls[2];
-    expect(gUrl).toBe('http://glossary:8203/internal/books/diary-1/entities');
-    expect(gInit.method).toBe('DELETE');
-    expect(gInit.headers['x-internal-token']).toBe('itok');
-    expect(gInit.headers.authorization).toBeUndefined();
-    // knowledge + chat carry the SERVER-DERIVED user_id (from the token sub), never a body field.
-    expect(f.mock.calls[3][0]).toBe('http://knowledge:8210/internal/admin/assistant/erase?user_id=user-42&project_id=proj-1');
-    expect(f.mock.calls[4][0]).toBe('http://chat:8090/internal/chat/assistant/data?user_id=user-42&book_id=diary-1');
-    // The diary book erase (the anchor) is LAST + owner-scoped by user_id.
-    expect(f.mock.calls[5][0]).toBe('http://book:8205/internal/books/diary-1/diary/erase?user_id=user-42');
-    expect(f.mock.calls[5][1].method).toBe('DELETE');
+    // 1. Resolve diary via the READ-ONLY internal resolver (any lifecycle, never creates), internal token.
+    expect(f.mock.calls[0][0]).toBe('http://book:8205/internal/books/diary?user_id=user-42');
+    expect(f.mock.calls[0][1].headers['x-internal-token']).toBe('itok');
+    // 2. SOURCE first: chat by user_id ONLY (book_id=None → ALL assistant sessions).
+    expect(f.mock.calls[1][0]).toBe('http://chat:8090/internal/chat/assistant/data?user_id=user-42');
+    expect(f.mock.calls[1][0]).not.toContain('book_id');
+    expect(f.mock.calls[1][1].method).toBe('DELETE');
+    // 3. book erase (source + ownership gate).
+    expect(f.mock.calls[2][0]).toBe('http://book:8205/internal/books/diary-1/diary/erase?user_id=user-42');
+    // 4. resolve the KG project under the USER's Bearer, then 5. derived KG erase.
+    expect(f.mock.calls[3][0]).toBe('http://knowledge:8210/v1/knowledge/projects/assistant');
+    expect(f.mock.calls[3][1].headers.authorization).toBe(bearer('user-42'));
+    expect(f.mock.calls[4][0]).toBe('http://knowledge:8210/internal/admin/assistant/erase?user_id=user-42&project_id=proj-1');
+    // 6. glossary LAST (derived), gated by the book erase confirming ownership.
+    expect(f.mock.calls[5][0]).toBe('http://glossary:8203/internal/books/diary-1/entities');
+    expect(f.mock.calls[5][1].headers['x-internal-token']).toBe('itok');
+    expect(f.mock.calls[5][1].headers.authorization).toBeUndefined();
 
     expect(out.erased).toBe(true);
     expect(out.book_id).toBe('diary-1');
-    expect(out.deleted.glossary).toEqual({ deleted_entities: 5 });
     expect(out.deleted.diary_book).toEqual({ erased: true, deleted_books: 1 });
   });
 
-  it('no diary → idempotent success (erased:false), nothing else attempted', async () => {
-    const f = jest.fn().mockResolvedValueOnce(resp(200, {})); // diary resolve returns no book_id
+  it('a TRASHED diary is still erased (resolver returns it — no silent no-op)', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(200, { book_id: 'diary-1', lifecycle: 'trashed' })) // resolver returns trashed
+      .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 }))
+      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 }))
+      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' }))
+      .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 3 }))
+      .mockResolvedValueOnce(resp(200, { deleted_entities: 2 }));
     (global as any).fetch = f;
     const out = await controller.eraseData(bearer('u1'));
-    expect(out.erased).toBe(false);
-    expect(f).toHaveBeenCalledTimes(1); // never erased anything
+    expect(out.erased).toBe(true); // trashed diary was NOT a silent no-op
+    expect(f).toHaveBeenCalledTimes(6);
+  });
+
+  it('a partial failure (glossary leg errors) reports erased:false — never a false "your data is gone"', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(200, { book_id: 'diary-1' }))
+      .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 }))
+      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 }))
+      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' }))
+      .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 3 }))
+      .mockResolvedValueOnce(resp(500, { error: 'glossary down' })); // glossary FAILS
+    (global as any).fetch = f;
+    const out = await controller.eraseData(bearer('u1'));
+    expect(out.erased).toBe(false); // aggregate: a failed leg means NOT fully erased
+  });
+
+  it('no diary → erases the (only) chat leg + reports based on it; no book/glossary/knowledge attempted', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(404, { error: 'no diary for user' })) // resolver 404
+      .mockResolvedValueOnce(resp(200, { deleted_sessions: 0 })); // chat erase (all assistant sessions)
+    (global as any).fetch = f;
+    const out = await controller.eraseData(bearer('u1'));
+    expect(f).toHaveBeenCalledTimes(2); // resolver + chat only
+    expect(out.erased).toBe(true); // chat ok + no diary → nothing else to erase
+    expect(out.book_id).toBeUndefined();
   });
 });

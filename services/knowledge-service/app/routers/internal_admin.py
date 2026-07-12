@@ -56,16 +56,21 @@ async def erase_assistant_knowledge(
     project_id: UUID = Query(...),
 ) -> dict:
     """D-R27 (human-authorized erasure) — delete a user's ASSISTANT knowledge project + its ENTIRE
-    semantic index. Removes the `knowledge_projects` row (Postgres, owner-scoped + summary cascade in
-    one tx) AND every `:Passage` node for (user, project) in Neo4j — the diary's chapter + chat
-    passages the retriever would otherwise still surface. Both stores are tenant-scoped on
-    (user_id, project_id), so this can only reach the caller's own project. Internal-token."""
+    semantic index. Removes every `:Passage` node for (user, project) in Neo4j AND the
+    `knowledge_projects` row (Postgres, owner-scoped + summary cascade in one tx). Both stores are
+    tenant-scoped on (user_id, project_id), so this can only reach the caller's own project.
+
+    ORDER (erase review MED-3): the Neo4j passages are deleted FIRST, the PG project row LAST. The
+    project_id is what identifies the passages, so if we deleted the PG row first and the Neo4j delete
+    then failed, a re-erase would get-or-create a DIFFERENT project_id and the orphaned passages (raw
+    diary text) would never be reclaimed. Deleting Neo4j first means a failure leaves the PG project
+    intact → a re-erase re-resolves the SAME project_id → retries the passage delete. Internal-token."""
     pool = get_knowledge_pool()
-    project_deleted = await ProjectsRepo(pool).delete(user_id, project_id)
     async with neo4j_session() as session:
         passages_deleted = await delete_all_passages_for_project(
             session, user_id=str(user_id), project_id=str(project_id),
         )
+    project_deleted = await ProjectsRepo(pool).delete(user_id, project_id)
     return {"project_deleted": bool(project_deleted), "passages_deleted": passages_deleted}
 
 

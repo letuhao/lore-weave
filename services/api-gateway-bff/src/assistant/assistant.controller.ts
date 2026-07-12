@@ -283,46 +283,63 @@ export class AssistantController {
       throw new HttpException('server_error', 500);
     }
 
-    // Resolve the user's OWN diary book + assistant project server-side (idempotent get → returns the
-    // existing diary; does not spuriously create for a user who has one).
-    const diary = await this.postJson(`${bookUrl}/v1/books/diary`, authHeader, {});
-    const bookId = diary.ok && typeof diary.body?.book_id === 'string' ? diary.body.book_id : undefined;
-    if (!bookId) {
-      return { erased: false, deleted: {} }; // no diary → nothing to erase (idempotent)
-    }
-    const proj = await this.postJson(`${knowledgeUrl}/v1/knowledge/projects/assistant`, authHeader, {
-      book_id: bookId,
-    });
-    const projectId = proj.ok && typeof proj.body?.project_id === 'string' ? proj.body.project_id : undefined;
-
-    const deleted: EraseResult['deleted'] = {};
     const uid = encodeURIComponent(userId);
-    // Erase DERIVED data first (captured entities · KG project+passages · assistant chat+messages),
-    // then the diary book (the anchor) LAST. Each call is scoped to the server-derived user_id and the
-    // server-resolved book/project.
-    deleted.glossary = (await this.deleteInternal(`${glossaryUrl}/internal/books/${bookId}/entities`, internalToken)).body;
-    if (projectId) {
-      deleted.knowledge = (
-        await this.deleteInternal(
+    const deleted: EraseResult['deleted'] = {};
+    // Track EVERY attempted leg's success so `erased` means "all data actually gone", not "the book
+    // leg happened to succeed" (review MED-2 — a partial failure of the derived legs must NOT report
+    // erased:true for an irreversible privacy op).
+    let allOk = true;
+
+    // Resolve the user's diary for ANY lifecycle WITHOUT creating one (review MED-1 + LOW-7): the
+    // get-or-create endpoint 409s on a TRASHED diary, which made erasing it a silent no-op. This
+    // read-only resolver returns the trashed/active/purge_pending diary, or 404 if the user has none.
+    const diaryRes = await this.getInternal(`${bookUrl}/internal/books/diary?user_id=${uid}`, internalToken);
+    const bookId = diaryRes.ok && typeof diaryRes.body?.book_id === 'string' ? diaryRes.body.book_id : undefined;
+
+    // 1. SOURCE — the assistant chat sessions + messages (the distiller's source). Scope by user_id
+    //    ONLY (book_id=None deletes ALL assistant sessions, review MED-5) so a stray session with a
+    //    NULL/mismatched book_id can't survive. This is what makes "re-index can't resurrect", so it
+    //    runs regardless of whether a diary book was resolved.
+    const chat = await this.deleteInternal(`${chatUrl}/internal/chat/assistant/data?user_id=${uid}`, internalToken);
+    deleted.chat_sessions = chat.body;
+    allOk = allOk && chat.ok;
+
+    let bookErased = false;
+    if (bookId) {
+      // 2. SOURCE + OWNERSHIP GATE — the diary book (owner+kind='diary' verified IN the DELETE).
+      //    `bookErased` proves the resolved book_id really is THIS user's diary, which is what lets
+      //    the un-owner-scoped glossary leg (below) run safely (review MED-4).
+      const bookErase = await this.deleteInternal(`${bookUrl}/internal/books/${bookId}/diary/erase?user_id=${uid}`, internalToken);
+      deleted.diary_book = bookErase.body;
+      bookErased = bookErase.ok && bookErase.body?.erased === true;
+      allOk = allOk && bookErase.ok;
+
+      // 3. DERIVED — the KG project + its passages (project_id resolved under the caller's OWN JWT).
+      const proj = await this.postJson(`${knowledgeUrl}/v1/knowledge/projects/assistant`, authHeader, { book_id: bookId });
+      const projectId = proj.ok && typeof proj.body?.project_id === 'string' ? proj.body.project_id : undefined;
+      if (projectId) {
+        const kn = await this.deleteInternal(
           `${knowledgeUrl}/internal/admin/assistant/erase?user_id=${uid}&project_id=${encodeURIComponent(projectId)}`,
           internalToken,
-        )
-      ).body;
+        );
+        deleted.knowledge = kn.body;
+        allOk = allOk && kn.ok;
+      }
+
+      // 4. DERIVED — the captured glossary entities. glossary_entities is book-scoped only (no owner
+      //    column), so we ONLY run it once the book erase above has PROVEN this book_id is the
+      //    caller's own diary — never trust a book_id the ownership gate didn't confirm (review MED-4).
+      if (bookErased) {
+        const gl = await this.deleteInternal(`${glossaryUrl}/internal/books/${bookId}/entities`, internalToken);
+        deleted.glossary = gl.body;
+        allOk = allOk && gl.ok;
+      }
     }
-    deleted.chat_sessions = (
-      await this.deleteInternal(
-        `${chatUrl}/internal/chat/assistant/data?user_id=${uid}&book_id=${encodeURIComponent(bookId)}`,
-        internalToken,
-      )
-    ).body;
-    const bookErase = await this.deleteInternal(
-      `${bookUrl}/internal/books/${bookId}/diary/erase?user_id=${uid}`,
-      internalToken,
-    );
-    deleted.diary_book = bookErase.body;
 
     return {
-      erased: bookErase.ok && bookErase.body?.erased === true,
+      // erased == every attempted leg succeeded. A user with no diary still gets erased:true once the
+      // (only) chat leg succeeds — there was genuinely nothing else. With a diary, ALL legs must pass.
+      erased: allOk && (!bookId || bookErased),
       book_id: bookId,
       deleted,
     };
