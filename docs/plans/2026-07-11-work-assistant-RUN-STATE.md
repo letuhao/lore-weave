@@ -303,6 +303,23 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 
 ### FINAL AUDIT — the run reached the /goal's PARK-COMPLETION terminal state — 2026-07-12 · for the morning review
 
+> **▶ UPDATE (2026-07-13, FULL-CHAIN E2E RE-SMOKE + WS-2.8/2.5 built) — and it CAUGHT A REAL ERASE BUG.**
+> Re-ran the goal's mandatory end-to-end smoke on the rebuilt stack, pasting each step: **provision** ✅
+> (`provisioned:true`, book+project ids) → **consent** ✅ (`canon_capture_enabled:true`) → **diary entry**
+> ✅ (written via the distiller's write seam, `entry_date:2026-07-13` correct) → **recall** ✅
+> (`run_chat_search_sessions("Zephyr")` → count 1, returns the mention) → **erase** ✅ →
+> **verify-gone** ✅. ⚠️ **The 2 LLM-dependent steps (live chat CAPTURE + the distill LLM run) could NOT
+> re-run: the containers lost ALL outbound network mid-run — LM Studio (host.docker.internal:1234, now
+> IPv6-only) AND OpenAI both unreachable, no raw outbound; a host-side Docker-Desktop drift, not code.**
+> Those two were LIVE-PROVEN earlier this run (§10, facts=12); the entry-write seam + everything else was
+> re-proven now. **The erase smoke CAUGHT A REAL INCOMPLETE-ERASURE BUG (fixed, 9e0c42b94):** erase
+> removed the book/chapters/sessions/project/passages/pending-facts/glossary but NOT the :Fact/:Entity
+> nodes WS-2.4's promote creates — a CONFIRMED diary fact ("Priya approved…") + the colleague :Entity
+> SURVIVED "erase my account" (PG-SSOT→Neo4j non-cascade). Fixed: `delete_all_kg_nodes_for_project`
+> DETACH-DELETEs :Fact/:Entity/:Event for (user,project). Re-proven: `kg_nodes_deleted:2` → facts=0,
+> entities=0 — diary content truly gone, re-index can't resurrect. **This is exactly why the goal mandates
+> the full-chain smoke.**
+>
 > **▶ UPDATE (2026-07-13, Phase-2 continuation) — PHASE 2 CORE built + reviewed + AUDITED.**
 > This run built + live-proved 7 Phase-2 slices (WS-2.1/2.2/2.3/2.4/D16/2.7/2.9), ran `/review-impl` on the
 > phase (1 MED provenance-drift fixed, 5931ebbcb), parked the 4 genuinely-large remainder (WS-2.5/2.6/2.8/
