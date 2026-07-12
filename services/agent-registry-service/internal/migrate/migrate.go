@@ -522,7 +522,7 @@ ON CONFLICT (slug) WHERE tier = 'system' DO UPDATE SET
   inputs = EXCLUDED.inputs, steps = EXCLUDED.steps, notes_md = EXCLUDED.notes_md,
   status = EXCLUDED.status, updated_at = now();
 
--- W6 vision-to-book — THE FLAGSHIP SPINE (S06). "I have a story in my head, help me
+-- the flagship vision-to-book rail — THE FLAGSHIP SPINE (S06). "I have a story in my head, help me
 -- write it": turn a told vision into a real foundation — world categories, the cast,
 -- how they connect, and an arc plan. This is the rail the write-mode binding PINS, so
 -- the steps sit in context from turn 1. The measured S06 failure was not a missing

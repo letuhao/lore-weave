@@ -112,7 +112,7 @@ def test_pinned_rail_caps_the_notes_prose():
 
 
 def test_truncating_a_rail_is_LOUD(caplog):
-    # Measured 2026-07-11: W6's notes were 3218 chars against a 3000 cap, so the tail was
+    # Measured 2026-07-11: the flagship rail's notes were 3218 chars against a 3000 cap, so the tail was
     # dropped — and the tail was the SPEAK-PLAINLY block, i.e. the exact rules that stop
     # the agent leaking the machinery to the user. The leak they were written to fix
     # therefore survived, and the truncation said NOTHING. A cap that silently eats the
@@ -223,7 +223,7 @@ def test_binding_categories_union_into_the_hot_seed():
 
 
 def test_a_sync_tool_is_not_mislabelled_async_when_the_step_says_so():
-    # Measured 2026-07-11 (the S06 stall): W6's capture-cast step calls
+    # Measured 2026-07-11 (the S06 stall): the flagship rail's capture-cast step calls
     # glossary_extract_entities_from_doc, whose NAME matches the async heuristic
     # ("extract_entities") — so the rail told the agent "background job, watch it before
     # continuing" for a tool that returns synchronously. It stalled waiting for a job that
@@ -269,7 +269,7 @@ def test_a_resumed_turn_still_advertises_the_pinned_rails_tools():
     """The HIGH bug: the rail's TEXT survives a confirm-gate suspend for free (it lives in
     the system message inside `working`), but its TOOLS did not — the resume re-derives the
     tool surface from scratch and has no book_id to re-fetch the binding with. So the
-    resumed turn read an ordered recipe naming tools it could not call. W6's FIRST confirm
+    resumed turn read an ordered recipe naming tools it could not call. the flagship rail's FIRST confirm
     gate is step 3 of 12, so the flagship rail broke at its very first gate.
 
     The fix carries `pinned_step_tools` on the SuspendedRun; this asserts the seam that

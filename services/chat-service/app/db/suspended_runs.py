@@ -41,7 +41,7 @@ class SuspendedRun:
     # is persisted in `working`), but its TOOLS did not: the resume pass re-derives the
     # tool surface from scratch and has no book_id to re-fetch the binding with. So the
     # resumed turn read a recipe naming tools it could not call — and a rail whose FIRST
-    # gate is a confirm (W6 step 3 of 12) hits that on its very first gate. A rail that
+    # gate is a confirm (vision-to-book step 3 of 12) hits that on its very first gate. A rail that
     # looks runnable but cannot run is the worst failure shape there is.
     pinned_step_tools: list[str] | None = None
 

@@ -71,9 +71,9 @@ An unresolved pin (slug not visible on this surface) is **dropped + logged**, ne
 | `write` | `inject_workflows: [vision-to-book]` |
 | `ask` | none |
 
-### W6 `vision-to-book` (the thing worth binding)
+### the flagship `vision-to-book` rail (the thing worth binding)
 
-A binding is useless without a rail worth pinning; `glossary-bootstrap` covers only movement C. W6 is the
+A binding is useless without a rail worth pinning; `glossary-bootstrap` covers only movement C. vision-to-book is the
 flagship spine — its steps ARE S06's movements C→F, and its `notes_md` **owns the vocabulary** (which is what
 kills the jargon leak: no rail ⇒ no vocabulary owner). Surfaces `{book, editor}` (a bookless chat turn must
 not carry a book-building rail). All backing tools verified present in the liveness manifest.

@@ -238,7 +238,7 @@ def workflow_load_result(
 # notes under NOTES_SEED_BUDGET_CHARS so a seeded rail can never be cut here; if this
 # ever DOES cut, it is logged loudly, because of what a silent cut costs:
 #
-#   Measured 2026-07-11 — W6 vision-to-book's notes were 3218 chars against a 3000 cap,
+#   Measured 2026-07-11 — the flagship vision-to-book rail's notes were 3218 chars against a 3000 cap,
 #   so the tail was dropped. The tail was the SPEAK-PLAINLY vocabulary block ("never say
 #   workflow/glossary/spec… this recipe is PRIVATE"), i.e. the exact rules that stop the
 #   agent leaking the machinery to the user. The leak they were written to fix therefore

@@ -58,7 +58,7 @@ context across `llm_call_count` passes, not the pin.
 - **`budget_rail_tools()`** — a rail is budgeted in **declared step order**. The existing
   `budget_names_by_tokens` is read-first, which under pressure drops exactly the *write* steps that persist
   anything, leaving the agent a recipe naming tools it cannot see. Drops are logged, never silent.
-- **W6 `vision-to-book`** — the flagship spine (12 steps: categories → cast → connections → plan → draft),
+- **the flagship `vision-to-book` rail** — the flagship spine (12 steps: categories → cast → connections → plan → draft),
   surfaces `{book, editor}`. Its `notes_md` owns the vocabulary.
 
 ## Three real bugs this run caught (all fixed)
@@ -69,7 +69,7 @@ context across `llm_call_count` passes, not the pin.
    then confirmed by grepping the running container. **Always verify the code is IN the container.**
 2. **The rail leaked its own name.** First real run: *"we can use the **vision-to-book** workflow"* — said
    to a novelist, ×6. The rail is the agent's **private** recipe; putting it in context put it in the
-   user's face. Fixed in the rail header + W6's notes; locked by a test.
+   user's face. Fixed in the rail header + the flagship rail's notes; locked by a test.
 3. **A bare apostrophe broke the whole migration.** `Saying 'first I'll look…'` inside a Postgres `E'…'`
    literal terminated the string — the entire `schemaSQL` died at boot with a syntax error, while **every
    Go unit test stayed green** (nothing there touches a DB). This bug class has now bitten twice (a

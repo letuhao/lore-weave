@@ -125,7 +125,7 @@ func TestSchemaSQL_HasTheSystemWorkflowSeeds(t *testing.T) {
 // the prompt — and the end of a rail's prose is exactly where its vocabulary and honesty
 // rules live.
 //
-// This is not hypothetical: 2026-07-11, W6 vision-to-book's notes were 3218 chars against
+// This is not hypothetical: 2026-07-11, the flagship vision-to-book rail's notes were 3218 chars against
 // a 3000 cap, so the SPEAK-PLAINLY block ("never say workflow/glossary/spec…") was cut.
 // The jargon leak those rules were written to fix therefore survived the fix, and nothing
 // said a word. The author of a workflow cannot see the consumer's cap, so assert it here.

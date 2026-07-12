@@ -12,8 +12,8 @@ been about to investigate with more eval runs.
 
 | # | Sev | Area | Finding | Fix |
 |---|---|---|---|---|
-| 1 | **HIGH** | chat | **A confirm-gate resume keeps the rail's TEXT but drops its TOOLS.** The rail lives in the system message (persisted in `working`), so it survives the suspend for free — but the resume re-derives the tool surface from scratch and has no `book_id` to re-fetch the binding with. The resumed turn therefore read an ordered recipe naming tools it could not call. **W6's first confirm gate is step 3 of 12**, so the flagship rail broke at its very first gate. | Carry `pinned_step_tools` on the `SuspendedRun` (new `chat_suspended_runs.pinned_step_tools` column, NULL = pre-WS-3) and re-advertise them on resume |
-| 2 | MED | seeds | **W6's `capture-cast` step was mislabelled ASYNC.** `glossary_extract_entities_from_doc` matches the name heuristic (`extract_entities`), so the rail told the agent *"background job — do NOT begin a dependent step until it finishes"* about a **synchronous** tool. It stalls waiting for a job that never exists — **the cast is never saved.** | Author `async_job: false` on the step (the authored flag beats the heuristic) |
+| 1 | **HIGH** | chat | **A confirm-gate resume keeps the rail's TEXT but drops its TOOLS.** The rail lives in the system message (persisted in `working`), so it survives the suspend for free — but the resume re-derives the tool surface from scratch and has no `book_id` to re-fetch the binding with. The resumed turn therefore read an ordered recipe naming tools it could not call. **the flagship rail's first confirm gate is step 3 of 12**, so the flagship rail broke at its very first gate. | Carry `pinned_step_tools` on the `SuspendedRun` (new `chat_suspended_runs.pinned_step_tools` column, NULL = pre-WS-3) and re-advertise them on resume |
+| 2 | MED | seeds | **the flagship rail's `capture-cast` step was mislabelled ASYNC.** `glossary_extract_entities_from_doc` matches the name heuristic (`extract_entities`), so the rail told the agent *"background job — do NOT begin a dependent step until it finishes"* about a **synchronous** tool. It stalls waiting for a job that never exists — **the cast is never saved.** | Author `async_job: false` on the step (the authored flag beats the heuristic) |
 | 3 | MED | chat | The pin rendered **before** the tool catalog was fetched, so it lost the catalog's `_meta.async` signal — a pinned rail and a `workflow_load`ed rail could disagree about which steps start a job. The exact pin/load drift that reusing `workflow_load_result` was supposed to make impossible. | Hoist the catalog fetch above the pin, pass the async set in (also removes a duplicate HTTP call) |
 | 4 | MED | tenancy | **`/internal/workflows` never grant-checked its `book_id`** — which is client-supplied (the FE's `book_context`). Any user could read any book's book-tier workflows (full steps + notes) and its book-tier binding by knowing the UUID, and steer their own tool surface with it. | `bookGrantOK(GrantView)` before either query; fail **soft** (drop to the user's own scope) so a grant-authority blip cannot brick every chat turn |
 | 5 | MED | tenancy | **The book-tier pin was validated against the WRITER's private visibility.** Both directions were wrong: A could pin their own *private* user-tier workflow into a **shared** book (invisible to every other grantee, whose turns silently ran unpinned while `GET` still reported the pin as effective) — and the legitimate case, pinning the book's *own* workflow, was **rejected**, making that tier unpinnable. | Validate against whoever will **consume** the binding: book tier ⇒ System ∪ *that book's* rows (mirrors what `internalWorkflows` serves a grantee) |
@@ -24,7 +24,7 @@ been about to investigate with more eval runs.
 
 ## Two more bugs found by running the fixed code
 
-- **A cap silently ate the rail's most important rules.** W6's `notes_md` was 3218 chars against my own
+- **A cap silently ate the rail's most important rules.** the flagship rail's `notes_md` was 3218 chars against my own
   3000-char `notes_char_cap`, so the tail was dropped — and the tail was the **SPEAK-PLAINLY block** ("never
   say workflow/glossary/spec…"), i.e. exactly the rules written to stop the jargon leak. **The leak survived
   its own fix, and the truncation said nothing.** A cap that silently eats the end of a prompt is worse than
@@ -71,4 +71,4 @@ prompt tweak, and it is the honest next milestone.
   (typo corrected / deliberate cross-book still honored).
 - **agent-registry:** api + migrate green, incl. the rewritten lint's **negative control**.
 - **live:** both migrations applied on a real stack (`chat_suspended_runs.pinned_step_tools`,
-  W6 `async_job:false`); S06 re-run end-to-end on a fresh, provably-empty book.
+  vision-to-book `async_job:false`); S06 re-run end-to-end on a fresh, provably-empty book.
