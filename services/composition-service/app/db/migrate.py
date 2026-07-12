@@ -1572,6 +1572,53 @@ CREATE TABLE IF NOT EXISTS arc_conformance_state (
   computed_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (book_id, structure_node_id)
 );
+
+-- ── SC11 amendment Phase 1 — the WRITTEN VERDICT, maintained on write ───────────────────────
+--
+-- "Is there prose behind this spec node?" is a manuscript FACT, and book-service already knows it
+-- when it writes `scenes.source_scene_id`. Before this it was DERIVED ON READ, twice, on the
+-- CLIENT (plan-hub's computeUnionState and the scene-browser's sceneUnion), each with its own
+-- partial-read completeness guard — and one of them needed a HIGH-severity fix to get that guard
+-- right. It was also invisible to agents: it lived in a `useState` and died with the panel.
+--
+-- ⚠ READ THIS BEFORE "FIXING" IT: this does NOT re-invert SC2 / DA-3.
+--    DA-3 says "the index points at the spec — `scenes.source_scene_id → outline_node.id`, NEVER
+--    the reverse", and composition never writes book-service's column. Both still hold.
+--    `written_scene_id` is a REGENERABLE CACHE of that pointer's inverse — the same status
+--    INV-FACTS gives the EAV projection ("lazy, versioned, regenerable caches — never truth").
+--    The AUTHORED anchor remains `scenes.source_scene_id`, owned solely by the index owner.
+--    If the two ever disagree, **book-service wins and this column is rebuilt from it** — that is
+--    exactly what the reconcile sweeper does. A back-pointer on `outline_node` LOOKS like a DA-3
+--    violation and is not; deleting it would silently restore the client-side derivation.
+--
+-- NOT `status`: that is the AUTHOR's intent (`empty|outline|drafting|done`), it is an agent/author
+-- write arg (SC8), and PH16 locks a two-chip desired-vs-actual header. Fusing intent and fact into
+-- one column is the drift bug BPS-3 deleted `structure_node.pacing` to prevent — and it would mean
+-- an author marking a scene `done` makes an UNWRITTEN scene render as written.
+--
+-- A LINK (not a bool/timestamp) because the scene-browser needs the resolved id: it distinguishes
+-- `anchorLost` (set-but-dangling) from "not yet written" (BPS-13). No FK — cross-DB soft ref.
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_scene_id UUID;
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_at       TIMESTAMPTZ;
+-- WHICH CHAPTER'S PROSE backs this node — and it is NOT the same thing as `chapter_id`.
+-- `chapter_id` is the node's OWN spec chapter. `written_chapter_id` is where the prose that backs
+-- it actually lives. They come apart in two REAL ways, and a reconcile scoped by the wrong one is
+-- broken in both:
+--   * NOTHING constrains `scenes.source_scene_id` to a node of the same chapter. Copy prose (with
+--     its `data-scene-id` anchor) into another chapter and a scene in chapter A now backs a node
+--     whose spec chapter is B. Clearing by `chapter_id` makes the two chapters FIGHT: reconciling B
+--     wipes the link, reconciling A restores it, and the mirror never converges.
+--   * `chapter_id` is NULL on a PLANNED node — which is most of them (7/7 in the live DB when this
+--     was written). A NULL-chapter node that gets written could never be cleared by a chapter-scoped
+--     predicate, and `reconcile_book` skips NULLs, so THE SWEEPER WOULD NEVER HEAL IT EITHER.
+--     Permanently, silently stale.
+-- Clearing by `written_chapter_id` — "the nodes this chapter's prose used to back, and no longer
+-- does" — is correct in both cases and needs no chapter_id at all.
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_chapter_id UUID;
+-- Partial: only the written nodes. The Hub reads this per book, and a mostly-unwritten book keeps
+-- the index tiny.
+CREATE INDEX IF NOT EXISTS idx_outline_node_written
+  ON outline_node(book_id) WHERE written_scene_id IS NOT NULL;
 """
 
 
