@@ -98,8 +98,31 @@ def test_title_is_single_line_and_bounded():
 
 
 class _DownBook:
-    async def list_chapters(self, book_id, bearer, *, limit=2000):
+    async def list_chapters(self, book_id, bearer, *, limit=2000, raise_on_404=False):
         raise BookClientError(502, "BOOK_SERVICE_UNAVAILABLE")
+
+
+class _NotFoundBook:
+    """book-service 404s. `list_chapters` normally SWALLOWS that into `[]` — which for a caller
+    that reasons about ABSENCE reads as a confirmed-empty book. compute_coverage must pass
+    raise_on_404 so it degrades instead of reporting a green-looking zero."""
+
+    async def list_chapters(self, book_id, bearer, *, limit=2000, raise_on_404=False):
+        if raise_on_404:
+            raise BookClientError(404, "BOOK_NOT_FOUND")
+        return []
+
+
+class _HugeBook:
+    """A spine BIGGER than the scan ceiling — the count becomes a floor, and must say so."""
+
+    def __init__(self, n):
+        self._n = n
+        self.limits: list[int] = []
+
+    async def list_chapters(self, book_id, bearer, *, limit=2000, raise_on_404=False):
+        self.limits.append(limit)
+        return [_ch(uuid4(), i) for i in range(min(self._n, limit))]
 
 
 class _Outline:
@@ -121,3 +144,34 @@ async def test_book_service_down_degrades_it_never_zeroes():
     assert cov.warning and "not zero" in cov.warning
     # and we don't pay for the spec read we can't use
     assert outline.called is False
+
+
+@pytest.mark.asyncio
+async def test_a_404_DEGRADES_it_does_not_report_zero_unplanned():
+    """The finding: `list_chapters` swallows a 404 into `[]`. This caller reasons about absence, so
+    a 404 would have rendered "nothing is unplanned" over a book we could not read at all."""
+    outline = _Outline()
+    cov = await compute_coverage(uuid4(), "bearer", book=_NotFoundBook(), outline=outline)
+    assert cov.degraded is True
+    assert cov.warning and "not zero" in cov.warning
+    assert outline.called is False
+
+
+@pytest.mark.asyncio
+async def test_the_spine_read_is_EXHAUSTIVE_not_the_2000_default():
+    """`list_chapters`'s `limit` is a real CEILING (it truncates silently), so the default 2000
+    would cap `unplanned_count` on a 10k-chapter book — a number documented as EXACT. An upstream
+    truncation that quietly caps the count makes the whole exact-count contract moot."""
+    book = _HugeBook(3000)
+    cov = await compute_coverage(uuid4(), "bearer", book=book, outline=_Outline())
+    assert book.limits[0] >= 100_000        # asked for far more than any real book
+    assert cov.unplanned_count == 3000      # and got them ALL — not 2000
+    assert cov.spine_truncated is False
+
+
+@pytest.mark.asyncio
+async def test_hitting_the_ceiling_marks_the_count_a_FLOOR():
+    book = _HugeBook(200_000)  # bigger than the ceiling itself
+    cov = await compute_coverage(uuid4(), "bearer", book=book, outline=_Outline())
+    assert cov.spine_truncated is True      # we could not even COUNT them all
+    assert cov.unplanned_count == 100_000   # a lower bound, and flagged as such

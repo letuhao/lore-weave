@@ -64,6 +64,10 @@ export function useActualState(
     setByChapter({});
     setCompleteChapters(new Set());
     setError(null);
+    // The in-flight counter must reset too: the `finally` below SKIPS its decrement for a stale
+    // generation, so a book switch mid-flight would otherwise leak the count and pin `loading`
+    // true forever.
+    setLoadingCount(0);
   }, [bookId]);
 
   const fetchChapter = useCallback(
@@ -93,6 +97,11 @@ export function useActualState(
         if (myGen !== gen.current) return;
         // Leave the chapter INCOMPLETE: no scene of it may be judged not-written from a failed read.
         setError(e instanceof Error ? e.message : 'scenes unavailable');
+        // …and make it RETRYABLE. `requested` is what stops a re-fetch, so a transient failure would
+        // otherwise strand this chapter as permanently-unknown for the whole session: collapse and
+        // re-expand would not retry, and its scenes would render neutral forever — the three-state
+        // treatment quietly evaporating, which is the exact thing this file's header forbids.
+        requested.current.delete(chapterId);
       } finally {
         if (myGen === gen.current) setLoadingCount((n) => Math.max(0, n - 1));
       }

@@ -329,6 +329,7 @@ class BookClient:
 
     async def list_chapters(
         self, book_id: UUID, bearer: str, *, limit: int = 2000,
+        raise_on_404: bool = False,
     ) -> list[dict[str, Any]]:
         """The book's ACTIVE chapters in reading order (`sort_order,
         created_at`), each `{chapter_id, title, sort_order}` — the A3 planner's
@@ -337,9 +338,17 @@ class BookClient:
         page limit to 100 — a single request can NEVER see a >100-chapter book
         whole) until a short page or `limit` total rows.
 
-        404 (book missing / not owned) → `[]` (the endpoint already gated on the
-        Work, so this is effectively "no chapters"); 5xx / transport →
-        BookClientError. `title` may be null (untitled chapter) → coerced to ''."""
+        `limit` is a REAL CEILING, not a page size: a book with more chapters than
+        `limit` comes back TRUNCATED, silently. Callers that must be exhaustive
+        (the coverage diff, whose whole contract is an exact count) have to pass a
+        limit above the book's size and check — see `coverage.py`.
+
+        404 (book missing / not owned) → `[]` by default, because the original
+        callers had already gated the Work and treat it as "no chapters". That
+        default is DANGEROUS for anyone who reasons about ABSENCE: a 404 then reads
+        as a confirmed-empty book. `raise_on_404=True` makes it a BookClientError
+        so such a caller can degrade instead of reporting a green-looking zero.
+        5xx / transport → BookClientError always. `title` may be null → ''."""
         out: list[dict[str, Any]] = []
         offset = 0
         while len(out) < limit:
@@ -352,6 +361,8 @@ class BookClient:
                 },
             )
             if resp.status_code == 404:
+                if raise_on_404:
+                    raise BookClientError(404, "BOOK_NOT_FOUND")
                 return []
             body = self._raise_for_status(resp)
             items = body.get("items", []) or []

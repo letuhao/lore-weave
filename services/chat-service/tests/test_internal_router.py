@@ -147,8 +147,11 @@ async def test_day_window_limit_is_bounded(client, mock_pool):
     mock_pool.fetch = AsyncMock(return_value=[])
     assert (await client.get(_DW, params=_dw_params(limit=0), headers=_AUTH)).status_code == 422
     assert (await client.get(_DW, params=_dw_params(limit=50001), headers=_AUTH)).status_code == 422
-    # Required params are enforced (a missing book_id can't silently widen the scope).
-    bad = {"user_id": str(uuid4()), "local_date": "2026-03-10"}  # no book_id
+    # book_id is OPTIONAL (T-4: session_kind='assistant' is the server-side discriminator, so a
+    # missing book_id does NOT widen the scope) — the required params are user_id + local_date.
+    ok = {"user_id": str(uuid4()), "local_date": "2026-03-10"}  # no book_id
+    assert (await client.get(_DW, params=ok, headers=_AUTH)).status_code == 200
+    bad = {"local_date": "2026-03-10"}  # no user_id
     assert (await client.get(_DW, params=bad, headers=_AUTH)).status_code == 422
 
 

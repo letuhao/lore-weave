@@ -42,11 +42,13 @@ export function usePlanNodeWrites(
   const [error, setError] = useState<string | null>(null);
   const [undo, setUndo] = useState<NodeWriteUndo | null>(null);
 
+  // The drawer's per-node query is keyed ['plan-hub','node',id] (usePlanNode), so the ONE prefix
+  // invalidate below already reaches it. (An earlier version also invalidated ['composition','node'],
+  // a key no query in this codebase uses — dead code with a comment claiming it was load-bearing,
+  // which is worse than none: the next person re-keys the drawer out of the prefix, trusts the
+  // comment, and it goes silently stale.)
   const settle = useCallback(() => {
     void qc.invalidateQueries({ queryKey: ['plan-hub'] });
-    // The drawer reads the node through `compositionApi.getNode` under its own key — invalidate that
-    // too, or the drawer keeps showing the pre-edit row it just wrote.
-    void qc.invalidateQueries({ queryKey: ['composition', 'node'] });
     reloadWindows();
   }, [qc, reloadWindows]);
 
@@ -64,6 +66,13 @@ export function usePlanNodeWrites(
   const editMutation = useMutation({
     mutationFn: (v: { nodeId: string; version: number; patch: NodeEdit }) =>
       patchNode(v.nodeId, v.patch, v.version, token!),
+    // SEED the fresh row synchronously. `settle`'s invalidate is async, but `saving` flips false the
+    // instant the mutation resolves — so without this the controls re-enable while `node.version` is
+    // still the PRE-write value, and the very next edit sends a stale If-Match, 412s, and blames a
+    // phantom collaborator for your own keystroke (`instant-commit-control-over-occ-entity`).
+    onSuccess: (fresh, v) => {
+      qc.setQueryData(['plan-hub', 'node', v.nodeId], fresh);
+    },
     onError: onFailed,
     onSettled: settle,
   });

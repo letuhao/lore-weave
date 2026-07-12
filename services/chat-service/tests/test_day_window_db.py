@@ -38,17 +38,21 @@ async def pool():
         pytest.skip("dev postgres unreachable")
     async with p.acquire() as c:
         await c.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS local_date DATE")
+        # T-4 discriminator — apply idempotently so the test runs pre-migration too.
+        await c.execute(
+            "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS session_kind TEXT NOT NULL DEFAULT 'chat'"
+        )
     try:
         yield p
     finally:
         await p.close()
 
 
-async def _ins_session(c, owner, book_id):
+async def _ins_session(c, owner, book_id, session_kind="chat"):
     return await c.fetchval(
-        "INSERT INTO chat_sessions (owner_user_id, model_source, model_ref, book_id) "
-        "VALUES ($1, 'user_model', $2, $3) RETURNING session_id",
-        str(owner), str(uuid.uuid4()), (str(book_id) if book_id else None),
+        "INSERT INTO chat_sessions (owner_user_id, model_source, model_ref, book_id, session_kind) "
+        "VALUES ($1, 'user_model', $2, $3, $4) RETURNING session_id",
+        str(owner), str(uuid.uuid4()), (str(book_id) if book_id else None), session_kind,
     )
 
 
@@ -71,15 +75,18 @@ async def world(pool):
     bookD, bookN, bookD2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     sessions = []
     async with pool.acquire() as c:
-        s_diary1 = await _ins_session(c, userA, bookD)   # assistant session 1 (book D)
-        s_diary2 = await _ins_session(c, userA, bookD)   # assistant session 2 (same book, same day)
-        s_novel = await _ins_session(c, userA, bookN)    # a NON-assistant session (book N)
-        s_other = await _ins_session(c, userB, bookD2)   # another user's diary
-        sessions = [s_diary1, s_diary2, s_novel, s_other]
+        s_diary1 = await _ins_session(c, userA, bookD, "assistant")  # assistant session 1 (book D)
+        s_diary2 = await _ins_session(c, userA, bookD, "assistant")  # assistant session 2 (same book/day)
+        s_novel = await _ins_session(c, userA, bookN, "chat")        # a NON-assistant session (book N)
+        s_other = await _ins_session(c, userB, bookD2, "assistant")  # another USER's assistant session
+        # T-4 adversarial: a session bound to the diary book D but session_kind='chat' — must be
+        # EXCLUDED, proving session_kind (not book_id) is the discriminator.
+        s_diary_chat = await _ins_session(c, userA, bookD, "chat")
+        sessions = [s_diary1, s_diary2, s_novel, s_other, s_diary_chat]
 
         t = lambda h, m: datetime(2026, 3, 10, h, m, tzinfo=timezone.utc)  # noqa: E731
-        # Included (user A, book D, day X, non-error) — interleaved across two sessions so the
-        # ORDER BY created_at is genuinely cross-session, not just per-session sequence_num.
+        # Included (user A, assistant sessions, day X, non-error) — interleaved across two sessions
+        # so the ORDER BY created_at is genuinely cross-session, not just per-session sequence_num.
         await _ins_msg(c, s_diary1, userA, 0, DAY_X, content="09:00 first", created_at=t(9, 0))
         await _ins_msg(c, s_diary2, userA, 0, DAY_X, content="10:00 second",
                        role="assistant", created_at=t(10, 0),
@@ -90,12 +97,26 @@ async def world(pool):
         await _ins_msg(c, s_diary1, userA, 3, DAY_Y, content="next day", created_at=datetime(2026, 3, 11, 9, 0, tzinfo=timezone.utc))
         await _ins_msg(c, s_novel, userA, 0, DAY_X, content="NOVEL chat", created_at=t(9, 30))
         await _ins_msg(c, s_other, userB, 0, DAY_X, content="OTHER user", created_at=t(9, 45))
+        # a diary-BOOK-bound but chat-KIND session — excluded by the session_kind discriminator:
+        await _ins_msg(c, s_diary_chat, userA, 0, DAY_X, content="DIARY-BOOK but CHAT kind", created_at=t(9, 50))
     try:
         yield {"userA": userA, "userB": userB, "bookD": bookD}
     finally:
         async with pool.acquire() as c:
             for sid in sessions:
                 await c.execute("DELETE FROM chat_sessions WHERE session_id = $1", str(sid))
+
+
+async def test_session_kind_is_the_discriminator_not_book_id(pool, world):
+    # T-4 (sealed): the discriminator is session_kind='assistant', NOT a book_id=diary derivation.
+    # Called WITHOUT a book_id scope, the read returns the user's assistant-session messages and
+    # EXCLUDES a session bound to the diary BOOK but marked session_kind='chat'.
+    out = await day_window(user_id=world["userA"], local_date=DAY_X, book_id=None, limit=5000, db=pool)
+    contents = [m["content"] for m in out["messages"]]
+    assert "DIARY-BOOK but CHAT kind" not in contents, "session_kind must gate, not book_id"
+    assert "NOVEL chat" not in contents
+    assert contents == ["09:00 first", "10:00 second", "11:00 third"]
+    assert out["book_id"] is None  # no scope passed → session_kind alone gated
 
 
 async def test_returns_only_this_users_assistant_messages_for_the_day(pool, world):

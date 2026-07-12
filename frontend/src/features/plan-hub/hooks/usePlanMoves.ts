@@ -29,7 +29,7 @@ import {
   reorderNode,
 } from '../api';
 import { booksApi } from '@/features/books/api';
-import type { ArcListNode, NodePosition, SummaryNode } from '../types';
+import type { ArcListNode, NodePosition, SceneLinkEdge, SummaryNode } from '../types';
 
 const SIBLING_PAGE = 100;
 const MAX_SIBLING_PAGES = 20; // a chapter with >2000 scenes is not a real book; bound the walk
@@ -114,8 +114,9 @@ export interface PlanMoves {
   /** H5 Row-5 (PH20): DRAW a scene-link edge between two SCENE nodes. Rejects a stub endpoint (a
    *  chapter card / arc rollup standing in for something collapsed) with a reason. */
   linkScenes: (fromNodeId: string, toNodeId: string) => void;
-  /** H5 Row-5 (PH20): DELETE a scene-link edge by id. */
-  unlinkScenes: (linkId: string) => void;
+  /** H5 Row-5 (PH20): DELETE a scene-link edge. Takes the whole EDGE, not just its id, so the undo
+   *  can re-create it with its original kind + label. */
+  unlinkScenes: (edge: SceneLinkEdge) => void;
   moving: boolean;
   moveError: string | null;
   /** The last successful move's inverse, or null. Cleared when a new move starts (one level). */
@@ -412,8 +413,12 @@ export function usePlanMoves(input: {
   // "link" is already expressible as reading order. Rejecting it here (with a reason) beats letting
   // the server 400 — the user gets told what the gesture means, not that it failed.
   const linkMutation = useMutation({
-    mutationFn: (vars: { from: string; to: string }) =>
-      createSceneLink(bookId, { from_node_id: vars.from, to_node_id: vars.to }, token!),
+    mutationFn: (vars: { from: string; to: string; kind?: SceneLinkEdge['kind']; label?: string }) =>
+      createSceneLink(
+        bookId,
+        { from_node_id: vars.from, to_node_id: vars.to, kind: vars.kind, label: vars.label },
+        token!,
+      ),
     onError: onFailed,
     onSettled: settle,
   });
@@ -454,16 +459,29 @@ export function usePlanMoves(input: {
   );
 
   const unlinkScenes = useCallback(
-    (linkId: string) => {
+    (edge: SceneLinkEdge) => {
       if (!token) return;
       setMoveError(null);
-      // No undo: re-creating the edge would need its kind/label, and the delete response is a 204
-      // that carries neither. Offering an Undo that silently drops the label would be worse than
-      // offering none — draw it again is honest. (Tracked: give DELETE a body, then undo it.)
-      unlinkMutation.mutate(linkId);
-      setUndo(null);
+      // UNDOABLE. An earlier version took only the id and claimed no undo was possible ("the 204
+      // carries no kind/label") — but the CLIENT already holds the whole edge, and createSceneLink
+      // takes both. So a single click was irreversibly destroying a link for no reason, against this
+      // codebase's own rule that reversibility is what licenses an un-confirmed write.
+      unlinkMutation.mutate(edge.id, {
+        onSuccess: () => {
+          setUndo({
+            label: 'Scene link deleted',
+            run: () =>
+              linkMutation.mutate({
+                from: edge.from_node_id,
+                to: edge.to_node_id,
+                kind: edge.kind,
+                label: edge.label ?? '',
+              }),
+          });
+        },
+      });
     },
-    [token, unlinkMutation],
+    [token, unlinkMutation, linkMutation],
   );
 
   return {

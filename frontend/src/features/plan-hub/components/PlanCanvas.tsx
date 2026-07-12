@@ -282,13 +282,16 @@ function PlanCanvasInner(props: PlanCanvasProps) {
   // Backspace would destroy a link with no confirmation. An explicit click on the edge is the
   // gesture, and the controller owns the write.
   const onEdgeClick = useCallback(
-    (_: unknown, edge: Edge) => {
+    (_: unknown, rfEdge: Edge) => {
       // A STUB is not a real edge on screen — its other end is collapsed out of view. Deleting the
       // underlying link from a half-drawn line is a trap; expand the arc and delete it properly.
-      if ((edge.data as { stub?: boolean } | undefined)?.stub) return;
-      onUnlinkScenes?.(edge.id);
+      if ((rfEdge.data as { stub?: boolean } | undefined)?.stub) return;
+      // Hand back the WHOLE edge (kind + label), not just the id, so the controller's undo can
+      // re-create it exactly. We hold it; the 204 doesn't carry it.
+      const edge = edges.find((e) => e.id === rfEdge.id);
+      if (edge) onUnlinkScenes?.(edge);
     },
-    [onUnlinkScenes],
+    [onUnlinkScenes, edges],
   );
 
   // H5 drop routing. The drop point is the CURSOR in flow coordinates — see the file header for why

@@ -281,7 +281,7 @@ class _FakeBook:
         self._chapters = chapters or []
         self._raises = raises
 
-    async def list_chapters(self, book_id, bearer, *, limit=2000):
+    async def list_chapters(self, book_id, bearer, *, limit=2000, raise_on_404=False):
         if self._raises:
             raise self._raises
         return self._chapters

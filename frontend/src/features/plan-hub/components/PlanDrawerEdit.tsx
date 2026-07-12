@@ -26,6 +26,10 @@ export interface PlanDrawerEditProps {
   node: OutlineNode;
   /** The book's chapters, for the ⚓ re-anchor picker. */
   chapters: { chapter_id: string; title: string; sort_order: number }[];
+  /** The chapter spine could not be read. With an empty list the select would show
+   *  "— not anchored —" as the SELECTED option for an ANCHORED node — a confident lie about its
+   *  state. We disable the picker and say so instead. */
+  chaptersError?: boolean;
   onEdit: (patch: NodeEdit) => void;
   onArchive: () => void;
   onRestore: () => void;
@@ -41,6 +45,7 @@ function CommitField({
   value,
   testid,
   multiline,
+  numeric,
   onCommit,
   disabled,
 }: {
@@ -48,6 +53,7 @@ function CommitField({
   value: string;
   testid: string;
   multiline?: boolean;
+  numeric?: boolean;
   onCommit: (v: string) => void;
   disabled?: boolean;
 }) {
@@ -78,6 +84,9 @@ function CommitField({
       ) : (
         <input
           data-testid={testid}
+          type={numeric ? 'number' : 'text'}
+          min={numeric ? 0 : undefined}
+          max={numeric ? 100 : undefined}
           className={cls}
           value={draft}
           disabled={disabled}
@@ -95,6 +104,7 @@ function CommitField({
 export function PlanDrawerEdit({
   node,
   chapters,
+  chaptersError,
   onEdit,
   onArchive,
   onRestore,
@@ -144,26 +154,26 @@ export function PlanDrawerEdit({
         </select>
       </div>
 
-      <div>
-        <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          Tension (0–100)
-        </div>
-        <input
-          data-testid="plan-drawer-edit-tension"
-          type="number"
-          min={0}
-          max={100}
-          className="w-full rounded border bg-background px-1.5 py-1 text-xs disabled:opacity-50"
-          value={node.tension ?? ''}
-          disabled={saving}
-          onChange={(e) => {
-            const raw = e.target.value;
-            // Empty ⇒ explicitly NULL (unset), not 0. A 0-tension scene and an unset one are
-            // different facts, and the sparkline reads them differently.
-            onEdit({ tension: raw === '' ? null : Math.max(0, Math.min(100, Number(raw))) });
-          }}
-        />
-      </div>
+      {/* Tension commits on BLUR, like every other field. It used to write on every `onChange`, so
+          typing "45" fired TWO PATCHes — and since the second carried the pre-write `version`, it
+          412'd and blamed a phantom collaborator for your own keystroke. (The row's fresh version is
+          now also seeded into the cache on success, which closes the same window for the selects.) */}
+      <CommitField
+        label="Tension (0–100)"
+        testid="plan-drawer-edit-tension"
+        value={node.tension == null ? '' : String(node.tension)}
+        disabled={saving}
+        numeric
+        onCommit={(raw) => {
+          // Empty ⇒ explicitly NULL (unset), not 0. A 0-tension scene and an unset one are different
+          // facts, and the sparkline reads them differently.
+          const t = raw.trim();
+          if (t === '') return onEdit({ tension: null });
+          const n = Number(t);
+          if (Number.isNaN(n)) return; // junk in a number box: ignore, don't write NaN
+          onEdit({ tension: Math.max(0, Math.min(100, Math.round(n))) });
+        }}
+      />
 
       <CommitField
         label="Goal"
@@ -192,17 +202,28 @@ export function PlanDrawerEdit({
           data-testid="plan-drawer-edit-anchor"
           className="w-full rounded border bg-background px-1.5 py-1 text-xs disabled:opacity-50"
           value={node.chapter_id ?? ''}
-          disabled={saving}
+          disabled={saving || chaptersError}
           onChange={(e) => onEdit({ chapter_id: e.target.value || null })}
         >
           <option value="">— not anchored —</option>
+          {/* The node's CURRENT anchor, even if the spine didn't come back / doesn't contain it.
+              Without this the select would silently fall back to "— not anchored —" and misreport a
+              perfectly-anchored node as un-anchored. */}
+          {node.chapter_id && !chapters.some((c) => c.chapter_id === node.chapter_id) && (
+            <option value={node.chapter_id}>(current anchor)</option>
+          )}
           {chapters.map((c) => (
             <option key={c.chapter_id} value={c.chapter_id}>
               {c.sort_order}. {c.title || 'Untitled'}
             </option>
           ))}
         </select>
-        {!anchored && (
+        {chaptersError && (
+          <p data-testid="plan-drawer-anchor-error" className="mt-0.5 text-[11px] text-destructive">
+            The chapter list could not be read — re-anchoring is unavailable.
+          </p>
+        )}
+        {!anchored && !chaptersError && (
           <p data-testid="plan-drawer-no-anchor" className="mt-0.5 text-[11px] text-amber-600">
             This node points at no manuscript chapter — pick one above to anchor it.
           </p>

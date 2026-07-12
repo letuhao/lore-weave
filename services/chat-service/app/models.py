@@ -235,6 +235,11 @@ class CreateSessionRequest(BaseModel):
     # Compose) so the session survives being found again on the next open,
     # independent of whether a knowledge project is linked yet.
     book_id: UUID | None = None
+    # T-4 (sealed) — the assistant-session discriminator. The Work Assistant FE
+    # (WS-1.10) creates its session with session_kind='assistant'; the day-window
+    # read, voice gate, and search scoping key off it. Closed set (enum-validated
+    # on write); every other caller omits it → a regular 'chat' session.
+    session_kind: Literal["chat", "assistant"] = "chat"
 
 
 class PatchSessionRequest(BaseModel):
@@ -312,6 +317,7 @@ class ChatSession(BaseModel):
     updated_at: datetime
     project_id: UUID | None = None  # K5
     book_id: UUID | None = None  # D-COMPOSE-SESSION-RESTORE
+    session_kind: str = "chat"  # T-4 — 'chat' | 'assistant' (the assistant-session discriminator)
     # Track B B1(2) — multi-KG grounding set. Empty list = the legacy
     # single-project path. Default-empty so an older row / no-project session
     # stays back-compatible.

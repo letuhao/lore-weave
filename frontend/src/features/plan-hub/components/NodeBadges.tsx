@@ -40,7 +40,7 @@ function CanonBadge({ nodeId, count, rule, onOpenRef }: {
         aria-label={label}
         onClick={(e) => {
           e.stopPropagation();
-          onOpenRef(rule);
+          onOpenRef(rule, nodeId);
         }}
         className={cn(cls, 'pointer-events-auto hover:bg-destructive/25')}
       >

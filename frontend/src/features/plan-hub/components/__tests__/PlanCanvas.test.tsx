@@ -245,6 +245,7 @@ describe('PlanCanvas', () => {
     badge.click();
     expect(onOpenRef).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'canon', id: 'rule-9' }),
+      'ch-1',
     );
   });
 

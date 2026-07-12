@@ -118,13 +118,13 @@ async def get_turn_text(message_id: UUID, db: asyncpg.Pool = Depends(get_db)) ->
 # single local day may span several assistant sessions. Per-message `tool_names` are returned so
 # the map step can apply the self-feeding guard (§Q9 — skip assistant turns that quoted recall).
 #
-# TRUST BOUNDARY (review Finding 5): the assistant-only property is "messages in sessions bound to
-# the passed book_id". Cross-USER reads are fully blocked (owner_user_id filter). The book being a
-# kind='diary' is NOT re-verified here — chat-service has no cross-DB view of book kinds, and a
-# book-service round-trip on every day-window read would be disproportionate. This is safe because
-# the ONLY caller is the trusted internal distiller, which always passes the user's diary; and the
-# diary-kind enforcement lives authoritatively at the WRITE seam (book-service rejects an entry to
-# any non-diary/other-owner book), so even a mis-triggered read cannot cause a wrong entry to persist.
+# DISCRIMINATOR (sealed T-4): the assistant-only property is `s.session_kind = 'assistant'` — an
+# EXPLICIT column, not a book_id=diary derivation (the day-window read, the voice gate, and search
+# scoping all key off the same flag; an explicit flag is self-describing and future-proofs a coach
+# session that is assistant-family but not diary-bound). Cross-USER reads are fully blocked by the
+# owner_user_id filter. `book_id` is an OPTIONAL extra scope (the distiller passes the diary book so
+# a user with multiple assistant contexts is disambiguated); the diary-kind taint is enforced
+# authoritatively at the WRITE seam (book-service rejects an entry to any non-diary/other-owner book).
 DAY_WINDOW_DEFAULT_LIMIT = 5000
 DAY_WINDOW_MAX_LIMIT = 50000
 
@@ -132,8 +132,8 @@ DAY_WINDOW_MAX_LIMIT = 50000
 @router.get("/messages/day-window", dependencies=[Depends(require_internal_token)])
 async def day_window(
     user_id: UUID = Query(...),
-    book_id: UUID = Query(..., description="the diary book — the assistant-session discriminator"),
     local_date: date = Query(..., description="the LOCAL calendar day to distill (chat_messages.local_date)"),
+    book_id: UUID | None = Query(None, description="optional extra scope: the diary book to restrict to"),
     limit: int = Query(default=DAY_WINDOW_DEFAULT_LIMIT, ge=1, le=DAY_WINDOW_MAX_LIMIT),
     db: asyncpg.Pool = Depends(get_db),
 ) -> dict:
@@ -155,14 +155,15 @@ async def day_window(
         FROM chat_messages m
         JOIN chat_sessions s ON s.session_id = m.session_id
         WHERE m.owner_user_id = $1
-          AND s.book_id = $2
+          AND s.session_kind = 'assistant'
+          AND ($2::uuid IS NULL OR s.book_id = $2)
           AND m.local_date = $3
           AND m.is_error = false
         ORDER BY m.created_at, m.sequence_num
         LIMIT $4
         """,
         str(user_id),
-        str(book_id),
+        str(book_id) if book_id else None,
         local_date,
         limit + 1,  # fetch one extra to detect truncation without a second COUNT query
     )
@@ -183,7 +184,7 @@ async def day_window(
     ]
     return {
         "user_id": str(user_id),
-        "book_id": str(book_id),
+        "book_id": str(book_id) if book_id else None,
         "local_date": local_date.isoformat(),
         "message_count": len(messages),
         "truncated": truncated,

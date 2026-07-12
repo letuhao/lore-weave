@@ -55,16 +55,28 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     return hit ? hit[0] : null;
   }, [activeChapterId, view.nodeContent]);
 
-  // PH18 deep-links — a problem ref opens its OWNING lens, filtered to the offending row. The Hub
-  // shows the debt; the lens is where you resolve it. Panel ids are the catalog's (`quality-canon`,
-  // `quality-promises`) — a wrong id here is a silent no-op, the Frontend-Tool-Contract bug class,
-  // so they are pinned by a test. Routed through openPanel, never navigate() (PH24/DOCK-7).
+  // PH18 deep-links — a problem ref opens its OWNING lens, FOCUSED on the offending row. Routed
+  // through openPanel, never navigate() (PH24/DOCK-7).
+  //
+  // ⚠ The spec says "canon badge → quality-canon filtered TO THE RULE". That is not possible: the
+  // overlay's canon ref is a `canon_rule.id`, and QualityCanonPanel lists `CanonIssue` rows, which
+  // carry scene_id / chapter_id / violations[] and NO rule id at all. Different id spaces. Passing
+  // the rule id would open the panel and match nothing — a link that looks like it worked, which is
+  // the very bug class this deep-link was added to fix.
+  //   canon  → focus the node's CHAPTER (what the panel can actually resolve, and what the user
+  //            means: "show me the canon problems around here")
+  //   thread → focus the THREAD id directly (narrative_thread.id IS what the promises panel lists)
+  // Recorded in RUN-STATE §6 as D-04.
   const openRef = useCallback(
-    (ref: PlanOverlayRef) => {
-      const panelId = ref.kind === 'canon' ? 'quality-canon' : 'quality-promises';
-      openPanel(panelId, { focus: true, params: { bookId, focusId: ref.id } });
+    (ref: PlanOverlayRef, nodeId: string) => {
+      if (ref.kind === 'thread') {
+        openPanel('quality-promises', { focus: true, params: { bookId, focusThreadId: ref.id } });
+        return;
+      }
+      const chapterId = view.nodeContent[nodeId]?.chapterId ?? null;
+      openPanel('quality-canon', { focus: true, params: { bookId, focusChapterId: chapterId } });
     },
-    [openPanel, bookId],
+    [openPanel, bookId, view.nodeContent],
   );
 
   // ── PH15 toolbar state ──────────────────────────────────────────────────────────────────────
@@ -86,15 +98,6 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     }
     return hits;
   }, [search, view.nodeContent]);
-
-  // The book-wide problem total (canon + open threads), for the toolbar counter. The overlay's
-  // by_node map rolls counts up onto arcs too, so summing every entry would double-count; sum only
-  // the ROOT structure nodes' subtree totals... which we don't have. Simplest honest total: sum the
-  // LEAF entries (nodes that carry refs), which is exactly what the overlay attributes per node.
-  const problemCount = useMemo(() => {
-    const by = view.overlay?.problems.by_node ?? {};
-    return Object.values(by).reduce((n, p) => n + p.refs.length, 0);
-  }, [view.overlay]);
 
   // OQ-5 camera — a focus REQUEST (nodeId + monotonically bumped seq so re-focusing the same node
   // still pans). A rail row focus selects AND pans; a canvas click only selects (already in view).
@@ -202,7 +205,7 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         }
         view={viewMode}
         onView={setViewMode}
-        problemCount={problemCount}
+        problemCount={view.problemTotal}
       />
       <div className="relative min-w-0 flex-1">
         <PlanCanvas

@@ -2,6 +2,7 @@
 // The seven read surfaces the canvas composes (24 §113). Every composition route is
 // book-keyed + VIEW-gated server-side (BPS-8); the client passes the bearer token.
 import { apiJson } from '../../api';
+import type { OutlineNode } from '@/features/composition/types';
 import type {
   ArcListNode,
   ChildrenPage,
@@ -129,8 +130,10 @@ export function patchNode(
   body: NodeEdit,
   version: number,
   token: string,
-): Promise<{ id: string; version: number }> {
-  return apiJson<{ id: string; version: number }>(`${COMP}/outline/nodes/${nodeId}`, {
+): Promise<OutlineNode> {
+  // The route returns the WHOLE updated node (`node.model_dump()`), not a stub. That matters: the
+  // caller seeds it straight into the drawer's query cache, and a partial would corrupt the row.
+  return apiJson<OutlineNode>(`${COMP}/outline/nodes/${nodeId}`, {
     method: 'PATCH',
     token,
     headers: { 'If-Match': String(version) },

@@ -9,7 +9,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
 import { laneLayout } from '../layout/laneLayout';
-import type { ArcPagination, CollapseState, NodeContent, PlanHubView } from '../types';
+import type {
+  ArcPagination,
+  CollapseState,
+  NodeContent,
+  PlanHubView,
+  UnplannedChapter,
+} from '../types';
 import { usePlanWindows } from './usePlanWindows';
 import { usePlanMoves } from './usePlanMoves';
 import { useActualState } from './useActualState';
@@ -208,9 +214,11 @@ export function usePlanHub(bookId: string): PlanHubView {
   // PH21 CTA — the decompiler. Lives here (not in the panel) so the panel stays a view.
   const extract = useExtractPlan(bookId, token, windowsResult.reload);
 
-  // PH20 — the drawer's writes + the chapter spine the ⚓ re-anchor picker needs (BPS-13).
+  // PH20 — the drawer's writes + the chapter spine the ⚓ re-anchor picker needs (BPS-13). The spine
+  // walk is gated on a SELECTION: it is a drawer control, and firing it on mount was a ~100-request
+  // cold-open violation (see useBookChapters' header).
   const nodeWrites = usePlanNodeWrites(bookId, token, windowsResult.reload);
-  const chapters = useBookChapters(bookId, token);
+  const chapterSpine = useBookChapters(bookId, token, selectedId !== null);
 
   const loading = (enabled && arcsQuery.isLoading) || windowsResult.loading;
   const error =
@@ -228,10 +236,29 @@ export function usePlanHub(bookId: string): PlanHubView {
     windowsResult.unassignedLoaded &&
     layout.unassigned.length === 0;
 
-  // PH21 tray. `undefined` on the wire ⇒ the coverage diff could not be computed (book-service
-  // unreadable) ⇒ null here ⇒ the tray renders "unknown", never an empty (green-looking) tray.
+  // PH21 tray — THREE states, not two. `overlay` is null while the query is still in flight AND
+  // when it degraded, and collapsing those would flash "the manuscript could not be read" on every
+  // cold open (the overlay is the slowest of the parallel reads). The absent≠zero law, broken in
+  // the other direction: absent ≠ degraded.
+  //   undefined ⇒ still loading — the tray renders nothing
+  //   null      ⇒ the server ANSWERED and omitted the key — the tray says "unknown"
+  //   []        ⇒ nothing is unplanned
   const overlay = overlayQuery.data ?? null;
-  const unplanned = overlay?.unplanned_chapters ?? null;
+  const unplanned: UnplannedChapter[] | null | undefined = overlayQuery.isPending
+    ? undefined
+    : (overlay?.unplanned_chapters ?? null);
+
+  // The book-wide problem total. It MUST come from the exact per-node counts, never from the refs
+  // list: the server caps refs at 50 globally while keeping counts exact (the OUT-5 split), so
+  // summing `refs.length` would silently report "50" for a book with 300 problems. Sum LEAF entries
+  // only — `by_node` also carries arc-subtree rollups, and adding those would double-count.
+  const problemTotal = useMemo(() => {
+    const by = overlay?.problems.by_node ?? {};
+    const arcIds = new Set((arcsQuery.data?.arcs ?? []).map((a) => a.id));
+    return Object.entries(by)
+      .filter(([id]) => !arcIds.has(id)) // drop the rollup entries; keep the leaves
+      .reduce((n, [, p]) => n + p.canon + p.threads_open, 0);
+  }, [overlay, arcsQuery.data]);
 
   // ── Degradation notices — every partial truth the Hub is currently rendering, in ONE place ──
   //
@@ -268,13 +295,15 @@ export function usePlanHub(bookId: string): PlanHubView {
     specEmpty,
     unplanned,
     unplannedCount: overlay?.unplanned_count ?? unplanned?.length ?? 0,
+    problemTotal,
     arcPagination,
     loadMoreArc: windowsResult.loadMoreArc,
     linkScenes: moves.linkScenes,
     unlinkScenes: moves.unlinkScenes,
     resolveEntity: entityNames.resolve,
     nodeWrites,
-    chapters,
+    chapters: chapterSpine.chapters,
+    chaptersError: chapterSpine.error,
     extract,
     notices,
     loading,

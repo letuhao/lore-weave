@@ -72,6 +72,19 @@ class SceneLinksRepo:
                 raise ReferenceViolationError(
                     "scene_link endpoints must both be nodes in this project"
                 )
+            # A scene_link is the non-derivable SCENE→SCENE edge (F-H7). A chapter-level "link"
+            # is already expressible as reading order, so it is not a thing. The FE refuses it,
+            # but the invariant belongs HERE: an MCP/REST caller reaches the same repo through a
+            # different front door, and a rule that lives only in one client is not a rule.
+            kinds = await c.fetchval(
+                "SELECT count(*) FROM outline_node "
+                "WHERE project_id = $1 AND id = ANY($2::uuid[]) AND kind = 'scene'",
+                project_id, [from_node_id, to_node_id],
+            )
+            if kinds != 2:
+                raise ReferenceViolationError(
+                    "scene_link endpoints must both be SCENE nodes"
+                )
             row = await c.fetchrow(
                 query, created_by, project_id, from_node_id, to_node_id, kind, label
             )

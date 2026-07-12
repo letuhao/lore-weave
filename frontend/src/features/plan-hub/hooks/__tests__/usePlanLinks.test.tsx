@@ -126,28 +126,53 @@ describe('Row-5 linkScenes (PH20)', () => {
   });
 });
 
+const edge = (o = {}) => ({
+  id: 'link-9',
+  from_node_id: 's1',
+  to_node_id: 's2',
+  kind: 'setup_payoff' as const,
+  label: 'the red thread',
+  from_chapter_node_id: null,
+  to_chapter_node_id: null,
+  from_arc_id: null,
+  to_arc_id: null,
+  ...o,
+});
+
 describe('Row-5 unlinkScenes (PH20)', () => {
-  it('deletes the edge by id and reloads', async () => {
+  it('deletes the edge and reloads', async () => {
     api.deleteSceneLink.mockResolvedValue(undefined);
     const { hook, reloadWindows } = setup({});
 
-    act(() => hook.result.current.unlinkScenes('link-9'));
+    act(() => hook.result.current.unlinkScenes(edge()));
 
     await waitFor(() => expect(api.deleteSceneLink).toHaveBeenCalledWith('link-9', 'tok'));
     await waitFor(() => expect(reloadWindows).toHaveBeenCalled());
   });
 
-  it('offers NO undo — the 204 carries no kind/label to re-create with', async () => {
-    // An Undo that silently dropped the edge's label would be worse than no Undo. "Draw it again"
-    // is the honest affordance.
-    api.createSceneLink.mockResolvedValue({ id: 'link-1' });
+  it('the delete IS undoable - it re-creates the edge with its ORIGINAL kind + label', async () => {
+    // An earlier version took only the id and claimed no undo was possible ("the 204 carries no
+    // kind/label"). But the CLIENT holds the whole edge, and createSceneLink takes both - so a
+    // single click was irreversibly destroying a link for no reason at all.
     api.deleteSceneLink.mockResolvedValue(undefined);
-    const { hook } = setup({ 's1': scene('s1'), 's2': scene('s2') });
+    api.createSceneLink.mockResolvedValue({ id: 'link-new' });
+    const { hook } = setup({});
 
-    act(() => hook.result.current.linkScenes('s1', 's2'));
+    act(() => hook.result.current.unlinkScenes(edge()));
     await waitFor(() => expect(hook.result.current.undo).not.toBeNull());
 
-    act(() => hook.result.current.unlinkScenes('link-1'));
-    expect(hook.result.current.undo).toBeNull(); // the stale create-undo is cleared, not left armed
+    act(() => hook.result.current.undo!.run());
+    await waitFor(() =>
+      expect(api.createSceneLink).toHaveBeenCalledWith(
+        'book-1',
+        {
+          from_node_id: 's1',
+          to_node_id: 's2',
+          kind: 'setup_payoff',
+          label: 'the red thread', // the label SURVIVES the round trip
+        },
+        'tok',
+      ),
+    );
   });
 });

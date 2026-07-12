@@ -17,8 +17,12 @@ import { useTranslation } from 'react-i18next';
 import type { UnplannedChapter } from '../types';
 
 export interface UnplannedTrayProps {
-  /** null ⇒ not computed (degraded) — render the unknown state, never an empty one. */
-  chapters: UnplannedChapter[] | null;
+  /** THREE states (see PlanHubView.unplanned):
+   *    undefined ⇒ still loading — render NOTHING (an "unknown" here would flash the degradation
+   *                alarm on every cold open, while the overlay is merely in flight)
+   *    null      ⇒ the server answered and omitted the key — render "unknown"
+   *    []        ⇒ nothing unplanned — render nothing */
+  chapters: UnplannedChapter[] | null | undefined;
   /** EXACT, even when the server capped the list. */
   total: number;
   /** Focus the chapter in the editor (the manuscript is where it actually lives). */
@@ -29,6 +33,10 @@ export function UnplannedTray({ chapters, total, onOpenChapter }: UnplannedTrayP
   const { t } = useTranslation('studio');
   const [open, setOpen] = useState(false);
 
+  // Still loading ⇒ say nothing. This is NOT the same as "unknown": the server hasn't answered yet,
+  // and claiming the manuscript could not be read while the request is still in flight would put a
+  // false alarm on screen for the duration of every cold open.
+  if (chapters === undefined) return null;
   // Nothing unplanned AND we know it → the tray has nothing to say. Stay out of the way.
   if (chapters !== null && chapters.length === 0) return null;
 

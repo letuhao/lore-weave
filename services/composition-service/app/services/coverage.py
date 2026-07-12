@@ -46,19 +46,33 @@ UNPLANNED_CAP = 200
 _TITLE_MAX = 160
 
 
+# The manuscript spine read must be EXHAUSTIVE, or `unplanned_count` is a lie. `list_chapters`'s
+# `limit` is a real ceiling (it truncates silently), so we ask for more than any real book and then
+# CHECK whether we hit it — an upstream truncation that quietly caps the count would make the whole
+# exact-count-vs-capped-list contract below meaningless (the classic "a normalization upstream makes
+# the defense downstream moot" bug).
+_SPINE_LIMIT = 100_000
+
+
 @dataclass(frozen=True)
 class Coverage:
-    """The diff, plus an honest partiality flag.
+    """The diff, plus its honest partiality flags.
 
     `degraded=True` means the manuscript spine could not be read — `unplanned` is
     then meaningless and MUST NOT be rendered as an empty tray. Callers omit the key
     and surface `warning`.
+
+    `spine_truncated=True` means we DID read the spine but hit the ceiling, so
+    `unplanned_count` is a LOWER BOUND, not the exact figure it normally is. The two
+    flags are different facts and the caller renders them differently.
     """
 
     unplanned: list[dict[str, Any]] = field(default_factory=list)
-    unplanned_count: int = 0          # EXACT, even when the list is capped
+    # EXACT — unless `spine_truncated`, in which case it is a floor.
+    unplanned_count: int = 0
     unplanned_capped: bool = False
     degraded: bool = False
+    spine_truncated: bool = False
     warning: str | None = None
 
 
@@ -68,7 +82,10 @@ def _title(text: str | None) -> str:
 
 
 def diff_coverage(
-    book_chapters: list[dict[str, Any]], planned_chapter_ids: set[UUID],
+    book_chapters: list[dict[str, Any]],
+    planned_chapter_ids: set[UUID],
+    *,
+    spine_truncated: bool = False,
 ) -> Coverage:
     """PURE — the set difference itself, unit-tested without a DB or a network.
 
@@ -94,6 +111,7 @@ def diff_coverage(
         unplanned=unplanned,
         unplanned_count=count,
         unplanned_capped=count > len(unplanned),
+        spine_truncated=spine_truncated,
     )
 
 
@@ -105,9 +123,18 @@ async def compute_coverage(
     The caller MUST have gated the book already (E0 VIEW) — this issues a
     bearer-forwarded chapter list, so book-service re-checks anyway, but the
     no-oracle 404 is the route's job, not ours.
+
+    `raise_on_404=True` is load-bearing: `list_chapters` otherwise swallows a 404
+    into `[]`, and THIS caller reasons about ABSENCE. A book that 404s (trashed
+    mid-request, a grant/book-service skew) would come back "0 chapters" and the
+    diff would report `unplanned = []` — "nothing is unplanned" — over a book we
+    could not read at all. That is exactly the green-looking zero this module
+    exists to prevent, arriving through the back door.
     """
     try:
-        chapters = await book.list_chapters(book_id, bearer)
+        chapters = await book.list_chapters(
+            book_id, bearer, limit=_SPINE_LIMIT, raise_on_404=True,
+        )
     except BookClientError as exc:
         logger.warning("coverage diff degraded — book spine unreadable: %s", exc)
         return Coverage(
@@ -117,5 +144,10 @@ async def compute_coverage(
                 "chapters are unknown for this book (not zero)"
             ),
         )
+    # Hitting the ceiling means the spine itself was cut short, so the count below is a FLOOR.
+    # Say so rather than presenting a truncated number as the exact one.
+    spine_truncated = len(chapters) >= _SPINE_LIMIT
+    if spine_truncated:
+        logger.warning("coverage diff: book %s spine hit the %d ceiling", book_id, _SPINE_LIMIT)
     planned = await outline.planned_chapter_ids(book_id)
-    return diff_coverage(chapters, planned)
+    return diff_coverage(chapters, planned, spine_truncated=spine_truncated)

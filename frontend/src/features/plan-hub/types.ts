@@ -237,27 +237,39 @@ export interface PlanHubView {
   specEmpty: boolean;
   /**
    * PH21 tray — MANUSCRIPT chapters with no spec node (the shared server-side coverage diff).
-   * `null` ⇒ NOT COMPUTED (the manuscript spine was unreadable): render "unknown", never an
-   * empty tray. Distinct from `layout.unassigned`, which is spec chapters with no ARC.
+   * THREE states, and collapsing any two of them is a bug:
+   *   `undefined` ⇒ still loading — render nothing (NOT "unknown", or every cold open flashes the
+   *                 degradation alarm while the overlay, the slowest read, is in flight)
+   *   `null`      ⇒ the server ANSWERED and omitted the key — render "unknown", never an empty tray
+   *   `[]`        ⇒ nothing is unplanned
+   * Distinct from `layout.unassigned`, which is spec chapters with no ARC.
    */
-  unplanned: UnplannedChapter[] | null;
+  unplanned: UnplannedChapter[] | null | undefined;
   /** EXACT count even when the tray list is server-capped at 200. */
   unplannedCount: number;
+  /** Book-wide problem total, from the EXACT per-node counts — never the capped refs list (the
+   *  server caps refs at 50 while keeping counts exact, so summing refs would report "50" for a
+   *  book with 300 problems). */
+  problemTotal: number;
   /** PH11 — per-arc window state (loaded / total / hasMore / loading) for the lane header counter. */
   arcPagination: Record<string, ArcPagination>;
   /** PH11 — page in the next 100 chapters of an expanded arc. */
   loadMoreArc: (arcId: string) => void;
   /** H5 Row-5 (PH20) — draw a scene-link edge between two scene nodes. */
   linkScenes: (fromNodeId: string, toNodeId: string) => void;
-  /** H5 Row-5 (PH20) — delete a scene-link edge by id. */
-  unlinkScenes: (linkId: string) => void;
+  /** H5 Row-5 (PH20) — delete a scene-link edge (undoable: the edge carries its kind + label). */
+  unlinkScenes: (edge: SceneLinkEdge) => void;
   /** PH26 — the entity-names map (read surface #6): resolve a cast id to a name, or say honestly
    *  whether it is MISSING (map complete) or merely UNKNOWN (map incomplete). */
   resolveEntity: (entityId: string) => EntityResolution;
   /** PH20 — the drawer's writes (edit / archive / restore), OCC'd on the node version. */
   nodeWrites: PlanNodeWrites;
-  /** The book's chapter spine — the ⚓ re-anchor picker's options (BPS-13). */
+  /** The book's chapter spine — the ⚓ re-anchor picker's options (BPS-13). Loaded ONLY once a node
+   *  is selected (the walk is ~100 requests on a big book; firing it at mount was a budget bug). */
   chapters: BookChapter[];
+  /** The spine read FAILED. With `[]` the anchor picker would show "— not anchored —" for an
+   *  ANCHORED node — a confident lie about its state. The drawer says so instead. */
+  chaptersError: boolean;
   /** PH21 CTA — run the SC6 decompiler (`materialize-scenes`) on this book. */
   extract: {
     run: () => void;
@@ -353,14 +365,16 @@ export interface PlanCanvasProps {
   onLoadMoreArc?: (arcId: string) => void;
   /** PH18 — open a problem ref in its owning lens (canon → `quality-canon`, thread →
    *  `quality-promises`). Reaches the node cards through `PlanNodeData.onOpenRef`, which they
-   *  already forward to NodeBadges. Omitted ⇒ badges stay plain chips, never dead links. */
-  onOpenRef?: (ref: PlanOverlayRef) => void;
+   *  already forward to NodeBadges. Omitted ⇒ badges stay plain chips, never dead links.
+   *  The NODE id rides along because the canon lens cannot filter by rule id — see PlanHubPanel. */
+  onOpenRef?: (ref: PlanOverlayRef, nodeId: string) => void;
   /** H5 Row-5 (PH20) — two handles were joined. The canvas reports only WHICH; the controller decides
    *  whether it's a legal link (both ends must be real scene nodes). Omitted ⇒ not connectable. */
   onLinkScenes?: (fromNodeId: string, toNodeId: string) => void;
-  /** H5 Row-5 (PH20) — an edge was clicked; delete that scene link. A STUB edge is never deletable
-   *  (its other end is collapsed out of view — deleting from a half-drawn line is a trap). */
-  onUnlinkScenes?: (linkId: string) => void;
+  /** H5 Row-5 (PH20) — an edge was clicked; delete that scene link. Passes the WHOLE edge so the undo
+   *  can re-create it with its kind + label. A STUB edge is never deletable (its other end is
+   *  collapsed out of view — deleting from a half-drawn line is a trap). */
+  onUnlinkScenes?: (edge: SceneLinkEdge) => void;
   /** PH26 — resolve a cast entity id (read surface #6). Omitted ⇒ no cast chips. */
   resolveEntity?: (entityId: string) => EntityResolution;
   /** PH15 — bump to re-frame the whole graph ("Fit"). Monotonic, so two clicks fit twice. */

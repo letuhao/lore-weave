@@ -86,6 +86,7 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         # by stream_service.py for test dict-mock compatibility.
         project_id=project_id,
         book_id=r.get("book_id"),
+        session_kind=r.get("session_kind") or "chat",
         project_ids=project_ids,
         memory_mode=memory_mode,
         capture_status=cap,
@@ -132,8 +133,8 @@ async def create_session(
     _system_prompt = body.system_prompt if body.system_prompt is not None else _acct_behavior.get("system_prompt")
     row = await pool.fetchrow(
         """
-        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref, project_ids, book_id)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::uuid[], $13)
+        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref, project_ids, book_id, session_kind)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::uuid[], $13, $14)
         RETURNING *
         """,
         user_id, body.title, body.model_source, str(body.model_ref), _system_prompt, gp,
@@ -144,6 +145,7 @@ async def create_session(
         str(body.planner_model_ref) if body.planner_model_ref else None,
         [str(p) for p in body.project_ids] if body.project_ids else [],
         str(body.book_id) if body.book_id else None,
+        body.session_kind,
     )
     return _row_to_session(row)
 

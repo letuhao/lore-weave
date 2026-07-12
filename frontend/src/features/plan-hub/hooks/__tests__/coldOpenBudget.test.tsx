@@ -62,6 +62,7 @@ beforeEach(() => {
   api.getChildren.mockResolvedValue({ items: [], next_cursor: null });
   glossary.listEntityNamesWithMeta.mockResolvedValue({ items: [], complete: true });
   books.listScenes.mockResolvedValue({ items: [], next_cursor: null });
+  books.listChapters.mockResolvedValue({ items: [] });
 });
 
 describe('cold-open request budget (H8.1 / PH9)', () => {
@@ -78,6 +79,18 @@ describe('cold-open request budget (H8.1 / PH9)', () => {
       glossary.listEntityNamesWithMeta.mock.calls.length;
     expect(coldOpen).toBeLessThanOrEqual(5);
     expect(coldOpen).toBe(5); // and it really is all five — none silently dropped
+
+    // …AND nothing ELSE fired. Enumerating the ALLOWED calls but not the FORBIDDEN ones is half a
+    // test: it is exactly what let `useBookChapters` re-introduce a ~100-request cold-open walk one
+    // commit after A11 removed one, with this suite still green.
+    expect(books.listScenes).not.toHaveBeenCalled();
+    expect(books.listChapters).not.toHaveBeenCalled();
+  });
+
+  it('does NOT walk the chapter spine at cold open (the ⚓ anchor picker is a DRAWER control)', () => {
+    renderHook(() => usePlanHub('book-1'), { wrapper });
+    // Nothing is selected ⇒ no drawer ⇒ no picker ⇒ no spine walk. It is up to 200 serial requests.
+    expect(books.listChapters).not.toHaveBeenCalled();
   });
 
   it('does NOT page the whole book scene index at cold open (the violation)', async () => {

@@ -698,16 +698,24 @@ async def create_book_scene_link(
     so an EDIT grant on this book can never link a node belonging to another one.
     """
     await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    # `resolve_by_book` EXCLUDES the lazy/pending Work (`AND NOT pending_project_backfill`), so
+    # the canonical lookup alone can never see one. The decompiler already falls back to it —
+    # `materialize-scenes` during a knowledge outage mints its nodes under a PENDING Work — and
+    # those nodes render on the canvas perfectly well. Without the same fallback here, drawing an
+    # edge between two of them would 409 "this book has no plan yet" while the plan is on screen.
     work = resolve_canonical_work(await works.resolve_by_book(book_id))
     if work is None:
-        # No canonical Work ⇒ there is no spec to link INTO. Say so; a 500 or a silent
-        # empty would both be lies (the book may simply never have been planned).
+        work = await works.get_pending_for_book(book_id)
+    if work is None:
+        # Genuinely no Work ⇒ there is no spec to link INTO. Say so; a 500 or a silent empty
+        # would both be lies (the book may simply never have been planned).
         raise HTTPException(status_code=409, detail={
             "code": "NO_CANONICAL_WORK",
             "detail": "this book has no plan yet — extract or create one before linking scenes",
         })
-    # A pending Work carries a NULL project_id and is addressed by its surrogate id (C16,
-    # the same fallback create_node uses).
+    # A pending Work carries a NULL project_id and is addressed by its surrogate id (C16, the same
+    # fallback `create_node` uses). This branch is now REACHABLE — before the fallback above it was
+    # dead code with a comment describing a case it could never see.
     scope = work.project_id or work.id
     try:
         link = await scene_links.create(

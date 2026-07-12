@@ -216,6 +216,15 @@ def _build_overlay(
         out["unplanned_chapters"] = coverage.unplanned
         out["unplanned_count"] = coverage.unplanned_count
         out["unplanned_capped"] = coverage.unplanned_capped
+        # The manuscript spine itself was cut short ⇒ the count above is a FLOOR, not the exact
+        # figure it normally is. Two different partiality facts, reported separately: `capped` =
+        # "we listed fewer than we counted"; `spine_truncated` = "we couldn't even count them all".
+        if coverage.spine_truncated:
+            out["unplanned_count_is_floor"] = True
+            out.setdefault("warnings", []).append(
+                "this book has more chapters than the coverage scan reads — the unplanned count "
+                "is a lower bound"
+            )
     return out
 
 

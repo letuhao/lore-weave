@@ -78,17 +78,54 @@ describe('PlanDrawerEdit (PH20)', () => {
     expect(select.value).toBe('reviewing');
   });
 
+  it('tension commits on BLUR, not per keystroke - else it 412s ITSELF', () => {
+    // It used to write on every onChange. Typing "45" fired TWO PATCHes, and the second carried the
+    // pre-write `version` -> 412 -> "that node changed elsewhere", blaming a phantom collaborator
+    // for your own keystroke (`instant-commit-control-over-occ-entity`).
+    const { onEdit } = setup();
+    const input = screen.getByTestId('plan-drawer-edit-tension');
+    fireEvent.change(input, { target: { value: '45' } });
+    expect(onEdit).not.toHaveBeenCalled();
+    fireEvent.blur(input);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onEdit).toHaveBeenCalledWith({ tension: 45 });
+  });
+
   it('an empty tension writes NULL, not 0', () => {
     // "unset" and "zero tension" are different facts; the sparkline reads them differently.
     const { onEdit } = setup();
-    fireEvent.change(screen.getByTestId('plan-drawer-edit-tension'), { target: { value: '' } });
+    const input = screen.getByTestId('plan-drawer-edit-tension');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
     expect(onEdit).toHaveBeenCalledWith({ tension: null });
   });
 
   it('clamps tension into 0..100', () => {
     const { onEdit } = setup();
-    fireEvent.change(screen.getByTestId('plan-drawer-edit-tension'), { target: { value: '400' } });
+    const input = screen.getByTestId('plan-drawer-edit-tension');
+    fireEvent.change(input, { target: { value: '400' } });
+    fireEvent.blur(input);
     expect(onEdit).toHaveBeenCalledWith({ tension: 100 });
+  });
+
+  it('a FAILED chapter-spine read disables the picker and SAYS so - never a false "not anchored"', () => {
+    // With an empty list the select would show "- not anchored -" as the selected option for an
+    // ANCHORED node: a confident lie about its state, with Open-in-Editor still enabled.
+    render(
+      <PlanDrawerEdit
+        node={node()}
+        chapters={[]}
+        chaptersError
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onRestore={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        saving={false}
+      />,
+    );
+    expect(screen.getByTestId('plan-drawer-anchor-error')).toBeTruthy();
+    expect((screen.getByTestId('plan-drawer-edit-anchor') as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByTestId('plan-drawer-no-anchor')).toBeNull(); // it IS anchored; don't lie
   });
 
   it('⚓ re-anchors to another chapter (BPS-13)', () => {

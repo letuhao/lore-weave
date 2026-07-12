@@ -13,8 +13,15 @@ import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 import { QualityNoWorkState } from './QualityNoWorkState';
 
+/** 24 PH18 — the Plan Hub's thread badge deep-links here with the `narrative_thread.id`, which IS
+ *  what this panel lists (unlike the canon lens, whose rows carry no rule id). */
+interface PromisesFocusParams {
+  focusThreadId?: string | null;
+}
+
 export function QualityPromisesPanel(props: IDockviewPanelProps) {
   useStudioPanel('quality-promises', props.api);
+  const focusThreadId = (props.params as PromisesFocusParams | undefined)?.focusThreadId ?? null;
   const host = useStudioHost();
   const { accessToken } = useAuth();
   const resolution = useWorkResolution(host.bookId, accessToken);
@@ -35,7 +42,7 @@ export function QualityPromisesPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-quality-promises-panel" className="h-full min-h-0 overflow-auto">
-      <ThreadsPanel projectId={projectId} token={accessToken} enabled />
+      <ThreadsPanel projectId={projectId} token={accessToken} enabled focusThreadId={focusThreadId} />
     </div>
   );
 }

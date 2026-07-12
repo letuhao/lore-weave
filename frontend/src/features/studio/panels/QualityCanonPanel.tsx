@@ -22,8 +22,18 @@ import { useBookKnowledgeProject } from '@/features/knowledge/hooks/useBookKnowl
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 
+/** 24 PH18 — the Plan Hub's canon badge deep-links here with the offending node's CHAPTER.
+ *  NOT with the canon RULE id: the overlay's ref is a `canon_rule.id`, and the rows below are
+ *  `CanonIssue`s, which carry scene_id/chapter_id/violations[] and no rule id at all — different id
+ *  spaces. Passing the rule would open this panel and match nothing: a link that LOOKS like it
+ *  worked, which is the exact bug the deep-link exists to fix. */
+interface CanonFocusParams {
+  focusChapterId?: string | null;
+}
+
 export function QualityCanonPanel(props: IDockviewPanelProps) {
   useStudioPanel('quality-canon', props.api);
+  const focusChapterId = (props.params as CanonFocusParams | undefined)?.focusChapterId ?? null;
   const { t } = useTranslation('studio');
   const host = useStudioHost();
   const { accessToken } = useAuth();
@@ -56,7 +66,17 @@ export function QualityCanonPanel(props: IDockviewPanelProps) {
     );
   }
 
-  const compositionIssues = compositionIssuesQ.data?.items ?? [];
+  const allIssues = compositionIssuesQ.data?.items ?? [];
+  // A deep-link FOCUSES: the matching rows are highlighted and hoisted to the top, but nothing is
+  // hidden — the panel is still the whole canon lens. And if the focused chapter has no findings we
+  // SAY SO, rather than showing an unchanged list that silently pretends the link did something.
+  const compositionIssues = focusChapterId
+    ? [...allIssues].sort((a, b) =>
+        Number(b.chapter_id === focusChapterId) - Number(a.chapter_id === focusChapterId))
+    : allIssues;
+  const focusHits = focusChapterId
+    ? allIssues.filter((i: CanonIssue) => i.chapter_id === focusChapterId).length
+    : 0;
   const canonFlags = canonFlagsQ.data?.flags ?? [];
   // /review-impl: a fetch error must never render as "no issues" — that's a false-negative
   // (the checker didn't run, it isn't clean) — so `empty` is gated on neither source having
@@ -70,6 +90,22 @@ export function QualityCanonPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-quality-canon-panel" className="flex h-full min-h-0 flex-col gap-3 overflow-auto p-3 text-sm">
+      {focusChapterId && (
+        <div
+          data-testid="quality-canon-focus"
+          className="rounded bg-sky-50 p-2 text-[11px] text-sky-800 dark:bg-sky-950 dark:text-sky-300"
+        >
+          {focusHits > 0
+            ? t('quality.canonFocused', {
+                defaultValue: 'Showing the chapter you came from first ({{n}} finding(s)).',
+                n: focusHits,
+              })
+            : t('quality.canonFocusedEmpty', {
+                defaultValue:
+                  'The chapter you came from has no canon findings here — the rule is anchored there, but nothing has violated it yet.',
+              })}
+        </div>
+      )}
       <p className="text-[11px] text-neutral-400">
         {t('quality.canonIntro', {
           defaultValue: 'Advisory — confirmed contradictions with content marked gone/changed earlier in the book. Nothing here is applied automatically.',
@@ -103,7 +139,12 @@ export function QualityCanonPanel(props: IDockviewPanelProps) {
               <li
                 key={issue.scene_id}
                 data-testid="quality-canon-composition-item"
-                className="flex items-start justify-between gap-2 rounded border border-rose-200 bg-rose-50 p-2 text-[11px] dark:border-rose-900 dark:bg-rose-950/40"
+                data-focused={issue.chapter_id === focusChapterId ? 'true' : undefined}
+                className={`flex items-start justify-between gap-2 rounded border p-2 text-[11px] ${
+                  issue.chapter_id === focusChapterId
+                    ? 'border-sky-400 bg-sky-50 ring-2 ring-sky-400 dark:border-sky-700 dark:bg-sky-950/40'
+                    : 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/40'
+                }`}
               >
                 <div className="flex flex-col gap-0.5">
                   <span className="font-medium text-rose-700 dark:text-rose-300">{issue.scene_title || t('quality.untitledScene', { defaultValue: 'Untitled scene' })}</span>

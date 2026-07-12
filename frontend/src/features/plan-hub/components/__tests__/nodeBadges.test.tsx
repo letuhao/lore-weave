@@ -122,7 +122,10 @@ describe('NodeBadges (render)', () => {
     const wired = screen.getByTestId('plan-badge-canon-ch-1');
     expect(wired.tagName).toBe('BUTTON');
     wired.click();
-    expect(onOpenRef).toHaveBeenCalledWith(expect.objectContaining({ id: 'rule-9', kind: 'canon' }));
+    expect(onOpenRef).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'rule-9', kind: 'canon' }),
+      'ch-1', // the NODE rides along: the canon lens cannot filter by rule id, only by chapter
+    );
 
     rerender(<NodeBadges nodeId="ch-1" badges={badges} />);
     // No handler ⇒ the count still shows, but it is NOT an interactive button (no dead affordance).

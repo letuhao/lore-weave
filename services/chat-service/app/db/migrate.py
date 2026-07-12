@@ -235,6 +235,23 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- WS-1.8 / sealed decision T-4 (spec 02 §Q1) — the ASSISTANT-SESSION DISCRIMINATOR. An EXPLICIT
+-- column, not a book_id=diary derivation: three consumers key off it (the day-window read, the
+-- voice-disable gate, and chat_search scoping), and an explicit flag is self-describing where a
+-- book_id overload is implicit (and would misfire for a future coach session that is assistant-
+-- family but not diary-bound). 'chat' = a normal/roleplay/interview session (the default for every
+-- existing row); 'assistant' = a Work Assistant session (stamped at create by WS-1.10). Closed set.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='session_kind') THEN
+    ALTER TABLE chat_sessions ADD COLUMN session_kind TEXT NOT NULL DEFAULT 'chat'
+      CHECK (session_kind IN ('chat','assistant'));
+  END IF;
+END $$;
+-- The assistant-session lookups (day-window read · voice gate · search scoping) — a partial index
+-- since 'assistant' rows are a small minority of all sessions.
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_assistant
+  ON chat_sessions (owner_user_id) WHERE session_kind = 'assistant';
+
 -- WS-1.8 / DBT-11 (spec 01) — chat_messages.local_date: the LOCAL calendar day a message
 -- belongs to, stamped at write-time so the distiller can bucket "one day's" messages without
 -- re-deriving the day later (which would let a timezone change silently re-bucket history).

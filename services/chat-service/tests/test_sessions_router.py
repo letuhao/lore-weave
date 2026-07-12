@@ -70,8 +70,8 @@ class TestCreateSession:
         })
         assert resp.status_code == 201
         assert resp.json()["project_ids"] == [pid_a, pid_b]
-        # bound second-to-last (book_id, unset here, is the final INSERT positional)
-        assert list(mock_pool.fetchrow.call_args.args[-2]) == [pid_a, pid_b]
+        # INSERT positional tail is (…, project_ids, book_id, session_kind), so project_ids is -3.
+        assert list(mock_pool.fetchrow.call_args.args[-3]) == [pid_a, pid_b]
 
     @pytest.mark.asyncio
     async def test_create_session_project_ids_over_cap_returns_422(self, client, mock_pool):
@@ -92,8 +92,8 @@ class TestCreateSession:
 
     @pytest.mark.asyncio
     async def test_create_session_with_book_id_persists_it(self, client, mock_pool):
-        """D-COMPOSE-SESSION-RESTORE: book_id round-trips through create and
-        is bound as the final INSERT positional."""
+        """D-COMPOSE-SESSION-RESTORE: book_id round-trips through create and is bound
+        as the second-to-last INSERT positional (session_kind is now the final one)."""
         book_id = str(uuid4())
         mock_pool.fetchrow.return_value = make_session_record(book_id=book_id)
         resp = await client.post("/v1/chat/sessions", json={
@@ -103,7 +103,9 @@ class TestCreateSession:
         })
         assert resp.status_code == 201
         assert resp.json()["book_id"] == book_id
-        assert mock_pool.fetchrow.call_args.args[-1] == book_id
+        assert mock_pool.fetchrow.call_args.args[-2] == book_id
+        # T-4: an ordinary create defaults to a 'chat' session (session_kind is the final arg).
+        assert mock_pool.fetchrow.call_args.args[-1] == "chat"
 
     @pytest.mark.asyncio
     async def test_create_session_without_book_id_defaults_null(self, client, mock_pool):
@@ -114,7 +116,30 @@ class TestCreateSession:
         })
         assert resp.status_code == 201
         assert resp.json()["book_id"] is None
-        assert mock_pool.fetchrow.call_args.args[-1] is None
+        assert mock_pool.fetchrow.call_args.args[-2] is None
+
+    @pytest.mark.asyncio
+    async def test_create_session_with_assistant_kind_persists_it(self, client, mock_pool):
+        """T-4: the Work Assistant FE creates its session with session_kind='assistant'
+        (the discriminator the day-window read / voice gate / search scoping key off)."""
+        mock_pool.fetchrow.return_value = make_session_record(session_kind="assistant")
+        resp = await client.post("/v1/chat/sessions", json={
+            "model_source": "user_model",
+            "model_ref": TEST_MODEL_REF,
+            "session_kind": "assistant",
+        })
+        assert resp.status_code == 201
+        assert mock_pool.fetchrow.call_args.args[-1] == "assistant"
+
+    @pytest.mark.asyncio
+    async def test_create_session_rejects_an_unknown_session_kind(self, client, mock_pool):
+        """Closed-set enum: an out-of-set session_kind is rejected on write (422), never stored."""
+        resp = await client.post("/v1/chat/sessions", json={
+            "model_source": "user_model",
+            "model_ref": TEST_MODEL_REF,
+            "session_kind": "coach",  # not in the closed set yet
+        })
+        assert resp.status_code == 422
 
 
 class TestListSessions:

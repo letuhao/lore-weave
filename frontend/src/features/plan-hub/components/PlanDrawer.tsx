@@ -39,7 +39,7 @@ export interface PlanDrawerProps {
   overlay?: PlanOverlay | null;
   /** PH18 deep-link: open the ref in its owning lens (canon → `quality-canon`, thread →
    *  `quality-promises`). Omitted ⇒ refs render as plain text, never a dead link. */
-  onOpenRef?: (ref: PlanOverlayRef) => void;
+  onOpenRef?: (ref: PlanOverlayRef, nodeId: string) => void;
   // NOTE: there is deliberately no `refsCapped` prop. It lives at `overlay.problems.refs_capped`,
   // and the drawer already has the overlay — a second prop carrying the same fact is one concept
   // under two names (DA-10), and the two would eventually disagree.
@@ -125,7 +125,7 @@ function Centered({ testid, tone, children }: { testid: string; tone?: 'error'; 
 
 /** One overlay ref. Deep-links into its owning lens when the panel wired `onOpenRef` (PH18); plain
  *  text otherwise — a ref must never render as a link that does nothing (PH7 visible-fallback). */
-function RefRow({ refItem, onOpen }: { refItem: PlanOverlayRef; onOpen?: (r: PlanOverlayRef) => void }) {
+function RefRow({ refItem, nodeId, onOpen }: { refItem: PlanOverlayRef; nodeId: string; onOpen?: (r: PlanOverlayRef, n: string) => void }) {
   if (!onOpen) {
     return (
       <li data-testid="plan-drawer-ref" className="text-xs text-foreground/90">
@@ -138,7 +138,7 @@ function RefRow({ refItem, onOpen }: { refItem: PlanOverlayRef; onOpen?: (r: Pla
       <button
         type="button"
         data-testid="plan-drawer-ref"
-        onClick={() => onOpen(refItem)}
+        onClick={() => onOpen(refItem, nodeId)}
         className="w-full text-left text-xs text-primary underline-offset-2 hover:underline"
       >
         {refItem.line}
@@ -149,6 +149,7 @@ function RefRow({ refItem, onOpen }: { refItem: PlanOverlayRef; onOpen?: (r: Pla
 
 function RefList({
   refs,
+  nodeId,
   count,
   capped,
   emptyLabel,
@@ -156,10 +157,11 @@ function RefList({
   testid,
 }: {
   refs: PlanOverlayRef[];
+  nodeId: string;
   count: number;
   capped?: boolean;
   emptyLabel: string;
-  onOpenRef?: (r: PlanOverlayRef) => void;
+  onOpenRef?: (r: PlanOverlayRef, n: string) => void;
   testid: string;
 }) {
   if (count === 0) return <EmptyFacet>{emptyLabel}</EmptyFacet>;
@@ -167,7 +169,7 @@ function RefList({
     <>
       <ul data-testid={testid} className="space-y-1">
         {refs.map((r) => (
-          <RefRow key={`${r.kind}:${r.id}`} refItem={r} onOpen={onOpenRef} />
+          <RefRow key={`${r.kind}:${r.id}`} refItem={r} nodeId={nodeId} onOpen={onOpenRef} />
         ))}
       </ul>
       {/* OUT-5: the COUNT is exact, the LIST may be capped. Saying so is the difference between a
@@ -194,7 +196,7 @@ function ChapterSceneFacets({
   node: OutlineNode;
   nameFor: PlanNodeView['nameFor'];
   overlay?: PlanOverlay | null;
-  onOpenRef?: (r: PlanOverlayRef) => void;
+  onOpenRef?: (r: PlanOverlayRef, nodeId: string) => void;
   writes?: PlanDrawerProps['writes'];
   chapters?: PlanDrawerProps['chapters'];
   onOpenInEditor?: (chapterId: string) => void;
@@ -257,6 +259,7 @@ function ChapterSceneFacets({
       <Section title="Canon here" testid="plan-drawer-section-canon">
         <RefList
           refs={canonRefs}
+          nodeId={node.id}
           count={problems?.canon ?? 0}
           capped={refsCapped}
           emptyLabel="No canon rule is anchored here."
@@ -267,6 +270,7 @@ function ChapterSceneFacets({
       <Section title="Open threads" testid="plan-drawer-section-threads">
         <RefList
           refs={threadRefs}
+          nodeId={node.id}
           count={problems?.threads_open ?? 0}
           capped={refsCapped}
           emptyLabel="No promise opens here."
@@ -363,7 +367,7 @@ function DrawerBody({
 }: {
   view: PlanNodeView;
   overlay?: PlanOverlay | null;
-  onOpenRef?: (r: PlanOverlayRef) => void;
+  onOpenRef?: (r: PlanOverlayRef, nodeId: string) => void;
   writes?: PlanDrawerProps['writes'];
   chapters?: PlanDrawerProps['chapters'];
   onOpenInEditor?: (chapterId: string) => void;

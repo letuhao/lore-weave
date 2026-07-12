@@ -96,7 +96,10 @@ describe('PlanDrawer canon/thread facets (PH16/PH18)', () => {
       />,
     );
     fireEvent.click(screen.getByTestId('plan-drawer-ref'));
-    expect(onOpenRef).toHaveBeenCalledWith({ kind: 'canon', id: 'rule-9', line: 'a canon rule' });
+    expect(onOpenRef).toHaveBeenCalledWith(
+      { kind: 'canon', id: 'rule-9', line: 'a canon rule' },
+      NODE,
+    );
   });
 
   it('without onOpenRef the ref is plain text — never a link that does nothing', () => {
