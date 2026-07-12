@@ -67,25 +67,53 @@ describe('toActualScene — book-service Scene → the join-minimal ActualScene'
 });
 
 describe('computeUnionState (PH12) — the two-truths join, keyed by spec scene-node id', () => {
+  // Completeness is PER CHAPTER now: the manuscript half loads lazily, chapter by chapter (H8.1's
+  // budget), so a scene may be judged as soon as ITS OWN chapter has been fully read.
+  const sc = (id: string, chapterId: string | null = 'bc-1') => ({ id, chapterId });
+
   it("marks a spec node 'written' when a manuscript scene points at it", () => {
-    const u = computeUnionState(['n1', 'n2'], new Set(['n1']), true);
+    const u = computeUnionState([sc('n1'), sc('n2')], new Set(['n1']), new Set(['bc-1']));
     expect(u.n1).toBe('written');
   });
-  it("marks an unmatched spec node 'planned-only' — but only once the index is complete", () => {
-    expect(computeUnionState(['n2'], new Set(['n1']), true).n2).toBe('planned-only');
+
+  it("marks an unmatched spec node 'planned-only' once ITS chapter is fully read", () => {
+    const u = computeUnionState([sc('n2')], new Set(['n1']), new Set(['bc-1']));
+    expect(u.n2).toBe('planned-only');
   });
-  it('leaves an unmatched spec node UNMAPPED while the manuscript index is still loading (absent ≠ planned)', () => {
-    const u = computeUnionState(['n2'], new Set(['n1']), false);
+
+  it('leaves it UNMAPPED while its chapter is still loading (absent ≠ planned)', () => {
+    // The chapter isn't in completeChapters — absence proves nothing yet.
+    const u = computeUnionState([sc('n2')], new Set(['n1']), new Set());
     expect('n2' in u).toBe(false);
   });
-  it("still resolves 'written' even while incomplete (a positive match is safe pre-completion)", () => {
-    expect(computeUnionState(['n1'], new Set(['n1']), false).n1).toBe('written');
+
+  it('judges only the chapters that ARE complete — a sibling chapter still paging stays neutral', () => {
+    // THE case the per-chapter gate exists for: bc-1 is read, bc-2 is not. A scene in bc-2 must not
+    // be declared unwritten just because a DIFFERENT chapter finished.
+    const u = computeUnionState(
+      [sc('a', 'bc-1'), sc('b', 'bc-2')],
+      new Set(),
+      new Set(['bc-1']),
+    );
+    expect(u.a).toBe('planned-only');
+    expect('b' in u).toBe(false);
   });
-  it('never emits imported-unplanned (that is laneLayout.unplanned, not this map)', () => {
-    const u = computeUnionState(['n1', 'n2'], new Set(['n1']), true);
+
+  it("still resolves 'written' even while incomplete (a positive match is safe pre-completion)", () => {
+    expect(computeUnionState([sc('n1')], new Set(['n1']), new Set()).n1).toBe('written');
+  });
+
+  it('a scene with no chapter can never be judged planned-only (nothing to complete)', () => {
+    const u = computeUnionState([sc('n2', null)], new Set(), new Set(['bc-1']));
+    expect('n2' in u).toBe(false);
+  });
+
+  it('never emits imported-unplanned (that is the PH21 tray, not this map)', () => {
+    const u = computeUnionState([sc('n1'), sc('n2')], new Set(['n1']), new Set(['bc-1']));
     expect(Object.values(u)).not.toContain('imported-unplanned');
   });
+
   it('an empty spec set yields an empty map', () => {
-    expect(computeUnionState([], new Set(['n1']), true)).toEqual({});
+    expect(computeUnionState([], new Set(['n1']), new Set(['bc-1']))).toEqual({});
   });
 });

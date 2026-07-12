@@ -67,26 +67,37 @@ export function toActualScene(s: Scene): ActualScene {
 /**
  * PH12 — the two-truths join, keyed by SPEC scene-node id.
  *   • a spec scene node with a matching manuscript scene (its id ∈ writtenNodeIds) → 'written'
- *   • a spec scene node with none → 'planned-only', BUT ONLY once `indexComplete` — while the
- *     manuscript index is still paging, a not-yet-loaded scene would be mislabelled "planned-only"
- *     (the paged-join-mislabels-absent bug class); until complete such a node gets NO entry and the
- *     canvas renders it neutrally.
+ *   • a spec scene node with none → 'planned-only', BUT ONLY once ITS OWN CHAPTER's manuscript scenes
+ *     are fully read. Absence is only evidence against a set you have finished reading; while that
+ *     chapter is still paging (or its read FAILED), such a node gets NO entry and renders neutrally.
+ *     Declaring it "planned-only" early is the
+ *     `paged-join-against-complete-set-mislabels-not-yet-loaded-as-absent` bug — and it would paint a
+ *     finished book as unwritten.
  *   • 'imported-unplanned' (a MANUSCRIPT unit with no spec node) is NOT emitted here — it cannot be:
  *     this map is keyed by spec-node id, and such a unit has no spec node. It is the PH21 tray, and
  *     it rides `overlay.unplanned_chapters` (the shared server-side coverage diff, 28 OQ-4).
  *     NOT `laneLayout.unassigned` — that is the opposite set (spec chapters with no ARC).
  * Absent from the map ⇒ unknown/neutral, never a false verdict (absent ≠ written, absent ≠ planned).
+ *
+ * The completeness gate is PER CHAPTER because the manuscript read is now per chapter (H8.1's budget
+ * — the whole-book scene index is not fetched at cold open). A scene whose chapter is loaded can be
+ * judged even while OTHER chapters are still arriving.
  */
 export function computeUnionState(
-  sceneNodeIds: Iterable<string>,
+  /** Each loaded spec SCENE node: its id + the BOOK chapter it belongs to (`chapter_id`). */
+  sceneNodes: Iterable<{ id: string; chapterId: string | null }>,
   writtenNodeIds: Set<string>,
-  indexComplete: boolean,
+  completeChapters: Set<string>,
 ): Record<string, NodeUnionState> {
   const out: Record<string, NodeUnionState> = {};
-  for (const id of sceneNodeIds) {
-    if (writtenNodeIds.has(id)) out[id] = 'written';
-    else if (indexComplete) out[id] = 'planned-only';
-    // else: unknown until the manuscript index finishes loading — leave unmapped.
+  for (const n of sceneNodes) {
+    if (writtenNodeIds.has(n.id)) {
+      out[n.id] = 'written';
+      continue;
+    }
+    // No manuscript scene points here. That only MEANS something once we've read the whole chapter.
+    if (n.chapterId && completeChapters.has(n.chapterId)) out[n.id] = 'planned-only';
+    // else: unknown — leave unmapped.
   }
   return out;
 }

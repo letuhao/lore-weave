@@ -63,7 +63,20 @@ export function usePlanHub(bookId: string): PlanHubView {
 
   // Only an OPEN arc/chapter loads its window; a collapsed arc's rollup comes from the shell.
   const windowsResult = usePlanWindows(bookId, token, expandedArcIds, expandedChapterIds);
-  const actual = useActualState(bookId, token);
+
+  // H8.1 — the manuscript half loads LAZILY, per loaded chapter (24 §Load sequence step 3). The BOOK
+  // chapter ids of the chapter nodes actually on screen; nothing else is fetched. Fetching the whole
+  // book's scene index at cold open (the first cut) issued ~100 sequential pages on a 10k-chapter
+  // book, blowing PH9's 5-request budget by two orders of magnitude on the one read meant to TRAIL
+  // the paint.
+  const loadedChapterIds = useMemo(
+    () =>
+      windowsResult.windows
+        .filter((w) => w.kind === 'chapter' && w.chapter_id)
+        .map((w) => w.chapter_id as string),
+    [windowsResult.windows],
+  );
+  const actual = useActualState(bookId, token, loadedChapterIds);
   // Read surface #6 (PH26) — the book-wide entity-names map behind the cast chips. One cached load;
   // it is one of the five cold-open reads the PH9 budget already accounts for.
   const entityNames = useEntityNames(bookId);
@@ -82,9 +95,13 @@ export function usePlanHub(bookId: string): PlanHubView {
   );
 
   const unionState = useMemo(() => {
-    const sceneNodeIds = windowsResult.windows.filter((w) => w.kind === 'scene').map((w) => w.id);
-    return computeUnionState(sceneNodeIds, actual.writtenNodeIds, actual.complete);
-  }, [windowsResult.windows, actual.writtenNodeIds, actual.complete]);
+    // A scene's verdict is gated on ITS OWN chapter's manuscript read, so each node carries which
+    // book chapter it belongs to (`chapter_id` — scenes inherit it from their chapter).
+    const sceneNodes = windowsResult.windows
+      .filter((w) => w.kind === 'scene')
+      .map((w) => ({ id: w.id, chapterId: w.chapter_id ?? null }));
+    return computeUnionState(sceneNodes, actual.writtenNodeIds, actual.completeChapters);
+  }, [windowsResult.windows, actual.writtenNodeIds, actual.completeChapters]);
 
   // Display scalars per node id: arc titles from the shell + chapter/scene titles from the loaded
   // windows (the window content wins on id collision — it never collides, arcs vs outline nodes).
