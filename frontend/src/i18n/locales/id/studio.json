@@ -2,6 +2,11 @@
   "title": "Writing Studio",
   "back": "Kembali ke buku",
   "settings": "Pengaturan buku",
+  "planNav": {
+    "title": "Rencana",
+    "loading": "Memuat…",
+    "empty": "Belum ada arc."
+  },
   "welcome": {
     "tab": "Selamat Datang",
     "title": "Writing Studio",
@@ -89,6 +94,27 @@
       "title": "Pengetahuan",
       "desc": "Jelajahi dan buka proyek knowledge-graph Anda",
       "guideBody": "Pengetahuan adalah pintu masuk Anda ke knowledge graph sebuah buku — entitas, peristiwa, dan lore yang telah diekstraksi dan disusun oleh agen AI Anda. Buka menu ini untuk memilih proyek (buku) mana yang ingin dikerjakan sebelum mendalami entitas, lini masa, atau graf itu sendiri."
+    },
+    "quality": {
+      "title": "Kualitas",
+      "desc": "Janji yang belum terpenuhi, skor kritikus, cakupan cerita & masalah kanon",
+      "guideBody": "Kualitas adalah dasbor diagnostik Anda — hanya bersifat saran, tidak ada yang mengubah prosa Anda di sini. Pilih kartu untuk melihat daftar utang janji yang belum terpenuhi, skor kritikus per bab, cakupan janji seluruh buku, atau kontradiksi kanon yang terkonfirmasi."
+    },
+    "quality-promises": {
+      "title": "Janji",
+      "desc": "Daftar utang janji yang belum terpenuhi (setup yang belum diselesaikan)"
+    },
+    "quality-critic": {
+      "title": "Kritikus",
+      "desc": "Skor koherensi, gaya bahasa, tempo & kanon per bab"
+    },
+    "quality-coverage": {
+      "title": "Cakupan cerita",
+      "desc": "Audit seluruh buku mengenai janji kerangka mana yang telah terpenuhi"
+    },
+    "quality-canon": {
+      "title": "Masalah kanon",
+      "desc": "Kontradiksi terkonfirmasi dari hasil generasi & ekstraksi pengetahuan"
     },
     "kg-overview": {
       "title": "Ikhtisar",
@@ -193,6 +219,124 @@
       "title": "Pemeriksa Konteks",
       "desc": "Lacak apa yang dilakukan manajemen konteks per giliran — anggaran, alokasi, keputusan Planner→Compiler",
       "guideBody": "Menunjukkan secara tepat konteks apa yang dikirim ke AI untuk giliran tertentu — anggaran token, apa yang disertakan atau dihapus, dan apakah menggunakan proses cepat atau perencanaan penuh. Buka saat respons AI terasa tidak tepat dan Anda ingin melihat apa yang sebenarnya ia \"lihat\", atau saat Anda penasaran bagaimana anggaran konteks Anda digunakan."
+    },
+    "book-import": {
+      "title": "Impor",
+      "desc": "Impor bab dari teks/.docx/.epub, atau seluruh buku dari PDF",
+      "intro": "Masukkan konten manuskrip yang sudah ada ke dalam buku ini.",
+      "guideBody": "Impor bab dari file teks biasa, .docx, atau .epub, atau seluruh buku dari PDF (dengan opsi keterangan gambar AI — Anda dapat memilih model visi secara eksplisit). Buka menu ini kapan pun Anda memiliki konten yang sudah ada untuk dimasukkan daripada menulis dari awal.",
+      "text": {
+        "title": "Impor bab",
+        "desc": ".txt, .docx, atau .epub — satu bab per file"
+      },
+      "pdf": {
+        "title": "Impor dari PDF",
+        "desc": "Pecah PDF menjadi bab, dengan opsi keterangan AI untuk gambar"
+      }
+    },
+    "scene-browser": {
+      "title": "Penjelajah Adegan",
+      "desc": "Jelajahi setiap adegan dalam buku ini — prosa yang telah diproses dan rencana penulisannya, berdampingan",
+      "guideBody": "Penjelajah Adegan mencantumkan setiap adegan di seluruh buku dengan menggabungkan dua fakta: prosa yang benar-benar ditulis (dari book-service) dan niat/rencana penulisan (dari composition). Sebuah adegan dapat berstatus ditulis-dan-direncanakan (normal), direncanakan-tetapi-belum-ditulis, atau ditulis-tetapi-belum-didekompilasi menjadi rencana — sehingga adegan dari buku yang diimpor akan muncul di sini bahkan sebelum Anda membuat rencana.",
+      "noBook": "Buka buku untuk menjelajahi adegannya.",
+      "search": "Cari judul & prosa…",
+      "count": "{{n}} adegan",
+      "workless": "Belum ada rencana — niat adegan (status, POV, ketegangan) tidak tersedia sampai Anda membuat rencana untuk buku ini.",
+      "intentUnavailable": "Rencana adegan untuk sementara tidak tersedia — hanya menampilkan prosa yang telah ditulis.",
+      "dirty": "kanon berpindah",
+      "dirtyTitle": "Kanon berpindah sejak pemeriksaan kesesuaian terakhir",
+      "anchorLost": "Anchor hilang",
+      "empty": "Tidak ada adegan yang cocok.",
+      "loadMore": "Muat lebih banyak",
+      "loading": "Memuat…",
+      "col": {
+        "num": "#",
+        "scene": "Adegan",
+        "status": "Status",
+        "tension": "Ketegangan",
+        "words": "Kata"
+      },
+      "badge": {
+        "notWritten": "belum ditulis",
+        "notPlanned": "belum direncanakan",
+        "anchorLost": "jangkar hilang"
+      },
+      "bulk": {
+        "count": "{{n}} terpilih",
+        "selectAll": "Pilih semua",
+        "selectRow": "Pilih adegan: {{title}}",
+        "setStatus": "Atur status…",
+        "words": "Target kata",
+        "trash": "Hapus",
+        "clear": "Bersihkan",
+        "updated": "{{n}} diperbarui",
+        "conflicted": "{{n}} konflik",
+        "failed": "{{n}} gagal"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan Hub",
+      "desc": "Rencana seluruh buku dalam kanvas grafis — jalur alur, bab, adegan, dan keterkaitannya",
+      "guideBody": "Plan Hub merender seluruh struktur buku Anda sebagai graf: setiap saga/alur/sub-alur adalah sebuah jalur, bab dan adegannya adalah kartu di sepanjang sumbu urutan cerita, dan tautan adegan membentuk garis kausal di antara mereka. Buka panel untuk melihat setiap alur yang diringkas menjadi kartu ringkasan; perluas alur untuk memuat bab secara otomatis, dan perluas bab untuk melihat adegannya. Geser dan perbesar untuk navigasi; lencana masalah dan ketidaksinkronan akan muncul di bagian yang memerlukan perhatian kanon atau janji cerita."
+    },
+    "scene-inspector": {
+      "title": "Inspektur Adegan",
+      "desc": "Baca dan edit setiap bidang dalam satu adegan — niat, teknik, ketegangan, dan dasar cerita",
+      "guideBody": "Scene Inspector adalah panel detail untuk satu adegan: pilih sebuah adegan (di Scene Browser atau manuskrip) dan rencana lengkapnya akan terbuka di sini — status, tujuan, sinopsis, peran beat, ketegangan, dan bidang teknik (konflik, hasil, taruhan, waktu cerita, pergeseran nilai, target kata) — semuanya dapat diedit, dengan pin dasar cerita yang terlipat di dalamnya. Perubahan disimpan secara instan dan terlindungi dari perubahan yang saling bertentangan.",
+      "none": "Pilih sebuah adegan untuk melihat rencana lengkapnya.",
+      "loading": "Memuat...",
+      "dirty": "Kanun telah berubah sejak pemeriksaan kesesuaian terakhir — rencana ini mungkin sudah tidak relevan.",
+      "section": {
+        "identity": "Identitas",
+        "intent": "Niat",
+        "cast": "Pemeran & Latar",
+        "craft": "Teknik",
+        "links": "Tautan",
+        "grounding": "Dasar Cerita"
+      },
+      "links": {
+        "empty": "Belum ada tautan kausal.",
+        "setup": "setup→payoff",
+        "custom": "kustom",
+        "remove": "Hapus tautan",
+        "target": "Tautkan ke adegan",
+        "pick": "Tautkan ke…",
+        "kind": "Jenis tautan",
+        "label": "label",
+        "add": "tautan",
+        "dup": "Tautan dengan jenis yang sama sudah ada di antara adegan ini.",
+        "failed": "Tidak dapat membuat tautan."
+      },
+      "f": {
+        "title": "Judul",
+        "status": "Status",
+        "goal": "Tujuan",
+        "synopsis": "Sinopsis",
+        "beat": "Peran beat",
+        "tension": "Ketegangan (0–100)",
+        "pov": "Karakter POV",
+        "present": "Karakter yang hadir",
+        "location": "Lokasi",
+        "conflict": "Konflik",
+        "outcome": "Hasil",
+        "stakes": "Taruhan",
+        "storyTime": "Waktu cerita",
+        "valueShift": "Pergeseran nilai (−100…100)",
+        "targetWords": "Kata target"
+      },
+      "ref": {
+        "none": "— tidak ada —",
+        "add": "+ tambah",
+        "empty": "tidak ada",
+        "loading": "(memuat…)",
+        "remove": "Hapus {{name}}"
+      },
+      "status": {
+        "empty": "Kosong",
+        "outline": "Kerangka",
+        "drafting": "Drafting",
+        "done": "Selesai"
+      }
     },
     "chapter-browser": {
       "title": "Penjelajah Bab",
@@ -333,47 +477,13 @@
       "title": "Perbandingan Revisi Bab",
       "desc": "Perbedaan editor lengkap untuk sepasang revisi bab",
       "empty": "Buka diff revisi bab dari panel tinjauan Agent Mode."
-    },
-    "quality": {
-      "title": "Kualitas",
-      "desc": "Janji yang belum terpenuhi, skor kritikus, cakupan cerita & masalah kanon",
-      "guideBody": "Kualitas adalah dasbor diagnostik Anda — hanya bersifat saran, tidak ada yang mengubah prosa Anda di sini. Pilih kartu untuk melihat daftar utang janji yang belum terpenuhi, skor kritikus per bab, cakupan janji seluruh buku, atau kontradiksi kanon yang terkonfirmasi."
-    },
-    "quality-promises": {
-      "title": "Janji",
-      "desc": "Daftar utang janji yang belum terpenuhi (setup yang belum diselesaikan)"
-    },
-    "quality-critic": {
-      "title": "Kritikus",
-      "desc": "Skor koherensi, gaya bahasa, tempo & kanon per bab"
-    },
-    "quality-coverage": {
-      "title": "Cakupan cerita",
-      "desc": "Audit seluruh buku mengenai janji kerangka mana yang telah terpenuhi"
-    },
-    "quality-canon": {
-      "title": "Masalah kanon",
-      "desc": "Kontradiksi terkonfirmasi dari hasil generasi & ekstraksi pengetahuan"
-    },
-    "book-import": {
-      "title": "Impor",
-      "desc": "Impor bab dari teks/.docx/.epub, atau seluruh buku dari PDF",
-      "intro": "Masukkan konten manuskrip yang sudah ada ke dalam buku ini.",
-      "guideBody": "Impor bab dari file teks biasa, .docx, atau .epub, atau seluruh buku dari PDF (dengan opsi keterangan gambar AI — Anda dapat memilih model visi secara eksplisit). Buka menu ini kapan pun Anda memiliki konten yang sudah ada untuk dimasukkan daripada menulis dari awal.",
-      "text": {
-        "title": "Impor bab",
-        "desc": ".txt, .docx, atau .epub — satu bab per file"
-      },
-      "pdf": {
-        "title": "Impor dari PDF",
-        "desc": "Pecah PDF menjadi bab, dengan opsi keterangan AI untuk gambar"
-      }
     }
   },
   "sceneRail": {
     "title": "Adegan",
     "toggle": "Adegan",
     "empty": "Tidak ada adegan untuk bab ini (buat kerangka di composer).",
+    "editTitle": "Ubah nama adegan",
     "synopsisPlaceholder": "Sinopsis…",
     "stale": "berubah di tempat lain — dimuat ulang",
     "notAnchored": "Adegan belum tertaut di teks — gunakan ⚓ untuk menautkan heading.",
@@ -558,6 +668,44 @@
       "title": "Kualitas",
       "body": "Skor kritik, utas janji & masalah kanon. Segera hadir."
     }
+  },
+  "quality": {
+    "noWork": "Buku ini belum memiliki sesi co-writer — tulis satu bab terlebih dahulu, maka data kualitas akan muncul di sini.",
+    "hubNoWorkHint": "Janji, skor kritikus, dan cakupan cerita memerlukan sesi co-writer — tulis satu bab terlebih dahulu. Masalah kanon di bawah tetap dapat berfungsi dengan cara apa pun.",
+    "pickModel": "Pilih model untuk menganalisis dengan…",
+    "pickChapter": "Pilih bab",
+    "pickChapterHint": "Pilih bab di atas untuk menganalisis kualitasnya.",
+    "chaptersTruncated": "menampilkan {{shown}} dari {{total}} bab pertama",
+    "canonIntro": "Peringatan — ditemukan kontradiksi yang terkonfirmasi dengan konten yang ditandai hilang/berubah sebelumnya di dalam buku. Tidak ada yang diterapkan secara otomatis di sini.",
+    "canonEmpty": "Tidak ada masalah kanon yang ditemukan.",
+    "canonCompositionError": "Tidak dapat memuat masalah kanon dari pembuatan — coba lagi.",
+    "canonExtractionError": "Tidak dapat memuat bendera kanon dari ekstraksi pengetahuan — coba lagi.",
+    "canonFromGeneration": "Dari pembuatan ({{n}})",
+    "canonFromExtraction": "Dari ekstraksi pengetahuan ({{n}})",
+    "untitledScene": "Adegan tanpa judul",
+    "jumpToChapter": "Buka bab",
+    "promisesTitle": "Janji",
+    "promisesDesc": "Buku besar utang janji yang terbuka",
+    "criticTitle": "Kritikus",
+    "criticDesc": "Skor koherensi, gaya bahasa, tempo & kanon per bab",
+    "coverageTitle": "Cakupan cerita",
+    "coverageDesc": "Cakupan janji seluruh buku",
+    "canonTitle": "Masalah kanon",
+    "canonDesc": "Kontradiksi yang terkonfirmasi",
+    "canonFromRules": "Aturan yang dilanggar ({{n}})",
+    "canonRuleError": "Tidak dapat memuat pelanggaran aturan kanon — coba lagi.",
+    "canonRuleGone": "Aturan yang tidak lagi ada",
+    "canonRuleUnnamed": "aturan itu",
+    "canonRuleFocused": "Menampilkan pelanggaran dari aturan asal Anda terlebih dahulu ({{n}}): «{{rule}}»",
+    "canonFocused": "Menampilkan bab asal Anda terlebih dahulu ({{n}} temuan).",
+    "canonFocusedEmpty": "Bab asal Anda tidak memiliki temuan kanon di sini.",
+    "canonUnavailable": "Tidak dapat terhubung ke layanan co-writer — temuan kanon saat waktu pembuatan TIDAK disertakan di bawah ini.",
+    "canonNoWork": "Buku ini belum memiliki sesi penulis pendamping, sehingga pemeriksaan kanon saat pembuatan belum dijalankan. Hanya temuan ekstraksi pengetahuan yang ditampilkan.",
+    "canonRulesCapped": "Menampilkan {{shown}} aturan terlanggar terbaru dari {{total}} aturan.",
+    "canonRuleFocusedEmpty": "Aturan asal Anda tidak memiliki pelanggaran terbuka. Aturan tersebut tertanam di sini, tetapi tidak ada yang melanggarnya.",
+    "canonRuleFocusUnknown": "Aturan asal Anda tidak dapat diperiksa karena layanan co-writer tidak tersedia. Aturan tersebut mungkin saja masih melanggar di suatu tempat — ini bukan hasil akhir.",
+    "workUnavailable": "Tidak dapat terhubung ke layanan co-writer, sehingga data kualitas buku ini tidak dapat dimuat. Masalah mungkin ada namun tidak ditampilkan di sini. Coba lagi beberapa saat lagi.",
+    "hubUnavailable": "Tidak dapat terhubung ke layanan co-writer, sehingga janji, skor kritikus, dan cakupan cerita tidak dapat dimuat saat ini. Masalah mungkin ada namun tidak ditampilkan di sini."
   },
   "sidebar": {
     "collapse": "Sembunyikan"
@@ -977,48 +1125,36 @@
       "desc": "Pisahkan Compose ke jendela OS tersendiri untuk penggunaan monitor kedua."
     }
   },
-  "quality": {
-    "noWork": "Buku ini belum memiliki sesi co-writer — tulis satu bab terlebih dahulu, maka data kualitas akan muncul di sini.",
-    "hubNoWorkHint": "Janji, skor kritikus, dan cakupan cerita memerlukan sesi co-writer — tulis satu bab terlebih dahulu. Masalah kanon di bawah tetap dapat berfungsi dengan cara apa pun.",
-    "pickModel": "Pilih model untuk menganalisis dengan…",
-    "pickChapter": "Pilih bab",
-    "pickChapterHint": "Pilih bab di atas untuk menganalisis kualitasnya.",
-    "chaptersTruncated": "menampilkan {{shown}} dari {{total}} bab pertama",
-    "canonIntro": "Peringatan — ditemukan kontradiksi yang terkonfirmasi dengan konten yang ditandai hilang/berubah sebelumnya di dalam buku. Tidak ada yang diterapkan secara otomatis di sini.",
-    "canonEmpty": "Tidak ada masalah kanon yang ditemukan.",
-    "canonCompositionError": "Tidak dapat memuat masalah kanon dari pembuatan — coba lagi.",
-    "canonExtractionError": "Tidak dapat memuat bendera kanon dari ekstraksi pengetahuan — coba lagi.",
-    "canonFromGeneration": "Dari pembuatan ({{n}})",
-    "canonFromExtraction": "Dari ekstraksi pengetahuan ({{n}})",
-    "untitledScene": "Adegan tanpa judul",
-    "jumpToChapter": "Buka bab",
-    "promisesTitle": "Janji",
-    "promisesDesc": "Buku besar utang janji yang terbuka",
-    "criticTitle": "Kritikus",
-    "criticDesc": "Skor koherensi, gaya bahasa, tempo & kanon per bab",
-    "coverageTitle": "Cakupan cerita",
-    "coverageDesc": "Cakupan janji seluruh buku",
-    "canonTitle": "Masalah kanon",
-    "canonDesc": "Kontradiksi yang terkonfirmasi",
-    "canonFromRules": "Aturan yang dilanggar ({{n}})",
-    "canonRuleError": "Tidak dapat memuat pelanggaran aturan kanon — coba lagi.",
-    "canonRuleGone": "Aturan yang tidak lagi ada",
-    "canonRuleUnnamed": "aturan itu",
-    "canonRuleFocused": "Menampilkan pelanggaran dari aturan asal Anda terlebih dahulu ({{n}}): «{{rule}}»",
-    "canonRuleFocusedEmpty": "Aturan asal Anda tidak memiliki pelanggaran terbuka — aturan ini tertanam di sini, tetapi belum ada yang melanggarnya.",
-    "canonFocused": "Menampilkan bab asal Anda terlebih dahulu ({{n}} temuan).",
-    "canonFocusedEmpty": "Bab asal Anda tidak memiliki temuan kanon di sini.",
-    "canonUnavailable": "Tidak dapat terhubung ke layanan co-writer — temuan kanon saat waktu pembuatan TIDAK disertakan di bawah ini.",
-    "canonNoWork": "Buku ini belum memiliki sesi penulis pendamping, sehingga pemeriksaan kanon saat pembuatan belum dijalankan. Hanya temuan ekstraksi pengetahuan yang ditampilkan.",
-    "canonRuleFocusUnknown": "Aturan asal Anda tidak dapat diperiksa — jalur penulis pendamping tidak tersedia, jadi ini bukan merupakan laporan kondisi yang bersih.",
-    "canonRulesCapped": "Menampilkan {{shown}} aturan terlanggar terbaru dari {{total}} aturan."
-  },
   "planHub": {
-    "undo": "Urungkan"
-  },
-  "planNav": {
-    "title": "Rencana",
-    "loading": "Memuat…",
-    "empty": "Belum ada arc."
+    "undo": "Urungkan",
+    "empty": {
+      "title": "Belum ada rencana untuk buku ini",
+      "body": "Plan Hub menampilkan spesifikasi — alur, bab, adegan. Buku ini belum memilikinya. Spesifikasi tidak akan muncul secara otomatis dari manuskrip Anda: ekstraklah, atau buatlah secara manual.",
+      "extractCta": "Ekstrak rencana dari manuskrip",
+      "extracting": "Mengekstrak...",
+      "planCta": "Buat rencana dari awal",
+      "extractNote": "Ekstraksi membaca adegan yang telah diparsing dari bab Anda dan mengubah setiap adegan menjadi simpul spesifikasi. Mengelompokkannya ke dalam alur adalah langkah AI terpisah — mintalah agen untuk melakukannya. Hingga saat itu, bab yang diekstrak akan berada di baris «Tidak Terpilih».",
+      "nothingParsed": "Tidak ada yang bisa diekstrak — buku ini belum memiliki adegan yang diparsing. Parsing atau impor bab terlebih dahulu, baru kemudian ekstrak."
+    },
+    "node": {
+      "unplannedTray": "Bab yang tidak terencana",
+      "unplannedUnknown": "Bab yang tidak terencana: tidak diketahui (manuskrip tidak dapat dibaca)",
+      "unplannedCapped": "...dan {{n}} lainnya (daftar dibatasi)",
+      "unassignedStrip": "{{count}} bab tanpa alur — tarik ke dalam jalur",
+      "unassignedStrip_other": "{{count}} bab tanpa alur — seret ke dalam jalur",
+      "untitled": "Tanpa Judul"
+    },
+    "loading": "Memuat rencana…",
+    "toolbar": {
+      "search": "Cari node…",
+      "fit": "Sesuaikan",
+      "problems": "Masalah",
+      "askAi": "Tanya AI",
+      "askAiHint": "Pilih node untuk bertanya",
+      "viewNarrative": "Narasi",
+      "viewTimeline": "Lini Masa",
+      "viewWorldmap": "Peta Dunia",
+      "viewSoon": "Akan datang di fase berikutnya"
+    }
   }
 }

@@ -281,7 +281,10 @@ describe('QualityCanonPanel — a book it could not check is NOT a clean book', 
 
     await waitFor(() => expect(screen.getByTestId('quality-canon-rule-focus')).toBeInTheDocument());
     const banner = screen.getByTestId('quality-canon-rule-focus').textContent ?? '';
-    expect(banner).toMatch(/not a clean bill of health/i);
+    // Assert the MEANING, not the phrasing: it must say we could not check, and must NOT say the
+    // rule is intact. (The wording moved once already — an English idiom, "a clean bill of health",
+    // was inverted outright by the ja/vi translators. Plain copy, and a test that survives rewording.)
+    expect(banner).toMatch(/could not be checked/i);
     expect(banner).not.toMatch(/nothing has broken it/i);
   });
 });

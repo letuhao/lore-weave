@@ -144,8 +144,8 @@ function FocusBanner({ v, t }: { v: QualityCanonView; t: T }) {
               rule: v.focusRuleText ?? t('quality.canonRuleUnnamed', { defaultValue: 'that rule' }),
             })
           : v.compositionUnknown
-            ? t('quality.canonRuleFocusUnknown', { defaultValue: 'The rule you came from could not be checked — the co-writer lane is unavailable, so this is not a clean bill of health.' })
-            : t('quality.canonRuleFocusedEmpty', { defaultValue: 'The rule you came from has no open violations — it is anchored here, but nothing has broken it yet.' })}
+            ? t('quality.canonRuleFocusUnknown', { defaultValue: 'The rule you came from could not be checked, because the co-writer service is unavailable. It may still be broken somewhere — this is not a result.' })
+            : t('quality.canonRuleFocusedEmpty', { defaultValue: 'The rule you came from has no open violations. It is anchored here, but nothing has broken it.' })}
       </div>
     );
   }
@@ -155,7 +155,7 @@ function FocusBanner({ v, t }: { v: QualityCanonView; t: T }) {
       {v.chapterFocusHits > 0
         ? t('quality.canonFocused', { defaultValue: 'Showing the chapter you came from first ({{n}} finding(s)).', n: v.chapterFocusHits })
         : v.compositionUnknown
-          ? t('quality.canonRuleFocusUnknown', { defaultValue: 'The rule you came from could not be checked — the co-writer lane is unavailable, so this is not a clean bill of health.' })
+          ? t('quality.canonRuleFocusUnknown', { defaultValue: 'The rule you came from could not be checked, because the co-writer service is unavailable. It may still be broken somewhere — this is not a result.' })
           : t('quality.canonFocusedEmpty', { defaultValue: 'The chapter you came from has no canon findings here.' })}
     </div>
   );

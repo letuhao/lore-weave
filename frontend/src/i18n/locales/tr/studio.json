@@ -2,6 +2,11 @@
   "title": "Yazım Stüdyosu",
   "back": "Kitaplara dön",
   "settings": "Kitap ayarları",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Yükleniyor…",
+    "empty": "Henüz ark yok."
+  },
   "welcome": {
     "tab": "Hoş Geldiniz",
     "title": "Yazım Stüdyosu",
@@ -89,6 +94,27 @@
       "title": "Bilgi",
       "desc": "Bilgi grafiği projelerinizi gözden geçirin ve açın",
       "guideBody": "Bilgi, bir kitabın bilgi grafiğine —AI ajanlarınızın çıkardığı ve düzenlediği varlıklar, olaylar ve efsanelere — giriş noktanızdır. Varlıklara, zaman çizelgelerine veya grafiğin kendisine dalmadan önce hangi proje (kitap) üzerinde çalışacağınızı seçmek için burayı açın."
+    },
+    "quality": {
+      "title": "Kalite",
+      "desc": "Açık vaatler, eleştirmen puanları, hikaye kapsamı ve kanon sorunları",
+      "guideBody": "Kalite, sizin teşhis panelinizdir — yalnızca bilgilendirme amaçlıdır, buradaki hiçbir şey metninizi değiştirmez. Açık vaat borcu defterini, bölüm bazlı eleştirmen puanlarını, kitap genelindeki vaat kapsamını veya onaylanmış kanon çelişkilerini görmek için bir kart seçin."
+    },
+    "quality-promises": {
+      "title": "Vaatler",
+      "desc": "Açık vaat borcu defteri (henüz sonuçlanmamış kurgusal hazırlıklar)"
+    },
+    "quality-critic": {
+      "title": "Eleştirmen",
+      "desc": "Bölüm bazlı tutarlılık, üslup, tempo ve kanon puanları"
+    },
+    "quality-coverage": {
+      "title": "Hikaye kapsamı",
+      "desc": "Taslak vaatlerinin hangilerinin yerine getirildiğine dair kitap geneli denetim"
+    },
+    "quality-canon": {
+      "title": "Kanon sorunları",
+      "desc": "Üretim ve bilgi çıkarımından kaynaklanan onaylanmış çelişkiler"
     },
     "kg-overview": {
       "title": "Genel Bakış",
@@ -193,6 +219,124 @@
       "title": "Bağlam Denetçisi",
       "desc": "Bağlam yönetiminin her adımda ne yaptığını izleyin — bütçe, tahsis, Planner→Compiler kararları",
       "guideBody": "Belirli bir adım için yapay zekaya tam olarak hangi bağlamın gönderildiğini gösterir — token bütçesi, nelerin dahil edildiği veya çıkarıldığı ve işlemin hızlı bir geçiş mi yoksa tam bir planlama geçişiyle mi yapıldığı. Yapay zekanın yanıtı tuhaf göründüğünde ve aslında neyi \"gördüğünü\" görmek istediğinizde veya bağlam bütçenizin nasıl harcandığını merak ettiğinizde paneli açın."
+    },
+    "book-import": {
+      "title": "İçe Aktar",
+      "desc": "Metin, .docx veya .epub formatlarından bölümleri ya da bir PDF'den tüm kitabı içe aktarın",
+      "intro": "Mevcut taslak içeriğini bu kitaba aktarın.",
+      "guideBody": "Düz metin, .docx veya .epub dosyalarından bölümleri ya da bir PDF'den tüm kitabı içe aktarın (isteğe bağlı yapay zeka görsel altyazı desteği ile — görme modelini siz seçersiniz). Sıfırdan yazmak yerine, içeriği aktarmak istediğiniz her an bu özelliği kullanabilirsiniz.",
+      "text": {
+        "title": "Bölümleri içe aktar",
+        "desc": ".txt, .docx veya .epub — dosya başına bir bölüm"
+      },
+      "pdf": {
+        "title": "PDF'den içe aktar",
+        "desc": "Görseller için isteğe bağlı yapay zeka altyazı desteğiyle bir PDF'i bölümlere ayırın"
+      }
+    },
+    "scene-browser": {
+      "title": "Sahne Tarayıcı",
+      "desc": "Bu kitaptaki her sahneye göz atın — işlenmiş nesir ve yazılmış plan, yan yana",
+      "guideBody": "Sahne Tarayıcı, iki gerçeği birleştirerek tüm kitaptaki her sahneyi listeler: fiilen yazılmış nesir (book-service'den) ve yazılmış niyet/plan (composition'dan). Bir sahne; yazılmış-ve-planlanmış (normal), planlanmış-fakat-henüz-yazılmamış veya yazılmış-fakat-henüz-bir-plana-ayrıştırılmamış olabilir — bu nedenle, içe aktarılan bir kitabın sahneleri, siz bir plan oluşturmadan önce bile burada görünür.",
+      "noBook": "Sahnelerine göz atmak için bir kitap açın.",
+      "search": "Başlıkları ve nesri ara…",
+      "count": "{{n}} sahne",
+      "workless": "Henüz plan yok — bu kitap için bir plan oluşturana kadar sahne niyeti (durum, bakış açısı, gerilim) kullanılamaz.",
+      "intentUnavailable": "Sahne planı geçici olarak kullanılamıyor — sadece yazılmış nesir gösteriliyor.",
+      "dirty": "kanon taşındı",
+      "dirtyTitle": "Son uyumluluk çalışmasından bu yana kanon taşındı",
+      "anchorLost": "Çapa kayboldu",
+      "empty": "Eşleşen sahne bulunamadı.",
+      "loadMore": "Daha fazla yükle",
+      "loading": "Yükleniyor…",
+      "col": {
+        "num": "#",
+        "scene": "Sahne",
+        "status": "Durum",
+        "tension": "Gerilim",
+        "words": "Kelime"
+      },
+      "badge": {
+        "notWritten": "henüz yazılmadı",
+        "notPlanned": "planlanmadı",
+        "anchorLost": "çapa kayboldu"
+      },
+      "bulk": {
+        "count": "{{n}} seçildi",
+        "selectAll": "Tümünü seç",
+        "selectRow": "Sahneyi seç: {{title}}",
+        "setStatus": "Durumu ayarla…",
+        "words": "Hedef kelime sayısı",
+        "trash": "Çöp kutusu",
+        "clear": "Temizle",
+        "updated": "{{n}} güncellendi",
+        "conflicted": "{{n}} çakışma var",
+        "failed": "{{n}} başarısız oldu"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan Merkezi",
+      "desc": "Kitabın tüm planı bir grafik tuvalinde — olay örgüsü şeritleri, bölümler, sahneler ve aralarındaki bağlantılar",
+      "guideBody": "Plan Merkezi, kitabınızın tüm yapısını bir grafik olarak sunar: her destan/ark/alt-ark bir şerittir, bölümler ve sahneler hikaye sırasına göre dizilmiş kartlardır ve sahne bağlantıları aralarındaki nedensel bağları çizer. Her arkı özet bir kart olarak görmek için paneli açın; bölümlerini yüklemek için bir arkı, sahnelerini görmek için bir bölümü genişletin. Gezinmek için kaydırın ve yakınlaştırın; kurgu veya vaatlerin dikkat gerektirdiği yerlerde sorun ve güncelliğini yitirme rozetleri görünür."
+    },
+    "scene-inspector": {
+      "title": "Sahne İnceleyici",
+      "desc": "Bir sahneye ait her alanı — niyet, kurgu, gerilim ve temellendirme — okuyun ve düzenleyin",
+      "guideBody": "Sahne Denetleyicisi, tek bir sahne için ayrıntı panelidir: bir sahne seçin (Sahne Tarayıcısı'nda veya taslakta) ve tam planı burada açılsın — durum, hedef, özet, vuruş rolü, gerilim ve kurgu alanları (çatışma, sonuç, riskler, hikaye süresi, değer değişimi, hedef kelimeler) — hepsi düzenlenebilir ve temellendirme iğneleri içine katlanmıştır. Düzenlemeler anında kaydedilir ve çakışan değişikliklere karşı korunur.",
+      "none": "Tam planını incelemek için bir sahne seçin.",
+      "loading": "Yükleniyor…",
+      "dirty": "Son uyumluluk kontrolünden bu yana kanon değişti — bu plan güncelliğini yitirmiş olabilir.",
+      "section": {
+        "identity": "Kimlik",
+        "intent": "Niyet",
+        "cast": "Kadro ve Mekân",
+        "craft": "Kurgu",
+        "links": "Bağlantılar",
+        "grounding": "Temellendirme"
+      },
+      "links": {
+        "empty": "Henüz nedensel bağlantı yok.",
+        "setup": "kurulum→sonuç",
+        "custom": "özel",
+        "remove": "Bağlantıyı kaldır",
+        "target": "Sahneye bağla",
+        "pick": "Bağla…",
+        "kind": "Bağlantı türü",
+        "label": "etiket",
+        "add": "bağlantı",
+        "dup": "Bu sahneler arasında bu türde bir bağlantı zaten mevcut.",
+        "failed": "Bağlantı oluşturulamadı."
+      },
+      "f": {
+        "title": "Başlık",
+        "status": "Durum",
+        "goal": "Hedef",
+        "synopsis": "Özet",
+        "beat": "Sahne rolü",
+        "tension": "Gerilim (0–100)",
+        "pov": "Bakış açısı karakteri",
+        "present": "Mevcut karakterler",
+        "location": "Mekan",
+        "conflict": "Çatışma",
+        "outcome": "Sonuç",
+        "stakes": "Riskler",
+        "storyTime": "Hikaye zamanı",
+        "valueShift": "Değer değişimi (−100…100)",
+        "targetWords": "Hedef kelimeler"
+      },
+      "ref": {
+        "none": "— hiçbiri yok —",
+        "add": "+ ekle",
+        "empty": "yok",
+        "loading": "(yükleniyor…)",
+        "remove": "{{name}} öğesini kaldır"
+      },
+      "status": {
+        "empty": "Boş",
+        "outline": "Taslak",
+        "drafting": "Yazılıyor",
+        "done": "Tamamlandı"
+      }
     },
     "chapter-browser": {
       "title": "Bölüm Tarayıcı",
@@ -333,47 +477,13 @@
       "title": "Bölüm Revizyon Karşılaştırma",
       "desc": "Bir bölüm revizyon çifti için tam editör farkı",
       "empty": "Ajan Modu'nun inceleme panelinden bir bölümün revizyon farkını açın."
-    },
-    "quality": {
-      "title": "Kalite",
-      "desc": "Açık vaatler, eleştirmen puanları, hikaye kapsamı ve kanon sorunları",
-      "guideBody": "Kalite, sizin teşhis panelinizdir — yalnızca bilgilendirme amaçlıdır, buradaki hiçbir şey metninizi değiştirmez. Açık vaat borcu defterini, bölüm bazlı eleştirmen puanlarını, kitap genelindeki vaat kapsamını veya onaylanmış kanon çelişkilerini görmek için bir kart seçin."
-    },
-    "quality-promises": {
-      "title": "Vaatler",
-      "desc": "Açık vaat borcu defteri (henüz sonuçlanmamış kurgusal hazırlıklar)"
-    },
-    "quality-critic": {
-      "title": "Eleştirmen",
-      "desc": "Bölüm bazlı tutarlılık, üslup, tempo ve kanon puanları"
-    },
-    "quality-coverage": {
-      "title": "Hikaye kapsamı",
-      "desc": "Taslak vaatlerinin hangilerinin yerine getirildiğine dair kitap geneli denetim"
-    },
-    "quality-canon": {
-      "title": "Kanon sorunları",
-      "desc": "Üretim ve bilgi çıkarımından kaynaklanan onaylanmış çelişkiler"
-    },
-    "book-import": {
-      "title": "İçe Aktar",
-      "desc": "Metin, .docx veya .epub formatlarından bölümleri ya da bir PDF'den tüm kitabı içe aktarın",
-      "intro": "Mevcut taslak içeriğini bu kitaba aktarın.",
-      "guideBody": "Düz metin, .docx veya .epub dosyalarından bölümleri ya da bir PDF'den tüm kitabı içe aktarın (isteğe bağlı yapay zeka görsel altyazı desteği ile — görme modelini siz seçersiniz). Sıfırdan yazmak yerine, içeriği aktarmak istediğiniz her an bu özelliği kullanabilirsiniz.",
-      "text": {
-        "title": "Bölümleri içe aktar",
-        "desc": ".txt, .docx veya .epub — dosya başına bir bölüm"
-      },
-      "pdf": {
-        "title": "PDF'den içe aktar",
-        "desc": "Görseller için isteğe bağlı yapay zeka altyazı desteğiyle bir PDF'i bölümlere ayırın"
-      }
     }
   },
   "sceneRail": {
     "title": "Sahneler",
     "toggle": "Sahneler",
     "empty": "Bu bölüm için sahne yok (taslağı oluşturucu kısmında oluşturun).",
+    "editTitle": "Sahneyi yeniden adlandır",
     "synopsisPlaceholder": "Özet…",
     "stale": "başka bir yerde değiştirildi — yeniden yüklendi",
     "notAnchored": "Sahne henüz metne sabitlenmedi — başlıkları bağlamak için ⚓ kullanın.",
@@ -558,6 +668,44 @@
       "title": "Kalite",
       "body": "Eleştirmen puanları, vaat dizileri ve kanon sorunları. Yakında."
     }
+  },
+  "quality": {
+    "noWork": "Bu kitabın henüz bir ortak yazar oturumu yok — önce bir bölüm yazmaya başlayın, ardından kalite verileri burada görünecektir.",
+    "hubNoWorkHint": "Vaatler, eleştirmen puanları ve hikaye kapsamı için bir ortak yazar oturumu gerekir — önce bir bölüm yazmaya başlayın. Aşağıdaki kanon sorunları her iki durumda da çalışmaya devam eder.",
+    "pickModel": "Analiz için bir model seçin…",
+    "pickChapter": "Bir bölüm seçin",
+    "pickChapterHint": "Kalitesini analiz etmek için yukarıdan bir bölüm seçin.",
+    "chaptersTruncated": "{{total}} bölümün ilk {{shown}} tanesi gösteriliyor",
+    "canonIntro": "Uyarı — Kitabın önceki kısımlarında kaldırılmış/değiştirilmiş olarak işaretlenen içeriklerle onaylanmış çelişkiler bulundu. Burada belirtilenlerin hiçbiri otomatik olarak uygulanmaz.",
+    "canonEmpty": "Hiçbir kurgu hatası bulunamadı.",
+    "canonCompositionError": "Oluşturma işleminden kurgu sorunları yüklenemedi — tekrar deneyin.",
+    "canonExtractionError": "Bilgi çıkarımından kurgu bayrakları yüklenemedi — tekrar deneyin.",
+    "canonFromGeneration": "Oluşturmadan ({{n}})",
+    "canonFromExtraction": "Bilgi çıkarımından ({{n}})",
+    "untitledScene": "Başlıksız sahne",
+    "jumpToChapter": "Bölümü aç",
+    "promisesTitle": "Vaatler",
+    "promisesDesc": "Açık vaat borç defteri",
+    "criticTitle": "Eleştirmen",
+    "criticDesc": "Bölüm başına tutarlılık, üslup, tempo ve kanon puanları",
+    "coverageTitle": "Hikaye kapsamı",
+    "coverageDesc": "Kitap genelindeki vaatlerin kapsamı",
+    "canonTitle": "Kanon sorunları",
+    "canonDesc": "Onaylanmış çelişkiler",
+    "canonFromRules": "İhlal edilen kurallar ({{n}})",
+    "canonRuleError": "Kanon kuralı ihlalleri yüklenemedi — tekrar deneyin.",
+    "canonRuleGone": "Artık mevcut olmayan bir kural",
+    "canonRuleUnnamed": "o kural",
+    "canonRuleFocused": "Öncelikle geldiğiniz kuralın ihlalleri gösteriliyor ({{n}}): «{{rule}}»",
+    "canonFocused": "Önce geldiğiniz bölümü gösteriliyor ({{n}} bulgu).",
+    "canonFocusedEmpty": "Geldiğiniz bölümde buraya dair herhangi bir kanon bulgusu yok.",
+    "canonUnavailable": "Ortak yazar servisine ulaşılamadı — oluşturma anındaki kanon bulguları aşağıya DAHİL EDİLMEMİŞTİR.",
+    "canonNoWork": "Bu kitabın henüz bir ortak yazar oturumu bulunmadığı için oluşturma süreci kanon kontrolleri çalıştırılmadı. Sadece bilgi çıkarma bulguları gösteriliyor.",
+    "canonRulesCapped": "{{total}} ihlal edilen kuraldan en güncel {{shown}} tanesi gösteriliyor.",
+    "canonRuleFocusedEmpty": "Geldiğiniz kuralın açık bir ihlali bulunmuyor. Buraya sabitlenmiş durumda ancak kuralı bozan bir durum yok.",
+    "canonRuleFocusUnknown": "Ortak yazar servisine ulaşılamadığı için geldiğiniz kural kontrol edilemedi. Kural bir yerde bozulmuş olabilir; bu bir sonuç değildir.",
+    "workUnavailable": "Ortak yazar servisine ulaşılamadı, bu nedenle kitabın kalite verileri yüklenemedi. Burada gösterilmeyen sorunlar mevcut olabilir. Lütfen kısa süre sonra tekrar deneyin.",
+    "hubUnavailable": "Ortak yazar servisine ulaşılamadı, bu nedenle vaatler, eleştirmen puanları ve hikaye kapsamı şu anda yüklenemiyor. Burada gösterilmeyen sorunlar mevcut olabilir."
   },
   "sidebar": {
     "collapse": "Daralt"
@@ -977,48 +1125,36 @@
       "desc": "İkinci bir monitör için Oluşturma ekranını kendi işletim sistemi penceresi olarak açın."
     }
   },
-  "quality": {
-    "noWork": "Bu kitabın henüz bir ortak yazar oturumu yok — önce bir bölüm yazmaya başlayın, ardından kalite verileri burada görünecektir.",
-    "hubNoWorkHint": "Vaatler, eleştirmen puanları ve hikaye kapsamı için bir ortak yazar oturumu gerekir — önce bir bölüm yazmaya başlayın. Aşağıdaki kanon sorunları her iki durumda da çalışmaya devam eder.",
-    "pickModel": "Analiz için bir model seçin…",
-    "pickChapter": "Bir bölüm seçin",
-    "pickChapterHint": "Kalitesini analiz etmek için yukarıdan bir bölüm seçin.",
-    "chaptersTruncated": "{{total}} bölümün ilk {{shown}} tanesi gösteriliyor",
-    "canonIntro": "Uyarı — Kitabın önceki kısımlarında kaldırılmış/değiştirilmiş olarak işaretlenen içeriklerle onaylanmış çelişkiler bulundu. Burada belirtilenlerin hiçbiri otomatik olarak uygulanmaz.",
-    "canonEmpty": "Hiçbir kurgu hatası bulunamadı.",
-    "canonCompositionError": "Oluşturma işleminden kurgu sorunları yüklenemedi — tekrar deneyin.",
-    "canonExtractionError": "Bilgi çıkarımından kurgu bayrakları yüklenemedi — tekrar deneyin.",
-    "canonFromGeneration": "Oluşturmadan ({{n}})",
-    "canonFromExtraction": "Bilgi çıkarımından ({{n}})",
-    "untitledScene": "Başlıksız sahne",
-    "jumpToChapter": "Bölümü aç",
-    "promisesTitle": "Vaatler",
-    "promisesDesc": "Açık vaat borç defteri",
-    "criticTitle": "Eleştirmen",
-    "criticDesc": "Bölüm başına tutarlılık, üslup, tempo ve kanon puanları",
-    "coverageTitle": "Hikaye kapsamı",
-    "coverageDesc": "Kitap genelindeki vaatlerin kapsamı",
-    "canonTitle": "Kanon sorunları",
-    "canonDesc": "Onaylanmış çelişkiler",
-    "canonFromRules": "İhlal edilen kurallar ({{n}})",
-    "canonRuleError": "Kanon kuralı ihlalleri yüklenemedi — tekrar deneyin.",
-    "canonRuleGone": "Artık mevcut olmayan bir kural",
-    "canonRuleUnnamed": "o kural",
-    "canonRuleFocused": "Öncelikle geldiğiniz kuralın ihlalleri gösteriliyor ({{n}}): «{{rule}}»",
-    "canonRuleFocusedEmpty": "Geldiğiniz kuralın açık bir ihlali yok — buraya sabitlenmiş durumda ancak henüz bir kural ihlali gerçekleşmedi.",
-    "canonFocused": "Önce geldiğiniz bölümü gösteriliyor ({{n}} bulgu).",
-    "canonFocusedEmpty": "Geldiğiniz bölümde buraya dair herhangi bir kanon bulgusu yok.",
-    "canonUnavailable": "Ortak yazar servisine ulaşılamadı — oluşturma anındaki kanon bulguları aşağıya DAHİL EDİLMEMİŞTİR.",
-    "canonNoWork": "Bu kitabın henüz bir ortak yazar oturumu bulunmadığı için oluşturma süreci kanon kontrolleri çalıştırılmadı. Sadece bilgi çıkarma bulguları gösteriliyor.",
-    "canonRuleFocusUnknown": "Geldiğiniz kural kontrol edilemedi — ortak yazar şeridi kullanılamıyor, bu nedenle bu bir temiz sağlık raporu değildir.",
-    "canonRulesCapped": "{{total}} ihlal edilen kuraldan en güncel {{shown}} tanesi gösteriliyor."
-  },
   "planHub": {
-    "undo": "Geri al"
-  },
-  "planNav": {
-    "title": "Plan",
-    "loading": "Yükleniyor…",
-    "empty": "Henüz ark yok."
+    "undo": "Geri al",
+    "empty": {
+      "title": "Bu kitap için henüz bir plan yok",
+      "body": "Plan Merkezi; arkları, bölümleri ve sahneleri gösteren teknik ayrıntıları sunar. Bu kitabın henüz bir planı yok. Taslağınızdan otomatik olarak oluşturulmaz: ya taslağı kullanın ya da yeni bir plan yazın.",
+      "extractCta": "Taslaktan planı çıkar",
+      "extracting": "Çıkarılıyor…",
+      "planCta": "Sıfırdan plan oluştur",
+      "extractNote": "Çıkarma işlemi, bölümlerinizden halihazırda ayrıştırılmış olan sahneleri okur ve her birini bir teknik düğüme dönüştürür. Bunları arklar halinde gruplandırmak ayrı bir yapay zeka adımıdır; bunun için asistana komut verin. O zamana kadar çıkarılan bölümler «Atanmamış» şeridinde duracaktır.",
+      "nothingParsed": "Çıkarılacak bir şey yok — bu kitabın henüz ayrıştırılmış sahnesi bulunmuyor. Önce bölümleri ayrıştırın veya içe aktarın, ardından çıkarın."
+    },
+    "node": {
+      "unplannedTray": "Planlanmamış bölümler",
+      "unplannedUnknown": "Planlanmamış bölümler: bilinmiyor (taslak okunamadı)",
+      "unplannedCapped": "…ve {{n}} tane daha (liste sınırlandırıldı)",
+      "unassignedStrip": "Herhangi bir arka yer almayan {{count}} bölüm — onu bir şeride sürükleyin",
+      "unassignedStrip_other": "Herhangi bir kurguda olmayan {{count}} bölüm — onları bir şeride sürükleyin",
+      "untitled": "Başlıksız"
+    },
+    "loading": "Plan yükleniyor…",
+    "toolbar": {
+      "search": "Bir düğüm ara…",
+      "fit": "Sığdır",
+      "problems": "Sorunlar",
+      "askAi": "Yapay Zekaya Sor",
+      "askAiHint": "Hakkında soru sormak için bir düğüm seçin",
+      "viewNarrative": "Anlatı",
+      "viewTimeline": "Zaman Çizelgesi",
+      "viewWorldmap": "Dünya haritası",
+      "viewSoon": "Daha sonraki bir aşamada gelecek"
+    }
   }
 }

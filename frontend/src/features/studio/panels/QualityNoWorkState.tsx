@@ -34,7 +34,7 @@ export function QualityUnavailableState({ testId }: { testId: string }) {
     <div data-testid={testId} className="flex h-full min-h-0 items-center justify-center p-6 text-center">
       <p className="max-w-sm text-sm text-amber-700 dark:text-amber-300">
         {t('quality.workUnavailable', {
-          defaultValue: 'Could not reach the co-writer service, so this book’s quality data could not be loaded. This is NOT a clean bill of health — try again shortly.',
+          defaultValue: 'Could not reach the co-writer service, so this book’s quality data could not be loaded. Problems may exist that are not shown here. Try again shortly.',
         })}
       </p>
     </div>

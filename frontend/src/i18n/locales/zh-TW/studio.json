@@ -2,6 +2,11 @@
   "title": "寫作工作室",
   "back": "返回我的書籍",
   "settings": "書籍設定",
+  "planNav": {
+    "title": "規劃",
+    "loading": "載入中…",
+    "empty": "尚無故事弧。"
+  },
   "welcome": {
     "tab": "歡迎",
     "title": "寫作工作室",
@@ -89,6 +94,27 @@
       "title": "知識庫",
       "desc": "瀏覽並開啟你的知識圖譜專案",
       "guideBody": "「知識」是進入一本書知識圖譜的入口——也就是 AI 代理已經擷取並整理好的實體、事件與世界觀設定。開啟這個面板，先選擇要處理的專案（書籍），再深入查看實體、時間軸或圖譜本身。"
+    },
+    "quality": {
+      "title": "品質分析",
+      "desc": "未完成伏筆、評論評分、故事覆蓋率與設定矛盾",
+      "guideBody": "品質分析是您的診斷儀表板 — 僅供參考，此處的內容不會改變您的原文。點擊卡片即可查看未完成伏筆清單、章節評論評分、全書伏筆覆蓋率，或是已確認的設定矛盾。"
+    },
+    "quality-promises": {
+      "title": "伏筆",
+      "desc": "未完成伏筆清單（尚未兌現的鋪陳）"
+    },
+    "quality-critic": {
+      "title": "評論",
+      "desc": "各章節的連貫性、語氣、節奏與設定評分"
+    },
+    "quality-coverage": {
+      "title": "故事覆蓋率",
+      "desc": "針對大綱伏筆是否已兌現的全書審核"
+    },
+    "quality-canon": {
+      "title": "設定矛盾",
+      "desc": "透過生成與知識提取所確認的矛盾點"
     },
     "kg-overview": {
       "title": "總覽",
@@ -193,6 +219,124 @@
       "title": "情境檢查器",
       "desc": "追蹤每輪的情境處理 — 預算、分配、Planner→Compiler 決策",
       "guideBody": "顯示某一輪對話中，實際送給 AI 的上下文內容——token 預算、哪些內容被納入或捨棄，以及這一輪是由快速處理還是更完整的規劃流程來完成。當 AI 的回應感覺怪怪的、你想知道它「看到」了什麼，或只是好奇上下文預算是怎麼被使用的，就開啟這個面板。"
+    },
+    "book-import": {
+      "title": "匯入",
+      "desc": "從文字檔、.docx、.epub 匯入章節，或從 PDF 匯入整本書",
+      "intro": "將現有的原稿內容匯入此書。",
+      "guideBody": "從純文字、.docx 或 .epub 檔案匯入章節，或是從 PDF 匯入整本書（可選擇 AI 圖片說明功能 — 由您自行決定使用的視覺模型）。當您有現成內容想要匯入，而非從零開始創作時，隨時可以開啟此功能。",
+      "text": {
+        "title": "匯入章節",
+        "desc": ".txt、.docx 或 .epub — 每份檔案為一個章節"
+      },
+      "pdf": {
+        "title": "從 PDF 匯入",
+        "desc": "將 PDF 拆解為章節，並可選擇使用 AI 為圖片生成說明"
+      }
+    },
+    "scene-browser": {
+      "title": "場景瀏覽器",
+      "desc": "並排瀏覽本書中的每個場景 — 包含解析後的散文內容及其創作計畫",
+      "guideBody": "場景瀏覽器透過結合兩個事實來列出全書的每個場景：實際撰寫的散文（來自 book-service）與創作意圖/計畫（來自 composition）。場景可能處於「已撰寫且已規劃」（正常）、「已規劃但尚未撰寫」，或是「已撰寫但尚未拆解為計畫」的狀態 — 因此，即使在您建立計畫之前，匯入書籍的場景也會顯示於此。",
+      "noBook": "請開啟一本書籍以瀏覽其場景。",
+      "search": "搜尋標題與散文…",
+      "count": "{{n}} 個場景",
+      "workless": "尚未建立計畫 — 在您為本書建立計畫之前，無法顯示場景意圖（狀態、視角、張力）。",
+      "intentUnavailable": "場景計畫暫時無法顯示 — 目前僅顯示撰寫的散文內容。",
+      "dirty": "正典已變動",
+      "dirtyTitle": "自上次一致性檢查後，正典內容已變動",
+      "anchorLost": "錨點遺失",
+      "empty": "無符合條件的場景。",
+      "loadMore": "載入更多",
+      "loading": "載入中…",
+      "col": {
+        "num": "#",
+        "scene": "場景",
+        "status": "狀態",
+        "tension": "張力",
+        "words": "字數"
+      },
+      "badge": {
+        "notWritten": "尚未撰寫",
+        "notPlanned": "未規劃",
+        "anchorLost": "錨點遺失"
+      },
+      "bulk": {
+        "count": "已選取 {{n}} 個",
+        "selectAll": "全選",
+        "selectRow": "選取場景：{{title}}",
+        "setStatus": "設定狀態…",
+        "words": "目標字數",
+        "trash": "移至垃圾桶",
+        "clear": "清除",
+        "updated": "{{n}} 個已更新",
+        "conflicted": "{{n}} 個衝突",
+        "failed": "{{n}} 個失敗"
+      }
+    },
+    "plan-hub": {
+      "title": "計畫中心",
+      "desc": "整本書的圖表規劃——包含故事弧線、章節、場景及其關聯",
+      "guideBody": "計畫中心將您整本書的結構呈現為圖表：每個篇章/故事弧線/子弧線皆為一條軌道，其章節與場景則是沿著故事順序軸排列的卡片，而場景關聯則繪製出它們之間的因果連線。開啟面板可查看已摺疊成摘要卡片的各個弧線；展開弧線即可延遲載入其章節，展開章節則可查看其場景。透過平移與縮放進行導覽；若出現設定衝突或內容過時，則會顯示對應的標記以提醒您注意。"
+    },
+    "scene-inspector": {
+      "title": "場景檢視器",
+      "desc": "閱讀並編輯單個場景的所有欄位 — 包含意圖、技巧、張力與事實根據",
+      "guideBody": "場景檢查器是單個場景的詳細面板：選擇一個場景（在場景瀏覽器或手稿中），即可在此開啟其完整計畫 — 包含狀態、目標、大綱、節奏角色、張力以及技巧欄位（衝突、結果、賭注、故事時間、價值轉變、目標字數） — 所有內容皆可編輯，並包含摺疊的「事實根據」圖釘。編輯會立即儲存，並具備防止衝突變更的保護機制。",
+      "none": "請選擇一個場景以檢查其完整計畫。",
+      "loading": "載入中…",
+      "dirty": "自上次一致性檢查後，正典內容已變動 — 此計畫可能已過時。",
+      "section": {
+        "identity": "身分",
+        "intent": "意圖",
+        "cast": "角色與場景",
+        "craft": "技巧",
+        "links": "連結",
+        "grounding": "事實根據"
+      },
+      "links": {
+        "empty": "尚無因果連結。",
+        "setup": "鋪陳→伏筆",
+        "custom": "自定義",
+        "remove": "移除連結",
+        "target": "連結至場景",
+        "pick": "連結至…",
+        "kind": "連結類型",
+        "label": "標籤",
+        "add": "連結",
+        "dup": "這些場景之間已存在同類型的連結。",
+        "failed": "無法建立連結。"
+      },
+      "f": {
+        "title": "標題",
+        "status": "狀態",
+        "goal": "目標",
+        "synopsis": "大綱",
+        "beat": "節拍角色",
+        "tension": "張力 (0–100)",
+        "pov": "視角角色",
+        "present": "出現角色",
+        "location": "地點",
+        "conflict": "衝突",
+        "outcome": "結果",
+        "stakes": "賭注",
+        "storyTime": "故事時間",
+        "valueShift": "價值轉變 (−100…100)",
+        "targetWords": "目標字數"
+      },
+      "ref": {
+        "none": "— 無 —",
+        "add": "+ 新增",
+        "empty": "無",
+        "loading": "(載入中…)",
+        "remove": "移除 {{name}}"
+      },
+      "status": {
+        "empty": "空白",
+        "outline": "大綱",
+        "drafting": "草稿中",
+        "done": "已完成"
+      }
     },
     "chapter-browser": {
       "title": "章節瀏覽器",
@@ -333,47 +477,13 @@
       "title": "章節版本比較",
       "desc": "單一章節版本配對的完整編輯器差異比較",
       "empty": "請從代理模式的審閱面板開啟某個章節的版本差異。"
-    },
-    "quality": {
-      "title": "品質分析",
-      "desc": "未完成伏筆、評論評分、故事覆蓋率與設定矛盾",
-      "guideBody": "品質分析是您的診斷儀表板 — 僅供參考，此處的內容不會改變您的原文。點擊卡片即可查看未完成伏筆清單、章節評論評分、全書伏筆覆蓋率，或是已確認的設定矛盾。"
-    },
-    "quality-promises": {
-      "title": "伏筆",
-      "desc": "未完成伏筆清單（尚未兌現的鋪陳）"
-    },
-    "quality-critic": {
-      "title": "評論",
-      "desc": "各章節的連貫性、語氣、節奏與設定評分"
-    },
-    "quality-coverage": {
-      "title": "故事覆蓋率",
-      "desc": "針對大綱伏筆是否已兌現的全書審核"
-    },
-    "quality-canon": {
-      "title": "設定矛盾",
-      "desc": "透過生成與知識提取所確認的矛盾點"
-    },
-    "book-import": {
-      "title": "匯入",
-      "desc": "從文字檔、.docx、.epub 匯入章節，或從 PDF 匯入整本書",
-      "intro": "將現有的原稿內容匯入此書。",
-      "guideBody": "從純文字、.docx 或 .epub 檔案匯入章節，或是從 PDF 匯入整本書（可選擇 AI 圖片說明功能 — 由您自行決定使用的視覺模型）。當您有現成內容想要匯入，而非從零開始創作時，隨時可以開啟此功能。",
-      "text": {
-        "title": "匯入章節",
-        "desc": ".txt、.docx 或 .epub — 每份檔案為一個章節"
-      },
-      "pdf": {
-        "title": "從 PDF 匯入",
-        "desc": "將 PDF 拆解為章節，並可選擇使用 AI 為圖片生成說明"
-      }
     }
   },
   "sceneRail": {
     "title": "場景",
     "toggle": "場景",
     "empty": "本章尚無場景（請在編排器建立大綱）。",
+    "editTitle": "重新命名場景",
     "synopsisPlaceholder": "場景摘要…",
     "stale": "已在他處變更 — 已重新載入",
     "notAnchored": "場景尚未錨定到內文 — 按 ⚓ 連結標題。",
@@ -558,6 +668,44 @@
       "title": "品質",
       "body": "評審分數、伏筆線與正史問題。即將推出。"
     }
+  },
+  "quality": {
+    "noWork": "此書尚未建立共同寫作對話 — 請先開始撰寫章節，之後品質數據便會顯示於此。",
+    "hubNoWorkHint": "「伏筆」、「評論評分」與「故事覆蓋率」需要透過共同寫作對話來產生 — 請先開始撰寫章節。下方的「設定衝突」問題無論如何皆可運作。",
+    "pickModel": "選擇要使用的分析模型…",
+    "pickChapter": "選擇章節",
+    "pickChapterHint": "請從上方選擇一個章節來分析其品質。",
+    "chaptersTruncated": "顯示第 {{shown}} 節，共 {{total}} 節",
+    "canonIntro": "提示 — 已確認與書中先前標記為「已刪除/已更改」的內容存在矛盾。此處內容不會自動套用。",
+    "canonEmpty": "未發現設定矛盾。",
+    "canonCompositionError": "無法從生成內容載入設定矛盾 — 請重試。",
+    "canonExtractionError": "無法從知識擷取載入設定標記 — 請重試。",
+    "canonFromGeneration": "來自生成內容 ({{n}})",
+    "canonFromExtraction": "來自知識擷取 ({{n}})",
+    "untitledScene": "未命名場景",
+    "jumpToChapter": "開啟章節",
+    "promisesTitle": "伏筆",
+    "promisesDesc": "開啟伏筆債務清單",
+    "criticTitle": "評論家",
+    "criticDesc": "章節連貫性、文風、節奏與設定一致性評分",
+    "coverageTitle": "故事覆蓋範圍",
+    "coverageDesc": "全書承諾內容覆蓋率",
+    "canonTitle": "設定矛盾",
+    "canonDesc": "已確認的矛盾點",
+    "canonFromRules": "違反規則 ({{n}})",
+    "canonRuleError": "無法載入正典規則違規項目 — 請再試一次。",
+    "canonRuleGone": "已不存在的規則",
+    "canonRuleUnnamed": "該規則",
+    "canonRuleFocused": "優先顯示您來源規則的違規項目 ({{n}})：「{{rule}}」",
+    "canonFocused": "優先顯示您來源的章節 (找到 {{n}} 個)。",
+    "canonFocusedEmpty": "您來源的章節在此處沒有任何正典設定發現。",
+    "canonUnavailable": "無法連線至共同寫作者服務 — 以下內容不包含生成時的設定集檢索結果。",
+    "canonNoWork": "此書尚未建立共同作者工作階段，因此尚未執行生成時的設定檢查。目前僅顯示知識擷取結果。",
+    "canonRulesCapped": "顯示 {{total}} 個失效規則中最新的 {{shown}} 個。",
+    "canonRuleFocusedEmpty": "您來源的規則目前沒有任何未解決的違規項。該規則已在此錨定，但尚未發生任何錯誤。",
+    "canonRuleFocusUnknown": "由於協作寫作服務無法使用，無法檢查您來源的規則。規則可能在其他地方仍有錯誤——此結果並不代表規則完全正確。",
+    "workUnavailable": "無法連線至協作寫作服務，因此無法載入本書的品質數據。可能存在此處未顯示的問題，請稍後再試。",
+    "hubUnavailable": "無法連線至協作寫作服務，因此目前無法載入承諾、評論分數與故事覆蓋範圍。可能存在此處未顯示的問題。"
   },
   "sidebar": {
     "collapse": "收合"
@@ -977,48 +1125,36 @@
       "desc": "將「創作」視窗彈出至獨立的作業系統視窗，方便在第二個螢幕使用。"
     }
   },
-  "quality": {
-    "noWork": "此書尚未建立共同寫作對話 — 請先開始撰寫章節，之後品質數據便會顯示於此。",
-    "hubNoWorkHint": "「伏筆」、「評論評分」與「故事覆蓋率」需要透過共同寫作對話來產生 — 請先開始撰寫章節。下方的「設定衝突」問題無論如何皆可運作。",
-    "pickModel": "選擇要使用的分析模型…",
-    "pickChapter": "選擇章節",
-    "pickChapterHint": "請從上方選擇一個章節來分析其品質。",
-    "chaptersTruncated": "顯示第 {{shown}} 節，共 {{total}} 節",
-    "canonIntro": "提示 — 已確認與書中先前標記為「已刪除/已更改」的內容存在矛盾。此處內容不會自動套用。",
-    "canonEmpty": "未發現設定矛盾。",
-    "canonCompositionError": "無法從生成內容載入設定矛盾 — 請重試。",
-    "canonExtractionError": "無法從知識擷取載入設定標記 — 請重試。",
-    "canonFromGeneration": "來自生成內容 ({{n}})",
-    "canonFromExtraction": "來自知識擷取 ({{n}})",
-    "untitledScene": "未命名場景",
-    "jumpToChapter": "開啟章節",
-    "promisesTitle": "伏筆",
-    "promisesDesc": "開啟伏筆債務清單",
-    "criticTitle": "評論家",
-    "criticDesc": "章節連貫性、文風、節奏與設定一致性評分",
-    "coverageTitle": "故事覆蓋範圍",
-    "coverageDesc": "全書承諾內容覆蓋率",
-    "canonTitle": "設定矛盾",
-    "canonDesc": "已確認的矛盾點",
-    "canonFromRules": "違反規則 ({{n}})",
-    "canonRuleError": "無法載入正典規則違規項目 — 請再試一次。",
-    "canonRuleGone": "已不存在的規則",
-    "canonRuleUnnamed": "該規則",
-    "canonRuleFocused": "優先顯示您來源規則的違規項目 ({{n}})：「{{rule}}」",
-    "canonRuleFocusedEmpty": "您來源的規則目前沒有未解決的違規項目 — 雖然已在此建立錨點，但尚未有任何內容違反規則。",
-    "canonFocused": "優先顯示您來源的章節 (找到 {{n}} 個)。",
-    "canonFocusedEmpty": "您來源的章節在此處沒有任何正典設定發現。",
-    "canonUnavailable": "無法連線至共同寫作者服務 — 以下內容不包含生成時的設定集檢索結果。",
-    "canonNoWork": "此書尚未建立共同作者工作階段，因此尚未執行生成時的設定檢查。目前僅顯示知識擷取結果。",
-    "canonRuleFocusUnknown": "無法檢查您來源的規則 — 由於共同作者通道不可用，因此此結果並非完全通過檢查。",
-    "canonRulesCapped": "顯示 {{total}} 個失效規則中最新的 {{shown}} 個。"
-  },
   "planHub": {
-    "undo": "復原"
-  },
-  "planNav": {
-    "title": "規劃",
-    "loading": "載入中…",
-    "empty": "尚無故事弧。"
+    "undo": "復原",
+    "empty": {
+      "title": "此書籍尚未建立計畫",
+      "body": "計畫中心會顯示大綱、章節與場景等規格。此書籍目前尚未建立任何計畫。系統無法從您的原稿中自動生成計畫：請嘗試「從原稿提取」，或是「從頭開始編寫」。",
+      "extractCta": "從原稿提取計畫",
+      "extracting": "正在提取…",
+      "planCta": "從頭開始編寫",
+      "extractNote": "「提取」功能會讀取已從章節中解析出的場景，並將其轉換為規格節點。將場景分組為故事弧（Arcs）是另一個獨立的 AI 步驟——請向代理人要求執行。在此之前，提取出的章節會顯示在「未分配」欄位中。",
+      "nothingParsed": "無內容可供提取 — 此書籍尚未解析任何場景。請先解析或匯入章節，然後再進行提取。"
+    },
+    "node": {
+      "unplannedTray": "未規劃的章節",
+      "unplannedUnknown": "未規劃的章節：未知（無法讀取原稿）",
+      "unplannedCapped": "…以及另外 {{n}} 個（列表已截斷）",
+      "unassignedStrip": "{{count}} 個章節未歸屬於任何故事弧 — 請將其拖入欄位中",
+      "unassignedStrip_other": "{{count}} 個章節尚未歸類於任何故事弧 — 將它們拖入分欄中",
+      "untitled": "未命名"
+    },
+    "loading": "正在載入計畫…",
+    "toolbar": {
+      "search": "搜尋節點…",
+      "fit": "縮放至全螢幕",
+      "problems": "問題",
+      "askAi": "詢問 AI",
+      "askAiHint": "選擇一個節點以進行提問",
+      "viewNarrative": "敘事結構",
+      "viewTimeline": "時間軸",
+      "viewWorldmap": "世界地圖",
+      "viewSoon": "即將於後續階段推出"
+    }
   }
 }

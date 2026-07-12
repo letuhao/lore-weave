@@ -2,6 +2,11 @@
   "title": "写作工作室",
   "back": "返回书籍",
   "settings": "书籍设置",
+  "planNav": {
+    "title": "规划",
+    "loading": "加载中…",
+    "empty": "暂无故事弧。"
+  },
   "welcome": {
     "tab": "欢迎",
     "title": "写作工作室",
@@ -89,6 +94,27 @@
       "title": "知识库",
       "desc": "浏览并打开您的知识图谱项目",
       "guideBody": "知识库是进入书籍知识图谱的入口——包含您的 AI 智能体已提取并组织的实体、事件和设定。在深入研究实体、时间线或图谱本身之前，请先打开它以选择要处理的项目（书籍）。"
+    },
+    "quality": {
+      "title": "质量",
+      "desc": "未完成的伏笔、评论家评分、故事覆盖率及设定冲突",
+      "guideBody": "质量是您的诊断仪表盘 —— 仅供参考，此处内容不会更改您的正文。点击卡片查看未完成的伏笔账本、逐章评论家评分、全书伏笔覆盖率，或已确认的设定矛盾。"
+    },
+    "quality-promises": {
+      "title": "伏笔",
+      "desc": "未完成的伏笔账本（尚未兑现的铺垫）"
+    },
+    "quality-critic": {
+      "title": "评论家",
+      "desc": "逐章连贯性、语调、节奏及设定评分"
+    },
+    "quality-coverage": {
+      "title": "故事覆盖率",
+      "desc": "针对大纲伏笔兑现情况的全书审计"
+    },
+    "quality-canon": {
+      "title": "设定冲突",
+      "desc": "通过生成与知识提取确认的矛盾点"
     },
     "kg-overview": {
       "title": "概览",
@@ -193,6 +219,124 @@
       "title": "上下文检查器",
       "desc": "追踪上下文管理在每轮对话中的操作——预算、分配、Planner→Compiler 的决策",
       "guideBody": "精确显示在特定轮次中发送给 AI 的上下文——包括 Token 预算、包含或丢弃的内容，以及是由快速处理还是完整的规划处理。当 AI 的回复显得不合逻辑，您想查看它实际“看到”了什么，或者想了解上下文预算是如何消耗时，请打开此面板。"
+    },
+    "book-import": {
+      "title": "导入",
+      "desc": "从文本、.docx、.epub 导入章节，或从 PDF 导入整本书",
+      "intro": "将现有的手稿内容导入到本书中。",
+      "guideBody": "从纯文本、.docx 或 .epub 文件导入章节，或者从 PDF 导入整本书（可选择 AI 图像说明功能 —— 您可以明确指定视觉模型）。当您有现有内容需要导入而非从零开始写作时，请随时使用此功能。",
+      "text": {
+        "title": "导入章节",
+        "desc": ".txt、.docx 或 .epub —— 每个文件为一个章节"
+      },
+      "pdf": {
+        "title": "从 PDF 导入",
+        "desc": "将 PDF 拆分为章节，并可选择为图像生成 AI 说明"
+      }
+    },
+    "scene-browser": {
+      "title": "场景浏览器",
+      "desc": "浏览本书中的每一个场景 —— 将解析后的正文与其创作大纲并排对比",
+      "guideBody": "场景浏览器通过结合两个事实来列出全书的每个场景：实际编写的正文（来自 book-service）以及创作意图/大纲（来自 composition）。场景可能处于“已编写且已规划”（正常）、“已规划但尚未编写”，或者“已编写但尚未拆解为大纲”的状态 —— 因此，即使在您为导入的书籍创建大纲之前，其场景也会显示在这里。",
+      "noBook": "请打开一本书以浏览其场景。",
+      "search": "搜索标题与正文…",
+      "count": "{{n}} 个场景",
+      "workless": "尚未创建大纲 —— 在您为本书创建大纲之前，无法查看场景意图（状态、视角、张力）。",
+      "intentUnavailable": "场景大纲暂时不可用 —— 仅显示已编写的正文。",
+      "dirty": "正典已变动",
+      "dirtyTitle": "自上次一致性检查以来，正典已发生变动",
+      "anchorLost": "锚点丢失",
+      "empty": "未找到匹配场景。",
+      "loadMore": "加载更多",
+      "loading": "正在加载…",
+      "col": {
+        "num": "#",
+        "scene": "场景",
+        "status": "状态",
+        "tension": "张力",
+        "words": "字数"
+      },
+      "badge": {
+        "notWritten": "尚未撰写",
+        "notPlanned": "未规划",
+        "anchorLost": "锚点丢失"
+      },
+      "bulk": {
+        "count": "已选择 {{n}} 项",
+        "selectAll": "全选",
+        "selectRow": "选择场景：{{title}}",
+        "setStatus": "设置状态…",
+        "words": "目标字数",
+        "trash": "移至回收站",
+        "clear": "清除",
+        "updated": "{{n}} 个已更新",
+        "conflicted": "{{n}} 个冲突",
+        "failed": "{{n}} 个失败"
+      }
+    },
+    "plan-hub": {
+      "title": "规划枢纽",
+      "desc": "整本书的图表画布规划——包含叙事弧线、章节、场景及其关联",
+      "guideBody": "规划枢纽将整本书的结构渲染为一张图表：每个传奇/叙事弧/子弧都是一条轨道，其章节和场景是沿故事顺序轴排列的卡片，而场景链接则绘制了它们之间的因果连线。打开面板即可查看折叠后的叙事弧汇总卡片；展开叙事弧可延迟加载其章节，展开章节即可查看其场景。通过平移和缩放进行导航；当设定或伏笔需要关注时，会出现问题和陈旧状态徽章。"
+    },
+    "scene-inspector": {
+      "title": "场景检查器",
+      "desc": "阅读并编辑单个场景的所有字段——意图、技巧、张力与落地感",
+      "guideBody": "场景检查器是针对单个场景的详情面板：选择一个场景（在场景浏览器或手稿中），即可在此查看其完整规划——包括状态、目标、梗概、节拍角色、张力以及技巧字段（冲突、结果、赌注、故事时间、价值转变、目标字数）——所有内容均可编辑，并包含折叠的落地感锚点。编辑会立即保存，并具备防止冲突更改的保护机制。",
+      "none": "请选择一个场景以查看其完整规划。",
+      "loading": "正在加载…",
+      "dirty": "自上次一致性检查以来，正文已发生变动——此规划可能已过时。",
+      "section": {
+        "identity": "身份",
+        "intent": "意图",
+        "cast": "角色与场景",
+        "craft": "技巧",
+        "links": "关联",
+        "grounding": "落地感"
+      },
+      "links": {
+        "empty": "尚无因果关联。",
+        "setup": "铺垫→高潮",
+        "custom": "自定义",
+        "remove": "移除链接",
+        "target": "链接至场景",
+        "pick": "链接至…",
+        "kind": "链接类型",
+        "label": "标签",
+        "add": "链接",
+        "dup": "这些场景之间已存在同类型的链接。",
+        "failed": "无法创建链接。"
+      },
+      "f": {
+        "title": "标题",
+        "status": "状态",
+        "goal": "目标",
+        "synopsis": "梗概",
+        "beat": "节拍角色",
+        "tension": "紧张度 (0–100)",
+        "pov": "视角角色",
+        "present": "登场角色",
+        "location": "地点",
+        "conflict": "冲突",
+        "outcome": "结果",
+        "stakes": "赌注",
+        "storyTime": "故事时间",
+        "valueShift": "价值转变 (−100…100)",
+        "targetWords": "目标词汇"
+      },
+      "ref": {
+        "none": "— 无 —",
+        "add": "+ 添加",
+        "empty": "无",
+        "loading": "(加载中…)",
+        "remove": "移除 {{name}}"
+      },
+      "status": {
+        "empty": "空白",
+        "outline": "大纲",
+        "drafting": "草稿中",
+        "done": "已完成"
+      }
     },
     "chapter-browser": {
       "title": "章节浏览器",
@@ -333,47 +477,13 @@
       "title": "章节修订对比",
       "desc": "单对章节修订的完整编辑器差异对比",
       "empty": "从 Agent Mode 的审查面板中打开章节修订差异。"
-    },
-    "quality": {
-      "title": "质量",
-      "desc": "未完成的伏笔、评论家评分、故事覆盖率及设定冲突",
-      "guideBody": "质量是您的诊断仪表盘 —— 仅供参考，此处内容不会更改您的正文。点击卡片查看未完成的伏笔账本、逐章评论家评分、全书伏笔覆盖率，或已确认的设定矛盾。"
-    },
-    "quality-promises": {
-      "title": "伏笔",
-      "desc": "未完成的伏笔账本（尚未兑现的铺垫）"
-    },
-    "quality-critic": {
-      "title": "评论家",
-      "desc": "逐章连贯性、语调、节奏及设定评分"
-    },
-    "quality-coverage": {
-      "title": "故事覆盖率",
-      "desc": "针对大纲伏笔兑现情况的全书审计"
-    },
-    "quality-canon": {
-      "title": "设定冲突",
-      "desc": "通过生成与知识提取确认的矛盾点"
-    },
-    "book-import": {
-      "title": "导入",
-      "desc": "从文本、.docx、.epub 导入章节，或从 PDF 导入整本书",
-      "intro": "将现有的手稿内容导入到本书中。",
-      "guideBody": "从纯文本、.docx 或 .epub 文件导入章节，或者从 PDF 导入整本书（可选择 AI 图像说明功能 —— 您可以明确指定视觉模型）。当您有现有内容需要导入而非从零开始写作时，请随时使用此功能。",
-      "text": {
-        "title": "导入章节",
-        "desc": ".txt、.docx 或 .epub —— 每个文件为一个章节"
-      },
-      "pdf": {
-        "title": "从 PDF 导入",
-        "desc": "将 PDF 拆分为章节，并可选择为图像生成 AI 说明"
-      }
     }
   },
   "sceneRail": {
     "title": "场景",
     "toggle": "场景",
     "empty": "此章节没有场景（请在编排器中进行大纲编排）。",
+    "editTitle": "重命名场景",
     "synopsisPlaceholder": "梗概…",
     "stale": "已在别处更改 — 已重新加载",
     "notAnchored": "场景尚未在文本中锚定 — 使用 ⚓ 链接标题。",
@@ -558,6 +668,44 @@
       "title": "质量",
       "body": "评论评分、承诺线程与正典问题。即将推出。"
     }
+  },
+  "quality": {
+    "noWork": "本书尚未开启共同创作会话 —— 请先开始创作章节，随后质量数据将在此显示。",
+    "hubNoWorkHint": "承诺、评论评分和故事覆盖率需要共同创作会话 —— 请先开始创作章节。下方的设定冲突检查功能无论如何均可使用。",
+    "pickModel": "选择用于分析的模型…",
+    "pickChapter": "选择章节",
+    "pickChapterHint": "在上方选择一个章节以分析其质量。",
+    "chaptersTruncated": "显示第 {{shown}} / {{total}} 章",
+    "canonIntro": "提示 — 已确认与书中先前标记为“已删除/已更改”的内容存在矛盾。此处内容不会自动应用。",
+    "canonEmpty": "未发现设定冲突。",
+    "canonCompositionError": "无法从生成内容中加载设定问题 — 请重试。",
+    "canonExtractionError": "无法从知识提取中加载设定标记 — 请重试。",
+    "canonFromGeneration": "来自生成内容 ({{n}})",
+    "canonFromExtraction": "来自知识提取 ({{n}})",
+    "untitledScene": "未命名场景",
+    "jumpToChapter": "打开章节",
+    "promisesTitle": "伏笔",
+    "promisesDesc": "打开伏笔债务账本",
+    "criticTitle": "评论家",
+    "criticDesc": "每章连贯性、文风、节奏及设定一致性评分",
+    "coverageTitle": "故事覆盖范围",
+    "coverageDesc": "全书承诺内容的覆盖程度",
+    "canonTitle": "设定冲突",
+    "canonDesc": "已确认的矛盾点",
+    "canonFromRules": "违反规则 ({{n}})",
+    "canonRuleError": "无法加载设定规则冲突 —— 请重试。",
+    "canonRuleGone": "已失效的规则",
+    "canonRuleUnnamed": "该规则",
+    "canonRuleFocused": "优先显示你所在章节的规则冲突 ({{n}}): “{{rule}}”",
+    "canonFocused": "优先显示您所在的章节 (找到 {{n}} 个)。",
+    "canonFocusedEmpty": "你所在的章节在此处没有设定冲突。",
+    "canonUnavailable": "无法连接至共同创作服务 — 以下内容不包含生成时的设定校验结果。",
+    "canonNoWork": "本书尚未开启共同创作会话，因此未进行生成时的设定检查。目前仅显示知识提取结果。",
+    "canonRulesCapped": "在 {{total}} 条违规规则中，仅显示最近的 {{shown}} 条。",
+    "canonRuleFocusedEmpty": "您所在的规则目前没有未解决的违规项。该规则已在此锚定，但尚未出现任何破坏性错误。",
+    "canonRuleFocusUnknown": "由于协作写作服务不可用，无法检查您所在的规则。规则可能在其他地方仍存在问题——此结果不代表规则完全正确。",
+    "workUnavailable": "无法连接到协作写作服务，因此无法加载本书的质量数据。可能存在此处未显示的错误。请稍后重试。",
+    "hubUnavailable": "无法连接到协作写作服务，因此目前无法加载承诺、评论评分和故事覆盖范围。可能存在此处未显示的错误。"
   },
   "sidebar": {
     "collapse": "折叠"
@@ -977,48 +1125,36 @@
       "desc": "将创作界面弹出为独立的操作系统窗口，以便在第二台显示器上使用。"
     }
   },
-  "quality": {
-    "noWork": "本书尚未开启共同创作会话 —— 请先开始创作章节，随后质量数据将在此显示。",
-    "hubNoWorkHint": "承诺、评论评分和故事覆盖率需要共同创作会话 —— 请先开始创作章节。下方的设定冲突检查功能无论如何均可使用。",
-    "pickModel": "选择用于分析的模型…",
-    "pickChapter": "选择章节",
-    "pickChapterHint": "在上方选择一个章节以分析其质量。",
-    "chaptersTruncated": "显示第 {{shown}} / {{total}} 章",
-    "canonIntro": "提示 — 已确认与书中先前标记为“已删除/已更改”的内容存在矛盾。此处内容不会自动应用。",
-    "canonEmpty": "未发现设定冲突。",
-    "canonCompositionError": "无法从生成内容中加载设定问题 — 请重试。",
-    "canonExtractionError": "无法从知识提取中加载设定标记 — 请重试。",
-    "canonFromGeneration": "来自生成内容 ({{n}})",
-    "canonFromExtraction": "来自知识提取 ({{n}})",
-    "untitledScene": "未命名场景",
-    "jumpToChapter": "打开章节",
-    "promisesTitle": "伏笔",
-    "promisesDesc": "打开伏笔债务账本",
-    "criticTitle": "评论家",
-    "criticDesc": "每章连贯性、文风、节奏及设定一致性评分",
-    "coverageTitle": "故事覆盖范围",
-    "coverageDesc": "全书承诺内容的覆盖程度",
-    "canonTitle": "设定冲突",
-    "canonDesc": "已确认的矛盾点",
-    "canonFromRules": "违反规则 ({{n}})",
-    "canonRuleError": "无法加载设定规则冲突 —— 请重试。",
-    "canonRuleGone": "已失效的规则",
-    "canonRuleUnnamed": "该规则",
-    "canonRuleFocused": "优先显示你所在章节的规则冲突 ({{n}}): “{{rule}}”",
-    "canonRuleFocusedEmpty": "你所在的章节没有未解决的冲突 —— 该规则已在此锚定，但目前尚未被违反。",
-    "canonFocused": "优先显示您所在的章节 (找到 {{n}} 个)。",
-    "canonFocusedEmpty": "你所在的章节在此处没有设定冲突。",
-    "canonUnavailable": "无法连接至共同创作服务 — 以下内容不包含生成时的设定校验结果。",
-    "canonNoWork": "本书尚未开启共同创作会话，因此未进行生成时的设定检查。目前仅显示知识提取结果。",
-    "canonRuleFocusUnknown": "由于无法访问共同创作通道，无法对您来源的规则进行检查，因此此结果并非最终确定的健康状态。",
-    "canonRulesCapped": "在 {{total}} 条违规规则中，仅显示最近的 {{shown}} 条。"
-  },
   "planHub": {
-    "undo": "撤销"
-  },
-  "planNav": {
-    "title": "规划",
-    "loading": "加载中…",
-    "empty": "暂无故事弧。"
+    "undo": "撤销",
+    "empty": {
+      "title": "该书籍尚未制定计划",
+      "body": "计划中心（Plan Hub）展示大纲规格——包括弧线、章节和场景。这本书目前还没有任何规格。它不会从你的手稿中自动生成：请通过“提取”功能生成，或手动编写一个。",
+      "extractCta": "从手稿中提取计划",
+      "extracting": "正在提取…",
+      "planCta": "从零开始制定计划",
+      "extractNote": "“提取”功能会读取已从章节中解析出的场景，并将每个场景转换为规格节点。将它们组合成弧线是另一个独立的 AI 步骤——请向智能体（Agent）发出指令。在此之前，提取出的章节将保留在“未分配”栏中。",
+      "nothingParsed": "无可提取内容——这本书目前还没有解析出的场景。请先解析或导入章节，然后再进行提取。"
+    },
+    "node": {
+      "unplannedTray": "未规划章节",
+      "unplannedUnknown": "未规划章节：未知（无法读取手稿）",
+      "unplannedCapped": "…以及另外 {{n}} 个（列表已截断）",
+      "unassignedStrip": "{{count}} 个章节未归入弧线 —— 请将其拖入对应的轨道",
+      "unassignedStrip_other": "有 {{count}} 个章节未分配至情节线 — 请将它们拖入泳道",
+      "untitled": "未命名"
+    },
+    "loading": "正在加载大纲…",
+    "toolbar": {
+      "search": "查找节点…",
+      "fit": "适应视图",
+      "problems": "问题",
+      "askAi": "询问 AI",
+      "askAiHint": "选择一个节点进行提问",
+      "viewNarrative": "叙事视图",
+      "viewTimeline": "时间轴",
+      "viewWorldmap": "世界地图",
+      "viewSoon": "将在后续阶段推出"
+    }
   }
 }

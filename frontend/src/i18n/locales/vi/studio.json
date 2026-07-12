@@ -2,6 +2,11 @@
   "title": "Xưởng Sáng Tác",
   "back": "Quay lại Sách của tôi",
   "settings": "Cài đặt sách",
+  "planNav": {
+    "title": "Kế hoạch",
+    "loading": "Đang tải…",
+    "empty": "Chưa có arc nào."
+  },
   "welcome": {
     "tab": "Chào mừng",
     "title": "Xưởng Sáng Tác",
@@ -89,6 +94,27 @@
       "title": "Tri thức",
       "desc": "Duyệt và mở các dự án đồ thị tri thức của bạn",
       "guideBody": "Knowledge là điểm khởi đầu để bạn bước vào đồ thị tri thức của một cuốn sách — các thực thể, sự kiện và lore mà các AI agent của bạn đã trích xuất và tổ chức lại. Mở nó để chọn dự án (cuốn sách) bạn muốn làm việc trước khi đi sâu vào thực thể, dòng thời gian, hay chính đồ thị tri thức."
+    },
+    "quality": {
+      "title": "Chất lượng",
+      "desc": "Các lời hứa chưa thực hiện, điểm số từ chuyên gia, độ bao phủ cốt truyện & các vấn đề về chính văn",
+      "guideBody": "Chất lượng là bảng điều khiển chẩn đoán của bạn — chỉ mang tính chất tham khảo, không có gì ở đây làm thay đổi văn phong của bạn. Chọn một thẻ để xem sổ nợ các lời hứa chưa thực hiện, điểm số chuyên gia theo từng chương, độ bao phủ lời hứa của toàn bộ cuốn sách, hoặc các mâu thuẫn chính văn đã được xác nhận."
+    },
+    "quality-promises": {
+      "title": "Lời hứa",
+      "desc": "Sổ nợ các lời hứa chưa thực hiện (các tình tiết cài cắm chưa được giải quyết)"
+    },
+    "quality-critic": {
+      "title": "Chuyên gia",
+      "desc": "Điểm số về tính mạch lạc, giọng văn, nhịp độ & chính văn theo từng chương"
+    },
+    "quality-coverage": {
+      "title": "Độ bao phủ cốt truyện",
+      "desc": "Kiểm tra toàn bộ cuốn sách về việc các lời hứa trong dàn ý đã được thực hiện như thế nào"
+    },
+    "quality-canon": {
+      "title": "Vấn đề chính văn",
+      "desc": "Các mâu thuẫn đã được xác nhận từ quá trình tạo nội dung & trích xuất kiến thức"
     },
     "kg-overview": {
       "title": "Tổng quan",
@@ -193,6 +219,124 @@
       "title": "Trình kiểm tra ngữ cảnh",
       "desc": "Xem context management đã làm gì mỗi lượt — ngân sách, phân bổ, quyết định Planner→Compiler",
       "guideBody": "Trình kiểm tra ngữ cảnh cho biết chính xác ngữ cảnh nào đã được gửi cho AI trong một lượt trò chuyện — ngân sách token, những gì được đưa vào hoặc bị loại bỏ, và liệu lượt đó được xử lý bằng một lượt xử lý nhanh hay một lượt lập kế hoạch đầy đủ hơn. Mở nó khi phản hồi của AI có vẻ không ổn và bạn muốn xem nó thực sự đã \"thấy\" những gì, hoặc khi bạn tò mò ngân sách ngữ cảnh của mình đang được dùng ra sao."
+    },
+    "book-import": {
+      "title": "Nhập",
+      "desc": "Nhập các chương từ tệp text/.docx/.epub, hoặc toàn bộ cuốn sách từ tệp PDF",
+      "intro": "Đưa nội dung bản thảo có sẵn vào cuốn sách này.",
+      "guideBody": "Nhập các chương từ tệp văn bản thuần túy, .docx, hoặc .epub, hoặc toàn bộ cuốn sách từ tệp PDF (có tùy chọn chú thích hình ảnh bằng AI — bạn sẽ trực tiếp chọn mô hình thị giác). Hãy mở tính năng này bất cứ khi nào bạn có nội dung sẵn có cần đưa vào thay vì phải viết lại từ đầu.",
+      "text": {
+        "title": "Nhập các chương",
+        "desc": ".txt, .docx, hoặc .epub — mỗi tệp là một chương"
+      },
+      "pdf": {
+        "title": "Nhập từ PDF",
+        "desc": "Chia nhỏ tệp PDF thành các chương, có tùy chọn chú thích hình ảnh bằng AI"
+      }
+    },
+    "scene-browser": {
+      "title": "Trình duyệt Cảnh",
+      "desc": "Duyệt mọi cảnh trong cuốn sách này — văn bản đã viết và kế hoạch soạn thảo được hiển thị song song",
+      "guideBody": "Trình duyệt Cảnh liệt kê mọi cảnh trong toàn bộ cuốn sách bằng cách kết hợp hai thực thể: văn bản thực tế đã viết (từ book-service) và ý đồ/kế hoạch soạn thảo (từ composition). Một cảnh có thể ở trạng thái đã viết và đã lập kế hoạch (bình thường), đã lập kế hoạch nhưng chưa viết, hoặc đã viết nhưng chưa được phân tách thành kế hoạch — vì vậy các cảnh trong sách được nhập vào sẽ hiển thị ở đây ngay cả trước khi bạn lập kế hoạch.",
+      "noBook": "Mở một cuốn sách để duyệt các cảnh của nó.",
+      "search": "Tìm kiếm tiêu đề & văn bản…",
+      "count": "{{n}} cảnh",
+      "workless": "Chưa có kế hoạch — ý đồ cảnh (trạng thái, POV, sự căng thẳng) sẽ không khả dụng cho đến khi bạn tạo kế hoạch cho cuốn sách này.",
+      "intentUnavailable": "Kế hoạch cảnh tạm thời không khả dụng — chỉ hiển thị văn bản đã viết.",
+      "dirty": "canon đã di chuyển",
+      "dirtyTitle": "Canon đã thay đổi kể từ lần kiểm tra tính nhất quán cuối cùng",
+      "anchorLost": "Mất điểm neo",
+      "empty": "Không có cảnh nào khớp.",
+      "loadMore": "Tải thêm",
+      "loading": "Đang tải…",
+      "col": {
+        "num": "#",
+        "scene": "Cảnh",
+        "status": "Trạng thái",
+        "tension": "Căng thẳng",
+        "words": "Số chữ"
+      },
+      "badge": {
+        "notWritten": "chưa viết",
+        "notPlanned": "chưa lên kế hoạch",
+        "anchorLost": "mất điểm neo"
+      },
+      "bulk": {
+        "count": "đã chọn {{n}}",
+        "selectAll": "Chọn tất cả",
+        "selectRow": "Chọn cảnh: {{title}}",
+        "setStatus": "Thiết lập trạng thái…",
+        "words": "Số từ mục tiêu",
+        "trash": "Thùng rác",
+        "clear": "Xóa sạch",
+        "updated": "Đã cập nhật {{n}}",
+        "conflicted": "{{n}} xung đột",
+        "failed": "{{n}} thất bại"
+      }
+    },
+    "plan-hub": {
+      "title": "Trung tâm Kế hoạch",
+      "desc": "Toàn bộ kế hoạch của cuốn sách trên một khung đồ thị — các dải cốt truyện, chương, cảnh và các liên kết của chúng",
+      "guideBody": "Trung tâm Kế hoạch hiển thị toàn bộ cấu trúc cuốn sách của bạn dưới dạng đồ thị: mỗi saga/arc/sub-arc là một dải, các chương và cảnh của nó là các thẻ dọc theo trục thứ tự câu chuyện, và các liên kết cảnh tạo ra các cạnh nhân quả giữa chúng. Mở bảng để xem mọi arc được thu gọn thành một thẻ tổng hợp; mở rộng một arc để tải các chương của nó, và mở một chương để xem các cảnh của nó. Di chuyển và phóng to để điều hướng; các huy hiệu cảnh báo vấn đề và dữ liệu cũ sẽ xuất hiện ở những nơi cần chú ý về tính nhất quán hoặc các lời hứa cốt truyện."
+    },
+    "scene-inspector": {
+      "title": "Trình kiểm tra Cảnh",
+      "desc": "Đọc và chỉnh sửa mọi trường thông tin của một cảnh — ý đồ, kỹ thuật, sự căng thẳng và các yếu tố thực tế",
+      "guideBody": "Trình kiểm tra Cảnh (Scene Inspector) là bảng chi tiết cho một cảnh duy nhất: hãy chọn một cảnh (trong Trình duyệt Cảnh hoặc bản thảo) và kế hoạch đầy đủ của nó sẽ hiện ra tại đây — trạng thái, mục tiêu, tóm tắt, vai trò nhịp truyện, sự căng thẳng và các trường kỹ thuật (xung đột, kết quả, rủi ro, thời gian truyện, sự thay đổi giá trị, số từ mục tiêu) — tất cả đều có thể chỉnh sửa, cùng với các điểm neo thực tế được thu gọn. Các chỉnh sửa sẽ được lưu ngay lập tức và được bảo vệ để tránh các thay đổi xung đột.",
+      "none": "Chọn một cảnh để kiểm tra kế hoạch đầy đủ của nó.",
+      "loading": "Đang tải…",
+      "dirty": "Canon đã thay đổi kể từ lần kiểm tra tính nhất quán cuối cùng — kế hoạch này có thể đã lỗi thời.",
+      "section": {
+        "identity": "Danh tính",
+        "intent": "Ý đồ",
+        "cast": "Dàn nhân vật & Bối cảnh",
+        "craft": "Kỹ thuật",
+        "links": "Liên kết",
+        "grounding": "Yếu tố thực tế"
+      },
+      "links": {
+        "empty": "Chưa có liên kết nhân quả nào.",
+        "setup": "thiết lập→kết quả",
+        "custom": "tùy chỉnh",
+        "remove": "Xóa liên kết",
+        "target": "Liên kết đến cảnh",
+        "pick": "Liên kết đến…",
+        "kind": "Loại liên kết",
+        "label": "nhãn",
+        "add": "liên kết",
+        "dup": "Một liên kết cùng loại đã tồn tại giữa các cảnh này.",
+        "failed": "Không thể tạo liên kết."
+      },
+      "f": {
+        "title": "Tiêu đề",
+        "status": "Trạng thái",
+        "goal": "Mục tiêu",
+        "synopsis": "Tóm tắt",
+        "beat": "Vai trò nhịp truyện",
+        "tension": "Căng thẳng (0–100)",
+        "pov": "Nhân vật POV",
+        "present": "Nhân vật hiện diện",
+        "location": "Địa điểm",
+        "conflict": "Xung đột",
+        "outcome": "Kết quả",
+        "stakes": "Rủi ro/Hệ quả",
+        "storyTime": "Thời gian truyện",
+        "valueShift": "Chuyển biến giá trị (−100…100)",
+        "targetWords": "Từ khóa mục tiêu"
+      },
+      "ref": {
+        "none": "— không có —",
+        "add": "+ thêm",
+        "empty": "không có",
+        "loading": "(đang tải…)",
+        "remove": "Xóa {{name}}"
+      },
+      "status": {
+        "empty": "Trống",
+        "outline": "Dàn ý",
+        "drafting": "Đang viết bản thảo",
+        "done": "Hoàn thành"
+      }
     },
     "chapter-browser": {
       "title": "Duyệt chương",
@@ -333,47 +477,13 @@
       "title": "So sánh phiên bản chương",
       "desc": "Diff đầy đủ trong trình soạn thảo cho một cặp phiên bản chương",
       "empty": "Mở diff phiên bản của một chương từ panel xem xét của Chế độ Agent."
-    },
-    "quality": {
-      "title": "Chất lượng",
-      "desc": "Các lời hứa chưa thực hiện, điểm số từ chuyên gia, độ bao phủ cốt truyện & các vấn đề về chính văn",
-      "guideBody": "Chất lượng là bảng điều khiển chẩn đoán của bạn — chỉ mang tính chất tham khảo, không có gì ở đây làm thay đổi văn phong của bạn. Chọn một thẻ để xem sổ nợ các lời hứa chưa thực hiện, điểm số chuyên gia theo từng chương, độ bao phủ lời hứa của toàn bộ cuốn sách, hoặc các mâu thuẫn chính văn đã được xác nhận."
-    },
-    "quality-promises": {
-      "title": "Lời hứa",
-      "desc": "Sổ nợ các lời hứa chưa thực hiện (các tình tiết cài cắm chưa được giải quyết)"
-    },
-    "quality-critic": {
-      "title": "Chuyên gia",
-      "desc": "Điểm số về tính mạch lạc, giọng văn, nhịp độ & chính văn theo từng chương"
-    },
-    "quality-coverage": {
-      "title": "Độ bao phủ cốt truyện",
-      "desc": "Kiểm tra toàn bộ cuốn sách về việc các lời hứa trong dàn ý đã được thực hiện như thế nào"
-    },
-    "quality-canon": {
-      "title": "Vấn đề chính văn",
-      "desc": "Các mâu thuẫn đã được xác nhận từ quá trình tạo nội dung & trích xuất kiến thức"
-    },
-    "book-import": {
-      "title": "Nhập",
-      "desc": "Nhập các chương từ tệp text/.docx/.epub, hoặc toàn bộ cuốn sách từ tệp PDF",
-      "intro": "Đưa nội dung bản thảo có sẵn vào cuốn sách này.",
-      "guideBody": "Nhập các chương từ tệp văn bản thuần túy, .docx, hoặc .epub, hoặc toàn bộ cuốn sách từ tệp PDF (có tùy chọn chú thích hình ảnh bằng AI — bạn sẽ trực tiếp chọn mô hình thị giác). Hãy mở tính năng này bất cứ khi nào bạn có nội dung sẵn có cần đưa vào thay vì phải viết lại từ đầu.",
-      "text": {
-        "title": "Nhập các chương",
-        "desc": ".txt, .docx, hoặc .epub — mỗi tệp là một chương"
-      },
-      "pdf": {
-        "title": "Nhập từ PDF",
-        "desc": "Chia nhỏ tệp PDF thành các chương, có tùy chọn chú thích hình ảnh bằng AI"
-      }
     }
   },
   "sceneRail": {
     "title": "Cảnh",
     "toggle": "Cảnh",
     "empty": "Chương này chưa có cảnh (lập dàn ý trong composer).",
+    "editTitle": "Đổi tên cảnh",
     "synopsisPlaceholder": "Tóm tắt cảnh…",
     "stale": "đã đổi ở nơi khác — tải lại",
     "notAnchored": "Cảnh chưa được neo vào văn bản — bấm ⚓ để liên kết các heading.",
@@ -558,6 +668,44 @@
       "title": "Chất lượng",
       "body": "Điểm phê bình, mạch lời hứa & vấn đề canon. Sắp có."
     }
+  },
+  "quality": {
+    "noWork": "Cuốn sách này chưa có phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước, sau đó dữ liệu chất lượng sẽ xuất hiện tại đây.",
+    "hubNoWorkHint": "Các chỉ số về lời hứa, điểm số phê bình và độ bao phủ cốt truyện cần có một phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước. Các vấn đề về tính nhất quán (Canon) bên dưới vẫn hoạt động trong mọi trường hợp.",
+    "pickModel": "Chọn mô hình để phân tích với…",
+    "pickChapter": "Chọn một chương",
+    "pickChapterHint": "Chọn một chương ở trên để phân tích chất lượng của nó.",
+    "chaptersTruncated": "đang hiển thị {{shown}}/{{total}} chương đầu tiên",
+    "canonIntro": "Cảnh báo — phát hiện các mâu thuẫn đã được xác nhận với nội dung đã bị xóa/thay đổi trước đó trong sách. Các thay đổi này không được áp dụng tự động.",
+    "canonEmpty": "Không tìm thấy lỗi về tính nhất quán (canon).",
+    "canonCompositionError": "Không thể tải các lỗi nhất quán từ quá trình tạo — vui lòng thử lại.",
+    "canonExtractionError": "Không thể tải các cờ nhất quán từ quá trình trích xuất kiến thức — vui lòng thử lại.",
+    "canonFromGeneration": "Từ quá trình tạo ({{n}})",
+    "canonFromExtraction": "Từ quá trình trích xuất kiến thức ({{n}})",
+    "untitledScene": "Cảnh chưa đặt tên",
+    "jumpToChapter": "Mở chương",
+    "promisesTitle": "Lời hứa",
+    "promisesDesc": "Sổ cái theo dõi các lời hứa chưa thực hiện",
+    "criticTitle": "Nhà phê bình",
+    "criticDesc": "Điểm số về tính nhất quán, văn phong, nhịp độ & tính nguyên tác theo từng chương",
+    "coverageTitle": "Độ bao phủ cốt truyện",
+    "coverageDesc": "Mức độ đáp ứng các tình tiết hứa hẹn trong toàn bộ tác phẩm",
+    "canonTitle": "Lỗi nguyên tác",
+    "canonDesc": "Các mâu thuẫn đã được xác nhận",
+    "canonFromRules": "Vi phạm quy tắc ({{n}})",
+    "canonRuleError": "Không thể tải các vi phạm quy tắc chính thống — vui lòng thử lại.",
+    "canonRuleGone": "Một quy tắc không còn tồn tại",
+    "canonRuleUnnamed": "quy tắc đó",
+    "canonRuleFocused": "Đang hiển thị các vi phạm của quy tắc bạn vừa rời khỏi trước ({{n}}): “{{rule}}”",
+    "canonFocused": "Hiển thị chương bạn vừa đọc trước tiên ({{n}} kết quả tìm thấy).",
+    "canonFocusedEmpty": "Chương bạn vừa rời khỏi không có phát hiện chính thống nào ở đây.",
+    "canonUnavailable": "Không thể kết nối với dịch vụ đồng tác giả — các kết quả đối chiếu tại thời điểm tạo sẽ KHÔNG được bao gồm dưới đây.",
+    "canonNoWork": "Cuốn sách này chưa có phiên làm việc với đồng tác giả, vì vậy các bước kiểm tra tính nhất quán (canon) trong quá trình tạo chưa được thực hiện. Chỉ có các kết quả trích xuất kiến thức được hiển thị.",
+    "canonRulesCapped": "Đang hiển thị {{shown}} quy tắc vi phạm gần đây nhất trong tổng số {{total}}.",
+    "canonRuleFocusedEmpty": "Quy tắc bạn vừa chuyển đến không có vi phạm nào đang mở. Nó đã được thiết lập tại đây, nhưng chưa có gì làm hỏng quy tắc này.",
+    "canonRuleFocusUnknown": "Không thể kiểm tra quy tắc bạn vừa chuyển đến vì dịch vụ co-writer hiện không khả dụng. Quy tắc có thể vẫn đang bị lỗi ở đâu đó — đây không phải là kết quả cuối cùng.",
+    "workUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy dữ liệu chất lượng của cuốn sách này không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây. Vui lòng thử lại sau ít phút.",
+    "hubUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy các cam kết, điểm số phê bình và độ bao phủ cốt truyện hiện không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây."
   },
   "sidebar": {
     "collapse": "Thu gọn"
@@ -977,48 +1125,36 @@
       "desc": "Tách cửa sổ Compose thành một cửa sổ hệ điều hành riêng biệt để dùng cho màn hình thứ hai."
     }
   },
-  "quality": {
-    "noWork": "Cuốn sách này chưa có phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước, sau đó dữ liệu chất lượng sẽ xuất hiện tại đây.",
-    "hubNoWorkHint": "Các chỉ số về lời hứa, điểm số phê bình và độ bao phủ cốt truyện cần có một phiên làm việc với cộng sự — hãy bắt đầu viết một chương trước. Các vấn đề về tính nhất quán (Canon) bên dưới vẫn hoạt động trong mọi trường hợp.",
-    "pickModel": "Chọn mô hình để phân tích với…",
-    "pickChapter": "Chọn một chương",
-    "pickChapterHint": "Chọn một chương ở trên để phân tích chất lượng của nó.",
-    "chaptersTruncated": "đang hiển thị {{shown}}/{{total}} chương đầu tiên",
-    "canonIntro": "Cảnh báo — phát hiện các mâu thuẫn đã được xác nhận với nội dung đã bị xóa/thay đổi trước đó trong sách. Các thay đổi này không được áp dụng tự động.",
-    "canonEmpty": "Không tìm thấy lỗi về tính nhất quán (canon).",
-    "canonCompositionError": "Không thể tải các lỗi nhất quán từ quá trình tạo — vui lòng thử lại.",
-    "canonExtractionError": "Không thể tải các cờ nhất quán từ quá trình trích xuất kiến thức — vui lòng thử lại.",
-    "canonFromGeneration": "Từ quá trình tạo ({{n}})",
-    "canonFromExtraction": "Từ quá trình trích xuất kiến thức ({{n}})",
-    "untitledScene": "Cảnh chưa đặt tên",
-    "jumpToChapter": "Mở chương",
-    "promisesTitle": "Lời hứa",
-    "promisesDesc": "Sổ cái theo dõi các lời hứa chưa thực hiện",
-    "criticTitle": "Nhà phê bình",
-    "criticDesc": "Điểm số về tính nhất quán, văn phong, nhịp độ & tính nguyên tác theo từng chương",
-    "coverageTitle": "Độ bao phủ cốt truyện",
-    "coverageDesc": "Mức độ đáp ứng các tình tiết hứa hẹn trong toàn bộ tác phẩm",
-    "canonTitle": "Lỗi nguyên tác",
-    "canonDesc": "Các mâu thuẫn đã được xác nhận",
-    "canonFromRules": "Vi phạm quy tắc ({{n}})",
-    "canonRuleError": "Không thể tải các vi phạm quy tắc chính thống — vui lòng thử lại.",
-    "canonRuleGone": "Một quy tắc không còn tồn tại",
-    "canonRuleUnnamed": "quy tắc đó",
-    "canonRuleFocused": "Đang hiển thị các vi phạm của quy tắc bạn vừa rời khỏi trước ({{n}}): “{{rule}}”",
-    "canonRuleFocusedEmpty": "Quy tắc bạn vừa rời khỏi không có vi phạm nào đang mở — nó được neo tại đây, nhưng chưa có gì vi phạm nó.",
-    "canonFocused": "Hiển thị chương bạn vừa đọc trước tiên ({{n}} kết quả tìm thấy).",
-    "canonFocusedEmpty": "Chương bạn vừa rời khỏi không có phát hiện chính thống nào ở đây.",
-    "canonUnavailable": "Không thể kết nối với dịch vụ đồng tác giả — các kết quả đối chiếu tại thời điểm tạo sẽ KHÔNG được bao gồm dưới đây.",
-    "canonNoWork": "Cuốn sách này chưa có phiên làm việc với đồng tác giả, vì vậy các bước kiểm tra tính nhất quán (canon) trong quá trình tạo chưa được thực hiện. Chỉ có các kết quả trích xuất kiến thức được hiển thị.",
-    "canonRuleFocusUnknown": "Quy tắc bạn vừa tham chiếu không thể kiểm tra được — luồng đồng tác giả hiện không khả dụng, vì vậy đây không phải là kết quả kiểm tra hoàn tất.",
-    "canonRulesCapped": "Đang hiển thị {{shown}} quy tắc vi phạm gần đây nhất trong tổng số {{total}}."
-  },
   "planHub": {
-    "undo": "Hoàn tác"
-  },
-  "planNav": {
-    "title": "Kế hoạch",
-    "loading": "Đang tải…",
-    "empty": "Chưa có arc nào."
+    "undo": "Hoàn tác",
+    "empty": {
+      "title": "Chưa có kế hoạch cho cuốn sách này",
+      "body": "Plan Hub hiển thị các thông số kỹ thuật — các hồi, chương, cảnh. Cuốn sách này hiện chưa có thông số nào. Chúng sẽ không tự động được tạo ra từ bản thảo của bạn: hãy trích xuất chúng hoặc tự lập một kế hoạch mới.",
+      "extractCta": "Trích xuất kế hoạch từ bản thảo",
+      "extracting": "Đang trích xuất…",
+      "planCta": "Lập kế hoạch từ đầu",
+      "extractNote": "Trích xuất sẽ đọc các cảnh đã được phân tích từ các chương của bạn và chuyển mỗi cảnh thành một nút thông số. Việc nhóm chúng thành các hồi là một bước AI riêng biệt — hãy yêu cầu tác nhân thực hiện việc đó. Cho đến lúc đó, các chương đã trích xuất sẽ nằm trong dải «Chưa phân bổ».",
+      "nothingParsed": "Không có gì để trích xuất — cuốn sách này chưa có cảnh nào được phân tích. Hãy phân tích hoặc nhập các chương trước, sau đó mới trích xuất."
+    },
+    "node": {
+      "unplannedTray": "Các chương chưa có kế hoạch",
+      "unplannedUnknown": "Các chương chưa có kế hoạch: không xác định (không thể đọc bản thảo)",
+      "unplannedCapped": "…và {{n}} mục khác (danh sách đã bị giới hạn)",
+      "unassignedStrip": "{{count}} chương không thuộc hồi nào — hãy kéo nó vào một làn",
+      "unassignedStrip_other": "{{count}} chương chưa thuộc về cốt truyện — hãy kéo chúng vào một hàng",
+      "untitled": "Chưa đặt tên"
+    },
+    "loading": "Đang tải kế hoạch…",
+    "toolbar": {
+      "search": "Tìm kiếm nút…",
+      "fit": "Khớp màn hình",
+      "problems": "Vấn đề",
+      "askAi": "Hỏi AI",
+      "askAiHint": "Chọn một nút để hỏi về nó",
+      "viewNarrative": "Tự sự",
+      "viewTimeline": "Dòng thời gian",
+      "viewWorldmap": "Bản đồ thế giới",
+      "viewSoon": "Sẽ ra mắt trong giai đoạn sau"
+    }
   }
 }

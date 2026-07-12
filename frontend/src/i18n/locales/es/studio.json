@@ -2,6 +2,11 @@
   "title": "Writing Studio",
   "back": "Volver a los libros",
   "settings": "Ajustes del libro",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Cargando…",
+    "empty": "Aún no hay arcos."
+  },
   "welcome": {
     "tab": "Bienvenido",
     "title": "Writing Studio",
@@ -89,6 +94,27 @@
       "title": "Conocimiento",
       "desc": "Explora y abre tus proyectos de grafos de conocimiento",
       "guideBody": "Conocimiento es tu punto de entrada al grafo de conocimiento de un libro: las entidades, eventos y trasfondo que tus agentes de IA han extraído y organizado. Ábrelo para elegir en qué proyecto (libro) trabajar antes de sumergirte en las entidades, las líneas temporales o el grafo en sí."
+    },
+    "quality": {
+      "title": "Calidad",
+      "desc": "Promesas abiertas, puntuaciones de críticos, cobertura de la historia y problemas de canon",
+      "guideBody": "La Calidad es tu panel de diagnóstico — es solo informativo, nada de lo que aparece aquí cambia tu prosa. Selecciona una tarjeta para ver el registro de deuda de promesas abiertas, las puntuaciones de los críticos por capítulo, la cobertura de promesas de todo el libro o las contradicciones de canon confirmadas."
+    },
+    "quality-promises": {
+      "title": "Promesas",
+      "desc": "El registro de deuda de promesas abiertas (preparaciones aún no resueltas)"
+    },
+    "quality-critic": {
+      "title": "Crítico",
+      "desc": "Puntuaciones de coherencia, voz, ritmo y canon por capítulo"
+    },
+    "quality-coverage": {
+      "title": "Cobertura de la historia",
+      "desc": "Auditoría de todo el libro sobre qué promesas del esquema se cumplieron"
+    },
+    "quality-canon": {
+      "title": "Problemas de canon",
+      "desc": "Contradicciones confirmadas mediante generación y extracción de conocimiento"
     },
     "kg-overview": {
       "title": "Resumen",
@@ -193,6 +219,124 @@
       "title": "Inspector de contexto",
       "desc": "Rastrea lo que la gestión de contexto hizo por turno: presupuesto, asignación y decisiones de Planner→Compiler",
       "guideBody": "Muestra exactamente qué contexto se envió a la IA en un turno determinado: el presupuesto de tokens, qué se incluyó o se descartó, y si se gestionó mediante un pase rápido o un pase de planificación completo. Ábrelo cuando la respuesta de la IA parezca errónea y quieras ver qué «vio» realmente, o cuando tengas curiosidad por saber cómo se está utilizando tu presupuesto de contexto."
+    },
+    "book-import": {
+      "title": "Importar",
+      "desc": "Importa capítulos desde archivos de texto, .docx o .epub, o un libro completo desde un PDF",
+      "intro": "Trae el contenido de un manuscrito existente a este libro.",
+      "guideBody": "Importa capítulos desde archivos de texto plano, .docx o .epub, o un libro completo desde un PDF (con subtitulado de imágenes opcional mediante IA — tú eliges el modelo de visión explícitamente). Ábrelo siempre que tengas contenido existente que quieras importar en lugar de escribir desde cero.",
+      "text": {
+        "title": "Importar capítulos",
+        "desc": ".txt, .docx o .epub — un capítulo por archivo"
+      },
+      "pdf": {
+        "title": "Importar desde PDF",
+        "desc": "Divide un PDF en capítulos, con subtitulado opcional de imágenes mediante IA"
+      }
+    },
+    "scene-browser": {
+      "title": "Explorador de escenas",
+      "desc": "Explora cada escena de este libro: la prosa analizada y su plan de autoría, lado a lado",
+      "guideBody": "El Explorador de escenas enumera todas las escenas de todo el libro uniendo dos realidades: la prosa escrita (de book-service) y la intención/plan de autoría (de composition). Una escena puede estar escrita y planificada (normal), planificada pero aún no escrita, o escrita pero aún no descompuesta en un plan; por ello, las escenas de un libro importado aparecen aquí incluso antes de que crees un plan.",
+      "noBook": "Abre un libro para explorar sus escenas.",
+      "search": "Buscar títulos y prosa…",
+      "count": "{{n}} escenas",
+      "workless": "Aún no hay plan: la intención de la escena (estado, POV, tensión) no está disponible hasta que crees un plan para este libro.",
+      "intentUnavailable": "El plan de la escena no está disponible temporalmente; solo se muestra la prosa escrita.",
+      "dirty": "canon movido",
+      "dirtyTitle": "El canon ha cambiado desde la última comprobación de conformidad",
+      "anchorLost": "Anclaje perdido",
+      "empty": "No hay escenas que coincidan.",
+      "loadMore": "Cargar más",
+      "loading": "Cargando…",
+      "col": {
+        "num": "#",
+        "scene": "Escena",
+        "status": "Estado",
+        "tension": "Tensión",
+        "words": "Palabras"
+      },
+      "badge": {
+        "notWritten": "aún no escrita",
+        "notPlanned": "no planificada",
+        "anchorLost": "ancla perdida"
+      },
+      "bulk": {
+        "count": "{{n}} seleccionadas",
+        "selectAll": "Seleccionar todo",
+        "selectRow": "Seleccionar escena: {{title}}",
+        "setStatus": "Establecer estado…",
+        "words": "Palabras objetivo",
+        "trash": "Papelera",
+        "clear": "Limpiar",
+        "updated": "{{n}} actualizadas",
+        "conflicted": "{{n}} con conflictos",
+        "failed": "{{n}} fallidas"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan Hub",
+      "desc": "El plan de todo el libro en un lienzo gráfico: carriles de arcos, capítulos, escenas y sus vínculos",
+      "guideBody": "El Plan Hub representa la estructura completa de tu libro como un gráfico: cada saga, arco o subarco es un carril; sus capítulos y escenas son tarjetas a lo largo de un eje de orden narrativo, y los enlaces de escena trazan las conexiones causales entre ellos. Abre el panel para ver cada arco colapsado en una tarjeta de resumen; expande un arco para cargar sus capítulos de forma dinámica, y un capítulo para ver sus escenas. Desplaza y haz zoom para navegar; las insignias de problemas o desactualización aparecerán donde el canon o las promesas requieran atención."
+    },
+    "scene-inspector": {
+      "title": "Inspector de escena",
+      "desc": "Lee y edita cada campo de una escena: intención, técnica, tensión y fundamentación",
+      "guideBody": "El Inspector de Escenas es el panel de detalles para una sola escena: selecciona una escena (en el Explorador de Escenas o en el manuscrito) y su plan completo se abrirá aquí: estado, objetivo, sinopsis, rol del beat, tensión y los campos de técnica (conflicto, desenlace, apuestas, tiempo narrativo, cambio de valor, palabras objetivo); todo es editable y cuenta con los puntos de fundamentación integrados. Los cambios se guardan inmediatamente y están protegidos contra ediciones contradictorias.",
+      "none": "Selecciona una escena para inspeccionar su plan completo.",
+      "loading": "Cargando…",
+      "dirty": "El canon ha cambiado desde la última comprobación de concordancia; este plan podría estar desactualizado.",
+      "section": {
+        "identity": "Identidad",
+        "intent": "Intención",
+        "cast": "Reparto y Escenario",
+        "craft": "Técnica",
+        "links": "Enlaces",
+        "grounding": "Fundamentación"
+      },
+      "links": {
+        "empty": "Aún no hay enlaces causales.",
+        "setup": "preparación→clímax",
+        "custom": "personalizado",
+        "remove": "Eliminar enlace",
+        "target": "Enlazar a escena",
+        "pick": "Enlazar a…",
+        "kind": "Tipo de enlace",
+        "label": "etiqueta",
+        "add": "enlace",
+        "dup": "Ya existe un enlace de ese tipo entre estas escenas.",
+        "failed": "No se pudo crear el enlace."
+      },
+      "f": {
+        "title": "Título",
+        "status": "Estado",
+        "goal": "Objetivo",
+        "synopsis": "Sinopsis",
+        "beat": "Función del beat",
+        "tension": "Tensión (0–100)",
+        "pov": "Personaje POV",
+        "present": "Personajes presentes",
+        "location": "Ubicación",
+        "conflict": "Conflicto",
+        "outcome": "Desenlace",
+        "stakes": "Riesgos",
+        "storyTime": "Tiempo de la historia",
+        "valueShift": "Cambio de valor (−100…100)",
+        "targetWords": "Palabras objetivo"
+      },
+      "ref": {
+        "none": "— ninguna —",
+        "add": "+ añadir",
+        "empty": "ninguna",
+        "loading": "(cargando…)",
+        "remove": "Eliminar {{name}}"
+      },
+      "status": {
+        "empty": "Vacío",
+        "outline": "Esquema",
+        "drafting": "Borrador",
+        "done": "Terminado"
+      }
     },
     "chapter-browser": {
       "title": "Explorador de capítulos",
@@ -333,47 +477,13 @@
       "title": "Comparar revisión de capítulo",
       "desc": "Comparación detallada del editor para un par de revisiones de un capítulo",
       "empty": "Abre la comparación de revisión de un capítulo desde el panel de revisión del Modo Agente."
-    },
-    "quality": {
-      "title": "Calidad",
-      "desc": "Promesas abiertas, puntuaciones de críticos, cobertura de la historia y problemas de canon",
-      "guideBody": "La Calidad es tu panel de diagnóstico — es solo informativo, nada de lo que aparece aquí cambia tu prosa. Selecciona una tarjeta para ver el registro de deuda de promesas abiertas, las puntuaciones de los críticos por capítulo, la cobertura de promesas de todo el libro o las contradicciones de canon confirmadas."
-    },
-    "quality-promises": {
-      "title": "Promesas",
-      "desc": "El registro de deuda de promesas abiertas (preparaciones aún no resueltas)"
-    },
-    "quality-critic": {
-      "title": "Crítico",
-      "desc": "Puntuaciones de coherencia, voz, ritmo y canon por capítulo"
-    },
-    "quality-coverage": {
-      "title": "Cobertura de la historia",
-      "desc": "Auditoría de todo el libro sobre qué promesas del esquema se cumplieron"
-    },
-    "quality-canon": {
-      "title": "Problemas de canon",
-      "desc": "Contradicciones confirmadas mediante generación y extracción de conocimiento"
-    },
-    "book-import": {
-      "title": "Importar",
-      "desc": "Importa capítulos desde archivos de texto, .docx o .epub, o un libro completo desde un PDF",
-      "intro": "Trae el contenido de un manuscrito existente a este libro.",
-      "guideBody": "Importa capítulos desde archivos de texto plano, .docx o .epub, o un libro completo desde un PDF (con subtitulado de imágenes opcional mediante IA — tú eliges el modelo de visión explícitamente). Ábrelo siempre que tengas contenido existente que quieras importar en lugar de escribir desde cero.",
-      "text": {
-        "title": "Importar capítulos",
-        "desc": ".txt, .docx o .epub — un capítulo por archivo"
-      },
-      "pdf": {
-        "title": "Importar desde PDF",
-        "desc": "Divide un PDF en capítulos, con subtitulado opcional de imágenes mediante IA"
-      }
     }
   },
   "sceneRail": {
     "title": "Escenas",
     "toggle": "Escenas",
     "empty": "No hay escenas para este capítulo (créalo en el editor).",
+    "editTitle": "Renombrar escena",
     "synopsisPlaceholder": "Sinopsis…",
     "stale": "cambió en otro lugar — recargado",
     "notAnchored": "La escena aún no está anclada en el texto; usa ⚓ para vincular los encabezados.",
@@ -558,6 +668,44 @@
       "title": "Calidad",
       "body": "Puntuaciones de la crítica, hilos de promesas y problemas de canon. Próximamente."
     }
+  },
+  "quality": {
+    "noWork": "Este libro aún no tiene una sesión de coescritura; primero redacta un capítulo y entonces aparecerán los datos de calidad aquí.",
+    "hubNoWorkHint": "Las promesas, las puntuaciones de la crítica y la cobertura de la historia requieren una sesión de coescritura; primero redacta un capítulo. Los problemas de canon que aparecen a continuación funcionarán de todos modos.",
+    "pickModel": "Elige un modelo para analizar con...",
+    "pickChapter": "Elige un capítulo",
+    "pickChapterHint": "Elige un capítulo arriba para analizar su calidad.",
+    "chaptersTruncated": "mostrando los primeros {{shown}} de {{total}} capítulos",
+    "canonIntro": "Aviso: se han confirmado contradicciones con contenido marcado como eliminado o cambiado anteriormente en el libro. Nada de esto se aplica automáticamente.",
+    "canonEmpty": "No se encontraron problemas de canon.",
+    "canonCompositionError": "No se pudieron cargar los problemas de canon desde la generación; inténtalo de nuevo.",
+    "canonExtractionError": "No se pudieron cargar las etiquetas de canon desde la extracción de conocimiento; inténtalo de nuevo.",
+    "canonFromGeneration": "De la generación ({{n}})",
+    "canonFromExtraction": "De la extracción de conocimiento ({{n}})",
+    "untitledScene": "Escena sin título",
+    "jumpToChapter": "Abrir capítulo",
+    "promisesTitle": "Promesas",
+    "promisesDesc": "Libro de registro de deudas de promesas abiertas",
+    "criticTitle": "Crítico",
+    "criticDesc": "Puntuaciones de coherencia, voz, ritmo y canon por capítulo",
+    "coverageTitle": "Cobertura de la historia",
+    "coverageDesc": "Cobertura de la promesa de la obra completa",
+    "canonTitle": "Problemas de canon",
+    "canonDesc": "Contradicciones confirmadas",
+    "canonFromRules": "Reglas incumplidas ({{n}})",
+    "canonRuleError": "No se pudieron cargar las infracciones de la regla canónica; inténtalo de nuevo.",
+    "canonRuleGone": "Una regla que ya no existe",
+    "canonRuleUnnamed": "esa regla",
+    "canonRuleFocused": "Mostrando primero las infracciones de la regla de la que vienes ({{n}}): «{{rule}}»",
+    "canonFocused": "Mostrando primero el capítulo de procedencia ({{n}} hallazgo(s)).",
+    "canonFocusedEmpty": "El capítulo del que vienes no tiene hallazgos canónicos aquí.",
+    "canonUnavailable": "No se pudo conectar con el servicio de coescritor; los hallazgos del canon generados en tiempo real NO se incluyen a continuación.",
+    "canonNoWork": "Este libro aún no tiene sesiones de coescritura, por lo que no se han ejecutado las comprobaciones de canon durante la generación. Solo se muestran los hallazgos de la extracción de conocimientos.",
+    "canonRulesCapped": "Mostrando las {{shown}} reglas rotas más recientes de un total de {{total}}.",
+    "canonRuleFocusedEmpty": "La regla de la que vienes no tiene infracciones abiertas. Está anclada aquí, pero nada la ha roto.",
+    "canonRuleFocusUnknown": "No se pudo verificar la regla de la que vienes porque el servicio de coescritura no está disponible. Es posible que siga habiendo errores en algún lugar; esto no es un resultado definitivo.",
+    "workUnavailable": "No se pudo conectar con el servicio de coescritura, por lo que no se pudieron cargar los datos de calidad de este libro. Es posible que existan problemas que no se muestran aquí. Inténtalo de nuevo en breve.",
+    "hubUnavailable": "No se pudo conectar con el servicio de coescritura, por lo que las promesas, las puntuaciones de los críticos y la cobertura de la historia no se pueden cargar en este momento. Es posible que existan problemas que no se muestran aquí."
   },
   "sidebar": {
     "collapse": "Contraer"
@@ -977,48 +1125,36 @@
       "desc": "Saca el editor a su propia ventana del sistema operativo para usarlo en un segundo monitor."
     }
   },
-  "quality": {
-    "noWork": "Este libro aún no tiene una sesión de coescritura; primero redacta un capítulo y entonces aparecerán los datos de calidad aquí.",
-    "hubNoWorkHint": "Las promesas, las puntuaciones de la crítica y la cobertura de la historia requieren una sesión de coescritura; primero redacta un capítulo. Los problemas de canon que aparecen a continuación funcionarán de todos modos.",
-    "pickModel": "Elige un modelo para analizar con...",
-    "pickChapter": "Elige un capítulo",
-    "pickChapterHint": "Elige un capítulo arriba para analizar su calidad.",
-    "chaptersTruncated": "mostrando los primeros {{shown}} de {{total}} capítulos",
-    "canonIntro": "Aviso: se han confirmado contradicciones con contenido marcado como eliminado o cambiado anteriormente en el libro. Nada de esto se aplica automáticamente.",
-    "canonEmpty": "No se encontraron problemas de canon.",
-    "canonCompositionError": "No se pudieron cargar los problemas de canon desde la generación; inténtalo de nuevo.",
-    "canonExtractionError": "No se pudieron cargar las etiquetas de canon desde la extracción de conocimiento; inténtalo de nuevo.",
-    "canonFromGeneration": "De la generación ({{n}})",
-    "canonFromExtraction": "De la extracción de conocimiento ({{n}})",
-    "untitledScene": "Escena sin título",
-    "jumpToChapter": "Abrir capítulo",
-    "promisesTitle": "Promesas",
-    "promisesDesc": "Libro de registro de deudas de promesas abiertas",
-    "criticTitle": "Crítico",
-    "criticDesc": "Puntuaciones de coherencia, voz, ritmo y canon por capítulo",
-    "coverageTitle": "Cobertura de la historia",
-    "coverageDesc": "Cobertura de la promesa de la obra completa",
-    "canonTitle": "Problemas de canon",
-    "canonDesc": "Contradicciones confirmadas",
-    "canonFromRules": "Reglas incumplidas ({{n}})",
-    "canonRuleError": "No se pudieron cargar las infracciones de la regla canónica; inténtalo de nuevo.",
-    "canonRuleGone": "Una regla que ya no existe",
-    "canonRuleUnnamed": "esa regla",
-    "canonRuleFocused": "Mostrando primero las infracciones de la regla de la que vienes ({{n}}): «{{rule}}»",
-    "canonRuleFocusedEmpty": "La regla de la que vienes no tiene infracciones abiertas; está anclada aquí, pero aún no se ha incumplido nada.",
-    "canonFocused": "Mostrando primero el capítulo de procedencia ({{n}} hallazgo(s)).",
-    "canonFocusedEmpty": "El capítulo del que vienes no tiene hallazgos canónicos aquí.",
-    "canonUnavailable": "No se pudo conectar con el servicio de coescritor; los hallazgos del canon generados en tiempo real NO se incluyen a continuación.",
-    "canonNoWork": "Este libro aún no tiene sesiones de coescritura, por lo que no se han ejecutado las comprobaciones de canon durante la generación. Solo se muestran los hallazgos de la extracción de conocimientos.",
-    "canonRuleFocusUnknown": "No se pudo verificar la regla de origen: el carril de coescritura no está disponible, por lo que esto no constituye un certificado de conformidad.",
-    "canonRulesCapped": "Mostrando las {{shown}} reglas rotas más recientes de un total de {{total}}."
-  },
   "planHub": {
-    "undo": "Deshacer"
-  },
-  "planNav": {
-    "title": "Plan",
-    "loading": "Cargando…",
-    "empty": "Aún no hay arcos."
+    "undo": "Deshacer",
+    "empty": {
+      "title": "Aún no hay un plan para este libro",
+      "body": "El Plan Hub muestra la estructura: arcos, capítulos y escenas. Este libro aún no tiene ninguna. Nunca se generará automáticamente a partir de tu manuscrito: extráelo o crea uno nuevo.",
+      "extractCta": "Extraer el plan del manuscrito",
+      "extracting": "Extrayendo…",
+      "planCta": "Crear plan desde cero",
+      "extractNote": "La extracción lee las escenas ya analizadas de tus capítulos y convierte cada una en un nodo de la estructura. Agruparlas en arcos es un paso de IA independiente; solicítalo al agente. Hasta entonces, los capítulos extraídos permanecerán en la franja «Sin asignar».",
+      "nothingParsed": "Nada que extraer: este libro aún no tiene escenas analizadas. Primero analiza o importa los capítulos y luego extrae."
+    },
+    "node": {
+      "unplannedTray": "Capítulos sin planificar",
+      "unplannedUnknown": "Capítulos sin planificar: desconocido (no se pudo leer el manuscrito)",
+      "unplannedCapped": "…y {{n}} más (lista limitada)",
+      "unassignedStrip": "{{count}} capítulo sin arco — arrástralo a un carril",
+      "unassignedStrip_other": "{{count}} capítulos sin arco — arrástralos a un carril",
+      "untitled": "Sin título"
+    },
+    "loading": "Cargando el plan…",
+    "toolbar": {
+      "search": "Buscar un nodo…",
+      "fit": "Ajustar",
+      "problems": "Problemas",
+      "askAi": "Preguntar a la IA",
+      "askAiHint": "Selecciona un nodo para preguntar sobre él",
+      "viewNarrative": "Narrativa",
+      "viewTimeline": "Línea de tiempo",
+      "viewWorldmap": "Mapa del mundo",
+      "viewSoon": "Próximamente en una fase posterior"
+    }
   }
 }

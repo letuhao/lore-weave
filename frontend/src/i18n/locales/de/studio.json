@@ -2,6 +2,11 @@
   "title": "Writing Studio",
   "back": "Zurück zu den Büchern",
   "settings": "Bucheinstellungen",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Wird geladen…",
+    "empty": "Noch keine Handlungsbögen."
+  },
   "welcome": {
     "tab": "Willkommen",
     "title": "Writing Studio",
@@ -89,6 +94,27 @@
       "title": "Wissen",
       "desc": "Durchsuche und öffne deine Wissensgraph-Projekte",
       "guideBody": "Wissen ist dein Einstiegspunkt in den Wissensgraph eines Buches – die Entitäten, Ereignisse und Lore, die deine KI-Agenten extrahiert und organisiert haben. Öffne es, um das Projekt (Buch) auszuwählen, an dem du arbeiten möchtest, bevor du dich in Entitäten, Zeitlinien oder den Graphen selbst vertiefst."
+    },
+    "quality": {
+      "title": "Qualität",
+      "desc": "Offene Versprechen, Kritiker-Scores, Story-Abdeckung & Kanon-Probleme",
+      "guideBody": "Qualität ist dein Diagnose-Dashboard – rein beratend, nichts davon verändert deinen Text. Wähle eine Karte aus, um das Register der offenen Versprechen, die Kritiker-Scores pro Kapitel, die Versprechen-Abdeckung des gesamten Buches oder bestätigte Kanon-Widersprüche einzusehen."
+    },
+    "quality-promises": {
+      "title": "Versprechen",
+      "desc": "Das Register der offenen Versprechen (Setups, die noch nicht aufgelöst wurden)"
+    },
+    "quality-critic": {
+      "title": "Kritiker",
+      "desc": "Scores für Kohärenz, Stimme, Pacing & Kanon pro Kapitel"
+    },
+    "quality-coverage": {
+      "title": "Story-Abdeckung",
+      "desc": "Vollständige Buch-Prüfung, welche Outline-Versprechen eingelöst wurden"
+    },
+    "quality-canon": {
+      "title": "Kanon-Probleme",
+      "desc": "Bestätigte Widersprüche aus der Generierung & Wissensextraktion"
     },
     "kg-overview": {
       "title": "Übersicht",
@@ -193,6 +219,124 @@
       "title": "Kontext-Inspektor",
       "desc": "Verfolge das Kontext-Management pro Durchgang — Budget, Zuweisung, Planner→Compiler-Entscheidungen",
       "guideBody": "Zeigt genau an, welcher Kontext für einen bestimmten Durchgang an die KI gesendet wurde — das Token-Budget, was einbezogen oder verworfen wurde und ob ein schneller Durchgang oder ein vollständiger Planungsdurchgang verwendet wurde. Öffne ihn, wenn die Antwort der KI unpassend erscheint und du sehen möchtest, was sie tatsächlich „gesehen“ hat, oder wenn du wissen möchtest, wie dein Kontext-Budget verbraucht wird."
+    },
+    "book-import": {
+      "title": "Import",
+      "desc": "Importiere Kapitel aus Text/.docx/.epub oder ein ganzes Buch aus einem PDF",
+      "intro": "Importiere bestehende Manuskriptinhalte in dieses Buch.",
+      "guideBody": "Importiere Kapitel aus Plain-Text-, .docx- oder .epub-Dateien oder ein ganzes Buch aus einem PDF (mit optionaler KI-Bildunterschrift – du wählst das Vision-Modell explizit aus). Öffne dieses Fenster, wann immer du bestehende Inhalte importieren möchtest, anstatt ganz neu zu schreiben.",
+      "text": {
+        "title": "Kapitel importieren",
+        "desc": ".txt, .docx oder .epub — eine Datei pro Kapitel"
+      },
+      "pdf": {
+        "title": "Aus PDF importieren",
+        "desc": "Zerlege ein PDF in Kapitel, mit optionaler KI-Bildunterschrift für Bilder"
+      }
+    },
+    "scene-browser": {
+      "title": "Szenen-Browser",
+      "desc": "Durchsuche jede Szene in diesem Buch – den geschriebenen Text und den Entwurf direkt nebeneinander",
+      "guideBody": "Der Szenen-Browser listet jede Szene des gesamten Buches auf, indem er zwei Wahrheiten zusammenführt: den tatsächlich geschriebenen Text (aus dem book-service) und die beabsichtigte Planung (aus der Komposition). Eine Szene kann geschrieben-und-geplant (normal), geplant-aber-noch-nicht-geschrieben oder geschrieben-aber-noch-nicht-in-einen-Plan-zerlegt sein – so werden auch die Szenen eines importierten Buches hier angezeigt, noch bevor Sie einen Plan erstellt haben.",
+      "noBook": "Öffnen Sie ein Buch, um dessen Szenen zu durchsuchen.",
+      "search": "Titel & Text suchen…",
+      "count": "{{n}} Szenen",
+      "workless": "Noch kein Plan vorhanden – Szenenabsicht (Status, POV, Spannung) ist erst verfügbar, wenn Sie einen Plan für dieses Buch erstellt haben.",
+      "intentUnavailable": "Szenenplan vorübergehend nicht verfügbar – es wird nur der geschriebene Text angezeigt.",
+      "dirty": "Kanon verschoben",
+      "dirtyTitle": "Kanon seit dem letzten Abgleich verschoben",
+      "anchorLost": "Anker verloren",
+      "empty": "Keine passenden Szenen gefunden.",
+      "loadMore": "Mehr laden",
+      "loading": "Lädt…",
+      "col": {
+        "num": "#",
+        "scene": "Szene",
+        "status": "Status",
+        "tension": "Spannung",
+        "words": "Wörter"
+      },
+      "badge": {
+        "notWritten": "noch nicht geschrieben",
+        "notPlanned": "nicht geplant",
+        "anchorLost": "Anker verloren"
+      },
+      "bulk": {
+        "count": "{{n}} ausgewählt",
+        "selectAll": "Alle auswählen",
+        "selectRow": "Szene auswählen: {{title}}",
+        "setStatus": "Status festlegen…",
+        "words": "Zielwortzahl",
+        "trash": "In den Papierkorb",
+        "clear": "Leeren",
+        "updated": "{{n}} aktualisiert",
+        "conflicted": "{{n}} Konflikte",
+        "failed": "{{n}} fehlgeschlagen"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan-Hub",
+      "desc": "Der gesamte Buchplan auf einer Grafik-Leinwand – Handlungsbögen, Kapitel, Szenen und deren Verknüpfungen",
+      "guideBody": "Der Plan-Hub stellt die gesamte Struktur Ihres Buches als Graph dar: Jede Saga/jeder Bogen/jeder Teilbogen ist eine Spur, seine Kapitel und Szenen sind Karten entlang einer chronologischen Achse, und Szenen-Links zeichnen die kausalen Verbindungen dazwischen. Öffnen Sie das Panel, um jeden Bogen als zusammengefasste Karte zu sehen; erweitern Sie einen Bogen, um seine Kapitel nachzuladen, und ein Kapitel, um seine Szenen anzuzeigen. Bewegen und zoomen Sie, um zu navigieren; Symbole für Probleme oder veraltete Daten weisen darauf hin, wo der Kanon oder Versprechen Aufmerksamkeit erfordern."
+    },
+    "scene-inspector": {
+      "title": "Szenen-Inspektor",
+      "desc": "Lesen und bearbeiten Sie jedes Feld einer Szene – Absicht, Handwerk, Spannung und Verankerung",
+      "guideBody": "Der Szenen-Inspector ist das Detailfenster für eine einzelne Szene: Wählen Sie eine Szene (im Szenen-Browser oder im Manuskript) aus, und ihr vollständiger Plan öffnet sich hier – Status, Ziel, Synopsis, Beat-Rolle, Spannung und die Handwerksfelder (Konflikt, Ausgang, Einsatz, Erzählzeit, Wertverschiebung, Zielwortzahl) – alle bearbeitbar, inklusive der eingeklappten Verankerungspunkte. Änderungen werden sofort gespeichert und vor widersprüchlichen Änderungen geschützt.",
+      "none": "Wählen Sie eine Szene aus, um ihren vollständigen Plan zu untersuchen.",
+      "loading": "Lädt…",
+      "dirty": "Der Kanon hat sich seit dem letzten Konformitätslauf geändert – dieser Plan ist möglicherweise veraltet.",
+      "section": {
+        "identity": "Identität",
+        "intent": "Absicht",
+        "cast": "Besetzung & Setting",
+        "craft": "Handwerk",
+        "links": "Verknüpfungen",
+        "grounding": "Verankerung"
+      },
+      "links": {
+        "empty": "Noch keine kausalen Verknüpfungen vorhanden.",
+        "setup": "setup→payoff",
+        "custom": "benutzerdefiniert",
+        "remove": "Verbindung entfernen",
+        "target": "Verbindung zu Szene",
+        "pick": "Verbinden mit…",
+        "kind": "Verbindungstyp",
+        "label": "Bezeichnung",
+        "add": "Verbindung",
+        "dup": "Eine Verbindung dieses Typs existiert bereits zwischen diesen Szenen.",
+        "failed": "Verbindung konnte nicht erstellt werden."
+      },
+      "f": {
+        "title": "Titel",
+        "status": "Status",
+        "goal": "Ziel",
+        "synopsis": "Synopsis",
+        "beat": "Beat-Rolle",
+        "tension": "Spannung (0–100)",
+        "pov": "POV-Charakter",
+        "present": "Anwesende Charaktere",
+        "location": "Ort",
+        "conflict": "Konflikt",
+        "outcome": "Ausgang",
+        "stakes": "Einsatz",
+        "storyTime": "Handlungszeit",
+        "valueShift": "Werteverschiebung (−100…100)",
+        "targetWords": "Zielwörter"
+      },
+      "ref": {
+        "none": "— keine —",
+        "add": "+ hinzufügen",
+        "empty": "keine",
+        "loading": "(lädt…)",
+        "remove": "{{name}} entfernen"
+      },
+      "status": {
+        "empty": "Leer",
+        "outline": "Entwurf",
+        "drafting": "In Bearbeitung",
+        "done": "Abgeschlossen"
+      }
     },
     "chapter-browser": {
       "title": "Kapitel-Browser",
@@ -333,47 +477,13 @@
       "title": "Kapitel-Revisionen vergleichen",
       "desc": "Vollständiger Editor-Diff für ein Paar Kapitel-Revisionen",
       "empty": "Öffne den Revisions-Diff eines Kapitels aus dem Review-Panel des Agenten-Modus."
-    },
-    "quality": {
-      "title": "Qualität",
-      "desc": "Offene Versprechen, Kritiker-Scores, Story-Abdeckung & Kanon-Probleme",
-      "guideBody": "Qualität ist dein Diagnose-Dashboard – rein beratend, nichts davon verändert deinen Text. Wähle eine Karte aus, um das Register der offenen Versprechen, die Kritiker-Scores pro Kapitel, die Versprechen-Abdeckung des gesamten Buches oder bestätigte Kanon-Widersprüche einzusehen."
-    },
-    "quality-promises": {
-      "title": "Versprechen",
-      "desc": "Das Register der offenen Versprechen (Setups, die noch nicht aufgelöst wurden)"
-    },
-    "quality-critic": {
-      "title": "Kritiker",
-      "desc": "Scores für Kohärenz, Stimme, Pacing & Kanon pro Kapitel"
-    },
-    "quality-coverage": {
-      "title": "Story-Abdeckung",
-      "desc": "Vollständige Buch-Prüfung, welche Outline-Versprechen eingelöst wurden"
-    },
-    "quality-canon": {
-      "title": "Kanon-Probleme",
-      "desc": "Bestätigte Widersprüche aus der Generierung & Wissensextraktion"
-    },
-    "book-import": {
-      "title": "Import",
-      "desc": "Importiere Kapitel aus Text/.docx/.epub oder ein ganzes Buch aus einem PDF",
-      "intro": "Importiere bestehende Manuskriptinhalte in dieses Buch.",
-      "guideBody": "Importiere Kapitel aus Plain-Text-, .docx- oder .epub-Dateien oder ein ganzes Buch aus einem PDF (mit optionaler KI-Bildunterschrift – du wählst das Vision-Modell explizit aus). Öffne dieses Fenster, wann immer du bestehende Inhalte importieren möchtest, anstatt ganz neu zu schreiben.",
-      "text": {
-        "title": "Kapitel importieren",
-        "desc": ".txt, .docx oder .epub — eine Datei pro Kapitel"
-      },
-      "pdf": {
-        "title": "Aus PDF importieren",
-        "desc": "Zerlege ein PDF in Kapitel, mit optionaler KI-Bildunterschrift für Bilder"
-      }
     }
   },
   "sceneRail": {
     "title": "Szenen",
     "toggle": "Szenen",
     "empty": "Keine Szenen für dieses Kapitel (erstelle ein Outline im Composer).",
+    "editTitle": "Szene umbenennen",
     "synopsisPlaceholder": "Synopsis…",
     "stale": "anders geändert – neu geladen",
     "notAnchored": "Szene noch nicht im Text verankert – verwende ⚓, um Überschriften zu verknüpfen.",
@@ -558,6 +668,44 @@
       "title": "Qualität",
       "body": "Kritik-Scores, Versprechen-Threads & Kanon-Probleme. In Kürze verfügbar."
     }
+  },
+  "quality": {
+    "noWork": "Dieses Buch hat noch keine Co-Writer-Session – schreibe zuerst ein Kapitel, dann werden hier Qualitätsdaten angezeigt.",
+    "hubNoWorkHint": "Versprechen, Kritiker-Scores und Story-Abdeckung erfordern eine Co-Writer-Session – beginne zuerst mit dem Schreiben eines Kapitels. Die unten aufgeführten Kanon-Probleme funktionieren in jedem Fall.",
+    "pickModel": "Wähle ein Modell zur Analyse aus…",
+    "pickChapter": "Wähle ein Kapitel",
+    "pickChapterHint": "Wähle oben ein Kapitel aus, um dessen Qualität zu analysieren.",
+    "chaptersTruncated": "zeigt die ersten {{shown}} von {{total}} Kapiteln an",
+    "canonIntro": "Hinweis — bestätigte Widersprüche zu Inhalten, die früher im Buch als entfernt/geändert markiert wurden. Hier wird nichts automatisch angewendet.",
+    "canonEmpty": "Keine Kanon-Probleme gefunden.",
+    "canonCompositionError": "Konnte Kanon-Probleme aus der Generierung nicht laden — bitte erneut versuchen.",
+    "canonExtractionError": "Konnte Kanon-Flags aus der Wissensextraktion nicht laden — bitte erneut versuchen.",
+    "canonFromGeneration": "Aus der Generierung ({{n}})",
+    "canonFromExtraction": "Aus der Wissensextraktion ({{n}})",
+    "untitledScene": "Unbenannte Szene",
+    "jumpToChapter": "Kapitel öffnen",
+    "promisesTitle": "Versprechen",
+    "promisesDesc": "Offenes Buch der Versprechen-Schulden",
+    "criticTitle": "Kritiker",
+    "criticDesc": "Bewertungen zu Kohärenz, Erzählstimme, Pacing & Kanon pro Kapitel",
+    "coverageTitle": "Story-Abdeckung",
+    "coverageDesc": "Abdeckung des Versprechens des gesamten Buches",
+    "canonTitle": "Kanon-Probleme",
+    "canonDesc": "Bestätigte Widersprüche",
+    "canonFromRules": "Verletzte Regeln ({{n}})",
+    "canonRuleError": "Verletzungen der Kanon-Regeln konnten nicht geladen werden – bitte erneut versuchen.",
+    "canonRuleGone": "Eine Regel, die nicht mehr existiert",
+    "canonRuleUnnamed": "diese Regel",
+    "canonRuleFocused": "Zeige zuerst Verletzungen der Regel, aus der Sie kommen ({{n}}): „{{rule}}“",
+    "canonFocused": "Das Kapitel, aus dem Sie kommen, wird zuerst angezeigt ({{n}} Fund(e)).",
+    "canonFocusedEmpty": "Das Kapitel, aus dem Sie kommen, enthält hier keine Kanon-Fundstellen.",
+    "canonUnavailable": "Der Co-Writer-Dienst konnte nicht erreicht werden — Ergebnisse aus dem Kanon zum Zeitpunkt der Generierung sind unten NICHT enthalten.",
+    "canonNoWork": "Dieses Buch hat noch keine Co-Autor-Sitzung, daher wurden die Canon-Prüfungen während der Generierung noch nicht durchgeführt. Es werden nur Ergebnisse der Wissensextraktion angezeigt.",
+    "canonRulesCapped": "Es werden die {{shown}} aktuellsten von {{total}} verletzten Regeln angezeigt.",
+    "canonRuleFocusedEmpty": "Die Regel, aus der Sie kommen, weist keine offenen Verstöße auf. Sie ist hier verankert, aber es wurde nichts verletzt.",
+    "canonRuleFocusUnknown": "Die Regel, aus der Sie kommen, konnte nicht überprüft werden, da der Co-Writer-Service nicht verfügbar ist. Es kann dennoch an anderer Stelle Verstöße geben – dies ist kein Endergebnis.",
+    "workUnavailable": "Der Co-Writer-Service konnte nicht erreicht werden, daher konnten die Qualitätsdaten dieses Buches nicht geladen werden. Es können Probleme bestehen, die hier nicht angezeigt werden. Versuchen Sie es in Kürze erneut.",
+    "hubUnavailable": "Der Co-Writer-Service konnte nicht erreicht werden, daher können Versprechen, Kritikerbewertungen und die Story-Abdeckung derzeit nicht geladen werden. Es können Probleme bestehen, die hier nicht angezeigt werden."
   },
   "sidebar": {
     "collapse": "Einklappen"
@@ -977,48 +1125,36 @@
       "desc": "Öffnen Sie den Editor in einem eigenen OS-Fenster für einen zweiten Monitor."
     }
   },
-  "quality": {
-    "noWork": "Dieses Buch hat noch keine Co-Writer-Session – schreibe zuerst ein Kapitel, dann werden hier Qualitätsdaten angezeigt.",
-    "hubNoWorkHint": "Versprechen, Kritiker-Scores und Story-Abdeckung erfordern eine Co-Writer-Session – beginne zuerst mit dem Schreiben eines Kapitels. Die unten aufgeführten Kanon-Probleme funktionieren in jedem Fall.",
-    "pickModel": "Wähle ein Modell zur Analyse aus…",
-    "pickChapter": "Wähle ein Kapitel",
-    "pickChapterHint": "Wähle oben ein Kapitel aus, um dessen Qualität zu analysieren.",
-    "chaptersTruncated": "zeigt die ersten {{shown}} von {{total}} Kapiteln an",
-    "canonIntro": "Hinweis — bestätigte Widersprüche zu Inhalten, die früher im Buch als entfernt/geändert markiert wurden. Hier wird nichts automatisch angewendet.",
-    "canonEmpty": "Keine Kanon-Probleme gefunden.",
-    "canonCompositionError": "Konnte Kanon-Probleme aus der Generierung nicht laden — bitte erneut versuchen.",
-    "canonExtractionError": "Konnte Kanon-Flags aus der Wissensextraktion nicht laden — bitte erneut versuchen.",
-    "canonFromGeneration": "Aus der Generierung ({{n}})",
-    "canonFromExtraction": "Aus der Wissensextraktion ({{n}})",
-    "untitledScene": "Unbenannte Szene",
-    "jumpToChapter": "Kapitel öffnen",
-    "promisesTitle": "Versprechen",
-    "promisesDesc": "Offenes Buch der Versprechen-Schulden",
-    "criticTitle": "Kritiker",
-    "criticDesc": "Bewertungen zu Kohärenz, Erzählstimme, Pacing & Kanon pro Kapitel",
-    "coverageTitle": "Story-Abdeckung",
-    "coverageDesc": "Abdeckung des Versprechens des gesamten Buches",
-    "canonTitle": "Kanon-Probleme",
-    "canonDesc": "Bestätigte Widersprüche",
-    "canonFromRules": "Verletzte Regeln ({{n}})",
-    "canonRuleError": "Verletzungen der Kanon-Regeln konnten nicht geladen werden – bitte erneut versuchen.",
-    "canonRuleGone": "Eine Regel, die nicht mehr existiert",
-    "canonRuleUnnamed": "diese Regel",
-    "canonRuleFocused": "Zeige zuerst Verletzungen der Regel, aus der Sie kommen ({{n}}): „{{rule}}“",
-    "canonRuleFocusedEmpty": "Die Regel, aus der Sie kommen, weist keine offenen Verletzungen auf – sie ist hier verankert, aber es wurde noch nichts dagegen verstoßen.",
-    "canonFocused": "Das Kapitel, aus dem Sie kommen, wird zuerst angezeigt ({{n}} Fund(e)).",
-    "canonFocusedEmpty": "Das Kapitel, aus dem Sie kommen, enthält hier keine Kanon-Fundstellen.",
-    "canonUnavailable": "Der Co-Writer-Dienst konnte nicht erreicht werden — Ergebnisse aus dem Kanon zum Zeitpunkt der Generierung sind unten NICHT enthalten.",
-    "canonNoWork": "Dieses Buch hat noch keine Co-Autor-Sitzung, daher wurden die Canon-Prüfungen während der Generierung noch nicht durchgeführt. Es werden nur Ergebnisse der Wissensextraktion angezeigt.",
-    "canonRuleFocusUnknown": "Die Regel, von der Sie kommen, konnte nicht geprüft werden – der Co-Autor-Pfad ist nicht verfügbar, daher handelt es sich hierbei nicht um eine Bestätigung der Korrektheit.",
-    "canonRulesCapped": "Es werden die {{shown}} aktuellsten von {{total}} verletzten Regeln angezeigt."
-  },
   "planHub": {
-    "undo": "Rückgängig"
-  },
-  "planNav": {
-    "title": "Plan",
-    "loading": "Wird geladen…",
-    "empty": "Noch keine Handlungsbögen."
+    "undo": "Rückgängig",
+    "empty": {
+      "title": "Noch kein Plan für dieses Buch",
+      "body": "Der Plan Hub zeigt die Spezifikation — Handlungsbögen, Kapitel, Szenen. Dieses Buch hat noch keinen. Er wird nicht automatisch aus deinem Manuskript erstellt: Extrahiere ihn oder erstelle einen neuen.",
+      "extractCta": "Plan aus dem Manuskript extrahieren",
+      "extracting": "Extrahiere...",
+      "planCta": "Plan von Grund auf erstellen",
+      "extractNote": "Beim Extrahieren werden die bereits aus deinen Kapiteln analysierten Szenen gelesen und in Spezifikationsknoten umgewandelt. Die Gruppierung in Handlungsbögen ist ein separater KI-Schritt — bitte den Agenten darum. Bis dahin liegen die extrahierten Kapitel im Bereich „Nicht zugewiesen“.",
+      "nothingParsed": "Nichts zu extrahieren — dieses Buch hat noch keine analysierten Szenen. Analysiere oder importiere zuerst die Kapitel, um dann zu extrahieren."
+    },
+    "node": {
+      "unplannedTray": "Nicht geplante Kapitel",
+      "unplannedUnknown": "Nicht geplante Kapitel: unbekannt (das Manuskript konnte nicht gelesen werden)",
+      "unplannedCapped": "…und {{n}} weitere (Liste gekürzt)",
+      "unassignedStrip": "{{count}} Kapitel ohne Handlungsbogen — ziehe es in eine Spalte",
+      "unassignedStrip_other": "{{count}} Kapitel ohne Handlungsstrang — ziehe sie in eine Spalte",
+      "untitled": "Unbenannt"
+    },
+    "loading": "Plan wird geladen…",
+    "toolbar": {
+      "search": "Knoten suchen…",
+      "fit": "Anpassen",
+      "problems": "Probleme",
+      "askAi": "KI fragen",
+      "askAiHint": "Wähle einen Knoten aus, um Fragen dazu zu stellen",
+      "viewNarrative": "Erzählung",
+      "viewTimeline": "Zeitstrahl",
+      "viewWorldmap": "Weltkarte",
+      "viewSoon": "In einer späteren Phase verfügbar"
+    }
   }
 }

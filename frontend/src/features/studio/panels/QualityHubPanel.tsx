@@ -32,7 +32,7 @@ export function QualityHubPanel(props: IDockviewPanelProps) {
       {work.kind === 'unavailable' && (
         <p data-testid="quality-hub-unavailable" className="mb-3 text-xs text-amber-700 dark:text-amber-300">
           {t('quality.hubUnavailable', {
-            defaultValue: 'Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. This is NOT a clean bill of health.',
+            defaultValue: 'Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. Problems may exist that are not shown here.',
           })}
         </p>
       )}

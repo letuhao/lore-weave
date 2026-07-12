@@ -697,15 +697,15 @@
     "canonRuleGone": "A rule that no longer exists",
     "canonRuleUnnamed": "that rule",
     "canonRuleFocused": "Showing violations of the rule you came from first ({{n}}): “{{rule}}”",
-    "canonRuleFocusedEmpty": "The rule you came from has no open violations — it is anchored here, but nothing has broken it yet.",
+    "canonRuleFocusedEmpty": "The rule you came from has no open violations. It is anchored here, but nothing has broken it.",
     "canonFocused": "Showing the chapter you came from first ({{n}} finding(s)).",
     "canonFocusedEmpty": "The chapter you came from has no canon findings here.",
     "canonUnavailable": "Could not reach the co-writer service — generation-time canon findings are NOT included below.",
     "canonNoWork": "This book has no co-writer session yet, so generation-time canon checks have not run. Only knowledge-extraction findings are shown.",
-    "canonRuleFocusUnknown": "The rule you came from could not be checked — the co-writer lane is unavailable, so this is not a clean bill of health.",
+    "canonRuleFocusUnknown": "The rule you came from could not be checked, because the co-writer service is unavailable. It may still be broken somewhere — this is not a result.",
     "canonRulesCapped": "Showing the {{shown}} most recent of {{total}} broken rules.",
-    "workUnavailable": "Could not reach the co-writer service, so this book’s quality data could not be loaded. This is NOT a clean bill of health — try again shortly.",
-    "hubUnavailable": "Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. This is NOT a clean bill of health."
+    "workUnavailable": "Could not reach the co-writer service, so this book’s quality data could not be loaded. Problems may exist that are not shown here. Try again shortly.",
+    "hubUnavailable": "Could not reach the co-writer service, so promises, critic scores and story coverage cannot be loaded right now. Problems may exist that are not shown here."
   },
   "sidebar": {
     "collapse": "Collapse"

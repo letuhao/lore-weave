@@ -2,6 +2,11 @@
   "title": "Writing Studio",
   "back": "Retour aux livres",
   "settings": "Paramètres du livre",
+  "planNav": {
+    "title": "Plan",
+    "loading": "Chargement…",
+    "empty": "Aucun arc pour l’instant."
+  },
   "welcome": {
     "tab": "Bienvenue",
     "title": "Writing Studio",
@@ -89,6 +94,27 @@
       "title": "Connaissances",
       "desc": "Parcourez et ouvrez vos projets de graphe de connaissances",
       "guideBody": "Les Connaissances sont votre point d'entrée dans le graphe de connaissances d'un livre — les entités, événements et éléments de lore que vos agents IA ont extraits et organisés. Ouvrez-le pour choisir le projet (livre) sur lequel travailler avant de plonger dans les entités, les chronologies ou le graphe lui-même."
+    },
+    "quality": {
+      "title": "Qualité",
+      "desc": "Promesses en suspens, notes des critiques, couverture de l'intrigue et problèmes de canon",
+      "guideBody": "La Qualité est votre tableau de bord de diagnostic — à titre consultatif uniquement, rien ici ne modifie votre prose. Choisissez une carte pour consulter le registre des dettes de promesses, les notes des critiques par chapitre, la couverture des promesses de l'œuvre complète ou les contradictions de canon confirmées."
+    },
+    "quality-promises": {
+      "title": "Promesses",
+      "desc": "Le registre des dettes de promesses en suspens (les éléments installés non encore résolus)"
+    },
+    "quality-critic": {
+      "title": "Critique",
+      "desc": "Scores de cohérence, de voix, de rythme et de canon par chapitre"
+    },
+    "quality-coverage": {
+      "title": "Couverture de l'intrigue",
+      "desc": "Audit complet de l'œuvre pour vérifier quelles promesses du plan ont été tenues"
+    },
+    "quality-canon": {
+      "title": "Problèmes de canon",
+      "desc": "Contradictions confirmées par la génération et l'extraction de connaissances"
     },
     "kg-overview": {
       "title": "Aperçu",
@@ -193,6 +219,124 @@
       "title": "Inspecteur de contexte",
       "desc": "Trace ce que la gestion de contexte a fait par tour — budget, allocation, décisions Planner→Compiler",
       "guideBody": "Affiche précisément ce qui a été envoyé à l'IA pour un tour donné — le budget de tokens, ce qui a été inclus ou supprimé, et si une passe rapide ou une planification complète a été utilisée. Ouvrez-le si la réponse de l'IA semble erronée et que vous voulez voir ce qu'elle a réellement « vu », ou si vous voulez savoir comment votre budget de contexte est utilisé."
+    },
+    "book-import": {
+      "title": "Importer",
+      "desc": "Importez des chapitres depuis des fichiers .txt, .docx ou .epub, ou un livre entier depuis un PDF",
+      "intro": "Importez le contenu d'un manuscrit existant dans ce livre.",
+      "guideBody": "Importez des chapitres à partir de fichiers texte brut, .docx ou .epub, ou un livre entier à partir d'un PDF (avec légendage d'images par IA en option — vous choisissez explicitement le modèle de vision). Utilisez cette option dès que vous avez du contenu existant à importer plutôt que de repartir de zéro.",
+      "text": {
+        "title": "Importer des chapitres",
+        "desc": ".txt, .docx ou .epub — un chapitre par fichier"
+      },
+      "pdf": {
+        "title": "Importer depuis un PDF",
+        "desc": "Découpez un PDF en chapitres, avec légendage IA optionnel pour les images"
+      }
+    },
+    "scene-browser": {
+      "title": "Navigateur de scènes",
+      "desc": "Parcourez chaque scène de ce livre — la prose analysée et son plan d'écriture, côte à côte",
+      "guideBody": "Le Navigateur de scènes répertorie chaque scène de l'ouvrage entier en combinant deux réalités : la prose réellement écrite (via book-service) et l'intention/plan d'écriture (via composition). Une scène peut être écrite et planifiée (normale), planifiée mais pas encore écrite, ou écrite mais pas encore décomposée en plan — ainsi, les scènes d'un livre importé apparaissent ici même avant que vous n'ayez créé de plan.",
+      "noBook": "Ouvrez un livre pour parcourir ses scènes.",
+      "search": "Rechercher titres et prose…",
+      "count": "{{n}} scènes",
+      "workless": "Aucun plan pour le moment — l'intention de la scène (statut, POV, tension) est indisponible tant que vous n'avez pas créé de plan pour ce livre.",
+      "intentUnavailable": "Le plan de scène est temporairement indisponible — affichage de la prose écrite uniquement.",
+      "dirty": "canon déplacé",
+      "dirtyTitle": "Le canon a été déplacé depuis la dernière vérification de conformité",
+      "anchorLost": "Ancrage perdu",
+      "empty": "Aucune scène ne correspond.",
+      "loadMore": "Charger plus",
+      "loading": "Chargement…",
+      "col": {
+        "num": "#",
+        "scene": "Scène",
+        "status": "Statut",
+        "tension": "Tension",
+        "words": "Mots"
+      },
+      "badge": {
+        "notWritten": "pas encore écrite",
+        "notPlanned": "pas planifiée",
+        "anchorLost": "ancre perdue"
+      },
+      "bulk": {
+        "count": "{{n}} sélectionnés",
+        "selectAll": "Tout sélectionner",
+        "selectRow": "Sélectionner la scène : {{title}}",
+        "setStatus": "Définir le statut…",
+        "words": "Nombre de mots cible",
+        "trash": "Corbeille",
+        "clear": "Effacer",
+        "updated": "{{n}} mis à jour",
+        "conflicted": "{{n}} conflits",
+        "failed": "{{n}} échecs"
+      }
+    },
+    "plan-hub": {
+      "title": "Plan Hub",
+      "desc": "Le plan complet du livre sur un canevas graphique — pistes d'arcs, chapitres, scènes et leurs liens",
+      "guideBody": "Le Plan Hub représente la structure entière de votre livre sous forme de graphe : chaque saga/arc/sous-arc est une piste, ses chapitres et scènes sont des cartes le long d'un axe chronologique, et les liens de scènes tracent les connexions causales entre eux. Ouvrez le panneau pour voir chaque arc réduit en une carte récapitulative ; développez un arc pour charger ses chapitres, et un chapitre pour voir ses scènes. Panoramisez et zoomez pour naviguer ; des badges de problème ou de décalage apparaissent là où le canon ou les promesses narratives nécessitent votre attention."
+    },
+    "scene-inspector": {
+      "title": "Inspecteur de scène",
+      "desc": "Lisez et modifiez chaque champ d'une scène — intention, technique, tension et ancrage",
+      "guideBody": "L'Inspecteur de Scène est le volet de détails pour une scène unique : sélectionnez une scène (dans le Navigateur de Scènes ou le manuscrit) et son plan complet s'ouvre ici — statut, objectif, synopsis, rôle du beat, tension et les champs techniques (conflit, issue, enjeux, temps narratif, changement de valeur, nombre de mots cible) — tous modifiables, avec les ancres d'ancrage intégrées. Les modifications sont enregistrées immédiatement et sont protégées contre les changements conflictuels.",
+      "none": "Sélectionnez une scène pour inspecter son plan complet.",
+      "loading": "Chargement…",
+      "dirty": "Le canon a été modifié depuis la dernière vérification de conformité — ce plan peut être obsolète.",
+      "section": {
+        "identity": "Identité",
+        "intent": "Intention",
+        "cast": "Distribution et Cadre",
+        "craft": "Technique",
+        "links": "Liens",
+        "grounding": "Ancrage"
+      },
+      "links": {
+        "empty": "Aucun lien causal pour le moment.",
+        "setup": "setup→payoff",
+        "custom": "personnalisé",
+        "remove": "Supprimer le lien",
+        "target": "Lien vers la scène",
+        "pick": "Lien vers…",
+        "kind": "Type de lien",
+        "label": "étiquette",
+        "add": "lien",
+        "dup": "Un lien de ce type existe déjà entre ces scènes.",
+        "failed": "Impossible de créer le lien."
+      },
+      "f": {
+        "title": "Titre",
+        "status": "Statut",
+        "goal": "Objectif",
+        "synopsis": "Synopsis",
+        "beat": "Rôle de la séquence",
+        "tension": "Tension (0–100)",
+        "pov": "Personnage (POV)",
+        "present": "Personnages présents",
+        "location": "Lieu",
+        "conflict": "Conflit",
+        "outcome": "Issue",
+        "stakes": "Enjeux",
+        "storyTime": "Temps narratif",
+        "valueShift": "Évolution de la valeur (−100…100)",
+        "targetWords": "Mots cibles"
+      },
+      "ref": {
+        "none": "— aucun —",
+        "add": "+ ajouter",
+        "empty": "aucun",
+        "loading": "(chargement…)",
+        "remove": "Supprimer {{name}}"
+      },
+      "status": {
+        "empty": "Vide",
+        "outline": "Plan",
+        "drafting": "Rédaction",
+        "done": "Terminé"
+      }
     },
     "chapter-browser": {
       "title": "Navigateur de chapitres",
@@ -333,47 +477,13 @@
       "title": "Comparaison de révision de chapitre",
       "desc": "Différence complète de l'éditeur pour une paire de révisions de chapitre",
       "empty": "Ouvrez la différence de révision d'un chapitre depuis le panneau de révision du Mode Agent."
-    },
-    "quality": {
-      "title": "Qualité",
-      "desc": "Promesses en suspens, notes des critiques, couverture de l'intrigue et problèmes de canon",
-      "guideBody": "La Qualité est votre tableau de bord de diagnostic — à titre consultatif uniquement, rien ici ne modifie votre prose. Choisissez une carte pour consulter le registre des dettes de promesses, les notes des critiques par chapitre, la couverture des promesses de l'œuvre complète ou les contradictions de canon confirmées."
-    },
-    "quality-promises": {
-      "title": "Promesses",
-      "desc": "Le registre des dettes de promesses en suspens (les éléments installés non encore résolus)"
-    },
-    "quality-critic": {
-      "title": "Critique",
-      "desc": "Scores de cohérence, de voix, de rythme et de canon par chapitre"
-    },
-    "quality-coverage": {
-      "title": "Couverture de l'intrigue",
-      "desc": "Audit complet de l'œuvre pour vérifier quelles promesses du plan ont été tenues"
-    },
-    "quality-canon": {
-      "title": "Problèmes de canon",
-      "desc": "Contradictions confirmées par la génération et l'extraction de connaissances"
-    },
-    "book-import": {
-      "title": "Importer",
-      "desc": "Importez des chapitres depuis des fichiers .txt, .docx ou .epub, ou un livre entier depuis un PDF",
-      "intro": "Importez le contenu d'un manuscrit existant dans ce livre.",
-      "guideBody": "Importez des chapitres à partir de fichiers texte brut, .docx ou .epub, ou un livre entier à partir d'un PDF (avec légendage d'images par IA en option — vous choisissez explicitement le modèle de vision). Utilisez cette option dès que vous avez du contenu existant à importer plutôt que de repartir de zéro.",
-      "text": {
-        "title": "Importer des chapitres",
-        "desc": ".txt, .docx ou .epub — un chapitre par fichier"
-      },
-      "pdf": {
-        "title": "Importer depuis un PDF",
-        "desc": "Découpez un PDF en chapitres, avec légendage IA optionnel pour les images"
-      }
     }
   },
   "sceneRail": {
     "title": "Scènes",
     "toggle": "Scènes",
     "empty": "Aucune scène pour ce chapitre (dressez-en l'outline dans le compositeur).",
+    "editTitle": "Renommer la scène",
     "synopsisPlaceholder": "Synopsis…",
     "stale": "modifié ailleurs — rechargé",
     "notAnchored": "Scène non ancrée dans le texte — utilisez ⚓ pour lier les titres.",
@@ -558,6 +668,44 @@
       "title": "Qualité",
       "body": "Scores de critique, fils de promesses et problèmes de canon. Bientôt disponible."
     }
+  },
+  "quality": {
+    "noWork": "Ce livre n'a pas encore de session de co-écriture — commencez d'abord à rédiger un chapitre, puis les données de qualité apparaîtront ici.",
+    "hubNoWorkHint": "Les promesses, les scores de critique et la couverture de l'histoire nécessitent une session de co-écriture — commencez d'abord à rédiger un chapitre. Les problèmes de canon ci-dessous fonctionnent dans tous les cas.",
+    "pickModel": "Choisir un modèle pour l'analyse…",
+    "pickChapter": "Choisir un chapitre",
+    "pickChapterHint": "Choisissez un chapitre ci-dessus pour analyser sa qualité.",
+    "chaptersTruncated": "affichage des {{shown}} premiers chapitres sur {{total}}",
+    "canonIntro": "Avertissement — contradictions confirmées avec du contenu marqué comme supprimé ou modifié précédemment dans le livre. Rien n'est appliqué automatiquement ici.",
+    "canonEmpty": "Aucun problème de canon détecté.",
+    "canonCompositionError": "Impossible de charger les problèmes de canon depuis la génération — réessayez.",
+    "canonExtractionError": "Impossible de charger les indicateurs de canon depuis l'extraction de connaissances — réessayez.",
+    "canonFromGeneration": "Depuis la génération ({{n}})",
+    "canonFromExtraction": "Depuis l'extraction de connaissances ({{n}})",
+    "untitledScene": "Scène sans titre",
+    "jumpToChapter": "Ouvrir le chapitre",
+    "promisesTitle": "Promesses",
+    "promisesDesc": "Registre des dettes de promesses non résolues",
+    "criticTitle": "Critique",
+    "criticDesc": "Scores de cohérence, de voix, de rythme et de respect du canon par chapitre",
+    "coverageTitle": "Couverture de l'histoire",
+    "coverageDesc": "Couverture de la promesse globale du livre",
+    "canonTitle": "Problèmes de canon",
+    "canonDesc": "Contradictions confirmées",
+    "canonFromRules": "Règles enfreintes ({{n}})",
+    "canonRuleError": "Impossible de charger les violations de la règle canonique — réessayez.",
+    "canonRuleGone": "Une règle qui n'existe plus",
+    "canonRuleUnnamed": "cette règle",
+    "canonRuleFocused": "Affichage prioritaire des violations de la règle d'origine ({{n}}) : « {{rule}} »",
+    "canonFocused": "Affichage prioritaire du chapitre d'origine ({{n}} trouvée(s)).",
+    "canonFocusedEmpty": "Le chapitre d'où vous venez n'a aucune donnée canonique ici.",
+    "canonUnavailable": "Impossible de contacter le service de co-écriture — les éléments du canon générés lors de la rédaction ne sont PAS inclus ci-dessous.",
+    "canonNoWork": "Ce livre n'a pas encore de session de co-écriture, les vérifications de cohérence lors de la génération n'ont donc pas été effectuées. Seuls les résultats de l'extraction de connaissances sont affichés.",
+    "canonRulesCapped": "Affichage des {{shown}} dernières règles enfreintes sur {{total}}.",
+    "canonRuleFocusedEmpty": "La règle dont vous venez n'a aucune violation ouverte. Elle est ancrée ici, mais rien ne l'a rompue.",
+    "canonRuleFocusUnknown": "La règle dont vous venez n'a pas pu être vérifiée car le service de co-écriture est indisponible. Elle est peut-être toujours rompue quelque part — ceci n'est pas un résultat définitif.",
+    "workUnavailable": "Impossible de joindre le service de co-écriture, les données de qualité de ce livre n'ont donc pas pu être chargées. Des problèmes peuvent exister sans être affichés ici. Réessayez bientôt.",
+    "hubUnavailable": "Impossible de joindre le service de co-écriture, les promesses, les scores des critiques et la couverture de l'histoire ne peuvent donc pas être chargés pour le moment. Des problèmes peuvent exister sans être affichés ici."
   },
   "sidebar": {
     "collapse": "Réduire"
@@ -977,48 +1125,36 @@
       "desc": "Détachez l'interface de composition dans sa propre fenêtre système pour un second écran."
     }
   },
-  "quality": {
-    "noWork": "Ce livre n'a pas encore de session de co-écriture — commencez d'abord à rédiger un chapitre, puis les données de qualité apparaîtront ici.",
-    "hubNoWorkHint": "Les promesses, les scores de critique et la couverture de l'histoire nécessitent une session de co-écriture — commencez d'abord à rédiger un chapitre. Les problèmes de canon ci-dessous fonctionnent dans tous les cas.",
-    "pickModel": "Choisir un modèle pour l'analyse…",
-    "pickChapter": "Choisir un chapitre",
-    "pickChapterHint": "Choisissez un chapitre ci-dessus pour analyser sa qualité.",
-    "chaptersTruncated": "affichage des {{shown}} premiers chapitres sur {{total}}",
-    "canonIntro": "Avertissement — contradictions confirmées avec du contenu marqué comme supprimé ou modifié précédemment dans le livre. Rien n'est appliqué automatiquement ici.",
-    "canonEmpty": "Aucun problème de canon détecté.",
-    "canonCompositionError": "Impossible de charger les problèmes de canon depuis la génération — réessayez.",
-    "canonExtractionError": "Impossible de charger les indicateurs de canon depuis l'extraction de connaissances — réessayez.",
-    "canonFromGeneration": "Depuis la génération ({{n}})",
-    "canonFromExtraction": "Depuis l'extraction de connaissances ({{n}})",
-    "untitledScene": "Scène sans titre",
-    "jumpToChapter": "Ouvrir le chapitre",
-    "promisesTitle": "Promesses",
-    "promisesDesc": "Registre des dettes de promesses non résolues",
-    "criticTitle": "Critique",
-    "criticDesc": "Scores de cohérence, de voix, de rythme et de respect du canon par chapitre",
-    "coverageTitle": "Couverture de l'histoire",
-    "coverageDesc": "Couverture de la promesse globale du livre",
-    "canonTitle": "Problèmes de canon",
-    "canonDesc": "Contradictions confirmées",
-    "canonFromRules": "Règles enfreintes ({{n}})",
-    "canonRuleError": "Impossible de charger les violations de la règle canonique — réessayez.",
-    "canonRuleGone": "Une règle qui n'existe plus",
-    "canonRuleUnnamed": "cette règle",
-    "canonRuleFocused": "Affichage prioritaire des violations de la règle d'origine ({{n}}) : « {{rule}} »",
-    "canonRuleFocusedEmpty": "La règle d'origine n'a aucune violation ouverte — elle est ancrée ici, mais rien ne l'a encore enfreinte.",
-    "canonFocused": "Affichage prioritaire du chapitre d'origine ({{n}} trouvée(s)).",
-    "canonFocusedEmpty": "Le chapitre d'où vous venez n'a aucune donnée canonique ici.",
-    "canonUnavailable": "Impossible de contacter le service de co-écriture — les éléments du canon générés lors de la rédaction ne sont PAS inclus ci-dessous.",
-    "canonNoWork": "Ce livre n'a pas encore de session de co-écriture, les vérifications de cohérence lors de la génération n'ont donc pas été effectuées. Seuls les résultats de l'extraction de connaissances sont affichés.",
-    "canonRuleFocusUnknown": "La règle dont vous venez n'a pas pu être vérifiée — la voie de co-écriture est indisponible, il ne s'agit donc pas d'une validation complète.",
-    "canonRulesCapped": "Affichage des {{shown}} dernières règles enfreintes sur {{total}}."
-  },
   "planHub": {
-    "undo": "Annuler"
-  },
-  "planNav": {
-    "title": "Plan",
-    "loading": "Chargement…",
-    "empty": "Aucun arc pour l’instant."
+    "undo": "Annuler",
+    "empty": {
+      "title": "Aucun plan pour ce livre pour l'instant",
+      "body": "Le Plan Hub affiche la structure — arcs, chapitres, scènes. Ce livre n'en possède aucun pour le moment. Il ne sera jamais généré automatiquement à partir de votre manuscrit : extrayez-le ou créez-en un.",
+      "extractCta": "Extraire le plan du manuscrit",
+      "extracting": "Extraction en cours…",
+      "planCta": "Créer un plan de zéro",
+      "extractNote": "L'extraction lit les scènes déjà analysées de vos chapitres et transforme chacune d'elles en un nœud structurel. Le regroupement en arcs est une étape d'IA distincte — demandez-le à l'agent. En attendant, les chapitres extraits se trouvent dans la bande « Non assignés ».",
+      "nothingParsed": "Rien à extraire — ce livre ne contient aucune scène analysée. Analysez ou importez d'abord les chapitres, puis procédez à l'extraction."
+    },
+    "node": {
+      "unplannedTray": "Chapitres non planifiés",
+      "unplannedUnknown": "Chapitres non planifiés : inconnus (le manuscrit n'a pas pu être lu)",
+      "unplannedCapped": "…et {{n}} autres (liste limitée)",
+      "unassignedStrip": "{{count}} chapitre sans arc — faites-le glisser dans une piste",
+      "unassignedStrip_other": "{{count}} chapitres sans arc — faites-les glisser dans une piste",
+      "untitled": "Sans titre"
+    },
+    "loading": "Chargement du plan…",
+    "toolbar": {
+      "search": "Rechercher un nœud…",
+      "fit": "Ajuster",
+      "problems": "Problèmes",
+      "askAi": "Demander à l'IA",
+      "askAiHint": "Sélectionnez un nœud pour lui poser une question",
+      "viewNarrative": "Narratif",
+      "viewTimeline": "Timeline",
+      "viewWorldmap": "Carte du monde",
+      "viewSoon": "Prévu pour une phase ultérieure"
+    }
   }
 }
