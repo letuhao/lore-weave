@@ -275,9 +275,15 @@ async def ingest_chapter_passages(
     `canon` (D-RAWSEARCH-CANON-WIRING): stamped onto every passage. The
     `chapter.published` handler keeps the default True; the on-demand
     owner-only draft-indexing endpoint passes False so `surface=all` can
-    surface drafts while `surface=canon` (default) excludes them. A later
-    publish re-ingests at the pinned revision (canon=True) and the
-    delete-by-source step above flips the draft passages to canon.
+    surface drafts while `surface=canon` (default) excludes them.
+
+    D-R20 (P-3, keep-both): the canon and draft passages of a chapter are
+    DISTINCT nodes (`passage_canonical_id` gains a `draft:` segment for
+    canon=False) and the pre-write reap is bucket-scoped. So indexing a NEWER
+    draft on a PUBLISHED chapter now KEEPS BOTH — the published canon passages
+    stay in `surface=canon`, the draft is added under `surface=all`. A later
+    publish (canon=True) reaps BOTH buckets and re-writes the pinned revision as
+    canon, superseding the ahead-of-canon draft.
     """
     result = IngestResult(chunks_created=0, chunks_skipped=0)
 
@@ -322,12 +328,15 @@ async def ingest_chapter_passages(
             chapter_id,
         )
         # Still delete any stale passages so a chapter that becomes
-        # unavailable doesn't keep orphaned :Passage rows.
+        # unavailable doesn't keep orphaned :Passage rows. D-R20 (P-3): scope to
+        # the bucket being (not) written — a draft whose live text vanished reaps
+        # only the draft bucket, never the published canon passages.
         await delete_passages_for_source(
             session,
             user_id=str(user_id),
             source_type="chapter",
             source_id=str(chapter_id),
+            canon=None if canon else False,
         )
         return result
 
@@ -350,6 +359,9 @@ async def ingest_chapter_passages(
         source_type="chapter",
         source_id=str(chapter_id),
         source_lang=resolved_lang,
+        # D-R20 (P-3) — per-bucket skip-gate: read the SAME bucket we're about to
+        # write so the canon and draft sets never cross-contaminate the hash gate.
+        canon=canon,
     )
     if (
         state is not None
@@ -442,12 +454,19 @@ async def ingest_chapter_passages(
 
     # 4. Delete stale passages (THIS language only — never wipe the other
     # language's passages of the same chapter), then upsert fresh.
+    #
+    # D-R20 (P-3, keep-both): the reap is BUCKET-scoped. A DRAFT index (canon=False)
+    # reaps ONLY the draft bucket, so the chapter's PUBLISHED canon passages survive
+    # side by side (canon search still sees the published revision; surface=all sees
+    # the newer draft). A PUBLISH (canon=True) reaps BOTH buckets (canon=None) —
+    # publishing establishes the new canon and supersedes any ahead-of-canon draft.
     await delete_passages_for_source(
         session,
         user_id=str(user_id),
         source_type="chapter",
         source_id=str(chapter_id),
         source_lang=resolved_lang,
+        canon=None if canon else False,
     )
 
     for idx, ((chunk, block_pos), vector) in enumerate(

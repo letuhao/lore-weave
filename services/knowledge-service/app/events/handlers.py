@@ -329,25 +329,21 @@ async def handle_chapter_kg_indexed(event: EventData, *, pool: asyncpg.Pool) -> 
     revision_id = _uuid(event.payload.get("revision_id"))
     canon = published_rev is not None and published_rev == revision_id
 
-    # review-impl: the ONE surprising consequence, made LOUD rather than silent.
-    #
-    # A chapter published@A whose owner then indexes a NEWER draft@B: the knowledge layer
-    # reflects exactly one revision (B), and B is not the published text, so B's passages
-    # are canon=False. `ingest_chapter_passages` delete-then-upserts the chapter's whole
-    # passage set, so the chapter DROPS OUT of `surface=canon` reads even though it is
-    # still published at A.
-    #
-    # That is the honest consequence of "the knowledge layer reflects
-    # kg_indexed_revision_id", and it self-heals the moment the user publishes B. But it
-    # must never happen quietly — see RUN-STATE P-3 for the open question of whether A's
-    # canon passages should instead be PRESERVED alongside B's draft passages.
+    # D-R20 (P-3, keep-both) — RESOLVED: indexing a NEWER draft on a PUBLISHED chapter
+    # now KEEPS BOTH passage sets. The published canon passages are PRESERVED (the reap
+    # in `ingest_chapter_passages` is bucket-scoped, and `passage_canonical_id` gives the
+    # draft its own node ids), so the chapter stays in `surface=canon` reads at revision
+    # A while the newer draft B is added as canon=False passages surfaced only under
+    # `surface=all`. Info-level, not a warning: it is expected, non-lossy behavior. The
+    # graph-FACT layer still reflects the indexed revision (keep-both is passage-only —
+    # per-revision fact provenance was out of D-R20's scope).
     if published_rev is not None and not canon:
-        logger.warning(
-            "chapter.kg_indexed: chapter=%s is PUBLISHED at %s but was indexed at a "
-            "DIFFERENT revision %s — its passages now reflect the indexed (draft) text and "
-            "are canon=False, so the chapter leaves canon-only search until you publish "
-            "that revision. (RUN-STATE P-3)",
-            event.aggregate_id, published_rev, revision_id,
+        logger.info(
+            "chapter.kg_indexed: chapter=%s is PUBLISHED at %s and was indexed at a NEWER "
+            "draft revision %s. Keep-both (D-R20): the published canon passages are kept "
+            "(surface=canon still sees %s); the draft is added as canon=False passages "
+            "(surface=all). Publishing %s promotes the draft to canon.",
+            event.aggregate_id, published_rev, revision_id, published_rev, revision_id,
         )
 
     await _index_chapter_into_kg(

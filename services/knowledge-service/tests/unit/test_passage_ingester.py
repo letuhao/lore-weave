@@ -341,6 +341,88 @@ async def test_ingest_threads_canon_false_for_draft_indexing(monkeypatch):
         assert call.kwargs["canon"] is False
 
 
+async def _run_ingest_capturing_delete(monkeypatch, *, canon: bool):
+    """Helper: run a happy-path ingest and return the delete mock so a test can
+    assert the reap's `canon` scope (D-R20 keep-both)."""
+    book = _mk_book_client(text="Arthur rode toward Camelot. " * 300)
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+
+    emb = MagicMock()
+    emb.embed = fake_embed
+    delete = AsyncMock(return_value=0)
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source", delete,
+    )
+    await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        canon=canon,
+    )
+    return delete
+
+
+@pytest.mark.asyncio
+async def test_ingest_draft_reaps_only_draft_bucket(monkeypatch):
+    """D-R20 (P-3, keep-both): a DRAFT index (canon=False) reaps ONLY the draft
+    bucket (`canon=False`), so the chapter's PUBLISHED canon passages survive
+    side by side. A reap that wiped canon here is the exact keep-both bug."""
+    delete = await _run_ingest_capturing_delete(monkeypatch, canon=False)
+    delete.assert_awaited_once()
+    assert delete.await_args.kwargs["canon"] is False
+
+
+@pytest.mark.asyncio
+async def test_ingest_publish_reaps_both_buckets(monkeypatch):
+    """D-R20 (P-3): a PUBLISH (canon=True) reaps BOTH buckets (`canon=None`) —
+    publishing establishes the new canon and supersedes any ahead-of-canon
+    draft, preserving the pre-P-3 clean-rewrite behavior for the publish path."""
+    delete = await _run_ingest_capturing_delete(monkeypatch, canon=True)
+    delete.assert_awaited_once()
+    assert delete.await_args.kwargs["canon"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("canon", [True, False])
+async def test_ingest_skip_gate_reads_matching_bucket(monkeypatch, canon):
+    """D-R20 (P-3): the content-hash skip-gate reads the SAME bucket it's about to
+    write (`canon=canon`), so the canon and draft sets never cross-contaminate the
+    gate once keep-both lets both coexist."""
+    book = _mk_book_client(text="Arthur rode toward Camelot. " * 300)
+
+    async def fake_embed(*, user_id, model_source, model_ref, texts):
+        return EmbeddingResult(
+            embeddings=[[0.1] * 1024 for _ in texts], dimension=1024, model="bge-m3",
+        )
+
+    emb = MagicMock()
+    emb.embed = fake_embed
+    state = AsyncMock(return_value=None)  # cache miss → ingest proceeds
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+    # Override the autouse stub so we can capture the canon scope.
+    monkeypatch.setattr("app.extraction.passage_ingester.get_source_ingest_state", state)
+
+    await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=1,
+        embedding_model="bge-m3", embedding_dim=1024,
+        canon=canon,
+    )
+    state.assert_awaited_once()
+    assert state.await_args.kwargs["canon"] is canon
+
+
 @pytest.mark.asyncio
 async def test_ingest_maps_block_index_from_block_indices(monkeypatch):
     """P3-C: the draft path maps a chunk's block_pos → block_indices[pos] and

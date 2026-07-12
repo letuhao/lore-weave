@@ -131,6 +131,7 @@ def passage_canonical_id(
     source_id: str,
     chunk_index: int,
     source_lang: str = "",
+    canon: bool = True,
 ) -> str:
     """Deterministic id for a passage chunk.
 
@@ -147,11 +148,21 @@ def passage_canonical_id(
     so every pre-M2 passage id (chat/glossary/benchmark + untagged chapter)
     stays byte-identical — a language-tagged chapter re-ingest forks a new
     id, and the delete-then-upsert step reaps the old one (no orphan).
+
+    D-R20 (P-3, keep-both): `canon` participates so a chapter's PUBLISHED
+    (canon) passages and a NEWER DRAFT's passages are DISTINCT nodes that
+    coexist side by side — indexing a draft on a published chapter no longer
+    collides ids with (and clobbers) the canon set. Mirroring the source_lang
+    trick, the `draft:` segment is appended ONLY for canon=False, so every
+    published/canon id stays byte-identical to the pre-P-3 scheme (zero re-key
+    churn). Legacy draft nodes (written pre-P-3 with no segment) are reaped by
+    the canon-scoped delete-then-upsert (matched by property, not id).
     """
     lang_seg = f"{source_lang}:" if source_lang else ""
+    canon_seg = "" if canon else "draft:"
     key = (
         f"v1:{user_id}:{project_id or 'global'}:"
-        f"{source_type}:{source_id}:{lang_seg}{chunk_index}"
+        f"{source_type}:{source_id}:{lang_seg}{canon_seg}{chunk_index}"
     )
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
@@ -255,6 +266,9 @@ async def upsert_passage(
         # KG-ML M2 — language participates so vi/zh chunks of the same chapter
         # are distinct nodes ("unknown" stays out of the id for back-compat).
         source_lang=source_lang if source_lang and source_lang != "unknown" else "",
+        # D-R20 (P-3) — canon vs draft chunks of the same chapter are distinct
+        # nodes so a draft index keeps the published canon set (canon id unchanged).
+        canon=canon,
     )
 
     # Dim was validated above against the closed set SUPPORTED_PASSAGE_DIMS,
@@ -295,6 +309,7 @@ WHERE p.user_id = $user_id
   AND p.source_type = $source_type
   AND p.source_id = $source_id
   AND ($source_lang IS NULL OR coalesce(p.source_lang, 'unknown') = $source_lang)
+  AND ($canon IS NULL OR coalesce(p.canon, true) = $canon)
 WITH p, p.id AS id
 DETACH DELETE p
 RETURN count(id) AS deleted
@@ -308,6 +323,7 @@ async def delete_passages_for_source(
     source_type: str,
     source_id: str,
     source_lang: str | None = None,
+    canon: bool | None = None,
 ) -> int:
     """Delete `:Passage` nodes for a given source (e.g. a chapter re-ingested
     with different chunking).
@@ -316,6 +332,14 @@ async def delete_passages_for_source(
     re-ingesting a chapter's vi translation never wipes its zh source passages
     (and vice-versa). None = all languages (back-compat: the chapter-delete /
     chapter.deleted path drops every language of a removed chapter).
+
+    D-R20 (P-3, keep-both): `canon` scopes the delete to ONE bucket. The ingester's
+    pre-write reap passes `canon=False` on a DRAFT index so it never wipes the
+    published canon passages (keep-both), and `canon=None` on a PUBLISH so the new
+    canon supersedes any ahead-of-canon draft. None = both buckets (back-compat:
+    the chapter-delete / kg_excluded retract drops every bucket of a chapter).
+    Legacy null-canon nodes coalesce to canon=True so a canon-scoped reap still
+    matches them.
     """
     result = await run_write(
         session,
@@ -324,6 +348,7 @@ async def delete_passages_for_source(
         source_type=source_type,
         source_id=source_id,
         source_lang=source_lang,
+        canon=canon,
     )
     record = await result.single()
     return int(record["deleted"]) if record else 0
@@ -421,6 +446,7 @@ WHERE p.user_id = $user_id
   AND p.source_type = $source_type
   AND p.source_id = $source_id
   AND ($source_lang IS NULL OR coalesce(p.source_lang, 'unknown') = $source_lang)
+  AND ($canon IS NULL OR coalesce(p.canon, true) = $canon)
   AND p.content_hash IS NOT NULL
 RETURN p.content_hash AS content_hash,
        coalesce(p.canon, true) AS canon,
@@ -480,6 +506,7 @@ async def get_source_ingest_state(
     source_type: str,
     source_id: str,
     source_lang: str | None = None,
+    canon: bool | None = None,
 ) -> dict | None:
     """KG-ML M1 (C10) — read the cached ingest state for a source's passages.
 
@@ -491,6 +518,13 @@ async def get_source_ingest_state(
     change (same text, different model/dim — the model-set path does NOT delete
     `:Passage` nodes, only graph nodes) still re-ingests correctly rather than
     being silently skipped with stale-dimension vectors.
+
+    D-R20 (P-3, keep-both): `canon` scopes the read to ONE bucket so the canon and
+    draft passage sets have INDEPENDENT skip-gates. Without it, a `LIMIT 1` read
+    over a chapter that carries both buckets would nondeterministically return
+    either bucket's hash — a draft re-index could false-miss against the canon
+    node's hash (wasteful re-embed) once keep-both lets the two coexist. None =
+    any bucket (back-compat for pre-P-3 single-bucket callers).
     """
     result = await run_read(
         session,
@@ -499,6 +533,7 @@ async def get_source_ingest_state(
         source_type=source_type,
         source_id=source_id,
         source_lang=source_lang,
+        canon=canon,
     )
     record = await result.single()
     if record is None or not record["content_hash"]:
