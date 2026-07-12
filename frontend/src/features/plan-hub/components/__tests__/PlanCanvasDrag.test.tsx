@@ -63,7 +63,7 @@ function makeLayout(): LaneLayout {
       { id: 'c2', shape: 'chapter', laneId: 'arc-a', x: 240, y: 8, width: 128, collapsed: false, storyOrder: 2 },
       { id: 's1', shape: 'scene', laneId: 'arc-a', x: 40, y: 40, width: 100, collapsed: false, storyOrder: 1 },
     ],
-    unplanned: [], width: 400, height: 320,
+    unassigned: [], unassignedY: null, width: 400, height: 320,
   };
 }
 

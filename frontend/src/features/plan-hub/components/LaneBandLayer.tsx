@@ -9,7 +9,7 @@ import type { Node, NodeProps } from 'reactflow';
 
 import { cn } from '@/lib/utils';
 
-import type { LaneBand } from '../types';
+import type { ArcPagination, LaneBand } from '../types';
 import type { LaneBandData } from './nodePresentation';
 
 /** RF node id namespace for bands — a band's id is a structure_node id, which also names the
@@ -22,7 +22,7 @@ export const LANE_NODE_PREFIX = 'lane:';
 export const LANE_DRAG_HANDLE_CLASS = 'plan-lane-handle';
 
 function LaneBandInner({ data }: NodeProps<LaneBandData>) {
-  const { band, onToggleArc, draggable } = data;
+  const { band, onToggleArc, draggable, pagination, onLoadMore } = data;
 
   return (
     <div
@@ -63,6 +63,34 @@ function LaneBandInner({ data }: NodeProps<LaneBandData>) {
             ⚠
           </span>
         )}
+        {/* PH11 — the window is PAGED at 100. Say how much of the lane you are actually looking at,
+            and offer the rest. Without this the 101st chapter of an arc is invisible and therefore
+            un-draggable, with nothing on screen admitting it exists (a silent truncation). The
+            counter shows even when fully loaded, so "100 of 100" is distinguishable from "100 of
+            340" — the exact ambiguity the bug hid behind. */}
+        {pagination && pagination.total > 0 && (
+          <span
+            data-testid={`plan-lane-count-${band.id}`}
+            className="text-muted-foreground"
+            title={`${pagination.loaded} of ${pagination.total} chapters loaded`}
+          >
+            {pagination.loaded}/{pagination.total}
+          </span>
+        )}
+        {pagination?.hasMore && (
+          <button
+            type="button"
+            data-testid={`plan-lane-more-${band.id}`}
+            disabled={pagination.loading}
+            onClick={(e) => {
+              e.stopPropagation();
+              onLoadMore?.(band.id);
+            }}
+            className="rounded bg-primary/10 px-1 text-primary hover:bg-primary/20 disabled:opacity-50"
+          >
+            {pagination.loading ? '…' : '+ more'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -80,16 +108,21 @@ export function buildLaneNodes(
   width: number,
   onToggleArc: (arcId: string) => void,
   draggableArcs = false,
+  arcPagination: Record<string, ArcPagination> = {},
+  onLoadMore?: (arcId: string) => void,
 ): Node<LaneBandData>[] {
   return lanes.map((band) => {
     // H5 Row-2: only ARC bands drag. A saga can never be given a parent (the server rejects it), so
     // dragging one could only ever fail — don't offer the affordance.
     const draggable = draggableArcs && band.kind === 'arc';
+    // A COLLAPSED lane shows a rollup card, not chapter cards — a "loaded 0/340" counter there would
+    // be nonsense (nothing is meant to be loaded). Only an EXPANDED lane paginates.
+    const pagination = band.collapsed ? undefined : arcPagination[band.id];
     return {
       id: `${LANE_NODE_PREFIX}${band.id}`,
       type: 'lane-band',
       position: { x: 0, y: band.y },
-      data: { band, onToggleArc, draggable },
+      data: { band, onToggleArc, draggable, pagination, onLoadMore },
       draggable,
       // Drag starts ONLY on the header strip — the body stays pointer-transparent so the pane pans.
       dragHandle: draggable ? `.${LANE_DRAG_HANDLE_CLASS}` : undefined,

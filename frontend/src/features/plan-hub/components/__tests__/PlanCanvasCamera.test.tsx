@@ -44,7 +44,7 @@ function makeLayout(): LaneLayout {
       { id: 'ch-1', shape: 'chapter', laneId: 'arc-1', x: 200, y: 28, width: 128, collapsed: false, storyOrder: 1 },
       { id: 'ch-2', shape: 'chapter', laneId: 'arc-1', x: 360, y: 28, width: 128, collapsed: false, storyOrder: 2 },
     ],
-    unplanned: [],
+    unassigned: [], unassignedY: null,
     width: 520,
     height: 160,
   };

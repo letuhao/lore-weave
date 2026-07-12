@@ -128,6 +128,8 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     onMoveScene,
     onMoveArc,
     onReorderChapter,
+    arcPagination,
+    onLoadMoreArc,
     busy,
   } = props;
 
@@ -140,7 +142,9 @@ function PlanCanvasInner(props: PlanCanvasProps) {
   const canDrag = canDragChapter || canDragScene || canDragArc;
 
   const rfNodes = useMemo<Node[]>(() => {
-    const laneNodes = buildLaneNodes(layout.lanes, layout.width, onToggleArc, canDragArc);
+    const laneNodes = buildLaneNodes(
+      layout.lanes, layout.width, onToggleArc, canDragArc, arcPagination, onLoadMoreArc,
+    );
     const contentNodes: Node<PlanNodeData>[] = layout.nodes.map((n: NodePosition) => ({
       id: n.id,
       type: n.shape,
@@ -167,7 +171,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc]);
 
   // RF's live node list. It exists ONLY so a drag can move the card under the cursor (see the header:
   // a controlled `nodes` prop with no onNodesChange never updates the store, so nothing moves). It is

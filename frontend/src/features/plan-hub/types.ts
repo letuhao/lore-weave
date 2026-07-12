@@ -103,6 +103,17 @@ export interface PlanOverlayProblemNode {
   threads_open: number;
   refs: PlanOverlayRef[];
 }
+/** PH11 — how much of an arc's chapter window is actually loaded. The children route pages at 100,
+ *  so a 340-chapter arc shows 100 cards. Without surfacing this, the other 240 are invisible AND
+ *  un-draggable, with nothing on screen admitting they exist — a silent truncation (OUT-5). */
+export interface ArcPagination {
+  loaded: number;
+  /** The arc's TRUE chapter count, from the shell (`chapter_count`) — never the loaded length. */
+  total: number;
+  hasMore: boolean;
+  loading: boolean;
+}
+
 /** A MANUSCRIPT chapter with no spec node (PH21). It has no canvas node — that is the whole
  *  point — so it is addressed by its book-service `chapter_id`, not an outline-node id. */
 export interface UnplannedChapter {
@@ -212,6 +223,10 @@ export interface PlanHubView {
   unplanned: UnplannedChapter[] | null;
   /** EXACT count even when the tray list is server-capped at 200. */
   unplannedCount: number;
+  /** PH11 — per-arc window state (loaded / total / hasMore / loading) for the lane header counter. */
+  arcPagination: Record<string, ArcPagination>;
+  /** PH11 — page in the next 100 chapters of an expanded arc. */
+  loadMoreArc: (arcId: string) => void;
   /** PH21 CTA — run the SC6 decompiler (`materialize-scenes`) on this book. */
   extract: {
     run: () => void;
@@ -293,6 +308,11 @@ export interface PlanCanvasProps {
    *  canvas reports the unit it landed after (null ⇒ before everything); the controller decides
    *  whether that's a real move and whether it can be named to the server. */
   onReorderChapter?: (chapterNodeId: string, afterUnit: NodePosition | null) => void;
+  /** PH11 — per-arc window pagination (loaded/total/hasMore), rendered in the lane header. */
+  arcPagination?: Record<string, ArcPagination>;
+  /** PH11 — fetch the next chapter page of an expanded arc. Without a caller, an arc's 101st
+   *  chapter is unreachable: invisible on the canvas AND undraggable. */
+  onLoadMoreArc?: (arcId: string) => void;
   /** H5: a move is in flight ⇒ freeze dragging. The lanes under the cursor are about to be replaced
    *  by the server's answer, so a second drag would be aimed at a layout that no longer holds. */
   busy?: boolean;

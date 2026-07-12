@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { getArcs, getConformanceStatus, getPlanOverlay, getSceneLinks } from '../api';
 import { laneLayout } from '../layout/laneLayout';
-import type { CollapseState, NodeContent, PlanHubView } from '../types';
+import type { ArcPagination, CollapseState, NodeContent, PlanHubView } from '../types';
 import { usePlanWindows } from './usePlanWindows';
 import { usePlanMoves } from './usePlanMoves';
 import { useActualState } from './useActualState';
@@ -149,6 +149,29 @@ export function usePlanHub(bookId: string): PlanHubView {
     patchWindow: windowsResult.patch,
   });
 
+  // PH11 — per-arc window state for the lane header. `total` is the arc's TRUE `chapter_count` from
+  // the shell, never the loaded length: the two differing is exactly what tells the user (and the
+  // "+ more" button) that chapters 101..340 exist but aren't on screen. `loadMoreArc` was exported
+  // by usePlanWindows and consumed by NOBODY, so those chapters were unreachable — invisible on the
+  // canvas and therefore impossible to drag, with nothing admitting they were there.
+  const arcPagination = useMemo(() => {
+    const loadedByArc: Record<string, number> = {};
+    for (const w of windowsResult.windows) {
+      if (w.kind !== 'chapter' || !w.structure_node_id) continue;
+      loadedByArc[w.structure_node_id] = (loadedByArc[w.structure_node_id] ?? 0) + 1;
+    }
+    const out: Record<string, ArcPagination> = {};
+    for (const a of arcsQuery.data?.arcs ?? []) {
+      out[a.id] = {
+        loaded: loadedByArc[a.id] ?? 0,
+        total: a.chapter_count,
+        hasMore: !!windowsResult.arcHasMore[a.id],
+        loading: !!windowsResult.arcLoading[a.id],
+      };
+    }
+    return out;
+  }, [arcsQuery.data, windowsResult.windows, windowsResult.arcHasMore, windowsResult.arcLoading]);
+
   // PH21 CTA — the decompiler. Lives here (not in the panel) so the panel stays a view.
   const extract = useExtractPlan(bookId, token, windowsResult.reload);
 
@@ -183,6 +206,8 @@ export function usePlanHub(bookId: string): PlanHubView {
     specEmpty,
     unplanned,
     unplannedCount: overlay?.unplanned_count ?? unplanned?.length ?? 0,
+    arcPagination,
+    loadMoreArc: windowsResult.loadMoreArc,
     extract,
     loading,
     error,

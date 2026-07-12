@@ -98,7 +98,7 @@ function makeLayout(): LaneLayout {
         storyOrder: 3,
       },
     ],
-    unplanned: [],
+    unassigned: [], unassignedY: null,
     width: 520,
     height: 160,
   };

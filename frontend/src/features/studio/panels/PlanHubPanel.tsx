@@ -129,6 +129,8 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onMoveScene={view.moveSceneToChapter}
           onMoveArc={view.moveArcTo}
           onReorderChapter={view.reorderChapter}
+          arcPagination={view.arcPagination}
+          onLoadMoreArc={view.loadMoreArc}
           busy={view.moving}
         />
         {/* PH21 — a HUD notice for the UNASSIGNED strip (spec chapters bound to no arc — the normal

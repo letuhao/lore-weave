@@ -8,6 +8,7 @@
 // scalars arrive with node enrichment in H4; here the label is the stable storyOrder
 // placeholder and scalars are read ONLY from the overlay/conformance surfaces we already hold.
 import type {
+  ArcPagination,
   ConformanceStatus,
   LaneBand,
   NodeContent,
@@ -49,6 +50,9 @@ export interface LaneBandData {
   onToggleArc: (arcId: string) => void;
   /** H5 Row-2: this band can be dragged (by its header) to move the arc. Sagas never drag. */
   draggable?: boolean;
+  /** Absent ⇒ the lane is collapsed / has nothing paged (no counter, no button). */
+  pagination?: ArcPagination;
+  onLoadMore?: (arcId: string) => void;
 }
 
 /**
