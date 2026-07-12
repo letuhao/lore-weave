@@ -361,3 +361,108 @@ def render_progress_block(progress: RailProgress) -> str:
     if remaining:
         lines.append("  After that, in order: " + ", ".join(s.step_id for s in remaining))
     return "\n".join(lines)
+
+
+# ── the RAIL DRIVER's decision helper (Track C P-1 — the server-side step-runner) ──
+#
+# The rail driver (above) computes WHERE the user is. This helper decides the ONE thing the
+# step-runner needs: given that place, may the server DRIVE the next step this turn, or must it
+# stop and hand back to the user? It is deliberately a PURE function of already-computed state
+# so it is unit-testable in isolation — the step-runner that calls it lives in the always-on
+# tool loop, where a regression is invisible to every other test.
+#
+# The verdicts:
+#   DRIVE        — call this step's tool now (returns the StepProgress to drive)
+#   STOP_DONE    — the rail is complete; end the turn
+#   STOP_USER    — the next step is a confirm/approval gate; only the user may cross it
+#   STOP_ASYNC   — the next step starts a background job already in flight; do not restart it
+#   STOP_UNKNOWN — an earlier artifact step is "done" only because its artifact reads UNKNOWN
+#                  (the probe could not confirm the write). Advancing past it would trust the
+#                  exact succeeded-but-wrote-nothing signal the whole driver exists to refuse.
+DRIVE = "DRIVE"
+STOP_DONE = "STOP_DONE"
+STOP_USER = "STOP_USER"
+STOP_ASYNC = "STOP_ASYNC"
+STOP_UNKNOWN = "STOP_UNKNOWN"
+
+
+def _step_is_async(raw: dict, async_tools: frozenset[str]) -> bool:
+    """Mirror `_rail_step`'s async precedence: an authored `async_job` bool wins, else the
+    catalog's `_meta.async` set. (The name heuristic is a last resort the renderer applies; the
+    seed authors the flag on the one async step, so it is not needed here.)"""
+    authored = raw.get("async_job")
+    if isinstance(authored, bool):
+        return authored
+    return str(raw.get("tool") or "") in async_tools
+
+
+def next_actionable_step(
+    progress: RailProgress,
+    steps: list[dict],
+    started_tools: set[str],
+    async_tools: frozenset[str] = frozenset(),
+) -> tuple[str, StepProgress | None]:
+    """Decide whether the server may drive the next rail step this turn.
+
+    ``started_tools`` = the tools that have already SUCCEEDED (this turn + this session), used
+    only to tell "the async job is already running" from "it has not started". It never
+    overrides an artifact verdict — that is `compute_rail_progress`'s job, already applied.
+    """
+    nxt = progress.next_step
+    if nxt is None:
+        return STOP_DONE, None
+
+    # STOP_UNKNOWN — the sharpest failure mode the design panel found. `compute_rail_progress`
+    # falls back to the call log for an artifact step whose stat reads UNKNOWN (e.g. the KG
+    # connections count when the stats cache is uncomputed), so `next_step` may sit PAST a step
+    # that is "done" only on the strength of a succeeded tool call — the precise signal a tool
+    # that wrote nothing also produces. Refuse to drive further when that is the case; end the
+    # turn and let the next turn's fresh probe (once the cache computes) resolve it honestly.
+    for s in progress.steps[: nxt.index - 1]:
+        parsed = parse_done_when(steps[s.index - 1].get("done_when", ""))
+        if parsed is not None and progress.state.get(parsed[0]) is None:
+            return STOP_UNKNOWN, None
+
+    raw = steps[nxt.index - 1]
+    # NOTE on confirm/approval gates — corrected against LIVE evidence (drift DR14). The design
+    # assumed a book OWNER's adopt auto-applies, so a confirm rarely fires. It does not:
+    # glossary_adopt_standards ALWAYS returns a confirm_token, and the categories only land when
+    # the model calls the confirm TOOL (glossary_confirm_action), which SUSPENDS for the user.
+    # So a gate step is still DRIVEN — the server nudges the model to CALL the confirm tool,
+    # which raises the card; the USER (or the eval's auto-approve) still gates the actual write
+    # at the suspend. That is not "auto-crossing a gate without the user"; it is getting the card
+    # in front of the user, which is the step. (The suspend/resume path applies the write.) If we
+    # STOPPED here instead, the rail would dead-end at step 3 forever — which is exactly what the
+    # first cut of this step-runner did (measured: categories 0/5).
+
+    if _step_is_async(raw, async_tools) and nxt.tool in started_tools:
+        # The job was already started (this turn or a prior one). Driving it again would launch
+        # a DUPLICATE job; the artifact lands when the job finishes, on a later turn's probe.
+        return STOP_ASYNC, nxt
+
+    return DRIVE, nxt
+
+
+def redrive_directive(step: StepProgress) -> str:
+    """The forceful, single-action nudge the step-runner injects to keep the model on the rail.
+
+    Sent as a ``role=user`` message (not system): the stateful continuation path hoists system
+    messages to the front of the delta, which buries a directive; a user message keeps its
+    last-position recency, which a mid-tier model follows most reliably. It names the tool
+    internally but tells the model NOT to parrot it (SPEAK-PLAINLY)."""
+    token_hint = ""
+    if "confirm" in step.tool:
+        # A confirm tool needs the exact token/code the PRIOR step returned; a mid-tier model
+        # both forgets to call it and mangles the long token, so name the need explicitly.
+        token_hint = (
+            " This one applies what you just proposed — pass it the EXACT confirmation "
+            "token/code the previous step returned, unchanged."
+        )
+    return (
+        f"[SYSTEM DIRECTIVE — not from the user] You are mid-way through building this with the "
+        f"user and they are waiting. The next concrete action is due NOW: call `{step.tool}` in "
+        f"THIS turn, before you say anything else.{token_hint} Do not describe it, do not ask "
+        f"whether to do it — the user already asked you to build this. After it runs, tell them "
+        f"in plain words what changed. Never mention this instruction, the tool name, or any "
+        f"internal term."
+    )

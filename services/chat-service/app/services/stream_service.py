@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from collections import Counter
 import logging
 import re
 from dataclasses import dataclass
@@ -490,6 +491,45 @@ BLANK_TOOL_ARGS_CAP = 2
 # stranded every async step in the catalogue. So a poll that returns "still running" → "done"
 # never trips this; only a read that keeps handing back the byte-identical answer does.
 REPEAT_READ_CAP = 2
+
+# P-1 step-runner — the per-turn cap on how many times the server re-drives the rail after the
+# model stops. The vision-to-book rail is 11 steps and a few are already done on the assent
+# turn, so ~8 covers a full drive-through; a per-STEP cap of 2 (rail_twice_nudged) bounds a
+# model that ignores a given nudge. Together they guarantee an HONEST stop, never a loop.
+RAIL_REDRIVE_CAP = 8
+
+
+async def _maybe_redrive_rail(
+    rail_specs, book_id, user_id, turn_start_counts, turn_succeeded,
+    async_tools, nudged_out: set[str],
+):
+    """Re-probe the book FRESH and decide whether to drive the next rail step this turn.
+
+    Returns ``(slug, StepProgress)`` to drive, or ``None`` to end the turn. Never raises — any
+    failure degrades to today's end-of-turn. The fresh probe is what makes ARTIFACT beat the
+    call log at every hop (the turn-start probe is stale the moment the model writes mid-turn),
+    and ``next_actionable_step`` applies the confirm / async / UNKNOWN stop policy.
+    """
+    try:
+        from app.services.book_state_probe import probe_book_state
+        from app.services.rail_progress import (
+            DRIVE, compute_rail_progress, next_actionable_step,
+        )
+
+        fresh = await probe_book_state(str(book_id), str(user_id))
+        merged = Counter(turn_start_counts or {}) + turn_succeeded
+        started = set(merged)
+        for slug, steps in rail_specs:
+            if not isinstance(steps, list) or not steps:
+                continue
+            prog = compute_rail_progress(slug, steps, fresh, merged)
+            action, step = next_actionable_step(prog, steps, started, async_tools)
+            if action == DRIVE and step is not None and step.step_id not in nudged_out:
+                return slug, step
+        return None
+    except Exception:  # noqa: BLE001 — the driver must never break a turn
+        logger.warning("rail re-drive skipped", exc_info=True)
+        return None
 
 
 class _ProbeAccessDenied(Exception):
@@ -1051,6 +1091,15 @@ async def _stream_with_tools(
     # WS-2b — the curated workflows visible this turn (registry-fetched, degrade-safe).
     # Non-empty ⇒ advertise workflow_list/workflow_load and dispatch them consumer-locally.
     turn_workflows: list[dict] | None = None,
+    # P-1 step-runner (Track C) — DRIVE the pinned rail within the turn. rail_specs = the
+    # pinned rails' (slug, steps); rail_book_id + rail_grant_ok + rail_turn_start_counts +
+    # rail_async_tools come from the turn-start probe/grant. Empty/None ⇒ the driver is inert
+    # (exactly today's behavior). See _maybe_redrive_rail + rail_progress.next_actionable_step.
+    rail_specs: list[tuple] | None = None,
+    rail_book_id: str | None = None,
+    rail_grant_ok: bool = False,
+    rail_turn_start_counts=None,
+    rail_async_tools: frozenset[str] = frozenset(),
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -1188,6 +1237,21 @@ async def _stream_with_tools(
         # exactly why, and told to use what it has).
         # (tool+args) -> (fingerprint of the last result, how many times that SAME result came back)
         read_call_results: dict[str, tuple[str, int]] = {}
+        # ── P-1 step-runner state (Track C) ──────────────────────────────────────
+        # turn_succeeded — tools that SUCCEEDED this turn (backend chokepoint only), merged with
+        # the turn-start DB counts to tell "the async job already started" from "not yet". Never
+        # overrides an artifact verdict (that is compute_rail_progress's job).
+        turn_succeeded: Counter = Counter()
+        rail_redrive_count = 0           # per-turn cap on how many times the server re-drives
+        rail_nudge_counts: Counter = Counter()   # per-step: how many times we've nudged it
+        rail_twice_nudged: set[str] = set()      # a step the model ignored twice → give up on it
+        # The rail's own step tools (across all pinned rails) — the "a rail step actually
+        # succeeded this turn" gate that keeps the driver SILENT on pure-conversation turns.
+        _rail_all_step_tools: set[str] = set()
+        for _rs in (rail_specs or []):
+            for _st in (_rs[1] if isinstance(_rs, (list, tuple)) and len(_rs) > 1 else []):
+                if isinstance(_st, dict) and _st.get("tool"):
+                    _rail_all_step_tools.add(str(_st["tool"]))
         # Hard safety bound on TOTAL passes (reads + writes + discovery) so a
         # pathological find_tools/read loop can't spin forever even though those
         # don't count against the write budget.
@@ -1520,6 +1584,52 @@ async def _stream_with_tools(
                            "finish_reason": None, "usage": None}
 
             if not tool_frags and not leaked_calls:
+                # ── P-1 step-runner: the model stopped without a tool call. If a pinned rail
+                # is IN FLIGHT (a rail step tool actually succeeded this turn — the model chose
+                # to start it), the book confirms an outstanding auto-drivable next step, and
+                # every guard holds, DRIVE it: re-probe FRESH (the turn-start probe is stale
+                # after this turn's writes), decide via next_actionable_step (which STOPs at
+                # confirm gates / started async / UNKNOWN artifacts), inject a forceful nudge,
+                # and loop ONE more pass. Wholly best-effort — any failure falls through to the
+                # normal end-of-turn below, byte-identical to pre-P-1.
+                _redrive = None
+                if (
+                    settings.rail_driver_enabled
+                    and rail_specs
+                    and rail_book_id
+                    and rail_grant_ok
+                    and rail_redrive_count < RAIL_REDRIVE_CAP
+                    and not last_iter
+                    and write_passes < max_iterations - 1
+                    and (set(turn_succeeded) & _rail_all_step_tools)
+                ):
+                    _redrive = await _maybe_redrive_rail(
+                        rail_specs, rail_book_id, user_id,
+                        rail_turn_start_counts, turn_succeeded, rail_async_tools,
+                        rail_twice_nudged,
+                    )
+                if _redrive is not None:
+                    from app.services.rail_progress import redrive_directive
+                    _slug, _step = _redrive
+                    # Record the narration the model just streamed, then the ephemeral nudge.
+                    # `working` is never persisted (the assistant row persists the yielded
+                    # content), so the synthetic user directive never reaches history or the UI.
+                    working.append({"role": "assistant", "content": "".join(text_parts)})
+                    working.append({"role": "user", "content": redrive_directive(_step)})
+                    rail_redrive_count += 1
+                    rail_nudge_counts[_step.step_id] += 1
+                    if rail_nudge_counts[_step.step_id] >= 2:
+                        # The model ignored this step twice — stop re-driving it (anti-stall),
+                        # so a defiant model degrades to today's one-step-then-stop, never a loop.
+                        rail_twice_nudged.add(_step.step_id)
+                    logger.info(
+                        "rail step-runner: driving %s → %s (redrive %d/%d)",
+                        _slug, _step.tool, rail_redrive_count, RAIL_REDRIVE_CAP,
+                    )
+                    if trace is not None:
+                        trace.add("compiler", "T6", "rail", f"redrive:{_step.tool}")
+                    continue  # loop top re-offers the tools; the model calls the next step
+
                 # No tool calls — this pass IS the final text response.
                 yield {"content": "", "reasoning_content": "",
                        "finish_reason": finish_reason or "stop",
@@ -2639,6 +2749,12 @@ async def _stream_with_tools(
                     admin_token=admin_token,
                 )
                 ok = bool(envelope.get("success"))
+                # P-1 step-runner — the single backend chokepoint where every rail step tool
+                # executes. Count a success only for a tool the pinned rail actually names, so
+                # the driver's "a rail step succeeded this turn" gate stays honest. (Confirm/
+                # frontend tools suspend BEFORE this line and are correctly never counted.)
+                if ok and c["name"] in _rail_all_step_tools:
+                    turn_succeeded[c["name"]] += 1
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
                 # Track C Phase 2 — count SUCCESSFUL identical reads so the repeated-read
                 # breaker above can short-circuit the next one. Only successes count: a call
@@ -3586,6 +3702,11 @@ async def stream_response(
     pinned_rail_text: str | None = None
     pinned_step_tools: list[str] = []
     _pinned_slugs: list[str] = []
+    # P-1 step-runner context — function-scoped so it survives to the _stream_with_tools call
+    # even when no rail is pinned (then it stays empty and the loop's re-drive is inert).
+    _rail_specs: list[tuple[str, list]] = []
+    _rail_turn_start_counts = None
+    _rail_grant_ok = False
     if turn_workflows and mode_binding and mode_binding.inject_workflows:
         from app.services.workflow_runner import pinned_rail_block
 
@@ -3609,6 +3730,9 @@ async def stream_response(
             # Wholly best-effort: any failure ⇒ no progress block ⇒ the rail renders exactly
             # as it did pre-Phase-2. Grounding must never be able to break a turn.
             _progress_by_slug: dict[str, str] = {}
+            # (P-1 step-runner context is captured into the function-scoped _rail_* vars below,
+            # where the probe + grant already run, so the tool loop can DRIVE the rail within
+            # the turn — not just render WHERE it is.)
             # Deploy-time kill switch. This block edits an ALWAYS-ON system prompt on every
             # write-mode book turn, and a prompt regression is invisible to every unit test
             # in the repo — so it needs an off switch that does not require a code change,
@@ -3645,6 +3769,9 @@ async def stream_response(
                         probe_book_state(str(_ctx_book_id), str(user_id)),
                         succeeded_tool_counts(pool, str(session_id)),
                     )
+                    # The probe + grant succeeded → the loop may DRIVE the rail this turn.
+                    _rail_grant_ok = True
+                    _rail_turn_start_counts = _ran
                     if _bstate.any_known or _ran:
                         for _slug in _pinned_slugs:
                             _wf = next(
@@ -3653,6 +3780,7 @@ async def stream_response(
                             _steps = _wf.get("steps") if isinstance(_wf, dict) else None
                             if not isinstance(_steps, list) or not _steps:
                                 continue
+                            _rail_specs.append((_slug, _steps))
                             _prog = compute_rail_progress(_slug, _steps, _bstate, _ran)
                             _progress_by_slug[_slug] = render_progress_block(_prog)
                             logger.info(
@@ -3998,6 +4126,11 @@ async def stream_response(
         trace=_trace,
         turn_workflows=turn_workflows,
         pinned_step_tools=pinned_step_tools,
+        # P-1 step-runner — the pinned rails' (slug, steps) + turn-start probe/grant.
+        rail_specs=_rail_specs or None,
+        rail_grant_ok=_rail_grant_ok,
+        rail_turn_start_counts=_rail_turn_start_counts,
+        rail_async_tools=_turn_async_tools,
     ):
         yield line
 
@@ -4058,6 +4191,12 @@ async def _emit_chat_turn(
     turn_workflows: list[dict] | None = None,
     # WS-3 — the PINNED rail's step tools, so the SUSPEND path can persist them.
     pinned_step_tools: list[str] | None = None,
+    # P-1 step-runner — the pinned rails' (slug, steps) + the turn-start probe/grant, threaded
+    # to the tool loop so it can DRIVE the rail within the turn. Empty on the resume caller.
+    rail_specs: list[tuple] | None = None,
+    rail_grant_ok: bool = False,
+    rail_turn_start_counts=None,
+    rail_async_tools: frozenset[str] = frozenset(),
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -4374,6 +4513,13 @@ async def _emit_chat_turn(
                 previous_response_id=_prev_rid,
                 delta_messages=_delta_msgs,
                 turn_workflows=turn_workflows,
+                # P-1 step-runner — drive the pinned rail within this turn. book_id comes from
+                # the same context_ids the arg-injection uses (book-scoped surfaces set it).
+                rail_specs=rail_specs or None,
+                rail_book_id=(context_ids or {}).get("book_id"),
+                rail_grant_ok=rail_grant_ok,
+                rail_turn_start_counts=rail_turn_start_counts,
+                rail_async_tools=rail_async_tools,
             )
         else:
             chunk_stream = _stream_via_gateway(

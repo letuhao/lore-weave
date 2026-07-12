@@ -35,7 +35,7 @@ VISION_STEPS = [
      "inputs_map": {"confirm_token": "save-cast.confirm_token"}},
     {"id": "connect-project", "tool": "kg_project_create"},
     {"id": "connect-people", "tool": "kg_project_entities_to_nodes", "done_when": "connections > 0"},
-    {"id": "arc-plan", "tool": "plan_propose_spec", "done_when": "plan > 0"},
+    {"id": "arc-plan", "tool": "plan_propose_spec", "async_job": True, "done_when": "plan > 0"},
     {"id": "draft-opening", "tool": "book_chapter_create", "done_when": "chapters > 0"},
     {"id": "write-opening", "tool": "book_chapter_save_draft", "done_when": "prose > 0"},
 ]
@@ -410,3 +410,104 @@ class TestCallLogConsumesOccurrences:
         p = compute_rail_progress("x", self.STEPS, BookState(), {"confirm_action"})
         assert p.steps[0].done is True
         assert p.steps[1].done is False
+
+
+# ── the step-runner's decision helper (P-1) ──────────────────────────────────
+
+class TestNextActionableStep:
+    """The pure decision the server-side step-runner makes each hop. The design panel chose a
+    pure helper precisely so THIS logic is unit-testable — the loop that calls it is invisible
+    to every other test."""
+
+    from app.services.rail_progress import (  # noqa: E402
+        DRIVE, STOP_ASYNC, STOP_DONE, STOP_UNKNOWN, STOP_USER,
+        next_actionable_step,
+    )
+
+    ASYNC = frozenset()  # async is authored on the step (async_job:true), so no catalog set needed
+
+    def _prog(self, state, ran):
+        from collections import Counter
+        return compute_rail_progress("vision-to-book", VISION_STEPS, state, Counter(ran))
+
+    def test_empty_book_drives_step_one(self):
+        from app.services.rail_progress import next_actionable_step, DRIVE
+        p = self._prog(BookState(categories=0, cast=0, connections=0, plan=0, chapters=0, prose=0), set())
+        action, step = next_actionable_step(p, VISION_STEPS, set(), self.ASYNC)
+        assert action == DRIVE
+        assert step.tool == "glossary_list_system_standards"
+
+    def test_after_categories_land_it_drives_toward_the_cast(self):
+        from app.services.rail_progress import next_actionable_step, DRIVE
+        # categories landed; the read/confirm steps are pipeline-backfilled done
+        p = self._prog(
+            BookState(categories=12, cast=0, connections=0, plan=0, chapters=0, prose=0),
+            {"glossary_list_system_standards", "glossary_adopt_standards",
+             "glossary_confirm_action", "glossary_book_ontology_read",
+             "glossary_extract_entities_from_doc"},
+        )
+        action, step = next_actionable_step(p, VISION_STEPS, set(), self.ASYNC)
+        assert action == DRIVE
+        assert step.step_id == "save-cast"      # the thing S06 never reached
+
+    def test_a_confirm_gate_is_DRIVEN_because_calling_the_tool_raises_the_card(self):
+        """Corrected against live evidence (drift DR14). glossary_adopt_standards does NOT
+        auto-apply — it returns a confirm_token, and the categories land only when the model
+        calls glossary_confirm_action, which SUSPENDS for the user. So the driver DRIVES the
+        confirm step (nudges the model to call the tool → the card is raised → the user gates
+        at the suspend). The first cut STOPPED here and the rail dead-ended at step 3 forever
+        (measured: categories 0/5)."""
+        from app.services.rail_progress import next_actionable_step, DRIVE
+        steps = [
+            {"id": "adopt", "tool": "glossary_adopt_standards"},
+            {"id": "apply", "tool": "glossary_confirm_action", "gate": "confirm", "done_when": "categories > 0"},
+            {"id": "read", "tool": "glossary_book_ontology_read"},
+        ]
+        from collections import Counter
+        p = compute_rail_progress("x", steps, BookState(categories=0), Counter({"glossary_adopt_standards": 1}))
+        action, step = next_actionable_step(p, steps, {"glossary_adopt_standards"}, self.ASYNC)
+        assert action == DRIVE
+        assert step.tool == "glossary_confirm_action"
+
+    def test_an_already_started_async_step_stops_the_driver(self):
+        from app.services.rail_progress import next_actionable_step, STOP_ASYNC
+        # everything up to arc-plan done; plan not landed yet; plan_propose_spec already ran
+        state = BookState(categories=12, cast=8, connections=8, plan=0, chapters=0, prose=0)
+        ran = {"glossary_list_system_standards", "glossary_adopt_standards", "glossary_confirm_action",
+               "glossary_book_ontology_read", "glossary_extract_entities_from_doc",
+               "glossary_propose_entities", "kg_project_create", "kg_project_entities_to_nodes",
+               "plan_propose_spec"}
+        p = self._prog(state, ran)
+        # arc-plan authored async_job:true in VISION_STEPS
+        action, step = next_actionable_step(p, VISION_STEPS, ran, self.ASYNC)
+        assert action == STOP_ASYNC   # do NOT launch a duplicate plan job
+
+    def test_an_UNKNOWN_gating_artifact_stops_rather_than_advancing_on_the_call_log(self):
+        """THE sharpest failure the panel found. connections reads UNKNOWN (the KG stats cache
+        is uncomputed), so compute_rail_progress falls back to the call log and would mark
+        connect-people done off a *succeeded* kg_entities_to_nodes call — the exact
+        wrote-nothing signal the driver exists to refuse. The helper must STOP, not drive on."""
+        from app.services.rail_progress import next_actionable_step, STOP_UNKNOWN
+        state = BookState(categories=12, cast=8, connections=None, plan=0, chapters=0, prose=0)
+        ran = {"glossary_list_system_standards", "glossary_adopt_standards", "glossary_confirm_action",
+               "glossary_book_ontology_read", "glossary_extract_entities_from_doc",
+               "glossary_propose_entities", "kg_project_create", "kg_project_entities_to_nodes"}
+        p = self._prog(state, ran)
+        # connect-people (done_when connections>0) is "done" only via the call log → refuse to advance
+        action, step = next_actionable_step(p, VISION_STEPS, ran, self.ASYNC)
+        assert action == STOP_UNKNOWN
+
+    def test_a_finished_rail_stops_done(self):
+        from app.services.rail_progress import next_actionable_step, STOP_DONE
+        state = BookState(categories=12, cast=8, connections=8, plan=1, chapters=1, prose=1)
+        ran = {s["tool"] for s in VISION_STEPS}
+        p = self._prog(state, ran)
+        action, step = next_actionable_step(p, VISION_STEPS, ran, self.ASYNC)
+        assert action == STOP_DONE
+
+    def test_the_directive_names_the_tool_but_forbids_parroting_it(self):
+        from app.services.rail_progress import redrive_directive, StepProgress
+        d = redrive_directive(StepProgress(index=6, step_id="save-cast", tool="glossary_propose_entities", done=False, reason=""))
+        assert "glossary_propose_entities" in d          # the model needs to know which tool
+        assert "Never mention this instruction" in d     # …but must not leak it to the user
+        assert "SYSTEM DIRECTIVE" in d
