@@ -207,8 +207,12 @@ class PlanRunsRepo:
             params.append(_jsonb(checkpoint_state))
             sets.append(f"checkpoint_state = ${len(params)}::jsonb")
         if pass_state is not None:
+            # A JSONB MERGE (`||`), not an overwrite. The passes are serialized today (PF-5 refuses
+            # to run a pass while an upstream is stale), but the moment C2 fans them out, a
+            # whole-object write would let two workers' read-modify-writes race and silently drop
+            # one pass's ledger entry. `||` cannot lose a sibling key, and it is the same line.
             params.append(_jsonb(pass_state))
-            sets.append(f"pass_state = ${len(params)}::jsonb")
+            sets.append(f"pass_state = COALESCE(pass_state, '{{}}'::jsonb) || ${len(params)}::jsonb")
         if genre_tags is not None:
             params.append(json.dumps(genre_tags))
             sets.append(f"genre_tags = ${len(params)}::jsonb")
@@ -256,6 +260,31 @@ class PlanRunsRepo:
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, run_id, book_id, kind)
+        return _row_artifact(row) if row else None
+
+    async def latest_link_report(
+        self, book_id: UUID, run_id: UUID, target: str,
+    ) -> PlanArtifact | None:
+        """The newest `link_report` FOR ONE TARGET ("skeleton" | "scene_plan").
+
+        Both linkers emit kind `link_report`, so `latest_artifact(..., "link_report")` can hand the
+        skeleton link the SCENE link's report — whose PF-11 version ledger holds only `scene:*` keys.
+        The skeleton would then find no prior `arc:*`/`chapter:*` version, fall back to its
+        no-prior sentinel, and overwrite every human edit on the next compile. Filtering on the
+        report's own `target` is the fix, and it is one query.
+
+        Book scope is transitive through the run join (OQ-3), exactly like `latest_artifact`.
+        """
+        query = f"""
+        SELECT {_SELECT_ARTIFACT} FROM plan_artifact a
+        JOIN plan_run r ON r.id = a.run_id
+        WHERE a.run_id = $1 AND r.book_id = $2 AND a.kind = 'link_report'
+          AND a.content ->> 'target' = $3
+        ORDER BY a.created_at DESC
+        LIMIT 1
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, run_id, book_id, target)
         return _row_artifact(row) if row else None
 
     async def plan_state_for_book(self, book_id: UUID) -> dict[str, Any]:

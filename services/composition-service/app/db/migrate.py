@@ -1320,6 +1320,9 @@ ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS genre_tags JSONB NOT NULL DEFAULT 
 -- Per `migration-check-constraint-must-backfill-all-historical-blocks`, the re-add
 -- must carry EVERY historical value, not just the new ones: dropping one silently
 -- makes existing rows unwritable.
+-- Re-added unconditionally: these two tables are small (one row per plan run), so the
+-- re-validation cost is negligible, and an unconditional re-add keeps the CHECK's value
+-- set in ONE place rather than split between a CREATE TABLE and a guarded migration.
 ALTER TABLE plan_run DROP CONSTRAINT IF EXISTS plan_run_status_chk;
 ALTER TABLE plan_run ADD CONSTRAINT plan_run_status_chk CHECK (
   status IN ('pending', 'proposed', 'checkpoint', 'validated', 'compiled', 'failed',
@@ -1376,13 +1379,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_outline_node_plan_prov
 -- sets one today, but a stray historical row would make the ADD CONSTRAINT fail (or,
 -- worse, be silently skipped by a NOT VALID). NULL any such row in the SAME transaction
 -- first, so the constraint is provable rather than hoped-for.
-UPDATE outline_node SET chapter_id = NULL
- WHERE chapter_id IS NOT NULL AND kind NOT IN ('chapter', 'scene');
-
-ALTER TABLE outline_node DROP CONSTRAINT IF EXISTS outline_chapter_required;
-ALTER TABLE outline_node DROP CONSTRAINT IF EXISTS outline_chapter_written_kinds;
-ALTER TABLE outline_node ADD CONSTRAINT outline_chapter_written_kinds
-  CHECK (chapter_id IS NULL OR kind IN ('chapter', 'scene'));
+-- GUARDED so it runs ONCE, not on every boot. Unguarded, each startup did a full-table UPDATE
+-- scan of outline_node and then DROP+ADD the CHECK — which takes an ACCESS EXCLUSIVE lock and
+-- re-validates the whole table. On the service's largest table that is a stop-the-world pause on
+-- every deploy, for a migration that has already been applied. (The same guard pattern is used ~160
+-- lines above for outline_node_source_check.) The block stays atomic, so there is never a window
+-- in which the CHECK is absent.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'outline_chapter_written_kinds'
+  ) THEN
+    -- Pre-flight IN THE SAME transaction as the ADD, so the constraint is provable, not hoped for.
+    UPDATE outline_node SET chapter_id = NULL
+     WHERE chapter_id IS NOT NULL AND kind NOT IN ('chapter', 'scene');
+    ALTER TABLE outline_node DROP CONSTRAINT IF EXISTS outline_chapter_required;
+    ALTER TABLE outline_node ADD CONSTRAINT outline_chapter_written_kinds
+      CHECK (chapter_id IS NULL OR kind IN ('chapter', 'scene'));
+  END IF;
+END $$;
 
 -- ── authoring_runs (RAID Wave D2, DR-D): the autonomous authoring-run entity —
 -- the §10 dial's level-3/4 run row. One row per gated autonomous drafting run

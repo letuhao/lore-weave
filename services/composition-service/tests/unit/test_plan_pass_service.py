@@ -104,10 +104,27 @@ def test_a_pass_that_never_ran_is_not_fresh():
     assert pps.is_fresh(run_with({}), "cast") is False
 
 
+PKG = uuid4()  # the run's current `planning_package` artifact
+
+
 def test_a_completed_pass_with_a_matching_fingerprint_is_fresh():
-    # `cast` has no dependencies ⇒ its inputs are the empty list.
-    fp = pps.fingerprint(input_artifact_ids=[])
-    assert pps.is_fresh(run_with({"cast": done(uuid4(), fp)}), "cast") is True
+    # `cast` has no PASS dependencies, but it DOES read the package — so the package artifact id is
+    # its only input. (Before the fix its fingerprint was a constant and it was fresh forever.)
+    fp = pps.fingerprint(input_artifact_ids=[str(PKG)])
+    r = run_with({"cast": done(uuid4(), fp)})
+    assert pps.is_fresh(r, "cast", package_artifact_id=PKG) is True
+
+
+def test_a_NEW_PACKAGE_stales_the_entry_passes():
+    """THE bug this fixes. `motifs`/`cast` have no pass dependencies, so with the package left out of
+    the fingerprint their input set was EMPTY — a constant — and they were fresh forever, including
+    after the user re-compiled with a different arc or genre and a brand-new package artifact. That
+    is the "a plan silently becomes internally inconsistent" failure PF-5 exists to stop."""
+    fp = pps.fingerprint(input_artifact_ids=[str(PKG)])
+    r = run_with({"cast": done(uuid4(), fp)})
+    assert pps.is_fresh(r, "cast", package_artifact_id=PKG) is True
+    # …re-compile ⇒ a NEW package artifact ⇒ cast is stale, by derivation, with no invalidation write.
+    assert pps.is_fresh(r, "cast", package_artifact_id=uuid4()) is False
 
 
 def test_RE_RUNNING_a_pass_stales_its_downstream_with_ZERO_invalidation_writes():
@@ -115,16 +132,17 @@ def test_RE_RUNNING_a_pass_stales_its_downstream_with_ZERO_invalidation_writes()
     recorded fingerprint no longer matches the one its inputs produce ⇒ stale, by derivation.
     Nothing was written to `world`. This is `make`: edit a header, dependents rebuild."""
     cast_v1 = uuid4()
-    cast_fp = pps.fingerprint(input_artifact_ids=[])
-    world_fp = pps.fingerprint(input_artifact_ids=[str(cast_v1)])
+    cast_fp = pps.fingerprint(input_artifact_ids=[str(PKG)])
+    # `world` reads the package AND depends on `cast` — in registry order: package first, then deps.
+    world_fp = pps.fingerprint(input_artifact_ids=[str(PKG), str(cast_v1)])
     r = run_with({"cast": done(cast_v1, cast_fp), "world": done(uuid4(), world_fp)})
-    assert pps.is_fresh(r, "world") is True
+    assert pps.is_fresh(r, "world", package_artifact_id=PKG) is True
 
     # …re-run `cast`: a NEW artifact id, and we touch NOTHING else.
     cast_v2 = uuid4()
     r2 = run_with({"cast": done(cast_v2, cast_fp), "world": r.pass_state["world"]})
-    assert pps.is_fresh(r2, "cast") is True    # cast itself is fine
-    assert pps.is_fresh(r2, "world") is False  # …and world went stale on its own
+    assert pps.is_fresh(r2, "cast", package_artifact_id=PKG) is True    # cast itself is fine
+    assert pps.is_fresh(r2, "world", package_artifact_id=PKG) is False  # …world staled on its own
 
 
 def test_an_upstream_that_never_ran_stales_the_downstream():
@@ -172,15 +190,17 @@ def test_pass_cursor_is_CONTIGUOUS_not_a_count():
     cursor answers "how far can the compiler proceed unattended", which a total count answers
     wrongly."""
     m, c = uuid4(), uuid4()
+    pkg_fp = pps.fingerprint(input_artifact_ids=[str(PKG)])
     r = run_with({
-        "motifs": done(m, pps.fingerprint(input_artifact_ids=[])),
-        "cast": done(c, pps.fingerprint(input_artifact_ids=[]), decision="accepted"),
-        "world": done(uuid4(), pps.fingerprint(input_artifact_ids=[str(c)])),
+        "motifs": done(m, pkg_fp),
+        "cast": done(c, pkg_fp, decision="accepted"),
+        "world": done(uuid4(), pps.fingerprint(input_artifact_ids=[str(PKG), str(c)])),
         # `beats` is skipped entirely…
         # …but someone force-ran `character_arcs`:
         "character_arcs": done(uuid4(), "sha256:whatever"),
     })
-    assert pps.pass_cursor(r) == 3  # motifs, cast, world — then it STOPS at the gap
+    # motifs, cast, world — then it STOPS at the gap.
+    assert pps.pass_cursor(r, package_artifact_id=PKG) == 3
 
 
 def test_blocked_at_names_the_pass_waiting_on_a_human():
@@ -212,8 +232,10 @@ def test_default_decision_is_pending_for_blocking_and_auto_for_advisory():
 
 
 def test_derive_view_reports_every_pass_with_its_derived_freshness():
-    fp = pps.fingerprint(input_artifact_ids=[])
-    v = pps.derive_view(run_with({"cast": done(uuid4(), fp, decision="accepted")}))
+    fp = pps.fingerprint(input_artifact_ids=[str(PKG)])
+    v = pps.derive_view(
+        run_with({"cast": done(uuid4(), fp, decision="accepted")}), package_artifact_id=PKG,
+    )
     assert [p["pass_id"] for p in v["passes"]] == list(PASS_ORDER)
     cast = next(p for p in v["passes"] if p["pass_id"] == "cast")
     assert cast["fresh"] is True and cast["decision"] == "accepted"
@@ -245,3 +267,36 @@ def test_record_pass_does_not_mutate_the_run_in_place():
     before = pps.derive_view(r)
     pps.record_pass(r, "cast", status="failed")
     assert pps.derive_view(r) == before  # pure — the caller persists
+
+
+# ── params live on the ENTRY, not on the caller ──────────────────────────────
+
+
+def test_a_param_carrying_pass_stays_FRESH_across_a_derivation():
+    """The bug: freshness took `params` from the CALLER, but `derive_view`/`pass_cursor` have none
+    to give — so they recomputed with `params=None`, no param-carrying pass ever matched its own
+    recorded fingerprint, and every one of them read as permanently STALE, blocking everything
+    downstream. The params a pass ran with are a property of THAT PASS, so they live on its entry."""
+    params = {"k_ceiling": 3}
+    fp = pps.fingerprint(input_artifact_ids=[str(PKG)], params=params)
+    e = done(uuid4(), fp)
+    e["params"] = params
+    r = run_with({"cast": e})
+    assert pps.is_fresh(r, "cast", package_artifact_id=PKG) is True
+    # …and the derivation agrees, because it reads the params off the entry.
+    v = pps.derive_view(r, package_artifact_id=PKG)
+    assert next(p for p in v["passes"] if p["pass_id"] == "cast")["fresh"] is True
+
+
+def test_changing_a_passs_params_stales_it():
+    params = {"k_ceiling": 3}
+    fp = pps.fingerprint(input_artifact_ids=[str(PKG)], params=params)
+    e = done(uuid4(), fp)
+    e["params"] = {"k_ceiling": 9}   # it ran with different params than the fingerprint says
+    assert pps.is_fresh(run_with({"cast": e}), "cast", package_artifact_id=PKG) is False
+
+
+def test_record_pass_stores_the_params_it_ran_with():
+    r = run_with({})
+    state = pps.record_pass(r, "cast", status="completed", params={"k": 1})
+    assert state["cast"]["params"] == {"k": 1}

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.deps import get_grant_client_dep, get_plan_forge_service
 from app.grant_client import GrantClient, GrantLevel
@@ -37,7 +37,12 @@ class PlanRunCreate(BaseModel):
     # are already genre-aware). Declared HERE explicitly: Pydantic's default `extra='ignore'`
     # would silently DROP an undeclared field, so the client would send genre_tags, get a 200, and
     # the plan would be written genre-blind — the `rest-write-mirror-drops-fields` bug exactly.
-    genre_tags: list[str] = Field(default_factory=list, max_length=20)
+    # Each tag is interpolated into a SYSTEM prompt (cast/world/motif are all genre-aware), so an
+    # uncapped string is both a token-blowup and a system-prompt-injection surface. Cap the ITEM,
+    # not just the list.
+    genre_tags: list[Annotated[str, StringConstraints(max_length=40)]] = Field(
+        default_factory=list, max_length=20,
+    )
 
 
 class PlanRefineRequest(BaseModel):

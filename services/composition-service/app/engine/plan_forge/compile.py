@@ -110,6 +110,12 @@ def compile_artifacts(
 
     package = {
         "arc_id": arc_id,
+        # The arc's HUMAN title. It already existed on `outline_skeleton[0]` and was DISCARDED: the
+        # linker (27 V2-E) receives only `package`, so without this it titled the book's arc with
+        # 500 chars of the `premise` blob (which is "Arc: X / Theme: Y / Key events: ..." laid out
+        # over several lines) — and that is what the Plan Hub, the arc picker and the navigator all
+        # rendered as the arc's NAME. `premise` is the SUMMARY; this is the title.
+        "arc_title": (arc["title"] if arc else arc_id),
         "premise": premise,
         "canon": "\n".join(canon_parts),
         "planner_state": planner_state,

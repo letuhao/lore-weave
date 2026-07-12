@@ -95,10 +95,20 @@ def test_the_report_records_the_version_of_every_node_it_wrote():
     assert "linked_versions" in r.to_dict()
 
 
-def test_the_arc_upsert_is_NOT_version_guarded():
-    """An arc carries no authored prose — only a title and a summary the plan owns. Guarding it
-    would freeze the arc after any incidental version bump, for no protection gained."""
-    assert "structure_node.version <=" not in _stmt("_UPSERT_ARC")
+def test_the_arc_IS_version_guarded_too():
+    """An earlier version of this test asserted the OPPOSITE, on the reasoning that "an arc carries
+    no authored prose — only a title and a summary the plan owns". That premise is FALSE:
+    `PATCH /arcs/{id}` patches title/summary through StructureRepo with If-Match OCC — arcs are a
+    first-class authored surface.
+
+    Unguarded, every compile silently reverted a user's arc rename. And the unconditional
+    `version + 1` staled their held ETag, so their NEXT arc edit 412'd, and it invalidated the
+    arc-conformance manifest's structure_node_version on every compile whether the arc changed or
+    not. A test that pins the wrong behaviour as intentional is worse than no test."""
+    sql = " ".join(_stmt("_UPSERT_ARC").split())
+    assert re.search(r"WHERE structure_node\.version <= \$\d+", sql), sql
+    # …and it only bumps the version when something ACTUALLY changed.
+    assert "IS DISTINCT FROM EXCLUDED.title" in sql
 
 
 # ── E4: zero linked is an ERROR, never a silent success ──────────────────────
@@ -195,10 +205,23 @@ def test_there_is_no_merge_path_at_all():
 
 
 def test_scenes_slot_onto_their_chapters_strided_story_order():
-    """chapter n sits at n*1000; its i-th scene at +i+1. One reading axis, one convention — the Hub,
-    the packer, and the canon-rule windows all read the same one."""
-    assert "ordinal * 1000" in SRC
-    assert '(chap["story_order"] or 0) + i + 1' in SRC
+    """The chapter sits at n * STORY_ORDER_CHAPTER_STRIDE; its i-th scene at `+ i`, ZERO-BASED.
+
+    Every other writer uses that convention (`_renumber_scene_story_order`'s `row_number() - 1`,
+    `resync_reading_order`, plan.py's `enumerate`) — the chapter sits exactly at its own scene 0. An
+    earlier version used `+ i + 1`, which put linker-minted scenes one slot above everyone else's:
+    the first scene drag or book reorder would renumber them all down by one, shifting the packer's
+    strictly-prior cutoffs and the canon-rule windows that key on those exact integers. Two
+    conventions on one column is a bug this repo has already shipped once.
+
+    The stride is IMPORTED, not a literal: a hardcoded 1000 that later disagreed with the canonical
+    constant would desynchronise the whole axis while this test stayed green."""
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE
+
+    assert "from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE" in SRC
+    assert "ordinal * STORY_ORDER_CHAPTER_STRIDE" in SRC
+    assert '(chap["story_order"] or 0) + i,' in SRC
+    assert STORY_ORDER_CHAPTER_STRIDE == 1000  # the value today; the import is what keeps it honest
 
 
 # ── the regression the linker EXPOSED ────────────────────────────────────────
@@ -246,3 +269,97 @@ def test_the_linked_arcs_status_is_in_the_DB_CHECKs_set():
     values = [ln for ln in sql.splitlines() if ln.strip().startswith("VALUES")][0]
     assert "'outline'" in values
     assert "'active'" not in values
+
+
+# ── HIGH-1: PF-11 must survive MORE THAN ONE re-compile ──────────────────────
+
+
+def test_the_preserved_path_CARRIES_THE_PRIOR_GUARD_not_the_current_version():
+    """The ledger means "the version this row had immediately after OUR last write".
+
+    A preserve is not a write, so that value does not change. My first fix recorded the row's CURRENT
+    version instead, and the LIVE SMOKE caught what this unit test could not: on the next compile the
+    guard equalled the human's version, `version <= guard` was TRUE, the update fired, and the human
+    survived exactly ONE more compile. A two-compile smoke shows a green `preserved_user_edit: 1`; it
+    takes three to see the overwrite.
+    """
+    src = SRC
+    for marker, key, guard in (
+        ("report.chapters.preserved_user_edit += 1", "key", "guard"),
+        ("report.scenes.preserved_user_edit += 1", "skey", "guard"),
+        ("report.arcs.preserved_user_edit += 1", "arc_key", "arc_guard"),
+    ):
+        # scope to the PRESERVE branch — the `else` after it is the no-op branch, where recording
+        # the row's current version is not just allowed but correct.
+        after = src[src.index(marker) :]
+        branch = after[: after.index("else:")]  # the first `else:` IS this branch's no-op arm
+        assert f"report.linked_versions[{key}] = {guard}" in branch, marker
+        assert f"report.linked_versions[{key}] = existing" not in branch, (
+            f"{marker}: adopting the human's CURRENT version as ours overwrites them next compile"
+        )
+
+
+def test_a_skipped_update_is_disambiguated_by_VERSION_not_by_content():
+    """`row is None` means the DO UPDATE's WHERE was false, which is TWO different situations:
+    a human is ahead of us (preserve), or nothing differed (no-op). They need OPPOSITE ledger writes,
+    so telling them apart has to be exact.
+
+    The version alone decides it: the WHERE is `version <= guard AND <something differs>`, so a
+    skipped update with the version PAST the guard can only have been blocked by the version clause.
+    An earlier arc-only version compared CONTENT, which is a proxy: a human who edited and reverted
+    was mislabelled "unchanged" and handed their row back."""
+    assert "def _settled(current_version: int, guard: int) -> bool:" in SRC
+    assert "return current_version > guard" in SRC
+    # …and all three branches use it, rather than re-deriving the answer three ways.
+    assert SRC.count("if _settled(existing[\"version\"], ") == 3
+    # the arc's old content-compare is gone
+    assert 'existing["title"] != title or existing["summary"] != summary' not in SRC
+
+
+def test_a_NOOP_compile_does_not_bump_any_version():
+    """Every DO UPDATE must also require that something ACTUALLY differs.
+
+    Without it, a compile that changed nothing still bumped `version` on every chapter and every
+    scene — which (a) staled every ETag the user was holding, so their next edit 412'd, and (b) made
+    `unchanged` structurally unreachable in the report: a counter that can never be non-zero is a
+    lying metric. The arc had the clause; the chapters and scenes did not, and the 5-compile live
+    smoke showed it plainly — `updated: 1, unchanged: 0` on every no-op compile, Event 1 climbing to
+    v4 while nothing about it changed.
+
+    The DISTINCT list must cover EVERY column the DO UPDATE SETs, or a real change to an uncovered
+    column is silently skipped as a no-op — the same bug wearing the other mask."""
+    import re as _re
+
+    for name, table in (
+        ("_UPSERT_ARC", "structure_node"),
+        ("_UPSERT_CHAPTER", "outline_node"),
+        ("_UPSERT_SCENE", "outline_node"),
+    ):
+        sql = _stmt(name)
+        set_block = sql[sql.index("DO UPDATE SET") : sql.index("WHERE %s.version" % table)]
+        # the columns the update writes, minus the two bookkeeping ones we always touch
+        set_cols = {
+            m.group(1)
+            for m in _re.finditer(r"^\s*(\w+)\s*=", set_block, _re.M)
+        } - {"updated_at", "version"}
+        where_block = sql[sql.index("WHERE %s.version" % table) :]
+        distinct_cols = set(_re.findall(r"(?:%s\.)?(\w+)\s+IS DISTINCT FROM" % table, where_block))
+        assert set_cols, name
+        assert set_cols == distinct_cols, (
+            f"{name}: the no-op guard must cover every column the update writes. "
+            f"written={sorted(set_cols)} guarded={sorted(distinct_cols)}"
+        )
+
+
+def test_the_prior_report_is_selected_BY_TARGET():
+    """Both linkers emit kind `link_report`. A bare latest-by-kind read would hand the SKELETON link
+    the SCENE link's report — whose ledger holds only `scene:*` keys — so the skeleton would find no
+    prior arc/chapter version, use the open sentinel, and clobber every human edit. Same root cause:
+    "missing bookkeeping ⇒ overwrite" is only safe if the bookkeeping cannot go missing."""
+    from pathlib import Path as _P
+
+    from app.services.plan_forge_service import PlanForgeService
+
+    svc = _P(inspect.getfile(PlanForgeService)).read_text(encoding="utf-8")
+    assert 'latest_link_report(book_id, run_id, "skeleton")' in svc
+    assert 'latest_artifact(book_id, run_id, "link_report")' not in svc

@@ -47,7 +47,27 @@ from uuid import UUID
 
 import asyncpg
 
+from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE
+
 logger = logging.getLogger(__name__)
+
+#: PF-11's "we have no record of what we wrote" sentinel. See the guard comment in the chapter loop.
+_NO_PRIOR = 2_147_483_647
+
+
+def _settled(current_version: int, guard: int) -> bool:
+    """Did a HUMAN block that skipped update (True), or was it a no-op (False)?
+
+    The row's version alone decides it, exactly and without comparing any content. The DO UPDATE's
+    WHERE is `version <= guard AND <something differs>`. So if the update was skipped and the row's
+    version is PAST our guard, it was the version clause that blocked it — a human is ahead of us.
+    If the version is at-or-below the guard, that clause passed, so only the content clause can have
+    blocked it — nothing differed.
+
+    With no prior record the guard is `_NO_PRIOR`, which no real version can exceed, so a row we have
+    never written can never be mistaken for a preserved one.
+    """
+    return current_version > guard
 
 
 @dataclass
@@ -123,6 +143,13 @@ class LinkError(Exception):
 # statement fails at runtime with "no unique or exclusion constraint matching the ON CONFLICT
 # specification" — which, in a linker, means every re-link inserts a duplicate instead.
 
+# The arc is PF-11-guarded exactly like the chapters. An earlier version was not, on the reasoning
+# that "an arc carries no authored prose — only a title and a summary the plan owns". That premise
+# is FALSE: `PATCH /arcs/{id}` (routers/arc.py) patches `title`/`summary` through StructureRepo with
+# If-Match OCC — arcs are a first-class authored surface. Unguarded, every compile silently reverted
+# a user's arc rename; and the unconditional `version + 1` staled their held ETag, so their NEXT arc
+# edit 412'd, and it invalidated the arc-conformance manifest's `structure_node_version` on every
+# compile whether or not the arc had changed.
 _UPSERT_ARC = """
 INSERT INTO structure_node
   (created_by, book_id, parent_id, kind, depth, rank, title, summary, status,
@@ -139,12 +166,30 @@ DO UPDATE SET
   summary    = EXCLUDED.summary,
   updated_at = now(),
   version    = structure_node.version + 1
+WHERE structure_node.version <= $8
+  -- …and only bump when something ACTUALLY changed, so an unchanged re-compile does not stale a
+  -- user's held ETag for nothing.
+  AND (structure_node.title IS DISTINCT FROM EXCLUDED.title
+       OR structure_node.summary IS DISTINCT FROM EXCLUDED.summary)
 RETURNING id, version, (xmax = 0) AS inserted
 """
 
-# PF-11's preservation lives in the DO UPDATE's WHERE: we only overwrite the authored fields when
-# the row's CURRENT version is the one we last wrote. If a human has edited it since, `version` has
-# moved and the update is SKIPPED — the row keeps its content and we still record the linkage.
+# The DO UPDATE's WHERE carries BOTH guards, and a skipped update means one of exactly two things —
+# which the caller tells apart from the row's version alone (see `_settled` below):
+#
+#   1. PF-11 preservation. We only overwrite the authored fields when the row's CURRENT version is
+#      the one we last wrote. If a human has edited it since, `version` has moved PAST our guard, the
+#      update is skipped, their words stand, and we still record the linkage.
+#   2. A no-op. If nothing we would write actually differs, we do not write — so we do not bump
+#      `version`. Without this clause every compile bumped every chapter and scene even when the plan
+#      was byte-identical, which (a) staled every ETag the user was holding, so their NEXT edit
+#      412'd, and (b) made `unchanged` structurally unreachable in the report — a counter that can
+#      never be non-zero is a lying metric. The arc had this clause; the chapters and scenes did not,
+#      and the 5-compile live smoke showed it: `updated: 1, unchanged: 0` on every single no-op
+#      compile, with Event 1 climbing to v4.
+#
+# The DISTINCT list must cover EVERY column the DO UPDATE SETs, or a real change to an uncovered
+# column would be silently skipped as a no-op.
 _UPSERT_CHAPTER = """
 INSERT INTO outline_node
   (created_by, project_id, book_id, parent_id, kind, rank, title, synopsis, status,
@@ -161,6 +206,10 @@ DO UPDATE SET
   updated_at        = now(),
   version           = outline_node.version + 1
 WHERE outline_node.version <= $11
+  AND (outline_node.title             IS DISTINCT FROM EXCLUDED.title
+    OR outline_node.synopsis          IS DISTINCT FROM EXCLUDED.synopsis
+    OR outline_node.structure_node_id IS DISTINCT FROM EXCLUDED.structure_node_id
+    OR outline_node.story_order       IS DISTINCT FROM EXCLUDED.story_order)
 RETURNING id, version, (xmax = 0) AS inserted
 """
 
@@ -182,6 +231,12 @@ DO UPDATE SET
   updated_at         = now(),
   version            = outline_node.version + 1
 WHERE outline_node.version <= $14
+  AND (outline_node.title              IS DISTINCT FROM EXCLUDED.title
+    OR outline_node.synopsis           IS DISTINCT FROM EXCLUDED.synopsis
+    OR outline_node.tension            IS DISTINCT FROM EXCLUDED.tension
+    OR outline_node.present_entity_ids IS DISTINCT FROM EXCLUDED.present_entity_ids
+    OR outline_node.parent_id          IS DISTINCT FROM EXCLUDED.parent_id
+    OR outline_node.story_order        IS DISTINCT FROM EXCLUDED.story_order)
 RETURNING id, version, (xmax = 0) AS inserted
 """
 
@@ -266,25 +321,63 @@ class PlanLinkService:
             )
             raise LinkError(report)
 
-        title = str(package.get("premise") or arc_id)[:500]
+        # The arc's HUMAN title (compile.py emits `arc_title`). An earlier version used `premise`,
+        # which is a 500-char multi-line blob ("Arc: ...\nTheme: ...\nKey events:\n- ...") - and that
+        # is what the Plan Hub, the arc picker and the navigator all rendered as the arc's NAME.
+        # `premise` is the SUMMARY; the title is the title.
+        title = str(package.get("arc_title") or arc_id)[:500]
+        summary = str(package.get("premise") or "")[:2000]
 
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                # ARC → structure_node
+                # ARC -> structure_node. PF-11-guarded like the chapters (see _UPSERT_ARC).
+                arc_key = f"arc:{arc_id}"
+                arc_guard = prior.get(arc_key, _NO_PRIOR)
                 arc_row = await conn.fetchrow(
                     _UPSERT_ARC, created_by, book_id, _rank(0), title,
-                    str(package.get("premise") or "")[:2000], run_id, arc_id,
+                    summary, run_id, arc_id, arc_guard,
                 )
                 if arc_row is None:
-                    report.success = False
-                    report.detail = "the arc upsert matched no row"
-                    raise LinkError(report)
-                structure_node_id = arc_row["id"]
-                if arc_row["inserted"]:
-                    report.arcs.created += 1
+                    # The DO UPDATE's WHERE was false. Two reasons, both meaning "no write happened,
+                    # and that is correct": a human's version is ahead of ours (their arc name
+                    # stands, PF-11), or nothing changed (we deliberately did not bump the version).
+                    # Either way we must NOT lose the row: we need its id for the chapters, and its
+                    # version MUST carry forward. Dropping the key here is exactly HIGH-1 - the next
+                    # link would see no prior version, use the open sentinel, and clobber the human
+                    # on the compile after that.
+                    existing = await conn.fetchrow(
+                        """
+                        SELECT id, version FROM structure_node
+                        WHERE book_id = $1 AND plan_run_id = $2 AND plan_arc_id = $3
+                          AND NOT is_archived
+                        """,
+                        book_id, run_id, arc_id,
+                    )
+                    if existing is None:
+                        report.success = False
+                        report.detail = "the arc upsert matched no row"
+                        raise LinkError(report)
+                    arc_row = existing
+                    # An earlier version told the two apart by COMPARING CONTENT. The version is the
+                    # truth and the content is only a proxy for it — a human who edited and reverted
+                    # was mislabelled "unchanged" and handed their row straight back.
+                    if _settled(existing["version"], arc_guard):
+                        report.arcs.preserved_user_edit += 1
+                        # A preserve is NOT a write. Keep the guard we had, or the next compile would
+                        # read the human's version as ours and overwrite them one compile later.
+                        report.linked_versions[arc_key] = arc_guard
+                    else:
+                        report.arcs.unchanged += 1
+                        # An UNCHANGED row genuinely IS still at the version we last wrote.
+                        report.linked_versions[arc_key] = existing["version"]
+                    structure_node_id = arc_row["id"]
                 else:
-                    report.arcs.updated += 1
-                report.linked_versions[f"arc:{arc_id}"] = arc_row["version"]
+                    if arc_row["inserted"]:
+                        report.arcs.created += 1
+                    else:
+                        report.arcs.updated += 1
+                    structure_node_id = arc_row["id"]
+                    report.linked_versions[arc_key] = arc_row["version"]
 
                 # CHAPTERS → outline_node. story_order uses the same strided global axis the whole
                 # Hub reads (chapter n at n * 1000), so a scene can slot in at +i beneath it.
@@ -294,7 +387,8 @@ class PlanLinkService:
                     ordinal = int(ch.get("ordinal") or (i + 1))
                     ch_title = str(ch.get("title") or "")[:500]
                     titles.append(ch_title)
-                    last = prior.get(f"chapter:{event_id}")
+                    key = f"chapter:{event_id}"
+                    last = prior.get(key)
                     # The PF-11 guard. `DO UPDATE ... WHERE version <= guard` fires only if the row
                     # is still at the version WE last wrote; if a human has edited it since, its
                     # version has moved past the guard, the update is skipped, and their words stand.
@@ -305,26 +399,59 @@ class PlanLinkService:
                     # never another run's. Missing bookkeeping therefore means "we lost our own
                     # report", and overwriting our own previous link is the correct default.
                     # On the INSERT path the WHERE is not evaluated at all.
-                    guard = last if last is not None else 2_147_483_647
+                    guard = last if last is not None else _NO_PRIOR
                     row = await conn.fetchrow(
                         _UPSERT_CHAPTER, created_by, project_id, book_id, _rank(i), ch_title,
                         str(ch.get("synopsis") or "")[:20000], structure_node_id,
-                        ordinal * 1000, run_id, event_id, guard,
+                        ordinal * STORY_ORDER_CHAPTER_STRIDE, run_id, event_id, guard,
                     )
                     if row is None:
-                        # DO UPDATE ... WHERE was false ⇒ a human's version is ahead of ours.
-                        # Their words stand; we still count it as linked, and we say so.
-                        report.chapters.preserved_user_edit += 1
+                        # DO UPDATE ... WHERE was false: either a human is ahead of us (PF-11 — their
+                        # words stand) or nothing differed. Read the version back to tell which, and
+                        # in BOTH cases record it: this ledger is what the next link compares
+                        # against, and dropping the key means the link after that sees "no prior
+                        # record", uses the open sentinel, and overwrites the human. (HIGH-1.)
+                        existing = await conn.fetchrow(
+                            "SELECT version FROM outline_node WHERE book_id = $1"
+                            " AND plan_run_id = $2 AND plan_event_id = $3 AND NOT is_archived",
+                            book_id, run_id, event_id,
+                        )
+                        if existing is None:
+                            report.success = False
+                            report.detail = f"the chapter upsert matched no row ({event_id})"
+                            raise LinkError(report)
+                        if _settled(existing["version"], guard):
+                            report.chapters.preserved_user_edit += 1
+                            # Carry the PRIOR guard forward UNCHANGED — the version we last WROTE,
+                            # not the version the row is at NOW.
+                            #
+                            # Recording the current version was my first fix and it was WRONG, and
+                            # the LIVE SMOKE caught it where the unit test could not: on the next
+                            # compile the guard equalled the human's version, `version <= guard` was
+                            # TRUE, the update fired — the human survived exactly one more compile.
+                            #
+                            # The ledger means "the version this row had immediately after OUR last
+                            # write". A preserve is not a write, so that value does not change. The
+                            # human keeps the row until they explicitly hand it back.
+                            report.linked_versions[key] = guard
+                        else:
+                            report.chapters.unchanged += 1
+                            report.linked_versions[key] = existing["version"]
                         continue
                     if row["inserted"]:
                         report.chapters.created += 1
                     else:
                         report.chapters.updated += 1
-                    report.linked_versions[f"chapter:{event_id}"] = row["version"]
+                    report.linked_versions[key] = row["version"]
 
-                report.possible_duplicates = await self._duplicates(
-                    conn, book_id, "chapter", titles, run_id,
-                )
+                # ADVISORY. It only produces `possible_duplicates`, so a failure here must never
+                # roll back the arc + chapters we just successfully wrote.
+                try:
+                    report.possible_duplicates = await self._duplicates(
+                        conn, book_id, "chapter", titles, run_id,
+                    )
+                except Exception:  # noqa: BLE001 - report-only; degrade, never lose the link
+                    logger.warning("duplicate probe failed; link stands", exc_info=True)
 
         if report.chapters.touched == 0:
             report.success = False
@@ -400,18 +527,30 @@ class PlanLinkService:
                             UUID(str(e)) for e in (sc.get("present_entity_ids") or [])
                             if _is_uuid(e)
                         ]
+                        # `isinstance(True, int)` is True, so a JSON `true` would store 1. And an
+                        # out-of-range value would land in a column whose consumers assume 0..100.
                         tension = sc.get("tension")
-                        tension = int(tension) if isinstance(tension, (int, float)) else None
-                        last = prior.get(f"scene:{plan_event_id}")
-                        guard = last if last is not None else 2_147_483_647
+                        if isinstance(tension, bool) or not isinstance(tension, (int, float)):
+                            tension = None
+                        else:
+                            tension = max(0, min(100, int(tension)))
+                        skey = f"scene:{plan_event_id}"
+                        last = prior.get(skey)
+                        guard = last if last is not None else _NO_PRIOR
                         row = await conn.fetchrow(
                             _UPSERT_SCENE, created_by, project_id, book_id, chap["id"],
                             _rank(i), sc_title, str(sc.get("synopsis") or "")[:20000],
                             tension, present,
-                            # The scene's slot on the SAME strided global axis its chapter sits on:
-                            # chapter at n*1000, its i-th scene at +i+1. One reading axis, one
-                            # convention — the Hub, the packer, and the canon windows all read it.
-                            (chap["story_order"] or 0) + i + 1,
+                            # The scene's slot on the SAME strided global axis its chapter sits on.
+                            # `+ i`, ZERO-BASED — the chapter sits exactly at its own scene 0. Every
+                            # other writer uses this convention (`_renumber_scene_story_order`'s
+                            # `row_number() - 1`, `resync_reading_order`, plan.py's `enumerate`), so
+                            # `+ i + 1` put linker-minted scenes one slot ABOVE everyone else's: the
+                            # first scene drag or book reorder would renumber them all down by one,
+                            # shifting the packer's strictly-prior cutoffs and the canon-rule windows
+                            # that key on those exact integers. Two conventions on one column is a
+                            # bug this repo has already shipped once.
+                            (chap["story_order"] or 0) + i,
                             # `chapter_id` inherits the chapter's — NULL until bootstrap [A] stamps
                             # it. NULL is legal now, and means "planned, not yet written" (the M6.1
                             # CHECK swap is what makes this insert possible at all).
@@ -419,17 +558,39 @@ class PlanLinkService:
                             run_id, plan_event_id, guard,
                         )
                         if row is None:
-                            report.scenes.preserved_user_edit += 1
+                            # See the chapter branch. The version MUST carry forward either way, or
+                            # the human's edit is reclaimed one compile later (HIGH-1); and a
+                            # preserve carries the PRIOR guard, not the row's current version.
+                            existing = await conn.fetchrow(
+                                "SELECT version FROM outline_node WHERE book_id = $1"
+                                " AND plan_run_id = $2 AND plan_event_id = $3 AND NOT is_archived",
+                                book_id, run_id, plan_event_id,
+                            )
+                            if existing is None:
+                                report.success = False
+                                report.detail = (
+                                    f"the scene upsert matched no row ({plan_event_id})"
+                                )
+                                raise LinkError(report)
+                            if _settled(existing["version"], guard):
+                                report.scenes.preserved_user_edit += 1
+                                report.linked_versions[skey] = guard
+                            else:
+                                report.scenes.unchanged += 1
+                                report.linked_versions[skey] = existing["version"]
                             continue
                         if row["inserted"]:
                             report.scenes.created += 1
                         else:
                             report.scenes.updated += 1
-                        report.linked_versions[f"scene:{plan_event_id}"] = row["version"]
+                        report.linked_versions[skey] = row["version"]
 
-                report.possible_duplicates = await self._duplicates(
-                    conn, book_id, "scene", titles, run_id,
-                )
+                try:
+                    report.possible_duplicates = await self._duplicates(
+                        conn, book_id, "scene", titles, run_id,
+                    )
+                except Exception:  # noqa: BLE001 - report-only; degrade, never lose the link
+                    logger.warning("duplicate probe failed; link stands", exc_info=True)
 
         if report.scenes.touched == 0:
             report.success = False

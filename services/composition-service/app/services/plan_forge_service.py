@@ -756,7 +756,13 @@ class PlanForgeService:
         #
         # A prior link_report supplies the versions we last wrote, so PF-11's preservation can tell
         # "we wrote this" from "a human has edited it since".
-        prior_report = await self._runs.latest_artifact(book_id, run_id, "link_report")
+        # BY TARGET, not "latest link_report". Both linkers emit kind `link_report`, so a bare
+        # latest-by-kind read would hand the SKELETON link the SCENE link's report — whose ledger
+        # holds only `scene:*` keys. The skeleton would then see no prior `arc:*`/`chapter:*`
+        # version, fall back to the no-prior sentinel, and overwrite every human edit on the next
+        # compile. Same root cause as the preserved-path bug: "missing bookkeeping ⇒ overwrite" is
+        # only safe if the bookkeeping cannot go missing during normal operation. It can.
+        prior_report = await self._runs.latest_link_report(book_id, run_id, "skeleton")
         prior_versions = (
             (prior_report.content or {}).get("linked_versions") or {} if prior_report else {}
         )

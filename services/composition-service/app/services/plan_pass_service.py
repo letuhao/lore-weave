@@ -136,31 +136,53 @@ def _entry(run: PlanRun, pass_id: str) -> dict[str, Any]:
     return e.model_dump(mode="json") if hasattr(e, "model_dump") else dict(e)
 
 
-def input_pointers(run: PlanRun, pass_id: str) -> list[str]:
+def input_pointers(
+    run: PlanRun, pass_id: str, *, package_artifact_id: UUID | str | None = None,
+) -> list[str]:
     """The artifact ids this pass's inputs currently resolve to — BY POINTER (PF-3).
 
     An upstream pass that has never completed contributes the empty string rather than being
     skipped: its ABSENCE must change the fingerprint, or a pass that ran before its upstream
     existed would look fresh forever.
+
+    The `planning_package` is a REAL INPUT for the 5 passes that read it, and leaving it out was a
+    bug: `motifs` and `cast` have no pass dependencies, so their fingerprint was a CONSTANT — once
+    completed they were fresh forever, including after the user re-compiled with a different arc or
+    genre and a brand-new package artifact. That is exactly the "a plan silently becomes internally
+    inconsistent" failure PF-5 exists to prevent, and it was invisible because freshness derives
+    from a set that omitted the input.
     """
     spec = PASS_REGISTRY[pass_id]
     out: list[str] = []
+    if spec.reads_package:
+        out.append(str(package_artifact_id or ""))
     for dep in spec.depends_on:
         out.append(str(_entry(run, dep).get("artifact_id") or ""))
     return out
 
 
-def is_fresh(run: PlanRun, pass_id: str, *, params: dict[str, Any] | None = None) -> bool:
+def is_fresh(
+    run: PlanRun, pass_id: str, *, package_artifact_id: UUID | str | None = None,
+) -> bool:
     """Fresh iff the fingerprint the pass RECORDED still matches the one its inputs produce NOW.
 
     A pass that never completed is not fresh (there is nothing to be fresh about). This is the whole
     invalidation mechanism: no dirty flags, no invalidation writes, nothing to drift.
+
+    The pass's PARAMS come from its OWN recorded entry, not from the caller. An earlier version took
+    `params` as an argument, which meant `derive_view`/`pass_cursor` (which have no params to pass)
+    recomputed every param-carrying pass's fingerprint with `params=None` — so any pass that ran
+    with params read as permanently STALE and blocked everything downstream. The params a pass ran
+    with are a property of that pass, so they live on its entry.
     """
     e = _entry(run, pass_id)
     if e.get("status") != "completed" or not e.get("input_fingerprint"):
         return False
     current = fingerprint(
-        input_artifact_ids=input_pointers(run, pass_id), params=params
+        input_artifact_ids=input_pointers(
+            run, pass_id, package_artifact_id=package_artifact_id
+        ),
+        params=e.get("params") or {},
     )
     return e["input_fingerprint"] == current
 
@@ -174,18 +196,29 @@ def is_accepted(run: PlanRun, pass_id: str) -> bool:
 
 
 def blockers_for(
-    run: PlanRun, pass_id: str, *, params: dict[str, Any] | None = None
+    run: PlanRun, pass_id: str, *, package_artifact_id: UUID | str | None = None,
 ) -> list[str]:
-    """Upstream passes that are stale or unaccepted — i.e. why `pass_id` may not run yet (PF-5)."""
+    """Upstream passes that are stale or unaccepted — i.e. why `pass_id` may not run yet (PF-5).
+
+    Note there is no `params` argument. An earlier version forwarded the CALLER's params into the
+    upstream deps' freshness check — computing an upstream pass's fingerprint from a downstream
+    pass's params, which is wrong under any reading. Each pass's params live on its own entry.
+    """
     out: list[str] = []
     for dep in PASS_REGISTRY[pass_id].depends_on:
-        if not is_fresh(run, dep, params=params) or not is_accepted(run, dep):
+        if not is_fresh(run, dep, package_artifact_id=package_artifact_id) or not is_accepted(
+            run, dep
+        ):
             out.append(dep)
     return out
 
 
 def assert_runnable(
-    run: PlanRun, pass_id: str, *, force: bool = False, params: dict[str, Any] | None = None
+    run: PlanRun,
+    pass_id: str,
+    *,
+    force: bool = False,
+    package_artifact_id: UUID | str | None = None,
 ) -> None:
     """PF-5's gate. Raises `UpstreamStale` unless every upstream is fresh AND accepted.
 
@@ -195,12 +228,12 @@ def assert_runnable(
     """
     if force:
         return
-    blockers = blockers_for(run, pass_id, params=params)
+    blockers = blockers_for(run, pass_id, package_artifact_id=package_artifact_id)
     if blockers:
         raise UpstreamStale(pass_id, blockers)
 
 
-def pass_cursor(run: PlanRun) -> int:
+def pass_cursor(run: PlanRun, *, package_artifact_id: UUID | str | None = None) -> int:
     """The number of passes completed CONTIGUOUSLY from the start, each fresh AND accepted (PF-3).
 
     Contiguous, not counted: a run with passes 1,2,3 done and 4 blocking has cursor 3 even if
@@ -211,7 +244,7 @@ def pass_cursor(run: PlanRun) -> int:
     """
     n = 0
     for pid in PASS_ORDER:
-        if is_fresh(run, pid) and is_accepted(run, pid):
+        if is_fresh(run, pid, package_artifact_id=package_artifact_id) and is_accepted(run, pid):
             n += 1
         else:
             break
@@ -235,7 +268,9 @@ def blocked_at(run: PlanRun) -> str | None:
     return None
 
 
-def derive_view(run: PlanRun) -> dict[str, Any]:
+def derive_view(
+    run: PlanRun, *, package_artifact_id: UUID | str | None = None,
+) -> dict[str, Any]:
     """The serialized pass view (PF-3): per-pass state + the DERIVED fields.
 
     `fresh`, `pass_cursor` and `blocked_at` are computed HERE, at serialization, and are never
@@ -255,12 +290,12 @@ def derive_view(run: PlanRun) -> dict[str, Any]:
             "artifact_id": e.get("artifact_id"),
             "job_id": e.get("job_id"),
             # DERIVED — not stored:
-            "fresh": is_fresh(run, pid),
-            "blockers": blockers_for(run, pid),
+            "fresh": is_fresh(run, pid, package_artifact_id=package_artifact_id),
+            "blockers": blockers_for(run, pid, package_artifact_id=package_artifact_id),
         })
     return {
         "passes": passes,
-        "pass_cursor": pass_cursor(run),
+        "pass_cursor": pass_cursor(run, package_artifact_id=package_artifact_id),
         "blocked_at": blocked_at(run),
     }
 
@@ -273,6 +308,9 @@ def record_pass(
     artifact_id: UUID | str | None = None,
     job_id: UUID | str | None = None,
     input_fingerprint: str | None = None,
+    #: The params this pass RAN with. Stored, because freshness recomputes the fingerprint and must
+    #: use the same params — a caller that has to remember them would eventually forget.
+    params: dict[str, Any] | None = None,
     bootstrap_proposal_id: UUID | str | None = None,
     decision: str | None = None,
     decided_by: str | None = None,
@@ -297,6 +335,8 @@ def record_pass(
         e["job_id"] = str(job_id)
     if input_fingerprint is not None:
         e["input_fingerprint"] = input_fingerprint
+    if params is not None:
+        e["params"] = params
     if bootstrap_proposal_id is not None:
         e["bootstrap_proposal_id"] = str(bootstrap_proposal_id)
     if decision is not None:

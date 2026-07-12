@@ -2254,6 +2254,72 @@ async def test_plan_runs_roundtrip_and_tenancy(pool):
     assert await repo.find_by_checksum(book, "chk1", "llm") is None
 
 
+# ───────── plan_state_for_book — the per-chat-turn "has an arc plan?" probe ─────────
+# Real SQL (the route tests mock the repo, so THESE are what prove the query).
+
+async def test_plan_state_for_book_with_runs_and_spec(pool):
+    """(a) runs + a `spec` artifact -> has a plan AND has the spec; run_count and
+    latest_status reflect the newest run by created_at."""
+    from app.db.repositories.plan_runs import PlanRunsRepo
+
+    repo = PlanRunsRepo(pool)
+    user, _project, book = _ids()
+    first = await repo.create(
+        user, book, mode="rules", source_checksum="c1", source_markdown="# a",
+        status="failed",
+    )
+    second = await repo.create(
+        user, book, mode="llm", source_checksum="c2", source_markdown="# b",
+        status="compiled",
+    )
+    # the spec hangs off the FIRST run — has_spec must be an EXISTS over ALL the
+    # book's runs (through the plan_run join), not just the latest one.
+    await repo.save_artifact(user, first.id, "spec", {"arcs": [{"id": "a1"}]})
+
+    state = await repo.plan_state_for_book(book)
+    assert state == {"run_count": 2, "latest_status": "compiled", "has_spec": True}
+    assert second.status == "compiled"  # the latest run by created_at
+
+
+async def test_plan_state_for_book_with_no_plan_is_zeros_not_error(pool):
+    """(b) a brand-new book has no runs -> zeros, NOT an error/None. The route maps
+    this to a 200 (`has_plan=false`), never a 404."""
+    from app.db.repositories.plan_runs import PlanRunsRepo
+
+    state = await PlanRunsRepo(pool).plan_state_for_book(uuid.uuid4())
+    assert state == {"run_count": 0, "latest_status": None, "has_spec": False}
+
+
+async def test_plan_state_for_book_runs_without_spec_has_no_plan_spec(pool):
+    """(c) THE distinction: a run exists but emitted no `spec` artifact (still
+    pending, or failed) -> run_count>0 while has_spec is FALSE. A non-spec artifact
+    on that run must NOT be mistaken for the plan spec, and another book's spec must
+    NOT leak in (the artifact EXISTS is book-scoped through its run's join)."""
+    from app.db.repositories.plan_runs import PlanRunsRepo
+
+    repo = PlanRunsRepo(pool)
+    user, _project, book = _ids()
+    run = await repo.create(
+        user, book, mode="rules", source_checksum="c1", source_markdown="# a",
+        status="pending",
+    )
+    await repo.save_artifact(user, run.id, "analyze", {"noise": True})  # NOT a spec
+
+    # a DIFFERENT book that does have a spec — must not bleed across the book scope.
+    other_book = uuid.uuid4()
+    other_run = await repo.create(
+        user, other_book, mode="rules", source_checksum="c9", source_markdown="# z",
+        status="compiled",
+    )
+    await repo.save_artifact(user, other_run.id, "spec", {"arcs": []})
+
+    state = await repo.plan_state_for_book(book)
+    assert state == {"run_count": 1, "latest_status": "pending", "has_spec": False}
+    # sanity: the other book DOES read as having a spec (the probe isn't just always-false)
+    other = await repo.plan_state_for_book(other_book)
+    assert other == {"run_count": 1, "latest_status": "compiled", "has_spec": True}
+
+
 async def test_get_run_detail_surfaces_arcs_for_a_picker(pool):
     """D-PLANFORGE-ARC-PICKER: Compile's arc_id was a bare text input — the
     spec already HAS a picker-worthy {id, title} list, it just was never

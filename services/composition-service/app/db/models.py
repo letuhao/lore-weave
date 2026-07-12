@@ -596,8 +596,13 @@ PlanRunStatus = Literal[
 ]
 PlanRunMode = Literal["rules", "llm"]
 
-# The seven compiler passes (PF-1, a CLOSED SET registered in CLOSED_SET_ARGS). The `pass_state`
-# ledger is keyed by these, and the order here IS the dependency order — `pass_cursor` walks it.
+# The seven compiler passes (PF-1). The `pass_state` ledger is keyed by these, and the order here IS
+# the dependency order — `pass_cursor` walks it.
+#
+# NOT YET registered in `CLOSED_SET_ARGS` — the MCP surface that would need it is 27 V2-F, which is
+# parked (RUN-STATE §7 P-04). Saying "registered in CLOSED_SET_ARGS" while it is not would be a
+# comment asserting an enforcement that does not exist, which is precisely what the
+# Frontend-Tool-Contract standard warns about. When V2-F lands, register it there and say so here.
 #
 # These names are the SPEC's (27 §170), not a paraphrase: `motifs` not `motif`, `beats` not `beat`,
 # `character_arcs` not `char_arc`, `self_heal` not `heal`. A closed-set arg whose values drift from
@@ -638,6 +643,11 @@ class PassEntry(BaseModel):
     artifact_id: UUID | None = None
     job_id: UUID | None = None
     input_fingerprint: str | None = None
+    # The params this pass RAN with. STORED, because freshness recomputes the fingerprint and must
+    # use the same params — a derivation that took them from the caller would recompute with `None`
+    # (derive_view has no params to pass) and every param-carrying pass would read as permanently
+    # stale, blocking everything downstream.
+    params: dict[str, Any] = Field(default_factory=dict)
     # passes 2/3 only (PF-7) — the glossary seed proposal this pass is waiting on.
     bootstrap_proposal_id: UUID | None = None
     decided_by: Literal["user", "auto"] | None = None
