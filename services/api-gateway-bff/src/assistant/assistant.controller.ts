@@ -32,12 +32,16 @@ interface ProvisionBody {
 interface ProvisionStatus {
   diary_book: string; // 'ok' | 'trashed' | 'error:<status>'
   assistant_project: string; // 'ok' | 'skipped:no_diary' | 'error:<status>'
+  work_ontology: string; // 'ok' | 'skipped:no_diary' | 'error:<status>' (WS-1.5b — clone work kinds into the diary)
   // Steps that depend on not-yet-built slices — surfaced, never silently dropped:
   todays_session: string; // the ChatView creates it on first open (needs the user's model)
-  self_entity: string; // WS-1.5 (work ontology + is_self seed)
+  self_entity: string; // WS-1.5 (the is_self identity seed)
   consent: string; // user opt-in only — NEVER auto-enabled as a provisioning side effect
   timezone: string; // D9 — explicit user confirm, never auto-set from the client zone
 }
+
+// WS-1.5 §Q2 — the System-tier work kinds cloned into the diary's book tier at provisioning.
+const WORK_KINDS = ['colleague', 'project', 'meeting', 'decision', 'task', 'jargon', 'org'];
 
 interface ProvisionResult {
   provisioned: boolean; // the durable core (diary + assistant project) is ready
@@ -67,20 +71,22 @@ export class AssistantController {
       this.logger.error('assistant-provision rejected: JWT_SECRET not configured');
       throw new HttpException('server_error', 500);
     }
-    let decoded: { exp?: number };
+    let decoded: { exp?: number; sub?: string };
     try {
       // Pin the algorithm — a valid JWT here provisions real cross-service resources.
-      decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { exp?: number };
+      decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { exp?: number; sub?: string };
     } catch {
       throw new HttpException('invalid_token', 401);
     }
-    // REQUIRE exp, for parity with book-service (WithExpirationRequired) and the knowledge
-    // verifier (jsonwebtoken has no built-in "require exp", so assert it here). An expiry-less
-    // token that passed would only fail at every downstream hop, returning a confusing
-    // 200 {provisioned:false} instead of a clean 401.
-    if (typeof decoded.exp !== 'number') {
+    // REQUIRE exp (parity with book-service WithExpirationRequired + the knowledge verifier —
+    // jsonwebtoken has no built-in "require exp", so assert it here) AND a `sub` (the work-
+    // ontology adopt is a token-gated internal call that needs the user_id server-derived from
+    // the token, never a body field). A token missing either fails clean at 401 rather than
+    // half-failing downstream.
+    if (typeof decoded.exp !== 'number' || typeof decoded.sub !== 'string' || !decoded.sub) {
       throw new HttpException('invalid_token', 401);
     }
+    const userId = decoded.sub;
 
     const bookUrl = process.env.BOOK_SERVICE_URL;
     const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
@@ -93,6 +99,7 @@ export class AssistantController {
     const status: ProvisionStatus = {
       diary_book: 'pending',
       assistant_project: 'pending',
+      work_ontology: 'pending',
       todays_session: 'deferred:created_on_first_open',
       self_entity: 'pending:WS-1.5',
       consent: 'pending:user_opt_in',
@@ -110,10 +117,12 @@ export class AssistantController {
       // we provision anything onto it. Surface it; do not fork or resurrect.
       status.diary_book = 'trashed';
       status.assistant_project = 'skipped:no_diary';
+      status.work_ontology = 'skipped:no_diary';
       return { provisioned: false, provision_status: status };
     } else {
       status.diary_book = `error:${diary.status}`;
       status.assistant_project = 'skipped:no_diary';
+      status.work_ontology = 'skipped:no_diary';
       return { provisioned: false, provision_status: status };
     }
     const bookId: string = diary.body.book_id;
@@ -134,12 +143,62 @@ export class AssistantController {
       status.assistant_project = `error:${proj.status}`;
     }
 
+    // 4. Work ontology (WS-1.5 §Q2) — clone the System-tier work kinds into the diary's book
+    //    tier so capture has them. A token-gated INTERNAL glossary call (a system op, not a
+    //    user-authored write); ownership was already established when book-service created the
+    //    diary under the user's JWT above, which is why adopt-kinds needs no further grant check.
+    //    Idempotent + re-drivable, so a failure is a recorded half-state, never a hard error.
+    const glossaryUrl = process.env.GLOSSARY_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!glossaryUrl || !internalToken) {
+      status.work_ontology = 'error:not_configured';
+    } else {
+      const adopt = await this.postInternal(
+        `${glossaryUrl}/internal/books/${bookId}/ontology/adopt-kinds?user_id=${encodeURIComponent(userId)}`,
+        internalToken,
+        { kinds: WORK_KINDS },
+      );
+      status.work_ontology = adopt.ok ? 'ok' : `error:${adopt.status}`;
+    }
+
     return {
       provisioned: status.diary_book === 'ok' && status.assistant_project === 'ok',
       book_id: bookId,
       project_id: projectId,
       provision_status: status,
     };
+  }
+
+  /**
+   * POST JSON to a token-gated /internal endpoint with the platform INTERNAL_SERVICE_TOKEN
+   * (used for system operations like the ontology adopt — NOT a user-authored write, so it
+   * carries the service token + a server-derived user_id, never the caller's JWT). Same
+   * never-throw, report-status contract as postJson.
+   */
+  private async postInternal(
+    url: string,
+    internalToken: string,
+    body: unknown,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-internal-token': internalToken },
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
   }
 
   /**

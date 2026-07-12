@@ -4,6 +4,7 @@ import { HttpException } from '@nestjs/common';
 import { AssistantController } from './assistant.controller';
 
 const TEST_SECRET = 'assistant-provision-test-secret-32ch!';
+const WORK_KINDS_EXPECTED = ['colleague', 'project', 'meeting', 'decision', 'task', 'jargon', 'org'];
 
 function bearer(sub: string): string {
   // exp is REQUIRED by the controller (parity with the downstream services).
@@ -32,12 +33,16 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     process.env.JWT_SECRET = TEST_SECRET;
     process.env.BOOK_SERVICE_URL = 'http://book:8205';
     process.env.KNOWLEDGE_SERVICE_URL = 'http://knowledge:8210';
+    process.env.GLOSSARY_SERVICE_URL = 'http://glossary:8203';
+    process.env.INTERNAL_SERVICE_TOKEN = 'itok';
     controller = new AssistantController();
   });
   afterEach(() => {
     delete process.env.JWT_SECRET;
     delete process.env.BOOK_SERVICE_URL;
     delete process.env.KNOWLEDGE_SERVICE_URL;
+    delete process.env.GLOSSARY_SERVICE_URL;
+    delete process.env.INTERNAL_SERVICE_TOKEN;
     (global as any).fetch = undefined;
   });
 
@@ -63,16 +68,17 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  it('provisions the diary + assistant project, forwarding the user JWT to both', async () => {
+  it('provisions the diary + assistant project + work ontology, forwarding correctly', async () => {
     const f = jest
       .fn()
       .mockResolvedValueOnce(resp(201, { book_id: 'diary-1' }))
-      .mockResolvedValueOnce(resp(201, { project_id: 'proj-1' }));
+      .mockResolvedValueOnce(resp(201, { project_id: 'proj-1' }))
+      .mockResolvedValueOnce(resp(200, { book_id: 'diary-1', adopted: WORK_KINDS_EXPECTED }));
     (global as any).fetch = f;
 
     const out = await controller.provision({ title: 'My Journal' }, bearer('user-42'));
 
-    expect(f).toHaveBeenCalledTimes(2);
+    expect(f).toHaveBeenCalledTimes(3);
     // Step 1 → book-service diary get-or-create, with the user's Bearer.
     const [bookUrl, bookInit] = f.mock.calls[0];
     expect(bookUrl).toBe('http://book:8205/v1/books/diary');
@@ -81,27 +87,63 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     const [kUrl, kInit] = f.mock.calls[1];
     expect(kUrl).toBe('http://knowledge:8210/v1/knowledge/projects/assistant');
     expect(JSON.parse(kInit.body)).toEqual({ book_id: 'diary-1' });
+    // Step 3 → glossary adopt-kinds: a token-gated INTERNAL call (service token, not the user
+    // JWT), user_id server-derived from the token's sub, body = the 7 work-kind codes.
+    const [gUrl, gInit] = f.mock.calls[2];
+    expect(gUrl).toBe('http://glossary:8203/internal/books/diary-1/ontology/adopt-kinds?user_id=user-42');
+    expect(gInit.headers['x-internal-token']).toBe('itok');
+    expect(gInit.headers.authorization).toBeUndefined(); // the user JWT is NOT forwarded internally
+    expect(JSON.parse(gInit.body)).toEqual({ kinds: WORK_KINDS_EXPECTED });
 
     expect(out.provisioned).toBe(true);
     expect(out.book_id).toBe('diary-1');
     expect(out.project_id).toBe('proj-1');
     expect(out.provision_status.diary_book).toBe('ok');
     expect(out.provision_status.assistant_project).toBe('ok');
+    expect(out.provision_status.work_ontology).toBe('ok');
     // Steps that depend on unbuilt slices are surfaced, never silently claimed done.
     expect(out.provision_status.consent).toBe('pending:user_opt_in');
     expect(out.provision_status.self_entity).toBe('pending:WS-1.5');
     expect(out.provision_status.timezone).toBe('pending:user_confirm');
   });
 
-  it('is idempotent-friendly: a 200 (existing) diary + project still provisions', async () => {
+  it('is idempotent-friendly: a 200 (existing) diary + project + adopt still provisions', async () => {
     const f = jest
       .fn()
       .mockResolvedValueOnce(resp(200, { book_id: 'diary-1' }))
-      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' }));
+      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' }))
+      .mockResolvedValueOnce(resp(200, { adopted: WORK_KINDS_EXPECTED }));
     (global as any).fetch = f;
     const out = await controller.provision({}, bearer('u1'));
     expect(out.provisioned).toBe(true);
     expect(out.book_id).toBe('diary-1');
+    expect(out.provision_status.work_ontology).toBe('ok');
+  });
+
+  it('an adopt failure is a recorded half-state — the durable core is still provisioned', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(201, { book_id: 'diary-1' }))
+      .mockResolvedValueOnce(resp(201, { project_id: 'proj-1' }))
+      .mockResolvedValueOnce(resp(500, { error: 'GLOSS_INTERNAL' }));
+    (global as any).fetch = f;
+    const out = await controller.provision({}, bearer('u1'));
+    // diary + project are the durable core → still provisioned; ontology re-drives next open.
+    expect(out.provisioned).toBe(true);
+    expect(out.provision_status.work_ontology).toBe('error:500');
+  });
+
+  it('missing glossary config → work_ontology error:not_configured (no crash, core still ok)', async () => {
+    delete process.env.GLOSSARY_SERVICE_URL;
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(201, { book_id: 'diary-1' }))
+      .mockResolvedValueOnce(resp(201, { project_id: 'proj-1' }));
+    (global as any).fetch = f;
+    const out = await controller.provision({}, bearer('u1'));
+    expect(f).toHaveBeenCalledTimes(2); // adopt never attempted
+    expect(out.provisioned).toBe(true);
+    expect(out.provision_status.work_ontology).toBe('error:not_configured');
   });
 
   it('a TRASHED diary is surfaced and the project is NOT attempted', async () => {
@@ -130,7 +172,8 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     const f = jest
       .fn()
       .mockResolvedValueOnce(resp(201, { book_id: 'diary-1' }))
-      .mockResolvedValueOnce(resp(503, { detail: 'knowledge down' }));
+      .mockResolvedValueOnce(resp(503, { detail: 'knowledge down' }))
+      .mockResolvedValueOnce(resp(200, { adopted: WORK_KINDS_EXPECTED })); // adopt still runs (depends on the diary, not the project)
     (global as any).fetch = f;
 
     const out = await controller.provision({}, bearer('u1'));
@@ -139,6 +182,7 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     expect(out.book_id).toBe('diary-1'); // the anchor exists
     expect(out.provision_status.diary_book).toBe('ok');
     expect(out.provision_status.assistant_project).toBe('error:503');
+    expect(out.provision_status.work_ontology).toBe('ok'); // ontology binds to the diary regardless
   });
 
   it('a transport failure on the diary step is a recorded half-state (status 0), not a throw', async () => {
