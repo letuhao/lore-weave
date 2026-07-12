@@ -127,7 +127,19 @@ func (s *Server) captureCanon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := s.extractEntityCandidates(ctx, userID, bookID, text, nil, req.ModelRef, flavorChatCapture, maxCandidates)
+	// WS-1.6 (spec 05 §Q3) — select the extraction flavor SERVER-SIDE from the book's kind,
+	// NEVER a caller-supplied arg (the caller is a chat session; its inputs trace to user
+	// data). A kind='diary' book is the work assistant: capture the user's REAL colleagues /
+	// projects / meetings (flavorWorkCapture); anything else keeps the fiction chat flavor
+	// that excludes real people. ResolveAccess is served from the grant cache the requireGrant
+	// check just populated — not an extra hop; and kind is "" to a non-grantee (no oracle), so
+	// it defaults safely to the fiction flavor.
+	flavor := flavorChatCapture
+	if acc, aerr := s.grantClient.ResolveAccess(ctx, bookID, userID); aerr == nil && acc.Kind == "diary" {
+		flavor = flavorWorkCapture
+	}
+
+	out, err := s.extractEntityCandidates(ctx, userID, bookID, text, nil, req.ModelRef, flavor, maxCandidates)
 	if err != nil {
 		if errors.Is(err, errNoBookKinds) {
 			// A distinct, terminal-for-now code: the book has no ontology, so capture can
