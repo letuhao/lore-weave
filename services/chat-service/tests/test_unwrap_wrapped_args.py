@@ -70,3 +70,28 @@ def test_meta_tool_wrapped_payload_unwraps_with_none_def():
     assert _unwrap_wrapped_args({"args": {"slug": "w5"}}, None) == {"slug": "w5"}
     # a well-formed meta call is untouched
     assert _unwrap_wrapped_args({"intent": "lore"}, None) == {"intent": "lore"}
+
+
+# ── scalar-id list-unwrap: gemma wraps a scalar id arg in a 1-element list ─────
+from app.services.stream_service import _coerce_listed_scalar_ids  # noqa: E402
+
+
+def test_coerces_a_1element_list_wrapped_scalar_id():
+    # measured live: kg_project_entities_to_nodes project_id=["<uuid>"] → tool 400s
+    a = {"project_id": ["019f579c-f359-76e2-b76b-9ff2e2247055"], "entity_ids": ["a", "b"]}
+    _coerce_listed_scalar_ids(a)
+    assert a["project_id"] == "019f579c-f359-76e2-b76b-9ff2e2247055"  # unwrapped
+    assert a["entity_ids"] == ["a", "b"]  # a real array param is NEVER touched
+
+
+def test_coerce_is_a_noop_for_wellformed_and_multi_element():
+    a = {"book_id": "b1", "project_id": ["x", "y"]}  # scalar already; 2-elem list not a scalar
+    _coerce_listed_scalar_ids(a)
+    assert a == {"book_id": "b1", "project_id": ["x", "y"]}
+
+
+def test_coerce_only_touches_known_scalar_id_args():
+    # a non-id arg that happens to be a 1-elem list is left alone (not in the closed set)
+    a = {"items": [{"kind": "character"}]}
+    _coerce_listed_scalar_ids(a)
+    assert a == {"items": [{"kind": "character"}]}

@@ -325,7 +325,8 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
 
     # shared accumulation across the initial stream + every resume (approve) stream
     st = {"text_parts": [], "open_calls": {}, "order": [], "budget": None,
-          "run_id": None, "last_confirm_token": (carry or {}).get("last_confirm_token")}
+          "run_id": None, "cid_run_id": {},
+          "last_confirm_token": (carry or {}).get("last_confirm_token")}
 
     def _drain(resp) -> None:
         resp.raise_for_status()
@@ -341,6 +342,19 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
                 continue
             if obj.get("type") == "RUN_STARTED" and obj.get("runId"):
                 st["run_id"] = obj["runId"]
+            # A SUSPEND mints a FRESH run_id per suspended run (server stream_service.py
+            # save_suspended_run) and returns it in RUN_FINISHED.result.pendingToolCall.runId —
+            # NOT the RUN_STARTED runId. The real FE resumes with THIS id (runChatStream.ts);
+            # resuming with the RUN_STARTED id makes load_suspended_run miss (loaded=False →
+            # "expired"), so a CONSENT suspend (tool_approval, e.g. kg_project_create) never
+            # executes. Capture the suspend's own run_id, keyed by its toolCallId.
+            if obj.get("type") == "RUN_FINISHED":
+                _res = obj.get("result") or {}
+                _pend = _res.get("pendingToolCall") or {}
+                if _res.get("status") == "suspended" and _pend.get("runId"):
+                    st["run_id"] = _pend["runId"]
+                    if _pend.get("toolCallId"):
+                        st["cid_run_id"][_pend["toolCallId"]] = _pend["runId"]
             if obj.get("name") == "contextBudget" and isinstance(obj.get("value"), dict):
                 st["budget"] = obj["value"]
             typ = obj.get("type") or ""
@@ -406,7 +420,10 @@ def _send_turn(c: httpx.Client, sid: str, content: str, *,
         # (often corrupted) copy in the confirm_action arg — this is what the real FE commits.
         confirm_token = st.get("last_confirm_token") or (
             pargs.get("confirm_token") if isinstance(pargs, dict) else None)
-        resume_body: dict = {"run_id": st["run_id"], "tool_call_id": pend_cid}
+        # Resume with the run_id that belongs to THIS pending call's suspend (each suspend
+        # has its own fresh run_id), falling back to the latest suspend's run_id.
+        _resume_run_id = st["cid_run_id"].get(pend_cid, st["run_id"])
+        resume_body: dict = {"run_id": _resume_run_id, "tool_call_id": pend_cid}
         if is_appr:
             # Tier-A approval card — the resume path executes server-side (approved_always).
             resume_body["outcome"] = APPROVE_OUTCOME

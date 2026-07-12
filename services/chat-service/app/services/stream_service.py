@@ -1035,6 +1035,30 @@ def _unwrap_wrapped_args(args_obj: dict, tool_def: dict | None) -> dict:
     return inner
 
 
+# Scalar id args a mid-tier model sometimes wraps in a 1-element list (measured live:
+# gemma sent kg_project_entities_to_nodes `project_id=["<uuid>"]` and kg_project_create
+# `book_id=["<uuid>"]` → the tool 400s "Input should be a valid string (you sent a list)").
+# These are ALWAYS scalar UUIDs — their plural, legitimately-array forms (`entity_ids`,
+# `items`) are deliberately NOT in this set, so coercing `[x] → x` here can never eat a
+# real list. Schema-free, so it also works on the resume-execute path (no tool_def there).
+_SCALAR_ID_ARGS = frozenset({
+    "book_id", "project_id", "chapter_id", "entity_id", "world_id",
+    "arc_id", "node_id", "outline_node_id", "run_id",
+})
+
+
+def _coerce_listed_scalar_ids(args_obj: dict) -> dict:
+    """Undo a mid-tier model wrapping a scalar id in a 1-element list — `[uuid] → uuid`
+    for the known scalar-id args only. A no-op for a well-formed call and for any array arg."""
+    if not isinstance(args_obj, dict):
+        return args_obj
+    for k in _SCALAR_ID_ARGS:
+        v = args_obj.get(k)
+        if isinstance(v, list) and len(v) == 1 and isinstance(v[0], (str, int)):
+            args_obj[k] = v[0]
+    return args_obj
+
+
 def _inject_context_ids(
     args_obj: dict,
     tool_def: dict | None,
@@ -2366,6 +2390,8 @@ async def _stream_with_tools(
                 args_obj = _unwrap_wrapped_args(
                     args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
                 )
+                # Undo a 1-element-list wrapping of a scalar id arg (gemma: project_id=[uuid]).
+                _coerce_listed_scalar_ids(args_obj)
                 # S02 fix — fill the session's known context-ids (book_id/chapter_id/project_id)
                 # into this backend tool's args when it declares them and the model left them
                 # blank. Done BEFORE the blank-args cap + dispatch so a would-be
@@ -5350,6 +5376,9 @@ async def resume_stream_response(
         _appr = _approval_args if isinstance(_approval_args, dict) else {}
         _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
         _tool_args = _appr.get("args") if isinstance(_appr.get("args"), dict) else {}
+        # Same scalar-id list-unwrap the main dispatch does — the frozen consent args can carry
+        # gemma's project_id=[uuid] (measured: connect-people 400'd "you sent a list").
+        _coerce_listed_scalar_ids(_tool_args)
         _decision = outcome if outcome in ("approved_once", "approved_always", "denied", "denied_always") else "denied"
 
         # Track C WS-3 — the resume path is the ONE execution site that does not run
