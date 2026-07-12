@@ -7,6 +7,7 @@ export { LaneBandNode, buildLaneNodes, LANE_NODE_PREFIX } from './LaneBandLayer'
 export { PlanDrawer } from './PlanDrawer';
 export { PlanNavigatorRail } from './PlanNavigatorRail';
 export { PlanEmptyState } from './PlanEmptyState';
+export { PlanDrawerEdit, NODE_STATUSES } from './PlanDrawerEdit';
 export { UnplannedTray } from './UnplannedTray';
 export { NodeBadges } from './NodeBadges';
 export { PacingSparkline } from './PacingSparkline';

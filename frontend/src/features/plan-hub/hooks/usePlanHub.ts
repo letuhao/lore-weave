@@ -15,6 +15,8 @@ import { usePlanMoves } from './usePlanMoves';
 import { useActualState } from './useActualState';
 import { useExtractPlan } from './useExtractPlan';
 import { useEntityNames } from './useEntityNames';
+import { usePlanNodeWrites } from './usePlanNodeWrites';
+import { useBookChapters } from './useBookChapters';
 import { computeUnionState, toArcShellNode } from './planHubMappers';
 
 export function usePlanHub(bookId: string): PlanHubView {
@@ -206,6 +208,10 @@ export function usePlanHub(bookId: string): PlanHubView {
   // PH21 CTA — the decompiler. Lives here (not in the panel) so the panel stays a view.
   const extract = useExtractPlan(bookId, token, windowsResult.reload);
 
+  // PH20 — the drawer's writes + the chapter spine the ⚓ re-anchor picker needs (BPS-13).
+  const nodeWrites = usePlanNodeWrites(bookId, token, windowsResult.reload);
+  const chapters = useBookChapters(bookId, token);
+
   const loading = (enabled && arcsQuery.isLoading) || windowsResult.loading;
   const error =
     (arcsQuery.error instanceof Error ? arcsQuery.error.message : null) ?? windowsResult.error ?? null;
@@ -267,6 +273,8 @@ export function usePlanHub(bookId: string): PlanHubView {
     linkScenes: moves.linkScenes,
     unlinkScenes: moves.unlinkScenes,
     resolveEntity: entityNames.resolve,
+    nodeWrites,
+    chapters,
     extract,
     notices,
     loading,

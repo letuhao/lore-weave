@@ -1,6 +1,7 @@
-// Plan Hub v2 (24 H3 / PH16) — the 280px detail DRAWER that opens over the canvas for the selected
-// node. Render-only over usePlanNode's data + the passed selection; close via onClose (edits are
-// H5 / PH20 — this slice reads, it does not write). By kind:
+// Plan Hub v2 (24 H3 / PH16 / PH20) — the 280px detail DRAWER that opens over the canvas for the
+// selected node. It READS via usePlanNode and WRITES via the `writes` prop (PH16's fixed click
+// contract: "the drawer edits the DESIRED state; Open in Editor goes to the ACTUAL"). Omitting
+// `writes` renders it read-only rather than showing controls that would 403. By kind:
 //   • chapter/scene → Overview · Cast & Setting · Craft from the full outline node, plus LIVE
 //     Canon-here + Open-threads facets read straight off the cold-open `overlay` prop (those refs
 //     are already in memory — no extra fetch, PH9's closed read set). Each ref deep-links to its
@@ -13,8 +14,8 @@
 //     component does not exist yet (verified), so this is the documented reuse gap, not a fork.
 //
 // DOCK-2: the legacy scene-inspector's field rendering (TextField/NumberField/EntityRefField) is
-// EDITABLE + studio-bus-driven; this render-only, selection-driven drawer composes a read-only facet
-// renderer instead of mounting that editable panel. The editable path lands with H5's interactions.
+// studio-bus-driven; this selection-driven drawer composes its own facet renderer + the PH20 edit
+// block (PlanDrawerEdit) rather than mounting that panel — no fork, and no bus dependency.
 import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -22,6 +23,8 @@ import type { OutlineNode } from '@/features/composition/types';
 
 import { usePlanNode, type PlanNodeKind, type PlanNodeView } from '../hooks/usePlanNode';
 import { refsFor } from './nodePresentation';
+import { PlanDrawerEdit } from './PlanDrawerEdit';
+import type { NodeEdit } from '../api';
 import type { ArcListNode, PlanOverlay, PlanOverlayRef } from '../types';
 
 export interface PlanDrawerProps {
@@ -40,6 +43,20 @@ export interface PlanDrawerProps {
   // NOTE: there is deliberately no `refsCapped` prop. It lives at `overlay.problems.refs_capped`,
   // and the drawer already has the overlay — a second prop carrying the same fact is one concept
   // under two names (DA-10), and the two would eventually disagree.
+
+  /** PH20 writes. Omitted ⇒ the drawer is read-only (no EDIT grant / no token) — the edit block
+   *  simply isn't rendered, rather than rendering controls that would 403. */
+  writes?: {
+    edit: (nodeId: string, version: number, patch: NodeEdit) => void;
+    archive: (nodeId: string) => void;
+    restore: (nodeId: string) => void;
+    saving: boolean;
+    error: string | null;
+  };
+  /** The book's chapters, for the ⚓ re-anchor picker (BPS-13). */
+  chapters?: { chapter_id: string; title: string; sort_order: number }[];
+  /** PH16 — "Open in Editor" goes to the ACTUAL (the manuscript). */
+  onOpenInEditor?: (chapterId: string) => void;
 }
 
 const KIND_LABEL: Record<PlanNodeKind, string> = {
@@ -170,11 +187,17 @@ function ChapterSceneFacets({
   nameFor,
   overlay,
   onOpenRef,
+  writes,
+  chapters,
+  onOpenInEditor,
 }: {
   node: OutlineNode;
   nameFor: PlanNodeView['nameFor'];
   overlay?: PlanOverlay | null;
   onOpenRef?: (r: PlanOverlayRef) => void;
+  writes?: PlanDrawerProps['writes'];
+  chapters?: PlanDrawerProps['chapters'];
+  onOpenInEditor?: (chapterId: string) => void;
 }) {
   const present = (node.present_entity_ids ?? []).map(nameFor).filter(Boolean).join(', ');
   const num = (v: number | null | undefined): ReactNode => (v == null ? null : String(v));
@@ -184,6 +207,26 @@ function ChapterSceneFacets({
   const threadRefs = refsFor(overlay ?? null, node.id, 'thread');
   return (
     <>
+      {/* PH20 — the drawer EDITS the desired state. Rendered only when a write path is wired. */}
+      {writes && onOpenInEditor && (
+        <>
+          <PlanDrawerEdit
+            node={node}
+            chapters={chapters ?? []}
+            saving={writes.saving}
+            onEdit={(patch) => writes.edit(node.id, node.version, patch)}
+            onArchive={() => writes.archive(node.id)}
+            onRestore={() => writes.restore(node.id)}
+            onOpenInEditor={onOpenInEditor}
+          />
+          {writes.error && (
+            <p data-testid="plan-drawer-write-error" className="border-b p-3 text-xs text-destructive">
+              {writes.error}
+            </p>
+          )}
+        </>
+      )}
+
       <Section title="Overview" testid="plan-drawer-section-overview">
         <Field label="Status" value={node.status} testid="plan-drawer-f-status" />
         <Field label="Goal" value={node.goal} testid="plan-drawer-f-goal" />
@@ -314,10 +357,16 @@ function DrawerBody({
   view,
   overlay,
   onOpenRef,
+  writes,
+  chapters,
+  onOpenInEditor,
 }: {
   view: PlanNodeView;
   overlay?: PlanOverlay | null;
   onOpenRef?: (r: PlanOverlayRef) => void;
+  writes?: PlanDrawerProps['writes'];
+  chapters?: PlanDrawerProps['chapters'];
+  onOpenInEditor?: (chapterId: string) => void;
 }) {
   if (view.loading) return <Centered testid="plan-drawer-loading">Loading…</Centered>;
   if (view.error) return <Centered testid="plan-drawer-error" tone="error">{view.error}</Centered>;
@@ -329,6 +378,9 @@ function DrawerBody({
         nameFor={view.nameFor}
         overlay={overlay}
         onOpenRef={onOpenRef}
+        writes={writes}
+        chapters={chapters}
+        onOpenInEditor={onOpenInEditor}
       />
     );
   }
@@ -346,6 +398,9 @@ export function PlanDrawer({
   onClose,
   overlay,
   onOpenRef,
+  writes,
+  chapters,
+  onOpenInEditor,
 }: PlanDrawerProps) {
   // Hook first (unconditional — Rules of Hooks); then self-hide when there is no selection so the
   // orchestrator can keep <PlanDrawer/> mounted (never conditionally unmount a stateful child).
@@ -383,7 +438,14 @@ export function PlanDrawer({
         </button>
       </header>
       <div data-testid="plan-drawer-body" className="min-h-0 flex-1 overflow-auto">
-        <DrawerBody view={view} overlay={overlay} onOpenRef={onOpenRef} />
+        <DrawerBody
+          view={view}
+          overlay={overlay}
+          onOpenRef={onOpenRef}
+          writes={writes}
+          chapters={chapters}
+          onOpenInEditor={onOpenInEditor}
+        />
       </div>
     </aside>
   );

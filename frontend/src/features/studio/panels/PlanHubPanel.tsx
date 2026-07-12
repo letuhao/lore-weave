@@ -217,6 +217,9 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onClose={() => view.select(null)}
           overlay={view.overlay}
           onOpenRef={openRef}
+          writes={view.nodeWrites}
+          chapters={view.chapters}
+          onOpenInEditor={(chapterId) => focusManuscriptUnit(chapterId)}
         />
       </div>
 

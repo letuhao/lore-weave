@@ -4,6 +4,8 @@
 // re-exported here so a consumer imports one place. Prose never reaches the canvas
 // (PH10) — the `detail=summary` projection is scalars + L1 refs only.
 import type { EntityResolution } from './hooks/useEntityNames';
+import type { PlanNodeWrites } from './hooks/usePlanNodeWrites';
+import type { BookChapter } from './hooks/useBookChapters';
 import type {
   ArcShellNode,
   WindowNode,
@@ -252,6 +254,10 @@ export interface PlanHubView {
   /** PH26 — the entity-names map (read surface #6): resolve a cast id to a name, or say honestly
    *  whether it is MISSING (map complete) or merely UNKNOWN (map incomplete). */
   resolveEntity: (entityId: string) => EntityResolution;
+  /** PH20 — the drawer's writes (edit / archive / restore), OCC'd on the node version. */
+  nodeWrites: PlanNodeWrites;
+  /** The book's chapter spine — the ⚓ re-anchor picker's options (BPS-13). */
+  chapters: BookChapter[];
   /** PH21 CTA — run the SC6 decompiler (`materialize-scenes`) on this book. */
   extract: {
     run: () => void;

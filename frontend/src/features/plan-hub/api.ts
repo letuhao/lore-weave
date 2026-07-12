@@ -107,6 +107,53 @@ export function materializeScenes(
   );
 }
 
+/** The fields the H3 drawer can edit (PH16: "the drawer edits the DESIRED state"). A subset of the
+ *  server's `NodePatch` — deliberately not the whole thing: prose (`synopsis`/`goal`) is editable
+ *  here, but the manuscript is NOT (that is "Open in Editor", which goes to the actual). */
+export interface NodeEdit {
+  title?: string;
+  status?: string;
+  tension?: number | null;
+  beat_role?: string | null;
+  goal?: string;
+  synopsis?: string;
+  /** BPS-13 ⚓ re-anchor — bind this spec node to a (different) manuscript chapter. */
+  chapter_id?: string | null;
+}
+
+/** H3/PH20 write — patch a spec node. OCC on the node `version` via the existing `If-Match` header
+ *  convention (ONE OCC concept, one name per surface — PH20/F-H3). A stale version comes back 412
+ *  NODE_VERSION_CONFLICT with the CURRENT row, so the caller reloads rather than clobbering. */
+export function patchNode(
+  nodeId: string,
+  body: NodeEdit,
+  version: number,
+  token: string,
+): Promise<{ id: string; version: number }> {
+  return apiJson<{ id: string; version: number }>(`${COMP}/outline/nodes/${nodeId}`, {
+    method: 'PATCH',
+    token,
+    headers: { 'If-Match': String(version) },
+    body: JSON.stringify(body),
+  });
+}
+
+/** H3/PH20 write — ARCHIVE a spec node (soft delete; its subtree goes with it). Not OCC'd: the
+ *  server has no version arg here, and archiving is idempotent. The inverse is `restoreNode`, which
+ *  is what makes it Tier-A (reversibility determines autonomy). */
+export function archiveNode(nodeId: string, token: string): Promise<{ id: string }> {
+  return apiJson<{ id: string }>(`${COMP}/outline/nodes/${nodeId}`, { method: 'DELETE', token });
+}
+
+/** H3/PH20 write — the verified inverse of `archiveNode`. Restores the node's archived subtree AND
+ *  its archived ancestor chain, so it reconnects to a visible root rather than becoming an orphan. */
+export function restoreNode(nodeId: string, token: string): Promise<{ id: string }> {
+  return apiJson<{ id: string }>(`${COMP}/outline/nodes/${nodeId}/restore`, {
+    method: 'POST',
+    token,
+  });
+}
+
 /** H5 Row-5 write — DRAW a scene-link edge (PH20). Book-keyed: the Hub has no Work gate anywhere
  *  (PH9), so it never holds a `project_id` and cannot call the Work-keyed sibling. The server
  *  resolves the book's canonical Work itself and re-checks that BOTH endpoints are nodes of it — an
