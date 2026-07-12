@@ -107,6 +107,30 @@ export function materializeScenes(
   );
 }
 
+/** H5 Row-5 write — DRAW a scene-link edge (PH20). Book-keyed: the Hub has no Work gate anywhere
+ *  (PH9), so it never holds a `project_id` and cannot call the Work-keyed sibling. The server
+ *  resolves the book's canonical Work itself and re-checks that BOTH endpoints are nodes of it — an
+ *  EDIT grant on this book can never link a node from another. 409 SCENE_LINK_EXISTS on a duplicate
+ *  (UNIQUE from,to,kind); 409 NO_CANONICAL_WORK when the book has no plan to link into. */
+export function createSceneLink(
+  bookId: string,
+  body: { from_node_id: string; to_node_id: string; kind?: 'setup_payoff' | 'custom'; label?: string },
+  token: string,
+): Promise<SceneLinkEdge> {
+  return apiJson<SceneLinkEdge>(`${COMP}/books/${bookId}/scene-links`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+/** H5 Row-5 write — DELETE a scene-link edge (PH20). By-id: the server resolves the edge's scope
+ *  from the row itself and gates EDIT on ITS book, so the gate and the mutation can never target
+ *  different books. 204 on success; 404 (uniform, no existence oracle) if it isn't yours. */
+export async function deleteSceneLink(linkId: string, token: string): Promise<void> {
+  await apiJson<unknown>(`${COMP}/scene-links/${linkId}`, { method: 'DELETE', token });
+}
+
 /** H5 Row-2 write — move an ARC in the structure tree (the `composition_arc_move` mirror, PH20).
  *  Places `arcId` under `new_parent_arc_id` (null = a root) AFTER `after_id` (null = first). The
  *  server computes the fractional rank AND recomputes the moved subtree's `depth` in one txn; a

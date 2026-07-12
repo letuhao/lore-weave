@@ -30,6 +30,7 @@ import ReactFlow, {
   type Node,
   type NodeDragHandler,
   type NodeMouseHandler,
+  type OnConnect,
   type XYPosition,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
@@ -132,6 +133,8 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     arcPagination,
     onLoadMoreArc,
     onOpenRef,
+    onLinkScenes,
+    onUnlinkScenes,
     busy,
   } = props;
 
@@ -141,6 +144,9 @@ function PlanCanvasInner(props: PlanCanvasProps) {
   const canDragChapter = (!!onMoveChapter || !!onReorderChapter) && !busy;
   const canDragScene = !!onMoveScene && !busy;
   const canDragArc = !!onMoveArc && !busy;
+  // H5 Row-5: connecting is a WRITE, so it follows the same rule — offered only when its handler is
+  // wired, and frozen while another write is in flight.
+  const canConnect = !!onLinkScenes && !busy;
   const canDrag = canDragChapter || canDragScene || canDragArc;
 
   // PH13 — resolve each endpoint onto the RENDERED node set before React Flow ever sees it.
@@ -237,6 +243,31 @@ function PlanCanvasInner(props: PlanCanvasProps) {
 
   const onPaneClick = useCallback(() => onSelect(null), [onSelect]);
 
+  // H5 Row-5 (PH20) — DRAW an edge. The canvas reports only which two handles were joined; the
+  // controller decides whether that is a legal link (both ends must be real SCENE nodes — an edge to
+  // a stub connector's placeholder card is meaningless, because we don't know which hidden scene was
+  // meant). Same two-layer law as every other H5 row.
+  const onConnect = useCallback<OnConnect>(
+    (c) => {
+      if (!c.source || !c.target) return;
+      onLinkScenes?.(c.source, c.target);
+    },
+    [onLinkScenes],
+  );
+
+  // H5 Row-5 — DELETE an edge. React Flow's own `deleteKeyCode` path is deliberately OFF: a stray
+  // Backspace would destroy a link with no confirmation. An explicit click on the edge is the
+  // gesture, and the controller owns the write.
+  const onEdgeClick = useCallback(
+    (_: unknown, edge: Edge) => {
+      // A STUB is not a real edge on screen — its other end is collapsed out of view. Deleting the
+      // underlying link from a half-drawn line is a trap; expand the arc and delete it properly.
+      if ((edge.data as { stub?: boolean } | undefined)?.stub) return;
+      onUnlinkScenes?.(edge.id);
+    },
+    [onUnlinkScenes],
+  );
+
   // H5 drop routing. The drop point is the CURSOR in flow coordinates — see the file header for why
   // the dragged node's corner is the wrong probe. Routing by kind:
   //   • CHAPTER (Row-1) → the LEAF lane the cursor is over (leafLaneAtY). A DIFFERENT leaf arc
@@ -306,7 +337,13 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         nodesDraggable={canDrag}
         // RF's default is 0 — every click would be a 0px "drag" and every twitch a structural write.
         nodeDragThreshold={DRAG_THRESHOLD_PX}
-        nodesConnectable={false}
+        // H5 Row-5 (PH20) — drag from a node's handle to another to CREATE a scene link.
+        nodesConnectable={canConnect}
+        onConnect={onConnect}
+        onEdgeClick={onEdgeClick}
+        // Deliberately NOT wiring RF's `onEdgesDelete`/`deleteKeyCode`: a stray Backspace would
+        // destroy a link with no confirmation and no undo path. The click IS the gesture.
+        deleteKeyCode={null}
         elementsSelectable={false}
         fitView
         minZoom={0.1}

@@ -30,7 +30,7 @@ from app.db.repositories.works import WorksRepo
 from app.deps import (get_grant_client_dep, get_outline_repo,
                       get_scene_links_repo, get_works_repo)
 from app.engine.scene_decompile import (BookSceneFetchError, fetch_book_scenes,
-                                        materialize_scenes)
+                                        materialize_scenes, resolve_canonical_work)
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.mcp.service_bearer import mint_service_bearer
@@ -673,6 +673,52 @@ async def create_scene_link(
     except ReferenceViolationError as exc:
         raise HTTPException(status_code=400, detail={"code": "BAD_REFERENCE", "detail": exc.message})
     except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=409, detail={"code": "SCENE_LINK_EXISTS"})
+    return link.model_dump(mode="json")
+
+
+@router.post("/books/{book_id}/scene-links", status_code=201)
+async def create_book_scene_link(
+    book_id: UUID,
+    body: SceneLinkCreate,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """24 PH20 Row-5 — draw a scene-link edge on the canvas (the BOOK-keyed create).
+
+    The Work-keyed sibling above cannot serve the Hub: PH9 is explicit that the Hub keys
+    on `book_id` and has **no Work gate anywhere**, so it never holds a `project_id` to
+    put in that path. Same repo method, two front doors (PH20/F-H3) — this one resolves
+    the book's CANONICAL Work itself (`source_work_id IS NULL`; derivatives are branches
+    of the spec, 23 BA8) and gates EDIT on the book (BPS-8).
+
+    Tenancy is the repo's own guard: both endpoints must be nodes of the resolved Work,
+    so an EDIT grant on this book can never link a node belonging to another one.
+    """
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    work = resolve_canonical_work(await works.resolve_by_book(book_id))
+    if work is None:
+        # No canonical Work ⇒ there is no spec to link INTO. Say so; a 500 or a silent
+        # empty would both be lies (the book may simply never have been planned).
+        raise HTTPException(status_code=409, detail={
+            "code": "NO_CANONICAL_WORK",
+            "detail": "this book has no plan yet — extract or create one before linking scenes",
+        })
+    # A pending Work carries a NULL project_id and is addressed by its surrogate id (C16,
+    # the same fallback create_node uses).
+    scope = work.project_id or work.id
+    try:
+        link = await scene_links.create(
+            scope, body.from_node_id, body.to_node_id,
+            kind=body.kind, label=body.label, created_by=user_id,
+        )
+    except ReferenceViolationError as exc:
+        raise HTTPException(status_code=400, detail={"code": "BAD_REFERENCE", "detail": exc.message})
+    except asyncpg.UniqueViolationError:
+        # UNIQUE(from,to,kind) — the edge already exists. Not an error the user can act on
+        # differently, but it must not read as "created".
         raise HTTPException(status_code=409, detail={"code": "SCENE_LINK_EXISTS"})
     return link.model_dump(mode="json")
 

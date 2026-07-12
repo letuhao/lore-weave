@@ -237,6 +237,8 @@ export function usePlanHub(bookId: string): PlanHubView {
     unplannedCount: overlay?.unplanned_count ?? unplanned?.length ?? 0,
     arcPagination,
     loadMoreArc: windowsResult.loadMoreArc,
+    linkScenes: moves.linkScenes,
+    unlinkScenes: moves.unlinkScenes,
     extract,
     notices,
     loading,

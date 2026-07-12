@@ -238,6 +238,10 @@ export interface PlanHubView {
   arcPagination: Record<string, ArcPagination>;
   /** PH11 — page in the next 100 chapters of an expanded arc. */
   loadMoreArc: (arcId: string) => void;
+  /** H5 Row-5 (PH20) — draw a scene-link edge between two scene nodes. */
+  linkScenes: (fromNodeId: string, toNodeId: string) => void;
+  /** H5 Row-5 (PH20) — delete a scene-link edge by id. */
+  unlinkScenes: (linkId: string) => void;
   /** PH21 CTA — run the SC6 decompiler (`materialize-scenes`) on this book. */
   extract: {
     run: () => void;
@@ -335,6 +339,12 @@ export interface PlanCanvasProps {
    *  `quality-promises`). Reaches the node cards through `PlanNodeData.onOpenRef`, which they
    *  already forward to NodeBadges. Omitted ⇒ badges stay plain chips, never dead links. */
   onOpenRef?: (ref: PlanOverlayRef) => void;
+  /** H5 Row-5 (PH20) — two handles were joined. The canvas reports only WHICH; the controller decides
+   *  whether it's a legal link (both ends must be real scene nodes). Omitted ⇒ not connectable. */
+  onLinkScenes?: (fromNodeId: string, toNodeId: string) => void;
+  /** H5 Row-5 (PH20) — an edge was clicked; delete that scene link. A STUB edge is never deletable
+   *  (its other end is collapsed out of view — deleting from a half-drawn line is a trap). */
+  onUnlinkScenes?: (linkId: string) => void;
   /** H5: a move is in flight ⇒ freeze dragging. The lanes under the cursor are about to be replaced
    *  by the server's answer, so a second drag would be aimed at a layout that no longer holds. */
   busy?: boolean;

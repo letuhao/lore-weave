@@ -123,7 +123,7 @@ def _uuid_or_none(v: Any) -> UUID | None:
         return None
 
 
-def _resolve_canonical(works: list) -> Any | None:
+def resolve_canonical_work(works: list) -> Any | None:
     """The book's CANONICAL Work (source_work_id IS NULL) among the marked Works
     (`WorksRepo.resolve_by_book` returns the canonical + any C23 derivatives). At
     most one canonical exists (`uq_composition_work_book`). Derivatives are
@@ -204,7 +204,7 @@ async def materialize_scenes(
     # excludes lazy/pending (null-project) Works, so also try the C16 pending row —
     # decompiling during a knowledge outage must still land (create_node addresses
     # a pending Work by its surrogate id; proven by test_c16_pending_work).
-    work = _resolve_canonical(await works.resolve_by_book(book_id))
+    work = resolve_canonical_work(await works.resolve_by_book(book_id))
     if work is None:
         work = await works.get_pending_for_book(book_id)
     if work is None:

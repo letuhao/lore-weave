@@ -19,7 +19,15 @@
 // (or another collaborator) has already built on.
 import { useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { assignChapters, getChildren, moveArc, reorderBookChapter, reorderNode } from '../api';
+import {
+  assignChapters,
+  createSceneLink,
+  deleteSceneLink,
+  getChildren,
+  moveArc,
+  reorderBookChapter,
+  reorderNode,
+} from '../api';
 import { booksApi } from '@/features/books/api';
 import type { ArcListNode, NodePosition, SummaryNode } from '../types';
 
@@ -103,6 +111,11 @@ export interface PlanMoves {
   moveArcTo: (arcId: string, targetId: string) => void;
   /** H5 Row-3: place a chapter after `afterUnit` in the book's READING order (null ⇒ first). */
   reorderChapter: (chapterNodeId: string, afterUnit: NodePosition | null) => void;
+  /** H5 Row-5 (PH20): DRAW a scene-link edge between two SCENE nodes. Rejects a stub endpoint (a
+   *  chapter card / arc rollup standing in for something collapsed) with a reason. */
+  linkScenes: (fromNodeId: string, toNodeId: string) => void;
+  /** H5 Row-5 (PH20): DELETE a scene-link edge by id. */
+  unlinkScenes: (linkId: string) => void;
   moving: boolean;
   moveError: string | null;
   /** The last successful move's inverse, or null. Cleared when a new move starts (one level). */
@@ -392,18 +405,83 @@ export function usePlanMoves(input: {
     [token, windowContent, reorderMutation],
   );
 
+  // ── H5 Row-5 (PH20) — DRAW / DELETE a scene-link edge ──────────────────────────────────────
+  //
+  // The canvas reports only WHICH two handles were joined; the rules live here. Both endpoints must
+  // be SCENE nodes: scene_link is the non-derivable scene→scene edge (F-H7), and a chapter-level
+  // "link" is already expressible as reading order. Rejecting it here (with a reason) beats letting
+  // the server 400 — the user gets told what the gesture means, not that it failed.
+  const linkMutation = useMutation({
+    mutationFn: (vars: { from: string; to: string }) =>
+      createSceneLink(bookId, { from_node_id: vars.from, to_node_id: vars.to }, token!),
+    onError: onFailed,
+    onSettled: settle,
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: (linkId: string) => deleteSceneLink(linkId, token!),
+    onError: onFailed,
+    onSettled: settle,
+  });
+
+  const linkScenes = useCallback(
+    (fromNodeId: string, toNodeId: string) => {
+      if (!token) return;
+      if (fromNodeId === toNodeId) return; // a self-loop; the table CHECK rejects it anyway
+      const from = windowContent[fromNodeId];
+      const to = windowContent[toNodeId];
+      // A stub connector's endpoint is a CHAPTER card or an arc ROLLUP standing in for something
+      // collapsed (PH13) — you cannot draw an edge to a placeholder, because we don't know which
+      // scene inside it you meant. Say that, rather than creating a wrong edge or failing mutely.
+      if (from?.kind !== 'scene' || to?.kind !== 'scene') {
+        setMoveError('Scene links join two scenes — expand the chapters and drag scene to scene.');
+        return;
+      }
+      setMoveError(null);
+      linkMutation.mutate(
+        { from: fromNodeId, to: toNodeId },
+        {
+          onSuccess: (link) => {
+            setUndo({
+              label: 'Scene link created',
+              run: () => unlinkMutation.mutate(link.id),
+            });
+          },
+        },
+      );
+    },
+    [token, windowContent, linkMutation, unlinkMutation],
+  );
+
+  const unlinkScenes = useCallback(
+    (linkId: string) => {
+      if (!token) return;
+      setMoveError(null);
+      // No undo: re-creating the edge would need its kind/label, and the delete response is a 204
+      // that carries neither. Offering an Undo that silently drops the label would be worse than
+      // offering none — draw it again is honest. (Tracked: give DELETE a body, then undo it.)
+      unlinkMutation.mutate(linkId);
+      setUndo(null);
+    },
+    [token, unlinkMutation],
+  );
+
   return {
     moveChapterToArc,
     moveSceneToChapter,
     moveArcTo,
     reorderChapter,
+    linkScenes,
+    unlinkScenes,
     moving:
       chapterMutation.isPending ||
       sceneMutation.isPending ||
       arcMutation.isPending ||
       reorderMutation.isPending ||
       undoSceneMutation.isPending ||
-      undoArcMutation.isPending,
+      undoArcMutation.isPending ||
+      linkMutation.isPending ||
+      unlinkMutation.isPending,
     moveError,
     undo,
   };
