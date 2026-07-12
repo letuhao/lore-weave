@@ -761,6 +761,15 @@ BEGIN
   END IF;
 END$$;
 
+-- WS-2.2 (dedup) — a stable dedup key so a re-distill of the same day does NOT duplicate its facts in
+-- the inbox (the distiller re-queues on every "End my day"; without this the inbox grows unbounded on
+-- re-runs). NULL for the legacy chat-memory queue path (no dedup there). The partial UNIQUE only
+-- covers the diary path (dedup_key IS NOT NULL), so the ON CONFLICT DO NOTHING insert is idempotent.
+ALTER TABLE knowledge_pending_facts ADD COLUMN IF NOT EXISTS dedup_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_pending_facts_dedup
+  ON knowledge_pending_facts(user_id, project_id, dedup_key)
+  WHERE dedup_key IS NOT NULL;
+
 -- List path: WHERE user_id=$1 [AND session_id=$2] ORDER BY created_at.
 -- The optional session filter is a column equality, so a composite
 -- (user_id, created_at) index serves both the all-sessions list and

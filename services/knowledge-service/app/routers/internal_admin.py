@@ -12,6 +12,7 @@ Authentication: X-Internal-Token (service-to-service).
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -25,7 +26,6 @@ from uuid import UUID
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import delete_all_passages_for_project
-from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.neo4j_helpers import (
     drop_summary_index,
@@ -97,21 +97,31 @@ async def queue_diary_facts(body: _QueueDiaryFactsIn) -> dict:
     WS-2.2; a re-distill of the same day re-queues (dedup lands with WS-2.2)."""
     pool = get_knowledge_pool()
     project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
-    repo = PendingFactsRepo(pool)
     queued = 0
-    for f in body.facts:
-        text = (f.text or "").strip()
-        if not text:
-            continue
-        date_sfx = f" ({body.entry_date})" if body.entry_date else ""
-        await repo.queue(
-            body.user_id,
-            project_id=project.project_id,
-            session_id=None,
-            fact_type="statement",
-            fact_text=f"[{(f.kind or 'event').strip()}] {text}{date_sfx}",
-        )
-        queued += 1
+    async with pool.acquire() as conn:
+        for f in body.facts:
+            text = (f.text or "").strip()
+            if not text:
+                continue
+            date_sfx = f" ({body.entry_date})" if body.entry_date else ""
+            fact_text = f"[{(f.kind or 'event').strip()}] {text}{date_sfx}"
+            # WS-2.2 dedup — a stable key over (project, fact_text) so a re-distill of the SAME day
+            # doesn't duplicate the fact in the inbox. ON CONFLICT DO NOTHING repeats the partial
+            # index's predicate (memory: an ON CONFLICT must match the partial-unique's WHERE).
+            dedup_key = hashlib.sha256(f"{project.project_id}:{fact_text}".encode("utf-8")).hexdigest()
+            row = await conn.fetchrow(
+                """
+                INSERT INTO knowledge_pending_facts
+                  (user_id, project_id, session_id, fact_type, fact_text, dedup_key)
+                VALUES ($1, $2, NULL, 'statement', $3, $4)
+                ON CONFLICT (user_id, project_id, dedup_key) WHERE dedup_key IS NOT NULL
+                DO NOTHING
+                RETURNING pending_fact_id
+                """,
+                body.user_id, project.project_id, fact_text, dedup_key,
+            )
+            if row is not None:  # None ⇒ a duplicate was skipped
+                queued += 1
     return {"queued": queued, "project_id": str(project.project_id)}
 
 
