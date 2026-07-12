@@ -13,6 +13,8 @@ from uuid import UUID
 
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.db.pool import get_pool
+from app.services.plan_link_service import LinkError, PlanLinkService
 from app.services.plan_pass_service import derive_view
 from app.db.models import CompositionWork, GenerationJob, PlanRun
 from app.db.repositories.generation_jobs import GenerationJobsRepo
@@ -725,19 +727,58 @@ class PlanForgeService:
         if not _hard_rules_pass(rules_out):
             raise ValueError("validation failed — compile blocked")
 
-        # `genre_tags` is deliberately NOT passed: `NovelSystemSpec` has nowhere to declare a
-        # genre (`Meta` is `additionalProperties: false`), and compile.py used to fabricate the
-        # POC fixture's ["xianxia","cultivation","psychological"] for every book — which reached
-        # `propose_cast` through pipe_input below. An empty list is honest; a wrong genre is not.
-        # Sourcing it (spec.meta, a per-book setting, or an explicit field) is BPS-20's open
-        # sub-question. Do not re-add a default here.
+        # GENRE (PF-15) — the open sub-question this comment used to name is now ANSWERED.
+        #
+        # It read: "`NovelSystemSpec` has nowhere to declare a genre, and compile.py used to
+        # fabricate the POC fixture's ["xianxia","cultivation","psychological"] for EVERY book —
+        # which reached `propose_cast`. An empty list is honest; a wrong genre is not. Sourcing it
+        # (spec.meta, a per-book setting, or an explicit field) is BPS-20's open sub-question."
+        #
+        # `plan_run.genre_tags` IS the explicit field (27 PF-15): the caller declares the genre when
+        # they create the RUN, it rides the row, and it lands here. Still no fabricated default —
+        # an unset genre stays `[]`, which is the honest value the old comment insisted on.
         compiled = compile_artifacts(spec, arc_id=arc_id)
         package = compiled["planning_package"]
+        if run.genre_tags:
+            package["genre_tags"] = list(run.genre_tags)
         await self._runs.save_artifact(
             created_by, run_id, "package",
             {"planning_package": package, **{k: v for k, v in compiled.items() if k != "planning_package"}},
         )
         work = await self._ensure_work(book_id, created_by=created_by)
+
+        # 27 PF-8(a) — THE SKELETON LINK, inline. This is the step that makes the compiler actually
+        # produce something: arc → structure_node, chapters → outline_node. It runs HERE, not behind
+        # a separate call, because a compile that materialises nothing IS the silent-success bug at
+        # compile scale (BPS-18/DA-13: "an emitted artifact with no linker is a bug"). It is
+        # deterministic and composition-local — no LLM, no human gate; the spec layer is the agent's
+        # normal CRUD surface, and the heavy gates guard the manuscript and the glossary, not this.
+        #
+        # A prior link_report supplies the versions we last wrote, so PF-11's preservation can tell
+        # "we wrote this" from "a human has edited it since".
+        prior_report = await self._runs.latest_artifact(book_id, run_id, "link_report")
+        prior_versions = (
+            (prior_report.content or {}).get("linked_versions") or {} if prior_report else {}
+        )
+        linker = PlanLinkService(get_pool())
+        try:
+            link_report = await linker.link_outline_skeleton(
+                created_by=created_by,
+                book_id=book_id,
+                project_id=_work_project_id(work),
+                run_id=run_id,
+                package=package,
+                prior_versions=prior_versions,
+            )
+        except LinkError as exc:
+            # Persist the FAILED report before raising. A failure the user cannot inspect is barely
+            # better than a silent success — they need to see that zero nodes were written and why.
+            await self._runs.save_artifact(
+                created_by, run_id, "link_report", exc.report.to_dict(),
+            )
+            raise ValueError(exc.report.detail or "link failed") from exc
+        await self._runs.save_artifact(created_by, run_id, "link_report", link_report.to_dict())
+
         await self._runs.update_run(
             book_id, run_id,
             status="compiled", work_id=work.id,
@@ -746,6 +787,9 @@ class PlanForgeService:
             "package": package,
             "pipeline_job_id": None,
             "work_id": str(work.id) if work.id else None,
+            # E4 — per-target counts, ALWAYS returned. A caller that only gets "ok" cannot tell that
+            # the compiler wrote nothing.
+            "link": link_report.to_dict(),
         }
         if not run_pipeline:
             return "sync", body

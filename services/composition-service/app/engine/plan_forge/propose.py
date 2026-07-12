@@ -147,6 +147,17 @@ def _parse_arcs_and_events(arc_body: str) -> tuple[list[dict[str, Any]], list[di
                     "summary": "Nữ chính bị đào linh căn, mất địa vị và tương lai tu tiên chính thống",
                 }
             )
+            # BUG (found by 27 V2-E's linker, 2026-07-12): this line was MISSING, while the Arc 2
+            # branch below has it. So Arc 1's events were parsed into nothing — every rules-mode
+            # plan whose arc_overview contains only "Arc 1" compiled to a package with ZERO
+            # chapters, 100% of the time.
+            #
+            # It was invisible because nothing CONSUMED the package: the compiler compiled into the
+            # void, and an empty `chapters: []` looked like a quiet success. The link step (PF-8/E4:
+            # "zero nodes linked ⇒ success:false, never a silent 200") is what surfaced it on the
+            # first real run — which is precisely the point of BPS-18/DA-13's law that an emitted
+            # artifact with no linker is a bug.
+            events.extend(_parse_events_in_block("arc_1", body))
         elif re.match(r"\[TRANSITION\]", header, re.I):
             events.append(_parse_event_block("transition_event_8", "transition", "### " + header, body))
         elif re.match(r"Arc 2", header, re.I):
