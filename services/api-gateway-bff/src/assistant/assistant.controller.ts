@@ -306,6 +306,12 @@ export class AssistantController {
 
     let bookErased = false;
     if (bookId) {
+      // Resolve the KG project_id BEFORE deleting the book (the get-or-create is keyed on book_id, so
+      // resolving it after the book row is gone fails and leaks the project row). Uses the caller's
+      // OWN JWT. Done here, up front; the actual KG delete runs in the DERIVED phase below.
+      const proj = await this.postJson(`${knowledgeUrl}/v1/knowledge/projects/assistant`, authHeader, { book_id: bookId });
+      const projectId = proj.ok && typeof proj.body?.project_id === 'string' ? proj.body.project_id : undefined;
+
       // 2. SOURCE + OWNERSHIP GATE — the diary book (owner+kind='diary' verified IN the DELETE).
       //    `bookErased` proves the resolved book_id really is THIS user's diary, which is what lets
       //    the un-owner-scoped glossary leg (below) run safely (review MED-4).
@@ -314,9 +320,7 @@ export class AssistantController {
       bookErased = bookErase.ok && bookErase.body?.erased === true;
       allOk = allOk && bookErase.ok;
 
-      // 3. DERIVED — the KG project + its passages (project_id resolved under the caller's OWN JWT).
-      const proj = await this.postJson(`${knowledgeUrl}/v1/knowledge/projects/assistant`, authHeader, { book_id: bookId });
-      const projectId = proj.ok && typeof proj.body?.project_id === 'string' ? proj.body.project_id : undefined;
+      // 3. DERIVED — the KG project + its passages (project_id resolved above, before the book delete).
       if (projectId) {
         const kn = await this.deleteInternal(
           `${knowledgeUrl}/internal/admin/assistant/erase?user_id=${uid}&project_id=${encodeURIComponent(projectId)}`,

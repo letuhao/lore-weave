@@ -332,8 +332,8 @@ describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
       .fn()
       .mockResolvedValueOnce(resp(200, { book_id: 'diary-1', lifecycle: 'active' })) // 1. GET resolver
       .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 })) // 2. chat erase (SOURCE, book_id=None)
-      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 })) // 3. book erase (SOURCE + gate)
-      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' })) // 4. resolve KG project (user JWT)
+      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' })) // 3. resolve KG project (BEFORE book delete)
+      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 })) // 4. book erase (SOURCE + gate)
       .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 12 })) // 5. knowledge erase
       .mockResolvedValueOnce(resp(200, { deleted_entities: 5 })); // 6. glossary erase (gated by bookErased)
     (global as any).fetch = f;
@@ -348,11 +348,13 @@ describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
     expect(f.mock.calls[1][0]).toBe('http://chat:8090/internal/chat/assistant/data?user_id=user-42');
     expect(f.mock.calls[1][0]).not.toContain('book_id');
     expect(f.mock.calls[1][1].method).toBe('DELETE');
-    // 3. book erase (source + ownership gate).
-    expect(f.mock.calls[2][0]).toBe('http://book:8205/internal/books/diary-1/diary/erase?user_id=user-42');
-    // 4. resolve the KG project under the USER's Bearer, then 5. derived KG erase.
-    expect(f.mock.calls[3][0]).toBe('http://knowledge:8210/v1/knowledge/projects/assistant');
-    expect(f.mock.calls[3][1].headers.authorization).toBe(bearer('user-42'));
+    // 3. resolve the KG project under the USER's Bearer, BEFORE the book row is deleted (else the
+    //    book-keyed get-or-create fails and leaks the project).
+    expect(f.mock.calls[2][0]).toBe('http://knowledge:8210/v1/knowledge/projects/assistant');
+    expect(f.mock.calls[2][1].headers.authorization).toBe(bearer('user-42'));
+    // 4. book erase (source + ownership gate).
+    expect(f.mock.calls[3][0]).toBe('http://book:8205/internal/books/diary-1/diary/erase?user_id=user-42');
+    // 5. derived KG erase with the pre-resolved project_id.
     expect(f.mock.calls[4][0]).toBe('http://knowledge:8210/internal/admin/assistant/erase?user_id=user-42&project_id=proj-1');
     // 6. glossary LAST (derived), gated by the book erase confirming ownership.
     expect(f.mock.calls[5][0]).toBe('http://glossary:8203/internal/books/diary-1/entities');
@@ -368,11 +370,11 @@ describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
     const f = jest
       .fn()
       .mockResolvedValueOnce(resp(200, { book_id: 'diary-1', lifecycle: 'trashed' })) // resolver returns trashed
-      .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 }))
-      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 }))
-      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' }))
-      .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 3 }))
-      .mockResolvedValueOnce(resp(200, { deleted_entities: 2 }));
+      .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 })) // chat
+      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' })) // resolve project (before book delete)
+      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 })) // book erase
+      .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 3 })) // knowledge
+      .mockResolvedValueOnce(resp(200, { deleted_entities: 2 })); // glossary
     (global as any).fetch = f;
     const out = await controller.eraseData(bearer('u1'));
     expect(out.erased).toBe(true); // trashed diary was NOT a silent no-op
@@ -383,10 +385,10 @@ describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
     const f = jest
       .fn()
       .mockResolvedValueOnce(resp(200, { book_id: 'diary-1' }))
-      .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 }))
-      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 }))
-      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' }))
-      .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 3 }))
+      .mockResolvedValueOnce(resp(200, { deleted_sessions: 1 })) // chat
+      .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' })) // resolve project (before book delete)
+      .mockResolvedValueOnce(resp(200, { erased: true, deleted_books: 1 })) // book erase
+      .mockResolvedValueOnce(resp(200, { project_deleted: true, passages_deleted: 3 })) // knowledge
       .mockResolvedValueOnce(resp(500, { error: 'glossary down' })); // glossary FAILS
     (global as any).fetch = f;
     const out = await controller.eraseData(bearer('u1'));
