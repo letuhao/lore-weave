@@ -57,7 +57,13 @@ export type StudioBusEvent =
   // that boundary). `tourId` is a plain string (not the `StudioTourId` union) — the host layer
   // stays domain-agnostic; the consumer (StudioFrame.tsx) validates it against STUDIO_TOURS.
   // Omitted `tourId` (the WelcomePanel's quick-start button) falls back to the account's role tour.
-  | { type: 'startGuidedTour'; tourId?: string };
+  | { type: 'startGuidedTour'; tourId?: string }
+  // 24 PH25 — the Plan navigator rail lives in the ACTIVITY BAR, outside the dock, so it cannot
+  // hand the Plan Hub a callback. Its click contract is fixed: "row click focuses the node on the
+  // Hub canvas (opening plan-hub if closed) — NEVER the Editor". It therefore asks via the bus,
+  // exactly like the guided-tour request above (a one-shot request + a seq, so focusing the SAME
+  // node twice still pans).
+  | { type: 'planFocusNode'; nodeId: string };
 
 /** The bus's current merged snapshot. `revision` increments on every publish (so a chat turn can
  * stamp `context_revision`). */
@@ -76,6 +82,10 @@ export interface StudioBusSnapshot {
   /** The tourId of the most recent 'startGuidedTour' request, or undefined for "use the
    *  account's role tour" (the WelcomePanel's quick-start button never sets this). */
   guidedTourRequestedId?: string;
+  /** 24 PH25 — the node the Plan rail last asked the Hub to focus, and a seq the Hub diffs so a
+   *  repeat request on the SAME node still pans (and a mount never fires a stale one). */
+  planFocusNodeId?: string;
+  planFocusSeq?: number;
 }
 
 /** Reduce a bus event onto the snapshot (pure — one new object, revision bumped). */
@@ -96,6 +106,8 @@ export function applyBusEvent(s: StudioBusSnapshot, e: StudioBusEvent): StudioBu
       return { ...base, notificationsUnread: Math.max(0, e.count) };
     case 'startGuidedTour':
       return { ...base, guidedTourRequestSeq: (s.guidedTourRequestSeq ?? 0) + 1, guidedTourRequestedId: e.tourId };
+    case 'planFocusNode':
+      return { ...base, planFocusNodeId: e.nodeId, planFocusSeq: (s.planFocusSeq ?? 0) + 1 };
     default:
       return base;
   }

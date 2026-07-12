@@ -1,13 +1,14 @@
 // Activity bar (fixed) — the far-left icon rail that switches the Side Bar's navigator.
 // Clicking the active one collapses the side bar (VS Code behaviour, handled in the hook).
 import { useTranslation } from 'react-i18next';
-import { BookOpen, BookMarked, Search, BadgeCheck, Settings, type LucideIcon } from 'lucide-react';
+import { BookOpen, BookMarked, Network, Search, BadgeCheck, Settings, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { ACTIVITY_VIEWS, type ActivityView } from '../types';
 
 const ICONS: Record<ActivityView, LucideIcon> = {
   manuscript: BookOpen,
+  plan: Network, // 24 PH25 — the Plan navigator: the same dataset as the Hub canvas, at list density
   bible: BookMarked,
   search: Search,
   quality: BadgeCheck,

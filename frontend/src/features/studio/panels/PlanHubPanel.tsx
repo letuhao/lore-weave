@@ -1,9 +1,14 @@
-// 24 Plan Hub v2 (H2.1 + H3/H6 integrate + H2.6 bus/camera) — the `plan-hub` dock panel: the whole
-// package on the graph canvas. Left NAVIGATOR RAIL (H6, the list rendering of the same arc shell) ·
-// center graph CANVAS (React Flow, positions from the pure laneLayout — PH14) · right DETAIL DRAWER
-// (H3, opens over the canvas for the selected node). Logic lives in usePlanHub (the controller
-// producing PlanHubView); this file wires the controller to the three regions, subscribes the studio
-// bus, and self-registers/titles as a studio panel. Book-scoped (bookId from the studio host).
+// 24 Plan Hub v2 (H2.1 + H3 + H2.6 bus/camera) — the `plan-hub` dock panel: the whole package on the
+// graph canvas. TOOLBAR (PH15) · graph CANVAS (React Flow, positions from the pure laneLayout —
+// PH14) · right DETAIL DRAWER (H3, over the canvas) · the PH21 unplanned tray docked beneath.
+//
+// The Plan NAVIGATOR is deliberately NOT in here. PH25 puts it in the ACTIVITY BAR (it and the canvas
+// are two densities of one dataset), and OQ-6 ✅ rejects a third in-panel list as a duplicate of it.
+// It reaches us over the studio bus (`planFocusNode`) — it lives outside the dock and cannot hand us
+// a callback.
+//
+// Logic lives in usePlanHub (the controller producing PlanHubView); this file wires it to the
+// regions, subscribes the bus, and self-registers as a studio panel. Book-scoped.
 //
 // Selection is ONE piece of state (view.selectedId) shared across all three: a canvas node click, a
 // rail row click (onFocusNode), and the drawer all read/write it. A rail/canvas selection whose kind
@@ -14,7 +19,7 @@
 // in StudioHostProvider) → a "you are here" highlight on the node whose chapterId matches. OQ-5 camera:
 // a rail focus pans the canvas to the node (focusNode = select + bump the focus seq). The reverse
 // publish (planHub.selection) is deferred — no consumer reads a Hub-selection bus slice yet.
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useStudioBusSelector, useStudioHost } from '../host/StudioHostProvider';
@@ -25,7 +30,6 @@ import {
   PlanCanvas,
   PlanDrawer,
   PlanEmptyState,
-  PlanNavigatorRail,
   PlanToolbar,
   UnplannedTray,
 } from '@/features/plan-hub/components';
@@ -108,6 +112,19 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     [select, expandAncestorsOf],
   );
 
+  // PH25 — the ACTIVITY BAR's Plan rail lives outside the dock, so it asks over the bus rather than
+  // handing us a callback. We diff the seq (not the nodeId) so re-clicking the SAME row still pans,
+  // and a fresh mount never replays a stale request. This is a legitimate useEffect: it synchronises
+  // an external request stream onto our imperative camera, not a reaction to our own state.
+  const planFocus = useStudioBusSelector((s) => s.planFocusSeq);
+  const planFocusNodeId = useStudioBusSelector((s) => s.planFocusNodeId);
+  const lastPlanFocus = useRef<number | undefined>(planFocus);
+  useEffect(() => {
+    if (planFocus === undefined || planFocus === lastPlanFocus.current) return;
+    lastPlanFocus.current = planFocus;
+    if (planFocusNodeId) focusNode(planFocusNodeId);
+  }, [planFocus, planFocusNodeId, focusNode]);
+
   if (view.error) {
     return (
       <div
@@ -158,12 +175,9 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-plan-hub-panel" className="flex h-full w-full min-h-0">
-      {/* H6 — left navigator rail (the same arc shell, react-query DEDUPES the getArcs call). A row
-          click focuses the node on the canvas (pan) — never opens the editor (PH25). */}
-      <div className="flex w-48 min-w-0 flex-shrink-0 flex-col border-r bg-muted/20">
-        <PlanNavigatorRail bookId={bookId} onFocusNode={focusNode} selectedId={view.selectedId} />
-      </div>
-
+      {/* PH25/OQ-6 — the Plan navigator is NOT a column in here. It is an ACTIVITY BAR rail (it and
+          the canvas are two densities of one dataset), and OQ-6 rejects a third in-panel list as a
+          duplicate of it. It reaches us over the bus (`planFocusNode`, subscribed above). */}
       {/* center column: TOOLBAR + graph + the H3 drawer overlay, with the PH21 tray docked beneath.
           The canvas gets `relative` so the drawer's `absolute right-0` pins to THAT region and not
           the window (the dockview fixed-positioning bug); the toolbar and tray sit OUTSIDE it, in

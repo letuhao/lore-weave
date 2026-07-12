@@ -6,6 +6,7 @@ import type { ActivityView } from '../types';
 import { ManuscriptNavigator } from '../manuscript/ManuscriptNavigator';
 import type { ManuscriptNode } from '../manuscript/types';
 import { useStudioHost } from '../host/StudioHostProvider';
+import { PlanNavigatorRail } from '@/features/plan-hub/components';
 
 interface Props {
   activeView: ActivityView;
@@ -36,6 +37,22 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
           selectedId={selectedId}
           onSelect={(node) => onSelectNode(node)}
           onCollapseSidebar={onCollapse}
+        />
+      ) : activeView === 'plan' ? (
+        // 24 PH25 — the Plan navigator is an ACTIVITY BAR rail, not a dock panel: it and the Hub
+        // canvas are two densities of ONE dataset. Its click contract is fixed and is the whole
+        // reason the two rails aren't ambiguous:
+        //     Manuscript row → the EDITOR (the prose)
+        //     Plan row       → the HUB CANVAS (the spec), opening plan-hub if it's closed
+        // It sits outside the dock, so it cannot hand the Hub a callback — it asks over the bus
+        // (the same seam the guided-tour request and ui_focus_manuscript_unit already use).
+        <PlanNavigatorRail
+          bookId={bookId}
+          selectedId={selectedId}
+          onFocusNode={(nodeId) => {
+            host.openPanel('plan-hub', { focus: true });
+            host.publish({ type: 'planFocusNode', nodeId });
+          }}
         />
       ) : (
         <>
