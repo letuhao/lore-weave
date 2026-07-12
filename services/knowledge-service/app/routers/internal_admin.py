@@ -25,7 +25,10 @@ from uuid import UUID
 
 from app.config import settings
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.passages import delete_all_passages_for_project
+from app.db.neo4j_repos.passages import (
+    delete_all_kg_nodes_for_project,
+    delete_all_passages_for_project,
+)
 from app.db.repositories.projects import ProjectsRepo
 from app.db.neo4j_helpers import (
     drop_summary_index,
@@ -60,6 +63,11 @@ async def _erase_one_assistant_project(pool, user_id: UUID, project_id: UUID) ->
         passages_deleted = await delete_all_passages_for_project(
             session, user_id=str(user_id), project_id=str(project_id),
         )
+        # D-R27 — also delete the CONFIRMED-fact graph (WS-2.4 promote → :Fact/:Entity/:ABOUT), else a
+        # confirmed diary fact + the colleague it names survives erasure (caught by the E2E erase smoke).
+        kg_nodes_deleted = await delete_all_kg_nodes_for_project(
+            session, user_id=str(user_id), project_id=str(project_id),
+        )
     async with pool.acquire() as conn:
         pf = await conn.execute(
             "DELETE FROM knowledge_pending_facts WHERE user_id=$1 AND project_id=$2", user_id, project_id,
@@ -72,6 +80,7 @@ async def _erase_one_assistant_project(pool, user_id: UUID, project_id: UUID) ->
     return {
         "project_deleted": bool(project_deleted),
         "passages_deleted": passages_deleted,
+        "kg_nodes_deleted": kg_nodes_deleted,
         "pending_facts_deleted": pending_facts_deleted,
     }
 
@@ -100,6 +109,7 @@ async def erase_assistant_knowledge(
         "projects_erased": len(results),
         "project_deleted": any(r["project_deleted"] for r in results),
         "passages_deleted": sum(r["passages_deleted"] for r in results),
+        "kg_nodes_deleted": sum(r["kg_nodes_deleted"] for r in results),
         "pending_facts_deleted": sum(r["pending_facts_deleted"] for r in results),
     }
 

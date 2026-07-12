@@ -326,6 +326,38 @@ RETURN count(id) AS deleted
 """
 
 
+# D-R27 (erasure) — the CONFIRMED-fact graph nodes. WS-2.4's promote turns a reviewed diary fact into a
+# :Fact + :Entity (+ :ABOUT edges); the :Passage delete alone leaves these behind, so a confirmed diary
+# fact + the colleague entity it names would SURVIVE "erase my account" (caught by the E2E erase smoke —
+# the PG-SSOT→Neo4j-derived delete does NOT auto-cascade). DETACH DELETE removes the nodes and every edge.
+_DELETE_ALL_KG_NODES_FOR_PROJECT_CYPHER = """
+MATCH (n)
+WHERE (n:Fact OR n:Entity OR n:Event)
+  AND n.user_id = $user_id AND n.project_id = $project_id
+DETACH DELETE n
+RETURN count(n) AS deleted
+"""
+
+
+async def delete_all_kg_nodes_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+) -> int:
+    """D-R27 (erasure) — DETACH DELETE every :Fact / :Entity / :Event node of one (user, project), so a
+    CONFIRMED diary fact (and the colleague :Entity it names) does not survive account erasure. Tenant-
+    scoped on BOTH keys, so it can only reach the caller's own project's graph. Returns the count."""
+    result = await run_write(
+        session,
+        _DELETE_ALL_KG_NODES_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    return int(record["deleted"]) if record else 0
+
+
 async def delete_all_passages_for_project(
     session: CypherSession,
     *,

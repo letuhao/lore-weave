@@ -614,3 +614,24 @@ def test_parse_iso_date_tolerates_garbage_and_none():
     assert _parse_iso_date(None) is None
     assert _parse_iso_date("") is None
     assert _parse_iso_date("not-a-date") is None
+
+
+# ── D-R27 (erasure) — the confirmed-fact graph must be deleted, not just passages ──────────────────
+
+def test_erasure_kg_node_delete_cypher_targets_fact_entity_event():
+    # E2E erase smoke caught this: the erase deleted :Passage but not the :Fact/:Entity nodes WS-2.4's
+    # promote creates, so a confirmed diary fact + the colleague it names survived "erase my account".
+    from app.db.neo4j_repos import passages as pm
+    q = pm._DELETE_ALL_KG_NODES_FOR_PROJECT_CYPHER
+    assert "n:Fact" in q and "n:Entity" in q and "n:Event" in q  # all confirmed-fact node types
+    assert "DETACH DELETE n" in q                                 # removes the nodes + every edge
+    assert "n.user_id = $user_id" in q and "n.project_id = $project_id" in q  # tenant-scoped on BOTH keys
+
+
+def test_erase_handler_imports_and_calls_the_kg_node_delete():
+    # Prove the erase path is WIRED to it (not just that the function exists) — the wiring is the bug.
+    import inspect
+    from app.routers import internal_admin as ia
+    src = inspect.getsource(ia._erase_one_assistant_project)
+    assert "delete_all_kg_nodes_for_project" in src
+    assert "kg_nodes_deleted" in src
