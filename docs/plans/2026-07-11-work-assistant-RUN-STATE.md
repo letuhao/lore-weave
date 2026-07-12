@@ -309,8 +309,15 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 > ✅ (written via the distiller's write seam, `entry_date:2026-07-13` correct) → **recall** ✅
 > (`run_chat_search_sessions("Zephyr")` → count 1, returns the mention) → **erase** ✅ →
 > **verify-gone** ✅. ⚠️ **The 2 LLM-dependent steps (live chat CAPTURE + the distill LLM run) could NOT
-> re-run: the containers lost ALL outbound network mid-run — LM Studio (host.docker.internal:1234, now
-> IPv6-only) AND OpenAI both unreachable, no raw outbound; a host-side Docker-Desktop drift, not code.**
+> re-run — DIAGNOSED to 2 HOST-SIDE root causes (both need host GUI/admin, unfixable from inside): (1) LM
+> Studio is bound `127.0.0.1:1234` ONLY (`Get-NetTCPConnection` — "Serve on Local Network" OFF), so no
+> container can reach it; (2) Docker Desktop's network degraded — `host.docker.internal` is IPv6-only
+> (`fdc4:f303:9324::254`) and the long-running SERVICE containers can't reach the host-gateway
+> (`192.168.65.254`) or any new container, though FRESH `docker run` containers CAN (a throwaway hit a
+> host proxy → 200). Tried a host `0.0.0.0:1235` proxy, `extra_hosts: host-gateway`, a socat bridge, a
+> hard restart — all blocked by the service-container degradation; ALL changes REVERTED (credential
+> endpoint restored, compose reverted, proxy/bridge removed). HOST-SIDE FIX: LM Studio "Serve on Local
+> Network" + restart Docker Desktop → capture+distill re-run in minutes.**
 > Those two were LIVE-PROVEN earlier this run (§10, facts=12); the entry-write seam + everything else was
 > re-proven now. **The erase smoke CAUGHT A REAL INCOMPLETE-ERASURE BUG (fixed, 9e0c42b94):** erase
 > removed the book/chapters/sessions/project/passages/pending-facts/glossary but NOT the :Fact/:Entity
