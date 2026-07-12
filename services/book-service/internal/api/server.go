@@ -303,6 +303,10 @@ func (s *Server) Router() http.Handler {
 			r.Get("/scenes", s.getBookScenes)
 			r.Get("/scenes/{scene_id}", s.getBookScene)
 
+			// B2 (spec 03/06 §Q6) — REVIEW→KEEP a draft diary entry (owner-only, diary-only).
+			// Sets diary_kept_at so a re-distill of the day no longer clobbers the kept primary.
+			r.Post("/diary/entries/{chapter_id}/keep", s.keepDiaryEntry)
+
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)
 				r.Patch("/", s.patchChapter)

@@ -267,6 +267,43 @@ RETURNING id`,
 	})
 }
 
+// keepDiaryEntry — B2 (spec 03/06 §Q6) — the user REVIEWS a draft diary entry and KEEPS it. Sets
+// `diary_kept_at` (once, idempotent) on the entry. After this, a re-distill of the same day no
+// longer clobbers the primary — the write seam 409s DIARY_ENTRY_KEPT and the caller supplements.
+// Owner-only (the diary is never shared); diary-only (the `journal_kind IS NOT NULL` guard means a
+// novel chapter can never be "kept" through here → 404).
+func (s *Server) keepDiaryEntry(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	_, _, _, ok = s.authBook(w, r, bookID, GrantOwner)
+	if !ok {
+		return
+	}
+	ct, err := s.pool.Exec(r.Context(), `
+UPDATE chapters SET diary_kept_at = COALESCE(diary_kept_at, now()), updated_at = now()
+WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='active'`,
+		chID, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to keep entry")
+		return
+	}
+	if ct.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "DIARY_ENTRY_NOT_FOUND", "no active diary entry for that id")
+		return
+	}
+	var keptAt time.Time
+	_ = s.pool.QueryRow(r.Context(), `SELECT diary_kept_at FROM chapters WHERE id=$1`, chID).Scan(&keptAt)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"chapter_id": chID.String(), "kept": true, "diary_kept_at": keptAt.Format(time.RFC3339),
+	})
+}
+
 // txQuotaOK checks the owner has room for `delta` more bytes, writing a 507 and returning false
 // if not. Uses the tx so the read is consistent with the pending write.
 func (s *Server) txQuotaOK(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, owner uuid.UUID, delta int64) bool {

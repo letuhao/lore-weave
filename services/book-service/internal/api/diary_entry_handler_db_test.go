@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -229,5 +230,102 @@ func TestDiaryEntry_RejectsNonDiaryWrongOwnerEmptyAndNoToken_DB(t *testing.T) {
 	// No internal token → 401 (the guard fires before any work).
 	if rr := postDiaryEntry(t, s, diary, base(nil), false); rr.Code != http.StatusUnauthorized {
 		t.Fatalf("no token = %d, want 401", rr.Code)
+	}
+}
+
+// ── B2 (spec 03/06 §Q6) — POST /v1/books/{id}/diary/entries/{chapter_id}/keep ──
+
+func keepDiaryEntry(t *testing.T, s *Server, bookID uuid.UUID, chapterID, caller uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost,
+		"/v1/books/"+bookID.String()+"/diary/entries/"+chapterID.String()+"/keep", nil)
+	req.Header.Set("Authorization", "Bearer "+mcpJWT(t, caller))
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	return rr
+}
+
+func TestKeepDiaryEntry_ProtectsAgainstReDistillClobber_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+
+	rr := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-04-01", "body": "The original day.",
+	}, true)
+	ch := uuid.MustParse(entryChapterID(t, rr))
+
+	// KEEP it → 200 + diary_kept_at set.
+	kr := keepDiaryEntry(t, s, diary, ch, owner)
+	if kr.Code != http.StatusOK {
+		t.Fatalf("keep = %d, want 200. body=%s", kr.Code, kr.Body.String())
+	}
+	var kept *time.Time
+	_ = pool.QueryRow(ctx, `SELECT diary_kept_at FROM chapters WHERE id=$1`, ch).Scan(&kept)
+	if kept == nil {
+		t.Fatal("diary_kept_at was not set by keep")
+	}
+
+	// A re-distill of the SAME day now REFUSES to clobber the kept primary (write seam 409).
+	rr2 := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-04-01", "body": "A rewrite that must be refused.",
+	}, true)
+	if rr2.Code != http.StatusConflict || !strings.Contains(rr2.Body.String(), "DIARY_ENTRY_KEPT") {
+		t.Fatalf("re-distill after keep = %d %s, want 409 DIARY_ENTRY_KEPT", rr2.Code, rr2.Body.String())
+	}
+
+	// Idempotent: keeping again is 200 and does not move the timestamp.
+	kr2 := keepDiaryEntry(t, s, diary, ch, owner)
+	var kept2 *time.Time
+	_ = pool.QueryRow(ctx, `SELECT diary_kept_at FROM chapters WHERE id=$1`, ch).Scan(&kept2)
+	if kr2.Code != http.StatusOK || kept2 == nil || !kept2.Equal(*kept) {
+		t.Fatalf("re-keep = %d, timestamp moved %v -> %v (want stable)", kr2.Code, kept, kept2)
+	}
+}
+
+func TestKeepDiaryEntry_NonDiaryChapterIs404_DB(t *testing.T) {
+	// journal_kind IS NULL for a novel chapter → the keep UPDATE matches 0 rows → 404.
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	novel := seedBookOfKind(t, ctx, pool, owner, "novel")
+	var chID uuid.UUID
+	_ = pool.QueryRow(ctx, `
+INSERT INTO chapters(book_id,original_filename,original_language,content_type,sort_order,storage_key,lifecycle_state)
+VALUES($1,'c.txt','en','text/plain',1,'k','active') RETURNING id`, novel).Scan(&chID)
+
+	rr := keepDiaryEntry(t, s, novel, chID, owner)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("keep a novel chapter = %d, want 404 (journal_kind NULL → not a diary entry)", rr.Code)
+	}
+}
+
+func TestKeepDiaryEntry_NonOwnerIsRefused_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	stranger := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+	rr := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-04-02", "body": "private.",
+	}, true)
+	ch := uuid.MustParse(entryChapterID(t, rr))
+
+	// The diary is owner-only; a stranger resolves to a non-owner grant → authBook refuses.
+	s.resolveBook = func(_ context.Context, _ uuid.UUID, user uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		if user == owner {
+			return GrantOwner, owner, "active", nil
+		}
+		return GrantNone, owner, "active", nil
+	}
+	kr := keepDiaryEntry(t, s, diary, ch, stranger)
+	if kr.Code != http.StatusForbidden && kr.Code != http.StatusNotFound {
+		t.Fatalf("non-owner keep = %d, want 403/404 (owner-only)", kr.Code)
+	}
+	var kept *time.Time
+	_ = pool.QueryRow(ctx, `SELECT diary_kept_at FROM chapters WHERE id=$1`, ch).Scan(&kept)
+	if kept != nil {
+		t.Fatal("a non-owner must not have kept the entry")
 	}
 }
