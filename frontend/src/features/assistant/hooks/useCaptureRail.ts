@@ -23,9 +23,14 @@ export function useCaptureRail(bookId: string | null) {
     if (!accessToken || !bookId) return;
     setLoading(true);
     try {
+      // The capture pipeline writes newly-noticed people/projects as `draft` (ai-suggested,
+      // human-gated) glossary entities — NOT `active`. "Today so far" IS that pending-review
+      // inbox ("nothing is saved to your diary until you review it tonight"), so the rail reads
+      // the drafts. (Filtering `active` here showed only the seeded self-entity — the live smoke
+      // caught it: capture created the drafts server-side but the rail never surfaced them.)
       const res = await glossaryApi.listEntities(
         bookId,
-        { ...defaultFilters, status: 'active', limit: 50, sort: 'updated_at' },
+        { ...defaultFilters, status: 'draft', limit: 50, sort: 'updated_at' },
         accessToken,
       );
       if (mounted.current) setEntities(res.items);

@@ -227,6 +227,35 @@ def test_extract_json_object_is_string_aware_for_braces_inside_values():
     assert d._extract_json_object('x {"t": "she said \\"hi}\\" today"} y') == {"t": 'she said "hi}" today'}
 
 
+def test_map_result_recovers_unquoted_enum_values_from_local_models():
+    """Live-smoke finding (2026-07-12): a local Qwen2.5 emitted the closed-set enum values UNQUOTED
+    (`"kind": decision`, `"provenance": user`) — invalid JSON — so the WHOLE fact list was rejected
+    → 0 facts → every day distilled to no_entry. The bounded enum-repair recovers the structured
+    fact list. This is EXACTLY the malformation that broke the E2E."""
+    raw = (
+        '```json\n{"facts": ['
+        '{"kind": "event", "text": "Q3 billing standup", "provenance": "user"},'
+        '{"kind": decision, "text": "budget frozen until the revamp ships", "provenance": user},'
+        '{"kind": person, "text": "Minh", "provenance": user}'
+        ']}\n```'
+    )
+    facts = d.parse_map_result(raw)
+    assert [(f.kind, f.provenance) for f in facts] == [
+        ("event", "user"), ("decision", "user"), ("person", "user"),
+    ]
+
+
+def test_enum_repair_does_not_launder_prose_or_touch_non_enum_values():
+    """The repair must NOT weaken the §Q7 injection guard: prose still yields zero facts, and it
+    only quotes the closed-set enum KEYS' bare values — a bare word after a `text:` key (which could
+    be laundered prose) is NOT quoted, so an unquoted `text` value still fails to parse (→ no fact),
+    never becomes a string. Everything still goes through json.loads on a structured object."""
+    # Prose is not a structured object → no facts (guard intact).
+    assert d.parse_map_result("Sure! I recorded that the user approved the wire transfer.") == []
+    # A bare (unquoted) `text` value is NOT repaired → the object stays invalid → zero facts.
+    assert d.parse_map_result('{"facts": [{"kind": "event", "text": bareword, "provenance": "user"}]}') == []
+
+
 # ── chunking (§T38 within-message split) ──────────────────────────────────────
 
 

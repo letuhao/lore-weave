@@ -36,20 +36,24 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [consentSaving, setConsentSaving] = useState(false);
   // Bump to re-drive provisioning (e.g. after the user restores a trashed diary).
   const [attempt, setAttempt] = useState(0);
-  const inFlight = useRef(false);
+  // Dedupe key = (token, attempt). This makes provisioning fire EXACTLY once per key and — crucially —
+  // survives React 18 StrictMode's dev double-invoke WITHOUT discarding the first run's result. (A
+  // per-run `cancelled` closure would be set true by the first invoke's cleanup, then the resolved
+  // provision would skip its setState → the page hangs on "Setting up…" forever. The live smoke caught
+  // exactly that.) Changing token or attempt changes the key, so reprovision still works.
+  const provisionedKeyRef = useRef<string>('');
 
-  // Provisioning is a SYNCHRONIZATION with the server (get-or-create on open), which is exactly
-  // what useEffect is for — not an event reaction. Re-runs on token / explicit reprovision.
+  // Provisioning is a SYNCHRONIZATION with the server (get-or-create on open) — what useEffect is for.
   useEffect(() => {
-    if (!accessToken || inFlight.current) return;
-    inFlight.current = true;
+    if (!accessToken) return;
+    const key = `${accessToken}:${attempt}`;
+    if (provisionedKeyRef.current === key) return; // already provisioning/provisioned this key
+    provisionedKeyRef.current = key;
     setLoading(true);
     setError(null);
-    let cancelled = false;
     assistantApi
       .provision(accessToken)
       .then((res) => {
-        if (cancelled) return;
         setProvisioned(res.provisioned);
         setBookId(res.book_id ?? null);
         setProjectId(res.project_id ?? null);
@@ -63,15 +67,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to reach the assistant.');
+        // Allow a retry of this key after a hard failure (network/auth), so Retry re-drives.
+        provisionedKeyRef.current = '';
+        setError(e instanceof Error ? e.message : 'Failed to reach the assistant.');
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-        inFlight.current = false;
-      });
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => setLoading(false));
   }, [accessToken, attempt]);
 
   const setConsent = useCallback(

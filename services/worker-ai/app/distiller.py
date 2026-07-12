@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -224,9 +225,27 @@ def build_map_prompt(chunk: list[DayMessage]) -> str:
     return f"{_MAP_INSTRUCTIONS}\n\nMESSAGES:\n{envelopes}"
 
 
+# Unquoted CLOSED-SET enum values (`"kind": decision` instead of `"kind": "decision"`) — a common
+# local-model JSON error (live-smoke finding 2026-07-12: a local Qwen2.5 emitted every `kind`/
+# `provenance` value bare, so json.loads rejected the WHOLE fact list → 0 facts → every day was
+# no_entry). We repair ONLY these two known enum keys' bare values, so a slightly-malformed but
+# STRUCTURED fact list still parses. It cannot launder prose (§Q7): the repair only touches values
+# after a literal `"kind":`/`"provenance":` key, and the result is still re-validated by json.loads.
+_BAREWORD_ENUM_RE = re.compile(r'("(?:kind|provenance)"\s*:\s*)([A-Za-z_][A-Za-z0-9_]*)')
+
+
+def _repair_bareword_enums(text: str) -> str:
+    """Quote unquoted bare-word values of the closed-set enum keys (kind/provenance). JSON literals
+    aren't valid enum values here, so no true/false/null carve-out is needed — but the caller
+    re-validates with json.loads regardless, so a bad repair simply yields no facts (never prose)."""
+    return _BAREWORD_ENUM_RE.sub(lambda m: f'{m.group(1)}"{m.group(2)}"', text)
+
+
 def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """Parse a JSON object from a model completion. Accepts a bare object or the first {...} span.
-    Returns None on anything non-JSON — the launder-guard: prose can NEVER become a fact (§Q7)."""
+    """Parse a JSON object from a model completion. Accepts a bare object or the first {...} span,
+    and — as a bounded fallback — the same after repairing unquoted closed-set enum values.
+    Returns None on anything non-JSON — the launder-guard: prose can NEVER become a fact (§Q7),
+    because EVERY path still goes through json.loads on a structured object."""
     text = (text or "").strip()
     if text.startswith("```"):
         # strip a ```json fence
@@ -234,19 +253,25 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
         if text.startswith("json"):
             text = text[4:]
         text = text.strip()
-    try:
-        obj = json.loads(text)
-        return obj if isinstance(obj, dict) else None
-    except (ValueError, TypeError):
-        pass
-    span = _first_balanced_object(text)
-    if span is None:
-        return None
-    try:
-        obj = json.loads(span)
-        return obj if isinstance(obj, dict) else None
-    except (ValueError, TypeError):
-        return None
+    # Try the raw completion first (unchanged behavior for well-formed output), then a repaired copy
+    # (recovers a structured-but-unquoted-enum fact list). Each candidate: strict parse, then the
+    # first balanced {...} span (to skip any trailing prose the model appended).
+    for candidate in (text, _repair_bareword_enums(text)):
+        try:
+            obj = json.loads(candidate)
+            if isinstance(obj, dict):
+                return obj
+        except (ValueError, TypeError):
+            pass
+        span = _first_balanced_object(candidate)
+        if span is not None:
+            try:
+                obj = json.loads(span)
+                if isinstance(obj, dict):
+                    return obj
+            except (ValueError, TypeError):
+                pass
+    return None
 
 
 def _first_balanced_object(text: str) -> str | None:

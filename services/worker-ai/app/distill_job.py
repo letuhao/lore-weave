@@ -29,8 +29,17 @@ from app.distiller import (
 logger = logging.getLogger(__name__)
 
 # The distiller's reduce needs a raised budget (§Q4); the map's fact list can be sizable on a busy
-# chunk. One generous default keeps a busy day from truncating; the trigger layer can tune it.
-DISTILL_MAX_TOKENS = 2000
+# chunk. 4096 gives a non-reasoning model ample room for the whole fact list + the reduced entry
+# (a real map used ~600 tokens; a busy day is larger).
+#
+# ⚠️ REASONING-MODEL CAVEAT (live-smoke finding 2026-07-12): a local Gemma-4-26b "a4b" variant
+# IGNORES our `thinking:False`/`enable_thinking:False` kwargs and emits its ENTIRE output as
+# `reasoning_content`, leaving `content` EMPTY and hitting finish_reason=length — at ANY budget
+# (it burned all 4096 as reasoning_tokens and never wrote the JSON). So max_tokens does NOT rescue
+# a reasoning model; the proper fix is Q8 dedicated-distill-model resolution to a NON-reasoning
+# model. A non-reasoning model (Qwen2.5) works — see the enum-repair in `_extract_json_object` for
+# the OTHER local-model quirk this smoke found (unquoted enum values).
+DISTILL_MAX_TOKENS = 4096
 
 
 class _LLMSubmitter(Protocol):
