@@ -52,11 +52,11 @@ export const assistantApi = {
     );
   },
 
-  /** WS-2.5 — the diary FACT inbox: every pending fact the user owns, oldest-first. The diary's
-   *  distilled facts are session-less, so we list WITHOUT a session_id filter (which the chat memory
-   *  card uses); the server returns all the caller's pending facts, JWT-scoped. */
+  /** WS-2.5 — the diary FACT inbox: the caller's DIARY (session-less) pending facts, oldest-first.
+   *  `diary_only=true` is load-bearing: a bare list returns ALL pending facts, so chat-memory facts
+   *  from other projects would leak into this inbox (audit MED). JWT-scoped to the caller. */
   listDiaryFacts(token: string) {
-    return apiJson<DiaryPendingFact[]>('/v1/knowledge/pending-facts', { token });
+    return apiJson<DiaryPendingFact[]>('/v1/knowledge/pending-facts?diary_only=true', { token });
   },
 
   /** WS-2.5 — CONFIRM a pending diary fact → promoted to the KG (dated, subject-linked, recallable). */

@@ -1047,6 +1047,6 @@ class UsageBillingClient:
             # A zero/absent daily limit means "no cap" → never pause. Otherwise pause once the day's
             # budget (limit − spent − reserved) is gone.
             return daily_limit > 0.0 and daily_available <= 0.0
-        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
             logger.warning("usage-billing guardrail status failed (fail-open, memory proceeds): %s", exc)
             return False

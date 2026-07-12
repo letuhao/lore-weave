@@ -107,8 +107,8 @@ def test_list_pending_facts_returns_callers_queue():
     body = resp.json()
     assert len(body) == 2
     assert body[0]["fact_text"] == "a"
-    # JWT-scoped: the caller's id reaches the repo, no session filter.
-    repo.list_for_user.assert_awaited_once_with(_TEST_USER, session_id=None)
+    # JWT-scoped: the caller's id reaches the repo, no session/diary filter.
+    repo.list_for_user.assert_awaited_once_with(_TEST_USER, session_id=None, diary_only=False)
 
 
 def test_list_pending_facts_forwards_session_id():
@@ -119,8 +119,20 @@ def test_list_pending_facts_forwards_session_id():
     resp = client.get("/v1/knowledge/pending-facts?session_id=sess-42")
     assert resp.status_code == 200
     repo.list_for_user.assert_awaited_once_with(
-        _TEST_USER, session_id="sess-42"
+        _TEST_USER, session_id="sess-42", diary_only=False
     )
+
+
+def test_list_pending_facts_forwards_diary_only():
+    # WS-2.5 (audit MED): the assistant fact inbox passes diary_only=true so chat-memory facts from
+    # other projects don't leak into it.
+    repo = AsyncMock()
+    repo.list_for_user = AsyncMock(return_value=[])
+    client = _make_client(repo)
+
+    resp = client.get("/v1/knowledge/pending-facts?diary_only=true")
+    assert resp.status_code == 200
+    repo.list_for_user.assert_awaited_once_with(_TEST_USER, session_id=None, diary_only=True)
 
 
 def test_list_pending_facts_empty():

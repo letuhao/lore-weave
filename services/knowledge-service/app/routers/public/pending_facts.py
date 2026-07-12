@@ -73,13 +73,19 @@ async def list_pending_facts(
         default=None,
         description="Optional — restrict to one chat session. Omit for all.",
     ),
+    diary_only: bool = Query(
+        default=False,
+        description="WS-2.5 — restrict to the DIARY distiller's session-less facts (the fact inbox). "
+        "Mutually exclusive with session_id (a diary fact has no session).",
+    ),
     user_id: UUID = Depends(get_current_user),
     repo: PendingFactsRepo = Depends(get_pending_facts_repo),
 ) -> list[PendingFact]:
     """List the caller's pending facts, oldest-first. JWT-scoped — the
     repo filters on `user_id`, so the result is always the caller's own
-    queue."""
-    return await repo.list_for_user(user_id, session_id=session_id)
+    queue. `diary_only=true` returns only the session-less diary facts,
+    so the fact inbox doesn't surface chat-memory facts from other projects."""
+    return await repo.list_for_user(user_id, session_id=session_id, diary_only=diary_only)
 
 
 @router.post("/{pending_fact_id}/confirm", response_model=Fact)

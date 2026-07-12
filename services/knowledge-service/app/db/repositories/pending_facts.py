@@ -91,6 +91,7 @@ class PendingFactsRepo:
         user_id: UUID,
         *,
         session_id: str | None = None,
+        diary_only: bool = False,
     ) -> list[PendingFact]:
         """List the caller's pending facts, oldest-first.
 
@@ -98,12 +99,21 @@ class PendingFactsRepo:
         chat session; otherwise every pending fact the user owns is
         returned. Always filtered by `user_id` — a cross-user caller
         sees an empty list.
+
+        WS-2.5 (audit MED): `diary_only=True` narrows to the SESSION-LESS
+        facts (`session_id IS NULL`) — the DIARY distiller's facts, which
+        the fact-inbox surfaces. Without it a `session_id=None` list means
+        "ALL pending facts", so chat-memory facts (which carry a session_id)
+        from unrelated projects would leak into the diary inbox. `diary_only`
+        and `session_id` are mutually exclusive (a diary fact has no session).
         """
         params: list[object] = [user_id]
         session_pred = ""
         if session_id is not None:
             params.append(session_id)
             session_pred = " AND session_id = $2"
+        elif diary_only:
+            session_pred = " AND session_id IS NULL"
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_pending_facts
