@@ -202,4 +202,53 @@ describe('PlanCanvas', () => {
     // stopPropagation keeps the toggle from bubbling into a node selection.
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  // PH18 — the canon badge's deep-link, end to end through the REAL chain:
+  // PlanCanvas → node `data` → the node card → NodeBadges.
+  //
+  // Every link in that chain already existed and every one honoured `onOpenRef`. But PlanCanvas
+  // never put it into `data`, so the chain resolved to `undefined` and the badge was permanently a
+  // plain chip. Each piece unit-tested green in isolation; nobody tested the JOIN. This is that test.
+  it('threads onOpenRef into the node data so the canon badge is a live deep-link', () => {
+    const onOpenRef = vi.fn();
+    const overlay = {
+      problems: {
+        by_node: {
+          'ch-1': {
+            canon: 1,
+            threads_open: 0,
+            refs: [{ kind: 'canon' as const, id: 'rule-9', line: 'Ha cannot fly before ch 40' }],
+          },
+        },
+        refs_capped: false,
+      },
+      tension_rollup: [],
+      motif_chips: [],
+      unplanned_chapters: [],
+    };
+    render(<PlanCanvas {...makeProps({ overlay, onOpenRef })} />);
+
+    const badge = screen.getByTestId('plan-badge-canon-ch-1');
+    expect(badge.tagName).toBe('BUTTON'); // a chip here would mean the seam is dead again
+    badge.click();
+    expect(onOpenRef).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'canon', id: 'rule-9' }),
+    );
+  });
+
+  it('without onOpenRef the canon badge stays a plain chip (the designed fallback)', () => {
+    const overlay = {
+      problems: {
+        by_node: {
+          'ch-1': { canon: 1, threads_open: 0, refs: [] },
+        },
+        refs_capped: false,
+      },
+      tension_rollup: [],
+      motif_chips: [],
+      unplanned_chapters: [],
+    };
+    render(<PlanCanvas {...makeProps({ overlay })} />);
+    expect(screen.getByTestId('plan-badge-canon-ch-1').tagName).not.toBe('BUTTON');
+  });
 });

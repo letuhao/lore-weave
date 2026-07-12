@@ -24,9 +24,14 @@ export interface ActualStateResult {
   /** Every manuscript page has loaded — gates the 'planned-only' verdict (absent ≠ written). */
   complete: boolean;
   loading: boolean;
+  /**
+   * The read FAILED. This is not cosmetic: on failure `complete` stays false, so `computeUnionState`
+   * emits no verdicts and EVERY node renders neutral — the whole three-state treatment (written /
+   * not-yet-written / anchor-lost) silently evaporates and the canvas looks like a book with nothing
+   * written in it. The caller MUST surface this; a degraded join that says nothing is indistinguish-
+   * able from a healthy one, which is the `silent-success-is-a-bug` class from the reader's side.
+   */
   error: string | null;
-  /** Non-null when the actual-state surface is unavailable; the join then degrades to empty. */
-  note: string | null;
 }
 
 export function useActualState(bookId: string | null, token: string | null): ActualStateResult {
@@ -80,5 +85,5 @@ export function useActualState(bookId: string | null, token: string | null): Act
     return s;
   }, [scenes]);
 
-  return { writtenNodeIds, scenes, complete, loading, error, note: null };
+  return { writtenNodeIds, scenes, complete, loading, error };
 }

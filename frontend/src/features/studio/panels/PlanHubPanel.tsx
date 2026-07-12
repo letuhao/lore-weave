@@ -20,7 +20,7 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { useStudioBusSelector, useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 import { usePlanHub } from '@/features/plan-hub/hooks/usePlanHub';
-import type { CameraFocusTarget } from '@/features/plan-hub/types';
+import type { CameraFocusTarget, PlanOverlayRef } from '@/features/plan-hub/types';
 import {
   PlanCanvas,
   PlanDrawer,
@@ -49,6 +49,18 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
     return hit ? hit[0] : null;
   }, [activeChapterId, view.nodeContent]);
 
+  // PH18 deep-links — a problem ref opens its OWNING lens, filtered to the offending row. The Hub
+  // shows the debt; the lens is where you resolve it. Panel ids are the catalog's (`quality-canon`,
+  // `quality-promises`) — a wrong id here is a silent no-op, the Frontend-Tool-Contract bug class,
+  // so they are pinned by a test. Routed through openPanel, never navigate() (PH24/DOCK-7).
+  const openRef = useCallback(
+    (ref: PlanOverlayRef) => {
+      const panelId = ref.kind === 'canon' ? 'quality-canon' : 'quality-promises';
+      openPanel(panelId, { focus: true, params: { bookId, focusId: ref.id } });
+    },
+    [openPanel, bookId],
+  );
+
   // OQ-5 camera — a focus REQUEST (nodeId + monotonically bumped seq so re-focusing the same node
   // still pans). A rail row focus selects AND pans; a canvas click only selects (already in view).
   const [focusTarget, setFocusTarget] = useState<CameraFocusTarget | null>(null);
@@ -72,6 +84,21 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
         className="flex h-full w-full items-center justify-center p-4 text-sm text-destructive"
       >
         {view.error}
+      </div>
+    );
+  }
+
+  // Cold open — the shell has not landed yet. Without this the Hub rendered an EMPTY CANVAS while
+  // loading, which is indistinguishable from a book with no plan: the user sees "nothing here" and
+  // has no idea whether that is the answer or the question. (Ordered before `specEmpty` on purpose —
+  // "still loading" must win over "nothing found".)
+  if (view.loading && view.layout.lanes.length === 0 && view.layout.nodes.length === 0) {
+    return (
+      <div
+        data-testid="studio-plan-hub-panel"
+        className="flex h-full w-full items-center justify-center p-4 text-sm text-muted-foreground"
+      >
+        <span data-testid="plan-hub-loading">{t('planHub.loading', 'Loading the plan…')}</span>
       </div>
     );
   }
@@ -131,6 +158,7 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           onReorderChapter={view.reorderChapter}
           arcPagination={view.arcPagination}
           onLoadMoreArc={view.loadMoreArc}
+          onOpenRef={openRef}
           busy={view.moving}
         />
         {/* PH21 — a HUD notice for the UNASSIGNED strip (spec chapters bound to no arc — the normal
@@ -184,8 +212,27 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           kind={selectedKind}
           bookId={bookId}
           onClose={() => view.select(null)}
+          overlay={view.overlay}
+          onOpenRef={openRef}
         />
       </div>
+
+        {/* Every partial truth the canvas is currently showing, said out loud. The Hub degrades in
+            several ways (the manuscript join dead ⇒ no written/not-written treatment; refs capped;
+            the coverage diff uncomputable) and each used to degrade SILENTLY — showing less, and
+            looking exactly like a healthy canvas showing less. */}
+        {view.notices.length > 0 && (
+          <ul
+            data-testid="plan-hub-notices"
+            className="border-t border-amber-500/30 bg-amber-500/5 px-3 py-1 text-xs text-amber-700"
+          >
+            {view.notices.map((n) => (
+              <li key={n} data-testid="plan-hub-notice">
+                {n}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {/* PH21 — manuscript chapters no spec node covers. Drift made visible, never auto-planned.
             Self-hides when there are none AND we know it; renders "unknown" when the coverage diff

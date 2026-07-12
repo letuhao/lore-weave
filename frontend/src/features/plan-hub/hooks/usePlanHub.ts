@@ -43,7 +43,11 @@ export function usePlanHub(bookId: string): PlanHubView {
     queryKey: ['plan-hub', 'conformance', bookId],
     queryFn: () => getConformanceStatus(bookId, token!),
     enabled,
-    retry: false, // 404 until spec 26 ships ⇒ conformance=null (absent ≠ zero — no drift badge)
+    // 26 IX-14 HAS shipped (`arc_conformance_state` is live), so this normally resolves. It can
+    // still legitimately answer "nothing computed" — an arc that has never had a conformance run
+    // arrives `computed_at: null, dirty: true` and renders as such. A FAILED read ⇒ conformance=null
+    // ⇒ no drift badge at all: absent ≠ zero, never a green-looking 0.
+    retry: false,
   });
 
   // Collapse is modelled as the OPENED sets (default empty ⇒ all collapsed, no shell seeding needed).
@@ -196,6 +200,31 @@ export function usePlanHub(bookId: string): PlanHubView {
   const overlay = overlayQuery.data ?? null;
   const unplanned = overlay?.unplanned_chapters ?? null;
 
+  // ── Degradation notices — every partial truth the Hub is currently rendering, in ONE place ──
+  //
+  // The Hub degrades gracefully in several ways, and every one of them used to be SILENT: the canvas
+  // simply showed less, and looked exactly like a healthy canvas showing less. That is the reader's
+  // side of `silent-success-is-a-bug`. Each of these is computed somewhere already; the bug was that
+  // nobody rendered it.
+  const notices = useMemo(() => {
+    const out: string[] = [];
+    // The two-truths join is DEAD. Without it `complete` stays false, computeUnionState emits no
+    // verdicts, and every card renders neutral — a fully-written book looks entirely unwritten.
+    if (actual.error) {
+      out.push(
+        `The manuscript could not be read, so "written vs not yet written" is not shown (${actual.error}).`,
+      );
+    }
+    // The overlay capped its refs (OUT-5). Counts stay exact, so a badge can read "3" while the
+    // drawer lists 1 — say why rather than letting it look like a bug.
+    if (overlay?.problems.refs_capped) {
+      out.push('Too many canon/thread references to list them all — counts are exact, the lists are truncated.');
+    }
+    // Anything the server itself flagged (today: the coverage diff could not be computed).
+    for (const w of overlay?.warnings ?? []) out.push(w);
+    return out;
+  }, [actual.error, overlay]);
+
   return {
     layout,
     edges: sceneLinksQuery.data?.scene_links ?? [],
@@ -209,6 +238,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     arcPagination,
     loadMoreArc: windowsResult.loadMoreArc,
     extract,
+    notices,
     loading,
     error,
     selectedId,

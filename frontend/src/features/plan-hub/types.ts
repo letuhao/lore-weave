@@ -234,6 +234,13 @@ export interface PlanHubView {
     result: { scenes_total: number; created: number; chapters: number; detail: string | null } | null;
     error: string | null;
   };
+  /**
+   * Every partial truth the canvas is currently rendering — the manuscript join being dead, refs
+   * being capped, the coverage diff being uncomputable. The Hub degrades in several ways and each
+   * used to do so SILENTLY: it just showed less, and looked exactly like a healthy canvas showing
+   * less. Empty ⇒ what you see is the whole truth.
+   */
+  notices: string[];
   loading: boolean;
   error: string | null;
   selectedId: string | null;
@@ -313,6 +320,10 @@ export interface PlanCanvasProps {
   /** PH11 — fetch the next chapter page of an expanded arc. Without a caller, an arc's 101st
    *  chapter is unreachable: invisible on the canvas AND undraggable. */
   onLoadMoreArc?: (arcId: string) => void;
+  /** PH18 — open a problem ref in its owning lens (canon → `quality-canon`, thread →
+   *  `quality-promises`). Reaches the node cards through `PlanNodeData.onOpenRef`, which they
+   *  already forward to NodeBadges. Omitted ⇒ badges stay plain chips, never dead links. */
+  onOpenRef?: (ref: PlanOverlayRef) => void;
   /** H5: a move is in flight ⇒ freeze dragging. The lanes under the cursor are about to be replaced
    *  by the server's answer, so a second drag would be aimed at a layout that no longer holds. */
   busy?: boolean;

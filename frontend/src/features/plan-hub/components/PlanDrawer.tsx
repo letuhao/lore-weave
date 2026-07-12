@@ -1,9 +1,14 @@
 // Plan Hub v2 (24 H3 / PH16) — the 280px detail DRAWER that opens over the canvas for the selected
 // node. Render-only over usePlanNode's data + the passed selection; close via onClose (edits are
 // H5 / PH20 — this slice reads, it does not write). By kind:
-//   • chapter/scene → Overview · Cast & Setting · Craft facets from the full outline node, plus
-//     honestly-empty Canon-here / References / Critic facets (their data — problems overlay,
-//     references search, critic runs — is wired in H4; the facet is present, never a silent gap).
+//   • chapter/scene → Overview · Cast & Setting · Craft from the full outline node, plus LIVE
+//     Canon-here + Open-threads facets read straight off the cold-open `overlay` prop (those refs
+//     are already in memory — no extra fetch, PH9's closed read set). Each ref deep-links to its
+//     owning lens via `onOpenRef` (PH18).
+//     References + Critic remain empty, and now say WHY: references need `composition_find_
+//     references` (28 AN-3, unbuilt) and critic runs are book-scoped (the Quality → Critic panel).
+//     They used to read "loads in H4" — long after H4 shipped, which made shipped data look like an
+//     unbuilt feature. A stub must name its real blocker or it becomes a lie.
 //   • arc/saga → a MINIMAL summary (title/status/goal/span/roster keys). The 23-C3 arc-inspector
 //     component does not exist yet (verified), so this is the documented reuse gap, not a fork.
 //
@@ -16,7 +21,8 @@ import { cn } from '@/lib/utils';
 import type { OutlineNode } from '@/features/composition/types';
 
 import { usePlanNode, type PlanNodeKind, type PlanNodeView } from '../hooks/usePlanNode';
-import type { ArcListNode } from '../types';
+import { refsFor } from './nodePresentation';
+import type { ArcListNode, PlanOverlay, PlanOverlayRef } from '../types';
 
 export interface PlanDrawerProps {
   /** The canvas selection (usePlanHub's selectedId). null ⇒ the drawer renders nothing. */
@@ -25,6 +31,15 @@ export interface PlanDrawerProps {
   kind: string | null;
   bookId: string;
   onClose: () => void;
+  /** The cold-open problems overlay. Its canon + thread refs are ALREADY in memory — the drawer's
+   *  facets read them directly rather than re-fetching (PH9's closed read set). */
+  overlay?: PlanOverlay | null;
+  /** PH18 deep-link: open the ref in its owning lens (canon → `quality-canon`, thread →
+   *  `quality-promises`). Omitted ⇒ refs render as plain text, never a dead link. */
+  onOpenRef?: (ref: PlanOverlayRef) => void;
+  // NOTE: there is deliberately no `refsCapped` prop. It lives at `overlay.problems.refs_capped`,
+  // and the drawer already has the overlay — a second prop carrying the same fact is one concept
+  // under two names (DA-10), and the two would eventually disagree.
 }
 
 const KIND_LABEL: Record<PlanNodeKind, string> = {
@@ -91,10 +106,82 @@ function Centered({ testid, tone, children }: { testid: string; tone?: 'error'; 
   );
 }
 
+/** One overlay ref. Deep-links into its owning lens when the panel wired `onOpenRef` (PH18); plain
+ *  text otherwise — a ref must never render as a link that does nothing (PH7 visible-fallback). */
+function RefRow({ refItem, onOpen }: { refItem: PlanOverlayRef; onOpen?: (r: PlanOverlayRef) => void }) {
+  if (!onOpen) {
+    return (
+      <li data-testid="plan-drawer-ref" className="text-xs text-foreground/90">
+        {refItem.line}
+      </li>
+    );
+  }
+  return (
+    <li>
+      <button
+        type="button"
+        data-testid="plan-drawer-ref"
+        onClick={() => onOpen(refItem)}
+        className="w-full text-left text-xs text-primary underline-offset-2 hover:underline"
+      >
+        {refItem.line}
+      </button>
+    </li>
+  );
+}
+
+function RefList({
+  refs,
+  count,
+  capped,
+  emptyLabel,
+  onOpenRef,
+  testid,
+}: {
+  refs: PlanOverlayRef[];
+  count: number;
+  capped?: boolean;
+  emptyLabel: string;
+  onOpenRef?: (r: PlanOverlayRef) => void;
+  testid: string;
+}) {
+  if (count === 0) return <EmptyFacet>{emptyLabel}</EmptyFacet>;
+  return (
+    <>
+      <ul data-testid={testid} className="space-y-1">
+        {refs.map((r) => (
+          <RefRow key={`${r.kind}:${r.id}`} refItem={r} onOpen={onOpenRef} />
+        ))}
+      </ul>
+      {/* OUT-5: the COUNT is exact, the LIST may be capped. Saying so is the difference between a
+          documented truncation and a UI that looks broken. */}
+      {count > refs.length && (
+        <p data-testid={`${testid}-capped`} className="text-[11px] italic text-muted-foreground/70">
+          {count} in total{capped ? ' — the list is truncated' : ''}.
+        </p>
+      )}
+    </>
+  );
+}
+
 // ── chapter/scene facets ───────────────────────────────────────────────────────
-function ChapterSceneFacets({ node, nameFor }: { node: OutlineNode; nameFor: PlanNodeView['nameFor'] }) {
+function ChapterSceneFacets({
+  node,
+  nameFor,
+  overlay,
+  onOpenRef,
+}: {
+  node: OutlineNode;
+  nameFor: PlanNodeView['nameFor'];
+  overlay?: PlanOverlay | null;
+  onOpenRef?: (r: PlanOverlayRef) => void;
+}) {
   const present = (node.present_entity_ids ?? []).map(nameFor).filter(Boolean).join(', ');
   const num = (v: number | null | undefined): ReactNode => (v == null ? null : String(v));
+  const problems = overlay?.problems.by_node[node.id];
+  const refsCapped = overlay?.problems.refs_capped ?? false;
+  const canonRefs = refsFor(overlay ?? null, node.id, 'canon');
+  const threadRefs = refsFor(overlay ?? null, node.id, 'thread');
   return (
     <>
       <Section title="Overview" testid="plan-drawer-section-overview">
@@ -120,16 +207,42 @@ function ChapterSceneFacets({ node, nameFor }: { node: OutlineNode; nameFor: Pla
         <Field label="Target words" value={num(node.target_words)} testid="plan-drawer-f-targetwords" />
       </Section>
 
-      {/* Canon-here / References / Critic — the facet is present now; its data (problems overlay,
-          references search, critic runs) lands in H4. Honest visible-fallback, never a blank gap. */}
+      {/* Canon here + Open threads — LIVE. These refs already ride the cold-open overlay, so the
+          drawer reads them from memory (no extra fetch — PH9's closed read set). They used to say
+          "loads in H4" long AFTER H4 shipped, which read as a missing feature rather than a stale
+          comment: the data was sitting in the same hook. Each ref deep-links to its lens (PH18). */}
       <Section title="Canon here" testid="plan-drawer-section-canon">
-        <EmptyFacet>Canon findings load with the problems overlay (H4).</EmptyFacet>
+        <RefList
+          refs={canonRefs}
+          count={problems?.canon ?? 0}
+          capped={refsCapped}
+          emptyLabel="No canon rule is anchored here."
+          onOpenRef={onOpenRef}
+          testid="plan-drawer-canon-refs"
+        />
       </Section>
+      <Section title="Open threads" testid="plan-drawer-section-threads">
+        <RefList
+          refs={threadRefs}
+          count={problems?.threads_open ?? 0}
+          capped={refsCapped}
+          emptyLabel="No promise opens here."
+          onOpenRef={onOpenRef}
+          testid="plan-drawer-thread-refs"
+        />
+      </Section>
+
+      {/* References + Critic stay empty — and now say WHY, and what would fill them. The old copy
+          ("loads in H4") was simply false once H4 landed; an honest gap names its real blocker. */}
       <Section title="References" testid="plan-drawer-section-references">
-        <EmptyFacet>Lore references load in H4.</EmptyFacet>
+        <EmptyFacet>
+          Back-references (where else this node’s entities appear) need
+          <code className="mx-1">composition_find_references</code> — spec 28 AN-3, not built yet.
+          The cast above is this node’s own roster.
+        </EmptyFacet>
       </Section>
       <Section title="Critic" testid="plan-drawer-section-critic">
-        <EmptyFacet>Critic results load in H4.</EmptyFacet>
+        <EmptyFacet>Critic runs are book-scoped — see the Quality → Critic panel.</EmptyFacet>
       </Section>
     </>
   );
@@ -197,12 +310,27 @@ function ArcFacets({ arc }: { arc: ArcListNode }) {
 }
 
 // ── body router ─────────────────────────────────────────────────────────────────
-function DrawerBody({ view }: { view: PlanNodeView }) {
+function DrawerBody({
+  view,
+  overlay,
+  onOpenRef,
+}: {
+  view: PlanNodeView;
+  overlay?: PlanOverlay | null;
+  onOpenRef?: (r: PlanOverlayRef) => void;
+}) {
   if (view.loading) return <Centered testid="plan-drawer-loading">Loading…</Centered>;
   if (view.error) return <Centered testid="plan-drawer-error" tone="error">{view.error}</Centered>;
   if (view.kind === 'chapter' || view.kind === 'scene') {
     if (!view.outlineNode) return <Centered testid="plan-drawer-empty">This node has no plan yet.</Centered>;
-    return <ChapterSceneFacets node={view.outlineNode} nameFor={view.nameFor} />;
+    return (
+      <ChapterSceneFacets
+        node={view.outlineNode}
+        nameFor={view.nameFor}
+        overlay={overlay}
+        onOpenRef={onOpenRef}
+      />
+    );
   }
   if (view.kind === 'arc' || view.kind === 'saga') {
     if (!view.arcNode) return <Centered testid="plan-drawer-empty">Arc not found in the shell.</Centered>;
@@ -211,7 +339,14 @@ function DrawerBody({ view }: { view: PlanNodeView }) {
   return <Centered testid="plan-drawer-empty">Select a node to see its plan.</Centered>;
 }
 
-export function PlanDrawer({ selectedId, kind, bookId, onClose }: PlanDrawerProps) {
+export function PlanDrawer({
+  selectedId,
+  kind,
+  bookId,
+  onClose,
+  overlay,
+  onOpenRef,
+}: PlanDrawerProps) {
   // Hook first (unconditional — Rules of Hooks); then self-hide when there is no selection so the
   // orchestrator can keep <PlanDrawer/> mounted (never conditionally unmount a stateful child).
   const view = usePlanNode(bookId, selectedId, kind);
@@ -248,7 +383,7 @@ export function PlanDrawer({ selectedId, kind, bookId, onClose }: PlanDrawerProp
         </button>
       </header>
       <div data-testid="plan-drawer-body" className="min-h-0 flex-1 overflow-auto">
-        <DrawerBody view={view} />
+        <DrawerBody view={view} overlay={overlay} onOpenRef={onOpenRef} />
       </div>
     </aside>
   );

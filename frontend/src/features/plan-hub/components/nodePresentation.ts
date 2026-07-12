@@ -125,6 +125,19 @@ export function canonRef(overlay: PlanOverlay | null, nodeId: string): PlanOverl
   return overlay?.problems.by_node[nodeId]?.refs.find((r) => r.kind === 'canon') ?? null;
 }
 
+/** Every overlay ref of one kind on a node (PH16's "Canon here" / thread-debt drawer facets). The
+ *  refs are ALREADY in memory from the cold-open overlay — the drawer's canon facet used to say
+ *  "loads in H4" long after H4 had shipped, which read as a missing feature rather than a stale
+ *  comment. Counts stay exact even when the payload's refs were capped (OUT-5); the caller surfaces
+ *  `problems.refs_capped` so a count of 3 over a list of 1 is explained, not mysterious. */
+export function refsFor(
+  overlay: PlanOverlay | null,
+  nodeId: string,
+  kind: 'canon' | 'thread',
+): PlanOverlayRef[] {
+  return (overlay?.problems.by_node[nodeId]?.refs ?? []).filter((r) => r.kind === kind);
+}
+
 /** Lockfile chips hanging on this node (PH19). node_ref keys an outline_node.id (chapter/scene) OR a
  *  structure_node.id (arc lane) — one filter serves all three cards. null overlay ⇒ []. */
 export function motifChipsFor(overlay: PlanOverlay | null, nodeId: string): MotifChip[] {
@@ -161,11 +174,15 @@ export type NodeBadge =
  * be inventing data; it needs `present_entity_ids` threaded into `NodeContent` (a small contract add
  * for a later round) plus the PH26 entity-names map. `CAST_CHIP_CAP` is reserved for that.
  *
- * CANON DEEP-LINK (H4.1): the badge carries the fired rule's `ref`; the click is wired by the
- * orchestrator via `PlanNodeData.onOpenRef`. resolveStudioLink has no canon-rule URL route today
- * (no `/books/{id}/quality/canon` pattern, and a render-only node holds no host/bookId), so the seam
- * is a callback, not a URL — the orchestrator wires `onOpenRef` → `host.openPanel('quality-canon',
- * { ruleId: ref.id })` in PlanCanvas. Until wired, the chip renders the count (per H4.1's fallback).
+ * CANON DEEP-LINK (H4.1/PH18): the badge carries the fired rule's `ref`, and NodeBadges renders it
+ * as a button when `onOpenRef` is present. The seam is a CALLBACK, not a URL — resolveStudioLink has
+ * no canon-rule route, and a render-only node holds no host/bookId. It is wired by PlanHubPanel
+ * (the orchestrator, which owns the host) → PlanCanvas → node `data` → NodeBadges.
+ *
+ * That last hop is the one that was missing: every node card read `data.onOpenRef` and every badge
+ * honoured it, but PlanCanvas never PUT it in `data`, so the whole chain resolved to `undefined` and
+ * the canon badge was permanently a plain chip. A comment here even claimed the canvas wired it. The
+ * lesson: a seam that only ever gets `undefined` is indistinguishable from a designed fallback.
  */
 export function orderNodeBadges(input: {
   overlay: PlanOverlay | null;

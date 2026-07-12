@@ -130,6 +130,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     onReorderChapter,
     arcPagination,
     onLoadMoreArc,
+    onOpenRef,
     busy,
   } = props;
 
@@ -161,6 +162,11 @@ function PlanCanvasInner(props: PlanCanvasProps) {
         unionState: unionState[n.id],
         selected: n.id === selectedId,
         isHere: activeNodeId != null && n.id === activeNodeId,
+        // PH18 — every node card already READ `data.onOpenRef` and forwarded it to NodeBadges, and
+        // NodeBadges already renders the canon badge as a deep-link button when it is present. The
+        // canvas simply never put it in `data`, so the whole chain resolved to `undefined` and every
+        // canon badge was a plain, unclickable chip. The seam existed; nothing fed it.
+        onOpenRef,
         onToggle:
           n.shape === 'arc-rollup'
             ? () => onToggleArc(n.id)
@@ -171,7 +177,7 @@ function PlanCanvasInner(props: PlanCanvasProps) {
     }));
     // Bands first (lower in the DOM / z), content on top.
     return [...laneNodes, ...contentNodes];
-  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc]);
+  }, [layout, overlay, conformance, unionState, nodeContent, selectedId, activeNodeId, canDragChapter, canDragScene, canDragArc, onToggleArc, onToggleChapter, arcPagination, onLoadMoreArc, onOpenRef]);
 
   // RF's live node list. It exists ONLY so a drag can move the card under the cursor (see the header:
   // a controlled `nodes` prop with no onNodesChange never updates the store, so nothing moves). It is
