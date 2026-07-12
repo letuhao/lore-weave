@@ -137,6 +137,13 @@ async def distill_and_write(
         giant_paste_threshold=giant_paste_threshold, window=window,
     )
 
+    # A COMPUTE failure (a provider/model outage during map or reduce) is RETRYABLE — never a
+    # dropped day. This must be checked BEFORE the no-entry branch so an outage that yielded no facts
+    # is not mistaken for a low-signal day.
+    if outcome.error:
+        return {"status": "error", "reason": outcome.error, "entry_date": entry_date,
+                "retryable": bool(outcome.retryable)}
+
     # §T38 — any giant paste(s) are diverted (offer to attach as a document), INDEPENDENT of whether
     # the rest of the day produced an entry. Surface the count so the home strip can make the offer.
     oversized_n = len(outcome.oversized_messages)

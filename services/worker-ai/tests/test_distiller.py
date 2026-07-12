@@ -106,6 +106,32 @@ async def test_low_signal_day_writes_no_entry_not_a_stub():
     assert llm.map_calls == 1  # the day was mapped; it just had nothing
 
 
+async def test_a_map_outage_is_a_RETRYABLE_error_not_a_dropped_day():
+    # The review's Finding 1: a total provider/model outage on the map step must NOT be laundered
+    # into 'low_signal no-entry' (which would drop the user's whole day forever). It is retryable.
+    async def boom(_prompt):
+        raise RuntimeError("LLM_CIRCUIT_OPEN")
+
+    out = await d.distill_day(_msgs(("user", "Met Minh about the redesign.")), "en", boom)
+    assert out.entry is None
+    assert out.no_entry_reason is None, "an outage must not read as a low-signal day"
+    assert out.error == "map_failed" and out.retryable is True
+    assert out.map_failures == 1
+
+
+async def test_a_reduce_outage_is_a_RETRYABLE_error_not_a_dropped_day():
+    # Facts extracted fine, but the reduce CALL fails → retryable, never a fabricated no-entry.
+    async def llm(prompt):
+        if "FACTS:" in prompt and "MESSAGES:" not in prompt:
+            raise RuntimeError("LLM_UPSTREAM_ERROR")  # the reduce call
+        return json.dumps({"facts": [{"kind": "decision", "text": "Ship v2.", "provenance": "user"}]})
+
+    out = await d.distill_day(_msgs(("user", "Decided to ship v2.")), "en", llm)
+    assert out.entry is None and out.no_entry_reason is None
+    assert out.error == "reduce_failed" and out.retryable is True
+    assert out.facts_found == 1  # the facts DID extract; only the reduce failed
+
+
 # ── injection-laundering guard (§Q7) ──────────────────────────────────────────
 
 

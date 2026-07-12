@@ -142,6 +142,22 @@ async def test_kept_day_returns_kept_so_caller_supplements():
     assert out["status"] == "kept"
 
 
+async def test_a_model_outage_is_retryable_and_never_drops_the_day():
+    # Finding 1 at the orchestrator level: a map/reduce provider outage → status error + retryable,
+    # and NOTHING is written (the day is retried later, not silently lost as a low-signal no-entry).
+    async def boom(_prompt):
+        raise RuntimeError("LLM_CIRCUIT_OPEN")
+
+    chat = FakeChat([_msg("user", "A busy, productive day.")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=boom, chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "error" and out["reason"] == "map_failed" and out["retryable"] is True
+    assert book.writes == []
+
+
 async def test_write_failure_is_a_retryable_error():
     chat = FakeChat([_msg("user", "Met Minh.")])
     book = FakeBook(result={"error": "HTTP 503", "retryable": True})

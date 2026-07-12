@@ -277,7 +277,8 @@ ON CONFLICT (kind_id, genre_id, code) DO NOTHING;
 `
 
 // SeedWorkKinds seeds the System-tier work ontology (WS-1.5). Idempotent; a NEW ledger step
-// (0052). See seedWorkKindsSQL for why these are hidden System-tier templates.
+// (0052). Seeded is_default=false, is_hidden=FALSE (DR-13 — see seedWorkKindsSQL: a hidden
+// template would clone hidden into the diary; novel pickers stay clean via book_kinds, not is_hidden).
 func SeedWorkKinds(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, seedWorkKindsSQL); err != nil {
 		return fmt.Errorf("seed work kinds: %w", err)

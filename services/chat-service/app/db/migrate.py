@@ -241,8 +241,12 @@ END $$;
 -- D-R14: populated SERVER-side from the user's prefs.timezone with a UTC fallback. This
 -- migration adds the column + the UTC-fallback DEFAULT for new rows; the timezone-aware
 -- override (resolve prefs.timezone in the message-write path) is the follow-up. Existing rows
--- stay NULL (no wrong backfill to today's date) — the distiller reads recent messages, which
--- carry the default; a NULL old row falls back to created_at::date at read time.
+-- stay NULL (no wrong backfill to today's date). The only reader (the day-window query) filters
+-- `local_date = $day` with STRICT equality, so a legacy NULL row is simply EXCLUDED — correct here:
+-- those pre-column rows predate the assistant and are never diary-session messages (the reader also
+-- scopes to s.book_id = the diary), and new diary messages always carry the default. (A future
+-- reader that must include legacy rows would add COALESCE(local_date, created_at::date); the
+-- day-window read deliberately does NOT — there is no missing diary data to fall back for.)
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='local_date') THEN
     ALTER TABLE chat_messages ADD COLUMN local_date DATE;
@@ -324,6 +328,26 @@ CREATE TABLE IF NOT EXISTS user_tool_approvals (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, tool_name)
 );
+
+-- Track C WS-3 (D-C-ALLOWLIST-WRITE-ONLY) — the table was INSERT-ONLY: a user could
+-- grant "Always allow" and never view, revoke, or refuse it. Consent without
+-- withdrawal is broken by design, so the row now carries the DECISION rather than
+-- meaning "granted" by its mere existence:
+--   'allow' — the legacy "Always allow" (every pre-existing row IS a grant, so the
+--             backfill default is exactly right and needs no data fix-up);
+--   'deny'  — a persistent "Never allow" (the spec's deny-list). The gate must then
+--             BLOCK the call outright instead of raising an approval card: re-asking
+--             for something the user already refused forever is the same consent bug
+--             wearing a different hat.
+-- allow/deny are MUTUALLY EXCLUSIVE by construction — one row per (user, tool, kind)
+-- on the existing PK, so a decision can only ever be flipped, never doubled.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_tool_approvals' AND column_name='decision') THEN
+    ALTER TABLE user_tool_approvals ADD COLUMN decision TEXT NOT NULL DEFAULT 'allow';
+    ALTER TABLE user_tool_approvals ADD CONSTRAINT user_tool_approvals_decision_chk
+      CHECK (decision IN ('allow', 'deny'));
+  END IF;
+END $$;
 
 -- ══════════════════════════════════════════════════════════════════════
 -- Track "Production Eval + Feedback Flywheel" — Q3: chat-turn feedback.

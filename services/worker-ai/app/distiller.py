@@ -38,9 +38,15 @@ logger = logging.getLogger(__name__)
 # real wiring routes through the provider gateway (loreweave_llm SDK), never a bespoke provider call.
 LLMCall = Callable[[str], Awaitable[str]]
 
-# Char-based windowing (a ~4 chars/token approximation; a token estimator can be injected later).
-# Conservative so a local 8k-window model never overflows on the reduce.
-WINDOW_CHARS = 24_000
+# Char-based windowing — a KNOWN approximation (DBT-12), not the final sizing. The flat ~4 chars/
+# token ratio holds for Latin but UNDER-counts CJK/Vietnamese ~4x (o200k ≈ 1–1.7 tok/char for CJK),
+# so a CJK-heavy WINDOW_CHARS can overflow a small model's context. WINDOW_CHARS is therefore set
+# conservatively (a CJK day of this many chars ≈ 13–20k tokens — still bounded for a 32k model, and
+# a map overflow degrades to ok=False → RETRYABLE, not a crash). PAY-OFF: when the P-10 live-wiring
+# lands, the distiller job needs context-aware chunk sizing anyway (spec 06 §Q4), so switch these to
+# the script-aware token estimator `loreweave_context.tokens.estimate_tokens` (add it to worker-ai's
+# deps then) instead of duplicating it here. Tracked in RUN-STATE §8 DBT-12.
+WINDOW_CHARS = 12_000
 # A single message bigger than this is a paste, not a conversation turn — don't digest it (§T38).
 GIANT_PASTE_CHARS = 40_000
 # Tool-name substrings that mark an assistant turn as quoting journal/recall content (§Q9).
@@ -102,18 +108,28 @@ class EntryDraft:
         return "\n\n".join(parts).strip()
 
 
+class DistillComputeError(Exception):
+    """A provider/model COMPUTE failure during map or reduce — RETRYABLE, and categorically distinct
+    from a genuinely low-signal day. It must NEVER be collapsed into 'no entry': doing so would drop
+    a user's whole productive day on a transient outage and never retry it (a silent-data-loss bug)."""
+
+
 @dataclass
 class DistillOutcome:
     """The distiller's result. `entry` and `oversized_messages` are INDEPENDENT: a day can both
     produce a real entry (from the conversation) AND surface a giant paste to attach (§T38) — the
     paste is diverted, not allowed to suppress the day. `no_entry_reason` is set only when there is
-    no entry, so a caller never mistakes a low-signal day for a real entry."""
+    genuinely no entry (never for a compute failure); `error`/`retryable` carry a provider/compute
+    failure so the caller retries instead of dropping the day."""
 
     entry: EntryDraft | None = None
     no_entry_reason: str | None = None  # 'low_signal' | 'empty_day' | 'only_oversized' — no entry (§Q11)
     oversized_messages: list[str] = field(default_factory=list)  # giant pastes to attach, not digest (§T38)
     chunks_processed: int = 0
     facts_found: int = 0
+    error: str | None = None  # 'map_failed' | 'reduce_failed' — a RETRYABLE compute failure, NOT a no-entry
+    retryable: bool = False
+    map_failures: int = 0  # how many chunks' map calls FAILED (a partial-outage signal for the caller)
 
 
 # ── Guards + chunking ────────────────────────────────────────────────────────
@@ -287,13 +303,16 @@ def parse_map_result(text: str) -> list[DistillFact]:
     return facts
 
 
-async def map_chunk(chunk: list[DayMessage], llm: LLMCall) -> list[DistillFact]:
+async def map_chunk(chunk: list[DayMessage], llm: LLMCall) -> tuple[list[DistillFact], bool]:
+    """Returns (facts, ok). ok=False means the model CALL failed (a provider/compute error) — the
+    caller must treat that as retryable, NOT as a chunk that legitimately had no facts, or a
+    transient outage silently erases the day. A successful call that yields no facts is (`[]`, True)."""
     try:
         raw = await llm(build_map_prompt(chunk))
-    except Exception:  # noqa: BLE001 — a failed chunk contributes no facts; the day still distills.
+    except Exception:  # noqa: BLE001 — surfaced as ok=False so the day is retried, not dropped.
         logger.warning("distiller map chunk failed", exc_info=True)
-        return []
-    return parse_map_result(raw)
+        return [], False
+    return parse_map_result(raw), True
 
 
 # ── Reduce ───────────────────────────────────────────────────────────────────
@@ -336,11 +355,14 @@ def parse_entry_draft(text: str, language: str) -> EntryDraft | None:
 
 
 async def reduce_entry(facts: list[DistillFact], language: str, llm: LLMCall) -> EntryDraft | None:
+    """Returns the draft, or None for a genuinely empty/unparseable reduce of real facts. RAISES
+    DistillComputeError on a provider/model CALL failure — the facts existed and the compute failed,
+    which is retryable and must never be laundered into a 'low_signal no entry' that drops the day."""
     try:
         raw = await llm(build_reduce_prompt(facts, language))
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         logger.warning("distiller reduce failed", exc_info=True)
-        return None
+        raise DistillComputeError("reduce call failed") from exc
     return parse_entry_draft(raw, language)
 
 
@@ -373,16 +395,31 @@ async def distill_day(
     outcome.chunks_processed = len(chunks)
     all_facts: list[DistillFact] = []
     for chunk in chunks:
-        all_facts.extend(await map_chunk(chunk, llm))
+        facts, ok = await map_chunk(chunk, llm)
+        if not ok:
+            outcome.map_failures += 1
+        all_facts.extend(facts)
 
     if not all_facts:
-        # A day with no extractable facts writes NO entry (§Q11) — never a stub.
-        outcome.no_entry_reason = "low_signal"
+        # Distinguish a genuinely low-signal day (write NO entry, §Q11) from a COMPUTE failure that
+        # merely produced no facts (a provider outage) — the latter is RETRYABLE, never a silent drop.
+        if outcome.map_failures:
+            outcome.error = "map_failed"
+            outcome.retryable = True
+        else:
+            outcome.no_entry_reason = "low_signal"
         return outcome
     outcome.facts_found = len(all_facts)
 
-    entry = await reduce_entry(all_facts, language, llm)
+    try:
+        entry = await reduce_entry(all_facts, language, llm)
+    except DistillComputeError:
+        # The facts existed; the reduce CALL failed. Retry — do not fabricate a no-entry.
+        outcome.error = "reduce_failed"
+        outcome.retryable = True
+        return outcome
     if entry is None:
+        # A real, parseable-but-empty reduce of real facts → genuinely low-signal, no entry.
         outcome.no_entry_reason = "low_signal"
         return outcome
     outcome.entry = entry
