@@ -41,3 +41,32 @@ def test_a_multikey_dict_is_untouched():
 def test_a_non_dict_inner_is_untouched():
     call = {"args": "not a dict"}
     assert _unwrap_wrapped_args(call, FLAT_DEF) == call
+
+
+# ── consumer-local meta tools (find_tools / tool_load / workflow_load / run_subagent /
+# *_list) — the single-point wrap-repair at the top of the per-call loop unwraps with
+# tool_def=None, which is only safe if NONE of them declares an args/arguments param.
+def test_meta_tools_have_no_args_param_so_none_def_unwrap_is_safe():
+    from app.services.stream_service import _CONSUMER_LOCAL_META_TOOLS
+    from app.services.tool_discovery import (
+        FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME,
+    )
+    from app.services.workflow_runner import WORKFLOW_LIST_NAME, WORKFLOW_LOAD_NAME
+    from app.services.subagent_runtime import RUN_SUBAGENT_NAME, build_run_subagent_tool
+    # the closed set the loop repairs
+    assert _CONSUMER_LOCAL_META_TOOLS == frozenset({
+        FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME,
+        WORKFLOW_LIST_NAME, WORKFLOW_LOAD_NAME, RUN_SUBAGENT_NAME,
+    })
+    # run_subagent's real schema must NOT declare args/arguments (else None-def unwrap eats it)
+    props = build_run_subagent_tool(["persona"])["function"]["parameters"]["properties"]
+    assert "args" not in props and "arguments" not in props
+
+
+def test_meta_tool_wrapped_payload_unwraps_with_none_def():
+    # gemma wraps find_tools as {"args":{"intent":"..."}} — the loop unwraps to the inner dict
+    assert _unwrap_wrapped_args({"args": {"intent": "lore"}}, None) == {"intent": "lore"}
+    # workflow_load slug, tool_load names — same shape
+    assert _unwrap_wrapped_args({"args": {"slug": "w5"}}, None) == {"slug": "w5"}
+    # a well-formed meta call is untouched
+    assert _unwrap_wrapped_args({"intent": "lore"}, None) == {"intent": "lore"}

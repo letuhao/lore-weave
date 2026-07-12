@@ -666,6 +666,66 @@ async def test_project_entities_to_nodes_returns_counts(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_project_entities_to_nodes_refreshes_stat_cache(monkeypatch):
+    """D-KG-STAT-CACHE-DEAD (rail HIGH): after a projection, the handler recounts the
+    stat cache so `connections` becomes KNOWN — otherwise the vision-to-book rail
+    (connect-people done_when "connections > 0") stalls forever at STOP_UNKNOWN because
+    stat_updated_at has no other production writer."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr(
+        "app.clients.glossary_client.get_glossary_client",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.project_glossary_entities_to_nodes",
+        AsyncMock(return_value=ProjectionResult(created=3, existing=1, seen=4, skipped=0)),
+    )
+    reconcile = AsyncMock(return_value={"stat_entity_count": 4})
+    # the handler imports reconcile_project_stats locally, so patch the module attribute
+    monkeypatch.setattr("app.jobs.stats_updater.reconcile_project_stats", reconcile)
+
+    ctx = _ctx()  # caller == owner, project_meta → (_OWNER, _BOOK)
+    res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
+    assert res.success
+    reconcile.assert_awaited_once()
+    args = reconcile.await_args.args
+    assert args[2] == _OWNER and args[3] == _PROJECT  # (pool, session, user_id, project_id)
+
+
+@pytest.mark.asyncio
+async def test_project_entities_to_nodes_survives_stat_recount_failure(monkeypatch):
+    """The stat recount is advisory — a recount error must NOT fail an otherwise-successful
+    projection (the nodes were placed; the counter is a best-effort cache)."""
+
+    @asynccontextmanager
+    async def _fake_session(**_kwargs):
+        yield object()
+
+    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr(
+        "app.clients.glossary_client.get_glossary_client",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "app.extraction.anchor_loader.project_glossary_entities_to_nodes",
+        AsyncMock(return_value=ProjectionResult(created=2, existing=0, seen=2, skipped=0)),
+    )
+    monkeypatch.setattr(
+        "app.jobs.stats_updater.reconcile_project_stats",
+        AsyncMock(side_effect=RuntimeError("neo4j down")),
+    )
+    ctx = _ctx()
+    res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
+    assert res.success
+    assert res.result["nodes_created"] == 2
+
+
+@pytest.mark.asyncio
 async def test_project_entities_to_nodes_bookless_project_errors():
     """A book-less project has no glossary to project → a clear tool error."""
     projects_repo = AsyncMock()

@@ -132,6 +132,16 @@ from loreweave_context import (
 # T3.2 — the default Context Budget Planner (stateless policy; one shared instance). Swap
 # this (or subclass Planner) to A/B a compaction/budget optimization hypothesis.
 _PLANNER = Planner()
+
+# CONSUMER-LOCAL meta tools: dispatched inline here (never federated to a domain service),
+# so the main dispatch's schema-aware wrap-repair below never reaches them. A mid-tier model
+# (gemma) wraps the whole payload in a lone {"args": {...}} envelope; without repair these see
+# intent=""/slug=""/name=None and no-op. None of them declares an `args`/`arguments` param, so
+# unwrapping with tool_def=None (see the per-call loop) is safe for the whole set.
+_CONSUMER_LOCAL_META_TOOLS = frozenset({
+    FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME,
+    WORKFLOW_LIST_NAME, WORKFLOW_LOAD_NAME, RUN_SUBAGENT_NAME,
+})
 # W3 — compaction tier 2 (compress instead of drop) shares its summarizer with
 # the manual /compact route; the factored impl lives in compact_service. Bound
 # to the old private name so both in-file call sites stay unchanged.
@@ -1313,6 +1323,14 @@ async def _stream_with_tools(
         rail_redrive_count = 0           # per-turn cap on how many times the server re-drives
         rail_nudge_counts: Counter = Counter()   # per-step: how many times we've nudged it
         rail_twice_nudged: set[str] = set()      # a step the model ignored twice → give up on it
+        # Set when the step-runner injected at least one synthetic '[SYSTEM DIRECTIVE]' nudge
+        # this turn. In stateful mode that nudge is chained onto the provider's server-side
+        # response chain (working[_stateful_sent:] is sent as a delta) — our own DB history
+        # excludes it, but the provider chain would carry it into future turns. So when this is
+        # set we DROP the persisted chain head at turn end (yield response_id=None), forcing the
+        # next turn to re-establish a fresh chain from nudge-free history. Costs one turn's
+        # stateful cache reuse on a (rare) driven turn; keeps the ephemeral nudge ephemeral.
+        rail_drove_this_turn = False
         # The rail's own step tools (across all pinned rails) — the "a rail step actually
         # succeeded this turn" gate that keeps the driver SILENT on pure-conversation turns.
         _rail_all_step_tools: set[str] = set()
@@ -1689,6 +1707,7 @@ async def _stream_with_tools(
                     working.append({"role": "assistant", "content": "".join(text_parts)})
                     working.append({"role": "user", "content": redrive_directive(_step)})
                     rail_redrive_count += 1
+                    rail_drove_this_turn = True  # drop the stateful chain head at turn end
                     rail_nudge_counts[_step.step_id] += 1
                     if rail_nudge_counts[_step.step_id] >= 2:
                         # The model ignored this step twice — stop re-driving it (anti-stall),
@@ -1706,7 +1725,9 @@ async def _stream_with_tools(
                 yield {"content": "", "reasoning_content": "",
                        "finish_reason": finish_reason or "stop",
                        "llm_call_count": llm_call_count,
-                       "response_id": _chain_id,
+                       # Drop the chain head if the step-runner nudged this turn (see
+                       # rail_drove_this_turn) — the next turn re-establishes clean.
+                       "response_id": None if (rail_drove_this_turn and stateful) else _chain_id,
                        "context_size": _last_call_input,
                        "usage": _Usage(prompt_tokens=total_input,
                                        completion_tokens=total_output,
@@ -1797,6 +1818,17 @@ async def _stream_with_tools(
             suspended_call: dict | None = None
             pass_did_write = False  # H9 — only a Tier-A/W write decrements budget
             for c in calls:
+                # Wrap-repair for CONSUMER-LOCAL meta tools (find_tools/tool_load/workflow_load/
+                # run_subagent/*_list). The federated dispatch below unwraps {"args":{…}} with each
+                # tool's real schema, but these meta tools parse their own args inline and would
+                # otherwise see empty params. Rewrite c["arguments"] once so every downstream
+                # _parse_tool_args sees the unwrapped payload. tool_def=None is safe — none of
+                # these declares an args/arguments param (verified in their schemas).
+                if c["name"] in _CONSUMER_LOCAL_META_TOOLS:
+                    _parsed_meta = _parse_tool_args(c["arguments"])
+                    _repaired_meta = _unwrap_wrapped_args(_parsed_meta, None)
+                    if _repaired_meta is not _parsed_meta:
+                        c["arguments"] = json.dumps(_repaired_meta)
                 # WS-1a — tool_list is CONSUMER-LOCAL + deterministic: enumerate a
                 # category (or all) from the in-memory catalog, deprecated tools
                 # LABELED not dropped. No activation (listing ≠ loading), no write.
@@ -2304,10 +2336,23 @@ async def _stream_with_tools(
                     continue
 
                 if is_frontend_tool(c["name"]):
+                    # Same gemma {"args":{…}} wrap-repair the backend dispatch does below —
+                    # a wrapped frontend-tool payload must be unwrapped BEFORE it is frozen
+                    # into the suspended run, or the resume/resolver sees the envelope instead
+                    # of the real fields. Load-bearing for the rail: its confirm gate
+                    # (glossary_confirm_action) is a frontend tool, and a wrapped confirm_token
+                    # would strand the confirm on resume. Protect ui_show_panel's real `args`
+                    # param via its schema (generic index for ui_*/propose_*, catalog for
+                    # domain confirm tools) — never a bare tool_def=None here.
+                    _fe_def = (
+                        cat_index.get(c["name"])
+                        or plain_index.get(c["name"])
+                        or generic_frontend_tool_def(c["name"])
+                    )
                     suspended_call = {
                         "id": c["id"],
                         "name": c["name"],
-                        "args": _parse_tool_args(c["arguments"]),
+                        "args": _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def),
                     }
                     break
                 args_obj = _parse_tool_args(c["arguments"])
@@ -3003,7 +3048,7 @@ async def _stream_with_tools(
         yield {"content": "", "reasoning_content": "",
                "finish_reason": "stop",
                "llm_call_count": llm_call_count,
-               "response_id": _chain_id,
+               "response_id": None if (rail_drove_this_turn and stateful) else _chain_id,
                "context_size": _last_call_input,
                "usage": _Usage(prompt_tokens=total_input,
                                completion_tokens=total_output,
@@ -5538,9 +5583,13 @@ async def resume_stream_response(
         rail_grant_ok=_r_rail_grant,
         rail_turn_start_counts=_r_rail_counts,
         rail_async_tools=_r_rail_async,
-        # A resume that carried a rail book suspended mid-rail → the rail is in flight, so the
-        # driver may continue it even though this turn's only action was the (frontend) confirm.
-        rail_in_flight=bool(_r_rail_specs),
+        # A resume is "in flight" ONLY when the suspend was itself a rail STEP — not merely a
+        # suspend on a book that happens to have a rail pinned (review MED: `bool(_r_rail_specs)`
+        # alone would drive the rail on an unrelated propose_edit / approval suspend, exactly the
+        # unprompted-start regression the fresh path's "a rail tool succeeded this turn" gate
+        # exists to prevent). The suspended tool must be one of the rail's own step tools.
+        rail_in_flight=bool(_r_rail_specs)
+        and (susp.pending_tool_call or {}).get("name") in set(susp.pinned_step_tools or []),
     ):
         yield line
 

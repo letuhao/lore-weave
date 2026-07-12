@@ -42,6 +42,7 @@ imported verbatim from `app.routers.public.graph_views`).
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4
@@ -82,6 +83,8 @@ if TYPE_CHECKING:  # avoid an import cycle (executor imports this module)
     from app.tools.executor import ToolContext
 
 from loreweave_grants import GrantLevel
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "GRAPH_SCHEMA_ARG_MODELS",
@@ -287,7 +290,7 @@ class KgProposeFactArgs(ProjectScopedArgs):
     model_config = ConfigDict(extra="forbid")
 
     fact_text: str = Field(min_length=1, max_length=2000)
-    fact_type: Literal["decision", "preference", "milestone", "negation"]
+    fact_type: Literal["decision", "preference", "milestone", "negation", "statement"]
 
 
 class KgProposeEdgeArgs(ProjectScopedArgs):
@@ -1653,6 +1656,28 @@ async def _handle_kg_project_entities_to_nodes(
             book_id=book_id,
             entity_ids=entity_ids or None,
         )
+        # D-KG-STAT-CACHE-DEAD (rail HIGH): the projection just changed the graph, so
+        # refresh the cached counters NOW — reusing the open Neo4j session for an
+        # authoritative recount. This is the ONLY production writer of stat_updated_at:
+        # the K16.14 stats_updater was never wired to a caller, so entity_count stayed
+        # UNKNOWN forever, and the flagship vision-to-book rail (connect-people is
+        # done_when "connections > 0") could never see its own projection land and
+        # stalled at STOP_UNKNOWN. Recounting here makes `connections` become KNOWN the
+        # moment the cast is placed. Best-effort: the stats are advisory (the projection
+        # itself is the contract), so a recount hiccup must not fail a successful placement.
+        try:
+            from app.jobs.stats_updater import reconcile_project_stats
+
+            await reconcile_project_stats(
+                ctx.projects_repo._pool, session, owner, ctx.project_id
+            )
+        except Exception:  # pragma: no cover - advisory cache, never blocks the projection
+            logger.warning(
+                "kg_project_entities_to_nodes: stat recount failed (project_id=%s); "
+                "counters stay stale but the projection succeeded",
+                ctx.project_id,
+                exc_info=True,
+            )
     out: dict = {
         "nodes_created": res.created,
         "nodes_existing": res.existing,
