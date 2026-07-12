@@ -6,7 +6,8 @@ import { AssistantController } from './assistant.controller';
 const TEST_SECRET = 'assistant-provision-test-secret-32ch!';
 
 function bearer(sub: string): string {
-  return `Bearer ${jwt.sign({ sub }, TEST_SECRET)}`;
+  // exp is REQUIRED by the controller (parity with the downstream services).
+  return `Bearer ${jwt.sign({ sub }, TEST_SECRET, { expiresIn: '1h' })}`;
 }
 
 function resp(status: number, bodyObj: unknown) {
@@ -51,6 +52,14 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     const f = jest.fn();
     (global as any).fetch = f;
     await expectStatus(controller.provision({}, 'Bearer not-a-jwt'), 401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('401 on an expiry-less token (exp is required) — no fan-out', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    const noExp = `Bearer ${jwt.sign({ sub: 'u1' }, TEST_SECRET)}`; // no expiresIn
+    await expectStatus(controller.provision({}, noExp), 401);
     expect(f).not.toHaveBeenCalled();
   });
 

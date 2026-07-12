@@ -45,7 +45,11 @@ var maxBooksPerUser = 200
 func (s *Server) countActiveBooks(ctx context.Context, ownerID uuid.UUID) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM books WHERE owner_user_id=$1 AND is_bible=false AND lifecycle_state='active'`,
+		// Exclude BOTH the hidden system rows the library also hides: is_bible AND kind='diary'
+		// (WS-1.4). The diary is a system-provisioned private workspace that never appears in
+		// listBooks; counting it would silently steal a novel slot from the user's ceiling —
+		// they'd hit BOOK_LIMIT_REACHED one novel early after provisioning an assistant.
+		`SELECT COUNT(*) FROM books WHERE owner_user_id=$1 AND is_bible=false AND kind<>'diary' AND lifecycle_state='active'`,
 		ownerID).Scan(&n)
 	return n, err
 }

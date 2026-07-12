@@ -729,10 +729,14 @@ func (s *Server) provisionDiaryBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. No ACTIVE diary — but a TRASHED one must not be silently forked or resurrected (E14).
+	// Only 'trashed' (restorable) is surfaced: a 'purge_pending' diary is on its way to
+	// deletion and CANNOT be restored (restoreBook refuses it), so telling the user to
+	// "restore or start fresh" would be a dead end — instead we fall through and provision a
+	// fresh diary (the purge_pending row is not 'active', so the partial unique allows it).
 	var trashed uuid.UUID
 	err = s.pool.QueryRow(ctx,
 		`SELECT id FROM books WHERE owner_user_id=$1 AND kind='diary'
-		   AND lifecycle_state IN ('trashed','purge_pending') ORDER BY updated_at DESC LIMIT 1`,
+		   AND lifecycle_state='trashed' ORDER BY updated_at DESC LIMIT 1`,
 		ownerID).Scan(&trashed)
 	if err == nil {
 		writeError(w, http.StatusConflict, "BOOK_DIARY_TRASHED",

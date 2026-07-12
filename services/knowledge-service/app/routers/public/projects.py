@@ -48,7 +48,8 @@ from app.db.repositories.projects import (
 )
 from app.auth.grant_deps import GrantLevel, require_project_grant
 from app.clients.grant_client import GrantClient
-from app.deps import get_grant_client, get_projects_repo
+from app.clients.book_client import BookClient
+from app.deps import get_book_client, get_grant_client, get_projects_repo
 from app.events.outbox_emit import config_adjustment_payload, emit_config_adjustment
 from app.middleware.jwt_auth import get_current_user
 
@@ -471,6 +472,7 @@ async def provision_assistant_project(
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),
     grant: GrantClient = Depends(get_grant_client),
+    book_client: BookClient = Depends(get_book_client),
 ) -> Project:
     """WS-1.4 (spec 02 §Q2.2) — get-or-create the user's ONE assistant knowledge project,
     bound to their diary book. ``is_assistant=true`` + ``chat_turn_extraction_enabled=false``
@@ -479,8 +481,16 @@ async def provision_assistant_project(
 
     The diary must be OWNED by the caller — a non-owner is denied uniformly (404, no oracle),
     exactly like create_project's book-binding path. This prevents binding the assistant's
-    memory to someone else's book."""
+    memory to someone else's book.
+
+    It must ALSO be an actual ``kind='diary'`` book (review-impl WS-1.4 M2). Ownership alone
+    is not enough: binding the assistant project to a shareable NOVEL the caller owns would let
+    a collaborator on that novel read the assistant's private extracted memory (knowledge
+    authorizes project reads by resolve-to-owner on the project's book). Fail-closed — an
+    unresolvable/non-diary book is refused with the same uniform 404 as a non-owner."""
     if await grant.resolve_grant(body.book_id, user_id) != GrantLevel.OWNER:
+        raise _not_found()
+    if await book_client.get_book_kind(body.book_id, user_id) != "diary":
         raise _not_found()
     project, created = await repo.get_or_create_assistant_project(
         user_id, body.book_id, body.name

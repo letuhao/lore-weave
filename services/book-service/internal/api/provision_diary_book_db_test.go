@@ -196,3 +196,55 @@ func TestProvisionDiary_TrashedDiaryIsSurfaced_DB(t *testing.T) {
 		t.Fatalf("a fresh diary was silently forked despite a trashed one existing (active=%d)", active)
 	}
 }
+
+func TestProvisionDiary_DoesNotCountAgainstTheNovelCeiling_DB(t *testing.T) {
+	// review-impl M1 — the diary is hidden from the library and must ALSO be invisible to the
+	// per-user novel ceiling (like is_bible). Otherwise provisioning an assistant silently
+	// steals a novel slot and the user hits BOOK_LIMIT_REACHED one novel early.
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM books WHERE owner_user_id=$1`, owner) })
+
+	for i := 0; i < 2; i++ {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO books(owner_user_id,title,kind) VALUES($1,'n','novel')`, owner); err != nil {
+			t.Fatalf("seed novel: %v", err)
+		}
+	}
+	if rr := provisionDiary(t, s, owner, ""); rr.Code != http.StatusCreated {
+		t.Fatalf("provision diary: %d", rr.Code)
+	}
+
+	n, err := s.countActiveBooks(ctx, owner)
+	if err != nil {
+		t.Fatalf("countActiveBooks: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("countActiveBooks = %d, want 2 — the diary must not count toward the novel ceiling", n)
+	}
+}
+
+func TestProvisionDiary_PurgePendingDiaryCreatesFresh_DB(t *testing.T) {
+	// review-impl L2 — a purge_pending diary is on its way to deletion and CANNOT be restored,
+	// so provisioning must create a FRESH diary rather than 409 an impossible restore.
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM books WHERE owner_user_id=$1`, owner) })
+
+	if rr := provisionDiary(t, s, owner, ""); rr.Code != http.StatusCreated {
+		t.Fatalf("seed: %d", rr.Code)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE books SET lifecycle_state='purge_pending' WHERE owner_user_id=$1 AND kind='diary'`,
+		owner); err != nil {
+		t.Fatalf("purge_pending: %v", err)
+	}
+
+	rr := provisionDiary(t, s, owner, "")
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("provision with a purge_pending diary = %d, want 201 (create fresh, not a dead-end "+
+			"409). body=%s", rr.Code, rr.Body.String())
+	}
+}

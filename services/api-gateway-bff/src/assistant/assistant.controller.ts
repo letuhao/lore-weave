@@ -67,10 +67,18 @@ export class AssistantController {
       this.logger.error('assistant-provision rejected: JWT_SECRET not configured');
       throw new HttpException('server_error', 500);
     }
+    let decoded: { exp?: number };
     try {
       // Pin the algorithm — a valid JWT here provisions real cross-service resources.
-      jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
+      decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { exp?: number };
     } catch {
+      throw new HttpException('invalid_token', 401);
+    }
+    // REQUIRE exp, for parity with book-service (WithExpirationRequired) and the knowledge
+    // verifier (jsonwebtoken has no built-in "require exp", so assert it here). An expiry-less
+    // token that passed would only fail at every downstream hop, returning a confusing
+    // 200 {provisioned:false} instead of a clean 401.
+    if (typeof decoded.exp !== 'number') {
       throw new HttpException('invalid_token', 401);
     }
 

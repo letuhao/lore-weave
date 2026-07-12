@@ -62,6 +62,30 @@ class BookClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
+    async def get_book_kind(self, book_id: UUID, user_id: UUID) -> str | None:
+        """WS-1.4 — the book's ``kind`` ('novel'|'document'|'lore'|'diary'), or None on any
+        failure. Reads book-service's grant-gated ``GET /internal/books/{id}/access?user_id=``
+        (``kind`` rides that response behind a grant, WS-1.2 D16). Used to enforce that the
+        assistant knowledge project binds ONLY to a diary — anchoring it to a shareable novel
+        would let a collaborator read the assistant's private memory. Returns None (fail-safe)
+        when the book is unreachable/not visible; the caller must treat None as 'not a diary'
+        and refuse."""
+        url = f"{self._base_url}/internal/books/{book_id}/access"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(url, params={"user_id": str(user_id)})
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d (kind unknown → treat as non-diary), trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return None
+            kind = resp.json().get("kind")
+            return kind if isinstance(kind, str) else None
+        except (httpx.HTTPError, ValueError, KeyError):
+            logger.warning("book-service kind fetch failed (→ non-diary), trace_id=%s", tid)
+            return None
+
     async def count_chapters(
         self,
         book_id: UUID,
