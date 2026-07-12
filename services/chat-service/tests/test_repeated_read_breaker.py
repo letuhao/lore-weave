@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.services.stream_service import REPEAT_READ_CAP
 from tests.test_spend_gate import _fake_client, _kc
 
 TEST_MODEL_REF = "00000000-0000-0000-0000-0000000000aa"
@@ -101,25 +102,93 @@ class TestRepeatedReadBreaker:
         kc.mcp_execute_tool.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_the_identical_read_is_short_circuited_the_second_time(self):
-        """THE test. The answer is already in the context; re-fetching it can only bury it."""
-        chunks, kc = await _drive(times=4)
+    async def test_an_unchanging_read_is_short_circuited(self):
+        """THE test. The answer is already in the context and it has not moved; re-fetching it
+        can only bury it. (It takes REPEAT_READ_CAP unchanged results to conclude that — the
+        breaker must be sure the answer is STUCK, not merely repeated, or it would kill a
+        legitimate poll. See TestPollingIsNotALoop.)"""
+        chunks, kc = await _drive(times=8)
         tc = _tool_calls(chunks)
 
-        # it ran ONCE for real; the repeats never reached MCP
-        assert kc.mcp_execute_tool.await_count == 1
-
+        assert kc.mcp_execute_tool.await_count < 8, "the loop must be broken"
         assert tc[0]["ok"] is True
-        repeats = tc[1:]
-        assert repeats, "the model repeated the read — those calls must be visible, not dropped"
-        for r in repeats:
-            assert r["ok"] is False
+
+        blocked = [t for t in tc if not t["ok"]]
+        assert blocked, "the short-circuited calls must be VISIBLE, not silently dropped"
+        for r in blocked:
             # no silent no-op: the model is told exactly why, and what to do instead
-            assert "already called" in r["error"]
+            assert "IDENTICAL result" in r["error"]
             assert "take the NEXT step" in r["error"]
 
     @pytest.mark.asyncio
-    async def test_the_loop_actually_terminates(self):
-        """24 identical calls is what the live run did. The breaker must end it."""
+    async def test_the_24_call_loop_actually_terminates(self):
+        """24 identical calls is literally what the live S01 run did."""
         chunks, kc = await _drive(times=24)
-        assert kc.mcp_execute_tool.await_count == 1
+        assert kc.mcp_execute_tool.await_count <= REPEAT_READ_CAP + 1
+
+
+# ── the HIGH I shipped and caught: a poll is a repeated identical read ────────
+
+class TestPollingIsNotALoop:
+    """`jobs_get`, `translation_job_status`, `composition_get_generation_job` are all Tier-R,
+    and the workflow rails DEPEND on watching an async job to completion ("do NOT begin a
+    dependent step until it has finished").
+
+    The first cut of this breaker counted CALLS. It would have blocked the second poll and
+    stranded every async step in the catalogue — turning a fix for one broken tool into a
+    break of the whole async-job contract. It now counts UNCHANGED RESULTS: a poll whose
+    status moves is not a loop; a read that keeps handing back the byte-identical answer is.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_poll_whose_result_CHANGES_is_never_blocked(self):
+        import app.services.stream_service as ss
+
+        tool = _read_tool("jobs_get")
+        kc = _kc()
+        # each poll returns a DIFFERENT status — this is a job progressing, not a loop
+        statuses = [
+            {"status": "queued"}, {"status": "running"},
+            {"status": "running", "pct": 50}, {"status": "succeeded"},
+        ]
+        kc.mcp_execute_tool.side_effect = [
+            {"success": True, "result": s} for s in statuses
+        ]
+        chunks = []
+        with patch.object(ss, "Client", _fake_client_repeating("jobs_get", 4)):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "is it done?"}],
+                gen_params={"max_tokens": 100}, tools=[tool],
+                knowledge_client=kc, session_id="s", project_id=None,
+                permission_mode="write",
+            ):
+                chunks.append(ch)
+
+        # every poll went through — none was short-circuited
+        assert kc.mcp_execute_tool.await_count == 4
+        assert all(tc["ok"] for tc in _tool_calls(chunks))
+
+    @pytest.mark.asyncio
+    async def test_a_poll_STUCK_on_the_identical_answer_is_eventually_stopped(self):
+        """The other half: if the status never moves, it IS a loop, and the model must be
+        told to stop rather than spin the turn away."""
+        import app.services.stream_service as ss
+
+        tool = _read_tool("jobs_get")
+        kc = _kc()
+        kc.mcp_execute_tool.return_value = {"success": True, "result": {"status": "running"}}
+        chunks = []
+        with patch.object(ss, "Client", _fake_client_repeating("jobs_get", 8)):
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "is it done?"}],
+                gen_params={"max_tokens": 100}, tools=[tool],
+                knowledge_client=kc, session_id="s", project_id=None,
+                permission_mode="write",
+            ):
+                chunks.append(ch)
+
+        assert kc.mcp_execute_tool.await_count < 8, "an unchanging poll must eventually stop"
+        errs = [tc["error"] for tc in _tool_calls(chunks) if not tc["ok"]]
+        assert any("IDENTICAL result" in (e or "") for e in errs)

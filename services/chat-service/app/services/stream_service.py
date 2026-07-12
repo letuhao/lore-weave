@@ -12,6 +12,7 @@ D-PHASE-1C-ANTHROPIC).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -473,15 +474,22 @@ PLANNER_CALLS_PER_TURN_CAP = 1
 # as the #18 planner hard-stop.
 BLANK_TOOL_ARGS_CAP = 2
 
-# Track C Phase 2 — how many times the SAME read, with the SAME args, may SUCCEED in one turn
-# before further identical calls are short-circuited. 1 = you get the answer once; asking again
-# returns the identical bytes and only pushes the first copy further out of the window.
+# Track C Phase 2 — how many times the same read may return the SAME RESULT before further
+# identical calls are short-circuited.
 #
 # H7 caps runaway WRITES. Nothing capped a runaway READ, on the theory that a read is harmless.
 # Measured live: gemma called `glossary_list_system_standards` 24 times in one S01 run — a
 # 44,000-char result (~11k tokens) EACH — and built nothing. A read that eats a third of the
 # context window is not harmless.
-REPEAT_READ_CAP = 1
+#
+# It counts UNCHANGED RESULTS, not calls, and that distinction is the whole design. POLLING is
+# a repeated identical read whose result is SUPPOSED to change: `jobs_get`,
+# `translation_job_status` and `composition_get_generation_job` are all Tier-R, and the workflow
+# rails explicitly depend on watching an async job to completion ("do NOT begin a dependent step
+# until it has finished"). A breaker that counted CALLS would have blocked the second poll and
+# stranded every async step in the catalogue. So a poll that returns "still running" → "done"
+# never trips this; only a read that keeps handing back the byte-identical answer does.
+REPEAT_READ_CAP = 2
 
 # The stable substring across every live-observed instance of this error
 # (from the domain service's own JSON-schema validator) — a required
@@ -1172,7 +1180,8 @@ async def _stream_with_tools(
         # Same tool + same args + already succeeded ⇒ the answer is ALREADY in context. Feed
         # that back as an error instead of re-running it (no silent no-op: the model is told
         # exactly why, and told to use what it has).
-        read_call_counts: dict[str, int] = {}
+        # (tool+args) -> (fingerprint of the last result, how many times that SAME result came back)
+        read_call_results: dict[str, tuple[str, int]] = {}
         # Hard safety bound on TOTAL passes (reads + writes + discovery) so a
         # pathological find_tools/read loop can't spin forever even though those
         # don't count against the write budget.
@@ -2539,17 +2548,18 @@ async def _stream_with_tools(
                     f"{c['name']}::{json.dumps(args_obj, sort_keys=True, default=str)}"
                     if tier == "R" else None
                 )
-                if _read_key is not None and read_call_counts.get(_read_key, 0) >= REPEAT_READ_CAP:
+                _prior = read_call_results.get(_read_key) if _read_key is not None else None
+                if _prior is not None and _prior[1] >= REPEAT_READ_CAP:
                     _repeat_err = (
                         f"You have already called '{c['name']}' with these exact arguments "
-                        f"{read_call_counts[_read_key]} time(s) this turn and it SUCCEEDED — "
-                        "its result is already above, in this conversation. Calling it again "
-                        "returns the identical answer and tells you nothing new. STOP calling "
-                        "it. Read the result you already have, and take the NEXT step."
+                        f"{_prior[1] + 1} times this turn and it returned the IDENTICAL result "
+                        "every time — that result is already above, in this conversation. "
+                        "Calling it again cannot tell you anything new. STOP calling it. Read "
+                        "the result you already have, and take the NEXT step."
                     )
                     logger.info(
-                        "repeated-read breaker: %s called %d× with identical args — short-circuited",
-                        c["name"], read_call_counts[_read_key],
+                        "repeated-read breaker: %s returned an unchanged result %d× — short-circuited",
+                        c["name"], _prior[1],
                     )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
@@ -2629,13 +2639,28 @@ async def _stream_with_tools(
                 # that FAILED has not put its answer in the context, so retrying it (with
                 # fixed args) is legitimate and must not be blocked.
                 if ok and _read_key is not None:
-                    read_call_counts[_read_key] = read_call_counts.get(_read_key, 0) + 1
+                    # Fingerprint the RESULT, not merely the call. A repeated read is only
+                    # pointless when it comes back UNCHANGED — and that distinction is
+                    # load-bearing, because POLLING is a repeated identical read whose result
+                    # is SUPPOSED to change. `jobs_get`, `translation_job_status` and
+                    # `composition_get_generation_job` are all Tier-R, and the workflow rails
+                    # explicitly depend on watching an async job to completion. A breaker that
+                    # counted calls would have blocked the second poll and stranded every
+                    # async step in the catalogue.
+                    _fp = hashlib.sha1(
+                        json.dumps(tool_payload, sort_keys=True, default=str).encode()
+                    ).hexdigest()
+                    _seen = read_call_results.get(_read_key)
+                    if _seen is not None and _seen[0] == _fp:
+                        read_call_results[_read_key] = (_fp, _seen[1] + 1)   # same answer again
+                    else:
+                        read_call_results[_read_key] = (_fp, 0)              # new answer → reset
                 elif ok:
                     # A WRITE landed: the world just changed, so every earlier read is now
-                    # potentially STALE and re-reading it is legitimate again. Clearing the
-                    # counters here is what keeps the breaker from blocking the read-after-write
-                    # that a rail depends on (adopt the categories -> read them back).
-                    read_call_counts.clear()
+                    # potentially STALE and re-reading it is legitimate again. Clearing here is
+                    # what keeps the breaker from blocking the read-after-write a rail depends
+                    # on (adopt the categories → read them back).
+                    read_call_results.clear()
                 if ok or _MISSING_REQUIRED_ARGS_MARKER not in str(envelope.get("error") or ""):
                     blank_tool_args_streak = 0
                 else:
