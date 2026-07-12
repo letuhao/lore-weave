@@ -22,7 +22,8 @@ from app.db.models import PlanArtifact, PlanArtifactKind, PlanRun, PlanRunMode, 
 
 _SELECT_RUN = """
   id, created_by, book_id, work_id, status, mode, model_ref, source_checksum,
-  source_markdown, active_job_id, error_detail, checkpoint_state, created_at, updated_at
+  source_markdown, active_job_id, error_detail, checkpoint_state,
+  pass_state, genre_tags, created_at, updated_at
 """
 
 # `a.`-prefixed so the artifact reads can join plan_run (the book-scope gate);
@@ -36,9 +37,13 @@ def _jsonb(value: dict[str, Any] | None) -> str:
 
 def _row_run(row: asyncpg.Record) -> PlanRun:
     data = dict(row)
-    cs = data.get("checkpoint_state")
-    if isinstance(cs, str):
-        data["checkpoint_state"] = json.loads(cs)
+    # asyncpg hands JSONB back as a str unless a codec is registered. Every jsonb column must be
+    # decoded HERE — a column selected but not decoded validates as a string and then silently
+    # becomes `{}`/`[]` in the model, which is a read-only-looking write-only bug.
+    for key in ("checkpoint_state", "pass_state", "genre_tags"):
+        v = data.get(key)
+        if isinstance(v, str):
+            data[key] = json.loads(v)
     return PlanRun.model_validate(data)
 
 
@@ -64,11 +69,17 @@ class PlanRunsRepo:
         source_markdown: str,
         model_ref: UUID | None = None,
         status: PlanRunStatus = "pending",
+        # 27 PF-15 — the genre the plan is written FOR. A per-RUN input, not platform config: two
+        # users planning two books want different values, and the same user's next book may too
+        # (Settings & Configuration Boundary — "would two users want different values?" ⇒ yes ⇒
+        # it is a choice that rides the row, never an env flag).
+        genre_tags: list[str] | None = None,
     ) -> PlanRun:
         query = f"""
         INSERT INTO plan_run
-          (created_by, book_id, mode, model_ref, source_checksum, source_markdown, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+          (created_by, book_id, mode, model_ref, source_checksum, source_markdown, status,
+           genre_tags)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
         RETURNING {_SELECT_RUN}
         """
         async with self._pool.acquire() as c:
@@ -81,6 +92,7 @@ class PlanRunsRepo:
                 source_checksum,
                 source_markdown,
                 status,
+                json.dumps(list(genre_tags or [])),
             )
         return _row_run(row)
 
@@ -161,6 +173,10 @@ class PlanRunsRepo:
         error_detail: str | None = ...,
         work_id: UUID | None = None,
         checkpoint_state: dict[str, Any] | None = None,
+        # 27 PF-3 — the pass ledger. Written as a WHOLE object (the service reads-modifies-writes
+        # one pass entry at a time); `None` means "leave it alone", never "clear it".
+        pass_state: dict[str, Any] | None = None,
+        genre_tags: list[str] | None = None,
         clear_error: bool = False,
     ) -> PlanRun | None:
         sets: list[str] = ["updated_at = now()"]
@@ -190,6 +206,12 @@ class PlanRunsRepo:
         if checkpoint_state is not None:
             params.append(_jsonb(checkpoint_state))
             sets.append(f"checkpoint_state = ${len(params)}::jsonb")
+        if pass_state is not None:
+            params.append(_jsonb(pass_state))
+            sets.append(f"pass_state = ${len(params)}::jsonb")
+        if genre_tags is not None:
+            params.append(json.dumps(genre_tags))
+            sets.append(f"genre_tags = ${len(params)}::jsonb")
         query = f"""
         UPDATE plan_run SET {", ".join(sets)}
         WHERE id = $1 AND book_id = $2
@@ -235,6 +257,44 @@ class PlanRunsRepo:
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, run_id, book_id, kind)
         return _row_artifact(row) if row else None
+
+    async def plan_state_for_book(self, book_id: UUID) -> dict[str, Any]:
+        """"Does this book have an arc plan?" — ONE round-trip, book-keyed.
+
+        Called once per chat turn (chat-service's per-turn plan probe), so it must
+        stay a single cheap read: run_count + the latest run's status + a `spec`
+        artifact EXISTS, all in one statement. NO N+1 (never list the runs then
+        probe each one's artifacts) — the spec probe is an EXISTS over the
+        `JOIN plan_run r ON r.id = a.run_id` book-scope gate every plan_artifact
+        read must go through (plan_artifact carries no book_id of its own).
+
+        `has_spec` is the meaningful signal: a run can exist as `pending`/`failed`
+        with no spec artifact, which means there is NO arc plan yet. A book with no
+        runs at all is NOT an error — it returns zeros (the caller maps it to 200).
+
+        Index: `idx_plan_run_book_created (book_id, created_at DESC)` serves both
+        the count and the latest-status read (the older `idx_plan_run_owner_book`
+        leads with `created_by`, which these book-only filters cannot use);
+        `idx_plan_artifact_run_kind (run_id, kind, …)` serves the EXISTS probe.
+        """
+        query = """
+        SELECT
+          (SELECT COUNT(*) FROM plan_run WHERE book_id = $1)::int AS run_count,
+          (SELECT status FROM plan_run WHERE book_id = $1
+             ORDER BY created_at DESC, id DESC LIMIT 1) AS latest_status,
+          EXISTS (
+            SELECT 1 FROM plan_artifact a
+            JOIN plan_run r ON r.id = a.run_id
+            WHERE r.book_id = $1 AND a.kind = 'spec'
+          ) AS has_spec
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, book_id)
+        return {
+            "run_count": int(row["run_count"] or 0),
+            "latest_status": row["latest_status"],
+            "has_spec": bool(row["has_spec"]),
+        }
 
     async def list_artifact_refs(
         self, book_id: UUID, run_id: UUID,

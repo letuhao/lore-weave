@@ -596,8 +596,20 @@ PlanRunStatus = Literal[
 ]
 PlanRunMode = Literal["rules", "llm"]
 
-# One id per compiler pass (PF-3). The `pass_state` ledger is keyed by these.
-PlanPassId = Literal["motif", "cast", "world", "beat", "char_arc", "scene", "heal", "link"]
+# The seven compiler passes (PF-1, a CLOSED SET registered in CLOSED_SET_ARGS). The `pass_state`
+# ledger is keyed by these, and the order here IS the dependency order — `pass_cursor` walks it.
+#
+# These names are the SPEC's (27 §170), not a paraphrase: `motifs` not `motif`, `beats` not `beat`,
+# `character_arcs` not `char_arc`, `self_heal` not `heal`. A closed-set arg whose values drift from
+# the spec is the Frontend-Tool-Contract bug class — an agent passes the documented value and the
+# server 422s, or worse, silently no-ops. (`link` is NOT a pass: it is a step, and its artifact is
+# `link_report`.)
+PlanPassId = Literal[
+    "motifs", "cast", "world", "beats", "character_arcs", "scenes", "self_heal",
+]
+PASS_ORDER: tuple[str, ...] = (
+    "motifs", "cast", "world", "beats", "character_arcs", "scenes", "self_heal",
+)
 
 PlanArtifactKind = Literal[
     # v1 — still writable (a CHECK re-add that drops a historical value makes existing rows

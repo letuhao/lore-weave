@@ -33,6 +33,11 @@ class PlanRunCreate(BaseModel):
     mode: Literal["rules", "llm"]
     model_ref: UUID | None = None
     force: bool = False
+    # 27 PF-15 — the genre this plan is written FOR (reaches the cast/world/motif prompts, which
+    # are already genre-aware). Declared HERE explicitly: Pydantic's default `extra='ignore'`
+    # would silently DROP an undeclared field, so the client would send genre_tags, get a 200, and
+    # the plan would be written genre-blind — the `rest-write-mirror-drops-fields` bug exactly.
+    genre_tags: list[str] = Field(default_factory=list, max_length=20)
 
 
 class PlanRefineRequest(BaseModel):
@@ -77,6 +82,7 @@ async def create_plan_run(
             mode=body.mode,
             model_ref=body.model_ref,
             force=body.force,
+            genre_tags=body.genre_tags,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

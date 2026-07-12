@@ -13,6 +13,7 @@ from uuid import UUID
 
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.services.plan_pass_service import derive_view
 from app.db.models import CompositionWork, GenerationJob, PlanRun
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
@@ -125,6 +126,10 @@ class PlanForgeService:
         mode: str,
         model_ref: UUID | None,
         force: bool = False,
+        # 27 PF-15 — the genre this plan is written FOR. It reaches the cast/world/motif prompts
+        # (they are already genre-aware) and rides the RUN, because it is a per-run authorial
+        # choice, not platform config.
+        genre_tags: list[str] | None = None,
     ) -> tuple[PlanRun, bool, UUID | None]:
         """Returns (run, is_async, job_id). is_async=True → caller returns 202."""
         text = source_markdown.strip()
@@ -157,6 +162,7 @@ class PlanForgeService:
             source_markdown=text,
             model_ref=model_ref,
             status="pending",
+            genre_tags=genre_tags,
         )
         doc = ingest_markdown(text)
         await self._runs.save_artifact(created_by, run.id, "document", doc)
@@ -344,6 +350,16 @@ class PlanForgeService:
             "job_status": job_status,
             "error_detail": run.error_detail,
             "checkpoint_state": run.checkpoint_state,
+            # 27 PF-15 — the genre this plan was written for. Round-tripped so a client can SEE
+            # what it asked for; a stored-but-never-returned field is indistinguishable from a
+            # dropped one.
+            "genre_tags": run.genre_tags,
+            # 27 PF-3 — the pass ledger, WITH its derived fields (per-pass fresh|stale, the
+            # contiguous pass_cursor, and blocked_at). Derived HERE, at serialization, and never
+            # stored: a persisted freshness flag is a second source of truth that goes stale the
+            # moment anything writes around it, which is the entire reason PF-3 fingerprints
+            # inputs instead of setting dirty bits.
+            **derive_view(run),
             "arcs": arcs,
             "artifacts": [
                 {"kind": a["kind"], "artifact_id": str(a["artifact_id"])}
