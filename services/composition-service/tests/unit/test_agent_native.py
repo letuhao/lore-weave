@@ -349,3 +349,28 @@ def test_the_diagnostics_limit_is_clamped_ONCE_and_used_everywhere():
     src = inspect.getsource(server.composition_diagnostics)
     assert "cap = max(1, min(int(limit or 25), 100))" in src
     assert "[:limit]" not in src
+
+
+def test_EVERY_money_spending_tool_DECLARES_paid():
+    """`_meta` Completeness Law (Track D CD1-CD4): a tool that spends the author's LLM budget must
+    declare `paid`. It is orthogonal to `tier` — `tier` says "this writes", `paid` says "this costs
+    money" — and the consumer uses it to warn BEFORE the spend, not after.
+
+    DBT-11 was real: only `plan_run_pass` (which I added) declared it, while `plan_propose_spec`,
+    `plan_apply_revision` and `plan_compile(run_pipeline=true)` all drive planner-model passes and
+    said nothing. An undeclared spender is a tool that quietly bills the user.
+
+    A tool that MAY spend declares `paid` — the user is warned on the POSSIBILITY, not the outcome
+    (plan_compile only spends when run_pipeline=true, and that is exactly when it is too late)."""
+    from app.mcp import server
+
+    src = inspect.getsource(server)
+    for name in ("plan_propose_spec", "plan_apply_revision", "plan_compile", "plan_run_pass"):
+        i = src.find(f'tool_name="{name}"')
+        assert i > 0, f"{name} is not registered"
+        # the tool's own meta block — walk back to the start of its require_meta/decorator call
+        block = src[max(0, i - 1600):i]
+        assert "paid=True" in block, (
+            f"{name} spends the author's LLM budget but does not declare paid=True — "
+            "the consumer cannot warn the user before the spend"
+        )

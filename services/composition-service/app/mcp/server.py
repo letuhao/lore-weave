@@ -3302,7 +3302,7 @@ def _opt_uuid(v: str | None) -> UUID | None:
     meta=require_meta(
         "A", "book",
         synonyms=["plan a novel", "propose spec", "novel system spec", "planforge", "story plan"],
-        async_job=True,
+        async_job=True, paid=True,   # spends the author's LLM budget (planner model)
         tool_name="plan_propose_spec",
     ),
 )
@@ -3411,7 +3411,9 @@ async def plan_interpret_feedback(
         "`applied` (D-PF-APPLY-HONESTY). model_ref is optional — omit it to use the "
         "author's default planner model. EDIT required."
     ),
-    meta=require_meta("A", "book", synonyms=["apply revision", "refine plan", "update spec"], async_job=True, tool_name="plan_apply_revision"),
+    meta=require_meta("A", "book", synonyms=["apply revision", "refine plan", "update spec"],
+                      async_job=True, paid=True,  # spends the author's LLM budget
+                      tool_name="plan_apply_revision"),
 )
 async def plan_apply_revision(
     ctx: MCPContext,
@@ -3522,7 +3524,11 @@ async def plan_handoff_autofix(
         "model_ref is optional there too — omit it to use the author's default "
         "planner model. EDIT required."
     ),
-    meta=require_meta("A", "book", synonyms=["compile plan", "planning package", "build plan"], async_job=True, tool_name="plan_compile"),
+    meta=require_meta("A", "book", synonyms=["compile plan", "planning package", "build plan"],
+                      # `run_pipeline=true` runs the LLM passes. A tool that MAY spend must declare
+                      # `paid` — the user is warned on the possibility, not on the outcome.
+                      async_job=True, paid=True,
+                      tool_name="plan_compile"),
 )
 async def plan_compile(
     ctx: MCPContext,

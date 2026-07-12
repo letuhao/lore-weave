@@ -60,6 +60,24 @@ book.** One test had even pinned the false-clean as correct. Fixed + 5 regressio
 flag — `pagination-cap-lint` misses a route with no `limit` param to clamp); `composition_diagnostics`
 gained source **(2b)**, so the agent can see a broken canon rule too.
 
+### ★ The flagship gate is RED — and it is the most useful thing this run produced
+
+`P-07` was **never blocked** (that park note was a correlation shipped as causation — see DR-31/32).
+Run correctly, S06 completes and the agent-native surface **works**: 17/17 turns, 28 tool calls,
+0 empty-intent, **9 effectful**, 0 commit-failed, 0 false-success claims, 4 glossary entities created.
+
+**But the gate fails:** `structure_node=0 · outline_node=0 · plan_run=0 · chapters=0`. The agent
+called **only** `glossary_*` and `kg_*` — **not one `composition_*` or `plan_*` tool in 17 turns**.
+
+**Root cause (evidenced):** the planning tools ARE federated (ai-gateway catalog `245 tools / 10
+providers`) but are NOT in `ALWAYS_ON_CORE` (≤10 tools). Everything else is reachable **only via
+discovery** — and the run recorded **`discovery_calls_total: 0`**. The agent never once looked for a
+tool, so it never found the ones built for it.
+
+**We built the tools. The agent cannot see them.** Tracked as **P-08**; the fix is in chat-service's
+`tool_discovery.ALWAYS_ON_CORE` / Track-C mode bindings / Track-D tool-liveness — **not** in this
+cluster, whose tools are built, advertised and effectful.
+
 ### ▶ NEXT for this track
 
 0. **⚠ PO-DECIDE — SC11/PH12 vs "the FE is a projection of data state".** The PO's rule and SC11 point
@@ -71,7 +89,7 @@ gained source **(2b)**, so the agent can see a broken canon rule too.
    Proposed resolution: **amend SC11, don't overturn it** — keep "no per-node server join at render
    time", add "a derived FACT about the relation is one bulk anti-join, server-side" (the shape
    `compute_coverage` already ships). **Not actioned — SC11 is LOCKED; this is the PO's call.**
-1. **`P-07` — the S06 flagship replay** (the pillar's ship signal, 27 H4 / 28 AN-D3). **Blocked
+1. **`P-08` — make the planning tools reachable** (see above; the old `P-07` "blocked" note is void) (the pillar's ship signal, 27 H4 / 28 AN-D3). **Blocked
    externally, not by code:** a concurrent session was redeploying `chat-service` and every redeploy
    401'd the 17-turn eval mid-run (reached turn 8/17, 4 tool calls, 0 empty-intent — the harness and
    the new tools work). Re-run when the stack is quiet:

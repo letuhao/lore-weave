@@ -218,8 +218,8 @@ a small build I mis-scoped by reading one object and generalising to the system.
 | DBT-09 | **Deleting a BOOK does not cascade to composition's spec rows.** Observed live: `DELETE /v1/books/{id}` → 204, and this book's `structure_node` / `outline_node` / `plan_run` / `composition_work` rows all SURVIVE (cross-DB, no FK — by design, §1.4). My smoke's orphans had to be reaped by hand. Nothing consumes a `book.deleted` event. | cross-service | #2 structural — needs a `book.deleted` consumer + reaper in composition. Real, but outside this cluster. |
 | ~~DBT-08~~ | ~~**`composition_find_references` (28 AN-3) is the drawer's References facet.**~~ **CLEARED** -- the tool shipped in Phase C (`a3abc05a6`) and is live-proven. The FE facet can now call it. | `PlanDrawer.tsx` | -- |
 | ~~DBT-12~~ | **CLEARED.** ~~The `studio` i18n namespace is missing ~106 keys in all 17 non-`en` locales~~ (they ride the component's `defaultValue`, so those users see ENGLISH). Pre-existing. `scripts/i18n_translate.py --ns studio` fills them for free (local model, $0, ~7 min, verified 0 FAILED keys) -- I ran it, then REVERTED all but my own 12 keys: a +3,400-line diff across 18 files is disproportionate to a deep-link fix and collision-prone in a checkout shared with concurrent agent sessions. | `frontend/src/i18n/locales/*/studio.json` | #1 out of scope -- belongs in its OWN commit, not bundled into D-04 |
-| DBT-10 | **`_var_deltas` is O(lines x declared-codes) and `source_markdown` has no `max_length`.** The parser is capped at 24 variables (B-R2 MED-5), which bounds it -- but the FIELD is still unbounded on the way in, so a multi-megabyte braindump is accepted and parsed. | `routers/plan_forge.py:34` | #2 structural -- a body cap belongs at the gateway/router layer for EVERY large-text field, not one-off here |
-| DBT-11 | **No composition tool declares `paid` except `plan_run_pass`.** `plan_propose_spec`, `plan_apply_revision` and `plan_compile(run_pipeline=true)` all spend real LLM money and are undeclared (pre-existing; the `_meta` Completeness Law is status PROPOSED). I declared it on the tool I ADDED rather than silently matching the omission. | `mcp/server.py` | #1 out of scope -- a service-wide `paid` audit belongs with Track D's WS-D0/D1, not this cluster |
+| ~~DBT-10~~ | **CLEARED (partially) 2026-07-12** — verified still real, then FIXED the field I own: `source_markdown` now carries `max_length=262_144` (~65K tokens: far above any real braindump, far below a DoS). The repo-wide sweep of EVERY large-text field at the router layer stays open as DBT-13. ~~`_var_deltas` is O(lines x declared-codes) and `source_markdown` has no `max_length`.** The parser is capped at 24 variables (B-R2 MED-5), which bounds it -- but the FIELD is still unbounded on the way in, so a multi-megabyte braindump is accepted and parsed. | `routers/plan_forge.py:34` | #2 structural -- a body cap belongs at the gateway/router layer for EVERY large-text field, not one-off here |
+| ~~DBT-11~~ | **CLEARED 2026-07-12** — verified still true (only `plan_run_pass` declared it), then fixed rather than carried: `paid=True` now declared on `plan_propose_spec`, `plan_apply_revision` and `plan_compile`, with a test binding the law to the tools (`test_EVERY_money_spending_tool_DECLARES_paid`). A tool that MAY spend declares it — the user is warned on the POSSIBILITY, not the outcome. Cheaper to fix than to carry. ~~No composition tool declares `paid` except `plan_run_pass`.~~ `plan_propose_spec`, `plan_apply_revision` and `plan_compile(run_pipeline=true)` all spend real LLM money and are undeclared (pre-existing; the `_meta` Completeness Law is status PROPOSED). I declared it on the tool I ADDED rather than silently matching the omission. | `mcp/server.py` | #1 out of scope -- a service-wide `paid` audit belongs with Track D's WS-D0/D1, not this cluster |
 
 ## 9. Drift log — the near-misses, recorded honestly
 
@@ -259,6 +259,8 @@ a small build I mis-scoped by reading one object and generalising to the system.
 | DR-30 | **The translator INVERTED my anti-false-clean warning, and the tool's verify could not possibly catch it.** The `en` string said *"This is NOT a clean bill of health"*. **"A clean bill of health" is an English IDIOM**, and the local model broke on it: **ja** came back as 「これは必ずしも問題があることを示すものではありません」 (*"this does not necessarily mean there IS a problem"*) and **vi** as *"this is NOT a system error"*. Both are the **exact opposite** of the warning -- so the string whose entire job is to stop a false-clean **became one**, for Japanese and Vietnamese users. `i18n_translate.py`'s VERIFY checks JSON validity, key-set parity, placeholder fidelity, non-emptiness and target-script -- **none of which can detect a meaning inversion.** It reported `0 FAILED keys`, truthfully. | Reading the actual translated strings instead of trusting `0 FAILED` -- the ja text was visible in the tool's own sample output and I nearly scrolled past it | **Root cause is MINE: an idiom in safety-critical copy.** Rewrote all 4 to plain literal English (*"Problems may exist that are not shown here"*), deleted those keys from the 17 targets so the gap-filler re-did exactly them, and re-checked the MEANING in 8 languages: all correct. The panel test now asserts the meaning (`/could not be checked/`), not the phrasing. **A green i18n verify is not a correct translation. Never put an idiom in a string whose inversion is a safety bug.** |
 | DR-31 | **I recorded a WRONG root cause as a fact, and it survived a whole phase.** P-07 was parked as *"BLOCKED (gate #4 -- genuinely external): a concurrent agent session is redeploying chat-service and each redeploy 401s the eval"*. I had a correlation (restarts + 401s) and I shipped it as causation. The truth is the **inverse**: the harness runs on the HOST and mints `iat = host_now` for a service in a CONTAINER; measured Docker-Desktop drift is ~1.3%/s, so the host crosses AHEAD of the container within a minute and PyJWT raises `ImmatureSignatureError` -- which `loreweave_authn` reports as the generic `"invalid token"`, NOT "expired". Restarting the container **RESYNCS its clock** and temporarily HID the bug. **The redeploy was the cure I mistook for the disease.** | Re-running it when the stack was quiet and it 401'd ANYWAY (chat-service up 2h, no restart) -- the observation that killed my own theory | Never write a park reason that is a *correlation*. `iat` is now backdated by `_IAT_SKEW_S`. **"Blocked / external" is a CLAIM; it must be evidenced like any other.** |
 | DR-32 | **Three separate "product defects" I nearly reported were all ONE thing: I ran the harness wrong.** Missing `SKILL_BOOK_ID` -> the agent got no book and invented `"current_book_id_placeholder"` (I almost filed *"the agent cannot learn the book_id"*). Host-side commit URL (`http://glossary-service:8088`, an in-container name) -> every confirm silently failed and the agent claimed success 8x (I almost filed *"the flagship proves the silent-success bug live"* -- it was MY 401 being swallowed by `except: return False`). Plus the clock skew above. **The runner's own docstring gives the correct invocation -- `docker exec ... infra-chat-service-1 python /tmp/ds.py` -- and I did not read it.** Run that way: 0 commit failures, 0 false claims, 9 effectful calls. | Reading the tool-call ARGS in the transcript instead of the summary metrics -- `"current_book_id_placeholder"` is not something a product bug produces | **A red result from a harness you invoked yourself is a claim about the HARNESS until proven otherwise.** Same lesson as DR-22, one layer out: my own tooling's ❌ is my bug until I prove it is the product's. |
+| DBT-13 | **A request-body cap belongs at the ROUTER layer for every large-text field, not one-off.** DBT-10 closed the one field this cluster owns (`source_markdown`); the repo-wide sweep (every prose/markdown/braindump field across every service) is the structural remainder. | all services | #2 structural — a cross-service sweep + a lint, not an edit |
+| DR-33 | **Both debt rows I was ready to carry were cheaper to FIX than to keep.** DBT-10 was one `max_length=`. DBT-11 was three `paid=True` + a test. I had written *"out of scope — belongs with Track D's audit"* on a money-spending tool that quietly bills the user. **The defer-gate says a row must EARN itself; "it's part of a bigger audit" is not a reason when the fix is three lines.** (I also VERIFIED both claims against the code before acting — a debt list overstates real debt, and one of these could easily have been stale.) | Re-reading the rows against the code at close-out instead of trusting them | Both cleared; only the genuinely-structural remainder (a repo-wide body-cap sweep) survives, as DBT-13. |
 
 ## 10. Completeness ledger
 
@@ -283,76 +285,91 @@ by H3.
 
 ---
 
-## 11. Final audit
+## 11. Final audit (closed 2026-07-12)
 
-### What shipped
+### The cluster is DONE. The ship signal is RED, and that is the honest result.
 
-The book-package cluster is **built and live-proven end to end**. A book can now be taken from a
-braindump to a linked, cast-populated, scene-level plan with a manuscript under it — and an agent can
-orient in it, search it, and be told what is wrong with it.
+Every 00B milestone is built, live-proven, and committed. **`P-08` is the one thing that does not
+pass, and it is the most valuable output of the run** — see below.
 
-Ten commits: `b904b3a74` `09f2d29b1` (A) · `a4558ed44` `b0eafe205` `e813f7200` `f5ca7ecf8`
-`51707e29f` `6ef793f3f` `2c0a44a30` `47bddd8d9` `b99b38b6b` (B) · `a3abc05a6` `54ae6c72a` (C).
-**2067 tests pass**, 251 skipped.
+### What the /review-impl passes actually found: 6 HIGH, and every one was mine
 
-### The four `/review-impl` passes found 9 HIGH — and every one was mine
+| Pass | Finding |
+|---|---|
+| A-R · B-R · B-R2 · C-R | 9 HIGH (earlier phases — see the drift log) |
+| **D-04** | **The canon panel told users their book was CLEAN when it had never checked it.** Both composition queries are `enabled: !!projectId`; with no project they never run, resolve to `[]` with no error, and `empty` computed TRUE → *"No canon issues found."* — when the Work is pending, absent, **or composition-service is DOWN**. Its 3 sibling panels already guard this; canon never adopted it. **All 8 Works in the dev DB are `pending_project_backfill`, so it was lying about every book.** One test had PINNED the false-clean as correct. |
+| **D-04 follow-up** | **My own shared fix denied a book that HAS Works.** `WorkResolution.status` has six values; every other consumer resolves `candidates` by taking the first. Mine dropped it into `no-work` → *"start composing a chapter first"* → inviting the duplicate Work that `useSceneBrowser`'s own comment warns about. **AMBIGUOUS IS NOT ABSENT**, the twin of *unconsulted is not empty*. And I had **re-derived a gate that already existed** — `useSceneBrowser` solved it first, better. |
 
-| | The finding | Why it matters |
-|---|---|---|
-| A-R | 3 HIGH (incl. a budget violation I re-introduced ONE COMMIT after fixing it) | fixing a bug class in one place is not fixing the bug class |
-| B-R | 3 HIGH — PF-11 reclaimed the author's edit one compile later; **my first fix was itself wrong**; a no-op compile bumped every version | a 2-compile smoke shows a GREEN `preserved_user_edit: 1` while the human is overwritten on the 3rd |
-| B-R2 | 3 HIGH — **the agent could FORCE past the human's checkpoint**; re-running a pass broke the compiler; a re-run silently ATE the author's acceptance | I wrote a tool description promising the model it could not skip a checkpoint, and handed it `force` in the same commit |
-| C-R | 1 HIGH — the problems panel silently skipped its **ERROR-severity** source | a panel with a silent gap is worse than no panel: the reader believes the count |
+### The three lessons this run actually taught
 
-### What the LIVE smokes caught that a green suite could not
+**1 · "Impossible" is a claim about the SYSTEM. I checked one object.** (DR-26)
+I escalated PH18 to the PO as an unbuildable spec requirement: *"`CanonIssue` carries no rule id."*
+True — of that object. I never asked whether a **different producer** already carried the rule. One
+did, fully rule-keyed end to end, with a `dismiss-violation` endpoint already addressing violations
+**by rule**. The link was 200 lines away the whole time. It was never a spec amendment; it was a
+small build I mis-scoped by generalising from the first thing I opened.
 
-**Fourteen bugs.** Every one of them passed unit tests.
+**2 · A red result from a harness I invoked myself is a claim about the HARNESS.** (DR-31, DR-32)
+P-07 sat parked as *"BLOCKED — genuinely external: a concurrent session redeploys chat-service and
+401s the eval."* I had a correlation and I shipped it as causation. The truth was the **inverse**: the
+harness ran on the HOST and minted `iat = host_now` for a service in a CONTAINER; Docker-Desktop
+drift (~1.3%/s, measured) puts the host ahead within a minute → `ImmatureSignatureError` → the
+generic `"invalid token"`. **Restarting the container RESYNCS its clock — the redeploy was the cure I
+mistook for the disease.** Two more "product defects" I nearly filed (*"the agent can't learn the
+book_id"*, *"the flagship proves the silent-success bug live"*) were also me: an unset `SKILL_BOOK_ID`
+and an in-container commit URL called from the host. **The runner's own docstring gives the correct
+invocation. I did not read it.**
 
-The pattern is not subtle, and it is the single most useful thing this run produced:
+**3 · A green verify is not a correct answer.** (DR-30)
+`i18n_translate.py` reported **0 FAILED keys**, truthfully — it checks JSON validity, key-set parity,
+placeholders, emptiness, script. It cannot check MEANING. My `en` string said *"This is NOT a clean
+bill of health"* — an **idiom** — and the model inverted it: **ja** → *"this does not necessarily mean
+there IS a problem"*; **vi** → *"this is NOT a system error."* **The string whose entire job was to
+prevent a false-clean became one**, in the very commit series built to kill false-cleans. Root cause
+mine: an idiom in safety-critical copy.
 
-- **DR-07** — 1965 tests green, and exactly ONE test invoked `compile()`. It was in the *integration*
-  suite, which is among the **251 SKIPPED**. I nearly took that green as proof.
-- **DR-19** — a test named "LOSSLESS round-trip" whose fixture set the one field that broke to `None`.
-- **DR-18** — the service said a pass was runnable and the worker refused it. Two components
-  answering one question with different inputs; nothing smaller than the full 7-pass chain reaches it.
-- **DR-20** — the scenes had **nobody in them**, and everything else looked perfect.
+### ★ P-08 — the flagship gate is RED, and it is the run's most useful finding
 
-### Decisions (§6) — 7, of which 1 is ⚠ PO-DECIDE
+Run correctly (in-container, real fixture book), the agent-native surface **works**: 17/17 turns, 28
+tool calls, **0 empty-intent, 9 effectful, 0 commit-failed, 0 false-success claims, 4 glossary
+entities really created**.
 
-`D-04` is the one the PO should look at: 24 PH18 asks for a canon deep-link "filtered to the rule",
-and that is **impossible against the data model** (`CanonIssue` rows carry no rule id). I deep-linked
-by the node's CHAPTER — the lens that *can* resolve — and flagged it. If you want rule-level
-filtering, `CanonIssue` needs a `rule_id`, and PH18 becomes a spec amendment.
+But the gate — *"the plan movement ends with linked structure"* — is **RED**:
+`structure_node=0 · outline_node=0 · plan_run=0 · chapters=0`.
 
-`D-06`/`D-07` are places the SPEC's shorthand was wrong and following it would have been the bug
-(`ReferencesRepo` already means something else; there is no `scenes` table in composition).
+The agent called **only** `glossary_*` and `kg_*`. **Not one `composition_*` or `plan_*` tool in 17
+turns**, while thrashing (`kg_project_create` ×7).
 
-### Drift (§9) — 24 entries. **This is the honest part.**
+**Root cause, evidenced:** the planning tools **are** federated (ai-gateway catalog: `245 tools / 10
+providers`, composition included) but are **not** in `ALWAYS_ON_CORE` (≤10 tools). Everything else is
+reachable **only via discovery** — and the run recorded **`discovery_calls_total: 0`**. Across 17
+turns the agent never once looked for a tool, so it never found the ones built for it.
 
-Six of them are cases where I was the bug: a closed-set value I drifted **twice** (DR-06, DR-12); a
-fix that was itself wrong (DR-08); a bug class I fixed in one place and not the sibling (DR-09); a
-guarantee I stated in a prompt and then handed the model the key to (DR-21); a park note that was a
-*claim*, and wrong — the parser did not "fail on a generic book", it **silently planned a different
-one** (DR-16).
+**We built the tools. The agent cannot see them.** That is precisely the discoverability failure
+pillar 28 exists to measure, and it is exactly the kind of thing a green unit suite can never tell
+you. Scoped OUT of this cluster (the fix is in chat-service's `tool_discovery.ALWAYS_ON_CORE` /
+Track-C mode bindings / Track-D tool-liveness) — the cluster's own tools are built, advertised, and
+effectful, as proven above.
 
-And DR-22: my own smoke's ❌ was a bug in the SMOKE, and I nearly "fixed" the code for it. Refusing
-my own hand-wave and writing a diagnostic that printed every HTTP code is what found the real HIGH.
+### Registers
 
-### Debt (§8) — 3 new, all gate-eligible
+- **Decisions (§6):** 10. `D-04` resolved by the PO (option B). No ⚠ PO-DECIDE outstanding.
+- **Parked (§7):** 1 — **P-08**, the discoverability gate, precisely scoped with a re-run command.
+- **Debt (§8):** DBT-01..07, DBT-09 carried; **DBT-08, DBT-12 cleared**; **DBT-10, DBT-11 cleared by
+  FIXING them** — both were cheaper to fix than to carry (DR-33). DBT-13 (repo-wide body-cap sweep)
+  is the genuinely-structural remainder.
+- **Drift (§9):** 33 entries. Six are cases where I was the bug. **A run that ends with an empty drift
+  log is not clean — it is dishonest.**
 
-`DBT-10` (unbounded request body — belongs at the router layer for every large-text field, not
-one-off), `DBT-11` (a service-wide `paid` audit — Track D's), and `DBT-09` (book delete does not
-cascade to composition — cross-service, real, outside this cluster).
+### ⚠ For the PO — the one open architectural question
 
-### Parked (§7) — 1
+**SC11/PH12 vs "the FE is a projection of data state."** `useActualState` derives *"has this scene
+been drafted?"* — a **fact an agent would obviously ask** — client-side, and it costs ~130 lines of
+generation-guards, per-chapter completeness tracking and page-walk bounds to stay correct. The same
+spec↔manuscript relation is already computed **server-side** in two other places
+(`compute_coverage`, `compute_prose_deleted`), both agent-reachable.
 
-`P-07`, the S06 replay. External, precisely scoped, with the exact command to re-run it.
-
-### The one thing I would tell the next agent
-
-**Read `propose.py` before trusting anything it produced.** The compiler was, for its entire life,
-returning one specific Vietnamese novel's characters, variables, forbids and arc titles for *every*
-book anyone planned in rules mode — and it never failed, never returned empty, and never looked
-wrong. A confident wrong answer is the worst failure mode there is, and the only reason it surfaced
-is that the linker (BPS-18: *an emitted artifact with no linker is a bug*) finally tried to write the
-compiler's output somewhere real.
+Proposed test: **fact vs view** — *"would an agent ever ask this?"* yes ⇒ BE.
+Proposed resolution: **amend SC11, don't overturn it** — keep *"no per-node server join at render
+time"*, add *"a derived FACT about the relation is one bulk anti-join, server-side"* (the shape
+`compute_coverage` already ships). **Not actioned: SC11 is LOCKED.**

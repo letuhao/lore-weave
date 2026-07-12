@@ -30,8 +30,16 @@ async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: Gran
         raise HTTPException(status_code=403, detail="insufficient access")
 
 
+# A braindump is long, but not UNBOUNDED. `_var_deltas` is O(lines x declared-codes) and every
+# line is scanned, so an uncapped field is both a parser-cost and a memory surface — and the
+# field is interpolated into prompts. 256K chars is ~65K tokens: far above any real braindump
+# (the S06 flagship's is <8K) and far below a denial-of-service. (DBT-10; the repo-wide sweep of
+# EVERY large-text field at the router layer stays tracked — this closes the one field I own.)
+_SOURCE_MARKDOWN_MAX = 262_144
+
+
 class PlanRunCreate(BaseModel):
-    source_markdown: str = Field(min_length=1)
+    source_markdown: str = Field(min_length=1, max_length=_SOURCE_MARKDOWN_MAX)
     mode: Literal["rules", "llm"]
     model_ref: UUID | None = None
     force: bool = False
