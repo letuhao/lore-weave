@@ -69,7 +69,7 @@ from app.clients.knowledge_client import (
     get_knowledge_client,
 )
 from app.config import settings
-from app.db.models import LinkKind, SceneExitState
+from app.db.models import LinkKind, PlanPassId, SceneExitState
 from app.db.pool import get_pool
 from app.db.repositories import (
     ReferenceViolationError,
@@ -3436,22 +3436,46 @@ async def plan_apply_revision(
 @mcp_server.tool(
     name="plan_review_checkpoint",
     description=(
-        "PlanForge: approve or hold the current spec checkpoint. approved=true marks "
-        "the run validated-intent; approved=false keeps it at checkpoint for more "
-        "refinement. No LLM. EDIT required."
+        "PlanForge: approve or hold a checkpoint. Omit pass_id for the SPEC checkpoint "
+        "(approved=true marks the run validated-intent). Give pass_id to review one COMPILER "
+        "PASS — the only way a blocking pass ('cast', 'beats') is ever accepted, and therefore "
+        "the only way the compiler proceeds past it. `edits` deep-merges into that pass's "
+        "artifact and saves a NEW one, which stales everything downstream by derivation (that "
+        "is intended: scenes planned against the old cast should not survive an edit to the "
+        "cast). Accepting 'cast' requires its glossary seed proposal to have been APPLIED. "
+        "No LLM. EDIT required."
     ),
-    meta=require_meta("A", "book", synonyms=["approve checkpoint", "accept plan", "hold plan"], tool_name="plan_review_checkpoint"),
+    meta=require_meta("A", "book", synonyms=["approve checkpoint", "accept plan", "hold plan", "accept pass", "accept cast"], tool_name="plan_review_checkpoint"),
 )
 async def plan_review_checkpoint(
     ctx: MCPContext,
     book_id: Annotated[str, "The book (UUID)."],
     run_id: Annotated[str, "The plan run (UUID)."],
     approved: Annotated[bool, "True to advance the checkpoint; False to hold."],
+    pass_id: Annotated[
+        PlanPassId | None,
+        "Which compiler pass to review. Omit for the spec checkpoint.",
+    ] = None,
+    edits: Annotated[
+        dict | None,
+        "Optional deep-merge patch into the pass's artifact (pass_id required). Saves a NEW "
+        "artifact; downstream passes go stale by derivation.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
     await _gate(tc, bid, GrantLevel.EDIT)
-    out = await _plan_svc().review_checkpoint(tc.user_id, bid, UUID(run_id), approved=approved)
+    try:
+        out = await _plan_svc().review_checkpoint(
+            tc.user_id, bid, UUID(run_id), approved=approved,
+            pass_id=pass_id, edits=edits,
+        )
+    except ValueError as exc:
+        # A refusal here is the GATE doing its job (an unaccepted seed proposal, a pass that never
+        # completed). The agent gets the REASON, so it can act on it — a bare failure would just be
+        # retried blindly, and a silent success would be far worse: the compiler would sail past the
+        # one checkpoint the author exists to answer.
+        return {"success": False, "error": "checkpoint refused", "detail": str(exc)[:300]}
     if out is None:
         raise uniform_not_accessible()
     return out

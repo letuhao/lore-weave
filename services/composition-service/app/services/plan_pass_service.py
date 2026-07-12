@@ -327,7 +327,11 @@ def record_pass(
     run: PlanRun,
     pass_id: str,
     *,
-    status: str,
+    #: OPTIONAL, like every other field — the docstring below always said "fields left None are
+    #: UNTOUCHED", but `status` was required, which made a DECISION-ONLY write impossible: accepting
+    #: a pass at its checkpoint changes the decision, not the status, and there was no honest value
+    #: to pass. The live smoke found it as a 500 on the accept.
+    status: str | None = None,
     artifact_id: UUID | str | None = None,
     job_id: UUID | str | None = None,
     input_fingerprint: str | None = None,
@@ -351,7 +355,8 @@ def record_pass(
         for k, v in run.pass_state.items()
     }
     e = dict(state.get(pass_id, {}))
-    e["status"] = status
+    if status is not None:
+        e["status"] = status
     if artifact_id is not None:
         e["artifact_id"] = str(artifact_id)
     if job_id is not None:

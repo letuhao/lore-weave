@@ -599,10 +599,10 @@ PlanRunMode = Literal["rules", "llm"]
 # The seven compiler passes (PF-1). The `pass_state` ledger is keyed by these, and the order here IS
 # the dependency order — `pass_cursor` walks it.
 #
-# NOT YET registered in `CLOSED_SET_ARGS` — the MCP surface that would need it is 27 V2-F, which is
-# parked (RUN-STATE §7 P-04). Saying "registered in CLOSED_SET_ARGS" while it is not would be a
-# comment asserting an enforcement that does not exist, which is precisely what the
-# Frontend-Tool-Contract standard warns about. When V2-F lands, register it there and say so here.
+# This IS the closed set, and it is enforced on every surface that takes a pass id — the HTTP route
+# (`pass_id: PlanPassId` in the path ⇒ 422 on anything else) and the MCP tools (the `Literal`
+# annotation is the schema, so the enum reaches the agent). The Literal is the single source: there
+# is no second list to drift from it.
 #
 # These names are the SPEC's (27 §170), not a paraphrase: `motifs` not `motif`, `beats` not `beat`,
 # `character_arcs` not `char_arc`, `self_heal` not `heal`. A closed-set arg whose values drift from

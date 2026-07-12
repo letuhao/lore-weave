@@ -189,6 +189,27 @@ class StructureRepo:
             raise StructureConflictError(str(exc)) from exc
         return _row_to_node(row)
 
+    async def find_by_plan_run(
+        self, book_id: UUID, run_id: UUID, *, arc_id: str | None = None,
+    ) -> StructureNode | None:
+        """The arc the skeleton linker minted for this plan run (27 PF-13's write target).
+
+        Book-scoped, and it EXCLUDES archived rows — the partial unique index that arbitrates the
+        linker's upsert carries `NOT is_archived`, so an archived arc is a tombstone the linker has
+        already re-created past. Binding a roster onto a tombstone would write the symbol table into
+        a node nothing reads.
+        """
+        query = f"""
+        SELECT {_SELECT_COLS} FROM structure_node
+        WHERE book_id = $1 AND plan_run_id = $2 AND NOT is_archived
+          AND ($3::text IS NULL OR plan_arc_id = $3)
+        ORDER BY rank
+        LIMIT 1
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, book_id, run_id, arc_id)
+        return _row_to_node(row) if row else None
+
     async def get(
         self, node_id: UUID, *, conn: asyncpg.Connection | None = None,
     ) -> StructureNode | None:

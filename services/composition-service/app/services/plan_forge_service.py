@@ -6,6 +6,9 @@ persistence and generation_job async worker ops.
 
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime
+
 import hashlib
 from pathlib import Path
 from typing import Any
@@ -33,6 +36,8 @@ from app.engine.plan_forge.self_check import run_self_check
 from app.engine.plan_forge.validate import _deep_merge, run_rules
 from app.worker.events import enqueue_job
 from app.worker.operations import run_plan_forge_propose, run_plan_forge_refine
+
+logger = logging.getLogger(__name__)
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "plan-forge"
 _FIDELITY = _FIXTURES / "story-plan-v1.fidelity.yaml"
@@ -77,6 +82,18 @@ class PlanForgeService:
         self._jobs = jobs
         self._works = works
         self._llm = llm
+        self._proposals_repo: Any = None
+
+    @property
+    def _proposals(self):
+        """Lazy — PF-7's gate is the only reader, and building it eagerly would have meant threading
+        a new argument through every construction site (routers, deps, the worker's finalize hook)
+        for a dependency most calls never touch."""
+        if self._proposals_repo is None:
+            from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+            self._proposals_repo = PlanBootstrapProposalsRepo(self._runs._pool)
+        return self._proposals_repo
 
     async def sync_from_job(self, created_by: UUID, book_id: UUID, run: PlanRun) -> PlanRun:
         """Lazy backstop: persist worker result when GET arrives before hook."""
@@ -547,13 +564,35 @@ class PlanForgeService:
 
     async def review_checkpoint(
         self, created_by: UUID, book_id: UUID, run_id: UUID, *, approved: bool,
+        pass_id: str | None = None,
+        edits: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
-        """Advance/hold a checkpoint (M4 plan_review_checkpoint). approved=True →
-        the current spec becomes `validated` intent; approved=False keeps it at
-        `checkpoint` for further refinement. Idempotent, no LLM."""
+        """Advance/hold a checkpoint.
+
+        Two checkpoints share this door, and `pass_id` picks which:
+
+        * **`pass_id=None` — the SPEC checkpoint** (the v1 M4 behaviour, unchanged). approved=True →
+          the current spec becomes `validated`; approved=False holds it at `checkpoint`.
+        * **`pass_id=<a pass>` — a PASS checkpoint** (27 V2-D2/PF-6). This is the only way a
+          BLOCKING pass (`cast`, `beats`) is ever accepted, and therefore the only way the compiler
+          proceeds past the two questions the author alone can answer.
+
+        `edits` deep-merges into the pass's artifact and saves a **NEW** artifact, which the pass
+        then points at. That new id changes every downstream fingerprint, so everything below goes
+        STALE by derivation — with zero invalidation writes. That is not a side effect; it is the
+        point (PF-3). A human editing the cast SHOULD invalidate the scenes planned against the old
+        one, and the alternative — mutating the artifact in place — would leave the downstream
+        passes fresh against a plan that no longer exists.
+
+        Idempotent, no LLM.
+        """
         run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
             return None
+        if pass_id is not None:
+            return await self._review_pass(
+                created_by, book_id, run, pass_id, approved=approved, edits=edits,
+            )
         spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
         if spec_art is None:
             raise ValueError("no spec to review")
@@ -563,6 +602,210 @@ class PlanForgeService:
         )
         updated = await self._runs.get_for_book(book_id, run_id)
         return await self._serialize_run(created_by, updated) if updated else None
+
+    async def _review_pass(
+        self, created_by: UUID, book_id: UUID, run: PlanRun, pass_id: str, *,
+        approved: bool, edits: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        from app.services.plan_pass_service import (
+            PACKAGE_KIND, PASS_REGISTRY, record_pass,
+        )
+
+        if pass_id not in PASS_REGISTRY:
+            raise ValueError(f"unknown pass_id: {pass_id}")
+        entry = dict(run.pass_state.get(pass_id) or {})
+        if entry.get("status") != "completed":
+            # You cannot accept a pass that never produced anything. Allowing it would let the
+            # compiler proceed past a blocking checkpoint on an artifact that does not exist —
+            # every downstream pass would then resolve its input to nothing and plan on air.
+            raise ValueError(
+                f"pass '{pass_id}' has not completed (status: {entry.get('status') or 'never run'})",
+            )
+        run_id = run.id
+        spec = PASS_REGISTRY[pass_id]
+
+        # THE GATE RUNS BEFORE ANY WRITE — so a refused checkpoint changed NOTHING.
+        #
+        # The live smoke caught the other order: with `approved=true` AND `edits`, the edit was
+        # saved and *then* the seed gate refused, so the caller got a 409 for a call that had
+        # already mutated their plan. A partial success reported as a failure is the worst of both —
+        # the user retries, and the retry re-applies the edit on top of itself.
+        #
+        # Only the approve path is gated: `approved=false` + `edits` is "hold this, but keep my
+        # revisions", which must still work while the seed sits unapplied.
+        if approved:
+            await self._assert_seed_applied(book_id, run, pass_id)
+
+        artifact_id = entry.get("artifact_id")
+        if edits:
+            if not artifact_id:
+                raise ValueError(f"pass '{pass_id}' has no artifact to edit")
+            loaded = await self._runs.artifacts_by_ids(book_id, run_id, [artifact_id])
+            art = loaded.get(str(artifact_id))
+            if art is None:
+                raise ValueError(
+                    f"pass '{pass_id}' points at artifact {artifact_id}, which does not exist",
+                )
+            merged = _deep_merge(art.content, edits)
+            new_art = await self._runs.save_artifact(
+                created_by, run_id, spec.output_kind, merged,
+            )
+            artifact_id = new_art.id
+            # Re-fingerprint against the SAME inputs: the human changed the OUTPUT, not the inputs,
+            # so this pass stays FRESH (it is exactly the plan the author now wants). What goes
+            # stale is everything DOWNSTREAM, because their input pointer — this artifact's id —
+            # just changed. Derived, not written.
+            state = record_pass(
+                run, pass_id, status="completed", artifact_id=artifact_id,
+                input_fingerprint=entry.get("input_fingerprint"),
+                params=entry.get("params") or {},
+            )
+            await self._runs.update_run(book_id, run_id, pass_state=state)
+            run = await self._runs.get_for_book(book_id, run_id) or run
+
+        decision = "accepted" if approved else "rejected"
+        state = record_pass(
+            run, pass_id, decision=decision, decided_by="user",
+            decided_at=datetime.now(UTC).isoformat(),
+        )
+        await self._runs.update_run(book_id, run_id, pass_state=state)
+        run = await self._runs.get_for_book(book_id, run_id) or run
+
+        if approved and pass_id == "cast":
+            await self._bind_roster(created_by, book_id, run)
+
+        return await self._serialize_run(created_by, run)
+
+    async def _assert_seed_applied(self, book_id: UUID, run: PlanRun, pass_id: str) -> None:
+        """PF-7: pass 2 cannot be ACCEPTED until its glossary seed proposal has been APPLIED.
+
+        The blocking gate and the mutation gate are the same gate, so they cannot disagree. Without
+        this, a user could accept the cast, let passes 3-7 plan an entire book around characters that
+        exist only inside a run artifact, and only discover at bootstrap that none of them were ever
+        in the glossary — with the scenes already referencing entity ids that resolve to nothing.
+
+        Pass 3 (`world`) is ADVISORY and may lag: an unapplied world seed degrades grounding, it does
+        not corrupt the plan. So only the blocking pass is gated.
+        """
+        if pass_id != "cast":
+            return
+        entry = dict(run.pass_state.get(pass_id) or {})
+        proposal_id = entry.get("bootstrap_proposal_id")
+        if not proposal_id:
+            raise ValueError(
+                "cast cannot be accepted before its glossary seed proposal exists "
+                "(call plan_bootstrap_seed for this pass first)",
+            )
+        proposal = await self._proposals.get_for_book(book_id, UUID(str(proposal_id)))
+        if proposal is None:
+            raise ValueError(f"cast's seed proposal {proposal_id} no longer exists")
+        if proposal.status != "applied":
+            raise ValueError(
+                f"cast cannot be accepted while its glossary seed proposal is "
+                f"'{proposal.status}' — apply it first (PF-7)",
+            )
+
+    async def _bind_roster(self, created_by: UUID, book_id: UUID, run: PlanRun) -> None:
+        """PF-13 — the symbol table lands in the SPEC, not only in the run.
+
+        After the cast is accepted (and therefore seeded), write `{role_key: glossary_entity_id}`
+        onto the linked arc's `structure_node.roster_bindings`. Without this, `cast_plan` is a
+        stored-but-unread blob on the spec side — the write-only-behaviour bug `structure_node`
+        exists to kill: the packer would keep prompting with names it re-resolves every time instead
+        of the ids the author actually approved.
+
+        Degrade-safe: an unlinked arc (no skeleton) or an unresolvable name leaves the binding out
+        rather than failing the acceptance. The names that could NOT be bound are logged — an
+        absent binding must be visible, not silently equivalent to "this role has no character".
+        """
+        from app.db.repositories.structure import StructureRepo
+
+        entry = dict(run.pass_state.get("cast") or {})
+        artifact_id = entry.get("artifact_id")
+        if not artifact_id:
+            return
+        loaded = await self._runs.artifacts_by_ids(book_id, run.id, [artifact_id])
+        art = loaded.get(str(artifact_id))
+        if art is None:
+            return
+        cast = art.content.get("cast") or []
+        if not cast:
+            return
+
+        roster = await self._roster_ids_by_name(book_id, run)
+        bindings: dict[str, str] = {}
+        unbound: list[str] = []
+        for member in cast:
+            role = (member.get("role") or "").strip().lower().replace(" ", "_")
+            name = (member.get("name") or "").strip()
+            if not role or not name:
+                continue
+            entity_id = roster.get(name.casefold())
+            if not entity_id:
+                unbound.append(name)
+                continue
+            # First writer wins per role: two "protagonist"s is the plan's problem to surface, not
+            # something to silently resolve by overwriting.
+            bindings.setdefault(role, str(entity_id))
+
+        if unbound:
+            logger.info(
+                "roster bind: book=%s run=%s could not resolve %d cast name(s) to a glossary "
+                "entity: %s — those roles stay UNBOUND (absent, not empty)",
+                book_id, run.id, len(unbound), ", ".join(sorted(unbound)),
+            )
+        if not bindings:
+            return
+
+        repo = StructureRepo(self._runs._pool)
+        arc = await repo.find_by_plan_run(book_id, run.id)
+        if arc is None:
+            logger.info(
+                "roster bind: book=%s run=%s has no linked arc yet — skipping (the skeleton link "
+                "runs at compile; a run that never compiled has nothing to bind onto)",
+                book_id, run.id,
+            )
+            return
+        await repo.update(
+            arc.id,
+            {"roster_bindings": {**(arc.roster_bindings or {}), **bindings}},
+            expected_version=None,
+        )
+        logger.info(
+            "roster bind: book=%s run=%s arc=%s bound %d role(s): %s",
+            book_id, run.id, arc.id, len(bindings), sorted(bindings),
+        )
+
+    async def _roster_ids_by_name(self, book_id: UUID, run: PlanRun) -> dict[str, UUID]:
+        """name.casefold() → glossary_entity_id, from the applied seed proposal.
+
+        Read from the proposal's APPLY result, not from glossary directly: composition reads cast
+        through the knowledge-gateway roster, never glossary (INV-KAL). The apply step is what
+        minted the ids, and it recorded them.
+        """
+        entry = dict(run.pass_state.get("cast") or {})
+        proposal_id = entry.get("bootstrap_proposal_id")
+        if not proposal_id:
+            return {}
+        proposal = await self._proposals.get_for_book(book_id, UUID(str(proposal_id)))
+        if proposal is None or proposal.status != "applied":
+            return {}
+        out: dict[str, UUID] = {}
+        # `applied_results` is keyed by the proposal's item key; each value is the row apply()
+        # recorded from glossary-service — {entity_id, kind_code, name, status}. That row is where
+        # the id was MINTED, which is why we read it here rather than asking glossary (INV-KAL:
+        # composition reads cast through the knowledge-gateway roster, never glossary directly).
+        for row in (proposal.applied_results or {}).values():
+            if not isinstance(row, dict):
+                continue
+            name = (row.get("name") or "").strip()
+            eid = row.get("entity_id")
+            if name and eid:
+                try:
+                    out[name.casefold()] = UUID(str(eid))
+                except (ValueError, TypeError):
+                    continue
+        return out
 
     async def handoff_autofix(
         self, created_by: UUID, book_id: UUID, run_id: UUID,

@@ -174,6 +174,95 @@ class BootstrapService:
         )
         return record
 
+    # ── 27 PF-7 — the GLOSSARY-ONLY seed proposal (passes 2 and 3) ───────────────────────────
+    #: Which glossary kind each pass's entities are seeded as. `cast` is all characters; `world`
+    #: carries its own kind per entity, clamped to the three the world pass can emit.
+    SEED_KINDS: dict[str, tuple[str, ...]] = {
+        "cast": ("character",),
+        "world": ("location", "faction", "concept"),
+    }
+
+    async def propose_seed(
+        self,
+        created_by: UUID,
+        book_id: UUID,
+        run_id: UUID,
+        pass_id: str,
+        entities: list[dict[str, Any]],
+    ) -> PlanBootstrapProposal:
+        """A glossary-ONLY bootstrap proposal built from a PASS artifact (27 PF-7).
+
+        Why this exists rather than the pass seeding the glossary directly: **one approval
+        mechanism, not two.** The glossary is the author's canon. A compiler pass that wrote into it
+        on its own would be a second, invisible path into the exact surface the bootstrap quarantine
+        was built to guard — and the author would discover the LLM's inventions already in their
+        canon, with no diff and nothing to reject.
+
+        So a pass PROPOSES; the human applies. And because pass 2 is a blocking checkpoint whose
+        acceptance requires this proposal to be `applied` (see `plan_forge_service.review_checkpoint`),
+        the blocking gate and the mutation gate are the SAME gate — they cannot disagree.
+
+        Deduped against every still-active proposal's claims by the same `_glossary_item_key`
+        mechanism `propose()` uses: a second `propose_seed` before the first is applied must not
+        double-offer (and, if both were applied, double-create) the same entity.
+
+        Emits `new_chapters: []` — the shape stays the one `apply()` already knows how to read. A
+        seed proposal never touches the manuscript; the skeleton link is the compiler's job, and it
+        already happened at `compile()`.
+        """
+        if pass_id not in self.SEED_KINDS:
+            raise ValueError(
+                f"pass '{pass_id}' does not seed the glossary "
+                f"(only {sorted(self.SEED_KINDS)} do)",
+            )
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            raise LookupError("run not found")
+
+        allowed = self.SEED_KINDS[pass_id]
+        default_kind = allowed[0]
+
+        claimed: set[str] = set()
+        for rec in await self._proposals.list_active_for_book(book_id):
+            for ge in rec.diff.get("new_glossary_entities", []):
+                if isinstance(ge, dict) and ge.get("name"):
+                    claimed.add(_glossary_item_key(ge.get("kind_code"), ge["name"]))
+
+        seen: set[str] = set()
+        new_glossary_entities: list[dict[str, Any]] = []
+        for e in entities:
+            name = (e.get("name") or "").strip() if isinstance(e, dict) else ""
+            if not name:
+                continue
+            kind = e.get("kind") or e.get("kind_code") or default_kind
+            if kind not in allowed:
+                # An unknown kind is clamped, never dropped and never passed through: passing it
+                # through would push an unvalidated kind_code at glossary-service, and dropping it
+                # would silently lose an entity the LLM did propose.
+                logger.info(
+                    "propose_seed: pass=%s entity=%r has kind %r outside %s — clamping to %r",
+                    pass_id, name, kind, allowed, default_kind,
+                )
+                kind = default_kind
+            key = _glossary_item_key(kind, name)
+            if key in claimed or key in seen:
+                continue
+            seen.add(key)
+            new_glossary_entities.append({
+                "name": name, "kind_code": kind,
+                "attributes": e.get("attributes") or {},
+            })
+
+        diff = {"new_chapters": [], "new_glossary_entities": new_glossary_entities}
+        record = await self._proposals.create(created_by, book_id, run_id, diff=diff)
+        logger.info(
+            "propose_seed: book=%s run=%s pass=%s proposal=%s entities=%d "
+            "(%d offered, %d already claimed by an active proposal)",
+            book_id, run_id, pass_id, record.id, len(entities),
+            len(new_glossary_entities), len(claimed),
+        )
+        return record
+
     async def get(
         self, book_id: UUID, proposal_id: UUID,
     ) -> PlanBootstrapProposal | None:

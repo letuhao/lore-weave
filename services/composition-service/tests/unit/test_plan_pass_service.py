@@ -300,3 +300,25 @@ def test_record_pass_stores_the_params_it_ran_with():
     r = run_with({})
     state = pps.record_pass(r, "cast", status="completed", params={"k": 1})
     assert state["cast"]["params"] == {"k": 1}
+
+
+def test_record_pass_supports_a_DECISION_ONLY_write():
+    """`status` was REQUIRED, while the docstring promised "fields left None are UNTOUCHED".
+
+    That contradiction made a decision-only write impossible: accepting a pass at its checkpoint
+    changes the DECISION, not the status, and there was no honest value to pass for `status` — so
+    the accept path 500'd. The live smoke found it; no unit test could, because every existing
+    caller happened to be writing a status anyway.
+
+    A decision write must leave status, the artifact pointer, and the fingerprint exactly as they
+    were — that pointer is what every downstream pass resolves through.
+    """
+    aid = uuid4()
+    r = run_with({"cast": done(aid, "sha256:abc")})
+    state = pps.record_pass(r, "cast", decision="accepted", decided_by="user")
+    e = state["cast"]
+    assert e["decision"] == "accepted"
+    assert e["decided_by"] == "user"
+    assert e["status"] == "completed"                 # untouched
+    assert e["artifact_id"] == str(aid)              # untouched — downstream resolves through it
+    assert e["input_fingerprint"] == "sha256:abc"    # untouched

@@ -93,6 +93,53 @@ async def _finalize_plan_forge_job(
     )
 
 
+#: pass_id → the artifact key its proposable entities live under (27 PF-7). Only these two passes
+#: touch the glossary at all.
+_SEED_ENTITY_KEY = {"cast": "cast", "world": "entities"}
+
+
+async def _propose_pass_seed(
+    pool: asyncpg.Pool, job, run, pass_id: str, artifact,
+) -> UUID | None:
+    """Open the glossary seed proposal for a pass that produced glossary-bound entities (PF-7)."""
+    key = _SEED_ENTITY_KEY.get(pass_id)
+    if key is None:
+        return None
+    entities = artifact.content.get(key) or []
+    if not entities:
+        # Nothing to seed is a legitimate outcome (a degraded pass returns []). No proposal is
+        # opened — and for `cast` that means acceptance will refuse, which is correct: you cannot
+        # accept a cast that does not exist.
+        return None
+
+    from app.clients.book_client import get_book_client
+    from app.clients.glossary_client import get_glossary_client
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.services.bootstrap_service import BootstrapService
+
+    try:
+        svc = BootstrapService(
+            PlanBootstrapProposalsRepo(pool), PlanRunsRepo(pool),
+            get_book_client(), get_glossary_client(), GenerationJobsRepo(pool),
+        )
+        proposal = await svc.propose_seed(
+            job.created_by, run.book_id, run.id, pass_id, entities,
+        )
+    except Exception:  # noqa: BLE001 — advisory: never fail an expensive, already-saved artifact
+        logger.warning(
+            "plan_pass: could not open the glossary seed proposal for pass '%s' (run %s) — the "
+            "artifact is saved; the pass will refuse acceptance until a seed proposal exists",
+            pass_id, run.id, exc_info=True,
+        )
+        return None
+    logger.info(
+        "plan_pass: pass '%s' (run %s) opened glossary seed proposal %s with %d entit(ies)",
+        pass_id, run.id, proposal.id, len(proposal.diff.get("new_glossary_entities", [])),
+    )
+    return proposal.id
+
+
 async def _finalize_plan_pass_job(
     pool: asyncpg.Pool, job, result: dict, terminal_status: str,
 ) -> None:
@@ -137,10 +184,24 @@ async def _finalize_plan_pass_job(
     artifact = await runs.save_artifact(
         job.created_by, run_id, result["output_kind"], result.get("artifact") or {},
     )
+
+    # PF-7 — passes 2 and 3 do not seed the glossary; they PROPOSE. The author's canon is only ever
+    # mutated through the bootstrap quarantine, so there is ONE approval mechanism, not two. And
+    # because accepting `cast` requires this proposal to be APPLIED, the blocking gate (PF-6) and
+    # the mutation gate (PF-7) are the same gate — they cannot disagree.
+    #
+    # Advisory, deliberately: a proposal that fails to write must NOT fail the pass. The artifact is
+    # already saved and is the expensive part; the seed can be re-proposed. Swallowing the error
+    # would be the silent-success bug, so it is logged AND the pass is left with no
+    # `bootstrap_proposal_id` — which is exactly what makes `cast`'s acceptance refuse later, with a
+    # message that names the missing proposal instead of pretending everything is fine.
+    proposal_id = await _propose_pass_seed(pool, job, run, pass_id, artifact)
+
     state = record_pass(
         run, pass_id, status="completed", artifact_id=artifact.id, job_id=job.id,
         input_fingerprint=result.get("input_fingerprint"),
         params=result.get("params") or {},
+        bootstrap_proposal_id=proposal_id,
         # Advisory ⇒ `auto` (accepted, still reviewable). BLOCKING (`cast`, `beats`) ⇒ `pending`:
         # the pass is DONE, but the compiler stops here until a human decides. That is PF-6, and it
         # is the difference between "the plan proceeded" and "the plan proceeded past the two

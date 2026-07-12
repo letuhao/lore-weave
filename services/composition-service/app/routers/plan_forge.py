@@ -214,6 +214,45 @@ async def refine_plan_run(
     return payload
 
 
+class PlanCheckpointRequest(BaseModel):
+    """27 V2-D2. The HTTP mirror of `plan_review_checkpoint` — same service call, same gates."""
+
+    approved: bool
+    #: Omit for the SPEC checkpoint. Give it to review one COMPILER PASS.
+    pass_id: PlanPassId | None = None
+    #: Deep-merge patch into the pass's artifact (requires `pass_id`). Saves a NEW artifact, so
+    #: everything downstream goes stale by derivation — which is the point.
+    edits: dict[str, Any] | None = None
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/checkpoint")
+async def review_checkpoint_route(
+    book_id: UUID,
+    run_id: UUID,
+    body: PlanCheckpointRequest,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        out = await svc.review_checkpoint(
+            user_id, book_id, run_id, approved=body.approved,
+            pass_id=body.pass_id, edits=body.edits,
+        )
+    except ValueError as exc:
+        # 409: the request is well-formed and WILL succeed once the gate is satisfied (apply the
+        # seed proposal, run the pass). A 400 would read as "you asked wrong", which is false and
+        # would send the caller looking in the wrong place.
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CHECKPOINT_REFUSED", "message": str(exc)},
+        ) from exc
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return out
+
+
 @router.post("/books/{book_id}/plan/runs/{run_id}/passes/{pass_id}/run")
 async def run_plan_pass_route(
     book_id: UUID,
