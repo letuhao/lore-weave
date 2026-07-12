@@ -34,6 +34,7 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     process.env.BOOK_SERVICE_URL = 'http://book:8205';
     process.env.KNOWLEDGE_SERVICE_URL = 'http://knowledge:8210';
     process.env.GLOSSARY_SERVICE_URL = 'http://glossary:8203';
+    process.env.AUTH_SERVICE_URL = 'http://auth:8201';
     process.env.INTERNAL_SERVICE_TOKEN = 'itok';
     controller = new AssistantController();
   });
@@ -42,6 +43,7 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     delete process.env.BOOK_SERVICE_URL;
     delete process.env.KNOWLEDGE_SERVICE_URL;
     delete process.env.GLOSSARY_SERVICE_URL;
+    delete process.env.AUTH_SERVICE_URL;
     delete process.env.INTERNAL_SERVICE_TOKEN;
     (global as any).fetch = undefined;
   });
@@ -68,17 +70,19 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  it('provisions the diary + assistant project + work ontology, forwarding correctly', async () => {
+  it('provisions the diary + assistant project + work ontology + self-entity, forwarding correctly', async () => {
     const f = jest
       .fn()
       .mockResolvedValueOnce(resp(201, { book_id: 'diary-1' }))
       .mockResolvedValueOnce(resp(201, { project_id: 'proj-1' }))
-      .mockResolvedValueOnce(resp(200, { book_id: 'diary-1', adopted: WORK_KINDS_EXPECTED }));
+      .mockResolvedValueOnce(resp(200, { book_id: 'diary-1', adopted: WORK_KINDS_EXPECTED }))
+      .mockResolvedValueOnce(resp(200, { display_name: 'Alex Kim' })) // auth profile GET
+      .mockResolvedValueOnce(resp(201, { entity_id: 'self-1', created: true })); // self-entity POST
     (global as any).fetch = f;
 
     const out = await controller.provision({ title: 'My Journal' }, bearer('user-42'));
 
-    expect(f).toHaveBeenCalledTimes(3);
+    expect(f).toHaveBeenCalledTimes(5);
     // Step 1 → book-service diary get-or-create, with the user's Bearer.
     const [bookUrl, bookInit] = f.mock.calls[0];
     expect(bookUrl).toBe('http://book:8205/v1/books/diary');
@@ -94,6 +98,16 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     expect(gInit.headers['x-internal-token']).toBe('itok');
     expect(gInit.headers.authorization).toBeUndefined(); // the user JWT is NOT forwarded internally
     expect(JSON.parse(gInit.body)).toEqual({ kinds: WORK_KINDS_EXPECTED });
+    // Step 4 → auth profile GET (internal) for the display name.
+    const [pUrl, pInit] = f.mock.calls[3];
+    expect(pUrl).toBe('http://auth:8201/internal/users/user-42/profile');
+    expect(pInit.method).toBe('GET');
+    expect(pInit.headers['x-internal-token']).toBe('itok');
+    // Step 5 → glossary self-entity POST with the fetched name.
+    const [sUrl, sInit] = f.mock.calls[4];
+    expect(sUrl).toBe('http://glossary:8203/internal/books/diary-1/self-entity?user_id=user-42');
+    expect(sInit.headers['x-internal-token']).toBe('itok');
+    expect(JSON.parse(sInit.body)).toEqual({ name: 'Alex Kim' });
 
     expect(out.provisioned).toBe(true);
     expect(out.book_id).toBe('diary-1');
@@ -101,23 +115,26 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     expect(out.provision_status.diary_book).toBe('ok');
     expect(out.provision_status.assistant_project).toBe('ok');
     expect(out.provision_status.work_ontology).toBe('ok');
+    expect(out.provision_status.self_entity).toBe('ok');
     // Steps that depend on unbuilt slices are surfaced, never silently claimed done.
     expect(out.provision_status.consent).toBe('pending:user_opt_in');
-    expect(out.provision_status.self_entity).toBe('pending:WS-1.5');
     expect(out.provision_status.timezone).toBe('pending:user_confirm');
   });
 
-  it('is idempotent-friendly: a 200 (existing) diary + project + adopt still provisions', async () => {
+  it('is idempotent-friendly: a 200 (existing) diary + project + adopt + self still provisions', async () => {
     const f = jest
       .fn()
       .mockResolvedValueOnce(resp(200, { book_id: 'diary-1' }))
       .mockResolvedValueOnce(resp(200, { project_id: 'proj-1' }))
-      .mockResolvedValueOnce(resp(200, { adopted: WORK_KINDS_EXPECTED }));
+      .mockResolvedValueOnce(resp(200, { adopted: WORK_KINDS_EXPECTED }))
+      .mockResolvedValueOnce(resp(200, { display_name: 'Alex' }))
+      .mockResolvedValueOnce(resp(200, { entity_id: 'self-1', created: false }));
     (global as any).fetch = f;
     const out = await controller.provision({}, bearer('u1'));
     expect(out.provisioned).toBe(true);
     expect(out.book_id).toBe('diary-1');
     expect(out.provision_status.work_ontology).toBe('ok');
+    expect(out.provision_status.self_entity).toBe('ok');
   });
 
   it('an adopt failure is a recorded half-state — the durable core is still provisioned', async () => {
@@ -125,12 +142,15 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
       .fn()
       .mockResolvedValueOnce(resp(201, { book_id: 'diary-1' }))
       .mockResolvedValueOnce(resp(201, { project_id: 'proj-1' }))
-      .mockResolvedValueOnce(resp(500, { error: 'GLOSS_INTERNAL' }));
+      .mockResolvedValueOnce(resp(500, { error: 'GLOSS_INTERNAL' })) // adopt fails
+      .mockResolvedValueOnce(resp(200, { display_name: 'Alex' })) // self-entity still runs (binds to the diary)
+      .mockResolvedValueOnce(resp(201, { entity_id: 'self-1', created: true }));
     (global as any).fetch = f;
     const out = await controller.provision({}, bearer('u1'));
     // diary + project are the durable core → still provisioned; ontology re-drives next open.
     expect(out.provisioned).toBe(true);
     expect(out.provision_status.work_ontology).toBe('error:500');
+    expect(out.provision_status.self_entity).toBe('ok');
   });
 
   it('missing glossary config → work_ontology error:not_configured (no crash, core still ok)', async () => {
@@ -141,9 +161,10 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
       .mockResolvedValueOnce(resp(201, { project_id: 'proj-1' }));
     (global as any).fetch = f;
     const out = await controller.provision({}, bearer('u1'));
-    expect(f).toHaveBeenCalledTimes(2); // adopt never attempted
+    expect(f).toHaveBeenCalledTimes(2); // adopt + self-entity never attempted (no glossary URL)
     expect(out.provisioned).toBe(true);
     expect(out.provision_status.work_ontology).toBe('error:not_configured');
+    expect(out.provision_status.self_entity).toBe('error:not_configured');
   });
 
   it('a TRASHED diary is surfaced and the project is NOT attempted', async () => {
@@ -173,7 +194,9 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
       .fn()
       .mockResolvedValueOnce(resp(201, { book_id: 'diary-1' }))
       .mockResolvedValueOnce(resp(503, { detail: 'knowledge down' }))
-      .mockResolvedValueOnce(resp(200, { adopted: WORK_KINDS_EXPECTED })); // adopt still runs (depends on the diary, not the project)
+      .mockResolvedValueOnce(resp(200, { adopted: WORK_KINDS_EXPECTED })) // adopt still runs (binds to the diary)
+      .mockResolvedValueOnce(resp(200, { display_name: 'Alex' })) // profile
+      .mockResolvedValueOnce(resp(201, { entity_id: 'self-1', created: true })); // self-entity still runs
     (global as any).fetch = f;
 
     const out = await controller.provision({}, bearer('u1'));
@@ -182,7 +205,8 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     expect(out.book_id).toBe('diary-1'); // the anchor exists
     expect(out.provision_status.diary_book).toBe('ok');
     expect(out.provision_status.assistant_project).toBe('error:503');
-    expect(out.provision_status.work_ontology).toBe('ok'); // ontology binds to the diary regardless
+    expect(out.provision_status.work_ontology).toBe('ok'); // ontology + self bind to the diary regardless
+    expect(out.provision_status.self_entity).toBe('ok');
   });
 
   it('a transport failure on the diary step is a recorded half-state (status 0), not a throw', async () => {
@@ -190,5 +214,6 @@ describe('AssistantController (WS-1.4 provisioning orchestrator)', () => {
     const out = await controller.provision({}, bearer('u1'));
     expect(out.provisioned).toBe(false);
     expect(out.provision_status.diary_book).toBe('error:0');
+    expect(out.provision_status.self_entity).toBe('skipped:no_diary');
   });
 });

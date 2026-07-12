@@ -35,7 +35,7 @@ interface ProvisionStatus {
   work_ontology: string; // 'ok' | 'skipped:no_diary' | 'error:<status>' (WS-1.5b — clone work kinds into the diary)
   // Steps that depend on not-yet-built slices — surfaced, never silently dropped:
   todays_session: string; // the ChatView creates it on first open (needs the user's model)
-  self_entity: string; // WS-1.5 (the is_self identity seed)
+  self_entity: string; // 'ok' | 'skipped:no_diary' | 'error:<status>' (WS-1.6 — seed the is_self identity)
   consent: string; // user opt-in only — NEVER auto-enabled as a provisioning side effect
   timezone: string; // D9 — explicit user confirm, never auto-set from the client zone
 }
@@ -118,11 +118,13 @@ export class AssistantController {
       status.diary_book = 'trashed';
       status.assistant_project = 'skipped:no_diary';
       status.work_ontology = 'skipped:no_diary';
+      status.self_entity = 'skipped:no_diary';
       return { provisioned: false, provision_status: status };
     } else {
       status.diary_book = `error:${diary.status}`;
       status.assistant_project = 'skipped:no_diary';
       status.work_ontology = 'skipped:no_diary';
+      status.self_entity = 'skipped:no_diary';
       return { provisioned: false, provision_status: status };
     }
     const bookId: string = diary.body.book_id;
@@ -161,6 +163,30 @@ export class AssistantController {
       status.work_ontology = adopt.ok ? 'ok' : `error:${adopt.status}`;
     }
 
+    // 5. Self entity (WS-1.6 §Q5) — seed the user's OWN identity entity in the diary, marked
+    //    is_self, so capture dedups the user's name onto it (they are not a colleague) and the
+    //    detectors can exclude it. Needs the display name (from the auth profile). Best-effort +
+    //    re-drivable, like the ontology; it depends on the diary + the adopted 'colleague' kind.
+    const authUrl = process.env.AUTH_SERVICE_URL;
+    if (!glossaryUrl || !internalToken || !authUrl) {
+      status.self_entity = 'error:not_configured';
+    } else {
+      const profile = await this.getInternal(
+        `${authUrl}/internal/users/${encodeURIComponent(userId)}/profile`,
+        internalToken,
+      );
+      const name =
+        profile.ok && typeof profile.body?.display_name === 'string' ? profile.body.display_name : '';
+      // name may be '' (profile unreachable) — the glossary endpoint defaults it to "Me", so
+      // the self-entity is still seeded (the user can rename it); the flag is what matters.
+      const self = await this.postInternal(
+        `${glossaryUrl}/internal/books/${bookId}/self-entity?user_id=${encodeURIComponent(userId)}`,
+        internalToken,
+        { name },
+      );
+      status.self_entity = self.ok ? 'ok' : `error:${self.status}`;
+    }
+
     return {
       provisioned: status.diary_book === 'ok' && status.assistant_project === 'ok',
       book_id: bookId,
@@ -186,6 +212,32 @@ export class AssistantController {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-internal-token': internalToken },
         body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
+  }
+
+  /** GET a token-gated /internal endpoint (e.g. the auth profile for the display name). Same
+   * never-throw, report-status contract as postInternal. */
+  private async getInternal(
+    url: string,
+    internalToken: string,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method: 'GET',
+        headers: { 'x-internal-token': internalToken },
         signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
       });
     } catch {
