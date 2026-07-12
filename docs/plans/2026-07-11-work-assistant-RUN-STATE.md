@@ -220,10 +220,10 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 ## 10. Completeness ledger (the definition of "done" for the whole run)
 
 - [x] **Phase 0** built, live-smoked, `/review-impl`-clean (28 findings fixed, 0 deferred)
-- [ ] **Phases 1–5 — IN PROGRESS (run ongoing; this ledger is kept current). ~55% of Phase 1 built + tested.**
-  - **Phase 1 ✅ so far:** WS-1.0–1.3 · **WS-1.4 CORE provisioning** (diary + assistant-project get-or-create + the BFF `/v1/assistant/provision` orchestrator; DR-12 fixed; **live-smoked**) · **WS-1.5 a+b** (work-ontology seed 0052 + the adopt-branch; DR-13 caught pre-ship; **live-smoked** — kinds clone VISIBLE into the diary) · **WS-1.6 a/b/c** (capture-decision data path, consumed-by-effect tested · `flavorWorkCapture` server-side from kind · the `is_self` column + one-per-book unique).
-  - **Phase 1 🔵 REMAINING (buildable, foundations in place — see the backlog below):** WS-1.4 8-step tail (session template, timezone confirm, consent, self-entity seed) · WS-1.6 d+ (is_self seed at provisioning + capture/detector exclusion, two-Minh disambiguation Q4, third-party preference-fact discipline Q6) · WS-1.7 session template · WS-1.8 distiller · WS-1.9 recall (`chat_search_sessions`; the blind-index primitive is BUILT, WS-1.0) · WS-1.10 FE shell + home-strip chip · WS-1.11 reflection.
-  - **Phase 2:** WS-2.7 crypto-shred ✅ (`/review-impl`-clean, DR-11 fixed). Rest of P2 (fact pipeline, review surface, D17 amendment, spend lane, the erasure worker) needs Phase-1 diary data (WS-1.8) — §7 P-6.
+- [ ] **Phases 1–5 — IN PROGRESS (run ongoing; this ledger is kept current). ~70% of Phase 1 built + tested — the HIGH-complexity distiller pipeline is now built + `/review-impl`-reviewed.**
+  - **Phase 1 ✅ so far:** WS-1.0–1.3 · **WS-1.4 CORE provisioning** (diary + assistant-project get-or-create + the BFF `/v1/assistant/provision` orchestrator; DR-12 fixed; **live-smoked**) · **WS-1.5 a+b** (work-ontology seed 0052 + the adopt-branch; DR-13 caught pre-ship; **live-smoked** — kinds clone VISIBLE into the diary) · **WS-1.6 P1 (a–e)** (capture-decision data path consumed-by-effect · `flavorWorkCapture` server-side from kind · the `is_self` column + one-per-book unique · the self-entity SEED endpoint · the BFF wiring — **live-smoked**) · **WS-1.8 distiller PIPELINE** (6 slices: `chat_messages.local_date`, the day-window read, the diary-entry write seam, the map-reduce core + all four red-team guards, the orchestrator, the provider-gateway LLM adapter — **21 unit + 11 real-Postgres DB tests; `/review-impl`-reviewed, no HIGH, 5 findings fixed**).
+  - **Phase 1 🔵 REMAINING:** WS-1.4 8-step tail (timezone confirm, consent) · WS-1.6 (f) detector-exclusion + Q4 two-Minh disambiguation + Q6 fact discipline (→ P2 with the fact path) · WS-1.7 session template · **WS-1.8 live-wired tail** (trigger/runner-scope/checkpoints/sweep/E2E — §7 P-10) · WS-1.9 recall (Q3 `chat_search_sessions` needs chat's first MCP server; Q1/Q2/Q4 → P2 with the fact path — the diary KG entities they read/guard don't exist until then) · WS-1.10 FE shell + home-strip chip · WS-1.11 reflection.
+  - **Phase 2:** WS-2.7 crypto-shred ✅ (`/review-impl`-clean, DR-11 fixed). Rest of P2 (fact pipeline, review surface, D17 amendment, spend lane WS-2.8, the erasure worker) needs Phase-1 diary data — the distiller PIPELINE is now built; its live-wired trigger (P-10) + the spend cap (WS-2.8) are the next unblockers — §7 P-6.
   - **Phases 3–5:** un-buildable in order until their Phase-1/2 deps exist (distiller, capture, spend lane); Phase 5 is spec-forbidden until R4's 4 prerequisites — §7 P-7/P-8/P-9.
 - [ ] Every parked problem (§7) resolved or accepted by PO — **5 open: P-1…P-5** (P-1/P-3 need a PO *decision*, not code)
 - [x] Every debt (§8) tracked with a pay-off trigger — **DBT-1 PAID**; DBT-2/3/4 open with triggers
@@ -240,26 +240,33 @@ feature**; a single autonomous run cannot finish it, and "ran out of run" is not
 reason under this repo's own defer gate. So the remaining slices are neither faked ✅ nor
 falsely parked — they are an honest **backlog** (below), and the built work is fully verified.
 
-**Shipped: ~32 commits since the run began.** **Phase 0 COMPLETE** (publish-independent KG
-indexing: 9 slices, 4→6 services, live-smoked, `/review-impl`-clean, 28 findings fixed).
-**Phase 1 ~55%:** WS-1.0–1.3 (envelope encryption + blind index + encrypted embeddings · the
-`books.kind` privacy lock · the core diary egress locks · the D6 fail-closed gate) · **WS-1.4
-CORE** (diary + assistant-project get-or-create + the BFF `/v1/assistant/provision` orchestrator
-— the gateway's first fan-out handler — DR-12 privacy gap fixed, **live-smoked**) · **WS-1.5 a+b**
-(work-ontology seed + adopt-branch, DR-13 caught pre-ship, **live-smoked** — kinds clone visible
-into the diary) · **WS-1.6 a/b/c** (capture-decision persisted + consumed-by-effect tested ·
-`flavorWorkCapture` server-side from kind · the `is_self` column + one-per-book unique).
+**Shipped: ~45 commits since the run began** (the latest ~13 built the WS-1.8 distiller pipeline).
+**Phase 0 COMPLETE** (publish-independent KG indexing: 9 slices, 4→6 services, live-smoked,
+`/review-impl`-clean, 28 findings fixed). **Phase 1 ~70%:** WS-1.0–1.3 (envelope encryption +
+blind index + encrypted embeddings · the `books.kind` privacy lock · the core diary egress locks ·
+the D6 fail-closed gate) · **WS-1.4 CORE** (diary + assistant-project get-or-create + the BFF
+`/v1/assistant/provision` orchestrator — the gateway's first fan-out handler — DR-12 privacy gap
+fixed, **live-smoked**) · **WS-1.5 a+b** (work-ontology seed + adopt-branch, DR-13 caught pre-ship,
+**live-smoked**) · **WS-1.6 P1 a–e** (capture-decision persisted + consumed-by-effect · work-flavor
+server-side from kind · the `is_self` column/unique + the self-entity seed endpoint + BFF wiring,
+**live-smoked**) · **WS-1.8 distiller PIPELINE** (the plan's one HIGH-complexity slice — 6 committed
+sub-slices: `chat_messages.local_date`, the day-window read seam, the diary-entry write seam, the
+map-reduce core with all four red-team guards (self-feeding/giant-paste/injection-laundering/
+low-signal), the orchestrator, and the provider-gateway chat adapter; **21 unit + 11 real-Postgres
+DB tests; `/review-impl`-reviewed — no HIGH findings, 5 (1 MED + 4 LOW) all fixed**).
 **Phase 2:** WS-2.7 crypto-shred (release requirement) `/review-impl`-clean, DR-11 fixed.
 Every built slice: committed, tested, `/review-impl`-reviewed, and live-smoked where it crosses
-services.
+services (the distiller's live E2E awaits its trigger wiring — P-10).
 
 **REMAINING BACKLOG (buildable, foundations in place; not blocked — this is scope, not a wall):**
-Phase 1: WS-1.4 8-step tail · WS-1.6 d+ (is_self seed+exclusions, Q4 disambiguation, Q6 fact
-discipline) · WS-1.7 session template · WS-1.8 distiller · WS-1.9 recall · WS-1.10 FE · WS-1.11
-reflection. Phase 2 rest (facts/review/D17/spend/erasure-worker; needs WS-1.8). Phase 3
-(scheduler; needs WS-1.8). Phase 4 (voice; needs capture+spend). Phase 5 (coaching; SPEC-FORBIDDEN
-until R4's 4 prerequisites). **Honest scope estimate: this is on the order of 15–20 more
-cross-service slices + 3 phases — days-to-weeks of build, not one run.**
+Phase 1: WS-1.4 8-step tail · WS-1.6 (f)/Q4/Q6 (→ P2 with the fact path) · WS-1.7 session template ·
+**WS-1.8 live-wired tail** (trigger + `distill_day` runner scope + checkpoints + bounded catch-up
+sweep + E2E — §7 P-10; the PIPELINE it wires is DONE) · WS-1.9 recall (Q3 chat-search needs chat's
+first MCP server; Q1/Q2/Q4 → P2 with the fact path) · WS-1.10 FE · WS-1.11 reflection. Phase 2 rest
+(facts/review/D17/spend WS-2.8/erasure-worker). Phase 3 (scheduler; needs the distiller live). Phase
+4 (voice; needs capture+spend). Phase 5 (coaching; SPEC-FORBIDDEN until R4's 4 prerequisites).
+**Honest scope estimate: on the order of 10–15 more cross-service slices + 3 phases — still
+days-to-weeks of build, not one run** (the hardest single slice, the distiller, is now behind us).
 
 **⚠️ PO DECISION NEEDED (only the human can make this — it is why the run cannot self-converge):**
 The `/goal` as written ("all phases done or parked") is unreachable in one autonomous run. To let
