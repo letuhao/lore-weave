@@ -4,6 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
+import { knowledgeApi } from '@/features/knowledge/api';
 import { assistantApi } from '../api';
 import type { ProvisionStatus } from '../types';
 
@@ -36,18 +37,21 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [consentSaving, setConsentSaving] = useState(false);
   // Bump to re-drive provisioning (e.g. after the user restores a trashed diary).
   const [attempt, setAttempt] = useState(0);
-  // Dedupe key = (token, attempt). This makes provisioning fire EXACTLY once per key and — crucially —
-  // survives React 18 StrictMode's dev double-invoke WITHOUT discarding the first run's result. (A
-  // per-run `cancelled` closure would be set true by the first invoke's cleanup, then the resolved
-  // provision would skip its setState → the page hangs on "Setting up…" forever. The live smoke caught
-  // exactly that.) Changing token or attempt changes the key, so reprovision still works.
+  // Dedupe key = the ATTEMPT number ONLY — deliberately NOT the access token. `accessToken` rotates on
+  // every silent 401-refresh (auth.tsx), and provisioning is idempotent + book/project don't change for
+  // the same user, so a token refresh must NOT re-provision. Keying on the token made a refresh re-enter
+  // this effect, flip `loading` true, and unmount <Chat>/<HomeStrip> mid-turn (audit HIGH #1). Keying on
+  // `attempt` fires provisioning exactly once per mount (+ once per explicit reprovision) and survives
+  // React 18 StrictMode's dev double-invoke without discarding the first run's result. The effect still
+  // depends on `accessToken` so it runs once the token is first available, but a later rotation is a
+  // no-op (same key → early return).
   const provisionedKeyRef = useRef<string>('');
 
   // Provisioning is a SYNCHRONIZATION with the server (get-or-create on open) — what useEffect is for.
   useEffect(() => {
     if (!accessToken) return;
-    const key = `${accessToken}:${attempt}`;
-    if (provisionedKeyRef.current === key) return; // already provisioning/provisioned this key
+    const key = String(attempt);
+    if (provisionedKeyRef.current === key) return; // already provisioning/provisioned this attempt
     provisionedKeyRef.current = key;
     setLoading(true);
     setError(null);
@@ -64,10 +68,24 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
               ? 'Your diary is in the trash — restore it to continue.'
               : 'The assistant could not finish setting up. Reopen to retry.',
           );
+          return;
+        }
+        // Seed the REAL consent state from the assistant project (audit MED #2): the toggle must show
+        // the persisted `canon_capture_enabled`, not a hard-coded false — otherwise a reload shows
+        // "off" while capture is running server-side, and (since the toggle only ever offers "turn on")
+        // the user can't turn it off. Best-effort: a failed read leaves the fail-closed false.
+        if (res.book_id) {
+          knowledgeApi
+            .listProjects({ book_id: res.book_id, limit: 1 }, accessToken)
+            .then((r) => {
+              const p = r.items[0];
+              if (p) setConsentEnabled(!!p.canon_capture_enabled);
+            })
+            .catch(() => {});
         }
       })
       .catch((e) => {
-        // Allow a retry of this key after a hard failure (network/auth), so Retry re-drives.
+        // Allow a retry of this attempt after a hard failure (network/auth), so Retry re-drives.
         provisionedKeyRef.current = '';
         setError(e instanceof Error ? e.message : 'Failed to reach the assistant.');
       })

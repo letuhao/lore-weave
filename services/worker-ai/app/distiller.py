@@ -115,6 +115,14 @@ class DistillComputeError(Exception):
     a user's whole productive day on a transient outage and never retry it (a silent-data-loss bug)."""
 
 
+class DistillEmptyOutput(Exception):
+    """The model CALL completed but returned NO usable text (empty/whitespace `content`). The archetype
+    is a reasoning model that emits everything as `reasoning_content` and leaves `content` empty at any
+    max_tokens (DBT-15). This is NOT retryable (the same model reproduces it) and NOT a low-signal day —
+    it is a MODEL-FIT problem the caller must be able to distinguish, so it surfaces the diagnosable
+    `no_entry_reason='model_no_output'` instead of being silently mislabeled 'low_signal' (audit HIGH)."""
+
+
 @dataclass
 class DistillOutcome:
     """The distiller's result. `entry` and `oversized_messages` are INDEPENDENT: a day can both
@@ -328,16 +336,29 @@ def parse_map_result(text: str) -> list[DistillFact]:
     return facts
 
 
-async def map_chunk(chunk: list[DayMessage], llm: LLMCall) -> tuple[list[DistillFact], bool]:
-    """Returns (facts, ok). ok=False means the model CALL failed (a provider/compute error) — the
-    caller must treat that as retryable, NOT as a chunk that legitimately had no facts, or a
-    transient outage silently erases the day. A successful call that yields no facts is (`[]`, True)."""
+def _is_blank_completion(raw: str) -> bool:
+    """The model returned no usable text (empty/whitespace). Distinct from 'valid output, no facts'."""
+    return not (raw or "").strip()
+
+
+async def map_chunk(chunk: list[DayMessage], llm: LLMCall) -> tuple[list[DistillFact], bool, bool]:
+    """Returns (facts, ok, blank). ok=False → the model CALL failed (provider/compute error) — the
+    caller treats it as retryable so a transient outage doesn't erase the day. blank=True → the call
+    SUCCEEDED but returned NO text (a reasoning model emitting only reasoning_content; DBT-15) — the
+    caller surfaces the diagnosable `model_no_output` reason instead of mislabeling it a low-signal
+    day (audit HIGH). A successful call that legitimately yields no facts is (`[]`, True, False)."""
     try:
         raw = await llm(build_map_prompt(chunk))
     except Exception:  # noqa: BLE001 — surfaced as ok=False so the day is retried, not dropped.
         logger.warning("distiller map chunk failed", exc_info=True)
-        return [], False
-    return parse_map_result(raw), True
+        return [], False, False
+    if _is_blank_completion(raw):
+        logger.warning(
+            "distiller map chunk: model returned a BLANK completion — the distill model produced no "
+            "output (a reasoning model? use a non-reasoning distill model; DBT-15/Q8)"
+        )
+        return [], True, True
+    return parse_map_result(raw), True, False
 
 
 # ── Reduce ───────────────────────────────────────────────────────────────────
@@ -380,14 +401,18 @@ def parse_entry_draft(text: str, language: str) -> EntryDraft | None:
 
 
 async def reduce_entry(facts: list[DistillFact], language: str, llm: LLMCall) -> EntryDraft | None:
-    """Returns the draft, or None for a genuinely empty/unparseable reduce of real facts. RAISES
-    DistillComputeError on a provider/model CALL failure — the facts existed and the compute failed,
-    which is retryable and must never be laundered into a 'low_signal no entry' that drops the day."""
+    """Returns the draft, or None for a genuinely parseable-but-empty reduce of real facts. RAISES
+    DistillComputeError on a provider/model CALL failure (retryable), and DistillEmptyOutput when the
+    call completed but returned NO text (a reasoning model — model_no_output, not low_signal). Neither
+    may be laundered into a 'low_signal no entry' that drops the day."""
     try:
         raw = await llm(build_reduce_prompt(facts, language))
     except Exception as exc:  # noqa: BLE001
         logger.warning("distiller reduce failed", exc_info=True)
         raise DistillComputeError("reduce call failed") from exc
+    if _is_blank_completion(raw):
+        logger.warning("distiller reduce: model returned a BLANK completion (reasoning model? DBT-15/Q8)")
+        raise DistillEmptyOutput("reduce returned no text")
     return parse_entry_draft(raw, language)
 
 
@@ -419,10 +444,13 @@ async def distill_day(
     chunks = chunk_day(normal, window)
     outcome.chunks_processed = len(chunks)
     all_facts: list[DistillFact] = []
+    blank_completions = 0  # chunks whose map call COMPLETED but returned no text (reasoning model)
     for chunk in chunks:
-        facts, ok = await map_chunk(chunk, llm)
+        facts, ok, blank = await map_chunk(chunk, llm)
         if not ok:
             outcome.map_failures += 1
+        if blank:
+            blank_completions += 1
         all_facts.extend(facts)
 
     # ANY map-chunk failure (partial OR total) means the day is INCOMPLETE — retry the WHOLE day,
@@ -439,8 +467,12 @@ async def distill_day(
         return outcome
 
     if not all_facts:
-        # No failures + no facts → a genuinely low-signal day: write NO entry (§Q11), never a stub.
-        outcome.no_entry_reason = "low_signal"
+        # No CALL failures + no facts. Distinguish two very different causes (audit HIGH): the model
+        # produced NO OUTPUT at all (blank completion — a reasoning model; diagnosable + actionable
+        # "switch models") vs a genuinely quiet day (valid output, nothing worth journaling). Silently
+        # collapsing the former into 'low_signal' makes a permanent daily data-loss indistinguishable
+        # from a real quiet day. Both write no entry; only the reason differs.
+        outcome.no_entry_reason = "model_no_output" if blank_completions else "low_signal"
         return outcome
     outcome.facts_found = len(all_facts)
 
@@ -450,6 +482,11 @@ async def distill_day(
         # The facts existed; the reduce CALL failed. Retry — do not fabricate a no-entry.
         outcome.error = "reduce_failed"
         outcome.retryable = True
+        return outcome
+    except DistillEmptyOutput:
+        # The facts existed but the reduce model returned NO text (reasoning model). Diagnosable, NOT
+        # low_signal, NOT retryable (the same model reproduces it). Surface it so it's not silent.
+        outcome.no_entry_reason = "model_no_output"
         return outcome
     if entry is None:
         # A real, parseable-but-empty reduce of real facts → genuinely low-signal, no entry.

@@ -281,11 +281,52 @@ func (s *Server) keepDiaryEntry(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_, _, _, ok = s.authBook(w, r, bookID, GrantOwner)
+	_, owner, _, ok := s.authBook(w, r, bookID, GrantOwner)
 	if !ok {
 		return
 	}
-	ct, err := s.pool.Exec(r.Context(), `
+	ctx := r.Context()
+
+	// The keep MUST take the SAME (owner, day) advisory lock the distiller's write seam
+	// (`upsertDiaryEntry`) uses. Without it there is a TOCTOU: a concurrent re-distill acquires the
+	// lock, reads `diary_kept_at`=NULL, and REPLACEs the body — while a keep commits in the gap between
+	// that read and the REPLACE — clobbering an entry the user just kept (multi-device: device A keeps
+	// while device B clicks "End my day"). Serializing keep vs re-distill on the lock closes it: once
+	// the keep holds the lock and sets `diary_kept_at`, the next re-distill sees it and 409s instead of
+	// overwriting. (audit MED — "a KEPT entry must NOT be clobbered".)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to keep entry")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// The entry's day is needed to compute the lock key; the read also validates it's an active diary
+	// entry of THIS book (→ 404 otherwise). entry_date is immutable per entry, so reading it before the
+	// lock is safe; the UPDATE below re-checks the row under the lock.
+	var entryDate time.Time
+	err = tx.QueryRow(ctx, `
+SELECT entry_date FROM chapters
+WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='active'`,
+		chID, bookID).Scan(&entryDate)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "DIARY_ENTRY_NOT_FOUND", "no active diary entry for that id")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read entry")
+		return
+	}
+
+	// Same lock key + acquisition as upsertDiaryEntry (owner|YYYY-MM-DD). Same lock-order (lock →
+	// write) as the upsert, so no deadlock.
+	lockKey := owner.String() + "|" + entryDate.Format("2006-01-02")
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, lockKey); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to acquire day lock")
+		return
+	}
+
+	ct, err := tx.Exec(ctx, `
 UPDATE chapters SET diary_kept_at = COALESCE(diary_kept_at, now()), updated_at = now()
 WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='active'`,
 		chID, bookID)
@@ -298,7 +339,14 @@ WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='act
 		return
 	}
 	var keptAt time.Time
-	_ = s.pool.QueryRow(r.Context(), `SELECT diary_kept_at FROM chapters WHERE id=$1`, chID).Scan(&keptAt)
+	if err := tx.QueryRow(ctx, `SELECT diary_kept_at FROM chapters WHERE id=$1`, chID).Scan(&keptAt); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read kept time")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to keep entry")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id": chID.String(), "kept": true, "diary_kept_at": keptAt.Format(time.RFC3339),
 	})

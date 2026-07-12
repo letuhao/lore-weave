@@ -106,6 +106,23 @@ async def test_low_signal_day_writes_no_entry_not_a_stub():
     assert llm.map_calls == 1  # the day was mapped; it just had nothing
 
 
+async def test_blank_map_completion_is_model_no_output_not_low_signal():
+    # Audit HIGH: a reasoning model returns an EMPTY completion (all budget spent as reasoning_content).
+    # This is a DIAGNOSABLE model-fit failure, NOT a quiet day — it must NOT be mislabeled low_signal
+    # (which is indistinguishable from a genuinely empty day, hiding permanent daily data-loss).
+    llm = FakeLLM(map_raw="")  # completed, but blank text
+    out = await d.distill_day(_msgs(("user", "we shipped v2 and Minh approved the budget")), "en", llm)
+    assert out.entry is None and out.no_entry_reason == "model_no_output"
+
+
+async def test_blank_reduce_completion_is_model_no_output():
+    # Same, but the map DID extract facts and the REDUCE model returned blank → still model_no_output
+    # (not low_signal, not a fabricated stub), so the facts aren't silently dropped as a quiet day.
+    llm = FakeLLM(map_facts=[{"kind": "decision", "text": "froze the budget", "provenance": "user"}], reduce_raw="")
+    out = await d.distill_day(_msgs(("user", "Minh froze the budget")), "en", llm)
+    assert out.entry is None and out.no_entry_reason == "model_no_output" and out.facts_found == 1
+
+
 async def test_a_map_outage_is_a_RETRYABLE_error_not_a_dropped_day():
     # The review's Finding 1: a total provider/model outage on the map step must NOT be laundered
     # into 'low_signal no-entry' (which would drop the user's whole day forever). It is retryable.

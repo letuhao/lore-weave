@@ -7,9 +7,12 @@ import { AssistantProvider, useAssistant } from '../context/AssistantContext';
 import { AssistantHomeStrip } from './AssistantHomeStrip';
 
 function AssistantPageInner() {
-  const { loading, error, provisioned, bookId, reprovision } = useAssistant();
+  const { loading, error, provisioned, bookId, projectId, reprovision } = useAssistant();
 
-  if (loading) {
+  // Only show the full-surface spinner during the INITIAL provisioning (before we have a bookId).
+  // A later background re-provision must NOT blank the mounted <Chat> (audit HIGH #1 defense — the
+  // primary fix is that a token refresh no longer re-provisions at all).
+  if (loading && !bookId) {
     return (
       <div className="flex h-full items-center justify-center" data-testid="assistant-loading">
         <p className="text-sm text-muted-foreground">Setting up your assistant…</p>
@@ -17,7 +20,10 @@ function AssistantPageInner() {
     );
   }
 
-  if (error || !provisioned || !bookId) {
+  // Gate on projectId too (audit LOW #4): `provisioned` already implies the assistant project exists,
+  // but if it were ever null the consent toggle would render permanently dead — surface an error
+  // (with Retry) instead of a silently-disabled control.
+  if (error || !provisioned || !bookId || !projectId) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3" data-testid="assistant-error">
         <p className="max-w-sm text-center text-sm text-muted-foreground">

@@ -46,6 +46,26 @@ export function useEndOfDay(bookId: string | null) {
         model_ref: assistant.model_ref,
       });
       const targetDate = res.entry_date;
+      if (!targetDate) {
+        // The server always echoes the day it enqueued. Its absence means we can't identify THIS
+        // day's entry — and we must NEVER fall back to "the newest existing entry", which could
+        // surface YESTERDAY's diary as if freshly distilled (audit MED #3).
+        throw new Error('The assistant could not start your entry — please try again.');
+      }
+
+      // Freshness baseline: capture the day's EXISTING entry timestamp (if any) BEFORE the re-distill
+      // overwrites it, so a same-day re-run waits for the NEW draft rather than instantly showing the
+      // stale pre-existing one (audit MED #3). Best-effort — a failed read just means "no baseline".
+      let baselineUpdatedAt: string | null = null;
+      try {
+        const pre = await assistantApi.listDiaryEntries(accessToken, bookId);
+        const existing = pre.entries.find(
+          (e) => e.entry_date === targetDate && e.journal_kind === 'primary',
+        );
+        baselineUpdatedAt = existing?.draft_updated_at ?? null;
+      } catch {
+        /* no baseline — first-write case is handled below */
+      }
 
       // Poll for the distilled entry (the map-reduce runs async on worker-ai).
       for (let i = 0; i < POLL_MAX_TRIES; i++) {
@@ -53,7 +73,14 @@ export function useEndOfDay(bookId: string | null) {
         if (!mounted.current) return;
         const list = await assistantApi.listDiaryEntries(accessToken, bookId);
         const found = list.entries.find(
-          (e) => (!targetDate || e.entry_date === targetDate) && e.journal_kind === 'primary' && e.body.trim(),
+          (e) =>
+            e.entry_date === targetDate &&
+            e.journal_kind === 'primary' &&
+            e.body.trim() &&
+            // FRESH: no prior entry for the day, OR this one was written AFTER the baseline
+            // (draft_updated_at is server RFC3339 → lexicographic compare == chronological).
+            (baselineUpdatedAt === null ||
+              (!!e.draft_updated_at && e.draft_updated_at > baselineUpdatedAt)),
         );
         if (found) {
           if (mounted.current) {
