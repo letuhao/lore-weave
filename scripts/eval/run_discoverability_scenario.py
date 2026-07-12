@@ -154,16 +154,26 @@ DISCOVERY_TOOLS = {
 # Tools that start an async job — "started != done"; §10 requires a status-read
 # to precede any completion claim (async honesty, F7).
 ASYNC_JOB_TOOLS = {
-    "plan_propose_spec", "kg_build_graph", "kg_build_wiki",
+    "kg_build_graph", "kg_build_wiki",
     "composition_generate",
     "translation_start", "translation_run",
 }
-# NOTE: glossary_extract_entities_from_doc was here but is SYNCHRONOUS in the product
-# (the vision-to-book rail authors it `async_job:false`; it returns candidates inline with
-# no job handle). Listing it here flagged a sync tool as an unpolled async job — a false
-# §4 violation. A genuinely-async call is still caught by the `or job_ids` check below.
-# Result keys that carry an async job/operation handle.
-_JOB_ID_KEYS = ("job_id", "operation_id", "task_id", "run_id", "arc_id")
+# NOTE: two tools were removed from this static list because they are CONDITIONALLY async,
+# and listing them here flagged their SYNCHRONOUS uses as unpolled async jobs (false §4
+# violations). A genuinely-async call is still caught by the `or job_ids` check below, so
+# real async work is never missed:
+#   - glossary_extract_entities_from_doc — SYNCHRONOUS in the product (the vision-to-book
+#     rail authors it `async_job:false`; returns candidates inline, no job handle).
+#   - plan_propose_spec — async ONLY in mode="llm" (returns a job handle); in mode="rules"
+#     it finalizes synchronously (no job_id, plan_run.active_job_id=NULL). The flagship rail
+#     runs it in rules mode, so there is no async job to poll.
+# Result keys that carry an ACTUAL async job/operation handle. `run_id` and `arc_id` were
+# here but they are RESOURCE identifiers (a plan run, an arc), present in SYNCHRONOUS results
+# too — a rules-mode plan_propose_spec returns its `run_id` with NO background job, and the
+# harness was counting that as an "async job left unpolled" (a false §4 violation). An actual
+# async job is signalled by a job/operation/task handle, or by a populated `active_job_id`
+# (the plan run's live background job — set in mode="llm", None/absent in mode="rules").
+_JOB_ID_KEYS = ("job_id", "operation_id", "task_id", "active_job_id")
 # A later call whose name hints it read a status (used to credit async honesty).
 _STATUS_READ_RE = re.compile(r"(status|poll|_get\b|get_|_jobs?\b|coverage|self_check|checkpoint)", re.I)
 # find_tools arg keys that carry the intent/query text.
@@ -900,8 +910,23 @@ def main() -> int:
                 utext = turn["user"] if isinstance(turn, dict) else str(turn)
                 mv = turn.get("movement") if isinstance(turn, dict) else None
                 t0 = time.time()
-                res = _send_turn(c, sid, utext, context=context, carry=carry,
-                                 enabled_skills=enabled_skills, permission_mode=perm)
+                try:
+                    res = _send_turn(c, sid, utext, context=context, carry=carry,
+                                     enabled_skills=enabled_skills, permission_mode=perm)
+                except Exception as exc:
+                    # A transient infra hiccup on ONE turn (e.g. a languagetool-OOM 502 on
+                    # a late wrap-up turn) must not discard the whole run's metrics — record
+                    # the turn as errored and keep going so the report + metrics still write.
+                    dt = time.time() - t0
+                    print(f"      turn {i} [{mv or '-'}]: ERRORED after {dt:.0f}s — {type(exc).__name__}: {str(exc)[:120]}")
+                    records.append({
+                        "scenario": sid_of, "turn": i, "movement": mv,
+                        "movement_label": mv_labels.get(mv, ""), "user": utext,
+                        "assistant": "", "budget_total": None, "budget": None,
+                        "tools": [], "latency_s": round(dt, 1), "session_id": sid,
+                        "error": f"{type(exc).__name__}: {str(exc)[:200]}",
+                    })
+                    continue
                 dt = time.time() - t0
                 rec = {
                     "scenario": sid_of, "turn": i,
