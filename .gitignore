@@ -305,3 +305,5 @@ docs/specs/2026-06-30-editor-compose-overhaul/poc/io/
 # real runs are saved under docs/eval/discoverability/runs/)
 /scratch-s06*/
 /.stage1-wave1-report.json
+
+docs/eval/discoverability/runs/

@@ -196,6 +196,50 @@ async def queue_diary_facts(body: _QueueDiaryFactsIn) -> dict:
     }
 
 
+class _RecallFactsIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    event_date_from: str | None = None   # ISO 'YYYY-MM-DD' inclusive lower bound
+    event_date_to: str | None = None     # ISO 'YYYY-MM-DD' inclusive upper bound
+    subject_name: str | None = None      # narrow to facts ABOUT this person/thing
+    limit: int = 50
+
+
+@router.post("/assistant/recall-facts")
+async def recall_assistant_facts(body: _RecallFactsIn) -> dict:
+    """WS-2.4 — the diary's date-filtered KG recall. Resolves the user's assistant project by (user,
+    book), then returns confirmed :Fact nodes in the event_date range (optionally ABOUT a subject),
+    newest-first. This is the read that answers "what did <subject> say about <topic> last month" — it
+    is project-scoped (never all-projects), so it cannot surface another project's facts (D16)."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.facts import recall_facts
+
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    async with neo4j_session() as session:
+        facts = await recall_facts(
+            session,
+            user_id=str(body.user_id),
+            project_id=str(project.project_id),
+            event_date_from=body.event_date_from,
+            event_date_to=body.event_date_to,
+            subject_name=body.subject_name,
+            limit=body.limit,
+        )
+    return {
+        "project_id": str(project.project_id),
+        "count": len(facts),
+        "facts": [
+            {
+                "type": f.type, "content": f.content,
+                "event_date_iso": f.event_date_iso,
+                "valid_from_ordinal": f.valid_from_ordinal,
+            }
+            for f in facts
+        ],
+    }
+
+
 class _RejectDiaryFactIn(BaseModel):
     user_id: UUID
     pending_fact_id: UUID

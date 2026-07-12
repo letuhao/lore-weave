@@ -34,7 +34,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.db.models import PendingFact
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.facts import Fact, merge_fact
+from app.db.neo4j_repos.entities import merge_entity
+from app.db.neo4j_repos.facts import Fact, days_since_epoch, merge_fact
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.deps import get_pending_facts_repo
 from app.middleware.jwt_auth import get_current_user
@@ -100,22 +101,64 @@ async def confirm_pending_fact(
         raise _not_found()
 
     async with neo4j_session() as session:
-        fact = await merge_fact(
-            session,
-            user_id=str(user_id),
-            project_id=str(pending.project_id) if pending.project_id else None,
-            type=pending.fact_type,
-            content=pending.fact_text,
-            confidence=_TOOL_FACT_CONFIDENCE,
-            pending_validation=False,
-            source_type=_TOOL_FACT_SOURCE_TYPE,
-        )
+        fact = await _promote_pending_fact(session, user_id, pending)
 
     # Graph write succeeded — drop the queue row. A delete returning
     # False here would mean a concurrent confirm/reject already drained
     # it; the fact is written either way, so we don't fail the request.
     await repo.delete(user_id, pending_fact_id)
     return fact
+
+
+# WS-2.4 — the diary subject is materialized as a plain :Entity so the :ABOUT edge exists. Most diary
+# subjects are colleagues ("what did <colleague> say"); 'person' is the pragmatic default kind. The kind
+# is only a KG label here (recall matches by canonical_name, not kind), so this doesn't touch the
+# tenant-scoped codex kinds.
+_DIARY_SUBJECT_KIND = "person"
+
+
+async def _promote_pending_fact(session, user_id: UUID, pending: PendingFact) -> Fact:
+    """Write a confirmed pending fact to the graph. A WS-2.2 STRUCTURED diary fact (has a subject +
+    event_date) takes the WS-2.4 temporal path: its subject becomes an :Entity, the fact gets an :ABOUT
+    edge to it + a NOT-NULL valid_from_ordinal = days_since_epoch(event_date) + event_date_iso, so the
+    date-filtered recall read can find it. maintain_chain is NEVER set on this path — the diary key is
+    (subject, fact_type) and chain maintenance would blind-close unrelated decisions (spec 07 §Q2).
+    A coarse fact (no subject) takes the legacy single-MERGE path unchanged."""
+    project_id = str(pending.project_id) if pending.project_id else None
+
+    subject_id: str | None = None
+    valid_from_ordinal: int | None = None
+    event_date_iso: str | None = None
+    if pending.subject and pending.project_id and pending.event_date is not None:
+        entity = await merge_entity(
+            session,
+            user_id=str(user_id),
+            project_id=project_id,
+            name=pending.subject,
+            kind=_DIARY_SUBJECT_KIND,
+            source_type=_TOOL_FACT_SOURCE_TYPE,
+            confidence=_TOOL_FACT_CONFIDENCE,
+            auto_created=True,
+            provenance="user_authored",
+        )
+        subject_id = entity.id
+        valid_from_ordinal = days_since_epoch(pending.event_date)
+        event_date_iso = pending.event_date.isoformat()
+
+    return await merge_fact(
+        session,
+        user_id=str(user_id),
+        project_id=project_id,
+        type=pending.fact_type,
+        content=pending.fact_text,
+        confidence=_TOOL_FACT_CONFIDENCE,
+        pending_validation=False,
+        source_type=_TOOL_FACT_SOURCE_TYPE,
+        subject_id=subject_id,
+        valid_from_ordinal=valid_from_ordinal,
+        event_date_iso=event_date_iso,
+        maintain_chain=False,  # diary path never drives the (subject, type) chain (spec 07 §Q2)
+    )
 
 
 @router.post(

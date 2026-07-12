@@ -29,8 +29,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import date as date_cls
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field
 
@@ -60,7 +61,10 @@ __all__ = [
 # Closed enum per KSA §5.1. New types require both a code change
 # and an extraction-side pattern, so a Literal is fine.
 FactType = Literal["decision", "preference", "milestone", "negation", "statement"]
-FACT_TYPES: tuple[str, ...] = ("decision", "preference", "milestone", "negation")
+# DERIVE the runtime validation tuple from the Literal — never hand-maintain a parallel copy. WS-2.1
+# added 'statement' to the Literal but a hand-kept tuple missed it, so a statement fact queued fine yet
+# 500'd at merge_fact (caught by the WS-2.4 live smoke). get_args keeps the two in lockstep by design.
+FACT_TYPES: tuple[str, ...] = get_args(FactType)
 
 
 def fact_id(
@@ -468,6 +472,82 @@ async def list_facts_by_type(
         min_confidence=min_confidence,
         exclude_pending=exclude_pending,
         include_archived=include_archived,
+        limit=limit,
+    )
+    return [_node_to_fact(record["f"]) async for record in result]
+
+
+# ── WS-2.4 (spec 07 §Q2) — diary recall: days-since-epoch ordinal + a date-filtered read ───────────
+#
+# The headline promise "what did <person> say about <topic> last month" had NO query that could answer
+# it: every diary fact was invisible because valid_from_ordinal was NULL (dropped by the position
+# window) and the only date FILTER in the codebase was on :Event, never :Fact. This restores it:
+#   1. days_since_epoch(entry_date) — a diary is perfectly ordinal (one primary entry per day, strictly
+#      ordered), so this is a NOT-NULL valid_from_ordinal that re-arms every position-aware path.
+#   2. recall_facts — a date-filtered :Fact read mirroring the :Event event_date_iso range predicate,
+#      optionally narrowed to a subject via the :ABOUT edge (the "what did X say" half).
+
+_EPOCH_DAY = datetime(1970, 1, 1)
+
+
+def days_since_epoch(d: date_cls) -> int:
+    """The diary's story-time ordinal: whole days from the Unix epoch. Strictly increasing per calendar
+    day, so it orders diary entries exactly and gives merge_fact a NOT-NULL valid_from_ordinal."""
+    return (datetime(d.year, d.month, d.day) - _EPOCH_DAY).days
+
+
+# A date-filtered recall read. Unlike list_facts_by_type (project-wide, top-N-by-confidence, date-blind)
+# this is the net-new read spec 07 §Q2 demanded: filter by event_date_iso range (the :Event idiom) and,
+# when a subject is given, require an (:Fact)-[:ABOUT]->(:Entity{canonical_name}) edge. project_id is
+# REQUIRED (never the all-projects fallback) so a non-assistant caller can't pull diary facts (D16).
+_RECALL_FACTS_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND coalesce(f.pending_validation, false) = false
+  AND f.valid_until IS NULL
+  AND f.archived_at IS NULL
+  AND f.confidence >= $min_confidence
+  AND ($event_date_from IS NULL OR f.event_date_iso >= $event_date_from)
+  AND ($event_date_to   IS NULL OR f.event_date_iso <= $event_date_to)
+  AND (
+    $subject_name IS NULL OR EXISTS {
+      MATCH (f)-[:ABOUT]->(e:Entity)
+      WHERE e.user_id = $user_id AND toLower(e.canonical_name) = toLower($subject_name)
+    }
+  )
+RETURN f
+ORDER BY coalesce(f.event_date_iso, '') DESC, coalesce(f.valid_from_ordinal, 0) DESC, f.created_at DESC
+LIMIT $limit
+"""
+
+
+async def recall_facts(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    event_date_from: str | None = None,
+    event_date_to: str | None = None,
+    subject_name: str | None = None,
+    min_confidence: float = 0.0,
+    limit: int = 50,
+) -> list[Fact]:
+    """WS-2.4 — the diary's date-filtered recall read. Returns active facts in [event_date_from,
+    event_date_to] (truncated-ISO string compare, the :Event idiom), newest-first, optionally narrowed
+    to those ABOUT `subject_name`. project_id is required — recall never spans all of a user's projects
+    (D16: a novel-writing session must not surface work facts)."""
+    if not project_id:
+        raise ValueError("recall_facts requires an explicit project_id (D16 — no all-projects recall)")
+    result = await run_read(
+        session,
+        _RECALL_FACTS_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        event_date_from=event_date_from,
+        event_date_to=event_date_to,
+        subject_name=(subject_name or None),
+        min_confidence=min_confidence,
         limit=limit,
     )
     return [_node_to_fact(record["f"]) async for record in result]
