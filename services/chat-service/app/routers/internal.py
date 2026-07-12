@@ -9,7 +9,7 @@ aggregated from chat_messages.tool_calls so MCP-reliability work is measurable.
 """
 
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 import asyncpg
@@ -190,6 +190,45 @@ async def day_window(
         "truncated": truncated,
         "messages": messages,
     }
+
+
+class DistillTrigger(BaseModel):
+    """A1 / P-10 — the "End my day" trigger body. The caller (gateway/FE) supplies the diary book +
+    the distill model (Q8 server-side model resolution is a follow-up). `entry_date`/`entry_zone`
+    are OPTIONAL and default SERVER-side (D-R14: never trust a client-supplied calendar day)."""
+
+    user_id: UUID
+    book_id: UUID
+    model_source: str
+    model_ref: UUID
+    language: str = "en"
+    entry_date: date | None = None  # default: today in entry_zone (server-computed)
+    entry_zone: str = "UTC"         # A4 will resolve the user's IANA zone from prefs.timezone
+
+
+@router.post("/assistant/distill", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_distill(body: DistillTrigger) -> dict:
+    """Enqueue an `assistant.distill` job — the "End my day" trigger. worker-ai's DistillConsumer
+    runs the map-reduce → diary-entry pipeline. Returns 202 with the enqueued entry_date + message id.
+
+    `entry_date` is SERVER-authoritative (D-R14): if the caller omits it we stamp today's date in
+    `entry_zone` — a client-controlled calendar day could otherwise mis-bucket or overwrite history."""
+    from app.events.distill_enqueue import enqueue_distill
+
+    entry_date = body.entry_date or datetime.now(timezone.utc).date()
+    try:
+        msg_id = await enqueue_distill(
+            user_id=str(body.user_id),
+            book_id=str(body.book_id),
+            entry_date=entry_date.isoformat(),
+            entry_zone=body.entry_zone or "UTC",
+            language=body.language or "en",
+            model_source=body.model_source,
+            model_ref=str(body.model_ref),
+        )
+    except Exception as exc:  # noqa: BLE001 — a lost enqueue = a silently un-journaled day; surface it.
+        raise HTTPException(status_code=503, detail=f"failed to enqueue distill: {exc}") from exc
+    return {"enqueued": True, "entry_date": entry_date.isoformat(), "message_id": msg_id}
 
 
 @telemetry_router.get("/tool-health", dependencies=[Depends(require_internal_token)])

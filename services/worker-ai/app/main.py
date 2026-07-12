@@ -156,6 +156,26 @@ async def main() -> None:
     else:
         logger.info("summary consumer disabled via config")
 
+    # A1 / P-10 (spec 06 §Q2) — the "End my day" distiller trigger. Consumes `assistant.distill`
+    # jobs and runs the built distiller pipeline (day-window read → map-reduce → diary-entry write)
+    # with the real chat/book clients + the provider-gateway LLM adapter. Config-gated so it is inert
+    # until an assistant is provisioned to enqueue.
+    if settings.distill_consumer_enabled:
+        from app.distill_consumer import DistillConsumer
+        _distill_consumer = DistillConsumer(
+            settings.redis_url,
+            chat_client,
+            book_client,
+            llm_client,
+            consumer_group=settings.distill_consumer_group,
+            consumer_name=settings.distill_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+        )
+        coroutines.append(_distill_consumer.run())
+        logger.info("A1: assistant.distill consumer started (group=%s)", settings.distill_consumer_group)
+    else:
+        logger.info("distill consumer disabled via config")
+
     # LLM re-arch Phase 2b WX-T3b — decoupled-extraction terminal-event consumer.
     # Started only when the decouple flag is on (inert otherwise — no decoupled
     # chunks exist so every event would ack+ignore). Drives entity→trio→persist off

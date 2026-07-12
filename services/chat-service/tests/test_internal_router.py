@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -179,3 +179,51 @@ async def test_day_window_shape_and_truncation_via_mock(client, mock_pool):
     assert body["messages"][1]["tool_names"] == []  # NULL tool_calls → empty list, not null
     assert body["messages"][0]["local_date"] == "2026-03-10"
     assert body["messages"][0]["created_at"].startswith("2026-03-10T09:00")
+
+
+# ── A1 / P-10 — POST /internal/assistant/distill (the "End my day" trigger) ──
+
+_DISTILL = "/internal/chat/assistant/distill"
+
+
+def _distill_body(**over):
+    b = {"user_id": str(uuid4()), "book_id": str(uuid4()),
+         "model_source": "user_model", "model_ref": str(uuid4())}
+    b.update(over)
+    return b
+
+
+@pytest.mark.asyncio
+async def test_distill_trigger_requires_internal_token(client):
+    r = await client.post(_DISTILL, json=_distill_body())
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_distill_trigger_enqueues_with_server_default_entry_date(client):
+    # entry_date omitted → the endpoint stamps TODAY server-side (D-R14: never trust a client day).
+    today = datetime.now(timezone.utc).date().isoformat()
+    with patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(return_value="1-0")) as enq:
+        r = await client.post(_DISTILL, json=_distill_body(language="vi"), headers=_AUTH)
+    assert r.status_code == 202
+    body = r.json()
+    assert body["enqueued"] is True and body["entry_date"] == today and body["message_id"] == "1-0"
+    kw = enq.await_args.kwargs
+    assert kw["entry_date"] == today and kw["entry_zone"] == "UTC" and kw["language"] == "vi"
+    assert kw["model_source"] == "user_model"
+
+
+@pytest.mark.asyncio
+async def test_distill_trigger_honours_an_explicit_entry_date(client):
+    with patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(return_value="1-0")) as enq:
+        r = await client.post(_DISTILL, json=_distill_body(entry_date="2026-03-10"), headers=_AUTH)
+    assert r.status_code == 202 and r.json()["entry_date"] == "2026-03-10"
+    assert enq.await_args.kwargs["entry_date"] == "2026-03-10"
+
+
+@pytest.mark.asyncio
+async def test_distill_trigger_surfaces_an_enqueue_failure_as_503(client):
+    # A lost enqueue = a silently un-journaled day → must NOT be swallowed (503, not 202).
+    with patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(side_effect=RuntimeError("redis down"))):
+        r = await client.post(_DISTILL, json=_distill_body(), headers=_AUTH)
+    assert r.status_code == 503

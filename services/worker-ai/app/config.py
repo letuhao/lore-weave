@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     summary_consumer_enabled: bool = True
     summary_consumer_group: str = "worker-ai-summarize"
     summary_consumer_name: str = "worker-ai-1"
+
+    # A1 / P-10 — the assistant.distill ("End my day") consumer.
+    distill_consumer_enabled: bool = True
+    distill_consumer_group: str = "worker-ai-distill"
+    distill_consumer_name: str = "worker-ai-1"
     # XREADGROUP BLOCK timeout (ms). Short enough to react to shutdown
     # promptly; long enough to avoid CPU spin when idle.
     summary_consumer_block_ms: int = 5000
