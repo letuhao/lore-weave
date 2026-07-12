@@ -24,7 +24,7 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
 from app.db.repositories.works import WorksRepo
 from app.engine.plan_forge.compile import compile_artifacts, mock_pipeline_result
-from app.engine.plan_forge.coverage import load_coverage_context
+from app.engine.plan_forge.coverage import build_section_map_from_text, load_coverage_context
 from app.engine.plan_forge.decompose import build_graph
 from app.engine.plan_forge.elaborate import consistency_audit
 from app.engine.plan_forge.eval_fidelity import evaluate_spec_fidelity, load_fidelity_config
@@ -32,15 +32,17 @@ from app.engine.plan_forge.ingest import ingest_markdown
 from app.engine.plan_forge.interpret import interpret_feedback, interpret_rules
 from app.engine.plan_forge.llm import ProviderPlanForgeLLM
 from app.engine.plan_forge.propose import propose_spec
-from app.engine.plan_forge.self_check import run_self_check
+from app.engine.plan_forge.self_check import run_self_check, run_self_check_on_document
 from app.engine.plan_forge.validate import _deep_merge, run_rules
 from app.worker.events import enqueue_job
 from app.worker.operations import run_plan_forge_propose, run_plan_forge_refine
 
 logger = logging.getLogger(__name__)
 
-_FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "plan-forge"
-_FIDELITY = _FIXTURES / "story-plan-v1.fidelity.yaml"
+# 27 PF-19 — the POC fixture is REGRESSION-HARNESS-ONLY from here on (09 §8b). No production path
+# in this service may read `story-plan-v1.md` / `.fidelity.yaml`: coverage, gaps and fidelity are
+# computed against the RUN'S OWN document + rubric, or not at all. A constant pointing at the
+# fixture is how the last three call sites found it, so it is gone rather than merely unused.
 
 
 def _spec_checksum(spec: dict[str, Any] | None) -> str:
@@ -426,13 +428,18 @@ class PlanForgeService:
             for r in rules_out
         ]
         all_pass = passed_rules
-        if _FIDELITY.exists():
+        # 27 PF-19 — `fidelity_score` stays None unless a PER-RUN rubric exists.
+        #
+        # It used to be scored against `story-plan-v1.fidelity.yaml`: every user's plan was graded
+        # on how closely it resembled the POC's novel, and the number looked like a real quality
+        # score. A meaningless number is worse than no number — you can act on `None`.
+        fidelity_cfg = await self._run_fidelity_config(book_id, run_id)
+        if fidelity_cfg:
             try:
-                fidelity_cfg = load_fidelity_config(_FIDELITY)
                 fidelity = evaluate_spec_fidelity(spec, fidelity_cfg)
                 fidelity_score = fidelity.get("score")
             except Exception:
-                pass
+                logger.warning("validate: per-run fidelity scoring failed", exc_info=True)
         # D-PLANFORGE-GENERAL-VALIDATE: a `validate_golden(...)` call used to sit
         # here, but its args were passed in the wrong order for this function's
         # real signature (spec, package, graph, doc, golden_path) -- it threw on
@@ -863,18 +870,18 @@ class PlanForgeService:
         doc_art = await self._runs.latest_artifact(book_id, run_id, "document")
         section_map: list[dict[str, Any]] = []
         self_check_report = None
-        if _FIDELITY.exists() and doc_art is not None:
+        # 27 PF-19 — the section map comes from THIS RUN'S document, not the POC's. Feeding the
+        # interpreter another book's section headings gave it a map of a story the user never wrote.
+        doc_md = await self._document_markdown(book_id, run_id)
+        if doc_md:
             try:
-                section_map, fidelity_cfg = load_coverage_context(
-                    _FIXTURES / "story-plan-v1.md", _FIDELITY,
-                )
-                self_check_report = run_self_check(
-                    spec, _FIXTURES / "story-plan-v1.md", _FIDELITY,
+                section_map = build_section_map_from_text(doc_md)
+                self_check_report = run_self_check_on_document(
+                    spec, doc_md, await self._run_fidelity_config(book_id, run_id),
                 )
             except Exception:
-                section_map, _ = load_coverage_context(
-                    _FIXTURES / "story-plan-v1.md", _FIDELITY,
-                ) if _FIDELITY.exists() else ([], {})
+                logger.warning("interpret: own-document coverage failed", exc_info=True)
+                section_map = []
 
         if self._llm is not None:
             client = ProviderPlanForgeLLM(
@@ -928,9 +935,15 @@ class PlanForgeService:
         spec = spec_art.content
         gaps: list[dict[str, Any]] = []
         fidelity_score = None
-        if _FIDELITY.exists():
+        # 27 PF-19 — the gaps are against THIS RUN'S OWN document. Before this, "what is missing from
+        # your plan" answered "what does your plan not have that the POC's novel does" — a fixture
+        # constant with extra steps (DA-14), delivered to the user as advice.
+        doc_md = await self._document_markdown(book_id, run_id)
+        if doc_md:
             try:
-                report = run_self_check(spec, _FIXTURES / "story-plan-v1.md", _FIDELITY)
+                report = run_self_check_on_document(
+                    spec, doc_md, await self._run_fidelity_config(book_id, run_id),
+                )
                 fidelity_score = (report.get("fidelity") or {}).get("score")
                 for g in report.get("ranked_gaps") or []:
                     gaps.append({
@@ -939,7 +952,7 @@ class PlanForgeService:
                         "message": g.get("detail", ""),
                     })
             except Exception:
-                pass
+                logger.warning("self_check: own-document coverage failed", exc_info=True)
         if not gaps:
             audit = consistency_audit(spec)
             for c in audit.get("critical") or []:
@@ -948,6 +961,151 @@ class PlanForgeService:
                 if not r["pass"]:
                     gaps.append({"path": r["rule"], "severity": "warn", "message": r.get("detail", "")})
         return {"gaps": gaps, "fidelity_score": fidelity_score}
+
+    # ── 27 PF-19 — fixture severing ─────────────────────────────────────────────────────────
+    async def _document_markdown(self, book_id: UUID, run_id: UUID) -> str:
+        """The run's OWN source markdown.
+
+        It lives on `plan_run.source_markdown` — every run persists it. (NOT on the `document`
+        artifact: `ingest_markdown` stores only the PARSED sections plus a checksum, so the raw text
+        is not there. I reached for the artifact first and it silently returned "" — which would
+        have quietly disabled coverage for every run rather than pointing it at the right source.)
+
+        Returns "" when a run has no source. The callers then compute NOTHING — they do not fall
+        back to the fixture, because a coverage report against someone else's novel is not a
+        degraded answer, it is a wrong one.
+        """
+        run = await self._runs.get_for_book(book_id, run_id)
+        return (run.source_markdown or "") if run else ""
+
+    async def _run_fidelity_config(self, book_id: UUID, run_id: UUID) -> dict[str, Any]:
+        """This run's OWN fidelity rubric, or {} — never the POC's.
+
+        A fidelity score is a grade against a rubric. With no per-run rubric there is no honest
+        grade, so callers report `None` (absent), never a number derived from another book's rubric.
+        The fixture YAML is regression-harness-only from here on (09 §8b).
+        """
+        art = await self._runs.latest_artifact(book_id, run_id, "validation_report")
+        cfg = (art.content or {}).get("fidelity_config") if art else None
+        return cfg if isinstance(cfg, dict) else {}
+
+    # ── 27 V2-F1 — the pass ledger (read) ───────────────────────────────────────────────────
+    async def pass_status(
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
+    ) -> dict[str, Any] | None:
+        """The run's DERIVED pass view: per-pass freshness, the cursor, and what is blocking.
+
+        Nothing here is stored. `fresh`, `pass_cursor` and `blocked_at` are all recomputed from the
+        recorded fingerprints against the CURRENT input pointers, every read — which is the only way
+        a staleness report cannot itself be stale (PF-3/DA-7).
+        """
+        from app.services.plan_pass_service import PACKAGE_KIND, derive_view
+
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            return None
+        package = await self._runs.latest_artifact(book_id, run_id, PACKAGE_KIND)
+        return {
+            "run_id": str(run_id),
+            "book_id": str(book_id),
+            "genre_tags": list(run.genre_tags or []),
+            # Absent ≠ zero: a run that has never compiled has NO package, and every
+            # package-reading pass is therefore un-runnable. Say so, rather than reporting seven
+            # tidy "pending" rows that imply the compiler is merely waiting to be told to go.
+            "compiled": package is not None,
+            **derive_view(run, package_artifact_id=package.id if package else None),
+        }
+
+    # ── 27 V2-F1 — re-link ──────────────────────────────────────────────────────────────────
+    async def relink(
+        self, created_by: UUID, book_id: UUID, run_id: UUID, *, target: str = "skeleton",
+    ) -> dict[str, Any]:
+        """Re-run a linker over an existing run (27 PF-8, both halves).
+
+        The skeleton link already runs inline at `compile()`; this is the door for re-linking after
+        an edit, and the ONLY door for the scene link (which has no natural compile-time moment —
+        the scenes do not exist until pass 6 has run and pass 7 has healed them).
+
+        Idempotent by construction: the upserts arbitrate on the run-scoped partial unique index, so
+        a re-link updates the nodes THIS RUN minted and never duplicates them. And it never reclaims
+        a node a human has edited since — those come back as `preserved_user_edit` (PF-11).
+        """
+        from app.services.plan_pass_service import PACKAGE_KIND
+
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            raise LookupError("run not found")
+        work = await self._ensure_work(book_id, created_by=created_by)
+        linker = PlanLinkService(get_pool())
+        prior = await self._runs.latest_link_report(book_id, run_id, target)
+        prior_versions = (prior.content or {}).get("linked_versions") if prior else None
+
+        if target == "skeleton":
+            pkg_art = await self._runs.latest_artifact(book_id, run_id, PACKAGE_KIND)
+            package = (pkg_art.content or {}).get("planning_package") if pkg_art else None
+            if not package:
+                raise ValueError("this run has no compiled package to link — compile it first")
+            coro = linker.link_outline_skeleton(
+                created_by=created_by, book_id=book_id,
+                project_id=_work_project_id(work), run_id=run_id,
+                package=package, prior_versions=prior_versions,
+            )
+        elif target == "scene_plan":
+            scenes_by_event = await self._scenes_by_event(book_id, run)
+            if not scenes_by_event:
+                # E4's law, applied to the scene half: zero nodes linked is an ERROR, never a silent
+                # 200. "The scenes pass has not produced anything yet" and "your book has no scenes"
+                # must not look the same to a caller.
+                raise ValueError(
+                    "this run has no scene plan to link — run the `scenes` pass first "
+                    "(and `self_heal` if you want the healed version)",
+                )
+            coro = linker.link_scene_plan(
+                created_by=created_by, book_id=book_id,
+                project_id=_work_project_id(work), run_id=run_id,
+                scenes_by_event=scenes_by_event, prior_versions=prior_versions,
+            )
+        else:
+            raise ValueError(f"unknown link target: {target}")
+
+        try:
+            report = await coro
+        except LinkError as exc:
+            await self._runs.save_artifact(
+                created_by, run_id, "link_report", exc.report.to_dict(),
+            )
+            raise ValueError(exc.report.detail or "link failed") from exc
+        await self._runs.save_artifact(created_by, run_id, "link_report", report.to_dict())
+        return report.to_dict()
+
+    async def _scenes_by_event(
+        self, book_id: UUID, run: PlanRun,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """The scenes to link, `event_id` → ordered scenes.
+
+        Read through the PASS POINTER, not by latest-kind: passes 6 and 7 BOTH emit `scene_plan`,
+        so "the newest scene_plan artifact" is ambiguous by construction. We take pass 7's if it has
+        run (the healed plan is the one the author reviewed), else pass 6's.
+        """
+        for pass_id in ("self_heal", "scenes"):
+            entry = dict(run.pass_state.get(pass_id) or {})
+            if entry.get("status") != "completed" or not entry.get("artifact_id"):
+                continue
+            loaded = await self._runs.artifacts_by_ids(
+                book_id, run.id, [entry["artifact_id"]],
+            )
+            art = loaded.get(str(entry["artifact_id"]))
+            if art is None:
+                continue
+            out: dict[str, list[dict[str, Any]]] = {}
+            for ch in (art.content or {}).get("chapters", []) or []:
+                event_id = ((ch.get("chapter") or {}).get("chapter_id") or "").strip()
+                if not event_id:
+                    continue
+                out[event_id] = list(ch.get("scenes") or [])
+            if out:
+                return out
+        return {}
 
     # ── 27 V2-C2 — run ONE compiler pass ────────────────────────────────────────────────────
     async def run_pass(

@@ -90,9 +90,19 @@ def compile_artifacts(
             }
         )
 
+    # The arc's SUMMARY reaches the premise too (27 V2-G).
+    #
+    # It never did, and nobody noticed, because the proposer used to HARDCODE both `theme` and
+    # `summary` — two paraphrases of the same sentence, so dropping one lost nothing. Now that they
+    # are parsed, they are different things: `theme` is the author's `**Theme:**` field, and
+    # `summary` carries what they actually said about the arc in prose ("this is not a power arc; it
+    # is a discovery-and-price arc"). That line is the single most load-bearing sentence in the
+    # block — it is why they emphasised it — and it was going nowhere near the prompt.
     premise_parts = [
         f"Arc: {arc['title']}" if arc else arc_id,
-        f"Theme: {arc['theme']}" if arc else "",
+        f"Theme: {arc['theme']}" if arc and arc.get("theme") else "",
+        f"Summary: {arc['summary']}" if arc and arc.get("summary") else "",
+        f"Kind: {arc['arc_kind']}" if arc and arc.get("arc_kind") else "",
         "Key events:",
     ]
     for ev in arc_events:

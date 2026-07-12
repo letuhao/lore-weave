@@ -98,6 +98,10 @@ EXPECTED_TOOLS = {
     # Tier A
     "plan_propose_spec", "plan_interpret_feedback", "plan_apply_revision",
     "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
+    # 27 V2-F1 — the compiler-pass surface. The agent CANNOT skip a checkpoint through these:
+    # `plan_run_pass` refuses with its blockers named, and only `plan_review_checkpoint` (which a
+    # human drives) clears a blocking pass.
+    "plan_run_pass", "plan_pass_status", "plan_link",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_outline_node",

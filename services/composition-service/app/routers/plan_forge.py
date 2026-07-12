@@ -225,6 +225,45 @@ class PlanCheckpointRequest(BaseModel):
     edits: dict[str, Any] | None = None
 
 
+@router.get("/books/{book_id}/plan/runs/{run_id}/passes")
+async def pass_status_route(
+    book_id: UUID,
+    run_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """27 V2-F2. The run's DERIVED pass ledger — nothing here is stored."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    out = await svc.pass_status(user_id, book_id, run_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return out
+
+
+class PlanLinkRequest(BaseModel):
+    target: Literal["skeleton", "scene_plan"] = "skeleton"
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/link")
+async def relink_route(
+    book_id: UUID,
+    run_id: UUID,
+    body: PlanLinkRequest,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """27 V2-F2. Re-link a compiled plan into the spec tree. Idempotent; never reclaims an edit."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        return await svc.relink(user_id, book_id, run_id, target=body.target)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="run not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"code": "LINK_REFUSED", "message": str(exc)})
+
+
 @router.post("/books/{book_id}/plan/runs/{run_id}/checkpoint")
 async def review_checkpoint_route(
     book_id: UUID,

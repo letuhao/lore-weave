@@ -70,6 +70,7 @@ from app.clients.knowledge_client import (
 )
 from app.config import settings
 from app.db.models import LinkKind, PlanPassId, SceneExitState
+from app.services.plan_pass_service import UpstreamStale
 from app.db.pool import get_pool
 from app.db.repositories import (
     ReferenceViolationError,
@@ -3543,6 +3544,132 @@ async def plan_compile(
     except LookupError:
         raise uniform_not_accessible()
     return {"mode": mode, **payload}
+
+
+# ── 27 V2-F1 — the COMPILER PASS surface (PF-1..PF-11) ────────────────────────
+#
+# The agent-facing half of the multi-pass compiler. Three tools, and the contract they share is the
+# one thing that makes the whole design safe to hand an LLM: **the agent cannot skip a checkpoint.**
+# `plan_run_pass` refuses (with the blockers named) when an upstream is stale or unaccepted, and only
+# `plan_review_checkpoint` — which a human drives — can clear a blocking pass. So an agent looping
+# "run the next pass" cannot talk its way past the two questions the author alone answers.
+
+
+@mcp_server.tool(
+    name="plan_run_pass",
+    description=(
+        "PlanForge v2: run ONE compiler pass. The seven passes run in dependency order — "
+        "motifs, cast, world, beats, character_arcs, scenes, self_heal. A pass REFUSES (409, with "
+        "its blockers named) while an upstream is stale or not yet accepted; `cast` and `beats` are "
+        "BLOCKING checkpoints that a human must accept via plan_review_checkpoint before anything "
+        "downstream may run. Re-running a pass automatically stales everything below it — no "
+        "invalidation call is needed, ever. Compile the run first (the passes read its package). "
+        "EDIT required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["run pass", "run compiler pass", "plan cast", "plan the scenes", "next pass"],
+        async_job=True, tool_name="plan_run_pass",
+    ),
+)
+async def plan_run_pass(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    pass_id: Annotated[PlanPassId, "Which pass to run."],
+    model_ref: Annotated[
+        str | None, "optional user_model id — omit to use the author's default planner model.",
+    ] = None,
+    params: Annotated[
+        dict | None,
+        "Optional per-pass knobs (k_ceiling, max_select…). Fingerprinted WITH the pass: changing "
+        "one stales exactly that pass and everything downstream.",
+    ] = None,
+    force: Annotated[
+        bool, "Run even when an upstream is stale/unaccepted. The ONLY escape from the PF-5 gate.",
+    ] = False,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    try:
+        return await _plan_svc().run_pass(
+            tc.user_id, bid, UUID(run_id), pass_id,
+            model_ref=_opt_uuid(model_ref), params=params or {}, force=force,
+        )
+    except UpstreamStale as exc:
+        # The gate doing its job. The agent gets the BLOCKERS, not a bare failure — so its next move
+        # is "accept the cast" rather than a blind retry that will refuse identically forever.
+        return {
+            "success": False, "error": "upstream not ready",
+            "pass_id": exc.pass_id, "blockers": exc.blockers, "detail": str(exc),
+        }
+    except ValueError as exc:
+        return {"success": False, "error": "cannot run pass", "detail": str(exc)[:300]}
+
+
+@mcp_server.tool(
+    name="plan_pass_status",
+    description=(
+        "PlanForge v2: the run's pass ledger — per pass: status, decision, whether it is FRESH, and "
+        "the artifact it produced; plus `pass_cursor` (how far the compiler can proceed unattended) "
+        "and `blocked_at` (the pass a human must accept next). Freshness is DERIVED on read, never "
+        "stored, so it is never stale about staleness. Read-only. VIEW required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["pass status", "plan status", "how far is the plan", "what is blocking the plan"],
+        tool_name="plan_pass_status",
+    ),
+)
+async def plan_pass_status(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.VIEW)
+    out = await _plan_svc().pass_status(tc.user_id, bid, UUID(run_id))
+    if out is None:
+        raise uniform_not_accessible()
+    return out
+
+
+@mcp_server.tool(
+    name="plan_link",
+    description=(
+        "PlanForge v2: (re-)link a compiled plan into the book's spec tree — arcs to structure_node, "
+        "chapters and scenes to outline_node. Idempotent: a re-link UPDATES the nodes it minted "
+        "before, never duplicates them, and it NEVER overwrites a node a human has edited since "
+        "(those come back as `preserved_user_edit`). Runs automatically at compile; this tool is for "
+        "re-linking after an edit. EDIT required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["link plan", "relink plan", "materialize plan", "push plan to the outline"],
+        tool_name="plan_link",
+    ),
+)
+async def plan_link(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    target: Annotated[
+        Literal["skeleton", "scene_plan"],
+        "'skeleton' = arcs + chapters (from the compiled package). 'scene_plan' = the scenes "
+        "beneath them (from pass 6/7's artifact).",
+    ] = "skeleton",
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    try:
+        return await _plan_svc().relink(tc.user_id, bid, UUID(run_id), target=target)
+    except LookupError:
+        raise uniform_not_accessible()
+    except ValueError as exc:
+        return {"success": False, "error": "cannot link", "detail": str(exc)[:300]}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

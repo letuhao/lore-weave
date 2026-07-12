@@ -77,7 +77,11 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
             # ("PA... không tăng/giảm theo cảnh giới").
             if d.get("variable") == "PA" and _REALM_COUPLING_PATTERN.search(reason_lower):
                 pa_not_realm = False
-    results.append({"rule": "pa_not_realm", "pass": pa_not_realm, "detail": ""})
+    # ADVISORY (27 V2-G). This rule is about ONE novel's `PA` variable and its one forbidden
+    # coupling. For any book that does not declare a `PA`, it passes VACUOUSLY — there are no PA
+    # deltas to inspect — so as a hard compile gate it was pure theatre: it could only ever block the
+    # POC, and only for a mistake the POC's own author defined.
+    results.append({"rule": "pa_not_realm", "pass": pa_not_realm, "detail": "", "tier": "advisory"})
 
     arc2 = next((a for a in spec.get("arcs", []) if a["id"] == "arc_2"), None)
     arc2_ok = arc2 is not None and arc2.get("arc_kind") == "discovery"
@@ -90,14 +94,49 @@ def run_rules(spec: dict[str, Any], package: dict[str, Any] | None = None) -> li
         }
     )
 
+    # ADVISORY (27 V2-G) — this was the last fixture rule still GATING compile, and it blocked every
+    # book with a shorter charter than the POC's from compiling at all.
+    #
+    # `>= 4` is not a general truth about novels; it is the POC's own anchor count, rounded down. A
+    # braindump that names two things about its protagonist is a perfectly legitimate plan — and the
+    # `cast` pass exists precisely to propose more. Reporting a thin charter is useful; REFUSING to
+    # compile it is the tool overruling the author about their own book.
+    #
+    # (PF-8's rationale says it plainly: spec writes need no human gate — the heavy gate guards the
+    # manuscript and the glossary. A compile that materialises nothing is caught by E4 at the link
+    # step, which is a structural fact, not a taste judgement.)
     anchors = spec.get("charter", {}).get("consistency_anchors", [])
     results.append(
         {
             "rule": "anchors_min",
             "pass": len(anchors) >= 4,
             "detail": f"count={len(anchors)}",
+            "tier": "advisory",
         }
     )
+
+    # ── the genuinely GENERAL hard gates ─────────────────────────────────────────────────────
+    # What actually makes a package unusable, for any novel, in any language: nothing to compile.
+    # This is E4/PF-8's "zero nodes linked ⇒ error" law applied one layer earlier, where the user
+    # can still do something about it — and it is the ONLY thing rules-mode compile now blocks on.
+    arcs = spec.get("arcs") or []
+    events = spec.get("events") or []
+    results.append({
+        "rule": "spec_has_arc",
+        "pass": bool(arcs),
+        "detail": (
+            f"arcs={len(arcs)}" if arcs else
+            "no arcs parsed — an arc is a '## ' heading inside the Arc Overview section"
+        ),
+    })
+    results.append({
+        "rule": "spec_has_events",
+        "pass": bool(events),
+        "detail": (
+            f"events={len(events)}" if events else
+            "no events parsed — an event is a '### ' heading inside an arc"
+        ),
+    })
 
     thr_fail = False
     for ev in spec.get("events", []):
@@ -223,7 +262,22 @@ def validate_golden(
         "S1": s1_pass,
         "S2": all(r["pass"] for r in rule_results if r["rule"] == "vars_four"),
         "S3": any(r["pass"] for r in rule_results if r["rule"] == "anchors_min"),
-        "S4": any(r["pass"] for r in rule_results if r["rule"] == "arc2_discovery"),
+        # S4 (`arc2_discovery`) is NOT a criterion any more — 27 V2-G.
+        #
+        # It asserted `spec.arcs["arc_2"].arc_kind == "discovery"` — a value the PROPOSER used to
+        # HARDCODE. So the validator was checking the fixture against itself: the rule could not
+        # fail, for any document, because the thing it validated was a constant. A tautology dressed
+        # as a golden criterion.
+        #
+        # Now that the proposer parses instead of fabricating, `arc_kind` is populated only when the
+        # author states one, and this document never does — it says what kind of arc it is in prose
+        # ("this is not a power arc; it is a discovery-and-price arc"), which is now carried
+        # faithfully in the arc's summary and reaches the premise. So the INFORMATION survives; what
+        # is gone is the pretence that a general validator could grade every book on whether its
+        # second arc is a "discovery" arc.
+        #
+        # The rule itself stays, `tier: advisory`, exactly as 27 PF-19 says the four fixture rules
+        # should — reported, never gating.
         "S5": s5_pass and any(r["pass"] for r in rule_results if r["rule"] == "notes_linked"),
         "S6": any(r["pass"] for r in rule_results if r["rule"] == "premise_max"),
         "S7": len(spec.get("layers", {}).get("variables", [])) == 4,
