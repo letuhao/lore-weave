@@ -234,6 +234,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/reading-history", s.getReadingHistory)
 		r.Post("/", s.createBook)
 		r.Get("/", s.listBooks)
+		// WS-1.4 — the diary provisioner (the only kind='diary' write path). Static segment,
+		// registered before the /{book_id} sub-route so it is not captured as a book id.
+		r.Post("/diary", s.provisionDiaryBook)
 		r.Get("/trash", s.listTrashedBooks)
 
 		// Favorites
@@ -672,6 +675,102 @@ VALUES($1,$2,$3,$4,$5,$6,'novel')
 RETURNING id
 `, ownerID, in.Title, in.Description, in.OriginalLanguage, in.Summary, in.GenreTags).Scan(&bookID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
+		return
+	}
+	s.getBookByID(w, ctx, bookID, ownerID, http.StatusCreated)
+}
+
+// provisionDiaryBook — POST /v1/books/diary — the diary get-or-create (WS-1.4 step 1, spec 02 §Q2.1).
+//
+// The ONLY path allowed to write kind='diary'. Idempotent + race-safe get-or-create keyed on
+// uq_books_one_active_diary_per_user: a user has exactly ONE active diary, and two concurrent
+// provisions (two devices open /assistant, a retried BFF call) converge on it instead of
+// splitting the assistant's memory into two unreadable halves.
+//
+// Owner is the JWT principal, NEVER a body field (the caller is a chat/BFF request; a
+// body-supplied owner would be a cross-user write).
+//
+// The per-user active-book CEILING is deliberately NOT applied here (unlike createBook): the
+// diary is a system-provisioned private workspace, not a user-authored novel, and it is hidden
+// from the library grid — a user at their novel limit must still be able to get an assistant.
+//
+// E14: if the user's only diary is TRASHED, this refuses (409 BOOK_DIARY_TRASHED) with the
+// trashed id rather than silently forking a fresh diary (which strands the old KG anchors) or
+// silently resurrecting the trashed one — the caller offers restore-vs-start-fresh.
+func (s *Server) provisionDiaryBook(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	var in struct {
+		Title string `json:"title"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in) // body is optional
+	title := strings.TrimSpace(in.Title)
+	if title == "" {
+		title = "My Work Journal"
+	}
+	ctx := r.Context()
+
+	// 1. Already have an active diary? Return it — this is the common case on every re-open,
+	//    and it must be a cheap idempotent read, not a create attempt.
+	var existing uuid.UUID
+	err := s.pool.QueryRow(ctx,
+		`SELECT id FROM books WHERE owner_user_id=$1 AND kind='diary' AND lifecycle_state='active' LIMIT 1`,
+		ownerID).Scan(&existing)
+	if err == nil {
+		s.getBookByID(w, ctx, existing, ownerID, http.StatusOK)
+		return
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary")
+		return
+	}
+
+	// 2. No ACTIVE diary — but a TRASHED one must not be silently forked or resurrected (E14).
+	var trashed uuid.UUID
+	err = s.pool.QueryRow(ctx,
+		`SELECT id FROM books WHERE owner_user_id=$1 AND kind='diary'
+		   AND lifecycle_state IN ('trashed','purge_pending') ORDER BY updated_at DESC LIMIT 1`,
+		ownerID).Scan(&trashed)
+	if err == nil {
+		writeError(w, http.StatusConflict, "BOOK_DIARY_TRASHED",
+			"your diary is in the trash ("+trashed.String()+"); restore it or choose to start fresh")
+		return
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read trashed diary")
+		return
+	}
+
+	if err := s.ensureQuotaRow(ctx, ownerID); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to initialize quota")
+		return
+	}
+
+	// 3. Create it. ON CONFLICT repeats the partial-index predicate EXACTLY (the
+	//    partial-index/ON-CONFLICT-predicate lesson), so a concurrent provision that already
+	//    inserted the diary makes this a no-op; then re-read the row that WON the race.
+	var bookID uuid.UUID
+	err = s.pool.QueryRow(ctx, `
+INSERT INTO books(owner_user_id,title,kind) VALUES($1,$2,'diary')
+ON CONFLICT (owner_user_id) WHERE kind='diary' AND lifecycle_state='active'
+DO NOTHING
+RETURNING id`, ownerID, title).Scan(&bookID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// A concurrent provision won (DO NOTHING → no RETURNING row). Return the winner.
+		if err = s.pool.QueryRow(ctx,
+			`SELECT id FROM books WHERE owner_user_id=$1 AND kind='diary' AND lifecycle_state='active' LIMIT 1`,
+			ownerID).Scan(&bookID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary after conflict")
+			return
+		}
+		s.getBookByID(w, ctx, bookID, ownerID, http.StatusOK)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create diary")
 		return
 	}
 	s.getBookByID(w, ctx, bookID, ownerID, http.StatusCreated)
