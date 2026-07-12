@@ -134,6 +134,12 @@ var chain = []Step{
 	// feedback, 2026-07-08: two same-named entities in different "worlds" within
 	// one multi-world book were indistinguishable to the dedup/merge resolver.
 	{"0051_entity_scope_label", UpEntityScopeLabel},
+	// WS-1.5 (spec 05 §Q2) — the System-tier WORK ontology (colleague·project·meeting·
+	// decision·task·jargon·org), seeded HIDDEN so it never shows in a novelist's picker;
+	// provisioning clones it into the diary's book tier. A NEW ledger entry, per the
+	// "new seed data needs a new chain entry" rule (editing DefaultKinds would no-op on
+	// already-migrated DBs).
+	{"0052_seed_work_kinds", SeedWorkKinds},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
