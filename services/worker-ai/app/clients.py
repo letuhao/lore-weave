@@ -1014,3 +1014,39 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("glossary entities/by-ids failed: %s", exc)
             return []
+
+
+class UsageBillingClient:
+    """WS-2.8 — reads a user's spend guardrail so the distiller can degrade the BACKGROUND memory path
+    when the daily cap is exhausted. Internal-token. Every method FAILS OPEN (returns the not-exhausted
+    answer) on any transport/parse error — the provider-gateway reserves against the SAME guardrail and
+    is the hard backstop, so a transiently-down usage-billing must never silently pause a user's memory."""
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def daily_cap_exhausted(self, *, user_id: str) -> bool:
+        """True iff the user has a positive daily limit AND no daily budget left (available <= 0). The
+        distiller pauses the day when this is True. False on any error (fail-open)."""
+        try:
+            resp = await self._http.get(
+                f"{self._base_url}/internal/billing/guardrail/status",
+                params={"owner_user_id": user_id},
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            daily_limit = float(body.get("daily_limit_usd") or 0.0)
+            daily_available = float(body.get("daily_available_usd") or 0.0)
+            # A zero/absent daily limit means "no cap" → never pause. Otherwise pause once the day's
+            # budget (limit − spent − reserved) is gone.
+            return daily_limit > 0.0 and daily_available <= 0.0
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            logger.warning("usage-billing guardrail status failed (fail-open, memory proceeds): %s", exc)
+            return False

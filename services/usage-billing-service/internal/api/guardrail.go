@@ -535,6 +535,34 @@ func (s *Server) getGuardrail(w http.ResponseWriter, r *http.Request) {
 	writeGuardrailJSON(w, dLimit, mLimit, dSpent, mSpent, reserved)
 }
 
+// getGuardrailStatusInternal — GET /internal/billing/guardrail/status?owner_user_id=<uuid>.
+//
+// WS-2.8 (spec 10) — an internal-token READ of a user's spend guardrail so a BACKGROUND worker (the
+// diary distiller) can DEGRADE gracefully BEFORE spending: if the user's daily cap is exhausted, the
+// worker skips with a "memory paused — daily cap reached" status instead of letting each LLM call fail
+// hard mid-run at the provider-gateway (which reserves against this same guardrail — the hard backstop).
+// owner_user_id is an explicit query arg (the caller already authenticated the owner), like
+// getMcpKeyUsage. A window-stale row reads spent as 0 (guardrailReadSQL), so this never mutates.
+func (s *Server) getGuardrailStatusInternal(w http.ResponseWriter, r *http.Request) {
+	owner, err := uuid.Parse(r.URL.Query().Get("owner_user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "owner_user_id must be a UUID")
+		return
+	}
+	var dLimit, mLimit, dSpent, mSpent, reserved float64
+	err = s.pool.QueryRow(r.Context(), guardrailReadSQL, owner).
+		Scan(&dLimit, &mLimit, &dSpent, &mSpent, &reserved)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No row yet → the config defaults, nothing spent.
+		dLimit, mLimit = s.cfg.GuardrailDefaultDailyUSD, s.cfg.GuardrailDefaultMonthlyUSD
+		dSpent, mSpent, reserved = 0, 0, 0
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_FAILED", "failed to read guardrail")
+		return
+	}
+	writeGuardrailJSON(w, dLimit, mLimit, dSpent, mSpent, reserved)
+}
+
 // patchGuardrail — PATCH /v1/model-billing/guardrail. Sets the authed user's
 // daily and/or monthly USD limit. Either field may be omitted; a supplied
 // limit must be > 0. Lowering a limit below current spend is allowed — it

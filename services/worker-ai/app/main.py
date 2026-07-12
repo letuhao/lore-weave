@@ -20,6 +20,7 @@ from app.clients import (
     GlossaryClient,
     KnowledgeClient,
     ProviderRegistryClient,
+    UsageBillingClient,
 )
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
@@ -96,6 +97,12 @@ async def main() -> None:
         internal_token=settings.internal_service_token,
         timeout_s=settings.provider_registry_client_timeout_s,
     )
+    # WS-2.8 — usage-billing client for the distiller's daily-cap degrade pre-check (fail-open).
+    usage_billing_client = UsageBillingClient(
+        base_url=settings.usage_billing_service_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.usage_billing_client_timeout_s,
+    )
     # Phase 4b-γ — loreweave_llm SDK wrapper for in-process Pass 2
     # extraction. Touched here so SDK construction errors (bad
     # base_url, missing internal_token) surface at startup rather
@@ -171,6 +178,7 @@ async def main() -> None:
             consumer_name=settings.distill_consumer_name,
             block_ms=settings.summary_consumer_block_ms,
             knowledge_client=knowledge_client,  # WS-2.3 — divert distilled facts to the KG inbox
+            billing_client=usage_billing_client,  # WS-2.8 — daily-cap degrade pre-check
         )
         coroutines.append(_distill_consumer.run())
         logger.info("A1: assistant.distill consumer started (group=%s)", settings.distill_consumer_group)
@@ -253,6 +261,7 @@ async def main() -> None:
         await chat_client.aclose()
         await glossary_client.aclose()
         await provider_client.aclose()
+        await usage_billing_client.aclose()
         if wake_waiter is not None:
             await wake_waiter.aclose()
         await pool.close()

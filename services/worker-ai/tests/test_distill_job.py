@@ -276,3 +276,64 @@ async def test_distill_llm_adapter_end_to_end_with_the_core():
     )
     assert out["status"] == "written"
     assert "Distilled via the gateway path." in book.writes[0]["body"]
+
+
+# ── WS-2.8 — the daily-cap degrade pre-check ──────────────────────────────────
+
+class FakeBilling:
+    def __init__(self, exhausted=False, fail=False):
+        self._exhausted = exhausted
+        self._fail = fail
+        self.calls = 0
+
+    async def daily_cap_exhausted(self, *, user_id):
+        self.calls += 1
+        if self._fail:
+            raise RuntimeError("usage-billing down")
+        return self._exhausted
+
+
+async def test_daily_cap_exhausted_pauses_the_day_before_any_spend():
+    # The degrade ladder's first rung: cap hit → status 'paused', reason 'daily_cap_reached', NOT
+    # retryable, and NOTHING is read/distilled/written (no LLM spend, the whole point).
+    chat = FakeChat([_msg("user", "A busy day.")])
+    book = FakeBook()
+
+    async def _boom_llm(_p):
+        raise AssertionError("the LLM must NOT be called when the daily cap is exhausted")
+
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=_boom_llm, chat_client=chat, book_client=book,
+        billing_client=FakeBilling(exhausted=True),
+    )
+    assert out["status"] == "paused" and out["reason"] == "daily_cap_reached"
+    assert out["retryable"] is False
+    assert chat.calls == []   # never even read the day
+    assert book.writes == []  # never wrote
+
+
+async def test_daily_cap_not_exhausted_proceeds_normally():
+    chat = FakeChat([_msg("user", "Met Minh.")])
+    book = FakeBook()
+    billing = FakeBilling(exhausted=False)
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book, billing_client=billing,
+    )
+    assert out["status"] == "written"
+    assert billing.calls == 1  # the pre-check ran
+
+
+async def test_daily_cap_check_failure_FAILS_OPEN_so_memory_is_never_silently_paused():
+    # usage-billing down → the pre-check errors → the distill PROCEEDS (the provider-gateway reserve is
+    # the hard backstop). A transient infra blip must not stop a user's memory.
+    chat = FakeChat([_msg("user", "Met Minh.")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=FakeLLM(map_facts=[{"kind": "e", "text": "a fact"}]),
+        chat_client=chat, book_client=book, billing_client=FakeBilling(fail=True),
+    )
+    assert out["status"] == "written"  # fail-open: proceeded despite the check error

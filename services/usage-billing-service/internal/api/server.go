@@ -241,6 +241,10 @@ func (s *Server) Router() http.Handler {
 		r.Post("/billing/guardrail/reserve", s.guardrailReserve)
 		r.Post("/billing/guardrail/reconcile", s.guardrailReconcile)
 		r.Post("/billing/guardrail/release", s.guardrailRelease)
+		// WS-2.8 (spec 10) — a read of a user's guardrail so a background worker (the diary distiller)
+		// can degrade gracefully before spending when the daily cap is exhausted. Internal-token gated;
+		// owner_user_id is an explicit query arg (same posture as mcp-key-usage below).
+		r.Get("/billing/guardrail/status", s.getGuardrailStatusInternal)
 		// Public MCP P3 (H-C/PUB-11) — per-key spend rollup for an owner. The MCP
 		// edge calls this to surface per-key usage (owner audit view, H-O) and feeds
 		// the future per-key sub-cap (H-K). Internal-token gated; owner_user_id is an

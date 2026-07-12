@@ -119,6 +119,10 @@ class _FactQueuer(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class _BudgetChecker(Protocol):
+    async def daily_cap_exhausted(self, *, user_id: str) -> bool: ...
+
+
 async def distill_and_write(
     *,
     user_id: str,
@@ -130,14 +134,32 @@ async def distill_and_write(
     chat_client: _ChatReader,
     book_client: _DiaryWriter,
     knowledge_client: "_FactQueuer | None" = None,
+    billing_client: "_BudgetChecker | None" = None,
     limit: int = 5000,
     giant_paste_threshold: int = GIANT_PASTE_CHARS,
     window: int = WINDOW_CHARS,
 ) -> dict[str, Any]:
     """Distill one local day into the user's diary. Returns a status dict the trigger layer acts on.
 
-    status ∈ {written, no_entry, oversized, kept, error}. Never raises; a transport failure is a
-    retryable 'error', not an exception, so one bad day doesn't crash the worker loop."""
+    status ∈ {written, no_entry, oversized, kept, paused, error}. Never raises; a transport failure is a
+    retryable 'error', not an exception, so one bad day doesn't crash the worker loop.
+
+    WS-2.8 (spec 10) — the degrade ladder's first rung: BEFORE any LLM spend, if the user's DAILY spend
+    cap is exhausted, return status='paused' (reason='daily_cap_reached', NOT retryable) so the home strip
+    can show "Memory paused — daily cap reached" instead of the distiller burning through a returning
+    user's budget on a multi-day catch-up (the T20 risk). This gates the BACKGROUND path only; foreground
+    chat is a separate job with its own reservation, so it keeps working. The check FAILS OPEN (proceeds)
+    on any error — the provider-gateway reserves against this SAME guardrail, so it is the hard backstop;
+    a transiently-down usage-billing must not silently stop a user's memory."""
+    if billing_client is not None:
+        try:
+            if await billing_client.daily_cap_exhausted(user_id=user_id):
+                logger.info("distill: daily spend cap reached for user — pausing memory (not retrying)")
+                return {"status": "paused", "reason": "daily_cap_reached", "retryable": False,
+                        "entry_date": entry_date}
+        except Exception:  # noqa: BLE001 — fail OPEN; the provider-gateway reserve is the hard backstop.
+            logger.warning("distill: daily-cap pre-check failed; proceeding (provider-gateway backstops)",
+                           exc_info=True)
     read = await chat_client.get_day_window(
         user_id=user_id, book_id=book_id, local_date=entry_date, limit=limit,
     )
