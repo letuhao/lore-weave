@@ -100,24 +100,48 @@ describe('joinSceneRows — the three union shapes (22 §GUI)', () => {
   });
 });
 
-describe('joinSceneRows — specComplete gates spec_only (HIGH: no false "not yet written")', () => {
-  it('while the index is INCOMPLETE, an unclaimed spec is NOT labelled spec_only', () => {
-    // A written+decompiled scene whose index row is on an unloaded page must not be mislabelled.
-    const rows = joinSceneRows([], [node({ id: 'n1', title: 'Written but index not loaded yet' })], false);
-    expect(rows).toHaveLength(0); // suppressed until the index finishes loading
+describe('joinSceneRows — the SERVER decides spec_only (SC11: the specComplete gate is gone)', () => {
+  // ── WHAT THIS REPLACES, and why it is not simply deleted ──────────────────────────────────
+  //
+  // These tests used to guard `specComplete`: while the index was still paging, "unclaimed by any
+  // loaded scene" was AMBIGUOUS — it could mean "no prose exists" OR "its index row is on a page we
+  // haven't fetched". Labelling the second one spec_only called a written, decompiled scene "not yet
+  // written" (most of a >100-scene book, on first open). It is the same bug class the Plan Hub's
+  // computeUnionState guarded with its own, DIFFERENT mechanism — one fact, two client-side guards,
+  // which is the drift this amendment removes.
+  //
+  // `written_scene_id` is now MAINTAINED server-side (reconciled from `scenes.source_scene_id`), so
+  // the question is answered before the client asks it, at ANY paging state. The guard has nothing
+  // left to guard.
+  //
+  // The guarantee it used to enforce now lives in
+  // `services/composition-service/tests/integration/db/test_written_verdict.py`:
+  //   - test_a_DEGRADED_read_NEVER_clears_the_mirror  ("I could not look" ≠ "there is no prose")
+  //   - test_reconcile_CLEARS_a_node_whose_scene_is_GONE
+  //   - test_a_MOVED_anchor_moves_the_mirror
+
+  it('a spec whose prose EXISTS is never spec_only — even with ZERO index rows loaded', () => {
+    // THE case the old gate existed for. Its index row is on an unloaded page, so nothing claims it
+    // here — but the server says prose backs it, so it is not "not yet written". No gate needed.
+    const rows = joinSceneRows(
+      [],
+      [node({ id: 'n1', title: 'Written; index page not loaded', written_scene_id: 'scene-9' })],
+    );
+    expect(rows).toHaveLength(0);
   });
 
-  it('once the index is COMPLETE, a genuinely-unwritten spec appears as spec_only', () => {
-    const rows = joinSceneRows([], [node({ id: 'n1', title: 'Planned' })], true);
+  it('a genuinely-unwritten spec is spec_only IMMEDIATELY — no waiting for the whole index', () => {
+    // And this is what the gate COST: the old code had to page the entire index before it could say
+    // "nothing backs this", even though the answer never depended on the index at all.
+    const rows = joinSceneRows([], [node({ id: 'n1', title: 'Planned', written_scene_id: null })]);
     expect(rows).toHaveLength(1);
     expect(rows[0].shape).toBe('spec_only');
   });
 
-  it('linked/index_only rows are unaffected by specComplete=false', () => {
+  it('linked/index_only rows are unaffected — they never depended on the gate', () => {
     const rows = joinSceneRows(
       [scene({ scene_id: 's1', source_scene_id: 'n1' }), scene({ scene_id: 's2', source_scene_id: null })],
-      [node({ id: 'n1' })],
-      false,
+      [node({ id: 'n1', written_scene_id: 's1' })],
     );
     expect(rows.map((r) => r.shape).sort()).toEqual(['index_only', 'linked']);
   });

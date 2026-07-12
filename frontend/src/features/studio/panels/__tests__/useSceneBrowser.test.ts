@@ -77,19 +77,34 @@ describe('useSceneBrowser — review fixes', () => {
     expect(unavail.result.current.workless).toBe(false); // NOT shown the create-plan CTA
   });
 
-  it('suppresses spec_only while the index is still paging, then reveals it when complete', async () => {
+  it('MID-PAGE, the server decides spec_only — no waiting for the whole index (SC11)', async () => {
+    // This used to assert the `specComplete` SUPPRESSION: while more index pages remained, an
+    // unclaimed spec was hidden, because "unclaimed" might only mean "its page hasn't loaded".
+    //
+    // The server now answers that outright (`written_scene_id`, maintained from
+    // scenes.source_scene_id), so mid-page is not a special case at all:
+    //   n2 — prose EXISTS, its index row is on page 2  -> NOT spec_only (correct, and it was before)
+    //   n3 — no prose at all                           -> spec_only IMMEDIATELY (which the old gate
+    //                                                     could not say until the whole index loaded)
     workData = found('proj-1');
-    // page 1 has a cursor (more to load) — the whole spec is loaded, but 1 index scene is unlinked
     listScenes.mockResolvedValueOnce({
       items: [scene({ scene_id: 's1', source_scene_id: 'n1' })], next_cursor: 'c2', total: 3,
     });
-    getOutline.mockResolvedValue({ nodes: [node({ id: 'n1' }), node({ id: 'n2', story_order: 1 })], scene_links: [] });
+    getOutline.mockResolvedValue({
+      nodes: [
+        node({ id: 'n1', written_scene_id: 's1' }),
+        node({ id: 'n2', story_order: 1, written_scene_id: 's2' }),   // written; page 2
+        node({ id: 'n3', story_order: 2, written_scene_id: null }),   // genuinely unwritten
+      ],
+      scene_links: [],
+    });
 
     const { result } = renderHook(() => useSceneBrowser('book-1'));
     await waitFor(() => expect(result.current.ready).toBe(true));
-    // hasMore ⇒ specComplete false ⇒ n2 (whose index scene is on page 2) is NOT mislabelled spec_only
-    expect(result.current.hasMore).toBe(true);
-    expect(result.current.rows.some((r) => r.shape === 'spec_only')).toBe(false);
+
+    expect(result.current.hasMore).toBe(true);      // still paging…
+    const specOnly = result.current.rows.filter((r) => r.shape === 'spec_only');
+    expect(specOnly.map((r) => r.key)).toEqual(['n3']);   // …and the verdict is already correct
     expect(result.current.rows.filter((r) => r.shape === 'linked')).toHaveLength(1);
   });
 

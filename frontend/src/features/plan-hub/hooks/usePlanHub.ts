@@ -18,7 +18,6 @@ import type {
 } from '../types';
 import { usePlanWindows } from './usePlanWindows';
 import { usePlanMoves } from './usePlanMoves';
-import { useActualState } from './useActualState';
 import { useExtractPlan } from './useExtractPlan';
 import { useEntityNames } from './useEntityNames';
 import { usePlanNodeWrites } from './usePlanNodeWrites';
@@ -72,19 +71,10 @@ export function usePlanHub(bookId: string): PlanHubView {
   // Only an OPEN arc/chapter loads its window; a collapsed arc's rollup comes from the shell.
   const windowsResult = usePlanWindows(bookId, token, expandedArcIds, expandedChapterIds);
 
-  // H8.1 — the manuscript half loads LAZILY, per loaded chapter (24 §Load sequence step 3). The BOOK
-  // chapter ids of the chapter nodes actually on screen; nothing else is fetched. Fetching the whole
-  // book's scene index at cold open (the first cut) issued ~100 sequential pages on a 10k-chapter
-  // book, blowing PH9's 5-request budget by two orders of magnitude on the one read meant to TRAIL
-  // the paint.
-  const loadedChapterIds = useMemo(
-    () =>
-      windowsResult.windows
-        .filter((w) => w.kind === 'chapter' && w.chapter_id)
-        .map((w) => w.chapter_id as string),
-    [windowsResult.windows],
-  );
-  const actual = useActualState(bookId, token, loadedChapterIds);
+  // SC11 amendment — THE MANUSCRIPT READ IS GONE. `useActualState` paged book-service's scene index
+  // per loaded chapter to derive "written vs not yet written"; that fact now rides the node payload
+  // itself (`written`, maintained server-side). One fewer read, and PH9's ≤5-request cold-open budget
+  // gains headroom rather than spending it.
   // Read surface #6 (PH26) — the book-wide entity-names map behind the cast chips. One cached load;
   // it is one of the five cold-open reads the PH9 budget already accounts for.
   const entityNames = useEntityNames(bookId);
@@ -102,14 +92,15 @@ export function usePlanHub(bookId: string): PlanHubView {
     [shell, windowsResult.windows, collapse],
   );
 
-  const unionState = useMemo(() => {
-    // A scene's verdict is gated on ITS OWN chapter's manuscript read, so each node carries which
-    // book chapter it belongs to (`chapter_id` — scenes inherit it from their chapter).
-    const sceneNodes = windowsResult.windows
-      .filter((w) => w.kind === 'scene')
-      .map((w) => ({ id: w.id, chapterId: w.chapter_id ?? null }));
-    return computeUnionState(sceneNodes, actual.writtenNodeIds, actual.completeChapters);
-  }, [windowsResult.windows, actual.writtenNodeIds, actual.completeChapters]);
+  const unionState = useMemo(
+    () =>
+      computeUnionState(
+        windowsResult.windows
+          .filter((w) => w.kind === 'scene')
+          .map((w) => ({ id: w.id, written: w.written })),
+      ),
+    [windowsResult.windows],
+  );
 
   // Display scalars per node id: arc titles from the shell + chapter/scene titles from the loaded
   // windows (the window content wins on id collision — it never collides, arcs vs outline nodes).
@@ -268,13 +259,10 @@ export function usePlanHub(bookId: string): PlanHubView {
   // nobody rendered it.
   const notices = useMemo(() => {
     const out: string[] = [];
-    // The two-truths join is DEAD. Without it `complete` stays false, computeUnionState emits no
-    // verdicts, and every card renders neutral — a fully-written book looks entirely unwritten.
-    if (actual.error) {
-      out.push(
-        `The manuscript could not be read, so "written vs not yet written" is not shown (${actual.error}).`,
-      );
-    }
+    // (The old "the manuscript could not be read" notice is GONE with `useActualState`. There is no
+    // separate manuscript read left to fail: `written` rides the node payload, so if the nodes
+    // loaded, the verdict loaded with them — and if they did not, the canvas is empty anyway. One
+    // fewer degradation mode, because one fewer read.)
     // The overlay capped its refs (OUT-5). Counts stay exact, so a badge can read "3" while the
     // drawer lists 1 — say why rather than letting it look like a bug.
     if (overlay?.problems.refs_capped) {
@@ -283,7 +271,7 @@ export function usePlanHub(bookId: string): PlanHubView {
     // Anything the server itself flagged (today: the coverage diff could not be computed).
     for (const w of overlay?.warnings ?? []) out.push(w);
     return out;
-  }, [actual.error, overlay]);
+  }, [overlay]);
 
   return {
     layout,

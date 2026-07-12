@@ -81,14 +81,29 @@ export function joinSceneRows(
     }
   }
 
-  if (specComplete) {
-    for (const n of sceneSpecs) {
-      if (claimedSpecIds.has(n.id)) continue;
-      rows.push({
-        shape: 'spec_only', key: n.id, index: null, spec: n,
-        chapterId: n.chapter_id, sortOrder: n.story_order ?? null, anchorLost: false,
-      });
-    }
+  // ── SC11 amendment — the `specComplete` GATE IS GONE, and this is why ──────────────────────
+  //
+  // "Unclaimed by any loaded scene" used to be AMBIGUOUS: it could mean "no prose exists" OR "its
+  // index page simply hasn't loaded yet" — and calling the second one `spec_only` labelled a
+  // written, decompiled scene "not yet written" (the majority of a >100-scene book on first open).
+  // The gate existed to suppress the verdict until the whole index had paged in.
+  //
+  // The server now answers it outright: `written_scene_id` is MAINTAINED on write (reconciled from
+  // `scenes.source_scene_id`), so a spec node knows whether prose exists no matter how much of the
+  // index this client happens to have paged. A node is spec_only iff the SERVER says nothing backs
+  // it. That is true on page 1 and on page 40 alike, so there is nothing left to gate on.
+  //
+  // NOTE this also fixes a real gap the gate could not: a node whose prose exists but whose scene
+  // is on an unloaded page is now correctly NOT emitted as spec_only, and it never was — but a node
+  // whose prose was DELETED is now correctly emitted as spec_only IMMEDIATELY, where the old code
+  // had to wait for the full index just to learn there was nothing to find.
+  for (const n of sceneSpecs) {
+    if (claimedSpecIds.has(n.id)) continue;
+    if (n.written_scene_id) continue;  // prose exists; its index row just isn't on screen yet
+    rows.push({
+      shape: 'spec_only', key: n.id, index: null, spec: n,
+      chapterId: n.chapter_id, sortOrder: n.story_order ?? null, anchorLost: false,
+    });
   }
 
   return sortUnionRows(rows);

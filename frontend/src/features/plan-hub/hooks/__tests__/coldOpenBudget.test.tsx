@@ -112,14 +112,29 @@ describe('cold-open request budget (H8.1 / PH9)', () => {
     expect(axes.every((a) => 'unassigned' in a)).toBe(true);
   });
 
-  it('actual-state fetches PER LOADED CHAPTER once a window opens (lazy, after paint)', async () => {
+  it("NEVER reads book-service's scene index — not at cold open, not on expand, not ever", async () => {
+    // ── THE AMENDMENT'S PAYOFF, and this test is the proof. ────────────────────────────────────
+    //
+    // This test used to assert the OPPOSITE: that `useActualState` paged book-service's scene index
+    // PER LOADED CHAPTER, lazily, after paint. That read existed to derive "written vs not yet
+    // written" client-side, and it cost ~130 lines of machinery — a generation guard against
+    // book-switch races, a fetch-dedupe set, per-chapter completeness tracking, a page-walk bound,
+    // and an error channel — all of which existed ONLY because the derivation lived where data
+    // arrives incrementally, out of order, and can be interrupted.
+    //
+    // `written` is now MAINTAINED server-side (outline_node.written_scene_id, reconciled from
+    // scenes.source_scene_id) and rides the node payload the Hub already fetches. So the read is
+    // not merely deferred or scoped — IT IS GONE.
+    //
+    // The budget test's own header warns that enumerating allowed-but-not-forbidden calls is half a
+    // test. This is the forbidden half, and it just got absolute: `listScenes` must never be called.
     api.getChildren.mockResolvedValue({
       items: [
         {
           id: 'ch-node-1', kind: 'chapter', parent_id: null, structure_node_id: 'arc-1',
           chapter_id: 'book-chapter-1', title: 'Ch 1', status: 'outline', version: 1,
           story_order: 1000, rank: 'm', beat_role: null, tension: null, pov_entity_id: null,
-          present_entity_ids: [], present_entity_count: 0,
+          present_entity_ids: [], present_entity_count: 0, written: true,
         },
       ],
       next_cursor: null,
@@ -128,13 +143,32 @@ describe('cold-open request budget (H8.1 / PH9)', () => {
     await waitFor(() => expect(result.current.layout.lanes.length).toBe(1));
 
     result.current.toggleArc('arc-1'); // expand ⇒ the chapter window loads
-    await waitFor(() => expect(books.listScenes).toHaveBeenCalled());
+    await waitFor(() => expect(api.getChildren).toHaveBeenCalled());
 
-    // Scoped to THAT chapter — not the whole book.
-    expect(books.listScenes).toHaveBeenCalledWith(
-      'tok',
-      'book-1',
-      expect.objectContaining({ chapter_id: 'book-chapter-1' }),
-    );
+    // The expand loaded the window — and STILL no manuscript read.
+    expect(books.listScenes).not.toHaveBeenCalled();
+    expect(books.listChapters).not.toHaveBeenCalled();
+  });
+
+  it('the written verdict comes off the NODE PAYLOAD, with no second source to reconcile', async () => {
+    api.getChildren.mockResolvedValue({
+      items: [
+        {
+          id: 'sc-1', kind: 'scene', parent_id: 'ch-node-1', structure_node_id: null,
+          chapter_id: 'book-chapter-1', title: 'S1', status: 'empty', version: 1,
+          story_order: 1001, rank: 'm', beat_role: null, tension: null, pov_entity_id: null,
+          present_entity_ids: [], present_entity_count: 0, written: true,
+        },
+      ],
+      next_cursor: null,
+    });
+    const { result } = renderHook(() => usePlanHub('book-1'), { wrapper });
+    result.current.toggleArc('arc-1');
+    await waitFor(() => expect(result.current.unionState['sc-1']).toBe('written'));
+
+    // …and note `status: 'empty'` on that same node. The author has NOT marked it done, but the
+    // prose exists. Desired state and actual state, side by side — PH16's two chips, and the reason
+    // `written` could never have been folded into `status`.
+    expect(books.listScenes).not.toHaveBeenCalled();
   });
 });

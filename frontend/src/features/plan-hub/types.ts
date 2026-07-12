@@ -74,6 +74,12 @@ export interface SummaryNode {
   pov_entity_id: string | null;
   present_entity_ids: string[];
   present_entity_count: number;
+  /** SC11 amendment — "is there prose behind this node?", MAINTAINED server-side
+   *  (`outline_node.written_scene_id`, reconciled from book-service's `scenes.source_scene_id`).
+   *  It replaces the client-side two-truths join entirely: no scene-index page-walk, no per-chapter
+   *  completeness guard, no generation guard. Independent of `status`, which is the AUTHOR'S INTENT
+   *  (PH16's two chips: desired vs actual). */
+  written: boolean;
 }
 
 /** The children route envelope (keyset). `next_cursor` null ⇒ last page. */
@@ -179,15 +185,6 @@ export interface ConformanceStatus {
   index: { stale_chapter_count: number };
 }
 
-/** Read surface #5 — the ACTUAL-state half (book-service `GET /v1/books/{book_id}/scenes`
- *  + the chapter spine, 22). Client-side join on chapter_id / source_scene_id (SC11 —
- *  PH12). Minimal shape the two-truths join needs. */
-export interface ActualScene {
-  scene_id: string;
-  chapter_id: string;
-  source_scene_id: string | null; // links a manuscript scene back to its spec node
-  index: number;
-}
 
 /** PH12 — the three node states from the two-truths join (spec vs manuscript). */
 export type NodeUnionState = 'planned-only' | 'written' | 'imported-unplanned';

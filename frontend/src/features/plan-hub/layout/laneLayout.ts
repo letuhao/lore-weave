@@ -50,6 +50,9 @@ export interface WindowNode {
    *  and is never silently treated as position 0 (absent ≠ zero). */
   story_order: number | null;
   rank: string;
+  /** SC11 amendment — the server-maintained written verdict. It rides the node payload, so the
+   *  canvas never joins against book-service's scene index to learn it. */
+  written: boolean;
 }
 
 /** Sort key for a possibly-unordered node: an unknown position sorts LAST (mirrors the server's

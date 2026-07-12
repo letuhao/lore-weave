@@ -10,8 +10,6 @@ import type {
   SummaryNode,
   WindowNode,
 } from '../types';
-import type { Scene } from '@/features/books/api';
-import type { ActualScene } from '../types';
 
 /**
  * Read surface #2 row → laneLayout WindowNode. `story_order` is coerced null→0 because
@@ -31,6 +29,7 @@ export function toWindowNode(n: SummaryNode): WindowNode {
     // degraded to the id tiebreak. laneLayout sorts a null LAST (absent ≠ zero).
     story_order: n.story_order,
     rank: n.rank,
+    written: n.written,
   };
 }
 
@@ -54,50 +53,35 @@ export function toArcShellNode(n: ArcListNode): ArcShellNode {
   };
 }
 
-/** book-service Scene (identity truth) → the minimal ActualScene the two-truths join needs. */
-export function toActualScene(s: Scene): ActualScene {
-  return {
-    scene_id: s.scene_id,
-    chapter_id: s.chapter_id,
-    source_scene_id: s.source_scene_id,
-    index: s.sort_order,
-  };
-}
-
 /**
- * PH12 — the two-truths join, keyed by SPEC scene-node id.
- *   • a spec scene node with a matching manuscript scene (its id ∈ writtenNodeIds) → 'written'
- *   • a spec scene node with none → 'planned-only', BUT ONLY once ITS OWN CHAPTER's manuscript scenes
- *     are fully read. Absence is only evidence against a set you have finished reading; while that
- *     chapter is still paging (or its read FAILED), such a node gets NO entry and renders neutrally.
- *     Declaring it "planned-only" early is the
- *     `paged-join-against-complete-set-mislabels-not-yet-loaded-as-absent` bug — and it would paint a
- *     finished book as unwritten.
- *   • 'imported-unplanned' (a MANUSCRIPT unit with no spec node) is NOT emitted here — it cannot be:
- *     this map is keyed by spec-node id, and such a unit has no spec node. It is the PH21 tray, and
- *     it rides `overlay.unplanned_chapters` (the shared server-side coverage diff, 28 OQ-4).
- *     NOT `laneLayout.unassigned` — that is the opposite set (spec chapters with no ARC).
- * Absent from the map ⇒ unknown/neutral, never a false verdict (absent ≠ written, absent ≠ planned).
+ * PH12 (as amended by SC11) — the union state, now a PROJECTION of a server-maintained fact.
  *
- * The completeness gate is PER CHAPTER because the manuscript read is now per chapter (H8.1's budget
- * — the whole-book scene index is not fetched at cold open). A scene whose chapter is loaded can be
- * judged even while OTHER chapters are still arriving.
+ * WHAT USED TO BE HERE, and why it is gone. This was a client-side two-truths join: it paged
+ * book-service's scene index per chapter, matched `scenes.source_scene_id` against spec-node ids,
+ * and — the hard part — refused to call a node "planned-only" until ITS OWN chapter's scenes were
+ * FULLY read, because absence is only evidence against a set you have finished reading. Judging
+ * early is the `paged-join-against-complete-set-mislabels-not-yet-loaded-as-absent` bug, and it
+ * would paint a finished book as unwritten. That guard was correct, and it took a HIGH-severity fix
+ * to get right. It needed a generation guard, a fetch-dedupe set, a page-walk bound and an error
+ * channel to stay correct — ~130 lines (`useActualState`), all of which existed only because the
+ * derivation lived where data arrives incrementally, out of order, and can be interrupted.
+ *
+ * None of that is needed now. `written` is MAINTAINED on write (`outline_node.written_scene_id`,
+ * reconciled from `scenes.source_scene_id` — the fact book-service already knows when it writes the
+ * link). The partial-read bug class is STRUCTURALLY IMPOSSIBLE here: the reconcile is atomic against
+ * a full read that RAISES rather than returning a partial one, so the client never sees a
+ * half-answer to mis-judge. And the fact is finally reachable by an agent, instead of dying with the
+ * panel.
+ *
+ * 'imported-unplanned' is still NOT emitted here — it cannot be: this map is keyed by SPEC-node id,
+ * and a manuscript unit with no spec node has none. It is the PH21 tray, riding
+ * `overlay.unplanned_chapters` (the shared server-side coverage diff, 28 OQ-4).
  */
 export function computeUnionState(
-  /** Each loaded spec SCENE node: its id + the BOOK chapter it belongs to (`chapter_id`). */
-  sceneNodes: Iterable<{ id: string; chapterId: string | null }>,
-  writtenNodeIds: Set<string>,
-  completeChapters: Set<string>,
+  /** Each loaded spec SCENE node, carrying the SERVER's written verdict. */
+  sceneNodes: Iterable<{ id: string; written: boolean }>,
 ): Record<string, NodeUnionState> {
   const out: Record<string, NodeUnionState> = {};
-  for (const n of sceneNodes) {
-    if (writtenNodeIds.has(n.id)) {
-      out[n.id] = 'written';
-      continue;
-    }
-    // No manuscript scene points here. That only MEANS something once we've read the whole chapter.
-    if (n.chapterId && completeChapters.has(n.chapterId)) out[n.id] = 'planned-only';
-    // else: unknown — leave unmapped.
-  }
+  for (const n of sceneNodes) out[n.id] = n.written ? 'written' : 'planned-only';
   return out;
 }

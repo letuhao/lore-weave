@@ -196,6 +196,11 @@ export type OutlineNode = {
   synopsis: string;
   version: number;
   is_archived: boolean; // T1.1b — archived nodes are hidden unless the tree's "show archived" view is on
+  /** SC11 amendment — the MAINTAINED written verdict: the manuscript scene that backs this spec
+   *  node, reconciled server-side from `scenes.source_scene_id`. null ⇒ no prose behind it.
+   *  It replaces the scene-browser's client-side `specComplete` gate: "unclaimed" used to be
+   *  ambiguous (unwritten, or its index page just hasn't loaded?) and now it never is. */
+  written_scene_id?: string | null;
   beat_role: string | null; // T1.2 — the structure-template beat key this node fills (or null)
   // #02 navigator badge — non-archived DIRECT child count. Populated only by the
   // lazy-children endpoint (list_children); null/absent from whole-tree/other reads.
