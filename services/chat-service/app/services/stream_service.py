@@ -54,6 +54,11 @@ from app.db.conversation_search import (
     CONVERSATION_SEARCH_TOOL,
     run_conversation_search,
 )
+from app.db.session_search import (
+    CHAT_SEARCH_SESSIONS_NAME,
+    CHAT_SEARCH_SESSIONS_TOOL,
+    run_chat_search_sessions,
+)
 from app.db.pool import get_pool
 from app.db.session_blocks import project_story_state
 from app.models import ProviderCredentials
@@ -1268,6 +1273,11 @@ async def _stream_with_tools(
                 # tool surface, not run_subagent itself.
                 if subagent_depth == 0 and advertised:
                     advertised = list(advertised) + [CONVERSATION_SEARCH_TOOL]
+                    # B1 / WS-1.9 — also advertise chat_search_sessions (CROSS-session recall of
+                    # what the user told the assistant). Executed only for assistant sessions
+                    # (the execute branch gates on session_kind — spec 07 §Q4), so advertising it
+                    # everywhere is harmless: a non-assistant session that calls it gets zero.
+                    advertised = list(advertised) + [CHAT_SEARCH_SESSIONS_TOOL]
                 # P5 REG-P5-01 — advertise run_subagent as an always-on tool at the
                 # top level (depth 0 only → a subagent can never spawn another).
                 # Injected AFTER the ask/plan filter so delegation stays available in
@@ -1896,6 +1906,35 @@ async def _stream_with_tools(
                         owner_user_id=user_id,
                         args=args_obj,
                     )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(payload),
+                    })
+                    _cs_ok = not payload.get("error")
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": _cs_ok,
+                        "result": payload if _cs_ok else None,
+                        "error": payload.get("error"),
+                    }}
+                    continue
+
+                # B1 / WS-1.9 (spec 07 §Q3/§Q4) — chat_search_sessions: CROSS-session recall of what
+                # the user told the ASSISTANT. Owner-scoped read (no write budget). GATED to assistant
+                # sessions here: a non-assistant (novel/roleplay) session must NOT recall the user's
+                # work colleagues (§Q4 — returns zero, self-correcting message). One cheap kind lookup.
+                if c["name"] == CHAT_SEARCH_SESSIONS_NAME:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    _kind = await get_pool().fetchval(
+                        "SELECT session_kind FROM chat_sessions WHERE session_id = $1", session_id,
+                    )
+                    if _kind != "assistant":
+                        payload = {"query": str(args_obj.get("query", "")), "count": 0, "hits": [],
+                                   "message": "Cross-session recall is only available in your assistant."}
+                    else:
+                        payload = await run_chat_search_sessions(
+                            get_pool(), owner_user_id=user_id, args=args_obj,
+                        )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content(payload),

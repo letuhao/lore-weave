@@ -255,11 +255,12 @@ class TestAdvertiseEmitsSurface:
         assert adv["frontend"] == ["propose_edit"]
         # T6/D6 — conversation_search is always appended (chat-native, server-
         # executed); it groups under the "chat" server, like find_tools.
-        assert adv["activated"] == ["conversation_search", "memory_search"]
+        # B1/WS-1.9 — chat_search_sessions is also always-appended (chat-native), grouped under "chat".
+        assert adv["activated"] == ["chat_search_sessions", "conversation_search", "memory_search"]
         assert surfaces[0]["servers"] == {
             "ui": {"tools": 1},
             "knowledge": {"tools": 1},
-            "chat": {"tools": 1},
+            "chat": {"tools": 2},  # conversation_search + chat_search_sessions (B1/WS-1.9)
         }
         # schema_tokens REUSES the W1 measurement from the same pass.
         st = next(c["schema_tokens"] for c in out if "schema_tokens" in c)
@@ -293,7 +294,7 @@ class TestAdvertiseEmitsSurface:
         # pass 0: the always-on core, plus the always-appended conversation_search
         # recovery tool (T6/D6) in activated. No discovered domain tool yet.
         assert "find_tools" in first["advertised"]["core"]
-        assert first["advertised"]["activated"] == ["conversation_search"]
+        assert first["advertised"]["activated"] == ["chat_search_sessions", "conversation_search"]
         assert first["servers"].get("translation") is None
         # after find_tools matched: translation tool advertised + grouped.
         assert "translation_start_job" in last["advertised"]["activated"]
