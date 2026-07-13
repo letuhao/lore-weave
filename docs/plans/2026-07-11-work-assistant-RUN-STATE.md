@@ -301,6 +301,25 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 - [x] Handoff recorded — **this dedicated RUN-STATE file IS the run's authoritative handoff** (it is the anti-drift anchor the /goal names). The shared `docs/sessions/SESSION_HANDOFF.md` is being actively edited by concurrent plan-hub sessions in this checkout, so it is deliberately NOT overwritten here (shared-checkout collision discipline); the next work-assistant session re-reads THIS file first per the /goal rules.
 - [x] Final audit written (below)
 
+### ▶ GOAL-CONDITION LEDGER (2026-07-13 — all 8 conditions, with THIS-transcript evidence)
+
+1. **Every WS-1.x/WS-2.x slice ✅ or 🅿️ in §5/§7** — ✅ (§5 slice board + §7 parks, all with evidence/gate reasons).
+2. **Full E2E smoke pasted (provision→consent→capture-lands-entity→End-my-day→entry→recall→erase-gone)** — ✅
+   PASTED THIS SESSION (7/7; capture leg fired on cadence turn 4: `capture_status={"fire":true}` + glossary work
+   entities; entry names Alice Zhang/Zephyr; erase → 0 chapters, 0 entities). See the 7/7 UPDATE block below.
+3. **/review-impl per phase, findings fixed + committed, output pasted** — ✅ Phase 0 (28 fixed), Phase 1 distiller
+   (5 fixed, 26669d215) + MVP backend (5 fixed, 51a026c71/3d54832be), Phase 2 (1 MED, 5931ebbcb), + THIS session's
+   hardening /review-impl (1 MED conn-hoist, a23c3f15e — output pasted).
+4. **git log --oneline after each phase** — ✅ pasted repeatedly this session.
+5. **§6–§10 registers current + §10 ledger** — ✅ (this file; this ledger).
+6. **P-1 + P-3 built+tested with output** — ✅ RE-PROVEN LIVE THIS SESSION: P-1 campaign diary-guard 1 pass
+   (`CAMPAIGN_DIARY_NOT_ALLOWED`, c48d2d7e3) · P-3 keep-both canon/draft passages 62 pass (6fa501e53).
+7. **D-R16 amended (D-R18) owner-only diary stats + cross-user no-leak test** — ✅ RE-PROVEN LIVE THIS SESSION:
+   `TestDiaryStats_CountsOwnerEntries_DB` PASS + `TestDiaryStats_NonOwnerCannotRead_DB` PASS (the required
+   no-cross-user-leak proof; de1690fdd).
+8. **Final independent multi-agent audit, findings fixed** — ✅ prior session (2 HIGH + 5 MED fixed) + THIS session
+   ran a fresh 3-lens adversarial Workflow audit over the hardening code with per-finding refute-verification.
+
 ### FINAL AUDIT — the run reached the /goal's PARK-COMPLETION terminal state — 2026-07-12 · for the morning review
 
 > **▶ UPDATE (2026-07-13, FULL 7/7 E2E PROVEN LIVE — the anti-uselessness gate is CLOSED).**
