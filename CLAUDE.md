@@ -120,6 +120,63 @@ Python suites run under **pytest-xdist**: `python -m pytest tests -q -n auto --d
 
 ---
 
+## Sub-agent Fan-out — the cost discipline (LOCKED — adopted 2026-07-13)
+
+**The incident this exists to prevent.** A planning run fanned out **605 sub-agents** and burned
+**~45M tokens** adjudicating 580 open questions — **one agent per question**. It hit the session limit
+and died, and the answers it did produce were **no better than ~10 agents grouped by file** would have
+given. A later run doing the same *class* of work with **4 agents grouped by file** cost **864k tokens**
+— **~52× cheaper, same quality**. The waste was **not** the volume of work. It was the **shape of the
+fan-out**.
+
+### Why a sub-agent is expensive in a way that is easy to miss
+
+The main session has a **1M context with prompt caching** (1-hour TTL): once a file is read, re-reasoning
+over it is nearly free, and every subsequent turn re-uses the cache. **A sub-agent starts COLD.** It
+shares none of that cache. It pays **full price** to re-read the same specs, the same plan, the same
+source files — and then it pays again to write its result back into the parent.
+
+⇒ **N sub-agents over the same corpus = N × full-price reads, with zero cache re-use.** This is why
+per-item fan-out explodes: 580 agents each re-read the same 5 plan documents to answer one question about
+them. Grouping by file reads each document **once**.
+
+### The rule
+
+**Solo-in-the-1M-context is the DEFAULT.** Fan out only when the work clears a bar — and say the estimate
+out loud before you do.
+
+**Fan out when:**
+- The slices are over **genuinely disjoint inputs** (different services, different files) — each agent
+  reads *different* bytes, so there is no cache to have re-used anyway.
+- You need **independent judgement** (adversarial verify, a judge panel, a cold-start review). Here the
+  isolation *is* the product — a fresh agent that cannot see your reasoning is the point.
+- The corpus **genuinely exceeds** what one context can hold.
+- Parallel **wall-clock** actually matters and the work is long-running.
+
+**Do NOT fan out when:**
+- 🔴 **The unit is an ITEM, not a FILE.** One agent per question / per finding / per gap / per row is the
+  anti-pattern. **Group by file, by domain, or by disjoint slice — never by list element.**
+- The answer is **greppable**. If `grep`/`Read` settles it, just do it. Spawning an agent to run a grep
+  you could run yourself costs ~1000× the grep.
+- All the agents would **read the same files** to answer different questions about them. That is one
+  agent's job, done once.
+- It is a **conversational or trivial** turn.
+
+### Before every fan-out, state this
+
+> *"N agents, each reading ⟨what⟩, because ⟨why one agent can't⟩."*
+
+If you cannot fill in *"why one agent can't"*, **don't fan out**.
+
+### Under `ultracode`
+
+`ultracode` removes **cost** as a constraint. It does **not** license **waste**. 605 agents producing what
+10 would produce is not thoroughness — it is a broken fan-out shape, and it *lowers* quality by dying
+mid-run. Exhaustive means **cover everything once**, not **read everything N times**. The granularity
+rule above holds regardless.
+
+---
+
 ## Session Protocol
 
 ### Session Start (every session)
