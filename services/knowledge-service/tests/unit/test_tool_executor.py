@@ -925,6 +925,34 @@ async def test_memory_recall_entity_excludes_diary_projects_when_projectless(mon
     assert fe.await_args.kwargs["project_id"] is None
 
 
+@pytest.mark.asyncio
+async def test_memory_timeline_excludes_diary_projects_when_projectless(monkeypatch):
+    # audit HIGH-1, locked at the EXECUTOR level (the Cypher regression below is separate): a
+    # projectless timeline must thread the user's assistant project ids as exclude_project_ids
+    # to the events read, or diary events leak into a novel-writing session.
+    lef = AsyncMock(return_value=([], 0))
+    monkeypatch.setattr("app.tools.executor.list_events_filtered", lef)
+    monkeypatch.setattr("app.tools.executor.find_entities_by_name", AsyncMock(return_value=[]))
+    ctx = _ctx(project_id=None)
+    ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
+    res = await execute_tool(ctx, "memory_timeline", {"limit": 10})
+    assert res.success
+    assert lef.await_args.kwargs["exclude_project_ids"] == ["assistant-proj-1"]
+
+
+@pytest.mark.asyncio
+async def test_memory_search_projectless_never_searches_across_projects(monkeypatch):
+    # P-4 #5 leak LOCK: memory_search has NO all-projects fallback — a projectless call is a
+    # clean empty, so a diary passage can never be surfaced into a novel session. If a future
+    # refactor "helpfully" made either search leg project-agnostic, this guard fires.
+    monkeypatch.setattr(
+        "app.search.retriever.run_hybrid_search",
+        AsyncMock(side_effect=AssertionError("no manuscript search may run when projectless")),
+    )
+    res = await execute_tool(_ctx(project_id=None), "memory_search", {"query": "the layoff"})
+    assert res.success and res.result["count"] == 0 and res.result["hits"] == []
+
+
 # ── D16 (audit) — the EXCLUSION Cypher itself has a regression test, not just the executor threading ──
 # The mock-based tests above prove the executor PASSES exclude_project_ids; these prove the Cypher
 # actually FILTERS on it. A refactor that drops the clause but keeps the kwarg would pass the mock tests
