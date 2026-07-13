@@ -37,6 +37,7 @@ from loreweave_llm import (
     resolve_reasoning,
 )
 
+from app.client.auth_client import resolve_local_date
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.client.known_entities_client import get_known_entities_client
@@ -5019,12 +5020,13 @@ async def _emit_chat_turn(
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown, response_id, exclude_from_memory)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14)
+                       context_breakdown, response_id, exclude_from_memory, local_date)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15)
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
+                    await resolve_local_date(user_id),  # DBT-11 — bucket by the user's LOCAL day
                 )
                 if _exclude_mem and parent_message_id:
                     # The parent user message was persisted earlier (POST /messages) without knowing the

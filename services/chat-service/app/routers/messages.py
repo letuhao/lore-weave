@@ -6,6 +6,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from app.client.auth_client import resolve_local_date
 from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
@@ -474,10 +475,11 @@ async def send_message(
             await conn.execute(
                 """
                 INSERT INTO chat_messages
-                  (session_id, owner_user_id, role, content, sequence_num, parent_message_id, branch_id)
-                VALUES ($1,$2,'user',$3,$4,$5, 0)
+                  (session_id, owner_user_id, role, content, sequence_num, parent_message_id, branch_id, local_date)
+                VALUES ($1,$2,'user',$3,$4,$5, 0, $6)
                 """,
                 str(session_id), user_id, message_content, seq, parent_message_id,
+                await resolve_local_date(user_id),  # DBT-11 — bucket by the user's LOCAL day
             )
             # Update message count: subtract branched msgs, add 1 for new user msg
             await conn.execute(

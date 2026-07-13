@@ -26,6 +26,7 @@ import asyncpg
 
 from loreweave_llm import AudioChunkEvent, Client, DoneEvent, SttResult
 
+from app.client.auth_client import resolve_local_date
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.client.provider_client import get_provider_client
@@ -287,10 +288,11 @@ async def voice_stream_response(
         await conn.execute(
             """
             INSERT INTO chat_messages
-              (message_id, session_id, owner_user_id, role, content, content_parts, sequence_num, branch_id)
-            VALUES ($1,$2,$3,'user',$4,$5::jsonb,$6, 0)
+              (message_id, session_id, owner_user_id, role, content, content_parts, sequence_num, branch_id, local_date)
+            VALUES ($1,$2,$3,'user',$4,$5::jsonb,$6, 0, $7)
             """,
             user_msg_id, session_id, user_id, transcript, content_parts, seq,
+            await resolve_local_date(user_id),  # DBT-11 — bucket by the user's LOCAL day
         )
         await conn.execute(
             "UPDATE chat_sessions SET message_count = message_count + 1, updated_at = now() WHERE session_id = $1",
@@ -495,10 +497,11 @@ async def voice_stream_response(
                 """
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, content_parts,
-                   sequence_num, model_ref, branch_id)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0)
+                   sequence_num, model_ref, branch_id, local_date)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
+                await resolve_local_date(user_id),  # DBT-11 — bucket by the user's LOCAL day
             )
             await conn.execute(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), updated_at=now() WHERE session_id=$1",

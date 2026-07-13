@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_steering_timeout_s: float = 2.0
 
+    # DBT-11 / D-R14 — chat_messages.local_date is bucketed by the user's LOCAL day,
+    # resolved from prefs.timezone via auth-service's token-gated internal profile.
+    # Cached in-process; a failure degrades to the UTC day (the DB DEFAULT), so the
+    # message write is never blocked on auth.
+    auth_service_url: str = "http://auth-service:8081"
+    user_timezone_timeout_s: float = 2.0
+    user_timezone_cache_ttl_s: float = 900.0
+
     # T5 (Context Budget Law D2) — entity-presence intent gate. chat-service reads
     # the book's known-entity token set from glossary-service's internal route and
     # caches it in-process (A3: no new table). Used ONLY to decide whether a turn's
