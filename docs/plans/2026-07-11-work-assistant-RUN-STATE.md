@@ -303,6 +303,28 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 
 ### FINAL AUDIT — the run reached the /goal's PARK-COMPLETION terminal state — 2026-07-12 · for the morning review
 
+> **▶ UPDATE (2026-07-13, FULL 7/7 E2E PROVEN LIVE — the anti-uselessness gate is CLOSED).**
+> After retracting the capture "bug" (a test-artifact — see the block below), drove the capture leg correctly and
+> the WHOLE loop ran clean on the live rebuilt stack (Qwen2.5-7B, non-reasoning), pasted in the transcript:
+> - **provision** ✅ (`provisioned:true`, diary book + assistant project + self_entity + work_ontology)
+> - **consent** ✅ (`canon_capture_enabled=true`)
+> - **capture lands a work entity** ✅ — the missing leg, now PROVEN. Cause it hadn't fired earlier: capture is
+>   **cadence-gated (every 4th assistant turn, `canon_capture_every_n_turns=4`)** + skips short exchanges, so 1-turn
+>   curl tests were `off_cadence`. Drove 4 completing agui turns → turn 4 fired: **`capture_status={"fire":true,
+>   "reason":"fire"}`** (home strip renders capture ON *with a reason*) + glossary got human-gated `draft`
+>   (ai-suggested) work entities ("Freezing the Q3 roadmap until Zephyr ships", "Updating the Rollout Timeline",
+>   "rollout timeline", …).
+> - **End my day → diary entry** ✅ — `entry_date=2026-07-13`, **draft**; the distilled body correctly carries
+>   `## Decisions — Freeze the Q3 roadmap until Zephyr ships`, `## People & projects — Alice Zhang from the platform
+>   team`, `## Open threads — … Zephyr migration`.
+> - **recall** ✅ (`search "Zephyr" → 2`)
+> - **erase → proven gone** ✅ — `erased:true` (deleted: book 1, sessions 1, project 1, pending_facts 4, glossary
+>   entities 6); re-verified `chapters_left=0, glossary_entities_left=0` (row gone; the distiller's source chat is
+>   deleted so a re-distill finds nothing — cannot resurrect).
+> **So goal-condition 2 (the full provision→capture→end-day→entry→recall→erase smoke, pasted) is MET.** The FE
+> "home strip render" is the same `capture_status`+glossary the strip reads; a Playwright pixel-check is a nicety,
+> not a gap. Stack: chat-service + provider-registry rebuilt (running committed code); DIAG reverted; tree clean.
+
 > **▶ UPDATE (2026-07-13, LIVE E2E RE-RUN — network restored; distill LLM leg PROVEN. ⚠️ EARLIER CAPTURE-BUG
 > DIAGNOSIS RETRACTED — it was a TEST ARTIFACT.**)
 > The prior host blocker resolved (containers reach LM Studio again). Re-ran the full-chain E2E live on the rebuilt
