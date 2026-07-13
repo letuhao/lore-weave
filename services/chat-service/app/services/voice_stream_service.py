@@ -274,6 +274,8 @@ async def voice_stream_response(
     transcript = _sanitize_transcript(transcript)
 
     # ── Step 2: Save user message ────────────────────────────────────
+    # DBT-11 — resolve the local day before acquiring the conn (auth call on cache miss).
+    _local_date = await resolve_local_date(user_id)
     async with pool.acquire() as conn:
         seq = await conn.fetchval(
             "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id=$1 AND branch_id=0",
@@ -292,7 +294,7 @@ async def voice_stream_response(
             VALUES ($1,$2,$3,'user',$4,$5::jsonb,$6, 0, $7)
             """,
             user_msg_id, session_id, user_id, transcript, content_parts, seq,
-            await resolve_local_date(user_id),  # DBT-11 — bucket by the user's LOCAL day
+            _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
         )
         await conn.execute(
             "UPDATE chat_sessions SET message_count = message_count + 1, updated_at = now() WHERE session_id = $1",
@@ -501,7 +503,7 @@ async def voice_stream_response(
                 VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
-                await resolve_local_date(user_id),  # DBT-11 — bucket by the user's LOCAL day
+                _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
             )
             await conn.execute(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), updated_at=now() WHERE session_id=$1",

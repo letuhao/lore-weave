@@ -4845,6 +4845,10 @@ async def _emit_chat_turn(
         # so chat.turn_completed is only emitted when the message persists
         # successfully. Rollback on any error discards both the message and
         # the event.
+        # DBT-11 — resolve the local day BEFORE the transaction: resolve_local_date can
+        # hit auth on a cache miss, and holding this conn+transaction across an external
+        # call would risk pool starvation on an auth hiccup.
+        _local_date = await resolve_local_date(user_id)
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # Branch-scoped like send_message/voice: after an edit re-branch,
@@ -5026,7 +5030,7 @@ async def _emit_chat_turn(
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
-                    await resolve_local_date(user_id),  # DBT-11 — bucket by the user's LOCAL day
+                    _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
                 )
                 if _exclude_mem and parent_message_id:
                     # The parent user message was persisted earlier (POST /messages) without knowing the
