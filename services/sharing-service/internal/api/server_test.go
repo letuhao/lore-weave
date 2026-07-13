@@ -106,6 +106,66 @@ func TestFetchBookProjectionHandlesBadJSON(t *testing.T) {
 	}
 }
 
+// TestDiaryVisibilityGuard — a diary can never be made non-private (P-4 / D16),
+// and the guard FAILS CLOSED when book-service can't confirm the kind.
+func TestDiaryVisibilityGuard(t *testing.T) {
+	t.Parallel()
+
+	projServer := func(kind string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"book_id": uuid.New(), "owner_user_id": uuid.New(),
+				"kind": kind, "title": "X", "lifecycle_state": "active",
+				"created_at": time.Now().UTC(),
+			})
+		}))
+	}
+
+	t.Run("diary cannot go public", func(t *testing.T) {
+		up := projServer("diary")
+		defer up.Close()
+		srv := &Server{cfg: &config.Config{BookServiceInternalURL: up.URL}}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "public"); code != http.StatusForbidden {
+			t.Fatalf("diary→public: want 403, got %d", code)
+		}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "unlisted"); code != http.StatusForbidden {
+			t.Fatalf("diary→unlisted: want 403, got %d", code)
+		}
+	})
+
+	t.Run("diary stays private with no fetch", func(t *testing.T) {
+		// A private (or empty no-op) set must be allowed WITHOUT even calling
+		// book-service — proven by pointing at a dead URL and still getting allow.
+		srv := &Server{cfg: &config.Config{BookServiceInternalURL: "http://127.0.0.1:0"}}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "private"); code != 0 {
+			t.Fatalf("diary→private: want allow(0), got %d", code)
+		}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), ""); code != 0 {
+			t.Fatalf("empty→noop: want allow(0), got %d", code)
+		}
+	})
+
+	t.Run("a normal book can go public", func(t *testing.T) {
+		up := projServer("novel")
+		defer up.Close()
+		srv := &Server{cfg: &config.Config{BookServiceInternalURL: up.URL}}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "public"); code != 0 {
+			t.Fatalf("novel→public: want allow(0), got %d", code)
+		}
+	})
+
+	t.Run("fail closed when book-service is unreachable", func(t *testing.T) {
+		up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		defer up.Close()
+		srv := &Server{cfg: &config.Config{BookServiceInternalURL: up.URL}}
+		if code, _ := srv.diaryVisibilityGuard(uuid.New(), "public"); code != http.StatusBadGateway {
+			t.Fatalf("unreachable→public: want 502 fail-closed, got %d", code)
+		}
+	})
+}
+
 func TestFetchBookChaptersInternal(t *testing.T) {
 	t.Parallel()
 

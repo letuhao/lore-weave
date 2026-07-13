@@ -147,6 +147,10 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 type bookProjection struct {
 	BookID           uuid.UUID `json:"book_id"`
 	OwnerUserID      uuid.UUID `json:"owner_user_id"`
+	// Kind rides the projection (WS-1.2 / D16). A diary is private-forever: no
+	// sharing policy may ever expose it. Empty on a legacy book-service that
+	// predates the field — treated as non-diary (normal book).
+	Kind             string    `json:"kind"`
 	Title            string    `json:"title"`
 	Description      *string   `json:"description"`
 	OriginalLanguage *string   `json:"original_language"`
@@ -156,6 +160,26 @@ type bookProjection struct {
 	ChapterCount     int       `json:"chapter_count"`
 	LifecycleState   string    `json:"lifecycle_state"`
 	CreatedAt        time.Time `json:"created_at"`
+}
+
+// diaryVisibilityGuard blocks any attempt to make a diary book non-private
+// (P-4 egress / D16). A diary is private-forever; only 'private' (or an empty
+// no-op patch) is ever allowed. Returns (0,"") to allow; a non-zero HTTP code
+// to refuse. FAIL-CLOSED: if book-service can't confirm the kind, a non-private
+// set is refused rather than risk exposing a diary during an outage. Pool-free
+// (only reads the projection), so it is unit-testable without a DB.
+func (s *Server) diaryVisibilityGuard(bookID uuid.UUID, visibility string) (code int, msg string) {
+	if visibility == "" || visibility == "private" {
+		return 0, ""
+	}
+	proj, status := s.fetchBookProjection(bookID)
+	if status != http.StatusOK {
+		return http.StatusBadGateway, "cannot verify book privacy"
+	}
+	if proj.Kind == "diary" {
+		return http.StatusForbidden, "a diary cannot be shared"
+	}
+	return 0, ""
 }
 
 func (s *Server) fetchBookProjection(bookID uuid.UUID) (*bookProjection, int) {
@@ -279,6 +303,12 @@ func (s *Server) patchSharingPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Visibility != "private" && in.Visibility != "unlisted" && in.Visibility != "public" {
 		writeError(w, http.StatusBadRequest, "SHARE_POLICY_INVALID", "invalid visibility")
+		return
+	}
+	// P-4 egress (D16): a diary can never be made shareable. Ownership is checked
+	// above, so only the owner ever reaches this — no diary oracle to a stranger.
+	if code, msg := s.diaryVisibilityGuard(bookID, in.Visibility); code != 0 {
+		writeError(w, code, "SHARE_POLICY_DIARY_FORBIDDEN", msg)
 		return
 	}
 	var tok *string
