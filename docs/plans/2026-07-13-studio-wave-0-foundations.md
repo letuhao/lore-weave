@@ -1,13 +1,81 @@
 # Wave 0 — FOUNDATIONS · Implementation Plan
 
-> **Type:** FS · **Size:** **XL** (re-sized 2026-07-13 after folding the adjudication register: logic ~18 ·
-> side effects: **2 new REST routes + 1 OpenAPI contract change**, 1 additive DDL migration, 2 MCP arg
-> changes, 1 MCP tool retirement + **2** contract regens, 1 packer lens on the generation hot path,
-> 1 Go MCP description fix · files ~70)
+> **Type:** FS · **Size:** **XL** (re-sized 2026-07-13 after folding the adjudication register **and the
+> PO's sealed `D-1..D-7`**: logic ~20 · side effects: **2 new REST routes + 1 OpenAPI contract change**,
+> 1 additive DDL migration, 2 MCP arg changes, 1 MCP tool retirement + **2** contract regens, 1 packer lens
+> on the generation hot path, 1 Go MCP description fix, **1 app-wide FE error default (`MutationCache`)**
+> · files ~74 · **21 slices**)
 > **Source spec:** [`docs/specs/2026-07-01-writing-studio/30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md`](../specs/2026-07-01-writing-studio/30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md) §7 Wave 0 (X-1..X-10)
 > **Planned at:** HEAD `9262ed53e`+ (branch `feat/context-budget-law`), 2026-07-13.
+> **Revised 2026-07-13** — folded the PO's **sealed `D-1..D-7`** (§0-PO). **Two of them ADD SLICES:**
+> `W0-S15` (D-2 · Translate drops the user's ticked chapters) and `W0-S16` (D-3 · the global
+> `MutationCache.onError` — *every failed mutation in the FE is silent today*). **19 slices → 21.**
+> Also corrected: the motif-mine story is a **500 at CONFIRM, before the enqueue** — **not** a 404 at the
+> poll, and **no user was ever charged** (`W0-BE1` was already built for the true mechanism; only the
+> narrative prose was stale).
 > **Every fact below was verified by opening the file.** Where this plan contradicts plan 30, the
 > contradiction is flagged 🔴 **AUDIT CORRECTION** with the code evidence. There are **five**.
+
+---
+
+## 0-PO · 🔒 SEALED DECISIONS — **D-1 … D-7**, sealed 2026-07-13. **Binding. Do not re-litigate.**
+
+> These were sealed by the PO **after** this plan's QC gate, on the adversarial audit of the whole
+> 10-wave batch. **Two of them ADD SLICES TO WAVE 0** (`W0-S15` ← D-2, `W0-S16` ← D-3). They are
+> reproduced **verbatim** — the paraphrase is the drift.
+
+- **D-1 · REKEY the corrupted language data — but DRY-RUN FIRST.** 5 rows say `Vietnamese` next to 89
+  saying `vi`, inside `UNIQUE(chapter_id, target_language, version_num)`. The migration is DESTRUCTIVE
+  (a 3-table rekey). The PO's ruling: **write the migration + a rollback path + a before/after row-count
+  assertion, run a DRY-RUN, show the output, and only then execute.** The agent may NOT execute it
+  unattended. (This is the one CRITICAL-class stop in the whole build.)
+- **D-2 · WAVE 0 IS THE HOTFIX BATCH.** It already carries 3 of the 4 HIGH bugs (AddModelCta = X-1/W0-S3,
+  motif-Mine 500 = W0-BE1, the conformance 404s = W0-S7). **PULL THE 4th FORWARD INTO WAVE 0**: Translate
+  silently discards the user's ticked chapters and substitutes the whole backlog
+  (`TranslationTab.tsx:300-305` renders `<TranslateModal>` with **no `preselectedChapterIds`** though the
+  prop exists and the sibling `ExtractionWizard` call site passes it).
+- **D-3 · ADD THE GLOBAL `MutationCache.onError` TO WAVE 0.** `frontend/src/App.tsx:6` builds
+  `new QueryClient({…})` with **no MutationCache** ⇒ **every failed mutation in the entire frontend is
+  silent, forever** — the button just re-enables. That is why three live bugs survived to an audit.
+- **D-4 · The content-language SSOT is `contracts/languages.contract.json`** (mirroring
+  `frontend-tools.contract.json`, the proven cross-language-SSOT shape in this repo). ⚠ It must NOT be
+  called `languages.yaml` — `contracts/language-rule.yaml` already exists and means *service →
+  programming language*. Different axis; one name for two concepts is the drift this repo legislates
+  against.
+- **D-5 · Mobile shell — DECIDE AT WAVE 6's CLOSE.** Until then **GG-4 stays SHUT**: Wave 6 ships the
+  mechanical parity guard, **not** the deletion of `ChapterEditorPage`.
+- **D-6 · `D-COMPOSE-GENERATE-UNGATED` — CARRY IT; raise at Wave 3/3c.** Pre-existing, not a regression
+  of this batch, and the user does get what they pay for. ⚠ When fixed, it must be fixed **AT THE ROUTE**,
+  never by gating the Regenerate button alone (that would mint a second confirmation convention, and
+  **AN-8 seals one-channel-per-object-class**).
+- **D-7 · ADD A `place-graph` SLICE TO WAVE 8.** The legacy `WorldMap.tsx` place-graph was a CIRCULAR
+  DEFER (spec 38 said "it belongs to Wave 6"; Wave 6 never contained it) ⇒ no wave built it ⇒ it would
+  have died at the GG-4 gate. ⚠ It is **NOT** Wave 8's `world-map` panel: that reads book-service's
+  `world_maps`/`map_markers`/`map_regions`; the legacy `useWorldMap` reads `work.settings.world_map`.
+  Plan 30 §10 explicitly refutes conflating them. Leaf-reuse `WorldMap.tsx`.
+
+### 🔴 D-1 is **THE ONE CRITICAL-CLASS STOP IN THE ENTIRE BUILD** — and it is **NOT Wave 0's**
+
+The language rekey is **DESTRUCTIVE** (a 3-table rekey under a live UNIQUE constraint). Per §0.3 it is the
+**stop-and-ask** class, and the PO has already ruled on the shape of the stop:
+
+> **produce a DRY-RUN for PO review — migration + rollback path + before/after row-count assertion —
+> and DO NOT EXECUTE IT UNATTENDED.**
+
+**Wave 0 does not run it.** Wave 0's only obligation is to **not pretend it is routine**: when the rekey's
+wave arrives, the run **pauses at the dry-run and waits for a human.** Every other blocker in this batch
+is still a defer-row-and-keep-going (§0.3) — **this one is not.**
+
+### What D-2 / D-3 do to THIS plan
+
+| Decision | Effect on Wave 0 |
+|---|---|
+| **D-2** | 🆕 slice **`W0-S15`** — the Translate dropped-selection fix. 🔴 **Wave T's `T-A4` (gap `T8`) is DISCHARGED HERE — its SELECTION half only.** `T-A4`'s `preselectedLang`/**D6** half, the per-cell language hand-off, and the fully-translated-book dead end **stay in Wave T**. It must not be built twice, and it must not be dropped. |
+| **D-3** | 🆕 slice **`W0-S16`** — the global `MutationCache.onError`. **The highest leverage-per-line item in the whole build.** |
+| **D-4** | No Wave-0 code. Recorded so the name is not invented twice: the content-language SSOT is **`contracts/languages.contract.json`**, *never* `languages.yaml`. |
+| **D-5** | **`W0-S12`'s GG-4 gate stays SHUT** — it is a *machine-checked ledger*, not a deletion trigger. This is already how S12 is written; D-5 seals it. |
+| **D-6** | `D-COMPOSE-GENERATE-UNGATED` **stays a carried row** (§8). `W0-S7` **must not** gate the Regenerate button on cost (§10 #10 already says this — D-6 seals it, and adds: **fix it AT THE ROUTE**, Wave 3/3c). |
+| **D-7** | 🔴 **SEALS the `worldmap` row of `W0-S12`'s LEGACY_SUBTAB_HOME ledger.** That row said *"pick ONE: (i) home it in Wave 8 as `place-graph` … or (ii) get a PO adjudication that book-service's world-map supersedes it."* **The PO picked (i).** So the ledger's `place-graph` → **WAVE 8** row is now **sealed, not proposed**, Wave 8's delta stays **+2 → +6**, and 🔴 **`place-graph` is NOT Wave 8's `world-map` panel** (different service, different data — plan 30 §10). **Leaf-reuse `WorldMap.tsx`.** Wave 0 writes the ledger row; **Wave 8 builds the slice.** |
 
 ---
 
@@ -81,7 +149,9 @@ already deleted a hand-copied enum list once, `test_frontend_tools.py:153-162` i
 | **X-GG4-GATE** | 🆕 The GG-4 legacy-editor retirement gate, as a **machine-checked test** + the LEGACY_SUBTAB_HOME ledger | `W0-S12` |
 | **X-DIRTY-CLOSE** | 🆕 Closing a dirty dock tab **silently discards the edit today**. Guard it before any editing panel lands. | `W0-S13` |
 | **X-NEW-CHAPTER** | 🆕 The manuscript `+` button is **DEAD** (`StudioSideBar` has no `onNewChapter` prop at all) | `W0-S14` |
-| **The live 404s** | the motif-MINE poll (**404s ALWAYS and the user PAYS for it**) + 3 FE-invented conformance/regenerate URLs | `W0-BE1` + `W0-S7` |
+| **X-TRANSLATE-SELECTION** | 🆕 **PO `D-2`** — Translate **silently throws the user's ticked chapters away** and substitutes the whole backlog (`TranslateModal` mounted with **no `preselectedChapterIds`**). **A HIGH bug, damaging data TODAY.** Discharges the **selection half** of Wave T's `T-A4`/`T8` (the D6 language half stays in Wave T). | `W0-S15` |
+| **X-SILENT-MUTATION** | 🆕 **PO `D-3`** — `QueryClient` has **no `MutationCache`** ⇒ **every failed mutation in the entire FE is SILENT.** *This is why three live bugs survived to an audit.* | `W0-S16` |
+| **The motif-mine 500** | 🔴 `/actions/confirm` **500s BEFORE the enqueue** (the job row is **never written**) + 3 FE-invented conformance/regenerate URLs. ⚠ **NOT a "404 at the poll", and NO USER WAS EVER CHARGED** — see `W0-BE1`. | `W0-BE1` + `W0-S7` |
 | **Contract-first** | 🆕 **Both new REST routes go into `contracts/api/composition/v1/openapi.yaml` BEFORE any FE consumes them** | `W0-C1` |
 
 ### Hard gates — what must be green BEFORE this wave starts
@@ -155,6 +225,27 @@ cd ../chat-service && python -m pytest tests -q -n auto --dist loadgroup 2>&1 | 
 cd ../../frontend && npx vitest run 2>&1 | tail -5
 ```
 
+```bash
+# 6. 🆕 THE PO'S TWO HOTFIX FACTS (D-2 / D-3). Both must still be TRUE, or the slice is stale.
+#    (Line numbers drift; these greps do not.)
+
+# D-2 (W0-S15): the matrix's TranslateModal mount must have NO preselectedChapterIds.
+grep -n -A5 "<TranslateModal" frontend/src/pages/book-tabs/TranslationTab.tsx
+# expect: open / onClose / bookId / onJobCreated — and NOTHING else.  If it already passes
+# preselectedChapterIds, another track fixed it: mark W0-S15 VERIFY-ONLY and log the drift.
+
+# D-3 (W0-S16): the app QueryClient must have NO MutationCache.
+grep -rn "MutationCache" frontend/src --include=*.ts --include=*.tsx
+# expect: ONE hit, and it is a COMMENT (useRunBenchmark.ts:41). Zero real handlers.
+# RECORD the scale (do NOT copy the plan-time numbers — measure):
+grep -rn "useMutation(" frontend/src --include=*.ts --include=*.tsx | wc -l   # plan-time: 142
+grep -rn "onError:"     frontend/src --include=*.ts --include=*.tsx | wc -l   # plan-time:  98
+#   The two counts are a SIGNAL, not an exact subtraction (some `onError:` sites are on queries,
+#   not mutations). The load-bearing fact is binary and needs no arithmetic: THERE IS NO GLOBAL
+#   DEFAULT, so EVERY mutation without its own onError fails silently. Do not publish a derived
+#   "N silent mutations" number you did not actually enumerate.
+```
+
 > ⚠ **`git commit -- <path>` commits the WORKING TREE, not the index** (memory:
 > `git-commit-pathspec-reads-working-tree-not-index`), and **the index may already carry another
 > session's staged changes** (`git-index-may-carry-prestaged-unrelated-changes`). Three tracks share
@@ -169,11 +260,24 @@ cd ../../frontend && npx vitest run 2>&1 | tail -5
 > ⚖ **DECISION: `Q-30-404-MOTIF-MINE-POLL`** (read it — it owns the MCP + FE halves of this slice
 > verbatim). ⚠ **§10 AUDIT CORRECTION #6 — the plan overrides ONE clause of it.**
 
-> 🔴 **This is the PO's own CRITICAL class: "a paid-action defect that would charge the user for
-> nothing."** It fires **today**, on the live legacy page. Plan 30 and the decision both scheduled it for
-> Wave 3a. **This plan pulls the WHOLE of BE-7c into Wave 0** because (a) it is live and it costs the
-> user real money, and (b) `W0-S7` cannot fix the FE poll — **or run its live smoke** — without it.
-> Wave 3 / `3a-1` then **verifies** it and only builds it if this slice somehow did not land.
+> 🔴 **This is the PO's own CRITICAL class: "a paid-action defect."** It fires **today**, on the live
+> legacy page: **⛏ Mine is 100% DEAD — `POST /actions/confirm` returns a hard 500 and the confirm token is
+> burned (a retry gets 409).** Plan 30 and the decision both scheduled it for Wave 3a. **This plan pulls
+> the WHOLE of BE-7c into Wave 0** because (a) it is live and the feature cannot work at all, and (b)
+> `W0-S7` cannot fix the FE poll — **or run its live smoke** — without it. Wave 3 / `3a-1` then
+> **verifies** it and only builds it if this slice somehow did not land.
+
+> ✅ **CORRECTION — SEALED. NO USER WAS EVER CHARGED, AND THIS IS *NOT* A 404 AT THE POLL.**
+> **Three documents get this wrong** (plan 30 §3.3 is the worst: *"the user pays for the LLM run and
+> watches a spinner forever"*). **They are wrong in the user's favour, and the story must not be repeated
+> anywhere** — a reader who believes it will build the wrong fix. The truth, **live-reproduced inside the
+> container**: the 500 happens **at confirm, BEFORE the enqueue**. **No job row. No Redis `XADD`. No
+> worker. No LLM call. No spend booked.** The poll is **never reached** — so **an owner-scoped job-read
+> route CANNOT FIX THIS**: it would read a row that does not exist, **and it would SHIP GREEN** (its test
+> would seed the job row directly). That is this repo's own `fixtures-can-seed-a-field-the-writer-never-sets`
+> bug class, about to be committed **on purpose**. 🔴 **THE WRITER IS THE FIX.** *(A billing hold may be
+> reserved by `_precheck_or_402` before the raise; that is a **hold**, not a charge — do not upgrade it
+> into "the user paid" when you write this up.)*
 
 > 🔴🔴 **AUDIT CORRECTION #0 / #6 — THE READ ROUTE ALONE FIXES NOTHING, AND "ZERO MIGRATION" IS WRONG.**
 > `Q-30-404-MOTIF-MINE-POLL` says *"Zero migration needed (`created_by` already exists)"* and specs only
@@ -202,9 +306,11 @@ cd ../../frontend && npx vitest run 2>&1 | tail -5
 4. That is **uncaught** ⇒ **`POST /actions/confirm` 500s** — *after* `_claim_or_replay` **burnt the
    confirm token** and `_precheck_or_402` **reserved the billing hold**.
 
-**⇒ There is no `job_id`, no job row, and nothing to poll. The user pays and gets a 500.**
-**Re-pointing the poll (`W0-S7`) fixes NOTHING on its own.** The table must be able to say
-"this job is owner-scoped, not Work-scoped".
+**⇒ There is no `job_id`, no job row, and nothing to poll — the call dies with a 500 at CONFIRM, before
+any work (or any spend) is ever started.**
+**Re-pointing the poll (`W0-S7`) fixes NOTHING on its own** — and neither does the read route. The table
+must be able to say "this job is owner-scoped, not Work-scoped", **and the WRITER must be able to write
+such a row.**
 
 **Why a synthetic `project_id` can never work / why not resolve the book's Work:** a mine is *genuinely*
 not Work-bound, and the GUI offers **corpus** scope as a first-class, always-enabled radio
@@ -261,11 +367,15 @@ async def get_motif_job(
 
     `GET /jobs/{job_id}` gates on the job's project→book grant (`_gate_work`). That is
     correct for Work-bound jobs and IMPOSSIBLE for the ones that aren't: a book/corpus
-    motif-mine and an arc-import are enqueued with `project_id=None`, so
-    `_enqueue_motif_job` (actions.py:552) stamps a SYNTHETIC uuid4() that has no
-    `composition_work` row — `_gate_work` then 404s FOREVER, after the user has already
-    paid for the LLM run. This route gates on the actor stamp the row DOES carry
-    (`created_by`, set by jobs.create at actions.py:557) instead.
+    motif-mine and an arc-import are enqueued with `project_id=None`, so the row
+    carries NO composition_work and `_gate_work` can never grant on it. This route
+    gates on the actor stamp the row DOES carry (`created_by`) instead.
+
+    ⚠ Read this WITH create_unbound(): before that landed, `_enqueue_motif_job`
+    stamped a SYNTHETIC uuid4() and create()'s `INSERT … SELECT … FROM composition_work`
+    matched zero rows ⇒ ReferenceViolationError ⇒ POST /actions/confirm 500'd at CONFIRM,
+    BEFORE the enqueue. So the row was never written and this route would have 404'd
+    forever. THE WRITER IS THE FIX; this route is only its read half.
 
     ⚠ NEVER "fix" this by back-filling a synthetic project_id into a Work — that would
     mint a phantom Work row per mine. The job is genuinely user-scoped, not Work-scoped.
@@ -401,9 +511,10 @@ and it already carries `/canon-rules/{rule_id}` (`:198`) and `/jobs/{job_id}` (`
         BE-7c. `GET /jobs/{job_id}` gates on the job's project→book grant, which is correct for
         Work-bound jobs and IMPOSSIBLE for the ones that are not: a book/corpus motif-mine and an
         arc-import are enqueued with project_id=None, so the row carries NO composition_work and the
-        Work gate 404s forever — after the user has already paid for the LLM run. This route gates on
-        the actor stamp the row DOES carry (`created_by`). Missing and denied return the SAME 404
-        (H13 — no enumeration oracle).
+        Work gate can never grant on it. This route gates on the actor stamp the row DOES carry
+        (`created_by`). It is the READ half of BE-7c — the write half (`create_unbound()`) is what
+        makes such a row exist at all. Missing and denied return the SAME 404 (H13 — no enumeration
+        oracle).
       parameters: [{ name: job_id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
         '200': { description: Job, content: { application/json: { schema: { $ref: '#/components/schemas/GenerationJob' } } } }
@@ -462,6 +573,10 @@ lie the FE will trust. Change to — and **add the field the schema never had**:
 ---
 
 ## 4 · The slices. Each slice = ONE COMMIT.
+
+**Wave 0 = 21 slices**: `W0-BE1` · `W0-BE2` · `W0-C1` (backend + contract, §3/§3.5) **+ 18 `W0-S*`**
+(`S1`–`S14`, `S5b`, `S5c`, and 🆕 **`S15`** ← PO `D-2`, 🆕 **`S16`** ← PO `D-3`).
+*(Was 19 before the 2026-07-13 PO seal. **Zero new panels** — the enum still ends at `N_before + 0`.)*
 
 ---
 
@@ -1595,7 +1710,7 @@ always holds — *including* conformance, which is safe under the owner gate eve
 | `MotifMine.test.tsx:56` | 🔴 **the ANTI-MOCK guard** | **DELETE the `vi.spyOn(motifApi, 'mineConfirm')` mock for at least one case** and stub the **HTTP layer** instead. *§10 of plan 30: "the propose→confirm half ships **with a passing test** — **the test mocks the poll**." A mock encodes YOUR assumption (memory: `mocked-client-hides-server-side-default-filters`). Assert on the **URL the client actually built**.* |
 | `tests/unit/test_motif_mcp.py` | `chapter scope mints NOTHING` | `composition_conformance_run(scope='chapter')` → `success:False`, **no `confirm_token`**. |
 
-**DoD evidence:** `"npx vitest run src/features/composition/motif → all passed; pytest tests/unit/test_motif_mcp.py -q → passed; grep -rnE 'actions/[a-z_]+/(estimate|confirm)' frontend/src → 0 hits"` **+ a LIVE cross-service smoke (composition + gateway + FE): click ⛏ Mine in the browser, confirm the cost, and watch the poll return 200 and the panel reach a TERMINAL state.** *That is the whole point of the slice: **the unit suite was green while the user paid and watched a spinner forever.***
+**DoD evidence:** `"npx vitest run src/features/composition/motif → all passed; pytest tests/unit/test_motif_mcp.py -q → passed; grep -rnE 'actions/[a-z_]+/(estimate|confirm)' frontend/src → 0 hits"` **+ a LIVE cross-service smoke (composition + gateway + FE): click ⛏ Mine in the browser, confirm the cost, and watch `/actions/confirm` return a real `job_id` (at HEAD it is a hard 500), then the poll return 200 and the panel reach a TERMINAL state.** *That is the whole point of the slice: **the unit suite was green while ⛏ Mine 500'd on every click in production.** ⚠ Assert the **CONFIRM**, not just the poll — a green poll over a row the writer can never produce is the `fixtures-can-seed-a-field-the-writer-never-sets` trap.*
 **dependsOn:** `W0-BE1`, `W0-C1`, `W0-S6`
 
 ---
@@ -2089,7 +2204,7 @@ page owns and dockview has no narrow-viewport pattern for — is an unresolved p
 | **assemble** | `ChapterAssembleView` — chapter-granularity generation: single-pass (B2) **or** stitch (B3), gated on `scenesAllDone`; the `assembly_mode` setter; `CanonGatePanel` result; an editable preview generated with **`persist=false`** (never clobbers the editor draft); Accept → `onAccept`; **`useCorrection` human-gate capture** → `composition.generation_corrected` → learning-service. | **WAVE 6** — leaf-reuse of `ChapterAssembleView` (**EC-6 applies**). Inputs: `projectId` + `bookId` + `chapterId` from the manuscript hoist's active chapter using **the ONE convention spec 31 QC-10 locks** (`QualityCriticPanel.tsx:33-59`'s picker, **incl. the `chaptersTruncated` no-silent-cap notice**); `work.settings` for `assembly_mode`; `scenesAllDone` ← `useChapterScenes`; `onAccept` → `applyProposedEdit`. **Registration +1.** 🔴 **This is ALSO the SECOND producer spec 30's `G-CORRECTION-FLYWHEEL` row names** — that row says corrections are *"written only from the legacy ComposeView"*, which **understates it: `ChapterAssembleView` calls `useCorrection` too. Wave 1's capture seam is INCOMPLETE while this is homeless.** *(Agent Mode / `authoringRuns` is **not** a substitute — it is an autonomous multi-chapter runner, not the interactive stitch-with-human-gate surface.)* | `chapter-assemble` |
 | **cast** | `CastCodexPanel` — the book's cast (characters / locations / factions / concepts) as a docked codex, **GROUPED BY KIND**, searchable, each row showing its **SPOILER-SAFE current story-state** (joins knowledge entities ↔ `EntityStatusEntry`). It is the **deep-link TARGET** of FlywheelPanel's entity chips, WorldMap's *"open this place in the codex"*, and the Cast→Arc launcher. | **WAVE 8** — 🔴 **the closest existing panel, `kg-entities`, is NOT this**: it is a thin wrapper over knowledge's `EntitiesTab` — a **flat, cross-project entity LIST** with no kind-grouping and **no spoiler-safe story-state join.** Leaf-reuse `CastCodexPanel` (props: `bookId`, `chapterId` from the hoist, `token`; **lift `search` into `params`** so the flywheel/worldmap deep-links still land; `onViewArc` → `host.openPanel('character-arc', {entityId})`). Wave 8 already owns the KG panels and is already editing `EntitiesTab`/`EntityDetailPanel`/`ProjectGraphView` ⇒ **the files are in its blast radius.** `category: 'storyBible'` (Wave 8's G3 confirms `storyBible` is already in `CATEGORY_ORDER` — **no X-2 dependency**). *(If PO prefers Wave 2 because of the arc deep-link, that is defensible — **but it must be written into SOME wave; today it is in none.**)* | `cast` |
 | **arc** | `CharacterArcView` — **ONE character's** events in `event_order` on a compact arc, **spoiler-cut at the current chapter**, with an active→gone state band and the current 1-hop relations strip (`ArcRelationsStrip`). Launched with a character preselected from the Cast codex (`arcEntityId` is lifted into `CompositionPanel` for exactly that hand-off). | 🔴 **WAVE 6's MAP FALSE-HOMES THIS: `arc: 'arc-templates'` (wave-6 `:1457`). WRONG.** `arc-templates` (Wave 4) is the structure-**TEMPLATE** library + 拆文 deconstruct; `arc-inspector` (Wave 2) is G-ARC-SPEC-CRUD — the narrative arc **SPEC tree** over book/composition arc rows. **Neither is a character's event arc over the knowledge graph.** **ACTION: (a) FIX the row in wave-6's `LEGACY_SUBTAB_HOME`** — as written **the machine gate goes GREEN on a deleted feature**; **(b) HOME IT IN WAVE 8**, next to `cast` (same knowledge-service data, same deep-link pair). Leaf-reuse `CharacterArcView`; **`entityId` arrives via `params`** (⇒ **W0-S5b's X-12 `params` arg is what makes this reachable by the agent at all**) so `cast` can `host.openPanel('character-arc', {entityId})` — today that hand-off is `onViewArc`/`setArcEntityId` **inside `CompositionPanel`** and **dies with it.** Registration +1. | `character-arc` |
-| **worldmap** | `WorldMap` — the book's **PLACES** (location entities) and their location↔location connections as a graph; **drag to arrange (persisted server-side in `work.settings.world_map`, per-Work, cross-device)**; an optional **backdrop image**; *"+ add place"* / *"link places"* **AUTHOR the knowledge graph** (`PLACE_LINK_PREDICATES`); clicking a place opens it in the Cast codex. | 🔴 **THE MOST DANGEROUS ROW — a CIRCULAR DEFER masquerading as a home.** Spec 38 OQ-9 says *"This wave does NOT port `WorldMap.tsx`… it belongs to plan 30's **Wave 6** editor-craft ports"* — **AND WAVE 6 DOES NOT CONTAIN IT.** Wave 8 ports only the **CAPABILITY** (`useWorldMap.ts:129,134` is the frontend's **only** human caller of `knowledgeApi.createEntity`/`createRelation` → W8-02/03 give the kg panels entity-create + relation-create), which is why Wave 8 §1.3 claims it *"unblocks GG-4"* — **TRUE FOR THE WRITE LEG ONLY.** The place-graph **VIEW** (backdrop image, persisted spatial arrangement, place↔place link predicates) **has no home.** And **spec 30 §10 REFUTES conflating it with Wave 8's `world-map` panel**: that one is **book-service's** `world_maps`/`map_markers`/`map_regions`; `useWorldMap` reads **`work.settings.world_map`** — *"entirely unrelated"*. **ACTION — pick ONE and write it down: (i) HOME IT IN WAVE 8** as `place-graph` (leaf-reuse `WorldMap`; Wave 8 is already in these files) — **this plan's choice**; **or (ii)** get an explicit PO adjudication that book-service's real world-map (W8-08's BE-15a..l) **SUPERSEDES** the settings-blob place-graph — **in which case the migration of existing `work.settings.world_map` blobs MUST be specced or that data is ORPHANED.** 🔴 **Silence here = the feature dies at GG-4.** | `place-graph` |
+| **worldmap** | `WorldMap` — the book's **PLACES** (location entities) and their location↔location connections as a graph; **drag to arrange (persisted server-side in `work.settings.world_map`, per-Work, cross-device)**; an optional **backdrop image**; *"+ add place"* / *"link places"* **AUTHOR the knowledge graph** (`PLACE_LINK_PREDICATES`); clicking a place opens it in the Cast codex. | 🔴 **THE MOST DANGEROUS ROW — a CIRCULAR DEFER masquerading as a home.** Spec 38 OQ-9 says *"This wave does NOT port `WorldMap.tsx`… it belongs to plan 30's **Wave 6** editor-craft ports"* — **AND WAVE 6 DOES NOT CONTAIN IT.** Wave 8 ports only the **CAPABILITY** (`useWorldMap.ts:129,134` is the frontend's **only** human caller of `knowledgeApi.createEntity`/`createRelation` → W8-02/03 give the kg panels entity-create + relation-create), which is why Wave 8 §1.3 claims it *"unblocks GG-4"* — **TRUE FOR THE WRITE LEG ONLY.** The place-graph **VIEW** (backdrop image, persisted spatial arrangement, place↔place link predicates) **has no home.** And **spec 30 §10 REFUTES conflating it with Wave 8's `world-map` panel**: that one is **book-service's** `world_maps`/`map_markers`/`map_regions`; `useWorldMap` reads **`work.settings.world_map`** — *"entirely unrelated"*. 🔒 **ADJUDICATED — PO decision `D-7` (§0-PO), sealed 2026-07-13: option (i). HOME IT IN WAVE 8** as `place-graph`, **leaf-reusing `WorldMap.tsx`** (Wave 8 is already in these files). **This row is now BINDING, not a proposal** — Wave 8's slice board must carry a `place-graph` slice, and Wave 8's registration delta stays **+2 → +6**. ⚠ **D-7 restates the trap: `place-graph` is NOT Wave 8's `world-map` panel** — that one reads **book-service's** `world_maps`/`map_markers`/`map_regions`; this one reads **`work.settings.world_map`**. *(Option (ii) — "book-service's world-map supersedes it" — was CONSIDERED AND REJECTED. Do not revive it: it would orphan every existing `work.settings.world_map` blob.)* 🔴 **This was a CIRCULAR DEFER — spec 38 said "Wave 6", Wave 6 never contained it — so silence here meant the feature died at GG-4. The silence is now broken; do not re-open it.** | `place-graph` |
 | **canonview** | `CanonAtChapterPanel` — the *"what does canon KNOW as of chapter N"* inspector: glossary **PRESENCE** and knowledge **CANON-STATE** for that chapter window, **labelled by source distinctly** (two stores, may disagree), graded major/appears/mentioned. **Mounted TWO ways today:** as a per-scene studio panel, **and at a what-if BRANCH POINT** (canon right before the divergence). | 🔴 **Do not confuse it with the two canon panels that DO have homes:** `quality-canon` (shipped) = canon **ISSUES**/violations; `quality-canon-rules` (Wave 1) = canon **RULE authoring**. **This is neither** — it is a read-only canon **SNAPSHOT at a chapter boundary**, and its second mount point is **load-bearing for the divergence flow.** **TWO homes, near-zero cost: (a) FOLD INTO WAVE 6 M3** — a file row on `DivergencePanel`'s table (`:1133-1192`, which already ports `DivergenceWizard` + `DivergenceWizardSteps` + `useDivergenceWizard` **VERBATIM**) **plus a test that the branch-point step renders the canon-at-branch view.** 🔴 **If M3's wizard port silently drops it, the writer branches BLIND.** **(b)** for the standalone per-scene use, add it as a **SECTION inside the existing `scene-inspector` panel** (which already hosts `GroundingPanel` — same shape) ⇒ **no new panel id, no registration-count change.** | *(no new id)* |
 | **flywheel** | `FlywheelPanel` — the **CANON-GROWTH** flywheel: after a publish→extraction run completes, shows *"+N entities / +N relations / +N events"* the run **ADDED to canon**, with named highlights; each stat deep-links to its view (Cast / Timeline / Relations) and each entity chip focuses that entity in Cast. Reads `knowledgeApi.getFlywheel` (**knowledge-service**). | 🔴 **WAVE 6's MAP FALSE-HOMES THIS: `flywheel: 'quality-corrections'` (wave-6 `:1454`). WAVE 1'S OWN PLAN CONTRADICTS IT IN WRITING (`:2445`):** *"No FlywheelPanel port. It is **knowledge-graph growth** (`knowledgeApi.getFlywheel`), **NOT the correction flywheel.** The name collides; the thing does not."* Spec 31 `:64` repeats it. `quality-corrections` = `CorrectionStatsTable` (**composition** correction RATES). **Two services, two datasets.** **ACTION: (a) FIX the row in wave-6's `LEGACY_SUBTAB_HOME` — this is currently the single most dangerous line in the whole gate, because it makes the machine-checked test GO GREEN on a feature being deleted; (b) HOME IT IN WAVE 8** — `getFlywheel` is a knowledge-service read and Wave 8 is already in those files. Leaf-reuse `FlywheelPanel`; its three deep-links become `host.openPanel('cast')` / `('kg-timeline')` / `('kg-graph')` — **a further reason to home `cast` in the same wave.** `category: 'knowledge'`. *(If PO instead rules won't-fix, that MUST be an explicit **DELETE_ON_PURPOSE** row in plan 30 §7's "Consciously OUT OF SCOPE" table — **NOT a mislabelled map row.**)* | `canon-growth` |
 
@@ -2210,6 +2325,166 @@ rather than opening a title/language dialog like `ChaptersTab`. The user renames
 
 ---
 
+### `W0-S15` — 🆕 **PO `D-2` · Translate SILENTLY DISCARDS the user's ticked chapters** 🔴 **a HIGH bug, damaging data TODAY**
+
+> ⚖ **SEALED DECISION `D-2` (§0-PO):** *"WAVE 0 IS THE HOTFIX BATCH. It already carries 3 of the 4 HIGH
+> bugs (AddModelCta = X-1/`W0-S3`, motif-Mine 500 = `W0-BE1`, the conformance 404s = `W0-S7`). **PULL THE
+> 4th FORWARD INTO WAVE 0.**"*
+>
+> 🔴 **This slice does NOT belong to Wave 0 by topic — it belongs to spec 29 / Wave T (gap `T8`, slice
+> `T-A4` in `docs/plans/2026-07-13-studio-wave-T-translation-repair.md:1084`). The PO pulled it forward
+> because it is ACTIVELY DAMAGING DATA TODAY.**
+>
+> ⚖ **THE DISCHARGE, EXACTLY — read this before you edit, or you will fork Wave T's line:**
+> **`W0-S15` discharges the SELECTION half of `T8`/`T-A4` — and NOTHING ELSE.** `T-A4` is bigger than the
+> dropped prop: it also lands **D6** (`preselectedLang` — the matrix *column* the user clicked), the
+> per-cell *"not translated"* → **`openTranslate(lang)`** hand-off, the header CTA's unscoped open, and the
+> *"a fully-translated book opens every action disabled"* dead end. **Those stay in Wave T.**
+> ⇒ **In `T-A4`, mark the `preselectedChapterIds` line DISCHARGED-IN-`W0-S15`** (verify, don't re-apply) and
+> **keep the rest of the slice.** 🔴 **Write the exact line `T-A4` already specifies** (below) so that when
+> Wave T lands `preselectedLang` beside it, it is a **one-line extension, not a conflict.**
+
+**The bug.** The user opens the Translation matrix, **ticks 3 chapters**, and clicks **Translate** in the
+`FloatingActionBar`. `TranslateModal` **never receives the ticks** — so its own default kicks in
+(`TranslateModal.tsx:134-138`: *"everything that needs translation for the default language"*) and the
+modal comes up with **the WHOLE BACKLOG selected**. The user, having already made their selection, hits
+Start. ⇒ **the wrong chapters are translated, LLM spend is burned on them, and existing translations can
+be overwritten.** Nothing warns; the modal looks like it is doing what was asked.
+
+🔴 **The prop ALREADY EXISTS and every OTHER call site passes it.** This is a **one-line omission at ONE
+call site**, not a missing feature:
+
+| Call site | Passes `preselectedChapterIds`? |
+|---|---|
+| `TranslationTab.tsx:300-305` — **the matrix's bulk Translate** | 🔴 **NO — the bug.** |
+| `TranslationTab.tsx:539-544` — the **sibling** `<ExtractionWizard>`, in the SAME component, off the SAME `selectedChapters` state | ✅ `preselectedChapterIds={[...selectedChapters]}` |
+| `ChapterTranslationsPanel.tsx:203-207` | ✅ `preselectedChapterIds={[chapterId]}` |
+| `ChapterBrowserTitleView.tsx:509-514` | ✅ `preselectedChapterIds={[...selected]}` |
+
+> ⚠ **The line numbers above are from HEAD `9262ed53e` and may have drifted — READ THE ACTUAL CODE FIRST.**
+> The anchor that will not drift: **`TranslateModal` is mounted in `TranslationTab.tsx` with `open` /
+> `onClose` / `bookId` / `onJobCreated` and NOTHING ELSE.**
+
+#### Files
+
+| # | File | Change |
+|---|---|---|
+| 1 | `frontend/src/pages/book-tabs/TranslationTab.tsx` | At the `<TranslateModal>` mount, add **exactly the line `T-A4` specifies: `preselectedChapterIds={[...selectedChapters]}`**. (`selectedChapters: Set<string>` is already in scope — `:133` — and the sibling `<ExtractionWizard>` spreads the same set at `:544`.) **ONE LINE. Nothing else in this file, and NOTHING in `TranslateModal.tsx`.** |
+
+🔴 **Pass `[...selectedChapters]` — an EMPTY ARRAY when nothing is ticked — NOT `undefined`.** This is
+`T-A4`'s own choice and it is correct: the modal **already treats an empty preset as "no preset"**
+(`TranslateModal.tsx:132`: `if (preset && preset.length > 0) … else <needs-translation default>`), and
+`handleLangChange` (`:205`) guards on `length > 0` too. ⇒ **the unscoped header/toolbar CTA still gets the
+needs-translation default**, and Wave T's line and Wave 0's line are **byte-identical** (no conflict, no
+second convention). ⚠ **Verify that branch, don't assume it** — it is test #2 below.
+
+**Why no `key=` remount is needed** (unlike `ChaptersTab.tsx:353-363`'s `ExtractionWizard`): `TranslateModal`
+**re-seeds its own selection** on `[open, accessToken, bookId, presetKey]` (`:104`, `:113-155`), where
+`presetKey = preselectedChapterIds.join(',')`. It filters the preset against the fetched chapter list
+(`:131`) and **only** falls back to the needs-set when the preset is empty (`:132-138`). And `handleLangChange`
+(`:205`) **already** guards the pinned-selection case. ⇒ **The modal was BUILT for this. The caller simply
+never fed it.** *(This is the whole reason the fix is one line — do not "improve" the modal. Every
+improvement anyone can think of is already scoped in `T-A4`/`T-A5`, and doing it here forks that plan.)*
+
+#### Tests — 🔴 **the existing test file is WHY this survived**
+
+`frontend/src/pages/book-tabs/__tests__/TranslationTab.badge.test.tsx:25` mocks it away:
+`vi.mock('../TranslateModal', () => ({ TranslateModal: () => null }))` — **a mock that renders `null`
+cannot see a dropped prop.** Mock it the way `ChapterBrowserTitleView.test.tsx:31-34` does — **capture the
+props and render them**:
+
+| Test (new file `TranslationTab.selection.test.tsx`, or extend the badge file) | Asserts |
+|---|---|
+| 🔴 `test_ticked_chapters_reach_the_modal` | Tick 2 chapter rows → click **Translate** in the FAB → the `TranslateModal` mock received **`preselectedChapterIds` = exactly those 2 ids**. **MUST RED ON THE OLD CODE** (today it receives `undefined`). **Paste the red run.** |
+| `test_no_selection_still_gets_the_needs_default` | Open Translate with **nothing ticked** ⇒ the modal receives an **empty array**, and the **real** `TranslateModal`'s seeding still lands on the needs-translation set (`:132-138`). 🔴 **Assert the EFFECT on the unmocked modal for this one** — an empty-array prop that accidentally *pinned* an empty selection would leave the bulk-backlog CTA disabled, which is `T8`'s OTHER symptom (`T-A4` consequence #3). Do not regress it while fixing #1. |
+
+> 📌 **The rule this slice mints (copy it into every wave's review):** *when a component takes an optional
+> selection prop, **every** call site that has a selection must pass it — and a `() => null` mock at a call
+> site is a **blind spot**, not coverage.* A prop that exists, is honoured by the child, and is **dropped by
+> one parent** is invisible to both sides' unit tests.
+
+**DoD evidence:** `"npx vitest run src/pages/book-tabs → all passed (2 new); test_ticked_chapters_reach_the_modal observed RED before the one-line fix and GREEN after (both runs pasted); wave-T plan T-A4 annotated: the preselectedChapterIds line is DISCHARGED-IN-W0-S15, the D6/preselectedLang half REMAINS"` **+ the LIVE BROWSER smoke row 11 (§7):** tick 2 chapters → Translate → **the modal shows exactly those 2 selected**, not the whole backlog.
+**dependsOn:** — *(fully independent; one line in one file. ⚠ The **cross-plan annotation** into `2026-07-13-studio-wave-T-translation-repair.md` is a **different agent's file** — if it is dirty in `git status`, **park it in the drift register and keep going**; Wave 0's code fix is the load-bearing half, and `T-A4`'s own pre-flight grep at `:159-163` will show the line already fixed.)*
+
+---
+
+### `W0-S16` — 🆕 **PO `D-3` · the GLOBAL `MutationCache.onError`** 🔴 **the highest leverage-per-line item in the entire build**
+
+> ⚖ **SEALED DECISION `D-3` (§0-PO):** *"`frontend/src/App.tsx:6` builds `new QueryClient({…})` with **no
+> MutationCache** ⇒ **every failed mutation in the entire frontend is silent, forever** — the button just
+> re-enables. **That is why three live bugs survived to an audit.**"*
+
+**The bug is an ABSENCE, and it is the meta-bug of this whole batch.** `App.tsx` constructs the app's one
+`QueryClient` with `defaultOptions.queries` only. There is **no `mutationCache`** — verify it yourself, it
+is a one-command fact:
+
+```bash
+# EXPECT: ZERO hits. (At HEAD the only match in the whole FE is a COMMENT in useRunBenchmark.ts:41.)
+grep -rn "MutationCache" frontend/src --include=*.ts --include=*.tsx
+# The scale of the hole — RECORD BOTH NUMBERS at pre-flight, do not copy these:
+grep -rn "useMutation(" frontend/src --include=*.ts --include=*.tsx | wc -l   # plan-time: 142 call sites
+grep -rn "onError:"     frontend/src --include=*.ts --include=*.tsx | wc -l   # plan-time:  98 handlers
+```
+
+⇒ **React Query's default `onError` is a NO-OP.** A mutation that 500s, 403s, or 409s **and has no local
+`onError`** produces: no toast, no console error, no state change — **the button simply re-enables.** The
+user clicks again. And again.
+
+> 🔴 **BE PRECISE ABOUT THE GAP — do not "fix" what is not broken.** Individual hooks **do** handle their
+> own errors: `useAdoptFlow.ts:59,69` (`onError: (err) => setQuota(readQuota(err))`), `useMotifEditor.ts:126`,
+> and ~98 other `onError:` sites. **The hole is the GLOBAL DEFAULT** — which is what makes a *missing*
+> handler **safe by construction** instead of silent by construction. ⚠ And the gap is real, not theoretical:
+> **`useMotifBinding.ts` has NO `onError` at all** — its comment at `:29` even claims *"the caller keeps the
+> prior binding **+ toasts**"*, and **nothing toasts.** A prose promise with no handler and no global default
+> is exactly the class of hole this slice closes. *(Memory: `hygiene-grep-literal-token-in-comment-false-positive`
+> — a grep for `onError` **matches that comment**. Count `onError:` with the colon.)*
+
+**This is the repo's OWN LAW, applied to the surface it forgot.** The Frontend-Tool Contract (CLAUDE.md)
+seals *"a resolver never silently no-ops — return `result.error`"* — and the repo wrote it for
+**agent→GUI tools** only. **A user-initiated GUI action that fails silently is the SAME BUG CLASS on a
+different surface** (memory: `silent-success-is-a-bug-not-environment`). `W0-S5c` closes it for the agent
+door. **This slice closes it for the human door.**
+
+#### Files
+
+| # | File | Change |
+|---|---|---|
+| 1 | **NEW** `frontend/src/lib/queryClient.ts` | 🔴 **Move the `QueryClient` construction OUT of `App.tsx`** (it is currently an inline `const` at module scope, **untestable**). Export the factory **and** the singleton: `export function createAppQueryClient(): QueryClient` + `export const queryClient = createAppQueryClient();`. Keep `defaultOptions.queries` **byte-identical** (`staleTime: 30_000`, `gcTime: 5*60_000`, `refetchOnWindowFocus: true`, `retry: 1`) — **this slice changes ONE behavior, not four.** Add: `mutationCache: new MutationCache({ onError: (err, _vars, _ctx, mutation) => { if (mutation.options.onError) return; /* slice-local handler WINS — do not double-toast */ toast.error(readBackendError(err)); } })`. |
+| 2 | ″ | 🔴 **Use the EXISTING toast mechanism — FIND IT, DO NOT INVENT A SECOND ONE.** It is **`sonner`**: `<Toaster position="bottom-right" richColors closeButton />` is mounted in `App.tsx` (**one** `<Toaster/>`, already there — **do not add another**), and ~every hook already calls `toast.error(...)` from `'sonner'`. The message comes from the **existing** `readBackendError()` (`frontend/src/lib/readBackendError.ts`) — the repo's single reader for FastAPI's `{detail}` / `{message}` shapes. **A new toast lib, a new error-formatting helper, or a second `<Toaster/>` is a REVIEW REJECT.** |
+| 3 | `frontend/src/App.tsx` | Delete the inline `new QueryClient({…})` (`:6-15`) → `import { queryClient } from '@/lib/queryClient';`. **No other change.** |
+
+**The `mutation.options.onError` check is the load-bearing line.** Without it, the ~98 hooks that already
+handle their own errors (quota banners, inline field errors, optimistic rollbacks) would **each get a
+duplicate global toast** — and a wave of double-toasts is how a global handler gets reverted. **Slice-local
+`onError` MUST still win.**
+
+> ⚠ **Scope discipline:** this slice adds a `MutationCache` **only**. It does **NOT** add a `QueryCache`
+> `onError` (failed *reads* mostly already render an error state, and a global read-toast would fire on
+> every backgrounded refetch — a different decision, not this one). It does **NOT** touch `retry`. It does
+> **NOT** "fix" any individual hook. **One behavior.**
+
+#### Tests — **the effect, not the declaration** (`checklist ⇒ test the effect`)
+
+`frontend/src/lib/__tests__/queryClient.test.tsx` — render a throwaway component **through
+`createAppQueryClient()`** (not a hand-rolled client — a test that builds its own `QueryClient` proves
+nothing about the app's):
+
+| Test | Asserts |
+|---|---|
+| 🔴 `a failing mutation with NO local onError surfaces a toast` | `useMutation({ mutationFn: () => Promise.reject(new Error('boom')) })` → fire it → **`toast.error` was called with `'boom'`** (spy on `sonner`). **MUST RED against the HEAD client** (which has no `MutationCache`). **Paste the red run.** |
+| `a slice-local onError still WINS — and the global does NOT double-toast` | Same, but the mutation declares its own `onError` → the local handler ran **and `toast.error` was NOT called by the global**. |
+| `the backend detail is what the user sees` | Reject with an `Error` carrying `body: { detail: 'chapter is locked' }` → the toast text is **`'chapter is locked'`**, not `'Bad Gateway'` — i.e. it goes through **`readBackendError`**, not `err.message`. |
+| `the query defaults are unchanged` | `createAppQueryClient().getDefaultOptions().queries` still has `staleTime: 30000`, `retry: 1`, `refetchOnWindowFocus: true`. **The anti-scope-creep lock** — a global-error slice must not silently re-tune caching. |
+
+⚠ **`vitest beforeEach` returning a mock is treated as teardown** (memory) — if you seed the `sonner` spy in
+`beforeEach`, **do not return it** (`beforeEach(() => { vi.mock… })`, not `beforeEach(() => vi.fn())`); a
+rejecting mock returned from `beforeEach` gets CALLED after the test and fails it.
+
+**DoD evidence:** `"npx vitest run src/lib → all passed (4 new); 'a failing mutation with NO local onError surfaces a toast' observed RED against HEAD's client and GREEN after (both runs pasted); grep -rn 'MutationCache' frontend/src → the new file only"` **+ the LIVE BROWSER smoke row 12 (§7)** — a real failing mutation **visibly toasts**.
+**dependsOn:** — *(independent; but land it EARLY in the batch — every later slice's live smoke inherits the safety net, and a silent failure during a Wave-0 smoke is exactly what it is there to reveal)*
+
+---
+
 ## 5 · Migrations
 
 🔴 **ONE — and the first cut said "NONE", which was wrong** (§10 #6). `W0-BE1` **must** ship DDL, because
@@ -2244,7 +2519,19 @@ CREATE INDEX IF NOT EXISTS idx_generation_job_owner_unbound
 > When you get there: `ADD COLUMN IF NOT EXISTS` **never revisits a bad default** on an
 > already-migrated DB; a new enum value must backfill **every** historical CHECK block; and a partial
 > UNIQUE index **must exempt soft-delete tombstones** and its `ON CONFLICT` **must repeat the partial
-> index's predicate**. **None of that is Wave 0's problem. Wave 0 has no migration.**
+> index's predicate**. **None of those traps is Wave 0's problem** — Wave 0's one migration is the
+> additive, non-rewriting `DROP NOT NULL` + CHECK above. *(An earlier cut of this line said "Wave 0 has no
+> migration". That was the §10 #6 error — it is corrected here so nobody re-derives it.)*
+
+> 🔴🔴 **AND THE ONE THAT IS NOT LIKE THE OTHERS — SEALED PO DECISION `D-1` (§0-PO).** The **content-language
+> rekey** (5 rows say `Vietnamese` next to 89 saying `vi`, inside `UNIQUE(chapter_id, target_language,
+> version_num)`) is a **DESTRUCTIVE 3-table rekey**. **It is NOT Wave 0's** — but every builder reading this
+> section must know the rule before they meet it: **write the migration + a rollback path + a before/after
+> row-count assertion, run a DRY-RUN, SHOW THE OUTPUT — and STOP for the PO. It may NOT be executed
+> unattended.** It is **the one CRITICAL-class stop in the entire 10-wave build** (§0.3's *"destructive /
+> irreversible"* class — the ONE thing that is **not** a defer-row-and-keep-going). ⚠ Its SSOT is
+> `contracts/languages.contract.json` (**`D-4`** — **never** `languages.yaml`; `contracts/language-rule.yaml`
+> already means *service → programming language*).
 
 ---
 
@@ -2310,6 +2597,8 @@ Tick every box. **No box is ticked by a claim — each is ticked by pasted outpu
 - [ ] 🆕 **`W0-S12`** — `legacyEditorRetirementGate.test.ts` is green **and RED-on-purpose was pasted**; 🔴 **the LEGACY_SUBTAB_HOME ledger names a wave for all 7 homeless sub-tabs**; **wave-6's two FALSE map rows (`flywheel`, `arc`) are FIXED** — *as written, the machine gate goes GREEN on a deleted feature.*
 - [ ] 🆕 **`W0-S13`** — closing a **dirty** dock tab prompts (Save & close / Discard / Cancel) instead of **silently discarding**; the `EDITING_PANEL_IDS` coverage test reds when a new editing panel forgets.
 - [ ] 🆕 **`W0-S14`** — the manuscript **`+`** creates a chapter **AND** (in a Work-backed book) its outline node, **so the row actually appears**; `manuscript-new` is **NOT disabled** in the live frame.
+- [ ] 🆕 **`W0-S15`** (PO `D-2`) — the matrix's `<TranslateModal>` receives **`preselectedChapterIds={[...selectedChapters]}`** (`T-A4`'s verbatim line); the ticked chapters are the ones translated (**not the whole backlog**); **nothing ticked still gets the needs-translation default**; the test **REDS on the old code** (paste it); the `() => null` mock is replaced by a **prop-capturing** mock; **`TranslateModal.tsx` is UNTOUCHED**; 🔴 **Wave T's `T-A4` is annotated: the selection half is DISCHARGED here, the `preselectedLang`/D6 half REMAINS.**
+- [ ] 🆕 **`W0-S16`** (PO `D-3`) — the app's `QueryClient` has a **`MutationCache.onError`**; a failing mutation **with no local handler TOASTS** (test reds against HEAD's client); a **slice-local `onError` still WINS** (no double-toast); the message goes through the **existing** `readBackendError` + **`sonner`** (**no second toast mechanism, no second `<Toaster/>`**); the **query defaults are unchanged**.
 
 ### The suites — name them, run them, paste the counts
 
@@ -2356,10 +2645,12 @@ python scripts/design-draft-token-lint.py                      # W0-S10 — MUST
 | 4 | Ask the agent to *"open the glossary"*, then to start a long job (→ `ui_watch_job`) | A dock tab **actually appears**; **the dock is still mounted** and a `job-detail` tab appeared. *(X-5 — a raw-stream check would show `watching:true` while the dock was destroyed.)* |
 | 5 | Agent calls `ui_open_studio_panel {panel_id:"job-detail", params:{jobId:"<real>"}}` | The tab mounts **ON THAT JOB**. *(X-12)* |
 | 6 | Agent calls `ui_open_studio_panel` with a **BOGUS** id | The agent gets a **visible `error`** back — **not a hallucinated "Opened!"**. *(X-13b — the shipped silent-success)* |
-| 7 | Click **⛏ Mine** → confirm the cost | The poll returns **200** and the panel reaches a **terminal** state. *(the paid defect — the user's money is no longer burned on a spinner.)* |
+| 7 | Click **⛏ Mine** → confirm the cost | 🔴 **`/actions/confirm` returns 2xx with a real `job_id`** *(at HEAD it is a hard **500 at confirm** — the job row is never written)*, **then** the poll returns **200** and the panel reaches a **terminal** state. *(The paid-action defect. Assert the CONFIRM, not just the poll — a green poll over a hand-seeded row proves nothing.)* |
 | 8 | Click the chapter conformance **Re-run** | **Exactly ONE** request: a **GET** to `…/conformance?scope=chapter…`. **ZERO** requests to any `/actions/*` path, **no cost card.** *(§10 #7 — the paid job that would always fail.)* |
 | 9 | Open `json-editor`, type, **close the tab** | The **confirm dialog** appears; **Save & close** → reopen → **the edit is there.** *(X-DIRTY-CLOSE — at HEAD it is silently gone.)* |
 | 10 | Click the manuscript **`+`** | A new chapter **opens in the editor AND appears in the tree.** *(X-NEW-CHAPTER — the button is dead at HEAD.)* |
+| 11 | On the Translation matrix, **tick exactly 2 chapters** → **Translate** | 🔴 The modal opens with **exactly those 2 selected** — **not the whole backlog.** *(X-TRANSLATE-SELECTION / PO `D-2` — at HEAD the ticks are thrown away and the user translates the wrong chapters.)* |
+| 12 | Force a mutation to fail (e.g. offline the gateway, or hit a route that 403s) from a surface with **no local `onError`** | 🔴 **A toast appears with the backend's reason.** *(X-SILENT-MUTATION / PO `D-3` — at HEAD the button silently re-enables and the user learns nothing. **This one assertion is the reason three live bugs reached an audit.**)* |
 
 ### `/review-impl` — **MANDATORY, and its findings are FIXED BEFORE THE WAVE CLOSES**
 
@@ -2427,6 +2718,8 @@ do not re-derive them.**
 | 6 | **Another track lands in a Wave-0 file mid-flight.** Three tracks share this checkout; `QualityCanonPanel.tsx` was touched *the day before* this plan. | A merge conflict, or a `git status` that shows files you didn't touch. | `git status` + `git diff --cached --name-only` **before every commit**; `git commit -- <explicit paths>`. **Never `git add -A`.** |
 | 7 | **The Track-C gate re-opens.** Track C's `stream_service.py` was clean at plan time. If it re-dirties, `W0-S11` edits a file another agent is mid-edit in. | Pre-flight step 4 prints anything. | **DEFER `W0-S11` (`D-X10-ANC2-SCENT`) and keep going.** It is the only slice with an external owner, and it is last for exactly this reason. |
 | 8 | **X-2's chosen position for `'quality'` gets re-litigated at 3am.** | A builder pauses to ask where `quality` should sort. | **It is decided: after `storyBible`, before `knowledge`.** Any position is correct; this one is chosen. **Do not re-open it.** |
+| 9 | 🆕 **`W0-S16`'s global handler DOUBLE-TOASTS and gets reverted.** ~98 hooks already toast their own errors; a global handler that fires unconditionally stacks a second toast on every one of them ⇒ the reviewer reverts the whole slice ⇒ **the silence comes back.** | Two toasts for one failed save, anywhere in the app. | **`if (mutation.options.onError) return;`** — the one load-bearing line. Its test (`a slice-local onError still WINS`) is **not optional**; it is what makes the slice survivable. |
+| 10 | 🆕 **`W0-S15` regresses the bulk-backlog flow, or FORKS Wave T's line.** Either the empty-array preset accidentally *pins* an empty selection (⇒ the unscoped CTA opens **disabled** — `T8`'s other symptom), or a builder "improves" `TranslateModal.tsx` / writes a different call-site line than `T-A4`'s ⇒ **a merge conflict with the plan that owns the file.** | Opening Translate with nothing ticked selects **nothing** instead of the needs set; or the diff touches `TranslateModal.tsx`. | `test_no_selection_still_gets_the_needs_default` (asserted on the **unmocked** modal). 🔴 **The modal already handles both cases (`:131-138`, `:205`) — the ONLY change is the CALL-SITE line, and it is `T-A4`'s VERBATIM line: `preselectedChapterIds={[...selectedChapters]}`. Touching `TranslateModal.tsx` at all is a scope-creep smell.** |
 
 ---
 
@@ -2481,6 +2774,13 @@ W0-BE2  (BE-11 canon-rule restore)                                              
 W0-C1   (both new routes → contracts/api/composition/v1/openapi.yaml + parity test) ──┤
         ▲ AFTER the handlers exist, BEFORE the FE consumes them.                      │
                                                                                       │
+── 🔴 THE PO'S HOTFIX PAIR (D-2/D-3) — TAKE THESE FIRST IN THE FE BATCH ───────       │
+W0-S16  (D-3  the GLOBAL MutationCache.onError — nothing else is silent after this)   │
+        ▲ land it EARLY: every later slice's live smoke inherits the safety net.      │
+W0-S15  (D-2  Translate stops throwing the user's ticked chapters away)               │
+        ▲ discharges T-A4's SELECTION half (D6 stays in Wave T). ONE line, and it is  │
+          T-A4's verbatim line. + a test that REDS on the old code.                   │
+                                                                                      │
 ── THE INDEPENDENT BATCH (any order; a stall in one NEVER blocks the wave) ────       │
 W0-S1   (X-2  CATEGORY_ORDER + the group LABEL + the compile guard)                   │
 W0-S2   (X-3  guideBody × 2 assertions, en-only)                                      │
@@ -2520,16 +2820,11 @@ the defer register, take the next one, keep going.**
 
 🔴 **The one edge you cannot fudge: `W0-S7` ← `W0-BE1`, and it needs BE1's WRITER, not just its read
 route.** At HEAD, `POST /actions/confirm` raises `ReferenceViolationError` and **no `generation_job` row is
-ever written** — so until `create_unbound()` + the DDL land, `W0-S7`'s live smoke **has nothing to poll and
+ever written** (C-1) — the 500 lands **at confirm, BEFORE the enqueue**, so there is **no job, no worker,
+no LLM call.** Until `create_unbound()` + the DDL land, `W0-S7`'s live smoke **has nothing to poll and
 cannot pass.** If you see the confirm 500 during the smoke, **`W0-BE1` is incomplete — go finish it.** Do
-**not** "fix" it by minting a phantom `composition_work` row, and do **not** mark `W0-S7` done on a green
-unit suite: **the unit suite was ALREADY GREEN while the user paid and watched a spinner forever. That is
-the whole point of this wave.**
-
-🔴 **The one edge you cannot fudge: `W0-S7` ← `W0-BE1`, and it needs BE1's WRITER, not just its read
-route.** At HEAD, `POST /actions/confirm` raises `ReferenceViolationError` and **no `generation_job` row
-is ever written** (C-1) — so until `create_unbound()` + the DDL land, `W0-S7`'s live smoke has nothing to
-poll and **cannot pass**. If you see the confirm 500 during the smoke, **`W0-BE1` is incomplete — go
-finish it.** Do **not** "fix" it by minting a phantom `composition_work` row (the docstring forbids it),
-and do **not** mark `W0-S7` done on a green unit suite: the unit suite was **already green** while the
-user paid and watched a spinner forever. **That is the whole point of this wave.**
+**not** "fix" it by minting a phantom `composition_work` row (the docstring forbids it), and do **not**
+mark `W0-S7` done on a green unit suite: **the unit suite was ALREADY GREEN while ⛏ Mine 500'd on every
+single click, in production. That is the whole point of this wave** — and it is also why a read-route-only
+"fix" would have shipped green over a still-dead feature
+(`fixtures-can-seed-a-field-the-writer-never-sets`).

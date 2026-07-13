@@ -1,4 +1,4 @@
-# 15 — Wiki dockable migration
+# 15a — Wiki dockable migration
 
 **✅ BUILT (2026-07-04).** B1–B8 all shipped in one pass (no Phase A/B split needed — see
 below). `wiki` and `wiki-editor` are real dock panels; both classic routes (`WikiTab`,
@@ -8,7 +8,7 @@ pair, the G7 dirty-guard, the dead History button) are fixed and covered by test
 "Post-BUILD `/review-impl`" at the bottom.
 
 CLARIFY output (2026-07-04). Mirrors the shape of [`13_glossary_panels.md`](13_glossary_panels.md)
-(Glossary) and [`14_kg_panels.md`](14_kg_panels.md) (Knowledge/KG) — read those first for the
+(Glossary) and [`14a_kg_panels.md`](14a_kg_panels.md) (Knowledge/KG) — read those first for the
 established precedents (`FormDialog`/raw `Dialog.*` DOCK-9 fixes, params-retargeting singletons,
 the DOCK-2 "no fork" extraction pattern) this spec reuses rather than re-derives.
 

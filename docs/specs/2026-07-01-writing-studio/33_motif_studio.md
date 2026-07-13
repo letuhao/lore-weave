@@ -75,7 +75,7 @@ agent will "rediscover" from the SQL alone.
 | `POST /v1/composition/actions/conformance_run/estimate` | [`api.ts:224`](../../../frontend/src/features/composition/motif/api.ts#L224) ← `useConformanceTrace.ts:32` | **MISSING** |
 | `POST /v1/composition/actions/conformance_run/confirm` | [`api.ts:230`](../../../frontend/src/features/composition/motif/api.ts#L230) ← `useConformanceTrace.ts:36` | **MISSING** |
 | `POST …/scenes/{node_id}/regenerate-to-beat` | [`api.ts:301`](../../../frontend/src/features/composition/motif/api.ts#L301) + `useMotifBinding.ts:66` ← `ConformanceTraceView.tsx:69` | **MISSING** — appears nowhere in `services/**/*.py` |
-| 🔴 **`GET /v1/composition/jobs/{id}` as the MINE poll** | [`motifApi.mineConfirm`](../../../frontend/src/features/composition/motif/api.ts#L164) → `compositionApi.getJob(resp.job_id)` ← `useMotifMine` ← **`MotifMinePanel` — a component THIS WAVE ports in 3a** | 🔴 **EXISTS BUT 404s ON EVERY MINE JOB.** `_execute_motif_mine` ([`actions.py:644`](../../../services/composition-service/app/routers/actions.py#L644)) enqueues with **`project_id=None`** → `_enqueue_motif_job` ([`:552`](../../../services/composition-service/app/routers/actions.py#L552)) stamps a **synthetic `uuid4()`** → `GET /jobs/{id}`'s `_gate_work(…, job.project_id, VIEW)` → `works.get(<synthetic>)` → `None` → **404 `work not found`, always.** |
+| 🔴 **The ⛏ MINE button — `POST /actions/confirm`** | [`motifApi.mineConfirm`](../../../frontend/src/features/composition/motif/api.ts#L164) ← `useMotifMine` ← **`MotifMinePanel` — a component THIS WAVE ports in 3a** | 🔴 **HTTP 500 AT CONFIRM — the request never reaches the poll.** See the trace below. **This is NOT a 404 at the poll** (an earlier draft of this row said it was — that was wrong; it is corrected here and in `30` §3.3 / `34` §0.1). |
 
 The first two are a **pure FE invented-URL bug**, and the file *contains its own fix*:
 `arcConformanceRunPropose` ([`api.ts:245-273`](../../../frontend/src/features/composition/motif/api.ts#L245))
@@ -84,21 +84,80 @@ The chapter-scope twin was hand-rolled against two routes nobody wrote. **Delete
 
 The third is §5's decision **BE-5**, and the audit's proposed fix is wrong. See §5.1.
 
-🔴 **The fourth was found by the spec-34 review (its §0.1) and is CORRECTED INTO THIS SPEC** — because the
-broken component is **ours**, not Wave 4's. Plan 30 §10 REFUTED *"`composition_motif_mine` has no FE reach"*
-on the grounds that `MotifMinePanel` + `useMotifMine` + `motifApi.minePropose/mineConfirm` ship *"with a
-passing test"* — **the test mocks the poll.** The propose→confirm half works; **the poll has never
-resolved.** A user clicks ⛏ Mine, pays for the LLM run, and watches a spinner forever.
+#### 🔴 The fourth, traced end-to-end against source — **and the mechanism is NOT what the first two drafts said**
 
-⇒ **`GET /v1/composition/motif-jobs/{job_id}` (the owner-scoped job read) is a HARD PREREQUISITE OF 3a,
-not of Wave 4.** It is specced once, in [`34_arc_templates_and_deconstruct.md`](34_arc_templates_and_deconstruct.md) §5
-as **BE-7c** (owner gate on `created_by`, uniform H13 404, **XS**) — *that row is the contract; do not
-re-spec it here*. **This wave BUILDS it** (3a), because this wave is the first to ship a GUI that polls a
-Work-less job. Wave 4 then consumes it for 拆文. ⚠ The same row also changes `composition_get_mine_job`
-(drop the un-knowable `project_id` arg → gate on `created_by`); that change lands **here**, in 3a, so
-Wave 4 inherits a working tool rather than breaking this wave's consumer. `_execute_conformance_run`
-([`actions.py:723`](../../../services/composition-service/app/routers/actions.py#L723)) passes a **real**
-`project_id`, so **conformance is unaffected** — this is a mine/import-only defect.
+> **CORRECTED 2026-07-13 (Wave-0 adversarial QC + an independent in-container live repro).** The spec-34
+> review (§0.1) and the first cut of this section both described this as *"a 404 at the poll — the job
+> runs, the user pays, the spinner never resolves."* **That is wrong on every clause.** The real trace:
+
+1. `_execute_motif_mine` ([`actions.py:644`](../../../services/composition-service/app/routers/actions.py#L644))
+   enqueues with **`project_id=None`** — a corpus/book mine is genuinely not Work-bound.
+2. `_enqueue_motif_job` ([`:552`](../../../services/composition-service/app/routers/actions.py#L552))
+   stamps a **synthetic `uuid4()`** to satisfy `generation_job.project_id UUID NOT NULL`.
+3. `GenerationJobsRepo.create()` ([`generation_jobs.py:159-173`](../../../services/composition-service/app/db/repositories/generation_jobs.py#L159))
+   **is not a plain INSERT.** `generation_job.book_id` is also `NOT NULL` ([`migrate.py:269`](../../../services/composition-service/app/db/migrate.py#L269)),
+   and the statement **derives it**: `INSERT INTO generation_job … SELECT $1, $2, w.book_id, … FROM
+   composition_work w WHERE w.project_id = $2`. The synthetic id matches **ZERO rows** ⇒ the INSERT
+   inserts **zero rows** ⇒ [`:198-206`](../../../services/composition-service/app/db/repositories/generation_jobs.py#L198)
+   raises **`ReferenceViolationError("project … has no composition_work row")`**.
+4. `actions.py` has **no `except ReferenceViolationError`** (grep: zero hits) ⇒ it escapes to the global
+   `@app.exception_handler(Exception)` ([`main.py:200`](../../../services/composition-service/app/main.py#L200))
+   ⇒ **`POST /actions/confirm` returns HTTP 500**, with the confirm token already **burnt** by
+   `_claim_or_replay` (`:504`) — so the retry returns **409 `already_consumed`**.
+
+**⇒ The three things every reader must take away:**
+
+- 🔴 **It is a 500 at CONFIRM, *before* the enqueue.** The `generation_job` row is **never created**. There
+  is no `job_id`. **The poll is never reached** — so "the poll 404s" is not the bug, it is a statement
+  about a code path that never executes.
+- 🔴 **NO USER WAS EVER CHARGED.** The `POST` dies at step 3: **no Redis XADD, no worker pickup, no LLM
+  call, no recorded spend.** `_precheck_or_402` (`:517`) does reserve a billing *hold* one line earlier —
+  a pre-authorization against the guardrail, not a charge — and the confirm token is burnt. That is a real
+  defect (a spent token + a dangling hold), but it is **not** *"the user pays for the LLM run and watches a
+  spinner forever."* That framing appeared in plan 30 §3.3 and here; it is **wrong, in the user's favour**,
+  and it is retracted. Do not re-introduce it.
+- 🔴 **`_execute_conformance_run` ([`:723`](../../../services/composition-service/app/routers/actions.py#L723))
+  passes a REAL `project_id`** ⇒ **conformance is unaffected.** This is a **mine / arc-import-only** defect.
+
+#### ⚠ Why the OBVIOUS fix is wrong — read this before you write a line
+
+Both prior drafts prescribed **"BE-7c = the owner-scoped job read (`GET /v1/composition/motif-jobs/{job_id}`,
+gate on `created_by`), size XS"** as *the* cure. **It is not a cure. It is a route that reads a row that
+does not exist.**
+
+And it would **ship GREEN**: its integration test would seed the `generation_job` row with a raw `INSERT`
+(nullable-scope shape and all), the route would read it back correctly, every assertion would pass — and
+the ⛏ Mine button would **still 500 at confirm**, because nothing on the test's path ever went through the
+**producer**. That is this repo's own **`fixtures-can-seed-a-field-the-writer-never-sets`** bug class,
+about to be committed *on purpose*.
+
+**The read route is one leg of the fix, not the fix.** The real cure is the whole **Work-less job lane**:
+
+| | |
+|---|---|
+| **DDL** | `generation_job.project_id` / `.book_id` → `DROP NOT NULL`, plus a **both-or-neither shape CHECK** so a half-bound row is impossible, plus a partial owner index |
+| **Repo** | a **new `create_unbound()`** (a plain INSERT — no `FROM composition_work`). **Do not touch `create()`**: it is the hot path for every draft |
+| **Model** | `GenerationJob.project_id` / `.book_id` → `UUID \| None` |
+| **Writer** | `_enqueue_motif_job` — **delete the `uuid4()` synthetic pid**; branch to `create_unbound()` when `project_id is None` ← **this is the leg that actually stops the 500** |
+| **Read** | the owner-scoped `GET /v1/composition/motif-jobs/{job_id}` (gate on `created_by`, uniform H13 404) |
+| **MCP** | `composition_get_mine_job` — drop the un-knowable `project_id` arg; gate on `created_by` |
+| **Tests** | forced **through the producer** (`POST /actions/confirm` → assert a row exists → read it back). A test that raw-`INSERT`s the job row **does not count as coverage of this bug.** |
+
+⇒ 🔴 **THE CANONICAL FIX IS `W0-BE1`, AND IT IS ALREADY WRITTEN.**
+[`docs/plans/2026-07-13-studio-wave-0-foundations.md`](../../plans/2026-07-13-studio-wave-0-foundations.md)
+slice **`W0-BE1`** carries all seven legs above (its "Files" table (a)–(g)), with the build detail written
+once, verbatim, in [`docs/plans/2026-07-13-studio-wave-3-motif.md`](../../plans/2026-07-13-studio-wave-3-motif.md)
+slice `3a-1` (a)–(d). **The Wave-0 plan is correct and is the source of truth — build from it, do not
+re-derive it, and do not fork a second version of the DDL.** It was pulled forward out of Wave 3 precisely
+because it fires **today**, on the live legacy page.
+
+⚠ **Size: it is NOT "XS".** *(A DDL change + a new repo method + a model change + a writer change + a route
++ an MCP arg change is an **S/M with a schema side effect** — see `W0-BE1`. The "XS" in the old BE-7c row
+was sized for the read route alone, i.e. for the wrong fix.)*
+
+⇒ **For THIS wave (3a): `W0-BE1` is a HARD PREREQUISITE — but Wave 0 builds it, not us.** 3a's job is to
+**verify it landed** (a green `POST /actions/confirm` → a real `job_id` → a resolving poll) and to repoint
+`motifApi.mineConfirm` off `compositionApi.getJob`. Build it here **only** if Wave 0 somehow did not.
 
 ---
 
@@ -441,7 +500,7 @@ infrastructure is NOT blocked — it is unbuilt work"*).
 | **BE-M2** | 🔴 **`gather_motifs` packer lens (X-7 / spec 21-G1) — THE HARD GATE.** Mirror `gather_arc`: `async def gather_motifs(motif_app_repo, motif_repo, *, project_id, node, chapter_id) -> str`. Resolve **scene binding → else the chapter's → else the arc's** (mirror `gather_arc`'s scene→chapter→arc chain). Render: motif name + kind · the **bound beat** (`annotations.beat_key`) + its `intent` + `tension_target` · the resolved `role_bindings` (role → cast name) · `preconditions` / `effects` · `info_asymmetry` when set. **Sanitize every author string** (`sanitize_lore`, SEC3 — a crafted motif name must not forge a block delimiter). **Best-effort**: any repo failure → `""` (the frame THINS, never fails a pack). Gate exactly like `arc_gated` ([`pack.py:331`](../../../services/composition-service/app/packer/pack.py#L331)); emit as a `<motifs>` block beside `<arc>` ([`pack.py:522`](../../../services/composition-service/app/packer/pack.py#L522)). **Cap it** (≤3 bindings, ≤N chars each) — the arc block rides *outside* `enforce_budget`, so an uncapped motif block is a Context-Budget-Law hole. | `app/packer/lenses.py` + `pack.py` | — | — | — | **M** | **MUST-BUILD — BLOCKS THE WHOLE WAVE** |
 | **BE-M3** | Motif-link REST (the graph). **The FE bridge is NOT an option here** — `tools.controller.ts:20-23` states its own contract: *"NOTHING here writes or deletes"*, and `motif_link_create/delete` are writes. REST is the only path. | `GET /v1/composition/motifs/{motif_id}/links` · `POST /v1/composition/motifs/{motif_id}/links` · `DELETE /v1/composition/motif-links/{link_id}` | GET: `?direction=out\|in\|both` · POST: `{to_motif_id, kind: 'composed_of'\|'precedes'\|'variant_of', book_id?}` · DELETE: `?book_id=` | `{links:[{id, from_motif_id, to_motif_id, kind, neighbor:{id, code, name}}]}` · POST → `201 {link}` · DELETE → `204` | **404** uniform `NOT_FOUND` (H13 — no existence oracle for a foreign motif) · **403** insufficient grant on a `book_shared` edge · **409** from the `motif_link_guard` trigger (self-link / cycle / cross-tier) — **relay the trigger's reason, do not flatten it to 500** | **S** | **MUST-BUILD** — thin wrappers over **`MotifRepo.list_links` ([`motif_repo.py:215`](../../../services/composition-service/app/db/repositories/motif_repo.py#L215)) · `.create_link` ([`:275`](../../../services/composition-service/app/db/repositories/motif_repo.py#L275)) · `.delete_link` ([`:320`](../../../services/composition-service/app/db/repositories/motif_repo.py#L320))**. ⚠ There is **no `MotifLinkRepo`** — the links live on `MotifRepo`. Already built + tested; the routes are ~40 lines. |
 | **BE-M4** | Motif suggest, REST mirror of `composition_motif_suggest_for_chapter`. Engine exists (`MotifRetriever`, [`deps.py:205`](../../../services/composition-service/app/deps.py#L205)). Reuse the MCP handler's body. | `GET /v1/composition/works/{project_id}/motifs/suggest` | `?chapter_id=&limit=10&detail=summary\|full` | `{candidates:[{motif, score, match_reason:{tension, genre, precondition, semantic}}]}` | 404 uniform · 422 missing `chapter_id` | **S** | **MUST-BUILD** |
-| **BE-7c** | 🔴 **Owner-scoped job read — the MINE poll (§1.2's fourth 404).** Specced in [`34`](34_arc_templates_and_deconstruct.md) §5; **BUILT HERE, in 3a**, because this wave ships the first GUI that polls a Work-less job. Also drops `composition_get_mine_job`'s un-knowable `project_id` arg (gate on `created_by`) — landing it here means Wave 4 inherits a working tool instead of breaking this wave's consumer. | `GET /v1/composition/motif-jobs/{job_id}` | path `job_id` | the `generation_job` row (`{status, result, cost, …}`) | **404 uniform H13** when missing **or** not the caller's (`created_by != user` — no existence oracle) | **XS** | **MUST-BUILD (3a)** — ⚠ **Do NOT back-fill a real `project_id`**: a mine is genuinely not Work-bound; the row's scope key is its **owner**. Repoint `motifApi.mineConfirm` off `compositionApi.getJob`. |
+| **BE-7c** *(→ superseded by **`W0-BE1`**)* | 🔴 **THE WORK-LESS JOB LANE — the fix for §1.2's fourth defect (a 500 at confirm, NOT a 404 at the poll).** ⚠ **RE-SCOPED + RE-SIZED 2026-07-13.** This row used to read *"owner-scoped job read, **XS**"*. **That is the wrong cure**: a read route over a row the producer can **never insert** would **ship green** on a raw-`INSERT` fixture while the ⛏ Mine button still 500s (`fixtures-can-seed-a-field-the-writer-never-sets` — see §1.2). The cure is **all seven legs**: (a) DDL — `project_id`/`book_id` `DROP NOT NULL` + a **both-or-neither shape CHECK** + a partial owner index · (b) **`create_unbound()`** (a plain INSERT; **do NOT touch `create()`**) · (c) `GenerationJob.project_id`/`.book_id` → `UUID \| None` · (d) **`_enqueue_motif_job` — delete the `uuid4()` synthetic pid** ← *the leg that actually stops the 500* · (e) the read route · (f) the MCP arg drop · (g) tests **forced through the producer**. | (e) `GET /v1/composition/motif-jobs/{job_id}` · (a)–(d) as above · (f) `composition_get_mine_job` | path `job_id` | the `generation_job` row (`{status, result, cost, …}`) — `project_id`/`book_id` may be **`null`** | **404 uniform H13** when missing **or** not the caller's (`created_by != user` — no existence oracle) | ~~XS~~ → **S/M** *(schema side effect)* | 🔴 **BUILT IN WAVE 0 — `W0-BE1`** ([`wave-0-foundations`](../../plans/2026-07-13-studio-wave-0-foundations.md), build detail verbatim in [`wave-3-motif`](../../plans/2026-07-13-studio-wave-3-motif.md) `3a-1` (a)–(d)). **The Wave-0 plan already carries the full fix — build from it; do not re-derive it or fork a second DDL.** It was pulled forward because the defect fires **today**. **3a's job is to VERIFY it landed** (green confirm → real `job_id` → resolving poll) and repoint `motifApi.mineConfirm` off `compositionApi.getJob`. Build here only if Wave 0 did not. ⚠ **Never back-fill a real/phantom `project_id`** — a mine is genuinely not Work-bound; the row's scope key is its **owner**. |
 | **BE-M5** | ~~Arc suggest, REST mirror of `composition_arc_suggest`~~ | ~~`GET /v1/composition/books/{book_id}/arcs/suggest`~~ | — | — | — | — | 🔴 **DELETED — DUPLICATE. `arc_suggest`'s REST mirror is owned by [`34`](34_arc_templates_and_deconstruct.md) §5 `BE-7b` (`POST /v1/composition/arc-templates/suggest`).** This row was **wrong on the contract**, not merely redundant: `composition_arc_suggest` ([`server.py:2288`](../../../services/composition-service/app/mcp/server.py#L2288)) takes **`project_id`** (→ `_book_or_deny`), **not** a `book_id` path segment, and its default is **`limit=5`**, not 10. **Arc-suggest is Wave 4's; this wave ships the MOTIF suggest only (BE-M4).** The *"Suggest an arc"* button belongs to `arc-inspector` / `arc-templates` (plan 30 G-MOTIF-SUGGEST), i.e. Waves 2/4 — **not to `motif-library`.** |
 | **BE-5** | `POST …/scenes/{node_id}/regenerate-to-beat` | — | — | — | — | — | 🔴 **DO NOT BUILD — REFUTED. See §5.1.** |
 | — | conformance read (chapter + arc + arc_template_drift) | `GET /works/{pid}/conformance` | — | — | — | — | ✅ **EXISTS** — the FE arg name is wrong (M-BUG-4) |
@@ -695,14 +754,23 @@ its confirm effect. The **REST twin is not.** That asymmetry is the row.)*
 
 **Gate:** 🔴 **BE-M2 (`gather_motifs`) green with its real-DB effect test, and BE-M1 landed.** Without
 BE-M2 this milestone ships a beautiful editor for a field no consumer reads.
+🔴 **SECOND GATE — `W0-BE1` (the Work-less job lane, ex-BE-7c) must have landed in Wave 0.** This
+milestone ships the ⛏ **Mine** button; without `W0-BE1` that button **500s at confirm** and burns the
+user's token (§1.2). **VERIFY it, don't assume it** — `POST /actions/confirm` must return a real
+`job_id` and the poll must resolve. If Wave 0 did not land it, **this milestone builds all seven legs**
+(not just the read route — re-read §1.2's "why the obvious fix is wrong").
 
 Build: BE-M1 · BE-M2 · BE-M3 → `motif-library` panel (split from `ArcTemplateLibraryView`, §2.3) +
-the 6 scope tabs (incl. `book_shared`) + the graph section + the mine `promote_target` selector.
+the 6 scope tabs (incl. `book_shared`) + the graph section + the mine `promote_target` selector +
+repoint `motifApi.mineConfirm`'s poll off `compositionApi.getJob` → `GET /motif-jobs/{id}`.
 GG-8 steps 1,2,4,5,6,7 for `motif-library` + step 9 (motif handlers).
 
 **DoD:** the packer effect test proves a bound motif **changes the prompt** · the panel opens from the
 palette · create/patch/archive/adopt/mine/sync all work in a **live browser** · a System motif has no
-Edit button · `enum 58 == contract 58 == openable 58`.
+Edit button · `enum 58 == contract 58 == openable 58` · 🔴 **⛏ Mine proven end-to-end THROUGH THE
+PRODUCER** — a live `POST /actions/confirm` returns **200 + a `job_id`** (not a 500), the row exists in
+`generation_job` with `project_id IS NULL`, and the poll resolves. *A test that raw-`INSERT`s the job
+row does **not** satisfy this.*
 
 ### **3b — the binding lens + suggest** (size **M**)
 

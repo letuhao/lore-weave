@@ -42,7 +42,12 @@
    - a **sealed decision proven wrong** by the code (plan 30 §0, PO-1..4),
    - a **tenancy / security breach** (cross-user data exposure),
    - a **paid-action defect that would charge the user for nothing** (this wave has exactly one such
-     surface — the 拆文 spend whose poll 404s; see W4-BE3).
+     surface — 拆文. 🔴 **CORRECTED 2026-07-13: it is a HTTP 500 at `POST /actions/confirm`, BEFORE the
+     enqueue — NOT "a poll that 404s".** The `generation_job` row is **never created**, the poll is never
+     reached, and **nobody is charged** (no XADD, no worker, no LLM call) — though the confirm token is
+     burnt and a billing hold is left dangling. **Its fix is the Work-less job LANE, built in Wave 0 as
+     `W0-BE1`** — a job-READ route alone would read a row that never exists and would **ship green**;
+     see `W4-BE3` = VERIFY-OR-BUILD.)
    Everything else — a missing route, an awkward refactor, a failing third-party thing, an ugly seam —
    is a **defer row + continue**.
 4. Every defer row carries: ID, wave/slice of origin, what, the gate reason (CLAUDE.md's 5 gates),
@@ -2452,8 +2457,11 @@ A literal checklist. **Every box, in order. No box is optional.**
      non-zero** estimate (**not `—`, not `0`**) → **Confirm** →
      `await expect.poll(pollJob, { timeout: 300_000, intervals: [2000] }).toBe('completed')` against the
      **owner-scoped job read (BE-7c)**. 🔴 **The assertion is a TERMINAL status — NEVER "it started."**
-     Before BE-7c this run **enqueues nothing, 500s, and the poll 404s forever** — which a spinner would
-     hide, **after the user has paid.** Then assert the new template row is visible in the Library tab.
+     🔴 **Before `W0-BE1` this run 500s AT THE CONFIRM and enqueues nothing** — there is no `job_id`, so
+     **the poll is never even reached** (it does not "404 forever"; that describes a code path that never
+     executes). **Nobody is charged** — but the confirm token is burnt and a spinner would hide the whole
+     thing. ⇒ **Assert TWO things, in this order: (1) the confirm returns 200 + a real `job_id`; (2) the
+     poll reaches a TERMINAL status.** Then assert the new template row is visible in the Library tab.
   3. **AT-SMOKE-3 (M4 · drift proves the stamp landed). LLM-free.**
      🔴 **Seed the template through M1's CRUD REST route — do NOT chain it off the LLM job** (that would
      make the M4 assertion hostage to lm_studio). Open it → Apply-preview → **Materialize** → open **Drift**
@@ -2628,7 +2636,7 @@ Add these to `docs/sessions/SESSION_HANDOFF.md` § Deferred Items **as they are 
 |---|---|---|---|
 | **R1** | 🔴 **The provenance stamp silently no-ops.** | **Drift renders `NO_TEMPLATE_PROVENANCE` right after a successful materialize.** (Live-smoke AT-SMOKE-3 is designed to catch exactly this.) | W4-BE4's server-side stamp + W4-FE4's **`structure_node_id` + `chapters_assigned` assertion**, which renders an **ERROR, never a checkmark**. 🔴 **And do NOT "fix" a firing assertion by re-introducing `createArc`/`assignChapters` — that is the orphan bug (adjudication D).** If it fires, inspect `commit_decomposed_tree`'s return. |
 | **R1b** | 🔴🔴 **A builder follows the ORIGINAL AT-6 shape** (`createArc` + `assignChapters`) because it is still written in spec 34. | Two spec arcs per materialize; the chapters re-pointed onto the new one; **materialize's arc left active-but-childless**; drift silently reads the wrong subject. | **Adjudication D, §3.4, and W4-FE4's opening banner all say it in writing.** The mechanical guard is W4-FE4's **grep test**: zero `assign-chapters` / `POST …/arcs` literals under `features/composition/**`, and **no `createArc` in `plan-hub/api.ts`**. |
-| **R2** | 🔴 **BE-7c is missing — or is present as a READ ROUTE OVER A ROW THAT IS NEVER WRITTEN.** | The user pays for a deconstruct; the job **500s at insert**; the confirm token is burned and a billing hold is placed; **the poll 404s forever**. **A spinner hides all of it.** | **Pre-flight cmd 4 has TWO halves for exactly this reason (adjudication E).** `4a` (the route) green is **not sufficient** — run `4b` (the live `generation_job` count). If either is broken ⇒ **W4-BE3 (re-scoped to M) is IN SCOPE**. **It is unbuilt work, not a blocker. You can build it. Build it.** *(This is the one class where you would stop and ask **only if you genuinely could not build it** — you can.)* |
+| **R2** | 🔴 **`W0-BE1` (ex-BE-7c) is missing — or is present as a READ ROUTE OVER A ROW THAT IS NEVER WRITTEN.** | 🔴 **`POST /actions/confirm` returns HTTP 500 BEFORE the enqueue** (`_enqueue_motif_job`'s synthetic `uuid4()` → `GenerationJobsRepo.create()`'s `INSERT … SELECT … FROM composition_work` matches **zero rows** → `ReferenceViolationError`). The confirm token is **burnt** and a billing **hold** is left dangling — but ⚠ **NOBODY IS CHARGED** (no XADD, no worker, no LLM). **There is no `job_id`, so the poll is never reached** — *"the poll 404s forever"* describes a path that never executes. **A spinner hides all of it.** ⚠⚠ **And a read-route-only "fix" SHIPS GREEN** over a still-500ing confirm, because its test seeds the row with a raw `INSERT` the producer can never produce (`fixtures-can-seed-a-field-the-writer-never-sets`). | **Pre-flight cmd 4 has TWO halves for exactly this reason (adjudication E).** `4a` (the route) green is **not sufficient** — run `4b` (the live `generation_job` count). If either is broken ⇒ **W4-BE3 (re-scoped to M) is IN SCOPE**. **It is unbuilt work, not a blocker. You can build it. Build it.** *(This is the one class where you would stop and ask **only if you genuinely could not build it** — you can.)* |
 | **R3** | **`arcEffects.ts` gets a SECOND registration** and every `composition_arc_*` write double-fires. | Duplicate invalidations; a query refetches twice per agent write. Silent — no test reds without the lock. | The **single-handler lock** in W4-FE1's test (`matchEffectHandlers(...).length === 1`). |
 | **R4** | **The catalog's `{items,total}` shape is read as `{arc_templates}`** (or vice-versa). | The Catalog tab renders empty; `.items` is `undefined`. | The shape-drift lock in W4-FE2. **The two routes are NOT interchangeable.** |
 | **R5** | **A bespoke `/actions/arc_import/confirm` gets invented** (the 3-times-shipped bug). | A production 404 on the confirm, after the propose already minted a token. | The generic-confirm-path lock in W4-FE7's tests. |

@@ -48,9 +48,12 @@ drafts, not contracts.**
    - a **sealed decision proven wrong** by the code (plan 30 §0 PO-1..4),
    - a **tenancy / security breach** (cross-user data exposure),
    - a **paid-action defect that would charge the user for nothing** (this repo just shipped one — the
-     motif-mine poll 404s always; the user pays and watches a spinner forever). ⚠ **Wave 5 is full of paid
-     actions** (`run_pass`, `refine`, `interpret`, `autofix`). A Run button whose job can never be observed
-     is exactly this class. Treat it as CRITICAL.
+     motif-mine / 拆文 `POST /actions/confirm` **500s BEFORE the enqueue**: the confirm token is burnt, a
+     billing **hold** is reserved, and **the job row is never created**. ⚠ **NOT a "404 at the poll", and
+     NOBODY WAS EVER CHARGED** — no XADD, no worker, no LLM call. The fix is the **Work-less job lane**
+     (`W0-BE1`), **not** a job-read route). ⚠ **Wave 5 is full of paid actions** (`run_pass`, `refine`,
+     `interpret`, `autofix`). A Run button whose job can never be observed is exactly this class. Treat it
+     as CRITICAL.
 
    Everything else — a missing route, an awkward refactor, an ugly seam — is a **defer row + continue**.
 4. Every defer row carries: ID, slice of origin, what, the gate reason (CLAUDE.md's 5 gates), target

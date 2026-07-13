@@ -1,7 +1,13 @@
-# 15 · Chapter Browser — new studio dock panel (FE + BE)
+# 15b · Chapter Browser — new studio dock panel (FE + BE)
 
-> **Status:** 📐 specced 2026-07-04 · branch `feat/context-budget-law` (studio track)
-> Design draft approved: [`design-drafts/screens/studio/screen-chapter-browser.html`](../../../design-drafts/screens/studio/screen-chapter-browser.html). Follows [`docs/standards/dockable-gui.md`](../../standards/dockable-gui.md) (DOCK-1..11), same shape as [`14_utility_panels.md`](14_utility_panels.md). **This is a cross-service (FE+BE) task — first one in this series that isn't FE-only.**
+> **Status:** ✅ **BUILT** (FE + BE) — the `chapter-browser` panel is live at `catalog.ts:183`
+> (+ `ChapterBrowserTitleView`/`ChapterBrowserContentView`); the BE shipped CB3's `word_count`
+> migration (`book-service/internal/migrate/migrate.go:487`) and the CB4/CB5 bulk zip-export +
+> per-id-outcome status routes (covered by real-DB tests in `internal/api/bulk_chapters_db_test.go`).
+> *(Un-staled 2026-07-13, X-8: the header still read "📐 specced 2026-07-04" long after the code shipped.
+> Status re-checked against `catalog.ts` + `migrate.go`, not copied from a doc.)*
+> · branch `feat/context-budget-law` (studio track)
+> Design draft approved: [`design-drafts/screens/studio/screen-chapter-browser.html`](../../../design-drafts/screens/studio/screen-chapter-browser.html). Follows [`docs/standards/dockable-gui.md`](../../standards/dockable-gui.md) (DOCK-1..11), same shape as [`14b_utility_panels.md`](14b_utility_panels.md). **This is a cross-service (FE+BE) task — first one in this series that isn't FE-only.**
 
 ## Why (recap of the approved proposal)
 

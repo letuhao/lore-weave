@@ -1,4 +1,4 @@
-# 24 — Translation surfaces: defect audit + repair spec
+# 29 — Translation surfaces: defect audit + repair spec
 
 Status: CLARIFY complete · DESIGN reviewed (edge cases resolved) · PO decisions taken
 (2026-07-10). Ready for PLAN.

@@ -6,10 +6,14 @@
 > **Drafts (the UI acceptance criterion):** `design-drafts/screens/studio/screen-kg-write-affordances.html` · `design-drafts/screens/studio/screen-world-map.html`
 > **Branch:** `feat/context-budget-law` · **Written at HEAD** `9262ed53e` · 2026-07-13
 > **Services touched:** `knowledge-service` (Python) · `book-service` (Go) · `frontend` · `chat-service` (enum only). `composition-service` is **UNTOUCHED**.
-> **Size: XL** (2 shippable halves: 8a = M, 8b = L). **19 slices, 19 commits.**
-> **Panels added: 5** — `world` · `world-map` · `cast` · `character-arc` · `canon-growth`. (Was 2. The
-> three KG codex panels were **homeless legacy sub-tabs** with no wave; §5.4 homes them here. Delta is now
-> **`N_BEFORE + 5`** — and it is still **asserted as a DELTA, never a literal**.)
+> **Size: XL** (2 shippable halves: 8a = M, 8b = L). **20 slices, 20 commits.**
+> **Panels added: 6** — `world` · `world-map` · `cast` · `character-arc` · `canon-growth` · 🔴 **`place-graph`**.
+> (Was 2. **Four** homeless legacy sub-tabs with no wave are homed here: §5.4 homes three, and **PO decision
+> D-7 (sealed 2026-07-13)** homes the fourth — `worldmap` → **`place-graph`**, W8-20, **reversing this plan's
+> own won't-port**; see §9.0b. Delta is now **`N_BEFORE + 6`** — and it is still **asserted as a DELTA, never
+> a literal**.)
+> 🔴 **`place-graph` ≠ `world-map`.** Two panels, two services, two id spaces (§5.4). Plan 30 §10 refutes
+> conflating them. **Do not merge them, and do not name either after the other.**
 
 ---
 
@@ -65,7 +69,7 @@ panel, no `workflow-proposals` panel, no mode-binding control in this wave.
 
 | # | Gate | Why | Verify (§2) |
 |---|---|---|---|
-| **G1** | **Waves 1–6 have landed** (12 panels: `quality-canon-rules`, `quality-corrections`, `quality-heal`, `progress`, `arc-inspector`, `motif-library`, `quality-conformance`, `arc-templates`, `plan-passes`, `style-voice`, `reference-shelf`, `divergence`). Wave 7 adds **0** panels. | The panel-enum baseline is **CUMULATIVE**. Wave 8 is the **LAST** wave: it starts at **69** and ends at **74** (🔴 **+5**, not +2 — §5.4 homes three orphaned legacy sub-tabs), **not** 57→59. **Assert the DELTA, never the literal.** | `P1` |
+| **G1** | **Waves 1–6 have landed** (12 panels: `quality-canon-rules`, `quality-corrections`, `quality-heal`, `progress`, `arc-inspector`, `motif-library`, `quality-conformance`, `arc-templates`, `plan-passes`, `style-voice`, `reference-shelf`, `divergence`). Wave 7 adds **0** panels. | The panel-enum baseline is **CUMULATIVE**. Wave 8 is the **LAST** wave and adds 🔴 **+6** (not +2 — §5.4 homes three orphaned legacy sub-tabs, and **PO D-7** homes a fourth), **not** 57→59. 🔴 **MEASURE `N_BEFORE` AT PRE-FLIGHT (P2) AND ASSERT `N_BEFORE + 6`. Do NOT carry a literal from this table** — §6's own cumulative table has been re-based twice, and *"six of the eight specs got this wrong by each computing from 57."* **The delta always wins.** | `P1` |
 | **G2** | The three-way panel-id equality holds **before** you start: `py enum == contract enum == openable`. | If it is already drifted, your +2 will look like a regression you caused. | `P2` |
 | **G3** | ⚠ **X-2 is NOT a gate for this wave.** Wave 8's two panels use `category: 'storyBible'`, which **IS** in `CATEGORY_ORDER`. Waves 1/3 are the ones blocked on X-2. | Spec 38 §3.2 deliberately refused to invent a `world` category for exactly this reason. **Do not add a category.** | `P3` |
 | **G4** | **Track C ownership handoff for the `world` container** (spec 38 M8b.0). | Plan 30 §9 forbids starting 8b without it. | `P4` — **already resolved; see below** |
@@ -84,8 +88,13 @@ panel, no `workflow-proposals` panel, no mode-binding control in this wave.
 
 - **GG-4 / spec-16 retirement** — `features/composition/hooks/useWorldMap.ts:129,134` is **the only human
   writer of `knowledgeApi.createEntity` / `createRelation` in the entire frontend**, and it is mounted only
-  on the legacy `ChapterEditorPage`. **After slice W8-02/W8-03 the KG panels own that capability**, so
-  retiring that page no longer deletes it. (Spec 38 OQ-9.)
+  on the legacy `ChapterEditorPage`. **After slices W8-02/W8-03 the KG panels own that capability**, so
+  retiring that page no longer deletes it. 🔴 **And after W8-20 (PO decision D-7) the SURFACE survives too** —
+  the place-graph is ported as the **`place-graph`** panel, and `useWorldMap` is **de-forked onto W8-02/03's
+  writers** so the repo keeps **one writer per verb.** (Spec 38 OQ-9 — 🔴 **its "won't-port" ruling is
+  REVERSED**; see §9.0b.)
+- **The GG-4 gate goes GREEN** (all four pending parity rows flipped — W8-16/17/18/**20**). ⚠ **Green is a
+  precondition, not the authorization: PO decision D-5 keeps GG-4 SHUT until Wave 6's close.**
 - Nothing else. Wave 8 is the **last** wave; it unblocks no other wave.
 
 ---
@@ -98,7 +107,7 @@ All commands from the repo root `d:/Works/source/lore-weave-mvp`.
 # P1 — Waves 1–6 landed? 🔴 Expect 14 hits (Wave 6 ships FIVE panels, not three: it also homes the
 #      orphaned `compose` and `assemble` sub-tabs as `scene-compose` + `chapter-assemble`).
 #      Fewer hits ⇒ a wave did not land. That is NOT a stop-and-ask (§8 has only four of those) —
-#      record N_BEFORE from P2, assert the DELTA (+5), and CONTINUE.
+#      record N_BEFORE from P2, assert the DELTA (🔴 +6 after PO decision D-7 added `place-graph`), and CONTINUE.
 grep -c "id: 'quality-canon-rules'\|id: 'quality-corrections'\|id: 'quality-heal'\|id: 'progress'\|id: 'arc-inspector'\|id: 'motif-library'\|id: 'quality-conformance'\|id: 'arc-templates'\|id: 'plan-passes'\|id: 'style-voice'\|id: 'reference-shelf'\|id: 'divergence'\|id: 'scene-compose'\|id: 'chapter-assemble'" frontend/src/features/studio/panels/catalog.ts
 
 # P2 — the three-way equality BEFORE you touch anything. Record N_BEFORE. All three MUST be equal.
@@ -399,7 +408,8 @@ stores NULL (no stdlib decoder, `maps_image.go:16-19`), **and so does every map 
 | **W8-16** | 🔴 **FE** | **the `cast` panel** — CastCodexPanel, homed (§5.4) | W8-02 |
 | **W8-17** | 🔴 **FE** | **the `character-arc` panel** — CharacterArcView, homed (§5.4) | W8-16 |
 | **W8-18** | 🔴 **FE** | **the `canon-growth` panel** — FlywheelPanel, homed (§5.4) | W8-16 |
-| **W8-19** | TEST | `studio-kg-codex.spec.ts` — the codex-trio LIVE BROWSER smoke | W8-16, W8-17, W8-18 |
+| **W8-20** | 🔴 **FE** | **the `place-graph` panel** — WorldMap, homed (§5.4) — 🔴 **PO decision D-7, 2026-07-13: this REVERSES the won't-port** | W8-02, W8-03, W8-16 |
+| **W8-19** | TEST | `studio-kg-codex.spec.ts` — the codex-trio LIVE BROWSER smoke (+ the place-graph case) | W8-16, W8-17, W8-18, W8-20 |
 | **W8-15** | DOC | `/review-impl` on the wave diff + fix everything it finds + SESSION_HANDOFF | **all** (runs LAST) |
 
 ⚠ **W8-15 keeps its id but is now the LAST slice** (it depends on *all*, including W8-16..19). The ids are
@@ -2745,12 +2755,16 @@ create a dangling id that NOTHING validates — the FK is soft BY DESIGN.**
 
 5. **`frontend/src/features/world/components/GlossaryLocationPicker.tsx`** — **NEW** (≤80 lines). The OQ-2
    picker above (all six rules). **Accepts "no link"** (a `— none —` option that sends an explicit `null`).
-   🔴 **AND THE "OPEN IN CODEX" ACTION — it is the ONE affordance the retired legacy place-graph had that
-   nothing else replaces** (`Q-38-OQ9` §2; `WorldMap.tsx:44-48`'s `onViewCast`). When a marker/region carries
-   an `entity_id`, render an **Open in codex** action that opens the **glossary** panel focused on that entity
-   via **`followStudioLink(...)`** — 🔴 **NEVER a `<Link>`** (`dockablePanelHygiene` DOCK-7 **reds** on it).
+   🔴 **AND THE "OPEN IN CODEX" ACTION** — the same affordance the legacy place-graph has (`WorldMap.tsx:44-48`'s
+   `onViewCast`), **on this panel's own id space.** When a marker/region carries an `entity_id`, render an
+   **Open in codex** action that opens the **glossary** panel focused on that entity via
+   **`followStudioLink(...)`** — 🔴 **NEVER a `<Link>`** (`dockablePanelHygiene` DOCK-7 **reds** on it).
    *(The target is the **glossary** panel, not `cast` — `cast` is a KNOWLEDGE-entity codex and this is a
    GLOSSARY id. Two id spaces. See rule 6 above.)*
+   ⚠ **This is NOT a substitute for the place-graph.** *(An earlier cut of this plan claimed it was — that
+   claim underwrote a won't-port the PO has since **REVERSED**: the place-graph ships as its own panel in
+   **W8-20**, and its `onViewCast` opens **`cast`** with a **knowledge** entity. **Two panels, two id spaces,
+   two codexes. Both actions exist. Do not merge them.**)*
    **Tests:** a vitest asserting the picker PATCHes `entity_id`, that a bound marker renders the
    open-in-codex action, and a **Go** handler test that `entity_id` round-trips through BE-15h
    (**absent = unchanged · `null` = clear**).
@@ -2849,8 +2863,8 @@ Same 6 steps as W8-12, with:
   - 🔴 `the pattern is a RegExp, not a string` — `expect(WORLD_WRITE_PATTERN).toBeInstanceOf(RegExp)`
 - The **six machine guards** from W8-12 (all green).
 
-🔴 **ASSERT THE DELTA:** all three counts are now `N_BEFORE + 2` (**W8-16/17/18 take it to +5**). **Never a
-literal.**
+🔴 **ASSERT THE DELTA:** all three counts are now `N_BEFORE + 2` (**W8-16/17/18 take it to +5, and W8-20 to
++6**). **Never a literal.**
 
 **DoD evidence:** `"W8-13: py enum == contract enum == openable, all three at N_BEFORE+2. vitest <N> passed. WorldMapPanel renders all FOUR bare-open degraded states (no-world reuses LinkBookToWorldEmptyState — not a fork; a 404 mapId falls back to the rail and does NOT show a different map). useWorldMapDetail serializes per-marker writes and binds the debounce to its target marker (both asserted). marker_type is an <input list>+<datalist> (NOT a select — shadcn Select cannot do free text): a custom value round-trips lowercased, clearing sends explicit null, an unknown type renders the DEFAULT pin — D-WORLD-MARKER-TYPE-VOCAB is RETIRED. The entity picker reads GLOSSARY (bible book first, member books via the Source select), never knowledgeApi. worldEffects invalidates the EIGHT REAL keys (mirroring useAddBookToWorld, the REST producer — the draft's ['world-books'] was a PHANTOM) and matches NO reads (world_map_get/_list/world_get/world_list asserted); WORLD_WRITE_PATTERN is a RegExp."`
 
@@ -2900,25 +2914,33 @@ literal.**
 ## 5.4 · 🔴 THE HOMELESS LEGACY SUB-TABS — the GG-4 retirement gate
 
 **The problem.** Seven legacy `CompositionPanel` sub-tabs were **assigned to no wave**. The GG-4 retirement
-gate would **DELETE** them. **Three are Wave 8's** (`cast` · `arc` · `flywheel` — knowledge-service surfaces,
-and Wave 8 is already inside those files); **one is a reviewed won't-port** (`worldmap`); and **three belong
-to Wave 6** (`compose` · `assemble` · `canonview`), which **runs BEFORE this wave** and now carries them as
-`W6-M6` (`scene-compose`), `W6-M7` (`chapter-assemble`) and a `scene-inspector` section (M3).
+gate would **DELETE** them. **FOUR are Wave 8's** (`cast` · `arc` · `flywheel` — knowledge-service surfaces,
+and Wave 8 is already inside those files — 🔴 **plus `worldmap`, added by PO decision D-7**); and **three
+belong to Wave 6** (`compose` · `assemble` · `canonview`), which **runs BEFORE this wave** and now carries
+them as `W6-M6` (`scene-compose`), `W6-M7` (`chapter-assemble`) and a `scene-inspector` section (M3).
 
 🔴 **ORDERING — read this before you touch the parity map.** **Wave 6 runs FIRST**, so when its
-`legacyParityContract.test.ts` lands, this wave's three panels **do not exist yet**. Wave 6 therefore ships
+`legacyParityContract.test.ts` lands, this wave's **four** panels **do not exist yet**. Wave 6 therefore ships
 them as **`{ pending: 'Wave 8 / W8-1x' }`** rows (`D-GG4-PARITY-ROWS-PENDING`), and its
 `it.fails('GG-4: zero pending rows')` is **RED by design — that is the gate holding.**
-**W8-16 / W8-17 / W8-18 each FLIP their row**, and W8-18 converts the `it.fails` to an `it`. ⚠ **§11's
+**W8-16 / W8-17 / W8-18 / W8-20 each FLIP their row**, and 🔴 **W8-20 — now the LAST flip — converts the
+`it.fails` to an `it`** *(it was W8-18; PO decision D-7 added a fourth pending row after it)*. ⚠ **§11's
 "handoff to Wave 6" is a WRITE-DOWN for the record, not work to schedule** — Wave 6 has already closed by
-the time you read this; the fix lands **here**, in W8-16/17/18.
+the time you read this; the fix lands **here**, in W8-16/17/18/20.
+
+🔴 **THE `worldmap` ROW IS THE ONE THAT WILL BITE YOU.** Wave 6's map ships it as **`{ retired: … }`** —
+which, after **PO decision D-7**, is **WRONG**: a `retired` row is a *reviewed deletion*, and the PO has ruled
+the place-graph is **PORTED, not deleted**. A `retired` row **passes the gate silently while the feature
+dies** — the exact class §11 H-1 exists to kill. **W8-20 changes that row to a real string home
+(`worldmap: 'place-graph'`).** If Wave 6 has **not** yet shipped when you read this, tell it to ship
+`worldmap: { pending: 'Wave 8 / W8-20 (place-graph)' }` instead of `{ retired: … }` — see §11 **H-5**.
 
 | Legacy sub-tab | Component | Home | Slice |
 |---|---|---|---|
 | **cast** | `composition/components/CastCodexPanel.tsx` | 🟢 **WAVE 8** — new panel `cast` | **W8-16** |
 | **arc** | `composition/components/CharacterArcView.tsx` | 🟢 **WAVE 8** — new panel `character-arc` | **W8-17** |
 | **flywheel** | `composition/components/FlywheelPanel.tsx` | 🟢 **WAVE 8** — new panel `canon-growth` | **W8-18** |
-| **worldmap** | `composition/components/WorldMap.tsx` (the **place-graph**) | 🔴 **WON'T-PORT — superseded, by adjudication.** `{ retired: … }` in Wave 6's map. See the box below. | — |
+| **worldmap** | `composition/components/WorldMap.tsx` (the **place-graph**) | 🔴 **WAVE 8** — new panel **`place-graph`**. **PO decision D-7, 2026-07-13 — this REVERSES the plan's own won't-port.** See the box below. | **W8-20** |
 | compose · assemble · canonview | `ComposeView` · `ChapterAssembleView` · `CanonAtChapterPanel` | ✅ **WAVE 6 — already carried** | `W6-M6` · `W6-M7` · `W6-M3` |
 
 > ✅ **THE TWO FALSE MAP ROWS ARE ALREADY FIXED IN WAVE 6'S PLAN — do not "re-fix" them.** An earlier cut of
@@ -2938,35 +2960,53 @@ the time you read this; the fix lands **here**, in W8-16/17/18.
 > **Flip the rows by BUILDING W8-16/17/18** — never by re-pointing a row at a panel that is not the thing,
 > and never by demoting a `pending` to a `retired`.
 
-> 🔴 **`worldmap` (the legacy PLACE-GRAPH) — WON'T-PORT. This is an ADJUDICATED DECISION
-> (`Q-38-OQ9-LEGACY-WORLDMAP-PLACE-GRAPH-NOT-PORTED`), and it OVERRIDES the "it dies at GG-4" alarm.**
-> The alarm's premise is **doubly false against code:**
-> 1. **Its two capabilities are each strictly absorbed by a panel Wave 8 ITSELF ships.**
->    **(a) AUTHORING** (*add place / link places*) → `useWorldMap.ts:129,134` are **the only human callers of
->    `createEntity`/`createRelation` in the whole frontend**, and **W8-02/W8-03 move that capability into the
->    KG panels.** **(b) SPATIAL** (drag positions + backdrop) → the **NEW `world-map` panel** (W8-13) — the
->    same idea on a **better model**: world-scoped + **versioned** + **MCP-paired** (BE-15m) + real
->    `map_markers.entity_id` FKs, vs. the place-graph's **untyped `composition_work.settings.world_map` JSON
->    blob with ZERO MCP tools** (a live GG-2 *inverse* gap). Porting it would put **two panels named "world
->    map" in one dock over two different data models** — the exact *one name for one concept* violation
->    **PO-3 sealed against**.
->    **(c)** its ONE unreplaced affordance — *click a place → open it in the codex* — **IS built**, in the
->    `world-map` inspector (W8-13 file 5).
-> 2. 🔴 **GG-4 DOES NOT DELETE IT ANYWAY** (`Q-38-LEGACY-ONLY-NOT-UNBUILT`): **spec 16 REVERSED "delete after
->    soak"** — its Phase 4b (M9, the user's call 2026-07-05) keeps `ChapterEditorPage` **INDEFINITELY**,
->    deprecation-bannered, **no route change.** **Nothing is lost.**
+> 🔴 **`worldmap` (the legacy PLACE-GRAPH) — PORTED. `D-WORLDMAP-PLACE-GRAPH-WONTPORT` IS REVERSED BY
+> PO DECISION D-7 (sealed 2026-07-13). BUILD IT: slice W8-20, panel id `place-graph`.**
 >
-> **⇒ DEFER ROW `D-WORLDMAP-PLACE-GRAPH-WONTPORT`** — gate **#5 (conscious won't-fix)**, recorded in §8 so it
-> **stops re-surfacing**. `WorldMap.tsx` + `useWorldMap.ts` + `PlaceNode.tsx` + the `settings.world_map` blob
-> die **with `ChapterEditorPage`, whenever that happens**. 🟢 **No DB migration is owed** — `settings.world_map`
-> is a JSON key on a per-work blob: **orphaned, not corrupting.** 🟢 **And no user content is lost:** the
-> location↔location relation **EDGES** (`contains`/`borders`/`route_to`) are **KG data**, not place-graph
-> data — they **survive in `kg-graph`**, which renders relations.
-> 📌 **SPEC EDIT (do it in W8-00 — the current text is WRONG and is a silent drop):** spec 38 **:465** says
-> OQ-9's place-graph *"belongs to plan 30's Wave 6 editor-craft ports."* **It does not — Wave 6 contains no
-> place-graph row** (plan 30 `:426-436`). Replace with: *"RESOLVED — won't-port. Superseded by
-> `kg-entities`/`kg-graph` (authoring, W8-02/03) + the `world-map` panel (spatial, W8-13). See
-> `D-WORLDMAP-PLACE-GRAPH-WONTPORT`."*
+> **This overrules the plan's own adjudication (`Q-38-OQ9-LEGACY-WORLDMAP-PLACE-GRAPH-NOT-PORTED`) and the
+> §8.1 defer row. Do not restore either. The PO's reasoning:**
+>
+> 1. **It was a CIRCULAR DEFER, and that is what made the won't-port unsafe.** Spec 38 `:465` says the
+>    place-graph *"belongs to plan 30's Wave 6 editor-craft ports"* — **and Wave 6 contains no place-graph
+>    row** (plan 30 `:426-436`). So **no wave ever built it**, and it would have died at the GG-4 gate. A
+>    feature that dies because two docs each point at the other is **not a reviewed retirement** — it is a
+>    silent drop wearing one.
+> 2. **The "strictly absorbed" claim does not survive the code.** The place-graph is a **persisted spatial
+>    arrangement of PLACE entities**: `useWorldMap.ts:94` reads **`work.settings.world_map`** (a per-Work JSON
+>    blob: `{positions, backdrop_url}`), `buildPlaceGraph` (`:38-59`) keeps **only** relations whose **BOTH**
+>    endpoints are locations (`PLACE_LINK_PREDICATES = contains | borders | route_to`), and drag-to-arrange
+>    **persists server-side** (`persistPositions` → `useSetWorkSettings`). `kg-graph` renders a **generic**
+>    entity graph with **no place filter, no saved layout and no backdrop** — it is not this.
+> 3. 🔴 **AND IT IS **NOT** WAVE 8's `world-map` PANEL.** Plan 30 §10 **explicitly refutes conflating them**,
+>    and so does the DDL:
+>    - **`world-map` (W8-13)** reads **book-service**'s `world_maps` / `map_markers` / `map_regions` —
+>      world-scoped, versioned, MCP-paired (BE-15m), markers FK'd to **GLOSSARY** entity ids.
+>    - **`place-graph` (W8-20)** reads **`composition_work.settings.world_map`** + **knowledge-service**
+>      entities/relations — book-scoped, unversioned, nodes are **KNOWLEDGE** entity ids.
+>
+>    **Two data models, two id spaces, two services.** They are **not** the same panel and one does not absorb
+>    the other. ⚠ **The `PO-3 / one-name-for-one-concept` objection the old box raised is real and is
+>    ANSWERED BY THE NAME:** the panel is **`place-graph`**, *not* a second thing called "world map". **Do not
+>    name it `world-map-legacy`, `worldmap`, or anything containing "world map".**
+> 4. **GG-4 timing is not a reprieve.** Yes, spec 16 Phase 4b keeps `ChapterEditorPage` indefinitely — but
+>    **GG-4 is the gate that authorizes its deletion**, and the old box's own trigger was *"delete the three
+>    files in the same commit that retires `ChapterEditorPage`."* That is the deletion. D-5 keeps GG-4 **shut**
+>    at Wave 6; it does not make the port unnecessary.
+>
+> 🟢 **What the old box got RIGHT and W8-20 must keep:**
+> - the **authoring** legs (*add place* / *link places*) genuinely **do** belong to W8-02/W8-03's writers —
+>   see the 🔴 **NO SECOND WRITER** rule in W8-20. `useWorldMap.ts:129,134` is the frontend's **only other**
+>   human caller of `knowledgeApi.createEntity`/`createRelation`, and **two writers for one concept is the
+>   fork this wave is otherwise eliminating.**
+> - the **open-in-codex** affordance on `world-map`'s markers (W8-13 file 5) stays exactly as specified — it
+>   targets a **GLOSSARY** id and is a **different** action from the place-graph's `onViewCast`, which targets
+>   a **KNOWLEDGE** entity name. **Two id spaces. Do not merge them.**
+>
+> 📌 **SPEC EDIT (do it in W8-00):** spec 38 **:465** — replace OQ-9's *"belongs to plan 30's Wave 6
+> editor-craft ports"* (**false — Wave 6 contains no place-graph row**) with: *"RESOLVED — **PORTED** as the
+> `place-graph` panel (Wave 8 / W8-20), per PO decision D-7 (2026-07-13). It is **NOT** the `world-map` panel:
+> that reads book-service's `world_maps`/`map_markers`/`map_regions`; the place-graph reads
+> `composition_work.settings.world_map` + knowledge entities. Plan 30 §10 refutes conflating them."*
 
 ---
 
@@ -3101,16 +3141,170 @@ it. Wave 6's map row is simply wrong — §11.)*
 the two other stats open `kg-timeline` / `kg-graph`; **no extraction yet ⇒ the neutral empty state, not an
 error**; hygiene green.
 
-🔴 **FLIP THE LAST GG-4 PENDING ROW — AND CLOSE THE GATE OUT.** In `legacyParityContract.test.ts`:
-`flywheel: { pending: 'Wave 8 / W8-18 …' }` → **`flywheel: 'canon-growth'`**. This is the **third and last**
-pending row ⇒ **change `it.fails('GG-4: zero pending rows', …)` to `it(…)`** — it now passes, and the
-mechanical GG-4 gate is GREEN for the first time. ⚠ **Green ≠ authorized:** deleting `ChapterEditorPage` is
-**still** blocked on `D-STUDIO-MOBILE-SHELL` (E-3, a PO decision) and on spec 16's Phase-4b *"kept
+🔴 **FLIP THE `flywheel` GG-4 PENDING ROW.** In `legacyParityContract.test.ts`:
+`flywheel: { pending: 'Wave 8 / W8-18 …' }` → **`flywheel: 'canon-growth'`**.
+
+> 🔴 **CHANGED BY PO DECISION D-7 (2026-07-13) — READ THIS.** This is the **third of FOUR** pending rows, not
+> the last. **`worldmap` is now a fourth pending row** (`place-graph`, **W8-20**), so **W8-18 must NOT convert
+> `it.fails('GG-4: zero pending rows', …)` to `it(…)`** — **W8-20 does that**, because it flips the last row.
+> *(The earlier cut of this plan had W8-18 closing the gate out. If you convert it here, the test goes **RED**
+> with one pending row left — and the temptation will be to "fix" it by demoting `worldmap` to `retired`,
+> which is **exactly the silent-drop the PO reversed.**)*
+
+⚠ **Green ≠ authorized:** deleting `ChapterEditorPage` is **still** blocked on `D-STUDIO-MOBILE-SHELL`
+(E-3 — 🔴 **PO decision D-5 keeps GG-4 SHUT until Wave 6's close**) and on spec 16's Phase-4b *"kept
 indefinitely"* ruling. **Do NOT delete the page in this wave.**
 
-**DoD evidence:** `"W8-18: vitest <N> passed. Panel 'canon-growth' registered (delta N_BEFORE+5, three-way — the FINAL count). FlywheelPanel is LEAF-mounted and reads knowledgeApi.getFlywheel (knowledge-service — it is NOT quality-corrections/CorrectionStatsTable, which is composition correction RATES). Its 3 deep-links now go through host.openPanel — an entity chip lands in 'cast' WITH the search param (asserted). 🔴 legacyParityContract: the LAST pending row is FLIPPED; 'GG-4: zero pending rows' converted from it.fails to it and PASSES — 25/25 sub-tabs have a real home or a reviewed retirement. ChapterEditorPage is NOT deleted (E-3 open)."`
+**DoD evidence:** `"W8-18: vitest <N> passed. Panel 'canon-growth' registered (delta N_BEFORE+5, three-way). FlywheelPanel is LEAF-mounted and reads knowledgeApi.getFlywheel (knowledge-service — it is NOT quality-corrections/CorrectionStatsTable, which is composition correction RATES). Its 3 deep-links now go through host.openPanel — an entity chip lands in 'cast' WITH the search param (asserted). 🔴 legacyParityContract: the flywheel PENDING row is FLIPPED — 1 pending row remains (worldmap → W8-20, per PO D-7), so 'GG-4: zero pending rows' is STILL it.fails, BY DESIGN. ChapterEditorPage is NOT deleted (E-3 open, D-5 keeps GG-4 shut)."`
 
 **dependsOn:** W8-16
+
+---
+
+### W8-20 · [FE] 🔴 the `place-graph` panel — WorldMap, homed (**PO decision D-7 — this REVERSES the won't-port**)
+
+> **Read `frontend/src/features/composition/components/WorldMap.tsx` (213 lines) and
+> `frontend/src/features/composition/hooks/useWorldMap.ts` (152 lines) IN FULL before you type. Every rule
+> below cites them by line.** They are small, and the whole slice is a wrapper + a de-forking.
+
+**Panel id: `place-graph`. Category: `storyBible`** (🟢 already in `CATEGORY_ORDER` — no X-2 dependency).
+**Palette-visible. `guideBodyKey` REQUIRED.** Params: `{ }` (none — it is book-scoped, like `cast`).
+
+🔴 **THE NAME IS LOAD-BEARING. It is `place-graph`, NOT `world-map`, NOT `worldmap`, NOT `world-map-legacy`.**
+Wave 8 ships a panel called **`world-map`** (W8-13) that is **a different thing over a different table in a
+different service** (§5.4). Two panels named "world map" in one dock is the **PO-3 / one-name-for-one-concept**
+violation the old won't-port box correctly feared — **the name is how we avoid it.** Plan 30 §10 refutes the
+conflation in writing; do not re-merge them.
+
+| | `world-map` (W8-13) | **`place-graph` (this slice)** |
+|---|---|---|
+| Data | **book-service** `world_maps` / `map_markers` / `map_regions` | **`composition_work.settings.world_map`** JSON blob (`useWorldMap.ts:94`) + **knowledge** entities/relations |
+| Nodes | pins/regions on a raster image, FK'd to **GLOSSARY** entity ids | **location** entities (`kind:'location'`), **KNOWLEDGE** entity ids |
+| Edges | none | `location↔location` relations only (`buildPlaceGraph:38-59` drops place↔character) |
+| Layout | marker coords, versioned + OCC | `settings.world_map.positions`, last-write-wins |
+| Scope | a **world** (may span books) | **one book's Work** |
+| MCP | BE-15m tools | none (a live GG-2 gap — **out of scope here**, see §8.1) |
+
+**Files**
+
+1. **`frontend/src/features/studio/panels/PlaceGraphPanel.tsx`** — **NEW** (≤100 lines — a thin wrapper).
+   Root `data-testid="studio-place-graph-panel"`.
+   **`useStudioPanel('place-graph', props.api, { mcpToolPrefixes: ['kg_'] })` as its FIRST hook** (amendment A)
+   — the tool prefix is **`kg_`**, because every write this panel makes lands in **knowledge-service**.
+   🔴 **LEAF-REUSE `WorldMap.tsx` — do NOT mount `<CompositionPanel soloPanel='worldmap'>`.** *(EC-6: ~20 hooks
+   fire and `WorldWorkspaceLayoutContext` is missing. This is the same rule W8-16/17/18 follow.)*
+   **Props it must resolve (WorldMap's signature is `{ work, bookId, chapterId, token, onViewCast }` —
+   `WorldMap.tsx:17-25`):**
+   | prop | how the panel resolves it |
+   |---|---|
+   | `bookId` | `host.bookId` |
+   | `token` | the studio host's token, as `CastPanel` does |
+   | `work` | **`useWorkResolution(host.bookId, token)`** (`composition/hooks/useWork.ts:7`). 🔴 **It can be `undefined` / still loading / a book with no Work at all.** Render a **loading** state and a **"this book has no co-writer Work yet"** empty state — **never pass `undefined` into `WorldMap`**, whose `useWorldMap(work, …)` dereferences `work.settings` (`:94`) and `work.project_id` (`:108`) **unguarded**. *(A blank panel is the failure mode this wave keeps killing.)* |
+   | `chapterId` | the **manuscript hoist's active chapter**, via the ONE convention spec 31 QC-10 locks (`QualityCriticPanel.tsx:33-59`'s picker — **including the `chaptersTruncated` no-silent-cap notice**). 🔴 **It is used by EXACTLY ONE leg — the backdrop upload** (`useWorldMap.ts:138` → `booksApi.uploadChapterMedia(token, bookId, chapterId, file)`). **With no chapter, DISABLE the Backdrop button with a title explaining why. Do NOT pass `''`** — that mints a request to `/chapters//media`. |
+   | `onViewCast` | **`(name) => host.openPanel('cast', { search: name })`** — this is **why W8-20 dependsOn W8-16**, and it is the same `search`-param hand-off W8-18's chips use. *(In `CompositionPanel` it was `setCastSearch(name); selectTab('cast')` — `:780` — an in-page tab switch that **dies with the page**.)* |
+
+2. **`frontend/src/features/composition/components/WorldMap.tsx`** — **EDIT (minimal, and only if forced).**
+   It already takes every prop as an argument and holds **no router/nav**. **No fork.** *(Its
+   `data-testid="composition-worldmap"` root stays — the E2E in W8-19 keys off it.)*
+
+3. 🔴 **`frontend/src/features/composition/hooks/useWorldMap.ts` — DE-FORK THE TWO WRITERS. THIS IS THE
+   LOAD-BEARING HALF OF THE SLICE, and it is the one thing the PO called out by line number.**
+
+   `useWorldMap.ts:127-136` holds **`createPlace`** and **`linkPlaces`** — and **`:129` / `:134` are the
+   frontend's ONLY human callers of `knowledgeApi.createEntity` / `knowledgeApi.createRelation`.** **W8-02 and
+   W8-03 give those exact two verbs to the kg panels.** If W8-20 ships while `useWorldMap` keeps its own
+   mutations, **the repo has two writers for one concept** — the fork this whole wave is eliminating.
+
+   **THE RULE: ONE WRITER PER VERB. `useWorldMap` CONSUMES W8-02/W8-03's HOOKS; it does not keep its own.**
+   - **DELETE** `useWorldMap`'s `createPlace` / `linkPlaces` `useMutation`s. **Call W8-02's `useCreateEntity`
+     and W8-03's relation-create hook** instead, passing `kind: 'location'` and the chosen
+     `PLACE_LINK_PREDICATES` value. `WorldMap.tsx`'s call sites (`:52` `wm.createPlace.mutate(name, …)`,
+     `:60` `wm.linkPlaces.mutate({subjectId, objectId, predicate}, …)`) keep the **same shape** —
+     `useWorldMap` re-exports the shared mutations under the same two names, so `WorldMap.tsx` needs **no
+     edit** for this. *(If W8-02/W8-03's hooks landed with a different signature, adapt **inside**
+     `useWorldMap` — never by re-adding a second `useMutation` on `knowledgeApi.createEntity`.)*
+   - 🔴 **AND THE INVALIDATION MUST NOT REGRESS.** `useWorldMap`'s own `invalidatePlaces` (`:122-125`) hits
+     **`['composition','worldmap','places']`** + **`['composition','worldmap','detail']`**. W8-02's
+     `useCreateEntity` invalidates `knowledge-entities` / `knowledge-subgraph` / `knowledge-projects` — **NONE
+     of which is a place-graph key.** **If you just swap the hook, the graph will not refresh after an add.**
+     ⇒ **Add the two `['composition','worldmap',…]` keys to the SHARED hooks' invalidate set** — the
+     producer-mirror rule (`reconcile-by-truth-mirror-producer-predicate`, and C-11's lesson: **dead keys =
+     the panel never refreshes = a false-green**). ⚠ **This makes the shared hook invalidate a composition key
+     — that is CORRECT and intentional** (the write really does stale that cache), and it is the *inverse* of
+     W8-13's rule (*"`worldEffects` must NOT invalidate `['composition','worldmap',*]`"* — **that** is about
+     `world_*` **agent** tools, which write a **different** table. **Both rules stand. Read them together and
+     do not "resolve" them.**)
+   - **A vitest asserts BOTH:** `grep`-style — **`knowledgeApi.createEntity` / `createRelation` have exactly
+     ONE call site each in `frontend/src`** (a hygiene test, in the shape of T-C1's
+     `noFrontendLanguageNormalizer` twin-guard) — **and** that adding a place invalidates the two
+     `['composition','worldmap',…]` keys.
+
+4. 🔴 **THE PREDICATE COLLISION — W8-03 CLOSES THE SCHEMA UNDER THIS PANEL'S FEET.**
+   `WorldMap.tsx:126` renders a `<select>` over the **hardcoded** `PLACE_LINK_PREDICATES`
+   (`contains` · `borders` · `route_to` — `useWorldMap.ts:18`). **W8-03 ships BE-14e: a project with a
+   CLOSED schema now 422s an off-vocabulary predicate on `POST /relations`.** So on a closed schema whose
+   ontology lacks `route_to`, **"link places" becomes a guaranteed-fail button** — a dead end this wave would
+   have *created*.
+   > **RULE:** the link control must **not** be a hardcoded 3-option `<select>` any more. **Reuse W8-03's
+   > `PredicateControl`**, seeded/filtered to the place predicates, so it unions `edge_types` ∪
+   > `/predicate-labels` ∪ schema/observed — and on **empty + closed** it renders **the schema-panel escape**,
+   > exactly as `Q-38-A2-EMPTY-ONTOLOGY` requires. **If `PredicateControl` cannot be filtered to a subset,
+   > pass the three as its suggestions and KEEP the 422 handler**: surface BE-14e's error readably (*"your
+   > project's schema does not allow `route_to` — open the schema panel"*), **never a swallowed failure.**
+   > **A vitest: a CLOSED schema without `route_to` renders the escape/typed error, NOT a dead select.**
+
+5. 🔴 **`kind: 'location'` MUST BE AN AUTHORABLE KIND.** `useWorldMap.ts:129` creates with `kind: 'location'`,
+   and **W8-01 (BE-14d) defines the one authorable-kind set** consumed by W8-02's 4-option `<select>`.
+   **Pre-flight check:** `GET /v1/knowledge/entity-kinds` **must contain `location`.** If W8-01's set omits it,
+   **"+ Place" 422s** — and that is a **W8-01 bug to fix in W8-01's file**, *not* a reason to bypass the shared
+   writer. ⚠ Cross-check `D-KG-GLOSSARY-KIND-ALIAS-DRIFT` (§8.1): `location` is **not** one of the drifting
+   aliases (`faction`/`concept`), so it should anchor cleanly — **verify, don't assume.**
+
+6. **GG-8 registration (+1 → the wave's SIXTH):** the same 6 steps as W8-12 —
+   - `catalog.ts` row: `{ id:'place-graph', component: PlaceGraphPanel, titleKey:'panels.place-graph.title', descKey:'panels.place-graph.desc', category:'storyBible', guideBodyKey:'panels.place-graph.guideBody' }` **(`category` AND `guideBodyKey` both mandatory; DO NOT add a category)**
+   - `en/studio.json` + **17 locales via `python scripts/i18n_translate.py`** (never hand-write)
+   - `frontend_tools.py`: append `"place-graph"` to the `panel_id` **enum** **and** a description clause —
+     🔴 **the gloss is the model's ONLY hint, and it MUST disambiguate from `world-map`:**
+     *"'place-graph' = this book's PLACES and how they connect (contains / borders / route to), arranged on a
+     canvas you drag. Not to be confused with 'world-map', which is a drawn image map of a WORLD."*
+     ⚠ **Add the mirror clause to `world-map`'s gloss too** (*"…not the book's place-graph"*) — **two similar
+     names in one enum is how a model picks the wrong panel**, and the enum is the only thing it sees.
+   - **regenerate `contracts/frontend-tools.contract.json`** (`WRITE_FRONTEND_CONTRACT=1 python -m pytest
+     tests/test_frontend_tools_contract.py`) and commit it **in the SAME commit** as `catalog.ts` +
+     `frontend_tools.py`.
+
+7. 🔴 **FLIP THE LAST GG-4 PENDING ROW — AND CLOSE THE GATE OUT** (this moved here from W8-18; see §5.4).
+   In `frontend/src/features/studio/panels/__tests__/legacyParityContract.test.ts`:
+   **`worldmap: { retired: … }` (or `{ pending: 'Wave 8 / W8-20 …' }`, depending on what Wave 6 shipped)
+   → `worldmap: 'place-graph'`.**
+   This is the **fourth and last** row ⇒ **change `it.fails('GG-4: zero pending rows', …)` to `it(…)`** — it
+   now passes, and the mechanical GG-4 gate is GREEN for the first time.
+   ⚠ **Green ≠ authorized.** **PO decision D-5 keeps GG-4 SHUT** — the deletion of `ChapterEditorPage` is
+   decided **at Wave 6's close**, and Wave 6 ships **the parity guard, not the deletion**. **Do NOT delete the
+   page, in this wave or any other, without that PO call.**
+
+**Tests** — `frontend/src/features/studio/panels/__tests__/PlaceGraphPanel.test.tsx` (NEW):
+- `renders the place graph: nodes are ONLY location entities; an edge between two places renders; a
+  place↔character relation does NOT` (the `buildPlaceGraph` contract — `useWorldMap.ts:49`).
+- 🔴 `dragging a node persists to work.settings.world_map.positions` (assert the `useSetWorkSettings` PATCH
+  body carries `world_map: { positions: … }` **and does NOT drop `backdrop_url`** — `useWorldMap.ts:100-109`
+  documents that exact clobber, and the `wmRef` merge is what prevents it. **Do not refactor it away.**)
+- 🔴 `clicking a place calls host.openPanel('cast', { search: <name> })` — the dock hand-off (was
+  `selectTab('cast')`, which dies with `CompositionPanel`).
+- 🔴 `+ Place goes through the SHARED create hook and invalidates the worldmap keys` (the de-fork, §3).
+- 🔴 `a CLOSED schema without route_to does NOT render a dead select` (§4).
+- `no Work ⇒ a "set up the co-writer" empty state, NOT a blank panel and NOT a crash` (§1).
+- `no active chapter ⇒ Backdrop is disabled with a reason` (§1).
+- **DOCK-7 / DOCK-9 hygiene green** (the wrapper holds no `useNavigate` / `<Link>` / hand-rolled overlay).
+- Plus **`legacyParityContract.test.ts` re-run: the `worldmap` row is a STRING home, it resolves, and
+  `GG-4: zero pending rows` PASSES** (converted from `it.fails`).
+
+🔴 **ASSERT THE DELTA:** all three counts are now **`N_BEFORE + 6`** — **never a literal.**
+
+**DoD evidence:** `"W8-20: vitest <N> passed. Panel 'place-graph' registered — openable == py enum == contract enum, all three at N_BEFORE+6 (assert the DELTA, never a literal). WorldMap.tsx is LEAF-mounted (no <CompositionPanel soloPanel>); it is NOT the world-map panel — different table (composition_work.settings.world_map vs book-service world_maps), different id space (knowledge vs glossary), and both glosses now disambiguate each other in the frontend_tools enum. 🔴 DE-FORKED: useWorldMap's createPlace/linkPlaces mutations are DELETED and now call W8-02/W8-03's shared hooks — knowledgeApi.createEntity and createRelation each have exactly ONE call site in frontend/src (hygiene test) — and the shared hooks now also invalidate ['composition','worldmap','places'|'detail'] so the graph still refreshes (asserted: add a place → the graph re-renders). The link control is PredicateControl, so a CLOSED schema renders the schema escape, not a dead select. Drag persists positions WITHOUT dropping backdrop_url. Click → host.openPanel('cast',{search}). No Work / no chapter render real empty+disabled states, not a blank panel. 🔴 legacyParityContract: the LAST pending row (worldmap) is FLIPPED to 'place-graph'; 'GG-4: zero pending rows' converted from it.fails to it and PASSES — 25/25 sub-tabs have a real home. ChapterEditorPage is NOT deleted (PO D-5 keeps GG-4 shut until Wave 6's close)."`
+
+**dependsOn:** W8-02 *(the shared `createEntity` writer)*, W8-03 *(the shared `createRelation` writer +
+`PredicateControl` + BE-14e)*, W8-16 *(`cast` must exist for `onViewCast` to land)*
 
 ---
 
@@ -3128,10 +3322,20 @@ indefinitely"* ruling. **Do NOT delete the page in this wave.**
 3. 🔴 **`canon-growth's entity chip opens cast FOCUSED on that entity`** — the deep-link **through the dock**.
 4. 🔴 **`a chat turn calling ui_open_studio_panel {panel_id:"character-arc"} BARE mounts the tab and renders
    the pick-a-character state`** — **not a blank panel.** *(The one path the happy-path smoke never touches.)*
+5. 🔴 **`place-graph`: add a place → it appears → DRAG it with `page.mouse` → RELOAD → it is at the new
+   coords** (PO decision D-7 · **W8-20**). **This is the case a unit test cannot fake:** the position round-trips
+   through `composition_work.settings.world_map` **server-side**, and the add goes through the **shared**
+   knowledge writer. ⚠ **Drive the drag with `page.mouse` (CDP-trusted events) — `browser_drag`/synthetic
+   events do NOT move an SVG drag handler** (memory `playwright-cdp-mouse-drives-d3-drag`). Then **click the
+   place → the `cast` panel opens focused on it** (the `onViewCast` → `host.openPanel` hand-off).
+6. 🔴 **`place-graph` and `world-map` are TWO DIFFERENT TABS** — open both from the palette in one session and
+   assert **both are mounted, with different bodies** (`[data-testid="composition-worldmap"]` vs
+   `[data-testid="studio-world-map-panel"]`). *(The single cheapest guard against the two ever being
+   re-merged, which is the failure the old won't-port box feared.)*
 
-**DoD evidence:** `"W8-19: live smoke: studio-kg-codex.spec.ts 4 passed against the BAKED FE — cast renders grouped-by-kind with story-states; cast→View arc mounted character-arc with the character preselected (the param hand-off works in the real dock); canon-growth's entity chip opened cast focused on that entity; a chat turn's bare ui_open_studio_panel {panel_id:'character-arc'} mounted the tab and rendered pick-a-character, not a blank panel."`
+**DoD evidence:** `"W8-19: live smoke: studio-kg-codex.spec.ts 6 passed against the BAKED FE — cast renders grouped-by-kind with story-states; cast→View arc mounted character-arc with the character preselected (the param hand-off works in the real dock); canon-growth's entity chip opened cast focused on that entity; a chat turn's bare ui_open_studio_panel {panel_id:'character-arc'} mounted the tab and rendered pick-a-character, not a blank panel. 🔴 place-graph (D-7): added a place through the SHARED writer, dragged it with page.mouse, RELOADED, and it held its coords (settings.world_map round-trips); clicking it opened cast focused on it; place-graph and world-map mount as TWO distinct tabs with different bodies."`
 
-**dependsOn:** W8-16, W8-17, W8-18
+**dependsOn:** W8-16, W8-17, W8-18, **W8-20**
 
 ---
 
@@ -3158,27 +3362,37 @@ wave, and any bug it finds is fixed before the wave closes."***
    a bug it finds into the next wave — there IS no next wave; Wave 8 is the last one.** (A finding that
    genuinely clears the CLAUDE.md defer gate may become a row in §8.1 — but "I'd rather not" is not a gate.)
 4. **`docs/sessions/SESSION_HANDOFF.md`** — **EDIT.** Overwrite the ▶ NEXT SESSION block: date, HEAD, the
-   wave's outcome, the panel counts (**`N_BEFORE + 5`**), and the **defer rows from §8.1**. 🔴 **Move the FOUR
+   wave's outcome, the panel counts (**`N_BEFORE + 6`**), and the **defer rows from §8.1**. 🔴 **Move the FIVE
    RETIRED rows (§8.0) to "Recently cleared"** — `D-KG-FACT-RESTORE`, `D-KG-RELATION-PREDICATE-UNCONSTRAINED`,
-   `D-KG-PROJECTION-DEGRADE-OPAQUE`, `D-WORLD-MARKER-TYPE-VOCAB`. **They were BUILT, not deferred.**
+   `D-KG-PROJECTION-DEGRADE-OPAQUE`, `D-WORLD-MARKER-TYPE-VOCAB`, and 🔴 **`D-WORLDMAP-PLACE-GRAPH-WONTPORT`
+   (retired by PO decision D-7 — the place-graph was BUILT as `place-graph`/W8-20, not deferred and not
+   deleted)**. **They were BUILT, not deferred.**
 5. 🔴 **HAND OFF §11 TO WAVE 6 IN WRITING.** Add a **Decisions** row to `SESSION_HANDOFF.md` naming **H-1**
-   (the two false `LEGACY_SUBTAB_HOME` rows), **H-2** (`scene-compose` + `chapter-assemble`), and **H-3**
-   (`canonview`'s two homes). **Wave 6's gate goes GREEN on a deleted feature until H-1 lands.**
+   (the two false `LEGACY_SUBTAB_HOME` rows), **H-2** (`scene-compose` + `chapter-assemble`), **H-3**
+   (`canonview`'s two homes), and 🔴 **H-5** (`worldmap` is **`{ pending: 'Wave 8 / W8-20' }`, NOT
+   `{retired}`** — PO decision D-7). **Wave 6's gate goes GREEN on a deleted feature until H-1 and H-5 land.**
 6. **`docs/specs/2026-07-01-writing-studio/30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md`** — **EDIT.** In §11's table,
    update the Wave-8 row's filename to `38_kg_and_world.md` (the placeholder `38_kg_world_workflows.md` is
    retired — PO-2 dropped `G-WORKFLOWS`). Mark **G-KG-WRITE-HOLES** and **G-WORLD-MAPS** as CLOSED in §5.3.
-   **And record `D-WORLDMAP-PLACE-GRAPH-WONTPORT` in §7's "Consciously OUT OF SCOPE" table** — a won't-fix
-   must be an **explicit** row, **never a mislabelled map row.**
-7. **Spec 38 corrections** (all mandated by the register; do them once, here or in W8-00): OQ-1 → RESOLVED(a) ·
-   OQ-4 → **RESOLVED-BUILT** · OQ-5's false `conflicted` claim (:117, :460) · OQ-7 → resolved, no exception
-   granted (:463) · OQ-9 → **won't-port, and it does NOT belong to Wave 6** (:465) · §1.1's stale
-   *"spec 16 slates the page for deletion"* sentence (**spec 16 Phase 4b REVERSED that**).
+   🔴 **DO NOT record `D-WORLDMAP-PLACE-GRAPH-WONTPORT` in §7's "Consciously OUT OF SCOPE" table** — *(this
+   instruction is REVERSED by PO decision D-7; an earlier cut of this plan ordered it)*. **The place-graph is
+   BUILT, as `place-graph`/W8-20.** Instead: confirm **plan 30 §10's** refutation still stands as written
+   (`world-map` ≠ the legacy place-graph) — **W8-20 is the slice that vindicates it**, and §10 is the citation
+   a future agent will use when tempted to merge the two panels.
+7. **Spec 38 corrections** (do them once, here or in W8-00): OQ-1 → RESOLVED(a) · OQ-4 → **RESOLVED-BUILT** ·
+   OQ-5's false `conflicted` claim (:117, :460) · OQ-7 → resolved, no exception granted (:463) ·
+   🔴 **OQ-9 (:465) → `RESOLVED — PORTED as the `place-graph` panel (W8-20), per PO decision D-7. It is NOT
+   the `world-map` panel (different service, different table, different id space — plan 30 §10). The old text
+   ("belongs to plan 30's Wave 6 editor-craft ports") was FALSE — Wave 6 contains no place-graph row, which is
+   how this became a circular defer.`** *(⚠ **This supersedes the register's `Q-38-OQ9` won't-port ruling.**
+   Say so explicitly in the spec, or the next agent re-reads the register and "restores" the deletion.)* ·
+   §1.1's stale *"spec 16 slates the page for deletion"* sentence (**spec 16 Phase 4b REVERSED that**).
 8. **Commit.** ⚠ **NEVER `git add -A`** — this is a **shared checkout with concurrent tracks** (plan 30 §9).
    **Enumerate the files.** And remember: **`git commit -- <path>` commits the WORKING TREE, not the index**
    (`git-commit-pathspec-reads-working-tree-not-index`), and **the index may already carry pre-staged
    unrelated changes** — check `git diff --cached` first (`git-index-may-carry-prestaged-unrelated-changes`).
 
-**DoD evidence:** `"W8-15: /review-impl run on the Wave-8 diff — <N> findings, ALL FIXED (list them). Suites: knowledge pytest <N> passed · book-service go test ok · frontend vitest <N> passed · playwright 14 passed (studio-kg-write 5 + studio-world-map 5 + studio-kg-codex 4). Contracts re-read and diffed against the shipped code: 0 divergences. Panels: N_BEFORE+5, three-way. SESSION_HANDOFF updated in the same commit, with the FOUR retired defer rows moved to Recently-cleared (they were BUILT) and the §11 Wave-6 handoff written into Decisions. Plan 30 §5.3: G-KG-WRITE-HOLES + G-WORLD-MAPS marked CLOSED; §7 carries D-WORLDMAP-PLACE-GRAPH-WONTPORT as an explicit won't-fix row. Spec 38 OQ-1/4/5/7/9 corrected."`
+**DoD evidence:** `"W8-15: /review-impl run on the Wave-8 diff — <N> findings, ALL FIXED (list them). Suites: knowledge pytest <N> passed · book-service go test ok · frontend vitest <N> passed · playwright 16 passed (studio-kg-write 5 + studio-world-map 5 + studio-kg-codex 6). Contracts re-read and diffed against the shipped code: 0 divergences. Panels: N_BEFORE+6, three-way (place-graph included — PO D-7). GG-4 parity gate: all FOUR pending rows flipped, 'zero pending rows' converted from it.fails to it in W8-20 and PASSES; ChapterEditorPage NOT deleted (D-5 keeps GG-4 shut). SESSION_HANDOFF updated in the same commit, with the FIVE retired defer rows moved to Recently-cleared (they were BUILT — incl. D-WORLDMAP-PLACE-GRAPH-WONTPORT, reversed by D-7) and the §11 Wave-6 handoff (H-1..H-5) written into Decisions. Plan 30 §5.3: G-KG-WRITE-HOLES + G-WORLD-MAPS marked CLOSED; §10's world-map-vs-place-graph refutation re-confirmed against the shipped panels. Spec 38 OQ-1/4/5/7/9 corrected (OQ-9 = PORTED, not won't-port)."`
 
 **dependsOn:** **all** (this slice runs LAST — after W8-19)
 
@@ -3186,11 +3400,16 @@ wave, and any bug it finds is fixed before the wave closes."***
 
 ## 6 · The registration checklist per new panel (GG-8) — the running baseline
 
-🔴 **FIVE new panel ids this wave** (was two, before §5.4 homed the orphans): **`world` · `world-map` ·
-`cast` · `character-arc` · `canon-growth`.** All `category: 'storyBible'` (✅ in `CATEGORY_ORDER`) except
-`canon-growth`, which uses `knowledge` **if and only if it is already in `CATEGORY_ORDER`** — **otherwise
-`storyBible`.** All five are **bare-id openable** ⇒ all five enter the enum, the Command Palette and the User
-Guide. **None is `hiddenFromPalette`. NONE ADDS A CATEGORY.**
+🔴 **SIX new panel ids this wave** *(was two; §5.4 homed three orphans, and **PO decision D-7** homed a
+fourth)*: **`world` · `world-map` · `cast` · `character-arc` · `canon-growth` · 🔴 `place-graph`.**
+All `category: 'storyBible'` (✅ in `CATEGORY_ORDER`) except `canon-growth`, which uses `knowledge` **if and
+only if it is already in `CATEGORY_ORDER`** — **otherwise `storyBible`.** All six are **bare-id openable** ⇒ all
+six enter the enum, the Command Palette and the User Guide. **None is `hiddenFromPalette`. NONE ADDS A
+CATEGORY.**
+
+🔴 **`world-map` and `place-graph` are BOTH in the enum, and they are DIFFERENT PANELS** (§5.4 / W8-20). **Each
+one's description clause MUST name the other and say it is not it** — the gloss is the model's only hint, and
+two near-identical names in one enum is precisely how `ui_open_studio_panel` picks the wrong tab.
 
 ### 🔴 THE ENUM BASELINE IS **CUMULATIVE**. Wave 8 is the LAST wave.
 
@@ -3204,10 +3423,11 @@ Guide. **None is `hiddenFromPalette`. NONE ADDS A CATEGORY.**
 | 5 (spec 35) | 1 | 66 |
 | 6 (spec 36) | 🔴 **5** (`style-voice` · `reference-shelf` · `divergence` · **`scene-compose`** · **`chapter-assemble`**) | **71** ← **Wave 8's `N_BEFORE`** |
 | 7 (spec 37) | **0** | 71 |
-| **8 (this plan)** | 🔴 **5** (`world` · `world-map` · `cast` · `character-arc` · `canon-growth`) | **76** |
+| **8 (this plan)** | 🔴 **6** (`world` · `world-map` · `cast` · `character-arc` · `canon-growth` · **`place-graph`**) | **77** |
 
-⚠ **These are a PLANNING aid, NOT a test assertion. ASSERT `N_BEFORE + 5` AND THE THREE-WAY EQUALITY — NEVER
-THE LITERAL `76`.** *(An earlier cut of this table read `6 → 3 → 69 → 74`. It predated §5.4 homing the
+⚠ **These are a PLANNING aid, NOT a test assertion. ASSERT `N_BEFORE + 6` AND THE THREE-WAY EQUALITY — NEVER
+THE LITERAL `77`.** *(It read `+5 → 76` until **PO decision D-7** added `place-graph`. **The literal moved; the
+delta is what you assert.** If you find a `76` anywhere below, it is stale — the delta wins.)* *(An earlier cut of this table read `6 → 3 → 69 → 74`. It predated §5.4 homing the
 orphaned `compose`/`assemble` sub-tabs into Wave 6 — **exactly** the compute-from-a-stale-baseline error this
 warning exists to kill. If the literal and the delta ever disagree again, **the delta wins.**)* If a wave is re-ordered or dropped, every literal below it is wrong. **Six of the eight
 specs got this wrong by each computing from 57** — that is what this table exists to prevent.
@@ -3217,7 +3437,7 @@ specs got this wrong by each computing from 57** — that is what this table exi
 strings**, not in the test.
 
 🔴 **Per-slice running delta** (each slice's DoD asserts *its own* cumulative number, as a **delta**):
-W8-12 `+1` · W8-13 `+2` · W8-16 `+3` · W8-17 `+4` · W8-18 `+5`.
+W8-12 `+1` · W8-13 `+2` · W8-16 `+3` · W8-17 `+4` · W8-18 `+5` · 🔴 **W8-20 `+6`**.
 
 ### The 9 steps, in order (plan 30 §8)
 
@@ -3281,13 +3501,22 @@ derive from `catalog.ts`); `studioUiNav.ts` / `useStudioUiToolExecutor.ts` (pane
 - [ ] **Every route in §3 exists and is reachable THROUGH THE GATEWAY** (`:3123`), not just from a unit test.
       A `curl` per route, with the test account's JWT.
 - [ ] **Machine guards green with ZERO drift:** `panelCatalogContract.test.ts` (**openable == py enum ==
-      contract enum, all at `N_BEFORE + 5`** — **assert the delta, never a literal**; 🔴 **do NOT add a count
-      literal to the guard — it is already delta-safe**; all five new panels carry a `category` ∈
+      contract enum, all at `N_BEFORE + 6`** — **assert the delta, never a literal**; 🔴 **do NOT add a count
+      literal to the guard — it is already delta-safe**; all six new panels carry a `category` ∈
       `CATEGORY_ORDER` **and** a `guideBodyKey`) · `test_frontend_tools_contract.py` (the **regenerated**
       `contracts/frontend-tools.contract.json` committed **in the same commit** as `catalog.ts` +
       `frontend_tools.py`) · `dockablePanelHygiene.test.ts` (DOCK-7 + DOCK-9).
-- [ ] 🔴 **THE FIVE PANELS ARE REGISTERED AND OPENABLE:** `world` · `world-map` · `cast` · `character-arc` ·
-      `canon-growth`. **Three of them are homeless legacy sub-tabs that GG-4 would otherwise DELETE** (§5.4).
+- [ ] 🔴 **THE SIX PANELS ARE REGISTERED AND OPENABLE:** `world` · `world-map` · `cast` · `character-arc` ·
+      `canon-growth` · **`place-graph`**. **FOUR of them are homeless legacy sub-tabs that GG-4 would otherwise
+      DELETE** (§5.4). 🔴 **`world-map` ≠ `place-graph`** — two panels, two services, two id spaces; each
+      one's enum gloss names the other and says it is not it.
+- [ ] 🔴 **THE GG-4 PARITY GATE IS GREEN — AND `ChapterEditorPage` IS STILL THERE.** All four pending rows
+      flipped (`cast`/`arc`/`flywheel`/**`worldmap`**), `it.fails('GG-4: zero pending rows')` converted to `it`
+      **in W8-20** (not W8-18). **PO decision D-5 keeps GG-4 SHUT — the deletion is decided at Wave 6's close.
+      Green is a precondition, never the authorization.**
+- [ ] 🔴 **ONE WRITER PER VERB:** `knowledgeApi.createEntity` and `knowledgeApi.createRelation` have **exactly
+      one call site each** in `frontend/src` (W8-20 §3 de-forked `useWorldMap`) — machine-checked by a hygiene
+      test, not by eyeball.
 - [ ] 🔴 **THE §11 WAVE-6 HANDOFF IS WRITTEN INTO `SESSION_HANDOFF.md`.** Until Wave 6 applies **H-1**, its
       machine gate reports **"homed"** for `flywheel` and `arc` — **two features that are being deleted.**
 - [ ] **Unit suites green (name them + the counts):** knowledge-service pytest (`-n auto --dist loadgroup`) ·
@@ -3295,7 +3524,9 @@ derive from `catalog.ts`); `studioUiNav.ts` / `useStudioUiToolExecutor.ts` (pane
 - [ ] 🔴 **LIVE BROWSER SMOKE — THREE Playwright specs, against the BAKED frontend, with
       `claude-test@loreweave.dev`:** *(the third is `studio-kg-codex.spec.ts`, W8-19 — cast grouped-by-kind
       with story-states · cast→arc hand-off through the dock · canon-growth's chip → cast · a BARE
-      `character-arc` open renders pick-a-character, not a blank panel)*
+      `character-arc` open renders pick-a-character, not a blank panel · 🔴 **place-graph: add → drag with
+      `page.mouse` → RELOAD → the position held** · 🔴 **`place-graph` and `world-map` mount as TWO distinct
+      tabs**)*
       - `studio-kg-write.spec.ts` — create an entity → **reload** → it persisted; draw an edge → **reload** →
         it persisted; **Mark wrong** → it is gone; seed-from-glossary renders the counters **by their wire
         names** (`nodes_created`/`nodes_existing`/`entities_seen`/`skipped`/`nodes_conflicted`/`truncated`);
@@ -3326,9 +3557,9 @@ paid-action defect that charges the user for nothing). **A missing route is a ro
 Every row below has **earned** its gate. Add new rows to `docs/sessions/SESSION_HANDOFF.md` → Deferred Items
 as you go.
 
-### 🔴 8.0 — THREE ROWS ARE **RETIRED**, NOT DEFERRED (the register overruled the draft)
+### 🔴 8.0 — **FIVE** ROWS ARE **RETIRED**, NOT DEFERRED (the register overruled the draft; the PO overruled the register once)
 
-The reconciliation pass **deleted** these three. **Do not re-file them.** Each was a gate-#2 claim the register
+The reconciliation pass **deleted** the first four. **Do not re-file them.** Each was a gate-#2 claim the register
 **disproved against source** — and CLAUDE.md is explicit: *"missing infrastructure is NOT blocked — it is
 unbuilt work to implement"*, and *"if fixing the bug is cheaper than writing + carrying its defer row, just
 fix it."*
@@ -3339,6 +3570,7 @@ fix it."*
 | ~~`D-KG-RELATION-PREDICATE-UNCONSTRAINED`~~ | *"widening the ontology check is a knowledge-service design call"* — **FALSE. The design call was already made and CODED**: `validate_edge()` implements the exact rule and `kg_propose_edge` already calls it. **Only the two REST endpoints were left unwired.** | **W8-03** (BE-14e) |
 | ~~`D-KG-PROJECTION-DEGRADE-OPAQUE`~~ | *"the fix is in the ENGINE"* — **yes, and the engine is in this repo.** `glossary_unreachable` is **~6 additive lines** and without it a glossary **outage** renders as *"your glossary is empty"* — **a silent-success lie.** | **W8-05** (BE-14a2) |
 | ~~`D-WORLD-MARKER-TYPE-VOCAB`~~ | *"the BE must own a vocabulary before the FE can declare it closed"* — **the FE is not declaring it closed.** `marker_type` is **genuinely open**, the enum rule **does not reach a domain tool**, and the control is an `<input list>`+`<datalist>` with a **tested in-repo precedent.** **Answered, not deferred.** | **W8-13** (`markerTypes.ts`) |
+| 🔴 ~~`D-WORLDMAP-PLACE-GRAPH-WONTPORT`~~ **(RETIRED BY PO DECISION D-7, 2026-07-13 — the 5th retired row)** | It was a **gate-#5 conscious won't-fix** — **and the PO reversed it.** Its premise (*"both capabilities are strictly absorbed"*) **does not survive the code**: `kg-graph` has **no place filter, no saved layout, no backdrop**, and Wave 8's `world-map` is **a different table in a different service over a different id space** (§5.4's comparison table; plan 30 §10 refutes conflating them). It was also a **CIRCULAR DEFER** — spec 38 said *"Wave 6 owns it"*, **Wave 6 never contained it** ⇒ no wave built it ⇒ it dies at GG-4. **A feature that dies because two docs point at each other is a silent drop, not a reviewed retirement.** | 🔴 **W8-20** — the **`place-graph`** panel (leaf-reuse of `WorldMap.tsx`, de-forked onto W8-02/03's shared writers) |
 
 ### 8.1 — the rows that DID earn their gate
 
@@ -3346,7 +3578,7 @@ fix it."*
 |---|---|---|---|---|
 | **D-KG-MANUAL-NODE-ANCHOR** | W8-02 (A1) | Let a user **bind an existing graph-only node to a glossary entity whose kind/name it does NOT match**. *(⚠ **The rationale is CORRECTED**: its value is **NOT** "prevents a conflict" — `Q-38-OQ5` proves **`conflicted` is unreachable from a manual node**. Its value is the **binding** itself.)* | **#2 large/structural** — the route has **no `book_id`** (it would need `projects_repo.project_meta` **+ a cross-service glossary grant-check** to validate the FK), needs `merge_entity_at_id`-style handling, and must **409** on the `entity_glossary_fk_unique` clash. | Post-wave-8. **v1 mitigation SHIPS in W8-02:** the corrected in-form anchor note + the seed-from-glossary pointer. |
 | **D-WORLD-NO-COLLABORATORS** | W8-12 | **Worlds have no collaborators** (`server.go:378-380`) while books **do** (E0 grants). A book collaborator with EDIT gets a **404 from every world route** and therefore cannot see the book's world or its maps. | **#5 conscious won't-fix** — worlds are **owner-only ON PURPOSE**. 🔴 **This is NOT a bug to fix by widening the world routes.** | **Recorded, not scheduled.** W8-12/13 render the uniform *"you don't have access"* card. Revisit only if a product decision changes the world tenancy model. |
-| 🔴 **D-WORLDMAP-PLACE-GRAPH-WONTPORT** | §5.4 | `composition/components/WorldMap.tsx` + `useWorldMap.ts` + `PlaceNode.tsx` + the `composition_work.settings.world_map` JSON blob (the legacy **place-graph**) are **NOT ported to a Studio panel — ever.** *(Renames `D-WORLD-MAP-LEGACY-PLACEGRAPH`, whose "belongs to Wave 6" target was **FALSE** — Wave 6 contains no place-graph row.)* | **#5 conscious won't-fix** — **both** capabilities are strictly absorbed: authoring → `kg-entities`/`kg-graph` (W8-02/03); spatial → the `world-map` panel (W8-13); *open-in-codex* → the W8-13 inspector. A port would put **two panels named "world map"** in one dock over **two data models** (a PO-3 violation). | **Trigger:** delete the three files **in the same commit that retires `ChapterEditorPage`** — 🟢 **and spec 16 Phase 4b KEEPS that page INDEFINITELY**, so **nothing is lost before then**. 🟢 **No DB migration owed** (the blob is orphaned, not corrupting). 🟢 **No user content lost** (the location↔location edges are KG data and survive in `kg-graph`). |
+| 🔴 **D-PLACE-GRAPH-NO-MCP-TOOLS** *(the surviving remnant of the reversed won't-port)* | W8-20 | The `place-graph`'s two writes (**add place** / **link places**) reach knowledge-service through `kg_*` MCP tools ✅, but its **spatial layer** — `work.settings.world_map` (`positions` + `backdrop_url`) — has **ZERO MCP tools**: an agent cannot arrange or read the place layout. *(A live **GG-2 inverse** gap. It is exactly what the old won't-port box held against the legacy panel — and it is still true after the port. The PO ported the panel anyway, because a GUI capability with no agent parity is **worse** as a deleted feature than as an un-paired one.)* | **#2 large/structural** — agent parity needs a **composition-service** MCP surface over `work.settings` that does not exist, and `settings` is an **untyped blob** (a tool would need a typed sub-schema first). **NOT a blocker for W8-20:** the GUI leg is complete and the KG writes are already MCP-paired. | Post-wave-8, **with** the `world-map` panel's BE-15m tools as the shape to copy. |
 | **D-KG-BIO-NO-FACTS** | W8-06 | `kg-bio` renders a bio **summary** blob and has **no facts list** — so the Forget action cannot live there. | **#5 conscious won't-fix** — there is nothing to hang it on. | **Recorded so `kg-bio` is not re-proposed as the A4 home.** A4 lives on `EntityDetailPanel` — which lights it up in **THREE** surfaces (`kg-entities`, `kg-graph`, **and `world`**'s rollup graph). |
 | 🔴 **D-KG-GLOSSARY-KIND-ALIAS-DRIFT** | W8-01 (BE-14d) | `faction` is glossary's **alias** for the canonical `organization` (`glossary/migrate.go:203`), and knowledge's `concept` maps to glossary's `terminology` (`entity_resolver.py:69-74`). **So a manually-authored `faction` node carries a kind_code that will NEVER anchor.** | **#1 out of scope** — a pre-existing **KG↔glossary vocabulary drift**. BE-14d must **not silently rename a kind on a shipped REST route.** | Post-wave-8. Recorded by `Q-38-BE-14d`'s own note. |
 | 🔴 **D-WORLDLORE-KIND-ID-FROM-GLOBAL-LIST** | W8-13 (OQ-2) | `features/world/hooks/useWorldLore.ts` feeds `createBibleEntity` a `kind_id` from the **GLOBAL** `/v1/glossary/kinds` list, while glossary's `createEntity` validates it against **THIS book's `book_kinds`** (`entity_handler.go:363-377`). **That world-lore WRITE path is very likely broken today.** | **#4 blocked-on-evidence** — *it is one line to fix* **if** the break reproduces. **FIX IT NOW in W8-12 if a 10-minute repro confirms it**; only file the row if it does not reproduce. | W8-12. **A defer row for a one-line fix is the anti-pattern CLAUDE.md kills — reproduce it first.** |
@@ -3376,7 +3608,20 @@ left-hand column.**
 | **C-12** | `marker_type`: a `<select>` + free-text escape, **and defer `D-WORLD-MARKER-TYPE-VOCAB`** | 🔴 **ANSWERED, NOT DEFERRED.** `<input list>` + `<datalist>` (tested in-repo precedent); vocabulary in **one FE home**; union with the map's own existing types. **shadcn `Select` cannot do free text at all.** | W8-13 |
 | **C-13** | `studioLinks` is **three** files | 🔴 **FOUR.** `BookSettingsPanel.tsx:52` is the **second** throw-away and the **more likely** user path. **Two existing tests go RED — fix them in the same commit.** | W8-12 |
 | **C-14** | *"above ~500 markers, cull to the viewport"* | 🔴 **STRUCK.** A second, unbuilt, untested render path with **zero profiling evidence** (defer-gate #4). **Render all markers.** | W8-13 |
-| **C-15** | *"2 new panels"* + **zero** contract files (`contracts/api/book-service/` named ×3) | 🔴 **FIVE panels** (§5.4 homes three orphans) and **`contracts/api/book-service/` DOES NOT EXIST.** **W8-0C freezes 16 routes in the two REAL specs, BEFORE any consumer.** | §5.4 · W8-0C |
+| **C-15** | *"2 new panels"* + **zero** contract files (`contracts/api/book-service/` named ×3) | 🔴 **SIX panels** (§5.4 homes three orphans; **PO D-7** homes a fourth) and **`contracts/api/book-service/` DOES NOT EXIST.** **W8-0C freezes 16 routes in the two REAL specs, BEFORE any consumer.** | §5.4 · W8-0C |
+
+### 🔴 9.0b — WHERE THE **PO** OVERRULED THE **REGISTER** (sealed 2026-07-13 · binding · do not re-litigate)
+
+The register outranks this plan. **The PO outranks the register.** Exactly one row:
+
+| # | The REGISTER ruled | The **PO** rules (**D-7, sealed**) | Where |
+|---|---|---|---|
+| 🔴 **P-1** | `Q-38-OQ9` — the legacy **place-graph** is a **conscious won't-port**; file `D-WORLDMAP-PLACE-GRAPH-WONTPORT`; the files die with `ChapterEditorPage`. | **PORT IT. `place-graph`, slice W8-20.** The won't-port rested on a **CIRCULAR DEFER** (spec 38 → *"Wave 6 owns it"* → **Wave 6 never contained it** → **no wave builds it** → **it dies at GG-4**) and on an *"absorbed by `kg-graph` + `world-map`"* claim that **the code refutes**: no place filter, no saved layout, no backdrop; and `world-map` is **another service's table over another id space** (plan 30 §10). The defer row is **RETIRED** (§8.0); the `worldmap` parity row becomes a **real home**, not `{retired}`. | §5.4 · **W8-20** · §8.0 · §11 H-5 |
+
+> **What the PO did NOT overrule** — keep both:
+> **(a)** the *one-writer-per-verb* rule (**W8-20 §3** de-forks `useWorldMap` onto W8-02/03's writers), and
+> **(b)** the *one-name-for-one-concept* rule (**the panel is `place-graph`; `world-map` is a different
+> panel**, and each enum gloss says so).
 
 ⚠ **Two places the REGISTER contradicts ITSELF. Both are settled here; do not re-open:**
 - **The marker entity picker's source.** `Q-38-OQ9` has one stray parenthetical saying `knowledgeApi`.
@@ -3428,8 +3673,10 @@ left-hand column.**
 | **R-6** | 🔴 **The projection counters render as `undefined`.** The FE reads the ENGINE's names (`created`/`conflicted`) instead of the WIRE's (`nodes_created`/`nodes_conflicted`). | The seed CTA shows *"Added undefined"* — or worse, **renders nothing for `conflicted`** and reports a partial projection as a complete one. **That is the exact bug the counters were ADDED to expose** (`D-KG-GLOSSARY-FK-GLOBAL-UNIQUE`). | **BE-14a zero-fills and ALWAYS emits all six** (W8-05's `test_all_six_counters_are_always_present_even_when_zero`); the FE type has **six REQUIRED keys**; **W8-07 case 4** asserts the wire names in the browser. |
 | **R-7** | 🔴 **The `studioLinks` rule ships as DEAD CODE** — `KgOverviewPanel:44` still throws the `worldId` away. | Everything is green, the rule is written… and clicking **World** in `kg-overview` **still pops a browser tab out of the studio.** The papercut the slice claims to fix is untouched. | **Checklist step 7b is MANDATORY**, and **W8-12's `studioLinks.test.ts`** has the **`worldId`-absent ⇒ external** degrade case. |
 | **R-8** | 🔴 **The three dead buttons come back.** A future `noop` re-creates them, silently. | Nothing. **That is the point** — a dead button is invisible. It shipped once already. | **W8-04 makes the props OPTIONAL** ⇒ the next `noop` produces a **missing button** (visible) instead of a **dead** one. **Four vitest cases lock it.** |
-| **R-9** | **The enum baseline is computed from 57 instead of 69.** | `panelCatalogContract.test.ts` reds with an off-by-12, and the builder goes hunting a **phantom regression** in Waves 1–6. | **§6's cumulative table** + **"assert the DELTA (`N_BEFORE + 5`) and the three-way equality, NEVER a literal"**, in every DoD string. **Six of the eight specs got this wrong.** 🟢 **And do NOT "harden" the guard by adding a count to it — it is already delta-safe.** |
+| **R-9** | **The enum baseline is computed from 57 instead of 69.** | `panelCatalogContract.test.ts` reds with an off-by-12, and the builder goes hunting a **phantom regression** in Waves 1–6. | **§6's cumulative table** + **"assert the DELTA (`N_BEFORE + 6` — 🔴 it moved from +5 when PO D-7 added `place-graph`) and the three-way equality, NEVER a literal"**, in every DoD string. **Six of the eight specs got this wrong** — and **this plan's own literal has now moved twice**, which is the proof that only the delta is safe. 🟢 **And do NOT "harden" the guard by adding a count to it — it is already delta-safe.** |
 | 🔴 **R-14** | **A homeless legacy sub-tab is DELETED at GG-4 while the gate reports it "homed".** Wave 6's `LEGACY_SUBTAB_HOME` maps `flywheel → quality-corrections` and `arc → arc-templates`. **Both are wrong** — different components, different services, different datasets. | **Nothing. That is the point.** The machine gate goes **GREEN**. The feature is gone and no test reds. **This is the single most dangerous line in the whole retirement plan.** | **§5.4** homes `cast`/`character-arc`/`canon-growth` in **W8-16/17/18**, and **§11 H-1** tells Wave 6 to fix the two map rows. **W8-15 step 5 writes the handoff into `SESSION_HANDOFF.md` so it cannot evaporate.** |
+| 🔴 **R-15** | **The `worldmap` parity row gets DEMOTED back to `{ retired: … }` to make the suite green.** After PO **D-7**, Wave 6 ships `{retired}` (or a `{pending}` row) and W8-20 is the slice that flips it. A builder who reaches W8-18, sees `it.fails('GG-4: zero pending rows')` still red, and "tidies" it — by converting `it.fails`→`it` **or** by demoting `worldmap` to `retired` — **silently re-installs the exact drop the PO reversed.** | **The suite goes GREEN and the feature is gone.** `{retired}` is indistinguishable from `{homed}` to the gate — that is what makes it the dangerous state. | **W8-18 now says, in bold, DO NOT convert the `it.fails` — W8-20 does.** §5.4 calls the `{retired}` row out by name. **W8-20's DoD asserts the row is a STRING home** (`worldmap: 'place-graph'`), and **W8-19 case 6 mounts `place-graph` in a real browser** — a `{retired}` row cannot fake that. |
+| 🔴 **R-16** | **W8-20 forks the KG writers.** The fastest path to a working `place-graph` is *"leave `useWorldMap`'s `createPlace`/`linkPlaces` alone — they already work."* That ships **a second writer** for `createEntity`/`createRelation` right beside W8-02/W8-03's. | **Everything is green.** Two writers, two invalidation sets, and the next KG-write change fixes one of them. This is the bug class the whole wave exists to close, **re-introduced by the last slice.** | **W8-20 §3 is written as the load-bearing half of the slice**, with a **hygiene test asserting `knowledgeApi.createEntity`/`createRelation` have exactly ONE call site each in `frontend/src`** — and a companion test that the shared hook **still invalidates the `['composition','worldmap',…]` keys**, so de-forking cannot silently kill the refresh. |
 | 🔴 **R-15** | **A route ships with no contract**, and the FE codes against a shape that was never frozen. | Nothing — until two services disagree in production. **Seven of ten waves add REST routes and touch ZERO contract files.** | **W8-0C** freezes all 16 routes **before** any consumer, in the **two real spec files** — and **W8-15 re-diffs them against the shipped code.** |
 | **R-10** | **A foreign/absent world sends the panel into a 404 retry loop** (worlds are owner-only; books are not). | The `world` panel spins forever, or hammers the gateway, for any **book collaborator**. | **W8-12's `world-foreign` state** — a uniform no-access card, **no retry**, **no oracle**. **Do NOT "fix" it by widening the world routes.** |
 | **R-11** | **`EntityDetailPanel` (640+ lines) grows further** and the component-size rule erodes one edit at a time. | A 700-line component with 14 concerns; the next reviewer shrugs. | **W8-06 EXTRACTS `FactRow`** (mirroring the file's own `RelationRow` pattern) instead of inlining the action. |
@@ -3519,4 +3766,18 @@ authoring**. **This is neither — it is a read-only canon SNAPSHOT at a chapter
 | **cast** | 🟢 **W8-16** — panel `cast` |
 | **arc** | 🟢 **W8-17** — panel `character-arc` |
 | **flywheel** | 🟢 **W8-18** — panel `canon-growth` |
-| **worldmap** | 🟢 **`D-WORLDMAP-PLACE-GRAPH-WONTPORT`** — a **conscious won't-fix by adjudication** (`Q-38-OQ9`), **not** a silent drop. Both capabilities are absorbed by panels Wave 8 ships, **and spec 16 Phase 4b keeps `ChapterEditorPage` indefinitely, so GG-4 deletes nothing.** 🔴 **Wave 6 must NOT re-file it as its own hole** — §5.4 and §8.1 carry it. |
+| **worldmap** | 🟢 **W8-20** — panel **`place-graph`**. 🔴 **CHANGED BY PO DECISION D-7 (2026-07-13):** this row previously read *"`D-WORLDMAP-PLACE-GRAPH-WONTPORT` — a conscious won't-fix."* **The won't-port is REVERSED and the defer row RETIRED** (§8.0, §9.0b P-1). Wave 6 must **not** ship it as `{retired}` — see **H-5**. |
+
+### H-5 · 🔴 **`worldmap` IS NOT `{retired}` — IT IS `{ pending: 'Wave 8 / W8-20' }`** (PO decision D-7)
+
+**Wave 6's `LEGACY_SUBTAB_HOME` currently plans `worldmap: { retired: … }`.** After **D-7** that row is
+**FALSE**, and it is false in the **most dangerous direction**: a `retired` row **passes the machine gate**
+while the feature is deleted — the identical failure mode as H-1's two mislabelled rows.
+
+> **ACTION (owner: Wave 6, or W8-20 if Wave 6 has already closed):**
+> - **If Wave 6 has NOT shipped:** ship **`worldmap: { pending: 'Wave 8 / W8-20 (place-graph)' }`**. Its
+>   `it.fails('GG-4: zero pending rows')` then holds on **four** rows, not three — **that is the gate working.**
+> - **If Wave 6 HAS shipped `{retired}`:** **W8-20 changes it to `worldmap: 'place-graph'`** (its step 7).
+>   **Either way the end state is a real string home.**
+> - 🔴 **The `it.fails → it` conversion belongs to whichever slice flips the LAST pending row — that is now
+>   `W8-20`, not `W8-18`.** Do not convert it early to make the suite green.

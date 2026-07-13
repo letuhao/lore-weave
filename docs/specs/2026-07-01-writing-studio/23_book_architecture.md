@@ -299,7 +299,7 @@ The annotation hack is its own data source — **the thing that is wrong today i
 
 | Phase | Step | Guard |
 |---|---|---|
-| **0** | `ALTER outline_node ADD book_id`; **batched** backfill from `composition_work` (10k+ chapter books — same batched shape as `15_chapter_browser.md` A1). Switch all reads to `book_id`. Keep `project_id` as a legacy column. | **Pre-flight assertion:** `SELECT book_id FROM composition_work GROUP BY book_id HAVING count(*) > 1` must return **zero rows**. If a book has two Works, the migration **fails loudly** and the merge is resolved by hand. Never silently merged. |
+| **0** | `ALTER outline_node ADD book_id`; **batched** backfill from `composition_work` (10k+ chapter books — same batched shape as `15b_chapter_browser.md` A1). Switch all reads to `book_id`. Keep `project_id` as a legacy column. | **Pre-flight assertion:** `SELECT book_id FROM composition_work GROUP BY book_id HAVING count(*) > 1` must return **zero rows**. If a book has two Works, the migration **fails loudly** and the merge is resolved by hand. Never silently merged. |
 | **1** | Create `structure_node` + trigger. For each `outline_node WHERE kind='arc'`: insert a `structure_node` (copy `title`/`goal`→`goal`/`synopsis`→`summary`/`status`, `kind='arc'`, `depth=0`, `rank`), then `UPDATE` its child chapters `SET structure_node_id = <new>, parent_id = NULL`. | Row counts asserted equal. |
 | **2** | Backfill provenance: `arc_template_id` + `template_version` from `motif_application.annotations->>'arc_template_id'`, taken over each arc's descendant scenes (all descendants of one arc carry the same value — asserted, not assumed). | A disagreeing arc → log + leave NULL. **Never guess.** |
 | **3** | Backfill `motif_application.structure_node_id` from the same annotation. Drop the annotation key. | |
@@ -490,7 +490,7 @@ And the question this spec raised but could not answer, **now answered**:
 | Risk | Mitigation |
 |---|---|
 | **`structure_node` ships as write-only, exactly like `outline_node kind='arc'`** | **BA12 + D2.** A test asserts the packer's prompt changes when `tracks` changes. This is the single most important gate in the spec. |
-| Phase-0 backfill locks `outline_node` on a 10k-chapter book | Batched backfill, proven shape from `15_chapter_browser.md` A1 |
+| Phase-0 backfill locks `outline_node` on a 10k-chapter book | Batched backfill, proven shape from `15b_chapter_browser.md` A1 |
 | A book with two Works silently merges two plan trees | Phase-0 **pre-flight assertion fails loudly**; hand-resolved. Never merged silently. |
 | Provenance backfill guesses wrong when an arc's scenes disagree on `arc_template_id` | Log + leave NULL. `template_drift` degrades to "unknown", not to a wrong answer. |
 | Subtree reparent leaves stale `depth` | Recursive-CTE recompute inside the move transaction; the trigger validates every touched row |

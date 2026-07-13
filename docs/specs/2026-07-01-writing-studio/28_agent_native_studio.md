@@ -284,6 +284,212 @@ Everything else in AN-12 — and every other AN row — is unchanged.
 
 ---
 
+## AN-12.1 — the `resource_ref` convention (X-6, written 2026-07-13)
+
+> **Status:** NORMATIVE CONTRACT. **Closes OQ-8.** Written in Wave 0 (spec only — **zero code changed**).
+> **Authority:** [`30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md`](30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md) §7 X-6 ·
+> adjudication `Q-30-X6-RESOURCE-REF`.
+> **Consumed by:** Wave 2 ([`32_arc_inspector.md`](32_arc_inspector.md) — arc deep-link), Wave 3
+> ([`33_motif_studio.md`](33_motif_studio.md) — G-MOTIF-BINDING, motif chips → editor), Wave 7
+> ([`37_issues_feed.md`](37_issues_feed.md) — every diagnostics row routes through it).
+> **Build placement:** the contract is Wave 0; parts **(1)+(2)** (BE rename + kind disambiguation +
+> emitter fixes) and parts **(3)+(4)** (FE resolver + the pointing verb) **build in Wave 2**.
+> A schema with no consumer is the stored-but-unread class — write the contract, wire it when there is
+> something to point at.
+
+**This section is a RATIFICATION + DISAMBIGUATION of a shape that ALREADY SHIPS — not a greenfield
+design.** The object exists today under the wrong name, with an id-space ambiguity that makes it
+unresolvable. AN-12 called a Phase-4 build without this section *"a spec violation, not a shortcut"*;
+this is that section.
+
+### AN-12.1a — NAME: one name for one concept (DA-10)
+
+The concept is **`resource_ref`**. The shipped object key is **`node_ref`**. **Rename it at its three
+producers** (Wave 2):
+
+| Producer | Sites |
+|---|---|
+| [`db/repositories/entity_references.py`](../../../services/composition-service/app/db/repositories/entity_references.py) | `:138` `:161` `:186` `:212` `:222` |
+| [`services/agent_native.py`](../../../services/composition-service/app/services/agent_native.py) | `Diagnostic.node_ref` `:113` + its serializer `:143` |
+| [`mcp/server.py`](../../../services/composition-service/app/mcp/server.py) | `:3998` `:4025` `:4047` `:4099` `:4125` |
+
+The rename is **mandatory, not cosmetic**: `node_ref` already means a *second, unrelated* thing in this
+same service — [`plan_overlay.py:113`](../../../services/composition-service/app/db/repositories/plan_overlay.py#L113)
+aliases it to a **bare uuid STRING** (`COALESCE(ma.outline_node_id, ma.structure_node_id) AS node_ref`)
+and `routers/plan_overlay.py:195` returns it as one. Leaving the object named `node_ref` ships one name
+over two meanings.
+
+> 🔴 **SCOPE FENCE ON THE RENAME — DO NOT `sed` IT.** `Q-30-X6-RESOURCE-REF` asserts *"zero hits for
+> `node_ref` under `frontend/`"*. **That is FALSE, and a blind rename BREAKS THE PLAN HUB.**
+> `frontend/src/features/plan-hub/components/nodePresentation.ts:150,153` **consumes `node_ref`** —
+> the *bare-uuid* one, keying the PH19 motif lockfile chips (`c.node_ref === nodeId`).
+> **Rename ONLY the OBJECT** (the three producers above, which have zero FE consumers). **`plan_overlay`'s
+> bare-uuid `node_ref` is NOT part of this rename.** Verify before and after:
+> `grep -rn "node_ref" frontend/src` → the only hits must remain `plan-hub/components/nodePresentation.ts`
+> (+ its test). *(The residual name collision — a bare uuid still called `node_ref` — is real but is
+> Plan-Hub-local and cross-service; rename it to `anchor_node_id` when the Plan Hub next touches that
+> payload. Tracked, not swept into this wave.)*
+
+### AN-12.1b — 🔴 KIND = ONE TABLE = ONE ID-SPACE
+
+**This is the bug the section exists to kill, and it is LIVE.** `{kind:'arc'}` is emitted **both** for a
+`structure_node.id` (`server.py:3998`) **and** for an `outline_node` row (whose CHECK allows `'arc'` —
+`migrate.py:196`). `{kind:'chapter'}` is emitted **both** for a **book-service** chapter id (`:4125`)
+**and** for an `outline_node` id (`:4099`). **A resolver receiving `{kind:'arc'|'chapter', id}` cannot
+tell WHICH TABLE the uuid lives in** ⇒ it deep-links to the wrong object, or 404s.
+
+**⇒ The `kind` enum is keyed to the TABLE. It is NEVER the row's own `kind` column.**
+
+```
+composition:    structure_node | outline_node | motif_application | canon_rule | narrative_thread
+book-service:   chapter | scene
+glossary:       glossary_entity
+
+resource_ref := { kind:     <the 8-member enum above>,   // WHICH TABLE the id lives in
+                  id:       uuid-string,
+                  subkind?: string,           // the row's OWN kind column, semantics-preserving
+                  title?:   string | null,
+                  version?: number | null }   // OCC HINT only
+```
+
+- **`subkind`** carries the row's own `kind` column — `'saga'|'arc'` for `structure_node`
+  ([`migrate.py:1102`](../../../services/composition-service/app/db/migrate.py#L1102));
+  `'arc'|'chapter'|'scene'|'beat'` for `outline_node`
+  ([`migrate.py:196`](../../../services/composition-service/app/db/migrate.py#L196)) — so emitters keep
+  semantics they would otherwise lose to the table-keying.
+- **`version` is an optimistic-concurrency HINT only. ABSENT MEANS UNKNOWN — never 0.**
+  (`fe-status-default-fallback-signals-backend-field-omission`: a defaulted absent field renders a
+  confident lie.)
+
+#### The emitter fixes, exact (Wave 2)
+
+| Site | Today | ⇒ Becomes |
+|---|---|---|
+| `server.py:3998` | `{kind:'arc'}` over `arc["structure_node_id"]` | `structure_node` + `subkind:'arc'` |
+| `server.py:4025` | `{kind:'scene'}` over `issue["scene_id"]` | 🔴 **`outline_node` + `subkind:'scene'`** — see the correction below |
+| `server.py:4047` | `{kind:'scene'}` over `item["scene_id"]` | 🔴 **`outline_node` + `subkind:'scene'`** — see the correction below |
+| `server.py:4099` | `{kind: n['kind'] or 'chapter'}` | `outline_node` + `subkind: n['kind']` |
+| `server.py:4125` | `{kind:'chapter'}` over `ch["chapter_id"]` | `chapter` (book-service — correct as-is) |
+| `entity_references.py:138` | `{kind: r['kind']}` (`FROM structure_node`) | `structure_node` + `subkind: r['kind']` |
+| `entity_references.py:161` | `motif_application` | `motif_application` (unchanged) |
+| `entity_references.py:186` | `canon_rule` | `canon_rule` (unchanged) |
+| `entity_references.py:212` | `narrative_thread` | `narrative_thread` (unchanged) |
+| `entity_references.py:222` `_ref()` | `{kind}` param (`FROM outline_node`) | `outline_node` + `subkind` |
+
+> 🔴 **CORRECTION — THE `scene` EMITTERS. The code refutes both plan 30's sketch AND
+> `Q-30-X6-RESOURCE-REF`, which map `:4025`/`:4047` to the book-service `scene` kind.**
+> **They emit an `outline_node` id, not a book-service `scenes` row.** Both sources select `n.id AS
+> scene_id` **FROM `outline_node n`**:
+> [`outline.py:1341`](../../../services/composition-service/app/db/repositories/outline.py#L1341)
+> (`canon_issues`) and [`outline.py:1348`](../../../services/composition-service/app/db/repositories/outline.py#L1348)
+> (`rule_violations` — `JOIN outline_node n ON n.id = v.outline_node_id`). Book-service has its **own,
+> separate** `scenes` table ([`book-service/internal/migrate/migrate.go:270`](../../../services/book-service/internal/migrate/migrate.go#L270)).
+> Mapping these to `scene` would point an `outline_node` uuid at the book-service id-space —
+> **reproducing, inside the fix, the exact wrong-object/404 bug this section exists to kill.**
+> `useSceneInspector.ts:2` confirms it independently: *"the studio bus's active scene (**an outline_node
+> id**)"*.
+> **Re-verify before building:** `grep -n "AS scene_id" services/composition-service/app/db/repositories/outline.py`
+> — every hit must read `n.id AS scene_id` with `n` = `outline_node`. If it ever does not, re-open this row.
+> **`scene` (book-service) STAYS in the enum** — it is a real id-space (spec 22 / AN-5b's
+> `book_scene_list.source_scene_id`) — but **no shipped emitter emits it today.**
+
+> ⚠ **OVERRIDE OF OQ-8's SHAPE SKETCH — RECORDED.** OQ-8 sketched
+> `{kind:'structure'|'outline'|'motif_application'|'canon_rule'|'thread', id, version?}`. It is wrong twice:
+> (a) `'structure'`→**`structure_node`**, `'outline'`→**`outline_node`**, `'thread'`→**`narrative_thread`**
+> (the table *and* the shipped emitter both say `narrative_thread`); (b) **its 5 kinds are INCOMPLETE —
+> it omits `chapter`, `scene` and `glossary_entity`, which the shipped diagnostics ALREADY EMITS** and
+> which G-MOTIF-BINDING and the shipped PH18 canon deep-link both require. **A builder following the
+> sketch literally would DROP kinds the code already produces.** The 8-member enum above supersedes it.
+
+### AN-12.1c — the FE resolver (the genuinely missing half)
+
+No such function exists. Wave 2 creates **`frontend/src/features/studio/host/resourceRef.ts`**, mirroring
+[`studioLinks.ts`](../../../frontend/src/features/studio/host/studioLinks.ts)'s `resolveStudioLink` exactly
+— **pure, host-injected, no React, unit-testable**:
+
+```ts
+resolveResourceRef(ref: ResourceRef, ctx: { bookId: string })
+  : { kind: 'studio'; effect: (host: StudioHost) => void }
+  | { kind: 'unresolved'; reason: string }
+```
+
+🔴 **It NEVER silently no-ops.** An unknown kind, or a kind whose seam is not built, returns
+`{kind:'unresolved', reason}` — the caller renders the reason. (Frontend-Tool Contract: *the resolver
+returns the error*. A silent no-op + a hallucinated success is the exact bug class that shipped once
+already.)
+
+| kind | resolves to | seam status |
+|---|---|---|
+| `canon_rule` | `openPanel('quality-canon', { params: { bookId, focusRuleId: id } })` | ✅ **SHIPPED** — `PlanHubPanel.tsx:74` already emits it; `QualityCanonPanel.tsx:33` already consumes it |
+| `narrative_thread` | `openPanel('quality-promises', { params: { bookId, focusThreadId: id } })` | ✅ **SHIPPED** — `PlanHubPanel.tsx:68` emits; `QualityPromisesPanel.tsx:23` → `ThreadsPanel.tsx:32` consumes |
+| `chapter` | `host.focusManuscriptUnit(id)` | ✅ **SHIPPED** — `StudioHostProvider.tsx:53,116` |
+| `outline_node` · `structure_node` | `host.publish({ type:'planFocusNode', nodeId: id })` + `openPanel('plan-hub')` | ✅ **SHIPPED** — `host/types.ts:66,109` → `PlanHubPanel.tsx:121-127` |
+| `scene` *(book-service)* | `openPanel('scene-inspector', …)` | 🔴 **SEAM DOES NOT EXIST — Wave 2 MUST BUILD IT** (below) |
+| `glossary_entity` | `openPanel('glossary', { params: { focusEntityId: id } })` | 🔴 **SEAM DOES NOT EXIST — Wave 2 MUST BUILD IT** (below) |
+| `motif_application` | `{ kind:'unresolved', reason:'motif studio not built yet (spec 33 / Wave 3)' }` | ⏳ **Wave 3's DoD flips this arm and its test** |
+
+> 🔴 **CORRECTION — TWO ARMS HAVE NO SEAM, AND ONE PARAM NAME WAS INVENTED.**
+> `Q-30-X6-RESOURCE-REF` presents all seven arms as *"reuses a SHIPPED seam"*. **Three of its rows are
+> refuted by the code:**
+> 1. **`narrative_thread`: the decision writes `focusPromiseId`. The panel reads `focusThreadId`**
+>    (`QualityPromisesPanel.tsx:23`, `ThreadsPanel.tsx:32,46,52`) and `PlanHubPanel.tsx:68` already emits
+>    `focusThreadId`. Shipping `focusPromiseId` would be a **silent no-op** — *and a second name for one
+>    concept, in the very section that cites DA-10.* **The key is `focusThreadId`.**
+> 2. **`scene`: `SceneInspectorPanel.tsx` reads NO params at all.** Its scene comes from the studio bus
+>    (`useSceneInspector.ts:24` — `useStudioBusSelector(s => s.activeSceneId)`). `openPanel('scene-inspector',
+>    {params:{sceneId}})` would be a **silent no-op**. **Constraint Wave 2 must respect:** the only bus event
+>    that sets `activeSceneId` is `{type:'scene', sceneId, chapterId}` (`host/types.ts:45`) and its reducer
+>    (`:98`) **clears `activeChapterId` when `chapterId` is absent** — so a chapter-less scene ref cannot use
+>    it as-is. Wave 2 builds ONE of: a `{type:'focusScene', sceneId}` event that sets `activeSceneId` only, or
+>    a `props.params` reader on the panel. Until it lands, this arm returns **`unresolved`** — never a no-op.
+> 3. **`glossary_entity`: `GlossaryPanel.tsx` reads NO params.** Same class. Wave 2 threads a
+>    `focusEntityId` param into `GlossaryEntityList`, or this arm returns **`unresolved`**.
+>
+> **A resolver arm may only claim a seam a test can prove.** Wave 2's DoD: every arm is either a passing
+> effect assertion or an explicit `unresolved` — there is no third state.
+
+**Test (Wave 2):** `host/__tests__/resourceRef.test.ts` — one case **per kind** asserting the exact host
+call, **plus** `unresolved` for `motif_application` **and** for an **unknown kind** (never throws, never
+no-ops).
+
+### AN-12.1d — `ui_focus_resource`: the agent's pointing verb
+
+**Today the agent literally cannot point at a rule or a plan node.** `ui_open_studio_panel` takes
+`panel_id` and nothing else ([`frontend_tools.py:391`](../../../services/chat-service/app/services/frontend_tools.py));
+`ui_focus_manuscript_unit` takes only `chapter_id`/`scene_id`. **No tool can carry a ref.**
+
+Wave 2 specs **ONE** new frontend tool:
+
+```
+ui_focus_resource(kind, id)
+  kind: a CLOSED SET  ⇒  `enum` in the schema
+                      ⇒  registered in CLOSED_SET_ARGS
+                      ⇒  WRITE_FRONTEND_CONTRACT=1 pytest  (regen contracts/frontend-tools.contract.json)
+  id:   uuid string (free-form ⇒ correctly NOT in CLOSED_SET_ARGS)
+  FE resolver: resolveResourceRef  (AN-12.1c)
+```
+
+- **NO new dock panel. NO catalog row. NO `ui_open_studio_panel` enum change.** AN-12's DOCK-2/DOCK-8
+  anti-fork clause — which PO-1 left standing — is honoured **verbatim**.
+- **A typed 2-arg verb, not a free-form ref bag.** `{kind enum, id}` stays machine-checked on both sides;
+  a free-string bag is precisely the drift the Frontend-Tool Contract forbids.
+- **`ui_focus_resource` is ORTHOGONAL to X-12's `params`.** `params` is a panel **deep-link hint**;
+  `ui_focus_resource` is a typed **object pointer**. Both ship. They are not the same concept, and neither
+  subsumes the other.
+- 🔴 **SEQUENCING — never two concurrent contract regens** ([`00B_EXECUTION_ROADMAP.md:203`](00B_EXECUTION_ROADMAP.md)).
+  This regen lands in **Wave 2**, *after* Wave 0's three regens (`W0-S5`/`W0-S5b`/`W0-S5c`) are committed.
+
+### AN-12.1e — SCOPE FENCE: `resource_ref` is an ADDRESS
+
+**It is not a lock, and it is not a mutation contract.** It says *where an object lives*, nothing more.
+**Every write keeps going through the owning tool's own OCC / `base_version` path.** `version` on the ref
+is a hint for staleness display — **it is never accepted as an OCC token.**
+
+Stated explicitly so a later agent does not grow the address into a write channel. **Adding a write field
+to `resource_ref` is a spec change, not a build detail.**
+
+---
+
 ## New tools — the gap layer
 
 All seven: identity from the envelope (IN-1), explicit `book_id` (IN-2 — the gateway drops
@@ -612,7 +818,7 @@ AN-B (book-service tools) has **no** composition prerequisites and can build fir
 | OQ-4 | **Integrator:** AN-4 and 24 H1.3 both consume the coverage-diff (unplanned chapters) computation. | ✅ **Resolved (NC-1, 2026-07-10):** conformance/staleness has ONE server-side computation with its transports fixed — 24's Hub reads the IX-14 **route** directly (read surface #7; drift never rides `plan-overlay`); AN-2/AN-4 compose the **helper** into their one-call agent aggregates. The **coverage diff** (unplanned chapters) is a separate, cheaper computation: one composition-side helper shared by 24 H1.3's overlay and AN-4 — A1/A4's tasks name it explicitly. |
 | OQ-5 | Anchored/diff-shaped prose edits (matrix row 6's residual gap): should the agent get a hunk-level prose write tool instead of whole-body `write_prose`? | **Decided: not here.** 07S §5c owns hunk-level review on the FE card path; a server-side anchored-edit tool is a manuscript-mutation design (DA-1-adjacent) that needs its own spec. Deferred, gate #2, tracked at SESSION time. |
 | OQ-6 | Should `composition_diagnostics` include plan-run lint (S1–S8 `plan_validate` findings) for the book's latest run? | **Decided: no.** Plan lint is *run*-scoped build-graph state, owned by 27's ledger (`plan_pass_status`); diagnostics is *book*-scoped desired-vs-actual health. Mixing them would put a `.runs/` build log in the problems panel — different lifecycle, different consumer. The description cross-references `plan_pass_status`. |
-| OQ-8 *(added at clearance, 2026-07-10)* | **The `resource_ref` convention** — the agent↔canvas addressing contract that lets a chat turn point at ("highlight") a specific spec object on the Plan Hub canvas (21 PH8's AI-edit highlighting; 24 Phase 4's `ai-pending` ghost nodes; 24 OQ-7's canvas-native plan-agent). Previously the one unspecced contract in the cluster, owned by nobody. | **HOMED HERE.** It is an agent↔GUI contract — exactly this spec's domain. **Deferred, tracked, gated:** it is required by nothing in v1 (P-13 ✅ made "Ask AI" = Compose chat with a selection ref) and gates only 24 Phase 4. **Trigger:** when 24 Phase 4 is scheduled, this spec gains an AN-12 section defining `resource_ref` (shape sketch: `{kind: 'structure'\|'outline'\|'motif_application'\|'canon_rule'\|'thread', id, version?}` — the same ref vocabulary the frontend-tools contract + `ui_focus` tools would consume, one name per concept per DA-10) **before** any Phase-4 build task starts. A Phase-4 build without AN-12 is a spec violation, not a shortcut. |
+| OQ-8 *(added at clearance, 2026-07-10)* | **The `resource_ref` convention** — the agent↔canvas addressing contract that lets a chat turn point at ("highlight") a specific spec object on the Plan Hub canvas (21 PH8's AI-edit highlighting; 24 Phase 4's `ai-pending` ghost nodes; 24 OQ-7's canvas-native plan-agent). Previously the one unspecced contract in the cluster, owned by nobody. | ✅ **CLOSED (X-6, 2026-07-13) → [§AN-12.1](#an-121--the-resource_ref-convention-x-6-written-2026-07-13).** The contract is written: an **8-member, TABLE-keyed** `kind` enum + `subkind` + `version`-is-a-hint + the FE resolver map + `ui_focus_resource` + the address-not-a-lock scope fence. ⚠ **This row's own shape sketch (`{kind: 'structure'\|'outline'\|'motif_application'\|'canon_rule'\|'thread', id, version?}`) is OVERRIDDEN and must not be built from** — it renames three kinds wrongly (`structure`→`structure_node`, `outline`→`outline_node`, `thread`→`narrative_thread`) and **omits `chapter`, `scene` and `glossary_entity`, which the shipped diagnostics ALREADY EMITS.** A builder following the sketch literally would drop kinds the code already produces. §AN-12.1b records the override. Build placement: contract = Wave 0; emitters + resolver + tool = Wave 2. |
 | OQ-7 | Steering write tier — A (auto + undo) or W (confirm)? | **Decided: A** (AN-6). The inverse is verified (prior row returned), rows are small and visible in the shipped steering panel, and the write gate (EDIT grant) matches the REST surface. Forcing a confirm card on "write that down" would make the agent *worse* at the S06 F4 guard than a human with the panel open. The PO may override to W if steering abuse shows up in transcripts. |
 
 ---

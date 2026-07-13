@@ -1,7 +1,8 @@
 # Wave T — Translation repair (the parallel lane) · IMPLEMENTATION PLAN
 
 > **Type:** FS (Phase A/B = FE-only · Phase C = translation-service + frontend + contracts)
-> **Size:** **L** (23 slices · 4 phases · 0 migrations · 0 new panels · 1 contract slice)
+> **Size:** **L** (**24 slices** · 4 phases · 🔴 **1 migration — WRITTEN + DRY-RUN ONLY, NEVER EXECUTED
+> (PO-gated: T-C10)** · 0 new panels · 1 contract slice)
 > **Spec:** [`docs/specs/2026-07-01-writing-studio/29_translation_repair.md`](../specs/2026-07-01-writing-studio/29_translation_repair.md) — PO-decided 2026-07-10
 > **🔴 ADJUDICATED DECISIONS (BINDING — READ BEFORE ANY SLICE):**
 > [`docs/plans/studio-adjudication/wave-T-decisions.md`](studio-adjudication/wave-T-decisions.md) — 34 items settled
@@ -10,12 +11,28 @@
 > was already corrected, so a builder never has to diff the two.
 > **Master plan:** [`30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md`](../specs/2026-07-01-writing-studio/30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md) §4 (row 29), §7 ("The parallel lane"), §9 (collisions)
 > **Planned at:** HEAD `9262ed53e`, branch `feat/context-budget-law`, 2026-07-13. Reconciled 2026-07-13.
-> **Gaps closed:** T1 · T2 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · S1–S9 · S11 · S12 · D11
+>
+> ## 🔴 PO DECISIONS — SEALED 2026-07-13. BINDING. DO NOT RE-LITIGATE.
+>
+> Three of the PO's sealed decisions land on **this** plan. They **outrank both this plan and the
+> adjudication file.** Each is applied in full below; this box exists so nobody "restores" the old text.
+>
+> | PO | Ruling | Effect on Wave T |
+> |---|---|---|
+> | 🔴 **D-1** | The `Vietnamese` → `vi` **rekey is DESTRUCTIVE and PO-GATED.** Write the migration + a rollback path + a before/after row-count assertion, **run a DRY-RUN, show the output, and STOP.** The agent may **NOT** execute it unattended. | **§5 is REWRITTEN.** The old *"NONE. Wave T ships zero DDL"* is **superseded**: the wave now **produces the migration and its dry-run** in slice **T-C10** — and **T-C10 STOPS AND ASKS.** It is **the ONE place in the entire build where the agent stops.** `D-TRANSL-LANG-BACKFILL` is **replaced** by T-C10 (write + dry-run) + `D-TRANSL-LANG-REKEY-EXECUTE` (the PO-supervised execution). |
+> | 🔴 **D-2** | **T8 (the dropped selection) is PULLED FORWARD into WAVE 0** as **`W0-S15`** — it damages data today. | **T8 is DISCHARGED ELSEWHERE. Wave T must not build it twice.** The T8 half of slice **T-A4 is DROPPED**; T-A4 survives **only** as the **D6** language hand-off, and it carries a **hard pre-flight assert that W0-S15 has landed.** ⚠ **This gives Wave T its FIRST upstream dependency — see §1.2.** |
+> | 🔴 **D-4** | The content-language SSOT file is **`contracts/languages.contract.json`**. | ⚠ **It must NEVER be called `languages.yaml`.** `contracts/language-rule.yaml` **already exists** and means *service → **programming** language* — **a different axis.** One name for two concepts is the drift this repo legislates against. The plan already uses the sealed name throughout (§3.2a, T-C1); **that name is now LOCKED — do not "tidy" it to `.yaml` or to `languages.json`.** |
+>
+> **Gaps closed:** T1 · T2 · T3 · T4 · T5 · T6 · T7 · T9 · T10 · S1–S9 · S11 · S12 · D11
+> **DISCHARGED ELSEWHERE (PO D-2):** ~~**T8**~~ → **Wave 0 / `W0-S15`.** Wave T **consumes** that fix; it does
+> not re-build it.
 > **Also closed (found by the adjudication, NOT in the original spec):** the Translate-workmode **editor
 > unmount ⇒ silent data loss** · the modal's cross-user **book-settings clobber** · the editor's
 > **100-chapter blindness** · the **third** re-translate dead-end (`retranslate-dirty`)
-> **Deferred out:** `D-TRANSL-LANG-BACKFILL` (gate #2 — see §5). **`D-TRANSL-S11-JOBCONTROL-EFFECTS` is
-> DELETED — S11 is a one-line fix-now (slice T-B6).**
+> **Deferred out:** 🔴 **`D-TRANSL-LANG-BACKFILL` is REPLACED** (PO **D-1**): the migration is **WRITTEN and
+> DRY-RUN in-wave** (slice **T-C10**), and only its **EXECUTION** is deferred, to a PO-supervised step
+> (`D-TRANSL-LANG-REKEY-EXECUTE`, §10). **`D-TRANSL-S11-JOBCONTROL-EFFECTS` is DELETED — S11 is a one-line
+> fix-now (slice T-B6).**
 
 ---
 
@@ -47,6 +64,14 @@ Quoted verbatim from the run brief. It is binding on every slice below.
 the glossary-translate poll can spin forever after a paid LLM job. It is in scope and gets fixed here;
 it is not a reason to stop.
 
+> 🔴 **THE ONE SANCTIONED STOP — slice `T-C10` (PO decision D-1).** Rule 3's **first** bullet ("*a destructive
+> / irreversible action … a migration that rewrites user rows*") has **exactly one live instance in this
+> wave**, and the PO has ruled on it in advance: the `Vietnamese` → `vi` **rekey**. **T-C10 writes the
+> migration, its rollback, and its assertions, runs the DRY-RUN, prints the report — AND STOPS.**
+> **The agent may NOT execute it, not even if every count looks right, not even if the PO approved "the
+> migration" in the abstract.** Approval of the *dry-run output* is a separate, explicit act.
+> **Everywhere else in Wave T: blocked ≠ stopped. Here, and only here: STOP.**
+
 ---
 
 ## 1 · Header — what this wave is, and what it is not
@@ -59,7 +84,7 @@ it is not a reason to stop.
 | **T2** | HIGH | `translation` matrix | Untranslated chapters are invisible — the matrix renders coverage rows, not chapters | **T-A3** |
 | **T4** | HIGH | `translation` matrix | Coverage failure ⇒ raw proxy-error string, no retry, no CTA; textless skeleton while loading | **T-A1** |
 | **T5** | HIGH | `TranslateModal` | Wedges on "Loading chapters…" — no language picker, no model picker, no error, no timeout | **T-A5** |
-| **T8** | HIGH | matrix → modal | "Translate Selected (N)" **discards the selection**; a fully-translated book opens every action disabled | **T-A4** |
+| ~~**T8**~~ | HIGH | matrix → modal | "Translate Selected (N)" **discards the selection**; a fully-translated book opens every action disabled | 🔴 **DISCHARGED IN WAVE 0 — `W0-S15`** (PO **D-2**: pulled forward, it damages data today). **NOT BUILT IN WAVE T.** Wave T's **T-A4** now builds **only D6** (the language hand-off) **on top of** W0-S15's prop. |
 | **T10** | MED | `translation` matrix | Chapter-fetch failure renders "No chapters to translate" — an error shown as an empty book | **T-A1** |
 | **T6** | MED | `ChapterTranslationsPanel` | Degrades silently: blank title, `??` language, zero targets, no error banner | **T-B1** |
 | **T7** | MED | `VersionSidebar` | No discoverable way to add a *new* target language | **T-B3** |
@@ -81,8 +106,40 @@ it is not a reason to stop.
 
 ### 1.2 Hard gates — what must be true before this wave starts
 
-Wave T is **independent of Waves 0–8**. 00C **Q-1**: *"None — unblocked now. Disjoint files from the whole
-00B cluster."* Plan 30 §9 lists it under **🟢 Genuinely un-colliding**. Concretely:
+### 🔴 1.2.0 — WAVE T NOW HAS **ONE** UPSTREAM DEPENDENCY: **Wave 0 / `W0-S15`** (PO decision D-2)
+
+**This is new, and it is the single most likely way this plan gets built wrong.** Wave T was written as a
+**free lane** — *"schedule it into any idle slot"* — and that is **still true of 23 of its 24 slices**. But
+**D-2 moved T8's fix into Wave 0 (`W0-S15`)**, and **T-A4 (D6) now builds ON TOP of the prop that slice
+adds.** So:
+
+- **`W0-S15` adds `preselectedChapterIds={[...selectedChapters]}`** to the `<TranslateModal>` call site at
+  `TranslationTab.tsx:300-305` (+ the header-CTA `clearSelection()` rule — see T-A4).
+- **T-A4 adds `preselectedLang`** to the **same** call site and the **same** component.
+- ⇒ **They edit the SAME LINES of the SAME TWO FILES.** If Wave T runs first, it will re-implement T8 (a
+  double-build the PO explicitly forbade). If it runs second and does not *check*, it will silently **revert**
+  W0-S15 by pasting an older version of the JSX block.
+
+> 🔴 **T-A4's FIRST ACTION IS THIS ASSERT — it is a HARD GATE, not a courtesy:**
+> ```bash
+> # W0-S15 MUST have landed. Expect the prop ON THE TranslateModal call (~:300-305), not only on the
+> # ExtractionWizard call (~:544).
+> grep -n "preselectedChapterIds" frontend/src/pages/book-tabs/TranslationTab.tsx
+> ```
+> - **If it is present on the TranslateModal call ⇒ proceed.** T-A4 **ADDS `preselectedLang` beside it** and
+>   **touches nothing else about the selection.**
+> - **If it is ABSENT ⇒ Wave 0 has not run.** **Do NOT build T8 here** — that is the double-build D-2
+>   forbids. **Park T-A4** (and its dependents **T-A5 → T-A6**, and **T-C5**'s A4 leg), **build the rest of
+>   the wave** (blocked ≠ stopped — §0 rule 3), and file a **defer row** naming `W0-S15` as the trigger.
+>   Come back when Wave 0 lands.
+>
+> ⚠ **And NEVER `git add -A`.** Three tracks share this checkout (§9 R8); a stale `TranslationTab.tsx` in your
+> editor buffer will silently un-ship `W0-S15`.
+
+### 1.2.1 Everything else is still un-colliding
+
+Wave T is **otherwise independent of Waves 0–8**. 00C **Q-1**: *"None — unblocked now. Disjoint files from the
+whole 00B cluster."* Plan 30 §9 lists it under **🟢 Genuinely un-colliding**. Concretely:
 
 - ✅ **No X-1/X-2/X-3/X-4 dependency.** Wave T adds **ZERO new panels** ⇒ it does not touch `catalog.ts`,
   `CATEGORY_ORDER`, `guideBodyKey`, `frontend_tools.py`, or `contracts/frontend-tools.contract.json`.
@@ -92,8 +149,15 @@ Wave T is **independent of Waves 0–8**. 00C **Q-1**: *"None — unblocked now.
 
 ### 1.3 What it unblocks downstream
 
-**Nothing.** No other wave depends on Wave T. That is the point: it is a free lane. Conversely, **nothing
-blocks it** — schedule it into any idle slot.
+**Nothing.** No other wave depends on Wave T. That is the point: it is a free lane.
+
+🔴 **But it is no longer a *completely* free lane (PO decision D-2).** *(The old text said "nothing blocks it —
+schedule it into any idle slot." **That is now false for exactly one slice.**)*
+
+- **23 of 24 slices** are still schedulable in **any** idle slot, against **any** wave order.
+- **`T-A4` (and, through it, `T-A5`, `T-A6`, and `T-C5`'s A4 leg) requires `W0-S15` (Wave 0) to have landed.**
+  If it has not: **park those four legs, file the defer row, and build the other 20 slices** — do **not** build
+  T8 here. **§1.2.0 is the gate; read it before scheduling this wave.**
 
 ### 1.4 🔴 THE PANEL-ID LEDGER — Wave T ADDS ZERO ROWS
 
@@ -156,15 +220,23 @@ Run all five. Every one must produce the stated result.
 # 1 · The lane is clean (shared checkout, 3 live tracks — plan 30 §9). MUST be EMPTY.
 git status --short | grep -iE "transl|book-tabs|lib/languages|features/glossary-translate"
 
-# 2 · The defect is real, not a stale doc claim. MUST print the modal with NO preselectedChapterIds.
+# 2 · 🔴 CHANGED BY PO D-2 — the T8 GATE. W0-S15 (Wave 0) now owns this fix. This check is no longer
+#     "prove the bug is real"; it is "prove WHOSE tree I am standing in". Read §1.2.0 before acting.
 sed -n '300,306p' frontend/src/pages/book-tabs/TranslationTab.tsx
 
-# 3 · The sibling call site DOES pass it (T8 is a one-prop drop, not a missing feature).
+# 3 · Where is `preselectedChapterIds`?
 grep -n "preselectedChapterIds" frontend/src/pages/book-tabs/TranslationTab.tsx \
   frontend/src/features/studio/panels/ChapterBrowserTitleView.tsx \
   frontend/src/features/translation/components/ChapterTranslationsPanel.tsx
-#   expect: TranslationTab.tsx:544 (ExtractionWizard) · ChapterBrowserTitleView.tsx:~509 ·
-#           ChapterTranslationsPanel.tsx:207   — and NOTHING on the TranslateModal call at :300.
+#   ALWAYS expected (they shipped long ago):
+#     TranslationTab.tsx:~544 (ExtractionWizard) · ChapterBrowserTitleView.tsx:~509 ·
+#     ChapterTranslationsPanel.tsx:~207
+#   🔴 AND THE ONE THAT DECIDES YOUR PLAN — the <TranslateModal> call at ~:300:
+#     • PRESENT  ⇒ W0-S15 has LANDED. ✅ Proceed. T-A4 builds D6 ONLY (add `preselectedLang` BESIDE it).
+#                  DO NOT re-implement T8. DO NOT paste an older JSX block over it.
+#     • ABSENT   ⇒ Wave 0 has NOT run. 🔴 DO NOT BUILD T8 HERE (PO D-2 forbids the double-build).
+#                  PARK T-A4 (+ its dependents T-A5, T-A6, and T-C5's A4 leg), file the defer row naming
+#                  W0-S15 as the trigger, and BUILD THE REST OF THE WAVE. Blocked ≠ stopped.
 
 # 4 · Baseline test counts — RECORD THESE NUMBERS, the DoD asserts deltas against them, never literals.
 cd frontend && npx vitest run 2>&1 | tail -5          # → record N_fe_before
@@ -255,6 +327,24 @@ materializations (TS registry, `contracts/languages.contract.json`, Python regis
 `css-var-duplicated-across-two-consumers-drifts` is the exact failure mode. **Every one of the three gets a
 parity test in T-C1, and the `Literal` gets a `get_args` drift assertion in T-C3.** No exceptions.
 
+> ## 🔴 THE FILE'S NAME IS SEALED — PO DECISION D-4 (2026-07-13)
+>
+> The contract file is **`contracts/languages.contract.json`**. **This is not a stylistic choice and it is not
+> negotiable.**
+>
+> | ✅ **`contracts/languages.contract.json`** | the **CONTENT** language axis — *what a book can be translated INTO* (`en`, `vi`, `zh-CN`, …). Mirrors the proven cross-language-SSOT shape of **`contracts/frontend-tools.contract.json`** — the same generate-and-machine-check pattern, deliberately. |
+> |---|---|
+> | 🔴 **`contracts/language-rule.yaml`** — **ALREADY EXISTS. DIFFERENT THING.** | the **PROGRAMMING** language axis — *service → Go / Python / TypeScript / Rust* (CLAUDE.md's language rule, linted by `scripts/language-rule-lint.sh`). |
+>
+> **⇒ NEVER name it `languages.yaml`.** Two files one letter apart, both under `contracts/`, both about
+> "language", meaning **completely different axes** — that is the *one-name-for-one-concept* drift this repo
+> legislates against, and it would be a **permanent** trap for every future agent.
+> **Also not `languages.json`** (the first draft's name — §3.6 row 9 already corrected it; it loses the
+> `.contract.` marker that says *"machine-checked, generated, do not hand-edit"*).
+>
+> **If you find any reference in this plan, spec 29, or the code to `languages.yaml`, it is WRONG — fix it to
+> `languages.contract.json`.** *(Verified at reconcile time: zero such references exist. Keep it that way.)*
+
 ### 3.3 D9 is implementable — the API layer already carries the HTTP status.
 
 Spec 29's D9 (*"errors are typed, not stringified"*) needs the FE to distinguish 403 from 5xx. It can:
@@ -324,6 +414,22 @@ behavior thinking it was intentional. **Do not re-litigate any of these.**
 | 14 | i18n regen runs **per slice** (18 locales each) | **English key only during build; ONE batch `scripts/i18n_translate.py` run at wave close.** `fallbackLng: 'en'` makes the other 17 render English immediately. A missing translation is a cosmetic English string; a hardcoded literal is an unfixable one. **+ a parity test, which is the thing that actually stops the rot.** | `Q-29-D9-LOCALIZED-MESSAGES` → **T-C9** |
 | 15 | §4: *"No new route is created in this entire wave"* | **False after the adjudication.** T-C7 adds an **additive query param** (`?languages_only=true`) to the coverage route. It is additive ⇒ no break — but it **is** a contract change and gets a contract row. | `UC-29-COVERAGE-IS-UNPAGED` → **T-X0** + **T-C7** |
 | 16 | §5: **3** colliding tables in the backfill | **FOUR.** `segment_translations` (`UNIQUE (chapter_id, target_language, segment_index)`, `migrate.py:550-563`) collides identically — **spec 29's D12 missed it, and the migration will hard-fail on that index** without it. | `PO-29-BACKFILL-MERGE-RULES` → **§5** |
+
+### 3.6b 🔴 WHERE THE **PO** OVERRULED BOTH THIS PLAN **AND** THE ADJUDICATION (sealed 2026-07-13)
+
+The adjudication outranks this plan (§3.6). **The PO outranks the adjudication.** Three rows — and each one
+**inverts** an instruction that appears elsewhere in this document, so if you find the old text, **this table
+wins.**
+
+| # | This plan / the adjudication SAID | The **PO** RULES (**binding**) | Where it lands |
+|---|---|---|---|
+| 🔴 **P-1** | §5: *"**NONE. Wave T ships zero DDL.** … If you find yourself writing a migration in this wave, you have gone off-plan."* + defer row `D-TRANSL-LANG-BACKFILL` (gate #2). | **D-1: WRITE THE MIGRATION. Then DRY-RUN it and STOP.** Rollback path + before/after row-count assertion + a dry-run report the PO reads. **The agent may NOT execute it unattended.** *(The rules were **already sealed** in §5.1 — so it was always writable; the PO simply refuses to leave a known-corrupt identity key sitting in a defer row indefinitely.)* | **§5 (rewritten)** · **slice T-C10** · `D-TRANSL-LANG-REKEY-EXECUTE` (§10) |
+| 🔴 **P-2** | §1.1 + T-A4: **T8** is Wave T's to fix. §1.2: *"Wave T is independent of Waves 0–8."* | **D-2: T8 SHIPS IN WAVE 0 (`W0-S15`)** — it discards a paid job's chapter selection **today**. **Wave T must not build it twice.** ⇒ **T-A4 is re-scoped to D6 only**, and **Wave T gains one upstream dependency.** | **§1.2.0** · **§2 check 2/3** · **slice T-A4** · **§9 R2/R9** |
+| 🔴 **P-3** | *(no conflict — a LOCK)* | **D-4: the content-language SSOT is `contracts/languages.contract.json`.** ⚠ **NEVER `languages.yaml`** — `contracts/language-rule.yaml` already means *service → **programming** language*. **Different axis; one name for two concepts is the drift this repo legislates against.** | **§3.2a (the name lock)** · **T-C1** |
+
+> ⚠ **P-1 and P-2 pull in OPPOSITE directions and that is the point.** The PO **moved work OUT** of Wave T
+> (T8 → Wave 0, because it damages data now) and **moved work IN** (the rekey, because leaving corrupt
+> identity keys parked is worse than facing them). **Neither is a licence to re-scope anything else.**
 
 ### 3.7 🔴 THE THREE INTERNAL CONFLICTS IN THE ADJUDICATION — settled here, do not re-open
 
@@ -409,12 +515,32 @@ Phase C's backend work is **not a prerequisite of anything in A or B** — it is
 
 ---
 
-## 5 · Migrations
+## 5 · Migrations — 🔴 **REWRITTEN BY PO DECISION D-1 (sealed 2026-07-13)**
 
-**NONE. Wave T ships zero DDL.**
+> ### 🔴 THE OLD TEXT SAID: *"NONE. Wave T ships zero DDL."* **THAT IS SUPERSEDED.**
+>
+> **The PO has ruled: REKEY the corrupted language data — but DRY-RUN FIRST.**
+>
+> | | |
+> |---|---|
+> | **What the wave BUILDS** | the migration · a **rollback path** · a **before/after row-count assertion** · a **dry-run harness** — slice **T-C10** |
+> | **What the wave RUNS** | 🔴 **THE DRY-RUN ONLY.** It prints the report **and STOPS.** |
+> | **What the wave MUST NOT DO** | 🔴 **EXECUTE THE MIGRATION.** *"The agent may NOT execute it unattended."* This is a **3-table** (in fact **four**-table) rekey inside `UNIQUE(chapter_id, target_language, version_num)`. **It rewrites user rows.** |
+> | **Who executes it** | the **PO**, after reading the dry-run output, as an **explicit separate act** (`D-TRANSL-LANG-REKEY-EXECUTE`, §10). |
+>
+> **This is THE ONE CRITICAL-CLASS STOP in the whole build** (§0 rule 3, bullet 1: *"a destructive /
+> irreversible action … a migration that rewrites user rows"*). Everywhere else: **blocked ≠ stopped.**
+> **Here: STOP AND ASK.** ⚠ **PO approval of *the plan* is NOT approval of *the execution*.** Approval of
+> the **dry-run output** is a separate act, and it has not happened when you read this.
+>
+> **Scale (measured live 2026-07-12):** **5 rows** say `Vietnamese` next to **89** saying `vi` (plus 5 `ja`,
+> 3 `en`, 1 `ko`). **Small — and that is exactly why it is dangerous:** a 5-row rekey looks trivial, and the
+> collision it hits is a **PRIMARY KEY**.
 
-This is a deliberate, spec-sealed decision (**D12**). `target_language` is an **identity key in FOUR
-tables** — *not three; spec 29's D12 missed one* — and merging `Vietnamese` → `vi` collides in all four:
+### 5.0 Why it cannot be a naive `UPDATE … SET target_language='vi'`
+
+`target_language` is an **identity key in FOUR tables** — *not three; spec 29's D12 missed one* — and merging
+`Vietnamese` → `vi` **collides in all four**:
 
 | Object | Key | Collision |
 |---|---|---|
@@ -423,14 +549,16 @@ tables** — *not three; spec 29's D12 missed one* — and merging `Vietnamese` 
 | `translation_chapter_memos` | `PRIMARY KEY (book_id, chapter_index, target_language)` (`migrate.py:219-228`) | Same shape. 1 legacy row live. |
 | 🔴 **`segment_translations`** | `UNIQUE (chapter_id, target_language, segment_index)` (`migrate.py:550-563`) | **THE ONE THE SPEC MISSED.** It collides identically. **Without it in the list, the migration hard-fails on that unique index.** |
 
-⇒ **Defer row `D-TRANSL-LANG-BACKFILL`** (see §10). Phase C **stops the bleed** (write-side validation) so
-the bad set stops growing; the merge is a separate, planned effort.
+⇒ 🔴 **This is what T-C10 must get right, and what the DRY-RUN exists to prove BEFORE anything is written.**
+Phase C's **T-C2** independently **stops the bleed** (write-side validation), so the bad set **stops growing**
+while the rekey waits for the PO. **T-C10 dependsOn T-C2** for exactly that reason: *rekeying a set that is
+still growing is a race.*
 
-### 5.1 🔴 The backfill's rules are now SEALED — so it needs no further PO checkpoint
+### 5.1 🔴 The rekey's rules are SEALED — they are now **T-C10's SPEC**, not a note for later
 
-`PO-29-BACKFILL-MERGE-RULES` settled both open product questions **from existing code**, so the future
-migration is writable without another design round. **Recorded here so the knowledge is not lost; DO NOT
-BUILD ANY OF IT IN THIS WAVE.**
+`PO-29-BACKFILL-MERGE-RULES` settled both open product questions **from existing code**, so the migration is
+writable **now**, without another design round. **⚠ The old text here said "DO NOT BUILD ANY OF IT IN THIS
+WAVE." PO decision D-1 REVERSES that: BUILD IT — and then STOP AT THE DRY-RUN.**
 
 - **WHICH VERSION WINS (the active pointer) — reuse `_PROMOTE_ACTIVE_SQL`'s precedence, verbatim.** The repo
   already has exactly one conflict rule for "two candidates want to be the active version of (chapter, lang)"
@@ -457,18 +585,22 @@ BUILD ANY OF IT IN THIS WAVE.**
   group (old langs still in place ⇒ both old partitions stay unique, and `1000000+` cannot hit `1..N`);
   (b) `SET target_language = canonical`; (c) `SET version_num = version_num - 1000000` (uniform ⇒ injective).
 
-> 🔴 **INSTRUCTION — the knowingly-accepted consequence (D13, verbatim):** *"until `D-TRANSL-LANG-BACKFILL`
-> runs, `Dracula`'s legacy `Vietnamese` column keeps rendering (coverage still returns it) and cannot be
-> re-translated, because the picker no longer offers that value. That is the correct behaviour — the column
-> is a record of data that exists."*
+> 🔴 **INSTRUCTION — the knowingly-accepted consequence (D13, verbatim), which now holds only UNTIL THE PO
+> EXECUTES T-C10's MIGRATION:** *"until the rekey runs, `Dracula`'s legacy `Vietnamese` column keeps rendering
+> (coverage still returns it) and cannot be re-translated, because the picker no longer offers that value.
+> That is the correct behaviour — the column is a record of data that exists."*
+> **⇒ Wave T ships with that column still on screen. That is EXPECTED, not a bug, and T-C8 makes its dead
+> ends honest rather than hiding them.**
 >
 > **D13 constrains what can be WRITTEN, never what can be READ.** The frontend MUST keep tolerating unknown
 > codes in `known_languages`. `getLanguageName()` (`lib/languages.ts:86`) already echoes an unknown code
 > rather than crashing — **keep it that way.** T-C4 ships a **read-side regression test** that proves a
 > legacy `Vietnamese` column still renders.
 
-**If you find yourself writing a migration in this wave, you have gone off-plan. Stop and re-read this
-section.**
+🔴 **The old closing line here read: *"If you find yourself writing a migration in this wave, you have gone
+off-plan."* IT IS REVERSED BY PO DECISION D-1.** Writing it is **on-plan** — **slice T-C10.**
+**RUNNING it is off-plan.** *If you find yourself about to `python migrate.py` / `psql -f` this migration
+against a real database, you have gone off-plan. STOP and hand the dry-run to the PO.*
 
 ---
 
@@ -1081,94 +1213,103 @@ not touch the coverage SQL.**
 
 ---
 
-#### **T-A4 — The modal receives the selection AND the language** (closes **T8**; lands **D6**)
+#### **T-A4 — The modal receives the LANGUAGE** (lands **D6**) · 🔴 **T8 IS NOT BUILT HERE — IT SHIPPED IN WAVE 0 (`W0-S15`)**
 
-**dependsOn:** T-A2, T-A3
+**dependsOn:** T-A2, T-A3, **🔴 `W0-S15` (Wave 0 — a CROSS-WAVE dependency; see §1.2.0)**
 
-**The bug, verbatim** — `TranslationTab.tsx:300-305`:
-```tsx
-<TranslateModal open={translateOpen} onClose={…} bookId={bookId} onJobCreated={…} />
-```
-No `preselectedChapterIds` — **though the prop exists** (`TranslateModal.tsx:31`) and **both sibling call
-sites pass it** (`ChapterBrowserTitleView.tsx:~509`; `TranslationTab`'s own `ExtractionWizard` at `:544`).
-Only the translate path drops it.
+> ## 🔴 READ THIS BEFORE YOU TOUCH EITHER FILE — PO DECISION D-2 (sealed 2026-07-13)
+>
+> **This slice used to close T8** *("Translate Selected discards the selection")*. **It no longer does.**
+> **The PO pulled T8 forward into Wave 0 as `W0-S15`**, because it *"damages data today"*: it silently
+> substitutes **the whole backlog** for the chapters the user ticked, and that is a **paid LLM job the user
+> did not ask for**.
+>
+> **⇒ T8's fix is DISCHARGED ELSEWHERE. DO NOT BUILD IT TWICE.** What is left of this slice is **D6, and only
+> D6**: the *language* hand-off (`preselectedLang`) — a **separate gap** that Wave 0 does **not** close.
+>
+> **THE FIRST THING YOU DO IN THIS SLICE:**
+> ```bash
+> grep -n "preselectedChapterIds" frontend/src/pages/book-tabs/TranslationTab.tsx
+> ```
+> | Result | What you do |
+> |---|---|
+> | **present on the `<TranslateModal>` call (~:300-305)** | ✅ **W0-S15 landed.** Proceed. **ADD `preselectedLang` BESIDE IT.** Change nothing else about the selection. |
+> | **absent there** (only on `ExtractionWizard` ~:544) | 🔴 **Wave 0 has not run. STOP THIS SLICE — do NOT implement T8.** Park T-A4 + its dependents (**T-A5, T-A6**, and **T-C5**'s A4 leg), **file the defer row naming `W0-S15` as the trigger**, and **build the rest of the wave.** *Blocked ≠ stopped (§0 rule 3).* |
+>
+> ⚠ 🔴 **THE SILENT-REVERT HAZARD.** T-A4 and W0-S15 edit **the same JSX block in the same file**. If you
+> write the call site out from this plan wholesale, you will **overwrite W0-S15 with a stale version and
+> un-ship it — and every test will still pass**, because you will have re-added the prop yourself. **EDIT the
+> existing block. Never retype it. And NEVER `git add -A`** (three tracks share this checkout).
 
-Consequences (in severity order):
-1. The modal re-derives its default selection as *"every chapter that needs work in the book's default
-   language"* (`TranslateModal.tsx:131-137`) — the user's chapter choice **and** the language column they
-   clicked are silently replaced.
-2. `Select affected` (`:244`) → `Translate Selected` therefore **does not translate the affected chapters**.
-3. 🔴 **On a fully-translated book, every action in the modal opens disabled.** `neededIds` is `[]`, so the
-   primary CTA is replaced by the force-retranslate branch — whose button is disabled because
-   `selectedChapters.size === 0`. The modal's own comment (`:399-404`) states the assumption being violated:
-   *"the per-chapter page preselects this chapter"*. **The matrix does not. So the safety net is itself a dead
-   end.**
+**What W0-S15 already did (verify, do not repeat):** added `preselectedChapterIds={[...selectedChapters]}` to
+the `<TranslateModal>` call at `TranslationTab.tsx:300-305`; made the **header CTA unscoped** (it calls
+`clearSelection()` before opening, per **D1** — an empty preset means "no preset", `TranslateModal.tsx:132`);
+and kept the **`handleLangChange` guard** at `TranslateModal.tsx:205`.
+
+> 🔴 **THAT GUARD IS THE TRIPWIRE, AND IT IS NOW *YOUR* PROBLEM.**
+> `handleLangChange` (`:201-211`) must **NOT** re-derive the default selection when a preselection was given —
+> the guard is `if (!(preselectedChapterIds && preselectedChapterIds.length > 0))`. **T-A4 is the slice that
+> changes the language**, so **T-A4 is the slice most likely to "simplify" that guard away** — and doing so
+> **re-introduces T8 through the back door, in a wave that is no longer even testing for T8.**
+> **KEEP IT. A test below is its canary.**
+
+**The gap that IS still open (D6):** a matrix cell carries a **language** as well as a chapter. Clicking the
+`vi` column's *"not translated"* cell should open the modal **targeting `vi`** — today that cell
+(`TranslationTab.tsx:458`) is `cursor-default` **dead text**, and the modal falls back to the book's default
+language. **The user's click on a specific column is thrown away.**
 
 **Files**
 
 1. **EDIT** `frontend/src/pages/book-tabs/TranslateModal.tsx`
-   - Add the prop (**D6** — a cell click carries a *language* too; the selection alone is necessary but not
-     sufficient):
+   - Add the prop (**D6**):
      ```ts
      /** D6: seed the target language (e.g. the matrix column the user clicked). */
      preselectedLang?: string;
      ```
    - In the load effect (`:113-155`), seed the language as
      `const lang = preselectedLang || bkSettings?.target_language || '';`
-     — **but see T-A5's `seeded` ref (D7): the two interact. Land T-A4 first, then T-A5 hardens the seeding.**
-   - 🔴 **`handleLangChange` (`:201-211`) must NOT re-derive the default selection when a preselection was
-     given.** The guard **already exists** at `:205` (`if (!(preselectedChapterIds && preselectedChapterIds.length > 0))`).
-     **KEEP IT.** Deleting it re-introduces T8 through the back door.
+     — **but see T-A5's `seeded` ref (D7) and §3.6 row 13: the seed can itself be a LEGACY value, from EITHER
+     source. T-A5 hardens it (orphan option + notice + hard submit gate). Land T-A4 first, then T-A5.**
+   - 🔴 **Do NOT touch `preselectedChapterIds` or the `:205` guard.** (See the box above.)
 
-2. **EDIT** `frontend/src/pages/book-tabs/TranslationTab.tsx`
-   - Track the language a cell click carried:
+2. **EDIT** `frontend/src/pages/book-tabs/TranslationTab.tsx` — **an ADDITIVE edit to what W0-S15 shipped.**
+   - Track the language a cell click carried, and thread it through the **existing** open handler:
      ```ts
      const [translateLang, setTranslateLang] = useState<string | undefined>();
      const openTranslate = (lang?: string) => { setTranslateLang(lang); setTranslateOpen(true); };
      ```
-   - The modal call site becomes:
-     ```tsx
-     <TranslateModal
-       open={translateOpen}
-       onClose={() => setTranslateOpen(false)}
-       bookId={bookId}
-       preselectedChapterIds={[...selectedChapters]}
-       preselectedLang={translateLang}
-       onJobCreated={() => { invalidate(); clearSelection(); }}
-     />
-     ```
-     ⚠ **`preselectedChapterIds` must be `[...selectedChapters]` — an empty array when nothing is ticked.**
-     The modal already treats an empty preset as "no preset" (`:132` `if (preset && preset.length > 0)`), so
-     the **unscoped header CTA (D1) still works**. Verify that branch, don't assume it.
-   - The header CTA (T-A2) calls `openTranslate(undefined)` — **unscoped, D1.**
-   - The `FloatingActionBar`'s **Translate Selected** (`:521`) calls `openTranslate(undefined)` — the
-     *selection* is what it carries; it has no single language.
-   - **`selectStale`** (`:244`, "Select affected") — leave as `setSelectedChapters(new Set(stale.ids))`; the
-     user then presses Translate Selected. The selection now actually reaches the modal, which is the fix.
-   - **Wire D6's language hand-off:** the per-cell **"not translated"** span (`:458`) is currently
-     `cursor-default` dead text. Make it a button → `openTranslate(lang)` with the chapter ticked. This is the
-     natural home for "translate THIS chapter into THIS language" and it makes the language hand-off real.
+     ⚠ **If W0-S15 already introduced an `openTranslate`/`setTranslateOpen` helper, EXTEND IT — do not add a
+     second one.** *(One name for one concept.)*
+   - **Add ONE prop** to the existing `<TranslateModal …>` block: **`preselectedLang={translateLang}`**.
+     🔴 **Everything else in that block is W0-S15's. Leave it exactly as it is.**
+   - The **header CTA** (T-A2) and the `FloatingActionBar`'s **Translate Selected** (`:521`) call
+     `openTranslate(undefined)` — neither carries a single language. *(The header CTA's `clearSelection()` is
+     W0-S15's, per D1 — **keep it**.)*
+   - **Wire D6's hand-off — THE ONE NEW BEHAVIOR IN THIS SLICE:** make the per-cell **"not translated"** span
+     (`:458`) a **button** → `openTranslate(lang)`, **with that chapter ticked**. This is the natural home for
+     *"translate THIS chapter into THIS language"*, and it is what makes the language hand-off real rather
+     than a prop nobody passes.
 
-**Tests** — `frontend/src/pages/book-tabs/__tests__/TranslationTab.preselect.test.tsx` (NEW)
+**Tests** — `frontend/src/pages/book-tabs/__tests__/TranslationTab.preselect.test.tsx`
 
-The spec's verify gate names these **by name**:
-- `T8: tick two chapters → open the modal → the footer reads "Translate 2 selected" and is ENABLED` — the
-  end-to-end assertion. Render the real `TranslateModal` (not a spy) so the prop is proven to **arrive and be
-  used**, not merely passed. *(Memory `test-injecting-a-fake-at-the-chokepoint-cannot-prove-the-chokepoint-is-wired`:
-  a spy on the prop proves the mechanism, not the wiring. Assert the rendered footer.)*
-- `T8: a FULLY-TRANSLATED book still yields an ENABLED force-retranslate for the selection` — coverage where
-  every chapter is `completed + has_active`; tick one; assert
-  `getByTestId('translate-retranslate-selected')` is **not disabled**. **This is the "press it and nothing can
-  happen" case.**
-- `D6: clicking an untranslated cell opens the modal with that column's language selected` — assert the
-  `<select>`'s value is the clicked lang.
-- `D1: the header CTA opens the modal UNSCOPED (no preselection) even when chapters are ticked` — assert the
-  modal falls back to its needs-derived default. ⚠ **Careful:** with the call site above, `preselectedChapterIds`
-  is `[...selectedChapters]`, which is **non-empty** if the user has ticked rows. **So the header CTA must
-  clear the selection first, or pass `[]`.** → **Decision: `openTranslate(undefined)` from the header ALSO
-  calls `clearSelection()`.** Header = unscoped, per D1. Assert it.
+⚠ **This file may ALREADY EXIST — `W0-S15` is expected to have created it for T8.** **EXTEND it; do not
+overwrite it.** *(Overwriting it deletes T8's regression guards, and nothing would red.)*
 
-**DoD evidence:** `"vitest: TranslationTab.preselect.test.tsx 4 passed — footer reads 'Translate 2 selected' ENABLED; fully-translated book yields an enabled force-retranslate"`
+**New (D6 — this slice):**
+- `D6: clicking an untranslated cell opens the modal with THAT COLUMN's language selected` — assert the
+  `<select>`'s value is the clicked lang. Render the **real** `TranslateModal` (not a spy), so the prop is
+  proven to **arrive and be used**, not merely passed. *(`test-injecting-a-fake-at-the-chokepoint-cannot-prove-the-chokepoint-is-wired`.)*
+- `D6: the cell is a BUTTON, not dead text` — it is reachable by keyboard and has an accessible name.
+- `D6: the header CTA passes NO language` — the modal falls back to the book default.
+
+**🔴 REGRESSION GUARDS FOR W0-S15 — RE-RUN THEM, and if they are missing, WRITE THEM. They are this slice's
+canary, because this slice edits their exact lines:**
+- `T8 (W0-S15): tick two chapters → open the modal → the footer reads "Translate 2 selected" and is ENABLED`.
+- `T8 (W0-S15): a FULLY-TRANSLATED book still yields an ENABLED force-retranslate for the selection` — this is
+  **the guard's canary**: it **fails the moment someone "cleans up" `TranslateModal.tsx:205`.**
+- `D1 (W0-S15): the header CTA opens the modal UNSCOPED even when chapters are ticked`.
+
+**DoD evidence:** `"vitest: TranslationTab.preselect.test.tsx <N> passed. 🔴 T8 was NOT re-implemented — W0-S15's preselectedChapterIds prop was VERIFIED PRESENT at TranslationTab.tsx:~300 before this slice began (grep output pasted), and this slice ADDED ONE PROP (preselectedLang) beside it. D6: clicking a 'not translated' cell (now a button, not dead text) opens the modal with THAT column's language selected — asserted on the real TranslateModal's <select> value, not a spy. W0-S15's three regression guards re-run GREEN, incl. the fully-translated-book case that canaries the handleLangChange guard at TranslateModal.tsx:205."`
 
 ---
 
@@ -2052,8 +2193,10 @@ hard-reject every legacy book** (that would break translation entirely for them)
 > `target_language` from the picker (`TranslateModal.tsx:226`). Only an MCP caller that *omits* the arg on a
 > legacy book can reach it.
 >
-> 🔴 **Do NOT add an englishName→code alias (`Vietnamese`→`vi`) to the normalizer to "avoid" this.** That is
-> `D-TRANSL-LANG-BACKFILL`'s job and it needs the which-version-wins rule (§5.1).
+> 🔴 **Do NOT add an englishName→code alias (`Vietnamese`→`vi`) to the normalizer to "avoid" this.** Aliasing
+> at the *write* edge would quietly **merge two live columns in the user's face**, with no which-version-wins
+> rule and no backup. That merge is **slice T-C10's** job — and **T-C10 stops for the PO before executing it**
+> (PO decision **D-1**; the rules are in §5.1).
 >
 > ⚠ **Do NOT put this check inside `resolve_effective_settings`** — it is also read by the **estimate** path
 > and the **worker**; a 400 there would break a *read*. **The chokepoint is `_resolve_and_create_job`, and it
@@ -2445,7 +2588,9 @@ carries `pytestmark = pytest.mark.xdist_group("pg")`**)
    - `const isLegacy = (l: string) => !isTranslationTarget(l);` over `allLanguages` (`:173`).
    - **Column header (`:374-379`):** when `isLegacy(lang)`, append a muted, `border-dashed` **"Legacy" pill**
      with `title={t('matrix.legacy_lang_tooltip')}` = *"Legacy language value. Read-only: translations here
-     still display, but new jobs can't target it. Pending D-TRANSL-LANG-BACKFILL."*
+     still display, but new jobs can't target it. A one-time cleanup will merge it into the standard code."*
+     🔴 **Do NOT name a defer-row id in user-facing copy.** *(The cleanup is T-C10's migration, PO-gated —
+     `D-TRANSL-LANG-REKEY-EXECUTE`. The user does not care what we call our tickets.)*
    - **Cell (`:406-460`):** for a legacy column, render the status chip as a **NON-button `<span>`** (the
      `:412` `inner`, **no `onClick`**) and 🔴 **DROP the "N changed" badge button (`:447`) — that badge IS the
      entry to the third dead path (X4).** Give the cell the same `title`.
@@ -2524,6 +2669,178 @@ defer-and-continue, not one of the four CRITICAL stop classes.)*
 
 ---
 
+#### **T-C10 — 🔴 THE `Vietnamese` → `vi` REKEY: WRITE IT, DRY-RUN IT, AND **STOP**** (PO decision **D-1**)
+
+**dependsOn:** **T-C2** *(the write-side validation MUST already be live — you cannot rekey a set that is
+still growing)*, T-C1
+
+> # 🛑 THIS IS THE ONE SLICE WHERE THE AGENT STOPS AND ASKS.
+>
+> Everywhere else in this run: **blocked ≠ stopped** — file a defer row and keep going. **Not here.**
+> §0 rule 3's **first** CRITICAL bullet is *"a destructive / irreversible action (data loss, **a migration
+> that drops or rewrites user rows**)"*. **This is that.** It is a **four-table rekey** whose target column
+> is inside a **`UNIQUE`** and a **`PRIMARY KEY`**.
+>
+> ## THE DELIVERABLE OF THIS SLICE IS A DRY-RUN REPORT, NOT A CHANGED DATABASE.
+>
+> **You will:** write the migration · write the rollback · write the assertions · **run it in DRY-RUN mode
+> against the real dev DB inside a transaction that is ROLLED BACK** · **print the report** · **commit the
+> code** · **STOP and hand the report to the PO.**
+>
+> **You will NOT:** execute it. Not against dev. Not "just to see". Not because the counts look right. Not
+> because the PO approved *this plan* — **approving the plan is not approving the execution; the PO's
+> decision D-1 says so in terms.** The execution is a **separate, human-run, backed-up step**
+> (`D-TRANSL-LANG-REKEY-EXECUTE`, §10).
+>
+> ⚠ **THE SNEAKY WAY TO VIOLATE THIS: `services/translation-service/app/migrate.py` RUNS ITS DDL ON EVERY
+> SERVICE BOOT** (§5.1 — that is *why* the renumber must interleave). 🔴 **SO THE REKEY MUST NOT GO INTO
+> `migrate.py`.** Putting it there = **it executes the next time anyone starts the service.** It goes in a
+> **standalone, explicitly-invoked script** (below). **Adding it to `migrate.py` is the failure mode this
+> whole slice exists to prevent.**
+
+**What is broken (measured live 2026-07-12 — re-measure at build time; the numbers go in the report):**
+`chapter_translations.target_language` holds **5 `Vietnamese`** rows beside **89 `vi`** (+ 5 `ja`, 3 `en`,
+1 `ko`). **One chapter has BOTH a `Vietnamese` and a `vi` ACTIVE version** ⇒ two rows would collapse onto one
+**primary key**. **1 legacy memo.** Segment rows: **count them — spec 29's D12 missed this table entirely.**
+
+**Files**
+
+1. **CREATE** `services/translation-service/scripts/rekey_legacy_target_language.py` — **standalone.**
+   🔴 **NOT in `app/migrate.py`** (see the box). **NOT imported by anything.** It is run by a human:
+   ```bash
+   # DRY-RUN (the default — and it must be the default; an accidental bare invocation must be SAFE):
+   python scripts/rekey_legacy_target_language.py                     # → prints the report, ROLLS BACK
+   # EXECUTE (PO only, after reading the report, with a backup taken):
+   python scripts/rekey_legacy_target_language.py --execute --i-have-a-backup
+   ```
+   - 🔴 **`--execute` is NOT enough on its own.** Require **BOTH** flags. A single flag is one typo away from
+     a rewrite. *(And print a 5-second `Ctrl-C` window before committing, naming the DB and the row counts.)*
+   - **DEFAULT = DRY-RUN.** The whole body runs inside `BEGIN … ROLLBACK` unless both flags are present.
+     **The dry-run must exercise the REAL statements against the REAL data** — a dry-run that only *simulates*
+     proves nothing (`test-injecting-a-fake-at-the-chokepoint-cannot-prove-the-chokepoint-is-wired`). **Run
+     the actual `UPDATE`s, take the actual counts, then `ROLLBACK`.** That is what makes the report evidence.
+   - **The mapping is derived, never hardcoded:** legacy value → canonical code via **`app/languages.py`**
+     (T-C1's Python registry — the SSOT mirror). A legacy value with **no** canonical mapping is **REPORTED
+     AND LEFT ALONE**, never guessed. *(`Vietnamese` → `vi` is a name→code match. **`VI`, `zh_CN` etc. do not
+     exist in the live data** — §3.7 ② verified that — but the script must still **refuse to guess**.)*
+
+2. **THE MIGRATION BODY — the rules are already SEALED in §5.1. Implement them exactly; do not re-derive:**
+
+   | # | Table | Rule (from §5.1 — settled from existing code) |
+   |---|---|---|
+   | 1 | `chapter_translations` | **3-pass renumber, no index drop:** (a) `SET version_num = 1000000 + rn` over the merged group *(old langs still in place ⇒ both old partitions stay unique, and `1000000+` cannot hit `1..N`)*; (b) `SET target_language = canonical`; (c) `SET version_num = version_num - 1000000`. 🔴 **`rn` is `ROW_NUMBER() OVER (PARTITION BY chapter_id, <canonical> ORDER BY created_at)` — INTERLEAVED BY `created_at`, not appended.** *(`migrate.py:156-172` re-runs exactly that `ROW_NUMBER()` **on every service boot** ⇒ an "append legacy after canonical" numbering is **silently re-interleaved at the next restart**. Append is not a stable state in this schema.)* |
+   | 2 | `active_chapter_translation_versions` (**PK `(chapter_id, target_language)`**) | **Reuse `_PROMOTE_ACTIVE_SQL`'s precedence VERBATIM** (`workers/chapter_worker.py:36-58`) — ***never clobber a HUMAN-authored active version***: winner = (a) the `authored_by='human'` candidate if exactly one is human; else (b) greater `set_at`; else (c) greater `created_at`; else (d) greater `id` (uuidv7 = monotonic). 🔴 **Delete the LOSER'S ACTIVE ROW ONLY — the losing translation row itself SURVIVES** under the canonical code and is **one click from restoration** (`versions.py:246-256`). **That is what makes this merge non-destructive and reversible.** |
+   | 3 | `translation_chapter_memos` (**PK `(book_id, chapter_index, target_language)`**) | derived cache, non-fatal on miss (`chapter_worker.py:1074-1094`) ⇒ **keep greater `created_at`, delete the loser.** |
+   | 4 | 🔴 `segment_translations` (**`UNIQUE (chapter_id, target_language, segment_index)`** — `migrate.py:550-563`) | **THE TABLE SPEC 29's D12 MISSED. Without it the migration HARD-FAILS on that index.** Keep greater `translated_at`, delete the loser — safe because **a missing segment row already reads as DIRTY by design** (the `source_content_hash` staleness contract), so the delete just re-marks it for re-translate. |
+   | 5 | **Plain rewrites — REQUIRED, not optional** | `translation_jobs` · `glossary_translation_jobs` · 🔴 **`book_translation_settings`** · 🔴 **`user_translation_preferences`**. **After T-C2 lands, a book whose stored default is `Vietnamese` 400s on EVERY translate** — normalizing these is what un-bricks it. |
+
+3. **THE ROLLBACK PATH — 🔴 and be honest about what it can and cannot do.**
+   - **BEFORE any write, the script DUMPS the exact pre-image** of every row it will touch, from all 7 tables,
+     to **`services/translation-service/scripts/rekey_backup_<UTC-timestamp>.sql`** — a file of literal
+     `INSERT`s (and the `DELETE`s needed to clear the post-state). **Print its path in the report.**
+     **If the dump cannot be written, ABORT before touching anything.**
+   - **`--rollback <file>`** replays it.
+   - 🔴 **State the limit plainly in the report, do not bury it:** the rollback restores **these tables' rows**.
+     It does **not** un-ring downstream bells (a worker that read a memo mid-run, a cache). **⇒ the real
+     safety net is `pg_dump` before `--execute`, which is why `--i-have-a-backup` is a required flag and not
+     a nag.** *(Do not let the existence of a rollback script talk anyone out of the backup.)*
+
+4. **THE ASSERTIONS — before/after row counts, and they are the point of the exercise.**
+   ```
+   For EACH of the 7 tables, in ONE transaction, print:
+     BEFORE:  total | legacy(non-canonical) | canonical | COLLIDING(would violate the key)
+     AFTER :  total | legacy               | canonical | conflicts_remaining
+   ```
+   **The invariants the script ASSERTS (and ABORTS on, in dry-run AND execute):**
+   - 🔴 **`AFTER.legacy == 0`** for every table. *(If not: an unmapped value exists — report it, change nothing.)*
+   - 🔴 **`AFTER.total == BEFORE.total − BEFORE.expected_deletions`, and `expected_deletions` is computed
+     BEFOREHAND from the collision query.** **A row count that drops by even one more than predicted is a
+     BUG — ABORT.** *(This is the assertion the PO asked for by name. It is the difference between "the
+     migration ran" and "the migration did what we said".)*
+   - 🔴 **`AFTER.conflicts_remaining == 0`** — re-run the collision query post-merge; it must return zero.
+   - 🔴 **NO `chapter_translations` ROW IS DELETED. EVER.** Only *active-pointer*, *memo* and *segment* rows are
+     deleted. **Assert `chapter_translations.AFTER.total == BEFORE.total`.** *(The version rows are the user's
+     actual translated prose. Losing one is the unrecoverable case.)*
+   - 🔴 **`version_num` is `1..N` with no gap and no duplicate** per `(chapter_id, target_language)` after the
+     3-pass renumber — because **`migrate.py` will re-derive it on the next boot**, and a mismatch there means
+     the numbering **silently changes under the user's feet.**
+
+5. **THE DRY-RUN REPORT — this exact shape. It IS the deliverable.** Print it to stdout **and** write it to
+   `docs/analysis/2026-07-13-translation-lang-rekey-dryrun.md` *(memory `store-reports-in-files` — a report
+   that lives only in a terminal is lost by the time the PO reads it)*:
+   ```
+   ══ TRANSLATION LANGUAGE REKEY — DRY RUN (NOTHING WAS WRITTEN; TRANSACTION ROLLED BACK) ══
+   db: <host/db>   at: <UTC>   registry: app/languages.py (<N> canonical codes)
+
+   MAPPING (derived from the registry — no hardcoded pairs):
+     "Vietnamese" → "vi"        (5 rows across 4 tables)
+     <unmapped>   → ✋ LEFT ALONE, listed below
+
+   ┌ chapter_translations ─────────────────────────────────────────────────────┐
+   │ BEFORE  total 103 | legacy 5 | canonical 98 | COLLIDING 1                  │
+   │ AFTER   total 103 | legacy 0 | canonical 103 | conflicts 0                 │
+   │ renumbered: ch <uuid> vi → version_num 1,2,3 (was 1,1,2 — INTERLEAVED by   │
+   │             created_at, because migrate.py re-derives it on every boot)    │
+   │ 🔴 DELETIONS: 0  (INVARIANT: a translation row is NEVER deleted)           │
+   └───────────────────────────────────────────────────────────────────────────┘
+   ┌ active_chapter_translation_versions ──────────────────────────────────────┐
+   │ BEFORE  total 47 | legacy 1 | COLLIDING 1                                  │
+   │ AFTER   total 46 | legacy 0 | conflicts 0                                  │
+   │ 🔴 DELETIONS: 1 active POINTER (the losing row's translation SURVIVES and  │
+   │    is 1 click from restore — versions.py:246-256)                          │
+   │    ch <uuid>: kept version <id> (authored_by=human)  ← _PROMOTE_ACTIVE_SQL │
+   │               dropped pointer to <id> (authored_by=machine, set_at older)  │
+   └───────────────────────────────────────────────────────────────────────────┘
+   … (translation_chapter_memos · segment_translations · translation_jobs ·
+      glossary_translation_jobs · book_translation_settings ·
+      user_translation_preferences)
+
+   ── ASSERTIONS ──────────────────────────────────────────────────────────────
+   ✅ legacy_after == 0 on all 7 tables
+   ✅ total_after == total_before − expected_deletions   (predicted 2, observed 2)
+   ✅ conflicts_remaining == 0
+   ✅ chapter_translations deletions == 0
+   ✅ version_num is 1..N, contiguous, unique, per (chapter_id, target_language)
+
+   ── ROLLBACK ────────────────────────────────────────────────────────────────
+   pre-image dump would be written to: scripts/rekey_backup_<ts>.sql (7 tables, N rows)
+   replay with: --rollback scripts/rekey_backup_<ts>.sql
+   ⚠ it restores THESE ROWS only. TAKE A pg_dump ANYWAY.
+
+   ══ 🛑 STOPPED. NOTHING WAS WRITTEN. ═════════════════════════════════════════
+   To execute (PO only, after reading the above, with a backup taken):
+     python scripts/rekey_legacy_target_language.py --execute --i-have-a-backup
+   ```
+
+**Tests** — `services/translation-service/tests/test_rekey_legacy_target_language.py` (**NEW**).
+🔴 **It hits a real DB ⇒ `pytestmark = pytest.mark.xdist_group("pg")`** (CLAUDE.md test-parallelization rule —
+without it, parallel workers interleave and the counts lie). ⚠ **It must SEED ITS OWN legacy fixture rows and
+clean up** — the shared dev DB carries pre-existing rows (`shared-dev-db-not-clean-fixture-e2e`), and it must
+**never** assert against the live corruption.
+- 🔴 `dry-run is the DEFAULT and WRITES NOTHING` — seed a legacy row, run with no flags, assert the row is
+  **still legacy** afterwards. **This is the test that keeps the whole slice safe.**
+- 🔴 `--execute WITHOUT --i-have-a-backup refuses` (and vice versa).
+- `the collision case merges by the SEALED rule` — seed a chapter with a `Vietnamese` **human** active version
+  and a `vi` **machine** active version with a newer `set_at`; assert **the HUMAN one wins** *(the naive
+  "newest wins" is the bug this rule exists to prevent)*.
+- 🔴 `no chapter_translations row is ever deleted` — assert `total` is unchanged; only pointers/memos/segments
+  shrink.
+- `version_num is contiguous 1..N and INTERLEAVED by created_at` — and 🔴 **a second assertion that re-running
+  `migrate.py`'s own `ROW_NUMBER()` derivation over the post-state yields THE SAME numbers** (that is the
+  every-boot re-derivation; if they differ, the numbering silently changes at the next restart).
+- `an UNMAPPABLE legacy value is REPORTED and LEFT ALONE` — it must never be guessed.
+- `the rollback file replays to the exact pre-image` — round-trip it.
+- `segment_translations is in the table list` — a **literal guard** against re-dropping the table spec 29
+  missed. *(A `set(TABLES) == {…7…}` assertion. It is dumb and it is the one that catches the regression.)*
+
+**DoD evidence:** `"T-C10: pytest tests/test_rekey_legacy_target_language.py <N> passed (xdist_group=pg) — dry-run is the DEFAULT and provably writes nothing; --execute requires BOTH flags; the human-authored active version WINS over a newer machine one (_PROMOTE_ACTIVE_SQL precedence); ZERO chapter_translations rows are ever deleted; version_num is 1..N interleaved by created_at AND matches migrate.py's own every-boot ROW_NUMBER() re-derivation; all 7 tables incl. segment_translations (the one spec 29's D12 missed). 🔴 DRY-RUN EXECUTED against the dev DB inside a ROLLED-BACK transaction — the full report is PASTED BELOW and written to docs/analysis/2026-07-13-translation-lang-rekey-dryrun.md. 🛑 THE MIGRATION WAS NOT EXECUTED. STOPPING FOR PO REVIEW per decision D-1. <paste the report>"`
+
+> 🔴 **AND THEN STOP.** Do not proceed to the wave close-out with T-C10's execution pending as though it were
+> done. **The wave CLOSES with the rekey un-executed** — that is the expected, correct end state. The PO
+> executes it separately (`D-TRANSL-LANG-REKEY-EXECUTE`, §10).
+
+---
+
 ## 7 · Registration checklist (GG-8)
 
 > **NOT APPLICABLE — Wave T registers ZERO new panels.** See §1.4.
@@ -2570,7 +2887,10 @@ untranslated flags).
 
 A literal checklist. **Every box must be tickable with pasted evidence, not a claim.**
 
-- [ ] **1 · All 23 slices committed**, each as its own commit, each with its tests green at commit time.
+- [ ] **1 · All 24 slices committed**, each as its own commit, each with its tests green at commit time.
+      *(24, not 23: **+ T-C10** (the PO-gated rekey, D-1). **T-A4 survives but re-scoped to D6 only** — T8 is
+      **`W0-S15`'s**, D-2. 🔴 **If `W0-S15` had not landed, T-A4/T-A5/T-A6 + T-C5's A4 leg are PARKED with a
+      defer row — say so here explicitly rather than quietly shipping 20.**)*
 - [ ] **2 · The full frontend suite is green.**
       `cd frontend && npx vitest run` → **`N_fe_before + ~80` passed, 0 failed.**
       *(Assert the DELTA against the §2 baseline, never a literal — plan 30 §8.0: a literal "sends a builder
@@ -2636,11 +2956,15 @@ A literal checklist. **Every box must be tickable with pasted evidence, not a cl
          checkbox. *(T2 — today it shows 4.)*
       3. The **legacy `Vietnamese` column still renders.** *(D13 read-side.)*
       4. Tick **2** chapters → **Translate Selected** → the modal footer reads **"Translate 2 selected"** and
-         is **ENABLED**. *(T8 — today the selection is discarded.)*
-      5. Click an **untranslated cell** → the modal opens with **that column's language** selected. *(D6.)*
+         is **ENABLED**. *(🔴 **A REGRESSION CHECK on Wave 0's `W0-S15`, not a Wave-T fix** — PO D-2 moved T8
+         there. **Smoke it anyway:** T-A4 edits the same lines, and this is the cheapest possible proof that it
+         did not silently revert them — see R9.)*
+      5. Click an **untranslated cell** → the modal opens with **that column's language** selected. *(D6 —
+         **this one IS Wave T's**, slice T-A4.)*
       6. Submit a real job on **`Ma Nữ Nghịch Thiên`** with a **local lm_studio** chat model (**$0**) →
          **201 + a `job_id` + the matrix shows it pending/running.** *(The loop closes. **A post-creation
-         failure because lm_studio is down is ACCEPTABLE evidence — T8 is about CTA wiring, not the worker.**)*
+         failure because lm_studio is down is ACCEPTABLE evidence — this is about CTA wiring, not the
+         worker.**)*
       7. `Ma Nữ Nghịch Thiên` → the empty-state **Start Translation** CTA still works. *(D2.)*
       8. 🔴 **`Dracula`: the `Vietnamese` column shows a "Legacy" pill; its cells have NO button and NO
          "N changed" badge.** *(T-C8 / X4 — the paid-action dead end.)* Click a **`vi`** cell → still works.
@@ -2676,8 +3000,17 @@ A literal checklist. **Every box must be tickable with pasted evidence, not a cl
       `/review-impl wave-T-translation-repair`. **This is a literal step, not a formality** (PO policy, §0
       rule 2). Fold its findings into the POST-REVIEW evidence. **A finding that is not fixed needs a defer row
       that clears one of CLAUDE.md's 5 gates — "we ran out of time" is not one of them (there is no deadline).**
+- [ ] 🛑 **6b · THE REKEY DRY-RUN IS DONE AND THE MIGRATION IS *NOT* EXECUTED** (**T-C10**, PO decision D-1).
+      The **dry-run report is pasted into the evidence AND written to
+      `docs/analysis/2026-07-13-translation-lang-rekey-dryrun.md`**; the script is committed;
+      `python scripts/rekey_legacy_target_language.py` (no flags) **provably writes nothing**; and the wave
+      **closes with `Vietnamese` still in the database.** 🔴 **That is the CORRECT end state — the PO executes
+      it separately.** *(If the DB is clean when you finish, someone ran it. That is a decision-violation, not
+      a success.)*
 - [ ] **7 · `docs/sessions/SESSION_HANDOFF.md` updated** — the ▶ NEXT SESSION block, and the Deferred list
-      carries **`D-TRANSL-LANG-BACKFILL`** (§10).
+      carries 🔴 **`D-TRANSL-LANG-REKEY-EXECUTE`** (§10) **with a pointer to the dry-run report**, plus a
+      **Decisions** row recording that **T8 was discharged in Wave 0 / `W0-S15`** (PO D-2), so the next agent
+      does not "notice T8 is missing from Wave T" and re-open it.
 - [ ] **8 · The wave is committed.** Stage **enumerated files only** — 🔴 **never `git add -A`** (3 live tracks
       share this checkout; memory `shared-file-collision-safe-staging-multi-agent-checkout`). And remember
       `git commit -- <path>` commits the **WORKING TREE, not the index** (memory
@@ -2692,7 +3025,9 @@ A literal checklist. **Every box must be tickable with pasted evidence, not a cl
 | # | Risk | The tell | Mitigation |
 |---|---|---|---|
 | **R1** | **T-A3's row-shape change silently breaks a derivation.** D3 lists 7 call sites keyed off `coverage.coverage`. Miss one and the *selection* diverges from what is *on screen* — the user translates chapters they did not pick. | `TranslationTab.badge.test.tsx` reds, **or worse: it stays green** and only the live smoke shows a wrong count in the legend. | The slice enumerates **all 7** with line numbers. **Grep `coverage.coverage` in `TranslationTab.tsx` after the slice → must be ZERO hits outside `coverageByChapter` and `orphanCount`.** Make that grep a literal DoD line. |
-| **R2** | **T-A4 re-introduces T8 through the back door** by "simplifying" `handleLangChange`'s guard at `TranslateModal.tsx:205`. | The preselect test goes green→red, **or** a reviewer "cleans up" the guard and no test catches it. | The guard is called out **in bold** in the slice. `TranslationTab.preselect.test.tsx`'s *fully-translated book* case is the canary — **it fails the moment the guard goes.** |
+| **R2** | **T-A4 re-introduces T8 through the back door** by "simplifying" `handleLangChange`'s guard at `TranslateModal.tsx:205`. 🔴 **Sharper after PO D-2:** T8's fix now lives in **Wave 0 (`W0-S15`)**, so **Wave T is no longer even *looking* for T8** — and T-A4 edits the exact lines that carry it. | The guard is "cleaned up" and no test in *this* wave's mental model covers it. **The fully-translated book silently opens with every action disabled again — the original bug, un-shipped by the wave that was supposed to be safe.** | The guard is called out **in bold** in the slice. **T-A4's DoD REQUIRES re-running W0-S15's three guards** (they live in the same test file) — and `TranslationTab.preselect.test.tsx`'s *fully-translated book* case is the canary: **it fails the moment the guard goes.** If that file does not exist when you arrive, **W0-S15 has not landed — see R9.** |
+| 🔴 **R9** | **T-A4 SILENTLY REVERTS `W0-S15`.** They edit the **same JSX block** in `TranslationTab.tsx` (~:300-305) and the **same component**. A builder who writes the call site out **wholesale from this plan** overwrites Wave 0's prop with a stale block — **and then re-adds it themselves**, so **every test still passes.** *(Memory: `green-suite-proves-the-working-tree-not-the-commit`.)* | **Nothing. That is the danger.** The diff looks additive; the suite is green; the data-loss fix Wave 0 shipped is quietly gone from `main` — or double-implemented in two waves' diffs and conflicting at merge. | **§1.2.0 + the slice's opening box: `grep` FIRST, then EDIT the existing block — never retype it.** T-A4's DoD **requires pasting the pre-slice `grep` output** proving the prop was already there. **And never `git add -A`** (three tracks, one checkout). |
+| 🔴 **R10** | **T-C10's migration ends up in `app/migrate.py`** — the "obvious" home for a migration in this service. | 🔴 **IT EXECUTES ON THE NEXT SERVICE BOOT.** `migrate.py`'s DDL block runs **every time the service starts** (§5.1 — that is *why* the renumber must interleave). A PO-gated destructive rekey would fire **unattended, on a container restart, with no backup** — the exact outcome D-1 exists to prevent, reached by the most natural-looking wrong turn in the wave. | **T-C10 says it in a red box: the script is STANDALONE (`scripts/rekey_legacy_target_language.py`), NOT imported by anything, DRY-RUN by default, and needs TWO flags to write.** Its first test asserts **a bare invocation writes nothing.** |
 | **R3** | **The MCP `Literal` drifts from the registry** — a 19th language is added to `languages.ts` and the enum still advertises 18. **This is the bug we are fixing, one layer up.** | An agent cannot translate into a language the GUI offers. Silent. | `test_literal_does_not_drift_from_the_registry` (`get_args`) **+** the live-`inputSchema` assertion **+** the `contracts/languages.contract.json` parity test on both sides **+** T-X0's OpenAPI-enum lock. **FOUR** guards, because `css-var-duplicated-across-two-consumers-drifts` says two consumers of one truth *will* diverge. |
 | **R4** | **T-C2's chokepoint guard breaks a legacy book's translation entirely** — a `Vietnamese` settings row 400s every job, even into a valid language. | A user on `Dracula` cannot translate **at all**. | The guard is on the **resolved effective value only when the payload omits the language**. The GUI **always** sends an explicit language (`TranslateModal.tsx:226`) ⇒ unreachable from the browser. **The live smoke on `Dracula` (step 6) is the proof.** If it 400s, the guard is in the wrong place — move it out of `resolve_effective_settings`. |
 | **R5** | **No HTML draft exists** (§3.5), so "the mock is the acceptance criterion" has no mock. A builder invents a layout. | Scope creep; a redesigned matrix nobody asked for. | **Every slice is a behavior fix inside the EXISTING layout.** Acceptance = spec 29's D1–D13 + its verify gate. **Do not restyle anything.** If a slice tempts you to redesign, you have misread it. |
@@ -2706,7 +3041,7 @@ A literal checklist. **Every box must be tickable with pasted evidence, not a cl
 
 | ID | Origin | What | Gate (CLAUDE.md 1–5) | Target / trigger |
 |---|---|---|---|---|
-| **`D-TRANSL-LANG-BACKFILL`** | Wave T · T-C2 (spec 29 **D12**) | Merge legacy free-text `target_language` (`Vietnamese` → `vi`) into canonical codes across **FOUR** tables (§5): `chapter_translations` · `active_chapter_translation_versions` · `translation_chapter_memos` · 🔴 **`segment_translations`** *(the one D12 missed — the migration HARD-FAILS on its unique index without it)*. Plus the plain rewrites: `translation_jobs`, `glossary_translation_jobs`, **`book_translation_settings`**, **`user_translation_preferences`**. **Measured live 2026-07-12:** 5 legacy rows in `chapter_translations` (1 colliding), **1 in `active_…` that COLLIDES** (one chapter has BOTH a `Vietnamese` and a `vi` active version), 1 memo. | **#2 — large/structural** (a 4-table data migration over user rows). 🔴 **ALSO hits the §0 CRITICAL stop-class — *"a migration that rewrites user rows"* ⇒ it must NEVER run inside an autonomous wave.** | **After T-C2 ships**, so the bad set is provably closed — verify with `SELECT DISTINCT target_language FROM chapter_translations WHERE target_language !~ '^[a-z]{2}(-[A-Z]{2})?$'` returning a set that **has not grown** since 2026-07-12. Then its **own human-supervised task, with a backup. NOT autonomous.** ✅ **Its RULES ARE NOW SEALED (§5.1) — it needs no further PO checkpoint to be written.** ⚠ `ADD COLUMN IF NOT EXISTS` **never revisits a bad default**; a partial UNIQUE index's `ON CONFLICT` **must repeat the predicate**. |
+| 🔴 **`D-TRANSL-LANG-REKEY-EXECUTE`** *(replaces `D-TRANSL-LANG-BACKFILL` — **PO decision D-1**)* | Wave T · **T-C10** | **EXECUTE** the `Vietnamese` → `vi` rekey. 🔴 **THE MIGRATION ITSELF IS NOT DEFERRED — IT IS BUILT AND DRY-RUN IN-WAVE** (slice **T-C10**: `services/translation-service/scripts/rekey_legacy_target_language.py` + rollback + before/after assertions + the dry-run report at `docs/analysis/2026-07-13-translation-lang-rekey-dryrun.md`). **What is deferred is ONE thing: pressing the button.** | 🔴 **NOT a normal defer row — it is the run's ONE SANCTIONED STOP.** §0 rule 3 bullet 1: *"a destructive/irreversible action … a migration that rewrites user rows."* The PO ruled: *"the agent may NOT execute it unattended."* | **The PO**, after reading T-C10's dry-run report, **with a `pg_dump` taken**, running `python scripts/rekey_legacy_target_language.py --execute --i-have-a-backup`. ⚠ **Approving the PLAN ≠ approving the EXECUTION.** ✅ Prerequisite already met by **T-C2** (write-side validation) ⇒ the bad set is **closed** and cannot grow while this waits — verify with `SELECT DISTINCT target_language FROM chapter_translations WHERE target_language !~ '^[a-z]{2}(-[A-Z]{2})?$'` returning a set that **has not grown** since 2026-07-12. |
 | **`D-29-I18N-BACKFILL`** *(conditional — write it ONLY if it fires)* | Wave T · T-C9 | The 17-locale generation could not run because **LM Studio was not up** on `:1234`. | **#4 — blocked on a genuinely external dev-time backend.** | Next time LM Studio is up. 🔴 **NOT a blocker: `fallbackLng: 'en'` means the English strings are already SHIPPING and correct.** Per §0 rule 3: **write the row and KEEP GOING. Do not stop, do not ask.** |
 
 🔴 **DELETED: `D-TRANSL-S11-JOBCONTROL-EFFECTS`.** The first draft deferred S11. `DEF-29-S11-AGENT-REFRESH`
@@ -2748,7 +3083,8 @@ T-X0  🔴 CONTRACT-FIRST + spec token fixes      (access_level · languages_onl
 T-A1  typed errors (classifyApiError) + shell   (T4, T10, D9)          ← X0
 T-A2  header Translate… CTA (TRI-STATE gate)    (T1, D1, D2)           ← A1
 T-A3  one row per CHAPTER + shared fetch + D4/D5(T2, D3, D4, D5)       ← A1
-T-A4  preselectedChapterIds + preselectedLang   (T8, D6)               ← A2, A3
+      ── 🔴 T8 IS **NOT** BUILT HERE. Wave 0 / W0-S15 owns it (PO D-2). ──
+T-A4  preselectedLang ONLY — D6                 (D6; T8 = W0-S15)      ← A2, A3, 🔴 W0-S15
 T-A5  modal stops wedging + DELETE the auto-PUT (T5, D7, D8, D16, X2)  ← A4
 T-A6  the EDIT-grant 403 becomes readable       (D10 ½)                ← A5
 T-A7  🔴 editor STAYS MOUNTED in Translate      (X1 data loss, X3)     ← A3
@@ -2769,10 +3105,20 @@ T-C6  ConfirmNameDialog → FormDialog + S12      (S9, S12)              ← no 
 T-C7  coverage ?languages_only + MCP staleness  (X5)                   ← X0
 T-C8  🔴 the legacy column's 3 dead ends        (X4 — a PAID 400)      ← C1, C2, C4
 T-C9  the i18n batch + the parity test          (D9 localization)      ← every en-key slice
+T-C10 🛑 the Vietnamese→vi REKEY: WRITE + DRY-RUN + **STOP**  (PO D-1) ← C2, C1
       ── LIVE-SMOKE GATE (both states) + /review-impl + WAVE CLOSE ──
+      ── 🛑 THE WAVE CLOSES WITH THE REKEY **UN-EXECUTED**. THAT IS CORRECT. ──
 ```
 
 **T-B4, T-B6, T-C6 have no dependencies** — use them to fill any stall. **Blocked ≠ stopped.**
+
+> 🔴 **TWO CROSS-WAVE FACTS THAT CHANGE THIS ORDER (PO decisions, sealed 2026-07-13):**
+> 1. **`T-A4` now dependsOn `W0-S15` (Wave 0).** If Wave 0 has not landed, **park T-A4 → T-A5 → T-A6 and
+>    T-C5's A4 leg**, and build everything else. **Do NOT build T8 here** (§1.2.0).
+> 2. **`T-C10` is the LAST slice and it ENDS IN A STOP.** It is placed after the i18n batch on purpose: it is
+>    the only slice whose output is a *question for a human*, and the wave must be otherwise **finished and
+>    green** before that question is asked. **Do not fold it into an earlier commit, and do not "finish the
+>    job" by running it.**
 
 > 🔴 **T-C8 MUST NOT BE DROPPED IF THE WAVE GETS TIGHT.** T-C2 makes every legacy-column re-translate a
 > **guaranteed 400**. Shipping T-C2 **without** T-C8 leaves a **live "N changed" badge the user pays to

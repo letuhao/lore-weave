@@ -112,7 +112,7 @@ which are 🔴 landmines on the critical path of the whole batch (§8).
 |---|---:|---:|---:|
 | **composition-service MCP tools** | **75** | 58 | **17 AGENT-ONLY** (9 with no surface at all · 3 agent-native reads · 5+ REST-exists-but-no-FE) |
 | **composition-service REST routes** | **155** (147 public · 9 internal · 3 infra) | ~104 | **~22 public NO-FE-CONSUMER** + **3 FE calls with NO backend route (404 at runtime)** |
-| **composition-service tables** | **31** | 10 GUI-covered · 4 partial | **10 LEGACY-ONLY · 2 WRITE-ONLY** · 5 legitimately BE-only |
+| **composition-service tables** | **31** | 10 GUI-covered · 4 partial | **10 LEGACY-ONLY · 2 WRITE-ONLY** · 5 legitimately BE-only. ⚠ **`composition_daily_progress` is NOT one of the write-only two** — that claim is **REFUTED** (§10; §3.2): it has a mounted, reachable reader on the legacy page. The genuine write-only case in this batch is **`motif_application`** (X-7 / spec 21-G1: `pack()` never reads it). |
 | **MCP tools, other services** | **173** *(⚠ see 3.4 — the real total is ≥189)* | 150 | **23 with no GUI** |
 | **Studio panels** | **68** catalog rows | 57 palette-openable · 11 hidden singletons | agent enum **57 == 57** openable, **zero drift** |
 | **Frontend tools (chat-service)** | **12** | 12 (contract-tested) | 2 defective (§8 X-5) |
@@ -124,24 +124,81 @@ which are 🔴 landmines on the critical path of the whole batch (§8).
 | composition / motif | 4 | The entire narrative-craft layer (套路/爽点/打脸) is stranded on the legacy page. Biggest body of built-but-unreachable UI in the product. |
 | composition / plan+arc | 5 | The SPEC tree that steers **all** generation is read-and-rearrange-only for humans, full-CRUD for the agent. |
 | composition / quality | 4 | The Studio *judges* you against canon rules and gives you no way to write one. The correction flywheel is dark for every Studio user. |
-| composition / editor-craft | 4 | Style, voice, references, progress — all legacy-only; progress is **write-only** (Studio writes a word-count snapshot on every save and never shows it). |
+| composition / editor-craft | 4 | Style, voice, references, progress — all legacy-only. ⚠ **CORRECTED 2026-07-13:** this said progress is *"**write-only**"*. **It is not.** The legacy page has a **full progress tab reading a real, shipped GET route** (`ProgressPanel.tsx`, mounted + reachable in the legacy dock — which also does the writes). The true gap is **narrower and precise: the *Studio* has no progress panel**, so a Studio user's word-count snapshots are written and never *shown to them*. It **becomes** genuinely write-only the moment 00C Q-6 retires the legacy page — which is exactly why §5's `G-PROGRESS` is marked **PARTIAL**, not CONFIRMED. §3 and §5 now agree. |
 | studio / platform | 1 | 4 cross-cutting defects that would corrupt every new panel we ship. |
 | knowledge / book / registry | 4 | A whole CRUD domain (world maps) reachable only by an agent; workflows the agent can propose and no human can approve. |
 
-### 3.3 The ~~three~~ **FOUR** FE calls that **404 in production today** (a live bug, not a gap)
+### 3.3 **THREE** FE calls that 404 in production today — **plus a FOURTH defect that is a 500, NOT a 404**
 
-> 🔴 **AMENDED 2026-07-13 (cross-spec sweep).** This section said **three**. There is a **fourth**, and it
-> is the one that costs the user money: **the motif-MINE poll.** `_execute_motif_mine`
-> (`actions.py:644`) enqueues with **`project_id=None`** → `_enqueue_motif_job` (`:552`) stamps a
-> **synthetic `uuid4()`** → `motifApi.mineConfirm` → `compositionApi.getJob()` → `GET /jobs/{id}` →
-> `_gate_work(job.project_id)` → `works.get(<synthetic>)` → `None` → **404, always.** §10's REFUTED row
-> *"`composition_motif_mine` has no FE reach"* is still right that the propose→confirm half ships **with
-> a passing test** — **the test mocks the poll.** The user pays for the LLM run and watches a spinner
-> forever. Same defect on `analyze_reference` (`:694`) ⇒ 拆文. *(`_execute_conformance_run` (`:723`)
-> passes a **real** `project_id` — conformance is unaffected.)*
-> **Fix = the owner-scoped job read (`GET /v1/composition/motif-jobs/{job_id}`, gate on `created_by`),
-> specced as `34`'s BE-7c and BUILT IN WAVE 3 (3a)** — because Wave 3 ports `MotifMinePanel`, its first
-> consumer. See `33_motif_studio.md` §1.2.
+> 🔴🔴 **MECHANISM CORRECTED 2026-07-13 — READ THIS BEFORE YOU BUILD ANYTHING.** This section previously
+> claimed a **fourth 404** (*"the motif-MINE poll 404s; the user pays for the LLM run and watches a
+> spinner forever"*). **Every load-bearing clause of that was wrong** — and it prescribed a cure that
+> would have **shipped GREEN over a still-broken path.** The Wave-0 adversarial QC and an independent
+> live repro inside the container agree on the real trace:
+>
+> 1. `_execute_motif_mine` (`actions.py:644`) enqueues with **`project_id=None`** — a corpus/book mine is
+>    genuinely not Work-bound. Same at `_execute_arc_import` (`:694`) ⇒ 拆文.
+> 2. `_enqueue_motif_job` (`:552`) stamps a **synthetic `uuid4()`** to satisfy `NOT NULL`.
+> 3. 🔴 **`GenerationJobsRepo.create()` (`generation_jobs.py:159-173`) is NOT a plain INSERT.**
+>    `generation_job.book_id` is **also `NOT NULL`** (`migrate.py:269`) and the statement **derives it**:
+>    `INSERT INTO generation_job … SELECT $1, $2, w.book_id, … FROM composition_work w WHERE w.project_id = $2`.
+>    The synthetic id matches **ZERO rows** ⇒ zero rows inserted ⇒ `:198-206` raises
+>    **`ReferenceViolationError("project … has no composition_work row")`**.
+> 4. `actions.py` has **no `except ReferenceViolationError`** (grep: **0 hits**) ⇒ it escapes to the global
+>    `@app.exception_handler(Exception)` (`main.py:200`) ⇒ **HTTP 500** — *after* `_claim_or_replay`
+>    (`:504`) **burnt the confirm token** (a retry gets **409 `already_consumed`**).
+>
+> **⇒ It is a 500 at `POST /actions/confirm`, BEFORE the enqueue. The `generation_job` row is NEVER
+> CREATED. The poll is NEVER REACHED** — "the poll 404s" describes a code path that never executes.
+>
+> **⇒ NO USER WAS EVER CHARGED.** No Redis XADD, no worker pickup, **no LLM call, no recorded spend.**
+> `_precheck_or_402` (`:517`) does reserve a billing **hold** — a pre-authorization, *not* a charge — and
+> the token is burnt; both are real defects. But *"the user pays for the LLM run and watches a spinner
+> forever"* is **WRONG, in the user's favour**, and is **RETRACTED**. Do not re-introduce it.
+>
+> ✅ `_execute_conformance_run` (`:723`) passes a **real** `project_id` ⇒ **conformance is unaffected.**
+> This is a **mine / arc-import-only** defect.
+>
+> *(§10's REFUTED row "`composition_motif_mine` has no FE reach" is still right that propose→confirm ships
+> with a passing test — the test mocks the transport. It just never reaches a real confirm.)*
+
+#### ⚠ Why the OBVIOUS fix is WRONG — name the bug class so it is not re-made
+
+The old text (and `34`'s BE-7c row) prescribed **"an owner-scoped job read
+(`GET /v1/composition/motif-jobs/{job_id}`, gate on `created_by`), size XS, built in Wave 3 (3a)"** as
+*the* cure, promising it *"unbreaks mine, arc-import and the deep-conformance job in one route."*
+
+🔴 **It does not. An owner-scoped read route CANNOT FIX THIS — it would be a route that reads a row that
+does not exist.**
+
+And it would **SHIP GREEN.** Its integration test would seed the `generation_job` row with a raw
+`INSERT`, the route would read it back correctly, every assertion would pass — and ⛏ Mine / 拆文 would
+**still 500 at confirm**, because nothing on the test's path ever went through the **producer**. That is
+this repo's own **`fixtures-can-seed-a-field-the-writer-never-sets`** bug class, about to be committed
+**on purpose**.
+
+**The real cure is the whole Work-less job LANE** — seven legs, not one:
+**(a)** DDL — `generation_job.project_id`/`.book_id` `DROP NOT NULL` + a **both-or-neither shape CHECK** +
+a partial owner index · **(b)** a new **`create_unbound()`** (a plain INSERT, no `FROM composition_work`;
+**do NOT touch `create()`** — the hot path for every draft) · **(c)** `GenerationJob.project_id`/`.book_id`
+→ `UUID | None` · **(d)** 🔴 **`_enqueue_motif_job` — DELETE the `uuid4()` synthetic pid**, branch to
+`create_unbound()` *(the only leg that actually stops the 500)* · **(e)** the owner-scoped read route ·
+**(f)** `composition_get_mine_job` — drop the un-knowable `project_id` arg · **(g)** tests **forced
+through the producer** (`POST /actions/confirm` → assert the row exists → read it back).
+
+⇒ 🔴 **THE CANONICAL FIX IS [`W0-BE1`](../../plans/2026-07-13-studio-wave-0-foundations.md), AND THE
+WAVE-0 PLAN ALREADY CARRIES IT IN FULL** (its Files table (a)–(g); build detail written once, verbatim,
+in [`wave-3-motif`](../../plans/2026-07-13-studio-wave-3-motif.md) slice `3a-1`). It was **pulled forward
+into Wave 0** — out of Wave 3a — because the defect fires **today**, on the live legacy page. **Build
+from the Wave-0 plan: do not re-derive it, do not fork a second DDL, and do not "fix" it with a read
+route.** ⚠ **It is NOT "XS"** — a DDL change + a new repo method + a model change + a writer change + a
+route + an MCP arg is an **S/M with a schema side effect.**
+See [`33_motif_studio.md`](33_motif_studio.md) §1.2 and [`34`](34_arc_templates_and_deconstruct.md) §0.1.
+
+---
+
+**The three genuine 404s** (below) are a **different, unrelated bug**: FE-invented URLs that were never
+written on the backend. They are fixed by `W0-S7` (delete the invented paths; use the generic spine).
 
 The gateway is a **pure path-preserving proxy** (`services/api-gateway-bff/src/gateway-setup.ts:354`,
 `pathFilter: (p) => p.startsWith('/v1/composition')`, **no rewrite**) — so an FE path with no BE route
@@ -151,10 +208,19 @@ The gateway is a **pure path-preserving proxy** (`services/api-gateway-bff/src/g
 |---|---|---|
 | `POST /v1/composition/actions/conformance_run/estimate` | `motif/api.ts:224` ← `useConformanceTrace.ts:32` | **MISSING** — `actions.py` has only `GET /actions/preview` + `POST /actions/confirm` |
 | `POST /v1/composition/actions/conformance_run/confirm` | `motif/api.ts:230` ← `useConformanceTrace.ts:36` | **MISSING** (same) |
-| `POST /v1/composition/works/{pid}/scenes/{nid}/regenerate-to-beat` | `motif/api.ts:301` ← `ConformanceTraceView.tsx:69`'s per-scene **Regenerate** button | **MISSING** — `regenerate-to-beat` appears **nowhere** in `services/**/*.py` |
+| `POST /v1/composition/works/{pid}/scenes/{nid}/regenerate-to-beat` | `motif/api.ts:301` ← `ConformanceTraceView.tsx:69`'s per-scene **Regenerate** button | **MISSING** — `regenerate-to-beat` appears **nowhere** in `services/**/*.py` (re-verified 2026-07-13: `grep -rn regenerate-to-beat services/ --include=*.py` → **0 hits**) |
 
 Every Regenerate click issues a request to a route that was never written. Folded into
-**G-CONFORMANCE-TRACE** (§5).
+**G-CONFORMANCE-TRACE** (§5) and fixed by **`W0-S7`**.
+
+🔴 **All three are fixed by DELETING FE code, not by writing BE routes.** The first two: delete the
+hand-rolled per-action paths and mirror the sibling that already does it right
+(`arcConformanceRunPropose` → `mcpExecute('composition_conformance_run')` → `POST /actions/confirm`).
+The third: **delete `motifApi.regenerateToBeat`** and re-point the button at the **already-existing**
+`POST /v1/composition/works/{pid}/generate` (`engine.py:328`) — see **BE-5 (§6): DO NOT BUILD —
+REFUTED**, and spec [`33`](33_motif_studio.md) §5.1. **Do not "fix" any of the three by inventing the
+route the FE asked for** — that would mint per-action routes for a Tier-W op, the §8.1 violation these
+404s already are.
 
 ### 3.4 ⚠ Known holes in the numbers (UNVERIFIED)
 
@@ -163,9 +229,30 @@ Stated honestly rather than rounded away:
 - **`provider-registry-service`'s 14 MCP tools were never counted** (`internal/api/mcp_server.go:59-141`
   — the `settings_*` cluster + `mcp_web_search_tool.go:70` `web_search`). Spot-check says the
   `settings_*` cluster *looks* GUI-covered by `features/settings/DefaultModelsCard.tsx` /
-  `EditModelModal.tsx`, but **that was luck, not audit**. Also: `web_search` is registered
-  **UNPREFIXED** while glossary-service registers `glossary_web_search` — the repo's own
-  `external-system-mcp-must-be-namespaced` law says an unprefixed federated tool **shadows**.
+  `EditModelModal.tsx`, but **that was luck, not audit**.
+  > 🔴 **RETRACTED 2026-07-13 — a sub-claim here was WRONG, and it claimed an authority that does not
+  > exist.** This bullet used to end: *"`web_search` is registered **UNPREFIXED** while glossary-service
+  > registers `glossary_web_search` — the repo's own `external-system-mcp-must-be-namespaced` **law** says
+  > an unprefixed federated tool **shadows**."* Both halves fail verification:
+  > 1. **There is no such law.** `grep -ni namespac docs/standards/*.md` returns **no LOCKED rule
+  >    governing federated MCP tool names** — the only hits are a *cache-key* namespace registry
+  >    (`README.md:110`) and an industry aside about the **MCP Registry's** namespace-auth
+  >    (`agent-extensibility.md:82`). `external-system-mcp-must-be-namespaced` is a **retro lesson**
+  >    (ContextHub memory), **not** a repo standard, and it is about *user-registered external* servers,
+  >    not first-party federation. Citing it as "the repo's own law" **overstates it**. What *does* exist
+  >    is a real mechanism: **ai-gateway's C-GW prefix gate** (`services/ai-gateway/src/config/config.ts`
+  >    `DEFAULT_PREFIX_MAP` / `EXTRA_PREFIX_MAP`), which silently **drops** a federated tool whose name
+  >    matches none of its provider's prefixes. Cite *that*, by path — not a "law".
+  > 2. **`web_search`'s unprefixed name is DELIBERATE, documented, and does not shadow anything.**
+  >    `mcp_web_search_tool.go:3-18` states it: `web_search` is the **universal** web-research tool
+  >    (Track D · WS-D0 / CD5); it lives on provider-registry because that is the **only** service
+  >    allowed to make the outward provider call (**Provider-gateway invariant**). It **supersedes**
+  >    `glossary_web_search`, which is **demoted in place** (`visibility: legacy`,
+  >    `superseded_by: web_search`) — *not* shadowed. And the prefix gate is **accommodated, not
+  >    violated**: `EXTRA_PREFIX_MAP` lists **`web_`** as provider-registry's second namespace
+  >    (`config.ts:118-120`), precisely so the gate does not drop it.
+  > ⇒ **There is no defect here. Nothing to fix, nothing to file.** The only real item in this bullet is
+  > the **uncounted-tools** sweep (X-9), which stands.
 - **`catalog-service`'s 2 MCP tools were never counted** (`catalog_list_public_books`,
   `catalog_get_book`). Plausibly covered by `books`/`leaderboard-*`, **unverified**.
 - ⇒ the "173 tools / 23 NO-GUI" scoreboard is a **floor, not a total**. Real total ≥ **189**.
@@ -216,7 +303,24 @@ implementing file is named. A promise is MISSING only where a repo-wide grep ret
 
 ### 4.1 Doc-hygiene defects found (fix cheaply, they are actively misleading)
 
-- 🔴 **Two spec 14s and two 15s on disk**: `14_kg_panels.md` + `14_utility_panels.md`; `15_chapter_browser.md` + `15_wiki_panels.md`. Cross-spec references by number are already ambiguous and one spec had to work around it **in prose**. → renumber to `14a/14b`, `15a/15b`.
+- ✅ **DONE (X-8 / `W0-S10`, 2026-07-13) — two spec 14s and two 15s were on disk.** Renumbered:
+  `14_kg_panels` → **`14a_kg_panels`** · `14_utility_panels` → **`14b_utility_panels`** ·
+  `15_wiki_panels` → **`15a_wiki_panels`** · `15_chapter_browser` → **`15b_chapter_browser`**.
+  **The a/b mapping is NOT arbitrary — do not re-litigate it, in either direction.** Rule: **`a` = the
+  spec that already owns that number's `00_OVERVIEW` row; `b` = the later add-on that collided.** Every
+  bare-number prose reference on disk already means exactly that (`#14` = KG at `00_OVERVIEW.md:104`,
+  `21_plan_hub.md:36`, `20_agent_mode.md:43`; **`#15` = WIKI** at `00_OVERVIEW.md:105` and
+  `20_agent_mode.md:65` — *"same params-retargeting pattern as **wiki-editor, #15**"*). This mapping costs
+  **zero prose rewrites**; the inverse would **silently invert 6 existing references**. All 21 markdown
+  cross-refs were rewritten, both missing rows (14b, 15b) were added to the `00_OVERVIEW` index, and the
+  prose workaround this bullet complained about (`15b_chapter_browser.md:4`'s *"same shape as
+  14_utility_panels.md"*) is now a real link.
+  ⚠ **Residual, tracked (`D-X8-CODE-COMMENT-REFS`):** **127 references in 102 SOURCE files** (code
+  comments, e2e specs, `book-service/internal/migrate/migrate.go:488`) still name the OLD filenames. The
+  X-8 DoD grep was scoped `--include=*.md docs/` and **could not see them** — the same grep-the-wrong-scope
+  miss that hid the 5th destructive-token drift (§8.3). They are comment-only (zero behavior) and several
+  live in files other Wave-0 slices are editing concurrently, so they are deferred, not dropped. Fix with a
+  mechanical sweep once Wave 0's code slices land.
 - `29_translation_repair.md`'s H1 still reads `# 24 — Translation surfaces…` (a missed heading in the 24→29 renumber) — it now collides visually with `24_plan_hub_v2.md`.
 - `00_OVERVIEW.md`'s component index + Debt stack are stale (above). `00C` Q-2 ("Agent Mode 0% frontend") is **flatly false** — the panel is in the catalog **and** the agent enum.
 - Spec 20's header still says "not yet built" despite being built **and** `/review-impl`'d.
@@ -234,7 +338,7 @@ holds but the framing was wrong (correction inline; full refutation in §10).
 
 | ID | Domain | The gap | Proposed surface | Backing tools / routes | Size | BE? | Verdict |
 |---|---|---|---|---|---|---|---|
-| **G-CANON-RULE-CRUD** | canon | The Studio **judges** you against canon rules (`quality-canon`, 3 read lenses) and gives you **no way to write one**. A fully-built CRUD component (`CanonRulesPanel.tsx` + `useCanonRules.ts`) exists — mounted only on the legacy page. | **`quality-canon-rules`** panel (category `quality`, DOCK-8 sibling). Deep-link IN from QualityCanonPanel's violation rows (`focusRuleId` already forwards a rule id — `d662bd97d`). | `composition_canon_rule_{create,update,delete}` · `composition_list_canon_rules` · `GET\|POST /works/{pid}/canon-rules` · `PATCH\|DELETE /canon-rules/{rule_id}` (If-Match OCC) | **S** | **NONE** *(+ one SMALL: no `restore` — see X-11)* | **PARTIAL** — it IS authorable today, on the legacy page. This is a **port**, not a build. |
+| **G-CANON-RULE-CRUD** | canon | The Studio **judges** you against canon rules (`quality-canon`, 3 read lenses) and gives you **no way to write one**. A fully-built CRUD component (`CanonRulesPanel.tsx` + `useCanonRules.ts`) exists — mounted only on the legacy page. | **`quality-canon-rules`** panel (category `quality`, DOCK-8 sibling). Deep-link IN from QualityCanonPanel's violation rows (`focusRuleId` already forwards a rule id — `d662bd97d`). | `composition_canon_rule_{create,update,delete}` · `composition_list_canon_rules` · `GET\|POST /works/{pid}/canon-rules` · `PATCH\|DELETE /canon-rules/{rule_id}` (If-Match OCC) | **S** | **NONE** *(+ one SMALL: no `restore` — see **BE-11**)* | **PARTIAL** — it IS authorable today, on the legacy page. This is a **port**, not a build. |
 | **G-ARC-SPEC-CRUD** | structure | `structure_node` (saga→arc→sub-arc) — **the object `pack()`'s `gather_arc` lens injects into every generation prompt** — has full REST CRUD + 8 MCP tools. The FE consumes **3 of 8**: list, move, assign-chapters. **No create, no read-detail, no update, no delete, no restore in ANY GUI.** | **`arc-inspector`** panel (category `editor`; spec 23-C3 / **DBT-06**). Enriched detail: identity · tracks · roster + roster_bindings · derived span · open_promises rollup · template provenance. Embedded by PlanDrawer's arc variant (**24-H3.1 is explicitly blocked on this**). | `composition_arc_{create,get,update,delete,restore}` · `POST /books/{bid}/arcs` · `GET\|PATCH\|DELETE /arcs/{node_id}` · `POST /arcs/{node_id}/restore` — **all 5 NO-FE-CONSUMER** | **M** | 🔴 **CORRECTED 2026-07-13 — this said "NONE" and was WRONG.** `32_arc_inspector.md` §5 found **3 MUST-FIX defects** by reading source: **BE-A1** — `GET /arcs/{node_id}`'s `span` is `StructureRepo.span()` = **RAW strided** units (stride 1000), while the LIST route returns dense-ranked ordinals; an inspector rendering it prints *"Chapters 41000–58000"*, **and the MCP door has the same defect** (`server.py:4255`). ⚠ Fix **at the route**, never in the repo — `span()`'s third caller is the **packer** (`lenses.py:322`), and dense-ranking it silently corrupts every generation prompt. **BE-A2** — `PATCH /arcs/{node_id}`'s `If-Match` is **OPTIONAL**, and a blind write **does not bump `version`** (`structure.py:379-382`) ⇒ the REST door is weaker than the MCP door on the object that steers generation. Make it **428**. **BE-A3** — **no UNASSIGN at any layer**: a chapter, once bound to an arc, can never return to the unassigned pool the Hub already **reads** (`?unassigned=true`). | **CONFIRMED** (`PlanDrawer.tsx:351` renders a visible `plan-drawer-arc-gap` note saying the inspector "is not [built]") |
 | **G-PLANFORGE-PASS-RAIL** | planforge | The 7-pass v2 compiler's **two BLOCKING human checkpoints (cast, beats) can only be accepted by the agent.** A GUI-only user **cannot advance a plan run past pass 2**. | **`plan-passes`** panel (spec 27-F3 "Pass Rail"): the 7-pass ledger + `pass_cursor`/`blocked_at`; run-one-pass (cost-gated); the cast + beat/tension checkpoint cards as approve/hold+edits forms; Link-to-spec-tree. | `plan_run_pass` (paid) · `plan_pass_status` · `plan_review_checkpoint` · `plan_link` · `plan_handoff_autofix` · 4 REST routes, **all NO-FE-CONSUMER** | **L** | **SMALL** (`plan_handoff_autofix` has **no REST route at all**) | **CONFIRMED** — `server.py:3595` literally reserves the override for a GUI that doesn't exist: *"⚠ THERE IS NO `force` HERE… a human, at the GUI, may override the PF-5 gate. The AGENT may not."* |
 | **G-STUDIO-CATALOG-HOLES** | studio | 4 cross-cutting defects that **block or corrupt every panel in this plan**. See §8 (X-1, X-4, X-5). | not a panel — 4 fixes that MUST land alongside/before the panel work | `ui_show_panel`, `ui_watch_job`, `ui_open_studio_panel` | **S** | **SMALL** (only the `ui_show_panel` enum/retire decision touches chat-service) | **CONFIRMED** |
@@ -245,7 +349,7 @@ holds but the framing was wrong (correction inline; full refutation in §10).
 |---|---|---|---|---|---|---|---|
 | **G-MOTIF-LIBRARY** | motif | The **entire narrative motif library** (3 tiers, mine, adopt, sync, suggest, graph — 套路/爽点/打脸) is stranded on the legacy page. **~40 files, ~15 components, ~25 test files.** The Studio shows motif **titles** only, as read-only PlanHub chips. `motif_link_*` (composed_of / precedes / variant_of) has **no REST route and no GUI anywhere** — the motif graph is invisible to humans. | **`motif-library`** panel (category `storyBible`): 3-tier browse (incl. the NO-FE-CONSUMER `book_shared` tier) · create/patch/archive · adopt (propose→confirm) · mine (cost-gated async) · upstream-diff + sync · a motif-link **graph** section. | 12 `composition_motif_*` tools + `composition_get_mine_job` · 10 REST routes | **L** | **NONE** for CRUD/adopt/sync/mine/suggest *(the FE→MCP bridge `frontend/src/mcpBridge.ts` is already proven in this exact feature)*. **SMALL** for the link-graph (3 routes **or** bridge wiring) + a new graph view. | **CONFIRMED** (`D-MOTIF-LIBRARY-CRUD-GUI`) |
 | **G-MOTIF-BINDING** | motif | PlanHub renders motif chips **the agent can freely rewrite** (incl. `pinned_version` vs `live_version` drift) — the human can only look at them. `NodeBadges.tsx:124-145` renders `case 'motif'` as a plain non-interactive `<span>`. **`undo_token` has ZERO frontend consumers.** | **NOT a new panel** (spec 21 classifies motifs as a *cross-ref lens*): a **Motifs section** in `scene-inspector` + a bind/unbind/re-role affordance on PlanDrawer's chapter variant. Spec 24-**PH19** already specs this verbatim; only the READ half shipped. | `composition_motif_{bind,unbind}` · `PATCH\|DELETE /works/{pid}/outline/{nid}/motif` · `PATCH …/motif/role` · `POST …/motif/chain` · `GET …/outline/motif-bindings` | **M** | **NONE** — full CRUD + the `undo_token` round-trip are reachable over REST. ⚠ `undo_token` is **CHAPTER-scope only**; a scene bind returns none — do not advertise token-undo on scene nodes. | **CONFIRMED** |
-| **G-CONFORMANCE-TRACE** | quality | Conformance ("did the prose actually realize the plan?") shows the Studio a **red/green dot and nothing else**. The full coarse/deep trace is legacy-only. **AND 3 live FE calls 404** (§3.3). | **`quality-conformance`** panel (DOCK-8 sibling): beat-by-beat realized/not-realized trace, chapter + arc scope, dirty/stale freshness, propose→confirm through the **real generic** `/actions/preview` + `/actions/confirm` (NOT the two invented per-action paths), and a Regenerate action **that points at a route that exists**. | `composition_conformance_run` (Tier-W, paid) · `composition_conformance_status` · `GET /works/{pid}/conformance` · `GET /books/{bid}/conformance/status` | **M** | **REAL (small)** — `regenerate-to-beat` must be **built** (mirror `POST /scenes/{nid}/prose`, route it through the generic action spine) **or** the button re-pointed at the existing prose route. The 2 `/actions` 404s are a **pure FE bug**, not a BE gap. | **CONFIRMED** |
+| **G-CONFORMANCE-TRACE** | quality | Conformance ("did the prose actually realize the plan?") shows the Studio a **red/green dot and nothing else**. The full coarse/deep trace is legacy-only. **AND 3 live FE calls 404** (§3.3). | **`quality-conformance`** panel (DOCK-8 sibling): beat-by-beat realized/not-realized trace, chapter + arc scope, dirty/stale freshness, propose→confirm through the **real generic** `/actions/preview` + `/actions/confirm` (NOT the two invented per-action paths), and a Regenerate action **that points at a route that exists**. | `composition_conformance_run` (Tier-W, paid) · `composition_conformance_status` · `GET /works/{pid}/conformance` · `GET /books/{bid}/conformance/status` | **M** | 🔴 **CORRECTED 2026-07-13 — this said "REAL (small): `regenerate-to-beat` must be BUILT (mirror `POST /scenes/{nid}/prose`)". It is now `BE-5 = DO NOT BUILD`, and §6 agrees.** Spec [`33`](33_motif_studio.md) §5.1 refuted it **on the code**: `engine.py`'s `persist_scene_prose` is a **divergence-promote PERSIST** — it writes a synthetic completed job and **generates nothing**; there is no per-scene generate route to mirror **because one already exists** (`POST /v1/composition/works/{pid}/generate`, `engine.py:328`, takes an `outline_node_id` = a SCENE, and is what the shipped ComposePanel already drives). Once **X-7 (`gather_motifs`)** lands, that scene-generate **IS** "regenerate to beat" — the to-beat semantics are the **packer lens, not a route**. A bespoke route here would be a **per-action route for a Tier-W op** — the exact §8.1 violation the two live 404s already committed. ⇒ **BE? = NONE.** The work is: **delete `motifApi.regenerateToBeat` and re-point the button** at the existing generate route. The 2 `/actions` 404s are likewise a **pure FE bug**, not a BE gap. | **CONFIRMED** |
 | **G-ARC-TEMPLATE-LIBRARY** | arc | **Apply** exists in the GUI; **extract / drift / suggest do not.** The whole library is legacy-only — and reachable ONLY through the page spec 16 slates for deletion. **Extract is the half that makes the library grow from the user's own work, and it has no surface at all.** | **`arc-templates`** panel (category `storyBible`): browse own/catalog tiers · CRUD · adopt · apply-preview → materialize · "suggest an arc for this premise" · "save this arc as a template" · a drift view. | `composition_arc_{suggest,apply,extract_template,template_drift}` · 9 REST routes | **L** | **SPLIT** — core (browse/CRUD/adopt/apply→materialize): **NONE**. suggest + extract: **SMALL** (2 thin route wrappers; engines exist). **drift: REAL** — `build_template_drift` does not exist. ⚠ **`composition_arc_apply` and `composition_arc_template_drift` are honest-failure STUBS at HEAD** (`_pending_engine`) — the *agent* cannot apply a template even though the human can. | **CONFIRMED** (`D-ARC-TEMPLATE-CRUD-GUI` + `D-ARC-APPLY-MCP-WRAPPER`) |
 | **G-MOTIF-SUGGEST** | motif | "Which trope fits this chapter" and "which arc fits this premise" are **ranked, explained (`match_reason`), and unreachable**. The only way to reach them is to ask the chat agent **by name**. | **Two action buttons, not a panel** (spec 21: *"a button, not a panel"*): *Suggest a motif* on PlanDrawer/`scene-inspector`; *Suggest an arc* on `arc-inspector`/`arc-templates`. Render the ranked list + the `match_reason` breakdown the tools already return. | `composition_motif_suggest_for_chapter` · `composition_arc_suggest` — **no REST route, no FE** | **S** | **SMALL** — 2 thin GET routes **or** 2 names added to `FE_BRIDGE_TOOL_ALLOWLIST` (`tools.controller.ts:24`). ⚠ **This LOOKS FE-only and is not** — without one of the two, the browser gets a 403 from the BFF allowlist and fails closed at integration time. | **CONFIRMED** |
 | **G-CORRECTION-FLYWHEEL** | quality | `generation_correction` — the human-gate learning signal — is written **only** from the legacy ComposeView. **The Studio's Compose is Chat/MCP-based and NO MCP tool records a correction.** The flywheel that teaches the model the author's taste **structurally only accrues for users still on the legacy page.** | **`quality-corrections`** (stats, DOCK-8 sibling) **+ the load-bearing half**: a correction-capture seam on the Studio's accept/reject path (`propose_edit` Apply/Dismiss, and the agent-mode `accept_unit`/`reject_unit` path). | `POST /jobs/{job_id}/correction` · `GET /works/{pid}/correction-stats` · **plus** learning-service `GET /v1/learning/corrections` (a per-row LIST the original claim missed) | **M** | **REAL (small)** — reads are complete; the **capture seam needs a new MCP tool** (`composition_record_correction`) + a write in the `reject_unit`/`accept_unit` service path. No schema change. | **CONFIRMED** (00C Q-3(b): *"no Studio equivalent anywhere"*) |
@@ -261,7 +365,7 @@ holds but the framing was wrong (correction inline; full refutation in §10).
 |---|---|---|---|---|---|---|
 | **G-WORLD-MAPS** | book-service | **A complete CRUD domain (maps + markers + regions — 8 MCP tools) reachable ONLY by an agent, with no REST layer at all.** The `/worlds` pages have no map surface. ⚠ The one map route is **not public** — it is `POST /internal/worlds/maps/{id}/image` behind `requireInternalToken` + a `?user_id` query param, i.e. **unreachable from a browser by construction**. The true public REST surface for maps is **ZERO routes**. | `world-map` — but ⚠ **it has no host**: `/worlds` is a classic route, not a dock panel, so reaching it from the Studio is a route hop = DOCK-7 teardown. **A `world` container panel is a prerequisite.** | **L** | **REAL** — ~8–10 new REST routes. **UPDATE does not exist at ANY layer** (the tool set is add/remove-only): renaming a map, dragging a pin, reshaping a region needs **new update semantics designed**, or it degrades to delete+recreate (which churns ids and breaks glossary entity links). | **CONFIRMED** |
 | **G-KG-WRITE-HOLES** | knowledge | **No Create anywhere** (`grep createEntity` across `features/knowledge/**` → EMPTY, though `knowledgeApi.createEntity` exists), **a dead delete** (`kg-overview` mounts `OverviewSection` with `onDelete={noop}` — and actually **`onArchive` + `onRestore` too: THREE dead buttons**), and 2 agent-only writes. The empty-graph state **the agent's own error message tells you to fix** has no button. | 4 additive affordances on existing panels — **no new panel**. | **M** | **MIXED** — entity/relation create: **NONE** (pure FE wiring). `kg_project_entities_to_nodes` + `memory_forget`: **SMALL** (2 thin route mirrors over already-built, already-tested engines). | **CONFIRMED** — ⚠ **one sub-claim REFUTED**: `kg_create_node` **is** REST-reachable (§10). |
-| **G-IMPORT-DECONSTRUCT** | import | **拆文** (deconstructing a reference novel into reusable structure) — *a headline differentiator for the target audience* — is **100% agent-only** and its input CRUD (`/import-sources` ×4) has **zero FE consumers**. `ArcTemplateLibraryView.tsx:51`'s empty state literally advertises the flow — *"or import a story to deconstruct"* — **a dangling CTA pointing at a feature with no entry point.** | An **"Import & Deconstruct" section inside `arc-templates`** (not a standalone panel). | **M** | 🔴 **CORRECTED 2026-07-13 — this row said "NONE" and was WRONG.** Propose + confirm are shipped; **the POLL is not.** `_execute_arc_import` enqueues with `project_id=None` → `_enqueue_motif_job` stamps a **synthetic `uuid4()`** (`actions.py:552`) with no `composition_work` row ⇒ `GET /jobs/{id}` (`_gate_work` → `works.get()` → None) **404s always**, and `composition_get_mine_job` — *the tool the confirm response names in its own `poll` field* — **demands a `project_id` the caller can never know**. A confirmed deconstruct enqueues a job **nobody can read**. ⇒ **BE-7c** (owner-scoped job read, gate on `created_by`, **XS**). It also un-breaks `motifApi.mineConfirm`, which polls the same dead route — **so §3.3's "three live 404s" is really four.** See `34_arc_templates_and_deconstruct.md` §0.1. | **CONFIRMED** — ⚠ the *"mine motifs from this import source"* leg is **REFUTED** and must be dropped (§10). |
+| **G-IMPORT-DECONSTRUCT** | import | **拆文** (deconstructing a reference novel into reusable structure) — *a headline differentiator for the target audience* — is **100% agent-only** and its input CRUD (`/import-sources` ×4) has **zero FE consumers**. `ArcTemplateLibraryView.tsx:51`'s empty state literally advertises the flow — *"or import a story to deconstruct"* — **a dangling CTA pointing at a feature with no entry point.** | An **"Import & Deconstruct" section inside `arc-templates`** (not a standalone panel). | **M** | 🔴 **CORRECTED TWICE — read the second one.** *(1st, 2026-07-13:)* this row said BE **"NONE"** and was WRONG. *(2nd, 2026-07-13 — the mechanism itself:)* the 1st correction then said *"the POLL is not shipped ⇒ `GET /jobs/{id}` 404s always ⇒ **BE-7c**, an owner-scoped job read, **XS**"*. **That is ALSO wrong, and its cure would have shipped GREEN over a broken path.** Propose is shipped; **THE CONFIRM 500s.** `_execute_arc_import` enqueues with `project_id=None` → `_enqueue_motif_job` stamps a synthetic `uuid4()` (`actions.py:552`) → `GenerationJobsRepo.create()` **derives the `NOT NULL book_id` via `INSERT … SELECT … FROM composition_work`** → **ZERO rows** → `ReferenceViolationError` → uncaught → **HTTP 500 at `POST /actions/confirm`**, confirm token burnt. **The job row is NEVER CREATED; the poll is never reached; nobody is charged** (no XADD, no worker, no LLM). ⚠ **An owner-scoped READ cannot fix a row that was never INSERTED** — and its test would seed the row by hand and pass (`fixtures-can-seed-a-field-the-writer-never-sets`). ⇒ the real fix is the **Work-less job LANE** (nullable scope + a shape CHECK + `create_unbound()` + **the `_enqueue_motif_job` writer fix** + the read route + the MCP arg), = **[`W0-BE1`](../../plans/2026-07-13-studio-wave-0-foundations.md)**, **already carried in full by the Wave-0 plan** and **built in Wave 0** (not Wave 3/4). It also unbreaks `motifApi.mineConfirm`, which 500s for the same reason. See §3.3 and `34` §0.1. | **CONFIRMED** — ⚠ the *"mine motifs from this import source"* leg is **REFUTED** and must be dropped (§10). |
 | **G-DIVERGENCE** | derivative | The whole **dị bản** (AU / what-if derivative works) feature — a DB schema, a built 4-step wizard, `source_work_id` + `branch_point` — is **absent from the Studio**. | **`divergence`** panel (category `editor`): port `DivergenceWizard` **+ `useWhatIfPromotion`/`PromoteWhatIfButton` + `DerivativeBanner`/`DerivativeGroundingLayers`** (the claim missed these). | **M** | **REAL** — what exists is **CREATE-ONCE + READ-ONE**, not CRUD. There is **no UPDATE** (the spec+overrides are written once inside the `POST /derive` txn and are thereafter immutable), **no DELETE**, and **no LIST of a book's derivatives**. The proposed *"manage entity_override rows"* is **unbuildable on today's backend.** Also: **zero divergence MCP tools.** | **CONFIRMED** |
 | **G-STORY-STRUCTURE** | plan | 6 seeded story structures (Save the Cat, Hero's Journey, Story Circle, Kishōtenketsu, Web Novel Arc, Three-Act) + the chapter→scene **decompose** flow they drive — **no Studio entry point.** (The Studio's `planner` panel is **PlanForge**, a different thing.) | **Fold into `plan-hub`** (spec 21 re-map: `beats` = a **node facet**; `planner` = an **action button**): a *Decompose with a structure* action on a chapter node → preview → commit, and a beat-sheet facet in PlanDrawer. | **M** | **NONE** for the panel as proposed. ⚠ **`structure_template` is READ-ONLY on ALL transports** — the repo has exactly `list_for_user` + `get`. The "+ user-custom" tier the table advertises **is unreachable: no code can insert one.** Authoring needs 3 new routes (mirror `arc_template`'s shape) + clone-to-user tenancy. | **CONFIRMED** |
 | **G-WORK-SETTINGS** | work | `composition_work.settings` (models, `capture_correction_prose`, `reference_embed_model_ref`, `critic_model_ref`) — and **`PATCH /works/{pid}` REPLACES the whole blob.** Plus 3 orphan routes: `approve`, `suggest-cast` (a real LLM capability with **zero** callers anywhere), chapter-level `GET\|PUT /prose`. | A **Composition section in the existing `book-settings` panel** (not a new panel) — each key showing **effective value + source tier** (SET-1..8). Plus a *Suggest cast* button on `scene-inspector`. | **S** | **NONE** for reads/writes. **REAL (one small fix):** `repositories/works.py:311` does `settings = $n::jsonb` — a full-blob REPLACE with a genuine **lost-update window** (`patchWork` sends no If-Match). Fix = server-side `settings \|\| $n::jsonb` **or** send If-Match. | **PARTIAL** — an editor **does** exist (`CompositionSettingsView.tsx`) for 4 of 7 keys; 3 keys (`capture_correction_prose`, `critic_model_ref`, `reference_embed_model_ref`) are **genuine SET-1..8 silent hidden defaults**. |
@@ -298,7 +402,7 @@ blocked — it is unbuilt work"*). None of them is blocked on an external depend
 | **BE-5** | ~~`POST /works/{pid}/scenes/{node_id}/regenerate-to-beat`~~ | composition | G-CONFORMANCE-TRACE | — | 🔴 **DO NOT BUILD — REFUTED 2026-07-13 by `33_motif_studio.md` §5.1.** This row's proposed fix (*"mirror `POST /scenes/{nid}/prose` (`engine.py:1522`)"*) is **wrong on the code**: `engine.py:1522` is `persist_scene_prose`, a **WS-B3 divergence-promote PERSIST** that writes a synthetic completed job — **it generates nothing.** There is no per-scene generate route to mirror **because one already exists**: `POST /v1/composition/works/{pid}/generate` (`engine.py:326`) takes `outline_node_id` (a SCENE) and is the route the shipped ComposePanel already drives. And once **X-7 (`gather_motifs`)** lands, that scene-generate **IS** "regenerate to beat" — the to-beat semantics are the **packer lens**, not a route. Building a bespoke route here would be a **per-action route for a Tier-W op** — the exact §8.1 violation the two live 404s already committed. ⇒ **Delete `motifApi.regenerateToBeat`; re-point the button.** |
 | **BE-6** | ~~2 REST GETs (or 2 `FE_BRIDGE_TOOL_ALLOWLIST` names): motif-suggest-for-chapter, arc-suggest~~ | composition | G-MOTIF-SUGGEST | **S** | 🔴 **SPLIT + DE-DUPED 2026-07-13 (cross-spec sweep).** This row and **BE-7 both specced `arc-suggest`** — and specs 33 and 34 each dutifully picked one up, producing **two different contracts for one tool** (`GET /books/{bid}/arcs/suggest?limit=10` vs `POST /arc-templates/suggest {project_id, limit=5}`). ⚠ **`composition_arc_suggest` (`server.py:2288`) takes `project_id`, NOT a `book_id` path segment, and defaults `limit=5`** — so the `GET /books/…` shape was simply wrong. ⇒ **BE-6 is now MOTIF-suggest ONLY** (`GET /v1/composition/works/{project_id}/motifs/suggest` — spec **33** BE-M4, Wave 3). **Arc-suggest belongs to BE-7 / spec 34 alone.** ⚠ **REST, not the bridge:** `FE_BRIDGE_TOOL_ALLOWLIST`'s own contract is *"NOTHING here writes or deletes"* and every member is spend-adjacent; a free read does not belong there, and going REST also keeps the wave **single-service** (no cross-service live-smoke). Engine exists; `get_motif_retriever` is wired at `app/deps.py:205`. |
 | **BE-7** | 2 REST routes: **`POST /v1/composition/arc-templates/suggest`** (arc-suggest — **the ONE owner; see BE-6**) + `POST /v1/composition/arcs/{node_id}/extract-template` | composition | G-ARC-TEMPLATE-LIBRARY | **S** | Both engines exist and work (`extract_template_from_arc` @ `arc_apply.py:652`). Thin wrappers. **Contract owned by `34_arc_templates_and_deconstruct.md` §5 (BE-7a/BE-7b)** — body `{project_id, premise?, genre?, limit=5, detail}`, mirroring the tool exactly. ⚠ Extract is a **Tier-A WRITE** ⇒ REST, **never** a bridge-allowlist entry. |
-| **BE-7c** *(NEW row — cross-spec sweep 2026-07-13)* | `GET /v1/composition/motif-jobs/{job_id}` — **the owner-scoped job read** | composition | the **4th live 404** (§3.3): motif-MINE **and** 拆文 | **XS** | 🔴 **BUILD IN WAVE 3 (3a), not Wave 4.** Spec **34** §5 wrote the contract (owner gate on `created_by`, uniform H13 404, **never** back-fill a synthetic `project_id`), but its **first consumer is `MotifMinePanel`, which Wave 3 ports.** Leaving it in Wave 4 means **Wave 3 ships a paid ⛏ Mine button whose poll 404s forever.** The `composition_get_mine_job` arg change (drop the un-knowable `project_id`) rides with it, in Wave 3 — landing it later would break Wave 3's consumer after the fact. |
+| **BE-7c** → 🔴 **`W0-BE1`** | **THE WORK-LESS JOB LANE** (7 legs) — *not* "a job-read route" | composition | the **4th defect** (§3.3): motif-MINE **and** 拆文 — **a 500 at confirm, NOT a 404 at the poll** | ~~XS~~ → **S/M** *(schema side effect)* | 🔴 **RE-SCOPED, RE-SIZED, RE-WAVED 2026-07-13. BUILT IN WAVE 0 — [`W0-BE1`](../../plans/2026-07-13-studio-wave-0-foundations.md) — and the Wave-0 plan ALREADY CARRIES THE FULL FIX.** This row used to read *"`GET /v1/composition/motif-jobs/{job_id}` — the owner-scoped job read · **XS** · build in Wave 3 (3a)"*. **That cure does not work**: the `generation_job` row is **never inserted** (the confirm 500s — §3.3), so an owner-scoped read would read **a row that does not exist** — and it would **SHIP GREEN**, because its test would seed the row with a raw `INSERT` the producer can never produce (**`fixtures-can-seed-a-field-the-writer-never-sets`**). **The read route is leg (e) of seven.** The lane: **(a)** `project_id`/`book_id` `DROP NOT NULL` + a **both-or-neither shape CHECK** + a partial owner index · **(b)** **`create_unbound()`** (plain INSERT; **do NOT touch `create()`**) · **(c)** model → `UUID \| None` · **(d)** 🔴 **`_enqueue_motif_job`: delete the `uuid4()` synthetic pid** ← *the leg that stops the 500* · **(e)** the owner-scoped read (gate on `created_by`, uniform H13 404) · **(f)** `composition_get_mine_job` drops the un-knowable `project_id` · **(g)** tests **through the producer**. ⚠ **Never back-fill a real or phantom `project_id`.** Pulled into **Wave 0** because it fires **today**; Wave 3 (3a) **verifies** it and ships the first consumer (⛏ Mine), Wave 4 consumes it for 拆文. Build detail: [`wave-3-motif`](../../plans/2026-07-13-studio-wave-3-motif.md) `3a-1` (a)–(d) — **do not fork a second DDL.** |
 | **BE-8** | ~~`build_template_drift` **engine fn** + its route~~ → **agent-parity only** | composition | G-ARC-TEMPLATE-LIBRARY (drift view) | ~~M~~ → **S + M, split** | 🔴 **CORRECTED 2026-07-13 by `34` §5.** *"REAL work — the function does not exist"* was **half wrong, and it mis-sized the wave.** **The drift ROUTE ALREADY EXISTS and is shipped:** `GET /v1/composition/works/{pid}/conformance?scope=arc_template_drift&arc_id=…` (0 FE consumers) ⇒ **the human's drift view is BE-NONE and must NOT be parked.** What is missing is only the **agent's** two `_pending_engine` stubs: `composition_arc_template_drift` → **point it at the already-shipped `compute_arc_report(…, by_structure=False)` the REST route uses** (do **not** write a second engine — that is the `css-var-duplicated-across-two-consumers-drifts` class) ⇒ **S**; `composition_arc_apply` → `apply_arc_to_spec` is genuinely unwritten ⇒ **M**. This is `D-ARC-APPLY-MCP-WRAPPER`, **re-scoped**: it is a **GG-2 inverse gap** (the human can, the agent cannot), sequenced **after** the panel — not a blocker of it. |
 | **BE-9** | `composition_record_correction` MCP tool + a `generation_correction` write in the `accept_unit`/`reject_unit` service path | composition | G-CORRECTION-FLYWHEEL | ~~M~~ → **L** | 🔴 **"No schema change" is WRONG — corrected 2026-07-13 by `31_quality_completion.md` F-Q2.** `generation_correction.job_id` is **`UUID NOT NULL REFERENCES generation_job(id)`** (`migrate.py:368`) and the repo re-verifies the job is in the project before it will write. **The agent-mode path has a generation job and throws its id away:** `authoring_run_units` (`migrate.py:1493`) has **no `job_id` column**, and `EngineDraftingSeam.draft_chapter` **reads** `payload["job_id"]` (`authoring_run_service.py:377`) only to fetch the cost, then **discards it** (`DraftOutcome = {ok, cost_usd, error}`). ⇒ At `reject_unit` **there is no way to name the generation the human just rejected.** BE-9 as written **cannot be built.** It needs `ALTER TABLE authoring_run_units ADD COLUMN job_id UUID` (**nullable — never backfill a guess**) + `DraftOutcome.job_id` + a driver write. **That is a side effect, and it is why Wave 1 is L, not M.** ⚠ Two more holes `31` found: **BE-9c** — `correction_stats` groups by `j.mode` over **every** job, so every PlanForge pass / quality report / Polish run **inflates the `auto` denominator** ⇒ the panel would report a delighted author and a ~0% edit rate. Fix at the root with a `CORRECTABLE_OPERATIONS` allowlist, **keeping** the existing `NOT selection_edit` predicate. **F-Q4** — `propose_edit` has **no `job_id` at all** (its prose comes from a *chat-service* turn, not a composition `generation_job`), so the plan's second capture leg is **not buildable** and is scoped out (OQ-1). |
 | **BE-10** | `composition_style_*` + `composition_voice_*` MCP tools | composition | G-STYLE-VOICE (inverse gap) | **S** | MCP-first invariant: domain owns its tools. ⚠ **3-schema-source FastMCP caveat** applies. |
@@ -339,10 +443,15 @@ the 13 existing `design-drafts/screens/studio/*.html` (§8.3).
 | **X-6** | 🔴 **Write spec 28's AN-12 `resource_ref` section.** Shape sketch: `{kind: 'structure'\|'outline'\|'motif_application'\|'canon_rule'\|'thread', id, version?}`. | **S** | 28 homes it, sketches it, and declares it a **HARD PREREQUISITE**: *"A Phase-4 build without AN-12 is a spec violation, not a shortcut."* G-MOTIF-BINDING (chips→editor), G-ARC-SPEC-CRUD (deep-link), the existing PH18 canon deep-link, and **any** "agent points at this object" flow are precisely this contract. |
 | **X-7** | 🔴 **`gather_motifs` packer lens (spec 21-G1).** `grep -rn "motif" services/composition-service/app/packer/*.py` → **ZERO hits.** Mirror the shipped `gather_arc` (`app/packer/lenses.py:257`). Ship it with a **BA12-style effect test** (the prompt CHANGES when a binding changes — `test_pack_arc_wired.py` is the pattern). | **M** | **This invalidates the premise of THREE gaps.** G-MOTIF-LIBRARY / G-MOTIF-BINDING / G-MOTIF-SUGGEST all ship GUIs for authoring data that **`pack()` never reads**. Building them without G1 is **shipping a beautiful editor for a field with no consumer** — the exact *stored-but-unread ⇒ write-only-behavior* bug CLAUDE.md bans. **G1 is a prerequisite of the motif cluster.** |
 | **X-8** | Doc hygiene: renumber `14a/14b`, `15a/15b`; fix 29's stale H1; refresh `00_OVERVIEW`'s component index + Debt stack; clear 00C Q-2 (Agent Mode is **built**); un-stale spec 20's header. | **XS** | Every one of these is **actively misleading the next agent** right now. |
-| **X-9** | Close the two un-audited MCP sweeps: **provider-registry-service (14 tools)** and **catalog-service (2 tools)**. Also decide the **unprefixed `web_search`** namespacing violation. | **S** | The "173 / 23 NO-GUI" scoreboard is a **floor**, not a total (§3.4). We should not plan against a number we know is wrong. |
+| **X-9** | Close the two un-audited MCP sweeps: **provider-registry-service (14 tools)** and **catalog-service (2 tools)**. ⚠ **The *"decide the unprefixed `web_search` namespacing violation"* leg is DELETED — there is no violation** (§3.4, retracted 2026-07-13: the unprefixed name is deliberate, `EXTRA_PREFIX_MAP` already carries `web_`, and no LOCKED namespacing law exists in `docs/standards/`). **Count the tools; decide nothing.** | **S** | The "173 / 23 NO-GUI" scoreboard is a **floor**, not a total (§3.4). We should not plan against a number we know is wrong. |
 | **X-10** | **AN-C2 — the discovery scent.** One sentence in `stream_service.py`'s `book_context_note` naming `composition_package_tree` / `composition_diagnostics`. | **XS** | The tools shipped and **the model was never told they exist**. AN-11's own risk row calls "shipped but never called" a **FAIL**. ⚠ **SEQUENCE AFTER Track C lands** — `stream_service.py` is uncommitted and mid-edit (§9). |
 
-**Wave 0 gate:** X-1, X-2, X-4, X-5, X-7 green + the AN-12 section (X-6) written and PO-signed.
+| 🔴 **`W0-BE1`** *(added 2026-07-13 — ex-**BE-7c**, PULLED FORWARD out of Wave 3a)* | 🔴 **THE WORK-LESS JOB LANE — the paid-action defect, and it fires TODAY on the live legacy page.** ⛏ **Mine** and **拆文** both return **HTTP 500 at `POST /actions/confirm`**, before the enqueue: `_enqueue_motif_job` stamps a synthetic `uuid4()`, `GenerationJobsRepo.create()` derives the `NOT NULL book_id` via `INSERT … SELECT … FROM composition_work`, matches **zero rows**, raises an uncaught `ReferenceViolationError`. **The job row is never created** (§3.3). ⚠ **NOT a 404 at the poll, and NOBODY IS CHARGED.** ⚠⚠ **An owner-scoped read route does NOT fix this** — it would read a row that never exists, and would **ship green** on a hand-seeded fixture (`fixtures-can-seed-a-field-the-writer-never-sets`). Build **all seven legs**: DDL (nullable scope + both-or-neither CHECK + owner index) · `create_unbound()` · the model change · **the `_enqueue_motif_job` writer fix** · the owner-scoped read · the `composition_get_mine_job` arg drop · tests **through the producer**. | **S/M** *(schema side effect)* | It is **live**, it is the PO's **CRITICAL** class, and **`W0-S7` cannot fix the FE poll — or run its live smoke — without it.** Wave 3's ⛏ Mine button is its first GUI consumer; leaving it in 3a would have shipped a 500-ing paid button. **The full build is already written in [`wave-0-foundations`](../../plans/2026-07-13-studio-wave-0-foundations.md) `W0-BE1` (detail verbatim in [`wave-3-motif`](../../plans/2026-07-13-studio-wave-3-motif.md) `3a-1`) — build from it; do not re-derive it.** |
+| **`W0-S7`** | Delete the **3 FE-invented URLs** (§3.3): the two per-action `conformance_run/{estimate,confirm}` paths → mirror the sibling that uses the **generic** spine; and **`motifApi.regenerateToBeat`** → re-point at the existing `POST /works/{pid}/generate` (**BE-5 = DO NOT BUILD**, §6). | **S** | All three are **FE deletions**, not BE routes. ⚠ Its live smoke **depends on `W0-BE1`** (a confirm that 500s cannot be smoked). |
+
+**Wave 0 gate:** X-1, X-2, X-4, X-5, X-7 green + **`W0-BE1` proven THROUGH THE PRODUCER** (a live
+`POST /actions/confirm` → **200 + a real `job_id`** → a resolving poll; a read-route test over a
+hand-seeded row does **not** count) + the AN-12 section (X-6) written and PO-signed.
 **Specs to write:** an AN-12 section **inside** `28_agent_native_studio.md` (do not fork it).
 **Drafts:** none (no new UI).
 
@@ -382,11 +491,16 @@ summary with a visible in-UI gap note). Consumes **X-6** (`resource_ref`) for th
 **BE prereqs** *(AMENDED 2026-07-13 — see BE-5/BE-6/BE-7c above)***:** ~~BE-5~~ **DO NOT BUILD** (re-point
 Regenerate at the existing `POST /works/{pid}/generate`) · **BE-6 = MOTIF-suggest only** (arc-suggest is
 Wave 4's) · **BE-M1** (partial UNIQUE index on `motif_application`) · **BE-M3** (motif-link REST) ·
-🔴 **BE-7c — the owner-scoped job read (`GET /motif-jobs/{job_id}`), MOVED INTO 3a**: this wave ports
-`MotifMinePanel`, whose poll is **the 4th live 404** · **fix all 4 live 404s** (§3.3)
+🔴 **BE-7c → `W0-BE1` — the WORK-LESS JOB LANE, BUILT IN WAVE 0 (not here).** *(Was: "the owner-scoped
+job read, MOVED INTO 3a".)* This wave ports `MotifMinePanel`, whose ⛏ Mine **500s at confirm** today
+(§3.3 — **not** a 404, and **nobody is charged**). **3a's job is to VERIFY the lane landed** — through the
+**producer** (a live `POST /actions/confirm` → 200 + a real `job_id` → a resolving poll), **not** with a
+read-route test over a hand-seeded row (`fixtures-can-seed-a-field-the-writer-never-sets`). Build it here
+only if Wave 0 did not — and then **all seven legs**, not just the read route. · **fix the 3 live 404s**
+(§3.3), all by **deleting FE code**
 **Spec:** `33_motif_studio.md` **Drafts:** 2 (library+graph; binding lens + conformance trace)
-**Size:** **XL** — split into 3 shippable milestones: (3a) library + graph **+ BE-7c** · (3b) binding lens
-+ motif-suggest · (3c) conformance trace + the 404 fixes.
+**Size:** **XL** — split into 3 shippable milestones: (3a) library + graph **+ verify `W0-BE1`** · (3b)
+binding lens + motif-suggest · (3c) conformance trace + the 404 fixes.
 ⚠ **This wave stays SINGLE-SERVICE** (composition only): BE-6 is a REST route, **not** a
 `FE_BRIDGE_TOOL_ALLOWLIST` entry — the allowlist's own contract is *"NOTHING here writes or deletes"*
 and every member is spend-adjacent. Adding to it would make the wave cross-service (⇒ mandatory
@@ -400,8 +514,10 @@ live-smoke) for no benefit.
 **Panel:** `arc-templates` (with an **Import & Deconstruct** section inside it)
 **Gaps:** G-ARC-TEMPLATE-LIBRARY (L) · G-IMPORT-DECONSTRUCT (M)
 **BE prereqs** *(AMENDED 2026-07-13)***:** BE-7a/BE-7b (2 cheap routes — **BE-7b is the SOLE owner of
-arc-suggest**; spec 33's BE-M5 duplicate is deleted) · **BE-7c is CONSUMED here but BUILT IN WAVE 3** —
-verify, don't re-build · **BE-8 is PARKED into its own slice** and is now **agent-parity only** (the human's
+arc-suggest**; spec 33's BE-M5 duplicate is deleted) · **BE-7c → `W0-BE1` is CONSUMED here but BUILT IN
+WAVE 0** *(was: "Wave 3")* — **verify through the producer, don't re-build** (a green confirm → real
+`job_id` → resolving poll; **not** a read-route test over a hand-seeded row) · **BE-8 is PARKED into its
+own slice** and is now **agent-parity only** (the human's
 drift view is **BE-NONE** — `?scope=arc_template_drift` **already ships**; only the agent's two
 `_pending_engine` stubs are missing).
 **Spec:** `34_arc_templates_and_deconstruct.md` **Drafts:** 1–2
@@ -646,13 +762,20 @@ Fixed in 36; recorded here so it is not re-introduced.
 
 ### 8.2 Two structural traps the gap list assumed away
 
-- **X-12 — panels that need `params` are structurally OUTSIDE the agent enum.** `ui_open_studio_panel`
-  carries a **bare id only**. An `arc-inspector` (needs `node_id`), a `motif-editor` (needs `motif_id`),
-  a `workflow-editor` (needs `workflow_id`) must be `hiddenFromPalette` ⇒ **out of the enum, out of the
-  command palette, out of the User Guide.** Several gaps assume the agent can open the panel it just wrote
-  to. **It cannot** — unless we extend `ui_open_studio_panel` with a `params` arg, which is a
-  Frontend-Tool-Contract change (schema + `CLOSED_SET_ARGS` + contract regen + **both** resolvers).
-  **Decide this in Wave 0, alongside X-5.** It is the same decision surface.
+- **X-12 — ✅ ANSWERED (2026-07-13): `ui_open_studio_panel` GAINS an OPTIONAL `params` object.** Build it in
+  Wave 0 (`W0-S5b`), paired with X-5 exactly as this row asked.
+  **This row's premise — *"panels that need `params` are structurally OUTSIDE the agent enum"* — is FALSE,
+  and the code refutes it:** `quality-canon` sits **inside** the `panel_id` enum
+  (`frontend_tools.py:402`) while `QualityCanonPanel.tsx:33` already reads `props.params as
+  CanonFocusParams`. A params-taking panel **is** agent-openable today. §8.0 check 5 confirms the other
+  half: all 14 panels in this batch are **bare-id openable** and **zero** need `hiddenFromPalette`.
+  **Because `params` is OPTIONAL, nothing leaves the enum / palette / User Guide and §8.0's ledger is
+  untouched.** The pipe already exists below the agent (`StudioHostProvider.tsx:52` accepts `params`;
+  `studioUiNav.ts:35` is the ONE line that drops them — the agent is the only caller in the repo that
+  cannot pass them). And **sealed PO-3 cannot ship without it**: it retargets `ui_watch_job` onto
+  `job-detail`, *"a singleton that retargets via params"* (`JobDetailPanel.tsx:1`).
+  It remains a Frontend-Tool-Contract change (schema + contract regen + **both** resolvers). `params` is
+  free-form ⇒ it correctly gets **no** `CLOSED_SET_ARGS` entry. See §11 item 1 (a′).
 - **X-13 — `consumer_capabilities` (spec 09 G6) is the defense against the silent-no-op class we are about
   to multiply by 15 panels.** It is declared (`chat-service/app/models.py:502`) and **read by nothing**.
   It is the field that would let chat-service **stop advertising a frontend tool the current consumer
@@ -663,8 +786,9 @@ Fixed in 36; recorded here so it is not re-introduced.
 
 ### 8.3 Design-draft house style (mandatory for every new panel mock)
 
-`design-drafts/screens/studio/` has **13 self-contained dark-only HTML drafts** with a **byte-identical
-`:root` token block**, Inter + JetBrains Mono, a **half-px type scale**, and a mandatory **CSS banner
+`design-drafts/screens/studio/` has **24 self-contained dark-only HTML drafts** (the original 13 + the 11
+added by this batch — count re-measured 2026-07-13; the prose said "13" long after the 11 landed) with a
+**byte-identical `:root` token block**, Inter + JetBrains Mono, a **half-px type scale**, and a mandatory **CSS banner
 comment** (WHY / ARCHITECTURE / **BACKEND WORK IMPLIED** / STATES / SCALE). There is **no README and no
 shared stylesheet** — the convention lives only as copy-paste. The full extraction (tokens, layout
 skeleton, the four annotation mechanisms, a copy-paste template, and an 11-point conformance checklist)
@@ -681,12 +805,34 @@ info) genuinely identical everywhere, but **the destructive red had drifted FOUR
 | `--danger: #d95d5d` + `--danger-muted: #3a1f1f` | `plan-hub-panel`, `plan-navigator` | ❌ different **name** *and* value |
 | `--danger: #e85a5a` | `studio-agent-hooks`, `studio-agent-mode` | ❌ third value |
 | `--destructive: #dc4e4e` | `writing-studio-frame` | ❌ fourth value — and **dead** (0 usages) |
+| 🔴 **`--error: #e85a5a` + `--error-muted: #3d1a1a`** (7 usages) · a raw `#e85a5a` with **no token at all** · a raw `rgba(217,93,93,.2)` (**= `#d95d5d`, spelled in decimal**) · `--warn: #e8b87e` where canon is `--warning: #e8a832` | `studio-raw-editor`, `studio-agent-gui-bridge`, `studio-agent-mode`, `studio-agent-hooks`, `plan-hub-panel` | ❌ **the FIFTH+SIXTH drifts — found 2026-07-13 (X-8), NOT by this audit** |
 
-This is the repo's own `css-var-duplicated-across-two-consumers-drifts` memory, in the drafts.
-**All 24 files are now normalized to the 13-file majority** (which is also what every new draft in this
-batch independently chose): **`--destructive: #d9584f` · `--destructive-muted: #3a1f1c`. There is no
-`--danger` token.** *(The rename also surfaced a latent bug: `studio-agent-mode` referenced
-`var(--danger-muted)` that its `:root` never defined — an undefined-var silent no-op. Fixed.)*
+> 🔴 **THIS TABLE'S OWN VERDICT WAS WRONG TWICE, AND THE REASON IS THE LESSON.**
+> The audit above said the red *"drifted FOUR ways"* and that *"all 24 files are now normalized"*.
+> **Both were false — because the audit grepped the token NAMES (`--danger`, `--destructive`).**
+> A name-based grep is structurally blind to:
+> 1. a drift wearing a **third name** — `--error: #e85a5a` (7 usages, `studio-raw-editor`);
+> 2. a raw hex with **no token at all** — `#e85a5a` (`studio-agent-gui-bridge:74`);
+> 3. a banned value **spelled in another notation** — `rgba(217,93,93,.2)` in `plan-hub-panel:99` **is
+>    `#d95d5d`**, the very value this table swore had *"ZERO occurrences"*. The string `d95d5d` does not
+>    appear in the file. **The grep was looking for a spelling, not for a colour.**
+>
+> **Restated truth (verified 2026-07-13):** **18 of 24** drafts define the canon destructive token; the
+> other **6 have no destructive affordance and need none**. There is **no `--danger`, no `--error`, and no
+> `--warn` alias.** Canon: **`--destructive: #d9584f` · `--destructive-muted: #3a1f1c` ·
+> `--warning: #e8a832`.**
+>
+> 🔴 **AND IT IS NOW MACHINE-CHECKED — because a prose checklist demonstrably did not stop it**
+> (`checklist-is-self-report-enforce-by-tests`). **`scripts/design-draft-token-lint.py`**, wired into the
+> pre-commit hook beside `ai-provider-gate.py`, greps **by the COLOUR (HSL), not by the name**: RULE 1 bans
+> every destructive/warning alias custom property; RULE 2 computes each hex/rgba literal's hue+saturation
+> and fails any non-canon *destructive-signal red* — **including one nobody has written yet.** It reds on
+> **32 violations across 5 files** at the pre-fix tree and is green now. **Do not add a colour to its
+> allowlist to silence a finding.**
+
+*(The original rename also surfaced a latent bug: `studio-agent-mode` referenced `var(--danger-muted)` that
+its `:root` never defined — an undefined-var silent no-op. Fixed, and re-verified 2026-07-13: every file
+that USES `var(--destructive-muted)` also DEFINES it.)*
 
 **Token verdict on the 11 NEW drafts: ZERO drift.** All 11 carry the identical core block, all are
 **dark-only** (no `prefers-color-scheme`, no `data-theme`, no light theme anywhere), and all **append**
@@ -767,26 +913,49 @@ re-litigates it.
 
 ## 11 · Next actions (concrete, in order)
 
+> 🔴 **§11 WAS STALE PROSE AND IS NOW REWRITTEN (X-8 / `W0-S10`, 2026-07-13).** Its old item 1 listed
+> *"PO decisions (3, all blocking)"* — **all three were already sealed in §0**, and its old item 2 said the
+> `resource_ref` section was "the first thing to write" (it is now **written**: `28_agent_native_studio.md`
+> §AN-12.1). **§0 SEALED wins over §11 wherever they disagree. Nothing below blocks.**
+
 **Immediately, before any code:**
 
-1. **PO decisions (3, all blocking):**
-   - **(a)** **X-5 / X-12** — `ui_show_panel`: give it a closed enum + a studio interceptor, **or retire it**
-     in favour of `ui_open_studio_panel`? And do we extend `ui_open_studio_panel` with a `params` arg
-     (which would bring `arc-inspector` / `motif-editor` / `workflow-editor` **into** the enum + palette +
-     User Guide)? These are one decision surface.
-   - **(b)** **AN-12 amendment** — may Wave 7 wire the bottom-panel Issues tab, given 28 AN-12's sealed
-     "No new GUI surface"? (Recommendation: **yes, amend** — 2.5 of 5 diagnostic sources have **no** human
-     surface and nothing is ranked, so AN-12's premise is only partly true; the proposal honours its
-     architecture and only amends the zero-GUI clause.)
-   - **(c)** **Track C P-5 ownership** — does this plan take over `workflows` + the mode-binding UI + the
-     `world` container (Wave 8b/8c), or does Track C keep them? **Do not start Wave 8 until this is settled.**
+1. **PO decisions — ALL SEALED (§0). Nothing here blocks. Do NOT re-litigate; re-read §0.**
+   - **(a) X-5 → PO-3: RETIRE `ui_show_panel`**, fold into `ui_open_studio_panel`. It is a **cross-surface
+     migration, not a delete** — the non-studio resolver at `frontend/src/features/chat/nav/uiNav.ts:115`
+     must keep working (migrate it to `ui_open_studio_panel` + the studio interceptor, or give it an
+     explicit non-studio path). Land with `test_frontend_tools_contract.py` + `panelCatalogContract.test.ts`
+     green. Separately: **`ui_watch_job`** → add to `STUDIO_UI_TOOLS` + the interceptor → open `job-detail`.
+   - **(a′) X-12 → ANSWERED (not a PO decision): `ui_open_studio_panel` GAINS an OPTIONAL `params` object.**
+     Because `params` is **optional**, all 14 panels stay bare-id openable and stay in the enum/palette/User
+     Guide — §8.0's ledger is untouched. The pipe **already exists below the agent**
+     (`StudioHostProvider.tsx:52` takes `params`; `studioUiNav.ts:35` is the ONE line that drops them — the
+     agent is the only caller in the repo that cannot pass them). **Sealed PO-3 cannot be implemented
+     without it:** it retargets `ui_watch_job` onto `job-detail`, which is *"a singleton that retargets via
+     params"* (`JobDetailPanel.tsx:1`). ⚠ **This OVERRULES the contrary "do NOT add a `params` arg" reading**
+     that an earlier pass recorded: that reading answered only the `hiddenFromPalette` half of X-12 and was
+     silent on the deep-link half. **Build the `params` arg** (Wave 0, `W0-S5b`).
+   - **(b) AN-12 → PO-1: AMENDED**, Wave 7 proceeds (bottom-panel Issues tab + right-click lens, **no new
+     dock panel**). The amendment is written into `28_agent_native_studio.md`.
+   - **(c) Track C P-5 → PO-2:** workflows + mode-binding UI (**8c**) = **Track C's**.
+     **Wave 8 = 8a (KG write holes) + 8b (world container + world-map), and 8b STAYS IN THIS PLAN**
+     (`38_kg_and_world.md` is on disk per PO-4). ⚠ **Hand Track C this note:** *"the `world` container +
+     `world-map` FE surfaces (your P-5 'W10 world container') are OWNED BY plan 30 Wave 8b, specced in
+     `38_kg_and_world.md`. Drop W10 from P-5."*
 
-2. **Write the AN-12 `resource_ref` section** into `28_agent_native_studio.md` (X-6). It is a **hard
-   prerequisite** for Waves 2, 3, and 7 by spec 28's own words. **This is the first thing to write.**
+2. ✅ **DONE — the AN-12 `resource_ref` section is WRITTEN**: `28_agent_native_studio.md` **§AN-12.1**
+   (X-6 / `W0-S10`'s sibling `W0-S8`, 2026-07-13). It closes OQ-8 and is the **hard prerequisite** for Waves
+   2, 3 and 7 that spec 28 demanded. ⚠ It **overrides OQ-8's own shape sketch** (8 **table-keyed** kinds, not
+   the sketch's 5 row-`kind`-keyed ones) — read §AN-12.1b before building any consumer.
 
-3. **Land Wave 0** — X-1 (AddModelCta), X-2 (CATEGORY_ORDER + membership assertion), X-3 (guideBodyKey
-   assertion), X-4 (~15 Lane-B handlers + delete the false comment), X-7 (`gather_motifs` + a BA12-style
-   effect test), X-8 (doc hygiene), X-9 (the 2 missing MCP sweeps). **X-10 (AN-C2) waits for Track C.**
+3. **Land Wave 0** — X-1 (AddModelCta), X-2 (CATEGORY_ORDER + the group label + 2 guards), X-3
+   (`guideBodyKey`), X-4 (Lane-B effect registry + the coverage ledger), X-5 (retire `ui_show_panel`),
+   X-7 (`gather_motif` packer lens — the **hard gate on Wave 3**), X-8 (doc hygiene), X-9 (the closed MCP
+   sweep + 2 code fixes), **X-10 (AN-C2 — the Track C hold is DISCHARGED: `stream_service.py` is committed
+   and clean at HEAD `9262ed53e`, which IS Track C's D8. §9's "DO NOT TOUCH" row is stale)**, X-12
+   (`params`), X-13, plus the backend prereqs **`W0-BE1`** (ex-BE-7c — the paid-action defect: a **500 at
+   confirm**, *not* a 404, and **nobody was charged**; fixed by the **Work-less job lane**, *not* by a job-read
+   route — §3.3) and **BE-11** (canon restore).
 
 **Then, specs + drafts BEFORE implementation plans (GG-6):**
 

@@ -19,7 +19,7 @@
 > **DONE means:** every capability enumerated in plan 30's gap register (§5) that a user *owns* is
 > reachable from a **Writing-Studio panel or an in-Studio affordance** — proven by a **live browser
 > smoke on the rebuilt `:5174` image**, not by a green unit suite — with the two machine drift-locks
-> green at **76 openable == 76 py enum == 76 contract enum** *(a planning aid — **the DoD asserts the
+> green at **77 openable == 77 py enum == 77 contract enum** *(77, not 76 — PO `D-7` adds `place-graph`; a planning aid — **the DoD asserts the
 > DELTA `N_before + k`, never this literal**; §5)*, `/review-impl` run at the close of **every one of the
 > ten waves** with **every bug it found fixed before that wave closed**, and **zero** slice marked done
 > whose DoD evidence string is absent from the transcript.
@@ -49,6 +49,21 @@ this repo has already shipped once:
 | **PO-3** | **RETIRE `ui_show_panel`** — fold it into `ui_open_studio_panel` (one name for one concept). | **X-5 is a retirement, not an enum-add** (Wave 0, `W0-S5`). Wave 0's plan **verified** the cross-surface fear is unfounded: `ui_show_panel` has **ZERO working consumers anywhere** (it resolves to `${pathname}?panel=…` and the only `?panel=` reader is `PopoutHost.tsx:27` on the `/composition/popout` route, which the chat is never mounted on). `ui_watch_job` is fixed **separately, via the interceptor** — *not* `STUDIO_UI_TOOLS`, because 4 skill prompts advertise it globally. **DoD (the RUNTIME references are gone — scoped to quoted string literals in non-test source; a hygiene grep that also matches PROSE can never go to zero and would send the builder mangling good comments — `hygiene-grep-literal-token-in-comment-false-positive`):** `grep -rnE "['\"]ui_show_panel['\"]" frontend/src services/ --include=*.ts --include=*.tsx --include=*.py \| grep -v __tests__ \| grep -v '/tests/'` returns **ZERO** lines. *(Explanatory comments naming the retired tool, and the rewritten negative tests asserting `isUiTool('ui_show_panel') === false`, are CORRECT and stay.)* |
 | **PO-4** | **All detail specs (31–38) + all HTML drafts FIRST. No implementation before them.** | ✅ **SATISFIED.** Specs 31–38 are on disk; the 11 new drafts are drawn and token-normalized (plan 30 §8.3). The ten BUILD-DETAIL plans are on disk. **This master plan is the last artifact before BUILD.** |
 
+### 2.1 · 🔒 THE SECOND SEAL — **D-1 … D-7**, sealed **2026-07-13** on the finished plan set. **Binding.**
+
+> These are PO rulings on the *ten wave plans*, not on plan 30. They **add three slices**, **add the run's
+> ONE sanctioned stop**, and **reverse one won't-port**. Re-read them; never re-derive them.
+
+| # | Decision | Consequence, as it binds this build |
+|---|---|---|
+| 🔴 **D-1** | **REKEY the corrupted content-language data — but DRY-RUN FIRST.** 5 rows say `Vietnamese` beside 89 saying `vi`, inside `UNIQUE(chapter_id, target_language, version_num)`. | 🔴 **THE ONE CRITICAL-CLASS STOP IN THE ENTIRE BUILD.** Wave T's **`T-C10`** *writes* the migration + a rollback path + a before/after row-count assertion, **runs the DRY-RUN, prints the report — AND STOPS.** **The agent may NOT execute it unattended.** Execution is a separate, PO-supervised act (`D-TRANSL-LANG-REKEY-EXECUTE`). ⇒ Wave T is **no longer "zero migrations"**: it *produces* one destructive migration and *runs* only its dry-run. |
+| **D-2** | **WAVE 0 IS THE HOTFIX BATCH — pull the 4th HIGH bug forward.** Translate **silently discards the user's ticked chapters** and substitutes the whole backlog. | 🆕 slice **`W0-S15`** — one line at `TranslationTab.tsx`'s `<TranslateModal>` mount (`preselectedChapterIds={[...selectedChapters]}`; the prop exists and every *other* call site passes it). **Discharges the SELECTION half of Wave T's `T-A4`/`T8` — and nothing else** (`preselectedLang`/D6 stays in Wave T). |
+| **D-3** | **ADD THE GLOBAL `MutationCache.onError`.** `App.tsx`'s `QueryClient` has **no `MutationCache`** ⇒ **every failed mutation in the entire FE is silent, forever.** | 🆕 slice **`W0-S16`** — the highest leverage-per-line item in the build. Slice-local `onError` still WINS (no double-toast). *This is why three live bugs survived to an audit.* |
+| **D-4** | The content-language SSOT is **`contracts/languages.contract.json`** (mirroring `frontend-tools.contract.json`). | ⚠ **It must NOT be named `languages.yaml`** — `contracts/language-rule.yaml` already exists and means *service → programming language*. **Different axis; one name for two concepts is the drift this repo legislates against.** Binds Wave T's `T-C1`. |
+| **D-5** | **Mobile shell — DECIDE AT WAVE 6's CLOSE.** | **GG-4 stays SHUT until then.** Wave 6 ships the **mechanical parity guard**, **not** the deletion of `ChapterEditorPage`. A green gate is **not** an authorization to delete. |
+| **D-6** | **`D-COMPOSE-GENERATE-UNGATED` — CARRY it; raise at Wave 3/3c.** | Pre-existing, not a regression of this batch (the user *does* get what they pay for). ⚠ When fixed, fix it **AT THE ROUTE** — never by gating the Regenerate button alone (that would mint a second confirmation convention; **AN-8 seals one-channel-per-object-class**). |
+| 🔴 **D-7** | **ADD A `place-graph` SLICE TO WAVE 8** — the legacy `WorldMap.tsx` place-graph was a **CIRCULAR DEFER** (spec 38 said *"Wave 6 owns it"*; **Wave 6 never contained it**) ⇒ no wave built it ⇒ it would have died at the GG-4 gate. | 🆕 slice **`W8-20`**, panel id **`place-graph`** (leaf-reuse `WorldMap.tsx`, de-forked onto W8-02/03's writers). ⚠ **`place-graph` is NOT Wave 8's `world-map` panel**: `world-map` reads **book-service's** `world_maps`/`map_markers`/`map_regions`; `place-graph` reads **`composition_work.settings.world_map`**. **Plan 30 §10 explicitly refutes conflating them.** ⇒ **`D-WORLDMAP-PLACE-GRAPH-WONTPORT` is RETIRED**; the `worldmap` parity row becomes a **real home**, never `{retired}`. Wave 8's panel delta: **+2 → +6**. |
+
 ---
 
 ## 3 · THE RUN POLICY (binding — quoted verbatim in every wave plan)
@@ -69,7 +84,10 @@ this repo has already shipped once:
    - a **sealed decision proven wrong** by the code (§0 PO-1..4 of plan 30),
    - a **tenancy / security breach** (cross-user data exposure),
    - a **paid-action defect that would charge the user for nothing** (this repo just shipped one — the
-     motif-mine poll 404s always; the user pays and watches a spinner forever).
+     motif-mine / 拆文 `POST /actions/confirm` returns **HTTP 500 BEFORE the enqueue**: the confirm token
+     is burnt and a billing **hold** is reserved, and **the `generation_job` row is never created**.
+     ⚠ **NOT a "404 at the poll", and NO USER WAS EVER CHARGED** — no XADD, no worker, no LLM call. The
+     fix is the **Work-less job lane** (`W0-BE1`), **not** a job-read route; see C-1).
    Everything else — a missing route, an awkward refactor, a failing third-party thing, an ugly seam —
    is a **defer row + continue**.
 4. Every defer row carries: ID, wave/slice of origin, what, the gate reason (CLAUDE.md's 5 gates),
@@ -106,8 +124,8 @@ prose** and are recorded here so no builder re-derives them:
 
 | Wave | Plan file | Size | Slices | **HARD GATE — what must be green first** | What it unblocks | Parallel with? |
 |---|---|---|---|---|---|---|
-| **0 · Foundations** | `…-wave-0-foundations.md` | **L** | **20** | **None** — it *is* the gate. Pre-flight only: `git status` on Track C's 4 files (§8) must be **clean** for `W0-S11` (X-10); if dirty ⇒ **DEFER `D-X10-ANC2-SCENT` and keep going**. | **Everything.** X-1 · X-2 · X-3 · X-5 · X-7 · **BE-7c IN FULL** (`W0-BE1` — DDL + `create_unbound()` + `_enqueue_motif_job` + the owner-gated read; **the writer is NOT optional — `W0-S7`'s live smoke cannot pass without it**, C-1) | **Wave T** (fully disjoint) |
-| **T · Translation repair** | `…-wave-T-translation-repair.md` | **L** | **23** (3 phases) | **NONE. Fully parallel — schedule it into ANY free lane, at any time.** 00C Q-1: *"disjoint files from the whole 00B cluster."* Pre-flight confirmed no other agent is in translation/book-tabs/languages files. | Nothing (leaf) · **0 panels · 0 routes · 0 migrations** ⇒ ledger delta **+0**, `catalog.ts`/`frontend_tools.py`/the contract JSON are **never touched** | **Every wave.** This is the filler lane — if any wave stalls, Phases A/B/C slot straight in (T-B4, T-C1, T-C6 have **no dependencies** and exist for exactly this). |
+| **0 · Foundations** | `…-wave-0-foundations.md` | **L** | **22** *(20 + `W0-S15`/`W0-S16` — PO `D-2`/`D-3`)* | **None** — it *is* the gate. Pre-flight only: `git status` on Track C's 4 files (§8) must be **clean** for `W0-S11` (X-10); if dirty ⇒ **DEFER `D-X10-ANC2-SCENT` and keep going**. | **Everything.** X-1 · X-2 · X-3 · X-5 · X-7 · **BE-7c IN FULL** (`W0-BE1` — DDL + `create_unbound()` + `_enqueue_motif_job` + the owner-gated read; **the writer is NOT optional — `W0-S7`'s live smoke cannot pass without it**, C-1) | **Wave T** (fully disjoint) |
+| **T · Translation repair** | `…-wave-T-translation-repair.md` | **L** | **24** (3 phases; +`T-C10`, PO `D-1`) | **NONE. Fully parallel — schedule it into ANY free lane, at any time.** 00C Q-1: *"disjoint files from the whole 00B cluster."* Pre-flight confirmed no other agent is in translation/book-tabs/languages files. | Nothing (leaf) · **0 panels · 0 routes** ⇒ ledger delta **+0**, `catalog.ts`/`frontend_tools.py`/the contract JSON are **never touched**. 🔴 **NOT "0 migrations" any more — PO `D-1` (§2.1) puts ONE DESTRUCTIVE migration here (`T-C10`): WRITTEN + DRY-RUN ONLY, never executed by the agent. It is the run's ONE sanctioned STOP.** | **Every wave.** This is the filler lane — if any wave stalls, Phases A/B/C slot straight in (T-B4, T-C1, T-C6 have **no dependencies** and exist for exactly this). |
 | **1 · Quality completion** | `…-wave-1-quality.md` | **L** | **20** | 🔴 **X-2 HARD-GATES WAVE 1.** `CATEGORY_ORDER` (`useStudioCommands.ts:20-22`) lists **9**; `catalog.ts:81-91` defines **10** — `'quality'` is missing ⇒ `indexOf → -1` ⇒ it sorts **ABOVE `editor`**. Wave 1 lands **four** panels into that category. Also needs **X-3** (guideBodyKey **effect**) and **X-1** (AddModelCta). *If Wave 0 has not landed at pre-flight, Wave 1's `W1-00`/`W1-01` build them — with an explicit "if green, SKIP, do not double-implement".* | **CREATES `compositionEffects.ts`** (Wave 6 extends it) · the spec-16 M1 prerequisites (progress + canon/heal/corrections ports) | **Wave 2** (disjoint: quality panels + `compositionEffects.ts` vs arc + `arcEffects.ts` + book-service) · **Wave T** |
 | **2 · Arc inspector** | `…-wave-2-arc-inspector.md` | **L** | **14** | **X-6** (AN-12 `resource_ref`, Wave 0) for the deep-link. `W2-S0` builds `GET /v1/books/{id}/my-access` (Go, ~40 LOC) — the mock's VIEW-only state was **unbuildable** without it. | **24-H3.1** (PlanDrawer's arc variant) · **CREATES `arcEffects.ts` with ONE broad `/^composition_arc_/`** (Wave 4 **extends its handler body**) · hands spec 29-T9 its dependency | **Wave 1** · **Wave T** · 🔴 **NOT Wave 3b** — both edit `PlanDrawer.tsx` (§8) |
 | **3 · Motif studio** | `…-wave-3-motif.md` | **XL** | **15** (3 milestones: 3a·3b·3c) | 🔴🔴 **X-7 (`gather_motifs`) HARD-GATES WAVE 3.** Verified at HEAD: `grep -rn "motif" services/composition-service/app/packer/` → **ZERO hits**. Without it the author binds 打脸 to ch.41 and **the drafter is never told** — the wave ships **decoration**, a beautiful editor for a field with no consumer. **The gate is not the lens: it is the 4-call-site EFFECT test** (`engine.py:391/767/973` + `grounding.py:103`), because BA12's wiring bug already shipped once with a green unit suite. | the shared components Wave 4 imports (`MotifStateBoundary`, `CostConfirmCard`, `AdoptTargetModal`, `MatchReasonChip`) · **M-BUG-4** (the `arc_template_id`→`arc_id` drift Wave 4 depends on being fixed). ⚠ **BE-7c is NOT this wave's to build — Wave 0 owns it (C-1); `3a-1` is VERIFY-OR-BUILD.** | 3a/3c ∥ **Wave 1** · **Wave T**. 🔴 **3b must follow Wave 2** (`PlanDrawer.tsx`, `NodeBadges.tsx`). |
@@ -115,7 +133,7 @@ prose** and are recorded here so no builder re-derives them:
 | **5 · PlanForge made human** | `…-wave-5-planforge.md` | **L** | **19** | 🔴 **X-1 (AddModelCta DOCK-7) gates every PANEL slice** — every paid action here needs a ModelPicker whose empty state today is a raw `<Link>` that **tears down the whole dockview layout**. **The 6 BE slices (S1–S6) are unaffected and can proceed regardless.** | — | **BE slices: anything.** Panels: after X-1. ∥ **Wave 4** · **Wave 8a** · **Wave T** |
 | **6 · Editor-craft ports** | `…-wave-6-editor-craft.md` | **L** | **22** (M0–M7) | **`compositionEffects.ts` exists** (Wave 1 — extend, never fork). **Waves 1–5's panels landed** (the `legacyParityContract` rows are `PENDING Wave N` placeholders — flip each as its wave lands; `D-GG4-PARITY-ROWS-PENDING`). | 🔴 **WAVE 6 GATES THE SPEC-16 RETIREMENT (GG-4).** When Wave 6 closes — **and only then** — `ChapterEditorPage` may be retired. Retiring earlier **DELETES shipped features**. ⚠ M5 ships the **MECHANICAL parity guard**, *not* the deletion: `D-STUDIO-MOBILE-SHELL` is a **hard blocker on deletion** and is a PO decision (§10). | **Wave 7** · **Wave 8** · **Wave T** |
 | **7 · Issues feed** | `…-wave-7-issues-feed.md` | **M** | **17** | **PO-1** (sealed — AN-12 amended). **X-1** for the Run-conformance button (`D-W7-RUN-BUTTON-X1`) — without it the row still renders and still states the fact, but the button does not ship. | — | **Wave 6** · **Wave 8** · **Wave T** |
-| **8 · KG + world** | `…-wave-8-kg-world.md` | **XL** | **21** (8a = M · 8b = L) | **8a (KG holes): none** — knowledge-service, disjoint. **8b (world container + maps):** the **Track C P-5 ownership note** (`W8-00`, a ~10-minute write-down — **verified: Track C's P-5 is PARKED with NO design and NO code**; `grep "'world'" catalog.ts` → zero hits; spec 38 HAS the design). **An ownership question is not one of the 4 CRITICAL classes — do not stall on it.** | **Nothing** (it is the last wave) ⇒ 🔴 **there is no next wave to defer a bug into. `/review-impl` findings are FIXED, full stop.** | **8a ∥ any composition wave** (different service) · **Wave T** |
+| **8 · KG + world** | `…-wave-8-kg-world.md` | **XL** | **22** (8a = M · 8b = L; +`W8-20` — PO `D-7`) | **8a (KG holes): none** — knowledge-service, disjoint. **8b (world container + maps):** the **Track C P-5 ownership note** (`W8-00`, a ~10-minute write-down — **verified: Track C's P-5 is PARKED with NO design and NO code**; `grep "'world'" catalog.ts` → zero hits; spec 38 HAS the design). **An ownership question is not one of the 4 CRITICAL classes — do not stall on it.** | **Nothing** (it is the last wave) ⇒ 🔴 **there is no next wave to defer a bug into. `/review-impl` findings are FIXED, full stop.** | **8a ∥ any composition wave** (different service) · **Wave T** |
 
 ### 4.2 The four call-outs, stated explicitly
 
@@ -131,9 +149,11 @@ prose** and are recorded here so no builder re-derives them:
   divergence, progress, correction capture, and polish/self-heal. **And even after Wave 6, deletion is
   blocked on `D-STUDIO-MOBILE-SHELL`** — the Studio has **no mobile editing surface**.
 - 🟢 **Wave T (translation repair) is fully parallel — schedule it into any free lane.** Zero panels,
-  zero routes, zero migrations, provably disjoint files. It is also the **stall-filler**: if any wave
-  blocks, its dependency-free slices (T-B4, T-C1, T-C6) slot straight in. *"Blocked ≠ stopped"* has a
-  lane to move into.
+  zero routes, provably disjoint files. It is also the **stall-filler**: if any wave blocks, its
+  dependency-free slices (T-B4, T-C1, T-C6) slot straight in. *"Blocked ≠ stopped"* has a lane to move
+  into. 🔴 **But it is NOT "zero migrations" any more** — PO **`D-1`** (§2.1) puts the **destructive
+  `Vietnamese` → `vi` rekey** in `T-C10`: **written + dry-run ONLY**, and **`T-C10` STOPS AND ASKS.** It
+  is the **only** stop in the whole ten-wave run.
 
 ### 4.3 Lane-B effect-handler ownership — ONE FILE PER DOMAIN (plan 30 §8.0b)
 
@@ -159,7 +179,9 @@ match.** A string with alternation matches **NOTHING** and ships a **silent no-o
 ```
                     ┌───────────────────────────────────────────────────────┐
    WAVE 0  ─────────┤ X-1 · X-2 · X-3 · X-5 · X-6 · X-7 · BE-7c IN FULL     │
-   (13 slices, L)   │  W0-BE1 = DDL + create_unbound() + _enqueue + read     │
+   (22 slices, L)   │  W0-BE1 = DDL + create_unbound() + _enqueue + read     │
+   +W0-S15 (D-2)    │  W0-S15 = Translate's dropped selection (1 line)       │
+   +W0-S16 (D-3)    │  W0-S16 = the GLOBAL MutationCache.onError             │
                     │  ⚠ W0-S7 (the 404 kill + its LIVE SMOKE) NEEDS W0-BE1  │
                     └──┬──────────┬───────────┬──────────┬───────────┬──────┘
                        │          │           │          │           │
@@ -189,10 +211,10 @@ match.** A string with alternation matches **NOTHING** and ships a **silent no-o
                                                       ▼
    WAVE 7 (issues feed, 17) ◀── PO-1 (SEALED) + X-1   │  ── runs after/∥ Wave 6
                                                       │
-   WAVE 8 (KG + world, 21) ◀── 8a: free · 8b: W8-00   │  ── 8a ∥ anything
-        W8-16/17/18 = cast · character-arc · canon-growth
-                     └──── FLIP the 3 pending rows ───┘
-                           W8-18 converts it.fails → it
+   WAVE 8 (KG + world, 22) ◀── 8a: free · 8b: W8-00   │  ── 8a ∥ anything
+        W8-16/17/18/20 = cast · character-arc · canon-growth · place-graph
+                     └──── FLIP the 4 pending rows ───┘   (place-graph = PO D-7)
+                           W8-20 (NOT W8-18) converts it.fails → it
                                                       │
                                                       ▼
                                           ═══ GG-4 GATE (mechanically GREEN) ═══
@@ -201,7 +223,9 @@ match.** A string with alternation matches **NOTHING** and ships a **silent no-o
                                       + spec 16's Phase-4b "kept indefinitely"
                                    ⇒ NO WAVE DELETES THE PAGE. Green ≠ authorized.
 
-   ∥∥∥ WAVE T (translation repair, 23) ── FULLY PARALLEL, ANY LANE, ANY TIME ∥∥∥
+   ∥∥∥ WAVE T (translation repair, 24) ── FULLY PARALLEL, ANY LANE, ANY TIME ∥∥∥
+        └── T-C10 (PO D-1) = the DESTRUCTIVE rekey: WRITE + DRY-RUN + 🔴 STOP.
+            The ONE sanctioned stop of the entire run. NEVER executed unattended.
 ```
 
 **Acyclic — and the board's order (0→1→2→3→4→5→6→7→8, T anywhere) is a valid topological sort of it.**
@@ -212,19 +236,27 @@ Wave 2 before 3b **and** before Wave 4 (`arcEffects.ts`); Wave 1 before Wave 6 (
 precedes the code that reads its column.**
 
 🔴 **THE ONE EDGE THAT RUNS BACKWARD — and it is handled, not broken.** Wave 6's `W6-M5` mechanizes the
-GG-4 gate over an **exhaustive `Record<SubTab, Home>`** (a missing key is a **TS error**). But **three** of
-its 25 rows (`cast` · `arc` · `flywheel`) are homed by **Wave 8**, which runs **after** Wave 6. Their panels
-do not exist when the test first runs. **This is NOT a cycle** — it is a *deferred obligation*, and it is
-expressed as one: those rows ship as **`{ pending: 'Wave 8 / W8-1x' }`**, and
-`it.fails('GG-4: zero pending rows')` is **RED at Wave 6's close, BY DESIGN — that is the gate HOLDING.**
-`W8-16/17/18` flip them; `W8-18` converts the `it.fails` to an `it`.
+GG-4 gate over an **exhaustive `Record<SubTab, Home>`** (a missing key is a **TS error**). But 🔴 **FOUR** of
+its 25 rows (`cast` · `arc` · `flywheel` · **`worldmap`** — the last added by PO **`D-7`**) are homed by
+**Wave 8**, which runs **after** Wave 6. Their panels do not exist when the test first runs. **This is NOT a
+cycle** — it is a *deferred obligation*, and it is expressed as one: those rows ship as
+**`{ pending: 'Wave 8 / W8-1x|W8-20' }`**, and `it.fails('GG-4: zero pending rows')` is **RED at Wave 6's
+close, BY DESIGN — that is the gate HOLDING.** `W8-16/17/18/20` flip them; 🔴 **`W8-20` — the LAST flip, not
+`W8-18` — converts the `it.fails` to an `it`.**
 ⚠ **The trap this closes is the one the master's own C-8 names:** *a red exhaustive guard tempts the next
 agent to delete it, or to give a row a FALSE home to go green.* **A false home makes the gate go GREEN on a
 feature being DELETED.** So: **never re-point a row at a panel that is not the thing** (`flywheel` is **not**
 `quality-corrections` — two services, two datasets; `arc` is **not** `arc-templates` — two different arcs),
 and **never demote a `{pending}` to a `{retired}`** to silence it.
-⚠ **`worldmap` is the one genuine `{retired:…}`** — a reviewed won't-port (`D-WORLDMAP-PLACE-GRAPH-WONTPORT`,
-gate #5). 🔴 **There is NO `place-graph` panel and NO wave builds one. Do not invent the id to get green.**
+🔴 **`worldmap` IS NOT `{retired}` — REVERSED BY PO DECISION `D-7` (§2.1), 2026-07-13.** This paragraph used
+to read *"`worldmap` is the one genuine `{retired:…}` — a reviewed won't-port; there is NO `place-graph`
+panel and NO wave builds one."* **That was a CIRCULAR DEFER** (spec 38 → *"Wave 6 owns it"* → **Wave 6 never
+contained it** → **no wave builds it** → **it dies at GG-4**), and the PO reversed it. ⇒ **`worldmap` is a
+FOURTH `{pending}` row** (`place-graph`, **`W8-20`**), `D-WORLDMAP-PLACE-GRAPH-WONTPORT` is **RETIRED**, and
+**`W8-20` — not `W8-18` — is the slice that flips the LAST row and converts `it.fails` → `it`.**
+⚠ **`place-graph` ≠ `world-map`** — two panels, two services, two id spaces (`composition_work.settings.world_map`
+vs book-service's `world_maps`; plan 30 §10 refutes conflating them). **Demoting `worldmap` back to
+`{retired}` to get a green suite silently re-installs the exact drop the PO reversed.**
 
 ---
 
@@ -244,7 +276,7 @@ gate #5). 🔴 **There is NO `place-graph` panel and NO wave builds one. Do not 
 | **5** (spec 35) | **+1** | `plan-passes` | **66** |
 | **6** (spec 36) | 🔴 **+5** | `style-voice` · **`reference-shelf`** *(NOT `references`)* · `divergence` · **`scene-compose`** · **`chapter-assemble`** *(the last two HOME the orphaned `compose`/`assemble` legacy sub-tabs — without them GG-4 **deletes the compose loop**)* | **71** |
 | **7** (spec 37) | **0** | *(wires the existing `StudioBottomPanel` + a right-click lens — PO-1/AN-12)* | **71** |
-| **8** (spec 38) | 🔴 **+5** | `world` · `world-map` · **`cast`** · **`character-arc`** · **`canon-growth`** *(the last three HOME the remaining orphaned sub-tabs **and FLIP Wave 6's three `{pending}` GG-4 rows**)* | **76** |
+| **8** (spec 38) | 🔴 **+6** | `world` · `world-map` · **`cast`** · **`character-arc`** · **`canon-growth`** · 🔴 **`place-graph`** *(the last FOUR HOME the orphaned sub-tabs **and FLIP Wave 6's four `{pending}` GG-4 rows**; `place-graph` = PO **`D-7`**, `W8-20`)* ⚠ **`place-graph` ≠ `world-map`** — two services, two tables, two id spaces. | **77** |
 
 🔴 **THESE NUMBERS ARE A PLANNING AID, NOT A TEST ASSERTION.**
 **Six of the eight batch specs computed their target from the same 57 baseline as if each were the only
@@ -253,7 +285,7 @@ next builder hunting a **phantom regression** if a wave is re-ordered or dropped
 
 ⚠ **AND THIS TABLE ITSELF WENT STALE ONCE — read the lesson, not just the number.** It said `6 → +3 → 69`
 and `8 → +2 → 71` (**total 71**). Both were written *before* the plans homed the seven orphaned legacy
-sub-tabs, which added **2 panels to Wave 6** and **3 to Wave 8**. **The true total is 76 (+19).** The
+sub-tabs, which added **2 panels to Wave 6** and **3 to Wave 8** — and then PO **`D-7`** homed a **fourth** in Wave 8 (`place-graph`). **The true total is 77 (+20).** The
 cumulative table is exactly the artifact that rots when a wave grows — **which is why NO DoD may cite it.**
 🔴 **If a literal and a delta ever disagree again, THE DELTA WINS. Assert `N_before + k`, always.**
 
@@ -304,11 +336,21 @@ A wave is **not done** until all six are true. Each is a **literal step**, not a
 > **A blocker becomes a defer row and the run CONTINUES. Only a CRITICAL blocker stops it.**
 > **STOP AND ASK for exactly these four — nothing else:**
 > 1. **A destructive / irreversible action** — data loss; a migration that **drops or rewrites user rows**.
+>    🔴 **THE RUN CONTAINS EXACTLY ONE, AND IT IS PRE-KNOWN: PO decision `D-1` (§2.1) — Wave T's `T-C10`,
+>    the `Vietnamese` → `vi` content-language REKEY.** `T-C10` **writes** the migration + the rollback +
+>    the row-count assertions, **runs the DRY-RUN, prints the report — and STOPS.** 🔴 **The agent may NOT
+>    execute it unattended.** *(The PO's advance approval of the **plan** is **not** approval of the
+>    **dry-run output** — that is a separate, explicit act: `D-TRANSL-LANG-REKEY-EXECUTE`.)*
 > 2. **A sealed decision proven wrong by the code** (§2, PO-1..4).
 > 3. **A tenancy / security breach** — cross-user data exposure.
 > 4. **A paid-action defect that would charge the user for nothing** — *this repo just shipped one* (the
->    motif-mine confirm 500s after burning the token and reserving the hold; the user pays and watches a
->    spinner forever). **This is why BE-7c is IN SCOPE and not deferrable.**
+>    motif-mine / 拆文 confirm **500s BEFORE the enqueue**, after burning the confirm token and reserving
+>    a billing hold; **the job row is never created**). ⚠ **NOBODY WAS EVER CHARGED** — no XADD, no worker,
+>    no LLM call. A burnt token + a dangling hold is a real defect; *"the user pays and watches a spinner
+>    forever"* is **not**, and is retracted. **This is why the Work-less job lane (`W0-BE1`) is IN SCOPE and
+>    not deferrable — and why a job-READ route alone does not fix it** (it would read a row that is never
+>    inserted, and would **ship green** on a hand-seeded fixture:
+>    `fixtures-can-seed-a-field-the-writer-never-sets`).
 >
 > **Everything else — a missing route, an awkward refactor, a failing third-party thing, an ugly seam —
 > is a defer row + continue.** And *"missing infrastructure" is NOT "blocked" — it is unbuilt work you
@@ -450,11 +492,11 @@ A wave is **not done** until all six are true. Each is a **literal step**, not a
 | | |
 |---|---:|
 | **Waves** | **10** (0 · 1 · 2 · 3 · 4 · 5 · 6 · 7 · 8 · T) |
-| **Slices (= commits)** | **188** — W0 **20** · W1 **20** · W2 **14** · W3 **15** · W4 **17** · W5 **19** · W6 **22** · W7 **17** · W8 **21** · WT **23**. *(Every wave carries an explicit **close-out slice** whose DoD includes `/review-impl` + fix — the resume protocol walks the **BOARD**, so a wave whose close-out is not a board row is a wave whose `/review-impl` gets skipped after a compaction.)* 🔴 **RECONCILED 2026-07-13: was 143.** 46 slices lived in the wave plans and on **no board row**. The additions: **9 contract-first slices** (one per route-bearing wave — CLAUDE.md's *"API contract frozen before frontend flow"* was being violated by **every** wave), the **5 homeless-legacy-sub-tab panels**, and the **defer rows refuted against code that became slices** (I-14). **One row was DELETED** — the old `W2-S0` (a Go `my-access` route); the plan **refutes it** (`access_level` is already on the wire and the FE drops it). |
+| **Slices (= commits)** | 🔴 **192** — W0 **22** · W1 **20** · W2 **14** · W3 **15** · W4 **17** · W5 **19** · W6 **22** · W7 **17** · W8 **22** · WT **24**. *(Was 188. **+4 from the second seal (§2.1):** `W0-S15` (D-2) · `W0-S16` (D-3) · `W8-20` (D-7) · and `T-C10` (D-1), which existed in the Wave-T plan but was **on no board row** — the exact silent-skip this ledger exists to prevent.)* *(Every wave carries an explicit **close-out slice** whose DoD includes `/review-impl` + fix — the resume protocol walks the **BOARD**, so a wave whose close-out is not a board row is a wave whose `/review-impl` gets skipped after a compaction.)* 🔴 **RECONCILED 2026-07-13: was 143.** 46 slices lived in the wave plans and on **no board row**. The additions: **9 contract-first slices** (one per route-bearing wave — CLAUDE.md's *"API contract frozen before frontend flow"* was being violated by **every** wave), the **5 homeless-legacy-sub-tab panels**, and the **defer rows refuted against code that became slices** (I-14). **One row was DELETED** — the old `W2-S0` (a Go `my-access` route); the plan **refutes it** (`access_level` is already on the wire and the FE drops it). |
 | **Shippable milestones (= POST-REVIEWs)** | **≈19** — most waves are one; **W3 = 3** (3a/3b/3c) · **W6 = 5** (M1–M5) · **W8 = 2** (8a/8b) · **WT = 3** (Phases A/B/C) |
 | **New REST routes** | **~55** — W0 **2** · W1 6 · W2 **0** *(🔴 **ZERO. No Go. The `my-access` route the first draft invented is DELETED** — `access_level` already ships on `GET /v1/books/{id}` and the FE drops it; the 8 arc routes are **existing** code entering the contract for the first time)* · W3 **6** · W4 2 · W5 5 · W6 7 · W7 2 · **W8 18** · WT **0**. 🔴 **EVERY route-bearing wave now has a CONTRACT-FIRST slice that freezes them BEFORE its first FE consumer** — `W0-C1` · `W1-CONTRACT` · `W2-S0` · `3a-0` · `W4-BE0` · `W5-S6c` · `W6-C0` · `W7-S3b` · `W8-0C`. *(Not one wave plan touched a contract file as originally drafted. That is a repo-law violation, not an oversight to absorb.)* ⚠ **The contract files are NOT interchangeable:** `contracts/api/composition/v1/openapi.yaml` (W0/1/2/3/4/6/7) · **`contracts/api/composition-service/plan-forge.v1.yaml`** (W5 ONLY) · `contracts/api/books/v1/openapi.yaml` (W8 — 🔴 **`contracts/api/book-service/` DOES NOT EXIST; do not create it**). |
 | **Migrations** | **7 additive DDL units, ZERO destructive** — **W0 ×1** (`generation_job` scope `DROP NOT NULL` + the **`generation_job_scope_shape`** both-or-neither CHECK + the **`idx_generation_job_owner_unbound`** partial index — **BE-7c, pulled into `W0-BE1` with the rest of the paid-action fix; C-1**) · W1 ×2 (`authoring_run_units.job_id` nullable; `composition_progress_goal`) · W3 ×1 (the `motif_application` partial UNIQUE — **3a-3, and PROBE-GATED: a non-empty probe ⇒ DEFER the slice and CONTINUE, never a stop-and-ask**) · W5 ×1 (`plan_run.is_archived` + its partial index) · W7 ×1 (a `job_projection` expression index) · W8 ×1 (3 ALTERs on `world_maps`/`map_markers`/`map_regions`). **W2 · W6 · WT = ZERO, by design.** ⚠ **W4 = ZERO *in the planned sequence*, but NOT "banned":** `W4-BE3` is **CONDITIONAL** — it re-applies **W0-BE1's** DDL **only if Wave 0 and Wave 3 both somehow did not** (pre-flight cmd 4). 🔴 **If it ever fires, COPY `W0-BE1`'s block VERBATIM — DO NOT FORK IT.** An earlier cut of Wave 4 wrote a **second, different** version of the same migration (`generation_job_project_scope_chk` + `idx_generation_job_owner`); applying both would leave **two constraints and two indexes for one invariant, under two names**. Wave 0's CHECK constrains the **SHAPE** (both scope keys NULL or both set), *not* an operation set — so a third Work-less op needs **zero DDL** and never trips `migration-check-constraint-must-backfill-all-historical-blocks`. The op allowlist lives in the **writer** (`create_unbound()`). |
-| **New panel ids** | 🔴 **19** (57 → **76**) — W1 4 · W2 1 · W3 2 · W4 1 · W5 1 · **W6 5** · W7 0 · **W8 5** · W0/WT 0. *(Was 14 → 71, before the plans homed the 7 orphaned legacy sub-tabs.)* **Assert the DELTA, never the literal.** |
+| **New panel ids** | 🔴 **20** (57 → **77**) — W1 4 · W2 1 · W3 2 · W4 1 · W5 1 · **W6 5** · W7 0 · **W8 6** · W0/WT 0. *(Was 14 → 71 before the plans homed the 7 orphaned legacy sub-tabs; then 19 → 76; then PO **`D-7`** added `place-graph` ⇒ **20 → 77**.)* **Assert the DELTA, never the literal.** |
 | **Defer rows opened** | **~60** (+ 14 absorbed from plan 30's Appendix B). 🔴 **SIX rows were REFUTED AGAINST CODE and became SLICES, not rows** (I-14 — *"missing infrastructure is NOT blocked; it is unbuilt work you WRITE"*): `D-DIVERGENCE-SPEC-EDIT` → **W6-BE6** · `D-REFERENCES-MCP-TOOLS` → **W6-BE4b** · `D-DIVERGENCE-MCP-TOOLS` → **W6-BE8** · `D-WAVE6-DISCOVERY-SCENT` → **W6-BE9** · `D-W7-RUN-BUTTON-X1` → **W7-S0** · `D-TRANSL-S11-JOBCONTROL-EFFECTS` → **T-B6**. And `D-W7-X13-REHOME` (E-2) is **DISCHARGED by building X-13 in `W0-S5c`** — Wave 0 is *earlier* than its "Wave 7 at the latest" deadline, so it tightens rather than lapses. `D-AT6-FE-PROVENANCE-STAMP-DUPLICATE-WRITER` **never opens** — `W4-BE4` puts the stamp server-side, so no second writer is ever shipped. |
 | **Services touched** | composition · chat · book · knowledge · frontend. **api-gateway-bff: ZERO changes** (both proxies are generic path-preserving). |
 

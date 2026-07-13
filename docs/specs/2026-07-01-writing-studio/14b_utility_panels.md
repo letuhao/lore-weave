@@ -1,6 +1,10 @@
-# 14 · Utility Panels — Jobs, Books Browser+Reader, Leaderboard dockable migration
+# 14b · Utility Panels — Jobs, Books Browser+Reader, Leaderboard dockable migration
 
-> **Status:** 📐 specced + sealed 2026-07-04 · branch `feat/context-budget-law` (studio track)
+> **Status:** ✅ **BUILT** — all 8 panels are live in `catalog.ts:167-179` (`jobs-list`, `job-detail`,
+> `books`, `book-reader`, `leaderboard-books`/`-authors`/`-translators`/`-trending`).
+> *(Un-staled 2026-07-13, X-8: the header still read "📐 specced + sealed 2026-07-04" long after the code
+> shipped. Status re-checked against `catalog.ts`, not copied from a doc — the rule `00_OVERVIEW.md:79`
+> lays down.)* · branch `feat/context-budget-law` (studio track)
 > Follows the same [`docs/standards/dockable-gui.md`](../../standards/dockable-gui.md) checklist (DOCK-1..11) the Glossary migration ([`13_glossary_panels.md`](13_glossary_panels.md)) used. Scoping request: "utility components" = user settings, notifications, job monitor, book browser, leaderboard, and more. **Build scope: Jobs (Phase B), Books Browser+Reader (Phase C), Leaderboard (Phase D).** Settings/Notifications verified already-compliant (no code change). See the Coordination section before touching any spine file (`catalog.ts`, i18n `studio.json` ×4, `useStudioEffectReconciler.ts`, `frontend-tools.contract.json`) — multiple other dockable-panel efforts are concurrently in flight on this same branch.
 
 ## Why this spec looks smaller than the original ask

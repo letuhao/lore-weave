@@ -1,4 +1,4 @@
-# 14 · Knowledge/KG Dockable Migration — shared foundation + fanout
+# 14a · Knowledge/KG Dockable Migration — shared foundation + fanout
 
 > **Status:** 📐 specced 2026-07-04 · branch `feat/context-budget-law` (studio track)
 > Cycle queue position: [`00_OVERVIEW.md`](00_OVERVIEW.md) lists "Wiki · Knowledge/Ontology · Translation · …" as the next un-scoped rows after Glossary (#13). This spec covers the Knowledge/KG surface, using the same two-phase shape [`13_glossary_panels.md`](13_glossary_panels.md) proved out, per [`docs/standards/dockable-gui.md`](../../standards/dockable-gui.md).
