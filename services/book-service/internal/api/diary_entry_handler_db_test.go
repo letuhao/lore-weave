@@ -50,6 +50,46 @@ func entryChapterID(t *testing.T, rr *httptest.ResponseRecorder) string {
 	return out.ChapterID
 }
 
+// TestDiaryEntry_IsADraftNeverAutoPublished_DB locks the spec-11-Q4 invariant Phase 3's
+// SCHEDULED distill depends on: the write seam produces a REVIEWABLE DRAFT — never an
+// auto-published or auto-confirmed entry. A headless run cannot pass a confirm gate, so an
+// unattended distill that could auto-canonize would be a privacy/correctness hole. The entry
+// must land as draft (published_revision_id NULL, editorial_status not 'published') and unkept
+// (diary_kept_at NULL) until the human reviews + keeps it.
+func TestDiaryEntry_IsADraftNeverAutoPublished_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+
+	rr := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-03-11", "entry_zone": "UTC",
+		"body": "Shipped the migration; agreed the rollback plan with Priya.",
+		"journal_kind": "primary", "language": "en",
+	}, true)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create = %d, want 201. body=%s", rr.Code, rr.Body.String())
+	}
+	ch := entryChapterID(t, rr)
+
+	var editorial string
+	var publishedRev, keptAt *string
+	if err := pool.QueryRow(ctx,
+		`SELECT editorial_status, published_revision_id::text, diary_kept_at::text
+		   FROM chapters WHERE id=$1`, ch).Scan(&editorial, &publishedRev, &keptAt); err != nil {
+		t.Fatalf("read entry: %v", err)
+	}
+	if editorial == "published" {
+		t.Fatalf("distilled entry editorial_status=%q — must NOT be auto-published", editorial)
+	}
+	if publishedRev != nil {
+		t.Fatalf("distilled entry published_revision_id=%v — must be NULL (draft, not published)", *publishedRev)
+	}
+	if keptAt != nil {
+		t.Fatalf("distilled entry diary_kept_at=%v — must be NULL (unattended distill can't auto-confirm)", *keptAt)
+	}
+}
+
 func TestDiaryEntry_PrimaryIsIdempotentAndReplaces_DB(t *testing.T) {
 	s, pool := dbTestServer(t)
 	ctx := context.Background()
