@@ -72,6 +72,26 @@ async def test_transport_exception_degrades_to_none(mock_cls):
 
 
 @pytest.mark.asyncio
+@patch("app.client.auth_client.build_internal_client")
+async def test_a_fetch_failure_is_NOT_cached_and_re_fetches_after_recovery(mock_cls):
+    # audit MED regression: a TRANSIENT failure must NOT be cached — otherwise a brief
+    # auth blip would pin a non-UTC user to the UTC day for the whole 900s TTL. The next
+    # message must re-fetch once auth recovers.
+    fail = MagicMock(); fail.status_code = 503
+    ok = MagicMock(); ok.status_code = 200; ok.json.return_value = {"timezone": "Asia/Tokyo"}
+    http = AsyncMock()
+    http.get.side_effect = [fail, ok]  # first call fails, second (after recovery) succeeds
+    http.__aenter__ = AsyncMock(return_value=http)
+    http.__aexit__ = AsyncMock(return_value=False)
+    mock_cls.return_value = http
+
+    c = AuthClient()
+    assert await c.get_user_timezone("u1") is None            # 503 → None, and NOT cached
+    assert await c.get_user_timezone("u1") == "Asia/Tokyo"    # re-fetched, not a stale None
+    assert http.get.await_count == 2                          # proof it did NOT serve a cached failure
+
+
+@pytest.mark.asyncio
 @patch("app.client.auth_client.get_auth_client")
 async def test_resolve_local_date_uses_the_users_timezone(mock_get):
     client = AsyncMock()

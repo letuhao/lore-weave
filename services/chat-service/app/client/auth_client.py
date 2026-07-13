@@ -38,6 +38,7 @@ class AuthClient:
             return hit[0]
 
         tz: str | None = None
+        confirmed = False  # only a real 200 answer (incl. confirmed-absent) is cacheable
         try:
             async with build_internal_client(
                 self._base, internal_token=self._token,
@@ -46,6 +47,7 @@ class AuthClient:
             ) as client:
                 resp = await client.get(f"{self._base}/internal/users/{user_id}/profile")
                 if resp.status_code == 200:
+                    confirmed = True
                     val = resp.json().get("timezone")
                     tz = val if isinstance(val, str) and val else None
                 else:
@@ -53,7 +55,14 @@ class AuthClient:
         except Exception as exc:  # noqa: BLE001 — degrade to UTC, never block the write
             logger.debug("get_user_timezone failed (degrading to UTC): %s", exc)
 
-        self._cache[user_id] = (tz, now + settings.user_timezone_cache_ttl_s)
+        # Cache ONLY a confirmed 200 result (a real tz OR a confirmed no-tz). A FETCH
+        # FAILURE (non-200 / transport) degrades to UTC for THIS write but is NOT cached
+        # — otherwise a transient auth blip would pin a non-UTC user to the UTC day for
+        # the full TTL, mis-bucketing local_date long after auth recovers (audit MED,
+        # the exact silent mis-bucketing DBT-11 exists to prevent). Uncached ⇒ the next
+        # message re-fetches once auth is back.
+        if confirmed:
+            self._cache[user_id] = (tz, now + settings.user_timezone_cache_ttl_s)
         return tz
 
 
