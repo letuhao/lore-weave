@@ -1,0 +1,30 @@
+{
+  "scenario": "S08",
+  "title": "A newcomer arrives — and lands in the right place",
+  "maps_to": "W8 intent-branching onboarding fork (Write / Build world / Translate / Explore)",
+  "persona": "N-* newcomer — has never used the product, knows none of its words",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "ask",
+  "fixture": "no book required. VERIFY-ONLY: the onboarding fork FE already exists (frontend/src/features/onboarding/) — this scenario proves the JOURNEY, not the surface.",
+  "context": null,
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "onboarding", "intent", "fork", "route", "workflow", "glossary",
+    "ontology", "entity", "knowledge graph", "tool", "mode"
+  ],
+  "canon_facts": [
+    "the newcomer was routed to the branch that matches what they actually said they wanted",
+    "they were never asked to choose between the system's internal names",
+    "nothing was created behind their back before they chose"
+  ],
+  "movements": [
+    {"id": "A", "label": "I don't know what this is"},
+    {"id": "B", "label": "Say what I actually want"},
+    {"id": "C", "label": "Am I in the right place?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "Hi — I just signed up and I have no idea where to start."},
+    {"movement": "B", "user": "I have a novel I wrote in Vietnamese and I want English readers to be able to read it."},
+    {"movement": "C", "user": "OK so what happens next, and where do I go?"}
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "scenario": "S09",
+  "title": "Canon check — find where the story contradicts itself",
+  "maps_to": "W9 canon-check rail (composition_list_canon_rules → conformance_run → conformance_status)",
+  "persona": "P1 Mai (novelist) worried she broke her own rules",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "⚠️ a book with prose AND at least one PLANTED contradiction (e.g. an eye colour / a death / a timeline that flips between chapters), plus canon rules to check against. A book with no contradiction cannot fail the right way — the rail would return 'all clean' and the scenario would pass without testing anything.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "conformance", "canon rule", "rule engine", "workflow", "rail",
+    "job", "async", "tool", "schema", "entity"
+  ],
+  "canon_facts": [
+    "the PLANTED contradiction was actually found (not a generic 'looks fine')",
+    "the long-running check was POLLED to a terminal state before any verdict was given",
+    "the agent did NOT claim a clean bill of health while the check was still running",
+    "findings are reported in plain story words, not rule ids"
+  ],
+  "movements": [
+    {"id": "A", "label": "Ask for the check"},
+    {"id": "B", "label": "Wait for it honestly"},
+    {"id": "C", "label": "What did it find?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "I think I've contradicted myself somewhere in this story. Can you go through it and find where?"},
+    {"movement": "B", "user": "Yes, run it."},
+    {"movement": "C", "user": "So what did you actually find? Be specific."}
+  ]
+}

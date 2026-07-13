@@ -95,3 +95,90 @@ def test_coerce_only_touches_known_scalar_id_args():
     a = {"items": [{"kind": "character"}]}
     _coerce_listed_scalar_ids(a)
     assert a == {"items": [{"kind": "character"}]}
+
+
+# ── stringified-JSON struct repair: gemma sends a STRUCTURED arg as a JSON *string* ──────
+# Measured live (M0a, 2026-07-13): book_chapter_save_draft body="[{...}]" → schema rejects
+# (declared array, got str) → the model's repair MANGLES the JSON → blank-args breaker →
+# the flagship's chapter row was created but its prose NEVER landed (empty shell read as done).
+from app.services.stream_service import _coerce_json_string_structs  # noqa: E402
+
+SAVE_DRAFT_DEF = {"function": {"parameters": {"properties": {
+    "book_id": {"type": "string"},
+    "chapter_id": {"type": "string"},
+    "base_version": {"type": "integer"},
+    "commit_message": {"type": "string"},
+    "body": {"type": "array", "items": {"type": "object"}},
+}}}}
+
+
+def test_parses_a_stringified_json_array_for_an_array_param():
+    # the EXACT live failure: correct prose, correct ids — only `body` was a string
+    a = {
+        "book_id": "b1", "chapter_id": "c1", "base_version": 1,
+        "body": '[{"type":"paragraph","children":[{"text":"The silk felt like a shroud."}]}]',
+    }
+    _coerce_json_string_structs(a, SAVE_DRAFT_DEF)
+    assert a["body"] == [
+        {"type": "paragraph", "children": [{"text": "The silk felt like a shroud."}]}
+    ]
+    assert a["chapter_id"] == "c1"  # untouched
+
+
+def test_leaves_a_real_array_alone():
+    body = [{"type": "paragraph", "children": [{"text": "already correct"}]}]
+    a = {"body": body}
+    _coerce_json_string_structs(a, SAVE_DRAFT_DEF)
+    assert a["body"] == body
+
+
+def test_never_parses_a_string_param_even_if_it_looks_like_json():
+    # a commit_message (declared string) that HAPPENS to start with '[' must survive verbatim —
+    # this is the guard that stops the repair from eating real prose/text.
+    a = {"commit_message": '[draft] chapter one', "book_id": "b1"}
+    _coerce_json_string_structs(a, SAVE_DRAFT_DEF)
+    assert a["commit_message"] == '[draft] chapter one'
+
+
+def test_non_json_string_in_a_struct_param_is_left_for_the_validator():
+    # garbage that does not parse must NOT be silently swallowed — the validator rejects it honestly
+    a = {"body": "not json at all"}
+    _coerce_json_string_structs(a, SAVE_DRAFT_DEF)
+    assert a["body"] == "not json at all"
+
+
+def test_wrong_parsed_type_is_left_alone():
+    # parses fine, but to an OBJECT where the schema wants an ARRAY → not our repair
+    a = {"body": '{"type":"paragraph"}'}
+    _coerce_json_string_structs(a, SAVE_DRAFT_DEF)
+    assert a["body"] == '{"type":"paragraph"}'
+
+
+def test_object_param_stringified_is_parsed():
+    d = {"function": {"parameters": {"properties": {"ctx": {"type": "object"}}}}}
+    a = {"ctx": '{"k":1}'}
+    _coerce_json_string_structs(a, d)
+    assert a["ctx"] == {"k": 1}
+
+
+def test_union_typed_param_still_repairs():
+    # "type": ["array", "null"] — a nullable struct param must still repair
+    d = {"function": {"parameters": {"properties": {"body": {"type": ["array", "null"]}}}}}
+    a = {"body": '[{"x":1}]'}
+    _coerce_json_string_structs(a, d)
+    assert a["body"] == [{"x": 1}]
+
+
+def test_a_param_that_may_be_string_or_array_is_NOT_coerced():
+    # if the schema legitimately accepts a string, a string is a VALID value — hands off,
+    # or we would silently change the caller's meaning.
+    d = {"function": {"parameters": {"properties": {"q": {"type": ["string", "array"]}}}}}
+    a = {"q": '["a","b"]'}
+    _coerce_json_string_structs(a, d)
+    assert a["q"] == '["a","b"]'
+
+
+def test_no_tool_def_is_a_safe_noop():
+    a = {"body": '[{"x":1}]'}
+    _coerce_json_string_structs(a, None)
+    assert a["body"] == '[{"x":1}]'  # schema-free ⇒ we cannot know it's a struct ⇒ don't guess

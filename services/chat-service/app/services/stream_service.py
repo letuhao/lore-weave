@@ -1060,6 +1060,75 @@ def _coerce_listed_scalar_ids(args_obj: dict) -> dict:
     return args_obj
 
 
+def _declared_types(prop_schema: object) -> set[str]:
+    """The JSON-schema types a property declares — tolerating ``"type": "array"``,
+    ``"type": ["array", "null"]``, and a one-level ``anyOf``/``oneOf`` union."""
+    if not isinstance(prop_schema, dict):
+        return set()
+    out: set[str] = set()
+    t = prop_schema.get("type")
+    if isinstance(t, str):
+        out.add(t)
+    elif isinstance(t, list):
+        out.update(x for x in t if isinstance(x, str))
+    for key in ("anyOf", "oneOf"):
+        for sub in prop_schema.get(key) or []:
+            if isinstance(sub, dict):
+                st = sub.get("type")
+                if isinstance(st, str):
+                    out.add(st)
+                elif isinstance(st, list):
+                    out.update(x for x in st if isinstance(x, str))
+    return out
+
+
+def _coerce_json_string_structs(args_obj: dict, tool_def: dict | None) -> dict:
+    """Undo a mid-tier model emitting a STRUCTURED arg as a *stringified JSON* blob.
+
+    Measured live (M0a, S06 beat-F, gemma-4-26b): `book_chapter_save_draft` was called with
+    ``body="[{\\"type\\":\\"paragraph\\",...}]"`` — the prose was CORRECT and every other arg
+    (chapter_id/book_id/base_version) was right, but `body` is declared ``array`` and arrived as
+    a ``str``, so the schema validator rejected the call. The model's own repair attempt then
+    MANGLED the JSON (it spliced the delimiters into a field value: ``"type": "paragraph\\"}],book_id:"``)
+    and dropped `chapter_id`, and the blank-args breaker stopped the turn. Net effect: a chapter row
+    with ZERO prose — the flagship's 5th artifact never landed, and a count-based check read the
+    empty shell as "done".
+
+    This is the 4th enumerated gemma arg-mistranscription class, after the ``{"args": {…}}`` envelope
+    wrap and the ``[uuid]`` scalar list-wrap — and it gets the same deterministic repair at the same
+    chokepoint.
+
+    SAFE BY CONSTRUCTION: only touches a property the tool's schema declares as ``array``/``object``,
+    and only when the value is a ``str`` that ``json.loads`` to *that declared type*. A param declared
+    ``array`` can never legitimately hold a string, so this can never eat a real value; anything that
+    does not parse, or parses to the wrong type, is left untouched for the validator to reject honestly.
+    """
+    if not isinstance(args_obj, dict):
+        return args_obj
+    props = (((tool_def or {}).get("function") or {}).get("parameters") or {}).get("properties") or {}
+    if not isinstance(props, dict):
+        return args_obj
+    for key, val in list(args_obj.items()):
+        if not isinstance(val, str):
+            continue
+        types = _declared_types(props.get(key))
+        want = types & {"array", "object"}
+        if not want or "string" in types:
+            continue  # not a struct param (or legitimately string-able) — hands off
+        s = val.strip()
+        if not s or s[0] not in "[{":
+            continue
+        try:
+            parsed = json.loads(s)
+        except (ValueError, TypeError):
+            continue  # not JSON — let the validator reject it honestly
+        if (isinstance(parsed, list) and "array" in want) or (
+            isinstance(parsed, dict) and "object" in want
+        ):
+            args_obj[key] = parsed
+    return args_obj
+
+
 def _inject_context_ids(
     args_obj: dict,
     tool_def: dict | None,
@@ -2393,6 +2462,11 @@ async def _stream_with_tools(
                 )
                 # Undo a 1-element-list wrapping of a scalar id arg (gemma: project_id=[uuid]).
                 _coerce_listed_scalar_ids(args_obj)
+                # Undo a STRUCTURED arg sent as stringified JSON (gemma: save_draft body="[{...}]").
+                # Measured live in M0a — this is why the flagship's drafted chapter was always empty.
+                _coerce_json_string_structs(
+                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
+                )
                 # S02 fix — fill the session's known context-ids (book_id/chapter_id/project_id)
                 # into this backend tool's args when it declares them and the model left them
                 # blank. Done BEFORE the blank-args cap + dispatch so a would-be

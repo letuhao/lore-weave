@@ -467,10 +467,16 @@ def authored_project_args(tool: str, ids: dict, state: dict) -> dict | None:
             cp, na = ids.get("cproj2"), ids.get("node_a")
             return {"project_id": cp, "node_id": na} if (cp and na) else None
         case "book_chapter_save_draft":
-            # `body` is a block ARRAY (or null), not a doc object.
+            # `body` is the chapter's PROSE, as plain text (M0a, 2026-07-13). It used to be
+            # declared json.RawMessage — i.e. []byte — so the schema advertised an array of
+            # INTEGERS and the tool was uncallable with real content by anyone, including this
+            # probe. That is why this tool sat at `executes: null / SWEEP-INCONCLUSIVE` and was
+            # written off as a fixture problem ("needs a chapter_drafts row at a matching
+            # base_version"). It was not the fixture; the contract was impossible.
             dv = ids.get("draft_version")
             return {"book_id": book, "chapter_id": chapter_id, "base_version": dv,
-                    "body": [{"type": "paragraph", "content": []}]} \
+                    "body": "The probe wrote this paragraph.",
+                    "commit_message": "tool-liveness probe"} \
                 if (book and chapter_id and dv is not None) else None
         case _:
             return None  # not in a chain → fill_args

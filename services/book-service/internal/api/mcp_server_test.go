@@ -240,7 +240,7 @@ func TestMCP_SaveDraft_RequiresBaseVersion(t *testing.T) {
 		BookID:      uuid.NewString(),
 		ChapterID:   uuid.NewString(),
 		BaseVersion: 0, // missing → must be rejected before any DB access
-		Body:        json.RawMessage(`{"type":"doc","content":[]}`),
+		Body:        "some prose",
 	}
 	_, _, err := s.toolChapterSaveDraft(ctx, nil, in)
 	if err == nil || !strings.Contains(err.Error(), "base_version is required") {
@@ -257,7 +257,7 @@ func TestMCP_SaveDraft_RejectsNonPositiveBaseVersion(t *testing.T) {
 		BookID:      uuid.NewString(),
 		ChapterID:   uuid.NewString(),
 		BaseVersion: -3,
-		Body:        json.RawMessage(`{"type":"doc","content":[]}`),
+		Body:        "some prose",
 	}
 	if _, _, err := s.toolChapterSaveDraft(ctx, nil, in); err == nil || !strings.Contains(err.Error(), "base_version is required") {
 		t.Fatalf("err = %v, want base_version rejection", err)

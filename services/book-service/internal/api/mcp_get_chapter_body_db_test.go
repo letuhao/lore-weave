@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -24,7 +23,8 @@ func TestMCP_GetChapter_IncludeBody_DB(t *testing.T) {
 
 	// Write a draft whose prose carries a distinctive phrase; the chapter_blocks
 	// extraction trigger makes it both searchable (story_search) and readable (here).
-	body := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"He works for the firm of Mr. Peter Hawkins of Exeter."}]}]}`)
+	// The tool takes PROSE (see saveDraftIn) and normalizes it to a Tiptap doc server-side.
+	body := "He works for the firm of Mr. Peter Hawkins of Exeter."
 	if _, _, err := s.toolChapterSaveDraft(tctx, nil, saveDraftIn{
 		BookID: bookID.String(), ChapterID: chID.String(), BaseVersion: 1, Body: body,
 	}); err != nil {

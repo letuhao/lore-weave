@@ -1,0 +1,29 @@
+{
+  "scenario": "S00b",
+  "title": "tool_load — progressive disclosure gets the call right FIRST TRY",
+  "maps_to": "Track A WS-1a — tool_load (MECHANISM test, white-box BY DESIGN)",
+  "persona": "any — the MODEL is the subject",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "⚠️ a book WITH a working ontology (kinds already adopted) — SKILL_BOOK_ID. propose_entities needs a `kind` to file the character under; on a kind-less book the call fails for a reason that has nothing to do with tool_load, and the test would measure the wrong thing.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [],
+  "_denylist_note": "INTENTIONALLY EMPTY — white-box mechanism test (see S00a). The §1 vocabulary bar applies to black-box USER journeys, not to a primitive's own developer test.",
+  "canon_facts": [
+    "the entity was actually created (DB, not the model's word)",
+    "the call SUCCEEDED first-try — no 'field required' validation round-trip from a guessed schema",
+    "0 find_tools calls",
+    "tool_load EXECUTED NOTHING — it is disclosure, not a write"
+  ],
+  "movements": [
+    {"id": "A", "label": "Load one tool's schema, then call it correctly"},
+    {"id": "B", "label": "Load a whole category at once"},
+    {"id": "C", "label": "Call a loaded tool — no reload needed"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "Add a character called Lâm Uyên to this book."},
+    {"movement": "B", "user": "I'm going to do a bunch of glossary work — load the tools for it."},
+    {"movement": "C", "user": "Now set her role to 'betrayed bride' and tell me what you saved."}
+  ]
+}

@@ -1,0 +1,104 @@
+# RUN-STATE — Clear Tracks A/B/C/D (autonomous run)
+
+> ## 📌 READ THIS FILE FIRST after any compaction, and at every checkpoint.
+> This file — not my memory of the conversation — is the source of truth for the run.
+> Context is lossy. Disk is not.
+
+**Started:** 2026-07-13 · **Branch:** `feat/context-budget-law` · **Mode:** long autonomous run, self-checkpointing.
+**Spec (the plan):** [`docs/specs/2026-07-13-all-tracks-clear.md`](../specs/2026-07-13-all-tracks-clear.md) — milestones M0–M10, **all 7 decisions RESOLVED, zero open questions.**
+**Audit that scoped this run:** 28-agent adversarial verification, 2026-07-13 (see spec §0/§2).
+**Prior run (Track C):** [`2026-07-12-track-c-completion-RUN-STATE.md`](2026-07-12-track-c-completion-RUN-STATE.md) — S06 §4 DoD passed; its §11 is stale (M10 fixes).
+
+---
+
+## 1. The goal (PO-set, verbatim intent)
+
+Clear **all four tracks**. MAXIMAL SCOPE — nothing won't-fixed, nothing deferred, nothing parked.
+**DONE = all six:** ① all **18 scenarios** green (≥2/3 each, DB ground truth, no parked tail) · ② all FE surfaces proven **by effect in a real browser** (workflow rack · binding UI · W11 reader *fresh reader sees NO spoilers* · W10 maps canvas + `/v1/worlds/{id}/maps` REST) · ③ Track A+B gaps closed (tier-tag CI gate **running in CI** · #6 gated-reason · F3 floor · `story_search` cutoff) · ④ all bugs fixed (ontology-bloat · chapter-pagination · prose-blocks-backfill · eval-spend-fixture · P-2) · ⑤ **docs reconciled to code, all four tracks** · ⑥ S06 stays green.
+
+## 2. Standing invariants (the bar — never lower these silently)
+
+1. **PROOF DISCIPLINE (the condition itself).** The transcript must contain the **ACTUAL PASTED OUTPUT** for every claim — SQL ground-truth rows, test output, CI-gate run, browser observation, `git log --oneline` per milestone. **Claiming a check passed without pasting its output does NOT satisfy the goal.** Never my own words; never the tool-call log.
+2. **Verify the code is IN the container before believing any live run.** (Already earned its keep: gemma was *not loaded* at run start — an S06 run would have been a lie.)
+3. **NO FIXES WITHOUT ROOT CAUSE.**
+4. **A slice is DONE only when its evidence string exists in §4.** Compiling is not done. Green units are not done.
+5. **Ground truth beats self-report** — a scenario claim is proven by a DB query on a fresh, provably-empty book.
+6. **Live-smoke any slice touching ≥2 services.**
+7. **No silent no-op / no silent success.** Consumed-by-effect. Tenancy scope-key + fail-closed anti-oracle on every reader path.
+8. **Never `git add -A`** — shared checkout, enumerate files. ⚠️ **D-4 knowingly touches a concurrent session's files (P-2)** — flag loudly in the commit.
+9. **Sub-agent fan-out discipline (CLAUDE.md LOCKED).** Solo-in-1M is the DEFAULT. Never one-agent-per-item. Fan out only over **disjoint inputs** / for **independent judgement** (cold-start review) / when the corpus exceeds one context — and state *"N agents, each reading ⟨what⟩, because ⟨why one agent can't⟩"* first.
+10. **Blocked ≠ stopped** — park a *genuinely-external* blocker and keep going. **BUT a scenario below ≥2/3 is FIX-OR-ESCALATE, never a park.** A true model-capability ceiling STOPs with measured numbers.
+11. **Grep before trusting any list — including this one.**
+
+## 3. Environment (verified 2026-07-13, run start)
+
+| | |
+|---|---|
+| Stack | all containers **healthy** (`docker ps`) |
+| gemma | `google/gemma-4-26b-a4b-qat` — **loaded**, 200192 ctx, 4-parallel. ⚠️ was NOT loaded at start; `lms load` required. |
+| embed | `text-embedding-bge-m3` loaded |
+| `QG_MODEL_REF` | `019ebb72-27a2-72f3-a42d-d2d0e0ded179` (Gemma-4 26B-A4B QAT 200K) |
+| test acct | `019d5e3c-7cc5-7e6a-8b27-1344e148bf7c` |
+| Run recipe | `scripts/eval/discoverability_scenarios/README.md` §Run (docker cp driver+scenario → `docker exec` → `docker cp` reports out). **WARM pass** (seed allowlist) is the pass to judge on. |
+
+## 4. Slice board — `[ ]` todo · `[~]` in flight · `[x]` done (needs an evidence string) · `🅿️` parked (§6)
+
+| M | What | Status | Evidence |
+|---|---|---|---|
+| **M0a** | S06 beat-F — settle §10-vs-§11, then make the drafted chapter land | [x] | **SETTLED (both docs were wrong) + ROOT-CAUSED + FIXED + PROVEN.** ① *Settle* — book `019f5bf7…be4` (pre-run: all 0) → post-run chapters **1** but **chapters_with_prose 0**, BOTH prose sources empty. §10's "5/5" counted an **empty titled shell**; §11's "chapters=0" missed that a row IS created. Truth was **4/5 + a shell**. ② *Root cause (DR8)* — `book_chapter_save_draft` declared `Body json.RawMessage` (= `[]byte`), so the MCP reflector advertised **`{"type":["null","array"],"items":{"type":"integer",0..255}}`** — "send me a list of bytes" for prose. **The tool was never callable by any agent with real content.** ③ *Fix* — mirror the working sibling `book_chapter_create`: take **prose text** + optional `body_format`, normalize server-side via `plainTextToTiptapJSON` (its `_text` snapshots are what the `chapter_blocks` trigger reads); + keep `chapter_raw_objects` in step; + a chat-side `_coerce_json_string_structs` repair for the stringified-struct arg class. ④ **PROVEN** on fresh empty book `019f5c2c…1aa1` (pre-run SQL: all 0) → **categories 13 · cast 2 · kg_project 1 (stat=2) · plan 2 `proposed/rules/job=NULL` (sync) · chapters 1 · `chapters_with_prose` = 1** with REAL prose in blocks ("The Wedding and the Fuel", 3 paragraphs, 382/208/92 chars). **All honesty gates clean:** `async_jobs=[]` · `async_jobs_without_status_read=0` · `persist_claims_without_write=[]` · `silent_success_calls=[]` · `unresolved_tool_calls=[]` · `empty_intent_find_tools=0` · effectful=9. **The flagship drafted a real chapter for the first time.** Tests: chat 20 (incl. 3 repair asserts + negative control); book-service wire-schema test + **non-vacuous** negative control pinning the `[]byte`→array-of-integers bug class; full book-service suite green; chat suite 1548 pass / 9 pre-existing fails (identical set to HEAD ⇒ 0 regressions). |
+| **M0b** | Content-fixture seeder (S04 · S05 · approved-plan · canon-contradiction) + eval spend-grant | [ ] | |
+| **M0c** | `D-2-CHAPTER-PAGINATION` (reader FE needs paged reads) | [ ] | |
+| **M1** | **S00e** consent journey (deny⇒blocked; revoke⇒re-suspend) | [ ] | |
+| **M2** | Scenarios S00a, S00b, S00c, S00d, S06b, S07, S08, S09, S12 (≥2/3 each) | [ ] | |
+| **M3** | S04 + S05 (needs M0b) | [ ] | |
+| **M4** | Bugs: ontology-bloat · prose-blocks backfill · P-2 tests | [ ] | |
+| **M5** | Workflow rack FE (+ gateway/BFF route) | [ ] | |
+| **M6** | Binding UI FE | [ ] | |
+| **M7** | W11 reader FE + S11 + `story_search` cutoff | [ ] | |
+| **M8** | W10 maps `/v1` REST + FE canvas + S10 | [ ] | |
+| **M9** | Track A: tier-tag CI gate (in CI) · skills reconcile · #6 · F3 | [ ] | |
+| **M10** | Doc reconciliation, all four tracks | [ ] | |
+
+**Scenario ledger (18 — the ① condition).** ✅ = ≥2/3 proven this run.
+`S00a ☐ · S00b ☐ · S00c ☐ · S00d ☐ · S00e ☐ · S01 ☐ · S02 ☐ · S03 ☐ · S04 ☐ · S05 ☐ · S06 ☐ · S06b ☐ · S07 ☐ · S08 ☐ · S09 ☐ · S10 ☐ · S11 ☐ · S12 ☐`
+(S01/S02/S03/S06 passed in the PRIOR run — they still need a ≥2/3 re-prove **in this run's transcript** to satisfy the proof discipline.)
+
+## 5. Decision register (all 7 PO-RESOLVED before the run — see spec §6)
+
+| # | Decision | Resolution |
+|---|---|---|
+| D-1 | `story_search` cutoff | **BUILD** (XS) — 3 sites |
+| D-2 | W10 maps FE canvas | **IN SCOPE** (M8) |
+| D-3 | Scenario set | **ALL 18** |
+| D-4 | P-2 (other session's 4 stale tests) | **FIX OURSELVES** — ⚠️ overrides invariant #9; flag loudly |
+| D-5 | Track A #6 gated-reason + F3 floor | **VERIFY, BUILD if missing** |
+| D-6 | `D-2-PROSE-BLOCKS-BACKFILL` | **FIX** (reversed from won't-fix) |
+| D-7 | Spec filename | **RENAMED** → `2026-07-13-all-tracks-clear.md` |
+
+*(New decisions made during the run get appended here with reasoning + reversibility.)*
+
+## 6. Parked register (genuinely-external blockers only — NOT a place for scenarios)
+
+*(empty)*
+
+## 7. Debt register (knowingly imperfect)
+
+| ID | Debt | Why acceptable now | Trigger to fix |
+|---|---|---|---|
+| **D-SUITE-RED-5** | **5 pre-existing chat-suite failures BEYOND the known P-2 four.** Full-suite baseline **on HEAD with my change stashed = 9 failed / 1528 passed**; with my change = **9 failed / 1548 passed** (identical failure set, +20 new passing) ⇒ **zero regressions from me**, and 5 reds I did not know about: `test_migrate_ddl::test_ddl_has_no_unguarded_alter_add_column` · `test_stream_service::TestK21BToolCallingIntegration::test_tool_calls_persisted_to_column` · `test_stream_service::TestW1ContextBreakdownFrame` ×3. (The other 4 = P-2: `test_permission_modes` ×2, `test_plan_mode`, `test_stream_tools` — the stale tool-count asserts.) One suite log shows `EmbeddingError: getaddrinfo failed`, so ≥1 may be env/DNS rather than logic. | Not mine and not caused by this run — but **a red suite muddies every future VERIFY gate**, which is exactly the "green suite lies" bug class. | **M4.** D-4 already commits me to fixing P-2; extend the same pass to root-cause these 5 (fix, or prove env-only and record). Do NOT bulk-bend assertions — re-derive each from its requirement. |
+
+## 8. Drift log — the near-misses
+> **A run that ends with an empty drift log is not clean — it is dishonest.** Record every time I was about to lower the bar.
+
+| # | Where I nearly lowered the bar | What I did instead |
+|---|---|---|
+| DR1 | **My own pre-run audit was partly the fan-out anti-pattern.** The 4 track-finders were legitimate (disjoint services/docs), but the verify phase spawned **one refuter per gap** — the 🔴 "unit is an ITEM, not a FILE" shape CLAUDE.md now forbids; several re-read the same files. ~1.9M subagent tokens where ~4 track-grouped refuters would have done. | Owned it to the PO rather than quietly moving on; the fan-out rule is now LOCKED in CLAUDE.md and binds the rest of this run. The findings were real and load-bearing (they deleted an XL milestone), but the *shape* was wasteful — the same class as the 605-agent/45M incident, just smaller. |
+| DR2 | **I nearly ran S06 without checking the model was loaded.** The stack was all-green in `docker ps`, which reads as "ready". | `lms ps` showed **only bge-m3 loaded — gemma was absent**. An S06 run would have produced a garbage transcript I might have read as a product signal. Invariant #2 exists for exactly this and it fired on the first action of the run. |
+| DR3 | **My first ground-truth probe silently returned a BLANK for `plan_artifact` and I almost read blank as "0".** The other rows were real zeros, so the whole block *looked* like a clean empty-book baseline. | It was a broken query (`plan_artifact.run_id`, not `plan_run_id`) — a **silently-failing probe in the very instrument I was about to judge a milestone with**. Fixed it before the run, not after. A measurement tool that fails soft is worse than no tool: it manufactures the zero you were hoping for. Same class as the repo's `silent-success-is-a-bug` lesson, applied to my own instrumentation. |
+| DR4 | **The prior session's "S06 = 5/5" was FALSE, and I nearly inherited it.** RUN-STATE §10 recorded a full 5/5 pass; the tidy story was "S06 is done, just re-prove it." | The SQL says `chapters = 1` but `chapters_with_prose = 0` — **both** prose sources empty. The 5th artifact was an **empty titled shell**, and a *count-based* check (`chapters > 0`) read it as done. The goal's "trust neither doc, paste the SQL" is the only reason this surfaced. **A row is not an artifact.** This is the project's silent-success class landing on its own flagship scoreboard — and it means the flagship has *never once* actually drafted a chapter. |
+| DR9 | **The mandatory `/review-impl` caught a DATA-DESTROYING write I had just added — in the fix itself.** To "keep the raw-prose mirror in step" I upserted the assistant's draft into `chapter_raw_objects`. It looked tidy, the tests were green, and the live run passed. | `parse.go:255-262` says plainly what that column IS: the **ORIGINAL IMPORTED SOURCE text** (per-chapter joined leaf_text), served by `GET /v1/books/{id}/chapters/{id}/raw`, and *"chapter_drafts.body remains the canonical edit source."* My upsert would have **overwritten the import provenance of every imported chapter on the first assistant save** — silent, irreversible, and invisible to every test I wrote (they all used agent-created books, which have no import to destroy). It was also **redundant**: `chapter_blocks.text_content` is projected from `chapter_drafts.body` by a trigger, and that is what prose-state and the rail probe actually read. Removed it. **The near-miss is the point: I reached for a write I did not need, into a table whose meaning I had not read.** |
+| DR10 | **Track D wrote this tool off as a FIXTURE problem, and I nearly inherited that story too.** `contracts/tool-liveness.json` records `book_chapter_save_draft` as `executes: null · SWEEP-INCONCLUSIVE · proven: false`, and `TRACK-D-COMPLETION.md:229` explains it away as *"needs a `chapter_drafts` row at a matching `base_version` (the fixture chapter has none)"* — one of the 13 "genuine WAIVES". | It was **not** the fixture. The sweep's own probe sent `body: [{"type":"paragraph","content":[]}]` — a block array — against a schema demanding an array of **bytes**, so it could never execute either. **Two independent systems (the flagship rail and the liveness sweep) both hit the same impossible contract, and BOTH mis-attributed it** — one to model variance, one to fixture state. The waive was a rationalisation. Fixed the probe to send prose (`project_chain.py`), which should convert a Track-D `null` waive into a provable `executes: true`. **A "waived" row in an audit is a claim, not a fact — grep the reason.** |
+| DR8 | **THE BIG ONE — the flagship's 5th artifact was impossible, and everyone (including me) blamed the model.** Three sessions of docs say "gemma just doesn't draft the chapter" / "chapters=0, model variance". I initially diagnosed a *4th gemma arg-mistranscription class* (body sent as stringified JSON), built a deterministic repair for it, and shipped it. That fix was **real but not the root cause** — it only exposed the next error underneath. | The truth is a **contract defect, not a model defect**. `book_chapter_save_draft` declared `Body json.RawMessage`, and a `json.RawMessage` **is a `[]byte`** — so the Go MCP schema reflector advertised it as `{"type":["null","array"],"items":{"type":"integer","minimum":0,"maximum":255}}`: **"send me a list of bytes"** for a chapter of prose. No model could ever satisfy it, and the schema offered *zero* structural guidance, so gemma guessed a Slate-ish shape and got rejected on every retry until the blank-args breaker stopped the turn. **The tool has NEVER once been callable by an agent with real content** — the flagship could not have drafted a chapter on any model, at any temperature, ever. Fixed by mirroring this file's own working sibling `book_chapter_create`: take **prose text** and normalize server-side via `plainTextToTiptapJSON` (whose `_text` snapshots are exactly what the `chapter_blocks` trigger reads). **The lesson: "the mid-tier model is flaky" is the most seductive wrong answer in this repo.** It explained cast=0 (was 3 real bugs — DR16), it explained connect-project (was a harness run_id bug — DR21), and now it explained chapters=0 (was an uncallable schema). Every time, the model was doing its job and the platform was lying to it. **Pinned with a WIRE-schema test + a non-vacuous negative control** that reflects the old `[]byte` shape and asserts it really does emit array-of-integers — because a handler test structurally *cannot* catch a defect whose whole nature is that the advertised contract is impossible. |
+| DR6 | **I nearly read an INFRA failure as "my fix didn't work."** The post-fix S06 verify run came back **all-zero — worse than before the fix** — and the obvious story was that my `_coerce_json_string_structs` change had broken the tool loop. | The logs said `LLMUpstreamError` and the per-turn table showed **turn 7 — the ONE turn that drives the whole rail — died** (883 chars, 0 tools) while the other 16 chatted normally. **My fix was never even exercised** (`book_chapter_save_draft` was never reached). Cause: **restarting chat-service for the rebuild dropped the LM Studio connection mid-stream and wedged its queue** ([[lm-studio-queue-wedge-lms-reload]]). Had I not looked, I would have "fixed" a working fix. **OPERATIONAL RULE for the rest of this run: after EVERY chat-service rebuild/restart, `lms unload --all` + reload BOTH gemma and bge-m3 before running any scenario** — and re-check `lms ps`, because `unload --all` drops the embedder too. |
+| DR7 | **My book-id shell capture glued `INSERT 0 1` onto the UUID** and fed a malformed id to the ground-truth probe. | The probe **errored loudly** on every row instead of returning `0` — so I caught it instantly. This is the DR3 fix (a probe that fails hard, not soft) paying for itself within the hour: a soft-failing probe would have printed a clean column of zeros and I would have "proven" an empty book that I never actually queried. |
+| DR5 | **I nearly attributed 9 red tests to "the other session" without checking.** 4 matched the known P-2 tool-count reds, and the temptation was to wave the rest through under invariant #9 ("a red test in someone else's file is theirs"). | I stashed **only** my source change and re-ran: HEAD = **9 failed/1528 passed**, mine = **9 failed/1548 passed** — identical failure set, +20 passing. That *proves* zero regressions from me, but it also surfaced **5 reds nobody had logged** (D-SUITE-RED-5). Invariant #9 protects me from touching another session's files; it is **not** a licence to stop looking. Attribution requires a baseline, not a plausible story. |

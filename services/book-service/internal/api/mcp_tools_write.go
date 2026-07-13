@@ -599,17 +599,55 @@ WHERE chapter_id=$1 RETURNING draft_version`, chID, body, bodyFormat).Scan(&newV
 
 // ── book_chapter_save_draft (H8: base_version mandatory) ─────────────────────
 
+// saveDraftIn — `body` is PROSE TEXT, not hand-written editor JSON.
+//
+// It used to be a `json.RawMessage`, which the Go MCP schema reflector renders as
+// `{"type":"array","items":{"type":"integer"}}` (a []byte is an array of bytes!). So the tool
+// ADVERTISED "give me a list of integers" for a chapter of prose: no model could ever satisfy it,
+// and the schema offered zero structural guidance, so a mid-tier model guessed a Slate-ish
+// `[{type,children}]` shape and got rejected on every retry. Measured live (M0a, 2026-07-13): the
+// flagship wrote GOOD prose, failed this call 3× in a row, and left a titled chapter row with ZERO
+// prose — which a count-based check then read as "a drafted chapter". This tool has never once been
+// callable by an agent with real content.
+//
+// The fix mirrors this file's own working sibling, `book_chapter_create`, which takes plain prose and
+// runs it through plainTextToTiptapJSON (whose `_text` snapshots are what the chapter_blocks trigger
+// reads). Writing prose is the one thing a mid-tier model is reliably good at; emitting nested editor
+// JSON by hand is the one thing it is reliably bad at. `body_format:"json"` remains available for the
+// round-trip case (an existing Tiptap doc read back and re-saved).
 type saveDraftIn struct {
-	BookID        string          `json:"book_id" jsonschema:"the book the chapter belongs to (UUID)"`
-	ChapterID     string          `json:"chapter_id" jsonschema:"the chapter to save (UUID)"`
-	BaseVersion   int64           `json:"base_version" jsonschema:"REQUIRED — the draft_version you read; a mismatch returns 409 and stops (no overwrite)"`
-	Body          json.RawMessage `json:"body" jsonschema:"the new draft body (Tiptap JSON object)"`
-	CommitMessage string          `json:"commit_message,omitempty"`
+	BookID      string `json:"book_id" jsonschema:"the book the chapter belongs to (UUID)"`
+	ChapterID   string `json:"chapter_id" jsonschema:"the chapter to save (UUID)"`
+	BaseVersion int64  `json:"base_version" jsonschema:"REQUIRED — the draft_version you read; a mismatch returns 409 and stops (no overwrite)"`
+	Body        string `json:"body" jsonschema:"the chapter's PROSE, as plain text. Separate paragraphs with a blank line. Write the prose itself — do NOT send editor/Tiptap JSON unless you also set body_format:\"json\"."`
+	BodyFormat  string `json:"body_format,omitempty" jsonschema:"how to read body: \"plain\" (default — prose text) | \"markdown\" | \"json\" (an existing Tiptap doc being round-tripped)"`
+
+	CommitMessage string `json:"commit_message,omitempty"`
 }
 type saveDraftOut struct {
 	ChapterID        string `json:"chapter_id"`
 	NewDraftVersion  int64  `json:"new_draft_version"`
 	SnapshotRevision string `json:"snapshot_revision_id"`
+}
+
+// saveDraftBody turns the tool's inbound body into a canonical Tiptap doc, reusing the same
+// formatters every other ingestion path uses (see tiptap.go). "json" is the round-trip escape
+// hatch for an already-Tiptap doc; anything else is prose the model wrote.
+func saveDraftBody(body, format string) (json.RawMessage, error) {
+	switch format {
+	case "json":
+		raw := json.RawMessage(body)
+		if !json.Valid(raw) {
+			return nil, errors.New(`body_format:"json" requires body to be a valid Tiptap JSON document`)
+		}
+		return raw, nil
+	case "markdown":
+		return markdownToTiptapJSON(body), nil
+	case "", "plain":
+		return plainTextToTiptapJSON(body), nil
+	default:
+		return nil, errors.New(`body_format must be one of "plain", "markdown", "json"`)
+	}
 }
 
 // ErrStaleDraftVersion — H8: book_chapter_save_draft requires base_version; a
@@ -635,8 +673,15 @@ func (s *Server) toolChapterSaveDraft(ctx context.Context, _ *mcp.CallToolReques
 	if in.BaseVersion <= 0 {
 		return nil, saveDraftOut{}, errors.New("base_version is required (the draft_version you read)")
 	}
-	if len(in.Body) == 0 || !json.Valid(in.Body) {
-		return nil, saveDraftOut{}, errors.New("body must be a valid JSON object")
+	if strings.TrimSpace(in.Body) == "" {
+		return nil, saveDraftOut{}, errors.New("body is required (the chapter's prose)")
+	}
+	// Normalize prose → a canonical Tiptap doc, exactly as the sibling book_chapter_create does.
+	// The `_text` snapshots this produces are what the chapter_blocks trigger reads, so the draft
+	// lands as REAL BLOCKS — the difference between a chapter that has prose and an empty shell.
+	jsonBody, err := saveDraftBody(in.Body, in.BodyFormat)
+	if err != nil {
+		return nil, saveDraftOut{}, err
 	}
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit); err != nil {
 		return nil, saveDraftOut{}, mcpOwnershipError(err)
@@ -671,11 +716,19 @@ RETURNING id`, chID, userID).Scan(&snapshotID); err != nil {
 	var newVer int64
 	if err := tx.QueryRow(ctx, `
 UPDATE chapter_drafts SET body=$2,draft_format='json',draft_updated_at=now(),draft_version=draft_version+1
-WHERE chapter_id=$1 RETURNING draft_version`, chID, in.Body).Scan(&newVer); err != nil {
+WHERE chapter_id=$1 RETURNING draft_version`, chID, jsonBody).Scan(&newVer); err != nil {
 		return nil, saveDraftOut{}, errors.New("failed to save draft")
 	}
 	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,'json',$3,$4)`,
-		chID, in.Body, nullIfEmpty(in.CommitMessage), userID)
+		chID, jsonBody, nullIfEmpty(in.CommitMessage), userID)
+	// NOTE (review-impl, M0a): deliberately do NOT touch chapter_raw_objects here.
+	// That column is the ORIGINAL IMPORTED SOURCE text (per-chapter joined leaf_text), served by
+	// GET /v1/books/{id}/chapters/{id}/raw — parse.go:255-262 is explicit that "chapter_drafts.body
+	// remains the canonical edit source". An earlier cut of this fix upserted the assistant's draft
+	// into it, which would have DESTROYED the import provenance of every imported chapter on the
+	// first assistant save. The draft alone is sufficient: the chapter_blocks trigger projects
+	// chapter_drafts.body → chapter_blocks.text_content, which is what prose-state and the rail's
+	// book-state probe actually read.
 	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+2,updated_at=now() WHERE id=$1`, chID)
 	if err := insertOutboxEvent(ctx, tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
 		return nil, saveDraftOut{}, errors.New("failed to save draft")

@@ -171,9 +171,10 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolChapterRestoreRevision)
 
 	addTool(srv, "book_chapter_save_draft",
-		"[Saved book] Save a chapter draft body (Tiptap JSON). REQUIRES base_version (the "+
-			"draft_version you read); a version mismatch returns a conflict and "+
-			"stops — no overwrite. Reverse: book_chapter_restore_revision.",
+		"[Saved book] Save a chapter's PROSE as its draft. Put the chapter text itself in `body` as "+
+			"plain prose (blank line between paragraphs) — do NOT hand-write editor/Tiptap JSON. "+
+			"REQUIRES base_version (the draft_version you read); a version mismatch returns a conflict "+
+			"and stops — no overwrite. Reverse: book_chapter_restore_revision.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter"}),
 		s.toolChapterSaveDraft)
 

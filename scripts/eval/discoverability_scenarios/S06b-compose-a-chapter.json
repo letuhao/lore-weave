@@ -1,0 +1,30 @@
+{
+  "scenario": "S06b",
+  "title": "Compose a chapter — the 6-phase deep dive, standalone",
+  "maps_to": "W6 chapter-compose rail",
+  "persona": "P1 Mai (novelist) with a plan already approved, now writing ONE chapter properly",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "⚠️ a book with an APPROVED PLAN and existing world info — SKILL_BOOK_ID (the S06 flagship output book serves). W6's draft step sources `base_version` from book_get_chapter, so a chapter must be reachable. On a book with no plan the rail has nothing to compose against.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "outline node", "compose", "prose engine", "workflow", "rail",
+    "base_version", "draft payload", "schema", "tool", "job"
+  ],
+  "canon_facts": [
+    "a chapter's PROSE actually landed in the DB (not merely a chapter row — see M0a: a row is NOT an artifact)",
+    "the prose is consistent with the book's existing world info and cast",
+    "the agent did not claim the chapter was written while it was empty"
+  ],
+  "movements": [
+    {"id": "A", "label": "Ask for the chapter"},
+    {"id": "B", "label": "Let it work"},
+    {"id": "C", "label": "Is it really written?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "Write me the next chapter — the one where she finally sees him again after a thousand years."},
+    {"movement": "B", "user": "Yes, go ahead and write it."},
+    {"movement": "C", "user": "Is that chapter actually saved? Read me back the first few lines of what you saved."}
+  ]
+}

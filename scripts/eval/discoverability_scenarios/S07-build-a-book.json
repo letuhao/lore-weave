@@ -1,0 +1,31 @@
+{
+  "scenario": "S07",
+  "title": "Build a book end-to-end — import → translate → world info → connections → notes",
+  "maps_to": "W7 build-a-book rail",
+  "persona": "P1/P2 — has a manuscript, wants the whole pipeline run for them",
+  "model": "gemma-4-26b-a4b-qat",
+  "permission_mode": "write",
+  "fixture": "⚠️ a book WITH source chapters (prose present, untranslated) — SKILL_BOOK_ID. The rail chains over real content; on an empty book every step no-ops and the scenario silently passes without testing the chain.",
+  "context": {"book_context": {"book_id": "<BOOK_ID>"}},
+  "enabled_skills": [],
+  "jargon_denylist": [
+    "workflow", "rail", "pipeline", "glossary", "ontology", "kind", "entity",
+    "knowledge graph", "KG", "wiki", "job", "async", "tool"
+  ],
+  "canon_facts": [
+    "the chain actually advanced (each stage's artifact is in the DB, not just claimed)",
+    "the agent never asked the user to name a tool or a stage",
+    "any long-running stage was POLLED to a terminal state before it was called done",
+    "no stage was claimed complete while its artifact was absent"
+  ],
+  "movements": [
+    {"id": "A", "label": "Hand it the book"},
+    {"id": "B", "label": "Let it run the chain"},
+    {"id": "C", "label": "What is actually done?"}
+  ],
+  "turns": [
+    {"movement": "A", "user": "I've got this novel loaded. Can you get it fully set up — readable in English, with the world info and how everything connects?"},
+    {"movement": "B", "user": "Yes, do the whole thing."},
+    {"movement": "C", "user": "Where are we? What's actually finished and what isn't?"}
+  ]
+}

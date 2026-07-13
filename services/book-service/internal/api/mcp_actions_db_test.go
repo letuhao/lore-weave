@@ -264,7 +264,7 @@ func TestMCP_SaveDraft_StaleBaseVersion_StopsNoOverwrite_DB(t *testing.T) {
 		BookID:      bookID.String(),
 		ChapterID:   chID.String(),
 		BaseVersion: 5,
-		Body:        json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","_text":"OVERWRITE"}]}`),
+		Body:        "OVERWRITE",
 	}
 	_, _, err := s.toolChapterSaveDraft(tctx, nil, in)
 	if err != ErrStaleDraftVersion {
