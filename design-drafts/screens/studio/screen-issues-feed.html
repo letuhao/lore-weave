@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Issues feed + Jobs + Generation (studio bottom panel, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     STUDIO BOTTOM PANEL — ISSUES · JOBS · GENERATION   (NO catalog id — read on)
+     Spec: docs/specs/2026-07-01-writing-studio/37_issues_feed.md
+     Amends: 28_agent_native_studio.md §AN-12 (in place, not forked)
+
+     WHY THIS EXISTS — the highest-value read in the product answers only to an LLM.
+     `composition_diagnostics` (server.py:3934-4132) ranks everything wrong with a
+     book across SEVEN sources, error→warn→info, $0, no model. It is MCP-ONLY —
+     `grep -rn diagnostics …/app/routers/` → EMPTY. A human reaches it only by asking
+     a chat agent to call it by name, paying for the turn, and trusting the model
+     neither mistyped the book_id nor hallucinated the answer. Meanwhile the surface
+     designed to hold it renders ONE literal stub string for all three tabs since day
+     one (StudioBottomPanel.tsx:43-45). State ② renders that bug verbatim.
+
+     WHY AN-12's PREMISE WAS FALSE — it sealed "no new GUI surface" reasoning "the
+     human equivalents already exist". The audit checked, source by source:
+       broken_canon_rule       ✅ quality-canon (rule lane)     — NOT ranked
+       canon_contradiction     ✅ quality-canon (entity lane)   — NOT ranked
+       open_thread_debt        ✅ quality-promises              — NOT ranked
+       conformance_dirty/_never_run  🟡 a DOT on the Plan Hub — arc-scoped, not listed
+       unplanned_chapter       🟡 the PH21 tray — a COUNT, not a work list
+       index_stale             ❌ NOTHING
+       prose_deleted_spec_node ❌ NOTHING — and it is the only `error` class an author
+                                  can ACT on (26 IX-13: the spec SURVIVES a prose
+                                  delete, deliberately). No screen will ever tell them.
+     ~2.5 of 5 sources have a human surface, NONE is ranked, and the two with none at
+     all include the highest severity the map has. ► The PREMISE was false. The
+     ARCHITECTURE holds, and this mock honours it: ZERO panels, ZERO catalog rows.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+       • Issues is a FEED, not an ORGAN. Every row DEEP-LINKS to the panel that owns
+         the fix. It ranks and routes; it NEVER edits. A row that could not name its
+         owning panel is a design failure, not a feature.
+       • The bottom panel is OUTSIDE dockview (StudioFrame.tsx:160, 168px) — which is
+         exactly why AN-12's DOCK-2/DOCK-8 fork risk cannot apply, and also why it is
+         NOT in catalog.ts and MUST NOT enter the `panel_id` enum (machine-locked to
+         OPENABLE_STUDIO_PANELS: a pseudo-id REDS panelCatalogContract.test.ts by
+         construction). Drift-locks stay green: py 57 == contract 57 == openable 57.
+       • find_references becomes a LENS (right-click popover, state ⑤), not a panel.
+       • The deep-link seam is REUSED, not rebuilt — PlanHubPanel.tsx:74 already emits
+         openPanel('quality-canon',{params:{focusRuleId,focusChapterId}}) and
+         useQualityCanon.ts:107 hoists the focused rule to the top.
+
+     WHY THIS IS A SPEC, NOT A WIRING TICKET — 3 payload bugs, rendered in state ③.
+     "A mechanical lift of the MCP handler" is right about the ENGINE and wrong about
+     the PAYLOAD: the handler builds node_ref for an AGENT (which reads prose); a GUI
+     has to NAVIGATE on it, and three fields it needs are dropped on the floor.
+       IF-1 node_ref.kind:"chapter" names TWO DISJOINT ID SPACES — unplanned_chapter
+            (:4125) emits a book-service chapter_id, prose_deleted_spec_node (:4099) a
+            composition outline_node.id, and a chapter-kind outline node's `kind` IS
+            literally "chapter". Trust `kind` → 404, or worse, a collision.
+       IF-2 broken_canon_rule DROPS rule_id + chapter_id (:4043-4050) though
+            OutlineRepo.rule_violations RETURNS both (outline.py:1338) and its docstring
+            says so. The ONE row whose panel already takes a focus param cannot be
+            deep-linked — the payload no longer carries the key.
+       IF-3 scene-inspector selects from the BUS (useSceneInspector.ts:24), not params.
+            A params deep-link opens the LAST-SELECTED scene — silent wrong-target. The
+            correct move is publish({type:'scene',sceneId,chapterId}) THEN openPanel()
+            — and that event REQUIRES chapterId, which diagnostics also drops.
+
+     🔴 FE-1 — AND THE FOURTH BUG, WHICH THIS MOCK'S FIRST CUT SHIPPED (2026-07-13 review)
+       IF-3 is a symptom of a bigger one. THREE of the seven rows deep-link into panels
+       that read NO props.params AT ALL:
+         plan-hub        (prose_deleted_spec_node → focusNodeId; conformance_* → focusArcId)
+         chapter-browser (unplanned_chapter → focusChapterId)
+       VERIFIED at HEAD: `grep -rn "focusNodeId\|focusArcId" frontend/src` → ZERO hits.
+       PlanHubPanel.tsx:39 and ChapterBrowserPanel.tsx:23 both call useStudioPanel(id,
+       props.api) and never touch props.params. Plan Hub EMITS a params deep-link (:74);
+       it CONSUMES none. EMITTING ≠ ACCEPTING.
+       ⇒ openPanel('plan-hub',{params:{focusNodeId}}) mounts the tab and focuses NOTHING.
+         The dock opens, the tree is unfocused, and the click "worked" — silent-success,
+         inside the very feed whose IF-3 names that class.
+       ⇒ IF-4 REVISED: a row is INERT when (1) no panel owns the fix (index_stale) OR
+         (2) its target panel is PARAM-BLIND. "The panel exists" is NOT the test.
+         "The panel will actually FOCUS what I clicked" is. All three ship inert in M1.
+       ⚠ NOTE useStudioPanel does NOT expose params — its signature is
+         useStudioPanel(panelId, api, extras?) -> string (the localized LABEL). Params
+         arrive ONLY as the dockview prop props.params (JobDetailPanel.tsx:24 is the
+         shipped pattern). An earlier spec draft claimed otherwise. It was wrong.
+       ⇒ quality-canon is the ONLY target that works today, because useQualityCanon.ts
+         :74-75,107,111 actually READS the param and HOISTS on it.
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagged up front, not silently)
+       • BE-1  GET /v1/composition/books/{book_id}/diagnostics — MUST-BUILD. Extract
+         build_diagnostics() so the MCP tool and the route share ONE fanout (two
+         problems panels = the css-var-duplicated-across-two-consumers bug). Uses the
+         USER'S JWT, never a minted service bearer. counts stay UNFILTERED.
+       • BE-1a payload widening (the real work): node_ref gains `ref_kind` naming the ID
+         SPACE — closed set of exactly the THREE that exist:
+           chapter        → a book-service chapter_id      (unplanned_chapter)
+           outline_node   → a composition outline_node.id  (both canon lanes, prose_deleted)
+           structure_node → a composition structure_node.id (conformance_*)
+         plus chapter_id where the source has it; broken_canon_rule gains rule_id.
+         ⚠ NOT `scene` and NOT `canon_rule`. A scene IS an outline_node (both canon lanes
+         SELECT n.id AS scene_id FROM outline_node — outline.py:1214,:1338), so carrying
+         both names ONE id space TWICE — the very ambiguity IF-1 exists to kill, re-added
+         inside its own fix. And no diagnostic emits a canon_rule node_ref (rule_id is a
+         sibling FIELD, IF-2). Three id spaces ⇒ three members. Back-ported to the MCP tool.
+       • FE-1 (frontend, M1b) PlanHubPanel + ChapterBrowserPanel must READ props.params
+         and hoist+reveal (mirror useQualityCanon's hoist(): a focus HOISTS and HIGHLIGHTS,
+         it never filters). ⚠ Both files are BOOK-PACKAGE-TRACK-OWNED — coordinate (plan 30 §9).
+       • BE-1d GET /v1/composition/books/{bid}/entity-references — MUST-BUILD. NOT
+         /works/{pid}/references — that path is TAKEN by the research reference shelf.
+       • BE-1b/1c (M3) jobs-service /v1/jobs gains a book_id filter; composition's
+         _job_params (generation_jobs.py:127) starts STAMPING book_id. Until then a
+         book-scoped Jobs tab is UNBUILDABLE (state ⑥). Both XS. Both CROSS-SERVICE
+         ⇒ live-smoke MANDATORY, not optional.
+       • Gateway ZERO (gateway-setup.ts:354 pathFilter is generic). Panels ZERO.
+         Catalog rows ZERO. Settings ZERO. Writes ZERO.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① Issues wired — ranked over all 7 sources, every row naming its owning panel;
+          BOTH inert kinds (IF-4 case 1 = no owning panel · case 2 = PARAM-BLIND panel,
+          FE-1); the cost-gated Run button + its in-flight row; the compound X-1+FE-1
+          fallback (no button AND no deep-link — a fact, honestly stated).
+       ② BEFORE — today's literal stub, all three tabs.
+       ③ The payload today vs after BE-1a — the dropped keys, struck through.
+       ④ Degraded (the warnings strip — NEVER "no issues found") · empty-clean ·
+          loading · route error.
+       ⑤ The find-references LENS — EIGHT source rows (one per REFERENCE_SOURCES member;
+          a 6-row lens silently drops outline_present + scene_pov and hides their degrade),
+          with a per-source could-not-be-read, and the all-zero state.
+       ⑥ Jobs + Generation — the honest stub that NAMES its blocker (M1), then wired (M3).
+
+     SCALE — a book-wide fanout over 1,842 chapters. Counts are EXACT; only ROWS are
+     capped (limit 25, clamped once) and the payload SAYS it capped (refs_capped —
+     OUT-5). The footer prints the honest total, never the capped one. No polling, no
+     SSE: refetch on tab open, on Refresh, on a Lane-B agent effect. staleTime 60s.
+
+     PRE-EMPT — the next agent to open this file will want to make a row "fix it
+     inline". DO NOT. A feed that edits IS the DOCK-2 fork AN-12 forbids. Rows route
+     to the panels that own the OCC writes; those panels already handle their 412.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain tokens (appended, never edited into the block above) */
+    --inert: #6b625a;          /* a row with NO owning panel — honestly dead, not a dead affordance */
+    --lens: #b89ee8;           /* the find-references popover (violet — the recurring extra hue) */
+    --blocked: #e8b87e;        /* a tab whose blocker is named, not hand-waved (BE-1b/1c) */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.no { color: var(--destructive); border-color: var(--destructive-muted); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Legend ───────────────────────────────────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.e { background: var(--destructive); } .dot.w { background: var(--warning); }
+  .dot.i { background: var(--info); }        .dot.x { background: var(--inert); }
+
+  /* ── Panel frame — the BOTTOM PANEL, at true 168px dock scale ─────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px;
+           display: flex; flex-direction: column; overflow: hidden; position: relative; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: stretch; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; align-items: center; padding-right: 8px; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+
+  /* the tab strip IS the panel head — three tabs, always-mounted bodies (§4.0) */
+  .tabs { display: flex; align-items: stretch; }
+  .tab { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 12px; cursor: pointer;
+         font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .tab:hover { color: var(--foreground); }
+  .tab.on { color: var(--foreground); }
+  .tab.on::after { content: ''; position: absolute; inset-inline: 0; top: 0; height: 2px; background: var(--primary); }
+  .tab .n { font-family: 'JetBrains Mono'; font-size: 9px; font-weight: 500; height: 14px; min-width: 14px; padding: 0 4px;
+            border-radius: 100px; display: flex; align-items: center; justify-content: center; letter-spacing: 0; }
+  .tab .n.e { background: var(--destructive-muted); color: var(--destructive); }
+  .tab .n.b { background: var(--secondary); color: var(--blocked); }
+
+  /* drag-resize grip — per-DEVICE localStorage (sanctioned), never a server setting */
+  .grip { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 34px; height: 3px; margin-top: 2px;
+          border-radius: 2px; background: var(--border-hover); cursor: ns-resize; z-index: 5; }
+  /* where the DEFAULT 168px height falls — ~4 rows. Rendered, not asserted. */
+  .h168 { position: absolute; left: 0; right: 0; top: 168px; border-top: 1px dashed var(--border-hover); z-index: 4; pointer-events: none; }
+  .h168 span { position: absolute; right: 8px; top: -8px; background: var(--background-alt); padding: 0 5px;
+               font-family: 'JetBrains Mono'; font-size: 9px; color: var(--border-hover); }
+
+  .bottom { width: 1180px; max-width: 100%; height: 168px; }
+  .bottom.tall { height: 388px; }
+
+  /* ── Toolbar ──────────────────────────────────────────────────────────── */
+  .toolbar { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }
+  .row1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .chip { display: flex; align-items: center; gap: 5px; height: 23px; padding: 0 9px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid transparent; color: var(--muted-fg); font-size: 11px; font-weight: 500; cursor: pointer; }
+  .chip:hover:not(.active) { border-color: var(--border-hover); color: var(--foreground); }
+  .chip.active { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+  .chip .k { font-family: 'JetBrains Mono'; font-size: 9.5px; opacity: .85; }
+  .chip.sev-e .k { color: var(--destructive); } .chip.sev-w .k { color: var(--warning); } .chip.sev-i .k { color: var(--info); }
+  .chip-sep { width: 1px; height: 15px; background: var(--border); margin: 0 3px; }
+  .select-wrap { position: relative; flex-shrink: 0; }
+  select { appearance: none; background: var(--background); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 4px 22px 4px 9px; border-radius: 7px; cursor: pointer; }
+  select:hover { border-color: var(--border-hover); }
+  .select-wrap > svg { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .tbtn { display: flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 6px;
+    background: var(--background); border: 1px solid var(--border); color: var(--foreground); font-size: 11px; font-weight: 500; cursor: pointer; }
+  .tbtn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .tbtn svg { width: 12px; height: 12px; }
+
+  /* ── The warnings strip — NOT optional chrome (§4.1.3) ────────────────── */
+  .warn-strip { display: flex; align-items: flex-start; gap: 8px; padding: 7px 12px; flex-shrink: 0;
+    background: var(--primary-muted); border-bottom: 1px solid var(--border); font-size: 11px; line-height: 1.55; color: var(--primary); }
+  .warn-strip svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 1px; }
+  .warn-strip b { color: var(--foreground); font-weight: 600; }
+  .warn-strip .w { color: var(--muted-fg); display: block; }
+  .warn-strip .w code { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--primary); }
+
+  /* ── The feed table ───────────────────────────────────────────────────── */
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .cols { display: grid; grid-template-columns: 82px 104px 1fr 152px 62px 16px; gap: 10px; align-items: center; }
+  .thead { position: sticky; top: 0; z-index: 2; background: var(--background-alt); border-bottom: 1px solid var(--border);
+    padding: 6px 12px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+
+  .trow { padding: 7px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12.5px; }
+  .trow:hover { background: var(--card-hover); }
+  .trow.inert { cursor: default; }
+  .trow.inert:hover { background: transparent; }
+
+  .sev { display: flex; align-items: center; gap: 6px; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .sev.e { color: var(--destructive); } .sev.w { color: var(--warning); } .sev.i { color: var(--info); }
+  .kind { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 4px; background: var(--secondary);
+    font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .title-cell { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+  .title-cell .t { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .title-cell .d { flex: 1 1 0; min-width: 0; color: var(--muted-fg); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* the target chip: every row NAMES the panel that owns its fix. That is the feed. */
+  .target { display: inline-flex; align-items: center; gap: 5px; height: 19px; padding: 0 7px; border-radius: 4px;
+    background: var(--accent-muted); color: var(--accent-fg); font-family: 'JetBrains Mono'; font-size: 9.5px; white-space: nowrap; }
+  .target svg { width: 10px; height: 10px; opacity: .8; }
+  .target.none { background: transparent; color: var(--inert); font-style: normal; }
+  /* FE-1 — the target panel EXISTS but is PARAM-BLIND (reads no props.params). Amber, not teal:
+     this is a NAMED BLOCKER, not a dead end. It becomes a live teal chip the moment FE-1 lands. */
+  .target.blind { background: transparent; color: var(--blocked); border: 1px dashed var(--blocked); }
+  .at { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--muted-fg); text-align: right; }
+  .chev { width: 13px; height: 13px; color: var(--muted-fg); }
+  .trow.inert .chev { visibility: hidden; }
+
+  /* the ONE paid action in the feed — generic /actions/preview → /actions/confirm spine */
+  .run { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 5px;
+    background: var(--primary); border: none; color: var(--primary-fg); font-size: 10.5px; font-weight: 600; cursor: pointer; }
+  .run svg { width: 11px; height: 11px; }
+  .run:disabled { background: var(--secondary); color: var(--muted-fg); cursor: default; }
+  .cost { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .spin { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--border-hover); border-top-color: var(--primary); flex-shrink: 0; }
+
+  /* ── Non-happy bodies ─────────────────────────────────────────────────── */
+  .skel { height: 11px; border-radius: 3px; background: var(--secondary); }
+  .center { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; padding: 14px; text-align: center; font-size: 11.5px; color: var(--muted-fg); line-height: 1.6; }
+  .center b { color: var(--foreground); font-weight: 600; }
+  .center .srcs { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--border-hover); line-height: 1.7; }
+  .center svg { width: 18px; height: 18px; }
+  .errrow { display: flex; align-items: center; gap: 9px; margin: 10px 12px; padding: 8px 10px; border-radius: 7px;
+    background: var(--destructive-muted); border: 1px solid var(--destructive); font-size: 11.5px; color: var(--foreground); }
+  .errrow svg { width: 14px; height: 14px; color: var(--destructive); flex-shrink: 0; }
+  .errrow .mono { color: var(--destructive); font-size: 10.5px; }
+  .errrow button { margin-left: auto; }
+
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 6px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); }
+  .panel-foot .note { display: flex; align-items: center; gap: 6px; }
+  .panel-foot .note svg { width: 12px; height: 12px; color: var(--info); flex-shrink: 0; }
+  .panel-foot b { color: var(--foreground); font-weight: 500; }
+
+  /* ── JSON payload cards (state ③) ─────────────────────────────────────── */
+  .json { font-family: 'JetBrains Mono'; font-size: 10.5px; line-height: 1.65; background: var(--background);
+    border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; color: var(--muted-fg); white-space: pre; overflow-x: auto; }
+  .json .k { color: var(--accent-fg); } .json .s { color: var(--primary); } .json .n { color: #8ab6e8; }
+  .json .c { color: var(--inert); }
+  .json .drop { text-decoration: line-through; opacity: .5; color: var(--destructive); }
+  .json .add { color: var(--success); }
+  .pay { width: 578px; max-width: 100%; }
+  .pay .panel-head { height: 28px; font-size: 9px; padding-left: 12px; align-items: center; }
+  .pay .pb { padding: 11px; display: flex; flex-direction: column; gap: 8px; }
+  .pay .cap { font-size: 10.5px; color: var(--muted-fg); line-height: 1.55; }
+  .pay .cap b { color: var(--foreground); font-weight: 600; }
+
+  /* ── The find-references LENS (state ⑤) ───────────────────────────────── */
+  /* height 390px, not 300px: the lens carries EIGHT source rows (one per REFERENCE_SOURCES member)
+     + head + a 3-line foot ≈ 334px from top:26px. At 300px the 8th row clipped — and a clipped
+     source row is the exact failure the 8-row rule exists to prevent. Size the stage to the CONTENT. */
+  .lens-stage { position: relative; width: 578px; max-width: 100%; height: 390px; border-radius: 10px;
+    background: var(--background); border: 1px solid var(--border); padding: 14px; overflow: hidden; }
+  .pnode { width: 210px; border-radius: 8px; background: var(--card); border: 1px solid var(--border-hover); padding: 9px 10px; }
+  .pnode .pt { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+  .pnode .badges { display: flex; gap: 4px; flex-wrap: wrap; }
+  .cbadge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 6px; border-radius: 100px;
+    background: var(--secondary); border: 1px solid var(--border); font-size: 10px; cursor: context-menu; }
+  .cbadge.focus { border-color: var(--lens); box-shadow: 0 0 0 2px rgba(184,158,232,.18); }
+  .cbadge .av { width: 13px; height: 13px; border-radius: 50%; font-size: 7px; font-weight: 700; color: #141010;
+    display: flex; align-items: center; justify-content: center; }
+  .cbadge .dots { color: var(--muted-fg); font-weight: 700; letter-spacing: 1px; padding-left: 2px; }
+
+  .lens { position: absolute; width: 320px; border-radius: 9px; background: var(--background-alt);
+    border: 1px solid var(--border-hover); box-shadow: 0 12px 32px rgba(0,0,0,.55); overflow: hidden; }
+  .lens-head { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .lens-head .nm { flex: 1; font-size: 12px; font-weight: 600; }
+  .lens-head .swatch { width: 3px; height: 13px; border-radius: 2px; background: var(--lens); }
+  .lrow { display: grid; grid-template-columns: 1fr 78px 13px; gap: 8px; align-items: center; padding: 6px 10px;
+    border-bottom: 1px solid var(--border); font-size: 11.5px; cursor: pointer; }
+  .lrow:hover { background: var(--card-hover); }
+  .lrow .c { font-family: 'JetBrains Mono'; font-size: 11px; text-align: right; color: var(--foreground); }
+  .lrow .c.zero { color: var(--inert); }
+  .lrow .c.err { font-size: 9.5px; color: var(--destructive); font-style: normal; }
+  .lrow.dead { cursor: default; }
+  .lrow.dead:hover { background: transparent; }
+  .lrow.dead svg { visibility: hidden; }
+  .lrow .sub2 { font-size: 10px; color: var(--muted-fg); }
+  .lfoot { padding: 8px 10px; font-size: 10px; color: var(--muted-fg); line-height: 1.55; background: var(--background); }
+  .lfoot code { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--accent-fg); }
+
+  /* ── Mini panels (BEFORE rails, Jobs/Generation) ──────────────────────── */
+  .mini { width: 373px; height: 168px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .mini .tab { padding: 0 9px; font-size: 9px; }
+  /* A flex container promotes EVERY child to a flex item — including inline <code>/<b>.
+     So the stub centers ONE wrapper div (`.stub > div`), and normal inline flow happens
+     inside it. Flexing the content directly shreds the sentence one tag at a time. */
+  .stub { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+    padding: 16px; text-align: center; font-size: 11px; color: var(--muted-fg); line-height: 1.6; }
+  .stub.bad { color: var(--destructive); }
+  .stub.honest { color: var(--blocked); }
+  .stub code { font-family: 'JetBrains Mono'; font-size: 10px; }
+  .strike { text-decoration: line-through; opacity: .5; }
+
+  .jrow { display: grid; grid-template-columns: 1fr 74px 68px 54px; gap: 8px; align-items: center;
+    padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 11.5px; cursor: pointer; }
+  .jrow:hover { background: var(--card-hover); }
+  .jrow .jt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .jrow .jk { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 4px; font-size: 9.5px; font-weight: 600; }
+  .b-run { background: var(--primary-muted); color: var(--primary); }
+  .b-ok  { background: #16301f; color: var(--success); }
+  .b-q   { background: var(--secondary); color: var(--muted-fg); }
+  .b-fail{ background: var(--destructive-muted); color: var(--destructive); }
+  .pbar { height: 4px; border-radius: 2px; background: var(--secondary); overflow: hidden; }
+  .pbar i { display: block; height: 100%; border-radius: 2px; background: var(--primary); }
+  .pct { font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .callout .inrow { margin-top: 9px; border: 1px dashed var(--border-hover); border-radius: 7px; background: var(--background); }
+</style>
+</head>
+<body>
+
+<h1>Issues feed &middot; Jobs &middot; Generation <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio BOTTOM panel, draft</span></h1>
+<p class="sub">
+  Spec: <b>37_issues_feed.md</b>. The Studio's bottom panel (<code>StudioBottomPanel.tsx</code>, 168px, <b>outside dockview</b>) has rendered one
+  literal stub string for all three tabs since day one. Meanwhile <code>composition_diagnostics</code> already ranks everything wrong with a book
+  across <b>seven sources</b> — error → warn → info, <b>$0</b>, no model — and is reachable <b>only by asking an LLM to call it</b>.
+  This mock wires the existing tabs. <b>Zero new dock panels. Zero catalog rows.</b> <code>find_references</code> becomes a right-click
+  <b>lens</b>, not a panel — so the drift-locks stay green (<code>py 57 == contract 57 == openable 57</code>) and the DOCK-2 fork AN-12 protected
+  against still cannot happen.
+</p>
+
+<div class="legend">
+  <div class="item"><span class="dot e"></span><b>error</b> · 2 of 3 error classes have <b>no</b> human surface today</div>
+  <div class="item"><span class="dot w"></span><b>warn</b> · a dot or a count, never a work list</div>
+  <div class="item"><span class="dot i"></span><b>info</b> · exists, unranked</div>
+  <div class="item"><span class="dot x"></span><b>no owning panel</b> · row is <b>inert</b> and says so (IF-4 case 1)</div>
+  <div class="item"><span class="target blind" style="height:16px;font-size:9px">panel · FE-1</span> <b>param-blind panel</b> · exists but reads no <code style="font-family:'JetBrains Mono';font-size:9.5px">props.params</code> ⇒ <b>also inert</b> (IF-4 case 2)</div>
+  <div class="item" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    Every row names the panel that owns its fix — and only offers a chevron if that panel will actually <b>focus</b> what you clicked.</div>
+</div>
+
+<div class="callout bad">
+  <b>🔴 FE-1 — the bug this mock's first cut SHIPPED, now rendered as the inert state instead.</b>
+  Three of the seven rows (<code>prose_deleted_spec_node</code> and <code>conformance_*</code> → <code>plan-hub</code>;
+  <code>unplanned_chapter</code> → <code>chapter-browser</code>) point at panels that <b>do not read <code>props.params</code> at all</b>.
+  <b>Verified at HEAD:</b> <code>grep -rn "focusNodeId\|focusArcId" frontend/src</code> → <b>ZERO hits</b>;
+  <code>PlanHubPanel.tsx:39</code> and <code>ChapterBrowserPanel.tsx:23</code> both call
+  <code>useStudioPanel(id, props.api)</code> and never touch <code>props.params</code>. Plan Hub <b>emits</b> a params deep-link
+  (<code>:74</code>); it <b>consumes</b> none. <b>Emitting ≠ accepting.</b>
+  So <code>openPanel('plan-hub',{params:{focusNodeId}})</code> mounts the tab and focuses <b>nothing</b> — the dock opens, the user sees an
+  unfocused tree, and the click "worked". That is <code>silent-success-is-a-bug</code>, shipped inside the very feed whose <b>IF-3 names that
+  class</b>. ► <b>Until FE-1 lands, those three rows are INERT (above).</b> <code>quality-canon</code> is the <b>only</b> target that works
+  today — and it works because <code>useQualityCanon.ts:74-75,107,111</code> actually <i>reads</i> and <i>hoists</i> on the param.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① THE ISSUES FEED — wired. The primary state.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① Issues <span class="tag no">no catalog id — not a dock panel</span> <span class="tag">book-wide</span> — ranked, routed, $0</h2>
+
+<div class="panel bottom tall">
+  <div class="grip" title="Drag to resize — persisted per-DEVICE in localStorage (sanctioned: 'editor panel widths'). NOT a server setting."></div>
+  <div class="h168"><span>default 168px · ~4 rows</span></div>
+
+  <div class="panel-head">
+    <div class="tabs">
+      <div class="tab">Jobs <span class="n b">M3</span></div>
+      <div class="tab">Generation <span class="n b">M3</span></div>
+      <div class="tab on">Issues <span class="n e">3</span></div>
+    </div>
+    <div class="acts">
+      <div class="ico" title="Collapse panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="row1">
+      <div class="chip active">All <span class="k">38</span></div>
+      <div class="chip sev-e"><span class="dot e"></span>Error <span class="k">3</span></div>
+      <div class="chip sev-w"><span class="dot w"></span>Warn <span class="k">21</span></div>
+      <div class="chip sev-i"><span class="dot i"></span>Info <span class="k">14</span></div>
+      <div class="chip-sep"></div>
+      <div class="select-wrap">
+        <select><option>All kinds</option><option>broken_canon_rule</option><option>canon_contradiction</option><option>prose_deleted_spec_node</option><option>conformance_dirty</option><option>conformance_never_run</option><option>unplanned_chapter</option><option>index_stale</option><option>open_thread_debt</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <button class="tbtn" style="margin-left:auto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg> Refresh</button>
+    </div>
+  </div>
+
+  <div class="thead cols">
+    <div>Severity</div><div>Kind</div><div>Finding</div><div>Owning panel</div><div style="text-align:right">At</div><div></div>
+  </div>
+
+  <div class="body">
+    <!-- ERROR — most-recent-first inside severity (_neg_ts, lexicographic ISO inversion) -->
+    <!-- FE-1 — plan-hub is PARAM-BLIND (PlanHubPanel.tsx:39 reads no props.params; focusNodeId = 0
+         hits repo-wide). Clicking would mount the Hub and focus NOTHING = silent-success. INERT in M1. -->
+    <div class="trow cols inert" title="plan-hub does not read focusNodeId yet (FE-1). Opening it would focus nothing — so this row does not pretend to. Live in M1b.">
+      <div class="sev e"><span class="dot e"></span>Error</div>
+      <div><span class="kind">prose_deleted…</span></div>
+      <div class="title-cell"><span class="t">“Arc II — món nợ” points at a chapter that no longer exists</span> <span class="d">— the spec node survived the prose delete (26 IX-13). Re-link or archive.</span></div>
+      <div><span class="target blind">plan-hub · FE-1</span></div>
+      <div class="at">2h ago</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+
+    <div class="trow cols">
+      <div class="sev e"><span class="dot e"></span>Error</div>
+      <div><span class="kind">broken_canon…</span></div>
+      <div class="title-cell"><span class="t">3 violation(s) of “Một cánh cổng không bao giờ quên một cái tên”</span> <span class="d">— in Ch. 41 · Nàng bước vào sương mù</span></div>
+      <div><span class="target">quality-canon <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="at">5h ago</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+
+    <div class="trow cols">
+      <div class="sev e"><span class="dot e"></span>Error</div>
+      <div><span class="kind">canon_contra…</span></div>
+      <div class="title-cell"><span class="t">Lâm Thanh Vân is blind in Ch. 41 and reads a letter in Ch. 44</span> <span class="d">— scene 44.2 · 第四十四章 · 断岳</span></div>
+      <div><span class="target">quality-canon <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="at">1d ago</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+
+    <!-- WARN
+         FE-1 nuance worth reading: the conformance row's ROW-CLICK deep-links to plan-hub
+         (focusArcId) and plan-hub is PARAM-BLIND ⇒ the row is INERT for navigation. But the RUN
+         button is NOT a deep-link — it drives the generic /actions/preview → /actions/confirm spine
+         and works on day one. An inert ROW with a live BUTTON is the honest shape, and it is the
+         whole point of separating "the panel that owns the fix" from "the action that IS the fix". -->
+    <div class="trow cols inert" title="Row-click would open plan-hub, which does not read focusArcId yet (FE-1). The Run button is unaffected — it uses the actions spine, not a deep-link.">
+      <div class="sev w"><span class="dot w"></span>Warn</div>
+      <div><span class="kind">conformance…</span></div>
+      <div class="title-cell"><span class="t">Arc “Trấn Nam” — <span class="mono" style="font-size:11px">never_run</span></span> <span class="d">— 14 chapters, never checked against the plan</span></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="run"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 3 14 9-14 9V3z"/></svg>Run</button>
+        <span class="cost">~$0.04</span>
+      </div>
+      <div class="at">—</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+
+    <!-- the paid action IN FLIGHT — §8.4. No optimistic mutation: it is a DERIVED read.
+         Row-click inert for the same FE-1 reason; the in-flight button is disabled on its own merits. -->
+    <div class="trow cols inert" title="Row-click would open plan-hub, which does not read focusArcId yet (FE-1). Live in M1b.">
+      <div class="sev w"><span class="dot w"></span>Warn</div>
+      <div><span class="kind">conformance…</span></div>
+      <div class="title-cell"><span class="t">Arc “Hải Môn” — <span class="mono" style="font-size:11px">dirty</span></span> <span class="d">— 6 chapters changed since the last run</span></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="spin"></div>
+        <button class="run" disabled>Running</button>
+        <span class="cost">job 7f21…</span>
+      </div>
+      <div class="at">now</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+
+    <!-- FE-1 — chapter-browser is PARAM-BLIND too (ChapterBrowserPanel.tsx:23). The first cut of this
+         mock drew this row clickable and NEVER FLAGGED the panel. That was the worst bug in the spec. -->
+    <div class="trow cols inert" title="chapter-browser does not read focusChapterId yet (FE-1). Live in M1b.">
+      <div class="sev w"><span class="dot w"></span>Warn</div>
+      <div><span class="kind">unplanned_ch…</span></div>
+      <div class="title-cell"><span class="t">第四十二章 · 断岳 is written but not planned</span> <span class="d">— 3,204 words with no spec node above it</span></div>
+      <div><span class="target blind">chapter-browser · FE-1</span></div>
+      <div class="at">3d ago</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+
+    <!-- IF-4 — the INERT row. No chevron, not clickable, and it SAYS WHY. -->
+    <div class="trow cols inert" title="No panel owns this. The sweeper heals it — index_stale explains why a conformance number may lag.">
+      <div class="sev w"><span class="dot x"></span>Warn</div>
+      <div><span class="kind">index_stale</span></div>
+      <div class="title-cell"><span class="t" style="color:var(--muted-fg);font-weight:400">Chapter index is 6 chapters behind the prose</span> <span class="d">— the sweeper heals these. Nothing for you to do; it explains a lagging conformance number.</span></div>
+      <div><span class="target none">— no owning panel</span></div>
+      <div class="at">40m ago</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+
+    <!-- INFO -->
+    <div class="trow cols">
+      <div class="sev i"><span class="dot i"></span>Info</div>
+      <div><span class="kind">open_thread…</span></div>
+      <div class="title-cell"><span class="t">7 open promise(s) still unpaid</span> <span class="d">— oldest: “ai đã đốt cây cầu” (Ch. 9, 214 chapters ago)</span></div>
+      <div><span class="target">quality-promises <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="at">6d ago</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Showing <b>25</b> of <b>38</b> findings · <span class="mono">limit 25</span> · 7 sources answered · computed 40s ago
+    </div>
+    <span class="mono">Nghịch thiên · 1,842 chapters</span>
+  </div>
+</div>
+
+<div class="callout">
+  <b>Counts are EXACT; only ROWS are capped — and the payload says so.</b> The chips read <code>38 / 3 / 21 / 14</code> from the
+  <code>counts</code> map, never from the 25 rows on screen (<code>Diagnostics.ranked()</code>, OUT-5). Which is why <code>severity</code> and
+  <code>kind</code> filter <b>server-side, after ranking, with <code>counts</code> left unfiltered</b> (D-2 — do not "simplify" this):
+  a filtered <code>counts</code> turns "Error 3" into "Error 0" the moment you click the Info chip, and the author reads that as
+  <i>my errors went away</i>.
+</div>
+
+<div class="callout warn">
+  <b>X-1 (the <code>AddModelCta</code> DOCK-7 teardown) is a HARD prerequisite for the Run button.</b> Arc-scope conformance is
+  <code>deep</code> ⇒ it needs a BYOK <code>model_ref</code> ⇒ a <code>ModelPicker</code> ⇒ its empty state renders <code>AddModelCta</code> —
+  which today <b>destroys the user's entire dock layout</b>. If X-1 has not landed, <b>M1 ships this row without the button</b>.
+  Shipping the landmine to save one click is not a trade.
+  <br><br>
+  ⚠ <b>And be honest about the compound case:</b> if <b>neither X-1 nor FE-1</b> has landed, this row has <b>no button AND no working
+  deep-link</b> (<code>plan-hub</code> is param-blind) — so it degrades to a <b>pure statement of fact</b>: <i>"this arc was never checked."</i>
+  <b>That is still worth shipping</b> — today the author has no way to learn it at all — but the row must <b>say</b> it is inert rather than
+  offer a chevron that focuses nothing. <b>An honest dead-end beats a lying affordance.</b>
+  <div class="inrow">
+    <div class="trow cols inert" style="border-bottom:none" title="Compound fallback: no X-1 ⇒ no Run button; no FE-1 ⇒ plan-hub focuses nothing. The row states the fact and offers no affordance it cannot honour.">
+      <div class="sev w"><span class="dot w"></span>Warn</div>
+      <div><span class="kind">conformance…</span></div>
+      <div class="title-cell"><span class="t">Arc “Trấn Nam” — <span class="mono" style="font-size:11px">never_run</span></span> <span class="d">— fallback shape: no Run button (X-1), no deep-link (FE-1). A fact, honestly stated.</span></div>
+      <div><span class="target blind">plan-hub · FE-1</span></div>
+      <div class="at">—</div>
+      <div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>The Run button uses the GENERIC cost spine, and must not be "aligned" with its neighbour.</b>
+  <code>GET /v1/composition/actions/preview</code> → <code>POST /v1/composition/actions/confirm</code>, descriptor
+  <code>composition.conformance_run</code> (already dispatched, <code>actions.py:75,343</code>). It does <b>NOT</b> use
+  <code>/actions/conformance_run/estimate</code> + <code>/confirm</code> — those two paths <b>404 in production today</b>
+  (<code>motif/api.ts:224,230</code>). Wave 3 owns that live bug. This button will sit next to a broken one until then. <b>Do not copy the broken one.</b>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ② BEFORE — today. The bug being replaced, rendered.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>② Before — today <span class="tag">StudioBottomPanel.tsx:43-45</span> — one stub string, three tabs</h2>
+<p class="sub">
+  Not a broken promise — spec 01 said <i>"frame real, content stub"</i>, and plan 30 §10 REFUTES the claim that 01 promised a working feed.
+  It is a <b>new ask</b>, and it is the right one. What it is <b>not</b> is a small one: the tab body is a single
+  <code>&lt;div&gt;</code> rendering <code>t(`bottomStub.${tab}`)</code>, so all three tabs are the same lie.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><div class="tabs"><div class="tab on">Jobs</div><div class="tab">Generation</div><div class="tab">Issues</div></div></div>
+    <div class="stub bad">Job feed appears here once wired.</div>
+  </div>
+  <div class="panel mini">
+    <div class="panel-head"><div class="tabs"><div class="tab">Jobs</div><div class="tab on">Generation</div><div class="tab">Issues</div></div></div>
+    <div class="stub bad">Generation feed appears here once wired.</div>
+  </div>
+  <div class="panel mini">
+    <div class="panel-head"><div class="tabs"><div class="tab">Jobs</div><div class="tab">Generation</div><div class="tab on">Issues</div></div></div>
+    <div class="stub bad"><div>Quality issues appear here once wired.
+      <span style="color:var(--muted-fg);font-size:10px;line-height:1.7;display:block;margin-top:10px">
+        <span class="strike">38 findings exist</span><br />
+        <span class="strike">3 of them are errors</span><br />
+        <span class="strike">2 error classes have no other surface</span><br />
+        <code class="mono">en/studio.json:721-725</code>
+      </span>
+    </div></div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <b>The first thing to write is not the feed — it is the always-mounted refactor.</b> The current file renders <b>one</b>
+  <code>&lt;div&gt;</code> for whichever tab is active. The moment the first tab owns state (the Jobs tab owns an SSE subscription),
+  that is the <i>never conditionally unmount stateful components</i> violation: switching tabs tears the stream down. The three bodies
+  become three <b>always-mounted</b> siblings toggled by CSS <code>hidden</code>. This is a behavioral change to an existing file, and it
+  lands first.
+</div>
+
+<div class="callout bad">
+  <b>Today's test GUARDS the bug.</b> <code>StudioBottomPanel.test.tsx</code> asserts
+  <code>expect(panel.textContent).toContain('bottomStub.jobs')</code> — i.e. it asserts the stub is <i>present</i>. That assertion
+  <b>inverts</b>: every <code>BottomTab</code> id must have a <code>bottom.&lt;id&gt;</code> label key <b>and</b> a rendered body component.
+  A checklist item is done only when a test asserts its <i>effect</i>.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ THE PAYLOAD — the three bugs, rendered as the diff they are.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ The payload <span class="tag">IF-1 · IF-2 · IF-3</span> — why this is a spec, not a wiring ticket</h2>
+<p class="sub">
+  The audit's estimate — <i>"a mechanical lift of the MCP handler"</i> — is <b>right about the engine and wrong about the payload</b>.
+  The MCP handler builds <code>node_ref</code> for an <b>agent</b>, which reads titles and reasons in prose. A <b>GUI has to navigate on it</b>
+  — and three fields it needs are dropped on the floor. Struck lines below are values the repositories <b>already return</b>.
+</p>
+
+<div class="stack">
+  <div class="panel pay">
+    <div class="panel-head"><span style="color:var(--destructive)">Today — <span class="mono" style="text-transform:none;letter-spacing:0">server.py:4043-4050</span></span></div>
+    <div class="pb">
+      <div class="json"><span class="c">// broken_canon_rule — the ONE row whose target panel</span>
+<span class="c">// already accepts a focus param.</span>
+{
+  <span class="k">"kind"</span>:     <span class="s">"broken_canon_rule"</span>,
+  <span class="k">"severity"</span>: <span class="s">"error"</span>,
+  <span class="k">"title"</span>:    <span class="s">"3 violation(s) of “Một cánh cổng…”"</span>,
+  <span class="k">"detail"</span>:   <span class="s">"in “Nàng bước vào sương mù”"</span>,
+  <span class="drop">"rule_id":    "8c1f2a94-…",</span>
+  <span class="drop">"chapter_id": "b7d0e5a1-…",</span>
+}</div>
+      <div class="cap"><b>IF-2.</b> <code class="mono">OutlineRepo.rule_violations</code> returns <b>both</b> struck keys
+        (<code class="mono">outline.py:1338</code>) and its docstring says <i>"the rule→violation link the Plan Hub's canon badge needs
+        already exists; it lives here."</i> The handler keeps <code class="mono">rule_text</code> inside a <i>string title</i> and throws the
+        keys away. <b>Consequence:</b> <code class="mono">quality-canon</code> takes <code class="mono">focusRuleId</code> — and the feed
+        has nothing to put in it.</div>
+
+      <div class="json" style="margin-top:2px"><span class="c">// IF-1 — two rows, identical shape, DISJOINT id spaces</span>
+<span class="k">unplanned_chapter</span>       <span class="c">// server.py:4125</span>
+  node_ref { <span class="k">"kind"</span>: <span class="s">"chapter"</span>, <span class="k">"id"</span>: <span class="c">&lt;book-service chapter_id&gt;</span> }
+
+<span class="k">prose_deleted_spec_node</span> <span class="c">// server.py:4099</span>
+  node_ref { <span class="k">"kind"</span>: <span class="s">"chapter"</span>, <span class="k">"id"</span>: <span class="c">&lt;composition outline_node.id&gt;</span> }
+                     <span class="drop">^^^^^^^^^ same literal string</span></div>
+      <div class="cap"><b>IF-1.</b> A chapter-kind outline node's <code class="mono">kind</code> <i>is literally the string</i>
+        <code class="mono">"chapter"</code>. A frontend that trusts <code class="mono">kind</code> sends an outline-node UUID where a
+        <code class="mono">chapter_id</code> belongs and 404s — or, far worse, <b>collides</b>. This is the repo's own
+        <code class="mono">cross-service-normalization</code> bug class, pre-loaded into a payload nobody has consumed yet.</div>
+    </div>
+  </div>
+
+  <div class="panel pay">
+    <div class="panel-head"><span style="color:var(--success)">After — BE-1a (route + back-port to the MCP tool)</span></div>
+    <div class="pb">
+      <div class="json">{
+  <span class="k">"kind"</span>:     <span class="s">"broken_canon_rule"</span>,
+  <span class="k">"severity"</span>: <span class="s">"error"</span>,
+  <span class="k">"title"</span>:    <span class="s">"3 violation(s) of “Một cánh cổng…”"</span>,
+  <span class="k">"node_ref"</span>: { <span class="add">"ref_kind"</span>: <span class="s">"outline_node"</span>, <span class="c">// the ID SPACE</span>
+                <span class="k">"kind"</span>:     <span class="s">"scene"</span>,        <span class="c">// display ONLY</span>
+                <span class="k">"id"</span>:       <span class="s">"&lt;outline_node.id&gt;"</span> },
+  <span class="add">"rule_id"</span>:    <span class="s">"8c1f2a94-…"</span>,  <span class="c">// a sibling FIELD, not a node_ref</span>
+  <span class="add">"chapter_id"</span>: <span class="s">"b7d0e5a1-…"</span>
+}
+<span class="c">→ openPanel('quality-canon', { focus: true, params: {</span>
+<span class="c">     bookId, focusRuleId, focusChapterId } })</span>
+<span class="c">   …the PH18 seam (PlanHubPanel.tsx:72-76), and</span>
+<span class="c">   useQualityCanon.ts:107 hoists it to the top.</span></div>
+      <div class="cap"><b>One name, one concept — and exactly THREE names.</b> <code class="mono">ref_kind</code> names the
+        <b>ID SPACE</b>, and only three exist: <code class="mono">chapter</code> (book-service) ·
+        <code class="mono">outline_node</code> · <code class="mono">structure_node</code>. <code class="mono">kind</code> stays the
+        <i>display</i> label, so IF-1's two rows can never be confused again.
+        <br>⚠ <b>NOT <code class="mono">scene</code>, NOT <code class="mono">canon_rule</code>.</b> A scene <b>IS</b> an
+        <code class="mono">outline_node</code> (both canon lanes <code class="mono">SELECT n.id AS scene_id FROM outline_node</code> —
+        <code class="mono">outline.py:1214,:1338</code>): carrying both would name <b>one id space twice</b> — IF-1's own ambiguity,
+        re-added inside IF-1's fix. And <b>no diagnostic emits a <code class="mono">canon_rule</code> node_ref</b> — the rule
+        arrives as the sibling field <code class="mono">rule_id</code> (IF-2), and the row's node_ref points at the <b>scene that
+        broke the rule</b> (<code class="mono">server.py:4047</code>). A closed-set member nothing emits is dead enum surface.</div>
+
+      <div class="json" style="margin-top:2px"><span class="c">// IF-3 — scene-inspector reads the BUS, not params.</span>
+<span class="c">// useSceneInspector.ts:24</span>
+<span class="drop">openPanel('scene-inspector', { params: { nodeId } })</span>
+<span class="c">   ↑ opens whatever scene was LAST SELECTED. Silent</span>
+<span class="c">     wrong-target — the silent-success-is-a-bug class.</span>
+
+<span class="add">host.publish({ type:'scene', sceneId, chapterId })</span>
+<span class="add">host.openPanel('scene-inspector')</span>
+<span class="c">   ↑ and that bus event REQUIRES chapterId, which</span>
+<span class="c">     canon_issues returns (outline.py:1214) and the</span>
+<span class="c">     diagnostics handler ALSO drops. Same bug, other row.</span></div>
+      <div class="cap"><b>The route is a lift. The payload contract is the work.</b> <code class="mono">build_diagnostics()</code> is
+        extracted so the MCP tool and the REST route share <b>ONE</b> fanout — two problems panels is the
+        <code class="mono">css-var-duplicated-across-two-consumers</code> bug, and the module's own docstring
+        (<i>"It composes. It never recomputes."</i>) already forbids it.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ THE NON-HAPPY BODIES. The degraded one is the load-bearing one.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ Degraded <span class="tag">warnings[] non-empty</span> — the state that must NEVER read “no issues found”</h2>
+<p class="sub">
+  <code>agent_native.py</code>'s whole design is <b>absent ≠ zero</b>: a source that could not be read is <b>OMITTED</b> from the payload and
+  named in <code>warnings[]</code>. Its own docstring: <i>"'0 unplanned chapters' and 'I could not reach book-service' lead to opposite
+  actions, and only one of them is honest."</i> If the frontend renders a degraded response as <i>"No issues found"</i>, it converts that
+  careful honesty into <b>exactly the lie the engine was written to prevent</b> — on the one screen the author trusts to tell them their book
+  is fine. <b>The strip is a unit test (DoD-3), not a convention.</b>
+</p>
+
+<div class="panel bottom" style="height:210px">
+  <div class="grip"></div>
+  <div class="panel-head">
+    <div class="tabs">
+      <div class="tab">Jobs <span class="n b">M3</span></div>
+      <div class="tab">Generation <span class="n b">M3</span></div>
+      <div class="tab on">Issues <span class="n e">!</span></div>
+    </div>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+  </div>
+
+  <div class="warn-strip">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <div>
+      <b>2 of 7 sources could not be read.</b> Their findings are <b>omitted</b>, not zero.
+      <span class="w">· <code>coverage</code> — book-service did not answer (<code>list_chapters</code> 503)</span>
+      <span class="w">· <code>prose_deleted</code> — same fanout, same failure</span>
+    </div>
+  </div>
+
+  <div class="center">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--warning)"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <div><b>No issues found in the sources that answered.</b><br />
+      <span style="color:var(--warning)">2 sources could not be read</span> — <code class="mono" style="font-size:10px">unplanned_chapter</code> and
+      <code class="mono" style="font-size:10px">prose_deleted_spec_node</code> were <b>not checked</b>.</div>
+  </div>
+
+  <div class="panel-foot">
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      0 findings from <b>5</b> of 7 sources · <b>never 500 on a degraded source</b> — that is a <span class="mono">warnings[]</span> entry
+    </div>
+    <button class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg> Retry</button>
+  </div>
+</div>
+
+<h2>④b Loading · Empty (genuinely clean) · Route error <span class="tag">true 168px scale</span></h2>
+<p class="sub">
+  The tab is <b>168px tall</b>. A spinner-in-a-void is not a loading state at this size — four skeleton rows are.
+  And the clean-empty body <b>lists the sources it checked</b>, so <i>"nothing is wrong"</i> is a claim the author can audit.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><div class="tabs"><div class="tab">Jobs</div><div class="tab">Generation</div><div class="tab on">Issues</div></div></div>
+    <div class="body" style="padding-top:6px">
+      <div class="trow cols" style="cursor:default"><div class="skel" style="width:52px"></div><div class="skel" style="width:64px"></div><div class="skel"></div><div class="skel" style="width:80px"></div><div class="skel" style="width:34px"></div><div></div></div>
+      <div class="trow cols" style="cursor:default"><div class="skel" style="width:44px"></div><div class="skel" style="width:72px"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:96px"></div><div class="skel" style="width:30px"></div><div></div></div>
+      <div class="trow cols" style="cursor:default"><div class="skel" style="width:56px"></div><div class="skel" style="width:60px"></div><div class="skel" style="width:64%"></div><div class="skel" style="width:74px"></div><div class="skel" style="width:36px"></div><div></div></div>
+      <div class="trow cols" style="cursor:default"><div class="skel" style="width:48px"></div><div class="skel" style="width:68px"></div><div class="skel" style="width:86%"></div><div class="skel" style="width:88px"></div><div class="skel" style="width:28px"></div><div></div></div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><div class="tabs"><div class="tab">Jobs</div><div class="tab">Generation</div><div class="tab on">Issues</div></div></div>
+    <div class="center">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--success)"><path d="M20 6 9 17l-5-5"/></svg>
+      <div><b>No issues found across 7 sources.</b></div>
+      <div class="srcs">canon_rules · canon_entities · conformance · threads<br />coverage · prose_deleted · index_freshness</div>
+    </div>
+    <div class="panel-foot"><div class="note">0 findings · computed just now</div><span class="mono">7/7 answered</span></div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><div class="tabs"><div class="tab">Jobs</div><div class="tab">Generation</div><div class="tab on">Issues</div></div></div>
+    <div class="body">
+      <div class="errrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <div>Could not load issues<br /><span class="mono">503 · composition-service</span></div>
+        <button class="tbtn">Retry</button>
+      </div>
+      <div style="padding:0 12px;font-size:10px;color:var(--muted-fg);line-height:1.6">
+        The tab <b style="color:var(--foreground)">never blanks</b>. One inline row, the status, a retry.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>Freshness is PULL, not push.</b> The route is cheap but not free — it fans out to book-service twice (<code>compute_coverage</code> and
+  <code>compute_prose_deleted</code> each pull the chapter spine). <b>No polling. No SSE.</b> It refetches on tab open, on Refresh, and on a
+  <b>Lane-B agent effect</b> — a new <code>diagnosticsEffects.ts</code> handler on
+  <code>^composition_(canon_rule_|conformance_run|outline_node_|arc_|motif_(bind|unbind))</code>. Today <b>nothing</b> invalidates this feed:
+  the agent fixes a canon rule and the human's problems panel keeps showing the problem. That staleness is exactly what X-4 exists to kill.
+</div>
+
+<div class="callout warn">
+  <b>Which forces a design constraint, not a preference: the Issues tab MUST own its data through React-Query.</b>
+  <code>invalidateQueries</code> <b>cannot reach hand-rolled state</b> — a manual loader would hold the rows the agent's write just
+  invalidated, and the Lane-B handler would silently do nothing. Also: delete the now-FALSE comment at
+  <code>useStudioEffectReconciler.ts:7-9</code>.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑤ THE LENS — find_references, right-click. NOT a panel (PO-1, verbatim).
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑤ The find-references lens <span class="tag no">not a panel</span> <span class="tag">right-click + ⋯</span></h2>
+<p class="sub">
+  <code>composition_find_references</code> over <code>EntityReferencesRepo</code> — 8 real joins, exact counts, capped samples. It becomes a
+  <b>popover on an entity badge</b> (<code>NodeBadges.tsx:100-124</code> cast chips, <code>EntityRefField.tsx</code> POV/present-cast) —
+  <b>not a dock panel</b>, so AN-12's architecture is untouched. A right-click-<i>only</i> feature is an a11y defect: every badge also carries a
+  focusable <code>⋯</code>.
+</p>
+
+<div class="stack">
+  <div class="lens-stage">
+    <div class="pnode">
+      <div class="pt">Ch. 41 · Nàng bước vào sương mù</div>
+      <div class="badges">
+        <span class="cbadge focus"><span class="av" style="background:#e8a832">LV</span>Lâm Thanh Vân<span class="dots">⋯</span></span>
+        <span class="cbadge"><span class="av" style="background:#3da692">HM</span>Hải Mộc</span>
+      </div>
+    </div>
+
+    <div class="lens" style="right:14px; top:26px">
+      <div class="lens-head">
+        <span class="swatch"></span>
+        <span class="nm">Lâm Thanh Vân</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+      </div>
+      <!-- EIGHT rows — one per REFERENCE_SOURCES member (agent_native.py:53-56). The first cut of this
+           mock drew SIX, collapsing the pov/present pairs and thereby silently DROPPING outline_present
+           and scene_pov. Two bugs in one: it under-reports (present-on-chapters read as 0), and a source
+           with no row cannot render its own per-source degrade — the exact absent≠zero violation the
+           warnings strip (state ④) exists to prevent, committed in the sibling surface.
+           The split by node kind is the REPO's own design: there is no `scenes` table — outline_node
+           holds BOTH chapters and scenes via `kind` (entity_references.py:17-21). Render the split. -->
+      <div class="lrow"><span>POV <span class="sub2">· chapters</span></span><span class="c">4</span> <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="lrow"><span>POV <span class="sub2">· scenes</span></span><span class="c">11</span> <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="lrow"><span>Present <span class="sub2">· chapters</span></span><span class="c">7</span> <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="lrow"><span>Present <span class="sub2">· scenes</span></span><span class="c">23</span> <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      <!-- structure_roster → plan-hub, which is PARAM-BLIND (FE-1) ⇒ inert in M2, exactly like the Issues rows -->
+      <div class="lrow dead" title="Expands to arcs, but the arc deep-link targets plan-hub — param-blind until FE-1 (M1b)."><span>Cast in arc roster <span class="sub2">· “the mentor”</span></span><span class="c">2 arcs</span> <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="lrow"><span>Motif applications</span><span class="c">6</span> <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      <!-- the per-source degrade: NOT collapsed to a zero (server.py:3909-3913) -->
+      <div class="lrow dead"><span>Canon rules</span><span class="c err">could not be read</span> <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="lrow"><span>Promises opened</span><span class="c">3</span> <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="lfoot">
+        <b style="color:var(--foreground)">Composition scope only</b> — prose mentions live in the glossary; graph edges in the KG.
+        <span style="display:block;margin-top:3px;opacity:.75">↑ this is the tool's own <code>_meta.note</code> (<code>server.py:3926</code>), rendered. Not decoration.</span>
+        <span style="display:block;margin-top:3px;opacity:.75"><b style="color:var(--foreground)">8 rows, 8 sources.</b> A source the lens never draws is a source whose <b style="color:var(--foreground)">failure is invisible</b>.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="lens-stage" style="width:373px;height:300px">
+    <div class="pnode" style="width:180px">
+      <div class="pt">Arc “Trấn Nam”</div>
+      <div class="badges">
+        <span class="cbadge focus"><span class="av" style="background:#5496e8">TB</span>Thợ rèn Bạch<span class="dots">⋯</span></span>
+      </div>
+    </div>
+    <div class="lens" style="left:14px; top:100px; width:320px">
+      <div class="lens-head"><span class="swatch"></span><span class="nm">Thợ rèn Bạch</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+      <div class="center" style="padding:20px 14px;gap:5px">
+        <div><b>Not referenced anywhere in the spec layer.</b></div>
+        <div style="font-size:10.5px">All 8 sources answered. All 8 returned <span class="mono">0</span>.</div>
+      </div>
+      <div class="lfoot">A <b style="color:var(--foreground)">true zero</b> and a <b style="color:var(--foreground)">could-not-read</b> render
+        differently, on purpose. <code>EntityReferencesRepo.find</code> <b style="color:var(--foreground)">raises</b> on an unknown source
+        precisely so a typo cannot return <code>(0, [])</code> — <b style="color:var(--foreground)">do not catch that into a zero.</b></div>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>REST, not the MCP bridge (BE-1d — decided, recorded so it is not re-litigated).</b>
+  <code>GET /v1/composition/books/{bid}/entity-references</code>. Every sibling panel reaches composition over REST, and a plain <i>read</i> has no
+  propose→confirm to justify the bridge — whose <code>FE_BRIDGE_TOOL_ALLOWLIST</code> exists for the <b>cost-gated</b> flows. Widening a
+  spend-adjacent allowlist for a free read buys nothing.
+  ⚠ <b>The path <code>/works/{pid}/references</code> is TAKEN</b> — it is the author's <b>research reference shelf</b>
+  (<code>reference_source</code> + embeddings), an entirely different concept the repo already flags as a name collision
+  (<code>entity_references.py:8-15</code>). <b>One name, one concept.</b>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑥ JOBS + GENERATION — equally dark, same file, same shape of fix.
+        And ONE honest blocker the audit did not name.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑥ Jobs + Generation <span class="tag">M3</span> — the honest stub, then the wired tab</h2>
+<p class="sub">
+  <code>GET /v1/jobs</code> accepts <code>status · kind · parent · q · bucket · cursor · offset · limit</code>
+  (<code>jobs.py:42-51</code>) — <b>no <code>book_id</code></b>. And composition's <code>_job_params</code>
+  (<code>generation_jobs.py:127</code>) emits <code>model · model_ref · operation · mode · reasoning</code> and <b>never stamps a book</b>.
+  So a book-scoped Jobs feed is <b>unbuildable today</b> — and a bottom panel inside a <i>per-book</i> Studio that shows the user's jobs from
+  <b>every book they own</b> is not a feature, it is noise. This is <b>buildable, not blocked</b>: BE-1b stamps it at the producer (one line,
+  additive — and the projection's COALESCE merge means a later event without it never wipes it), BE-1c adds the filter. Both XS.
+  <b>Both cross-service ⇒ live-smoke MANDATORY.</b>
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="width:373px">
+    <div class="panel-head"><div class="tabs"><div class="tab on">Jobs</div><div class="tab">Generation</div><div class="tab">Issues <span class="n e">3</span></div></div></div>
+    <div class="stub honest"><div>
+      Book-scoped job feed — pending <code>book_id</code><br />on the jobs projection (<b style="color:var(--foreground)">BE-1b</b>).
+      <span style="display:block;margin-top:9px;font-size:10px;color:var(--muted-fg);line-height:1.6">
+        M1 ships <b style="color:var(--foreground)">this</b> string, not <span class="strike">“once wired”</span>.<br />
+        A stub that names its blocker is honest.<br />One that says “soon” for eight months is not.
+      </span>
+    </div></div>
+  </div>
+
+  <div class="panel mini" style="width:373px">
+    <div class="panel-head"><div class="tabs"><div class="tab on">Jobs</div><div class="tab">Generation</div><div class="tab">Issues <span class="n e">3</span></div></div>
+      <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+    </div>
+    <div class="body">
+      <div class="jrow"><span class="jt">Ch. 41 — 断岳</span><span class="jk">generation</span><span><span class="badge b-run">running</span></span>
+        <div><div class="pbar"><i style="width:62%"></i></div><span class="pct">62%</span></div></div>
+      <div class="jrow"><span class="jt">Conformance — Hải Môn</span><span class="jk">conformance</span><span><span class="badge b-run">running</span></span>
+        <div><div class="pbar"><i style="width:18%"></i></div><span class="pct">18%</span></div></div>
+      <div class="jrow"><span class="jt">Nghịch thiên → EN</span><span class="jk">translation</span><span><span class="badge b-ok">done</span></span>
+        <div><span class="pct">4m ago</span></div></div>
+      <div class="jrow"><span class="jt">KG extraction — Ch. 38-42</span><span class="jk">extraction</span><span><span class="badge b-fail">failed</span></span>
+        <div><span class="pct">1h ago</span></div></div>
+    </div>
+    <div class="panel-foot"><div class="note">4 of 12 · this book only</div><span class="mono">?book_id=…</span></div>
+  </div>
+
+  <div class="panel mini" style="width:373px">
+    <div class="panel-head"><div class="tabs"><div class="tab">Jobs</div><div class="tab on">Generation</div><div class="tab">Issues <span class="n e">3</span></div></div>
+      <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+    </div>
+    <div class="body">
+      <div class="jrow" style="grid-template-columns:1fr 88px 62px">
+        <span class="jt">Scene 41.3 — “sương mù không tan”</span><span class="jk">draft · deep</span><span><span class="badge b-run">streaming</span></span></div>
+      <div style="padding:7px 10px;border-bottom:1px solid var(--border)">
+        <div class="pbar"><i style="width:74%"></i></div>
+        <div style="display:flex;justify-content:space-between;margin-top:5px">
+          <span class="pct">1,142 / ~1,500 words</span><span class="pct">gemma-4-26b · $0.00</span></div>
+      </div>
+      <div class="jrow" style="grid-template-columns:1fr 88px 62px">
+        <span class="jt">Scene 41.2 — critic verdict</span><span class="jk">critic</span><span><span class="badge b-ok">pass 4/5</span></span></div>
+      <div style="padding:0 10px;font-size:10px;color:var(--muted-fg);line-height:1.6;padding-top:7px">
+        Same store as Jobs, filtered to <code class="mono">service === 'composition'</code>; row → <code class="mono">editor</code>.
+      </div>
+    </div>
+    <div class="panel-foot"><div class="note">1 in flight · Ch. 41</div><span class="mono">SSE · JobsStreamProvider</span></div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b> <b>(1)</b> No new dock panel, and <b>no <code>"issues"</code> in the
+  <code>panel_id</code> enum.</b> That enum is machine-locked to <code>OPENABLE_STUDIO_PANELS</code>; a pseudo-id with no catalog row
+  <b>reds <code>panelCatalogContract.test.ts</code> by construction</b> — and rightly, since <code>ui_open_studio_panel</code> resolves through
+  dockview, which cannot mount the bottom panel. <code>contracts/frontend-tools.contract.json</code> must be <b>byte-identical</b> before and
+  after this wave (DoD-5). <b>(2)</b> No editing. The feed <b>routes</b>; the target panels own their OCC writes and their own 412s.
+  <b>(3)</b> No human surface for <code>composition_package_tree</code> — for <i>that</i> tool AN-12's premise <b>holds</b> (the tree is
+  <code>plan-hub</code>, the spine is <code>chapter-browser</code>, coverage is the PH21 tray). Building a "book at a glance" panel <i>would</i>
+  be the DOCK-2 fork. <b>Recorded as a conscious won't-fix (IF-5) so it stops resurfacing as a "gap."</b>
+</div>
+
+<div class="callout warn">
+  <b>The unit suite cannot prove IF-2 is fixed.</b> A green vitest does not know the payload dropped <code>rule_id</code>. The proof is the
+  <b>live browser smoke</b>: open the Studio on a book with a seeded canon-rule violation, toggle the bottom panel → Issues, <b>click the
+  <code>broken_canon_rule</code> row</b>, and assert the <code>quality-canon</code> tab mounts <b>with the focused rule hoisted to the top</b>
+  (<code>useQualityCanon.ts:107</code>). Playwright, against the <b>baked nginx :5174</b> or <code>vite dev :5199</code> — a host vite
+  <i>shadows</i> the baked image — driving dockview via <code>evaluate</code> + <code>data-testid</code>, refs go stale.
+</div>
+
+<script>
+  /* The one interaction worth making real: the tab strip. Bodies are ALWAYS MOUNTED
+     (CSS `hidden`), never ternary-swapped — that is the whole §4.0 structural rule,
+     and a mock that fakes it with a ternary would be teaching the bug. */
+  document.querySelectorAll('.panel').forEach((panel) => {
+    const tabs = panel.querySelectorAll('.panel-head .tab');
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        tabs.forEach((t) => t.classList.remove('on'));
+        tab.classList.add('on');
+      });
+    });
+  });
+</script>
+</body>
+</html>

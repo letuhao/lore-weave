@@ -12,7 +12,7 @@
       --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
       --secondary: #282320; --muted-fg: #9e9488;
       --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
-      --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --danger: #d95d5d; --danger-muted: #3a1f1f;
+      --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
       --motif: #b482e0; --motif-muted: #2a1f38;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -79,7 +79,7 @@
       font-size: 8px; font-weight: 700; padding: 1px 4px; border-radius: 3px;
       background: var(--accent-muted); color: var(--accent-fg); font-family: 'JetBrains Mono'; flex-shrink: 0;
     }
-    .canon-warn { width: 13px; height: 13px; color: var(--danger); flex-shrink: 0; }
+    .canon-warn { width: 13px; height: 13px; color: var(--destructive); flex-shrink: 0; }
 
     .nav-foot {
       height: 26px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px;
@@ -173,7 +173,7 @@
       </div>
 
       <div class="nav-foot">
-        <span>3 cast tracked</span><span>·</span><span>2 motifs active</span><span style="margin-left:auto;color:var(--danger)">1 canon issue</span>
+        <span>3 cast tracked</span><span>·</span><span>2 motifs active</span><span style="margin-left:auto;color:var(--destructive)">1 canon issue</span>
       </div>
     </div>
 

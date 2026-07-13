@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — PlanForge Pass Rail + planner repair (studio dock panels, draft)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ══════════════════════════════════════════════════════════════════════
+     PASS RAIL (`plan-passes`) + the `planner` repair (no new id)
+     Spec: docs/specs/2026-07-01-writing-studio/35_planforge_studio.md
+
+     WHY THIS EXISTS
+     A GUI-only user's plan run is permanently stuck at pass_cursor:1, with
+     4 of its 7 passes unreachable. Not "with difficulty" — at all. The v2
+     compiler runs seven passes (motifs → cast → world → beats →
+     character_arcs → scenes → self_heal). TWO of them — `cast` ("who the
+     characters ARE") and `beats` ("what SHAPE the story takes") — are
+     BLOCKING: the pass completes with decision:"pending" and the runner
+     stops until a HUMAN accepts it (plan_pass_service.py:60-71, PF-6). That
+     human gate is the design's central safety claim.
+     (PRECISELY: the user CAN still fire `beats` — it depends only on
+     `motifs` — but `beats` is itself BLOCKING and stops at its own
+     un-clearable checkpoint. `world`, `character_arcs`, `scenes` and
+     `self_heal` ALL depend on an *accepted* `cast`, so they are unreachable
+     forever without a GUI. See the dependency graph below.)
+     The only door that clears it is POST …/checkpoint. IT HAS NO GUI.
+     `frontend/.../plan-forge/api.ts` has no checkpoint / passes / link
+     method. Four shipped REST routes are NO-FE-CONSUMER, all four.
+     And the code says so out loud — mcp/server.py:3599:
+         # ⚠ THERE IS NO `force` HERE, AND THERE MUST NOT BE.
+         # … a human, at the GUI, may override the PF-5 gate on their own
+         # book. The AGENT may not …
+     The GUI it reserves that override for DOES NOT EXIST. A capability
+     deliberately reserved for a human, exercisable only by an LLM. That is
+     GG-1 inverted — "the agent is an accelerant on the user's own
+     capabilities, never the ONLY door to them."
+
+     THE DEPENDENCY GRAPH — READ IT BEFORE YOU BELIEVE ANY ROW BELOW
+     PASS_ORDER is the SERIALIZATION order. `depends_on` is what actually
+     gates a pass. They are NOT the same, and the first draft of this mock
+     conflated them and drew two rows exactly backwards. Straight out of
+     PASS_REGISTRY (plan_pass_service.py:55):
+         1 motifs          depends_on ()                    advisory
+         2 cast            depends_on ()                    BLOCKING
+         3 world           depends_on ("cast",)             advisory
+         4 beats           depends_on ("motifs",)           BLOCKING
+         5 character_arcs  depends_on ("cast","beats")      advisory
+         6 scenes          depends_on ("cast","motifs","beats","character_arcs")
+         7 self_heal       depends_on ("scenes","cast")     advisory
+     ⇒ with `cast` PENDING:
+       • `world` is BLOCKED (it depends on cast). Its Run button 409s.
+       • `beats` is RUNNABLE (it depends only on motifs). It is the ONE pass
+         that can run — and it is itself BLOCKING, so it stops at its own
+         checkpoint. `blockers_for("beats")` can ONLY ever be ["motifs"].
+       • pass_cursor = 1. It is contiguous fresh AND *accepted*
+         (is_accepted = decision in ("accepted","auto")), so it breaks at
+         `cast`. NOT 2, NOT 3. Never hard-code it.
+     Four of seven passes are gated on an accepted `cast` — which is why a
+     GUI-only user is stuck, permanently, at a cursor of 1.
+
+     THERE IS NO "HOLD" — approved:false writes decision="rejected"
+     _review_pass (plan_forge_service.py:673):
+         decision = "accepted" if approved else "rejected"
+     Two values. No third. So "save my edits and hold" marks the pass
+     REJECTED — and `blocked_at` only matches BLOCKING+completed+PENDING, so
+     it flips to NULL. A Rail that renders its banner from `blocked_at` would
+     announce "nothing blocking" about a run that cannot advance one pass.
+     ⇒ The buttons are Save edits / Reject / Approve — and the PRIMARY path
+       is Approve WITH edits in ONE call (the gate runs before the write, so a
+       refused approve mutates nothing). The stuck-banner is derived as
+       blocked_at ?? (first BLOCKING pass not accepted/auto). See ③.
+
+     THE ARCHITECTURE THIS MOCK RENDERS
+     The Rail is a LEDGER, not a wizard. Every cell it shows — `fresh`,
+     `pass_cursor`, `blocked_at`, `blockers[]` — is DERIVED at serialization
+     from input fingerprints and never stored (PF-3). So: no dirty flags, no
+     invalidation to write, and editing pass 2 stales passes 3-7 FOR FREE, by
+     derivation. The panel's whole job is to make that derivation legible.
+     ⇒ PS-1: the Rail offers Re-run and Reject. IT OFFERS NO DELETE. A
+       "delete this pass" button would be a second, incoherent invalidation
+       mechanism — the exact thing PF-3 exists to avoid.
+     ⇒ PS-8: NO OCC. `pass_state` has no version column; review_checkpoint is
+       idempotent, last-write-wins by construction. Inventing an If-Match
+       here would be "a new confirmation convention" — AN-8 says a reviewer
+       finding one has found a defect.
+
+     LINEAGE — this is not a second visual language.
+     design-drafts/planforge/2026-07-06-planner-panel-redesign-mockup.html
+     (621 lines) is the parent. Its tokens were frontend/src/index.css's HSL
+     triples; the studio drafts carry the SAME palette in hex
+     (hsl(35 85% 55%) ≈ #e8a832). What is carried forward is its LOCKED
+     DESIGN PRINCIPLE, verbatim: "this panel NEVER exposes a raw spec/JSON
+     editor as a fallback, at any failure point." Every error path below
+     routes to (a) an automatic fix, (b) a plain-language suggestion against
+     the writer's OWN text, or (c) chat. Its sub-gap 1 (the bare `arc_id`
+     text box) is STALE — fixed by 9c685c28a. Do not re-do that work.
+
+     BACKEND WORK THIS SCREEN IMPLIES (flagged up front, not silently)
+       • BE-20 (XS, LOAD-BEARING) — derive_view must emit
+         `bootstrap_proposal_id` + `decided_by` + `decided_at` per pass. All
+         three are ALREADY on PassEntry (models.py:652) and stored by the
+         worker; none is returned to any client, on any transport. WITHOUT
+         IT the Approve button on `cast` 409s FOREVER and this panel is a
+         lie — see state ② and the callout under it.
+       • BE-21 (XS) — _serialize_run calls derive_view(run) with NO
+         package_artifact_id (plan_forge_service.py:383) while pass_status
+         and run_pass both pass it ⇒ GET /runs/{id} reports fresh:false on
+         all 5 package-reading passes and pass_cursor:0, DISAGREEING with
+         GET /passes about the same run. Rendered as state ⑥.
+         ⚠ Fixing it REDs test_genre_tags_plumbing.py:88, which asserts the
+         buggy SOURCE TEXT (`"**derive_view(run)" in src`).
+       • BE-22 (XS) — the CHECKPOINT_REFUSED message names
+         `plan_bootstrap_seed`, a tool that EXISTS NOWHERE (grep → 1 hit:
+         that string). Rendered as state ⑤.
+       • BE-2 (XS) autofix REST mirror · BE-3 (S) artifact BODY read —
+         unreachable by ANY client today · BE-3b (XS) `source_markdown` on
+         the run detail · BE-4 (S) soft-archive a run + BE-4b (XS) RESTORE it
+         (every sibling soft-delete in this service restores; plan 30's BE-11
+         files "delete with no undo" as a defect in its own right).
+       • FE-1 (XS, FRONTEND) — `readOnly` on the JSON-document standard.
+         grep readOnly|editable across JsonEditorPanel.tsx + documents/*.ts
+         → ZERO hits. DocumentHandle is update()/save()/revert() and the panel
+         wires ⌘S to save(). PS-9's read-only artifact viewer therefore CANNOT
+         EXIST until this is built — and faking it with a no-op save() is
+         `silent-success-is-a-bug`, shipped. Also: the provider seam is
+         open(ctx:{token,bookId}, resourceId:string) — ONE id, no runId — so
+         the plan-artifact resourceId is the COMPOSITE "{runId}:{artifactId}".
+       • Contracts: planner_state.schema.json is a POC fixture masquerading
+         as a contract (requires PA/HA/CD/THR + additionalProperties:false —
+         which compile.py:65 violates for EVERY book but one);
+         plan_pass_artifacts.schema.json does not exist.
+       • NO new estimate route, NO new /actions descriptor (F-P8). Three
+         invented estimate paths already 404 in production.
+
+     STATES THIS MOCK MUST SHOW (all rendered below, none hand-waved)
+       ① the Rail, blocked at CAST — 7-pass ledger + the checkpoint card
+       ② the PF-7 seed gate — Approve DISABLED until the proposal is applied,
+          then enabled (click it; the script drives the real two-step)
+       ③ the BEATS card — save-edits (⇒ REJECTED), approve-with-edits, and
+          the stale CASCADE; plus the rejected row `blocked_at` stops naming
+       ④ 409 UPSTREAM_STALE — blockers[] as copy, force escape behind it
+       ⑤ 409 CHECKPOINT_REFUSED — the phantom-tool message, before/after
+       ⑥ the LYING LEDGER — GET /runs/{id} vs GET /passes, side by side
+       ⑦ empty: no runs · run not compiled ("absent ≠ zero")
+       ⑧ the cost gate + the X-1 AddModelCta trap
+       ⑨ `planner` repair — before (unclickable UUIDs, empty source) / after
+
+     SCALE — bounded by construction: 7 passes, a closed set rendered from
+     PASS_ORDER (never from a spinner). The unbounded axis is RUNS: failed
+     LLM runs accumulate forever today because there is no DELETE. BE-4.
+  ═══════════════════════════════════════════════════════════════════════ */
+  :root {
+    --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+    --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+    --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+    --secondary: #282320; --muted-fg: #9e9488;
+    --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+    --success: #3dba6a; --warning: #e8a832; --info: #5496e8; --destructive: #d9584f; --destructive-muted: #3a1f1c;
+    /* domain tokens — the two axes this panel color-codes */
+    --blocking: #b89ee8; --blocking-muted: #2e2440;   /* the BLOCKING checkpoint class (PF-6) */
+    --stale: #e8b87e;                                  /* derived-stale (PF-3) — never an error */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; padding: 24px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  svg { display: block; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .tag { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+  h2 .tag.hot { color: var(--destructive); border-color: var(--destructive-muted); }
+  .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; max-width: 1000px; line-height: 1.55; }
+  .sub b { color: var(--foreground); font-weight: 600; }
+  .sub code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-fg); background: var(--accent-muted); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── Legend ───────────────────────────────────────────────────────────── */
+  .legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 20px;
+            background: var(--background-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; }
+  .legend .item { display: flex; align-items: center; gap: 7px; color: var(--muted-fg); }
+  .legend .item b { color: var(--foreground); font-weight: 600; }
+  .swatch { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+  .swatch.blk { background: var(--blocking); } .swatch.adv { background: var(--border-hover); }
+  .swatch.frs { background: var(--accent); } .swatch.stl { background: var(--stale); }
+
+  /* ── Dock panel frame ─────────────────────────────────────────────────── */
+  .panel { background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-head { height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px 0 12px; border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
+  .panel-head .acts { display: flex; gap: 4px; align-items: center; }
+  .ico { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--muted-fg); cursor: pointer; }
+  .ico:hover { background: var(--secondary); color: var(--foreground); }
+  .ico svg { width: 13px; height: 13px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* min-height:0 is load-bearing */
+  .panel-foot { flex-shrink: 0; border-top: 1px solid var(--border); padding: 7px 12px; display: flex;
+    align-items: center; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); gap: 8px; }
+
+  .rail { width: 700px; max-width: 100%; height: 848px; }
+  .planner { width: 620px; max-width: 100%; height: 560px; }
+
+  /* ── Run header (the one-glance truth) ────────────────────────────────── */
+  .runhead { padding: 10px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+  .runline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted-fg); }
+  .runline .rid { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--foreground); }
+  .gt { font-family: 'JetBrains Mono'; font-size: 9.5px; padding: 1px 5px; border-radius: 3px; background: var(--secondary); color: var(--muted-fg); }
+  .runline .ok { margin-left: auto; display: flex; align-items: center; gap: 5px; color: var(--success); font-size: 11px; font-weight: 600; }
+  .runline .ok svg { width: 12px; height: 12px; }
+
+  .prog { display: flex; align-items: center; gap: 8px; }
+  .segs { display: flex; gap: 3px; flex: 1; }
+  .seg { flex: 1; height: 5px; border-radius: 2px; background: var(--secondary); }
+  .seg.done { background: var(--success); }
+  .seg.pend { background: var(--primary); }
+  .seg.stale { background: var(--stale); }
+  .cursor { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); white-space: nowrap; }
+  .cursor b { color: var(--foreground); font-weight: 500; }
+  .cursor .blk { color: var(--blocking); font-weight: 500; }
+
+  /* ── Pass rows ────────────────────────────────────────────────────────── */
+  .pcols { display: grid; grid-template-columns: 20px 1fr 76px 96px 74px 78px; gap: 8px; align-items: center; }
+  .phead { position: sticky; top: 0; z-index: 2; background: var(--background-alt); border-bottom: 1px solid var(--border);
+    padding: 7px 12px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); }
+  .prow { padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; cursor: pointer; }
+  .prow:hover { background: var(--card-hover); }
+  .prow.at { background: var(--blocking-muted); box-shadow: inset 2px 0 0 var(--blocking); }
+  .prow.next { box-shadow: inset 2px 0 0 var(--primary); }
+  .pn { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--muted-fg); }
+  .pname { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .pname .nm { font-family: 'JetBrains Mono'; font-size: 12px; font-weight: 500; }
+  .pname .kind { font-size: 10px; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .b-blocking { background: var(--blocking-muted); color: var(--blocking); }
+  .b-advisory { background: var(--secondary); color: var(--muted-fg); }
+  .b-accepted { background: #16301f; color: var(--success); }
+  .b-pending  { background: var(--primary-muted); color: var(--primary); }
+  .b-rejected { background: var(--destructive-muted); color: var(--destructive); }
+  .b-notrun   { background: transparent; color: var(--border-hover); }
+  .b-running  { background: #23303f; color: #8ab6e8; }
+  .b-stale    { background: #3a2f1c; color: var(--stale); }
+
+  .fresh { font-size: 10.5px; font-family: 'JetBrains Mono'; }
+  .fresh.f  { color: var(--accent); }
+  .fresh.s  { color: var(--stale); text-decoration: line-through; }
+  .fresh.n  { color: var(--border-hover); }
+  .pacts { display: flex; gap: 4px; justify-content: flex-end; }
+  .mini-btn { height: 22px; padding: 0 8px; border-radius: 5px; background: var(--background); border: 1px solid var(--border);
+    color: var(--foreground); font: inherit; font-size: 10.5px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .mini-btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .mini-btn.go { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .mini-btn.warn { color: var(--stale); border-color: #4a3a22; }
+  .mini-btn svg { width: 11px; height: 11px; }
+  .mini-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .blocked-i { display: flex; align-items: center; gap: 4px; color: var(--muted-fg); font-size: 10.5px; justify-content: flex-end; }
+  .blocked-i svg { width: 12px; height: 12px; }
+
+  .spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid #23303f; border-top-color: #8ab6e8; animation: sp .7s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  /* ── Checkpoint card (expanded inline under its row) ──────────────────── */
+  .ckpt { margin: 0 12px 10px; border: 1px solid var(--border); border-left: 2px solid var(--blocking);
+    border-radius: 8px; background: var(--background); overflow: hidden; }
+  .ckpt-head { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-bottom: 1px solid var(--border); }
+  .ckpt-head .t { font-size: 11.5px; font-weight: 600; }
+  .ckpt-head .m { font-size: 10.5px; color: var(--muted-fg); margin-left: auto; font-family: 'JetBrains Mono'; }
+  .ckpt-body { padding: 9px 11px; display: flex; flex-direction: column; gap: 7px; }
+
+  .cast-row { display: grid; grid-template-columns: 20px 1fr 86px 1fr 20px; gap: 8px; align-items: center; font-size: 11.5px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .cast-row:last-of-type { border-bottom: none; }
+  .av { width: 19px; height: 19px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8.5px; font-weight: 700; color: #141010; flex-shrink: 0; }
+  .cast-row .role { font-size: 10px; }
+  .cast-row .trait { color: var(--muted-fg); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cast-row .x { color: var(--muted-fg); cursor: pointer; display: flex; justify-content: center; }
+  .cast-row .x:hover { color: var(--destructive); }
+  .cast-row .x svg { width: 12px; height: 12px; }
+  .bound { color: var(--accent); }
+
+  /* the PF-7 seed gate — the thing BE-20 makes visible */
+  .seed { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px;
+    background: var(--primary-muted); border: 1px solid #4a3a22; font-size: 11.5px; }
+  .seed.applied { background: #16301f; border-color: #245234; }
+  .seed svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .seed .txt { flex: 1; }
+  .seed .txt b { color: var(--foreground); font-weight: 600; }
+  .seed .pid { font-family: 'JetBrains Mono'; font-size: 9.5px; opacity: .8; }
+  .ckpt-foot { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-top: 1px solid var(--border); }
+  .ckpt-foot .why { font-size: 10px; color: var(--muted-fg); flex: 1; line-height: 1.5; }
+
+  .btn { height: 27px; padding: 0 12px; border-radius: 6px; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground); display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover:not(:disabled) { border-color: var(--border-hover); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+  .btn.ok { background: var(--success); border-color: var(--success); color: #0d2015; }
+  .btn.danger { color: var(--destructive); border-color: var(--destructive-muted); }
+  .btn:disabled { opacity: .38; cursor: not-allowed; }
+  .btn svg { width: 12px; height: 12px; }
+
+  /* the edits form (hold + edit) + the cascade it causes */
+  .edits { display: flex; flex-direction: column; gap: 7px; }
+  .field { display: grid; grid-template-columns: 92px 1fr; gap: 9px; align-items: center; }
+  .field > label { font-size: 11px; color: var(--muted-fg); }
+  .inp { background: var(--background-alt); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground);
+    font: inherit; font-size: 11.5px; padding: 5px 8px; outline: none; width: 100%; }
+  .inp:focus { border-color: var(--border-hover); }
+  textarea.inp { resize: vertical; min-height: 40px; line-height: 1.45; }
+  .cascade { display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; border-radius: 6px;
+    background: #3a2f1c; border: 1px solid #4a3a22; font-size: 11px; line-height: 1.55; color: var(--stale); }
+  .cascade svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
+  .cascade b { color: var(--foreground); font-weight: 600; }
+  .cascade code { font-family: 'JetBrains Mono'; font-size: 10.5px; }
+
+  /* ── 409 envelopes ────────────────────────────────────────────────────── */
+  .err { margin: 0 12px 10px; border: 1px solid var(--destructive-muted); border-left: 2px solid var(--destructive);
+    border-radius: 8px; background: var(--background); overflow: hidden; }
+  .err-head { display: flex; align-items: center; gap: 7px; padding: 8px 11px; font-size: 11px; font-weight: 600; color: var(--destructive); }
+  .err-head svg { width: 13px; height: 13px; }
+  .err-head .code { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 9.5px; color: var(--muted-fg); font-weight: 400; }
+  .err-body { padding: 0 11px 10px; display: flex; flex-direction: column; gap: 7px; }
+  .blockers { display: flex; flex-direction: column; gap: 5px; }
+  .bkr { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px; background: var(--secondary);
+    font-size: 11.5px; cursor: pointer; }
+  .bkr:hover { background: var(--card-hover); }
+  .bkr code { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--foreground); }
+  .bkr .jump { margin-left: auto; font-size: 10px; color: var(--info); }
+  .escape { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+  .escape .cp { font-size: 10.5px; color: var(--muted-fg); line-height: 1.5; flex: 1; }
+
+  /* ── Cost confirm (PS-6) ──────────────────────────────────────────────── */
+  .confirm { margin: 0 12px 10px; border: 1px solid var(--primary); border-radius: 8px; background: var(--background); overflow: hidden; }
+  .confirm-head { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-bottom: 1px solid var(--border);
+    font-size: 11.5px; font-weight: 600; color: var(--primary); }
+  .confirm-head svg { width: 13px; height: 13px; }
+  .confirm-body { padding: 10px 11px; display: flex; flex-direction: column; gap: 8px; }
+  .select-wrap { position: relative; }
+  select { appearance: none; background: var(--background-alt); border: 1px solid var(--border); color: var(--foreground);
+    font: inherit; font-size: 11.5px; font-weight: 500; padding: 6px 24px 6px 9px; border-radius: 6px; cursor: pointer; width: 100%; }
+  .select-wrap > svg { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; color: var(--muted-fg); pointer-events: none; }
+  .spend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-fg); }
+  .spend b { color: var(--foreground); font-weight: 600; }
+  .spend .free { color: var(--success); font-weight: 600; }
+
+  /* ── Empty / misc ─────────────────────────────────────────────────────── */
+  .empty { padding: 28px 18px; text-align: center; font-size: 12px; color: var(--muted-fg); line-height: 1.7; }
+  .empty b { color: var(--foreground); display: block; margin-bottom: 6px; font-size: 12.5px; }
+  .empty .btn { margin-top: 12px; }
+  .skel { height: 11px; border-radius: 3px; background: var(--secondary); }
+
+  .json { font-family: 'JetBrains Mono'; font-size: 10.5px; line-height: 1.6; background: var(--background);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--muted-fg); white-space: pre; overflow-x: auto; }
+  .json .k { color: var(--accent-fg); } .json .s { color: var(--primary); } .json .n { color: #8ab6e8; }
+  .json .bad { color: var(--destructive); } .json .good { color: var(--success); }
+
+  /* ── planner repair rows ──────────────────────────────────────────────── */
+  .art-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--background); font-size: 11.5px; margin-bottom: 5px; }
+  .art-row.dead { color: var(--muted-fg); cursor: not-allowed; }
+  .art-row.live { cursor: pointer; }
+  .art-row.live:hover { border-color: var(--border-hover); background: var(--card-hover); }
+  .art-row .kd { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--foreground); }
+  .art-row .uid { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--muted-fg); margin-left: auto; }
+  .art-row svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .repair { display: flex; gap: 6px; flex-wrap: wrap; padding: 9px 10px; border-radius: 6px;
+    background: var(--secondary); border: 1px solid var(--border); }
+
+  /* ── Layout + annotation ──────────────────────────────────────────────── */
+  .stack { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .callout { max-width: 1180px; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 11.5px; line-height: 1.6;
+    background: var(--background-alt); border: 1px solid var(--border); border-left: 3px solid var(--info); color: var(--muted-fg); }
+  .callout.warn { border-left-color: var(--warning); }
+  .callout.bad { border-left-color: var(--destructive); }
+  .callout b { color: var(--foreground); }
+  .callout code { font-family: 'JetBrains Mono'; font-size: 10.5px; color: var(--accent-fg); }
+  .mini { width: 340px; height: 300px; }
+  .mini .panel-head { height: 28px; font-size: 9px; }
+  .mini-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; font-size: 11px; color: var(--muted-fg); line-height: 1.6; }
+  .strike { text-decoration: line-through; opacity: .5; }
+</style>
+</head>
+<body>
+
+<h1>PlanForge Pass Rail &amp; the <span class="mono" style="font-size:15px">planner</span> repair
+  <span class="mono" style="font-size:12px;color:var(--muted-fg);font-weight:400">— studio dock panels, draft</span></h1>
+<p class="sub">
+  Spec: <b>35_planforge_studio.md</b> (wave 5). One new panel, <code>plan-passes</code>, over a compiler that is <b>~85% backend-complete</b>:
+  all four Pass-Rail routes ship, and all four have <b>zero FE consumers</b>. Two of the seven passes — <code>cast</code> and <code>beats</code> —
+  are <b>BLOCKING</b>: the runner stops until a human accepts them. The only door that clears them (<code>POST …/checkpoint</code>) has no GUI,
+  so <b>the human — the only oracle the design says can answer those questions — is the one party who cannot answer them.</b>
+  The agent can. Descends from <b>design-drafts/planforge/2026-07-06-planner-panel-redesign-mockup.html</b> and keeps its locked principle:
+  <b>the writer never edits raw structured data, at any failure point.</b>
+</p>
+
+<div class="legend">
+  <div class="item"><span class="swatch blk"></span><b>BLOCKING</b> · a human must accept it (PF-6) · <span class="mono" style="font-size:10.5px">cast · beats</span></div>
+  <div class="item"><span class="swatch adv"></span><b>advisory</b> · runs straight through</div>
+  <div class="item"><span class="swatch frs"></span><b>fresh</b> · fingerprint matches</div>
+  <div class="item"><span class="swatch stl"></span><b>stale</b> · derived, not stored — an edit stales downstream <i>for free</i></div>
+  <div class="item" style="margin-left:auto">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    Nothing here is a flag in a table. Every cell is <b>derived at read</b> (PF-3).</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ① + ② — the Rail, blocked at CAST, with the PF-7 seed gate live
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>① The Pass Rail <span class="tag">plan-passes</span> <span class="tag">category: editor</span> — blocked at <span class="mono" style="color:var(--blocking)">cast</span></h2>
+<p class="sub">
+  The panel is <b>book-scoped</b> and self-selects its run (<code>useStudioHost().bookId</code> → <code>GET …/plan/runs</code>), so it opens on a
+  <b>bare id</b> — it stays in the <code>ui_open_studio_panel</code> enum, the palette and the User Guide, and dodges X-12 entirely (PS-7).
+  It reads <b>one</b> endpoint: <code>GET …/plan/runs/{run_id}/passes</code> — <i>not</i> the run detail, whose freshness is wrong (state ⑥).
+</p>
+
+<div class="stack">
+<div class="panel rail">
+  <div class="panel-head">
+    <span>Pass Rail — Ma Nữ Nghịch Thiên</span>
+    <div class="acts">
+      <div class="ico" title="Switch run"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v4M16 3v4"/><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 11h18"/></svg></div>
+      <div class="ico" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg></div>
+      <div class="ico" title="Pop out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+      <div class="ico" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    </div>
+  </div>
+
+  <div class="runhead">
+    <div class="runline">
+      <span class="rid">a3f7c1e2</span> · llm ·
+      <span class="gt">xianxia</span><span class="gt">cultivation</span><span class="gt">transmigration</span>
+      <span style="opacity:.7">· compiled 41m ago</span>
+      <span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg> package v3</span>
+    </div>
+    <div class="prog">
+      <div class="segs">
+        <div class="seg done"></div><div class="seg pend" id="seg2"></div><div class="seg"></div><div class="seg"></div>
+        <div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      </div>
+      <!-- cursor = contiguous fresh AND *accepted*. motifs is auto-accepted ⇒ 1. cast is fresh but
+           PENDING ⇒ the walk breaks there. NOT 2, NOT 3. Derived, never hard-coded. -->
+      <span class="cursor" id="cursorline">cursor <b>1</b>/7 · blocked at <span class="blk">CAST</span></span>
+    </div>
+  </div>
+
+  <div class="phead pcols">
+    <div>#</div><div>Pass · output</div><div>Class</div><div>Decision</div><div>Fresh</div><div style="text-align:right">Action</div>
+  </div>
+
+  <div class="body">
+    <!-- ① motifs — advisory, accepted, fresh -->
+    <div class="prow pcols">
+      <div class="pn">1</div>
+      <div class="pname"><span class="nm">motifs</span><span class="kind">→ motif_plan · 6 motifs</span></div>
+      <div><span class="badge b-advisory">advisory</span></div>
+      <div><span class="badge b-accepted" title="advisory ⇒ decision:auto — is_accepted() reads accepted|auto">✓ auto</span></div>
+      <div><span class="fresh f">fresh</span></div>
+      <div class="pacts">
+        <button class="mini-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> view</button>
+      </div>
+    </div>
+
+    <!-- ② cast — BLOCKING, pending. The headline. -->
+    <div class="prow pcols at">
+      <div class="pn">2</div>
+      <div class="pname"><span class="nm">cast</span><span class="kind">→ cast_plan · 7 characters</span></div>
+      <div><span class="badge b-blocking">BLOCKING</span></div>
+      <div><span class="badge b-pending" id="castDecision">⏸ pending</span></div>
+      <div><span class="fresh f">fresh</span></div>
+      <div class="pacts">
+        <button class="mini-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg> re-run</button>
+      </div>
+    </div>
+
+    <!-- the CAST checkpoint card, expanded inline -->
+    <div class="ckpt" id="castCard">
+      <div class="ckpt-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--blocking)"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.5a3 3 0 0 1 0 5M18.5 20a6.5 6.5 0 0 0-3-5.5"/></svg>
+        <span class="t">CAST — who these people <i>are</i></span>
+        <span class="m">7 characters · <span class="bound">3 roles bound</span> → arc_2</span>
+      </div>
+      <div class="ckpt-body">
+        <div class="cast-row">
+          <span class="av" style="background:#e8a832">LV</span>
+          <span>Lâm Vân <span style="color:var(--muted-fg);font-size:10.5px">林雲</span></span>
+          <span><span class="badge b-pending role">protagonist</span></span>
+          <span class="trait">冷面 · stoic, driven; hides the transmigration</span>
+          <span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </div>
+        <div class="cast-row">
+          <span class="av" style="background:#b89ee8">MĐ</span>
+          <span>Mị Đế <span style="color:var(--muted-fg);font-size:10.5px">媚帝</span></span>
+          <span><span class="badge b-blocking role">antagonist</span></span>
+          <span class="trait">the past-life mystery — alive? OQ from the source</span>
+          <span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </div>
+        <div class="cast-row">
+          <span class="av" style="background:#3da692">HC</span>
+          <span>Huyền Chân Nhân</span>
+          <span><span class="badge b-advisory role">mentor</span></span>
+          <span class="trait">gives her the flawed technique — the CD source</span>
+          <span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </div>
+        <div class="cast-row">
+          <span class="av" style="background:#5496e8">TD</span>
+          <span>Tô Diệp</span>
+          <span><span class="badge b-advisory role">rival</span></span>
+          <span class="trait">the sister who kept her spiritual root</span>
+          <span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </div>
+        <div style="font-size:10.5px;color:var(--muted-fg);padding-top:2px">+ 3 more · <span style="text-decoration:underline;cursor:pointer">show all</span></div>
+
+        <!-- THE PF-7 GATE — this strip only exists because BE-20 returns bootstrap_proposal_id -->
+        <div class="seed" id="seedStrip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--primary)"><path d="M12 2 3 7v6c0 5 3.8 8.4 9 9 5.2-.6 9-4 9-9V7Z"/><path d="M9 12h6"/></svg>
+          <span class="txt" id="seedTxt">
+            <b>Glossary seed: 7 new entities</b> — <span id="seedState">proposal pending review</span>
+            <span class="pid">· bootstrap_proposal_id 7c2b…9e41</span>
+          </span>
+          <button class="mini-btn go" id="seedBtn" onclick="stepSeed()">review seed →</button>
+        </div>
+      </div>
+      <div class="ckpt-foot">
+        <span class="why" id="castWhy">
+          <b style="color:var(--primary)">Approve is disabled until the seed proposal reads <span class="mono">applied</span></b> — PF-7
+          (<span class="mono">_assert_seed_applied</span>). Today the ledger never tells the client <i>which</i> proposal that is, so this button 409s <b>forever</b>.
+          <b style="color:var(--foreground)">Save edits is not a "hold"</b> — it writes <span class="mono">decision=rejected</span> (F-P10).
+        </span>
+        <button class="btn danger" id="rejectBtn" title="POST /checkpoint {approved:false, pass_id:'cast'} ⇒ decision=rejected">Reject</button>
+        <button class="btn" id="holdBtn" title="POST /checkpoint {approved:false, pass_id:'cast', edits:{…}} ⇒ ALSO decision=rejected">Save edits</button>
+        <button class="btn primary" id="approveBtn" disabled onclick="approveCast()">Approve cast</button>
+      </div>
+    </div>
+
+    <!-- ③ world — advisory, NOT RUN, and BLOCKED. world.depends_on = ("cast",) — so while cast sits
+         `pending`, world's Run button would 409 UPSTREAM_STALE ["cast"]. The first draft of this mock
+         drew it as the runnable next pass with the paid button on it. It is not. -->
+    <div class="prow pcols">
+      <div class="pn">3</div>
+      <div class="pname"><span class="nm">world</span><span class="kind">→ world_plan</span></div>
+      <div><span class="badge b-advisory">advisory</span></div>
+      <div><span class="badge b-notrun">— not run</span></div>
+      <div><span class="fresh n">—</span></div>
+      <div class="blocked-i" id="worldAct" title="blockers: [cast] — world.depends_on = ('cast',)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> blocked</div>
+    </div>
+
+    <!-- ④ beats — BLOCKING, not run, and RUNNABLE. beats.depends_on = ("motifs",) ONLY. motifs is
+         fresh + auto-accepted ⇒ blockers_for("beats") == []. It is the ONE pass a GUI-only user can
+         still fire — straight into a SECOND blocking checkpoint they also cannot clear. -->
+    <div class="prow pcols next">
+      <div class="pn">4</div>
+      <div class="pname"><span class="nm">beats</span><span class="kind">→ beat_plan · depends only on motifs</span></div>
+      <div><span class="badge b-blocking">BLOCKING</span></div>
+      <div><span class="badge b-notrun">— not run</span></div>
+      <div><span class="fresh n">—</span></div>
+      <div class="pacts"><button class="mini-btn go" onclick="document.getElementById('costConfirm').style.display='block'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 4 12 8-12 8Z"/></svg> run…</button></div>
+    </div>
+
+    <!-- the cost confirm (PS-6), hidden until you click run -->
+    <div class="confirm" id="costConfirm" style="display:none">
+      <div class="confirm-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/></svg>
+        Run <span class="mono">beats</span> — this spends
+      </div>
+      <div class="confirm-body">
+        <div class="field"><label>Model</label>
+          <div class="select-wrap">
+            <select>
+              <option>Gemma-4 26B — lm_studio (local, $0)</option>
+              <option>Qwen3 35B — lm_studio (local, $0)</option>
+              <option>gpt-4o — OpenAI (~$0.08 / pass)</option>
+            </select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
+        </div>
+        <div class="spend">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          1 LLM call · reads <b>package v3</b> + <b>motif_plan</b> · <span class="free">$0 — local model</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn primary">Run beats</button>
+          <button class="btn" onclick="document.getElementById('costConfirm').style.display='none'">Cancel</button>
+          <span style="font-size:10px;color:var(--muted-fg);line-height:1.5">
+            <b style="color:var(--foreground)">No estimate route.</b> Tier-A <span class="mono">paid=true</span>, direct REST + this confirm (PS-6, F-P8).</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="prow pcols">
+      <div class="pn">5</div>
+      <div class="pname"><span class="nm">character_arcs</span><span class="kind">→ char_arc_plan</span></div>
+      <div><span class="badge b-advisory">advisory</span></div>
+      <div><span class="badge b-notrun">— not run</span></div>
+      <div><span class="fresh n">—</span></div>
+      <div class="blocked-i" title="blockers: [cast, beats]"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> blocked</div>
+    </div>
+
+    <div class="prow pcols">
+      <div class="pn">6</div>
+      <div class="pname"><span class="nm">scenes</span><span class="kind">→ scene_plan</span></div>
+      <div><span class="badge b-advisory">advisory</span></div>
+      <div><span class="badge b-notrun">— not run</span></div>
+      <div><span class="fresh n">—</span></div>
+      <div class="blocked-i" title="blockers: [cast, beats, character_arcs]"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> blocked</div>
+    </div>
+
+    <div class="prow pcols">
+      <div class="pn">7</div>
+      <div class="pname"><span class="nm">self_heal</span>
+        <span class="kind">→ scene_plan (re-emitted, healed) ⓘ</span></div>
+      <div><span class="badge b-advisory">advisory</span></div>
+      <div><span class="badge b-notrun">— not run</span></div>
+      <div><span class="fresh n">—</span></div>
+      <div class="blocked-i" title="blockers: [scenes, cast]"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> blocked</div>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <span id="footline"><b class="mono" style="color:var(--foreground)">1 of 7</b> · blocked at <span class="mono" style="color:var(--blocking)">cast</span> · no OCC (PS-8)</span>
+    <button class="mini-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 15 15 9"/><path d="M11 6h4a4 4 0 0 1 0 8h-1"/><path d="M13 18H9a4 4 0 0 1 0-8h1"/></svg>
+      Link to spec tree
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- the link menu, rendered open so its disabled half is visible -->
+<div class="panel" style="width:300px">
+  <div class="panel-head"><span>Link to spec tree</span></div>
+  <div style="padding:10px">
+    <div class="art-row live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h10"/></svg>
+      <span class="kd">skeleton</span><span class="uid">ready</span></div>
+    <div class="art-row dead" title="scenes is not accepted yet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      <span class="kd strike">scene_plan</span><span class="uid">needs pass 6</span></div>
+    <div style="font-size:10.5px;color:var(--muted-fg);line-height:1.6;margin-top:8px">
+      <b style="color:var(--foreground)">409 <span class="mono">LINK_REFUSED</span></b> is a shipped envelope, so the menu can disable the branch
+      instead of firing and apologising. <code class="mono">scene_plan</code> unlocks when <span class="mono">scenes</span> is <b style="color:var(--accent)">fresh + accepted</b>.
+    </div>
+    <div style="font-size:10.5px;color:var(--muted-fg);line-height:1.6;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+      <b style="color:var(--foreground)">And there is no Delete here.</b> A pass is un-done by <b style="color:var(--foreground)">re-running</b> it
+      (re-fingerprints, stales downstream) or <b style="color:var(--foreground)">rejecting</b> it at its checkpoint. A third mechanism would be a
+      second, un-derived invalidation path — PS-1.
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="callout warn">
+  <b>② The gate the ledger hides — this is the load-bearing finding (F-P4).</b>
+  PF-7 refuses to accept <code>cast</code> until its glossary seed proposal is <b>applied</b> (<code>plan_forge_service.py:686</code>).
+  The worker creates that proposal and stores its id on the pass entry — and <code>derive_view</code> <b>never returns it</b>
+  (<code>plan_pass_service.py:306-318</code> carries <code>artifact_id</code> and <code>job_id</code>, and stops).
+  So a GUI sees <code>blocked_at:"cast"</code>, offers Approve, gets a <b>permanent 409</b>, and has <b>no way to discover which proposal to apply</b> —
+  there is no list-proposals-for-run route. <b>A stored-but-never-returned field, 275 lines from the comment in the same file warning that such a field
+  "is indistinguishable from a dropped one."</b> BE-20 emits <code>bootstrap_proposal_id</code> + <code>decided_by</code> + <code>decided_at</code>;
+  all three are already on <code>PassEntry</code>. It is XS, and without it this panel is a lie.
+  <b>Click “review seed →” above</b> — the two-step it unlocks (review → approve → apply → Approve) <i>is</i> the wave's DoD step (c).
+</div>
+
+<div class="callout bad">
+  <b>PASS_ORDER is not the dependency graph — and the first draft of this mock got two rows exactly backwards.</b>
+  <code>world.depends_on = ("cast",)</code>, so while <code>cast</code> sits <b>pending</b>, <b><code>world</code> is BLOCKED</b> — the first draft drew the
+  paid Run button on it, and that button 409s. <code>beats.depends_on = ("motifs",)</code> <i>only</i>, so with <code>motifs</code> accepted
+  <b><code>beats</code> is RUNNABLE</b> — the first draft drew it as blocked. It is the one pass a GUI-only user can still fire, straight into a
+  <i>second</i> checkpoint they also cannot clear. <b>Four of seven passes are gated on an accepted <code>cast</code>.</b>
+  And <code>pass_cursor</code> is contiguous fresh <b>AND accepted</b> (<code>is_accepted = decision in ("accepted","auto")</code>,
+  <code>plan_pass_service.py:213</code>), so it breaks at <code>cast</code> and reads <b>1</b> — not 2, not the spec sketch's 3.
+  <b>Never pin a literal. Render what the ledger derives.</b>
+</div>
+
+<div class="callout">
+  <b>Pass 7's output kind is <code>scene_plan</code>, and that is deliberate.</b> <code>PASS_REGISTRY["self_heal"].output_kind == "scene_plan"</code> —
+  it re-emits the <i>healed</i> scene plan, and the registry says why in-line: <i>"which is exactly why inputs must resolve by POINTER: under a
+  latest-by-kind rule it would read its own output as its input."</i> So B2's schema covers <b>six kinds for seven passes</b> — correctly — and
+  <code>scene_plan</code> must validate for <b>both</b> producers. One consequence for the viewer: the artifact list is
+  <code>DISTINCT ON (a.kind)</code>, so once pass 7 runs, the <code>scene_plan</code> row shows <b>self_heal's</b> body, not pass 6's.
+  <b>Say so in the panel</b>, or the user thinks their scenes vanished.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ③ — the BEATS card: hold + edit, and the cascade
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>③ The <span class="mono">beats</span> checkpoint — <span class="tag">edits</span> <span class="tag hot">there is no "hold"</span> and the cascade</h2>
+<p class="sub">
+  <code>edits</code> deep-merge into the pass artifact → a <b>new artifact</b> → everything downstream stales <b>by derivation</b>, with nothing written to
+  mark it. That is the compiler's best property and its most surprising one, so the form <b>says it before you commit</b>, and names the passes by name.
+  Per the parent mockup's locked principle, this is a <b>structured form</b>, not a JSON patch box (OQ-2: cast + beats are the two shapes we know;
+  anything else falls back to the read-only viewer + “re-run this pass”).
+  <b>The primary button is <span class="mono">Approve with edits</span> — ONE call</b> (<code>{approved:true, pass_id, edits}</code>): the gate runs
+  <i>before</i> the write, so a refused approve mutates nothing. <b><span class="mono">Save edits</span> is the secondary, and it marks the pass
+  <span class="mono">rejected</span></b> — there is no third decision.
+</p>
+
+<div class="panel rail" style="height:474px">
+  <div class="panel-head"><span>Pass Rail — beats</span>
+    <div class="acts"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></div></div>
+  </div>
+  <div class="body">
+    <div class="prow pcols at">
+      <div class="pn">4</div>
+      <div class="pname"><span class="nm">beats</span><span class="kind">→ beat_plan · 12 beats · arc_2 Bước Lên Tiên Lộ</span></div>
+      <div><span class="badge b-blocking">BLOCKING</span></div>
+      <div><span class="badge b-pending">⏸ pending</span></div>
+      <div><span class="fresh f">fresh</span></div>
+      <div class="pacts"><button class="mini-btn">view</button></div>
+    </div>
+
+    <div class="ckpt">
+      <div class="ckpt-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--blocking)"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+        <span class="t">BEATS — what SHAPE the story takes</span>
+        <span class="m">beat 7 of 12 · tension 71</span>
+      </div>
+      <div class="ckpt-body edits">
+        <div class="field"><label>Beat</label>
+          <input class="inp" value="7 · Thử Nghiệm — the flawed technique holds, and it costs her" /></div>
+        <div class="field" style="align-items:start"><label style="padding-top:4px">Summary</label>
+          <textarea class="inp">She completes the trial with the technique Huyền Chân Nhân gave her. It works. That is the problem.</textarea></div>
+        <div class="field"><label>Tension</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input class="inp" style="width:56px" value="71" />
+            <span style="font-size:10.5px;color:var(--muted-fg)">was <span class="strike mono">58</span> — <span class="mono" style="color:var(--stale)">+13</span></span>
+          </div></div>
+        <div class="field"><label>Var deltas</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="badge b-pending mono">PA +8</span>
+            <span class="badge b-advisory mono">HA −5</span>
+            <span class="badge b-stale mono">CD +12 (new)</span>
+            <button class="mini-btn">+ variable</button>
+          </div></div>
+
+        <div class="cascade">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <span><b>Editing <code>beats</code> will stale the 3 passes below it</b> — <code>character_arcs</code>, <code>scenes</code>, <code>self_heal</code>.
+            Nothing is deleted and nothing is marked: their input fingerprints simply stop matching, and the next read derives it.
+            They keep their last bodies until you re-run them.</span>
+        </div>
+      </div>
+      <div class="ckpt-foot">
+        <span class="why"><code class="mono">POST …/checkpoint {approved:true, pass_id:"beats", edits:{…}}</code> — free, no LLM.
+          The gate runs <b>before</b> the write (<code class="mono">plan_forge_service.py:634</code>): a refused approve mutates <b>nothing</b>, so there is no
+          half-applied edit to retry on top of itself.</span>
+        <button class="btn danger" title="{approved:false} ⇒ decision=rejected">Reject</button>
+        <button class="btn" title="{approved:false, edits} ⇒ ALSO decision=rejected — this is NOT a hold">Save edits</button>
+        <button class="btn primary" title="{approved:true, edits} ⇒ gate → edit → decision=accepted">Approve with edits</button>
+      </div>
+    </div>
+
+    <!-- the state the first draft had no name for: a REJECTED blocking pass -->
+    <div class="prow pcols" style="border-top:1px solid var(--border)">
+      <div class="pn">4</div>
+      <div class="pname"><span class="nm">beats</span><span class="kind">— after <i>Save edits</i></span></div>
+      <div><span class="badge b-blocking">BLOCKING</span></div>
+      <div><span class="badge b-rejected">✗ rejected</span></div>
+      <div><span class="fresh f">fresh</span></div>
+      <div class="pacts"><button class="mini-btn go">approve</button></div>
+    </div>
+    <div class="cascade" style="margin:0 12px 10px;background:var(--destructive-muted);border-color:var(--destructive);color:var(--destructive)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span><b>And <code>blocked_at</code> just went <code>null</code>.</b> <code class="mono">_review_pass</code> writes
+        <code class="mono">decision = "accepted" if approved else "rejected"</code> — two values, no third — and
+        <code class="mono">blocked_at</code> only matches <b>BLOCKING + completed + <i>pending</i></b>. A rejected pass does not match.
+        So a Rail that renders its banner from <code class="mono">blocked_at</code> alone would say <b>“nothing blocking”</b> about a run that
+        cannot advance a single pass (every downstream still lists <code class="mono">beats</code> in <code class="mono">blockers[]</code>, because
+        rejected is not accepted). <b>Derive the banner as <code class="mono">blocked_at ?? first BLOCKING pass not in (accepted|auto)</code>.</b>
+        F-P10 — the panel must not go quiet at the exact moment the user needs it.</span>
+    </div>
+  </div>
+  <div class="panel-foot"><span>Reject, Save edits and Approve are all <b class="mono" style="color:var(--foreground)">free</b> · only <span class="mono">run</span> spends</span></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ④ + ⑤ — the two 409 states
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>④ + ⑤ The two 409s — <span class="tag hot">UPSTREAM_STALE</span> <span class="tag hot">CHECKPOINT_REFUSED</span></h2>
+<p class="sub">
+  Both envelopes are <b>already shipped</b>, and <code>UPSTREAM_STALE</code> already carries <code>blockers[]</code> — so the Rail can name <b>which
+  pass to fix</b> instead of showing a red toast. The <code>force</code> escape lives <b>inside</b> that state, never as a primary button: it is the
+  override the code reserved for a human at a GUI (<code>server.py:3599</code>) and deliberately withheld from the agent.
+</p>
+
+<div class="stack">
+<div class="panel" style="width:560px;height:330px">
+  <div class="panel-head"><span>④ Ran <span class="mono">world</span> while <span class="mono">cast</span> is unaccepted</span></div>
+  <div class="body">
+    <div class="err">
+      <div class="err-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <span>world can't run yet — it builds on the cast</span>
+        <span class="code">409 UPSTREAM_STALE</span>
+      </div>
+      <div class="err-body">
+        <div class="blockers">
+          <div class="bkr"><span class="badge b-pending">⏸ pending</span><code>cast</code>
+            <span style="color:var(--muted-fg);font-size:11px">— waiting on your approval</span><span class="jump">go to pass 2 ↑</span></div>
+        </div>
+        <div class="escape">
+          <span class="cp"><b style="color:var(--foreground)">Run anyway?</b> This plans the <code class="mono">world</code> around a
+            <code class="mono">cast</code> you have not accepted. <b style="color:var(--foreground)">The result may contradict your own story.</b></span>
+          <button class="btn warn" style="color:var(--stale);border-color:#4a3a22">force: true</button>
+        </div>
+      </div>
+    </div>
+    <div style="padding:0 12px 12px;font-size:10.5px;color:var(--muted-fg);line-height:1.6">
+      <b style="color:var(--foreground)"><code class="mono">blockers[]</code> is exactly <code class="mono">depends_on</code>, filtered</b> —
+      <code class="mono">blockers_for</code> walks that tuple and nothing else. So <code class="mono">world</code>'s blockers can only ever be
+      <code class="mono">["cast"]</code>, and <b style="color:var(--foreground)"><code class="mono">beats</code>' can only ever be
+      <code class="mono">["motifs"]</code></b>. <i>The first draft of this mock rendered <code class="mono">cast</code> as a blocker of
+      <code class="mono">beats</code> — an envelope the service cannot produce.</i>
+      Each blocker is <b style="color:var(--foreground)">click-to-scroll</b>. The copy <i>is</i> the response — the panel does not invent a diagnosis
+      on top of the one the service already computed.
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="width:560px;height:330px">
+  <div class="panel-head"><span>⑤ Approved <span class="mono">cast</span> before applying its seed</span></div>
+  <div class="body">
+    <div class="err">
+      <div class="err-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <span>cast can't be accepted yet</span>
+        <span class="code">409 CHECKPOINT_REFUSED</span>
+      </div>
+      <div class="err-body">
+        <div class="json"><span class="k">"detail"</span>: {
+  <span class="k">"code"</span>: <span class="s">"CHECKPOINT_REFUSED"</span>,
+  <span class="k">"message"</span>: <span class="bad">"cast cannot be accepted before its
+     glossary seed proposal exists
+     (call plan_bootstrap_seed for this pass first)"</span>
+}</div>
+        <div style="font-size:11px;color:var(--destructive);line-height:1.6">
+          <b><code class="mono">plan_bootstrap_seed</code> does not exist.</b> <code class="mono">grep -rn plan_bootstrap_seed services/</code> → <b>one</b> hit: that string.
+          No tool, no route, no method. The agent hunts for it and hallucinates; the human hunts for a button never built. <b>F-P5.</b>
+        </div>
+        <div class="json"><span class="k">"message"</span>: <span class="good">"cast's glossary seed proposal is missing —
+     re-run the cast pass to propose it."</span>   <span class="mono" style="color:var(--muted-fg)">← BE-22</span></div>
+      </div>
+    </div>
+    <div style="padding:0 12px 12px;font-size:10.5px;color:var(--muted-fg);line-height:1.6">
+      The real producer is the <b style="color:var(--foreground)">worker</b>; the real recovery is <b style="color:var(--foreground)">re-run <span class="mono">cast</span></b>
+      (a safe no-op if the proposal is already applied — <code class="mono">job_consumer.py:136-142</code> keeps it pointed at).
+      With BE-20 the panel never renders this at all: <b style="color:var(--foreground)">Approve stays disabled</b> until the seed reads <span class="mono">applied</span>.
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="callout bad">
+  <b>A wrong error message is a bug, not a cosmetic.</b> It is cheaper to fix than to write its defer row — CLAUDE.md's own FIX-NOW gate.
+  And note what BE-22 and BE-20 do <i>together</i>: BE-20 removes the 409 from the happy path, BE-22 makes it truthful when it still fires
+  (a re-run mid-flight, a proposal deleted underneath you). <b>Fixing only one of them leaves a user stranded in a state the panel cannot explain.</b>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑥ — the lying ledger. Two producers of one truth, disagreeing.
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑥ The ledger that lies about itself <span class="tag hot">F-P3 · BE-21</span> — same run, two answers</h2>
+<p class="sub">
+  <code>derive_view(run, *, package_artifact_id=None)</code> re-derives each pass's input fingerprint, and for the <b>5 passes with
+  <code>reads_package=True</code></b> the package id <b>is one of the inputs</b>. Three call sites. Two pass it. <code>_serialize_run</code>
+  (<code>plan_forge_service.py:383</code>) <b>does not</b> — so <code>GET /runs/{id}</code>, the LIST, <code>POST /checkpoint</code> and
+  <code>PATCH /novel-system-spec</code> all report a run that has made <b>zero progress</b>. It has bitten nobody <b>only because no FE reads that block</b>
+  — which is exactly the gap this wave closes.
+</p>
+
+<div class="stack">
+  <div class="panel mini" style="width:400px">
+    <div class="panel-head"><span style="color:var(--destructive)">GET /runs/a3f7c1e2 — today</span></div>
+    <div class="mini-body">
+      <div class="json"><span class="k">"pass_cursor"</span>: <span class="bad">0</span>,
+<span class="k">"blocked_at"</span>: <span class="bad">null</span>,
+<span class="k">"passes"</span>: [
+  { <span class="k">"pass_id"</span>:<span class="s">"motifs"</span>, <span class="k">"fresh"</span>:<span class="bad">false</span> },
+  { <span class="k">"pass_id"</span>:<span class="s">"cast"</span>,   <span class="k">"fresh"</span>:<span class="bad">false</span> },
+  { <span class="k">"pass_id"</span>:<span class="s">"world"</span>,  <span class="k">"fresh"</span>:<span class="bad">false</span> },
+  <span style="opacity:.6">…all 5 package-readers false…</span>
+]</div>
+      <div style="margin-top:8px">
+        “Nothing is fresh, the compiler has made no progress.”<br />
+        A Rail built on the endpoint <code class="mono">usePlanRun</code> <i>already polls</i> would render <b style="color:var(--foreground)">seven grey rows and a zero</b>.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="width:400px">
+    <div class="panel-head"><span style="color:var(--success)">GET /runs/a3f7c1e2/passes — same run</span></div>
+    <div class="mini-body">
+      <div class="json"><span class="k">"pass_cursor"</span>: <span class="good">1</span>,
+<span class="k">"blocked_at"</span>: <span class="good">"cast"</span>,
+<span class="k">"passes"</span>: [
+  { <span class="k">"pass_id"</span>:<span class="s">"motifs"</span>, <span class="k">"fresh"</span>:<span class="good">true</span>,
+    <span class="k">"decision"</span>:<span class="s">"auto"</span> },
+  { <span class="k">"pass_id"</span>:<span class="s">"cast"</span>,   <span class="k">"fresh"</span>:<span class="good">true</span>,
+    <span class="k">"decision"</span>:<span class="s">"pending"</span> },
+  { <span class="k">"pass_id"</span>:<span class="s">"world"</span>,  <span class="k">"blockers"</span>:[<span class="s">"cast"</span>] },
+  { <span class="k">"pass_id"</span>:<span class="s">"beats"</span>,  <span class="k">"blockers"</span>:<span class="good">[]</span> },
+  <span style="opacity:.6">…</span>
+]</div>
+      <div style="margin-top:8px">
+        Correct <b style="color:var(--foreground)">by construction</b> — <code class="mono">pass_status</code> passes the package id.
+        <b style="color:var(--foreground)">The Rail reads THIS one</b> (belt and braces), <i>and</i> BE-21 fixes the other.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="width:340px">
+    <div class="panel-head"><span style="color:var(--stale)">…and a test pins the bug</span></div>
+    <div class="mini-body">
+      <div class="json"><span style="color:var(--muted-fg)">test_genre_tags_plumbing.py:88</span>
+assert <span class="s">"**derive_view(run)"</span> <span class="k">in</span> src</div>
+      <div style="margin-top:8px">
+        A <b style="color:var(--foreground)">source-text assertion</b> — so adding the argument <b style="color:var(--destructive)">REDs it</b>.
+        It asserts the presence of the bug.<br /><br />
+        <b style="color:var(--foreground)">M1's DoD replaces it with behaviour:</b> a compiled run's <code class="mono">/runs/{id}</code>
+        must report the <i>same</i> <code class="mono">pass_cursor</code> as its <code class="mono">/passes</code>.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>Two producers of the same truth, disagreeing — inside one service.</b> The repo has a name for this class
+  (<code>cross-service-normalization-bug-class</code>); this is its intra-service twin. The structural fix is not "make both correct" but
+  <b>make one of them the producer</b>: the Rail reads <code>/passes</code>, and <code>_serialize_run</code> is corrected so the second answer can
+  never drift again. Fixing only the panel would leave the LIST lying to every other reader.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑦ + ⑧ — empty states + the X-1 gate
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑦ Empty states — <span class="tag">no runs</span> <span class="tag">not compiled</span> <span class="tag">loading</span> — and ⑧ the <span class="tag hot">X-1</span> gate</h2>
+<p class="sub">
+  The pass list is a <b>closed set</b>: render it from <code>PASS_ORDER</code>, never from a spinner. And <code>compiled:false</code> is a state the
+  service went out of its way to distinguish — <i>“absent ≠ zero”</i> — so the panel must <b>say it</b>, not render seven tidy “pending” rows that imply a
+  run which never happened.
+</p>
+
+<div class="stack">
+  <div class="panel mini">
+    <div class="panel-head"><span>No runs for this book</span></div>
+    <div class="empty">
+      <b>No plan run for this book yet.</b>
+      Every pass reads a compiled package. Start one in the Planner.
+      <button class="btn primary">Open the Planner</button>
+      <div style="margin-top:12px;font-size:10px;line-height:1.6">
+        <code class="mono">host.openPanel('planner')</code> — a dock call, <b style="color:var(--foreground)">never</b> a route hop.
+        A <span class="mono">&lt;Link&gt;</span> here tears the dockview layout down (DOCK-7).
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Run exists — <span class="mono">compiled: false</span></span></div>
+    <div class="empty">
+      <b>This run has no compiled package.</b>
+      The passes read it, so there is nothing for them to read.
+      Compile it in the Planner first.
+      <button class="btn primary">Open the Planner</button>
+      <div style="margin-top:12px;font-size:10px;line-height:1.6;color:var(--stale)">
+        <b>Absent ≠ zero.</b> Seven “pending” rows here would be a lie about a run that never started
+        (<code class="mono">plan_forge_service.py:1012-1015</code>).
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini">
+    <div class="panel-head"><span>Loading</span></div>
+    <div style="padding:12px;display:flex;flex-direction:column;gap:10px" id="skelRows">
+      <!-- 7 rows, named + in PASS_ORDER — emitted by the script below, because the set is CLOSED -->
+      <div style="font-size:10px;color:var(--muted-fg);line-height:1.6;margin-top:4px">
+        Seven skeletons, in order, <b style="color:var(--foreground)">named</b>. The set is closed — a spinner would throw away information we already have.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mini" style="border-color:var(--destructive-muted)">
+    <div class="panel-head"><span style="color:var(--destructive)">⑧ No model / BYOK empty</span></div>
+    <div class="mini-body">
+      <div class="select-wrap" style="margin-bottom:10px">
+        <select disabled style="opacity:.5"><option>No chat model configured</option></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <button class="btn primary" style="width:100%;justify-content:center">+ Add a model</button>
+      <div style="margin-top:10px;color:var(--destructive);line-height:1.6">
+        <b>This button is X-1.</b> <code class="mono">AddModelCta</code> is a raw
+        <code class="mono">&lt;Link to="/settings/providers"&gt;</code> — it <b>destroys the dockview layout</b>.
+        Every paid action on this Rail needs a <code class="mono">ModelPicker</code>, whose empty state renders it.
+        <b style="color:var(--foreground)">Shipping the Rail before X-1 puts a workspace-destroying button on it.</b>
+        Hard gate on M4. Not negotiable, not deferrable.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ⑨ — the planner repair: before / after
+     ══════════════════════════════════════════════════════════════════════ -->
+<h2>⑨ Repairing <span class="mono">planner</span> <span class="tag">no new panel id</span> — before / after</h2>
+<p class="sub">
+  Four changes to the <b>existing</b> panel. Sub-gap 1 of <code>D-PLANFORGE-GUI-AUDIT</code> (the bare <code>arc_id</code> text box) is
+  <b>STALE — already fixed by <code>9c685c28a</code>. Do not touch the arc picker.</b>
+  The rest is mostly wiring: <code>interpret</code> and <code>refine</code> have routes <b>and</b> <code>api.ts</code> methods <b>and zero callers</b>.
+  They need <b>buttons only</b>.
+</p>
+
+<div class="stack">
+<div class="panel planner">
+  <div class="panel-head"><span style="color:var(--destructive)">Before — the shipped panel</span></div>
+  <div class="body" style="padding:12px">
+    <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);margin-bottom:7px">Source markdown</div>
+    <textarea class="inp" style="min-height:64px" placeholder="(empty — reopening a run does not restore what you pasted)"></textarea>
+    <div style="font-size:10.5px;color:var(--destructive);margin:6px 0 14px;line-height:1.6">
+      <b>Not an FE bug.</b> <code class="mono">plan_runs.py:25</code> <i>selects</i> <code class="mono">source_markdown</code> on every read;
+      <code class="mono">_serialize_run</code> returns <code class="mono">source_checksum</code> and not the source. <b>The FE cannot resume what the API never sends</b> — BE-3b.
+    </div>
+
+    <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);margin-bottom:7px">Artifacts (3)</div>
+    <div class="art-row dead"><span class="kd">novel_system_spec</span><span class="uid">4f2a9c1e…</span></div>
+    <div class="art-row dead"><span class="kd">planner_state</span><span class="uid">b71d0e83…</span></div>
+    <div class="art-row dead"><span class="kd">package</span><span class="uid">e93c4a55…</span></div>
+    <div style="font-size:10.5px;color:var(--destructive);margin-top:8px;line-height:1.6">
+      <b>Unclickable <span class="mono">&lt;li&gt;</span>s.</b> <code class="mono">PlanRunView.tsx:52-57</code>. The <b>body of the plan the user just paid an LLM to write
+      is unreachable by ANY client</b> — no REST route, no MCP tool. A <span class="strike">kind</span> and a <span class="strike">truncated UUID</span>.
+    </div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:10.5px;color:var(--muted-fg);line-height:1.7">
+      Self-check found <b style="color:var(--warning)">2 gaps</b>. Recovery tools that exist and are unreachable:<br />
+      <span class="strike mono">plan_interpret_feedback</span> · <span class="strike mono">plan_apply_revision</span> · <span class="strike mono">plan_handoff_autofix</span><br />
+      <span style="color:var(--destructive)">Two have routes AND api.ts methods AND zero callers. The third has no route at all (BE-2).</span>
+    </div>
+  </div>
+</div>
+
+<div class="panel planner">
+  <div class="panel-head"><span style="color:var(--success)">After</span></div>
+  <div class="body" style="padding:12px">
+    <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);margin-bottom:7px">Source markdown</div>
+    <textarea class="inp" style="min-height:64px"># STORY PLAN — Ma Nữ Nghịch Thiên
+
+## 1. Nhân Vật Chính
+Người hiện đại xuyên không vào thân xác một thiếu nữ. Vừa bị đào linh căn…
+
+## 4. Planner Variables
+PA = Perfection_Addiction · HA = Humanity_Anchor · CD = Corruption_Debt</textarea>
+    <div style="font-size:10.5px;color:var(--success);margin:6px 0 14px;line-height:1.6">
+      Seeded from <code class="mono">plan.run?.source_markdown</code> as a <b>derived default</b>, mirroring the panel's own
+      <code class="mono">effectiveModelRef</code> — <b>not</b> a <code class="mono">useEffect</code> chasing a prop.
+    </div>
+
+    <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);margin-bottom:7px">Artifacts (3) — latest per kind</div>
+    <div class="art-row live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+      <span class="kd">novel_system_spec</span><span style="color:var(--muted-fg);font-size:10.5px">2 arcs · 7 events · 4 variables</span><span class="uid">open ↗</span></div>
+    <div class="art-row live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+      <span class="kd">planner_state</span><span style="color:var(--muted-fg);font-size:10.5px">PA 15 · HA 85 · CD 8 · THR 0</span><span class="uid">open ↗</span></div>
+    <div class="art-row live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+      <span class="kd">package</span><span style="color:var(--muted-fg);font-size:10.5px">v3 · arc_2</span><span class="uid">open ↗</span></div>
+    <div style="font-size:10.5px;color:var(--muted-fg);margin-top:8px;line-height:1.6">
+      Each row → <code class="mono">host.openPanel('json-editor', { params:{ docType:'loreweave.plan-artifact.v1', resourceId:'{runId}:{artifactId}' } })</code>,
+      fed by <b style="color:var(--foreground)">BE-3</b> through a registered <code class="mono">plan-artifact</code> provider (PS-9) — the cheapest close of
+      spec 12's cycle-gate item 5, which KG and Translation both silently skipped.
+      <b style="color:var(--stale)">⚠ The seam does not fit as-is (F-P11).</b> <code class="mono">open(ctx:{token,bookId}, resourceId:string)</code> carries
+      <b>no <code class="mono">runId</code></b> — hence the <b>composite id</b> above — and <b><code class="mono">readOnly</code> exists nowhere</b>
+      (<code class="mono">grep readOnly JsonEditorPanel.tsx documents/*.ts</code> → 0 hits). <b style="color:var(--foreground)">FE-1 must BUILD it.</b>
+      A provider whose <code class="mono">save()</code> silently no-ops is <code class="mono">silent-success-is-a-bug</code>, shipped.
+    </div>
+
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+      <div style="font-size:10.5px;color:var(--warning);margin-bottom:7px">⚠ Self-check found <b>2 gaps</b> — the Repair strip appears</div>
+      <div class="repair">
+        <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg> Explain what's wrong</button>
+        <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 7"/></svg> Apply the suggested fix</button>
+        <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9Z"/></svg> Fix the top gaps automatically</button>
+      </div>
+      <div style="font-size:10px;color:var(--muted-fg);line-height:1.6;margin-top:7px">
+        Shown <b style="color:var(--foreground)">only when <code class="mono">selfCheck.gaps.length &gt; 0</code></b> — recovery tools are meaningless without a
+        diagnosis, and an always-on row of three buttons is how a leaky abstraction gets built. All three are <b style="color:var(--foreground)">paid</b>, same PS-6 confirm.
+      </div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <span>Runs · <span class="mono">a3f7c1e2</span> · <span class="mono" style="color:var(--destructive)">9b04ff71 (failed)</span></span>
+    <button class="mini-btn" style="color:var(--destructive);border-color:var(--destructive-muted)"
+            title="BE-4 soft-archives (is_archived). BE-4b restores. The toast carries an Undo.">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9M10 13h4"/></svg> Archive failed run</button>
+  </div>
+</div>
+</div>
+
+<div class="callout warn">
+  <b>The type is wrong before the button exists (F-P6).</b> <code>types.ts:115</code> declares <code>RefinePlanBody.revision: string</code>;
+  the backend expects a <b>dict</b> (<code>plan_forge.py:60</code>). The dead <code>api.ts</code> method has been type-drifted since it was written, so
+  <b>the first person to wire the refine button gets a 422 and debugs the button.</b> PS-5 fixes the type <i>in the same slice</i> that adds the button.
+  <b>A dead method is not a free method — it is an unverified one.</b>
+  Likewise BE-4 is a <b>soft-archive</b> (<code>is_archived</code>, filtered from LIST), matching every sibling in this service —
+  <code>outline_node</code>, <code>motif</code>, <code>structure_node</code>, <code>arc_template</code> — <b>all of which also RESTORE</b>.
+  <b style="color:var(--foreground)">So BE-4 does not ship without BE-4b</b> (<code>POST …/runs/{id}/restore</code> + <code>?include_archived</code>, PS-13):
+  plan 30's <b>BE-11</b> files exactly this shape — <i>"shipping a Delete button with no undo … is a one-way destructive action"</i> — as a 🔴 defect against
+  <code>canon_rule</code>. The first draft of this spec specced the archive and forgot the restore. <b>Do not repeat it here.</b>
+</div>
+
+<div class="callout bad">
+  <b>What this mock does NOT propose.</b>
+  <b>(1) No raw JSON/spec editor as a fallback</b> — the parent mockup's locked principle, and it holds here: the artifact viewer is
+  <b>read-only</b>, because <code>edits</code> (the only sanctioned artifact mutation) must go through <code>POST /checkpoint</code>'s deep-merge so it is
+  <b>fingerprinted</b>. A writable viewer would be a second, un-derived write channel into the pass ledger — it breaks PF-3, and it is the exact
+  "make the writer fix the raw plan" failure the 2026-07-06 audit banned.
+  <b>(2) No OCC</b> (PS-8) — <code>pass_state</code> has no version column; last-write-wins is deliberate, and the derived ledger makes the outcome
+  visible on the next read. An <code>If-Match</code> here would be a new confirmation convention, and AN-8 says finding one is finding a defect.
+  <b>(3) No Delete-a-pass</b> (PS-1). <b>(4) No estimate route and no new <code>/actions</code> descriptor</b> (F-P8) — three invented estimate paths
+  already 404 in production; whether <code>plan_run_pass</code> should become Tier-W is <b>OQ-1, for the PO</b>, because it would change the
+  <i>agent's</i> channel too.
+  <b>(5) No "Hold"</b> (F-P10) — the checkpoint route has <b>two</b> decisions, <code>accepted</code> and <code>rejected</code>. A third one drawn in a
+  mock is a state the builder would then have to invent in the client, and it would drift from the ledger on the first read.
+</div>
+
+<div class="callout">
+  <b>The agent half — and the inverse gap this wave deliberately leaves open.</b> Every action above is already an MCP tool
+  (<code>plan_run_pass</code> · <code>plan_pass_status</code> · <code>plan_review_checkpoint</code> · <code>plan_link</code> ·
+  <code>plan_handoff_autofix</code>), and this spec changes none of them. Two consequences the builder must not miss:
+  <b>(a)</b> registering <code>plan-passes</code> means <b>two</b> edits in <code>frontend_tools.py</code> — the <code>panel_id</code> <b>enum</b>
+  <i>and</i> the tool's <b>description prose</b>, which is the model's only hint the panel exists — then <b>regenerate</b>
+  <code>contracts/frontend-tools.contract.json</code>, never hand-edit it (57→58 == 58 == 58).
+  <b>(b)</b> there is <b>no <code>plan_*</code> effect handler today</b>, so without <code>planEffects.ts</code> (X-4) the agent runs a pass and
+  <b>the Rail sits stale</b> — mirror <code>bookEffects.ts</code> including <code>unwrapToolResult</code>, or it stays green in unit tests and never fires live.
+  And after BE-3 the human can read an artifact body while the <b>agent still cannot</b> (no <code>plan_get_artifact</code> tool) — a real GG-2 inversion,
+  <b>recorded as OQ-3</b> rather than silently grandfathered.
+</div>
+
+<script>
+  /* The loading state renders from PASS_ORDER, not from a spinner — the pass list is a
+     CLOSED SET, and a spinner would throw away information the client already has. */
+  var PASS_ORDER = ['motifs','cast','world','beats','character_arcs','scenes','self_heal'];
+  var skel = document.getElementById('skelRows');
+  PASS_ORDER.forEach(function (name, i) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center';
+    row.innerHTML = '<span class="pn">' + (i + 1) + '</span>' +
+      '<span class="mono" style="font-size:11px;color:var(--border-hover);width:96px">' + name + '</span>' +
+      '<div class="skel" style="flex:1;opacity:.5"></div>';
+    skel.insertBefore(row, skel.lastElementChild);
+  });
+
+  /* The PF-7 seed gate, driven for real — this two-step IS the wave's DoD step (c),
+     the capability that does not exist today. It only becomes renderable once BE-20
+     returns `bootstrap_proposal_id` on the pass row. */
+  var seedStep = 0;
+  function stepSeed() {
+    var strip = document.getElementById('seedStrip');
+    var state = document.getElementById('seedState');
+    var btn   = document.getElementById('seedBtn');
+    var appr  = document.getElementById('approveBtn');
+    seedStep++;
+    if (seedStep === 1) {           // GET /plan/bootstrap/{id} → the diff, reviewed
+      state.innerHTML = 'reviewed — 7 entities, 0 conflicts';
+      btn.textContent = 'approve seed →';
+    } else if (seedStep === 2) {    // POST …/approve
+      state.innerHTML = 'approved — not yet written to the glossary';
+      btn.textContent = 'apply seed →';
+    } else {                        // POST …/apply  ⇒ PF-7 satisfied
+      strip.classList.add('applied');
+      state.innerHTML = '<b>applied</b> — 7 entities written to the glossary';
+      btn.remove();
+      appr.disabled = false;
+      document.getElementById('castWhy').innerHTML =
+        '<b style="color:var(--success)">Seed applied — PF-7 is satisfied.</b> Approve now returns 200 instead of 409. ' +
+        'Accepting the cast also writes <span class="mono">roster_bindings</span> onto the arc (PF-13, <span class="mono">_bind_roster</span>).';
+    }
+  }
+  function approveCast() {          // POST …/checkpoint {approved:true, pass_id:"cast"}
+    document.getElementById('castDecision').outerHTML =
+      '<span class="badge b-accepted">accepted</span>';
+    document.getElementById('castCard').remove();
+    document.getElementById('seg2').className = 'seg done';
+    // cursor = contiguous fresh AND accepted ⇒ motifs + cast = 2. `world` has NOT run, so it is 2,
+    // not 3. (An earlier version of this script wrote 3 — the same off-by-one the spec sketch had.)
+    document.getElementById('cursorline').innerHTML =
+      'cursor <b>2</b>/7 · nothing blocking — <span style="color:var(--primary)">run <span class="mono">world</span></span>';
+    document.getElementById('footline').innerHTML =
+      '<b class="mono" style="color:var(--foreground)">2 of 7</b> · unblocked · no OCC (PS-8)';
+    // …and only NOW does `world` unblock: world.depends_on = ("cast",), and cast is finally accepted.
+    var w = document.getElementById('worldAct');
+    if (w) {
+      w.className = 'pacts';
+      w.innerHTML = '<button class="mini-btn go" onclick="document.getElementById(\'costConfirm\')' +
+        '.style.display=\'block\'">run…</button>';
+    }
+  }
+</script>
+</body>
+</html>

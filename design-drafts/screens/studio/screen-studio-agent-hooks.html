@@ -20,7 +20,7 @@
       --primary: #e8a832; --primary-muted: #3d2e12;
       --secondary: #282320; --muted-fg: #9e9488;
       --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
-      --success: #3dba6a; --danger: #e85a5a; --warn: #e8b87e;
+      --success: #3dba6a; --destructive: #d9584f; --warn: #e8b87e;
       --hook-pre: #5496e8; --hook-post: #b89ee8; --hook-sandbox: #e8a832;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -113,7 +113,7 @@
     }
     .io-box strong { display: block; font-size: 9px; text-transform: uppercase; color: var(--foreground); margin-bottom: 6px; }
     .result-ok { color: var(--success); margin-top: 10px; font-size: 11px; }
-    .result-deny { color: var(--danger); }
+    .result-deny { color: var(--destructive); }
 
     /* Audit log */
     .audit-table { width: 100%; font-size: 10px; border-collapse: collapse; }
@@ -123,7 +123,7 @@
     }
     .audit-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
     .decision-allow { color: var(--success); }
-    .decision-deny { color: var(--danger); }
+    .decision-deny { color: var(--destructive); }
 
     /* Sidebar diagram */
     .flow-step {

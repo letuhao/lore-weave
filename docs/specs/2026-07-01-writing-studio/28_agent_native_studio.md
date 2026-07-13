@@ -214,6 +214,76 @@ schema, outside this spec's zero-migration scope; until one ships, all open thre
 
 ---
 
+## AN-12 AMENDED (PO-1, 2026-07-12)
+
+> **What changed:** AN-12's **"No new GUI surface"** clause is **LIFTED** for two of the three
+> agent-native reads — `composition_diagnostics` and `composition_find_references`. **AN-12's
+> architecture is UNCHANGED and still binding.**
+>
+> **Authority:** [`30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md`](30_TOOL_GUI_GAP_AUDIT_AND_PLAN.md) §0 **PO-1**
+> (sealed 2026-07-12). **Consumed by:** [`37_issues_feed.md`](37_issues_feed.md) (Wave 7).
+> AN-12's row in the Locked-decisions table above stands **as amended by this section** — read them
+> together; do not "reconcile" one against the other by deleting either.
+
+### Why the clause was lifted — AN-12's premise was checked, and it was false
+
+AN-12 justified the zero-GUI rule with one claim: *"the human equivalents already exist or are owned
+elsewhere (… problems → 24's overlay + quality panels …)."* The Wave-7 audit tested that claim source
+by source, against the seven kinds in the `SEVERITY` map above:
+
+| Diagnostic kind | Human surface at HEAD `9262ed53e` |
+|---|---|
+| `broken_canon_rule` · `canon_contradiction` | ✅ `quality-canon` — **but unranked** |
+| `open_thread_debt` | ✅ `quality-promises` (read-only, correctly) |
+| `conformance_dirty` / `_never_run` | 🟡 a **dot** on the Plan Hub — arc-scoped, no list |
+| `unplanned_chapter` | 🟡 the PH21 coverage tray — a count, no work list |
+| `index_stale` | ❌ **none** |
+| `prose_deleted_spec_node` | ❌ **none — and it is `error`, the highest severity the map has** |
+
+**≈2.5 of 5 sources have a human surface, not one of them is ranked, and the two with no surface at
+all include the only ERROR class the author can act on.** A `prose_deleted_spec_node` (26 IX-13 —
+the spec deliberately SURVIVES a prose delete) is a dangling plan node the author must re-link or
+archive, and **no screen in LoreWeave will ever tell them.** The premise held for the *tree*; it did
+not hold for the *problems panel*.
+
+### What AN-12 still FORBIDS — this part STANDS, unamended
+
+The clause AN-12 was actually protecting was never "no pixels". It was **no DOCK-2/DOCK-8 fork** —
+no parallel rack of "agent panels" duplicating organs the GUI already has. That reasoning is intact
+and is **binding on spec 37**:
+
+1. **NO new dock panel.** Zero rows in `catalog.ts`, zero additions to the `panel_id` enum, zero
+   `contracts/frontend-tools.contract.json` churn. The drift-lock (`py enum 57 == contract enum 57
+   == openable 57`) must be **byte-identical** after Wave 7. Spec 37 §6 states how.
+2. **Diagnostics ships into the EXISTING `StudioBottomPanel` Issues tab** — a stub string since
+   spec 01 shipped the frame (*"frame real, content stub"* — the stub **is** the spec, not a
+   regression). No new organ; the organ was drawn on day one and left empty.
+3. **`composition_find_references` is a LENS, not a panel** — a right-click popover on an entity
+   badge (`NodeBadges.tsx` cast chips, `EntityRefField`). It has no catalog id and no dock tab.
+4. **The feed ROUTES; it never EDITS.** Every row deep-links into the panel that already owns its
+   fix (`quality-canon` via the PH18 `focusRuleId` seam, `plan-hub`, `chapter-browser`,
+   `quality-promises`). A row that could edit in place **would** be the fork AN-12 forbids.
+5. 🔴 **`composition_package_tree` gets NO human surface. AN-12 stands for it, unamended.** Its
+   human equivalents genuinely *do* exist (`plan-hub` = the tree · `chapter-browser` = the spine ·
+   the PH21 tray = the coverage gap). A "book at a glance" panel would be **exactly** the DOCK-2
+   duplication AN-12 exists to prevent. This is a **conscious won't-fix**, recorded so it stops
+   re-surfacing as a gap (spec 37 IF-5 / D-1).
+
+### The lifted clause, stated exactly
+
+> ~~*"No new GUI surface. Every capability here is agent-side… No catalog rows, no
+> `ui_open_studio_panel` enum change, no dockable work."*~~
+>
+> **AMENDED to:** *"No new **dock panel**, no catalog rows, and no `ui_open_studio_panel` enum change.
+> `composition_diagnostics` and `composition_find_references` MAY have a human surface, provided it
+> is (a) an **existing** frame — the bottom panel — or an in-place lens, and (b) a **read that routes**,
+> never a second editor for an organ the GUI already owns. `composition_package_tree` keeps the
+> original clause in full."*
+
+Everything else in AN-12 — and every other AN row — is unchanged.
+
+---
+
 ## New tools — the gap layer
 
 All seven: identity from the envelope (IN-1), explicit `book_id` (IN-2 — the gateway drops
