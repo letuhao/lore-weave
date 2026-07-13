@@ -303,6 +303,27 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
 
 ### FINAL AUDIT — the run reached the /goal's PARK-COMPLETION terminal state — 2026-07-12 · for the morning review
 
+> **▶ UPDATE (2026-07-13, LIVE E2E RE-RUN — network restored; distill LLM leg PROVEN; capture leg root-caused to a PLATFORM streaming bug).**
+> The prior host blocker resolved (containers reach LM Studio again). Re-ran the full-chain E2E live on the rebuilt
+> stack with the non-reasoning Qwen2.5-7B model. **6/7 legs pasted + proven:** provision ✅ · consent ✅ ·
+> **distill ✅✅ (the previously-blocked LLM leg — a REAL map-reduce diary entry "pause the Q3 roadmap until Zephyr
+> ships", entry_date 2026-07-13, written as a DRAFT)** · recall ✅ (search "Zephyr"→2) · erase→verify-gone ✅✅
+> (0 chapters, 0 entities). **The live chat-CAPTURE leg fails, ROOT-CAUSED to a platform bug — NOT the Work
+> Assistant:** the streaming chat turn routes through provider-registry's **stateful `/v1/responses`** path (LM
+> Studio declares the `responses_api` capability; gated by `LLM_STATEFUL_CACHE`, default ON), and that path emits
+> `LLM_UPSTREAM_ERROR` (empty message). Proven it is NOT the assistant/model/LM Studio: (a) a PLAIN non-assistant
+> "say hello" turn fails identically; (b) the non-streaming distill works on the same model+credential; (c) LM
+> Studio's `/v1/responses` works when hit DIRECTLY — simple, streaming, AND with tools (returns a get_weather
+> function_call); (d) provider-registry's `/internal/llm/stream` works for every field combo tested directly
+> (kwargs, tools, stateful, stream_job_id, system msg). So the fault is provider-registry's stateful-responses
+> request-construction/parsing for a LOCAL backend — a generic chat-streaming platform bug, not this feature.
+> The capture CODE is unchanged + was proven in the prior session. **FIX (platform, needs a decision):** set
+> `LLM_STATEFUL_CACHE=0` (degrades to `/v1/chat/completions`, proven working — the struct calls this "degrade-safe
+> E1"), OR stop advertising `responses_api` for LM Studio, OR fix provider-registry's `/v1/responses` builder.
+> Did NOT flip the flag on the SHARED dev stack (concurrent sessions). Note: chat-service was rebuilt → now runs
+> the committed DBT-11 code live; provider-registry's running image carries a harmless reverted-in-source DIAG log
+> (self-corrects on next build).
+>
 > **▶ UPDATE (2026-07-13, PRE-PHASE-3 HARDENING PASS) — clear the concerns that gate Phases 3–5 before starting them.**
 > A focused pass (human-directed: "fix bugs, clear open questions and concerns before phase 3/4/5") — 7 commits,
 > each reviewed + tested, `/review-impl` run (1 MED fixed, 1 LOW accepted). **The key insight: Phase 1 completing
