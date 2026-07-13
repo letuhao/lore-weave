@@ -1,7 +1,7 @@
 asyncpg>=0.29
 httpx>=0.27
-pydantic>=2.6
-pydantic-settings>=2.2
+pydantic>=2.13.4
+pydantic-settings>=2.14.2
 python-json-logger>=2.0
 # P3 D-P3-WORKER-AI-CONSUMER-WIRING — Redis Stream consumer for the
 # extraction.summarize job feed. Async client only (sync API unused).
