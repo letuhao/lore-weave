@@ -318,7 +318,11 @@ point** — a run with an empty drift log is either perfect or dishonest, and it
    `TestDiaryStats_CountsOwnerEntries_DB` PASS + `TestDiaryStats_NonOwnerCannotRead_DB` PASS (the required
    no-cross-user-leak proof; de1690fdd).
 8. **Final independent multi-agent audit, findings fixed** — ✅ prior session (2 HIGH + 5 MED fixed) + THIS session
-   ran a fresh 3-lens adversarial Workflow audit over the hardening code with per-finding refute-verification.
+   ran a fresh 3-lens adversarial Workflow audit (9 agents, ~707K tok) over the hardening code with per-finding
+   refute-verification: **6 raw → 1 CONFIRMED MED, FIXED (e17594715):** `AuthClient.get_user_timezone` cached a
+   transient auth FAILURE as tz=None for the full 900s TTL (would pin a non-UTC user to the UTC day for 15 min
+   after an auth blip) → now only a confirmed 200 is cached; a failure degrades-to-UTC for that write but
+   re-fetches next time (+ regression test). The other 5 raw findings were refuted on adversarial verification.
 
 ### FINAL AUDIT — the run reached the /goal's PARK-COMPLETION terminal state — 2026-07-12 · for the morning review
 
