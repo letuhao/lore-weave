@@ -83,6 +83,40 @@ func TestTransform_CompletedHasNoBody(t *testing.T) {
 	}
 }
 
+// TestNotificationIsContentFreeByConstruction locks the D16/spec-11-Q6 invariant a
+// Phase-3 diary-distill notification depends on: a notification body/title is derived
+// ONLY from job metadata (operation label, status, error code/message), NEVER from any
+// payload content — because TerminalEvent carries no title/summary/content field at all.
+// A completed diary-distill notification is therefore content-free (empty body) by
+// construction: "Journal entry completed", not "You journaled about the layoff with Sarah".
+//
+// The ONE residual leak vector for Phase 3 is a FAILED distill job whose ErrorMessage
+// echoes diary text (bodyFor surfaces error_message on failure). That is a Phase-3
+// producer-side constraint recorded in the plan: a diary/journal operation must emit a
+// generic error_code with NO message, or be registered in a body-suppression set. This
+// test is the tripwire — it will red if a content field is ever read into title/body.
+func TestNotificationIsContentFreeByConstruction(t *testing.T) {
+	// A hypothetical diary-distill terminal event. Even if a producer stuffed a
+	// content-looking operation, the SUCCESS body is empty and the title is only the
+	// op label — no entry content can appear.
+	secret := "the layoff conversation with Sarah on Tuesday"
+	for _, status := range []string{"completed", "cancelled"} {
+		args := transformTerminalEvent(terminalEvent{
+			JobID: uuid.New(), OwnerUserID: uuid.New(),
+			Operation: "journal_distill", Status: status,
+			// These fields are metadata, not content — but assert nothing content-like
+			// leaks even if a future producer misused them.
+			FinishReason: secret, ErrorCode: secret,
+		})
+		if args.Body != "" {
+			t.Errorf("status=%s: a diary-distill body must be content-free (empty), got %q", status, args.Body)
+		}
+		if strings.Contains(args.Title, "Sarah") || strings.Contains(args.Title, "layoff") {
+			t.Errorf("status=%s: title leaked content: %q", status, args.Title)
+		}
+	}
+}
+
 func TestTransform_FailedIncludesErrorCodeAndMessage(t *testing.T) {
 	args := transformTerminalEvent(terminalEvent{
 		JobID:        uuid.New(),
