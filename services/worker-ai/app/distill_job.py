@@ -192,8 +192,26 @@ async def distill_and_write(
             return {"status": "oversized", "reason": "giant_paste", "entry_date": entry_date,
                     "oversized_count": oversized_n, "truncated": truncated}
         # §Q11 — a low-signal / empty day writes NO entry, with the reason surfaced.
-        return {"status": "no_entry", "reason": outcome.no_entry_reason, "entry_date": entry_date,
-                "oversized_count": oversized_n, "chunks": outcome.chunks_processed, "truncated": truncated}
+        resp: dict[str, Any] = {
+            "status": "no_entry", "reason": outcome.no_entry_reason, "entry_date": entry_date,
+            "oversized_count": oversized_n, "chunks": outcome.chunks_processed, "truncated": truncated,
+        }
+        # DBT-15 — a BLANK completion (the model emitted only reasoning_content) is a MODEL problem,
+        # NOT a quiet day. Left as a bare 'no_entry' it is indistinguishable from "nothing happened" —
+        # a silent daily data-loss the user never sees, and Phase-3's UNATTENDED distill makes that
+        # worse (no one is watching). Surface it ACTIONABLY (what + why + the fix) and mark it
+        # non-retryable: the same model reproduces it, so a retry just burns budget. The real fix is
+        # Q8 (resolve a dedicated NON-reasoning distill model); until then this tells the user why
+        # their diary is empty and how to fix it themselves.
+        if outcome.no_entry_reason == "model_no_output":
+            resp["advisory"] = "distill_model_no_output"
+            resp["retryable"] = False
+            resp["message"] = (
+                "The journaling model produced no usable text — it may be a reasoning model that "
+                "'thinks' instead of answering. Choose a non-reasoning model for journaling so your "
+                "day can be summarized."
+            )
+        return resp
 
     written = await book_client.write_diary_entry(
         book_id=book_id, owner_user_id=user_id, entry_date=entry_date, entry_zone=entry_zone,

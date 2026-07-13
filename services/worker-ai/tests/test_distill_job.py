@@ -135,6 +135,30 @@ async def test_low_signal_day_writes_nothing():
     assert book.writes == []  # never wrote a stub
 
 
+async def test_reasoning_model_blank_completion_is_actionable_not_a_silent_no_entry():
+    # DBT-15 — a model that emits only reasoning_content (blank text) must NOT masquerade as a
+    # low-signal "quiet day". The day HAS content, but the model wrote nothing → model_no_output,
+    # surfaced ACTIONABLY (why + fix) and non-retryable, so an unattended Phase-3 distill can't
+    # silently drop the day.
+    class BlankLLM:
+        async def __call__(self, prompt: str) -> str:
+            return ""  # a reasoning model: all output went to reasoning_content
+
+    chat = FakeChat([_msg("user", "Met Minh about the Q3 redesign and froze the budget.")])
+    book = FakeBook()
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=BlankLLM(), chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "no_entry"
+    assert out["reason"] == "model_no_output"
+    assert out["advisory"] == "distill_model_no_output"
+    assert out["retryable"] is False
+    assert "reasoning model" in out["message"].lower()
+    # A low-signal quiet day, by contrast, carries NO advisory — the two are distinguishable.
+    assert book.writes == []  # never wrote a stub
+
+
 async def test_a_day_of_only_a_giant_paste_is_oversized_and_not_written():
     big = _msg("user", "x" * (GIANT_PASTE_CHARS + 1))
     chat = FakeChat([big])

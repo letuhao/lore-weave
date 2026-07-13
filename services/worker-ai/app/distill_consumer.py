@@ -110,9 +110,12 @@ async def run_one_distill_message(
             message_id, result.get("reason"),
         )
         return False  # leave un-acked → base redelivers, then poison-acks
+    # DBT-15 — carry reason/advisory in the log so an UNATTENDED model_no_output day (a reasoning
+    # model producing empty diaries) is visible in worker logs, not silent.
     logger.info(
-        "distill msg %s status=%s date=%s chapter=%s facts=%s",
+        "distill msg %s status=%s date=%s chapter=%s facts=%s reason=%s advisory=%s",
         message_id, status, p["entry_date"], result.get("chapter_id"), result.get("facts_found"),
+        result.get("reason"), result.get("advisory"),
     )
     return True
 
