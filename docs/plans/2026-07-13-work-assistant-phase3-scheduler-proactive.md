@@ -208,19 +208,18 @@ success path; this is the failure-path tail.
 
 ---
 
-## 8. Open questions for the human (before build)
+## 8. Open questions — ✅ ALL SEALED (2026-07-15, see [`2026-07-15-phase-345-clean-seal.md`](2026-07-15-phase-345-clean-seal.md) §3 P3-D1..3)
 
-- **Q-open-1 — Where does the tick driver LIVE?** A new `scheduler-service` (clean ownership, one home for the
-  clock) vs. a loop inside `worker-ai` (fewer moving parts, but mixes the clock with the executor). Language
-  rule: a scheduler is meta/domain infra ⇒ **Go** if a new service, or Python if it rides worker-ai. Recommend
-  a **small new `scheduler-service` (Go)** — one home for the clock, matches "the scheduler is the platform
-  hole," and keeps worker-ai a pure executor.
-- **Q-open-2 — Default auto-EOD ON or OFF?** Fail-closed says OFF (the user opts into automation). But auto-EOD
-  organizes the user's OWN data into a DRAFT they still review — arguably safe-by-default. Recommend **OFF at
-  first** (SET-* opt-in), revisit after the reflection ships.
-- **Q-open-3 — Reflection as a proactive turn or a pull-only draft?** A proactive turn is richer but is the
-  net-new seam; a pull-only weekly draft (the user opens it) avoids the agent-initiated-message risk entirely
-  for v1. Recommend **pull-only draft for v1**, proactive turn once WS-3.5 is live-proven.
+- **Q-open-1 — Where does the tick driver LIVE? → SEALED: a small new `scheduler-service` (Go)** (P3-D1 / D-R28).
+  One home for the clock; worker-ai stays a pure executor. Language rule: meta/domain infra ⇒ Go.
+- **Q-open-2 — Default auto-EOD ON or OFF? → SEALED: OFF / opt-in** (P3-D2 / D-R29). SET-* user setting;
+  revisit after the reflection ships.
+- **Q-open-3 — Reflection as a proactive turn or a pull-only draft? → SEALED: pull-only weekly DRAFT for v1**
+  (P3-D3); upgrade to a proactive turn only once the WS-3.5 seam is live-proven. Avoids the
+  agent-initiated-message risk on day one.
+
+> The other Phase-3 constraints (away marker P3-D4, content-free notifications P3-D5, draft-into-inbox P3-D6)
+> are LOCKED in the master seal doc; nothing in Phase 3 is open. **Ready to build on greenlight.**
 
 ---
 
