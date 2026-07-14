@@ -1,0 +1,129 @@
+# RUN-STATE — Close specs 21–28 to Definition-of-Done
+
+> ## 📌 READ THIS FILE FIRST after any compaction, then `git log --oneline -15`, then continue.
+> The plan is [`2026-07-13-close-21-28-plan.md`](2026-07-13-close-21-28-plan.md) — its **§6.6 SEALED
+> LEDGER** is binding; **never re-derive a sealed decision from memory.** This file is the live
+> board; the plan is the contract.
+
+**Started:** 2026-07-13 · **Branch:** `feat/context-budget-law` · **Mode:** long unattended, self-checkpointing.
+**Goal (durable copy):** every pillar 21–28 satisfies its `00B` §7 named effect test + its own spec's
+ship gate, proven by PASTED output; `/review-impl` per phase, findings fixed in-phase; live smoke for
+≥2-service phases; `git log` after each phase; seeds reaped; §6–§9 registers current.
+
+## The autonomy contract (from the goal)
+- **Don't stop** between slices/phases. Self-checkpoint: `/review-impl` → fix → VERIFY → commit → update this file.
+- **NEVER `git add -A`** (shared checkout). `git add … && git commit …` = **ONE** command.
+- **Do NOT touch** specs 29+ or the 30–38 wave build — the other session's, after we clear.
+- **Clean up** every seeded row + throwaway DB, proven by a count query.
+- **I decide** ordinary calls → §6 (decisions). Genuinely-PO → reversible option, ship, flag ⚠ PO-DECIDE in §7, keep going.
+- **Blocked ≠ stop** → park in §7, move on.
+- **STOP only if** destructive/irreversible, or a sealed 00A law / §6.6 decision turns out wrong.
+
+## Invariants (the bar; §7 of the plan)
+1. Green unit suite ≠ proof — ≥2-service slices need a live smoke with pasted output.
+2. A fix needs a test that REDS on the old code.
+3. A checked slice ≠ a done pillar — the evidence string is the named effect test.
+4. `/review-impl` per phase; findings fixed in that same phase.
+5. Never `git add -A`; add+commit is ONE command.
+6. Absent ≠ zero; a silent success is a bug.
+7. Re-read a park note before trusting it.
+8. An empty drift log is dishonest.
+9. Rebuild + `--force-recreate` before believing a live result (stale image = false green).
+
+---
+
+## 5. Slice board — `done` = an evidence string, never a claim
+Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` parked (→ §7)
+
+### PHASE 0 — the inherited tree (BLOCKS everything)
+| # | Slice | Status | Evidence |
+|---|---|---|---|
+| S0.0 | Baseline: full suite green (composition + FE + Go) at HEAD `69f8f2963` with the 96 dirty files | [~] | composition already 2106/289 (earlier this session) |
+| S0.1 | Triage the 96 files → adopt(21–28) / adopt-cheap(cross-cut) / stash(30+) | [ ] | |
+| S0.2 | `/review-impl` the adopted diff; fix findings this phase | [ ] | |
+| S0.3 | Commit in attributed chunks; stash the rest to a branch | [ ] | |
+
+### PHASE 1 — the three real bugs
+| # | Slice | Status | Evidence |
+|---|---|---|---|
+| B1 | AN-C2 discovery scent (`stream_service.py`) — unblocks P-08→S06→DoD of 23/27/28 | [ ] | |
+| B2 | Canonical-Work predicate (`agent_native.resolve_scope`) — write 25-T4 RED first | [ ] | |
+| B3 | `arc_lift` startup fail-loud assertion (Q2 sealed) | [ ] | |
+| B4 | C5 — is `POST /works/{pid}/generate` ungated-spend reachable? fix-now or confirm defer | [ ] | |
+
+### PHASE 2 — the missing test batteries (`25` T3/T4/T5/T6)
+| # | Slice | Status | Evidence |
+|---|---|---|---|
+| T4 | Derivative-separation — book-scoped read returns CANONICAL Work (RED on today's resolve_scope, GREEN after B2) | [ ] | |
+| T3 | Grantee-widening — incl. F5 zero-pending-forks regression (PM-9's untested claim) | [ ] | |
+| T5 | Spend attribution by effect on the usage row | [ ] | |
+| T6 | The re-key cross-service live smoke (O-4) | [ ] | |
+
+### PHASE 2b — the 5 REAL orphans (§6.4)
+| # | Slice | Status | Evidence |
+|---|---|---|---|
+| O-1 | Ground the PlanForge proposer (LLM: digest · rules: pre-flight) — by EFFECT | [ ] | |
+| O-3 | BA11's 5 arc-template CRUD MCP tools (+ fix the misquote at server.py:4546) | [ ] | |
+| O-11 | The what-if branch preview producer (+ fix wave-6's false parity row) | [ ] | |
+| O-2 | The arc decompiler (26-D3/IX-17) — depends on Work-less lane from Phase 0 | [ ] | |
+
+### PHASE 3 — live BROWSER smoke (`24`-H8.2) — also closes `26`-F2
+| # | Slice | Status | Evidence |
+|---|---|---|---|
+| H8.2 | Playwright: open plan-hub → drag chapter → DB structure_node_id changed → badge updates | [ ] | |
+| H8.1 | 10k-chapter fixture + cold-open budget + EXPLAIN keyset proof | [ ] | |
+| F2 | 26's Hub leg: edit→publish→dirty:prose_drift→conformance clears it, in the browser | [ ] | |
+
+### PHASE 4 — S06 flagship replay (ship gate of 23/27/28)
+| # | Slice | Status | Evidence |
+|---|---|---|---|
+| S06 | IN-CONTAINER replay (depends on B1) → 23-D7 · 27-H4 · 28-D3 | [ ] | |
+| EV | 27's eval report → `docs/eval/plan-forge/` (regression floor + 5 v2 grounding metrics) | [ ] | |
+
+### PHASE 5 — `22`'s remaining DoD
+| # | Slice | Status | Evidence |
+|---|---|---|---|
+| D5 | Anchor-direction: no `outline_node.scene_id`; deleting a scene leaves spec intact | [ ] | |
+| D4 | Tenancy: collaborator B sees shared spec, no per-user fork (fold into T3) | [ ] | |
+| D3 | Committed E2E: import→scenes→decompile→backlink→tension=80→adaptive_k high-tension | [ ] | |
+| F3 | 26-F3: one-word edit preserves every back-link; re-import never clobbers authored | [ ] | |
+
+### PHASE 6 — close-out
+| # | Slice | Status | Evidence |
+|---|---|---|---|
+| C0 | Land `legacyParityContract.test.ts` as a REAL file — 25/25 → panel id or retirement reason | [ ] | |
+| C1 | Re-homing amendment (incl. §6.4 orphans, by name) | [ ] | |
+| C2 | Disposition all 12 orphans (owner + next action) | [ ] | |
+| C3 | Resolve the `resource_ref` name collision in 28 AN-12.1a | [ ] | |
+| C4 | Doc fixes: PH9 C5 stale claim · IX-3 sweeper-predicate · PH2 reactflow · RUN-STATE false rows | [ ] | |
+| C5 | 00B §7 status stamps + SESSION_HANDOFF; cleared defers → "Recently cleared" | [ ] | |
+| C6 | Final audit (decisions · drift · debt · parked · completeness) | [ ] | |
+
+---
+
+## 6. Decisions register (I audit these at the end)
+| # | Decision | Why | Reversible |
+|---|---|---|---|
+| D-CL-01 | **Phase 0 adopt = commit the green tree in attributed chunks, do NOT surgically split it.** The 96 files are green *together*; splitting a green tree risks breaking green at high token cost. Commit by concern-group, attributed to the Wave-0 session, so the tree is clean (kills the DR-04 collision hazard) and nothing is lost. `/review-impl` focuses on the parts we BUILD ON (BE-7c, G1, OpenAPI parity). | Clean tree unblocks all phases; adopting ≠ building 30+ (it is already-built green code). | Yes — `git revert` a chunk |
+| D-CL-02 | **No Go service is dirty** (verified `git status`), so Phase 0 is Python + FE only; the Go suites are unaffected and not re-run at adoption. | Scope the baseline to what changed. | n/a |
+
+## 7. Parked / blocked
+| # | Item | Why | Unblocks when |
+|---|---|---|---|
+| *(none at start)* | | | |
+
+## 8. Debt (carried from prior RUN-STATE)
+DBT-01 (row-3 saga no sweeper) · DBT-02 (chapter_reorder updated_at) · DBT-04 (RF mount warn) ·
+DBT-05 (H7 view modes = O-10 v2 cut) · DBT-07 (FE tests excluded from tsc) · DBT-09 (book.deleted no
+cascade). DBT-06 (arc-inspector) → re-homed to spec 32 by C1.
+
+## 9. Drift log — the near-misses, recorded honestly
+| # | Drift | Caught by | Correction |
+|---|---|---|---|
+| DR-A | Marked `C2/C3 [x]` using C3's evidence for both; C2 never built; parked P-08 blaming chat-service for my own hole | this audit | B1 |
+| DR-B | Shipped a tenancy bug the spec forbade (28:502-510); the test that catches it (25-T4) I never wrote | this audit | B2 + T4 |
+| DR-C | Dropped spec 21 from the pillar board; PH7/PH8/G1/G2 tracked by nobody | PO asking "wasn't it 21–28?" | plan §2 |
+| DR-D | My orphan register went stale within hours — read 30–38 but not the concurrent wave-*.md; 5 of 12 already homed | the triage agent | §6.4-CORRECTION |
+
+## 10. Completeness ledger (filled at the end)
+*(per-pillar: 21 · 22 · 23 · 24 · 25 · 26 · 27 · 28 → DoD test → evidence string)*
