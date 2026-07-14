@@ -293,6 +293,68 @@ async def reject_diary_fact(body: _RejectDiaryFactIn) -> dict:
     return {"rejected": 1 if rejected else 0, "tombstoned": rejected}
 
 
+class _MergeEntitiesIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    from_name: str   # the DUPLICATE/old spelling to fold away (e.g. "Minh")
+    into_name: str   # the entity to keep (e.g. "Minh Nguyen")
+
+
+@router.post("/assistant/merge-entities")
+async def merge_assistant_entities(body: _MergeEntitiesIn) -> dict:
+    """WS-2.6d (D17 merge-a-renamed-entity) — fold one diary person/thing into another BY NAME within the
+    user's assistant project. The diary agent knows colleague NAMES, not KG ids, so this resolves both
+    names → the best-matching :Entity in the assistant project (never all-projects — D16) and runs the
+    proven `merge_entities` surgery: re-point the loser's `(:Fact)-[:ABOUT]->` edges onto the winner (so
+    recall attributes BOTH names' facts to one person), move aliases, then DETACH DELETE the loser.
+
+    Idempotent-ish: a `from_name` that no longer resolves (already merged) → 404 `from_not_found`. Same
+    entity both sides → 400 `same_entity`. Internal-token; the diary subjects are KG-only auto-created
+    entities (no glossary anchor), so this never touches an authored glossary row."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.entities import (
+        MergeEntitiesError,
+        find_entities_by_name,
+        merge_entities,
+    )
+
+    from_name = (body.from_name or "").strip()
+    into_name = (body.into_name or "").strip()
+    if not from_name or not into_name:
+        raise HTTPException(status_code=422, detail="from_name and into_name are required")
+
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    pid = str(project.project_id)
+    async with neo4j_session() as session:
+        # Resolve within the assistant project only (D16 — never fold a novel entity into a diary one).
+        src = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=from_name)
+        dst = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=into_name)
+        if not src:
+            raise HTTPException(status_code=404, detail={"error_code": "from_not_found",
+                                "message": f"no assistant entity named {from_name!r}"})
+        if not dst:
+            raise HTTPException(status_code=404, detail={"error_code": "into_not_found",
+                                "message": f"no assistant entity named {into_name!r}"})
+        source_id, target_id = src[0].id, dst[0].id
+        if source_id == target_id:
+            raise HTTPException(status_code=400, detail={"error_code": "same_entity",
+                                "message": "from_name and into_name resolve to the same entity"})
+        try:
+            target = await merge_entities(
+                session, user_id=str(body.user_id), source_id=source_id, target_id=target_id,
+            )
+        except MergeEntitiesError as exc:
+            code = exc.error_code
+            http = 409 if code in ("glossary_conflict",) else 400
+            raise HTTPException(status_code=http, detail={"error_code": code, "message": str(exc)})
+    return {
+        "merged": True, "project_id": pid,
+        "target_id": target.id, "target_name": target.name,
+        "merged_from_id": source_id, "aliases": list(target.aliases or []),
+    }
+
+
 class _InvalidateDayIn(BaseModel):
     user_id: UUID
     book_id: UUID

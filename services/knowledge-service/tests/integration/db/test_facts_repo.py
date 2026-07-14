@@ -447,6 +447,40 @@ async def test_ws26b_recall_surfaces_a_supersession_not_two_truths(neo4j_driver,
         assert [c["object"] for c in sup[0]["chain"]] == ["Friday", "Tuesday"]
 
 
+# ── WS-2.6d — merge a renamed entity (diary colleagues) ───────────────
+
+
+@pytest.mark.asyncio
+async def test_ws26d_merge_renamed_entity_repoints_facts_to_the_winner(neo4j_driver, test_user):
+    """D17 merge-a-renamed-entity: 'Minh' and 'Minh Nguyen' are the same person. After merge_entities, the
+    loser's facts re-point to the winner (recall attributes BOTH to one) and the loser :Entity is gone."""
+    from app.db.neo4j_repos.entities import find_entities_by_name, merge_entities, merge_entity
+    from app.db.neo4j_repos.facts import list_facts_for_entity
+
+    proj = "p-assist"
+    async with neo4j_driver.session() as session:
+        minh = await merge_entity(session, user_id=test_user, project_id=proj, name="Minh",
+                                  kind="person", source_type="assistant_diary_fact", auto_created=True)
+        minh_full = await merge_entity(session, user_id=test_user, project_id=proj, name="Minh Nguyen",
+                                       kind="person", source_type="assistant_diary_fact", auto_created=True)
+        await merge_fact(session, user_id=test_user, project_id=proj, type="statement",
+                         content="Minh froze the budget", confidence=0.9, subject_id=minh.id)
+        await merge_fact(session, user_id=test_user, project_id=proj, type="statement",
+                         content="Minh Nguyen approved the plan", confidence=0.9, subject_id=minh_full.id)
+
+        target = await merge_entities(session, user_id=test_user, source_id=minh.id, target_id=minh_full.id)
+        assert target.id == minh_full.id
+
+        # The loser is gone; "Minh" now resolves to the winner (moved as an alias).
+        remaining = await find_entities_by_name(session, user_id=test_user, project_id=proj, name="Minh")
+        assert all(e.id != minh.id for e in remaining)
+
+        # BOTH facts now hang off the winner (the loser's :ABOUT was re-pointed, not orphaned).
+        winner_facts = await list_facts_for_entity(session, user_id=test_user, entity_id=minh_full.id)
+        contents = {f.content for f in winner_facts}
+        assert "Minh froze the budget" in contents and "Minh Nguyen approved the plan" in contents
+
+
 # ── delete_facts_with_zero_evidence ───────────────────────────────────
 
 
