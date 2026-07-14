@@ -290,7 +290,7 @@ class KgProposeFactArgs(ProjectScopedArgs):
     model_config = ConfigDict(extra="forbid")
 
     fact_text: str = Field(min_length=1, max_length=2000)
-    fact_type: Literal["decision", "preference", "milestone", "negation", "statement"]
+    fact_type: Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
 
 
 class KgProposeEdgeArgs(ProjectScopedArgs):

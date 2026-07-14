@@ -157,7 +157,7 @@ class MemoryRememberArgs(ProjectScopedArgs):
     """`memory_remember` — store a new fact (guardrailed, design D5)."""
 
     fact_text: str = Field(min_length=1, max_length=2000)
-    fact_type: Literal["decision", "preference", "milestone", "negation", "statement"]
+    fact_type: Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
 
 
 class MemoryForgetArgs(BaseModel):

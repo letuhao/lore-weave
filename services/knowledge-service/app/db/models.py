@@ -18,7 +18,12 @@ ScopeType = Literal["global", "project", "session", "entity"]
 # app/db/neo4j_repos/facts.py. Kept as a local Literal (same pattern
 # as ProjectType / ScopeType) so app.db.models stays free of any
 # neo4j_repos import.
-FactType = Literal["decision", "preference", "milestone", "negation", "statement"]
+# WS-5.7 (P5 Gate-1) — `commitment`: a promised/planned action with a due date. The due
+# date rides as the WS-2.6b s/p/o trio (predicate='due', object=<date>), so a date slip
+# Friday→Tuesday→next-week is an ordered supersession chain (group_supersessions), not a new
+# identity. Adding this member touches 3 registries in lockstep (this Literal + the
+# knowledge_pending_facts CHECK ×2 + kg_fact_types) — a mismatch is a 500 at merge_fact.
+FactType = Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
 
 # Names are stripped of surrounding whitespace and must contain at least
 # one non-whitespace character. Max 200 chars, chat-service convention.

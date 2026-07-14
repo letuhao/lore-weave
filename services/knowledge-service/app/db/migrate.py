@@ -732,7 +732,7 @@ CREATE TABLE IF NOT EXISTS knowledge_pending_facts (
   fact_type        TEXT NOT NULL
     -- WS-2.1: 'statement' is the diary's fact kind (the distiller's coarse facts land here). The
     -- narrower chat-memory kinds stay for the memory_remember path.
-    CHECK (fact_type IN ('decision','preference','milestone','negation','statement')),
+    CHECK (fact_type IN ('decision','preference','milestone','negation','statement','commitment')),
   fact_text        TEXT NOT NULL,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -743,15 +743,19 @@ CREATE TABLE IF NOT EXISTS knowledge_pending_facts (
 -- the CHECK via DROP-then-ADD, and NOT NULL must be dropped explicitly — the CREATE TABLE won't.)
 DO $$
 BEGIN
-  -- Replace whatever fact_type CHECK exists (the inline auto-name) with the widened one.
+  -- Replace whatever fact_type CHECK exists with the widened one. WS-5.7 adds 'commitment':
+  -- an ALREADY-migrated DB has the `_ck` constraint WITHOUT it, so we must DROP-then-re-ADD
+  -- (a bare `IF NOT EXISTS ADD` would skip the re-widen — the recurring "migration must
+  -- re-widen an existing CHECK, not just add-if-absent" trap).
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_pending_facts_fact_type_check') THEN
     ALTER TABLE knowledge_pending_facts DROP CONSTRAINT knowledge_pending_facts_fact_type_check;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_pending_facts_fact_type_ck') THEN
-    ALTER TABLE knowledge_pending_facts
-      ADD CONSTRAINT knowledge_pending_facts_fact_type_ck
-      CHECK (fact_type IN ('decision','preference','milestone','negation','statement'));
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_pending_facts_fact_type_ck') THEN
+    ALTER TABLE knowledge_pending_facts DROP CONSTRAINT knowledge_pending_facts_fact_type_ck;
   END IF;
+  ALTER TABLE knowledge_pending_facts
+    ADD CONSTRAINT knowledge_pending_facts_fact_type_ck
+    CHECK (fact_type IN ('decision','preference','milestone','negation','statement','commitment'));
   -- Drop the legacy session_id NOT NULL (diary facts have no session).
   IF EXISTS (
     SELECT 1 FROM information_schema.columns

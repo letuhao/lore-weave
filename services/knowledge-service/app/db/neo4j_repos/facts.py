@@ -60,7 +60,11 @@ __all__ = [
 
 # Closed enum per KSA §5.1. New types require both a code change
 # and an extraction-side pattern, so a Literal is fine.
-FactType = Literal["decision", "preference", "milestone", "negation", "statement"]
+# WS-5.7 (P5 Gate-1) — 'commitment' (a promised action + due date; the due date rides the
+# WS-2.6b s/p/o supersession trio). Adding it here (the SoT) must move IN LOCKSTEP with the
+# models.py mirror + the knowledge_pending_facts CHECK ×2 — the exact drift that 500'd a
+# 'statement' fact at merge_fact (WS-2.1). The write path validates THIS Literal, not kg_fact_types.
+FactType = Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
 # DERIVE the runtime validation tuple from the Literal — never hand-maintain a parallel copy. WS-2.1
 # added 'statement' to the Literal but a hand-kept tuple missed it, so a statement fact queued fine yet
 # 500'd at merge_fact (caught by the WS-2.4 live smoke). get_args keeps the two in lockstep by design.
