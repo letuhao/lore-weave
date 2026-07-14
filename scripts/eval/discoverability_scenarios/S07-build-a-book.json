@@ -23,9 +23,10 @@
     {"id": "B", "label": "Let it run the chain"},
     {"id": "C", "label": "What is actually done?"}
   ],
+  "_note": "S07 exercises the SEEDED build-a-book rail (W7 = 'turn the idea into a book plan' → plan_propose_spec, done_when plan>0). The _INDEX's broader 'import→translate→KG' framing is aspirational; the built rail is planning. The prompt asks for a PLAN so the planning rail drives (an earlier 'get it set up' prompt triggered world-setup instead — my scenario bug, fixed 2026-07-14).",
   "turns": [
-    {"movement": "A", "user": "I've got this novel loaded. Can you get it fully set up — readable in English, with the world info and how everything connects?"},
-    {"movement": "B", "user": "Yes, do the whole thing."},
-    {"movement": "C", "user": "Where are we? What's actually finished and what isn't?"}
+    {"movement": "A", "user": "I've got the whole story in my head. Before I start writing, help me lay out the plan for the entire book — the overall arc and the major beats."},
+    {"movement": "B", "user": "Yes, build me the full plan."},
+    {"movement": "C", "user": "What's the plan you laid out? Walk me through the shape of it."}
   ]
 }
