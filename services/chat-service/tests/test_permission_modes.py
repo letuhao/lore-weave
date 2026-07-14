@@ -388,10 +388,14 @@ class TestAskChokepointNonDiscovery:
         with _patch_client(scripts):
             await _drain(_run_modes(scripts, knowledge_client=kc, tools=tools))
         req = _FakeClient.instances[0].requests[0]
-        # The caller's tools pass through byte-identical (pre-C2 behavior); the
-        # always-on conversation_search recovery tool (T6/D6) is appended last.
-        assert req.tools[:-1] == tools
-        assert req.tools[-1]["function"]["name"] == "conversation_search"
+        # The caller's tools pass through byte-identical (pre-C2 behavior); the always-on recovery
+        # PAIR is appended last, in order: conversation_search (T6/D6) then chat_search_sessions
+        # (B1/WS-1.9). (M4/P-2: chat_search_sessions was wired in by a concurrent session, so what
+        # used to be a single appended tool is now two — [:-1] became [:-2].)
+        assert req.tools[:-2] == tools
+        assert [t["function"]["name"] for t in req.tools[-2:]] == [
+            "conversation_search", "chat_search_sessions",
+        ]
 
     @pytest.mark.asyncio
     async def test_ask_mode_advertises_only_r_subset(self):
@@ -400,10 +404,10 @@ class TestAskChokepointNonDiscovery:
         with _patch_client(scripts):
             await _drain(_run_modes(scripts, knowledge_client=kc, permission_mode="ask"))
         req = _FakeClient.instances[0].requests[0]
-        # conversation_search (a pure read) is appended in ask mode too — it's
-        # a Tier-R-safe recovery tool (T6/D6).
+        # conversation_search + chat_search_sessions (both pure reads) are appended in ask mode too —
+        # Tier-R-safe recovery tools (T6/D6 + B1/WS-1.9). (M4/P-2 added chat_search_sessions here.)
         assert {t["function"]["name"] for t in req.tools} == (
-            R_CATALOG_NAMES | {"conversation_search"}
+            R_CATALOG_NAMES | {"conversation_search", "chat_search_sessions"}
         )
 
     @pytest.mark.asyncio

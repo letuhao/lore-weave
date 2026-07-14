@@ -371,11 +371,16 @@ class TestStreamWithToolsNoToolCalls:
             await _drain(_run(scripts, knowledge_client=kc))
 
         req = _FakeClient.instances[0].requests[0]
-        # 2 = the 1 supplied tool + the always-on conversation_search recovery
-        # tool (T6/D6), appended whenever the pass already offers tools.
-        assert req.tools is not None and len(req.tools) == 2
+        # The always-on recovery set appended whenever a pass already offers tools:
+        #   the 1 supplied tool (memory_search)
+        # + conversation_search       (T6/D6 — recall EARLIER messages in THIS session)
+        # + chat_search_sessions      (B1/WS-1.9 — CROSS-session recall; added later, updated here
+        #                              by M4/P-2: a concurrent session wired it in and left this
+        #                              assertion at the old count of 2. Assert the NAME SET so the
+        #                              next addition fails with a meaningful diff, not a magic number.)
+        assert req.tools is not None
         assert {t["function"]["name"] for t in req.tools} == {
-            "memory_search", "conversation_search",
+            "memory_search", "conversation_search", "chat_search_sessions",
         }
         assert req.tool_choice == "auto"
 

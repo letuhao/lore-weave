@@ -109,9 +109,12 @@ class TestPlanChokepoint:
         with _patch_client(scripts):
             await _drain(_run_plan(scripts, knowledge_client=kc))
         req = _FakeClient.instances[0].requests[0]
-        # + conversation_search (T6/D6) — always appended when tools are offered.
+        # + the always-on recovery pair appended when tools are offered:
+        #   conversation_search (T6/D6, same-session) + chat_search_sessions (B1/WS-1.9, cross-session).
+        # (chat_search_sessions added here by M4/P-2 — a concurrent session wired it in and left this
+        #  assertion listing only conversation_search.)
         assert {t["function"]["name"] for t in req.tools} == (
-            R_CATALOG_NAMES | PLAN_TOOL_NAMES | {"conversation_search"}
+            R_CATALOG_NAMES | PLAN_TOOL_NAMES | {"conversation_search", "chat_search_sessions"}
         )
 
     @pytest.mark.asyncio
