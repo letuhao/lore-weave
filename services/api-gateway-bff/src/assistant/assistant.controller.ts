@@ -127,6 +127,15 @@ interface NewEpochResult {
   new_diary_volume: 'reused_book:fresh_project';
 }
 
+// WS-3.2 (review H2) — the opt-in schedule toggle body (FE → gateway → scheduler-service).
+interface ScheduleBody {
+  job_kind?: string;
+  cadence?: string;
+  fire_local_time?: string;
+  timezone?: string;
+  enabled?: boolean;
+}
+
 // D-R27 (human-authorized) — the immediate-row-delete erasure result. Per-service delete counts so
 // the caller can prove "row gone". Backup-resistant crypto-shred stays a separate goal (P-12).
 interface EraseResult {
@@ -526,6 +535,46 @@ export class AssistantController {
     };
   }
 
+  // WS-3.1/3.2 (review H2) — the opt-in SCHEDULE toggle. A user turning "auto end-of-day" / a weekly
+  // review on/off; the gateway derives the user_id from the JWT (SEC-1, never a body field) and proxies
+  // to scheduler-service with the platform token. Without this route the scheduler is dormant (no row is
+  // ever created) — the FE toggle that calls it is the remaining polish (DBT-14).
+  @Post('schedule')
+  async schedule(
+    @Body() body: ScheduleBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<Record<string, unknown>> {
+    const { userId } = this.requireAuth(authorization);
+    const jobKind = (body?.job_kind ?? '').trim();
+    if (!['eod_distill', 'weekly_rollup', 'nudge'].includes(jobKind)) {
+      throw new HttpException('job_kind must be eod_distill|weekly_rollup|nudge', 400);
+    }
+    const schedUrl = process.env.SCHEDULER_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!schedUrl || !internalToken) {
+      this.logger.error('assistant-schedule rejected: SCHEDULER_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+    const res = await this.postInternalMethod(
+      `${schedUrl}/internal/schedules`,
+      internalToken,
+      'PUT',
+      {
+        user_id: userId,
+        job_kind: jobKind,
+        cadence: (body?.cadence ?? 'daily').trim() || 'daily',
+        fire_local_time: (body?.fire_local_time ?? '21:00').trim() || '21:00',
+        timezone: (body?.timezone ?? '').trim(),
+        enabled: body?.enabled === true,
+      },
+    );
+    if (!res.ok) {
+      const detail = (typeof res.body?.error === 'string' && res.body.error) || 'failed to save the schedule';
+      throw new HttpException(detail, res.status >= 400 ? res.status : 502);
+    }
+    return res.body ?? { enabled: body?.enabled === true };
+  }
+
   // D-R27 (human-authorized) — the ASSISTANT DATA ERASURE. Immediate ROW-DELETE (not soft-trash) of
   // the user's whole diary footprint across four services, so the diary content is genuinely gone AND
   // a re-index cannot resurrect it (the distiller's SOURCE — the assistant chat messages — is deleted,
@@ -609,6 +658,35 @@ export class AssistantController {
       book_id: bookId,
       deleted,
     };
+  }
+
+  /** POST/PUT JSON to a token-gated /internal endpoint with a chosen method (WS-3.2 schedule uses PUT).
+   *  Never-throw, report-status contract, mirroring postInternal. */
+  private async postInternalMethod(
+    url: string,
+    internalToken: string,
+    method: 'POST' | 'PUT',
+    body: unknown,
+  ): Promise<{ ok: boolean; status: number; body: any }> {
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch(url, {
+        method,
+        headers: { 'content-type': 'application/json', 'x-internal-token': internalToken },
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(PROVISION_STEP_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, status: 0, body: null };
+    }
+    const text = await resp.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { ok: resp.ok, status: resp.status, body: parsed };
   }
 
   /** DELETE a token-gated /internal endpoint (D-R27 erasure). Never-throw, report-status contract. */

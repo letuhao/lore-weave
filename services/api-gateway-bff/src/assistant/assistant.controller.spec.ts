@@ -543,6 +543,57 @@ describe('AssistantController — new-epoch (WS-2.10 / T18 employment epoch)', (
   });
 });
 
+describe('AssistantController — schedule (WS-3.2 opt-in toggle)', () => {
+  let controller: AssistantController;
+
+  beforeEach(() => {
+    process.env.JWT_SECRET = TEST_SECRET;
+    process.env.INTERNAL_SERVICE_TOKEN = 'itok';
+    process.env.SCHEDULER_SERVICE_URL = 'http://scheduler:8095';
+    controller = new AssistantController();
+  });
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+    delete process.env.INTERNAL_SERVICE_TOKEN;
+    delete process.env.SCHEDULER_SERVICE_URL;
+    (global as any).fetch = undefined;
+  });
+
+  it('401 on a missing bearer — never touches the scheduler', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.schedule({ job_kind: 'eod_distill', enabled: true }, undefined), 401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('400 on an unknown job_kind — never touches the scheduler', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.schedule({ job_kind: 'nope', enabled: true }, bearer('u1')), 400);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('PUTs to scheduler with the SERVER-DERIVED user_id + internal token', async () => {
+    const f = jest.fn().mockResolvedValueOnce(resp(200, { enabled: true, next_fire_at: '2026-07-16T21:00:00Z' }));
+    (global as any).fetch = f;
+    const out = await controller.schedule(
+      { job_kind: 'eod_distill', cadence: 'daily', fire_local_time: '21:00', timezone: 'UTC', enabled: true },
+      bearer('user-42'),
+    );
+    expect(f).toHaveBeenCalledTimes(1);
+    const [url, init] = f.mock.calls[0];
+    expect(url).toBe('http://scheduler:8095/internal/schedules');
+    expect(init.method).toBe('PUT');
+    expect(init.headers['x-internal-token']).toBe('itok');
+    expect(init.headers.authorization).toBeUndefined();
+    const sent = JSON.parse(init.body);
+    expect(sent.user_id).toBe('user-42'); // from the JWT sub, never a body field
+    expect(sent.job_kind).toBe('eod_distill');
+    expect(sent.enabled).toBe(true);
+    expect(out).toEqual({ enabled: true, next_fire_at: '2026-07-16T21:00:00Z' });
+  });
+});
+
 describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
   let controller: AssistantController;
 

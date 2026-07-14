@@ -1569,6 +1569,8 @@ services:
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # WS-3.2 — the assistant schedule toggle proxies to scheduler-service.
+      SCHEDULER_SERVICE_URL: http://scheduler-service:8095
       # Auto-Draft Factory S1 — campaign saga API (/v1/campaigns).
       CAMPAIGN_SERVICE_URL: http://campaign-service:8095
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
