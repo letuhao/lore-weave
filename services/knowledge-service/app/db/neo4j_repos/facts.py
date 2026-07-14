@@ -843,6 +843,91 @@ async def invalidate_facts_for_day(
     return int(record["invalidated"])
 
 
+# ── invalidate_all_facts_for_project (WS-2.10a — close an employment epoch) ──
+
+
+_INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND f.valid_until IS NULL
+SET f.valid_until = coalesce($valid_until, datetime()),
+    f.updated_at = datetime()
+RETURN count(f) AS invalidated
+"""
+
+
+async def invalidate_all_facts_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    valid_until: datetime | None = None,
+) -> int:
+    """WS-2.10a (T18 employment epoch) — close an epoch by soft-invalidating EVERY active fact of the
+    epoch's assistant project (bulk `valid_until`). On a job change the ex-employer's confidential facts
+    must stop being 'valid now' so they don't blend into the new job's recall. Epoch scoping is primarily
+    by project (each epoch is its own assistant project + diary book, and recall is project-scoped), and
+    this marks the bi-temporal close on top. Tenant-scoped on (user, project); idempotent (only active
+    facts). Returns the count invalidated."""
+    if not user_id or not project_id:
+        raise ValueError("invalidate_all_facts_for_project requires user_id and project_id")
+    result = await run_write(
+        session,
+        _INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        valid_until=valid_until,
+    )
+    record = await result.single()
+    return int(record["invalidated"]) if record else 0
+
+
+# ── export_facts_for_project (WS-2.10d — export before the epoch purge) ──
+
+
+_EXPORT_FACTS_FOR_PROJECT_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND coalesce(f.pending_validation, false) = false
+OPTIONAL MATCH (f)-[:ABOUT]->(subj:Entity) WHERE subj.user_id = $user_id
+WITH f, head(collect(subj.canonical_name)) AS subject_canonical
+RETURN f, subject_canonical
+ORDER BY coalesce(f.event_date_iso, '') ASC, f.created_at ASC
+LIMIT $limit
+"""
+
+
+async def export_facts_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    limit: int = 10000,
+) -> list[Fact]:
+    """WS-2.10d (T18 export-then-purge) — dump EVERY confirmed fact of an epoch's project for the user's
+    export, INCLUDING invalidated (`valid_until`-set) ones — a closed epoch's facts are all invalidated
+    (WS-2.10a), so the recall read (which filters valid_until IS NULL) would export nothing. This is the
+    'export' half of the boundary offer; the caller then purges via the scoped-erasure primitive @epoch.
+    Tenant-scoped on (user, project). Oldest-first so the export reads chronologically."""
+    if not project_id:
+        raise ValueError("export_facts_for_project requires an explicit project_id")
+    result = await run_read(
+        session,
+        _EXPORT_FACTS_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        limit=limit,
+    )
+    facts: list[Fact] = []
+    async for record in result:
+        fact = _node_to_fact(record["f"])
+        fact.subject_canonical = record.get("subject_canonical")
+        facts.append(fact)
+    return facts
+
+
 # ── delete_facts_with_zero_evidence ───────────────────────────────────
 
 

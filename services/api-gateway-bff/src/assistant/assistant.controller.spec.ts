@@ -478,6 +478,71 @@ describe('AssistantController — forget (WS-2.6c / D17 forget-a-person)', () =>
   });
 });
 
+describe('AssistantController — new-epoch (WS-2.10 / T18 employment epoch)', () => {
+  let controller: AssistantController;
+
+  beforeEach(() => {
+    process.env.JWT_SECRET = TEST_SECRET;
+    process.env.INTERNAL_SERVICE_TOKEN = 'itok';
+    process.env.KNOWLEDGE_SERVICE_URL = 'http://knowledge:8210';
+    controller = new AssistantController();
+  });
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+    delete process.env.INTERNAL_SERVICE_TOKEN;
+    delete process.env.KNOWLEDGE_SERVICE_URL;
+    (global as any).fetch = undefined;
+  });
+
+  const validBody = { book_id: 'diary-1' };
+
+  it('401 on a missing bearer — never touches knowledge', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.newEpoch(validBody, undefined), 401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('400 when book_id missing', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.newEpoch({}, bearer('u1')), 400);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('closes the current epoch (internal token) then provisions a fresh project (bearer)', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(200, { closed: true, project_id: 'proj-old', facts_invalidated: 7 }))
+      .mockResolvedValueOnce(resp(200, { project_id: 'proj-new' }));
+    (global as any).fetch = f;
+
+    const out = await controller.newEpoch(validBody, bearer('user-42'));
+
+    expect(f).toHaveBeenCalledTimes(2);
+    const [closeUrl, closeInit] = f.mock.calls[0];
+    expect(closeUrl).toBe('http://knowledge:8210/internal/admin/assistant/close-epoch');
+    expect(closeInit.headers['x-internal-token']).toBe('itok');
+    expect(JSON.parse(closeInit.body).user_id).toBe('user-42'); // server-derived
+
+    const [projUrl, projInit] = f.mock.calls[1];
+    expect(projUrl).toBe('http://knowledge:8210/v1/knowledge/projects/assistant');
+    expect(projInit.headers.authorization).toMatch(/^Bearer /);
+
+    expect(out).toEqual({
+      epoch_closed: true, closed_project_id: 'proj-old', facts_invalidated: 7,
+      new_project_id: 'proj-new', new_diary_volume: 'reused_book:fresh_project',
+    });
+  });
+
+  it('a failed close fails the whole call — never provisions a new epoch', async () => {
+    const f = jest.fn().mockResolvedValueOnce(resp(502, { detail: 'neo4j down' }));
+    (global as any).fetch = f;
+    await expectStatus(controller.newEpoch(validBody, bearer('u1')), 502);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
   let controller: AssistantController;
 

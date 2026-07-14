@@ -110,6 +110,23 @@ interface ForgetResult {
   redaction_error?: string;
 }
 
+// WS-2.10 / T18 — the "new employment epoch" request (a job change). Closes the current epoch's
+// knowledge (isolates the ex-employer's confidential facts) and provisions a fresh assistant project.
+interface NewEpochBody {
+  book_id?: string;
+}
+
+interface NewEpochResult {
+  epoch_closed: boolean;
+  closed_project_id?: string;
+  facts_invalidated?: number;
+  new_project_id?: string;
+  // The fresh diary VOLUME (a new diary book) is a follow-on gated on the E14 restore-vs-start-fresh
+  // diary-lifecycle decision; this epoch boundary isolates the confidential KNOWLEDGE (the actual T18
+  // concern) via a fresh assistant project on the existing diary book.
+  new_diary_volume: 'reused_book:fresh_project';
+}
+
 // D-R27 (human-authorized) — the immediate-row-delete erasure result. Per-service delete counts so
 // the caller can prove "row gone". Backup-resistant crypto-shred stays a separate goal (P-12).
 interface EraseResult {
@@ -453,6 +470,60 @@ export class AssistantController {
       return { ...base, redaction_error: detail };
     }
     return { ...base, redacted_entries: redact.body?.redacted_entries };
+  }
+
+  // WS-2.10 / T18 — the "new employment epoch" trigger (a job change). On a job change the ex-employer's
+  // confidential facts must not blend into the new job's recall. An epoch is the user's assistant-project
+  // generation; recall is project-scoped, so: (1) CLOSE the current epoch (knowledge bulk-invalidates its
+  // facts + archives the project — the ex-employer's memory can never be resolved by default recall
+  // again), then (2) provision a FRESH assistant project on the diary book (get-or-create mints a new one
+  // since the old is archived). The fresh diary VOLUME (a new book) is a follow-on gated on the E14
+  // diary-lifecycle decision; the confidential-facts isolation (the T18 concern) is delivered here.
+  @Post('new-epoch')
+  async newEpoch(
+    @Body() body: NewEpochBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<NewEpochResult> {
+    const { userId, token } = this.requireAuth(authorization);
+    const authHeader = `Bearer ${token}`;
+
+    const bookId = (body?.book_id ?? '').trim();
+    if (!bookId) {
+      throw new HttpException('book_id is required', 400);
+    }
+    const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!knowledgeUrl || !internalToken) {
+      this.logger.error('assistant-new-epoch rejected: KNOWLEDGE_SERVICE_URL / INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // 1. Close the current epoch (internal token + server-derived user_id).
+    const close = await this.postInternal(
+      `${knowledgeUrl}/internal/admin/assistant/close-epoch`,
+      internalToken,
+      { user_id: userId, book_id: bookId },
+    );
+    if (!close.ok) {
+      const detail =
+        (typeof close.body?.detail === 'string' && close.body.detail) || 'failed to close the epoch';
+      throw new HttpException(detail, close.status >= 400 ? close.status : 502);
+    }
+
+    // 2. Provision a fresh assistant project on the diary book (idempotent get-or-create; the archived
+    //    old project is skipped, so this mints the new epoch). Caller Bearer — owner-gated server-side.
+    const proj = await this.postJson(
+      `${knowledgeUrl}/v1/knowledge/projects/assistant`,
+      authHeader,
+      { book_id: bookId },
+    );
+    return {
+      epoch_closed: close.body?.closed === true,
+      closed_project_id: close.body?.project_id,
+      facts_invalidated: close.body?.facts_invalidated,
+      new_project_id: proj.ok && typeof proj.body?.project_id === 'string' ? proj.body.project_id : undefined,
+      new_diary_volume: 'reused_book:fresh_project',
+    };
   }
 
   // D-R27 (human-authorized) — the ASSISTANT DATA ERASURE. Immediate ROW-DELETE (not soft-trash) of

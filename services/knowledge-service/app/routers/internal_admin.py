@@ -355,6 +355,69 @@ async def merge_assistant_entities(body: _MergeEntitiesIn) -> dict:
     }
 
 
+class _CloseEpochIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+
+
+@router.post("/assistant/close-epoch")
+async def close_assistant_epoch(body: _CloseEpochIn) -> dict:
+    """WS-2.10a (T18 employment epoch) — CLOSE the user's current employment epoch. On a job change the
+    ex-employer's confidential facts must stop blending into the new job. An epoch IS the user's current
+    assistant-project generation (the ONE `is_assistant AND NOT is_archived` project + its diary book);
+    recall is project-scoped, so closing the epoch and provisioning a fresh project already isolates the
+    new job. This endpoint does the KNOWLEDGE half: bulk-invalidate the current project's facts
+    (`valid_until` — the bi-temporal close) then ARCHIVE the project so default recall can never resolve
+    it again. The gateway `new-epoch` orchestration then trashes the old diary book + provisions a fresh
+    project + diary volume (WS-2.10b). Internal-token; idempotent. Returns the closed project id."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.facts import invalidate_all_facts_for_project
+
+    pool = get_knowledge_pool()
+    project, created = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    if created:
+        # There was no prior epoch to close (a get_or_create just minted an empty one). Nothing to do.
+        return {"closed": False, "reason": "no_active_epoch", "project_id": str(project.project_id)}
+    async with neo4j_session() as session:
+        invalidated = await invalidate_all_facts_for_project(
+            session, user_id=str(body.user_id), project_id=str(project.project_id),
+        )
+    archived = await ProjectsRepo(pool).archive(body.user_id, project.project_id)
+    return {"closed": archived is not None, "project_id": str(project.project_id),
+            "facts_invalidated": invalidated}
+
+
+class _ExportPurgeEpochIn(BaseModel):
+    user_id: UUID
+    project_id: UUID  # the CLOSED (archived) epoch's assistant project to export + purge
+
+
+@router.post("/assistant/export-purge-epoch")
+async def export_purge_assistant_epoch(body: _ExportPurgeEpochIn) -> dict:
+    """WS-2.10d (T18 export-then-purge) — the SCOPED-ERASURE PRIMITIVE @ scope=epoch (D-R31). At an
+    employment boundary the user may export the closed epoch and then purge it. EXPORT first (dump every
+    confirmed fact, including the invalidated ones a close produced), THEN purge via the same
+    `_erase_one_assistant_project` cascade the account-erase uses (passages + KG nodes + pending/rejected
+    inboxes + the project row) — so this is the epoch-scoped sibling of the account-scoped D-R27 erase and
+    the entity-scoped WS-2.6c forget: one primitive, three scopes. Export-before-purge order means a purge
+    failure never loses the export. Owner/project scoped; internal-token."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.facts import export_facts_for_project
+
+    pool = get_knowledge_pool()
+    async with neo4j_session() as session:
+        facts = await export_facts_for_project(
+            session, user_id=str(body.user_id), project_id=str(body.project_id),
+        )
+    export = [
+        {"content": f.content, "type": f.type, "event_date": f.event_date_iso,
+         "subject": f.subject_canonical, "predicate": f.predicate, "object": f.object}
+        for f in facts
+    ]
+    purged = await _erase_one_assistant_project(pool, body.user_id, body.project_id)
+    return {"exported_count": len(export), "export": export, "purged": purged}
+
+
 class _ForgetEntityIn(BaseModel):
     user_id: UUID
     book_id: UUID

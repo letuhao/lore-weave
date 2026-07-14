@@ -520,6 +520,55 @@ async def test_ws26c_erase_entity_subgraph_removes_entity_and_its_facts(neo4j_dr
         ) == {"entities_deleted": 0, "facts_deleted": 0}
 
 
+# ── WS-2.10 — employment epoch (close / export / cross-epoch isolation) ─
+
+
+@pytest.mark.asyncio
+async def test_ws210_close_epoch_invalidates_but_export_still_reads(neo4j_driver, test_user):
+    """T18: closing an epoch bulk-invalidates its facts so DEFAULT recall (valid_until IS NULL) returns
+    none, while the EXPORT read still dumps them (incl. invalidated) for the export-then-purge boundary."""
+    from app.db.neo4j_repos.facts import (
+        export_facts_for_project,
+        invalidate_all_facts_for_project,
+        recall_facts,
+    )
+
+    epoch_a = "p-epoch-a"
+    async with neo4j_driver.session() as session:
+        for c in ("Acme: shipped v1", "Acme: hired Bob"):
+            await merge_fact(session, user_id=test_user, project_id=epoch_a, type="statement",
+                             content=c, confidence=0.7, pending_validation=False, event_date_iso="2026-01-05")
+
+        assert len(await recall_facts(session, user_id=test_user, project_id=epoch_a)) == 2
+
+        n = await invalidate_all_facts_for_project(session, user_id=test_user, project_id=epoch_a)
+        assert n == 2
+        # Default recall no longer surfaces the closed epoch's facts.
+        assert await recall_facts(session, user_id=test_user, project_id=epoch_a) == []
+        # But the export read still dumps them (for the user's export before purge).
+        exported = await export_facts_for_project(session, user_id=test_user, project_id=epoch_a)
+        assert {f.content for f in exported} == {"Acme: shipped v1", "Acme: hired Bob"}
+        # Idempotent close.
+        assert await invalidate_all_facts_for_project(session, user_id=test_user, project_id=epoch_a) == 0
+
+
+@pytest.mark.asyncio
+async def test_ws210_recall_is_epoch_scoped_by_project(neo4j_driver, test_user):
+    """T18 recall-defaults-to-current: each epoch is its own project, and recall is project-scoped, so the
+    ex-employer's (old-epoch) facts never blend into the new job's recall."""
+    from app.db.neo4j_repos.facts import recall_facts
+
+    old_epoch, new_epoch = "p-acme", "p-globex"
+    async with neo4j_driver.session() as session:
+        await merge_fact(session, user_id=test_user, project_id=old_epoch, type="statement",
+                         content="Acme secret roadmap", confidence=0.7, pending_validation=False)
+        await merge_fact(session, user_id=test_user, project_id=new_epoch, type="statement",
+                         content="Globex onboarding", confidence=0.7, pending_validation=False)
+        # Recall in the NEW epoch never surfaces the OLD employer's confidential fact.
+        new_facts = await recall_facts(session, user_id=test_user, project_id=new_epoch)
+        assert {f.content for f in new_facts} == {"Globex onboarding"}
+
+
 # ── delete_facts_with_zero_evidence ───────────────────────────────────
 
 
