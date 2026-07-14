@@ -89,6 +89,7 @@ SD-1..7 + P3-D1..6 + P4-D1..6 + P5-D1..12 — all in [`2026-07-15-phase-345-clea
   A user with NO resolvable model → 422 (the scheduler logs + skips that user's tick; never a silent no-op).
 
 ## 5 · Parked (blocked ≠ stopped)
+- **WS-4.2b** (STT/TTS usage plumbing) — **gate #2 (large/structural, needs its own plan), NOT blocked.** Investigation: the `loreweave_llm` SDK IS in-repo (`sdks/python/loreweave_llm` — buildable); `SttResult` already carries `duration_ms` (STT audio-minutes) and voice already knows the TTS char count (`len(speakable)` it sends) — so the metering SIGNALS exist at the call site. BUT the correct impl needs the **billing-service cost model for per-minute (STT) / per-char (TTS) pricing** — `usage_logs.total_cost_usd` is computed tokens×price; logging minutes/chars as "tokens" mis-costs. That cost-model + the spend `lane` ×3 tables (T-8) is the real unbuilt piece → own plan. STT/TTS are $0-capable locally (Whisper/Kokoro), so the un-metered COST is often $0 (low impact). **WS-4.1-tools** (voice → `_stream_with_tools`) — gate #2, not acceptance-critical (P4 live-smoke passed without it).
 - **P-12** (diary encryption + backup-resistant crypto-shred) — human-owned separate goal (D-R24). Orthogonal.
 - **Human-rating milestones** — P5 safety-eval + numeric-eval clearance (SD-7). Not code.
 
