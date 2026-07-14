@@ -146,10 +146,19 @@ class Fact(BaseModel):
     # precision-preferring on re-mention. String (not date) so partial-precision
     # ("summer 1880" → "1880-06") keeps the "day unknown" signal.
     event_date_iso: str | None = None
+    # WS-2.6b (supersede-a-fact, spec 07 §Q5) — the structured CLAIM the fact makes, denormalized onto
+    # the node so recall can detect a supersession ("Mon: Friday → Wed: Tuesday") by grouping same-
+    # (subject, predicate) facts whose `object` changed over time. Both NULL for a coarse fact (no s/p/o)
+    # and for every extraction fact (only the diary WS-2.2 path fills them) — additive, no behavior change.
+    predicate: str | None = None
+    object: str | None = None
     evidence_count: int = 0
     archived_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # WS-2.6b — the fact's subject CANONICAL name, populated by `recall_facts` from the :ABOUT edge (NOT
+    # a node prop — the :Entity stays the SSOT). Transient; used to group supersessions in the read.
+    subject_canonical: str | None = None
 
 
 def _node_to_fact(node: Any) -> Fact:
@@ -193,6 +202,9 @@ ON CREATE SET
   // prose carried no explicit calendar date (the dominant case). Additive: it
   // never participates in the ordinal chain, only annotates/sorts.
   f.event_date_iso = $event_date_iso,
+  // WS-2.6b — the structured claim (diary supersession detection). NULL for coarse/extraction facts.
+  f.predicate = $predicate,
+  f.object = $object,
   f.evidence_count = 0,
   f.archived_at = NULL,
   f.created_at = datetime(),
@@ -240,6 +252,10 @@ ON MATCH SET
     WHEN $confidence > f.confidence THEN $pending_validation
     ELSE f.pending_validation
   END,
+  // WS-2.6b — backfill the claim on a later re-mention that carries it (never clobber a stored one),
+  // mirroring the event_date_iso backfill posture.
+  f.predicate = coalesce(f.predicate, $predicate),
+  f.object = coalesce(f.object, $object),
   f.updated_at = datetime()
 WITH f
 WHERE f.user_id = $user_id
@@ -264,6 +280,8 @@ async def merge_fact(
     from_order: int | None = None,
     valid_from_ordinal: int | None = None,
     event_date_iso: str | None = None,
+    predicate: str | None = None,
+    object: str | None = None,
     maintain_chain: bool = False,
 ) -> Fact:
     """Idempotent upsert. Same (user, project, type, normalized
@@ -340,6 +358,9 @@ async def merge_fact(
         open_ceiling=ORDINAL_OPEN_CEILING,
         event_date_iso=normalized_event_date_iso,
         provenance=provenance,
+        # WS-2.6b — empty string → None so a blank claim never clobbers a stored one on MATCH.
+        predicate=(predicate or None),
+        object=(object or None),
     )
     record = await result.single()
     if record is None:
@@ -516,7 +537,13 @@ WHERE f.user_id = $user_id
       WHERE e.user_id = $user_id AND e.canonical_name = $subject_canonical
     }
   )
-RETURN f
+// WS-2.6b — carry the subject's canonical name (from the :ABOUT edge, the SSOT) so the read can group
+// same-(subject, predicate) facts into a supersession. OPTIONAL so a coarse (subjectless) fact still
+// returns. A fact with multiple :ABOUT edges is rare (diary facts have one); `head(collect(...))` keeps
+// one deterministic value without fanning the row out.
+OPTIONAL MATCH (f)-[:ABOUT]->(subj:Entity) WHERE subj.user_id = $user_id
+WITH f, head(collect(subj.canonical_name)) AS subject_canonical
+RETURN f, subject_canonical
 ORDER BY coalesce(f.event_date_iso, '') DESC, coalesce(f.valid_from_ordinal, 0) DESC, f.created_at DESC
 LIMIT $limit
 """
@@ -557,7 +584,65 @@ async def recall_facts(
         min_confidence=min_confidence,
         limit=limit,
     )
-    return [_node_to_fact(record["f"]) async for record in result]
+    facts: list[Fact] = []
+    async for record in result:
+        fact = _node_to_fact(record["f"])
+        # WS-2.6b — attach the subject from the :ABOUT edge (transient; not a node prop). Used by
+        # `group_supersessions` to detect a claim that changed over time.
+        fact.subject_canonical = record.get("subject_canonical")
+        facts.append(fact)
+    return facts
+
+
+# ── group_supersessions (WS-2.6b — spec 07 §Q5 "it changed") ──────────
+
+
+def group_supersessions(facts: list[Fact]) -> list[dict[str, Any]]:
+    """Group recalled facts into SUPERSESSIONS: a set of facts that make the SAME claim about the same
+    subject — same (subject_canonical, predicate) — but whose `object` changed across dates. Spec 07 §Q5:
+    recall must surface *"it changed"* ("Mon: Friday → Wed: Tuesday — which is right?"), not two
+    independent truths.
+
+    A group qualifies only when it has ≥2 facts with ≥2 DISTINCT objects (case/space-normalized) — a mere
+    re-affirmation of the same object on two days is NOT a supersession. Requires a subject AND a
+    predicate AND an object on each fact (the WS-2.2 structured trio); coarse facts (any of the three
+    missing) never form a supersession — they can't be reliably claimed to contradict. Each chain is
+    ordered OLDEST→NEWEST by (event_date_iso, valid_from_ordinal) so the arrow reads forward in time, and
+    `latest` names the current value. Pure over the passed facts (no DB) so it is trivially testable and
+    order-independent of the read's LIMIT."""
+    def _norm(s: str | None) -> str:
+        return " ".join((s or "").split()).casefold()
+
+    groups: dict[tuple[str, str], list[Fact]] = {}
+    for f in facts:
+        subj, pred, obj = f.subject_canonical, f.predicate, f.object
+        if not subj or not pred or not obj:
+            continue
+        groups.setdefault((_norm(subj), _norm(pred)), []).append(f)
+
+    supersessions: list[dict[str, Any]] = []
+    for (subj_key, _pred_key), members in groups.items():
+        if len(members) < 2:
+            continue
+        distinct_objects = {_norm(m.object) for m in members}
+        if len(distinct_objects) < 2:
+            continue  # same object re-affirmed — not a change
+        ordered = sorted(
+            members,
+            key=lambda m: ((m.event_date_iso or ""), (m.valid_from_ordinal or 0)),
+        )
+        supersessions.append({
+            # Present the original (un-normalized) subject/predicate of the newest member for display.
+            "subject": ordered[-1].subject_canonical,
+            "predicate": ordered[-1].predicate,
+            "latest": ordered[-1].object,
+            "changed": True,
+            "chain": [
+                {"object": m.object, "event_date": m.event_date_iso, "content": m.content}
+                for m in ordered
+            ],
+        })
+    return supersessions
 
 
 # ── list_facts_for_entity (T2.1) ──────────────────────────────────────

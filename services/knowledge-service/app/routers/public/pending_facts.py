@@ -165,6 +165,10 @@ async def _promote_pending_fact(session, user_id: UUID, pending: PendingFact) ->
         subject_id=subject_id,
         valid_from_ordinal=valid_from_ordinal,
         event_date_iso=event_date_iso,
+        # WS-2.6b — carry the structured claim onto the :Fact so recall can detect a supersession
+        # (same subject+predicate, object changed over time). NULL for a coarse fact.
+        predicate=pending.predicate,
+        object=pending.object,
         maintain_chain=False,  # diary path never drives the (subject, type) chain (spec 07 §Q2)
     )
 

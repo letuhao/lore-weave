@@ -409,6 +409,44 @@ async def test_ws26a_invalidate_facts_for_day_retires_only_that_day(neo4j_driver
         assert await _valid_until(other_proj.id) is None     # different project — untouched (D16)
 
 
+# ── WS-2.6b — supersession recall ("it changed") end-to-end ───────────
+
+
+@pytest.mark.asyncio
+async def test_ws26b_recall_surfaces_a_supersession_not_two_truths(neo4j_driver, test_user):
+    """spec 07 §Q5: a claim that changed over time (launch Friday → Tuesday) recalls as ONE supersession
+    with an ordered chain, not two independent facts. Proves predicate/object PERSIST on the :Fact node
+    and that recall carries the :ABOUT subject for grouping."""
+    from app.db.neo4j_repos.entities import merge_entity
+    from app.db.neo4j_repos.facts import days_since_epoch, group_supersessions, recall_facts
+
+    proj = "p-assist"
+    async with neo4j_driver.session() as session:
+        launch = await merge_entity(
+            session, user_id=test_user, project_id=proj, name="launch", kind="project",
+            source_type="assistant_diary_fact", auto_created=True,
+        )
+        # Two facts, SAME subject+predicate, DIFFERENT object across two days.
+        import datetime as _dt
+        for obj, d in (("Friday", "2026-03-02"), ("Tuesday", "2026-03-04")):
+            await merge_fact(
+                session, user_id=test_user, project_id=proj, type="statement",
+                content=f"launch scheduled for {obj}", confidence=0.5, pending_validation=False,
+                subject_id=launch.id, predicate="scheduled for", object=obj,
+                event_date_iso=d, valid_from_ordinal=days_since_epoch(_dt.date.fromisoformat(d)),
+            )
+
+        facts = await recall_facts(session, user_id=test_user, project_id=proj)
+        # The subject rode through the :ABOUT edge, and predicate/object persisted on the node.
+        assert all(f.subject_canonical for f in facts)
+        assert {f.object for f in facts} == {"Friday", "Tuesday"}
+
+        sup = group_supersessions(facts)
+        assert len(sup) == 1
+        assert sup[0]["latest"] == "Tuesday"
+        assert [c["object"] for c in sup[0]["chain"]] == ["Friday", "Tuesday"]
+
+
 # ── delete_facts_with_zero_evidence ───────────────────────────────────
 
 

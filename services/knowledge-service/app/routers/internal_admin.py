@@ -244,7 +244,7 @@ async def recall_assistant_facts(body: _RecallFactsIn) -> dict:
     newest-first. This is the read that answers "what did <subject> say about <topic> last month" — it
     is project-scoped (never all-projects), so it cannot surface another project's facts (D16)."""
     from app.db.neo4j import neo4j_session
-    from app.db.neo4j_repos.facts import recall_facts
+    from app.db.neo4j_repos.facts import group_supersessions, recall_facts
 
     pool = get_knowledge_pool()
     project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
@@ -258,6 +258,9 @@ async def recall_assistant_facts(body: _RecallFactsIn) -> dict:
             subject_name=body.subject_name,
             limit=body.limit,
         )
+    # WS-2.6b (spec 07 §Q5) — surface a SUPERSESSION ("it changed") rather than two independent truths
+    # when a claim's object changed over time (same subject+predicate, different object across dates).
+    supersessions = group_supersessions(facts)
     return {
         "project_id": str(project.project_id),
         "count": len(facts),
@@ -266,9 +269,11 @@ async def recall_assistant_facts(body: _RecallFactsIn) -> dict:
                 "type": f.type, "content": f.content,
                 "event_date_iso": f.event_date_iso,
                 "valid_from_ordinal": f.valid_from_ordinal,
+                "subject": f.subject_canonical, "predicate": f.predicate, "object": f.object,
             }
             for f in facts
         ],
+        "supersessions": supersessions,
     }
 
 
