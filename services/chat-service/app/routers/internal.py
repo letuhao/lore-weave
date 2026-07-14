@@ -403,19 +403,39 @@ async def erase_assistant_data(
     the erasure 're-index CAN'T resurrect': after this, a re-distill of ANY day finds no source
     messages → empty_day → no entry. SCOPED to `session_kind='assistant'` (a user's normal chat is
     NEVER touched) + `owner_user_id`; optionally to one diary `book_id`. Internal-token only."""
+    # ONE predicate + param tuple for BOTH the audio pre-SELECT and the session DELETE,
+    # so the audio scope can never drift from the erasure scope.
+    where = "owner_user_id=$1 AND session_kind='assistant'"
+    params: tuple = (str(user_id),)
     if book_id is not None:
-        result = await db.execute(
-            "DELETE FROM chat_sessions WHERE owner_user_id=$1 AND session_kind='assistant' AND book_id=$2",
-            str(user_id), str(book_id),
-        )
-    else:
-        result = await db.execute(
-            "DELETE FROM chat_sessions WHERE owner_user_id=$1 AND session_kind='assistant'",
-            str(user_id),
-        )
+        where += " AND book_id=$2"
+        params = (str(user_id), str(book_id))
+
+    # WS-4.4 — the DELETE cascades chat_sessions → chat_messages → message_audio_segments
+    # ROWS, but the cascade can't RETURN their MinIO object_keys, so the audio objects would
+    # be ORPHANED (a real erasure hole: "hard-deleted" audio still readable in the bucket).
+    # Collect the keys BEFORE the cascade removes their rows, using the SAME session scope.
+    audio_rows = await db.fetch(
+        "SELECT object_key FROM message_audio_segments "
+        f"WHERE session_id IN (SELECT session_id FROM chat_sessions WHERE {where})",
+        *params,
+    )
+
+    result = await db.execute(f"DELETE FROM chat_sessions WHERE {where}", *params)
+
+    # Best-effort MinIO delete AFTER the rows are gone (S3 lifecycle is the safety net).
+    from app.storage.minio_client import delete_object
+    deleted_objects = 0
+    for r in audio_rows:
+        try:
+            await delete_object(r["object_key"])
+            deleted_objects += 1
+        except Exception:
+            pass
+
     # asyncpg returns a status string like "DELETE 3".
     deleted = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
-    return {"deleted_sessions": deleted}
+    return {"deleted_sessions": deleted, "deleted_audio_objects": deleted_objects}
 
 
 @telemetry_router.get("/tool-health", dependencies=[Depends(require_internal_token)])
