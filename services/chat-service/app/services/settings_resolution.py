@@ -61,10 +61,6 @@ TIER_NONE = "no_model_configured"         # every tier resolved dead/unset
 # `auto` — a value-shaped silent no-op. One registry, both writers (SET-6 + the
 # one-name-one-concept rule); a bad value is a 422 at whichever door it arrives.
 #
-# `stt_source`/`tts_source` are deliberately ABSENT for now: the shipped account panel
-# writes `tts_source: 'user_model'` while the chat voice store uses `'ai_model'` for the
-# same concept. Validating either vocabulary today would 422 a live client. Reconciled
-# when voice gets its single home (D-CHATAI-VOICE-TWO-STORES).
 SETTING_ENUMS: dict[str, dict[str, set[str]]] = {
     "behavior": {
         "permission_mode": {"ask", "write", "plan"},
@@ -72,6 +68,57 @@ SETTING_ENUMS: dict[str, dict[str, set[str]]] = {
     },
     "context": {"mode": {"auto", "on", "off"}},
 }
+
+# ── voice model-source vocabulary (D-CHATAI-VOICE-TWO-STORES — one name, one concept) ──
+# The voice `source` fields nest inside the `voice` blob, so the flat SETTING_ENUMS
+# check above can't reach them. They ALSO shipped with two vocabularies for the same
+# concept: the account panel + the consumer (`voice_stream_service`, provider-registry)
+# call a BYOK model source `'user_model'`, while the chat voice store wrote `'ai_model'`.
+# Validating either vocabulary naively would 422 a live client using the other. The
+# reconcile: `'user_model'` is CANONICAL (it matches the consumer + account panel +
+# the platform-wide provider-registry vocabulary); `'browser'` is the client-side Web
+# Speech path (no server model). Legacy `'ai_model'` is NORMALIZED to `'user_model'` at
+# every write door (so the store converges) and coerced on read (so already-stored rows
+# still resolve — never a silent no-op). A genuinely unknown value 422s.
+VOICE_SOURCE_ALLOWED = {"browser", "user_model"}
+_VOICE_SOURCE_LEGACY = {"ai_model": "user_model"}
+# Nested (parent, key) paths in the voice blob that carry a model-source enum.
+_VOICE_SOURCE_PATHS = (("stt", "source"), ("chat", "tts_source"), ("reading", "tts_source"))
+
+
+def canon_voice_source(val: str | None) -> str | None:
+    """Map a stored/echoed voice source to its canonical value (legacy `'ai_model'`
+    → `'user_model'`). `None`/unset passes through unchanged; an unknown value is
+    returned as-is (the caller's validator decides whether to reject it)."""
+    if val is None:
+        return None
+    return _VOICE_SOURCE_LEGACY.get(val, val)
+
+
+def normalize_voice_sources(voice: dict | None) -> dict | None:
+    """Return `voice` with each nested source field canonicalized AND validated.
+
+    Coerces legacy `'ai_model'` → `'user_model'` so the store converges, then rejects
+    any value outside the closed set (raising ``ValueError`` the way
+    `validate_setting_enums` does). Operates on shallow copies so the caller's input
+    is not mutated. `None`/absent leaves fall through untouched ("inherit")."""
+    if not voice:
+        return voice
+    out = dict(voice)
+    for parent, key in _VOICE_SOURCE_PATHS:
+        sub = out.get(parent)
+        if not isinstance(sub, dict) or sub.get(key) is None:
+            continue
+        canon = canon_voice_source(sub[key])
+        if canon not in VOICE_SOURCE_ALLOWED:
+            raise ValueError(
+                f"voice.{parent}.{key} must be one of {sorted(VOICE_SOURCE_ALLOWED)} "
+                f"(legacy 'ai_model' accepted), got {sub[key]!r}"
+            )
+        sub = dict(sub)
+        sub[key] = canon
+        out[parent] = sub
+    return out
 
 
 def validate_setting_enums(category: str, blob: dict | None) -> None:

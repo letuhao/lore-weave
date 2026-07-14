@@ -186,10 +186,47 @@ def test_both_write_doors_use_the_one_registry():
     assert sr.SETTING_ENUMS["behavior"]["reasoning_effort"] == {"off", "low", "medium", "high"}
 
 
-def test_voice_source_vocabularies_are_deliberately_unvalidated():
-    """`tts_source` is NOT in the registry on purpose: the shipped account panel writes
-    'user_model' while the chat voice store writes 'ai_model' for the same concept.
-    Validating either today would 422 a live client. This test is the tripwire — when
-    voice gets its single home, add the enum here and this assertion must be updated,
-    not silently deleted. (D-CHATAI-VOICE-TWO-STORES)"""
-    assert "voice" not in sr.SETTING_ENUMS
+# ── D-CHATAI-VOICE-TWO-STORES — voice source vocab reconcile (WS-4.0) ────────
+# Voice sources nest in the `voice` blob, so they can't live in the flat SETTING_ENUMS;
+# they get their own `normalize_voice_sources` (coerce legacy 'ai_model' → canonical
+# 'user_model', reject an unknown value). This was formerly the deliberately-unvalidated
+# hole; the reconcile closes it with one canonical vocabulary.
+def test_voice_stays_out_of_flat_registry_but_has_its_own_validator():
+    assert "voice" not in sr.SETTING_ENUMS  # flat check can't reach nested paths
+    assert sr.VOICE_SOURCE_ALLOWED == {"browser", "user_model"}
+
+
+def test_normalize_coerces_legacy_ai_model_on_all_surfaces():
+    v = sr.normalize_voice_sources({
+        "chat": {"tts_source": "ai_model", "tts_model_ref": "m1"},
+        "reading": {"tts_source": "ai_model"},
+        "stt": {"source": "ai_model", "model_ref": "s1"},
+    })
+    assert v["chat"]["tts_source"] == "user_model"
+    assert v["reading"]["tts_source"] == "user_model"
+    assert v["stt"]["source"] == "user_model"
+    assert v["chat"]["tts_model_ref"] == "m1"  # sibling fields untouched
+
+
+def test_normalize_accepts_canonical_and_browser():
+    v = sr.normalize_voice_sources({"chat": {"tts_source": "user_model"}, "stt": {"source": "browser"}})
+    assert v["chat"]["tts_source"] == "user_model"
+    assert v["stt"]["source"] == "browser"
+
+
+def test_normalize_rejects_unknown_source():
+    with pytest.raises(ValueError, match="voice.chat.tts_source"):
+        sr.normalize_voice_sources({"chat": {"tts_source": "wat"}})
+
+
+def test_normalize_is_noop_on_absent_or_none():
+    assert sr.normalize_voice_sources(None) is None
+    assert sr.normalize_voice_sources({}) == {}
+    # a patch that doesn't touch source fields passes through untouched
+    assert sr.normalize_voice_sources({"chat": {"tts_voice_id": "nova"}}) == {"chat": {"tts_voice_id": "nova"}}
+
+
+def test_normalize_does_not_mutate_input():
+    src = {"chat": {"tts_source": "ai_model"}}
+    sr.normalize_voice_sources(src)
+    assert src["chat"]["tts_source"] == "ai_model"  # caller's dict untouched

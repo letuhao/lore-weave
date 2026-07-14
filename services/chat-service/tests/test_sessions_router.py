@@ -545,6 +545,28 @@ class TestPatchSessionTierEnumGate:
         })
         assert resp.status_code == 422
 
+    # ── D-CHATAI-VOICE-TWO-STORES — the session door also normalizes voice sources ──
+    @pytest.mark.asyncio
+    async def test_legacy_voice_source_coerced_to_user_model_when_stored(self, client, mock_pool):
+        existing = make_session_record(voice_overrides={})
+        mock_pool.fetchrow.side_effect = [existing, existing]
+        resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+            "voice_overrides": {"stt": {"source": "ai_model", "model_ref": "s1"}},
+        })
+        assert resp.status_code == 200
+        stored = json.loads(_update_args(mock_pool)[31])
+        assert stored["stt"]["source"] == "user_model"  # coerced, not stored verbatim
+        assert stored["stt"]["model_ref"] == "s1"        # sibling preserved
+
+    @pytest.mark.asyncio
+    async def test_bad_voice_source_is_422(self, client, mock_pool):
+        mock_pool.fetchrow.side_effect = [make_session_record(), make_session_record()]
+        resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+            "voice_overrides": {"chat": {"tts_source": "telepathy"}},
+        })
+        assert resp.status_code == 422
+        assert "telepathy" in resp.text
+
     @pytest.mark.asyncio
     async def test_valid_values_pass(self, client, mock_pool):
         mock_pool.fetchrow.side_effect = [make_session_record(), make_session_record()]

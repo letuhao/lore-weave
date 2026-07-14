@@ -302,7 +302,15 @@ async def patch_session(
     # Read-modify-write: a session is edited by one user through one debounced panel,
     # so concurrent patches to the same category are last-writer-wins by design.
     set_voice_overrides = "voice_overrides" in body.model_fields_set
-    voice_overrides_value = _merged_override(row["voice_overrides"], body.voice_overrides)
+    # Normalize voice source vocab (legacy 'ai_model' → 'user_model') + reject an
+    # unknown source at THIS door too — the account door isn't the only way in
+    # (D-CHATAI-VOICE-TWO-STORES; one merge rule, one vocabulary, both doors).
+    from app.services.settings_resolution import normalize_voice_sources
+    try:
+        _voice_patch = normalize_voice_sources(body.voice_overrides)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    voice_overrides_value = _merged_override(row["voice_overrides"], _voice_patch)
     set_context_overrides = "context_overrides" in body.model_fields_set
     context_overrides_value = _merged_override(row["context_overrides"], body.context_overrides)
 

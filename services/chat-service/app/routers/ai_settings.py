@@ -70,6 +70,11 @@ class AiPrefsPatch(BaseModel):
     def _check_enums(self) -> "AiPrefsPatch":
         for cat in sr.SETTING_ENUMS:
             sr.validate_setting_enums(cat, getattr(self, cat))
+        # Voice source fields nest inside the voice blob (flat SETTING_ENUMS can't
+        # reach them). Normalize legacy 'ai_model' → 'user_model' so the STORE
+        # converges to one vocabulary, and reject a genuinely unknown source
+        # (D-CHATAI-VOICE-TWO-STORES).
+        self.voice = sr.normalize_voice_sources(self.voice)
         return self
 
 

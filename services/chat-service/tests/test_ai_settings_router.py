@@ -123,6 +123,26 @@ async def test_patch_accepts_valid_enum(client, mock_pool):
     assert resp.status_code == 200
 
 
+# ── D-CHATAI-VOICE-TWO-STORES — the account write door normalizes voice sources ──
+async def test_patch_rejects_unknown_voice_source(client, mock_pool):
+    # a genuinely-unknown source 422s at the door → proves the router wires
+    # normalize_voice_sources (the flat SETTING_ENUMS can't reach nested voice paths).
+    resp = await client.patch(
+        "/v1/chat/ai-prefs", json={"voice": {"chat": {"tts_source": "banana"}}}
+    )
+    assert resp.status_code == 422
+
+
+async def test_patch_accepts_and_coerces_legacy_voice_source(client, mock_pool):
+    # legacy 'ai_model' is ACCEPTED (not 422'd) — a live client sending the old word
+    # is coerced to canonical 'user_model', never rejected.
+    mock_pool._conn.fetchrow.return_value = None
+    resp = await client.patch(
+        "/v1/chat/ai-prefs", json={"voice": {"stt": {"source": "ai_model"}}}
+    )
+    assert resp.status_code == 200
+
+
 async def test_create_session_seeds_behavior_from_account(client, mock_pool):
     # HIGH fix: a new session inherits the account behavior defaults so the panel
     # isn't a write-only store. get_prefs (1st fetchrow) then INSERT (2nd).
