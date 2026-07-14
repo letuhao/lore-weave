@@ -83,3 +83,13 @@ def test_gate_logic_clears_only_with_full_synthetic_inputs():
     st2 = evaluate_gate(n_transcripts=60, n_human_raters=2, threshold_qwk=0.6,
                         run_qwks=[0.59, 0.9, 0.9])
     assert st2.cleared is False
+
+
+# ── WS-5.19 — dismiss-rate self-disarm (operational, not validity) ────────────
+def test_self_disarm_only_over_sample_floor_and_threshold():
+    from app.services.coaching_eval import should_self_disarm
+    assert should_self_disarm(4, 5) is True         # 80% over 5 → disarm
+    assert should_self_disarm(3, 5) is False        # 60% is NOT > 60%
+    assert should_self_disarm(9, 10) is True
+    assert should_self_disarm(4, 4) is False         # under the 5-item floor → never disarm
+    assert should_self_disarm(0, 0) is False

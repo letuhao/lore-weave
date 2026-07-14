@@ -116,3 +116,21 @@ def evaluate_gate(
         return GateStatus(False, "below_threshold", {**rng, "threshold": threshold_qwk})
     return GateStatus(True, "cleared", {**rng, "threshold": threshold_qwk,
                                         "n_transcripts": n_transcripts, "n_human_raters": n_human_raters})
+
+
+# ── WS-5.19 (P5-D8/D11) — dismiss-rate is an OPERATIONAL self-disarm signal, NOT validity ──
+# Dismiss-rate does NOT measure whether a score is TRUE — optimizing for "not dismissed"
+# selects for flattery (P5-D8). It is only a circuit-breaker: if the user dismisses most
+# coaching over a meaningful sample, stop coaching them (self-disarm) until they re-opt-in.
+# Validity is precision against a hand-labeled set, split into 3 questions (accurate? / useful?
+# / dismiss) — never conflated into one thumbs signal.
+SELF_DISARM_MIN_N = 5
+SELF_DISARM_RATE = 0.6
+
+
+def should_self_disarm(dismiss_count: int, total: int) -> bool:
+    """True when the user dismissed > 60% of coaching over >= 5 items — stop coaching, don't
+    tune the content to avoid dismissal. Under the sample floor, never disarm (too little data)."""
+    if total < SELF_DISARM_MIN_N:
+        return False
+    return (dismiss_count / total) > SELF_DISARM_RATE
