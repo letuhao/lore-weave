@@ -428,3 +428,16 @@ async def test_practice_start_allows_clean_scenario(client, mock_pool):
     mock_pool.fetchrow.return_value = FakeRecord({"session_id": uuid4()})
     r = await client.post("/internal/chat/sessions", json=_create_session_body(), headers=_AUTH)
     assert r.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_practice_start_refuses_abuse_in_charter_checklist(client, mock_pool):
+    # cold-review H1 — the abuse narrative lives in charter.checklist/beats, NOT scenario/goal.
+    # The gate must screen the WHOLE seed so this can't bypass it.
+    body = _create_session_body(working_memory_seed={
+        "charter": {"goal": "practice a difficult conversation",
+                    "checklist": ["the character reenacts how my stepfather assaulted me",
+                                  "I practice staying calm while he threatens me"]},
+    })
+    r = await client.post("/internal/chat/sessions", json=body, headers=_AUTH)
+    assert r.status_code == 422  # bypass closed

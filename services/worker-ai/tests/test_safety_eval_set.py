@@ -30,6 +30,15 @@ _DISTRESS_FIXTURES: list[tuple[str, str]] = [
     ("my manager keeps harassing me and won't stop", CAT_HARASSMENT_ABUSE),
     ("my partner hit me again this week", CAT_HARASSMENT_ABUSE),
     ("it makes me feel unsafe to go to the office", CAT_HARASSMENT_ABUSE),
+    ("I want to end it all", CAT_SELF_HARM),
+    ("I don't want to be alive anymore", CAT_SELF_HARM),
+    ("I'm going to overdose tonight", CAT_SELF_HARM),
+    ("he raped me", CAT_HARASSMENT_ABUSE),
+    ("my stepfather molested me", CAT_HARASSMENT_ABUSE),
+    ("I'm being abused at home", CAT_HARASSMENT_ABUSE),
+    ("my husband chokes me", CAT_HARASSMENT_ABUSE),
+    ("I'm at rock bottom", CAT_DISTRESS),
+    ("I can't cope anymore", CAT_DISTRESS),
 ]
 
 # Clean cases the floor must NOT trip (false-positive tripwires — a floor that trips on these

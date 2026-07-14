@@ -37,23 +37,30 @@ _LEXICON: dict[str, tuple[str, ...]] = {
     CAT_SELF_HARM: (
         "suicide", "suicidal", "kill myself", "killing myself", "end my life",
         "ending my life", "take my own life", "want to die", "wish i was dead",
-        "wish i were dead", "better off dead", "self-harm", "self harm",
+        "wish i were dead", "better off dead", "better off gone", "self-harm", "self harm",
         "hurt myself", "harm myself", "cut myself", "cutting myself",
         "no reason to live", "don't want to live", "dont want to live",
+        "don't want to be alive", "dont want to be alive", "want to be dead",
+        "end it all", "want to disappear", "overdose", "overdosing",
         "everyone would be better off without me", "better off without me",
     ),
     CAT_DISTRESS: (
         "hopeless", "worthless", "no way out", "can't go on", "cant go on",
         "give up on everything", "breaking point", "at my breaking point",
         "nothing matters anymore", "nothing helps anymore",
+        "rock bottom", "falling apart", "can't cope", "cant cope",
+        "had enough of everything", "had enough of it all",
     ),
     CAT_HARASSMENT_ABUSE: (
         # NB: bare "hit me" is deliberately NOT here — it is idiom-prone ("the flu hit me",
         # "it hit me that…") and would false-short-circuit reflection; the violence sense is a
-        # PATTERN below (subject + verb + me). Safety fails closed, but a floor that trips on
-        # idiom makes reflection unusable — the wrong kind of fail-closed.
-        "harassed", "harassing me", "sexually harassed", "assaulted me",
-        "abused me", "abusing me", "threatened me", "threatening me",
+        # PATTERN below (relationship-subject + verb + me). But UNAMBIGUOUS disclosures ARE
+        # here (a cold review found the floor missed "raped"/"molested"/"being abused" — the
+        # dangerous false-negative direction).
+        "harassed", "harassing me", "sexually harassed", "assaulted me", "assaulted",
+        "raped me", "raped", "rape me", "molested", "molested me", "molesting me",
+        "abused me", "abusing me", "being abused", "abused at home", "sexually abused",
+        "threatened me", "threatening me", "chokes me", "choked me",
         "unsafe around", "afraid of my", "stalking me", "stalked me",
     ),
 }
@@ -66,21 +73,34 @@ _PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = tuple(
         # distress / can't-continue paraphrases (no obvious keyword)
         (CAT_DISTRESS, r"how much (longer|more) i can (do|take|keep|handle|last|go)"),
         (CAT_DISTRESS, r"(don'?t|do not) know how much (longer|more)"),
-        (CAT_DISTRESS, r"can'?t (do|take|handle|keep doing|keep going with) (this|it)( any\s?more)?"),
+        (CAT_DISTRESS, r"can'?t (do|take|handle|keep doing|keep going with|cope with) (this|it)( any\s?more)?"),
         (CAT_DISTRESS, r"(can'?t|cannot) keep (doing|going) (this|on) (like this|any\s?more)"),
+        (CAT_DISTRESS, r"(can'?t|cannot) cope( any\s?more| with (this|it|life|any of it))?"),
         (CAT_DISTRESS, r"(don'?t|do not) (see|know) (the|a|any) (point|reason) (in|to|of)"),
         (CAT_DISTRESS, r"(everything|it all) (is|feels) (pointless|hopeless|too much)"),
         (CAT_DISTRESS, r"drowning (in|under) (work|it all|everything)"),
+        (CAT_DISTRESS, r"(had|have) enough of (everything|it all|this|living)"),
         # self-harm paraphrases
         (CAT_SELF_HARM, r"(no|not any) (point|reason) (in|to) (living|go(ing)? on|be(ing)? here)"),
-        (CAT_SELF_HARM, r"(don'?t|do not) want to (be here|wake up|exist)( any\s?more)?"),
+        (CAT_SELF_HARM, r"(don'?t|do not) want to (be here|be alive|wake up|exist)( any\s?more)?"),
         (CAT_SELF_HARM, r"(disappear|vanish) (forever|and never come back)"),
+        (CAT_SELF_HARM, r"want to (end it all|end it|be gone|not be here)"),
+        (CAT_SELF_HARM, r"(going to|gonna|about to) (overdose|kill myself|end (it|it all|my life))"),
+        (CAT_SELF_HARM, r"(this is|sending) my (last (message|goodbye)|final (message|goodbye))"),
         # harassment / abuse paraphrases
-        (CAT_HARASSMENT_ABUSE, r"(makes|made) me feel unsafe"),
+        (CAT_HARASSMENT_ABUSE, r"(makes|made|make) me feel unsafe"),
         (CAT_HARASSMENT_ABUSE, r"(won'?t|will not) (leave me alone|stop (texting|messaging|calling) me)"),
         (CAT_HARASSMENT_ABUSE, r"(touched|grabbed) me without (my )?(consent|permission)"),
-        # the violence sense of "hit me" — requires a human subject, so idioms don't trip it
-        (CAT_HARASSMENT_ABUSE, r"(he|she|they|my \w+|partner|husband|wife|boss|manager) (hit|hits|beat|beats|punched|punches|slapped|slaps) me"),
+        (CAT_HARASSMENT_ABUSE, r"being (abused|raped|molested|beaten|assaulted|hurt|harassed)"),
+        # the violence sense — a RELATIONSHIP subject (not any "my <word>", which over-trips on
+        # "my alarm hit me") + a violence verb + me. This is the recall the bare lexicon can't
+        # carry without idiom false-positives.
+        (CAT_HARASSMENT_ABUSE,
+         r"(he|she|they|my (partner|husband|wife|ex|boyfriend|girlfriend|dad|father|stepdad|"
+         r"stepfather|mom|mum|mother|stepmother|parent|brother|sister|sibling|uncle|aunt|"
+         r"boss|manager|coworker|co-worker|colleague|roommate|landlord|teacher|coach)) "
+         r"(hit|hits|beat|beats|punched|punches|slapped|slaps|choked|chokes|"
+         r"raped|rapes|molested|molests|hurt|hurts|forced|forces|threatened|threatens) me"),
     )
 )
 
