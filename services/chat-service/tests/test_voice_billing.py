@@ -106,10 +106,25 @@ async def test_billing_logged_with_real_tokens(_patch_pipeline):
     billing.log_usage = AsyncMock()
     await _run_voice(billing)
     await asyncio.sleep(0)  # let the fire-and-forget create_task run
-    billing.log_usage.assert_awaited_once()
-    kwargs = billing.log_usage.await_args.kwargs
-    assert kwargs["input_tokens"] == 42
-    assert kwargs["output_tokens"] == 17
+    # the LLM (chat-purpose) usage carries the real tokens
+    calls = [c.kwargs for c in billing.log_usage.await_args_list]
+    llm = next(c for c in calls if c.get("purpose", "chat") == "chat")
+    assert llm["input_tokens"] == 42 and llm["output_tokens"] == 17
+
+
+@pytest.mark.asyncio
+async def test_wsb_stt_usage_is_plumbed_not_discarded(_patch_pipeline):
+    # WS-4.2b — a distinct 'voice_stt' usage record is logged with the audio metering (0
+    # token cost, so no faked token-priced charge). TTS is stubbed to no audio here → no
+    # tts record; the STT record is the plumbing proof.
+    billing = MagicMock()
+    billing.log_usage = AsyncMock()
+    await _run_voice(billing)
+    await asyncio.sleep(0)
+    calls = [c.kwargs for c in billing.log_usage.await_args_list]
+    stt = next(c for c in calls if c.get("purpose") == "voice_stt")
+    assert stt["input_tokens"] == 0 and stt["output_tokens"] == 0  # no faked token cost
+    assert "audio_seconds" in stt["input_payload"]
 
 
 # ── WS-4.1 — a voice turn WIRES canon capture (the real thing, not the WS-4.5 stopgap):

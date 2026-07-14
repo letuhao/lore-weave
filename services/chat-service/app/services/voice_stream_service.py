@@ -402,6 +402,7 @@ async def voice_stream_response(
     # `_stream_via_gateway`; voice used to DISCARD it and bill 0/0. Capture it so
     # both the DB row AND the SSE `finish-message` the FE reads carry real tokens.
     last_usage = None
+    tts_chars = 0  # WS-4.2b — TTS is metered by CHARACTERS spoken (not tokens)
     sentence_index = 0
     skipped_count = 0
     # Collect audio segments during streaming — upload AFTER assistant message is saved (FK requirement)
@@ -462,6 +463,7 @@ async def voice_stream_response(
                     # Collect audio for upload after message is saved (FK constraint)
                     if audio_chunks:
                         pending_segments.append((sentence_index, speakable, b"".join(audio_chunks)))
+                        tts_chars += len(speakable)  # WS-4.2b — meter TTS by chars spoken
 
                     sentence_index += 1
 
@@ -483,6 +485,7 @@ async def voice_stream_response(
 
                 if audio_chunks:
                     pending_segments.append((sentence_index, speakable, b"".join(audio_chunks)))
+                    tts_chars += len(speakable)  # WS-4.2b — meter TTS by chars spoken
                 sentence_index += 1
             else:
                 skipped_count += 1
@@ -592,6 +595,28 @@ async def voice_stream_response(
                 output_payload={"content": final_text},
             )
         )
+
+        # WS-4.2b — STT + TTS usage plumbing. These were previously DISCARDED (the day was
+        # metered by the LLM half only). Record them under distinct lanes with their real
+        # metering unit (STT = audio-seconds, TTS = characters) in the payload; token fields
+        # stay 0 so a token-priced cost is NOT faked — precise per-minute/per-char pricing is
+        # the billing cost-model follow-on. This makes the STT/TTS usage VISIBLE + auditable.
+        _stt_seconds = round((speech_duration_ms or 0) / 1000, 2) or round(audio_size_kb / 16, 2)
+        asyncio.create_task(billing.log_usage(
+            user_id=user_id, model_source=stt_model_source, model_ref=stt_model_ref,
+            provider_kind=creds.provider_kind, input_tokens=0, output_tokens=0,
+            session_id=session_id, message_id=msg_id, purpose="voice_stt",
+            input_payload={"audio_seconds": _stt_seconds, "audio_kb": audio_size_kb},
+            output_payload={"transcript_chars": len(transcript)},
+        ))
+        if tts_chars > 0 and tts_model_ref:
+            asyncio.create_task(billing.log_usage(
+                user_id=user_id, model_source=tts_model_source, model_ref=tts_model_ref,
+                provider_kind=creds.provider_kind, input_tokens=0, output_tokens=0,
+                session_id=session_id, message_id=msg_id, purpose="voice_tts",
+                input_payload={"tts_characters": tts_chars, "tts_voice": tts_voice},
+                output_payload={"sentences": sentence_index},
+            ))
 
         # Voice analytics event (background)
         asyncio.create_task(emit_voice_turn(
