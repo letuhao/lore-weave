@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/scheduler-service/internal/api"
 	"github.com/loreweave/scheduler-service/internal/config"
 	"github.com/loreweave/scheduler-service/internal/migrate"
 	"github.com/loreweave/scheduler-service/internal/scheduler"
@@ -55,16 +56,12 @@ func main() {
 	go driver.Run(ctx, cfg.TickInterval)
 	slog.Info("scheduler-service started", "tick", cfg.TickInterval.String(), "consumer", cfg.ConsumerName)
 
-	// Minimal health listener (liveness/readiness only — the scheduler has no request API).
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		if err := pool.Ping(r.Context()); err != nil {
-			http.Error(w, "db down", http.StatusServiceUnavailable)
-			return
-		}
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
-	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	// Internal HTTP surface: health + the opt-in schedule-upsert (WS-3.2, X-Internal-Token).
+	srv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           api.NewServer(pool, cfg.InternalToken).Router(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("http", "error", err)
