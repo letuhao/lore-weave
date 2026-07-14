@@ -44,7 +44,7 @@
 | Slice | Status | Evidence / note |
 |---|---|---|
 | **WS-3.0** server-side distill-context resolution (book+BYOK-model+tz+lang) | ✅ **DONE (b37a15ba7)** — chat trigger resolves book/model/tz server-side when omitted (posts only {user_id}); provider-registry `distill` capability (chat-validated, DBT-15); 422 when unresolvable. 2 new + 8 existing chat tests + provider default-models green. |
-| **WS-3.1** Go `scheduler-service` (table+lease+scaffold) | ⬜ | re-impl mirroring usage-billing sweeper.go; language-rule.yaml row + own DB + compose |
+| **WS-3.1** Go `scheduler-service` (table+lease+scaffold) | ✅ **DONE (fcb84ae30)** — new Go service: `scheduled_agent_runs` + tick driver (SKIP-LOCKED lease/claim, re-arm, breaker; re-impl of the sweeper shape) + HTTPEnqueuer→chat trigger + full scaffold (go.mod, Dockerfile, language-rule row [lint PASS], compose :8213, own DB). 3 driver DB tests green; build+vet clean. **Opt-in WRITE path (row-on-toggle) → WS-3.2.** |
 | **WS-3.2** auto-EOD via the HTTP trigger | ⬜ | not a raw XADD |
 | **WS-3.3** catch-up sweep (spend-capped) · **WS-3.4** away marker (nudge exclusion only) · **WS-3.6** content-free nudges · **WS-3.7** costed weekly rollup | ⬜ | |
 | ~~WS-3.5 / WS-3.8~~ | ⏸ DEFERRED | proactive seam — no v1 consumer under the pull-only seal |
@@ -86,6 +86,7 @@ SD-1..7 + P3-D1..6 + P4-D1..6 + P5-D1..12 — all in [`2026-07-15-phase-345-clea
 - **PRE-P3 review H1 (caught by /review-impl):** I guarded PP-4 (`ek.code<>'colleague'`) only on the DETERMINISTIC wiki-stub query and missed the LLM DELEGATE path (`resolveWikiGenEntities` + explicit-Regenerate) — the actual AI-biography path, PP-4's stated cross-book target. The diary was still safe (PP-3 blocks both), but the cross-book colleague leak survived on the worse path. Fixed + added `TestWikiGenDelegate_ExcludesColleague_PP4`. **Same shape as the repo's recurring lesson: I guarded the path in front of me and missed the adjacent one; the cold review caught it.**
 - **PRE-P3 review H2 (caught by /review-impl):** PP-5 sits on a path diary facts don't traverse (the real guard is `queue_diary_facts`). Not a leak (fails safe) — re-documented honestly as defense-in-depth rather than let it read as THE guard.
 - **My "live one-click hole" framing was overstated** (planning) — EGRESS GUARD #3 already blocked the PATCH; corrected in clean-seal §2 before build.
+- **WS-3.1 recordSuccess pgx type bug (caught by the driver DB test):** `$2` used both directly and in `$2 + interval` → "inconsistent types deduced for parameter" (SQLSTATE 42P08); the re-arm silently failed and next_fire_at didn't advance. Fixed with `$2::timestamptz`. **The DB test caught it — a mock would not have (the type inference only fires against real Postgres).**
 
 ## 7 · Debt carried in (relevant to this build)
 - **DBT-15** distiller uses the session model — a reasoning model silently empties the diary. Q8 dedicated non-reasoning distill model resolves this; WS-3.0 is its natural home.
