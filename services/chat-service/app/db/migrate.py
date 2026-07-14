@@ -597,6 +597,24 @@ VALUES
    '{"goal":"Assess senior system-design skill: requirements, architecture, scaling, and trade-offs","phases":["requirements","high_level","deep_dive","wrap"],"checklist":["clarifies functional and scale requirements","proposes a clear high-level architecture","reasons about a data store and partitioning","discusses bottlenecks and failure modes"],"time_budget_min":50,"language":"en"}'::jsonb,
    '{"dimensions":["requirements","architecture","scalability","trade-off reasoning"]}'::jsonb)
 ON CONFLICT (code) WHERE owner_user_id IS NULL DO NOTHING;
+
+-- WS-5.1 (spec 08 §A1) — reflection_notes: the user's OWN end-of-day notes (what went well /
+-- what to improve). This is the reflection substrate the recurring-theme + co-occurrence
+-- detectors read (verified zero home repo-wide before this). PER-USER tier (User Boundaries):
+-- owner_user_id scopes every row; UNIQUE(owner,entry_date) makes end-of-day capture an UPSERT
+-- (one note per user per local day). Nothing here is canon — it is the user's private reflection.
+CREATE TABLE IF NOT EXISTS reflection_notes (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id  UUID NOT NULL,
+  entry_date     DATE NOT NULL,
+  went_well      TEXT,
+  to_improve     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (owner_user_id, entry_date)
+);
+CREATE INDEX IF NOT EXISTS idx_reflection_notes_owner_date
+  ON reflection_notes (owner_user_id, entry_date);
 """
 
 

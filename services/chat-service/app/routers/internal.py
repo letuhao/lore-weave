@@ -112,6 +112,60 @@ async def get_turn_text(message_id: UUID, db: asyncpg.Pool = Depends(get_db)) ->
     return {"found": True, "text": "\n\n".join(parts)}
 
 
+# ── WS-5.1 — reflection_notes (the reflection substrate) ─────────────────────
+class ReflectionNoteUpsert(BaseModel):
+    """End-of-day reflection capture (spec 08 §A1). owner_user_id is in the body —
+    the caller (assistant/distiller) already authenticated the user; X-Internal-Token
+    gates the boundary. One note per user per local day (UPSERT on entry_date)."""
+
+    owner_user_id: UUID
+    entry_date: date
+    went_well: str | None = None
+    to_improve: str | None = None
+
+
+@router.put("/assistant/reflection-note", dependencies=[Depends(require_internal_token)])
+async def upsert_reflection_note(body: ReflectionNoteUpsert, db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """Upsert one day's reflection note (PER-USER tier). Idempotent on (owner, entry_date):
+    re-capturing the same day REPLACES the note, never duplicates it."""
+    row = await db.fetchrow(
+        """
+        INSERT INTO reflection_notes (owner_user_id, entry_date, went_well, to_improve)
+        VALUES ($1,$2,$3,$4)
+        ON CONFLICT (owner_user_id, entry_date) DO UPDATE
+          SET went_well = EXCLUDED.went_well,
+              to_improve = EXCLUDED.to_improve,
+              updated_at = now()
+        RETURNING id
+        """,
+        str(body.owner_user_id), body.entry_date, body.went_well, body.to_improve,
+    )
+    return {"id": str(row["id"]), "entry_date": body.entry_date.isoformat()}
+
+
+@router.get("/assistant/reflection-notes", dependencies=[Depends(require_internal_token)])
+async def list_reflection_notes(
+    user_id: UUID = Query(...),
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """List a user's reflection notes in [date_from, date_to] (owner-scoped) — the
+    co-occurrence + recurring-theme detectors' substrate (worker-ai reflection_job)."""
+    rows = await db.fetch(
+        """
+        SELECT entry_date, went_well, to_improve FROM reflection_notes
+        WHERE owner_user_id=$1 AND entry_date BETWEEN $2 AND $3
+        ORDER BY entry_date ASC
+        """,
+        str(user_id), date_from, date_to,
+    )
+    return {"notes": [
+        {"entry_date": r["entry_date"].isoformat(), "went_well": r["went_well"], "to_improve": r["to_improve"]}
+        for r in rows
+    ]}
+
+
 # WS-1.8 (spec 06 §Q10) — the distiller's day-window read. The map-reduce worker has no user
 # JWT, so it fetches a day's assistant conversation over the internal-token trust boundary. Two
 # safety properties are enforced HERE, server-side, not left to the caller:
