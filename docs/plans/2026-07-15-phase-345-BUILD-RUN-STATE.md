@@ -43,7 +43,7 @@
 ### P3 · Scheduler + proactive (see the phase-3 plan; opens sealed)
 | Slice | Status | Evidence / note |
 |---|---|---|
-| **WS-3.0** server-side distill-context resolution (book+BYOK-model+tz+lang) | ⬜ | 🆕 prereq; the real "Q8 follow-up" |
+| **WS-3.0** server-side distill-context resolution (book+BYOK-model+tz+lang) | ✅ **DONE (b37a15ba7)** — chat trigger resolves book/model/tz server-side when omitted (posts only {user_id}); provider-registry `distill` capability (chat-validated, DBT-15); 422 when unresolvable. 2 new + 8 existing chat tests + provider default-models green. |
 | **WS-3.1** Go `scheduler-service` (table+lease+scaffold) | ⬜ | re-impl mirroring usage-billing sweeper.go; language-rule.yaml row + own DB + compose |
 | **WS-3.2** auto-EOD via the HTTP trigger | ⬜ | not a raw XADD |
 | **WS-3.3** catch-up sweep (spend-capped) · **WS-3.4** away marker (nudge exclusion only) · **WS-3.6** content-free nudges · **WS-3.7** costed weekly rollup | ⬜ | |
@@ -65,7 +65,17 @@
 | **Scorer** WS-5.20-23 quarantine-tier + WS-5.24 longitudinal | ⬜ | ships quarantine-tier, permanently until human eval |
 
 ## 4 · Decision register (sealed — do not override without the human)
-SD-1..7 + P3-D1..6 + P4-D1..6 + P5-D1..12 — all in [`2026-07-15-phase-345-clean-seal.md`](2026-07-15-phase-345-clean-seal.md) §3/§7. Ordinary build-time calls get appended here as they're made.
+SD-1..7 + P3-D1..6 + P4-D1..6 + P5-D1..12 — all in [`2026-07-15-phase-345-clean-seal.md`](2026-07-15-phase-345-clean-seal.md) §3/§7. Ordinary build-time calls appended here:
+
+- **D-B1 (WS-3.0 design, sealed 2026-07-15):** the headless distill-context resolution lives IN the chat
+  trigger `POST /internal/chat/assistant/distill` — its `book_id`/`model_source`/`model_ref`/`entry_zone`
+  become OPTIONAL and resolve SERVER-SIDE when omitted, so the scheduler (WS-3.2) POSTs only `{user_id}`.
+  Substrate (all EXISTS): book_id ← book-service `GET /internal/books/diary?user_id=`; model ← provider-
+  registry `GET /internal/default-models/{capability}?user_id=` trying **`distill` then falling back to
+  `chat`** (a NEW `distill` capability added to `defaultModelCapabilities`, validated against `chat` like
+  `planner` — lets a user pin a dedicated NON-reasoning distill model per DBT-15/Q8, else inherits chat);
+  entry_zone ← auth `/internal` profile `timezone` (DBT-11, fd4702818), default UTC; language default 'en'.
+  A user with NO resolvable model → 422 (the scheduler logs + skips that user's tick; never a silent no-op).
 
 ## 5 · Parked (blocked ≠ stopped)
 - **P-12** (diary encryption + backup-resistant crypto-shred) — human-owned separate goal (D-R24). Orthogonal.
