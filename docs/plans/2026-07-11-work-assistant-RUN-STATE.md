@@ -214,6 +214,24 @@ WS-1.x slice that finishes it. The gate is **honestly PARTIAL**, matching the ho
 | **D-R28** ✅ human-decided (2026-07-13, Phase-3 prep) | **The Phase-3 scheduler (tick driver) lives in a NEW `scheduler-service` (Go), NOT a loop inside worker-ai.** One clean home for the platform clock; keeps worker-ai a pure executor. It ENQUEUES onto the existing consumers (e.g. `assistant.distill`), never executes. | Human chose the dedicated service over the worker-ai loop. Language rule: a scheduler is meta/domain infra ⇒ Go. Recorded now so Phase-3 planning starts from it. | Yes (new service + `scheduled_agent_runs` table) — when Phase 3 builds |
 | **D-R29** ✅ human-decided (2026-07-13, Phase-3 prep) | **Auto end-of-day distill defaults OFF (opt-in).** The user turns on automation; a per-user server-side setting (SET-*), fail-closed. Revisit after the reflection ships. | Human chose fail-closed/opt-in over on-by-default. Consistent with the consent-opt-in posture. | Yes (a per-user `enabled` flag on the schedule) — when Phase 3 builds |
 
+| **D-R30** ✅ human-decided (2026-07-13, WS-2.6) | **"Correct a memory" RE-DISTILLS the corrected transcript** (leg 1 amend → leg 2 re-distill/re-index → leg 3 reconcile), NOT a no-LLM in-place fact edit. | Human chose re-distill over in-place. The correction edits the SSOT source and re-runs the distiller so the derived facts + entry regenerate consistently; leg 3 invalidates the superseded facts. | Yes |
+| **D-R31** ✅ human-decided (2026-07-13, WS-2.6c/2.10d) | **Build the cross-store cascade as ONE SCOPED-ERASURE PRIMITIVE now (scope = entity \| epoch \| account); forget-person + epoch export-then-purge call it; P-12's account-erasure LATER reuses it.** | Human chose "build the cascade primitive now, reused by P-12" over folding it into P-12. Build-once: one tested fan-out (glossary + KG entity/facts/evidence/passages/embeddings + pending + diary-span redaction) parameterized by scope — avoids three cascades + the incomplete-cascade hole. | Yes |
+| **D-R32** ✅ human-decided (2026-07-13, scope) | **Build EVERYTHING of WS-2.6 (all 4 verbs incl. forget-person cascade + diary-span redaction) + WS-2.10 (epoch incl. export-then-purge) this run, "however long it takes."** | Human authorized the full build. Long autonomous run: RUN-STATE anchors it across compaction; commit each slice; re-read this file first on resume. | Yes |
+
+### WS-2.6 / WS-2.10 SLICE BOARD (the current build — D-R30/31/32) — RESUME HERE
+`⬜ todo · 🔵 wip · ✅ done (evidence) · 🅿️ parked`
+| Slice | Status | Evidence / note |
+|---|---|---|
+| **WS-2.6a** correct-a-memory: leg1 amend diary entry (new revision, preserve kept) → leg2 re-distill/re-index → leg3 invalidate superseded fact. no-resurrection proof. | ⬜ | book amend endpoint + re-distill trigger + reconcile; DB test the entry revision + a rebuild doesn't resurrect |
+| **WS-2.6b** supersede-a-fact (rides 2.6a leg3; recall says "it changed" per spec07 Q5) | ⬜ | temporal read already reads valid_until |
+| **WS-2.6d** merge-a-renamed-entity (reuse glossary merge_candidate + KG DETACH/re-point) | ⬜ | |
+| **WS-2.6c** forget-a-person = the SCOPED-ERASURE PRIMITIVE @ scope=entity + diary-span redaction + `entity.forgotten` event | ⬜ | the big cascade (D-R31); glossary+KG+facts+evidence+passages+embeddings+pending+redact |
+| **WS-2.10a** epoch model + close-epoch (valid_until on current-epoch facts) | ⬜ | |
+| **WS-2.10b** fresh project + diary volume on job change | ⬜ | mirrors WS-1.4 provisioning, epoch-scoped |
+| **WS-2.10c** recall defaults to current epoch (epoch predicate on the temporal read + D16 exclusion) | ⬜ | |
+| **WS-2.10d** export-then-purge = the SCOPED-ERASURE PRIMITIVE @ scope=epoch (D-R31) | ⬜ | export old epoch → purge via the shared primitive |
+| **/review-impl** per major slice + final | ⬜ | |
+
 **BACKBONE STATUS (build-order A-track) — RESUME HERE:**
 - **A1 ✅ code+unit** (162b2e2ec) — worker-ai `DistillConsumer` (`assistant.distill` stream, 5 tests) + chat `enqueue_distill` + `POST /internal/chat/assistant/distill` (4 tests). 33 worker-ai + 16 chat-router green.
 - **A2 ✅ code+DB-test** (b22d8741d) — the work-capture CONSENT toggle: `ProjectsRepo.set_canon_capture_consent` (owner-scoped) + `PUT /v1/knowledge/projects/{id}/capture-consent` (OWNER grant). Fail-closed default (D-R17); consumed by the chat gate via `project_enables` (E8). 2 real-DB tests (toggle-by-effect · owner-scoped).
