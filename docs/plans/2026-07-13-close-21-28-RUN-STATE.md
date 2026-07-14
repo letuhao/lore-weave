@@ -67,42 +67,42 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 ### PHASE 2b — the 5 REAL orphans (§6.4) — O-1/O-3/O-11 🅿️ D-DEFER · O-2 🅿️ P-CONC
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| O-1 | Ground the PlanForge proposer (LLM: digest · rules: pre-flight) — by EFFECT | [ ] | |
-| O-3 | BA11's 5 arc-template CRUD MCP tools (+ fix the misquote at server.py:4546) | [ ] | |
-| O-11 | The what-if branch preview producer (+ fix wave-6's false parity row) | [ ] | |
-| O-2 | The arc decompiler (26-D3/IX-17) — depends on Work-less lane from Phase 0 | [ ] | |
+| O-1 | Ground the PlanForge proposer (LLM: digest · rules: pre-flight) — by EFFECT | 🅿️ | §6 D-DEFER — composition-only, build-ready |
+| O-3 | BA11's 5 arc-template CRUD MCP tools (+ fix the misquote at server.py:4546) | 🅿️ | §6 D-DEFER — composition-only, build-ready |
+| O-11 | The what-if branch preview producer (+ fix wave-6's false parity row) | 🅿️ | §6 D-DEFER — FE/composition; touches wave-6 parity (spec 36 = other session) |
+| O-2 | The arc decompiler (26-D3/IX-17) — depends on Work-less lane from Phase 0 | 🅿️ | §7 P-CONC — glossary contended |
 
 ### PHASE 3 — live BROWSER smoke (`24`-H8.2) — also closes `26`-F2
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| H8.2 | Playwright: open plan-hub → drag chapter → DB structure_node_id changed → badge updates | [ ] | |
-| H8.1 | 10k-chapter fixture + cold-open budget + EXPLAIN keyset proof | [ ] | |
-| F2 | 26's Hub leg: edit→publish→dirty:prose_drift→conformance clears it, in the browser | [ ] | |
+| H8.2 | Playwright: open plan-hub → drag chapter → DB structure_node_id changed → badge updates | 🅿️ | §7 P-P34 — book-service contended |
+| H8.1 | 10k-chapter fixture + cold-open budget + EXPLAIN keyset proof | 🅿️ | §7 P-P34 |
+| F2 | 26's Hub leg: edit→publish→dirty:prose_drift→conformance clears it, in the browser | 🅿️ | §7 P-CONC/P-P34 — book-service + browser |
 
 ### PHASE 4 — S06 flagship replay (ship gate of 23/27/28) — 🅿️ P-B1 (chat-service live)
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| S06 | IN-CONTAINER replay (depends on B1) → 23-D7 · 27-H4 · 28-D3 | [ ] | |
-| EV | 27's eval report → `docs/eval/plan-forge/` (regression floor + 5 v2 grounding metrics) | [ ] | |
+| S06 | IN-CONTAINER replay (depends on B1) → 23-D7 · 27-H4 · 28-D3 | 🅿️ | §7 P-B1 — chat-service live |
+| EV | 27's eval report → `docs/eval/plan-forge/` (regression floor + 5 v2 grounding metrics) | 🅿️ | §7 P-B1 — pairs with the S06 run |
 
 ### PHASE 5 — `22`'s remaining DoD — D5 🅿️ D-DEFER · D3/F3 🅿️ P-CONC (book-service)
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| D5 | Anchor-direction: no `outline_node.scene_id`; deleting a scene leaves spec intact | [ ] | |
-| D4 | Tenancy: collaborator B sees shared spec, no per-user fork (fold into T3) | [ ] | |
-| D3 | Committed E2E: import→scenes→decompile→backlink→tension=80→adaptive_k high-tension | [ ] | |
-| F3 | 26-F3: one-word edit preserves every back-link; re-import never clobbers authored | [ ] | |
+| D5 | Anchor-direction: no `outline_node.scene_id`; deleting a scene leaves spec intact | 🅿️ | §6 D-DEFER — composition-only, build-ready |
+| D4 | Tenancy: collaborator B sees shared spec, no per-user fork (fold into T3) | 🅿️ | folds into T3 (§6 D-DEFER) |
+| D3 | Committed E2E: import→scenes→decompile→backlink→tension=80→adaptive_k high-tension | 🅿️ | §7 P-CONC — book-service E2E |
+| F3 | 26-F3: one-word edit preserves every back-link; re-import never clobbers authored | 🅿️ | §7 P-CONC — book-service |
 
-### PHASE 6 — close-out — C0/C1/C2/C3/C4 🅿️ D-DEFER · (final audit at run end)
+### PHASE 6 — close-out — C0 🅿️ D-C0 (Wave-6/spec-36) · C1–C6 🅿️ D-DEFER
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| C0 | Land `legacyParityContract.test.ts` as a REAL file — 25/25 → panel id or retirement reason | [ ] | |
-| C1 | Re-homing amendment (incl. §6.4 orphans, by name) | [ ] | |
-| C2 | Disposition all 12 orphans (owner + next action) | [ ] | |
-| C3 | Resolve the `resource_ref` name collision in 28 AN-12.1a | [ ] | |
-| C4 | Doc fixes: PH9 C5 stale claim · IX-3 sweeper-predicate · PH2 reactflow · RUN-STATE false rows | [ ] | |
-| C5 | 00B §7 status stamps + SESSION_HANDOFF; cleared defers → "Recently cleared" | [ ] | |
-| C6 | Final audit (decisions · drift · debt · parked · completeness) | [ ] | |
+| C0 | Land `legacyParityContract.test.ts` as a REAL file — 25/25 → panel id or retirement reason | 🅿️ | **§6 D-C0** — this test is a **Wave-6 / spec-36 artifact** (§6.4a cites it as *36's*), so landing it is the other session's 30–38 build, which the goal forbids me to touch. Its 25/25 mapping already exists (correctly) inside `wave-6-editor-craft.md`; it needs LANDING as a file, by them. Flagged so it is not lost. |
+| C1 | Re-homing amendment (incl. §6.4 orphans, by name) | 🅿️ | §6 D-DEFER — close-out, meaningful only after the build phases |
+| C2 | Disposition all 12 orphans (owner + next action) | 🅿️ | **DONE in the plan** (§6.4 table: 5 build / 5 homed / 1 v2 / 2 retire) — the *committing* of it is close-out (D-DEFER) |
+| C3 | Resolve the `resource_ref` name collision in 28 AN-12.1a | 🅿️ | §6 D-DEFER — must land before Wave 2 (other session); touches spec 28 |
+| C4 | Doc fixes: PH9 C5 stale claim · IX-3 sweeper-predicate · PH2 reactflow · RUN-STATE false rows | 🅿️ | §6 D-DEFER — low-value close-out doc edits, batch at run end |
+| C5 | 00B §7 status stamps + SESSION_HANDOFF; cleared defers → "Recently cleared" | 🅿️ | §6 D-DEFER — close-out; SESSION_HANDOFF also contended by the other session |
+| C6 | Final audit (decisions · drift · debt · parked · completeness) | 🅿️ | §6 D-DEFER — §10 ledger IS the interim audit; final audit at run close |
 
 ---
 
@@ -115,6 +115,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 | D-CL-04 | **BE-7c FE poll fix = repoint FE (option B), NOT owner-scope the generic `/jobs/{id}` (option A).** The Wave-0 session made `/jobs/{id}` deliberately 404 unbound jobs (`engine.py:1444`, "Its route is /motif-jobs/{id}") — a sealed design choice. Honor it; repoint the one live unbound leg (`mineConfirm`), leave getJob's Work-gate intact for collaborator VIEW grants. | Don't fight their sealed design; keep one route = one gate mode. | Yes |
 | D-B3 | **The arc-lift assertion HARD-FAILS boot** (not a warning), but run_migrations **auto-lifts a CLEAN DB** first so fresh/test DBs are born consistent. The risky data-lift (legacy DBs with real arc rows) stays operator-invoked; the assertion catches only "post-lift code deployed onto a legacy pre-Deploy-2 DB." | Q2 sealed "fail loud"; the auto-lift resolves the fresh-DB/test-DB breakage without touching legacy data. | Yes |
 | D-B4 | ⚠ **PO-DECIDE — C5 ungated /generate spend: DEFER, don't bolt a confirm onto a retiring surface.** Reachable only from the legacy editor (not the studio's chat-based compose); streaming cowrite can't take a per-call confirm; the surface is Wave-6-retiring; the real fix (spend budget/opt-in + discrete-generate confirm) is the compose-path wave (W3-3c, tracked). Chose the reversible option (defer) over negative work. | A confirm on streaming cowrite is wrong UX; a confirm on a dying surface is O-12-class negative work. | Yes — the compose-path wave lands the real gate |
+| D-C0 | ⚠ **PO-DECIDE — do NOT land `legacyParityContract.test.ts` myself; it is a Wave-6 / spec-36 (other-session) artifact.** §6.4a of the plan cites it as *"36's legacyParityContract.test.ts"* and it lives as a code block inside `wave-6-editor-craft.md`. Landing it is part of the 30–38 wave build the goal forbids me to touch. Its 25/25 mapping is already correct in that doc; it needs LANDING as a real file, **by the session that owns Wave 6.** I flag it (and its two known defects — the ellipsis + the `flywheel→quality-corrections` mismap, §6.4a) so it is not lost. | Building another session's Wave-6 gate would be the exact scope-cross the goal reserves for them; and it needs their 25-row disposition, which they own. | Yes — they land it; I flagged the defects |
 | D-DEFER | ⚠ **PO-DECIDE — defer the UNBLOCKED lower-urgency composition slices (T3, T5, O-1, O-3, C0) to the continuous run once concurrency clears, rather than grind them piecemeal now.** Reasoning: (1) the critical-path DoD (**S06**, pillars 23/27/28) is externally BLOCKED (P-B1), so the goal **cannot close** regardless of how much of the rest I do now; (2) the PO gave an explicit strong token-budget directive + *"if blocked, pause, come back later"*; (3) the high-value fixes that caught **active shipped bugs** are DONE (B2 tenancy, BE-7c half-fix, B3) — the deferred slices are guard-tests + orphan-builds that catch no active bug; (4) the checkout is hot (the other session is committing every few minutes across 4 services), so even composition-only work carries rising integration cost. **This is a conscious defer (gate #5), not "blocked."** They are BUILD-READY and run continuously once P-B1/P-CONC clear. | Best ROI under a token budget + a blocked critical path: don't spend heavily on low-marginal-value guards for a goal that can't complete this session. | Yes — trivially resumed; the PO can override and say "grind them now." |
 
 ## 7. Parked / blocked
