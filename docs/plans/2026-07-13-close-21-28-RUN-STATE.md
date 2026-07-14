@@ -56,15 +56,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 | B3 | `arc_lift` startup fail-loud assertion (Q2 sealed) | [x] | `9a9ec24e8` · auto-lift clean DBs + `_assert_lift_applied` fails loud on rekey-without-lift. **LIVE**: fresh throwaway DB → born LIFTED (`kind IN ('chapter','scene')`, both markers, no trip); throwaway dropped (0 left). Unit tests pin both marker states. |
 | B4 | C5 — is `POST /works/{pid}/generate` ungated-spend reachable? | [x] | **Investigated → DEFER + ⚠ PO-DECIDE (§6 D-B4).** Reachable ONLY from the legacy editor (`App.tsx:134` route), NOT the studio (`ComposePanel` is chat-only — imports `@/features/chat/Chat`, no `/generate`). Streaming cowrite/ghost can't take a per-call confirm (UX); the surface is Wave-6-retiring; the correct gate (per-work spend budget / opt-in + discrete-generate confirm) is the compose-path wave, tracked as W3-3c / D-COMPOSE-GENERATE-UNGATED (PO decision sheet). ⚠ **NOT proven fail-closed at a guardrail** — stated honestly, not claimed. |
 
-### PHASE 2 — the missing test batteries (`25` T3/T4/T5/T6)
+### PHASE 2 — the missing test batteries (`25` T3/T4/T5/T6) — T4 ✅ · T3/T5 🅿️ D-DEFER · T6 🅿️ P-CONC
 | # | Slice | Status | Evidence |
 |---|---|---|---|
-| T4 | Derivative-separation — book-scoped read returns CANONICAL Work (RED on today's resolve_scope, GREEN after B2) | [ ] | |
-| T3 | Grantee-widening — incl. F5 zero-pending-forks regression (PM-9's untested claim) | [ ] | |
-| T5 | Spend attribution by effect on the usage row | [ ] | |
-| T6 | The re-key cross-service live smoke (O-4) | [ ] | |
+| T4 | Derivative-separation — book-scoped read returns CANONICAL Work (RED on today's resolve_scope, GREEN after B2) | [x] | `9a9ec24e8` · done WITH B2 (test_25_t4_derivative_separation.py, 3 pass; RED on marked[0]) |
+| T3 | Grantee-widening — incl. F5 zero-pending-forks regression (PM-9's untested claim) | 🅿️ | **→ §6 D-DEFER** — composition-only, build-ready; deferred to the continuous run (token budget + blocked critical path) |
+| T5 | Spend attribution by effect on the usage row | 🅿️ | **→ §6 D-DEFER** (composition half) + **§7 P-CONC** (the usage-row live smoke is cross-service into contended usage-billing). Seam already correct: `job_consumer.py:233-235` attributes to `job.created_by`, not the message field. |
+| T6 | The re-key cross-service live smoke (O-4) | 🅿️ | **→ §7 P-CONC** — book-service contended |
 
-### PHASE 2b — the 5 REAL orphans (§6.4)
+### PHASE 2b — the 5 REAL orphans (§6.4) — O-1/O-3/O-11 🅿️ D-DEFER · O-2 🅿️ P-CONC
 | # | Slice | Status | Evidence |
 |---|---|---|---|
 | O-1 | Ground the PlanForge proposer (LLM: digest · rules: pre-flight) — by EFFECT | [ ] | |
@@ -79,13 +79,13 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 | H8.1 | 10k-chapter fixture + cold-open budget + EXPLAIN keyset proof | [ ] | |
 | F2 | 26's Hub leg: edit→publish→dirty:prose_drift→conformance clears it, in the browser | [ ] | |
 
-### PHASE 4 — S06 flagship replay (ship gate of 23/27/28)
+### PHASE 4 — S06 flagship replay (ship gate of 23/27/28) — 🅿️ P-B1 (chat-service live)
 | # | Slice | Status | Evidence |
 |---|---|---|---|
 | S06 | IN-CONTAINER replay (depends on B1) → 23-D7 · 27-H4 · 28-D3 | [ ] | |
 | EV | 27's eval report → `docs/eval/plan-forge/` (regression floor + 5 v2 grounding metrics) | [ ] | |
 
-### PHASE 5 — `22`'s remaining DoD
+### PHASE 5 — `22`'s remaining DoD — D5 🅿️ D-DEFER · D3/F3 🅿️ P-CONC (book-service)
 | # | Slice | Status | Evidence |
 |---|---|---|---|
 | D5 | Anchor-direction: no `outline_node.scene_id`; deleting a scene leaves spec intact | [ ] | |
@@ -93,7 +93,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 | D3 | Committed E2E: import→scenes→decompile→backlink→tension=80→adaptive_k high-tension | [ ] | |
 | F3 | 26-F3: one-word edit preserves every back-link; re-import never clobbers authored | [ ] | |
 
-### PHASE 6 — close-out
+### PHASE 6 — close-out — C0/C1/C2/C3/C4 🅿️ D-DEFER · (final audit at run end)
 | # | Slice | Status | Evidence |
 |---|---|---|---|
 | C0 | Land `legacyParityContract.test.ts` as a REAL file — 25/25 → panel id or retirement reason | [ ] | |
@@ -115,6 +115,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 | D-CL-04 | **BE-7c FE poll fix = repoint FE (option B), NOT owner-scope the generic `/jobs/{id}` (option A).** The Wave-0 session made `/jobs/{id}` deliberately 404 unbound jobs (`engine.py:1444`, "Its route is /motif-jobs/{id}") — a sealed design choice. Honor it; repoint the one live unbound leg (`mineConfirm`), leave getJob's Work-gate intact for collaborator VIEW grants. | Don't fight their sealed design; keep one route = one gate mode. | Yes |
 | D-B3 | **The arc-lift assertion HARD-FAILS boot** (not a warning), but run_migrations **auto-lifts a CLEAN DB** first so fresh/test DBs are born consistent. The risky data-lift (legacy DBs with real arc rows) stays operator-invoked; the assertion catches only "post-lift code deployed onto a legacy pre-Deploy-2 DB." | Q2 sealed "fail loud"; the auto-lift resolves the fresh-DB/test-DB breakage without touching legacy data. | Yes |
 | D-B4 | ⚠ **PO-DECIDE — C5 ungated /generate spend: DEFER, don't bolt a confirm onto a retiring surface.** Reachable only from the legacy editor (not the studio's chat-based compose); streaming cowrite can't take a per-call confirm; the surface is Wave-6-retiring; the real fix (spend budget/opt-in + discrete-generate confirm) is the compose-path wave (W3-3c, tracked). Chose the reversible option (defer) over negative work. | A confirm on streaming cowrite is wrong UX; a confirm on a dying surface is O-12-class negative work. | Yes — the compose-path wave lands the real gate |
+| D-DEFER | ⚠ **PO-DECIDE — defer the UNBLOCKED lower-urgency composition slices (T3, T5, O-1, O-3, C0) to the continuous run once concurrency clears, rather than grind them piecemeal now.** Reasoning: (1) the critical-path DoD (**S06**, pillars 23/27/28) is externally BLOCKED (P-B1), so the goal **cannot close** regardless of how much of the rest I do now; (2) the PO gave an explicit strong token-budget directive + *"if blocked, pause, come back later"*; (3) the high-value fixes that caught **active shipped bugs** are DONE (B2 tenancy, BE-7c half-fix, B3) — the deferred slices are guard-tests + orphan-builds that catch no active bug; (4) the checkout is hot (the other session is committing every few minutes across 4 services), so even composition-only work carries rising integration cost. **This is a conscious defer (gate #5), not "blocked."** They are BUILD-READY and run continuously once P-B1/P-CONC clear. | Best ROI under a token budget + a blocked critical path: don't spend heavily on low-marginal-value guards for a goal that can't complete this session. | Yes — trivially resumed; the PO can override and say "grind them now." |
 
 ## 7. Parked / blocked
 | # | Item | Why | Unblocks when |
@@ -137,5 +138,26 @@ cascade). DBT-06 (arc-inspector) → re-homed to spec 32 by C1.
 | DR-D | My orphan register went stale within hours — read 30–38 but not the concurrent wave-*.md; 5 of 12 already homed | the triage agent | §6.4-CORRECTION |
 | DR-E | **The other session is STILL LIVE despite being asked to stop.** It committed `90c3ba8cc` (chat-tests) between my `f7948d442` and `be4d72abf`. Nothing of mine was lost (linear history; add+commit-as-one-command held), but the plan's premise "chat-service is now unowned" is false. | The unexpected commit in `git log --oneline` after Phase 0 | **P-B1 park**; verify index-clean before EVERY commit (already the rule); surfaced to PO. |
 
-## 10. Completeness ledger (filled at the end)
-*(per-pillar: 21 · 22 · 23 · 24 · 25 · 26 · 27 · 28 → DoD test → evidence string)*
+## 10. Completeness ledger — state at the concurrency-forced checkpoint (2026-07-13)
+
+> This run reached a **terminal state under concurrency**: everything is `✅` or `🅿️`-with-reason.
+> The **critical-path DoD (S06 → pillars 23/27/28) is externally blocked** (chat-service live-owned),
+> so the goal cannot fully close this session. High-value fixes that caught **active shipped bugs**
+> are DONE; the remainder is build-ready and parked (§6 D-DEFER · §7 P-B1/P-CONC/P-P34).
+
+| Pillar | 00B §7 DoD | State this session |
+|---|---|---|
+| **21** | PH7/PH8 + G1/G2 | G1 adopted (`89629ced1`); G2=**O-1** 🅿️ D-DEFER; PH7=retire (O-12, §6.4); PH8 blocked on 28-AN-12 |
+| **22** | D3 · D4 · D5 | D5 🅿️ D-DEFER; D3/F3 🅿️ P-CONC (book-service E2E, contended); D4 folds into T3 🅿️ |
+| **23** | D2 pack-effect ✅ · **D7 S06** | D2 already shipped; **D7 (S06) 🅿️ P-B1** |
+| **24** | **H8.2 browser** · H8.1 | 🅿️ P-P34 (Playwright drives book-service, contended) |
+| **25** | T3 · **T4** · T5 · T6 | **T4 ✅** (`9a9ec24e8`, caught the real B2 bug); T3/T5 🅿️ D-DEFER; T6 🅿️ P-CONC |
+| **26** | F2 · F3 | 🅿️ P-CONC (both need the book-service Hub-leg smoke) |
+| **27** | **H4 S06** · eval | 🅿️ P-B1 (S06) / D-DEFER (eval report) |
+| **28** | **D3 S06** · AN-9/C2 · canonical predicate | **canonical predicate FIXED ✅** (`9a9ec24e8`, the DR-B tenancy bug); AN-9/C2 🅿️ P-B1 (chat-service); D3 (S06) 🅿️ P-B1 |
+
+**Net delivered this session:** Phase 0 adopt (5 commits, 2 review findings fixed incl. the BE-7c HIGH
+half-fix) · B2 canonical-Work tenancy fix + 25-T4 · B3 arc-lift fail-loud (live-proven) · B4
+investigated+deferred. **Two active shipped bugs killed** (BE-7c poll 404, resolve_scope tenancy).
+**Blocked from closing:** S06 (3 pillars) + every book/glossary/chat cross-service slice, by the live
+concurrent session. **Resume:** clear P-B1/P-CONC, then Phases 2→6 run continuously (all build-ready).
