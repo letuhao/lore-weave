@@ -1,7 +1,7 @@
 """WS-3.7 (spec 11 Q2) — the costed WEEKLY ROLLUP.
 
 A scheduled weekly summary DRAFT (never auto-canon): recall the week's CONFIRMED diary facts and
-reduce them into one readable weekly review, written as a `supplement` diary entry the user reviews.
+reduce them into one readable weekly review, written as a 'weekly' diary entry (get-or-replace, idempotent) the user reviews.
 Reuses the distiller's `reduce_entry` (facts → an entry draft) + `DistillFact` — the weekly rollup is
 "reduce over a week's facts" instead of "map a day + reduce". Spend-capped like the distiller (WS-2.8).
 """

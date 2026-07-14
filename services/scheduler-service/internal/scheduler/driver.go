@@ -129,7 +129,14 @@ LIMIT 100`, now)
 			if loc, err := time.LoadLocation(c.tz); err == nil && c.tz != "" {
 				localNow = now.In(loc)
 			}
-			if away, err := IsAway(ctx, d.pool, c.owner, localNow); err == nil && away {
+			// cold-review #5 — fail CLOSED: if the away-check errors we SUPPRESS the nudge (a
+			// best-effort reminder should not scold someone on holiday precisely when the DB is
+			// flaky). Only send when we affirmatively know they're NOT away.
+			away, err := IsAway(ctx, d.pool, c.owner, localNow)
+			if err != nil || away {
+				if err != nil {
+					slog.Warn("scheduler: away-check failed; suppressing nudge (fail-closed)", "id", c.id, "error", err)
+				}
 				d.recordSuccess(ctx, c.id, now) // re-arm, don't notify
 				continue
 			}
@@ -167,11 +174,14 @@ func (d *Driver) recordSuccess(ctx context.Context, id uuid.UUID, firedAt time.T
 		slog.Error("scheduler recordSuccess: compute next failed", "id", id, "error", err)
 		return
 	}
+	// cold-review #3 — guard on `locked_by = d.name`: under a degraded downstream a batch can
+	// outrun the 5-min lease, another replica re-claims the row, and this (now lease-less)
+	// driver must NOT overwrite the new holder's fresh lease + next_fire_at.
 	if _, err := d.pool.Exec(ctx, `
 UPDATE scheduled_agent_runs
 SET last_fired_at = $2, next_fire_at = $3,
     lease_until = NULL, locked_by = NULL, consecutive_failures = 0, paused_until = NULL, updated_at = now()
-WHERE id = $1`, id, firedAt, next); err != nil {
+WHERE id = $1 AND locked_by = $4`, id, firedAt, next, d.name); err != nil {
 		slog.Error("scheduler recordSuccess: update failed", "id", id, "error", err)
 	}
 }
@@ -184,7 +194,7 @@ SET consecutive_failures = consecutive_failures + 1,
     lease_until = NULL, locked_by = NULL,
     paused_until = CASE WHEN consecutive_failures + 1 >= %d THEN now() + interval '%d seconds' ELSE paused_until END,
     updated_at = now()
-WHERE id = $1`, d.maxFails, int(d.backoff.Seconds())), id)
+WHERE id = $1 AND locked_by = $2`, d.maxFails, int(d.backoff.Seconds())), id, d.name)
 	if err != nil {
 		slog.Error("scheduler recordFailure failed", "id", id, "error", err)
 	}

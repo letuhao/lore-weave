@@ -323,7 +323,18 @@ async def trigger_distill(body: DistillTrigger) -> dict:
 
     book_id, model_source, model_ref, entry_zone = await _resolve_distill_context(body)
 
-    entry_date = body.entry_date or datetime.now(timezone.utc).date()
+    # cold-review #2 — the "primary today" date must be the LOCAL day in entry_zone (the
+    # docstring's own contract), not UTC: for a negative-offset user a 21:00-local fire lands
+    # after UTC midnight, so a UTC `today` targets the wrong local day (empty) and salvages the
+    # real day only via catch-up. Resolve in the zone; fall back to UTC on a bad zone string.
+    if body.entry_date:
+        entry_date = body.entry_date
+    else:
+        try:
+            from zoneinfo import ZoneInfo
+            entry_date = datetime.now(ZoneInfo(entry_zone)).date()
+        except Exception:  # noqa: BLE001 — unknown/blank zone → UTC (never crash the tick)
+            entry_date = datetime.now(timezone.utc).date()
     # WS-3.3 — the day list to distill: today, plus (bounded) the previous N days for a catch-up.
     days = [entry_date]
     if body.catchup_days > 0:
