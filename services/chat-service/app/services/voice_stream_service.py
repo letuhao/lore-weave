@@ -521,16 +521,37 @@ async def voice_stream_response(
                 session_id,
             )
 
-        # WS-4.5 — the FE hides voice for assistant sessions (a voice turn doesn't fire
-        # canon capture yet — the WS-4.1 gap), but the endpoint is reachable directly.
-        # Record the SKIPPED-capture decision WITH a reason so the assistant home strip
-        # shows capture visibly OFF instead of silently dropping the spoken diary
-        # (silent success is a bug). Cleared when WS-4.1 wires capture into voice.
-        if (session_row.get("session_kind") if session_row else None) == "assistant":
-            from app.services.canon_capture import CaptureDecision, persist_capture_status
-            await persist_capture_status(
-                pool, session_id, CaptureDecision(fire=False, reason="voice_path_unsupported"),
+        # WS-4.1 — canon auto-capture on voice turns (the gap the WS-4.5 stopgap worked
+        # around). Mirrors the text path's post-turn block (stream_service._emit_chat_turn):
+        # resolve the session's book from its project, build the SAME CaptureContext, fire
+        # maybe_capture_canon + persist the decision. Self-gates — a bookless / off-cadence /
+        # too-short turn returns fire=False WITH a reason (so the home strip shows capture
+        # visibly OFF, never a silent drop). Replaces the WS-4.5 'voice_path_unsupported'
+        # stopgap now that capture actually runs on a voice turn.
+        try:
+            from app.services.canon_capture import (
+                CaptureContext, maybe_capture_canon, persist_capture_status,
             )
+            _cap_book_id = None
+            if _build_project_id:
+                _cap_book_id = await knowledge_client.resolve_book_id(
+                    user_id=user_id, project_id=str(_build_project_id),
+                )
+            _cap_decision = maybe_capture_canon(
+                ctx=CaptureContext(
+                    book_id=_cap_book_id,
+                    project_enables=kctx.canon_capture_enabled,
+                    grounding_enabled=True,  # voice always builds a knowledge context
+                ),
+                user_id=str(user_id),
+                assistant_turn_count=seq,
+                user_message=transcript,
+                assistant_message=final_text,
+                model_ref=model_ref if model_source == "user_model" else None,
+            )
+            await persist_capture_status(pool, session_id, _cap_decision)
+        except Exception:
+            logger.warning("voice canon capture failed for session %s", session_id, exc_info=True)
 
         # Upload audio segments AFTER message is saved (FK: message_audio_segments → chat_messages)
         if pending_segments:

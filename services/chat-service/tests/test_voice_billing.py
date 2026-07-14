@@ -36,7 +36,7 @@ async def _no_tts(*_a, **_k):
     yield  # pragma: no cover
 
 
-def _voice_pool(session_kind="chat"):
+def _voice_pool(session_kind="chat", project_id=None):
     pool = AsyncMock()
     conn = AsyncMock()
     conn.fetchval.return_value = 1  # sequence_num
@@ -48,7 +48,7 @@ def _voice_pool(session_kind="chat"):
     pool.fetch.return_value = []  # no history rows
     pool.fetchrow.return_value = {
         "system_prompt": None, "generation_params": {},
-        "project_id": None, "project_ids": None, "working_memory_seed": None,
+        "project_id": project_id, "project_ids": None, "working_memory_seed": None,
         "session_kind": session_kind,
     }
     pool._conn = conn
@@ -63,14 +63,17 @@ def _patch_pipeline(monkeypatch):
     monkeypatch.setattr(vss, "resolve_local_date", AsyncMock(return_value=date(2026, 7, 15)))
     monkeypatch.setattr(vss, "emit_voice_turn", AsyncMock())
     monkeypatch.setattr(vss, "_upload_audio_segment", AsyncMock())
-    kctx = SimpleNamespace(context="", working_memory=[], recent_message_count=5)
+    kctx = SimpleNamespace(context="", working_memory=[], recent_message_count=5,
+                           canon_capture_enabled=False)
     kc = MagicMock()
     kc.build_context = AsyncMock(return_value=kctx)
+    kc.resolve_book_id = AsyncMock(return_value=None)  # no book → capture self-gates to fire=False
     monkeypatch.setattr(vss, "get_knowledge_client", lambda: kc)
+    return SimpleNamespace(kctx=kctx, kc=kc)
 
 
-async def _run_voice(billing, session_kind="chat"):
-    pool = _voice_pool(session_kind)
+async def _run_voice(billing, session_kind="chat", project_id=None):
+    pool = _voice_pool(session_kind, project_id)
     creds = ProviderCredentials(
         provider_kind="lm_studio", provider_model_name="m", api_key="x",
         base_url="http://localhost", context_length=8192,
@@ -109,26 +112,43 @@ async def test_billing_logged_with_real_tokens(_patch_pipeline):
     assert kwargs["output_tokens"] == 17
 
 
-# ── WS-4.5 — a directly-invoked voice turn on an assistant session records a
-#    SKIPPED-capture decision (never silently drops the spoken diary) ──────────
+# ── WS-4.1 — a voice turn WIRES canon capture (the real thing, not the WS-4.5 stopgap):
+#    maybe_capture_canon is called with the streamed final text + the resolved book, and
+#    the decision is persisted so the home strip renders capture ON/OFF with a reason ──
 @pytest.mark.asyncio
-async def test_assistant_session_records_voice_path_unsupported(_patch_pipeline, monkeypatch):
+async def test_voice_turn_wires_canon_capture(_patch_pipeline, monkeypatch):
     import app.services.canon_capture as cc
-    spy = AsyncMock()
-    monkeypatch.setattr(cc, "persist_capture_status", spy)
+    _patch_pipeline.kctx.canon_capture_enabled = True
+    _patch_pipeline.kc.resolve_book_id = AsyncMock(return_value="book-1")
+    seen = {}
+
+    def _fake_maybe(*, ctx, user_id, assistant_turn_count, user_message, assistant_message, model_ref):
+        seen["book_id"] = ctx.book_id
+        seen["assistant_message"] = assistant_message
+        seen["user_message"] = user_message
+        return cc.CaptureDecision(fire=True, reason="fire")
+
+    persist_spy = AsyncMock()
+    monkeypatch.setattr(cc, "maybe_capture_canon", _fake_maybe)
+    monkeypatch.setattr(cc, "persist_capture_status", persist_spy)
     billing = MagicMock(); billing.log_usage = AsyncMock()
-    await _run_voice(billing, session_kind="assistant")
-    spy.assert_awaited_once()
-    decision = spy.await_args.args[2]
-    assert decision.fire is False
-    assert decision.reason == "voice_path_unsupported"
+    await _run_voice(billing, session_kind="assistant", project_id="proj-1")
+
+    assert seen["assistant_message"] == "Hello world."   # the streamed LLM text
+    assert seen["user_message"] == "hello there"          # the STT transcript
+    assert seen["book_id"] == "book-1"                    # resolved from the session project
+    persist_spy.assert_awaited_once()
+    assert persist_spy.await_args.args[2].fire is True    # the real decision is persisted
 
 
 @pytest.mark.asyncio
-async def test_ordinary_chat_session_does_not_record_skip(_patch_pipeline, monkeypatch):
+async def test_voice_capture_self_gates_when_no_book(_patch_pipeline, monkeypatch):
+    # a bookless session → capture RUNS but self-gates to fire=False (reason='no_book'),
+    # persisting the visible OFF decision — never a silent skip.
     import app.services.canon_capture as cc
-    spy = AsyncMock()
-    monkeypatch.setattr(cc, "persist_capture_status", spy)
+    persist_spy = AsyncMock()
+    monkeypatch.setattr(cc, "persist_capture_status", persist_spy)
     billing = MagicMock(); billing.log_usage = AsyncMock()
-    await _run_voice(billing, session_kind="chat")
-    spy.assert_not_awaited()
+    await _run_voice(billing, session_kind="chat")  # fixture resolve_book_id → None
+    persist_spy.assert_awaited_once()
+    assert persist_spy.await_args.args[2].fire is False
