@@ -64,7 +64,7 @@ func TestDiaryEntry_IsADraftNeverAutoPublished_DB(t *testing.T) {
 
 	rr := postDiaryEntry(t, s, diary, map[string]any{
 		"owner_user_id": owner.String(), "entry_date": "2026-03-11", "entry_zone": "UTC",
-		"body": "Shipped the migration; agreed the rollback plan with Priya.",
+		"body":         "Shipped the migration; agreed the rollback plan with Priya.",
 		"journal_kind": "primary", "language": "en",
 	}, true)
 	if rr.Code != http.StatusCreated {
@@ -321,6 +321,98 @@ func TestKeepDiaryEntry_ProtectsAgainstReDistillClobber_DB(t *testing.T) {
 	_ = pool.QueryRow(ctx, `SELECT diary_kept_at FROM chapters WHERE id=$1`, ch).Scan(&kept2)
 	if kr2.Code != http.StatusOK || kept2 == nil || !kept2.Equal(*kept) {
 		t.Fatalf("re-keep = %d, timestamp moved %v -> %v (want stable)", kr2.Code, kept, kept2)
+	}
+}
+
+// ── WS-2.6a / D17 leg 1 — POST /v1/books/{id}/diary/entries/{chapter_id}/amend ──
+
+func amendDiaryEntry(t *testing.T, s *Server, bookID, chapterID, caller uuid.UUID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	b, _ := json.Marshal(map[string]any{"body": body})
+	req := httptest.NewRequest(http.MethodPost,
+		"/v1/books/"+bookID.String()+"/diary/entries/"+chapterID.String()+"/amend", strings.NewReader(string(b)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+mcpJWT(t, caller))
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	return rr
+}
+
+// The D17 leg-1 proof: amending a KEPT entry writes a new revision with the corrected body AND
+// PRESERVES diary_kept_at — unlike the distiller write-seam, which 409s a kept entry. This is the
+// "leg 1 is missing and nobody noticed" gap the spec calls out.
+func TestAmendDiaryEntry_PreservesKeptAndWritesRevision_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+
+	rr := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-05-01", "body": "Minh froze the Q3 budget.",
+	}, true)
+	ch := uuid.MustParse(entryChapterID(t, rr))
+	keepDiaryEntry(t, s, diary, ch, owner) // kept — a re-distill would now 409
+	var keptBefore *time.Time
+	_ = pool.QueryRow(ctx, `SELECT diary_kept_at FROM chapters WHERE id=$1`, ch).Scan(&keptBefore)
+	if keptBefore == nil {
+		t.Fatal("precondition: entry should be kept")
+	}
+	var verBefore int
+	_ = pool.QueryRow(ctx, `SELECT draft_version FROM chapter_drafts WHERE chapter_id=$1`, ch).Scan(&verBefore)
+
+	// AMEND the kept entry (the correction) — must succeed (not 409) and preserve kept.
+	ar := amendDiaryEntry(t, s, diary, ch, owner, "Alice froze the Q3 budget.")
+	if ar.Code != http.StatusOK {
+		t.Fatalf("amend a kept entry = %d, want 200. body=%s", ar.Code, ar.Body.String())
+	}
+	if !strings.Contains(ar.Body.String(), `"kept_preserved":true`) {
+		t.Fatalf("amend must report kept_preserved:true, got %s", ar.Body.String())
+	}
+	// diary_kept_at UNCHANGED (an amendment doesn't un-keep).
+	var keptAfter *time.Time
+	_ = pool.QueryRow(ctx, `SELECT diary_kept_at FROM chapters WHERE id=$1`, ch).Scan(&keptAfter)
+	if keptAfter == nil || !keptAfter.Equal(*keptBefore) {
+		t.Fatalf("amend moved/cleared diary_kept_at: %v -> %v (must be preserved)", keptBefore, keptAfter)
+	}
+	// The SSOT body IS the correction (leg 1) — so a rebuild extracts "Alice", not "Minh".
+	var raw string
+	_ = pool.QueryRow(ctx, `SELECT body_text FROM chapter_raw_objects WHERE chapter_id=$1`, ch).Scan(&raw)
+	if !strings.Contains(raw, "Alice") || strings.Contains(raw, "Minh") {
+		t.Fatalf("amended raw body must be the correction (Alice, not Minh), got %q", raw)
+	}
+	// A new revision was written (audit trail) + the draft version bumped.
+	var nRev int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM chapter_revisions WHERE chapter_id=$1 AND message='user amendment (D17)'`, ch).Scan(&nRev)
+	if nRev != 1 {
+		t.Fatalf("expected 1 'user amendment' revision, got %d", nRev)
+	}
+	var verAfter int
+	_ = pool.QueryRow(ctx, `SELECT draft_version FROM chapter_drafts WHERE chapter_id=$1`, ch).Scan(&verAfter)
+	if verAfter != verBefore+1 {
+		t.Fatalf("draft_version = %d, want %d (bumped by the amendment)", verAfter, verBefore+1)
+	}
+}
+
+func TestAmendDiaryEntry_NonOwnerRefused_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+	rr := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-05-02", "body": "A private entry.",
+	}, true)
+	ch := uuid.MustParse(entryChapterID(t, rr))
+	// A stranger resolves to a non-owner grant → authBook refuses (the diary is never shared).
+	stranger := uuid.New()
+	s.resolveBook = func(_ context.Context, _ uuid.UUID, user uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		if user == owner {
+			return GrantOwner, owner, "active", nil
+		}
+		return GrantNone, owner, "active", nil
+	}
+	ar := amendDiaryEntry(t, s, diary, ch, stranger, "malicious rewrite")
+	if ar.Code != http.StatusForbidden && ar.Code != http.StatusNotFound {
+		t.Fatalf("non-owner amend = %d, want 403/404 (no leak). body=%s", ar.Code, ar.Body.String())
 	}
 }
 

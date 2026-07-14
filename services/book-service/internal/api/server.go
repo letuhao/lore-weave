@@ -318,6 +318,10 @@ func (s *Server) Router() http.Handler {
 			// B2 (spec 03/06 §Q6) — REVIEW→KEEP a draft diary entry (owner-only, diary-only).
 			// Sets diary_kept_at so a re-distill of the day no longer clobbers the kept primary.
 			r.Post("/diary/entries/{chapter_id}/keep", s.keepDiaryEntry)
+			// WS-2.6a / D17 leg 1 — AMEND (correct) a diary entry. The missing leg: unlike the
+			// distiller write-seam (refuses a kept entry), an amendment is an explicit human
+			// correction that writes a new revision AND PRESERVES diary_kept_at. Owner-only, diary-only.
+			r.Post("/diary/entries/{chapter_id}/amend", s.amendDiaryEntry)
 			// D-R18 — OWNER-ONLY diary stats (entry count / words / day span). NOT the shared
 			// statistics aggregate (the diary stays out of every cross-user surface, D-R16).
 			r.Get("/diary/stats", s.diaryStats)

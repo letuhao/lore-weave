@@ -37,7 +37,7 @@ type diaryEntryRequest struct {
 	EntryDate   string `json:"entry_date"` // the LOCAL day (YYYY-MM-DD) the distiller resolved
 	EntryZone   string `json:"entry_zone"` // IANA zone in effect (§Q3/T21 auditability)
 	Title       string `json:"title"`
-	Body        string `json:"body"`        // the distilled prose
+	Body        string `json:"body"`         // the distilled prose
 	JournalKind string `json:"journal_kind"` // 'primary' (default) | 'supplement'
 	Language    string `json:"language"`
 }
@@ -349,6 +349,133 @@ WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='act
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id": chID.String(), "kept": true, "diary_kept_at": keptAt.Format(time.RFC3339),
+	})
+}
+
+// amendDiaryEntry — WS-2.6a / D17 leg 1 (the missing leg). The user CORRECTS a kept diary entry
+// ("Alice said that, not Minh"). This is the piece D17 says nobody built: `memory_forget` invalidates
+// one Neo4j fact but never touches the PG SSOT, so the diary text stays wrong and a KG rebuild
+// resurrects the fact. An amendment writes a NEW chapter revision with the corrected body and — unlike
+// the distiller write-seam (`upsertDiaryEntry`, which 409s a kept entry) — PRESERVES `diary_kept_at`
+// (a correction is an explicit human edit, not a re-distill clobber). Owner-only, diary-only. Takes the
+// same (owner, day) advisory lock as keep/upsert so a concurrent re-distill can't interleave. Legs 2+3
+// (re-distill the corrected entry → reconcile the graph, D-R30) are driven by the correction flow; this
+// endpoint is leg 1 and returns the correction's `entry_date` so the caller can re-distill that day.
+func (s *Server) amendDiaryEntry(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	_, owner, _, ok := s.authBook(w, r, bookID, GrantOwner)
+	if !ok {
+		return
+	}
+	var in struct {
+		Body  string `json:"body"`
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "invalid body")
+		return
+	}
+	body := strings.TrimSpace(in.Body)
+	if body == "" {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "body required (a correction must have text)")
+		return
+	}
+	title := strings.TrimSpace(in.Title)
+	jsonBody := plainTextToTiptapJSON(body)
+	byteSize := int64(len(body))
+	ctx := r.Context()
+
+	if err := s.ensureQuotaRow(ctx, owner); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to initialize quota")
+		return
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to amend entry")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Read the entry's day (validates it's an active diary entry of THIS book → 404 otherwise) BEFORE
+	// the lock; entry_date is immutable per entry. Same lock key + lock-order (lock → write) as
+	// keep/upsert, so amend serializes against a concurrent re-distill instead of interleaving.
+	var entryDate time.Time
+	var keptAt *time.Time
+	err = tx.QueryRow(ctx, `
+SELECT entry_date, diary_kept_at FROM chapters
+WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='active'`,
+		chID, bookID).Scan(&entryDate, &keptAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "DIARY_ENTRY_NOT_FOUND", "no active diary entry for that id")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read entry")
+		return
+	}
+	lockKey := owner.String() + "|" + entryDate.Format("2006-01-02")
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, lockKey); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to acquire day lock")
+		return
+	}
+
+	// Quota is enforced only on GROWTH (a correction may shrink or rewrite; never block that).
+	var oldSize int64
+	_ = tx.QueryRow(ctx, `SELECT byte_size FROM chapters WHERE id=$1`, chID).Scan(&oldSize)
+	if byteSize > oldSize {
+		if ok := s.txQuotaOK(ctx, tx, w, owner, byteSize-oldSize); !ok {
+			return
+		}
+	}
+
+	// Write the corrected body as a NEW revision. `diary_kept_at` is DELIBERATELY untouched — a
+	// correction to a kept entry keeps it kept (the write-seam refuses a kept entry; amend is the
+	// sanctioned edit path). draft_revision_count/version bump so the audit trail shows the correction.
+	if _, err := tx.Exec(ctx,
+		`UPDATE chapters SET title=COALESCE(NULLIF($2,''), title), byte_size=$3,
+		        draft_revision_count=draft_revision_count+1, draft_updated_at=now(), updated_at=now()
+		   WHERE id=$1`, chID, title, byteSize); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
+		return
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE chapter_drafts SET body=$2, draft_updated_at=now(), draft_version=draft_version+1
+		   WHERE chapter_id=$1`, chID, jsonBody); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update draft")
+		return
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)
+		   ON CONFLICT (chapter_id) DO UPDATE SET body_text=EXCLUDED.body_text`,
+		chID, body); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update raw body")
+		return
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
+		   VALUES($1,$2,'json',$3,$4)`, chID, jsonBody, "user amendment (D17)", owner); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit amendment")
+		return
+	}
+	_ = s.recalcQuota(ctx, owner)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"chapter_id":     chID.String(),
+		"book_id":        bookID.String(),
+		"entry_date":     entryDate.Format("2006-01-02"),
+		"amended":        true,
+		"kept_preserved": keptAt != nil,
 	})
 }
 
