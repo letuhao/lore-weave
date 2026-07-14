@@ -67,3 +67,11 @@ def test_merge_fact_defaults_maintain_chain_false_for_new_writers():
     import inspect
     from app.db.neo4j_repos.facts import merge_fact
     assert inspect.signature(merge_fact).parameters["maintain_chain"].default is False
+
+
+def test_kg_propose_fact_enum_derives_from_sot_no_drift():
+    # cold-review MED-1 — the advertised kg_propose_fact enum must equal the SoT (it had drifted
+    # to a stale 4-type tuple missing 'statement' + 'commitment').
+    from app.tools.graph_schema_tools import _PROPOSE_FACT_TYPES
+    assert set(_PROPOSE_FACT_TYPES) == set(FACT_TYPES)
+    assert "commitment" in _PROPOSE_FACT_TYPES

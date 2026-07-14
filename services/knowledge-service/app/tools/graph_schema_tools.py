@@ -120,8 +120,12 @@ TRIAGE_LIMIT_DEFAULT = 100
 _CODE_MAX = 120  # SchemaCode/view code slug cap (ontology_models.SchemaCode)
 _NAME_MAX = 200
 
-# Fact-types accepted by the pending-facts inbox (mirrors db.models.FactType).
-_PROPOSE_FACT_TYPES = ("decision", "preference", "milestone", "negation")
+# Fact-types accepted by the pending-facts inbox. DERIVE from the SoT — a hand-kept tuple
+# drifted (cold review: it was missing 'statement' AND 'commitment'), so a well-behaved LLM
+# reading kg_propose_fact's advertised enum would never emit them though the validator accepts
+# them. Same lockstep discipline as memory_remember (which already uses list(FACT_TYPES)).
+from app.db.neo4j_repos.facts import FACT_TYPES as _FACT_TYPES
+_PROPOSE_FACT_TYPES = tuple(_FACT_TYPES)
 
 # B1(4) — cross-partition unification mode for the multi-KG read tools
 # (kg_world_query / kg_multi_query). "off" (default) = today's forest,
