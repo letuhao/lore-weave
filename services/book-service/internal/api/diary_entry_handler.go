@@ -271,6 +271,42 @@ RETURNING id`,
 	})
 }
 
+// diaryDayKept — WS-3.3 review M1 — a CHEAP pre-LLM gate so the catch-up sweep doesn't re-run the
+// distiller's map-reduce on a day whose primary entry is already KEPT (the write seam only discovers
+// "kept" AFTER the LLM, so a daily catch-up burned redundant spend on each kept day). Internal-token;
+// returns {kept} for (book, entry_date) — owner+diary scoped so it can't probe another user's diary.
+func (s *Server) diaryDayKept(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	owner, err := uuid.Parse(strings.TrimSpace(r.URL.Query().Get("owner_user_id")))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "owner_user_id required")
+		return
+	}
+	entryDate, err := time.Parse("2006-01-02", strings.TrimSpace(r.URL.Query().Get("entry_date")))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "entry_date must be YYYY-MM-DD")
+		return
+	}
+	var kept *time.Time
+	err = s.pool.QueryRow(r.Context(), `
+SELECT c.diary_kept_at FROM chapters c JOIN books b ON b.id = c.book_id
+WHERE c.book_id=$1 AND b.owner_user_id=$2 AND b.kind='diary'
+  AND c.entry_date=$3 AND c.journal_kind='primary' AND c.lifecycle_state='active'`,
+		bookID, owner, entryDate).Scan(&kept)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusOK, map[string]any{"exists": false, "kept": false})
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read entry")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"exists": true, "kept": kept != nil})
+}
+
 // keepDiaryEntry — B2 (spec 03/06 §Q6) — the user REVIEWS a draft diary entry and KEEPS it. Sets
 // `diary_kept_at` (once, idempotent) on the entry. After this, a re-distill of the same day no
 // longer clobbers the primary — the write seam 409s DIARY_ENTRY_KEPT and the caller supplements.

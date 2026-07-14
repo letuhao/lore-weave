@@ -781,6 +781,19 @@ class BookClient:
             logger.warning("book-service chapters failed: %s", exc)
             return None
 
+    async def diary_day_kept(self, *, book_id: str | UUID, owner_user_id: str | UUID, entry_date: str) -> bool:
+        """WS-3.3 M1 — a cheap pre-LLM gate: is (book, entry_date)'s primary entry already KEPT? The
+        catch-up sweep skips the map-reduce for a kept day (the write seam only 409s AFTER the LLM).
+        Best-effort: any transport/non-200 → False (proceed with the distill; correctness over cost)."""
+        url = f"{self._base_url}/internal/books/{book_id}/diary/day-kept"
+        try:
+            resp = await self._http.get(url, params={"owner_user_id": str(owner_user_id), "entry_date": entry_date})
+            if resp.status_code != 200:
+                return False
+            return bool(resp.json().get("kept"))
+        except (httpx.HTTPError, ValueError, KeyError):
+            return False
+
     async def write_diary_entry(
         self,
         *,

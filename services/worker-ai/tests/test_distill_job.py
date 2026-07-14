@@ -29,9 +29,13 @@ class FakeChat:
 
 
 class FakeBook:
-    def __init__(self, result=None):
+    def __init__(self, result=None, kept=False):
         self._result = result if result is not None else {"chapter_id": "ch-1", "created": True}
+        self._kept = kept
         self.writes: list[dict] = []
+
+    async def diary_day_kept(self, **kwargs):
+        return self._kept  # WS-3.3 M1 pre-LLM gate (default: not kept → the distill proceeds)
 
     async def write_diary_entry(self, **kwargs):
         self.writes.append(kwargs)
@@ -361,3 +365,25 @@ async def test_daily_cap_check_failure_FAILS_OPEN_so_memory_is_never_silently_pa
         chat_client=chat, book_client=book, billing_client=FakeBilling(fail=True),
     )
     assert out["status"] == "written"  # fail-open: proceeded despite the check error
+
+
+async def test_m1_a_kept_day_skips_the_llm_and_the_write():
+    """WS-3.3 M1 — the catch-up must NOT re-run the map-reduce on an already-KEPT day. A pre-LLM
+    kept-check short-circuits: no LLM call, no write."""
+    calls = {"llm": 0}
+
+    class CountingLLM:
+        async def __call__(self, prompt: str) -> str:
+            calls["llm"] += 1
+            return json.dumps({"facts": []})
+
+    chat = FakeChat([_msg("user", "Some day.")])
+    book = FakeBook(kept=True)  # this day's primary is already kept
+    out = await distill_job.distill_and_write(
+        user_id="u1", book_id="b1", entry_date="2026-03-10", entry_zone="UTC",
+        language="en", llm=CountingLLM(), chat_client=chat, book_client=book,
+    )
+    assert out["status"] == "kept" and out["reason"] == "already_kept_skipped"
+    assert calls["llm"] == 0      # the LLM never ran
+    assert book.writes == []       # nothing written
+    assert chat.calls == []        # not even the day-window read

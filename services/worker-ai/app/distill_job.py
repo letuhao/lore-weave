@@ -160,6 +160,11 @@ async def distill_and_write(
         except Exception:  # noqa: BLE001 — fail OPEN; the provider-gateway reserve is the hard backstop.
             logger.warning("distill: daily-cap pre-check failed; proceeding (provider-gateway backstops)",
                            exc_info=True)
+    # WS-3.3 review M1 — a cheap PRE-LLM gate: if this day's primary is already KEPT, skip the whole
+    # map-reduce. The write seam only 409s AFTER the LLM, so without this the daily catch-up sweep burned
+    # a redundant map-reduce on each already-kept day. Best-effort (a check failure → proceed).
+    if await book_client.diary_day_kept(book_id=book_id, owner_user_id=user_id, entry_date=entry_date):
+        return {"status": "kept", "entry_date": entry_date, "reason": "already_kept_skipped"}
     read = await chat_client.get_day_window(
         user_id=user_id, book_id=book_id, local_date=entry_date, limit=limit,
     )
