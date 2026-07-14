@@ -155,6 +155,19 @@ async def test_patch_rejects_audio_retention_over_ceiling(client, mock_pool):
     assert resp.status_code == 422
 
 
+# ── WS-5.4 — assistant.coaching_enabled (default OFF, strict bool) ────────────
+async def test_patch_accepts_coaching_enabled_bool(client, mock_pool):
+    mock_pool._conn.fetchrow.return_value = None
+    resp = await client.patch("/v1/chat/ai-prefs", json={"assistant": {"coaching_enabled": True}})
+    assert resp.status_code == 200
+    assert resp.json()["assistant"]["coaching_enabled"] is True
+
+
+async def test_patch_rejects_non_bool_coaching_enabled(client, mock_pool):
+    resp = await client.patch("/v1/chat/ai-prefs", json={"assistant": {"coaching_enabled": "yes"}})
+    assert resp.status_code == 422
+
+
 async def test_create_session_seeds_behavior_from_account(client, mock_pool):
     # HIGH fix: a new session inherits the account behavior defaults so the panel
     # isn't a write-only store. get_prefs (1st fetchrow) then INSERT (2nd).

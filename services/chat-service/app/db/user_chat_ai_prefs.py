@@ -21,7 +21,7 @@ import asyncpg
 
 from app.services.settings_resolution import apply_patch
 
-_CATEGORIES = ("behavior", "grounding", "voice", "context")
+_CATEGORIES = ("behavior", "grounding", "voice", "context", "assistant")
 _DEFAULT_CONTEXT = {"mode": "auto"}
 
 
@@ -31,6 +31,7 @@ class AiPrefs:
     grounding: dict = field(default_factory=dict)
     voice: dict = field(default_factory=dict)
     context: dict = field(default_factory=lambda: dict(_DEFAULT_CONTEXT))
+    assistant: dict = field(default_factory=dict)  # WS-5.4 — coaching_enabled (default OFF)
     version: int = 0
     persisted: bool = False  # False = defaults, no row yet
 
@@ -57,6 +58,7 @@ def _row_to_prefs(row) -> AiPrefs:
         grounding=_loads(get("grounding")),
         voice=_loads(get("voice")),
         context=_loads(get("context")) or dict(_DEFAULT_CONTEXT),
+        assistant=_loads(get("assistant")),
         version=int(get("version", 0) or 0),
         persisted=True,
     )
@@ -65,7 +67,7 @@ def _row_to_prefs(row) -> AiPrefs:
 async def get_prefs(pool: asyncpg.Pool, *, owner_user_id) -> AiPrefs:
     """Return the user's prefs, or the unpersisted defaults if no row exists yet."""
     row = await pool.fetchrow(
-        "SELECT behavior, grounding, voice, context, version "
+        "SELECT behavior, grounding, voice, context, assistant, version "
         "FROM user_chat_ai_prefs WHERE owner_user_id = $1",
         _uuid(owner_user_id),
     )
@@ -97,7 +99,7 @@ async def patch_prefs(
     async with pool.acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow(
-                "SELECT behavior, grounding, voice, context, version "
+                "SELECT behavior, grounding, voice, context, assistant, version "
                 "FROM user_chat_ai_prefs WHERE owner_user_id = $1 FOR UPDATE",
                 _uuid(owner_user_id),
             )
@@ -120,13 +122,14 @@ async def patch_prefs(
             await conn.execute(
                 """
                 INSERT INTO user_chat_ai_prefs
-                  (owner_user_id, behavior, grounding, voice, context, version, updated_at)
-                VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb, $6, now())
+                  (owner_user_id, behavior, grounding, voice, context, assistant, version, updated_at)
+                VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7, now())
                 ON CONFLICT (owner_user_id) DO UPDATE SET
                   behavior = EXCLUDED.behavior,
                   grounding = EXCLUDED.grounding,
                   voice = EXCLUDED.voice,
                   context = EXCLUDED.context,
+                  assistant = EXCLUDED.assistant,
                   version = EXCLUDED.version,
                   updated_at = now()
                 """,
@@ -135,6 +138,7 @@ async def patch_prefs(
                 json.dumps(merged["grounding"]),
                 json.dumps(merged["voice"]),
                 json.dumps(merged["context"]),
+                json.dumps(merged["assistant"]),
                 new_version,
             )
             return AiPrefs(
@@ -142,6 +146,7 @@ async def patch_prefs(
                 grounding=merged["grounding"],
                 voice=merged["voice"],
                 context=merged["context"] or dict(_DEFAULT_CONTEXT),
+                assistant=merged["assistant"],
                 version=new_version,
                 persisted=True,
             )

@@ -55,6 +55,7 @@ class AiPrefsResponse(BaseModel):
     grounding: dict = Field(default_factory=dict)
     voice: dict = Field(default_factory=dict)
     context: dict = Field(default_factory=dict)
+    assistant: dict = Field(default_factory=dict)  # WS-5.4 — coaching_enabled
     version: int = 0
 
 
@@ -65,11 +66,18 @@ class AiPrefsPatch(BaseModel):
     grounding: dict | None = None
     voice: dict | None = None
     context: dict | None = None
+    assistant: dict | None = None  # WS-5.4 — {coaching_enabled: bool}
 
     @model_validator(mode="after")
     def _check_enums(self) -> "AiPrefsPatch":
         for cat in sr.SETTING_ENUMS:
             sr.validate_setting_enums(cat, getattr(self, cat))
+        # WS-5.4 — coaching_enabled is a strict bool (a spend/judgement-causing toggle;
+        # a value-shaped junk here must 422 at the door, not be read as truthy).
+        if self.assistant and "coaching_enabled" in self.assistant:
+            v = self.assistant["coaching_enabled"]
+            if v is not None and not isinstance(v, bool):
+                raise ValueError(f"assistant.coaching_enabled must be a boolean, got {v!r}")
         # Voice source fields nest inside the voice blob (flat SETTING_ENUMS can't
         # reach them). Normalize legacy 'ai_model' → 'user_model' so the STORE
         # converges to one vocabulary, and reject a genuinely unknown source
@@ -89,7 +97,7 @@ async def read_ai_prefs(
     p = await get_prefs(pool, owner_user_id=user_id)
     return AiPrefsResponse(
         behavior=p.behavior, grounding=p.grounding, voice=p.voice,
-        context=p.context, version=p.version,
+        context=p.context, assistant=p.assistant, version=p.version,
     )
 
 
@@ -112,7 +120,7 @@ async def update_ai_prefs(
             raise HTTPException(status_code=412, detail=str(exc))
     return AiPrefsResponse(
         behavior=p.behavior, grounding=p.grounding, voice=p.voice,
-        context=p.context, version=p.version,
+        context=p.context, assistant=p.assistant, version=p.version,
     )
 
 

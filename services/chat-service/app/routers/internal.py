@@ -143,6 +143,16 @@ async def upsert_reflection_note(body: ReflectionNoteUpsert, db: asyncpg.Pool = 
     return {"id": str(row["id"]), "entry_date": body.entry_date.isoformat()}
 
 
+@router.get("/assistant/coaching-enabled", dependencies=[Depends(require_internal_token)])
+async def get_coaching_enabled(user_id: UUID = Query(...), db: asyncpg.Pool = Depends(get_db)) -> dict:
+    """WS-5.4 — the user's `assistant.coaching_enabled` (default FALSE, P5-D10 opt-in). The
+    coaching scorer / reflection-coaching path reads this to honour a user who wants the diary
+    but NOT to be judged. Fails CLOSED: no row / missing key ⇒ False."""
+    from app.db.user_chat_ai_prefs import get_prefs
+    prefs = await get_prefs(db, owner_user_id=str(user_id))
+    return {"coaching_enabled": bool((prefs.assistant or {}).get("coaching_enabled", False))}
+
+
 @router.get("/assistant/reflection-notes", dependencies=[Depends(require_internal_token)])
 async def list_reflection_notes(
     user_id: UUID = Query(...),

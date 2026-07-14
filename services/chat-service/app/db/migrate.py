@@ -540,6 +540,15 @@ CREATE TABLE IF NOT EXISTS user_chat_ai_prefs (
   version        BIGINT NOT NULL DEFAULT 0,
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- WS-5.4 (spec 08, P5-D10) — `assistant` settings category. `coaching_enabled` is the
+-- opt-out a user who wants the diary but NOT to be judged needs; DEFAULT OFF (opt-IN to
+-- coaching, per P5-D10 — a spend/judgement-causing setting fails closed). A per-user
+-- setting (not an env flag): two users legitimately differ.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_chat_ai_prefs' AND column_name='assistant') THEN
+    ALTER TABLE user_chat_ai_prefs ADD COLUMN assistant JSONB NOT NULL DEFAULT '{}'::jsonb;
+  END IF;
+END $$;
 
 -- Per-session overrides for the settings resolution cascade. NULL = inherit
 -- from the next tier down (Book ▸ Account ▸ System) — never a hidden default at
