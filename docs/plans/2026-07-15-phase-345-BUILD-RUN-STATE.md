@@ -29,14 +29,16 @@
 ## 3 · SLICE BOARD (the only place "done" is defined — evidence string, not a checkmark)
 `⬜ todo · 🔵 wip · ✅ done (evidence) · ⏸ deferred · 🅿️ parked`
 
-### PRE-P3 · Wiki/entity privacy fix (SD-1) — the FIRST milestone
+### PRE-P3 · Wiki/entity privacy fix (SD-1) — ✅ **DONE (28074c2a7)** — the FIRST milestone
 | Slice | Status | Evidence / note |
 |---|---|---|
-| **PP-1** verify the existing `wiki_settings` PATCH guard + add a regression test | ⬜ | server.go:1073 EGRESS GUARD #3 already blocks it — VERIFY + test, do not rebuild |
-| **PP-2** projection chokepoint: add `Kind` to glossary `bookProjection`; `fetchBookProjection` nulls `WikiSettings`/community_mode for a diary | ⬜ | closes checkWikiPublic + listUserWikiContributions + submitWikiSuggestion + residual blobs at once |
-| **PP-3** `generateWikiStubs` + `internalUpsertEnrichments` consult projection `Kind` → refuse a diary | ⬜ | network read of the projection; no wiki_article/enrichment for a diary |
-| **PP-4** entity-level guard: block wiki/enrichment/share for `is_self=false ∧ kind.code='colleague'` (mind `org` over-block) | ⬜ | novel character unaffected |
-| **PP-5** pass2: thread diary-flag + self-anchor → coerce third-party `preference→statement` (diary-scoped ∧ subject≠self) | ⬜ | novel `preference` untouched |
+| **PP-1** verify the existing `wiki_settings` PATCH guard + regression test | ✅ | EGRESS GUARD #3 (server.go:1073) already blocks it; `TestDiaryEgress_WikiCannotBePublished_DB` + `TestWikiSettings_StillEditableOnANovel_DB` green |
+| **PP-2** projection chokepoint (add `Kind`; null `WikiSettings` for a diary in `fetchBookProjection`) | ✅ | closes checkWikiPublic + contributions + suggest + residual blobs at ONE place; `TestFetchBookProjection_NullsWikiSettingsForADiary` green; all 3 readers nil-check (no panic) |
+| **PP-3** `generateWikiStubs` refuses a diary (fail-closed `refuseDiaryWikiSurface`) | ✅ | enrichment covered by PP-4 entity-level instead (no hot-path network hop); `TestRefuseDiaryWikiSurface` green |
+| **PP-4** entity-level `colleague` guard (enrichment 403 + BOTH stub query AND LLM-delegate paths) | ✅ | `TestEnrichments_RefusesAColleagueEntity_PP4` + `TestWikiGenDelegate_ExcludesColleague_PP4` green; **review H1 fix** closed the delegate leak; is_self dropped (test-DB gap; 'colleague' is the precise 3rd-party marker) |
+| **PP-5** pass2 work-mode `preference→statement` coercion | ✅ | defense-in-depth (primary guard = `queue_diary_facts` forces 'statement'); `test_pp5_work_mode_coerces...` + `test_pp5_novel_mode_preserves...` green |
+
+**Milestone VERIFY:** knowledge pass2+internal_extraction **88 passed**; glossary wiki/enrichment/chokepoint/PP4/delegate **ok**; book diary-egress **ok**. **/review-impl** (cold-start): PP-2/PP-3 solid; H1 delegate-leak FIXED+tested; H2/M1-3 documented as deliberate defense-in-depth. **LIVE-SMOKE** (glossary :8211 → book projection): diary(visibility=public)→**404**, novel(same blob)→**200** (proves the KIND guard, not book-not-found).
 
 ### P3 · Scheduler + proactive (see the phase-3 plan; opens sealed)
 | Slice | Status | Evidence / note |
@@ -70,7 +72,10 @@ SD-1..7 + P3-D1..6 + P4-D1..6 + P5-D1..12 — all in [`2026-07-15-phase-345-clea
 - **Human-rating milestones** — P5 safety-eval + numeric-eval clearance (SD-7). Not code.
 
 ## 6 · Drift log (record the near-misses — an empty drift log is dishonest)
-- *(build has not started; the 4-reviewer cold pass already caught 4 of my wrong plan claims — logged in the clean-seal §7)*
+- *(planning) the 4-reviewer cold pass caught 4 of my wrong plan claims — logged in the clean-seal §7.*
+- **PRE-P3 review H1 (caught by /review-impl):** I guarded PP-4 (`ek.code<>'colleague'`) only on the DETERMINISTIC wiki-stub query and missed the LLM DELEGATE path (`resolveWikiGenEntities` + explicit-Regenerate) — the actual AI-biography path, PP-4's stated cross-book target. The diary was still safe (PP-3 blocks both), but the cross-book colleague leak survived on the worse path. Fixed + added `TestWikiGenDelegate_ExcludesColleague_PP4`. **Same shape as the repo's recurring lesson: I guarded the path in front of me and missed the adjacent one; the cold review caught it.**
+- **PRE-P3 review H2 (caught by /review-impl):** PP-5 sits on a path diary facts don't traverse (the real guard is `queue_diary_facts`). Not a leak (fails safe) — re-documented honestly as defense-in-depth rather than let it read as THE guard.
+- **My "live one-click hole" framing was overstated** (planning) — EGRESS GUARD #3 already blocked the PATCH; corrected in clean-seal §2 before build.
 
 ## 7 · Debt carried in (relevant to this build)
 - **DBT-15** distiller uses the session model — a reasoning model silently empties the diary. Q8 dedicated non-reasoning distill model resolves this; WS-3.0 is its natural home.
