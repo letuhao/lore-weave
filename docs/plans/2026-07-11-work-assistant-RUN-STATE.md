@@ -222,7 +222,7 @@ WS-1.x slice that finishes it. The gate is **honestly PARTIAL**, matching the ho
 `⬜ todo · 🔵 wip · ✅ done (evidence) · 🅿️ parked`
 | Slice | Status | Evidence / note |
 |---|---|---|
-| **WS-2.6a** correct-a-memory: leg1 amend diary entry (new revision, preserve kept) → leg2 re-distill/re-index → leg3 invalidate superseded fact. no-resurrection proof. | ⬜ | book amend endpoint + re-distill trigger + reconcile; DB test the entry revision + a rebuild doesn't resurrect |
+| **WS-2.6a** correct-a-memory: leg1 amend diary entry (new revision, preserve kept) → leg2 re-distill/re-index → leg3 invalidate superseded fact. no-resurrection proof. | 🔵 **leg1 ✅ (ea2d742b5)** — `POST /v1/books/{id}/diary/entries/{chapter_id}/amend` (new revision, preserves `diary_kept_at`, owner+diary-gated; 2 real-DB tests). **NEXT: leg2 (re-distill the corrected day) + leg3 (invalidate the superseded fact + no-resurrection proof).** | book amend endpoint DONE; re-distill trigger + reconcile pending |
 | **WS-2.6b** supersede-a-fact (rides 2.6a leg3; recall says "it changed" per spec07 Q5) | ⬜ | temporal read already reads valid_until |
 | **WS-2.6d** merge-a-renamed-entity (reuse glossary merge_candidate + KG DETACH/re-point) | ⬜ | |
 | **WS-2.6c** forget-a-person = the SCOPED-ERASURE PRIMITIVE @ scope=entity + diary-span redaction + `entity.forgotten` event | ⬜ | the big cascade (D-R31); glossary+KG+facts+evidence+passages+embeddings+pending+redact |
