@@ -398,6 +398,10 @@ async def voice_stream_response(
     msg_id = str(uuid4())
     stream_start = time.monotonic()
     ttft: float | None = None
+    # WS-4.2a — the LLM UsageEvent arrives on the trailing chunk from
+    # `_stream_via_gateway`; voice used to DISCARD it and bill 0/0. Capture it so
+    # both the DB row AND the SSE `finish-message` the FE reads carry real tokens.
+    last_usage = None
     sentence_index = 0
     skipped_count = 0
     # Collect audio segments during streaming — upload AFTER assistant message is saved (FK requirement)
@@ -415,6 +419,10 @@ async def voice_stream_response(
         async for chunk_data in chunk_stream:
             content = chunk_data["content"]
             reasoning = chunk_data.get("reasoning_content", "")
+            # WS-4.2a — the trailing chunk carries usage (content=="" so it skips
+            # the TTS path below); keep the last non-null one for billing.
+            if chunk_data.get("usage") is not None:
+                last_usage = chunk_data["usage"]
 
             if ttft is None and (content or reasoning):
                 ttft = (time.monotonic() - stream_start) * 1000
@@ -482,6 +490,9 @@ async def voice_stream_response(
         # ── Step 4: Save assistant message ───────────────────────────
         response_time_ms = (time.monotonic() - stream_start) * 1000
         final_text = "".join(full_content)
+        # WS-4.2a — real LLM token counts (0 only if the provider reported none).
+        input_tokens = int(getattr(last_usage, "prompt_tokens", 0) or 0)
+        output_tokens = int(getattr(last_usage, "completion_tokens", 0) or 0)
 
         async with pool.acquire() as conn:
             seq = await conn.fetchval(
@@ -526,7 +537,7 @@ async def voice_stream_response(
         # Finish event
         yield _sse("finish-message", {
             "finishReason": "stop",
-            "usage": {"promptTokens": 0, "completionTokens": 0},
+            "usage": {"promptTokens": input_tokens, "completionTokens": output_tokens},
             "timing": {
                 "responseTimeMs": round(response_time_ms),
                 "timeToFirstTokenMs": round(ttft) if ttft else None,
@@ -541,8 +552,8 @@ async def voice_stream_response(
                 model_source=model_source,
                 model_ref=model_ref,
                 provider_kind=creds.provider_kind,
-                input_tokens=0,
-                output_tokens=0,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 session_id=session_id,
                 message_id=msg_id,
                 input_payload={"voice_transcript": transcript},
