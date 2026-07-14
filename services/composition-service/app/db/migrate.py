@@ -1758,11 +1758,59 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
         rekeyed = await run_package_rekey(conn, _apply_base_schema)
         if rekeyed:
             logger.info("composition migrate: package re-key pkg_rekey_v1 applied this boot")
-        await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL
+        await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL (+ structure_node)
+        # B3 (BA2): a CLEAN DB (fresh, or already drained of legacy arc rows) is auto-lifted here —
+        # a safe CHECK-tighten with NOTHING to migrate — so fresh + throwaway-test DBs are born
+        # consistent and never trip the guard below. Placed AFTER _MOTIF_SCHEMA_SQL because that is
+        # where structure_node is created, and run_arc_lift requires it. A DB that still HOLDS
+        # arc-kind outline_nodes is a legacy pre-Deploy-2 state: do NOT auto-migrate that (Q2 — the
+        # risky data lift stays operator-invoked); `_assert_lift_applied` then fails loud so the
+        # operator runs `python -m app.db.arc_lift` deliberately.
+        from app.db.arc_lift import run_arc_lift
+        has_legacy_arcs = await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM outline_node WHERE kind IN ('arc','beat'))"
+        )
+        if not has_legacy_arcs and await run_arc_lift(conn):
+            logger.info("composition migrate: arc lift pkg_lift_v1 applied (clean DB, safe CHECK-tighten)")
+        await _assert_lift_applied(conn)               # B3 (BA2): refuse to serve an unlifted DB
         await _backfill_chapter_story_order(conn)      # 24: the reading axis (was never written)
         await _seed_builtin_templates(conn)
         await _seed_motif_packs(conn)                  # F0 adds the CALL; W7 fills the body
     logger.info("composition migrate: schema applied + %d built-in templates seeded", len(BUILTIN_TEMPLATES))
+
+
+async def _assert_lift_applied(conn: asyncpg.Connection) -> None:
+    """B3 (BA2 fail-loud) — this code assumes the arc lift has run: it reads arcs from
+    `structure_node`, and `outline_node.kind` is ('chapter','scene'). If the DB carries the
+    package re-key (`pkg_rekey_v1`) but NOT the lift (`pkg_lift_v1`), arcs still live in
+    `outline_node` under `kind='arc'` and the 4-kind CHECK still stands — code and schema
+    DISAGREE, silently: the Plan Hub renders no lanes, and every arc read misses them.
+
+    Refuse to boot rather than serve that mismatch. The assertion travels WITH the
+    post-lift-assuming code, so a legitimate Deploy-1 SOAK (which runs the PREVIOUS code,
+    without this assertion) is unaffected — only deploying THIS code onto an unlifted,
+    rekeyed DB trips it, which is exactly the disagreement to catch. (Q2 SEALED: keep the
+    lift operator-invoked; fail loud when the running code assumes it and it hasn't run.)
+
+    Operator fix: `python -m app.db.arc_lift` — safe and a no-op past its marker; on a fresh
+    DB it has no arcs to migrate, it just tightens the CHECK and stamps `pkg_lift_v1`.
+
+    `package_migration` is created + `pkg_rekey_v1` stamped by `run_package_rekey`, which runs
+    immediately before this — so the table always exists here.
+    """
+    rows = await conn.fetch(
+        "SELECT marker FROM package_migration WHERE marker = ANY($1::text[])",
+        ["pkg_rekey_v1", "pkg_lift_v1"],
+    )
+    markers = {r["marker"] for r in rows}
+    if "pkg_rekey_v1" in markers and "pkg_lift_v1" not in markers:
+        raise RuntimeError(
+            "composition boot REFUSED (B3/BA2): the DB carries the package re-key "
+            "(pkg_rekey_v1) but the arc lift (pkg_lift_v1) has NOT run. This build reads arcs "
+            "from structure_node and assumes outline_node.kind IN ('chapter','scene'); an "
+            "unlifted DB still holds arcs in outline_node. Run `python -m app.db.arc_lift` "
+            "before serving."
+        )
 
 
 async def _backfill_chapter_story_order(conn: asyncpg.Connection) -> None:

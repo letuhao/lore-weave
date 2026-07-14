@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import UUID
 
+from app.engine.scene_decompile import resolve_canonical_work
+
 logger = logging.getLogger(__name__)
 
 #: AN-2: the tree is ORIENTATION, hard-capped ≈2-4K tokens even on a 10k-chapter book. Counts and
@@ -205,7 +207,14 @@ async def resolve_scope(works: Any, book_id: UUID) -> tuple[Any, UUID | None]:
     """
     marked = await works.resolve_by_book(book_id)
     if marked:
-        w = marked[0]
+        # 28 AN-2 (28:502-510) — resolve the CANONICAL Work (source_work_id IS NULL), never
+        # marked[0]. `resolve_by_book` returns the canonical + any C23 derivatives ORDER BY
+        # created_at, so marked[0] is only incidentally the canonical — and on archive-and-
+        # recreate (PM-4 permits it) a derivative PREDATES the recreated canonical, making
+        # marked[0] the derivative and serving its spec as the book's (25-T4). At most one
+        # canonical exists (uq_composition_work_book); fall back to marked[0] only if the set is
+        # somehow all-derivative (a data anomaly), which stays a read, never a denial.
+        w = resolve_canonical_work(marked) or marked[0]
         return w, (w.project_id or w.id)
     pending = await works.get_pending_for_book(book_id)
     if pending is not None:
