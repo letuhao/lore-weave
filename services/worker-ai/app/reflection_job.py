@@ -213,7 +213,11 @@ async def reflect_week(
     # ── WS-5.6 — tombstone drop AT DETECTION (before any phrasing LLM), on the
     # PERIOD-INDEPENDENT pattern_key: a dismissed pattern is gone for good, not re-minted
     # as a fresh row next period.
-    patterns = [p for p in candidates if p.pattern_key not in dismissed_pattern_keys]
+    kept = [p for p in candidates if p.pattern_key not in dismissed_pattern_keys]
+    # ── WS-5.14 — clinical/diagnostic deny-list: a pattern whose text uses clinical vocab is
+    # DROPPED, not softened (a coach describes, never diagnoses). Applies here + will apply to
+    # the LLM phrasing step's output when that lands.
+    patterns = [p for p in kept if not safety_floor.contains_clinical_language(p.summary)]
     return ReflectionResult(status="reflected", patterns=patterns)
 
 

@@ -121,6 +121,25 @@ def screen(text: str) -> SafetyVerdict:
     return SafetyVerdict(False)
 
 
+# ── WS-5.14 — clinical/diagnostic deny-list on the PHRASING step's output ─────
+# A coach describes behavior; it must NEVER diagnose. A phrased pattern whose text uses
+# clinical/diagnostic vocabulary is DROPPED (not softened) — playing clinician is a harm even
+# when the words are gentle. Deterministic word-boundary match on normalized text.
+_CLINICAL_TERMS: frozenset[str] = frozenset({
+    "depression", "depressive", "anxiety disorder", "anxious disorder", "ptsd", "trauma",
+    "traumatized", "traumatised", "bipolar", "adhd", "ocd", "burnout syndrome", "clinical",
+    "diagnose", "diagnosed", "diagnosis", "disorder", "mental illness", "mentally ill",
+    "pathological", "neurosis", "neurotic", "psychosis", "psychotic", "manic", "mania",
+})
+_CLINICAL_RX = re.compile(r"\b(" + "|".join(re.escape(t) for t in _CLINICAL_TERMS) + r")\b")
+
+
+def contains_clinical_language(text: str) -> bool:
+    """WS-5.14 — True if `text` uses clinical/diagnostic vocabulary (word-boundary match).
+    The phrasing step DROPS any pattern for which this is True."""
+    return bool(_CLINICAL_RX.search(_normalize(text)))
+
+
 def combine_with_model(floor: SafetyVerdict, model_tripped: bool, model_category: str | None = None) -> SafetyVerdict:
     """OR a model classifier's verdict ONTO the floor — it may WIDEN (add a trip) but NEVER
     NARROW (the deterministic trip always stands). This is how an LLM classifier is allowed to

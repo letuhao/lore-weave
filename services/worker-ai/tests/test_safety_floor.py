@@ -86,6 +86,17 @@ def test_hit_me_idiom_does_not_trip_but_real_violence_does():
     assert v.tripped is True and v.category == CAT_HARASSMENT_ABUSE
 
 
+def test_clinical_deny_list_flags_diagnostic_vocab_only():
+    from app.safety_floor import contains_clinical_language
+    # WS-5.14 — clinical/diagnostic vocab is flagged (a coach must not diagnose)…
+    assert contains_clinical_language("this looks like burnout syndrome and depression")
+    assert contains_clinical_language("you may have an anxiety disorder")
+    assert contains_clinical_language("that's a trauma response")
+    # …but ordinary reflective language is fine.
+    assert not contains_clinical_language("you seemed tired and stretched thin this week")
+    assert not contains_clinical_language("meetings recurred on 3 days")
+
+
 def test_verdict_is_frozen():
     with pytest.raises(Exception):
         screen("hi").tripped = True  # type: ignore[misc]
