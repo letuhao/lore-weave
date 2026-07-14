@@ -620,7 +620,8 @@
       "platform": "Nền tảng",
       "discovery": "Khám phá",
       "jobs": "Tác vụ",
-      "help": "Trợ giúp"
+      "help": "Trợ giúp",
+      "quality": "Chất lượng"
     },
     "cmd": {
       "showManuscript": "Xem: Bản thảo",
@@ -697,13 +698,13 @@
     "canonRuleGone": "Một quy tắc không còn tồn tại",
     "canonRuleUnnamed": "quy tắc đó",
     "canonRuleFocused": "Đang hiển thị các vi phạm của quy tắc bạn vừa rời khỏi trước ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "Quy tắc bạn vừa chuyển đến không có vi phạm nào đang mở. Nó đã được thiết lập tại đây, nhưng chưa có gì làm hỏng quy tắc này.",
     "canonFocused": "Hiển thị chương bạn vừa đọc trước tiên ({{n}} kết quả tìm thấy).",
     "canonFocusedEmpty": "Chương bạn vừa rời khỏi không có phát hiện chính thống nào ở đây.",
     "canonUnavailable": "Không thể kết nối với dịch vụ đồng tác giả — các kết quả đối chiếu tại thời điểm tạo sẽ KHÔNG được bao gồm dưới đây.",
     "canonNoWork": "Cuốn sách này chưa có phiên làm việc với đồng tác giả, vì vậy các bước kiểm tra tính nhất quán (canon) trong quá trình tạo chưa được thực hiện. Chỉ có các kết quả trích xuất kiến thức được hiển thị.",
-    "canonRulesCapped": "Đang hiển thị {{shown}} quy tắc vi phạm gần đây nhất trong tổng số {{total}}.",
-    "canonRuleFocusedEmpty": "Quy tắc bạn vừa chuyển đến không có vi phạm nào đang mở. Nó đã được thiết lập tại đây, nhưng chưa có gì làm hỏng quy tắc này.",
     "canonRuleFocusUnknown": "Không thể kiểm tra quy tắc bạn vừa chuyển đến vì dịch vụ co-writer hiện không khả dụng. Quy tắc có thể vẫn đang bị lỗi ở đâu đó — đây không phải là kết quả cuối cùng.",
+    "canonRulesCapped": "Đang hiển thị {{shown}} quy tắc vi phạm gần đây nhất trong tổng số {{total}}.",
     "workUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy dữ liệu chất lượng của cuốn sách này không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây. Vui lòng thử lại sau ít phút.",
     "hubUnavailable": "Không thể kết nối với dịch vụ co-writer, vì vậy các cam kết, điểm số phê bình và độ bao phủ cốt truyện hiện không thể tải được. Có thể có các vấn đề tồn tại mà không được hiển thị ở đây."
   },

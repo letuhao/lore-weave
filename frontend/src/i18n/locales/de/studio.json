@@ -620,7 +620,8 @@
       "platform": "Plattform",
       "discovery": "Entdeckung",
       "jobs": "Jobs",
-      "help": "Hilfe"
+      "help": "Hilfe",
+      "quality": "Qualität"
     },
     "cmd": {
       "showManuscript": "Ansicht: Manuskript anzeigen",
@@ -697,13 +698,13 @@
     "canonRuleGone": "Eine Regel, die nicht mehr existiert",
     "canonRuleUnnamed": "diese Regel",
     "canonRuleFocused": "Zeige zuerst Verletzungen der Regel, aus der Sie kommen ({{n}}): „{{rule}}“",
+    "canonRuleFocusedEmpty": "Die Regel, aus der Sie kommen, weist keine offenen Verstöße auf. Sie ist hier verankert, aber es wurde nichts verletzt.",
     "canonFocused": "Das Kapitel, aus dem Sie kommen, wird zuerst angezeigt ({{n}} Fund(e)).",
     "canonFocusedEmpty": "Das Kapitel, aus dem Sie kommen, enthält hier keine Kanon-Fundstellen.",
     "canonUnavailable": "Der Co-Writer-Dienst konnte nicht erreicht werden — Ergebnisse aus dem Kanon zum Zeitpunkt der Generierung sind unten NICHT enthalten.",
     "canonNoWork": "Dieses Buch hat noch keine Co-Autor-Sitzung, daher wurden die Canon-Prüfungen während der Generierung noch nicht durchgeführt. Es werden nur Ergebnisse der Wissensextraktion angezeigt.",
-    "canonRulesCapped": "Es werden die {{shown}} aktuellsten von {{total}} verletzten Regeln angezeigt.",
-    "canonRuleFocusedEmpty": "Die Regel, aus der Sie kommen, weist keine offenen Verstöße auf. Sie ist hier verankert, aber es wurde nichts verletzt.",
     "canonRuleFocusUnknown": "Die Regel, aus der Sie kommen, konnte nicht überprüft werden, da der Co-Writer-Service nicht verfügbar ist. Es kann dennoch an anderer Stelle Verstöße geben – dies ist kein Endergebnis.",
+    "canonRulesCapped": "Es werden die {{shown}} aktuellsten von {{total}} verletzten Regeln angezeigt.",
     "workUnavailable": "Der Co-Writer-Service konnte nicht erreicht werden, daher konnten die Qualitätsdaten dieses Buches nicht geladen werden. Es können Probleme bestehen, die hier nicht angezeigt werden. Versuchen Sie es in Kürze erneut.",
     "hubUnavailable": "Der Co-Writer-Service konnte nicht erreicht werden, daher können Versprechen, Kritikerbewertungen und die Story-Abdeckung derzeit nicht geladen werden. Es können Probleme bestehen, die hier nicht angezeigt werden."
   },

@@ -620,7 +620,8 @@
       "platform": "Plataforma",
       "discovery": "Descubrimiento",
       "jobs": "Tareas",
-      "help": "Ayuda"
+      "help": "Ayuda",
+      "quality": "Calidad"
     },
     "cmd": {
       "showManuscript": "Ver: Mostrar manuscrito",
@@ -697,13 +698,13 @@
     "canonRuleGone": "Una regla que ya no existe",
     "canonRuleUnnamed": "esa regla",
     "canonRuleFocused": "Mostrando primero las infracciones de la regla de la que vienes ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "La regla de la que vienes no tiene infracciones abiertas. Está anclada aquí, pero nada la ha roto.",
     "canonFocused": "Mostrando primero el capítulo de procedencia ({{n}} hallazgo(s)).",
     "canonFocusedEmpty": "El capítulo del que vienes no tiene hallazgos canónicos aquí.",
     "canonUnavailable": "No se pudo conectar con el servicio de coescritor; los hallazgos del canon generados en tiempo real NO se incluyen a continuación.",
     "canonNoWork": "Este libro aún no tiene sesiones de coescritura, por lo que no se han ejecutado las comprobaciones de canon durante la generación. Solo se muestran los hallazgos de la extracción de conocimientos.",
-    "canonRulesCapped": "Mostrando las {{shown}} reglas rotas más recientes de un total de {{total}}.",
-    "canonRuleFocusedEmpty": "La regla de la que vienes no tiene infracciones abiertas. Está anclada aquí, pero nada la ha roto.",
     "canonRuleFocusUnknown": "No se pudo verificar la regla de la que vienes porque el servicio de coescritura no está disponible. Es posible que siga habiendo errores en algún lugar; esto no es un resultado definitivo.",
+    "canonRulesCapped": "Mostrando las {{shown}} reglas rotas más recientes de un total de {{total}}.",
     "workUnavailable": "No se pudo conectar con el servicio de coescritura, por lo que no se pudieron cargar los datos de calidad de este libro. Es posible que existan problemas que no se muestran aquí. Inténtalo de nuevo en breve.",
     "hubUnavailable": "No se pudo conectar con el servicio de coescritura, por lo que las promesas, las puntuaciones de los críticos y la cobertura de la historia no se pueden cargar en este momento. Es posible que existan problemas que no se muestran aquí."
   },

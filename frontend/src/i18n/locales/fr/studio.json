@@ -620,7 +620,8 @@
       "platform": "Plateforme",
       "discovery": "Découverte",
       "jobs": "Tâches",
-      "help": "Aide"
+      "help": "Aide",
+      "quality": "Qualité"
     },
     "cmd": {
       "showManuscript": "Vue : Afficher le manuscrit",
@@ -697,13 +698,13 @@
     "canonRuleGone": "Une règle qui n'existe plus",
     "canonRuleUnnamed": "cette règle",
     "canonRuleFocused": "Affichage prioritaire des violations de la règle d'origine ({{n}}) : « {{rule}} »",
+    "canonRuleFocusedEmpty": "La règle dont vous venez n'a aucune violation ouverte. Elle est ancrée ici, mais rien ne l'a rompue.",
     "canonFocused": "Affichage prioritaire du chapitre d'origine ({{n}} trouvée(s)).",
     "canonFocusedEmpty": "Le chapitre d'où vous venez n'a aucune donnée canonique ici.",
     "canonUnavailable": "Impossible de contacter le service de co-écriture — les éléments du canon générés lors de la rédaction ne sont PAS inclus ci-dessous.",
     "canonNoWork": "Ce livre n'a pas encore de session de co-écriture, les vérifications de cohérence lors de la génération n'ont donc pas été effectuées. Seuls les résultats de l'extraction de connaissances sont affichés.",
-    "canonRulesCapped": "Affichage des {{shown}} dernières règles enfreintes sur {{total}}.",
-    "canonRuleFocusedEmpty": "La règle dont vous venez n'a aucune violation ouverte. Elle est ancrée ici, mais rien ne l'a rompue.",
     "canonRuleFocusUnknown": "La règle dont vous venez n'a pas pu être vérifiée car le service de co-écriture est indisponible. Elle est peut-être toujours rompue quelque part — ceci n'est pas un résultat définitif.",
+    "canonRulesCapped": "Affichage des {{shown}} dernières règles enfreintes sur {{total}}.",
     "workUnavailable": "Impossible de joindre le service de co-écriture, les données de qualité de ce livre n'ont donc pas pu être chargées. Des problèmes peuvent exister sans être affichés ici. Réessayez bientôt.",
     "hubUnavailable": "Impossible de joindre le service de co-écriture, les promesses, les scores des critiques et la couverture de l'histoire ne peuvent donc pas être chargés pour le moment. Des problèmes peuvent exister sans être affichés ici."
   },

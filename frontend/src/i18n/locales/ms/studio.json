@@ -620,7 +620,8 @@
       "platform": "Platform",
       "discovery": "Penemuan",
       "jobs": "Tugasan",
-      "help": "Bantuan"
+      "help": "Bantuan",
+      "quality": "Kualiti"
     },
     "cmd": {
       "showManuscript": "Lihat: Tunjukkan Manuskrip",
@@ -697,13 +698,13 @@
     "canonRuleGone": "Peraturan yang tidak lagi wujud",
     "canonRuleUnnamed": "peraturan itu",
     "canonRuleFocused": "Menunjukkan pelanggaran bagi peraturan yang anda datangi terlebih dahulu ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "Peraturan asal anda tidak mempunyai sebarang pelanggaran terbuka. Ia ditetapkan di sini, tetapi tiada apa yang melanggarnya.",
     "canonFocused": "Menunjukkan bab asal anda terlebih dahulu ({{n}} penemuan).",
     "canonFocusedEmpty": "Bab yang anda datangi tidak mempunyai penemuan kanon di sini.",
     "canonUnavailable": "Tidak dapat menghubungi perkhidmatan penulis bersama — penemuan kanon semasa penjanaan TIDAK disertakan di bawah.",
     "canonNoWork": "Buku ini belum mempunyai sesi penulis bersama, jadi semakan kanon semasa penjanaan belum dijalankan. Hanya penemuan pengekstrakan pengetahuan sahaja yang dipaparkan.",
-    "canonRulesCapped": "Memaparkan {{shown}} daripada {{total}} peraturan yang dilanggar yang terkini.",
-    "canonRuleFocusedEmpty": "Peraturan asal anda tidak mempunyai sebarang pelanggaran terbuka. Ia ditetapkan di sini, tetapi tiada apa yang melanggarnya.",
     "canonRuleFocusUnknown": "Peraturan asal anda tidak dapat diperiksa kerana perkhidmatan penulis bersama tidak tersedia. Ia mungkin masih mempunyai pelanggaran di suatu tempat — ini bukan keputusan muktamad.",
+    "canonRulesCapped": "Memaparkan {{shown}} daripada {{total}} peraturan yang dilanggar yang terkini.",
     "workUnavailable": "Tidak dapat menghubungi perkhidmatan penulis bersama, jadi data kualiti buku ini tidak dapat dimuatkan. Masalah mungkin wujud tetapi tidak dipaparkan di sini. Sila cuba lagi sebentar lagi.",
     "hubUnavailable": "Tidak dapat menghubungi perkhidmatan penulis bersama, jadi janji, skor pengkritik dan liputan cerita tidak dapat dimuatkan buat masa ini. Masalah mungkin wujud tetapi tidak dipaparkan di sini."
   },

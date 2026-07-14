@@ -620,7 +620,8 @@
       "platform": "Plataforma",
       "discovery": "Descoberta",
       "jobs": "Tarefas",
-      "help": "Ajuda"
+      "help": "Ajuda",
+      "quality": "Qualidade"
     },
     "cmd": {
       "showManuscript": "Ver: Mostrar Manuscrito",
@@ -697,13 +698,13 @@
     "canonRuleGone": "Uma regra que não existe mais",
     "canonRuleUnnamed": "aquela regra",
     "canonRuleFocused": "Mostrando primeiro as violações da regra de onde você veio ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "A regra de onde você veio não possui violações abertas. Ela está ancorada aqui, mas nada a quebrou.",
     "canonFocused": "Mostrando primeiro o capítulo de onde você veio ({{n}} encontro(s)).",
     "canonFocusedEmpty": "O capítulo de onde você veio não possui achados canônicos aqui.",
     "canonUnavailable": "Não foi possível acessar o serviço de coescrita — as descobertas de cânone em tempo de geração NÃO estão incluídas abaixo.",
     "canonNoWork": "Este livro ainda não possui uma sessão de coescrita, portanto, as verificações de cânone em tempo de geração não foram executadas. Apenas os resultados de extração de conhecimento são exibidos.",
-    "canonRulesCapped": "Exibindo as {{shown}} mais recentes de um total de {{total}} regras violadas.",
-    "canonRuleFocusedEmpty": "A regra de onde você veio não possui violações abertas. Ela está ancorada aqui, mas nada a quebrou.",
     "canonRuleFocusUnknown": "Não foi possível verificar a regra de onde você veio porque o serviço de coescrita está indisponível. Ela ainda pode estar quebrada em algum lugar — isto não é um resultado definitivo.",
+    "canonRulesCapped": "Exibindo as {{shown}} mais recentes de um total de {{total}} regras violadas.",
     "workUnavailable": "Não foi possível conectar ao serviço de coescrita, portanto, os dados de qualidade deste livro não puderam ser carregados. Podem existir problemas que não estão sendo exibidos aqui. Tente novamente em breve.",
     "hubUnavailable": "Não foi possível conectar ao serviço de coescrita, portanto, promessas, notas de críticos e cobertura da história não podem ser carregados no momento. Podem existir problemas que não estão sendo exibidos aqui."
   },

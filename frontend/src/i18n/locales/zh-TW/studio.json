@@ -620,7 +620,8 @@
       "platform": "平台",
       "discovery": "探索",
       "jobs": "工作",
-      "help": "說明"
+      "help": "說明",
+      "quality": "品質"
     },
     "cmd": {
       "showManuscript": "檢視：手稿",
@@ -697,13 +698,13 @@
     "canonRuleGone": "已不存在的規則",
     "canonRuleUnnamed": "該規則",
     "canonRuleFocused": "優先顯示您來源規則的違規項目 ({{n}})：「{{rule}}」",
+    "canonRuleFocusedEmpty": "您來源的規則目前沒有任何未解決的違規項。該規則已在此錨定，但尚未發生任何錯誤。",
     "canonFocused": "優先顯示您來源的章節 (找到 {{n}} 個)。",
     "canonFocusedEmpty": "您來源的章節在此處沒有任何正典設定發現。",
     "canonUnavailable": "無法連線至共同寫作者服務 — 以下內容不包含生成時的設定集檢索結果。",
     "canonNoWork": "此書尚未建立共同作者工作階段，因此尚未執行生成時的設定檢查。目前僅顯示知識擷取結果。",
-    "canonRulesCapped": "顯示 {{total}} 個失效規則中最新的 {{shown}} 個。",
-    "canonRuleFocusedEmpty": "您來源的規則目前沒有任何未解決的違規項。該規則已在此錨定，但尚未發生任何錯誤。",
     "canonRuleFocusUnknown": "由於協作寫作服務無法使用，無法檢查您來源的規則。規則可能在其他地方仍有錯誤——此結果並不代表規則完全正確。",
+    "canonRulesCapped": "顯示 {{total}} 個失效規則中最新的 {{shown}} 個。",
     "workUnavailable": "無法連線至協作寫作服務，因此無法載入本書的品質數據。可能存在此處未顯示的問題，請稍後再試。",
     "hubUnavailable": "無法連線至協作寫作服務，因此目前無法載入承諾、評論分數與故事覆蓋範圍。可能存在此處未顯示的問題。"
   },

@@ -102,19 +102,23 @@
     },
     "quality-promises": {
       "title": "Promises",
-      "desc": "The open-promise debt ledger (setups not yet paid off)"
+      "desc": "The open-promise debt ledger (setups not yet paid off)",
+      "guideBody": "Promises is your narrative debt ledger — every setup the story has made and not yet paid off. A promise opens where you plant it (a hinted betrayal, a loaded gun, an unexplained scar) and closes where the manuscript delivers on it. Work the list down before you finish a book; anything still open at the end is a thread readers will notice you dropped."
     },
     "quality-critic": {
       "title": "Critic",
-      "desc": "Per-chapter coherence, voice, pacing & canon scores"
+      "desc": "Per-chapter coherence, voice, pacing & canon scores",
+      "guideBody": "Critic scores a chapter on coherence, voice, pacing, and canon fidelity, with the reasoning behind each verdict. It is advisory — it never edits your prose. Use it to spot the chapter that drifted before a reader does, not as a grade to optimize."
     },
     "quality-coverage": {
       "title": "Story coverage",
-      "desc": "Whole-book audit of which outline promises got paid off"
+      "desc": "Whole-book audit of which outline promises got paid off",
+      "guideBody": "Story coverage is the whole-book view of the promise ledger: which outline beats the manuscript actually delivered, which are still outstanding, and where the payoffs cluster. Read it when a draft is complete to find the acts that promised more than they paid."
     },
     "quality-canon": {
       "title": "Canon issues",
-      "desc": "Confirmed contradictions from generation & knowledge extraction"
+      "desc": "Confirmed contradictions from generation & knowledge extraction",
+      "guideBody": "Canon issues collects confirmed contradictions between your prose and your established lore — a character in two places at once, an eye colour that changed, a rule of magic the story just broke. Each issue links back to the chapter and the canon rule it violates, so you can fix the text or amend the rule."
     },
     "kg-overview": {
       "title": "Overview",
@@ -471,7 +475,8 @@
     },
     "agent-mode": {
       "title": "Agent Mode",
-      "desc": "Autonomous multi-chapter authoring runs — mission control"
+      "desc": "Autonomous multi-chapter authoring runs — mission control",
+      "guideBody": "Agent Mode is mission control for autonomous multi-chapter runs: the agent drafts straight through an approved plan while you watch. Start, pause, and resume a run from here, and review each chapter as it lands — its diff and its critic verdict — then accept, reject, or revert. Nothing it writes is final until you accept it."
     },
     "chapter-revision-compare": {
       "title": "Chapter Revision Compare",
@@ -614,6 +619,7 @@
       "editor": "Editor & Chapters",
       "storyBible": "Story Bible",
       "knowledge": "Knowledge Graph",
+      "quality": "Quality",
       "translation": "Translation",
       "enrichment": "Enrichment",
       "sharing": "Sharing & Settings",

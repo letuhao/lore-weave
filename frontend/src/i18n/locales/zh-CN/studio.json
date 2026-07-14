@@ -620,7 +620,8 @@
       "platform": "平台",
       "discovery": "探索",
       "jobs": "任务",
-      "help": "帮助"
+      "help": "帮助",
+      "quality": "质量"
     },
     "cmd": {
       "showManuscript": "视图：显示手稿",
@@ -697,13 +698,13 @@
     "canonRuleGone": "已失效的规则",
     "canonRuleUnnamed": "该规则",
     "canonRuleFocused": "优先显示你所在章节的规则冲突 ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "您所在的规则目前没有未解决的违规项。该规则已在此锚定，但尚未出现任何破坏性错误。",
     "canonFocused": "优先显示您所在的章节 (找到 {{n}} 个)。",
     "canonFocusedEmpty": "你所在的章节在此处没有设定冲突。",
     "canonUnavailable": "无法连接至共同创作服务 — 以下内容不包含生成时的设定校验结果。",
     "canonNoWork": "本书尚未开启共同创作会话，因此未进行生成时的设定检查。目前仅显示知识提取结果。",
-    "canonRulesCapped": "在 {{total}} 条违规规则中，仅显示最近的 {{shown}} 条。",
-    "canonRuleFocusedEmpty": "您所在的规则目前没有未解决的违规项。该规则已在此锚定，但尚未出现任何破坏性错误。",
     "canonRuleFocusUnknown": "由于协作写作服务不可用，无法检查您所在的规则。规则可能在其他地方仍存在问题——此结果不代表规则完全正确。",
+    "canonRulesCapped": "在 {{total}} 条违规规则中，仅显示最近的 {{shown}} 条。",
     "workUnavailable": "无法连接到协作写作服务，因此无法加载本书的质量数据。可能存在此处未显示的错误。请稍后重试。",
     "hubUnavailable": "无法连接到协作写作服务，因此目前无法加载承诺、评论评分和故事覆盖范围。可能存在此处未显示的错误。"
   },

@@ -620,7 +620,8 @@
       "platform": "플랫폼",
       "discovery": "탐색",
       "jobs": "작업",
-      "help": "도움말"
+      "help": "도움말",
+      "quality": "품질"
     },
     "cmd": {
       "showManuscript": "보기: 원고 표시",
@@ -697,13 +698,13 @@
     "canonRuleGone": "더 이상 존재하지 않는 규칙",
     "canonRuleUnnamed": "해당 규칙",
     "canonRuleFocused": "이전 챕터에서 가져온 규칙의 위반 사항을 먼저 표시합니다 ({{n}}): “{{rule}}”",
+    "canonRuleFocusedEmpty": "이전 규칙에서 발생한 위반 사항이 없습니다. 해당 규칙이 여기에 고정되어 있지만, 아직 위반된 항목은 없습니다.",
     "canonFocused": "이전 장을 먼저 표시합니다 ({{n}}개 발견됨).",
     "canonFocusedEmpty": "이전 챕터에서 가져온 설정에 일치하지 않는 내용이 없습니다.",
     "canonUnavailable": "공동 집필 서비스를 불러올 수 없습니다. 생성 시점의 설정(canon) 결과가 아래에 포함되지 않습니다.",
     "canonNoWork": "이 책은 아직 공동 집필 세션이 없어 생성 시점의 캐논(설정) 검사를 수행하지 않았습니다. 지식 추출 결과만 표시됩니다.",
-    "canonRulesCapped": "위반된 규칙 {{total}}개 중 최근 {{shown}}개를 표시합니다.",
-    "canonRuleFocusedEmpty": "이전 규칙에서 발생한 위반 사항이 없습니다. 해당 규칙이 여기에 고정되어 있지만, 아직 위반된 항목은 없습니다.",
     "canonRuleFocusUnknown": "공동 집필(co-writer) 서비스를 사용할 수 없어 이전 규칙을 확인할 수 없습니다. 다른 곳에서 규칙이 위반되었을 수 있으나, 이는 검사 결과가 아닙니다.",
+    "canonRulesCapped": "위반된 규칙 {{total}}개 중 최근 {{shown}}개를 표시합니다.",
     "workUnavailable": "공동 집필 서비스에 접속할 수 없어 이 책의 품질 데이터를 불러올 수 없습니다. 여기에 표시되지 않은 문제가 있을 수 있습니다. 잠시 후 다시 시도해 주세요.",
     "hubUnavailable": "공동 집필 서비스에 접속할 수 없어 약속 사항, 비평가 점수 및 스토리 커버리지를 현재 불러올 수 없습니다. 여기에 표시되지 않은 문제가 있을 수 있습니다."
   },

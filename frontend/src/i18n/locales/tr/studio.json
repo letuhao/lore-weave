@@ -620,7 +620,8 @@
       "platform": "Platform",
       "discovery": "Keşif",
       "jobs": "İşler",
-      "help": "Yardım"
+      "help": "Yardım",
+      "quality": "Kalite"
     },
     "cmd": {
       "showManuscript": "Görünüm: Taslağı Göster",
@@ -697,13 +698,13 @@
     "canonRuleGone": "Artık mevcut olmayan bir kural",
     "canonRuleUnnamed": "o kural",
     "canonRuleFocused": "Öncelikle geldiğiniz kuralın ihlalleri gösteriliyor ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "Geldiğiniz kuralın açık bir ihlali bulunmuyor. Buraya sabitlenmiş durumda ancak kuralı bozan bir durum yok.",
     "canonFocused": "Önce geldiğiniz bölümü gösteriliyor ({{n}} bulgu).",
     "canonFocusedEmpty": "Geldiğiniz bölümde buraya dair herhangi bir kanon bulgusu yok.",
     "canonUnavailable": "Ortak yazar servisine ulaşılamadı — oluşturma anındaki kanon bulguları aşağıya DAHİL EDİLMEMİŞTİR.",
     "canonNoWork": "Bu kitabın henüz bir ortak yazar oturumu bulunmadığı için oluşturma süreci kanon kontrolleri çalıştırılmadı. Sadece bilgi çıkarma bulguları gösteriliyor.",
-    "canonRulesCapped": "{{total}} ihlal edilen kuraldan en güncel {{shown}} tanesi gösteriliyor.",
-    "canonRuleFocusedEmpty": "Geldiğiniz kuralın açık bir ihlali bulunmuyor. Buraya sabitlenmiş durumda ancak kuralı bozan bir durum yok.",
     "canonRuleFocusUnknown": "Ortak yazar servisine ulaşılamadığı için geldiğiniz kural kontrol edilemedi. Kural bir yerde bozulmuş olabilir; bu bir sonuç değildir.",
+    "canonRulesCapped": "{{total}} ihlal edilen kuraldan en güncel {{shown}} tanesi gösteriliyor.",
     "workUnavailable": "Ortak yazar servisine ulaşılamadı, bu nedenle kitabın kalite verileri yüklenemedi. Burada gösterilmeyen sorunlar mevcut olabilir. Lütfen kısa süre sonra tekrar deneyin.",
     "hubUnavailable": "Ortak yazar servisine ulaşılamadı, bu nedenle vaatler, eleştirmen puanları ve hikaye kapsamı şu anda yüklenemiyor. Burada gösterilmeyen sorunlar mevcut olabilir."
   },

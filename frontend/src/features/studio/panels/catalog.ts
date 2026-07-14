@@ -90,6 +90,21 @@ export type StudioPanelCategory =
   | 'discovery'
   | 'jobs';
 
+/** X-2 — the runtime mirror of the union above, so a test can assert CATEGORY_ORDER
+ *  (palette/useStudioCommands.ts) covers EXACTLY these. Kept adjacent to the union so the two
+ *  can't drift unseen; the compile-time half of the guard lives on CATEGORY_ORDER itself.
+ *  NOTE: this is deliberately NOT the home of CATEGORY_ORDER — catalog.ts imports UserGuidePanel,
+ *  which imports CATEGORY_ORDER from useStudioCommands; a value import back the other way would
+ *  close a real runtime cycle. */
+export const ALL_CATEGORIES = [
+  'editor', 'storyBible', 'knowledge', 'quality', 'translation',
+  'enrichment', 'sharing', 'platform', 'discovery', 'jobs',
+] as const satisfies readonly StudioPanelCategory[];
+// A category added to the union but not to ALL_CATEGORIES is a TYPE ERROR here.
+type _UnlistedCategory = Exclude<StudioPanelCategory, (typeof ALL_CATEGORIES)[number]>;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _ALL_CATEGORIES_IS_EXHAUSTIVE: [_UnlistedCategory] extends [never] ? true : never = true;
+
 export interface StudioPanelDef {
   id: string;
   component: FunctionComponent<IDockviewPanelProps>;
@@ -100,9 +115,19 @@ export interface StudioPanelDef {
   hiddenFromPalette?: boolean;
   /** Command Palette sub-group (#18). Omit only when hiddenFromPalette is true. */
   category?: StudioPanelCategory;
-  /** #19 — longer i18n key for the User Guide panel + tour captions; falls back to `descKey`
-   *  when absent (Wave 1: no panel has this yet; Wave 2 fills it in per-panel). */
-  guideBodyKey?: string;
+  /** #19 / X-3 — the i18n key for the User Guide body. **REQUIRED, not optional.**
+   *
+   *  It was `guideBodyKey?: string` with a "falls back to descKey when absent" contract, and that
+   *  fallback is exactly how 5 panels shipped a SILENTLY BLANK guide row: UserGuidePanel.tsx:120
+   *  renders `t(p.guideBodyKey ?? p.descKey, { defaultValue: '' })`, so a missing key OR missing
+   *  copy renders an empty string — no warning, no crash. Making it required means "forgot the
+   *  guide body" is a TYPE ERROR, not a blank row a user discovers.
+   *
+   *  `hiddenFromPalette` rows carry the key too (rather than forking the type into an
+   *  openable/hidden union). Their copy is a forward-compat placeholder: they never render in the
+   *  guide, but the moment one is un-hidden, panelCatalogContract's "resolves to non-empty English
+   *  copy" test REDS until its `panels.<id>.guideBody` string is written. That is the guard working. */
+  guideBodyKey: string;
   /** #19 Wave 2 — the panel's root `data-testid` selector (e.g. `[data-testid="studio-glossary-panel"]`),
    *  used by role-specific guided tours to target this panel without re-deriving `studio-${id}-panel`
    *  (which is wrong for the few panels whose testid doesn't match their id 1:1, e.g. `knowledge` →
@@ -141,7 +166,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // precedent as book-reader/json-editor/skill-editor: hidden from palette + outside the agent
   // enum (opened only via the `wiki` panel's Edit/History buttons — no wiki_* MCP tool exists
   // yet for an agent to target it with).
-  { id: 'wiki-editor', component: WikiEditorPanel, titleKey: 'panels.wiki-editor.title', descKey: 'panels.wiki-editor.desc', hiddenFromPalette: true },
+  { id: 'wiki-editor', component: WikiEditorPanel, titleKey: 'panels.wiki-editor.title', descKey: 'panels.wiki-editor.desc', hiddenFromPalette: true, guideBodyKey: 'panels.wiki-editor.guideBody' },
   // 14_kg_panels.md A2 — the KG launcher (DOCK-8 hub pattern): browse/open knowledge-graph
   // projects. Phase B adds the capability panels it currently opens via a new-tab fallback.
   { id: 'knowledge', component: KnowledgeHubPanel, titleKey: 'panels.knowledge.title', descKey: 'panels.knowledge.desc', category: 'knowledge', guideBodyKey: 'panels.knowledge.guideBody', tourAnchor: 'studio-knowledge-hub-panel' },
@@ -165,12 +190,12 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // 14_utility_panels.md Phase B — jobs-list is palette + agent openable; job-detail is a
   // params-retargeting singleton ({service, jobId}, json-editor/skill-editor precedent).
   { id: 'jobs-list', component: JobsListPanel, titleKey: 'panels.jobs-list.title', descKey: 'panels.jobs-list.desc', category: 'jobs', guideBodyKey: 'panels.jobs-list.guideBody' },
-  { id: 'job-detail', component: JobDetailPanel, titleKey: 'panels.job-detail.title', descKey: 'panels.job-detail.desc', hiddenFromPalette: true },
+  { id: 'job-detail', component: JobDetailPanel, titleKey: 'panels.job-detail.title', descKey: 'panels.job-detail.desc', hiddenFromPalette: true, guideBodyKey: 'panels.job-detail.guideBody' },
   // 14_utility_panels.md Phase C — browse-then-read, no navigate-away: books lists the user's
   // OTHER books; book-reader is a params-retargeting singleton ({bookId, chapterId?}) opened via
   // host.openPanel from a books row click, never a route hop (the active studio never unmounts).
   { id: 'books', component: BooksBrowserPanel, titleKey: 'panels.books.title', descKey: 'panels.books.desc', category: 'discovery', guideBodyKey: 'panels.books.guideBody' },
-  { id: 'book-reader', component: BookReaderPanel, titleKey: 'panels.book-reader.title', descKey: 'panels.book-reader.desc', hiddenFromPalette: true },
+  { id: 'book-reader', component: BookReaderPanel, titleKey: 'panels.book-reader.title', descKey: 'panels.book-reader.desc', hiddenFromPalette: true, guideBodyKey: 'panels.book-reader.guideBody' },
   // 14_utility_panels.md Phase D — the global leaderboard's 4-tab internal view-switch (DOCK-8
   // anti-pattern) becomes 4 sibling panels; each owns independent filter state.
   { id: 'leaderboard-books', component: LeaderboardBooksPanel, titleKey: 'panels.leaderboard-books.title', descKey: 'panels.leaderboard-books.desc', category: 'discovery', guideBodyKey: 'panels.leaderboard-books.guideBody' },
@@ -202,18 +227,18 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // singleton (json-editor precedent), hidden from palette + outside the enum.
   { id: 'extensions', component: ExtensionsPanel, titleKey: 'panels.extensions.title', descKey: 'panels.extensions.desc', category: 'platform', guideBodyKey: 'panels.extensions.guideBody' },
   { id: 'proposals', component: ProposalsPanel, titleKey: 'panels.proposals.title', descKey: 'panels.proposals.desc', category: 'platform', guideBodyKey: 'panels.proposals.guideBody' },
-  { id: 'skill-editor', component: SkillEditorPanel, titleKey: 'panels.skill-editor.title', descKey: 'panels.skill-editor.desc', hiddenFromPalette: true },
+  { id: 'skill-editor', component: SkillEditorPanel, titleKey: 'panels.skill-editor.title', descKey: 'panels.skill-editor.desc', hiddenFromPalette: true, guideBodyKey: 'panels.skill-editor.guideBody' },
   // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
   // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).
-  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true },
+  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true, guideBodyKey: 'panels.json-editor.guideBody' },
   // #16 Phase 2 (2.7) — per-resource retargeting singleton (json-editor precedent), opened
   // only from the "history" button inside an image/video NodeView. hiddenFromPalette + outside
   // the agent enum — no contract change this cycle.
-  { id: 'media-version-history', component: MediaVersionHistoryPanel, titleKey: 'panels.media-version-history.title', descKey: 'panels.media-version-history.desc', hiddenFromPalette: true },
+  { id: 'media-version-history', component: MediaVersionHistoryPanel, titleKey: 'panels.media-version-history.title', descKey: 'panels.media-version-history.desc', hiddenFromPalette: true, guideBodyKey: 'panels.media-version-history.guideBody' },
   // #16 Phase 2 (2.11) — read-only original-source viewer, retargets via params
   // {bookId, chapterId}; opened only from EditorPanel's toolbar (json-editor precedent),
   // hidden from palette + outside the agent enum.
-  { id: 'original-source', component: OriginalSourcePanel, titleKey: 'panels.original-source.title', descKey: 'panels.original-source.desc', hiddenFromPalette: true },
+  { id: 'original-source', component: OriginalSourcePanel, titleKey: 'panels.original-source.title', descKey: 'panels.original-source.desc', hiddenFromPalette: true, guideBodyKey: 'panels.original-source.guideBody' },
   // 17_translation_enrichment_sharing_settings_docks.md — Book Sharing: visibility
   // radio-cards, unlisted-link+rotate, collaborator invite/role-change/remove. DOCK-7/DOCK-9
   // were already clean on the classic page — no navigate/Link, no hand-rolled overlays.
@@ -227,12 +252,12 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // original-source precedent) opened only from the matrix's per-cell click — hidden from
   // palette + outside the agent enum (meaningless without a chapterId).
   { id: 'translation', component: TranslationPanel, titleKey: 'panels.translation.title', descKey: 'panels.translation.desc', category: 'translation', guideBodyKey: 'panels.translation.guideBody', tourAnchor: 'studio-translation-panel' },
-  { id: 'translation-versions', component: TranslationVersionsPanel, titleKey: 'panels.translation-versions.title', descKey: 'panels.translation-versions.desc', hiddenFromPalette: true },
+  { id: 'translation-versions', component: TranslationVersionsPanel, titleKey: 'panels.translation-versions.title', descKey: 'panels.translation-versions.desc', hiddenFromPalette: true, guideBodyKey: 'panels.translation-versions.guideBody' },
   // 16_chapter_editor_parity_and_retirement.md Phase 3 — the block-aligned review workspace
   // (legacy TranslationReviewPage), a params-retargeting singleton ({bookId, chapterId,
   // versionId}) opened only from TranslationViewer's "Review" button (DOCK-7 fix) — hidden from
   // palette + outside the agent enum (meaningless without a versionId).
-  { id: 'translation-review', component: TranslationReviewPanel, titleKey: 'panels.translation-review.title', descKey: 'panels.translation-review.desc', hiddenFromPalette: true },
+  { id: 'translation-review', component: TranslationReviewPanel, titleKey: 'panels.translation-review.title', descKey: 'panels.translation-review.desc', hiddenFromPalette: true, guideBodyKey: 'panels.translation-review.guideBody' },
   // 17_...docks.md — Lore Enrichment: EnrichmentView's former 6-way internal tab switch
   // (DOCK-8 anti-pattern) becomes 6 sibling panels, no hub — each independently
   // palette + agent openable, mirroring the kg-* panels' shape.
@@ -255,8 +280,8 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // `chapter-revision-compare` is a params-retargeting singleton (json-editor/
   // wiki-editor/translation-versions precedent) — meaningless without a
   // chapterId, so it stays hidden regardless, same as those panels.
-  { id: 'agent-mode', component: AgentModePanel, titleKey: 'panels.agent-mode.title', descKey: 'panels.agent-mode.desc', category: 'editor' },
-  { id: 'chapter-revision-compare', component: ChapterRevisionComparePanel, titleKey: 'panels.chapter-revision-compare.title', descKey: 'panels.chapter-revision-compare.desc', hiddenFromPalette: true },
+  { id: 'agent-mode', component: AgentModePanel, titleKey: 'panels.agent-mode.title', descKey: 'panels.agent-mode.desc', category: 'editor', guideBodyKey: 'panels.agent-mode.guideBody' },
+  { id: 'chapter-revision-compare', component: ChapterRevisionComparePanel, titleKey: 'panels.chapter-revision-compare.title', descKey: 'panels.chapter-revision-compare.desc', hiddenFromPalette: true, guideBodyKey: 'panels.chapter-revision-compare.guideBody' },
   // Quality tab (docs/plans/2026-07-06-studio-quality-tab.md) — DOCK-8 hub +
   // sibling panels, same shape as `knowledge`/kg-*: promise ledger, per-chapter
   // critic scores, book-wide promise coverage, and canon issues are 4 distinct
@@ -268,7 +293,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'quality-critic', component: QualityCriticPanel, titleKey: 'panels.quality-critic.title', descKey: 'panels.quality-critic.desc', category: 'quality', guideBodyKey: 'panels.quality-critic.guideBody' },
   { id: 'quality-coverage', component: QualityCoveragePanel, titleKey: 'panels.quality-coverage.title', descKey: 'panels.quality-coverage.desc', category: 'quality', guideBodyKey: 'panels.quality-coverage.guideBody' },
   { id: 'quality-canon', component: QualityCanonPanel, titleKey: 'panels.quality-canon.title', descKey: 'panels.quality-canon.desc', category: 'quality', guideBodyKey: 'panels.quality-canon.guideBody' },
-  { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
+  { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true, guideBodyKey: 'panels.welcome.guideBody' },
 ];
 
 /** dockview component map (id → component) for StudioDock. */

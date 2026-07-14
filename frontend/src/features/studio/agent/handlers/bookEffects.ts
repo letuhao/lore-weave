@@ -61,3 +61,8 @@ export function registerDefaultEffectHandlers(): void {
   // #12 M-D — agent outline/scene-metadata writes → Scene Rail + navigator + json-editor refresh.
   registerEffectHandler(/^composition_(outline_node|scene_link)_/, outlineEffect);
 }
+
+/** Test-only: undo the idempotency guard so a test can re-register after clearEffectHandlers(). */
+export function _resetDefaultEffectHandlers(): void {
+  registered = false;
+}

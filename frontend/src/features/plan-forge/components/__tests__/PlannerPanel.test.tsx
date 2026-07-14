@@ -12,6 +12,9 @@ import { invalidateUserModelsCache } from '@/components/model-picker';
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 vi.mock('@/features/studio/host/StudioHostProvider', () => ({
   useStudioHost: () => ({ bookId: 'b1' }),
+  // AddModelCta (rendered by the no-models empty state) reads the OPTIONAL host for its DOCK-7
+  // branch; PlannerPanel is a studio dock panel, so return the same host as useStudioHost.
+  useOptionalStudioHost: () => ({ bookId: 'b1' }),
   useRegisterStudioTool: vi.fn(),
 }));
 

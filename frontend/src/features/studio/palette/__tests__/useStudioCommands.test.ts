@@ -71,21 +71,29 @@ describe('buildStudioCommands', () => {
 
   // #18 B4 — panel commands sort by the fixed CATEGORY_ORDER, not catalog array order, so the
   // palette shell's adjacent-row group headers render clean (non-interleaved) sub-groups.
+  //
+  // X-2 — `quality` is fed FIRST and must land THIRD (editor → knowledge → quality → enrichment).
+  // This is the assertion that would have red-flagged the bug the day the quality tab shipped:
+  // `quality` was absent from CATEGORY_ORDER, so indexOf returned -1 and all 5 shipped quality
+  // panels sorted ABOVE `editor` (index 0) at the very top of the palette. A category MISSING from
+  // the catalog sorts LAST (harmless); one UNLISTED in CATEGORY_ORDER sorts FIRST (loud, wrong).
   it('sorts panel commands by the fixed category order regardless of input array order', () => {
+    const quality: StudioPanelDef = { ...panel('quality-promises'), category: 'quality' };
     const enrichment: StudioPanelDef = { ...panel('enrichment-gaps'), category: 'enrichment' };
     const editor: StudioPanelDef = { ...panel('compose'), category: 'editor' };
     const knowledge: StudioPanelDef = { ...panel('kg-overview'), category: 'knowledge' };
-    // Deliberately out of CATEGORY_ORDER (enrichment, editor, knowledge) to prove the builder sorts.
+    // Deliberately out of CATEGORY_ORDER (quality, enrichment, editor, knowledge) to prove it sorts.
     const cmds = buildStudioCommands({
       chrome: chrome(),
-      panels: [enrichment, editor, knowledge],
+      panels: [quality, enrichment, editor, knowledge],
       ...baseOpts(),
     });
     const panelCmdIds = cmds.filter((c) => c.id.startsWith('studio.openPanel.')).map((c) => c.id);
     expect(panelCmdIds).toEqual([
-      'studio.openPanel.compose',       // editor
-      'studio.openPanel.kg-overview',   // knowledge
-      'studio.openPanel.enrichment-gaps', // enrichment
+      'studio.openPanel.compose',          // editor
+      'studio.openPanel.kg-overview',      // knowledge
+      'studio.openPanel.quality-promises', // quality  ← was sorting FIRST, above editor
+      'studio.openPanel.enrichment-gaps',  // enrichment
     ]);
   });
 

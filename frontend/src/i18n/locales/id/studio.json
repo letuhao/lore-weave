@@ -620,7 +620,8 @@
       "platform": "Platform",
       "discovery": "Penemuan",
       "jobs": "Tugas",
-      "help": "Bantuan"
+      "help": "Bantuan",
+      "quality": "Kualitas"
     },
     "cmd": {
       "showManuscript": "Tampilan: Tampilkan Manuskrip",
@@ -697,13 +698,13 @@
     "canonRuleGone": "Aturan yang tidak lagi ada",
     "canonRuleUnnamed": "aturan itu",
     "canonRuleFocused": "Menampilkan pelanggaran dari aturan asal Anda terlebih dahulu ({{n}}): «{{rule}}»",
+    "canonRuleFocusedEmpty": "Aturan asal Anda tidak memiliki pelanggaran terbuka. Aturan tersebut tertanam di sini, tetapi tidak ada yang melanggarnya.",
     "canonFocused": "Menampilkan bab asal Anda terlebih dahulu ({{n}} temuan).",
     "canonFocusedEmpty": "Bab asal Anda tidak memiliki temuan kanon di sini.",
     "canonUnavailable": "Tidak dapat terhubung ke layanan co-writer — temuan kanon saat waktu pembuatan TIDAK disertakan di bawah ini.",
     "canonNoWork": "Buku ini belum memiliki sesi penulis pendamping, sehingga pemeriksaan kanon saat pembuatan belum dijalankan. Hanya temuan ekstraksi pengetahuan yang ditampilkan.",
-    "canonRulesCapped": "Menampilkan {{shown}} aturan terlanggar terbaru dari {{total}} aturan.",
-    "canonRuleFocusedEmpty": "Aturan asal Anda tidak memiliki pelanggaran terbuka. Aturan tersebut tertanam di sini, tetapi tidak ada yang melanggarnya.",
     "canonRuleFocusUnknown": "Aturan asal Anda tidak dapat diperiksa karena layanan co-writer tidak tersedia. Aturan tersebut mungkin saja masih melanggar di suatu tempat — ini bukan hasil akhir.",
+    "canonRulesCapped": "Menampilkan {{shown}} aturan terlanggar terbaru dari {{total}} aturan.",
     "workUnavailable": "Tidak dapat terhubung ke layanan co-writer, sehingga data kualitas buku ini tidak dapat dimuat. Masalah mungkin ada namun tidak ditampilkan di sini. Coba lagi beberapa saat lagi.",
     "hubUnavailable": "Tidak dapat terhubung ke layanan co-writer, sehingga janji, skor kritikus, dan cakupan cerita tidak dapat dimuat saat ini. Masalah mungkin ada namun tidak ditampilkan di sini."
   },
