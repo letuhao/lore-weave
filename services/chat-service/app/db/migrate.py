@@ -624,6 +624,37 @@ CREATE TABLE IF NOT EXISTS reflection_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_reflection_notes_owner_date
   ON reflection_notes (owner_user_id, entry_date);
+
+-- WS-5.20 (spec 08 §Scorer) — coaching_rubrics: the SCORING STANDARD, versioned + cited,
+-- replacing the free-form SessionTemplate.rubric (dict[str,Any], no schema — "improvised
+-- standards already ship"). SYSTEM tier: admin-seeded, everyone reads, a regular user never
+-- writes (User Boundaries). `dimensions` = [{key,label,anchors:{1..5}}] — the server-
+-- authoritative dimension set the Scorecard coerces against (coerce_scorecard's safe-when-wrong
+-- guarantee is anchored to THIS, not the model's output). A coach session with NO resolvable
+-- rubric REFUSES to score (P5-D5). `tier` carries the quarantine state until Gate 4 clears.
+CREATE TABLE IF NOT EXISTS coaching_rubrics (
+  rubric_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code            TEXT NOT NULL,
+  version         INT  NOT NULL DEFAULT 1,
+  label           TEXT NOT NULL,
+  dimensions      JSONB NOT NULL,                 -- [{key,label,anchors:{"1":..,"5":..}}]
+  source_citation TEXT NOT NULL DEFAULT '',
+  license         TEXT NOT NULL DEFAULT '',
+  tier            TEXT NOT NULL DEFAULT 'quarantine' CHECK (tier IN ('quarantine','validated')),
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (code, version)
+);
+-- Seed ONE System-tier default rubric so a coach session can resolve a standard (a coaching
+-- interview scores the user's STAR/clarity/structure). Idempotent; tier='quarantine' until
+-- the Gate-4 human eval clears.
+INSERT INTO coaching_rubrics (code, version, label, dimensions, source_citation, tier)
+VALUES ('interview_v1', 1, 'Behavioral interview (STAR)',
+  '[{"key":"star_structure","label":"STAR structure","anchors":{"1":"no discernible structure","3":"partial STAR (missing Result)","5":"complete Situation-Task-Action-Result"}},
+    {"key":"clarity","label":"Clarity","anchors":{"1":"hard to follow","3":"mostly clear","5":"crisp and well-sequenced"}},
+    {"key":"specificity","label":"Specificity","anchors":{"1":"vague generalities","3":"some concrete detail","5":"concrete, quantified examples"}}]'::jsonb,
+  'STAR method (Situation-Task-Action-Result), widely-used behavioral-interview framework', 'quarantine')
+ON CONFLICT (code, version) DO NOTHING;
 """
 
 

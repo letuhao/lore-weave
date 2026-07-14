@@ -154,6 +154,10 @@ class Scorecard(BaseModel):
     # (fail-closed): every score a code run produces is quarantine, because `evaluate_gate`
     # can never clear without human labels. The FE excludes quarantine scores from any trend.
     quarantine: bool = True
+    # WS-5.21 — N-dimensional score, SERVER-AUTHORITATIVE from the coaching_rubrics dimensions
+    # (the model contributes a 1-5 score per FIXED key; it can't drop/invent a dimension).
+    # Empty for a legacy interview scorecard (the named STAR fields above stay for that path).
+    dimensions: list[dict] = Field(default_factory=list)
 
 
 class EvaluateResponse(BaseModel):
