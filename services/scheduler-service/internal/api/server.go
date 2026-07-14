@@ -30,6 +30,7 @@ func (s *Server) Router() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Put("/internal/schedules", s.upsertSchedule)
+		r.Post("/internal/away", s.addAway)
 	})
 	return r
 }
@@ -96,6 +97,37 @@ func (s *Server) upsertSchedule(w http.ResponseWriter, r *http.Request) {
 		out["next_fire_at"] = next.Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+type addAwayReq struct {
+	UserID   uuid.UUID `json:"user_id"`
+	StartsOn string    `json:"starts_on"` // YYYY-MM-DD
+	EndsOn   string    `json:"ends_on"`   // YYYY-MM-DD
+}
+
+// addAway — POST /internal/away (WS-3.4). Records a declared away span so nudges (and P5's gap
+// detector) skip those days. The gateway calls it behind the user's JWT.
+func (s *Server) addAway(w http.ResponseWriter, r *http.Request) {
+	var req addAwayReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	start, err1 := time.Parse("2006-01-02", req.StartsOn)
+	end, err2 := time.Parse("2006-01-02", req.EndsOn)
+	if req.UserID == uuid.Nil || err1 != nil || err2 != nil {
+		writeErr(w, http.StatusBadRequest, "user_id + starts_on/ends_on (YYYY-MM-DD) required")
+		return
+	}
+	if end.Before(start) {
+		writeErr(w, http.StatusBadRequest, "ends_on must be >= starts_on")
+		return
+	}
+	if err := scheduler.AddAwayPeriod(r.Context(), s.pool, req.UserID, start, end); err != nil {
+		writeErr(w, http.StatusInternalServerError, "failed to record away period")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"away": true, "starts_on": req.StartsOn, "ends_on": req.EndsOn})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -47,3 +47,21 @@ ON CONFLICT (owner_user_id, job_kind) DO UPDATE SET
 	}
 	return time.Time{}, nil
 }
+
+// AddAwayPeriod (WS-3.4) records a declared away span for a user.
+func AddAwayPeriod(ctx context.Context, pool *pgxpool.Pool, owner uuid.UUID, startsOn, endsOn time.Time) error {
+	_, err := pool.Exec(ctx,
+		`INSERT INTO assistant_away_periods (owner_user_id, starts_on, ends_on) VALUES ($1,$2,$3)`,
+		owner, startsOn, endsOn)
+	return err
+}
+
+// IsAway reports whether `day` (a calendar date) falls inside any of the user's away periods. A nudge
+// must not fire on an away day (spec 11 Q7); Phase 5's gap detector reads this too.
+func IsAway(ctx context.Context, pool *pgxpool.Pool, owner uuid.UUID, day time.Time) (bool, error) {
+	var n int
+	err := pool.QueryRow(ctx, `
+SELECT count(*) FROM assistant_away_periods
+WHERE owner_user_id=$1 AND $2::date BETWEEN starts_on AND ends_on`, owner, day).Scan(&n)
+	return n > 0, err
+}

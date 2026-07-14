@@ -49,6 +49,7 @@ func main() {
 
 	enq := &scheduler.HTTPEnqueuer{
 		ChatInternalURL: cfg.ChatInternalURL,
+		NotificationURL: cfg.NotificationURL,
 		InternalToken:   cfg.InternalToken,
 		Client:          &http.Client{Timeout: 30 * time.Second},
 	}

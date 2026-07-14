@@ -54,3 +54,48 @@ func TestUpsertSchedule_OptInThenFire(t *testing.T) {
 		t.Fatalf("disabled schedule must not fire, n=%d", n)
 	}
 }
+
+// WS-3.4 (spec 11 Q7) — a NUDGE is suppressed on a declared away day (re-armed, not sent); a nudge
+// OUTSIDE any away period fires. eod_distill is NOT away-gated.
+func TestNudge_SuppressedOnAwayDay(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	past := now.Add(-time.Minute)
+
+	// User A is AWAY today; user B is not.
+	awayUser := uuid.New()
+	activeUser := uuid.New()
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM scheduled_agent_runs WHERE owner_user_id = ANY($1)`, []uuid.UUID{awayUser, activeUser})
+		pool.Exec(ctx, `DELETE FROM assistant_away_periods WHERE owner_user_id = ANY($1)`, []uuid.UUID{awayUser, activeUser})
+	})
+	if err := AddAwayPeriod(ctx, pool, awayUser, now.AddDate(0, 0, -1), now.AddDate(0, 0, 3)); err != nil {
+		t.Fatalf("away: %v", err)
+	}
+	seedNudge := func(owner uuid.UUID) {
+		pool.Exec(ctx, `INSERT INTO scheduled_agent_runs (owner_user_id, job_kind, cadence, enabled, next_fire_at)
+			VALUES ($1,'nudge','daily',true,$2)`, owner, past)
+	}
+	seedNudge(awayUser)
+	seedNudge(activeUser)
+
+	enq := &fakeEnq{}
+	n, err := NewDriver(pool, enq, "t").tickOnce(ctx)
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	// Only the ACTIVE user's nudge fires; the away user's is suppressed (re-armed).
+	if n != 1 || len(enq.fired) != 1 {
+		t.Fatalf("expected 1 nudge fired (active only), got n=%d fired=%v", n, enq.fired)
+	}
+	if enq.fired[0] != activeUser.String()+"|nudge" {
+		t.Fatalf("wrong nudge fired: %v", enq.fired)
+	}
+	// The away user's row is re-armed to the future (suppressed as a no-op, not left due).
+	var next time.Time
+	pool.QueryRow(ctx, `SELECT next_fire_at FROM scheduled_agent_runs WHERE owner_user_id=$1`, awayUser).Scan(&next)
+	if !next.After(now) {
+		t.Fatalf("suppressed away nudge should re-arm to the future, got %v", next)
+	}
+}

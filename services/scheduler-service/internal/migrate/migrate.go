@@ -42,6 +42,20 @@ CREATE TABLE IF NOT EXISTS scheduled_agent_runs (
 CREATE INDEX IF NOT EXISTS idx_sar_due
   ON scheduled_agent_runs (next_fire_at)
   WHERE enabled AND next_fire_at IS NOT NULL;
+
+-- assistant_away_periods (WS-3.4, spec 11 Q7) — declared "time off / away" spans. A nudge must never
+-- fire during an away period (don't scold someone on holiday for skipping a day); Phase 5's journaling-
+-- gap detector reads these too (P3 CREATES the marker, P5 CONSUMES it — via the scheduler's API, not a
+-- cross-service DB read). Half-open [starts_on, ends_on] on local calendar days.
+CREATE TABLE IF NOT EXISTS assistant_away_periods (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id UUID NOT NULL,
+  starts_on     DATE NOT NULL,
+  ends_on       DATE NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (ends_on >= starts_on)
+);
+CREATE INDEX IF NOT EXISTS idx_away_owner ON assistant_away_periods (owner_user_id, starts_on, ends_on);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

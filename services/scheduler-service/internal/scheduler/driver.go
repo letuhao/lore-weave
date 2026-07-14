@@ -118,6 +118,15 @@ LIMIT 100`, now)
 	// Enqueue OUTSIDE the claim tx (the lease covers this window). Re-arm each row by its own result.
 	fired := 0
 	for _, c := range claimed {
+		// WS-3.4 (spec 11 Q7) — a NUDGE must never fire on a declared away day (don't scold someone on
+		// holiday). Suppress it as a successful no-op: re-arm for the next day, don't send. eod_distill
+		// is NOT away-gated (a returning user still wants their days journaled — that's the catch-up).
+		if c.kind == "nudge" {
+			if away, err := IsAway(ctx, d.pool, c.owner, now); err == nil && away {
+				d.recordSuccess(ctx, c.id, now) // re-arm, don't notify
+				continue
+			}
+		}
 		if err := d.enq.Enqueue(ctx, c.owner, c.kind); err != nil {
 			slog.Warn("scheduler enqueue failed; breaker++", "owner", c.owner, "kind", c.kind, "error", err)
 			d.recordFailure(ctx, c.id)
@@ -163,6 +172,7 @@ WHERE id = $1`, d.maxFails, int(d.backoff.Seconds())), id)
 // headless distill context server-side (WS-3.0). Other job_kinds are added as their consumers land.
 type HTTPEnqueuer struct {
 	ChatInternalURL string
+	NotificationURL string // WS-3.6 content-free nudge sink; "" → nudges are no-ops
 	InternalToken   string
 	Client          *http.Client
 }
@@ -171,9 +181,39 @@ func (e *HTTPEnqueuer) Enqueue(ctx context.Context, ownerUserID uuid.UUID, jobKi
 	switch jobKind {
 	case "eod_distill":
 		return e.postDistill(ctx, ownerUserID)
+	case "nudge":
+		return e.postNudge(ctx, ownerUserID)
 	default:
 		return fmt.Errorf("scheduler: unknown job_kind %q", jobKind)
 	}
+}
+
+// postNudge (WS-3.6, spec 11 Q6/T26) — a CONTENT-FREE reminder. The body carries the user_id + a
+// content-free `kind` ONLY — never any diary text (a nudge lands on a lock screen / an employer inbox;
+// the content lives behind auth). The notification-service content-free path (locked + tested) renders
+// it as "You have an unfinished entry." A missing/unconfigured notification URL degrades to a no-op
+// (nudges are best-effort; never a breaker trip for a reminder).
+func (e *HTTPEnqueuer) postNudge(ctx context.Context, ownerUserID uuid.UUID) error {
+	if e.NotificationURL == "" {
+		return nil // nudges best-effort; no notification sink configured → skip quietly
+	}
+	url := strings.TrimRight(e.NotificationURL, "/") + "/internal/notifications/assistant-nudge"
+	body := fmt.Sprintf(`{"user_id":%q,"kind":"unfinished_entry"}`, ownerUserID.String()) // NO content (T26)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Internal-Token", e.InternalToken)
+	resp, err := e.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	return fmt.Errorf("nudge notification returned %d", resp.StatusCode)
 }
 
 func (e *HTTPEnqueuer) postDistill(ctx context.Context, ownerUserID uuid.UUID) error {
