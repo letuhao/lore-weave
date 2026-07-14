@@ -201,6 +201,22 @@ async def main() -> None:
         coroutines.append(_reextract_consumer.run())
         logger.info("WS-2.6a: assistant.reextract consumer started (group=%s-reextract)",
                     settings.distill_consumer_group)
+
+        # WS-3.7 — the weekly-rollup consumer. Same assistant toggle; its own group.
+        from app.weekly_rollup_consumer import WeeklyRollupConsumer
+        _weekly_rollup_consumer = WeeklyRollupConsumer(
+            settings.redis_url,
+            knowledge_client,
+            book_client,
+            llm_client,
+            consumer_group=f"{settings.distill_consumer_group}-weekly",
+            consumer_name=settings.distill_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+            billing_client=usage_billing_client,
+        )
+        coroutines.append(_weekly_rollup_consumer.run())
+        logger.info("WS-3.7: assistant.weekly_rollup consumer started (group=%s-weekly)",
+                    settings.distill_consumer_group)
     else:
         logger.info("distill consumer disabled via config")
 

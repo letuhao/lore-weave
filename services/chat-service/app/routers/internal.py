@@ -9,7 +9,7 @@ aggregated from chat_messages.tool_calls so MCP-reliability work is measurable.
 """
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 import asyncpg
@@ -334,6 +334,46 @@ async def trigger_reextract(body: ReextractTrigger) -> dict:
     except Exception as exc:  # noqa: BLE001 — a lost enqueue = a correction that never reconciles.
         raise HTTPException(status_code=503, detail=f"failed to enqueue reextract: {exc}") from exc
     return {"enqueued": True, "entry_date": body.entry_date.isoformat(), "message_id": msg_id}
+
+
+class WeeklyRollupTrigger(BaseModel):
+    """WS-3.7 — the scheduler posts ONLY {user_id}; book/model/tz resolve server-side (WS-3.0) and the
+    week defaults to the last 7 completed days (ending yesterday, server-authoritative — D-R14)."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    model_source: str | None = None
+    model_ref: UUID | None = None
+    language: str = "en"
+    week_start: date | None = None
+    week_end: date | None = None
+
+
+@router.post("/assistant/weekly-rollup", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_weekly_rollup(body: WeeklyRollupTrigger) -> dict:
+    """WS-3.7 — enqueue a weekly-rollup job (a summary DRAFT over the week's confirmed diary facts).
+    Resolves book/model/tz server-side (WS-3.0); the week defaults to yesterday-minus-6 .. yesterday."""
+    from app.events.distill_enqueue import enqueue_weekly_rollup
+
+    # Reuse the WS-3.0 headless resolution (book + distill model + tz) — a DistillTrigger-shaped view.
+    ctx = DistillTrigger(user_id=body.user_id, book_id=body.book_id,
+                         model_source=body.model_source, model_ref=body.model_ref, language=body.language)
+    book_id, model_source, model_ref, entry_zone = await _resolve_distill_context(ctx)
+
+    today = datetime.now(timezone.utc).date()
+    week_end = body.week_end or (today - timedelta(days=1))
+    week_start = body.week_start or (week_end - timedelta(days=6))
+    try:
+        msg_id = await enqueue_weekly_rollup(
+            user_id=str(body.user_id), book_id=book_id,
+            week_start=week_start.isoformat(), week_end=week_end.isoformat(),
+            entry_zone=entry_zone, language=body.language or "en",
+            model_source=model_source, model_ref=model_ref,
+        )
+    except Exception as exc:  # noqa: BLE001 — a lost enqueue = a missed weekly review.
+        raise HTTPException(status_code=503, detail=f"failed to enqueue weekly rollup: {exc}") from exc
+    return {"enqueued": True, "week_start": week_start.isoformat(), "week_end": week_end.isoformat(),
+            "message_id": msg_id}
 
 
 @router.delete("/assistant/data", dependencies=[Depends(require_internal_token)])

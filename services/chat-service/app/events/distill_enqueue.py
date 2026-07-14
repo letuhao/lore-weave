@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 DISTILL_STREAM = "assistant.distill"
 # MUST match worker-ai app/reextract_consumer.REEXTRACT_STREAM_NAME.
 REEXTRACT_STREAM = "assistant.reextract"
+# MUST match worker-ai app/weekly_rollup_consumer.WEEKLY_ROLLUP_STREAM_NAME.
+WEEKLY_ROLLUP_STREAM = "assistant.weekly_rollup"
 
 _redis: Any = None
 
@@ -93,4 +95,34 @@ async def enqueue_reextract(
     msg_id = await r.xadd(REEXTRACT_STREAM, fields, maxlen=10000, approximate=True)
     logger.info("enqueued assistant.reextract user=%s book=%s date=%s msg=%s",
                 user_id, book_id, entry_date, msg_id)
+    return msg_id if isinstance(msg_id, str) else str(msg_id)
+
+
+async def enqueue_weekly_rollup(
+    *,
+    user_id: str,
+    book_id: str,
+    week_start: str,
+    week_end: str,
+    entry_zone: str,
+    language: str,
+    model_source: str,
+    model_ref: str,
+    trace_id: str | None = None,
+) -> str:
+    """WS-3.7 — enqueue a weekly-rollup job (a summary DRAFT over [week_start, week_end]'s facts).
+    worker-ai's WeeklyRollupConsumer runs `roll_up_week`. RAISES on a Redis error (a lost enqueue = a
+    missed weekly review; surface it)."""
+    fields = {
+        "user_id": user_id, "book_id": book_id,
+        "week_start": week_start, "week_end": week_end,
+        "entry_zone": entry_zone, "language": language,
+        "model_source": model_source, "model_ref": model_ref,
+    }
+    if trace_id:
+        fields["trace_id"] = trace_id
+    r = _get_redis()
+    msg_id = await r.xadd(WEEKLY_ROLLUP_STREAM, fields, maxlen=10000, approximate=True)
+    logger.info("enqueued assistant.weekly_rollup user=%s book=%s [%s..%s] msg=%s",
+                user_id, book_id, week_start, week_end, msg_id)
     return msg_id if isinstance(msg_id, str) else str(msg_id)

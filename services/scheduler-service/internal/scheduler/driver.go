@@ -180,7 +180,9 @@ type HTTPEnqueuer struct {
 func (e *HTTPEnqueuer) Enqueue(ctx context.Context, ownerUserID uuid.UUID, jobKind string) error {
 	switch jobKind {
 	case "eod_distill":
-		return e.postDistill(ctx, ownerUserID)
+		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/distill")
+	case "weekly_rollup":
+		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/weekly-rollup")
 	case "nudge":
 		return e.postNudge(ctx, ownerUserID)
 	default:
@@ -216,8 +218,10 @@ func (e *HTTPEnqueuer) postNudge(ctx context.Context, ownerUserID uuid.UUID) err
 	return fmt.Errorf("nudge notification returned %d", resp.StatusCode)
 }
 
-func (e *HTTPEnqueuer) postDistill(ctx context.Context, ownerUserID uuid.UUID) error {
-	url := strings.TrimRight(e.ChatInternalURL, "/") + "/internal/chat/assistant/distill"
+// postAssistant posts {user_id} to an assistant trigger `path` (distill or weekly-rollup). Both resolve
+// book/model/tz server-side (WS-3.0), so the scheduler carries only the identity.
+func (e *HTTPEnqueuer) postAssistant(ctx context.Context, ownerUserID uuid.UUID, path string) error {
+	url := strings.TrimRight(e.ChatInternalURL, "/") + path
 	body := fmt.Sprintf(`{"user_id":%q}`, ownerUserID.String()) // WS-3.0 resolves book/model/tz server-side
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
 	if err != nil {

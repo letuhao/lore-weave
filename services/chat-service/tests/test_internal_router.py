@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -314,6 +314,32 @@ async def test_distill_headless_422_when_no_model_configured(client):
          patch("app.client.auth_client.get_auth_client", return_value=auth):
         r = await client.post(_DISTILL, json={"user_id": uid}, headers=_AUTH)
     assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_weekly_rollup_headless_resolves_and_defaults_the_week(client):
+    """WS-3.7 — the scheduler posts only {user_id}; the trigger resolves book/model/tz and defaults the
+    week to yesterday-minus-6 .. yesterday."""
+    uid = str(uuid4())
+    book_id = str(uuid4())
+    model_ref = str(uuid4())
+    today = datetime.now(timezone.utc).date()
+    prov = AsyncMock()
+    prov.get_default_model = AsyncMock(side_effect=lambda cap, u: ("user_model", model_ref) if cap == "distill" else None)
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="UTC")
+
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(book_id)), \
+         patch("app.client.provider_client.get_provider_client", return_value=prov), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth), \
+         patch("app.events.distill_enqueue.enqueue_weekly_rollup", new=AsyncMock(return_value="w-0")) as enq:
+        r = await client.post("/internal/chat/assistant/weekly-rollup", json={"user_id": uid}, headers=_AUTH)
+
+    assert r.status_code == 202, r.text
+    kw = enq.await_args.kwargs
+    assert kw["book_id"] == book_id and kw["model_ref"] == model_ref
+    assert kw["week_end"] == (today - timedelta(days=1)).isoformat()
+    assert kw["week_start"] == (today - timedelta(days=7)).isoformat()
 
 
 @pytest.mark.asyncio
