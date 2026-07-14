@@ -56,11 +56,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 | B3 | `arc_lift` startup fail-loud assertion (Q2 sealed) | [x] | `9a9ec24e8` · auto-lift clean DBs + `_assert_lift_applied` fails loud on rekey-without-lift. **LIVE**: fresh throwaway DB → born LIFTED (`kind IN ('chapter','scene')`, both markers, no trip); throwaway dropped (0 left). Unit tests pin both marker states. |
 | B4 | C5 — is `POST /works/{pid}/generate` ungated-spend reachable? | [x] | **Investigated → DEFER + ⚠ PO-DECIDE (§6 D-B4).** Reachable ONLY from the legacy editor (`App.tsx:134` route), NOT the studio (`ComposePanel` is chat-only — imports `@/features/chat/Chat`, no `/generate`). Streaming cowrite/ghost can't take a per-call confirm (UX); the surface is Wave-6-retiring; the correct gate (per-work spend budget / opt-in + discrete-generate confirm) is the compose-path wave, tracked as W3-3c / D-COMPOSE-GENERATE-UNGATED (PO decision sheet). ⚠ **NOT proven fail-closed at a guardrail** — stated honestly, not claimed. |
 
-### PHASE 2 — the missing test batteries (`25` T3/T4/T5/T6) — T4 ✅ · T3/T5 🅿️ D-DEFER · T6 🅿️ P-CONC
+### PHASE 2 — the missing test batteries (`25` T3/T4/T5/T6) — T3 ✅ · T4 ✅ · T5 🅿️ · T6 🅿️ P-CONC
 | # | Slice | Status | Evidence |
 |---|---|---|---|
 | T4 | Derivative-separation — book-scoped read returns CANONICAL Work (RED on today's resolve_scope, GREEN after B2) | [x] | `9a9ec24e8` · done WITH B2 (test_25_t4_derivative_separation.py, 3 pass; RED on marked[0]) |
-| T3 | Grantee-widening — incl. F5 zero-pending-forks regression (PM-9's untested claim) | 🅿️ | **→ §6 D-DEFER** — composition-only, build-ready; deferred to the continuous run (token budget + blocked critical path) |
+| T3 | Grantee-widening — incl. F5 zero-pending-forks regression (PM-9's untested claim) | [x] | **composition half DONE** · `test_25_t3_f5_no_fork.py` (3 pass): `_ensure_work` called AS grantee B returns the owner's canonical Work, `create_pending` NEVER called (0 forks) — PM-9's F5 claim now guarded by EFFECT. Live grantee-through-MCP leg → §7 P-CONC. |
 | T5 | Spend attribution by effect on the usage row | 🅿️ | **→ §6 D-DEFER** (composition half) + **§7 P-CONC** (the usage-row live smoke is cross-service into contended usage-billing). Seam already correct: `job_consumer.py:233-235` attributes to `job.created_by`, not the message field. |
 | T6 | The re-key cross-service live smoke (O-4) | 🅿️ | **→ §7 P-CONC** — book-service contended |
 
