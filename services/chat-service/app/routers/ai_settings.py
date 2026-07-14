@@ -75,6 +75,9 @@ class AiPrefsPatch(BaseModel):
         # converges to one vocabulary, and reject a genuinely unknown source
         # (D-CHATAI-VOICE-TWO-STORES).
         self.voice = sr.normalize_voice_sources(self.voice)
+        # WS-4.3 — the per-user audio-retention setting is bounded by the deploy ceiling.
+        from app.config import settings as _settings
+        sr.validate_audio_retention(self.voice, _settings.audio_ttl_hours)
         return self
 
 

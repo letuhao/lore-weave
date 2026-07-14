@@ -143,6 +143,18 @@ async def test_patch_accepts_and_coerces_legacy_voice_source(client, mock_pool):
     assert resp.status_code == 200
 
 
+# ── WS-4.3 — the per-user audio-retention setting is range-validated at the door ──
+async def test_patch_accepts_in_range_audio_retention(client, mock_pool):
+    mock_pool._conn.fetchrow.return_value = None
+    resp = await client.patch("/v1/chat/ai-prefs", json={"voice": {"audio_retention_hours": 12}})
+    assert resp.status_code == 200
+
+
+async def test_patch_rejects_audio_retention_over_ceiling(client, mock_pool):
+    resp = await client.patch("/v1/chat/ai-prefs", json={"voice": {"audio_retention_hours": 999}})
+    assert resp.status_code == 422
+
+
 async def test_create_session_seeds_behavior_from_account(client, mock_pool):
     # HIGH fix: a new session inherits the account behavior defaults so the panel
     # isn't a write-only store. get_prefs (1st fetchrow) then INSERT (2nd).

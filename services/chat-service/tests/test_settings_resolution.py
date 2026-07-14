@@ -230,3 +230,26 @@ def test_normalize_does_not_mutate_input():
     src = {"chat": {"tts_source": "ai_model"}}
     sr.normalize_voice_sources(src)
     assert src["chat"]["tts_source"] == "ai_model"  # caller's dict untouched
+
+
+# ── WS-4.3 — per-user audio retention bounded by the deploy ceiling ──────────
+def test_audio_retention_accepts_in_range_and_zero():
+    sr.validate_audio_retention({"audio_retention_hours": 24}, 48)  # ok
+    sr.validate_audio_retention({"audio_retention_hours": 0}, 48)   # 0 = don't retain
+    sr.validate_audio_retention({"audio_retention_hours": 48}, 48)  # exactly the ceiling
+    sr.validate_audio_retention({}, 48)                             # absent = inherit
+    sr.validate_audio_retention({"audio_retention_hours": None}, 48)  # clear = inherit
+
+
+def test_audio_retention_rejects_over_ceiling():
+    with pytest.raises(ValueError, match=r"\[0, 48\]"):
+        sr.validate_audio_retention({"audio_retention_hours": 72}, 48)
+
+
+def test_audio_retention_rejects_negative_and_non_int():
+    with pytest.raises(ValueError):
+        sr.validate_audio_retention({"audio_retention_hours": -1}, 48)
+    with pytest.raises(ValueError):
+        sr.validate_audio_retention({"audio_retention_hours": "24"}, 48)
+    with pytest.raises(ValueError):
+        sr.validate_audio_retention({"audio_retention_hours": True}, 48)  # bool is not a valid count

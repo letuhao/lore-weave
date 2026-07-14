@@ -249,24 +249,23 @@ async def cleanup_expired_audio(
 ) -> dict:
     if x_internal_token != settings.internal_service_token:
         raise HTTPException(status_code=403, detail="invalid internal token")
-    """Delete expired audio segments (48h+). Called by cron/scheduler.
+    """Delete expired audio segments. Called by cron/scheduler.
 
-    Two-layer cleanup:
+    AUDIO_TTL_HOURS is the deploy CEILING; each user's effective TTL is resolved
+    per-segment against their `audio_retention_hours` setting (WS-4.3). Two-layer:
     1. DB rows deleted first (returns object keys)
     2. S3 objects deleted (if fails, S3 lifecycle is safety net)
     """
-    rows = await pool.fetch(
-        "DELETE FROM message_audio_segments WHERE created_at < now() - make_interval(hours => $1) RETURNING object_key",
-        settings.audio_ttl_hours,
-    )
+    from app.services.audio_retention import delete_expired_audio
+    object_keys = await delete_expired_audio(pool, settings.audio_ttl_hours)
     deleted = 0
-    for r in rows:
+    for key in object_keys:
         try:
-            await delete_object(r["object_key"])
+            await delete_object(key)
             deleted += 1
         except Exception:
             pass  # S3 lifecycle will catch orphans
-    return {"deletedSegments": len(rows), "deletedObjects": deleted}
+    return {"deletedSegments": len(object_keys), "deletedObjects": deleted}
 
 
 @voice_mgmt_router.delete("/data")

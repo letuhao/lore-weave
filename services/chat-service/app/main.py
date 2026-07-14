@@ -46,25 +46,24 @@ if _lvl in ("DEBUG", "INFO", "WARNING", "ERROR"):
     logging.getLogger("app").setLevel(getattr(logging, _lvl))
 
 async def _audio_cleanup_loop():
-    """Periodically delete expired voice audio segments. Config via AUDIO_TTL_HOURS + AUDIO_CLEANUP_INTERVAL_HOURS."""
+    """Periodically delete expired voice audio segments. AUDIO_TTL_HOURS is the deploy
+    CEILING; each user's effective TTL is resolved per-segment (WS-4.3). Interval via
+    AUDIO_CLEANUP_INTERVAL_HOURS."""
     from app.db.pool import get_pool
+    from app.services.audio_retention import delete_expired_audio
     interval = settings.audio_cleanup_interval_hours * 3600
-    ttl_hours = settings.audio_ttl_hours
     while True:
         await asyncio.sleep(interval)
         try:
             pool = get_pool()
-            rows = await pool.fetch(
-                "DELETE FROM message_audio_segments WHERE created_at < now() - make_interval(hours => $1) RETURNING object_key",
-                ttl_hours,
-            )
-            for r in rows:
+            object_keys = await delete_expired_audio(pool, settings.audio_ttl_hours)
+            for key in object_keys:
                 try:
-                    await delete_object(r["object_key"])
+                    await delete_object(key)
                 except Exception:
                     pass  # S3 lifecycle is safety net
-            if rows:
-                logger.info("audio cleanup: deleted %d expired segments", len(rows))
+            if object_keys:
+                logger.info("audio cleanup: deleted %d expired segments", len(object_keys))
         except Exception:
             logger.warning("audio cleanup failed", exc_info=True)
 

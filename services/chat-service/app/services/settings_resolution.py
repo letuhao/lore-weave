@@ -95,6 +95,22 @@ def canon_voice_source(val: str | None) -> str | None:
     return _VOICE_SOURCE_LEGACY.get(val, val)
 
 
+def validate_audio_retention(voice: dict | None, ceiling_hours: int) -> None:
+    """WS-4.3 — `voice.audio_retention_hours` must be an int in [0, ceiling] (the
+    deploy max; a user narrows within it, never exceeds it). Absent = inherit the
+    ceiling. Raises ``ValueError`` (→ 422 at the write door) on a bad value."""
+    if not voice or "audio_retention_hours" not in voice:
+        return
+    val = voice["audio_retention_hours"]
+    if val is None:
+        return  # explicit clear → inherit
+    if not isinstance(val, int) or isinstance(val, bool) or not (0 <= val <= ceiling_hours):
+        raise ValueError(
+            f"voice.audio_retention_hours must be an integer in [0, {ceiling_hours}] "
+            f"(the deploy retention ceiling), got {val!r}"
+        )
+
+
 def normalize_voice_sources(voice: dict | None) -> dict | None:
     """Return `voice` with each nested source field canonicalized AND validated.
 
