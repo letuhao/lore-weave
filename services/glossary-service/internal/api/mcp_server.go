@@ -402,7 +402,9 @@ type bookOntologyReadToolIn struct {
 	BookID string `json:"book_id" jsonschema:"the book whose local ontology to read (UUID)"`
 }
 type bookOntologyReadToolOut struct {
-	Ontology *bookOntologyResp `json:"ontology"`
+	// D-2-ONTOLOGY-BLOAT: the COMPACT projection (identifiers + counts + base_version), not the full
+	// per-attribute definitions — those inlined up to 117KB and crowded the model's context out.
+	Ontology *compactBookOntology `json:"ontology"`
 }
 
 // toolBookOntologyRead reads a book's local ontology (genres/kinds/attributes/links).
@@ -423,7 +425,8 @@ func (s *Server) toolBookOntologyRead(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, bookOntologyReadToolOut{}, errors.New("failed to load book ontology")
 	}
-	return nil, bookOntologyReadToolOut{Ontology: ont}, nil
+	// D-2-ONTOLOGY-BLOAT: return the compact projection (patch-able + counts), not the full defs.
+	return nil, bookOntologyReadToolOut{Ontology: compactBookOntologyOf(ont)}, nil
 }
 
 func (s *Server) toolListKinds(ctx context.Context, _ *mcp.CallToolRequest, _ listKindsToolIn) (*mcp.CallToolResult, listKindsToolOut, error) {

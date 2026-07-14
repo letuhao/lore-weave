@@ -291,6 +291,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/mode-bindings/{mode}", s.getModeBinding)
 		r.Put("/mode-bindings/{mode}", s.putModeBinding)
 
+		// M5 — the FE workflow rack lists a user's visible recipes (System + own + granted book).
+		r.Get("/workflows", s.listUserWorkflows)
+
 		r.Get("/workflow-proposals", s.listWorkflowProposals)
 		r.Get("/workflow-proposals/{proposal_id}", s.getWorkflowProposal)
 		r.Put("/workflow-proposals/{proposal_id}/approve", s.approveWorkflowProposal)
