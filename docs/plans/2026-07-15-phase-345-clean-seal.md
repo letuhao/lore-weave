@@ -28,25 +28,28 @@
 
 ---
 
-## 2 · Pre-Phase-3: the LIVE wiki/entity privacy hole (R5/R6/R7)
+## 2 · Pre-Phase-3: the wiki/entity privacy hole (R5/R6/R7) — RE-SCOPED after cold review
 
 **Human decision (SD-1): fix this BEFORE Phase 3, inside this upcoming goal.**
 
-**The hole (re-verified 2026-07-15, still open):** a diary reuses the book GUI (D14), so a diary user has a one-click path to publish **AI-written biographies of every colleague in their diary** to the open internet. `checkWikiPublic` (`glossary wiki_handler.go:1447`) reads `books.wiki_settings.visibility=='public'` **with no `kind='diary'` guard**; `PATCH /v1/books/:id` does not reject a `wiki_settings` mutation on a diary; `generateWikiStubs` auto-writes prose from the KG; `entity_enrichments` manufactures AI "dimensions" about an entity; unauthenticated readers can list/read; `community_mode` invites public edit suggestions. D10's "un-shareable on every path" is **false as written** — the wiki/enrichment paths were missed.
+**⚠️ CORRECTION (cold review, 2026-07-15): the primary exploit is ALREADY CLOSED.** My first pass overstated this as a "live one-click hole." Verified against code: `book-service server.go:1073` ("EGRESS GUARD #3") already **rejects a `wiki_settings` PATCH on a `kind='diary'` book** (`403 BOOK_DIARY_NO_WIKI`). So the *mutation* path is shut. The genuine residual is narrower but real:
+- **Legacy/residual blobs**: any diary whose `wiki_settings.visibility` was set to `public` **before** the guard landed — the guard blocks new mutations, not existing rows.
+- **Two glossary-side READERS bypass `checkWikiPublic`** and read `wiki_settings.visibility` directly: `listUserWikiContributions` (`wiki_contributions_handler.go:100`, **anonymous, cross-book** public profile) and `submitWikiSuggestion` (`wiki_handler.go:1729`, `community_mode` public edit). Neither has a `kind` guard.
+- **The auto-writers** (`generateWikiStubs` `wiki_handler.go:1181`; `internalUpsertEnrichments` `enrichment_handler.go:70`) manufacture AI prose about a diary colleague with no diary check.
 
-**The fix — enumerate EVERY publication surface, key on immutable `kind='diary'`, each with a consumed-by-EFFECT test** (spec 08 R5/R6/R7):
+**The fix — ONE chokepoint, not seven one-off patches.** glossary-service's `bookProjection` struct (`book_client.go:29`) has **no `Kind` field**, even though book-service's projection already emits `kind` (`server.go:3084`, "the diary taint; consumers guard on it"). So:
 
 | Slice | Guard | Where | Test |
 |---|---|---|---|
-| PP-1 | `PATCH /v1/books/:id` **rejects any `wiki_settings` mutation** on a `kind='diary'` book | book-service `server.go:887` | a diary PATCH with `wiki_settings` → 4xx; a novel unaffected |
-| PP-2 | `generateWikiStubs` **refuses** diary books | glossary wiki | no wiki_article rows for a diary entity |
-| PP-3 | `entity_enrichments` **refuses** diary/colleague entities | glossary enrichment | no enrichment row manufactured for a diary colleague |
-| PP-4 | `checkWikiPublic` **fails closed on `kind='diary'`** even if the JSONB flag somehow got set (defense-in-depth — treat the legacy blob as untrusted) | glossary wiki_handler.go:1447 | a diary with `visibility=public` forced in the blob → still 404 on the public wiki read |
-| PP-5 | **Entity-level guard (R6):** mark real people (`kind='colleague'` / a `third_party` predicate) and block wiki + enrichment + share at the ENTITY level (entities can be merged/moved/referenced from a non-diary book) | glossary entity | a colleague entity referenced from a novel is still wiki/enrichment-blocked |
-| PP-6 | **Forbid `preference`-type facts whose subject is a third-party entity (R7)** — restrict to `statement` (what the user reports X said, on a date); a `preference` about a real person is a durable behavioral-trait claim derived from one account | knowledge `pass2_writer.py` | a third-party `preference` fact is rejected/coerced to `statement`, with a test |
-| PP-7 | **Export** path honors the same guards | export surface | a diary export never emits a colleague wiki/enrichment artifact |
+| **PP-1** ✅ verify-only | The `wiki_settings` PATCH guard on a diary — **already built** (EGRESS GUARD #3). | book-service `server.go:1073` | add a REGRESSION test (a diary `wiki_settings` PATCH → 403); do NOT rebuild. |
+| **PP-2** 🔴 the real fix | Add `Kind` to glossary `bookProjection`; **`fetchBookProjection` nulls `WikiSettings` (and community_mode) when `kind=='diary'`.** This is the SINGLE chokepoint — it closes `checkWikiPublic`, `listUserWikiContributions` (H1), and `submitWikiSuggestion` (M2) at once, INCLUDING the residual-blob case. | glossary `book_client.go:29,43` | a diary with `visibility=public` forced in the blob → 404 on the public read AND absent from the public profile AND rejected on suggest. |
+| **PP-3** | `generateWikiStubs` + `internalUpsertEnrichments` consult the projection `Kind` (a network read — they don't hold book kind locally) and **refuse** a diary book. | glossary `wiki_handler.go:1181`, `enrichment_handler.go:70` | no wiki_article / enrichment row is manufactured for a diary entity. |
+| **PP-4** | **Entity-level guard (R6)** with a PRECISE predicate: a real person = `glossary_entities.is_self=false AND kind.code IN (the seeded work kinds: colleague/project/meeting/decision/task/jargon/org)`. Block wiki + enrichment + share at the entity level. **Watch the over-block:** `org` and mis-kinded entities — scope the block to `colleague` (+ a `third_party` marker if one is added) rather than all work kinds, so a legitimately-public `org` page isn't caught. | glossary entity | a colleague entity is wiki/enrichment-blocked; a novel character is not. |
+| **PP-5** | **Forbid `preference`-type facts about a third-party entity (R7)** — coerce to `statement`. **Requires plumbing** (H2): `pass2_writer.write_pass2_extraction` has no diary/self signal today (subjects resolve by name to a graph id; `is_self` lives in glossary Postgres, not Neo4j). Thread a `diary`/`work_mode` flag + the self-entity anchor id into the writer; coerce `preference→statement` **only when diary-scoped AND subject ≠ self**, so a novel `preference` ("Kai always carries a sword") is untouched. | knowledge `pass2_writer.py:916` | a third-party diary `preference` → coerced to `statement`; a novel `preference` unaffected. |
 
-**Size:** M (cross-service: book + glossary + knowledge), risk floor = privacy. All guards are fail-closed + consumed-by-effect. This is the security slice that lets everything after it proceed safely.
+**Dropped:** the old PP-7 "export" slice — the real export paths (`exportGlossary` etc.) are owner/grantee-scoped and don't emit wiki/enrichment; diaries aren't grant-shareable. No non-owner publication surface there. (Covered by "verify no export bypasses the projection guard" in PP-2's test.)
+
+**Size:** M (glossary + knowledge; book-service is verify-only). The projection chokepoint (PP-2) is the whole game — it converts "enumerate every reader" into "neutralize the taint at the one place every reader already reads." All guards fail-closed + consumed-by-effect.
 
 ---
 
@@ -132,6 +135,81 @@ P5      Reflection (ungated) → the 4 coaching gates → coaching scorer (quara
 
 ## 6 · Register (this doc's own audit)
 
-- **Decisions sealed:** SD-1/2/3 (human) + P3-D1..6 + P4-D1..6 + P5-D1..12 (ordinary, recorded above).
+- **Decisions sealed:** SD-1/2/3 (human) + P3-D1..6 + P4-D1..6 + P5-D1..12 (ordinary, recorded above) + the §7 review-driven seals below.
 - **Parked (unchanged):** P-12 (D-R24).
 - **Open-for-the-human-at-build-time:** the eval threshold X, the KB framework list (both genuinely empirical/external, not clean-pass decidable).
+
+---
+
+## 7 · COLD-REVIEW FINDINGS & RESOLUTIONS (4 independent adversarial reviewers, 2026-07-15)
+
+Each plan was cold-reviewed by an independent agent against the spec + the ACTUAL code. The review **corrected several of my own wrong claims** (marked ⚠️) and re-scoped the under/over-sized slices. Every finding is resolved below; the per-phase plans are patched to match.
+
+### Cross-plan seams (found by me, the only view that spans all 4 plans)
+
+| # | Finding | RESOLUTION (sealed) |
+|---|---|---|
+| **X-1** | Weekly reflection draft double-owned (`WS-3.8` ∧ `WS-5.3`). | Phase 5 owns the **content** (detectors+phrasing); the v1 reflection is **pull-only, user-invoked** (P3-D3) so it needs NO Phase-3 scheduler. `WS-3.8` is redefined as the *later* scheduled/proactive upgrade only — deferred with `WS-3.5` (see R2-M3). No parallel build. |
+| **X-2** | Safety layer (Gate 3) must gate any content-bearing reflection, not just scored coaching — the weekly reflection draft carries emotional content. | **SEAL: Gate 3 is a prerequisite for the reflection PATTERN-SURFACING step (WS-5.2/5.3), not only the scorer.** Reflection over the user's OWN notes (WS-5.1) is fine; the moment a *detector* surfaces a pattern about their emotional life, the safety classifier gates it. Re-sequenced in the Phase-5 plan: safety floor before pattern-surfacing. |
+| **X-3** | R7 double-listed (PP-5 pre-P3 ∧ Phase-5 §D). | It lives in the **pre-P3 fix (PP-5)** — a live `pass2_writer` hygiene hole. Phase 5 only references it. Deduped. |
+| **X-4** | Gate 4 eval needs ≥2 human raters × N≥50 — not code-completable. | **SEAL: the code run builds the eval HARNESS + fixtures + QWK computation ONLY; the numeric gate CANNOT be marked cleared inside a code run.** The scorer ships quarantine-tier and stays there until a separate human-rating milestone. This is a hard exit-condition rule for the build goal (§8). |
+| **X-5** | Safety-classifier model choice fights the $0-capable ethos. | **SEAL: the safety FLOOR is deterministic (fail-closed curated distress lexicon + paraphrase patterns), never solely an LLM** — a model miss can't silently pass distress. An LLM refinement may *widen* the net, never *narrow* the floor. |
+
+### Wiki-fix (Reviewer 1) — see the re-scoped §2
+
+| # | Finding | RESOLUTION |
+|---|---|---|
+| ⚠️ R1-M1 | PP-1 (the `wiki_settings` PATCH guard) is **already built** (EGRESS GUARD #3, `server.go:1073`). My "live one-click hole" was overstated. | §2 re-scoped: PP-1 = verify+regression-test; the real residual is legacy blobs + the glossary readers. |
+| R1-H1/M2 | `listUserWikiContributions` (anon, cross-book) + `submitWikiSuggestion` bypass `checkWikiPublic`. | The **projection chokepoint (PP-2)** — null `WikiSettings` for a diary in `fetchBookProjection` — closes all readers at once, incl. residual blobs. |
+| R1-H2/H3 | PP-5/6 (pass2 preference-guard) unbuildable as written (no diary/self signal in the writer; over-blocks novels); glossary guards need the book kind they don't hold locally. | §2 PP-3/4/5 rewritten: consult projection `Kind`; thread a diary-flag + self-anchor into pass2; coerce only diary-scoped ∧ subject≠self. |
+| R1-M3/L1 | PP-5 predicate hand-wavy; PP-7 export moot. | Predicate pinned (`is_self=false ∧ kind.code='colleague'`); PP-7 dropped. |
+
+### Phase 3 (Reviewer 2)
+
+| # | Finding | RESOLUTION |
+|---|---|---|
+| R2-H1 | Auto-EOD (WS-3.2) needs server-side **book+model(BYOK)+tz+lang resolution** that doesn't exist (today client-supplied); collides with the empty `user_default_models`. | **NEW prereq slice WS-3.0** (server-side distill-context resolution) added; WS-3.2 gated on it. This is the "Q8 follow-up" made real. |
+| R2-H2 | Away-marker acceptance references Phase-5 detectors that don't exist. | WS-3.4 scoped to "away column + **nudge** exclusion"; the detector-exclusion + "no gap patterns" acceptance moves to Phase 5. |
+| R2-M3 | Proactive seam WS-3.5 has no v1 consumer (contradicts pull-only seal P3-D3). | **WS-3.5 + proactive-WS-3.8 DEFERRED** to the phase that enables them; v1 ships nudges-as-notifications + reflection-as-pull-draft. |
+| R2-M4/M5 | "Copy the authoring-run driver" is Python; a raw Go→Redis XADD is a 3rd copy of the stream field-list. | Re-impl the lease/breaker in Go mirroring `usage-billing sweeper.go`/`publisher poll_loop`; **enqueue via the existing `POST /internal/chat/assistant/distill` HTTP trigger**, not a raw XADD. |
+| R2-M6/L7/L8 | Headless `stream_response` ripple; SKIP-LOCKED≠fairness; scheduler-service scaffolding under-weighted. | Folded into the deferred WS-3.5; fairness attributed downstream; WS-3.1 gains the scaffold subtasks (language-rule.yaml row, own DB, migrations, compose, the opt-in write path). |
+
+### Phase 4 (Reviewer 3)
+
+| # | Finding | RESOLUTION |
+|---|---|---|
+| ⚠️ R3-H2 | The spend **`lane` column is NOT built** (T-8 unbuilt; only the daily-cap degrade WS-2.8 shipped; `log_usage` hardcodes `purpose='chat'`). My "assistant lane (built)" was wrong. | WS-4.2 dependency corrected: either build the `lane` column ×3 tables first, or scope WS-4.2 to LLM-token billing on the existing global cap. |
+| R3-H1 | STT/TTS usage is **uncapturable at the call site** (`SttResult` has no tokens; `stream_tts` discards `UsageEvent`); STT bills by minutes, TTS by chars, not tokens. | WS-4.2 split: (a) LLM-token fix (easy — voice discards the `UsageEvent` it already receives; thread it in), (b) a tracked STT/TTS-usage-plumbing item (provider-registry adapters emit usage → SDK surfaces it → voice logs it). Acceptance corrected: not "tokens" for STT/TTS. |
+| R3-H3 | WS-4.1 mis-locates the seam — `stream_response` is the wrong layer (serialized SSE, double-persist); `_stream_with_tools` yields `tool_call`/`suspend` chunks voice KeyErrors on; capture is in yet another layer. | WS-4.1 re-scoped to **extract a shared inner generator** both `_emit_chat_turn` and voice consume (voice keeps its TTS interception), + handle non-content chunks, + decide frontend-tool (`suspend`) applicability for voice. Real refactor, not a swap. |
+| ⚠️ R3-M1/M2/M3 | The audio sweeper + MinIO delete **already exist** (`main.py _audio_cleanup_loop`, `voice.py /cleanup`); spec 12's "never purged" is stale. The D-R27 erase DOES orphan MinIO objects (real bug). | WS-4.3 re-scoped to "global `AUDIO_TTL_HOURS` env → **per-user setting**"; **P4-D4 default corrected: 48h stays the ceiling, do NOT lengthen to 7d** (that weakens a privacy feature) — user-settable 0..48h. WS-4.4 = apply the existing `RETURNING object_key→delete_object` pattern to the D-R27 cascade (SELECT keys BEFORE the cascade). |
+| R3-L1/L2/L3 | Voice is **NOT gated for assistant sessions today** (live uncaptured/unbilled bug, not "hidden"); deferral-ID drift; WS-4.0 only blocks WS-4.3. | WS-4.5 reframed: the P1-P3 gate is a real FIX to add now (the bug is live), not a formality. ID reconciled to `D-CHATAI-VOICE-TWO-STORES`. WS-4.0 re-ordered as a prereq for WS-4.3 only. |
+
+### Phase 5 (Reviewer 4)
+
+| # | Finding | RESOLUTION |
+|---|---|---|
+| R4-M1 | Gate 1 over-engineers commitment identity — **the WS-2.6b supersession primitive already tracks "a date that moved"** (content date-free + `due_date` + the s/p/o trio + `group_supersessions()`). | **Gate 1 collapses to: a `due_date` field + an overdue detector**, reusing WS-2.6b. No new `commitment_id` identity model. Big simplification. |
+| R4-M2 | Adding a `commitment` fact type touches **3 registries** (the `FactType` Literal `facts.py:63`, `knowledge_pending_facts` CHECK ×2 `migrate.py:732,746`, the `kg_fact_types` ontology) — D5 named one → a 500-at-merge if missed. | P5-D2 rewritten to enumerate all 3; decide `commitment` = hardcoded Literal member (pragmatic, matches the closed set). |
+| R4-H3 | Gate 2 judge≠actor has a **silent-universal-refusal** hole: a single-model user (empty `user_default_models`) → critic resolves to the same model → refuses ALL scoring. | Add an explicit degraded path: require a distinct critic model with a "configure a second model for coaching" message, OR allow same-model with a disclosed caveat. Not silent refusal. |
+| R4-H2 | Gate 3 safety = intent, not mechanism (the riskiest slice). Deterministic list fails open on paraphrase; LLM is an unvalidated judge; the 2nd placement (practice) is unspecified. | Committed mechanism (X-5): deterministic fail-closed FLOOR + optional LLM widener; classifier placed at BOTH the weekly-pattern node AND practice source-material/start; the safety eval set is a **human-labeled release gate a code run cannot self-certify**. |
+| R4-H1 | Gate 4 eval slices are a human-data project mislabeled as code. | (X-4) split harness-vs-human-rating; forbid a committed QWK from a single self-run; scorer quarantine-tier until the out-of-band human pass. |
+| R4-M3/M4 | Scorecard generalization touches ~4-6 sites (not 3); "quarantine-tier for scores" is net-new plumbing (canon-check's quarantine is fact-validation, no tier on `Scorecard`). | WS-5.21 re-scoped to the real site list (model + prompt template + `coerce_scorecard` + 2 render sites + FE, rubric-driven server-authoritative dims); WS-5.22 adds a real `quarantine` tier column + FE gate. |
+| ✅ R4-sound | `maintain_chain=False` already holds on the diary path (`pending_facts.py:172`); `reflection_notes` genuinely absent; the 2 detectors' substrate exists. | WS-5.9 test extended to the NEW commitment/thread writers; WS-5.2 must VERIFY diary chapters actually have entity links populated, not assert it. |
+
+### The seals this review ADDS
+
+- **SD-4** — the wiki fix is a **single projection chokepoint** (PP-2), not seven patches; PP-1 is verify-only.
+- **SD-5** — Phase 3 gets a **WS-3.0 server-side distill-context resolution** prereq; the **proactive seam (WS-3.5) is deferred** out of v1; enqueue via the HTTP trigger.
+- **SD-6** — Phase 4's **spend `lane` is unbuilt** (a real dependency, not "done"); **audio retention stays ≤48h** (never lengthened); the sweeper + MinIO delete already exist (reuse, don't rebuild).
+- **SD-7** — Phase 5 **Gate 1 reuses the WS-2.6b supersession primitive**; **Gate 3 (safety) and Gate 4 (eval) CANNOT be cleared inside an autonomous code run** — the run builds the mechanism + harness; clearance is a human-gated milestone. The coaching scorer ships **quarantine-tier, permanently, until that human milestone runs**.
+
+---
+
+## 8 · Implications for the upcoming BUILD goal (the human sets this next)
+
+The build is a LONG autonomous run and MUST bake in these guardrails (per the human's ask for review-impl / fix-bugs / live-test):
+
+1. **Per-milestone `/review-impl`** (adversarial, cold-start) — the wiki fix, the scheduler substrate, the proactive/voice seams, and EVERY Phase-5 safety/eval slice are load-bearing; each gets a cold review before its commit.
+2. **Live-test gate** — cross-service milestones (wiki chokepoint, auto-EOD, voice billing, the reflection pipeline) prove on a real stack, not mocks (the repo's repeated cross-service lesson).
+3. **The two human-gated carve-outs (SD-7):** the goal's exit condition is *"the safety mechanism + the eval harness are BUILT and the scorer is wired quarantine-tier"* — **NOT** *"the eval passes"* or *"safety is certified."* A build agent claiming a QWK number or a safety pass from a self-run is a drift violation (the retracted-93.75% failure mode). Those two clear only in a later human-rating pass.
+4. **Fix-bugs loop** — findings from each `/review-impl` are fixed + re-verified before the milestone commits; the drift log records the near-misses.

@@ -24,6 +24,8 @@ Most AI coaches fail by doing **coaching** with **reflection**'s rigor. This pla
 
 ---
 
+> ⚠️ **REVIEW-PATCHED 2026-07-15** (cold review R4 — see [`2026-07-15-phase-345-clean-seal.md`](2026-07-15-phase-345-clean-seal.md) §7). Load-bearing changes: **Gate 1 collapses to `due_date` + an overdue detector, reusing the WS-2.6b supersession primitive** (no new identity model); adding a `commitment` fact type touches **3 type registries** (500-at-merge if missed); **Gate 2 needs a single-model degraded path** (else it silently refuses ALL scoring); **Gate 3 safety + Gate 4 eval CANNOT be cleared inside a code run** — the run builds the mechanism/harness, clearance is a human-rating milestone; the **safety floor is deterministic** (X-5); the safety classifier ALSO gates the reflection pattern-surfacing (X-2), not just the scorer.
+
 ## A · REFLECTION (ungated — the honest value, no truth guarantee needed)
 
 ### A1 · Substrate the reflection engine needs (Q3 — "does the data exist?")
@@ -55,21 +57,30 @@ Most AI coaches fail by doing **coaching** with **reflection**'s rigor. This pla
 
 Coaching applies an external standard → it needs a standard (data), evidence, an honest judge, and a safety net. Build the 4 gates, THEN the scorer — the scorer ships **quarantine-tier** (shown, never trended) until the eval bar clears.
 
-### Gate 1 — the commitment/thread SCHEMA (R3)
+### Gate 1 — the commitment/thread SCHEMA (R3) — SIMPLIFIED by reusing WS-2.6b
+
+**⚠️ Re-scoped (R4-M1): the "stable `commitment_id` + slippage history" identity model is NOT needed — WS-2.6b already tracks a claim whose value changed over time.** The spec's premise ("content-keyed `fact_id` breaks on a moved date") only holds if the date is embedded in the content string — a design choice, not a constraint.
 
 | Deliverable | Shape | Why |
 |---|---|---|
-| **WS-5.7** `commitment` fact type | new fact type + **`due_date`** + a **stable `commitment_id`** (content-keying breaks the moment a date moves — the prior version becomes an unlinked node) + slippage history | "a date that moved K times" is literally unrecoverable today; this makes commitment-slippage a real detector. CHECK-backfill discipline (D5): the new enum value must backfill ALL historical CHECK blocks. |
-| **WS-5.8** thread/open-item | a thread entity with `open|resolved` status | unresolved-thread-age has no substrate today. |
-| **WS-5.9** maintain_chain guard | the assistant path **never** passes `maintain_chain=True` (P5-D4) — its (subject, fact_type) scope collapses every `decision` about Alice into one chain (facts.py) | state it; test it. |
+| **WS-5.7** commitment = `due_date` + reuse | Model a commitment as `content="ship the report"` (**date-free**) + a `due_date` node property + the **existing WS-2.6b s/p/o trio** (`predicate="due"`, `object=<date>`). The content-keyed `fact_id` is then **naturally stable** across date moves (MERGE updates the property), and **`group_supersessions()` (`facts.py`) ALREADY turns Friday→Tuesday→next-week into an ordered slippage chain**. So Gate 1 = a `due_date` field + an **overdue-vs-now detector** — small. **Adding a `commitment` fact type touches 3 registries (R4-M2): the `FactType` Literal (`facts.py:63` — else 500 at `merge_fact`), the `knowledge_pending_facts` CHECK ×2 (`migrate.py:732,746`), and (decide) the `kg_fact_types` ontology.** Seal: `commitment` is a hardcoded Literal member (matches the closed set; the write path validates the Literal, not the table). | reuses the primitive shipped in WS-2.6b; no parallel identity model. |
+| **WS-5.8** thread/open-item | a thread entity with `open|resolved` status (buildable on the existing `:Entity` model) | unresolved-thread-age has no substrate today. |
+| **WS-5.9** maintain_chain guard | ✅ **Already upheld on the diary path** (`pending_facts.py:172` passes `maintain_chain=False`, citing spec 07 §Q2). The gap: the **NEW commitment/thread writers (WS-5.7/5.8) must ALSO pass `False`** — extend the test to them, don't just re-test the diary path. | the (subject, fact_type) chain scope would collapse every `decision` about Alice into one — not live today, but the new writers must not reintroduce it. |
 
 ### Gate 2 — judge ≠ actor (Q6)
 
-**WS-5.10.** Today `evaluate.py` reads `model_source`/`model_ref` **straight off the `chat_sessions` row** — *the model that played the roleplay partner scores its own performance.* `ModelRole.CRITIC` exists (`settings_resolution.py`) but `evaluate.py` **has never used it**. Fix: resolve the judge via `resolve_model_role(ModelRole.CRITIC, …)` and **assert `judge_model_ref != session.model_ref` — refuse to score if equal**, with a test. (`temperature=0.0` is already correct.)
+**WS-5.10.** Today **`routers/evaluate.py:149`** (the ROUTER, not `services/evaluate.py`) reads `model_source`/`model_ref` **straight off the `chat_sessions` row** — *the model that played the roleplay partner scores its own performance.* `ModelRole.CRITIC` exists (`settings_resolution.py:39`) but `evaluate.py` **has never used it**. Fix: resolve the judge via `resolve_model_role(ModelRole.CRITIC, …)` and **assert `judge_model_ref != session.model_ref` — refuse to score if equal**, with a test. (`temperature=0.0` at `:109` is already correct.)
+
+**⚠️ The single-model hole (R4-H3, MUST fix):** `account_capability_for(CRITIC)` falls back to the `chat` capability, and the common config has an **empty `user_default_models`** — so for a single-model user the critic resolves to the SAME model → assert-equal → **"refuse to score" refuses EVERYTHING** (the silent-universal-refusal bug). Add an explicit degraded path: **hard-require a distinct critic** and surface a *"configure a second model for coaching"* message (do NOT silently refuse), OR allow same-model scoring **with a disclosed self-preference caveat**. Sealed choice: **require-a-distinct-critic + the actionable message** (coaching is off-by-default and token-spending; asking for a second model at opt-in is honest).
 
 ### Gate 3 — the platform SAFETY layer (R8) — the repo has NOTHING here
 
 Verified: `self-harm|suicid|crisis|distress|safeguard|helpline` → **zero** substantive hits across `services/` and `docs/standards/`. This is the first feature that reads a person's emotional life. A non-goal is not a control.
+
+**⚠️ Mechanism + placement + honesty (R4-H2, the riskiest slice — do NOT enter BUILD at intent-altitude):**
+- **Mechanism (X-5, SEALED):** a **deterministic fail-closed FLOOR** — a curated distress/harassment/self-harm lexicon PLUS paraphrase patterns (the spec's own example *"I don't know how much longer I can do this"* contains NONE of the obvious keywords, so a bare keyword list fails open exactly where it must not). An LLM classifier MAY run on top to **widen** the net; it may **never narrow** the floor. A $0 quantized model is never the sole gate (it "can contradict its own reasoning" — the repo's canon-check finding).
+- **Placement — TWO nodes, not one:** (1) BEFORE the weekly reflection **pattern-surfacing** step (WS-5.2/5.3 — X-2: the reflection draft carries emotional content, so it's gated too, not only the scorer), short-circuit fail-closed; (2) at **practice source-material / practice-start** (WS-5.13 — a different pipeline), refuse to roleplay a disclosed abuse scenario.
+- **Cannot self-certify (X-4):** the **safety eval set (WS-5.15) needs human-labeled distress data** — a build agent CANNOT mark safety "passing" from a self-run. The code run builds the classifier + the short-circuit + the eval HARNESS; the eval **clears only in a human-rating milestone**.
 
 | Slice | Scope |
 |---|---|
@@ -83,6 +94,8 @@ Verified: `self-harm|suicid|crisis|distress|safeguard|helpline` → **zero** sub
 
 The repo's own canon-check eval withdrew a 93.75% point-estimate that re-ran at **68.75% / 33% recall**, and concluded: *report a RANGE from repeated runs, not a point estimate.* Adopt it:
 
+**⚠️ CANNOT be cleared in a code run (R4-H1 / X-4 — the single sharpest risk in this plan):** WS-5.17/5.18/5.19 demand **N≥50 transcripts × ≥2 independent HUMAN raters × QWK vs consensus** + a hand-labeled precision set. **No code produces human annotations.** A build agent handed "WS-5.18: gate QWK≥X" will do exactly what the retracted-93.75% failure did — **fabricate a point number from a single self-run.** So each eval slice is split: **(a) buildable now** = the eval harness, the fixture/labeling scaffold, the QWK computation; **(b) NOT code** = the human-rating pass that produces the number. **The numeric gate may NOT be marked cleared inside a code run**, and no QWK sourced from a self-run may be committed. The scorer ships **quarantine-tier and stays there until the human pass runs** (§F).
+
 | Slice | Scope |
 |---|---|
 | **WS-5.16** | **Range over ≥3 runs**, never a point estimate. |
@@ -95,8 +108,8 @@ The repo's own canon-check eval withdrew a 93.75% point-estimate that re-ran at 
 | Slice | Scope |
 |---|---|
 | **WS-5.20** | `coaching_rubrics` (`code, version, dimensions[] (anchors 1-5), source_citation, license, tier`) **replacing** the free-form `SessionTemplate.rubric` (today `dict[str,Any]`, no schema/version — "improvised standards already ship", contradicting Q10). A coach session with **no resolvable System-tier rubric refuses to score** (P5-D5). |
-| **WS-5.21** | `Scorecard` **generalization** — today it's interview-shaped (`star_coverage`, `filler` — STAR constructs). Generalizing to N rubric dimensions is a model + prompt + coercion change (not "reuse ChatOutput"). The scored subject is **always the user's own utterances** (`role='user'`), enforced in `coerce_scorecard`. |
-| **WS-5.22** | The pipeline (once gated): **Aggregate** (SQL/graph) → **Detect** (deterministic, evidence refs, no refs ⇒ drop) → **Phrase** (LLM writes Observation→Impact→Suggestion, may not invent, carries refs, checked against the closed detector enum) → **Bound** (≤2 patterns/week). |
+| **WS-5.21** | `Scorecard` **generalization** — interview-shaped in **~4-6 sites** (R4-M3), not "a model change": the named fields `star_coverage/clarity/filler` (`models.py:141`), `coerce_scorecard` (`evaluate.py:181`), the `EVALUATOR_SYSTEM_PROMPT` STAR text (`evaluate.py:32`), `render_summary_text` (`evaluate.py:206`), `EvaluateResponse`, + the FE renderer. Generalizing to N dimensions stays safe ONLY if the dimensions become **server-authoritative from `coaching_rubrics`** (`coerce_scorecard`'s safe-when-wrong guarantee is anchored to a fixed server-side checklist). The scored subject is **always `role='user'`**, enforced in `coerce_scorecard`. |
+| **WS-5.22** | The pipeline (once gated): **Aggregate** → **Detect** (deterministic, evidence refs, no refs ⇒ drop) → **Phrase** (LLM writes Observation→Impact→Suggestion, may not invent, carries refs, checked against the closed detector enum) → **Bound** (≤2/week). **Plus a real `quarantine` tier (R4-M4):** canon-check's quarantine is FACT-validation — there is **no tier flag on `Scorecard`/`chat_outputs`** today. Add a `quarantine` column + the FE gate that shows a score but **excludes it from any trend** until Gate 4 clears (net-new plumbing, not reuse). |
 | **WS-5.23** | Coaching KB = a `kind='lore'` book, chapters = curated **cited** frameworks, indexed via publish-independent-kg-indexing → cited retrieval is free existing infra. Each cited reference must **individually resolve** before sign-off (Q4 R3-cite); any that doesn't → dropped. |
 
 ---
@@ -124,11 +137,22 @@ Diagnosing mental health / personality / performance-rating · assessing real, u
 ## F · Build order within Phase 5
 
 ```
-A (reflection, ungated)  →  Gate 1 schema  →  Gate 2 judge≠actor  →  Gate 3 safety  →  Gate 4 eval
-                                                                          │
-                              (safety + eval are the longest poles) ──────┘
-                                                                          ▼
-                                                          scorer (quarantine-tier until eval clears)
+A1 reflection_notes (own notes, no detectors — safe)
+   │
+   ▼
+Gate 3 SAFETY FLOOR (deterministic) ──┐  (X-2: the safety floor gates pattern-surfacing,
+   │                                   │   so it comes BEFORE the detectors that surface
+   ▼                                   │   emotional-life patterns — not just before the scorer)
+A2/A3 reflection detectors + weekly pull-draft (now safety-gated)
+   │
+   ▼
+Gate 1 schema (due_date + overdue, reusing WS-2.6b)  →  Gate 2 judge≠actor
+   │
+   ▼
+Gate 4 eval HARNESS  ······ (numeric gate clears ONLY in a later human-rating milestone)
+   │
+   ▼
+scorer — ships QUARANTINE-TIER and STAYS there until that human milestone runs
 ```
 
-**Reflection ships first and stands alone.** The scorer is the LAST thing to light up, and only shown-never-trended until QWK ≥ X — because a coach that can't be trusted or kept safe should not exist.
+**Two things a code run builds but CANNOT clear (SD-7):** the **safety eval** (needs human-labeled distress data) and the **numeric eval** (needs ≥2 human raters × N≥50). The autonomous run builds the mechanism + the harness; **the scorer is shown-never-trended, permanently, until a human-rating pass produces a trustworthy QWK and certifies safety.** A build agent that commits a QWK or a "safety passing" from a self-run is a drift violation — the exact retracted-93.75% failure mode. **Reflection ships first and stands alone; the scorer is the last thing to light up — because a coach that can't be trusted or kept safe should not exist.**
