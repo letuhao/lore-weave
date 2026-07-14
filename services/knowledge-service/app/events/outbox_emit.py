@@ -64,6 +64,7 @@ ENTITY_CORRECTED = "knowledge.entity_corrected"
 RELATION_CORRECTED = "knowledge.relation_corrected"  # sub-session C
 EVENT_CORRECTED = "knowledge.event_corrected"        # sub-session C
 CONFIG_ADJUSTED = "knowledge.config_adjusted"        # Phase B2-B
+ENTITY_FORGOTTEN = "knowledge.entity_forgotten"      # WS-2.6c (D17 forget-a-person)
 
 
 def now_iso() -> str:

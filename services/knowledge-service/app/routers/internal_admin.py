@@ -355,6 +355,68 @@ async def merge_assistant_entities(body: _MergeEntitiesIn) -> dict:
     }
 
 
+class _ForgetEntityIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    name: str  # the person/thing to forget (e.g. "Minh")
+
+
+@router.post("/assistant/forget-entity")
+async def forget_assistant_entity(body: _ForgetEntityIn) -> dict:
+    """WS-2.6c (D17 forget-a-person) — the KNOWLEDGE leg of the SCOPED-ERASURE PRIMITIVE at scope=entity.
+    Resolve the person BY NAME within the user's assistant project (never all-projects — D16), then:
+      1. KG cascade — DETACH DELETE the :Entity + every :Fact ABOUT it (`erase_entity_subgraph`).
+      2. inbox tombstone — delete pending facts ABOUT them + tombstone each dedup_key, so a later
+         re-distill of a day that still mentions them can NEVER re-propose the fact (no resurrection).
+      3. emit `knowledge.entity_forgotten` (best-effort outbox) so every derived consumer reconciles.
+
+    This is the STRUCTURED-memory half of forget. The SOURCE-text half — redacting the name from the
+    diary entry bodies (book-service) so a re-index can't resurface it — is the diary-span REDACTION leg,
+    driven by the gateway `/v1/assistant/forget` orchestration (book-service owns the entry text). Both
+    are needed for a complete forget; this endpoint returns the resolved name so the caller can redact.
+
+    Idempotent: a name that no longer resolves → `forgotten:false` (already gone). Internal-token."""
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.entities import erase_entity_subgraph, find_entities_by_name
+    from app.db.repositories.pending_facts import PendingFactsRepo
+    from app.events.outbox_emit import ENTITY_FORGOTTEN, emit_correction
+
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    pid = str(project.project_id)
+    async with neo4j_session() as session:
+        matches = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=name)
+        if not matches:
+            # Nothing in the KG under that name; still tombstone any pending proposals so a forget of a
+            # not-yet-confirmed person also can't resurrect.
+            tombstoned = await PendingFactsRepo(pool).tombstone_by_subject(body.user_id, project.project_id, name)
+            return {"forgotten": tombstoned > 0, "entities_deleted": 0, "facts_deleted": 0,
+                    "pending_tombstoned": tombstoned, "project_id": pid, "name": name}
+        entity = matches[0]
+        cascade = await erase_entity_subgraph(
+            session, user_id=str(body.user_id), entity_id=entity.id, project_id=pid,
+        )
+    tombstoned = await PendingFactsRepo(pool).tombstone_by_subject(body.user_id, project.project_id, name)
+    # Best-effort event so downstream consumers (search caches, etc.) reconcile; the cascade already did
+    # the destructive work, so a lost event under-notifies but never leaves the graph half-erased.
+    await emit_correction(
+        event_type=ENTITY_FORGOTTEN,
+        aggregate_id=entity.id,
+        payload={"user_id": str(body.user_id), "project_id": pid, "entity_id": entity.id,
+                 "name": entity.name, "scope": "entity",
+                 "facts_deleted": cascade["facts_deleted"], "pending_tombstoned": tombstoned},
+    )
+    return {
+        "forgotten": True, "project_id": pid, "name": entity.name, "entity_id": entity.id,
+        "entities_deleted": cascade["entities_deleted"], "facts_deleted": cascade["facts_deleted"],
+        "pending_tombstoned": tombstoned,
+    }
+
+
 class _InvalidateDayIn(BaseModel):
     user_id: UUID
     book_id: UUID

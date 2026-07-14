@@ -2970,3 +2970,54 @@ async def merge_entities(
                 "target missing after dedupe",
             )
     return post
+
+
+# ── erase_entity_subgraph (WS-2.6c — the scoped-erasure primitive @ entity) ──
+
+
+_ERASE_ENTITY_SUBGRAPH_CYPHER = """
+MATCH (e:Entity {id: $entity_id})
+WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+OPTIONAL MATCH (f:Fact)-[:ABOUT]->(e)
+WHERE f.user_id = $user_id
+WITH e, collect(DISTINCT f) AS facts, count(DISTINCT f) AS n
+FOREACH (x IN facts | DETACH DELETE x)
+DETACH DELETE e
+RETURN n AS facts_deleted
+"""
+
+
+async def erase_entity_subgraph(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    project_id: str | None = None,
+) -> dict[str, int]:
+    """WS-2.6c (D17 forget-a-person) — the KG leg of the SCOPED-ERASURE PRIMITIVE at scope=entity. DETACH
+    DELETE the :Entity AND every :Fact ABOUT it, tenant-scoped on user_id (+ project_id when given, so a
+    diary forget can't reach a novel entity — D16). Returns {entities_deleted, facts_deleted}.
+
+    Unlike `merge_entities` (which re-points the loser's :Fact ABOUT edges to a survivor), forget DELETEs
+    those facts — the person is gone, so the claims that name them go too. A fact ABOUT multiple entities
+    is deleted as well (it mentions the forgotten person); diary facts are single-subject so this is the
+    dominant, intended case. Passages that mention the name are refreshed by the diary-span REDACTION +
+    re-index leg (the source-text half of forget), not here — this leg owns the STRUCTURED graph only.
+
+    This is the entity-scoped sibling of `delete_all_kg_nodes_for_project` (account/project scope, D-R27);
+    WS-2.10d reuses the epoch-scoped variant and P-12 the account one — one primitive, three scopes
+    (D-R31). Returns entities_deleted=0 when the id doesn't resolve (idempotent re-forget)."""
+    if not entity_id:
+        raise ValueError("entity_id must be a non-empty string")
+    result = await run_write(
+        session,
+        _ERASE_ENTITY_SUBGRAPH_CYPHER,
+        user_id=user_id,
+        entity_id=entity_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    if record is None:
+        return {"entities_deleted": 0, "facts_deleted": 0}
+    return {"entities_deleted": 1, "facts_deleted": int(record["facts_deleted"])}

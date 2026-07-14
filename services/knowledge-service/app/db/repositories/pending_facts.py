@@ -179,3 +179,33 @@ class PendingFactsRepo:
                         user_id, row["project_id"], row["dedup_key"],
                     )
         return True
+
+    async def tombstone_by_subject(
+        self, user_id: UUID, project_id: UUID, subject_name: str,
+    ) -> int:
+        """WS-2.6c (D17 forget-a-person) — the pending-inbox leg of the scoped-erasure primitive. Delete
+        every PENDING fact ABOUT the forgotten person (subject matched case-insensitively) and write a
+        `knowledge_rejected_facts` tombstone on each one's dedup_key, so a later re-distill of a day that
+        still mentions them can NEVER re-propose the fact (the no-resurrection guarantee). Owner+project
+        scoped; idempotent (ON CONFLICT DO NOTHING). Returns the number of pending rows removed."""
+        name = (subject_name or "").strip()
+        if not name:
+            return 0
+        removed = 0
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                rows = await conn.fetch(
+                    "DELETE FROM knowledge_pending_facts "
+                    "WHERE user_id = $1 AND project_id = $2 AND lower(subject) = lower($3) "
+                    "RETURNING dedup_key",
+                    user_id, project_id, name,
+                )
+                for r in rows:
+                    removed += 1
+                    if r["dedup_key"]:
+                        await conn.execute(
+                            "INSERT INTO knowledge_rejected_facts (user_id, project_id, dedup_key) "
+                            "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                            user_id, project_id, r["dedup_key"],
+                        )
+        return removed

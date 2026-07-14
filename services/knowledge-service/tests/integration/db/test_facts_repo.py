@@ -481,6 +481,45 @@ async def test_ws26d_merge_renamed_entity_repoints_facts_to_the_winner(neo4j_dri
         assert "Minh froze the budget" in contents and "Minh Nguyen approved the plan" in contents
 
 
+# ── WS-2.6c — forget a person (entity-scoped KG cascade) ──────────────
+
+
+@pytest.mark.asyncio
+async def test_ws26c_erase_entity_subgraph_removes_entity_and_its_facts(neo4j_driver, test_user):
+    """D17 forget-a-person (KG leg): DETACH DELETE the :Entity + every :Fact ABOUT it, scoped to the
+    assistant project. A DIFFERENT person's facts survive. Idempotent re-forget deletes nothing more."""
+    from app.db.neo4j_repos.entities import erase_entity_subgraph, find_entities_by_name, merge_entity
+    from app.db.neo4j_repos.facts import list_facts_for_entity, recall_facts
+
+    proj = "p-assist"
+    async with neo4j_driver.session() as session:
+        minh = await merge_entity(session, user_id=test_user, project_id=proj, name="Minh",
+                                  kind="person", source_type="assistant_diary_fact", auto_created=True)
+        alice = await merge_entity(session, user_id=test_user, project_id=proj, name="Alice",
+                                   kind="person", source_type="assistant_diary_fact", auto_created=True)
+        for c, subj in (("Minh froze the budget", minh.id), ("Minh missed standup", minh.id),
+                        ("Alice approved the plan", alice.id)):
+            await merge_fact(session, user_id=test_user, project_id=proj, type="statement",
+                             content=c, confidence=0.9, pending_validation=False, subject_id=subj,
+                             event_date_iso="2026-03-10")
+
+        cascade = await erase_entity_subgraph(session, user_id=test_user, entity_id=minh.id, project_id=proj)
+        assert cascade == {"entities_deleted": 1, "facts_deleted": 2}
+
+        # Minh is gone; Alice + her fact remain.
+        assert await find_entities_by_name(session, user_id=test_user, project_id=proj, name="Minh") == []
+        alice_facts = await list_facts_for_entity(session, user_id=test_user, entity_id=alice.id)
+        assert {f.content for f in alice_facts} == {"Alice approved the plan"}
+        # Recall no longer surfaces any Minh fact.
+        remaining = await recall_facts(session, user_id=test_user, project_id=proj)
+        assert all("Minh" not in f.content for f in remaining)
+
+        # Idempotent re-forget.
+        assert await erase_entity_subgraph(
+            session, user_id=test_user, entity_id=minh.id, project_id=proj,
+        ) == {"entities_deleted": 0, "facts_deleted": 0}
+
+
 # ── delete_facts_with_zero_evidence ───────────────────────────────────
 
 
