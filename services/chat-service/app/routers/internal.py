@@ -23,6 +23,11 @@ from app.middleware.trace_id import trace_id_var
 
 router = APIRouter(prefix="/internal/chat", tags=["internal"])
 
+# WS-3.3 (T20) — the hard ceiling on a catch-up sweep. A returning user with a 3-month gap must not
+# trigger 90 distills (spend). Beyond this, the tail is dropped (a period-digest for very old gaps is a
+# refinement); the recent N days are the high-value catch-up.
+_MAX_CATCHUP_DAYS = 14
+
 # W1 — sibling router WITHOUT the /chat segment so the telemetry route is
 # GET /internal/tool-health (the W0/W1 contract), same internal-token guard.
 telemetry_router = APIRouter(prefix="/internal", tags=["internal"])
@@ -215,6 +220,11 @@ class DistillTrigger(BaseModel):
     # this route is X-Internal-Token-only with no public caller, so it is a contract note, not a hole.
     entry_date: date | None = None  # default: today in entry_zone (server-computed on omission)
     entry_zone: str | None = None   # omitted → resolve the user's IANA zone from prefs.timezone (else UTC)
+    # WS-3.3 (spec 11 catch-up / T20) — a returning user's missed days. When >0, ALSO enqueue a distill
+    # for each of the previous N days (bounded), so a gap is journaled, not lost. Each is a normal
+    # spend-capped distill; the write seam is idempotent (a KEPT day 409s → skipped; an un-kept day is
+    # replaced). Bounded server-side to _MAX_CATCHUP_DAYS so a huge gap can't blow the budget.
+    catchup_days: int = 0
 
 
 @router.post("/assistant/distill", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
@@ -233,19 +243,24 @@ async def trigger_distill(body: DistillTrigger) -> dict:
     book_id, model_source, model_ref, entry_zone = await _resolve_distill_context(body)
 
     entry_date = body.entry_date or datetime.now(timezone.utc).date()
+    # WS-3.3 — the day list to distill: today, plus (bounded) the previous N days for a catch-up.
+    days = [entry_date]
+    if body.catchup_days > 0:
+        n = min(body.catchup_days, _MAX_CATCHUP_DAYS)
+        days += [entry_date - timedelta(days=i) for i in range(1, n + 1)]
     try:
-        msg_id = await enqueue_distill(
-            user_id=str(body.user_id),
-            book_id=book_id,
-            entry_date=entry_date.isoformat(),
-            entry_zone=entry_zone,
-            language=body.language or "en",
-            model_source=model_source,
-            model_ref=model_ref,
-        )
+        first_msg = None
+        for d in days:
+            msg_id = await enqueue_distill(
+                user_id=str(body.user_id), book_id=book_id, entry_date=d.isoformat(),
+                entry_zone=entry_zone, language=body.language or "en",
+                model_source=model_source, model_ref=model_ref,
+            )
+            first_msg = first_msg or msg_id
     except Exception as exc:  # noqa: BLE001 — a lost enqueue = a silently un-journaled day; surface it.
         raise HTTPException(status_code=503, detail=f"failed to enqueue distill: {exc}") from exc
-    return {"enqueued": True, "entry_date": entry_date.isoformat(), "message_id": msg_id}
+    return {"enqueued": True, "entry_date": entry_date.isoformat(),
+            "days_enqueued": len(days), "message_id": first_msg}
 
 
 async def _resolve_distill_context(body: "DistillTrigger") -> tuple[str, str, str, str]:

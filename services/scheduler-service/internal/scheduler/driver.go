@@ -180,9 +180,11 @@ type HTTPEnqueuer struct {
 func (e *HTTPEnqueuer) Enqueue(ctx context.Context, ownerUserID uuid.UUID, jobKind string) error {
 	switch jobKind {
 	case "eod_distill":
-		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/distill")
+		// WS-3.3 — the daily fire also sweeps a small catch-up window (a returning user's last few days
+		// get journaled; kept days 409-skip, so it's cheap + idempotent + spend-capped by the distiller).
+		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/distill", `,"catchup_days":3`)
 	case "weekly_rollup":
-		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/weekly-rollup")
+		return e.postAssistant(ctx, ownerUserID, "/internal/chat/assistant/weekly-rollup", "")
 	case "nudge":
 		return e.postNudge(ctx, ownerUserID)
 	default:
@@ -218,11 +220,12 @@ func (e *HTTPEnqueuer) postNudge(ctx context.Context, ownerUserID uuid.UUID) err
 	return fmt.Errorf("nudge notification returned %d", resp.StatusCode)
 }
 
-// postAssistant posts {user_id} to an assistant trigger `path` (distill or weekly-rollup). Both resolve
-// book/model/tz server-side (WS-3.0), so the scheduler carries only the identity.
-func (e *HTTPEnqueuer) postAssistant(ctx context.Context, ownerUserID uuid.UUID, path string) error {
+// postAssistant posts {user_id[, extra]} to an assistant trigger `path` (distill or weekly-rollup).
+// Both resolve book/model/tz server-side (WS-3.0), so the scheduler carries only the identity (+ an
+// optional trailing JSON fragment like `,"catchup_days":3`).
+func (e *HTTPEnqueuer) postAssistant(ctx context.Context, ownerUserID uuid.UUID, path, extra string) error {
 	url := strings.TrimRight(e.ChatInternalURL, "/") + path
-	body := fmt.Sprintf(`{"user_id":%q}`, ownerUserID.String()) // WS-3.0 resolves book/model/tz server-side
+	body := fmt.Sprintf(`{"user_id":%q%s}`, ownerUserID.String(), extra) // WS-3.0 resolves book/model/tz
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
 		return err

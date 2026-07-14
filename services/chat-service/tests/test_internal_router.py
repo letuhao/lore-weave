@@ -301,6 +301,33 @@ async def test_distill_headless_resolves_book_model_tz_serverside(client):
 
 
 @pytest.mark.asyncio
+async def test_distill_catchup_enqueues_today_plus_bounded_days(client):
+    """WS-3.3 — a catch-up enqueues today + the previous N days (bounded to 14), each a normal distill."""
+    uid = str(uuid4())
+    book_id = str(uuid4())
+    model_ref = str(uuid4())
+    today = datetime.now(timezone.utc).date()
+    prov = AsyncMock()
+    prov.get_default_model = AsyncMock(side_effect=lambda cap, u: ("user_model", model_ref) if cap == "distill" else None)
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="UTC")
+
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(book_id)), \
+         patch("app.client.provider_client.get_provider_client", return_value=prov), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth), \
+         patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(return_value="d-0")) as enq:
+        # ask for 100 days of catch-up → bounded to 14 → today + 14 = 15 enqueues.
+        r = await client.post(_DISTILL, json={"user_id": uid, "catchup_days": 100}, headers=_AUTH)
+
+    assert r.status_code == 202, r.text
+    assert r.json()["days_enqueued"] == 15  # today + 14 (the _MAX_CATCHUP_DAYS ceiling)
+    assert enq.await_count == 15
+    dates = sorted(call.kwargs["entry_date"] for call in enq.await_args_list)
+    assert dates[-1] == today.isoformat()                       # includes today
+    assert dates[0] == (today - timedelta(days=14)).isoformat()  # oldest is bounded to today-14
+
+
+@pytest.mark.asyncio
 async def test_distill_headless_422_when_no_model_configured(client):
     """A user with no distill/chat default → 422 (the scheduler logs + skips; never a silent no-op)."""
     uid = str(uuid4())
