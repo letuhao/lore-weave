@@ -959,6 +959,12 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
+	// PP-3 (spec 08 R5) — a diary has NO wiki. generateWikiStubs AUTO-WRITES prose about an entity
+	// ("Auto-generated from KG") REGARDLESS of visibility, so the visibility chokepoint (PP-2) is not
+	// enough here — the article must never be MANUFACTURED for a diary colleague in the first place.
+	if s.refuseDiaryWikiSurface(w, r, bookID) {
+		return
+	}
 
 	var req struct {
 		KindCodes []string `json:"kind_codes"`
@@ -1056,7 +1062,13 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		WHERE ge.book_id = $1
 		  AND ge.deleted_at IS NULL
 		  AND ge.status = 'active'
-		  AND NOT EXISTS (SELECT 1 FROM wiki_articles wa WHERE wa.entity_id = ge.entity_id)`
+		  AND NOT EXISTS (SELECT 1 FROM wiki_articles wa WHERE wa.entity_id = ge.entity_id)
+		  -- PP-4 (spec 08 R6) — ENTITY-level guard: never manufacture a wiki page for a REAL PERSON.
+		  -- The book-level PP-3 guard blocks a diary; this closes the cross-book/merged case (an entity
+		  -- of the seeded work-person kind 'colleague' must not get an AI biography even if it ended up
+		  -- in a wiki-eligible book). Scoped to 'colleague' (not all work kinds) so a legitimately-public
+		  -- 'org' page is not over-blocked.
+		  AND ek.code <> 'colleague'`
 
 	args := []any{bookID}
 	argN := 2

@@ -29,6 +29,12 @@ type wikiSettingsProjection struct {
 type bookProjection struct {
 	BookID       uuid.UUID               `json:"book_id"`
 	OwnerUserID  uuid.UUID               `json:"owner_user_id"`
+	// PP-2 (WS-1.2 / spec 08 R5) — "the diary taint" the book projection emits so consumers can guard
+	// on it. Every wiki/enrichment/community reader resolves the book through fetchBookProjection, so
+	// nulling WikiSettings here (below) is the SINGLE chokepoint that keeps a diary's colleagues off the
+	// public wiki — closing checkWikiPublic, listUserWikiContributions, and submitWikiSuggestion at once,
+	// INCLUDING any residual `visibility=public` blob written before book-service's EGRESS GUARD #3 landed.
+	Kind         string                  `json:"kind"`
 	WikiSettings *wikiSettingsProjection  `json:"wiki_settings"`
 }
 
@@ -67,7 +73,35 @@ func (s *Server) fetchBookProjection(ctx context.Context, bookID uuid.UUID) (*bo
 	if err := json.NewDecoder(res.Body).Decode(&p); err != nil {
 		return nil, http.StatusServiceUnavailable
 	}
+	// PP-2 — neutralize the diary taint at the one place every wiki/enrichment/community reader passes
+	// through. A diary has NO wiki (spec 08 R5); treat the JSONB blob as untrusted (assume drift) and
+	// strip it fail-closed, so no downstream reader can serve a diary colleague's page even if a stale
+	// `visibility=public` row exists. Defense-in-depth behind book-service's EGRESS GUARD #3 (which
+	// blocks NEW mutations but not rows written before it).
+	if p.Kind == "diary" {
+		p.WikiSettings = nil
+	}
 	return &p, http.StatusOK
+}
+
+// refuseDiaryWikiSurface (PP-3, spec 08 R5) — a shared guard for the auto-WRITE wiki/enrichment
+// surfaces (generateWikiStubs, internalUpsertEnrichments) that manufacture AI prose about an entity
+// regardless of visibility. Resolves the book's kind via the projection; if it's a diary, writes a
+// 403 and returns true (the caller returns). Fails CLOSED: if the projection is unreachable we refuse
+// (a wiki/enrichment write is not worth the risk of publishing a diary colleague on a transient miss).
+func (s *Server) refuseDiaryWikiSurface(w http.ResponseWriter, r *http.Request, bookID uuid.UUID) bool {
+	proj, status := s.fetchBookProjection(r.Context(), bookID)
+	if status != http.StatusOK || proj == nil {
+		writeError(w, http.StatusServiceUnavailable, "GLOSS_BOOK_UNAVAILABLE",
+			"cannot resolve the book to authorize this wiki operation")
+		return true
+	}
+	if proj.Kind == "diary" {
+		writeError(w, http.StatusForbidden, "GLOSS_DIARY_NO_WIKI",
+			"a diary has no wiki — it is private and cannot be published or enriched")
+		return true
+	}
+	return false
 }
 
 // fetchBookChapters calls the book-service internal chapters endpoint.

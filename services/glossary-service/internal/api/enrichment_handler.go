@@ -30,6 +30,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -37,6 +38,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/loreweave/glossary-service/internal/sanitize"
 )
@@ -76,6 +78,10 @@ func (s *Server) internalUpsertEnrichments(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	// entity_enrichments manufactures confidence-scored AI "dimensions" about an entity. It is guarded at
+	// the ENTITY level below (PP-4: a real person — colleague/self — is refused), which is DB-local (no
+	// network hop on this internal hot path) and precise. The wiki PUBLISH of any enrichment is separately
+	// diary-blocked (PP-2/PP-3), so a diary's own project/org supplement stays private + unpublishable.
 
 	var req upsertEnrichmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -144,16 +150,27 @@ func (s *Server) internalUpsertEnrichments(w http.ResponseWriter, r *http.Reques
 	// The entity must exist + belong to this book (not soft-deleted) — a stale
 	// or cross-book entity_id is a 404, never a silent FK error or wrong-row
 	// write. (The FK guarantees referential integrity but not book scoping.)
-	var exists bool
+	var kindCode string
 	if err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM glossary_entities
-		    WHERE entity_id=$1 AND book_id=$2 AND deleted_at IS NULL)`,
-		entityID, bookID).Scan(&exists); err != nil {
+		`SELECT ek.code
+		   FROM glossary_entities ge JOIN book_kinds ek ON ek.book_kind_id = ge.kind_id
+		  WHERE ge.entity_id=$1 AND ge.book_id=$2 AND ge.deleted_at IS NULL`,
+		entityID, bookID).Scan(&kindCode); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
 		return
 	}
-	if !exists {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
+	// PP-4 (spec 08 R6) — ENTITY-level guard: never manufacture AI "dimensions" about a REAL PERSON.
+	// The seeded work-person kind is 'colleague'; a diary colleague is a real third party who never
+	// consented. DB-local (no network hop) + precise; defense-in-depth behind the book-level diary
+	// blocks (PP-2/PP-3) for the cross-book/merged case. (The user's own is_self entity is their own
+	// data, not a third party — and in a diary it is book-level blocked regardless.)
+	if kindCode == "colleague" {
+		writeError(w, http.StatusForbidden, "GLOSS_NO_ENRICH_PERSON",
+			"a real person is not an enrichable entity")
 		return
 	}
 

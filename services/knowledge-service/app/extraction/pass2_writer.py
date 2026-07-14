@@ -344,6 +344,14 @@ async def write_pass2_extraction(
     # of vanishing, so the human triage queue (lane LH) sees it. None (default) →
     # today's drop-and-log only, so legacy callers are unchanged.
     triage_repo: "TriageParkProtocol | None" = None,
+    # PP-5 (spec 08 R7) — WORK-mode extraction (an assistant/diary project). When True, a `preference`
+    # fact is COERCED to `statement`: a `preference` maps to a durable behavioral-TRAIT claim ("Minh
+    # always pushes back") which, about a real colleague derived from one person's account, is forbidden
+    # (Q10 non-goal). Coercing all work-mode preferences to `statement` (what the user REPORTED, on a
+    # date) is the conservative guarantee — it also harmlessly demotes the user's own preferences.
+    # Default False → the novel/fiction path is unchanged (a novel `preference` "Kai carries a sword"
+    # stays a preference).
+    work_mode: bool = False,
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -922,6 +930,13 @@ async def write_pass2_extraction(
                 fact.type, fact.content,
             )
             continue
+        # PP-5 (spec 08 R7) — in a WORK/assistant extraction, coerce a `preference` fact to `statement`.
+        # A preference is a durable behavioral-trait claim; about a real third party (a colleague),
+        # derived from one person's account, it is forbidden (Q10). `statement` = what the user reported.
+        fact_type = fact.type
+        if work_mode and fact_type == "preference":
+            logger.info("pass2_writer: PP-5 coerced a work-mode preference fact → statement")
+            fact_type = "statement"
         content_clean = _sanitize(fact.content, project_id)
         if not content_clean.strip():
             continue
@@ -948,7 +963,7 @@ async def write_pass2_extraction(
             session,
             user_id=user_id,
             project_id=project_id,
-            type=fact.type,
+            type=fact_type,  # PP-5 — work-mode preference coerced to statement above
             content=content_clean,
             confidence=fact.confidence,
             pending_validation=False,
