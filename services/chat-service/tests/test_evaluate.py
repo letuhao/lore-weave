@@ -65,6 +65,13 @@ def test_coerce_empty_charter_checklist_yields_no_verdicts():
     assert card.overall_score == 80
 
 
+def test_scorecard_is_quarantine_tier_and_model_cannot_lift_it():
+    # WS-5.22 / SD-7 — every score a code run produces is quarantine (shown, never trended)
+    # until the numeric gate clears in a human milestone; a model claiming otherwise is ignored.
+    card = ev.coerce_scorecard({"overall_score": 90, "quarantine": False}, _CHARTER, partial=False)
+    assert card.quarantine is True  # server-authoritative, like `partial`
+
+
 # ── is_partial (EC-13) ───────────────────────────────────────────────────────
 
 def test_is_partial_when_clipped():

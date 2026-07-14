@@ -149,6 +149,11 @@ class Scorecard(BaseModel):
     # Server-set: the transcript didn't reach `wrap`, was short, or was clipped
     # to the prompt budget — the scorecard scores only what exists (EC-13).
     partial: bool = False
+    # WS-5.22 (P5 Gate-4 / SD-7) — quarantine tier: a coaching score is SHOWN but NEVER
+    # trended until the numeric eval gate clears in a human-rating milestone. Defaults TRUE
+    # (fail-closed): every score a code run produces is quarantine, because `evaluate_gate`
+    # can never clear without human labels. The FE excludes quarantine scores from any trend.
+    quarantine: bool = True
 
 
 class EvaluateResponse(BaseModel):
