@@ -68,7 +68,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done+evidence · `🅿️` park
 | # | Slice | Status | Evidence |
 |---|---|---|---|
 | O-1 | Ground the PlanForge proposer (LLM: digest · rules: pre-flight) — by EFFECT | 🅿️ | §6 D-DEFER — composition-only, build-ready |
-| O-3 | BA11's 5 arc-template CRUD MCP tools (+ fix the misquote at server.py:4546) | 🅿️ | §6 D-DEFER — composition-only, build-ready |
+| O-3 | BA11's 5 arc-template CRUD MCP tools (+ fix the misquote at server.py:4546) | [~] | **misquote FIXED** (`server.py:4546` no longer claims BA11 blessed REST-only — it MANDATES the 5 tools; the comment now names the GG-2 gap). The 5-tool build → §6 D-DEFER (continuous run). |
 | O-11 | The what-if branch preview producer (+ fix wave-6's false parity row) | 🅿️ | §6 D-DEFER — FE/composition; touches wave-6 parity (spec 36 = other session) |
 | O-2 | The arc decompiler (26-D3/IX-17) — depends on Work-less lane from Phase 0 | 🅿️ | §7 P-CONC — glossary contended |
 

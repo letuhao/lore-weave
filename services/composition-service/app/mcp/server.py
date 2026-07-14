@@ -4543,9 +4543,16 @@ async def composition_arc_assign_chapters(
     }
 
 
-# ── B2 — template ops (composition_arc_template_* CRUD stays REST-only per BA11;
-# these three cross the SPEC ↔ LIBRARY seam). apply/extract persist and template_
-# drift reads; all three delegate their ENGINE work to 23 A5 (arc_apply/extract)
+# ── B2 — template ops. ⚠ CORRECTION (O-3, close-21-28): the prior comment here said
+# "composition_arc_template_* CRUD stays REST-only PER BA11". That MISQUOTES BA11 — a
+# comment that turned an audit FINDING into a false decision. BA11 ("Full MCP surface",
+# 23:170) MANDATES the five CRUD tools (composition_arc_template_create/patch/list/get/
+# adopt); 23:113 lists REST-only as the GAP, not the design. So the agent cannot create/
+# edit/adopt an arc template by any means today — a GG-2 inverse gap. Building those five
+# thin wrappers over the live REST routes (routers/arc.py) is orphan-slice O-3, deferred
+# to the continuous run (RUN-STATE §6 D-DEFER). The three tools below (apply/extract/
+# template_drift) cross the SPEC ↔ LIBRARY seam and delegate their ENGINE work to 23 A5
+# (arc_apply/extract)
 # and A4 (template_drift split-out). Those slices build in PARALLEL with this one
 # (fanout-independent-slices — one serial VERIFY reconciles): the tool SURFACE +
 # the gate are wired here now; the engine seam is resolved by getattr so a
