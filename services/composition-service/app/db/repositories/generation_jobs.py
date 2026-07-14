@@ -67,6 +67,12 @@ _CHAPTER_JOB_LOCK_NS = 0x10B0
 # outline_node_id): a re-promote overwrites the prior promoted row, never duplicates.
 _PROMOTED_SCENE_PROSE_KIND = "promoted_scene_prose"
 
+#: BE-7c — ops whose jobs are genuinely NOT Work-bound. Their ONLY scope key is
+#: `created_by`. Keep this list HERE (in the writer), never in the DDL CHECK: a new
+#: Work-less op must not need a migration (the
+#: `migration-check-constraint-must-backfill-all-historical-blocks` trap).
+UNBOUND_OPERATIONS = frozenset({"mine_motifs", "analyze_reference"})
+
 
 def _jsonb(value: dict[str, Any] | None) -> str | None:
     return None if value is None else json.dumps(value)
@@ -213,6 +219,68 @@ class GenerationJobsRepo:
         async with self._pool.acquire() as c:
             async with c.transaction():  # INSERT + emit_job_event atomic (H1)
                 return await _do(c)
+
+    async def create_unbound(
+        self,
+        *,
+        created_by: UUID,
+        operation: str,
+        input: dict[str, Any] | None = None,
+        status: str = "pending",
+    ) -> GenerationJob:
+        """Insert an OWNER-scoped, Work-LESS job (BE-7c). project_id/book_id are NULL —
+        the row's ONLY scope key is `created_by`, and every read of it MUST gate on that
+        (see GET /motif-jobs/{job_id}).
+
+        `create()` cannot express this: it DERIVES book_id from composition_work inside
+        the INSERT…SELECT, and a corpus/book motif-mine or an arc-import has no Work. The
+        old code papered over that with a synthetic uuid4() project_id, which matched no
+        Work row ⇒ zero rows inserted ⇒ ReferenceViolationError ⇒ /actions/confirm 500'd
+        AFTER burning the confirm token and reserving the billing hold. The user paid and
+        got nothing. NEVER back-fill a phantom composition_work per mine.
+
+        Raises ValueError for an operation not in UNBOUND_OPERATIONS — a Work-BOUND op
+        arriving here would silently lose its tenancy keys, which is a tenancy defect,
+        not a shortcut.
+        """
+        if operation not in UNBOUND_OPERATIONS:
+            raise ValueError(
+                f"operation {operation!r} is Work-bound — use create(); "
+                f"unbound ops are {sorted(UNBOUND_OPERATIONS)}"
+            )
+        _in = input or {}
+        # Resolve the model NAME out-of-tx (H1: it is HTTP; never inside the tx below).
+        _model_name = await resolve_model_name(_in.get("model_source"), _in.get("model_ref"))
+        _job_params = {
+            "model": _model_name,
+            "model_ref": _in.get("model_ref"),
+            "operation": operation,
+            "mode": "auto",
+            "reasoning": _in.get("reasoning"),
+            "reasoning_effort": _in.get("reasoning_effort"),
+            "retryable": is_worker_drivable(operation, _in),
+        }
+        async with self._pool.acquire() as c:
+            async with c.transaction():  # INSERT + emit_job_event atomic (H1)
+                row = await c.fetchrow(
+                    f"""
+                    INSERT INTO generation_job
+                      (created_by, project_id, book_id, operation, mode, status, input)
+                    VALUES ($1, NULL, NULL, $2, 'auto', $3, $4::jsonb)
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    created_by, operation, status, json.dumps(_in),
+                )
+                job = _row_to_job(row)
+                # The job-event plane is OWNER-keyed, not project-keyed — this works
+                # unchanged for a Work-less job. Let it raise → the tx rolls back → the
+                # sweeper redelivers (transactional-outbox-must-not-swallow).
+                await emit_job_event(
+                    c, service=_JOB_SERVICE, job_id=str(job.id),
+                    owner_user_id=str(job.created_by), kind=job.operation, status=job.status,
+                    model=_model_name, params=_job_params,
+                )
+                return job
 
     async def create_chapter_job_guarded(
         self,

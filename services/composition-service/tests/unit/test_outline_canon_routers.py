@@ -91,20 +91,35 @@ class StubSceneLinks:
 
 
 class StubCanon:
+    """Stateful on is_archived so the BE-11 delete→restore round-trip is a REAL
+    round-trip through the list, not two independent stubbed returns."""
     def __init__(self):
         self.rules = []
         self.rule = _rule()
         self.update_raises = None
         self.update_result = _rule(version=2)
         self.archive_result = _rule()
-    async def list_all(self, p): return self.rules
-    async def list_active(self, p): return self.rules
+        self._archived: set = set()
+    async def list_all(self, p):
+        # mirrors the repo: list_all filters NOT is_archived
+        return [r for r in self.rules if r.id not in self._archived]
+    async def list_active(self, p):
+        return [r for r in self.rules if r.id not in self._archived]
     async def create(self, p, text, **kw): return self.rule
     async def get(self, p, rid): return self.rule
     async def update(self, p, rid, patch, **kw):
         if self.update_raises: raise self.update_raises
         return self.update_result
-    async def archive(self, p, rid): return self.archive_result
+    async def archive(self, p, rid):
+        if rid in self._archived:
+            return None  # already archived
+        self._archived.add(rid)
+        return self.archive_result
+    async def restore(self, p, rid):
+        if rid not in self._archived:
+            return None  # not archived → the 404 the route must surface
+        self._archived.discard(rid)
+        return _rule(id=rid)
 
 
 class StubTemplates:
@@ -152,6 +167,40 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, works, outline, links, canon
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def ctx_view_only(monkeypatch):
+    """BE-11 — the same wiring, but the caller holds only a VIEW grant. Restore MUTATES,
+    so its gate is EDIT and this caller must be refused."""
+    monkeypatch.setattr("app.main.create_pool", AsyncMock())
+    monkeypatch.setattr("app.main.run_migrations", AsyncMock())
+    monkeypatch.setattr("app.main.close_pool", AsyncMock())
+    monkeypatch.setattr("app.main.get_pool", lambda: object())
+
+    class _FakePool:
+        async def fetchrow(self, query, *args):
+            return {"project_id": PROJECT}
+    monkeypatch.setattr("app.routers.canon.get_pool", lambda: _FakePool())
+
+    from app.main import app
+    from app.deps import get_canon_rules_repo, get_grant_client_dep, get_works_repo
+    from app.grant_client import GrantLevel
+    from app.middleware.jwt_auth import get_current_user
+
+    class _ViewGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.VIEW
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.VIEW, "active"
+
+    app.dependency_overrides[get_current_user] = lambda: USER
+    app.dependency_overrides[get_works_repo] = lambda: StubWorks()
+    app.dependency_overrides[get_canon_rules_repo] = lambda: StubCanon()
+    app.dependency_overrides[get_grant_client_dep] = lambda: _ViewGrant()
+    with TestClient(app) as c:
+        yield c
     app.dependency_overrides.clear()
 
 
@@ -408,3 +457,38 @@ def test_templates_lists_builtins(ctx):
     c, _, _, _, _ = ctx
     r = c.get("/v1/composition/templates")
     assert r.status_code == 200 and r.json()["templates"][0]["kind"] == "save_the_cat"
+
+
+# ── BE-11 (W0-BE2) · canon_rule RESTORE — the undo the DELETE already promises ──
+
+
+def test_delete_then_restore_reappears_in_list(ctx):
+    """The whole point of the slice: DELETE soft-archives (so the rule vanishes from the
+    management list) and RESTORE brings it back. `list_all` filters NOT is_archived, so an
+    archived rule is unlistable — the undo carries the id from the DELETE response."""
+    c, _, _, _, canon = ctx
+    rule = _rule()
+    canon.rules = [rule]
+    assert len(c.get(f"/v1/composition/works/{PROJECT}/canon-rules").json()["rules"]) == 1
+
+    assert c.delete(f"/v1/composition/canon-rules/{rule.id}").status_code == 200
+    assert c.get(f"/v1/composition/works/{PROJECT}/canon-rules").json()["rules"] == []
+
+    r = c.post(f"/v1/composition/canon-rules/{rule.id}/restore")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == str(rule.id)
+    assert len(c.get(f"/v1/composition/works/{PROJECT}/canon-rules").json()["rules"]) == 1
+
+
+def test_restore_of_a_never_archived_rule_is_404(ctx):
+    c, _, _, _, _ = ctx
+    r = c.post(f"/v1/composition/canon-rules/{RULE}/restore")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "canon rule not found or not archived"
+
+
+def test_restore_by_a_view_only_grantee_is_403(ctx_view_only):
+    """The gate is EDIT — restore MUTATES. A VIEW grantee must not un-delete someone's rule."""
+    c = ctx_view_only
+    r = c.post(f"/v1/composition/canon-rules/{RULE}/restore")
+    assert r.status_code == 403

@@ -164,3 +164,26 @@ class CanonRulesRepo:
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, project_id, rule_id)
         return _row_to_rule(row) if row else None
+
+    async def restore(self, project_id: UUID, rule_id: UUID) -> CanonRule | None:
+        """BE-11 — archive()'s exact inverse (the undo behind the delete toast). Returns
+        the row, or None if missing / another project's / NOT archived.
+
+        🔴 It must NOT bump `version` and must NOT touch `active`. Restore un-archives ONLY:
+        a rule that was `active=false` when it was deleted comes back INACTIVE. Bumping the
+        version would silently invalidate a client's If-Match; flipping `active` would
+        silently re-arm a rule the author had deliberately disabled — both are silent
+        corruption, which is why they have their own test.
+
+        `canon_rule` has no parent/child tree ⇒ NO cascade (unlike outline.restore_node's
+        two recursive walks). No If-Match/OCC: an archived row has no concurrent editor.
+        """
+        query = f"""
+        UPDATE canon_rule
+        SET is_archived = false, updated_at = now()
+        WHERE project_id = $1 AND id = $2 AND is_archived
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, project_id, rule_id)
+        return _row_to_rule(row) if row else None

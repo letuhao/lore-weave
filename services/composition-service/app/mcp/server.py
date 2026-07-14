@@ -3194,11 +3194,10 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
     description=(
         "Poll an async motif job — the mining / arc-import / conformance job a confirmed "
         "Tier-W motif action returns. Returns the job's status, its result once complete, "
-        "and cost. Use to wait for a mine/import/conformance to finish. VIEW on the book "
-        "required."
+        "and cost. Use to wait for a mine/import/conformance to finish. Your own job only."
     ),
     meta=require_meta(
-        "R", "book",
+        "R", "user",
         synonyms=["mining job", "import job", "conformance job", "poll mining",
                   "is mining done", "motif job status"],
         tool_name="composition_get_mine_job",
@@ -3206,19 +3205,20 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
 )
 async def composition_get_mine_job(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
     job_id: Annotated[str, "The motif job id returned by a confirmed Tier-W motif action."],
 ) -> dict:
+    """BE-7c — OWNER-scoped poll of an async motif job.
+
+    This used to demand a `project_id` the caller COULD NEVER KNOW: a corpus/book mine
+    and an arc-import are Work-LESS (project_id IS NULL), and the confirm response names
+    THIS tool in its own `poll` field — so it advertised a tool that could not be called.
+    The row's scope key is its OWNER (`created_by`), so gate on that. Uniform deny for
+    both missing and not-yours — no enumeration oracle.
+    """
     tc = _ctx(ctx)
-    works = WorksRepo(get_pool())
-    pid = UUID(project_id)
-    await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
     jobs = GenerationJobsRepo(get_pool())
     job = await jobs.get(UUID(job_id))
-    # Cross-Work IDOR (exact clone of composition_get_generation_job): the repo
-    # fetches by id only — confirm the job is in THIS project (a job_id from
-    # another Work can't be read through this one). A miss is uniform.
-    if job is None or job.project_id != pid:
+    if job is None or job.created_by != tc.user_id:
         raise uniform_not_accessible()
     return job.model_dump(mode="json")
 

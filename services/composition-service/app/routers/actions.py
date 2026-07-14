@@ -536,27 +536,39 @@ async def _enqueue_motif_job(
 ) -> str:
     """Create a pending generation_job + best-effort enqueue the worker trigger.
     Returns the job id. The job row persists even if the Redis XADD blips (the
-    sweeper re-drives) — consistent with the platform best-effort enqueue rail."""
-    from uuid import uuid4
+    sweeper re-drives) — consistent with the platform best-effort enqueue rail.
 
+    BE-7c — the PAID-ACTION FIX. This used to stamp a SYNTHETIC `uuid4()` project_id
+    when the caller had none (a corpus/book mine is genuinely not Work-bound). But
+    `create()` DERIVES book_id from `composition_work` inside its INSERT…SELECT, so a
+    synthetic pid matched no row ⇒ zero rows inserted ⇒ ReferenceViolationError ⇒
+    /actions/confirm 500'd — AFTER `_claim_or_replay` burnt the confirm token and
+    `_precheck_or_402` reserved the billing hold. The user paid and got nothing, and
+    there was no job row to poll. A Work-less job now says so: project_id/book_id NULL,
+    scoped by `created_by`. NEVER back-fill a phantom composition_work per mine.
+    """
     from app.db.pool import get_pool
     from app.db.repositories.generation_jobs import GenerationJobsRepo
-    from app.worker.events import enqueue_job
+    from app.worker import events as worker_events
 
     jobs = GenerationJobsRepo(get_pool())
-    # mine/import/conformance are not Work-bound for the corpus case; generation_job
-    # requires a project_id (NOT NULL). For a book/corpus mine with no Work, stamp a
-    # synthetic project_id from the user so the row is valid + user-scoped. (The
-    # Wave-2 worker reads worker_op from input, not project_id.) Where a real Work
-    # project_id exists (conformance), use it.
-    pid = project_id if project_id is not None else uuid4()
-    job, _created = await jobs.create(
-        pid, created_by=envelope_user, operation=operation,
-        input={"worker_op": operation, **spec}, status="pending",
-    )
-    await enqueue_job(
+    if project_id is None:
+        job = await jobs.create_unbound(
+            created_by=envelope_user, operation=operation,
+            input={"worker_op": operation, **spec}, status="pending",
+        )
+    else:
+        job, _created = await jobs.create(
+            project_id, created_by=envelope_user, operation=operation,
+            input={"worker_op": operation, **spec}, status="pending",
+        )
+    # An unbound job carries no project on the stream. Safe: `run_job`
+    # (job_consumer.py:225-237) re-loads the job from the DB by id and never reads the
+    # stream's project_id (dispatch_job_message forwards only job_id + user_id).
+    await worker_events.enqueue_job(
         settings.redis_url, job_id=str(job.id),
-        user_id=str(envelope_user), project_id=str(pid),
+        user_id=str(envelope_user),
+        project_id=str(project_id) if project_id is not None else "",
     )
     return str(job.id)
 

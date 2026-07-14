@@ -363,6 +363,123 @@ async def gather_arc(
     return "\n".join(lines)
 
 
+#: X-7 caps. The <motif> block rides OUTSIDE enforce_budget (like <arc>), so every
+#: unbounded surface in it is a Context-Budget-Law hole. Two exist: the motif's `beats[]`
+#: (listed as the scene's shape when no beat is bound — a motif may carry dozens) and the
+#: free author text (`summary`, beat intents).
+_MOTIF_BEAT_CAP = 3
+_MOTIF_SUMMARY_CHARS = 240
+
+
+def _clip(text: str, limit: int = _MOTIF_SUMMARY_CHARS) -> str:
+    """Sanitize + truncate one author-authored string."""
+    s = sanitize_lore((text or "").strip())
+    return s if len(s) <= limit else s[:limit].rstrip() + "…"
+
+
+async def gather_motif(
+    applications_repo, motif_repo, project_id: UUID, node_id: UUID, *,
+    user_id: UUID,
+    beat_cap: int = _MOTIF_BEAT_CAP,
+    summary_chars: int = _MOTIF_SUMMARY_CHARS,
+) -> str:
+    """X-7 == spec 30 BE-19 == spec 33 BE-M2 — the MOTIF lens: the narrative-craft layer
+    (套路 / 爽点 / 打脸) finally reaching the prompt.
+
+    This is the anti-write-only proof for the whole motif cluster. The author binds 打脸 to
+    a scene, the Hub renders the chip, the binder writes `motif_application`, and the
+    conformance engine GRADES the prose against it — and until this lens existed, `pack()`
+    never told the drafter. A motif bound to a scene must STEER generation; the effect test
+    asserts this frame CHANGES when the binding changes.
+
+    Resolution — LAST-WINS, the one shipped rule:
+      `by_nodes` is ORDER BY created_at ASC and the binder INSERTs a NEW row per re-bind
+      (no upsert, no unique index), so a scene can carry N rows. They are SUPERSEDED
+      VERSIONS, not N co-bound motifs — so we take the LAST, exactly as the shipped
+      `plan.py:1196` does. Rendering the older rows would steer the drafter with a binding
+      the author already replaced, which is worse than verbose.
+
+    Degradation (no oracle): no binding → "". An archived motif (`motif_id` is SET NULL per
+    models.py:545) or a foreign one (`get_visible` → None) → "", exactly as plan.py:1188
+    degrades. Any repo failure → "" — the motif frame THINS, never fails a pack.
+
+    SEC3: `sanitize_lore` EVERY author-authored string. Stricter than gather_arc's need, not
+    looser — motifs can be MINED from imported third-party text (`source`/`imported_derived`,
+    models.py:519-521), so the delimiter-forging surface is LARGER here.
+
+    CAPPED: see _MOTIF_BEAT_CAP / _MOTIF_SUMMARY_CHARS above.
+    """
+    try:
+        apps = await applications_repo.by_nodes(project_id, [node_id])
+        if not apps:
+            return ""
+        app = apps[-1]  # last-wins on a re-bind (created_at ASC)
+        if app.motif_id is None:  # the motif was archived → SET NULL
+            return ""
+        m = await motif_repo.get_visible(user_id, app.motif_id)
+    except Exception:  # noqa: BLE001 — the motif frame degrades; never fail a pack
+        logger.warning("gather_motif resolve failed", exc_info=True)
+        return ""
+    if m is None:  # archived / foreign motif — degrade silently (no existence oracle)
+        return ""
+
+    annotations = getattr(app, "annotations", None) or {}
+    beats = list(getattr(m, "beats", None) or [])
+    lines: list[str] = []
+
+    # 1. THE MOTIF — what pattern this scene is executing.
+    name = _clip(str(getattr(m, "name", "") or ""), summary_chars) or "(untitled)"
+    kind = _clip(str(getattr(m, "kind", "") or "sequence"), 40)
+    lines.append(f'Motif: "{name}" ({kind})')
+    summary = _clip(str(getattr(m, "summary", "") or ""), summary_chars)
+    if summary:
+        lines.append(f"Motif intent: {summary}")
+
+    # 2. THE BOUND BEAT — the scene's target shape within the motif.
+    beat_key = annotations.get("beat_key")
+    bound_beat: dict[str, Any] | None = None
+    if beat_key:
+        bound_beat = next(
+            (b for b in beats if str(b.get("key")) == str(beat_key)), None)
+    if bound_beat is not None:
+        label = _clip(str(bound_beat.get("label") or ""), summary_chars)
+        intent = _clip(str(bound_beat.get("intent") or ""), summary_chars)
+        lines.append(f"Beat: {label} — {intent}" if intent else f"Beat: {label}")
+        tension = bound_beat.get("tension_target")
+        if tension is not None:
+            lines.append(f"Tension target: {int(tension)}/5")
+    elif beats:
+        # No beat bound → give the drafter the motif's SHAPE (capped: a motif may carry
+        # dozens of beats and this block is outside the budget).
+        ordered = sorted(beats, key=lambda b: b.get("order") or 0)[:beat_cap]
+        shape = "; ".join(
+            _clip(str(b.get("label") or b.get("key") or ""), 60) for b in ordered
+        )
+        if shape:
+            lines.append(f"Motif shape: {shape}")
+
+    # 3. REVERSAL / ALLIANCE SHIFT — from the application, else the bound beat (§15.2).
+    for key, label in (("reversal", "Reversal"), ("alliance_shift", "Alliance shift")):
+        val = annotations.get(key) or (bound_beat or {}).get(key)
+        if val:
+            lines.append(f"{label}: {_clip(str(val), summary_chars)}")
+
+    # 4. ROLES — role_key → entity, rendered exactly like gather_arc's "Cast bindings".
+    #    An UNRESOLVED role (set_role_binding writes JSON null) is RENDERED, never dropped:
+    #    silence would read to the drafter as "no such role" (fe-status-default-fallback).
+    role_parts: list[str] = []
+    for role_key, entity_id in (getattr(app, "role_bindings", None) or {}).items():
+        rk = _clip(str(role_key), 60)
+        if not rk:
+            continue
+        ev = _clip(str(entity_id), 80) if entity_id else ""
+        role_parts.append(f"{rk} → {ev}" if ev else f"{rk} → (unresolved)")
+    if role_parts:
+        lines.append("Motif roles: " + "; ".join(role_parts))
+
+    return "\n".join(lines)
+
+
 async def gather_recent(
     book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str, *,
     k: int = _RECENT_PARAGRAPHS,

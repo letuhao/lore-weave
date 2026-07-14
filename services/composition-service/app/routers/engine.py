@@ -35,6 +35,8 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
+from app.db.repositories.motif_application import MotifApplicationRepo
+from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -44,7 +46,8 @@ from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
     get_embedding_client_dep, get_generation_corrections_repo, get_generation_jobs_repo,
     get_glossary_client_dep, get_grant_client_dep, get_grounding_pins_repo,
-    get_knowledge_client_dep, get_llm_client_dep, get_narrative_thread_repo,
+    get_knowledge_client_dep, get_llm_client_dep, get_motif_application_repo_opt,
+    get_motif_repo_opt, get_narrative_thread_repo,
     get_outline_repo, get_references_repo, get_scene_links_repo,
     get_structure_repo, get_style_profile_repo, get_voice_profile_repo, get_works_repo,
 )
@@ -332,6 +335,8 @@ async def generate(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     structures: StructureRepo | None = Depends(get_structure_repo),
+    motif_apps: MotifApplicationRepo | None = Depends(get_motif_application_repo_opt),  # X-7 motif lens
+    motifs: MotifRepo | None = Depends(get_motif_repo_opt),  # X-7 motif lens
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -400,6 +405,8 @@ async def generate(
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             structure_repo=structures,  # 23 BA12 — the arc lens
+            motif_application_repo=motif_apps,  # X-7 — the motif lens (scene beats)
+            motif_repo=motifs,  # X-7 — ditto; BOTH must ride or the lens is dormant
             budget_tokens=_pack_budget,
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
             compress_fn=_compress_fn,  # S2 long-chapter state compression
@@ -708,6 +715,8 @@ async def selection_edit(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     structures: StructureRepo | None = Depends(get_structure_repo),
+    motif_apps: MotifApplicationRepo | None = Depends(get_motif_application_repo_opt),  # X-7 motif lens
+    motifs: MotifRepo | None = Depends(get_motif_repo_opt),  # X-7 motif lens
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -773,6 +782,8 @@ async def selection_edit(
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
                     structure_repo=structures,  # 23 BA12 — the arc lens
+                    motif_application_repo=motif_apps,  # X-7 — the motif lens
+                    motif_repo=motifs,  # X-7 — ditto; BOTH or dormant
                     budget_tokens=_pack_budget, jobs_repo=jobs,
                     compress_fn=_compress_fn, narrative_threads_repo=narrative_threads,
                     grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
@@ -906,6 +917,8 @@ async def generate_chapter(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     structures: StructureRepo | None = Depends(get_structure_repo),
+    motif_apps: MotifApplicationRepo | None = Depends(get_motif_application_repo_opt),  # X-7 motif lens
+    motifs: MotifRepo | None = Depends(get_motif_repo_opt),  # X-7 motif lens
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
@@ -979,6 +992,8 @@ async def generate_chapter(
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             structure_repo=structures,  # 23 BA12 — the arc lens
+            motif_application_repo=motif_apps,  # X-7 — the motif lens (scene beats)
+            motif_repo=motifs,  # X-7 — ditto; BOTH must ride or the lens is dormant
             budget_tokens=_pack_budget, jobs_repo=jobs,
             compress_fn=_compress_fn,
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
@@ -1424,7 +1439,37 @@ async def get_job(
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     # By-id route: gate on the job's OWN project→book (PM-8; VIEW = read tier).
+    # An UNBOUND job (BE-7c: project_id IS NULL) has no Work to gate on, so it can never
+    # be read here — that is correct and deliberate. Its route is /motif-jobs/{job_id}.
+    if job.project_id is None:
+        raise HTTPException(status_code=404, detail="job not found")
     await _gate_work(works, grant, user_id, job.project_id, GrantLevel.VIEW)
+    return job.model_dump(mode="json")
+
+
+@router.get("/motif-jobs/{job_id}")
+async def get_motif_job(
+    job_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+) -> dict[str, Any]:
+    """BE-7c — the OWNER-scoped job read.
+
+    `GET /jobs/{job_id}` gates on the job's project→book grant (`_gate_work`). That is
+    correct for Work-bound jobs and IMPOSSIBLE for the ones that aren't: a book/corpus
+    motif-mine and an arc-import are enqueued with `project_id=None` — they are genuinely
+    not Work-bound, so the row carries NO composition_work and the Work gate 404s FOREVER,
+    after the user has already paid for the LLM run. This route gates on the actor stamp
+    the row DOES carry (`created_by`) instead.
+
+    ⚠ NEVER "fix" this by back-filling a synthetic project_id into a Work — that would
+    mint a phantom Work row per mine. The job is genuinely user-scoped, not Work-scoped.
+    ⚠ Missing and denied return the SAME 404, byte for byte (H13 — no enumeration oracle).
+    A 403 here would confirm to a stranger that the job exists.
+    """
+    job = await jobs.get(job_id)
+    if job is None or job.created_by != user_id:
+        raise HTTPException(status_code=404, detail="job not found")
     return job.model_dump(mode="json")
 
 

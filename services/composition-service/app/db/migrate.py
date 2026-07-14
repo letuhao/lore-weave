@@ -1619,6 +1619,38 @@ ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_chapter_id UUID;
 -- the index tiny.
 CREATE INDEX IF NOT EXISTS idx_outline_node_written
   ON outline_node(book_id) WHERE written_scene_id IS NOT NULL;
+
+-- ── 33 · BE-7c (W0-BE1) — a Work-LESS, OWNER-scoped generation_job.
+-- motif MINE (scope='corpus'|'book') and arc IMPORT (analyze_reference) are genuinely
+-- not Work-bound: there is no composition_work to derive a book_id from. The prior code
+-- stamped a synthetic uuid4() project_id, which the create() INSERT…SELECT could not
+-- resolve → ReferenceViolationError → the PAID action 500'd after burning the confirm
+-- token and reserving the billing hold. The row's scope key for these jobs is its OWNER
+-- (`created_by`, already NOT NULL). Make that sayable.
+--
+-- ADDITIVE ONLY: no row is rewritten. Every existing row keeps both columns non-null and
+-- satisfies the first branch of the CHECK below.
+ALTER TABLE generation_job ALTER COLUMN project_id DROP NOT NULL;
+ALTER TABLE generation_job ALTER COLUMN book_id    DROP NOT NULL;
+
+-- Keep it HONEST: a job is EITHER Work-scoped (both keys) or owner-scoped (neither).
+-- A half-null row would be a tenancy hole (a book_id with no project, or vice versa).
+-- Deliberately does NOT enumerate operations — an op allowlist here would force a CHECK
+-- rewrite on every new Work-less op (the `migration-check-constraint-must-backfill-all-
+-- historical-blocks` trap). The OPERATION allowlist lives in the WRITER
+-- (generation_jobs.UNBOUND_OPERATIONS), where it can evolve without DDL.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'generation_job_scope_shape') THEN
+    ALTER TABLE generation_job ADD CONSTRAINT generation_job_scope_shape CHECK (
+      (project_id IS NOT NULL AND book_id IS NOT NULL)
+      OR (project_id IS NULL AND book_id IS NULL)
+    );
+  END IF;
+END $$;
+
+-- The owner-scoped read's index (the only query shape over these rows).
+CREATE INDEX IF NOT EXISTS idx_generation_job_owner_unbound
+  ON generation_job(created_by, created_at DESC) WHERE project_id IS NULL;
 """
 
 

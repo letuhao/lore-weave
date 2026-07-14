@@ -298,3 +298,32 @@ async def test_reconcile_jobs_maps_to_canonical_payload():
     assert p["service"] == "composition" and p["kind"] == "generate" and p["status"] == "running"
     assert p["job_id"] == str(JOB) and p["owner_user_id"] == str(USER)
     assert p["occurred_at"] == updated.isoformat()
+
+
+# ── BE-7c — retrying an UNBOUND (Work-less) job ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_retry_of_an_unbound_job_uses_create_unbound(_retry_env):
+    """BE-7c. `mine_motifs` IS in SUPPORTED_OPERATIONS and its input carries `worker_op`,
+    so `is_worker_drivable` marks it retryable=True and the jobs-service Retry button is
+    LIVE for it. But a mine job is Work-LESS (project_id IS NULL), and the plain `create()`
+    derives book_id from composition_work — so retry would raise ReferenceViolationError and
+    409 with a LIE ("the job's outline node no longer exists"). The retry must route to the
+    same Work-less writer the confirm path uses."""
+    job = _failed_job(operation="mine_motifs", project_id=None, book_id=None,
+                      outline_node_id=None,
+                      input={"worker_op": "mine_motifs", "scope": "corpus"})
+    repo = _retry_repo(job)
+    repo.create_unbound = AsyncMock(return_value=SimpleNamespace(id=NEW, status="pending"))
+
+    resp = await control_generation_job(JOB, "retry", JobControlPayload(owner_user_id=USER), repo)
+
+    assert resp.job_id == NEW and resp.status == "pending"
+    repo.create_unbound.assert_awaited_once()
+    repo.create.assert_not_awaited()  # the Work-bound writer would have raised
+    kw = repo.create_unbound.await_args.kwargs
+    assert kw["operation"] == "mine_motifs" and kw["created_by"] == USER
+    assert kw["input"]["worker_op"] == "mine_motifs"
+    # No "None" string on the worker stream for a job that has no project.
+    assert _retry_env.await_args.kwargs["project_id"] == ""

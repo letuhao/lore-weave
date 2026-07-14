@@ -361,8 +361,12 @@ class VoiceProfile(BaseModel):
 class GenerationJob(BaseModel):
     id: UUID
     created_by: UUID  # 25 M3 actor stamp — BYOK spend attribution (25 T5); never a filter
-    project_id: UUID  # Work partition key (PM-3)
-    book_id: UUID     # tenancy scope key (25 M1/M2); the E0 book gate resolves on this
+    # BE-7c: NULL only for an OWNER-scoped, Work-LESS job (a corpus/book motif-mine or an
+    # arc-import — there is no composition_work to derive a book from). For those rows
+    # `created_by` IS the scope key, and the read MUST gate on it (GET /motif-jobs/{id}).
+    # Both-or-neither is enforced by the DB (CHECK generation_job_scope_shape).
+    project_id: UUID | None = None  # Work partition key (PM-3)
+    book_id: UUID | None = None     # tenancy scope key (25 M1/M2); the E0 book gate resolves on this
     outline_node_id: UUID | None = None
     operation: Annotated[str, StringConstraints(max_length=100)]
     mode: JobMode = "cowrite"

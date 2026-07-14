@@ -216,6 +216,25 @@ paths:
         '200': { description: Archived, content: { application/json: { schema: { $ref: '#/components/schemas/CanonRule' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /canon-rules/{rule_id}/restore:
+    post:
+      tags: [canon]
+      summary: Un-archive a soft-deleted canon rule (BE-11 — the undo behind the delete toast)
+      description: >
+        The exact inverse of DELETE /canon-rules/{rule_id}. Does NOT bump `version` and does
+        NOT touch `active` — a rule archived while inactive comes back inactive. EDIT grant,
+        derived from the ROW's project (the by-id routes carry no project in the path), so the
+        gate can never check a different book than the row mutated. No If-Match / OCC: an
+        archived row has no concurrent editor to race. Reachability is the delete toast (the
+        DELETE returns the archived row, so the FE holds the id) — not an archive browser.
+      parameters: [{ name: rule_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Restored, content: { application/json: { schema: { $ref: '#/components/schemas/CanonRule' } } } }
+        # NB: quote any description carrying a comma — inside a FLOW mapping an unquoted
+        # comma splits the scalar into bogus keys, and yaml.safe_load happily accepts it.
+        '403': { description: "Insufficient grant (EDIT required on the rule's book)" }
+        '404': { description: "Not found, not archived, or cross-user (uniform — no enumeration leak)" }
+
   /templates:
     get:
       tags: [canon]
@@ -273,6 +292,27 @@ paths:
   /jobs/{job_id}:
     get:
       tags: [engine]
+      summary: WORK-scoped read of a generation job (gated on the job's project→book grant)
+      description: >
+        Correct for Work-bound jobs, and IMPOSSIBLE for the ones that are not — an unbound
+        job (project_id null) 404s here BY DESIGN. Read it via GET /motif-jobs/{job_id}.
+      parameters: [{ name: job_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Job, content: { application/json: { schema: { $ref: '#/components/schemas/GenerationJob' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /motif-jobs/{job_id}:
+    get:
+      tags: [engine]
+      summary: OWNER-scoped read of a Work-LESS async job (mine_motifs / analyze_reference)
+      description: >
+        BE-7c. `GET /jobs/{job_id}` gates on the job's project→book grant, which is correct for
+        Work-bound jobs and IMPOSSIBLE for the ones that are not: a book/corpus motif-mine and an
+        arc-import are enqueued with project_id=None, so the row carries NO composition_work and
+        the Work gate 404s forever — after the user has already paid for the LLM run. This route
+        gates on the actor stamp the row DOES carry (`created_by`). Missing and denied return the
+        SAME 404, byte for byte (H13 — no enumeration oracle); a 403 here would confirm to a
+        stranger that the job exists.
       parameters: [{ name: job_id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
         '200': { description: Job, content: { application/json: { schema: { $ref: '#/components/schemas/GenerationJob' } } } }
@@ -469,9 +509,15 @@ components:
         idempotency_key: { type: string, nullable: true }
     GenerationJob:
       type: object
+      description: >
+        BE-7c — the scope keys are BOTH-OR-NEITHER (CHECK generation_job_scope_shape). A
+        Work-bound job carries both; an UNBOUND, owner-scoped job (a corpus/book motif-mine,
+        an arc-import) carries NEITHER, and `created_by` is its scope key instead. Read an
+        unbound job via GET /motif-jobs/{job_id} — GET /jobs/{job_id} 404s on it by design.
       properties:
         id: { type: string, format: uuid }
-        project_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid, nullable: true }   # null ⇒ an UNBOUND (owner-scoped) job
+        book_id: { type: string, format: uuid, nullable: true }      # null ⇒ ditto; both-or-neither
         outline_node_id: { type: string, format: uuid, nullable: true }
         operation: { type: string }
         status: { type: string, enum: [pending, running, completed, failed, cancelled] }

@@ -189,6 +189,33 @@ async def delete_canon_rule(
     return rule.model_dump(mode="json")
 
 
+@router.post("/canon-rules/{rule_id}/restore", status_code=200)
+async def restore_canon_rule(
+    rule_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    canon: CanonRulesRepo = Depends(get_canon_rules_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """BE-11 — un-archive a soft-deleted canon rule: the UNDO the DELETE already promises.
+
+    `list_all` filters `NOT is_archived`, so an archived rule is unlistable — but
+    `DELETE /canon-rules/{rule_id}` returns the archived row (id included), so the FE holds
+    the id and renders "Rule deleted · Undo" → here. Reachability is that toast, not an
+    archive browser.
+
+    EDIT gate (restore mutates), resolved from the ROW's project — the by-id routes carry
+    no project in the path, so the gate can never check a different book than the row
+    mutated. No If-Match: an archived row has no concurrent editor to race.
+    """
+    project_id = await _rule_project_id(rule_id)
+    await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    rule = await canon.restore(project_id, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="canon rule not found or not archived")
+    return rule.model_dump(mode="json")
+
+
 @router.get("/templates")
 async def list_templates(
     user_id: UUID = Depends(get_current_user),

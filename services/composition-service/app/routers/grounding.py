@@ -34,11 +34,14 @@ from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
     get_embedding_client_dep, get_generation_jobs_repo, get_glossary_client_dep,
-    get_grounding_pins_repo, get_knowledge_client_dep, get_outline_repo,
+    get_grounding_pins_repo, get_knowledge_client_dep, get_motif_application_repo_opt,
+    get_motif_repo_opt, get_outline_repo,
     get_references_repo, get_scene_links_repo, get_structure_repo,
     get_style_profile_repo, get_voice_profile_repo, get_works_repo,
 )
 from app.db.repositories.structure import StructureRepo
+from app.db.repositories.motif_application import MotifApplicationRepo
+from app.db.repositories.motif_repo import MotifRepo
 from app.deps import get_grant_client_dep
 from app.grant_client import GrantClient, GrantLevel
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -68,6 +71,8 @@ async def get_grounding(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     structures: StructureRepo | None = Depends(get_structure_repo),
+    motif_apps: MotifApplicationRepo | None = Depends(get_motif_application_repo_opt),  # X-7 motif lens
+    motifs: MotifRepo | None = Depends(get_motif_repo_opt),  # X-7 motif lens
     scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
     canon: CanonRulesRepo = Depends(get_canon_rules_repo),
     book: BookClient = Depends(get_book_client_dep),
@@ -104,6 +109,8 @@ async def get_grounding(
             req, book=book, glossary=glossary, knowledge=knowledge,
             canon_repo=canon, outline_repo=outline, scene_links_repo=scene_links,
             structure_repo=structures,  # 23 BA12 — the arc lens
+            motif_application_repo=motif_apps,  # X-7 — the motif lens (scene beats)
+            motif_repo=motifs,  # X-7 — ditto; BOTH must ride or the lens is dormant
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
             grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
             style_profile_repo=style_profiles,  # T3.5 — density/pace

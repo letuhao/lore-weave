@@ -261,14 +261,35 @@ async def test_t1_legacy_db_migrates_without_loss(legacy_pool):
         for t, want in actors.items():
             assert after[t] == want, f"{t}: actor stamp drifted through the rename"
 
-        # (3) book_id backfilled everywhere, NOT NULL, and correct
+        # (3) book_id backfilled everywhere and correct. The M2 guarantee is "no migrated row
+        #     loses its book home" — that still holds for EVERY table, and is the assertion
+        #     that matters. How it is ENFORCED differs for one table:
+        #
+        #     BE-7c made `generation_job.book_id` NULLABLE on purpose. A corpus/book motif-mine
+        #     and an arc-import are genuinely NOT Work-bound — there is no composition_work to
+        #     derive a book from — and the old code papered over that with a synthetic uuid4()
+        #     project_id, which the INSERT…SELECT could not resolve, so the PAID action 500'd
+        #     after burning the confirm token. The honesty is now enforced by SHAPE rather than
+        #     by NOT NULL: `generation_job_scope_shape` CHECKs both-or-neither, so a half-null
+        #     (a book with no project, or vice versa) — the actual tenancy hole — is still
+        #     unwritable, and the Work-less OPERATION allowlist lives in the writer.
         for t in _BOOK_ID_TABLES:
             assert await c.fetchval(f"SELECT count(*) FROM {t} WHERE book_id IS NULL") == 0, t
             nullable = await c.fetchval(
                 "SELECT is_nullable FROM information_schema.columns "
                 "WHERE table_name = $1 AND column_name = 'book_id'", t,
             )
-            assert nullable == "NO", f"{t}.book_id must be NOT NULL after M2"
+            if t == "generation_job":
+                assert nullable == "YES", "BE-7c: generation_job.book_id is scope-nullable"
+                shape = await c.fetchval(
+                    "SELECT count(*) FROM pg_constraint "
+                    "WHERE conname = 'generation_job_scope_shape'")
+                assert shape == 1, (
+                    "generation_job.book_id is nullable but the both-or-neither CHECK is GONE — "
+                    "that IS the tenancy hole (a book_id with no project). Restore it."
+                )
+            else:
+                assert nullable == "NO", f"{t}.book_id must be NOT NULL after M2"
             assert await c.fetchval(f"SELECT count(*) FROM {t} WHERE book_id <> $1", seed["book"]) == 0, t
 
         # (4) PM-3: the derivative keeps its OWN partition — it did not merge into the source

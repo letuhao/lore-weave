@@ -1082,21 +1082,53 @@ async def test_arc_import_propose_threads_model_ref():
     assert claims.payload["model_source"] == "user_model"
 
 
-async def test_get_mine_job_foreign_project_uniform():
-    """S1: a job under a different project → H13 (the cloned cross-Work guard)."""
+async def test_get_mine_job_foreign_owner_uniform():
+    """BE-7c / S1: a job created by ANOTHER user → H13 uniform deny.
+
+    The gate moved from the Work (a mine has none) to the OWNER stamp. A foreign
+    owner must be indistinguishable from a missing job — never a 403."""
     import app.mcp.server as srv
     from loreweave_mcp import NotAccessibleError
     from app.db.models import GenerationJob
 
-    job = GenerationJob(id=uuid.uuid4(), created_by=TEST_USER, book_id=BOOK, project_id=OTHER_PROJECT,
+    job = GenerationJob(id=uuid.uuid4(), created_by=uuid.uuid4(),  # NOT TEST_USER
+                        project_id=None, book_id=None,
                         operation="mine_motifs", status="pending")
     jobs = AsyncMock()
     jobs.get = AsyncMock(return_value=job)
     async with _patched(grant_level=1, GenerationJobsRepo=jobs):
         with pytest.raises(NotAccessibleError):
-            await srv.composition_get_mine_job(
-                _Ctx(), project_id=str(PROJECT), job_id=str(job.id),
-            )
+            await srv.composition_get_mine_job(_Ctx(), job_id=str(job.id))
+
+
+async def test_get_mine_job_missing_is_uniform():
+    """A missing job denies IDENTICALLY to a foreign one (no enumeration oracle)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=None)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_mine_job(_Ctx(), job_id=str(uuid.uuid4()))
+
+
+async def test_get_mine_job_happy_path_needs_ONLY_a_job_id():
+    """🔴 The tool the confirm response advertises must be CALLABLE. It used to demand a
+    `project_id` that, for an UNBOUND job, does not exist — so the poll named in the
+    confirm envelope's own `poll` field could never be invoked."""
+    import app.mcp.server as srv
+    from app.db.models import GenerationJob
+
+    job = GenerationJob(id=uuid.uuid4(), created_by=TEST_USER,
+                        project_id=None, book_id=None,  # an UNBOUND job — no Work at all
+                        operation="mine_motifs", status="completed")
+    jobs = AsyncMock()
+    jobs.get = AsyncMock(return_value=job)
+    async with _patched(grant_level=1, GenerationJobsRepo=jobs):
+        out = await srv.composition_get_mine_job(_Ctx(), job_id=str(job.id))
+    assert out["status"] == "completed"
+    assert out["project_id"] is None and out["book_id"] is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1313,13 +1345,19 @@ def test_w_replay_blocked_by_ledger(client):
 
 def test_mine_confirm_enqueues_202(client):
     """MCP-R4: mine confirm enqueues a pending mine_motifs job (202 action_accepted),
-    NOT in-process compute. The precheck passes; the worker compute is W8 (Wave 2)."""
+    NOT in-process compute. The precheck passes; the worker compute is W8 (Wave 2).
+
+    BE-7c: a corpus mine is Work-LESS, so it must go through `create_unbound()`. Asserting
+    WHICH writer ran is the point — the previous version of this test stubbed `create()`
+    and passed happily while the real `create()` raised ReferenceViolationError on the
+    synthetic pid and the paid action 500'd. A mock encodes your assumption; make it
+    encode the right one."""
     from app.db.models import GenerationJob
 
-    job = GenerationJob(id=uuid.uuid4(), created_by=TEST_USER, book_id=BOOK, project_id=uuid.uuid4(),
+    job = GenerationJob(id=uuid.uuid4(), created_by=TEST_USER, project_id=None, book_id=None,
                         operation="mine_motifs", status="pending")
     jobs = AsyncMock()
-    jobs.create = AsyncMock(return_value=(job, True))
+    jobs.create_unbound = AsyncMock(return_value=job)
     ledger = AsyncMock()
     ledger.consume = AsyncMock(return_value=True)
     billing = AsyncMock()
@@ -1337,10 +1375,15 @@ def test_mine_confirm_enqueues_202(client):
     assert body["outcome"] == "action_accepted"
     assert body["job_id"] == str(job.id)
     assert body["poll"] == "composition_get_mine_job"
+    # The Work-LESS writer ran, and the Work-bound one did NOT (it would have raised).
+    jobs.create_unbound.assert_awaited_once()
+    jobs.create.assert_not_awaited()
+    # No synthetic project on the stream either.
+    assert enq.await_args.kwargs["project_id"] == ""
     # The job is pending + carries the worker_op stamp; the precheck ran before enqueue.
     billing.precheck.assert_awaited_once()
-    assert jobs.create.await_args.kwargs["operation"] == "mine_motifs"
-    assert jobs.create.await_args.kwargs["input"]["worker_op"] == "mine_motifs"
+    assert jobs.create_unbound.await_args.kwargs["operation"] == "mine_motifs"
+    assert jobs.create_unbound.await_args.kwargs["input"]["worker_op"] == "mine_motifs"
     enq.assert_awaited_once()
 
 

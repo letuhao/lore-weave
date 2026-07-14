@@ -154,6 +154,17 @@ async def _retry_generation_job_core(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id},
             )
+    elif job.project_id is None:
+        # BE-7c — an UNBOUND (Work-LESS) job: a corpus/book motif-mine or an arc-import.
+        # These ARE worker-drivable (they're in SUPPORTED_OPERATIONS and carry `worker_op`),
+        # so retryable=True and the Retry button is live for them. They must re-submit
+        # through the SAME Work-less writer the confirm path uses — the plain create()
+        # derives book_id from composition_work, so it would raise ReferenceViolationError
+        # and 409 with a lie about a deleted outline node.
+        new = await jobs.create_unbound(
+            created_by=job.created_by, operation=job.operation,
+            input=job.input, status="pending",
+        )
     else:
         # Plain create self-resolves the model name (conn is None) from the input.
         # create() re-validates the copied outline_node_id is a node in this project; if
@@ -179,7 +190,10 @@ async def _retry_generation_job_core(
         # `user_id` is the worker-trigger STREAM field (the acting user the worker
         # resolves BYOK/bearer for); its value now sources the actor stamp `created_by`.
         settings.redis_url, job_id=str(new.id),
-        user_id=str(job.created_by), project_id=str(job.project_id),
+        user_id=str(job.created_by),
+        # An unbound job has no project — send "" (not the string "None"). run_job
+        # re-loads the job by id and never reads this field.
+        project_id=str(job.project_id) if job.project_id is not None else "",
     )
     return JobControlResponse(job_id=new.id, status=new.status)
 

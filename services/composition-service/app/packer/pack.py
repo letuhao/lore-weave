@@ -41,7 +41,7 @@ from app.packer import merge as M
 from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
-    LensBundle, gather_arc, gather_canon, gather_lore, gather_open_promises,
+    LensBundle, gather_arc, gather_canon, gather_lore, gather_motif, gather_open_promises,
     gather_present, gather_recent, gather_references, gather_source_scene,
     gather_structural, gather_timeline,
 )
@@ -192,6 +192,8 @@ async def pack(
     references_repo=None,  # T3.6 — author reference shelf (gated)
     embedding_client=None,  # T3.6 — provider-registry embed for reference retrieval (gated)
     structure_repo=None,  # 23 BA12 — the arc lens (durable spec layer; gated)
+    motif_application_repo=None,  # X-7 / BE-M2 — the motif lens (scene beat structure; gated)
+    motif_repo=None,  # X-7 / BE-M2 — ditto; BOTH must be wired or the lens stays dormant
     grant: "GrantClient | None" = None,
     need: "GrantLevel | None" = None,
 ) -> PackedContext:
@@ -335,7 +337,17 @@ async def pack(
                    open_promises_cap=settings.pack_open_promises_cap)
         if (structure_repo is not None and structure_node_id is not None) else _empty_str()
     )
-    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r), arc_text = (
+    # X-7 / BE-M2 — the MOTIF lens, gated exactly like the arc lens (both repos wired AND
+    # the node carries an id) and best-effort. Dormant ⇒ an empty string ⇒ byte-unchanged.
+    motif_node_id = _as_uuid(node.get("id"))
+    motif_gated = (
+        gather_motif(motif_application_repo, motif_repo, req.project_id, motif_node_id,
+                     user_id=req.user_id)
+        if (motif_application_repo is not None and motif_repo is not None
+            and motif_node_id is not None and req.project_id is not None)
+        else _empty_str()
+    )
+    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r), arc_text, motif_text = (
         await asyncio.gather(
             gather_canon(canon_repo, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
@@ -353,6 +365,7 @@ async def pack(
             gather_references(references_repo, embedding_client, user_id=req.user_id,
                               project_id=req.project_id, query=query, model=ref_model),
             arc_gated,
+            motif_gated,
         )
     )
 
@@ -519,6 +532,15 @@ async def pack(
     # protected posture as canon/present/beat. `render()` only knows _BLOCK_ORDER,
     # so the <arc> frame is composed here rather than in assemble.py. Empty (the
     # gate: no structure_repo / no structure_node_id / a deleted arc) → byte-unchanged.
+    # X-7 / BE-M2 — the MOTIF frame, injected IMMEDIATELY AFTER <arc> (so the prompt reads
+    # <arc> → <motif> → the rest). The arc is the durable CHAPTER-level spec frame; the
+    # motif is the SCENE-level beat structure inside it. Like <arc> it is composed here,
+    # not via assemble.py's _BLOCK_ORDER ("arc" is deliberately absent from assemble.py:25),
+    # and it rides OUTSIDE enforce_budget — which is why gather_motif caps it. Empty (the
+    # gate: repos unwired / no binding / an archived motif) → byte-unchanged.
+    if motif_text:
+        blocks["motif"] = motif_text
+        prompt = f"<motif>\n{motif_text}\n</motif>" + (f"\n{prompt}" if prompt else "")
     if arc_text:
         blocks["arc"] = arc_text
         prompt = f"<arc>\n{arc_text}\n</arc>" + (f"\n{prompt}" if prompt else "")

@@ -202,6 +202,36 @@ async def get_import_source_repo() -> ImportSourceRepo:
     return ImportSourceRepo(get_pool())
 
 
+async def get_motif_repo_opt() -> "MotifRepo | None":
+    """X-7 — the MOTIF lens's repo, for the pack-calling handlers ONLY.
+
+    Pool-tolerant, for exactly the reason `get_structure_repo` (:118) is: this dep is being
+    added to EXISTING pack-calling handlers whose many unit tests override only the deps they
+    knew about, so a hard get_pool() here would 500 every one of them. The packer treats a
+    None motif repo as the DORMANT motif lens (no <motif> frame, zero extra reads) — the
+    correct behaviour when there is no pool. Production always has a pool, so the motif IS
+    injected there, and test_pack_motif_wired.py proves that path against a real DB.
+
+    ⚠ Deliberately SEPARATE from `get_motif_repo` (:183), which the motif CRUD routers use and
+    which must keep returning a non-Optional repo — do not merge them.
+    """
+    from app.db.pool import get_pool as _get_pool
+    try:
+        return MotifRepo(_get_pool())
+    except RuntimeError:
+        return None  # pool not initialised (unit test) → motif lens dormant
+
+
+async def get_motif_application_repo_opt() -> "MotifApplicationRepo | None":
+    """X-7 — the motif BINDING ledger for the pack-calling handlers. See
+    `get_motif_repo_opt` above; same pool-tolerant rationale, same dormant-lens contract."""
+    from app.db.pool import get_pool as _get_pool
+    try:
+        return MotifApplicationRepo(_get_pool())
+    except RuntimeError:
+        return None  # pool not initialised (unit test) → motif lens dormant
+
+
 async def get_motif_retriever() -> MotifRetriever:
     """F0 frozen signature; W3 implements. The planner (W2) and the MCP
     _suggest_for_chapter (W4) both resolve candidates through this one core."""

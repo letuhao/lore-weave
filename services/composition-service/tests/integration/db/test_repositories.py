@@ -37,9 +37,16 @@ from app.db.repositories.works import WorksRepo
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
 
-pytestmark = pytest.mark.skipif(
-    not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _DSN, reason="set TEST_COMPOSITION_DB_URL to a throwaway DB to run",
+    ),
+    # MANDATORY (CLAUDE.md test-parallelization): this file DROPs + re-migrates tables on
+    # the shared dev PG. Without the group, xdist can schedule it on a different worker
+    # concurrently with the other real-DB files and they interleave — the counts then lie.
+    # It was missing; the other integration/db files (test_pack_arc_wired, test_c16_…) have it.
+    pytest.mark.xdist_group("pg"),
+]
 
 _TABLES = [
     "plan_bootstrap_proposal", "plan_artifact", "plan_run",
@@ -1091,6 +1098,50 @@ async def test_canon_rules_active_listing_and_archive(pool):
     assert await repo.list_active(project) == []
     assert len(await repo.list_all(project)) == 1
     assert await repo.archive(project, r1.id) is None  # already archived
+
+
+async def test_canon_rule_restore_roundtrip(pool):
+    """BE-11 — restore is archive()'s inverse: the rule comes back into list_all."""
+    repo = CanonRulesRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    r = await repo.create(project, "Magic costs blood", created_by=user)
+
+    assert (await repo.archive(project, r.id)) is not None
+    assert len(await repo.list_all(project)) == 0  # archived ⇒ unlistable
+
+    restored = await repo.restore(project, r.id)
+    assert restored is not None and restored.id == r.id
+    assert [x.id for x in await repo.list_all(project)] == [r.id]
+
+    # A second restore is a no-op miss (it is no longer archived) — not an error, not a lie.
+    assert await repo.restore(project, r.id) is None
+    # And a rule that was never archived cannot be "restored".
+    other = await repo.create(project, "never deleted", created_by=user)
+    assert await repo.restore(project, other.id) is None
+
+
+async def test_canon_rule_restore_does_not_bump_version_and_does_not_flip_active(pool):
+    """🔴 THE TWO SILENT-CORRUPTION BUGS. Restore un-archives ONLY.
+
+    · Bumping `version` would silently invalidate a client's held If-Match.
+    · Flipping `active` would silently RE-ARM a rule the author deliberately disabled —
+      it would start constraining generation again without anyone asking."""
+    repo = CanonRulesRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    r = await repo.create(project, "Magic costs blood", created_by=user)
+    # deactivate, THEN delete — the rule was inactive at the moment of deletion.
+    await repo.update(project, r.id, {"active": False})
+    before = await repo.get(project, r.id)
+    assert before.active is False
+
+    await repo.archive(project, r.id)
+    restored = await repo.restore(project, r.id)
+
+    assert restored.active is False, "restore must NOT re-arm a deliberately disabled rule"
+    assert restored.version == before.version, "restore must NOT bump version"
+    assert restored.is_archived is False
 
 
 async def test_canon_rules_ifmatch(pool):
