@@ -215,3 +215,33 @@ async def reflect_week(
     # as a fresh row next period.
     patterns = [p for p in candidates if p.pattern_key not in dismissed_pattern_keys]
     return ReflectionResult(status="reflected", patterns=patterns)
+
+
+# WS-5.3 — Socratic scaffolding prompts. DESCRIPTIVE, never a judgement or a score.
+_SOCRATIC_PROMPTS = (
+    "What felt like your best work this week, and what made it possible?",
+    "Where did your time go versus where you wanted it to go?",
+    "What's one small thing you'd change about next week?",
+)
+
+
+def render_reflection_draft(result: ReflectionResult) -> str:
+    """WS-5.3 — a PULL-only weekly reflection DRAFT (P3-D3). Descriptive, not a score: it
+    lays out the week's observed patterns (each with its own evidence) + Socratic prompts for
+    the user to reflect against. An EMPTY week (no patterns) is a valid, good output — the
+    draft simply invites reflection without inventing findings. On a safety short-circuit it
+    returns ONLY the acknowledgement (no patterns, no prompts)."""
+    if result.status == "safety_short_circuit":
+        return result.acknowledgement or ""
+    lines = ["## Weekly reflection", ""]
+    if result.patterns:
+        lines.append("A few things stood out this week:")
+        for p in result.patterns:
+            lines.append(f"- {p.summary}")
+        lines.append("")
+    else:
+        lines.append("Nothing specific stood out in the data this week — a calm week is a good week.")
+        lines.append("")
+    lines.append("Some questions to sit with:")
+    lines.extend(f"- {q}" for q in _SOCRATIC_PROMPTS)
+    return "\n".join(lines)

@@ -14,7 +14,7 @@ import pytest as _pytest
 
 from app.reflection_job import (
     DETECTOR_CODES, ReflectionPattern, ReflectionResult,
-    reflect_week, validate_detector_code,
+    reflect_week, render_reflection_draft, validate_detector_code,
 )
 
 
@@ -126,6 +126,28 @@ async def test_dismissed_pattern_is_dropped_at_detection():
         dismissed_pattern_keys=frozenset({"co_occurrence:meetings"}),  # user tombstoned it
     )
     assert all(p.pattern_key != "co_occurrence:meetings" for p in res.patterns)  # never resurfaces
+
+
+def test_reflection_draft_is_descriptive_with_patterns_and_prompts():
+    res = ReflectionResult(status="reflected", patterns=[
+        ReflectionPattern("journaling_gap", "2 day(s) had no diary entry.", ("2026-07-08", "2026-07-09"), "journaling_gap"),
+    ])
+    draft = render_reflection_draft(res)
+    assert "no diary entry" in draft            # the pattern is described
+    assert "questions to sit with" in draft.lower()  # Socratic prompts present
+    assert "score" not in draft.lower()         # descriptive, never a score
+
+
+def test_empty_week_draft_is_valid_and_invites_reflection():
+    draft = render_reflection_draft(ReflectionResult(status="reflected", patterns=[]))
+    assert "calm week" in draft.lower()          # empty = good output, not a failure
+    assert "questions to sit with" in draft.lower()
+
+
+def test_short_circuit_draft_is_only_the_acknowledgement():
+    res = ReflectionResult(status="safety_short_circuit", safety_category="distress", acknowledgement="take care of yourself")
+    draft = render_reflection_draft(res)
+    assert draft == "take care of yourself"      # no patterns, no prompts past the floor
 
 
 def test_closed_enum_guard_rejects_unknown_detector_code():
