@@ -1,6 +1,6 @@
 # Phase 3/4/5 BUILD — RUN-STATE (the commitment file · re-read FIRST after any compaction)
 
-**Created:** 2026-07-15 · **Track:** Work Assistant Phase 3/4/5 · **Mode:** long autonomous build, **one `/goal` per phase** (human re-sets at each phase boundary) · **HEAD at creation:** b1dcf20e3.
+**Created:** 2026-07-15 · **Track:** Work Assistant Phase 3/4/5 · **Mode:** **ONE long-run `/goal` for the WHOLE build** (human-directed 2026-07-15 — supersedes the earlier per-phase choice) · **HEAD at creation:** b1dcf20e3.
 
 > This is the durable anchor (CLAUDE.md "GOAL COMMITMENT" — memory across compaction). The DESIGN lives in the sealed plans; do NOT re-litigate it from memory — re-read:
 > - Sealed decisions + review resolutions: [`2026-07-15-phase-345-clean-seal.md`](2026-07-15-phase-345-clean-seal.md) (§3 register, §7 findings, §8 goal guardrails)
@@ -14,9 +14,10 @@
 3. Re-read the current milestone's plan section (link above).
 4. Continue at the first ⬜/🔵 slice. Never `git add -A` (concurrent sessions share this checkout — commit each slice with an explicit pathspec).
 
-## 1 · The GOAL (per-phase; human sets `/goal` at each boundary)
-**Milestone order:** `PRE-P3 wiki-fix` → `P3 scheduler` → `P4 voice` → `P5 reflection+gates+scorer-harness`.
-**Human decision (this session):** one `/goal` per phase, re-set as each completes; P5's autonomous exit is **"harness built + scorer quarantine-tier"** — NOT "eval passes / safety certified" (those are a later human-rating milestone).
+## 1 · The GOAL (ONE long-run goal for the whole build)
+**Milestone order (dependency-correct):** `PRE-P3 wiki-fix` → `P3 scheduler` → `P4 voice` → `P5 reflection+gates+scorer-harness`. Run through ALL of them in one autonomous goal; the slice board (§3) is the "done" definition.
+**Autonomous exit** = every §3 slice ✅-with-evidence, each milestone `/review-impl`'d + live-smoked, commits pushed. **P5's exit is "harness built + scorer quarantine-tier"** — NOT "eval passes / safety certified"; a self-run QWK or "safety passing" is a **drift violation** (those clear only in a later human-rating milestone).
+**Don't stop for checkpoints** (the human prefers long uninterrupted runs). Stop-and-ask ONLY on: a sealed-decision (SD-1..7) conflict, a destructive/irreversible action, or the P5 human-rating boundary.
 
 ## 2 · Standing invariants (the bar — never lower silently)
 - **Per-milestone `/review-impl`** (cold-start adversarial) before each milestone commits. Load-bearing everywhere here (privacy chokepoint, scheduler, proactive/voice seams, every P5 safety/eval slice).
