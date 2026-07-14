@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 # MUST match worker-ai app/distill_consumer.DISTILL_STREAM_NAME — drift silently breaks delivery.
 DISTILL_STREAM = "assistant.distill"
+# MUST match worker-ai app/reextract_consumer.REEXTRACT_STREAM_NAME.
+REEXTRACT_STREAM = "assistant.reextract"
 
 _redis: Any = None
 
@@ -55,5 +57,40 @@ async def enqueue_distill(
     r = _get_redis()
     msg_id = await r.xadd(DISTILL_STREAM, fields, maxlen=10000, approximate=True)
     logger.info("enqueued assistant.distill user=%s book=%s date=%s msg=%s",
+                user_id, book_id, entry_date, msg_id)
+    return msg_id if isinstance(msg_id, str) else str(msg_id)
+
+
+async def enqueue_reextract(
+    *,
+    user_id: str,
+    book_id: str,
+    entry_date: str,
+    body: str,
+    language: str,
+    model_source: str,
+    model_ref: str,
+    trace_id: str | None = None,
+) -> str:
+    """WS-2.6a legs 2+3 (D17) — enqueue a CORRECTION re-extract job. Carries the corrected entry `body`
+    (the same bytes the caller amended in book-service, so the worker needs no read-back and the
+    re-extract is race-free) + the distill model. worker-ai's ReextractConsumer re-extracts the facts to
+    the inbox (leg 2) and invalidates the day's superseded facts (leg 3). Returns the Redis message id;
+    RAISES on a Redis error — a lost enqueue means the correction never reconciles (recall keeps showing
+    the wrong fact), so the caller must surface it, not swallow it."""
+    fields = {
+        "user_id": user_id,
+        "book_id": book_id,
+        "entry_date": entry_date,
+        "body": body,
+        "language": language,
+        "model_source": model_source,
+        "model_ref": model_ref,
+    }
+    if trace_id:
+        fields["trace_id"] = trace_id
+    r = _get_redis()
+    msg_id = await r.xadd(REEXTRACT_STREAM, fields, maxlen=10000, approximate=True)
+    logger.info("enqueued assistant.reextract user=%s book=%s date=%s msg=%s",
                 user_id, book_id, entry_date, msg_id)
     return msg_id if isinstance(msg_id, str) else str(msg_id)

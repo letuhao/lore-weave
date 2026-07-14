@@ -227,3 +227,48 @@ async def test_distill_trigger_surfaces_an_enqueue_failure_as_503(client):
     with patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(side_effect=RuntimeError("redis down"))):
         r = await client.post(_DISTILL, json=_distill_body(), headers=_AUTH)
     assert r.status_code == 503
+
+
+# ── WS-2.6a legs 2+3 — POST /internal/assistant/reextract (correction reconcile) ──
+
+_REEXTRACT = "/internal/chat/assistant/reextract"
+
+
+def _reextract_body(**over):
+    b = {"user_id": str(uuid4()), "book_id": str(uuid4()), "entry_date": "2026-03-10",
+         "body": "Alice froze the Q3 budget, not Minh.",
+         "model_source": "user_model", "model_ref": str(uuid4())}
+    b.update(over)
+    return b
+
+
+@pytest.mark.asyncio
+async def test_reextract_trigger_requires_internal_token(client):
+    r = await client.post(_REEXTRACT, json=_reextract_body())
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_reextract_trigger_enqueues_the_corrected_body_and_day(client):
+    with patch("app.events.distill_enqueue.enqueue_reextract", new=AsyncMock(return_value="9-0")) as enq:
+        r = await client.post(_REEXTRACT, json=_reextract_body(language="vi"), headers=_AUTH)
+    assert r.status_code == 202
+    body = r.json()
+    assert body["enqueued"] is True and body["entry_date"] == "2026-03-10" and body["message_id"] == "9-0"
+    kw = enq.await_args.kwargs
+    assert kw["entry_date"] == "2026-03-10" and kw["language"] == "vi"
+    assert "Alice" in kw["body"] and kw["model_source"] == "user_model"
+
+
+@pytest.mark.asyncio
+async def test_reextract_trigger_rejects_an_empty_body(client):
+    r = await client.post(_REEXTRACT, json=_reextract_body(body="   "), headers=_AUTH)
+    assert r.status_code == 422  # a correction must carry text
+
+
+@pytest.mark.asyncio
+async def test_reextract_trigger_surfaces_an_enqueue_failure_as_503(client):
+    # A lost enqueue = a correction that never reconciles (recall keeps the wrong fact) → not swallowed.
+    with patch("app.events.distill_enqueue.enqueue_reextract", new=AsyncMock(side_effect=RuntimeError("redis down"))):
+        r = await client.post(_REEXTRACT, json=_reextract_body(), headers=_AUTH)
+    assert r.status_code == 503

@@ -68,6 +68,29 @@ interface EndDayResult {
   message_id?: string;
 }
 
+// WS-2.6a / D17 — the "correct a memory" request. The user edits a diary day's entry text; the
+// gateway amends the PG entry (leg 1) then enqueues the graph reconcile (legs 2+3).
+interface CorrectBody {
+  book_id?: string;
+  chapter_id?: string;
+  body?: string;
+  title?: string;
+  model_source?: string;
+  model_ref?: string;
+  language?: string;
+}
+
+interface CorrectResult {
+  amended: boolean;
+  entry_date?: string;
+  kept_preserved?: boolean;
+  reextract_enqueued: boolean;
+  message_id?: string;
+  // Non-fatal: the amendment (the SSOT correction) landed but the reconcile enqueue failed; surfaced
+  // so the FE can show "correction saved; memory sync pending" and offer a retry.
+  reextract_error?: string;
+}
+
 // D-R27 (human-authorized) — the immediate-row-delete erasure result. Per-service delete counts so
 // the caller can prove "row gone". Backup-resistant crypto-shred stays a separate goal (P-12).
 interface EraseResult {
@@ -255,6 +278,91 @@ export class AssistantController {
       enqueued: distill.body?.enqueued === true,
       entry_date: distill.body?.entry_date,
       message_id: distill.body?.message_id,
+    };
+  }
+
+  // WS-2.6a / D17 — the public "correct a memory" trigger. Two legs behind one call: (1) amend the
+  // diary day's PG entry (book-service, user-JWT owner-gated — the SSOT correction), then (2) enqueue
+  // the graph reconcile (chat-service internal → worker-ai re-extract + invalidate). Identity is the
+  // JWT `sub` (SEC-1); the amend is forwarded with the caller's Bearer (owner-gated server-side), the
+  // reextract with the platform token + the server-derived user_id and the entry_date the amend
+  // RETURNED (never a client day). If the amendment fails, the whole call fails (nothing to reconcile).
+  // If only the reconcile enqueue fails, the correction still stands (amended:true) and the failure is
+  // surfaced non-fatally so the FE can retry the reconcile — the entry SSOT is already right.
+  @Post('correct')
+  async correct(
+    @Body() body: CorrectBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<CorrectResult> {
+    const { userId, token } = this.requireAuth(authorization);
+    const authHeader = `Bearer ${token}`;
+
+    const bookId = (body?.book_id ?? '').trim();
+    const chapterId = (body?.chapter_id ?? '').trim();
+    const correctedBody = (body?.body ?? '').trim();
+    const modelSource = (body?.model_source ?? '').trim();
+    const modelRef = (body?.model_ref ?? '').trim();
+    if (!bookId || !chapterId || !correctedBody || !modelSource || !modelRef) {
+      throw new HttpException('book_id, chapter_id, body, model_source and model_ref are required', 400);
+    }
+
+    const bookUrl = process.env.BOOK_SERVICE_URL;
+    const chatUrl = process.env.CHAT_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!bookUrl || !chatUrl || !internalToken) {
+      this.logger.error('assistant-correct rejected: BOOK/CHAT_SERVICE_URL or INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // leg 1 — amend the PG entry (owner-gated by the caller's Bearer, server-side). The amend returns
+    // the server-authoritative entry_date + whether `diary_kept_at` was preserved.
+    const amend = await this.postJson(
+      `${bookUrl}/v1/books/${encodeURIComponent(bookId)}/diary/entries/${encodeURIComponent(chapterId)}/amend`,
+      authHeader,
+      { body: correctedBody, title: (body?.title ?? '').trim() },
+    );
+    if (!amend.ok || amend.body?.amended !== true) {
+      const detail =
+        (typeof amend.body?.error === 'string' && amend.body.error) ||
+        (typeof amend.body?.message === 'string' && amend.body.message) ||
+        'failed to amend diary entry';
+      throw new HttpException(detail, amend.status >= 400 ? amend.status : 502);
+    }
+    const entryDate: string | undefined =
+      typeof amend.body?.entry_date === 'string' ? amend.body.entry_date : undefined;
+    const keptPreserved: boolean | undefined =
+      typeof amend.body?.kept_preserved === 'boolean' ? amend.body.kept_preserved : undefined;
+
+    // legs 2+3 — enqueue the graph reconcile with the SERVER-derived user_id + the amend's entry_date +
+    // the SAME corrected body (race-free). A reconcile-enqueue failure is NON-FATAL: the SSOT is already
+    // corrected; report it so the FE can retry the reconcile rather than re-amending (extra revisions).
+    const reextract = await this.postInternal(
+      `${chatUrl}/internal/chat/assistant/reextract`,
+      internalToken,
+      {
+        user_id: userId,
+        book_id: bookId,
+        entry_date: entryDate,
+        body: correctedBody,
+        model_source: modelSource,
+        model_ref: modelRef,
+        language: (body?.language ?? 'en').trim() || 'en',
+      },
+    );
+    if (!reextract.ok) {
+      const detail =
+        (typeof reextract.body?.detail === 'string' && reextract.body.detail) ||
+        'failed to enqueue memory reconcile';
+      this.logger.error(`assistant-correct: amendment landed but reconcile enqueue failed: ${detail}`);
+      return {
+        amended: true, entry_date: entryDate, kept_preserved: keptPreserved,
+        reextract_enqueued: false, reextract_error: detail,
+      };
+    }
+    return {
+      amended: true, entry_date: entryDate, kept_preserved: keptPreserved,
+      reextract_enqueued: reextract.body?.enqueued === true,
+      message_id: reextract.body?.message_id,
     };
   }
 

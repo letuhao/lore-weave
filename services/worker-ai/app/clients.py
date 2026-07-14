@@ -221,6 +221,22 @@ class KnowledgeClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def invalidate_diary_day(
+        self, *, user_id: str, book_id: str, entry_date: str,
+    ) -> dict:
+        """WS-2.6a leg 3 (D17) — soft-invalidate a corrected diary day's CONFIRMED :Facts (set
+        `valid_until`), so the superseded facts vanish from recall and a rebuild can't resurrect them.
+        Called by the re-extract path AFTER the corrected facts are queued. RAISES on a non-2xx /
+        transport error so the re-extract job leaves the message un-acked and retries — leaving the OLD
+        fact live is a correctness bug (recall would show both the wrong + corrected value), NOT a
+        best-effort enrichment like queue_diary_facts."""
+        resp = await self._http.post(
+            f"{self._base_url}/internal/admin/assistant/invalidate-day",
+            json={"user_id": user_id, "book_id": book_id, "entry_date": entry_date},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     async def persist_pass2(
         self,
         *,

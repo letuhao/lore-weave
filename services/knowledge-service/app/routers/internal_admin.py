@@ -288,6 +288,41 @@ async def reject_diary_fact(body: _RejectDiaryFactIn) -> dict:
     return {"rejected": 1 if rejected else 0, "tombstoned": rejected}
 
 
+class _InvalidateDayIn(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    entry_date: str  # ISO 'YYYY-MM-DD' — the corrected diary day whose facts are superseded
+
+
+@router.post("/assistant/invalidate-day")
+async def invalidate_diary_day(body: _InvalidateDayIn) -> dict:
+    """WS-2.6a leg 3 (D17 amendment reconcile) — soft-invalidate a corrected diary day's CONFIRMED facts.
+
+    Called by worker-ai's re-extract path AFTER the user amends a day's entry (book-service leg 1) and
+    the corrected facts are re-queued to the inbox (leg 2). Resolves the user's assistant project by
+    (user, book) — never all-projects (D16) — then sets `valid_until` on every active confirmed :Fact
+    whose `event_date_iso` equals the corrected day. This is the leg that makes the OLD fact stop
+    resurrecting: without it a KG rebuild re-derives the superseded fact and recall shows both the wrong
+    and the corrected value (the `memory_forget`-stops-at-leg-3 lie D17 exists to kill). Internal-token;
+    idempotent (only active facts are touched)."""
+    day = _parse_iso_date(body.entry_date)
+    if day is None:
+        raise HTTPException(status_code=422, detail="entry_date must be ISO 'YYYY-MM-DD'")
+    from app.db.neo4j_repos.facts import invalidate_facts_for_day
+
+    pool = get_knowledge_pool()
+    project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
+    async with neo4j_session() as session:
+        invalidated = await invalidate_facts_for_day(
+            session,
+            user_id=str(body.user_id),
+            project_id=str(project.project_id),
+            event_date=day.isoformat(),
+        )
+    return {"invalidated": invalidated, "project_id": str(project.project_id),
+            "entry_date": day.isoformat()}
+
+
 class OrphanIndex(BaseModel):
     """One orphaned summary vector index. `reason` distinguishes the two
     classes (project_deleted vs embedding_model_changed) so an operator

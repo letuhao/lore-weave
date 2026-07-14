@@ -352,6 +352,63 @@ async def test_k11_7_invalidate_fact_returns_none_for_missing(
     assert result is None
 
 
+# ── WS-2.6a leg 3 — invalidate_facts_for_day (D17 no-resurrection) ─────
+
+
+@pytest.mark.asyncio
+async def test_ws26a_invalidate_facts_for_day_retires_only_that_day(neo4j_driver, test_user):
+    """D17 leg 3: correcting one diary day invalidates ALL that day's CONFIRMED facts (so the superseded
+    fact can't resurrect) while leaving other days / other projects / pending facts untouched."""
+    from app.db.neo4j_repos.facts import invalidate_facts_for_day
+
+    proj = "p-assist"
+    async with neo4j_driver.session() as session:
+        # Two confirmed facts on the corrected day (the wrong one + an unrelated one).
+        day_minh = await merge_fact(
+            session, user_id=test_user, project_id=proj, type="statement",
+            content="Minh froze the budget", confidence=0.5, pending_validation=False,
+            event_date_iso="2026-03-10",
+        )
+        day_other = await merge_fact(
+            session, user_id=test_user, project_id=proj, type="statement",
+            content="Shipped the redesign", confidence=0.5, pending_validation=False,
+            event_date_iso="2026-03-10",
+        )
+        # A fact on a DIFFERENT day — must survive.
+        other_day = await merge_fact(
+            session, user_id=test_user, project_id=proj, type="statement",
+            content="Reviewed the roadmap", confidence=0.5, pending_validation=False,
+            event_date_iso="2026-03-11",
+        )
+        # A fact in a DIFFERENT project on the same day — must survive (D16 scope isolation).
+        other_proj = await merge_fact(
+            session, user_id=test_user, project_id="p-novel", type="statement",
+            content="Dragon burned the keep", confidence=0.5, pending_validation=False,
+            event_date_iso="2026-03-10",
+        )
+
+        n = await invalidate_facts_for_day(
+            session, user_id=test_user, project_id=proj, event_date="2026-03-10",
+        )
+        assert n == 2  # only the two confirmed facts of that day+project
+
+        # Re-run is idempotent (nothing active left to invalidate).
+        assert await invalidate_facts_for_day(
+            session, user_id=test_user, project_id=proj, event_date="2026-03-10",
+        ) == 0
+
+        # Verify valid_until state per fact.
+        async def _valid_until(fid):
+            rec = await (await session.run(
+                "MATCH (f:Fact {id:$id}) RETURN f.valid_until AS vu", id=fid)).single()
+            return rec["vu"]
+
+        assert await _valid_until(day_minh.id) is not None   # retired
+        assert await _valid_until(day_other.id) is not None  # retired (whole day re-derives)
+        assert await _valid_until(other_day.id) is None      # different day — untouched
+        assert await _valid_until(other_proj.id) is None     # different project — untouched (D16)
+
+
 # ── delete_facts_with_zero_evidence ───────────────────────────────────
 
 

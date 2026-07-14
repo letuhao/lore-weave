@@ -440,6 +440,66 @@ async def reduce_entry(facts: list[DistillFact], language: str, llm: LLMCall) ->
     return parse_entry_draft(raw, language)
 
 
+# ── Re-extract facts from a corrected entry (WS-2.6a leg 2 — D17) ──────────────
+
+
+@dataclass
+class ExtractFactsOutcome:
+    """WS-2.6a leg 2 — the result of re-extracting facts from a CORRECTED diary entry's text (D-R30:
+    the amended entry is the re-distill source, the immutable transcript is not). Facts-only: there is
+    NO reduce step — the entry already exists; we only re-derive its structured facts for the inbox +
+    to reconcile the graph. `error`/`retryable` carry a compute failure so the caller retries the whole
+    re-extract instead of half-reconciling (queue some facts, then fail before the invalidate)."""
+
+    facts: list[DistillFact] = field(default_factory=list)
+    chunks_processed: int = 0
+    error: str | None = None      # 'map_failed' | 'model_no_output' — a compute/model failure
+    retryable: bool = False
+    map_failures: int = 0
+
+
+async def extract_facts_from_text(
+    text: str,
+    llm: LLMCall,
+    *,
+    window: int = WINDOW_CHARS,
+) -> ExtractFactsOutcome:
+    """Run ONLY the distiller MAP over a single authored diary entry's text → structured facts. Unlike
+    `distill_day` this takes NO message list, applies NO self-feeding / giant-paste guards (the input is
+    the user's own first-person prose, not a chat transcript) and does NO reduce. Chunks the entry (a
+    long entry is HARD-split like a day, so the map never receives an over-window input) and folds the
+    per-chunk facts.
+
+    ANY map-chunk CALL failure makes the re-extract INCOMPLETE → `error='map_failed'`, retryable=True:
+    reconciling from a partial fact set would leave the graph inconsistent (invalidate the whole day but
+    re-queue only some corrected facts). A BLANK completion (a reasoning model emitting only
+    reasoning_content; DBT-15) → `error='model_no_output'`, retryable=False (the same model reproduces
+    it). A clean run that legitimately yields no facts is a valid outcome (error=None, facts=[])."""
+    body = (text or "").strip()
+    if not body:
+        return ExtractFactsOutcome()
+    chunks = chunk_day([DayMessage(role="user", content=body)], window)
+    outcome = ExtractFactsOutcome(chunks_processed=len(chunks))
+    blank_completions = 0
+    for chunk in chunks:
+        facts, ok, blank = await map_chunk(chunk, llm)
+        if not ok:
+            outcome.map_failures += 1
+        if blank:
+            blank_completions += 1
+        outcome.facts.extend(facts)
+    if outcome.map_failures:
+        outcome.error = "map_failed"
+        outcome.retryable = True
+        return outcome
+    if not outcome.facts and blank_completions:
+        # The model produced NO output (reasoning model) — diagnosable + non-retryable, NOT a genuinely
+        # factless correction. Surface it so the re-extract isn't silently a no-op.
+        outcome.error = "model_no_output"
+        outcome.retryable = False
+    return outcome
+
+
 # ── Orchestration ────────────────────────────────────────────────────────────
 
 

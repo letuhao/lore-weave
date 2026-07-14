@@ -182,6 +182,25 @@ async def main() -> None:
         )
         coroutines.append(_distill_consumer.run())
         logger.info("A1: assistant.distill consumer started (group=%s)", settings.distill_consumer_group)
+
+        # WS-2.6a legs 2+3 (D17 amendment) — the CORRECTION re-extract consumer. Consumes
+        # `assistant.reextract` jobs (emitted when a user amends a diary day) and reconciles the day's
+        # graph: re-extract the corrected entry's facts to the inbox (leg 2) + invalidate the day's old
+        # confirmed facts (leg 3). Gated by the SAME assistant toggle as distill (it is the same feature)
+        # and given a distinct consumer group so its PEL is independent of the distiller's.
+        from app.reextract_consumer import ReextractConsumer
+        _reextract_consumer = ReextractConsumer(
+            settings.redis_url,
+            knowledge_client,
+            llm_client,
+            consumer_group=f"{settings.distill_consumer_group}-reextract",
+            consumer_name=settings.distill_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+            billing_client=usage_billing_client,  # WS-2.8 — daily-cap degrade pre-check
+        )
+        coroutines.append(_reextract_consumer.run())
+        logger.info("WS-2.6a: assistant.reextract consumer started (group=%s-reextract)",
+                    settings.distill_consumer_group)
     else:
         logger.info("distill consumer disabled via config")
 

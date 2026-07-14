@@ -298,6 +298,103 @@ describe('AssistantController — end-day (A1 public distill trigger)', () => {
   });
 });
 
+describe('AssistantController — correct (WS-2.6a / D17 memory amendment)', () => {
+  let controller: AssistantController;
+
+  beforeEach(() => {
+    process.env.JWT_SECRET = TEST_SECRET;
+    process.env.INTERNAL_SERVICE_TOKEN = 'itok';
+    process.env.BOOK_SERVICE_URL = 'http://book:8205';
+    process.env.CHAT_SERVICE_URL = 'http://chat:8090';
+    controller = new AssistantController();
+  });
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+    delete process.env.INTERNAL_SERVICE_TOKEN;
+    delete process.env.BOOK_SERVICE_URL;
+    delete process.env.CHAT_SERVICE_URL;
+    (global as any).fetch = undefined;
+  });
+
+  const validBody = {
+    book_id: 'diary-1', chapter_id: 'ch-1', body: 'Alice froze the budget, not Minh.',
+    model_source: 'user_model', model_ref: 'model-uuid-1',
+  };
+
+  it('401 on a missing bearer — never touches book or chat', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.correct(validBody, undefined), 401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('400 when a required field is missing — never touches book or chat', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.correct({ book_id: 'diary-1', chapter_id: 'ch-1' }, bearer('u1')), 400);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('amends with the caller BEARER then reconciles with the internal token + amend entry_date', async () => {
+    const f = jest
+      .fn()
+      // leg 1 — amend (user JWT, owner-gated server-side)
+      .mockResolvedValueOnce(resp(200, { amended: true, entry_date: '2026-03-10', kept_preserved: true }))
+      // legs 2+3 — reextract enqueue (internal token)
+      .mockResolvedValueOnce(resp(202, { enqueued: true, entry_date: '2026-03-10', message_id: '9-0' }));
+    (global as any).fetch = f;
+
+    const out = await controller.correct({ ...validBody, language: 'vi' }, bearer('user-42'));
+
+    expect(f).toHaveBeenCalledTimes(2);
+    const [amendUrl, amendInit] = f.mock.calls[0];
+    expect(amendUrl).toBe('http://book:8205/v1/books/diary-1/diary/entries/ch-1/amend');
+    expect(amendInit.method).toBe('POST');
+    // leg 1 carries the caller's JWT (owner-gated), NOT the internal token.
+    expect(amendInit.headers.authorization).toMatch(/^Bearer /);
+    expect(amendInit.headers['x-internal-token']).toBeUndefined();
+    expect(JSON.parse(amendInit.body).body).toContain('Alice');
+
+    const [reUrl, reInit] = f.mock.calls[1];
+    expect(reUrl).toBe('http://chat:8090/internal/chat/assistant/reextract');
+    // legs 2+3 carry the internal token + server-derived user_id + the amend's entry_date.
+    expect(reInit.headers['x-internal-token']).toBe('itok');
+    expect(reInit.headers.authorization).toBeUndefined();
+    const sent = JSON.parse(reInit.body);
+    expect(sent.user_id).toBe('user-42');
+    expect(sent.book_id).toBe('diary-1');
+    expect(sent.entry_date).toBe('2026-03-10'); // from the amend response, NOT a client day
+    expect(sent.body).toContain('Alice');
+    expect(sent.language).toBe('vi');
+
+    expect(out).toEqual({
+      amended: true, entry_date: '2026-03-10', kept_preserved: true,
+      reextract_enqueued: true, message_id: '9-0',
+    });
+  });
+
+  it('a failed amend fails the whole call — never enqueues a reconcile', async () => {
+    const f = jest.fn().mockResolvedValueOnce(resp(403, { error: 'BOOK_FORBIDDEN' }));
+    (global as any).fetch = f;
+    await expectStatus(controller.correct(validBody, bearer('u1')), 403);
+    expect(f).toHaveBeenCalledTimes(1); // only the amend was attempted
+  });
+
+  it('amend OK but reconcile enqueue fails → amended:true, reextract_enqueued:false (non-fatal)', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(200, { amended: true, entry_date: '2026-03-10', kept_preserved: false }))
+      .mockResolvedValueOnce(resp(503, { detail: 'failed to enqueue reextract: redis down' }));
+    (global as any).fetch = f;
+
+    const out = await controller.correct(validBody, bearer('u1'));
+    // The SSOT correction stands; the reconcile is surfaced as retryable, not masked as success.
+    expect(out.amended).toBe(true);
+    expect(out.reextract_enqueued).toBe(false);
+    expect(out.reextract_error).toContain('redis down');
+  });
+});
+
 describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
   let controller: AssistantController;
 

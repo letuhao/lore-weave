@@ -700,6 +700,64 @@ async def invalidate_fact(
     return _node_to_fact(record["f"])
 
 
+# ── invalidate_facts_for_day (WS-2.6a leg 3 — D17 amendment reconcile) ─
+
+
+_INVALIDATE_FACTS_FOR_DAY_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND f.event_date_iso = $event_date
+  AND f.valid_until IS NULL
+  AND coalesce(f.pending_validation, false) = false
+SET f.valid_until = coalesce($valid_until, datetime()),
+    f.updated_at = datetime()
+RETURN count(f) AS invalidated
+"""
+
+
+async def invalidate_facts_for_day(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    event_date: str,
+    valid_until: datetime | None = None,
+) -> int:
+    """WS-2.6a leg 3 (D17) — soft-invalidate ALL of one diary day's CONFIRMED facts by setting
+    `valid_until`, scoped to (user, assistant project, event_date). This is the reconcile leg of a
+    memory correction: after the user amends a day's diary entry (leg 1) and the worker re-extracts the
+    corrected facts into the inbox (leg 2), the day's OLD confirmed facts are superseded and must vanish
+    from recall — otherwise the wrong fact ("Minh froze the budget") survives alongside the corrected
+    one, and a KG rebuild resurrects it (the exact `memory_forget`-stops-at-leg-3 lie D17 names).
+
+    Bi-temporal soft-invalidation (never a hard delete): `valid_until` is set so recall (which filters
+    `valid_until IS NULL`) skips these, while the audit history + the :ABOUT edges survive. Only ACTIVE
+    (`valid_until IS NULL`) confirmed (`pending_validation=false`) facts are touched, so it is idempotent
+    — a re-run invalidates nothing more. `project_id` is REQUIRED (never all-projects) so a correction in
+    the diary can never reach another project's facts (D16). Returns the number invalidated.
+
+    NOTE this is deliberately DAY-scoped, not fact-scoped: the re-distill model (D-R30) treats the
+    corrected ENTRY as the new source of truth for the whole day, so the whole day's derived facts are
+    re-proposed from it. Unchanged facts re-appear in the inbox (same corrected entry ⇒ same facts) and
+    the user re-confirms; the changed/removed ones simply don't come back — no resurrection.
+    """
+    if not user_id or not project_id or not event_date:
+        raise ValueError("invalidate_facts_for_day requires user_id, project_id and event_date")
+    result = await run_write(
+        session,
+        _INVALIDATE_FACTS_FOR_DAY_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        event_date=event_date,
+        valid_until=valid_until,
+    )
+    record = await result.single()
+    if record is None:
+        return 0
+    return int(record["invalidated"])
+
+
 # ── delete_facts_with_zero_evidence ───────────────────────────────────
 
 

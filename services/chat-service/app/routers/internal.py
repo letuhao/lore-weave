@@ -238,6 +238,47 @@ async def trigger_distill(body: DistillTrigger) -> dict:
     return {"enqueued": True, "entry_date": entry_date.isoformat(), "message_id": msg_id}
 
 
+class ReextractTrigger(BaseModel):
+    """WS-2.6a legs 2+3 (D17) — the CORRECTION re-extract trigger body. The gateway `/v1/assistant/correct`
+    calls this AFTER book-service amends the day's entry (leg 1); it forwards the corrected `body` (the
+    same text it sent to amend) + the server-authoritative `entry_date` the amend returned, so the
+    re-extract reconciles exactly the day that was corrected."""
+
+    user_id: UUID
+    book_id: UUID
+    entry_date: date          # the corrected day — server-authoritative (from the amend response)
+    body: str                 # the corrected entry text
+    model_source: str
+    model_ref: UUID
+    language: str = "en"
+
+
+@router.post("/assistant/reextract", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_reextract(body: ReextractTrigger) -> dict:
+    """WS-2.6a legs 2+3 (D17) — enqueue an `assistant.reextract` job so worker-ai re-extracts the
+    corrected entry's facts to the inbox (leg 2) and invalidates the day's superseded facts (leg 3).
+    Returns 202 with the entry_date + message id. A lost enqueue means the correction never reconciles,
+    so a Redis failure surfaces as 503 (not swallowed)."""
+    from app.events.distill_enqueue import enqueue_reextract
+
+    corrected = (body.body or "").strip()
+    if not corrected:
+        raise HTTPException(status_code=422, detail="body required (a correction must have text)")
+    try:
+        msg_id = await enqueue_reextract(
+            user_id=str(body.user_id),
+            book_id=str(body.book_id),
+            entry_date=body.entry_date.isoformat(),
+            body=corrected,
+            language=body.language or "en",
+            model_source=body.model_source,
+            model_ref=str(body.model_ref),
+        )
+    except Exception as exc:  # noqa: BLE001 — a lost enqueue = a correction that never reconciles.
+        raise HTTPException(status_code=503, detail=f"failed to enqueue reextract: {exc}") from exc
+    return {"enqueued": True, "entry_date": body.entry_date.isoformat(), "message_id": msg_id}
+
+
 @router.delete("/assistant/data", dependencies=[Depends(require_internal_token)])
 async def erase_assistant_data(
     user_id: UUID = Query(...),
