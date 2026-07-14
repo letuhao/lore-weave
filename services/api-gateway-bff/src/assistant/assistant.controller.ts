@@ -91,6 +91,25 @@ interface CorrectResult {
   reextract_error?: string;
 }
 
+// WS-2.6c / D17 — the "forget a person" request. Deletes the structured memory (KG entity + facts +
+// pending) AND redacts the name from the diary source text.
+interface ForgetBody {
+  book_id?: string;
+  name?: string;
+}
+
+interface ForgetResult {
+  forgotten: boolean;
+  name?: string;
+  entities_deleted?: number;
+  facts_deleted?: number;
+  pending_tombstoned?: number;
+  redacted_entries?: number;
+  // Non-fatal: the structured memory was erased but the source-text redaction failed; surfaced so the
+  // FE can retry the redaction (the name may still be in the diary prose until then).
+  redaction_error?: string;
+}
+
 // D-R27 (human-authorized) — the immediate-row-delete erasure result. Per-service delete counts so
 // the caller can prove "row gone". Backup-resistant crypto-shred stays a separate goal (P-12).
 interface EraseResult {
@@ -364,6 +383,76 @@ export class AssistantController {
       reextract_enqueued: reextract.body?.enqueued === true,
       message_id: reextract.body?.message_id,
     };
+  }
+
+  // WS-2.6c / D17 — the "forget a person" trigger (the scoped-erasure primitive @entity). Two legs: (1)
+  // knowledge deletes the STRUCTURED memory (KG :Entity + :Facts + pending-inbox tombstone + emits
+  // knowledge.entity_forgotten), then (2) book-service redacts the name from the diary SOURCE prose so a
+  // re-index can't resurface it. Identity is the JWT sub (SEC-1): the knowledge leg carries the platform
+  // token + server-derived user_id; the redact leg carries the caller's Bearer (owner-gated server-side).
+  // If the structured leg fails, the whole call fails (nothing consistent to report). If only the source
+  // redaction fails, the structured memory is already gone (forgotten:true) and the failure is surfaced
+  // non-fatally so the FE can retry the redaction.
+  @Post('forget')
+  async forget(
+    @Body() body: ForgetBody,
+    @Headers('authorization') authorization?: string,
+  ): Promise<ForgetResult> {
+    const { userId, token } = this.requireAuth(authorization);
+    const authHeader = `Bearer ${token}`;
+
+    const bookId = (body?.book_id ?? '').trim();
+    const name = (body?.name ?? '').trim();
+    if (!bookId || !name) {
+      throw new HttpException('book_id and name are required', 400);
+    }
+
+    const bookUrl = process.env.BOOK_SERVICE_URL;
+    const knowledgeUrl = process.env.KNOWLEDGE_SERVICE_URL;
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!bookUrl || !knowledgeUrl || !internalToken) {
+      this.logger.error('assistant-forget rejected: BOOK/KNOWLEDGE_SERVICE_URL or INTERNAL_SERVICE_TOKEN not configured');
+      throw new HttpException('server_error', 500);
+    }
+
+    // leg 1 — the structured memory (KG entity + facts + pending tombstone + event). Internal token +
+    // server-derived user_id; the diary book is a body field but the knowledge leg resolves the user's
+    // assistant project by (user_id, book_id) and only deletes THAT project's graph (D16).
+    const forget = await this.postInternal(
+      `${knowledgeUrl}/internal/admin/assistant/forget-entity`,
+      internalToken,
+      { user_id: userId, book_id: bookId, name },
+    );
+    if (!forget.ok) {
+      const detail =
+        (typeof forget.body?.detail === 'string' && forget.body.detail) ||
+        'failed to forget the memory';
+      throw new HttpException(detail, forget.status >= 400 ? forget.status : 502);
+    }
+
+    // leg 2 — redact the name from the diary SOURCE prose (owner-gated by the caller's Bearer). Non-fatal:
+    // the structured memory is already erased; a redaction failure is surfaced for retry.
+    const redact = await this.postJson(
+      `${bookUrl}/v1/books/${encodeURIComponent(bookId)}/diary/redact`,
+      authHeader,
+      { name },
+    );
+    const base: ForgetResult = {
+      forgotten: forget.body?.forgotten === true,
+      name: forget.body?.name,
+      entities_deleted: forget.body?.entities_deleted,
+      facts_deleted: forget.body?.facts_deleted,
+      pending_tombstoned: forget.body?.pending_tombstoned,
+    };
+    if (!redact.ok) {
+      const detail =
+        (typeof redact.body?.error === 'string' && redact.body.error) ||
+        (typeof redact.body?.message === 'string' && redact.body.message) ||
+        'failed to redact the diary source text';
+      this.logger.error(`assistant-forget: structured memory erased but source redaction failed: ${detail}`);
+      return { ...base, redaction_error: detail };
+    }
+    return { ...base, redacted_entries: redact.body?.redacted_entries };
   }
 
   // D-R27 (human-authorized) — the ASSISTANT DATA ERASURE. Immediate ROW-DELETE (not soft-trash) of

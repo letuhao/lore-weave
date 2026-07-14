@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -477,6 +478,140 @@ WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='act
 		"amended":        true,
 		"kept_preserved": keptAt != nil,
 	})
+}
+
+// redactDiaryName — WS-2.6c (D17 forget-a-person, source-text leg). Redacts a person's NAME from the
+// user's diary entry bodies so a re-index can't resurface it (the knowledge leg deleted the structured
+// :Entity/:Facts; this deletes the name from the SOURCE prose). Owner-only, diary-only. For every active
+// diary entry whose body mentions the name (whole-word, case-insensitive), replace it with the redaction
+// placeholder and write a NEW revision (audit trail), preserving diary_kept_at (like amend — a redaction
+// is a sanctioned edit, not a re-distill clobber). Idempotent: a second run finds no occurrences → 0.
+//
+// LIMITATION (noted): whole-word matching uses a regex word boundary, which covers Latin/Vietnamese names
+// (the dominant diary case). A CJK name (no word boundary) falls back to substring replacement. Passages
+// already in the KG are refreshed on the next re-index of the redacted entry; this leg fixes the SOURCE.
+const diaryRedactionPlaceholder = "[removed]"
+
+func (s *Server) redactDiaryName(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	_, owner, _, ok := s.authBook(w, r, bookID, GrantOwner)
+	if !ok {
+		return
+	}
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "invalid body")
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "BOOK_BAD_REQUEST", "name required")
+		return
+	}
+	// Whole-word, case-insensitive matcher for Latin/VI names; if the name has no word-boundary-able
+	// edge (e.g. a CJK name), \b won't fire — fall back to a plain case-insensitive substring matcher so
+	// the redaction still removes it. QuoteMeta neutralizes any regex metacharacters in the name.
+	quoted := regexp.QuoteMeta(name)
+	re := regexp.MustCompile(`(?i)\b` + quoted + `\b`)
+	if !hasWordBoundaryEdge(name) {
+		re = regexp.MustCompile(`(?i)` + quoted)
+	}
+
+	ctx := r.Context()
+	rows, err := s.pool.Query(ctx, `
+SELECT c.id, COALESCE(ro.body_text,'')
+FROM chapters c LEFT JOIN chapter_raw_objects ro ON ro.chapter_id = c.id
+WHERE c.book_id=$1 AND c.journal_kind IS NOT NULL AND c.lifecycle_state='active'`, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to scan diary")
+		return
+	}
+	type target struct {
+		id      uuid.UUID
+		newBody string
+	}
+	var targets []target
+	for rows.Next() {
+		var id uuid.UUID
+		var body string
+		if err := rows.Scan(&id, &body); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to read diary row")
+			return
+		}
+		if re.MatchString(body) {
+			targets = append(targets, target{id: id, newBody: re.ReplaceAllString(body, diaryRedactionPlaceholder)})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to iterate diary")
+		return
+	}
+
+	if len(targets) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"redacted_entries": 0, "name": name})
+		return
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to begin")
+		return
+	}
+	defer tx.Rollback(ctx)
+	for _, t := range targets {
+		jsonBody := plainTextToTiptapJSON(t.newBody)
+		byteSize := int64(len(t.newBody))
+		// Redaction only SHRINKS or rewrites — never a growth path, so no quota check is needed.
+		if _, err := tx.Exec(ctx,
+			`UPDATE chapters SET byte_size=$2, draft_revision_count=draft_revision_count+1,
+			        draft_updated_at=now(), updated_at=now() WHERE id=$1`, t.id, byteSize); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
+			return
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE chapter_drafts SET body=$2, draft_updated_at=now(), draft_version=draft_version+1
+			   WHERE chapter_id=$1`, t.id, jsonBody); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update draft")
+			return
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)
+			   ON CONFLICT (chapter_id) DO UPDATE SET body_text=EXCLUDED.body_text`,
+			t.id, t.newBody); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update raw body")
+			return
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
+			   VALUES($1,$2,'json',$3,$4)`, t.id, jsonBody, "forget-person redaction (D17)", owner); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit redaction")
+		return
+	}
+	_ = s.recalcQuota(ctx, owner)
+	writeJSON(w, http.StatusOK, map[string]any{"redacted_entries": len(targets), "name": name})
+}
+
+// hasWordBoundaryEdge reports whether the name starts AND ends with a character that participates in a
+// regex `\b` boundary (a word char: letter/digit/underscore). A CJK name is word-char per Go's regexp
+// (\w is ASCII-only by default), so `\b` around it won't match reliably — the caller falls back to a
+// plain substring match for such names.
+func hasWordBoundaryEdge(name string) bool {
+	isWord := func(b byte) bool {
+		return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+	}
+	return len(name) > 0 && isWord(name[0]) && isWord(name[len(name)-1])
 }
 
 // diaryStats — D-R18 (human decision, amends D-R16) — the diary surfaces stats to the OWNER ONLY.

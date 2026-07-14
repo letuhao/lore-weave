@@ -322,6 +322,9 @@ func (s *Server) Router() http.Handler {
 			// distiller write-seam (refuses a kept entry), an amendment is an explicit human
 			// correction that writes a new revision AND PRESERVES diary_kept_at. Owner-only, diary-only.
 			r.Post("/diary/entries/{chapter_id}/amend", s.amendDiaryEntry)
+			// WS-2.6c / D17 forget-a-person (source-text leg) — redact a NAME from the diary bodies so a
+			// re-index can't resurface it (the knowledge leg deletes the structured :Entity/:Facts).
+			r.Post("/diary/redact", s.redactDiaryName)
 			// D-R18 — OWNER-ONLY diary stats (entry count / words / day span). NOT the shared
 			// statistics aggregate (the diary stays out of every cross-user surface, D-R16).
 			r.Get("/diary/stats", s.diaryStats)

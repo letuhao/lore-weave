@@ -395,6 +395,89 @@ describe('AssistantController — correct (WS-2.6a / D17 memory amendment)', () 
   });
 });
 
+describe('AssistantController — forget (WS-2.6c / D17 forget-a-person)', () => {
+  let controller: AssistantController;
+
+  beforeEach(() => {
+    process.env.JWT_SECRET = TEST_SECRET;
+    process.env.INTERNAL_SERVICE_TOKEN = 'itok';
+    process.env.BOOK_SERVICE_URL = 'http://book:8205';
+    process.env.KNOWLEDGE_SERVICE_URL = 'http://knowledge:8210';
+    controller = new AssistantController();
+  });
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+    delete process.env.INTERNAL_SERVICE_TOKEN;
+    delete process.env.BOOK_SERVICE_URL;
+    delete process.env.KNOWLEDGE_SERVICE_URL;
+    (global as any).fetch = undefined;
+  });
+
+  const validBody = { book_id: 'diary-1', name: 'Minh' };
+
+  it('401 on a missing bearer — never touches any service', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.forget(validBody, undefined), 401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('400 when book_id / name missing — never touches any service', async () => {
+    const f = jest.fn();
+    (global as any).fetch = f;
+    await expectStatus(controller.forget({ book_id: 'diary-1' }, bearer('u1')), 400);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('erases structured memory (internal token) then redacts the source (caller bearer)', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(200, { forgotten: true, name: 'Minh', entities_deleted: 1,
+        facts_deleted: 2, pending_tombstoned: 1 }))
+      .mockResolvedValueOnce(resp(200, { redacted_entries: 2, name: 'Minh' }));
+    (global as any).fetch = f;
+
+    const out = await controller.forget(validBody, bearer('user-42'));
+
+    expect(f).toHaveBeenCalledTimes(2);
+    const [knUrl, knInit] = f.mock.calls[0];
+    expect(knUrl).toBe('http://knowledge:8210/internal/admin/assistant/forget-entity');
+    expect(knInit.headers['x-internal-token']).toBe('itok');
+    expect(knInit.headers.authorization).toBeUndefined();
+    expect(JSON.parse(knInit.body).user_id).toBe('user-42'); // server-derived
+
+    const [bkUrl, bkInit] = f.mock.calls[1];
+    expect(bkUrl).toBe('http://book:8205/v1/books/diary-1/diary/redact');
+    expect(bkInit.headers.authorization).toMatch(/^Bearer /); // owner-gated by caller JWT
+    expect(bkInit.headers['x-internal-token']).toBeUndefined();
+    expect(JSON.parse(bkInit.body).name).toBe('Minh');
+
+    expect(out).toEqual({
+      forgotten: true, name: 'Minh', entities_deleted: 1, facts_deleted: 2,
+      pending_tombstoned: 1, redacted_entries: 2,
+    });
+  });
+
+  it('a failed structured erase fails the whole call — never redacts', async () => {
+    const f = jest.fn().mockResolvedValueOnce(resp(502, { detail: 'neo4j down' }));
+    (global as any).fetch = f;
+    await expectStatus(controller.forget(validBody, bearer('u1')), 502);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('structured erase OK but redaction fails → forgotten:true + redaction_error (non-fatal)', async () => {
+    const f = jest
+      .fn()
+      .mockResolvedValueOnce(resp(200, { forgotten: true, name: 'Minh', entities_deleted: 1, facts_deleted: 2 }))
+      .mockResolvedValueOnce(resp(500, { error: 'BOOK_CONFLICT' }));
+    (global as any).fetch = f;
+    const out = await controller.forget(validBody, bearer('u1'));
+    expect(out.forgotten).toBe(true);
+    expect(out.redacted_entries).toBeUndefined();
+    expect(out.redaction_error).toContain('BOOK_CONFLICT');
+  });
+});
+
 describe('AssistantController — erase (D-R27 row-delete erasure)', () => {
   let controller: AssistantController;
 

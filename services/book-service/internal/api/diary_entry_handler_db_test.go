@@ -393,6 +393,93 @@ func TestAmendDiaryEntry_PreservesKeptAndWritesRevision_DB(t *testing.T) {
 	}
 }
 
+func redactDiaryName(t *testing.T, s *Server, bookID, caller uuid.UUID, name string) *httptest.ResponseRecorder {
+	t.Helper()
+	b, _ := json.Marshal(map[string]any{"name": name})
+	req := httptest.NewRequest(http.MethodPost,
+		"/v1/books/"+bookID.String()+"/diary/redact", strings.NewReader(string(b)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+mcpJWT(t, caller))
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	return rr
+}
+
+// WS-2.6c source-text leg: redacting a name removes it (whole-word) from every diary entry that mentions
+// it, writes an audit revision, is idempotent, and does NOT over-redact a substring (Minhang keeps Minh).
+func TestRedactDiaryName_RemovesWholeWordAcrossEntries_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+
+	r1 := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-06-01", "body": "Minh froze the budget. Minh left early."}, true)
+	ch1 := uuid.MustParse(entryChapterID(t, r1))
+	r2 := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-06-02", "body": "Alice met Minh in Minhang district."}, true)
+	ch2 := uuid.MustParse(entryChapterID(t, r2))
+	// An entry that never names Minh — must be untouched (no needless revision).
+	r3 := postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-06-03", "body": "Shipped the redesign."}, true)
+	ch3 := uuid.MustParse(entryChapterID(t, r3))
+
+	rr := redactDiaryName(t, s, diary, owner, "Minh")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("redact = %d, want 200. body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"redacted_entries":2`) {
+		t.Fatalf("want 2 redacted entries, got %s", rr.Body.String())
+	}
+	get := func(ch uuid.UUID) string {
+		var raw string
+		_ = pool.QueryRow(ctx, `SELECT body_text FROM chapter_raw_objects WHERE chapter_id=$1`, ch).Scan(&raw)
+		return raw
+	}
+	// Whole-word "Minh" gone from both; "Minhang" (substring) PRESERVED (no over-redaction).
+	if strings.Contains(get(ch1), "Minh") {
+		t.Fatalf("ch1 still names Minh: %q", get(ch1))
+	}
+	b2 := get(ch2)
+	if strings.Contains(b2, "Minh ") || strings.Contains(b2, "met Minh") || !strings.Contains(b2, "Minhang") {
+		t.Fatalf("ch2 redaction wrong (whole-word only): %q", b2)
+	}
+	if !strings.Contains(get(ch2), diaryRedactionPlaceholder) {
+		t.Fatalf("ch2 should contain the redaction placeholder: %q", get(ch2))
+	}
+	// The untouched entry got no revision.
+	var nRev3 int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM chapter_revisions WHERE chapter_id=$1 AND message='forget-person redaction (D17)'`, ch3).Scan(&nRev3)
+	if nRev3 != 0 {
+		t.Fatalf("untouched entry ch3 got %d redaction revisions, want 0", nRev3)
+	}
+	// Idempotent: a second redact finds nothing.
+	rr2 := redactDiaryName(t, s, diary, owner, "Minh")
+	if !strings.Contains(rr2.Body.String(), `"redacted_entries":0`) {
+		t.Fatalf("second redact should be a no-op, got %s", rr2.Body.String())
+	}
+}
+
+func TestRedactDiaryName_NonOwnerRefused_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	diary := seedBookOfKind(t, ctx, pool, owner, "diary")
+	_ = postDiaryEntry(t, s, diary, map[string]any{
+		"owner_user_id": owner.String(), "entry_date": "2026-06-04", "body": "Minh was here."}, true)
+	stranger := uuid.New()
+	s.resolveBook = func(_ context.Context, _ uuid.UUID, user uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		if user == owner {
+			return GrantOwner, owner, "active", nil
+		}
+		return GrantNone, owner, "active", nil
+	}
+	rr := redactDiaryName(t, s, diary, stranger, "Minh")
+	if rr.Code != http.StatusForbidden && rr.Code != http.StatusNotFound {
+		t.Fatalf("non-owner redact = %d, want 403/404. body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestAmendDiaryEntry_NonOwnerRefused_DB(t *testing.T) {
 	s, pool := dbTestServer(t)
 	ctx := context.Background()
