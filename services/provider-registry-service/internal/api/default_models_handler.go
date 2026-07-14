@@ -33,6 +33,11 @@ var defaultModelCapabilities = map[string]bool{
 	// only reasoning_content → an empty diary). A ROLE, not a model flag → validated against 'chat'
 	// (like planner); the caller falls back to the 'chat' default when unset.
 	"distill": true,
+	// "critic" (WS-5.10 / P5 Gate-2) — the model that SCORES a coaching/interview session. It MUST
+	// differ from the session's actor model (else the roleplay partner grades its own performance).
+	// A ROLE validated against 'chat' (like planner/distill); evaluate.py resolves it + refuses to
+	// score when it equals the actor.
+	"critic": true,
 }
 
 // defaultModelCapQuery is THE capability-validation rule for assigning a
@@ -49,9 +54,9 @@ var defaultModelCapabilities = map[string]bool{
 // $3 capJSON, $4 validateCap.
 func defaultModelCapQuery(capability string) (query, capJSON, validateCap string) {
 	validateCap = capability
-	// planner + distill are ROLES that run as a chat call → validated against the 'chat' flag, so the
-	// picker's chat models are all assignable (WS-3.0 adds distill; D-PLAN-PLANNER-DEFAULT-FE added planner).
-	if capability == "planner" || capability == "distill" {
+	// planner + distill + critic are ROLES that run as a chat call → validated against the 'chat' flag, so
+	// the picker's chat models are all assignable (WS-3.0 adds distill; WS-5.10 adds critic; D-PLAN-PLANNER-DEFAULT-FE added planner).
+	if capability == "planner" || capability == "distill" || capability == "critic" {
 		validateCap = "chat"
 	}
 	capJSON = fmt.Sprintf(`{"%s":true}`, validateCap)

@@ -146,14 +146,36 @@ async def evaluate_session(
     if not row:
         raise HTTPException(status_code=404, detail="session not found")
 
-    model_source = row["model_source"]
-    model_ref = row["model_ref"]
-    if not model_source or not model_ref:
+    actor_source = row["model_source"]
+    actor_ref = row["model_ref"]
+    if not actor_source or not actor_ref:
         # EC-10 — no model to evaluate with. A clear, non-hardcoded failure.
         raise HTTPException(
             status_code=409,
             detail="no model configured for this session — cannot evaluate",
         )
+
+    # ── Gate 2 (WS-5.10 / P5) — judge ≠ actor. The session's model PLAYED the roleplay
+    # partner; letting it score its own performance is the exact conflict this gate exists
+    # to stop. Resolve a distinct CRITIC (the account critic default, falling back to the
+    # account chat default), and REFUSE to score if none resolves distinct from the actor —
+    # a weak/self judge yields NO score, not a self-flattering one (WS-5.18). The refusal is
+    # explicit + actionable (the single-model degraded path — never a silent refuse-all).
+    from app.client.provider_client import get_provider_client
+    _pc = get_provider_client()
+    judge = await _pc.get_default_model("critic", user_id)
+    if not judge:
+        judge = await _pc.get_default_model("chat", user_id)
+    if not judge or str(judge[1]) == str(actor_ref):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "scoring needs a CRITIC model distinct from this session's model (the session "
+                "model played the roleplay partner and must not grade itself). Set a critic model "
+                "in Settings › Chat & AI › default models."
+            ),
+        )
+    model_source, model_ref = judge  # the JUDGE drives the evaluator LLM from here on
 
     charter, state, rubric = await _resolve_working_memory(
         sid, user_id, row["working_memory_seed"]

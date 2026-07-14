@@ -122,6 +122,27 @@ func TestDefaultModels_RejectsWrongCapabilityAndUnknownCapability(t *testing.T) 
 	}
 }
 
+func TestDefaultModels_CriticAcceptsChatModelRejectsEmbedding(t *testing.T) {
+	// WS-5.10 (P5 Gate-2) — `critic` is a ROLE validated against the chat flag (like
+	// planner/distill), so a chat model is assignable but an embedding-only model is not.
+	srv, pool := integrationServer(t)
+	owner := uuid.New()
+	chat := seedModelWithCapability(t, pool, owner, "chat-critic", `{"chat": true}`)
+	embed := seedModelWithCapability(t, pool, owner, "embed-not-critic", `{"embedding": true}`)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM user_default_models WHERE owner_user_id=$1`, owner)
+	})
+	if rr := putDefault(t, srv, owner, "critic", `{"user_model_id":"`+chat.String()+`"}`); rr.Code != http.StatusOK {
+		t.Fatalf("chat model as critic default: expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	if got := getDefaults(t, srv, owner); got["critic"] != chat.String() {
+		t.Fatalf("critic default not stored: %v", got)
+	}
+	if rr := putDefault(t, srv, owner, "critic", `{"user_model_id":"`+embed.String()+`"}`); rr.Code != http.StatusBadRequest {
+		t.Fatalf("embedding model as critic default: expected 400, got %d (%s)", rr.Code, rr.Body.String())
+	}
+}
+
 func TestDefaultModels_PlannerAcceptsChatModel(t *testing.T) {
 	srv, pool := integrationServer(t)
 	owner := uuid.New()

@@ -64,6 +64,20 @@ def _session(**over):
     return make_session_record(**base)
 
 
+# Gate 2 (WS-5.10): every evaluate resolves a CRITIC distinct from the session actor.
+# Default fixture = a distinct live critic so the existing happy-path tests still score;
+# the Gate-2 tests below reconfigure it to exercise the refuse-to-self-grade path.
+_CRITIC_REF = "9999aaaa-bbbb-cccc-dddd-000000000001"
+
+
+@pytest.fixture(autouse=True)
+def _critic(monkeypatch):
+    pc = AsyncMock()
+    pc.get_default_model = AsyncMock(return_value=("user_model", _CRITIC_REF))
+    monkeypatch.setattr("app.client.provider_client.get_provider_client", lambda: pc)
+    return pc
+
+
 class TestEvaluateHappyPath:
     @pytest.mark.asyncio
     async def test_full_transcript_returns_and_persists_scorecard(self, client, mock_pool):
@@ -161,6 +175,50 @@ class TestEvaluateGuards:
         assert resp.status_code == 502
         # nothing persisted on a failed evaluation
         mock_pool.execute.assert_not_called()
+
+
+class TestGate2JudgeNotActor:
+    """WS-5.10 — the session model played the roleplay partner; it must NEVER grade itself.
+    The evaluator LLM is driven by the resolved CRITIC, and scoring is refused when no
+    critic distinct from the actor resolves (a weak/self judge ⇒ no score, WS-5.18)."""
+
+    @pytest.mark.asyncio
+    async def test_distinct_critic_drives_the_judge_not_the_actor(self, client, mock_pool, _critic):
+        mock_pool.fetchrow.return_value = _session()
+        mock_pool.fetch.return_value = [make_message_record(role="user", content="x", sequence_num=1)]
+        seen = {}
+
+        async def _fake_llm(*, user_id, model_source, model_ref, messages):
+            seen["judge_ref"] = model_ref
+            return _GOOD_REPLY
+
+        with _patch_kc(_wm({"phase": "wrap", "covered": []})), \
+             patch("app.routers.evaluate._run_evaluator_llm", _fake_llm):
+            resp = await client.post(f"/v1/chat/sessions/{uuid4()}/evaluate")
+        assert resp.status_code == 201, resp.text
+        assert seen["judge_ref"] == _CRITIC_REF                 # judge drove the eval
+        assert seen["judge_ref"] != TEST_MODEL_REF              # NOT the actor
+        assert resp.json()["model_ref"] == _CRITIC_REF          # response reports the judge
+
+    @pytest.mark.asyncio
+    async def test_critic_equal_actor_refuses_to_self_grade(self, client, mock_pool, _critic):
+        _critic.get_default_model = AsyncMock(return_value=("user_model", TEST_MODEL_REF))  # == actor
+        mock_pool.fetchrow.return_value = _session()
+        mock_pool.fetch.return_value = [make_message_record(role="user", content="x", sequence_num=1)]
+        with _patch_kc(_wm({"phase": "wrap", "covered": []})):
+            resp = await client.post(f"/v1/chat/sessions/{uuid4()}/evaluate")
+        assert resp.status_code == 409
+        assert "critic" in resp.text.lower()
+        mock_pool.execute.assert_not_called()  # nothing self-graded persisted
+
+    @pytest.mark.asyncio
+    async def test_no_critic_resolvable_refuses(self, client, mock_pool, _critic):
+        _critic.get_default_model = AsyncMock(return_value=None)  # neither critic nor chat default
+        mock_pool.fetchrow.return_value = _session()
+        mock_pool.fetch.return_value = [make_message_record(role="user", content="x", sequence_num=1)]
+        with _patch_kc(_wm({"phase": "wrap", "covered": []})):
+            resp = await client.post(f"/v1/chat/sessions/{uuid4()}/evaluate")
+        assert resp.status_code == 409
 
 
 class TestRubricThreading:
