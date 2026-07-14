@@ -27,18 +27,23 @@ func UpsertSchedule(
 	}
 	// On conflict: update cadence/time/enabled. Re-arm next_fire_at ONLY when enabling (don't clobber a
 	// live armed instant on an idempotent re-write; a disable leaves it, the scan ignores it anyway).
+	tzStore := tz
+	if tzStore == "" {
+		tzStore = "UTC"
+	}
 	_, err := pool.Exec(ctx, `
-INSERT INTO scheduled_agent_runs (owner_user_id, job_kind, cadence, fire_local_time, enabled, next_fire_at)
-VALUES ($1,$2,$3,$4,$5,$6)
+INSERT INTO scheduled_agent_runs (owner_user_id, job_kind, cadence, fire_local_time, timezone, enabled, next_fire_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7)
 ON CONFLICT (owner_user_id, job_kind) DO UPDATE SET
   cadence = EXCLUDED.cadence,
   fire_local_time = EXCLUDED.fire_local_time,
+  timezone = EXCLUDED.timezone,
   enabled = EXCLUDED.enabled,
   next_fire_at = CASE WHEN EXCLUDED.enabled THEN EXCLUDED.next_fire_at ELSE scheduled_agent_runs.next_fire_at END,
   consecutive_failures = CASE WHEN EXCLUDED.enabled THEN 0 ELSE scheduled_agent_runs.consecutive_failures END,
   paused_until = CASE WHEN EXCLUDED.enabled THEN NULL ELSE scheduled_agent_runs.paused_until END,
   updated_at = now()`,
-		owner, jobKind, cadence, fireLocalTime, enabled, nextFire)
+		owner, jobKind, cadence, fireLocalTime, tzStore, enabled, nextFire)
 	if err != nil {
 		return time.Time{}, err
 	}

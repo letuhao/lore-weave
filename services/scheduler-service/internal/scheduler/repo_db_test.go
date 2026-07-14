@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // WS-3.2 — the opt-in write path: enabling creates an ARMED row a due tick then fires; disabling
@@ -98,4 +99,45 @@ func TestNudge_SuppressedOnAwayDay(t *testing.T) {
 	if !next.After(now) {
 		t.Fatalf("suppressed away nudge should re-arm to the future, got %v", next)
 	}
+}
+
+// review H1 — the RECURRING re-arm must land on the next LOCAL fire time (fire_local_time in tz), not
+// a raw firedAt+24h (which drifts + breaks on DST). Proven: after firing, next_fire_at's wall-clock is
+// exactly fire_local_time (here 21:00 UTC), regardless of the (earlier) tick instant that claimed it.
+func TestReArm_UsesLocalFireTime_NotRawInterval(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM scheduled_agent_runs WHERE owner_user_id=$1`, owner) })
+
+	now := time.Now().UTC()
+	if _, err := UpsertSchedule(ctx, pool, owner, "eod_distill", "daily", "21:00", "UTC", true, now); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// tz persisted?
+	var tz string
+	pool.QueryRow(ctx, `SELECT timezone FROM scheduled_agent_runs WHERE owner_user_id=$1`, owner).Scan(&tz)
+	if tz != "UTC" {
+		t.Fatalf("timezone not persisted: %q", tz)
+	}
+	// Force it due at an arbitrary mid-day instant (10:37), then fire.
+	claimAt := time.Date(now.Year(), now.Month(), now.Day(), 10, 37, 0, 0, time.UTC)
+	pool.Exec(ctx, `UPDATE scheduled_agent_runs SET next_fire_at=$2 WHERE owner_user_id=$1`, owner, claimAt.Add(-time.Minute))
+	// recordSuccess re-arms off `claimAt`; the result must be the next 21:00 UTC, NOT claimAt+24h (10:37).
+	d := NewDriver(pool, &fakeEnq{}, "t")
+	d.recordSuccess(ctx, mustID(t, pool, owner), claimAt)
+
+	var next time.Time
+	pool.QueryRow(ctx, `SELECT next_fire_at FROM scheduled_agent_runs WHERE owner_user_id=$1`, owner).Scan(&next)
+	nu := next.UTC()
+	if nu.Hour() != 21 || nu.Minute() != 0 {
+		t.Fatalf("re-arm landed at %02d:%02d UTC, want 21:00 (the local fire time, not firedAt+24h)", nu.Hour(), nu.Minute())
+	}
+}
+
+func mustID(t *testing.T, pool *pgxpool.Pool, owner uuid.UUID) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	pool.QueryRow(context.Background(), `SELECT id FROM scheduled_agent_runs WHERE owner_user_id=$1`, owner).Scan(&id)
+	return id
 }

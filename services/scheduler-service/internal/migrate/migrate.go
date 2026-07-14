@@ -26,7 +26,10 @@ CREATE TABLE IF NOT EXISTS scheduled_agent_runs (
   owner_user_id         UUID NOT NULL,
   job_kind              TEXT NOT NULL,              -- 'eod_distill' | 'weekly_rollup' | 'nudge' | ...
   cadence               TEXT NOT NULL,              -- 'daily' | 'weekly' (+ the user's local fire time)
-  fire_local_time       TEXT NOT NULL DEFAULT '21:00', -- HH:MM in the user's tz (WS-3.3 resolves next_fire_at)
+  fire_local_time       TEXT NOT NULL DEFAULT '21:00', -- HH:MM in the user's tz
+  timezone              TEXT NOT NULL DEFAULT 'UTC', -- IANA zone — persisted so the RECURRING re-arm
+                                                      -- recomputes the local fire time (review H1: a raw
+                                                      -- +1d interval drifts + breaks on DST)
   enabled               BOOLEAN NOT NULL DEFAULT false, -- P3-D2 opt-in: a row exists only when turned ON
   next_fire_at          TIMESTAMPTZ,               -- the next due instant (UTC); NULL = never armed
   lease_until           TIMESTAMPTZ,               -- a live claim's lease; NULL = unclaimed
@@ -38,6 +41,8 @@ CREATE TABLE IF NOT EXISTS scheduled_agent_runs (
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (owner_user_id, job_kind)
 );
+-- Idempotent add for a table created before the tz column (review H1).
+ALTER TABLE scheduled_agent_runs ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';
 -- The tick driver's claim scan: enabled, armed, due, not paused. Partial so the common case is tight.
 CREATE INDEX IF NOT EXISTS idx_sar_due
   ON scheduled_agent_runs (next_fire_at)

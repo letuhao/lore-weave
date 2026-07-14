@@ -58,6 +58,7 @@ type claimedRow struct {
 	id    uuid.UUID
 	owner uuid.UUID
 	kind  string
+	tz    string
 }
 
 // tickOnce claims every due row (enabled, armed, due, not paused) under a fresh lease, enqueues each,
@@ -71,7 +72,7 @@ func (d *Driver) tickOnce(ctx context.Context) (int, error) {
 
 	now := time.Now().UTC()
 	rows, err := tx.Query(ctx, `
-SELECT id, owner_user_id, job_kind
+SELECT id, owner_user_id, job_kind, timezone
 FROM scheduled_agent_runs
 WHERE enabled
   AND next_fire_at IS NOT NULL AND next_fire_at <= $1
@@ -86,7 +87,7 @@ LIMIT 100`, now)
 	var claimed []claimedRow
 	for rows.Next() {
 		var c claimedRow
-		if err := rows.Scan(&c.id, &c.owner, &c.kind); err != nil {
+		if err := rows.Scan(&c.id, &c.owner, &c.kind, &c.tz); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -122,7 +123,13 @@ LIMIT 100`, now)
 		// holiday). Suppress it as a successful no-op: re-arm for the next day, don't send. eod_distill
 		// is NOT away-gated (a returning user still wants their days journaled — that's the catch-up).
 		if c.kind == "nudge" {
-			if away, err := IsAway(ctx, d.pool, c.owner, now); err == nil && away {
+			// M3 — check the user's LOCAL calendar day, not the tick's UTC day (near a tz boundary they
+			// differ, so a UTC-day check could suppress/allow a nudge on the wrong day).
+			localNow := now
+			if loc, err := time.LoadLocation(c.tz); err == nil && c.tz != "" {
+				localNow = now.In(loc)
+			}
+			if away, err := IsAway(ctx, d.pool, c.owner, localNow); err == nil && away {
 				d.recordSuccess(ctx, c.id, now) // re-arm, don't notify
 				continue
 			}
@@ -138,17 +145,34 @@ LIMIT 100`, now)
 	return fired, nil
 }
 
-// recordSuccess advances next_fire_at by the cadence, clears the lease + breaker.
+// recordSuccess re-arms next_fire_at to the NEXT LOCAL fire time (review H1: a raw +1d/+7d interval add
+// drifts by up to one tick/day and shifts ±1h across DST). Re-reads the row's fire_local_time/timezone/
+// cadence and recomputes via ComputeNextFireAt in the user's zone; clears the lease + breaker.
 func (d *Driver) recordSuccess(ctx context.Context, id uuid.UUID, firedAt time.Time) {
-	_, err := d.pool.Exec(ctx, `
-UPDATE scheduled_agent_runs
-SET last_fired_at = $2::timestamptz,
-    next_fire_at  = CASE cadence WHEN 'weekly' THEN $2::timestamptz + interval '7 days'
-                                 ELSE $2::timestamptz + interval '1 day' END,
-    lease_until = NULL, locked_by = NULL, consecutive_failures = 0, paused_until = NULL, updated_at = now()
-WHERE id = $1`, id, firedAt)
+	var fireLocalTime, tz, cadence string
+	if err := d.pool.QueryRow(ctx,
+		`SELECT fire_local_time, timezone, cadence FROM scheduled_agent_runs WHERE id=$1`, id).
+		Scan(&fireLocalTime, &tz, &cadence); err != nil {
+		slog.Error("scheduler recordSuccess: read row failed", "id", id, "error", err)
+		return
+	}
+	// daily → the next local fire after firedAt (tomorrow). weekly → the next local fire after firedAt+6d
+	// (~7 days out at the same wall-clock time), so DST changes the UTC instant but not the local time.
+	anchor := firedAt
+	if cadence == "weekly" {
+		anchor = firedAt.AddDate(0, 0, 6)
+	}
+	next, err := ComputeNextFireAt(fireLocalTime, tz, anchor)
 	if err != nil {
-		slog.Error("scheduler recordSuccess failed", "id", id, "error", err)
+		slog.Error("scheduler recordSuccess: compute next failed", "id", id, "error", err)
+		return
+	}
+	if _, err := d.pool.Exec(ctx, `
+UPDATE scheduled_agent_runs
+SET last_fired_at = $2, next_fire_at = $3,
+    lease_until = NULL, locked_by = NULL, consecutive_failures = 0, paused_until = NULL, updated_at = now()
+WHERE id = $1`, id, firedAt, next); err != nil {
+		slog.Error("scheduler recordSuccess: update failed", "id", id, "error", err)
 	}
 }
 

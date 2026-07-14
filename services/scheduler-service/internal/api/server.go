@@ -74,6 +74,13 @@ func (s *Server) upsertSchedule(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "user_id and job_kind are required")
 		return
 	}
+	// L1 — closed-set job_kind (the driver only knows these; a typo would breaker-loop a row forever).
+	switch req.JobKind {
+	case "eod_distill", "weekly_rollup", "nudge":
+	default:
+		writeErr(w, http.StatusBadRequest, "job_kind must be eod_distill|weekly_rollup|nudge")
+		return
+	}
 	if req.Cadence == "" {
 		req.Cadence = "daily"
 	}
