@@ -242,6 +242,80 @@ def _reextract_body(**over):
     return b
 
 
+# ── WS-3.0 — server-side distill-context resolution (headless scheduled run) ──
+
+
+class _FakeResp:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _FakeInternalClient:
+    """Async-context-manager stand-in for build_internal_client — returns the diary book."""
+
+    def __init__(self, book_id):
+        self._book_id = book_id
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def get(self, url, params=None):
+        if "diary" in url:
+            return _FakeResp(200, {"book_id": self._book_id, "lifecycle": "active"})
+        return _FakeResp(404, {})
+
+
+@pytest.mark.asyncio
+async def test_distill_headless_resolves_book_model_tz_serverside(client):
+    """WS-3.0 (D-B1) — a scheduled tick posts ONLY {user_id}; the trigger resolves the diary book,
+    the distill model (distill default), and the tz server-side."""
+    uid = str(uuid4())
+    book_id = str(uuid4())
+    model_ref = str(uuid4())
+
+    prov = AsyncMock()
+    # 'distill' default resolves first (chat fallback not reached).
+    prov.get_default_model = AsyncMock(side_effect=lambda cap, u: ("user_model", model_ref) if cap == "distill" else None)
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="Asia/Ho_Chi_Minh")
+
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(book_id)), \
+         patch("app.client.provider_client.get_provider_client", return_value=prov), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth), \
+         patch("app.events.distill_enqueue.enqueue_distill", new=AsyncMock(return_value="7-0")) as enq:
+        r = await client.post(_DISTILL, json={"user_id": uid}, headers=_AUTH)
+
+    assert r.status_code == 202, r.text
+    kw = enq.await_args.kwargs
+    assert kw["book_id"] == book_id
+    assert kw["model_source"] == "user_model" and kw["model_ref"] == model_ref
+    assert kw["entry_zone"] == "Asia/Ho_Chi_Minh"
+    prov.get_default_model.assert_any_await("distill", uid)
+
+
+@pytest.mark.asyncio
+async def test_distill_headless_422_when_no_model_configured(client):
+    """A user with no distill/chat default → 422 (the scheduler logs + skips; never a silent no-op)."""
+    uid = str(uuid4())
+    prov = AsyncMock()
+    prov.get_default_model = AsyncMock(return_value=None)  # neither distill nor chat
+    auth = AsyncMock()
+    auth.get_user_timezone = AsyncMock(return_value="UTC")
+
+    with patch("app.routers.internal.build_internal_client", return_value=_FakeInternalClient(str(uuid4()))), \
+         patch("app.client.provider_client.get_provider_client", return_value=prov), \
+         patch("app.client.auth_client.get_auth_client", return_value=auth):
+        r = await client.post(_DISTILL, json={"user_id": uid}, headers=_AUTH)
+    assert r.status_code == 422
+
+
 @pytest.mark.asyncio
 async def test_reextract_trigger_requires_internal_token(client):
     r = await client.post(_REEXTRACT, json=_reextract_body())

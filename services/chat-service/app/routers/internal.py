@@ -14,10 +14,12 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from loreweave_internal_client import build_internal_client
 from pydantic import BaseModel
 
 from app.config import settings
 from app.deps import get_db
+from app.middleware.trace_id import trace_id_var
 
 router = APIRouter(prefix="/internal/chat", tags=["internal"])
 
@@ -195,14 +197,16 @@ async def day_window(
 
 
 class DistillTrigger(BaseModel):
-    """A1 / P-10 — the "End my day" trigger body. The caller (gateway/FE) supplies the diary book +
-    the distill model (Q8 server-side model resolution is a follow-up). `entry_date`/`entry_zone`
-    are OPTIONAL and default SERVER-side (D-R14: never trust a client-supplied calendar day)."""
+    """A1 / P-10 / WS-3.0 — the "End my day" trigger body. `book_id`, `model_source`, `model_ref`,
+    `entry_zone` are now OPTIONAL and resolve SERVER-SIDE when omitted (D-B1), so a HEADLESS scheduled
+    run (WS-3.2) can POST only `{user_id}`. A caller that supplies them (the FE "End my day") is
+    unchanged. `entry_date`/`entry_zone` default server-side (D-R14: never trust a client calendar day)."""
 
     user_id: UUID
-    book_id: UUID
-    model_source: str
-    model_ref: UUID
+    # Optional (WS-3.0): omitted → resolve the user's diary book / their default distill model / their tz.
+    book_id: UUID | None = None
+    model_source: str | None = None
+    model_ref: UUID | None = None
     language: str = "en"
     # entry_date is OPTIONAL for internal/catch-up use (the P-10 sweep distills a specific past day
     # and computes that date SERVER-side). ⚠️ CONTRACT (review LOW-4): when the public "End my day"
@@ -210,7 +214,7 @@ class DistillTrigger(BaseModel):
     # value — a client-controlled calendar day could overwrite/mis-bucket a historical entry. Today
     # this route is X-Internal-Token-only with no public caller, so it is a contract note, not a hole.
     entry_date: date | None = None  # default: today in entry_zone (server-computed on omission)
-    entry_zone: str = "UTC"         # A4 will resolve the user's IANA zone from prefs.timezone
+    entry_zone: str | None = None   # omitted → resolve the user's IANA zone from prefs.timezone (else UTC)
 
 
 @router.post("/assistant/distill", dependencies=[Depends(require_internal_token)], status_code=status.HTTP_202_ACCEPTED)
@@ -219,23 +223,76 @@ async def trigger_distill(body: DistillTrigger) -> dict:
     runs the map-reduce → diary-entry pipeline. Returns 202 with the enqueued entry_date + message id.
 
     `entry_date` is SERVER-authoritative (D-R14): if the caller omits it we stamp today's date in
-    `entry_zone` — a client-controlled calendar day could otherwise mis-bucket or overwrite history."""
+    `entry_zone` — a client-controlled calendar day could otherwise mis-bucket or overwrite history.
+
+    WS-3.0 (D-B1) — `book_id`/`model`/`entry_zone` resolve SERVER-SIDE when omitted, so a headless
+    scheduled run (WS-3.2) posts only `{user_id}`: the diary book from book-service, the distill model
+    from provider-registry (the user's `distill` default, falling back to `chat`), the zone from auth."""
     from app.events.distill_enqueue import enqueue_distill
+
+    book_id, model_source, model_ref, entry_zone = await _resolve_distill_context(body)
 
     entry_date = body.entry_date or datetime.now(timezone.utc).date()
     try:
         msg_id = await enqueue_distill(
             user_id=str(body.user_id),
-            book_id=str(body.book_id),
+            book_id=book_id,
             entry_date=entry_date.isoformat(),
-            entry_zone=body.entry_zone or "UTC",
+            entry_zone=entry_zone,
             language=body.language or "en",
-            model_source=body.model_source,
-            model_ref=str(body.model_ref),
+            model_source=model_source,
+            model_ref=model_ref,
         )
     except Exception as exc:  # noqa: BLE001 — a lost enqueue = a silently un-journaled day; surface it.
         raise HTTPException(status_code=503, detail=f"failed to enqueue distill: {exc}") from exc
     return {"enqueued": True, "entry_date": entry_date.isoformat(), "message_id": msg_id}
+
+
+async def _resolve_distill_context(body: "DistillTrigger") -> tuple[str, str, str, str]:
+    """WS-3.0 (D-B1) — resolve (book_id, model_source, model_ref, entry_zone) for a distill, filling any
+    field the caller omitted from server-side sources. Returns strings ready for the enqueue. Raises 422
+    when a REQUIRED piece can't be resolved (no diary / no distill model) — a scheduled tick must log +
+    skip that user, never silently enqueue a job that can't run (silent-success is a bug)."""
+    from app.client.auth_client import get_auth_client
+    from app.client.provider_client import get_provider_client
+
+    user_id = str(body.user_id)
+
+    # 1. book_id — the caller's diary. book-service resolves it for ANY lifecycle without creating one.
+    book_id = str(body.book_id) if body.book_id else None
+    if book_id is None:
+        try:
+            async with build_internal_client(
+                settings.book_service_url, internal_token=settings.internal_service_token,
+                timeout_s=5, trace_id_provider=trace_id_var.get,
+            ) as client:
+                resp = await client.get("/internal/books/diary", params={"user_id": user_id})
+            if resp.status_code == 200:
+                book_id = resp.json().get("book_id")
+        except Exception:  # noqa: BLE001 — treated as unresolved below (422), never a 500 into the tick.
+            book_id = None
+        if not book_id:
+            raise HTTPException(status_code=422, detail="no diary book for user (provision the assistant first)")
+
+    # 2. model — the caller's supplied model, else the user's `distill` default, else the `chat` default.
+    model_source = body.model_source
+    model_ref = str(body.model_ref) if body.model_ref else None
+    if not model_ref:
+        provider = get_provider_client()
+        resolved = await provider.get_default_model("distill", user_id) \
+            or await provider.get_default_model("chat", user_id)
+        if resolved is None:
+            raise HTTPException(status_code=422,
+                                detail="no distill/chat default model configured for user")
+        model_source, model_ref = resolved
+    model_source = model_source or "user_model"
+
+    # 3. entry_zone — the user's IANA zone (best-effort; UTC on any miss — the day bucket degrades safely).
+    entry_zone = body.entry_zone
+    if not entry_zone:
+        entry_zone = await get_auth_client().get_user_timezone(user_id) or "UTC"
+
+    return book_id, model_source, model_ref, entry_zone
 
 
 class ReextractTrigger(BaseModel):

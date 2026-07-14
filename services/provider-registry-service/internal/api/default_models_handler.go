@@ -28,6 +28,11 @@ var defaultModelCapabilities = map[string]bool{
 	// (glossary_plan) uses; a per-user default so planning isn't stuck on the chat
 	// "Fast" model (D-1). Set from Settings; resolved via /internal/default-models.
 	"planner": true,
+	// "distill" (WS-3.0 / DBT-15 · Q8) — the model the headless journal DISTILLER uses. A per-user
+	// default so a scheduled "end my day" resolves a NON-reasoning chat model (a reasoning model emits
+	// only reasoning_content → an empty diary). A ROLE, not a model flag → validated against 'chat'
+	// (like planner); the caller falls back to the 'chat' default when unset.
+	"distill": true,
 }
 
 // defaultModelCapQuery is THE capability-validation rule for assigning a
@@ -44,7 +49,9 @@ var defaultModelCapabilities = map[string]bool{
 // $3 capJSON, $4 validateCap.
 func defaultModelCapQuery(capability string) (query, capJSON, validateCap string) {
 	validateCap = capability
-	if capability == "planner" {
+	// planner + distill are ROLES that run as a chat call → validated against the 'chat' flag, so the
+	// picker's chat models are all assignable (WS-3.0 adds distill; D-PLAN-PLANNER-DEFAULT-FE added planner).
+	if capability == "planner" || capability == "distill" {
 		validateCap = "chat"
 	}
 	capJSON = fmt.Sprintf(`{"%s":true}`, validateCap)
