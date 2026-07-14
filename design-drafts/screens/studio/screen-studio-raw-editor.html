@@ -25,7 +25,7 @@
       --secondary: #282320; --muted-fg: #9e9488;
       --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
       --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
-      --error: #e85a5a; --error-muted: #3d1a1a;
+      --destructive: #d9584f; --destructive-muted: #3a1f1c;
       --json-key: #7eb8e8; --json-str: #c8e6a0; --json-num: #e8b87e; --json-bool: #b89ee8;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -62,7 +62,7 @@
       border-right: 1px solid var(--border); color: var(--muted-fg); white-space: nowrap;
     }
     .dock-tab.active { background: var(--background); color: var(--primary); border-bottom: 2px solid var(--primary); margin-bottom: -1px; }
-    .dock-tab .badge-warn { font-size: 8px; padding: 1px 5px; border-radius: 3px; background: var(--error-muted); color: var(--error); }
+    .dock-tab .badge-warn { font-size: 8px; padding: 1px 5px; border-radius: 3px; background: var(--destructive-muted); color: var(--destructive); }
     .dock-tab .badge-dirty { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
 
     .dock-split { flex: 1; display: flex; min-height: 0; }
@@ -94,8 +94,8 @@
     .raw-btn kbd { font-family: 'JetBrains Mono'; font-size: 9px; margin-left: 4px; opacity: .7; }
 
     .error-banner {
-      flex-shrink: 0; padding: 6px 10px; background: var(--error-muted); border-bottom: 1px solid var(--error);
-      font-size: 11px; color: var(--error); display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0; padding: 6px 10px; background: var(--destructive-muted); border-bottom: 1px solid var(--destructive);
+      font-size: 11px; color: var(--destructive); display: flex; align-items: center; gap: 8px;
     }
     .error-banner.hidden { display: none; }
 
@@ -105,8 +105,8 @@
       padding: 10px 0; text-align: right; font-family: 'JetBrains Mono'; font-size: 11px;
       line-height: 1.55; color: var(--border-hover); user-select: none;
     }
-    .gutter .err-line { color: var(--error); background: var(--error-muted); }
-    .gutter .err-marker { color: var(--error); margin-right: 4px; }
+    .gutter .err-line { color: var(--destructive); background: var(--destructive-muted); }
+    .gutter .err-marker { color: var(--destructive); margin-right: 4px; }
 
     .code-scroll { flex: 1; overflow: auto; padding: 10px 12px; }
     .code {
@@ -117,7 +117,7 @@
     .code .s { color: var(--json-str); }
     .code .n { color: var(--json-num); }
     .code .b { color: var(--json-bool); }
-    .code .err { background: rgba(232,90,90,.18); border-bottom: 2px wavy var(--error); }
+    .code .err { background: rgba(217,88,79,.18); border-bottom: 2px wavy var(--destructive); }
 
     .raw-status {
       height: 24px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 10px;
@@ -125,7 +125,7 @@
       background: var(--card);
     }
     .raw-status .ok { color: var(--success); }
-    .raw-status .bad { color: var(--error); }
+    .raw-status .bad { color: var(--destructive); }
     .raw-status .dirty { color: var(--primary); margin-left: auto; }
 
     .import-note {

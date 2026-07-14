@@ -25,6 +25,15 @@ if git diff --cached --name-only | grep -qE '2026-07-03-context-budget-law\.md|f
   "$PY" "$ROOT/scripts/context-inspector-checklist-gate.py"
 fi
 
+# Spec 30 §8.3 / X-8 — destructive+warning token drift in the studio design drafts.
+# The original audit grepped token NAMES and so missed a 5th drift wearing a THIRD name
+# (`--error: #e85a5a`), a raw hex with no token at all, and an `rgba(217,93,93)` that is
+# #d95d5d spelled in decimal. This lint greps by the COLOR (HSL), not by the name.
+# Runs only when a studio draft is staged (same conditional shape as the gate above).
+if git diff --cached --name-only | grep -qE 'design-drafts/screens/studio/.*\.html'; then
+  "$PY" "$ROOT/scripts/design-draft-token-lint.py"
+fi
+
 # SEC-1 / audit P0-6: catch secrets BEFORE they enter a commit. gitleaks scans
 # only the staged diff (`protect --staged`) so this stays fast. gitleaks is an
 # optional local tool — if it isn't installed we warn and continue (CI's
