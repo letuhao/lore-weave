@@ -210,6 +210,11 @@ Three capability families, each exposing the **same two primitives**, plus one s
 - **Lockstep tax acknowledged.** Every primitive lands in both `find-tools.ts` (TS) and
   `tool_discovery.py` (Py), guarded by `find-tools.spec.ts` drift-lock tests. Budget for it.
 
+> **AS-BUILT (reconciled 2026-07-14, all-tracks-clear M9):** this asymmetry fix SHIPPED, but as
+> `registry_list_skills` + `registry_get_skill` (agent-registry MCP, federated under the `registry`
+> domain, Tier-R, discoverable via `tool_list`) — not the `skill_list`/`skill_load` names below. The
+> capability is real; only the name differs. See TRACK-A.md WS-1a as-built note.
+
 **`skill_list`/`skill_load` as agent-callable tools** is the key asymmetry fix: today skills are
 injected *to* the model; the model should also be able to *ask* "what skills exist for X" and "load skill
 Y" deterministically — the same way it will for tools and workflows. The existing `/v1/chat/skills/catalog`

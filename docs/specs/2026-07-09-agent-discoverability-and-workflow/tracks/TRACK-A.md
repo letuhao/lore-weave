@@ -21,6 +21,15 @@ fixes. This is the spine every other track integrates with.
   2. **WS-1a Discovery triad** — `tool_list`/`tool_load`/`skill_list`/`skill_load` (C2), TS+Py lockstep,
      extend `find-tools.spec.ts`; demote `find_tools` (OQ1). **WS-1b hot-path write fix** — always-hot write
      allowlist / reserved write sub-budget in `tool_surface.py` + read-verb classifier fix. → **N1**
+     > **AS-BUILT (reconciled 2026-07-14, all-tracks-clear M9).** `tool_list`/`tool_load` shipped as named
+     > (TS+Py lockstep). **The skill half shipped under DIFFERENT names**: agent-callable skill discovery is
+     > `registry_list_skills` + `registry_get_skill` (agent-registry-service `mcp_server.go`, federated under
+     > the `registry` domain, Tier-R, discoverable via `tool_list`) — NOT `skill_list`/`skill_load`. The
+     > capability the "asymmetry fix" wanted (a model can ask "what skills exist" + "load skill Y"
+     > deterministically) exists; only the tool name differs from this brief. A 28-agent audit initially
+     > flagged `skill_list`/`skill_load` as an unbuilt GAP; the adversarial refuter overturned it — inverse
+     > drift (built-under-another-name). No code change needed; if a future scenario shows a model reaching
+     > for the literal `skill_list`, add it as a thin alias then.
   3. **WS-2a Workflow storage+authoring** — `workflows` table + C3 `steps` schema + `registry_propose_workflow`
      (system+user/book) + HITL spine. **WS-2b Step-runner** — deterministic runner honoring gates + async-honesty
      guard (OQ9); `workflow_list`/`workflow_load`. → **N2**
