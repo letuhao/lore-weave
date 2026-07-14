@@ -237,6 +237,24 @@ class KnowledgeClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def recall_facts_range(
+        self, *, user_id: str, book_id: str, date_from: str, date_to: str, limit: int = 200,
+    ) -> list[dict]:
+        """WS-3.7 — read a date-range of the user's CONFIRMED diary facts (the WS-2.4 recall endpoint),
+        the input to a weekly rollup's reduce. Returns the fact dicts (content/type/event_date/...). Best-
+        effort: a transport/non-200 → [] (the rollup simply has nothing to summarize → no draft)."""
+        try:
+            resp = await self._http.post(
+                f"{self._base_url}/internal/admin/assistant/recall-facts",
+                json={"user_id": user_id, "book_id": book_id,
+                      "event_date_from": date_from, "event_date_to": date_to, "limit": limit},
+            )
+            if resp.status_code != 200:
+                return []
+            return list(resp.json().get("facts") or [])
+        except (httpx.HTTPError, ValueError, KeyError):
+            return []
+
     async def persist_pass2(
         self,
         *,
