@@ -45,8 +45,9 @@
 |---|---|---|
 | **WS-3.0** server-side distill-context resolution (book+BYOK-model+tz+lang) | ✅ **DONE (b37a15ba7)** — chat trigger resolves book/model/tz server-side when omitted (posts only {user_id}); provider-registry `distill` capability (chat-validated, DBT-15); 422 when unresolvable. 2 new + 8 existing chat tests + provider default-models green. |
 | **WS-3.1** Go `scheduler-service` (table+lease+scaffold) | ✅ **DONE (fcb84ae30)** — new Go service: `scheduled_agent_runs` + tick driver (SKIP-LOCKED lease/claim, re-arm, breaker; re-impl of the sweeper shape) + HTTPEnqueuer→chat trigger + full scaffold (go.mod, Dockerfile, language-rule row [lint PASS], compose :8213, own DB). 3 driver DB tests green; build+vet clean. **Opt-in WRITE path (row-on-toggle) → WS-3.2.** |
-| **WS-3.2** auto-EOD via the HTTP trigger | ⬜ | not a raw XADD |
-| **WS-3.3** catch-up sweep (spend-capped) · **WS-3.4** away marker (nudge exclusion only) · **WS-3.6** content-free nudges · **WS-3.7** costed weekly rollup | ⬜ | |
+| **WS-3.2** auto-EOD via the HTTP trigger | ✅ **DONE (8a1f30133)** — `ComputeNextFireAt` (tz-aware local EOD) + `UpsertSchedule` (opt-in write path P3-D2) + `PUT /internal/schedules`; scheduler+api tests green. FE toggle proxy → DBT-14. |
+| **WS-3.4** away marker · **WS-3.6** content-free nudges | ✅ **DONE (8d31985b4)** — `assistant_away_periods`+`IsAway`+`POST /internal/away`; driver SUPPRESSES a nudge on an away day (re-arms); nudge = content-free (T26), away-gated. Away-exclusion DB test green. |
+| **WS-3.3** catch-up sweep (spend-capped) · **WS-3.7** costed weekly rollup | ⬜ | **remaining P3** — both need worker-ai depth (a bounded multi-day distill sweep; a weekly reduce over the week's diary ENTRIES). scheduler job_kinds + enqueue path ready. |
 | ~~WS-3.5 / WS-3.8~~ | ⏸ DEFERRED | proactive seam — no v1 consumer under the pull-only seal |
 
 ### P4 · Voice (see the phase-4 plan)
